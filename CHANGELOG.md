@@ -27,11 +27,36 @@ digest in the game's catalogue and must never be moved.
 - **`feature-restoration`** added to the recommended first-party mods
   ([mods/registry.json](mods/registry.json)): restores spells and mechanics later Angband
   versions quietly dropped, each behind its own opt-in toggle (default off).
+- **Six modding tutorials** ([docs/modding/tutorials/](docs/modding/tutorials/README.md)),
+  each teaching one idea and ending in a visible result - from changing a single value to
+  running code behind a player-facing switch. Every tutorial's finished mod is a real folder
+  under `samples/tutorials/`, composed against the shipped game data on every test run, so a
+  tutorial cannot go quietly stale.
+- **[Feature restoration](docs/modding/FEATURE_RESTORATION.md)** written up as a named
+  concept: vanilla stays vanilla, and dropped mechanics come back as optional mods - with the
+  research rules (name the version, respect the modern surrounding system, one switch per
+  feature, everything off by default) that keep a restoration honest.
+- **The character dump names the enabled mods.** A dump is what players hand each other, and
+  a mod's change is indistinguishable from a core bug in one. Written only when a mod is
+  enabled, so an unmodded dump is unchanged.
 
 ### Changed
 
+- **The README is rewritten for players rather than engineers.** What the project is, why you
+  might want it, and how to play come first; parity methodology, architecture and provenance
+  move behind links. A prominent "want to make a mod?" path now leads to a tutorial rather
+  than to an API reference.
 - **`AI_POLICY.md` renamed `AI_USAGE_POLICY.md`**, revised for a clearer disclosure section
   and a narrower, engineering-focused correctness claim.
+
+### Fixed
+
+- **Two doc claims the code had already outgrown.** `docs/MODS.md` and
+  `docs/modding/MOD_REACH.md` still said a mod installed from disk could supply data only and
+  that record layering reached 24 of 44 files. Both gates closed some time ago - a mod folder
+  ships `plugin.js` and reaches the capability registries from wherever it was installed
+  from, and every record of every shipped file is addressable. The stale passages are marked
+  as the before-picture rather than deleted, since the reasoning still explains the design.
 
 ## [0.20.0] - 2026-08-16
 

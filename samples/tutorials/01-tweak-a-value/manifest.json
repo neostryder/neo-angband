@@ -1,0 +1,14 @@
+{
+  "id": "tutorial-tweak-a-value",
+  "name": "Tutorial 1: Tweak a Value",
+  "version": "1.0.0",
+  "shape": "content",
+  "engine": ">=0.20.0",
+  "author": "neostryder",
+  "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
+  "dependencies": {
+    "core": "*"
+  },
+  "description": "The smallest mod there is: it changes two numbers on one item. Daggers hit for 1d6 instead of 1d4 and cost 300 gold instead of 30.\n\nIt exists to be read in under a minute. See docs/modding/tutorials/01-tweak-a-value.md."
+}

@@ -1256,6 +1256,7 @@ function charSheetOpts(): {
   uiEntryPacks: typeof uiEntryPacks;
   inspectExtras: ObjectInfoExtras;
   seedRandart: number;
+  mods: { id: string; version: string }[];
   msg: (text: string) => void;
 } {
   const p = state.actor.player;
@@ -1269,6 +1270,11 @@ function charSheetOpts(): {
     // The char-dump extras ('f'): object_info_chardump blocks + [Randart seed].
     inspectExtras,
     seedRandart: game.randartSeed,
+    /* The dump's [Mods enabled] block - the same list the diagnostics report
+     * carries, from the same source, so the two can never disagree. Empty with
+     * no mods on, which writes no block at all and leaves a vanilla dump
+     * identical to upstream's. */
+    mods: enabledModSummary(),
     // 'f' reports its own result (ui-player.c:1273-1275).
     msg: (text: string) => say(text),
   };
@@ -5960,6 +5966,9 @@ async function runDeathMenu(): Promise<void> {
             messages: msglog.all().map((m) => m.text),
             diedFrom: state.actor.player.diedFrom || "the dungeon",
             seedRandart: game.randartSeed,
+            /* The death dump is the one people actually post, so it is the one
+             * that most needs to say what was running. */
+            mods: enabledModSummary(),
           },
           say,
         );

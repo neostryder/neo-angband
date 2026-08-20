@@ -1,0 +1,8 @@
+{
+  "fieldPatches": {
+    "core:priest": [
+      { "op": "set", "path": "book.0.spell.2.mana", "value": 1 },
+      { "op": "set", "path": "book.0.spell.2.fail", "value": 5 }
+    ]
+  }
+}

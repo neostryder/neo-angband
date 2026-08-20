@@ -1,0 +1,14 @@
+{
+  "id": "tutorial-add-an-item",
+  "name": "Tutorial 2: Add an Item",
+  "version": "1.0.0",
+  "shape": "content",
+  "engine": ">=0.20.0",
+  "author": "neostryder",
+  "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
+  "dependencies": {
+    "core": "*"
+  },
+  "description": "Adds one item the base game has never heard of - a Padded Jerkin, a cheap early-depth body armour - and nothing else.\n\nSee docs/modding/tutorials/02-add-an-item.md."
+}
