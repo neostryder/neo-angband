@@ -91,6 +91,19 @@ function joinLines(lines: string[] | undefined): string {
 }
 
 /**
+ * finish_parse_feat (init.c L2256-2272): "Ensure the prefixes and
+ * prepositions end with a space for ease of use with the targeting code."
+ * terrain.txt itself carries no trailing space on any of them, so the
+ * targeting code's `<preposition><prefix><name>` concatenation only reads
+ * correctly because of this normalisation - without it the look UI renders
+ * "theArmoury", "inan open door" and "somelava".
+ */
+function ensureTrailingSpace(value: string): string {
+  if (!value || value.endsWith(" ")) return value;
+  return value + " ";
+}
+
+/**
  * player.h's digging enum: DIGGING_RUBBLE = 0 .. DIGGING_DOORS = 4,
  * DIGGING_MAX = 5. parse_feat_digging (init.c) accepts only
  * `DIGGING_RUBBLE + 1 .. DIGGING_MAX`, i.e. 1..5 -- 0 and DIGGING_MAX + 1
@@ -155,8 +168,8 @@ export class FeatureRegistry {
         hurtMsg: joinLines(rec["hurt-msg"]),
         dieMsg: joinLines(rec["die-msg"]),
         confusedMsg: joinLines(rec["confused-msg"]),
-        lookPrefix: joinLines(rec["look-prefix"]),
-        lookInPreposition: joinLines(rec["look-in-preposition"]),
+        lookPrefix: ensureTrailingSpace(joinLines(rec["look-prefix"])),
+        lookInPreposition: ensureTrailingSpace(joinLines(rec["look-in-preposition"])),
         resistFlag: resolveResistFlag(rec["resist-flag"]?.[0]),
       };
       attachExt("terrain", rec, feature);

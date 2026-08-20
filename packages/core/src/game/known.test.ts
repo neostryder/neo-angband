@@ -584,7 +584,9 @@ describe("squareApparentName / squareApparentLookPrefix / squareApparentLookInPr
     const grid = loc(12, 10);
     state.chunk.setFeat(grid, LAVA);
     squareMemorize(state, grid);
-    expect(squareApparentLookPrefix(state, grid)).toBe("some");
+    // terrain.txt writes "some" bare; finish_parse_feat appends the space
+    // the targeting code's concatenation needs.
+    expect(squareApparentLookPrefix(state, grid)).toBe("some ");
   });
 
   it("uses the feature's own look-in-preposition override when it has one", () => {
@@ -592,9 +594,9 @@ describe("squareApparentName / squareApparentLookPrefix / squareApparentLookInPr
     const grid = loc(12, 10);
     state.chunk.setFeat(grid, OPEN);
     squareMemorize(state, grid);
-    // terrain.txt's own data for OPEN has no trailing space (unlike the
-    // "on " default); reproduced verbatim rather than "fixed" here.
-    expect(squareApparentLookInPreposition(state, grid)).toBe("in");
+    // Bare "in" in terrain.txt, normalised to "in " by finish_parse_feat -
+    // the same shape as the "on " default.
+    expect(squareApparentLookInPreposition(state, grid)).toBe("in ");
   });
 
   it("defaults the look-in-preposition to 'on ' otherwise", () => {

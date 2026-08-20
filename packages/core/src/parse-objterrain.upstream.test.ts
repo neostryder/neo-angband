@@ -173,15 +173,60 @@ describe("f-info.c: terrain binder", () => {
     ["hurt-msg", "hurtMsg"],
     ["die-msg", "dieMsg"],
     ["confused-msg", "confusedMsg"],
-    ["look-prefix", "lookPrefix"],
-    ["look-in-preposition", "lookInPreposition"],
   ] as const)(
-    "%s joins with no separator (test_walk_msg0/run_msg0/hurt_msg0/die_msg0/confused_msg0/look_prefix0/look_in_preposition0)",
+    "%s joins with no separator (test_walk_msg0/run_msg0/hurt_msg0/die_msg0/confused_msg0)",
     (key, field) => {
       const recs = fresh();
       (recs[0] as unknown as Rec)[key] = ["Ow!", "  That hurt!"];
       const f = new FeatureRegistry(recs).byCodeName(recs[0]!.code) as unknown as Rec;
       expect(f[field]).toBe("Ow!  That hurt!");
+    },
+  );
+
+  /*
+   * test_look_prefix0 / test_look_in_preposition0 check the parser alone, and
+   * upstream's parser joins these two exactly like the messages above. But
+   * FeatureRegistry is the whole terrain load, parse hook plus finish hook, so
+   * finish_parse_feat's trailing space (init.c L2256-2272) is already on the
+   * bound value - which is what the targeting code reads. The join is still
+   * what is under test: no separator between the lines.
+   */
+  it.each([
+    ["look-prefix", "lookPrefix"],
+    ["look-in-preposition", "lookInPreposition"],
+  ] as const)(
+    "%s joins with no separator, then gains finish_parse_feat's trailing space (test_look_prefix0/test_look_in_preposition0)",
+    (key, field) => {
+      const recs = fresh();
+      (recs[0] as unknown as Rec)[key] = ["Ow!", "  That hurt!"];
+      const f = new FeatureRegistry(recs).byCodeName(recs[0]!.code) as unknown as Rec;
+      expect(f[field]).toBe("Ow!  That hurt! ");
+    },
+  );
+
+  it.each([
+    ["look-prefix", "lookPrefix"],
+    ["look-in-preposition", "lookInPreposition"],
+  ] as const)(
+    "%s that already ends in a space is left alone (finish_parse_feat's suffix() guard)",
+    (key, field) => {
+      const recs = fresh();
+      (recs[0] as unknown as Rec)[key] = ["the entrance to the "];
+      const f = new FeatureRegistry(recs).byCodeName(recs[0]!.code) as unknown as Rec;
+      expect(f[field]).toBe("the entrance to the ");
+    },
+  );
+
+  it.each([
+    ["look-prefix", "lookPrefix"],
+    ["look-in-preposition", "lookInPreposition"],
+  ] as const)(
+    "%s left out of the data stays empty rather than becoming a lone space",
+    (key, field) => {
+      const recs = fresh();
+      delete (recs[0] as unknown as Rec)[key];
+      const f = new FeatureRegistry(recs).byCodeName(recs[0]!.code) as unknown as Rec;
+      expect(f[field]).toBe("");
     },
   );
 

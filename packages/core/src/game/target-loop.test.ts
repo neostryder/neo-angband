@@ -211,6 +211,43 @@ describe("describeLookGrid (target_set_interactive_aux + aux_*)", () => {
     const { text } = describeLookGrid(state, grid, TARGET.LOOK);
     expect(text).toBe("You see a down staircase, 0 N, 2 E.");
   });
+
+  /*
+   * finish_parse_feat (init.c L2256-2272) appends a space to every non-empty
+   * look-prefix and look-in-preposition; terrain.txt writes them all bare, so
+   * a port that binds the data verbatim renders "theArmoury", "inan open
+   * door" and "somelava". These three cover both fields and both the prefix
+   * and preposition code paths.
+   */
+  it("separates a store entrance's look-prefix from the store name", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(12, 10);
+    state.chunk.setFeat(grid, featureReg.byCodeName("STORE_ARMOR").fidx);
+    squareMemorize(state, grid);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    const { text } = describeLookGrid(state, grid, TARGET.LOOK);
+    expect(text).toBe("You see the entrance to the Armoury, 0 N, 2 E.");
+  });
+
+  it("separates a door's look-in-preposition from the name on the player's own grid", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(10, 10);
+    state.chunk.setFeat(grid, featureReg.byCodeName("OPEN").fidx);
+    squareMemorize(state, grid);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    const { text } = describeLookGrid(state, grid, TARGET.LOOK);
+    expect(text).toBe("You are in an open door, 0 N, 0 E.");
+  });
+
+  it("separates lava's look-prefix from the name", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(12, 10);
+    state.chunk.setFeat(grid, featureReg.byCodeName("LAVA").fidx);
+    squareMemorize(state, grid);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    const { text } = describeLookGrid(state, grid, TARGET.LOOK);
+    expect(text).toBe("You see some lava, 0 N, 2 E.");
+  });
 });
 
 describe("initTargetLoopUi / currentLoopGrid / useInterestingLoopMode", () => {
