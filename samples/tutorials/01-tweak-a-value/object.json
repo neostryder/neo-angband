@@ -1,0 +1,8 @@
+{
+  "fieldPatches": {
+    "core:sword--dagger": [
+      { "op": "set", "path": "attack.hd", "value": "1d6" },
+      { "op": "set", "path": "cost", "value": 300 }
+    ]
+  }
+}

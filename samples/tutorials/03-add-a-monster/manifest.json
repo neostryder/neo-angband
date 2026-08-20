@@ -1,0 +1,14 @@
+{
+  "id": "tutorial-add-a-monster",
+  "name": "Tutorial 3: Add a Monster",
+  "version": "1.0.0",
+  "shape": "content",
+  "engine": ">=0.20.0",
+  "author": "neostryder",
+  "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
+  "dependencies": {
+    "core": "*"
+  },
+  "description": "Adds one monster - a carpenter ant, a slightly tougher cousin of the soldier ant - and nothing else.\n\nSee docs/modding/tutorials/03-add-a-monster.md."
+}

@@ -1,5 +1,11 @@
 # Modding Neo Angband
 
+> ## 🔧 New to this? Don't start here.
+>
+> **[Make a mod](tutorials/README.md)** is the front door: six short tutorials,
+> the first of which is two files and takes about five minutes. This page is the
+> reference — it enumerates, it does not teach.
+
 Moddability is a ratified pillar of this project (PORT_PLAN.md decisions
 13-21): every aspect of the game is open to mods, including capabilities
 that do not exist in the base resources. The base game is itself a pack
@@ -83,6 +89,15 @@ that has not been settled.
 
 ## Contents
 
+- `tutorials/`: **the beginner path** - six tiny mods, one idea each, each
+  ending in something visible on screen. The finished mod for every tutorial is
+  a real folder under `samples/tutorials/` that gets composed against the real
+  game data on every test run, so a tutorial cannot quietly stop working.
+  Start there if you have not written a mod for this game before.
+- `FEATURE_RESTORATION.md`: bringing back mechanics that later versions of
+  Angband dropped, without changing vanilla - the research rules that keep a
+  restoration honest, and why restoration is the best available test of whether
+  the mod system is real.
 - This page: pack anatomy, manifests, and record composition (live today,
   backed by `@rpgm-tools/neo-angband-mod-sdk`).
 - `REQUIREMENTS.md`: **exactly what a mod must provide**, and the one page here
@@ -134,14 +149,14 @@ that has not been settled.
 ## The first-party mods
 
 Five, **none of them bundled**, all OFF until enabled (see
-`DEFAULT_ENABLED_MODS` - an untouched install is faithful 4.2.6 with no mod
+`DEFAULT_ENABLED_MODS` - an untouched install is the faithful base game with no mod
 loaded). Each lives in its own repository and arrives through the mod manager's
 *Install a mod...* row:
 
 | id | shape | where it lives | what it adds |
 | --- | --- | --- | --- |
 | `qol` | content | [own repo](https://github.com/neostryder/neo-angband-mod-qol) | Genuinely new conveniences, currently just auto-dig on walk. Built-in Angband `=` options are NOT here: they ship in core at their upstream defaults. See `QOL.md`. |
-| `bug-fixes` | content | [own repo](https://github.com/neostryder/neo-angband-mod-bug-fixes) | An unofficial patch set for upstream 4.2.6 bugs core deliberately keeps. See `BUG_FIXES.md`. |
+| `bug-fixes` | content | [own repo](https://github.com/neostryder/neo-angband-mod-bug-fixes) | An unofficial patch set for upstream bugs core deliberately keeps. See `BUG_FIXES.md`. |
 | `neo-linoleum` | tiles | [own repo](https://github.com/neostryder/neo-angband-mod-linoleum) | An ALTERNATIVE tile engine: the Linoleum loose-pack format (individual PNGs addressed by readable target maps, plus variant pools). It does NOT supply the game's graphics - all five upstream tile sets (Original / Adam Bolt / David Gervais / Nomad / Shockbolt Dark and Light) are core content (`grafmode.c` / `lib/tiles/list.txt`) and appear in the Graphics screen with no mod enabled. It ships all six converted to loose packs, so you can compare the two engines on identical art. Declare a pack with `{ "grafID": >=100, "engine": "linoleum", "menuname": "...", "path": "..." }` - note `engine` is the FORMAT name and stays `linoleum`; `neo-linoleum` is the mod. See `docs/LINOLEUM.md`. |
 | `borg` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player, driving the game through the same perceive/act API any third-party automation would use. Released at `v0.1.0`. The whole port lives there now - 171 tests, plus a suite that drives the BUILT `plugin.js`. Installing and enabling it does not hand it your character; its "Let the Borg play" toggle does. |
 | `feature-restoration` | content + plugin | [own repo](https://github.com/neostryder/neo-angband-mod-feature-restoration) | Beloved Angband features that a later version quietly dropped, brought back one named toggle at a time, every toggle off by default. `Teleport Other` (content: a `fieldPatches` addition to the Priest, Paladin and Ranger's own books, who lost the spell somewhere between an earlier Angband and 4.2.6 while the Mage and the Rogue kept it) and store discounts (plugin: 4.2.6 dropped the discount roll entirely, so this restoration installs a `registry:store` discount-roll handler instead of patching data that no longer exists). |
@@ -153,7 +168,7 @@ Enable one in the in-app mod manager (game menu -> Mods), or with
 
 **The mod is the unit you switch; its patches ride with it.** While a mod is
 disabled its patches DO NOT EXIST - its code is never called, no hook is
-installed, nothing appears in the menu, and core runs faithful 4.2.6. A mod that
+installed, nothing appears in the menu, and core runs the faithful base game. A mod that
 changes BEHAVIOUR does so by default-exporting `ModHooks` from its own
 `plugin.ts`; core holds one composed `ModHooks` and never learns which mod
 supplied what (`docs/modding/MOD_SEAMS.md`).
@@ -378,13 +393,22 @@ Two levels:
    Trust is explicit: the plugin declares each `registry:*` capability
    in its manifest and the user consents at install.
 
-> **Measured limitation.** Trusted-plugin discovery is a build-time glob
-> over `packages/web/mods/` plus an `isShippedMod` allowlist
-> (`packages/web/src/agents/trusted/discover.ts`), so today only a mod
-> compiled into the web bundle can reach any registry. A mod installed from
-> disk cannot - it can supply gamedata JSON only. And the registries cover
-> five domains, not the whole engine; most of the port's dispatch tables
-> have no registry at all. `MOD_REACH.md` has the census.
+> **This limitation is CLOSED, and what follows is what replaced it.** Until the
+> plugin ABI landed, both code paths were build-time Vite globs over
+> `packages/web/mods/`, so only a mod compiled into the web bundle could reach a
+> registry and a mod installed from disk could supply gamedata JSON and nothing
+> else. That is no longer true. A mod folder ships `plugin.js` beside its
+> `manifest.json`, the host loads it from wherever the folder is (a loopback URL
+> on desktop, a rewritten module graph in a browser tab) and calls
+> `register(host, ctx)` on it like any other - `packages/web/src/mod-plugin.ts`
+> is the contract and `main.ts`'s `activeModCode().plugins` loop is the caller.
+> The shipped `feature-restoration` mod reaches `registry:store` this way, from
+> its own repository, through the same install route anyone's mod uses.
+>
+> What is still true: the registries cover a set of domains, not the whole
+> engine, and most of the port's dispatch tables have no registry at all.
+> `MOD_REACH.md` has the census, and it is the number to check before building
+> on a capability claim.
 
 ## Versioning and stability
 

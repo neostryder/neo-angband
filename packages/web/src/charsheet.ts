@@ -147,6 +147,12 @@ export interface CharSheetOpts {
   /** seed_randart (write_character_dump L1185), for the [Randart seed] line. */
   seedRandart?: number;
   /**
+   * The enabled mods, for the dump's [Mods enabled] block. Supplied by the
+   * shell, which is the only thing that knows what is loaded; absent or empty
+   * writes no block.
+   */
+  mods?: readonly { readonly id: string; readonly version: string }[];
+  /**
    * msg(). 'f' reports its outcome on the message line ("Character dump
    * successful." / "Character dump failed!", ui-player.c:1273-1275) and
    * dump_save reports the staged file it could not create, so the sheet needs
@@ -441,6 +447,13 @@ export interface CharDumpExtras {
   diedFrom?: string;
   /** seed_randart (L1187), for the [Randart seed] block under birth_randarts. */
   seedRandart?: number;
+  /**
+   * The mods enabled in this game, id and version, for the [Mods enabled] block.
+   *
+   * Omitted or empty writes NO block at all - see buildCharacterDump's tail for
+   * why that is the design and not an oversight.
+   */
+  mods?: readonly { readonly id: string; readonly version: string }[];
 }
 
 /** I2A / 'a'-'z' running label for a dump listing. */
@@ -670,6 +683,28 @@ export function buildCharacterDump(
     out.push((extras.seedRandart >>> 0).toString(16).padStart(8, "0"), "");
   }
 
+  /*
+   * [Mods enabled] - the one block in this file with no upstream line to cite,
+   * because upstream has no mods.
+   *
+   * WHY IT IS HERE. A dump is the artefact players hand each other, and a mod's
+   * change is indistinguishable from a core bug in one - the same reason the
+   * diagnostics report lists them (report.ts). Without this, "my Priest's Minor
+   * Healing only costs 1 mana" is unanswerable from the file that was shared.
+   *
+   * WHY IT DOES NOT BREAK PARITY. It is written ONLY when a mod is enabled. A
+   * vanilla dump ends exactly where upstream's does, byte for byte, so the
+   * faithful case is untouched - and the case this appears in is the case the
+   * parity claim already excludes by definition (docs/PARITY.md: the target is
+   * the game with no mods). An empty list is not written as an empty heading,
+   * for the same reason: "no mods" is what the absence of the block means.
+   */
+  if (extras.mods && extras.mods.length > 0) {
+    out.push("  [Mods enabled]", "");
+    for (const m of extras.mods) out.push(`${m.id} ${m.version}`);
+    out.push("");
+  }
+
   return out.join("\n");
 }
 
@@ -761,6 +796,7 @@ export function showCharacterSheet(
         ...(opts.uiEntryPacks !== undefined ? { uiEntryPacks: opts.uiEntryPacks } : {}),
         ...(opts.inspectExtras !== undefined ? { inspectExtras: opts.inspectExtras } : {}),
         ...(opts.seedRandart !== undefined ? { seedRandart: opts.seedRandart } : {}),
+        ...(opts.mods !== undefined ? { mods: opts.mods } : {}),
       },
       opts.msg,
     );
