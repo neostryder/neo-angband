@@ -102,7 +102,7 @@ recognise later if you have seen it once on purpose.
 
 ## The finished version
 
-`samples/tutorials/03-add-a-monster/`.
+`samples/tutorials/tutorial-03-add-a-monster/`.
 
 ---
 

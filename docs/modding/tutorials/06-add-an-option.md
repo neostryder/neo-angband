@@ -116,7 +116,7 @@ and reload**, and gain a level.
 
 ## The finished version
 
-`samples/tutorials/06-add-an-option/`. Its test asserts the interesting half:
+`samples/tutorials/tutorial-06-add-an-option/`. Its test asserts the interesting half:
 that with the option off, the mod supplies **no hook at all**.
 
 ---

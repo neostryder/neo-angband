@@ -114,7 +114,7 @@ another mod's, even if you both add a Padded Jerkin.
 
 ## The finished version
 
-`samples/tutorials/02-add-an-item/`, which is loaded and composed against the
+`samples/tutorials/tutorial-02-add-an-item/`, which is loaded and composed against the
 real game data on every test run.
 
 ---

@@ -1,5 +1,5 @@
 {
-  "id": "tutorial-add-an-option",
+  "id": "tutorial-06-add-an-option",
   "name": "Tutorial 6: Add an Option",
   "version": "1.0.0",
   "shape": "plugin",
@@ -11,7 +11,7 @@
   "description": "Tutorial 5's mod with one thing added: a switch the player controls. The congratulation is now a toggle on this mod's own screen, off until they turn it on.\n\nSee docs/modding/tutorials/06-add-an-option.md.",
   "rules": [
     {
-      "flag": "tutorial-add-an-option.congratulate",
+      "flag": "tutorial-06-add-an-option.congratulate",
       "title": "Congratulate me on gaining a level",
       "description": "Puts \"Congratulations!\" in front of the level-up message. Nothing else changes.",
       "default": false

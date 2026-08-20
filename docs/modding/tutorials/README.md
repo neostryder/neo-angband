@@ -28,8 +28,17 @@ enough to read in full before you type anything.
 
 **These are not snippets.** Every tutorial's finished mod is a real folder in
 this repository under `samples/tutorials/`, loaded and checked against the actual
-game data on every test run. If a tutorial ever stops working, the build fails
-before you find out the hard way.
+game data on every test run — including a check that each one would be accepted
+by the same folder reader the game itself uses. If a tutorial ever stops working,
+the build fails before you find out the hard way.
+
+**You can run them without typing anything.** Copy any of the six folders out of
+`samples/tutorials/` into the `mods/` folder beside the desktop build (or point a
+browser at `samples/tutorials/` with **Choose a mods folder...**), and they turn
+on from the Mods screen like any other mod. They are named `tutorial-01-…` to
+`tutorial-06-…` so all six can sit there at once. Typing your own is still the
+better way to learn — but having a known-good copy to compare against is worth a
+lot when yours does not work and you cannot see why.
 
 ---
 
