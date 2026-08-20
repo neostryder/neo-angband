@@ -76,7 +76,7 @@
  * glyph. No RNG - pool choice is a hash of the pool id and the grid.
  */
 
-import { parseTilePrefsInto, TileMap } from "@rpgm-tools/neo-angband-core";
+import { fillTilesFromKin, parseTilePrefsInto, TileMap } from "@rpgm-tools/neo-angband-core";
 import type { TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
 // Deliberately the `targets` subpath, not the package root: the root also
 // exports the converter, which imports node:fs and must never reach a browser
@@ -630,6 +630,15 @@ export async function loadLinoleumPack(input: {
       loadFile: (name: string) => mod.includes.get(name) ?? null,
     });
   }
+  /*
+   * The same kin fill the tilesheet engine runs, for the same reason and in the
+   * same position - after the pack and after any mod pref, so an assignment
+   * somebody actually made is never overwritten. BOTH ENGINES OR NEITHER: a
+   * mod's monster drawn from its family here and left as a glyph there would
+   * make "does my mod look right" depend on which tile engine the player picked,
+   * which is exactly the split the two-engine seam exists to hide.
+   */
+  fillTilesFromKin(index.map, input.deps);
   if (index.slots.length === 0) return null;
   return new LinoleumPack({
     menuname: input.menuname,

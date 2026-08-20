@@ -375,7 +375,8 @@ says so with a band, which needs nobody's agreement.
 The existing composition model (`patches`, `replaces`, `removes`) is the
 lever. [PROPOSED] We make `patches` field-granular and composable: a
 patch is a set of field operations (`set`, `merge`, `addFlag`,
-`removeFlag`, numeric `add`/`mul`), applied in load order. Two mods that
+`removeFlag`, numeric `add`/`mul`, list `append`/`removeValue`), applied in
+load order. Two mods that
 patch DIFFERENT fields of the same record compose cleanly with zero
 conflict. Only same-field patches conflict, and then load order decides
 and the app says so. This removes the biggest source of false conflicts

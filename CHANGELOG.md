@@ -18,6 +18,49 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
+### Added
+
+- **A mod can add one entry to a list.** Two new field-patch ops: `append`, which
+  adds entries to the array at a dot-path without restating it, and `removeValue`,
+  which drops entries deep-equal to a value. This closes the limitation recorded
+  under 0.21.0: putting a modded item in a shop's stock is now a three-line patch,
+  core's own stock list survives untouched, and two mods can both add to the same
+  store because neither has to replace the other's list. `append` is treated as
+  composing (like the flag ops) so two mods appending to one list is not a
+  conflict; `removeValue` is order-dependent, because it can erase another mod's
+  entry, so it is reported and the mod that loads last wins.
+- **An added monster or item is drawn from its family in tile mode.** A tile set
+  maps named monsters to pictures and has never heard of a mod's, so modded
+  content used to stand out as a coloured letter among pictures — and the only
+  fix available to an author was a pref file naming *atlas coordinates*, which are
+  correct for one tile set and wrong for every other. A monster with no tile of
+  its own now takes one from a race sharing its `base`, and an object kind from a
+  kind sharing its `tval`, so a modded ant is an ant in every tile set at once.
+  Restricted to records a mod ADDED, by provenance, so core's own drawing is
+  untouched — including the object kinds that are deliberately blank because they
+  are drawn by flavour. Runs in both tile engines. A pref file naming a specific
+  tile still wins.
+- Tutorial 2 now stocks its item in the Armoury, and its finished mod is checked
+  against the real store binder — which is where an item name that does not
+  resolve becomes an error rather than a shop that quietly lacks it.
+
+### Fixed
+
+- **Three field-patch ops silently destroyed data instead of failing.** An `add`
+  or `mul` aimed at a path holding a list or a string treated it as `0` and wrote
+  a number over it; a `merge` aimed at a list replaced the list with an object.
+  All three now raise a patch error naming the path and what was actually there.
+  This was not theoretical — a documentation example shipped an `add` against a
+  store's stock list, which turned the list into a number while composition
+  reported no problems at all.
+
+### Changed
+
+- Tutorial 3 no longer says an added monster is stuck as a coloured letter in tile
+  mode, and no longer says a mod can carry its own art for its own monsters — a
+  mod contributes a whole graphics mode, not one picture added to somebody else's
+  set. Both claims had outgrown the code.
+
 ## [0.21.0] - 2026-08-19
 
 Current state of the project at version `0.21.0` - the modding-onboarding

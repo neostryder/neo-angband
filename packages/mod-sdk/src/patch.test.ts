@@ -6,7 +6,7 @@ import {
   PatchError,
   touchedFields,
 } from "./patch.js";
-import type { FieldPatch } from "./patch.js";
+import type { FieldOp, FieldPatch } from "./patch.js";
 
 const kobold = (): JsonRecord => ({
   name: "kobold",
@@ -14,6 +14,12 @@ const kobold = (): JsonRecord => ({
   hp: 8,
   flags: ["EVIL", "GROUP_AI"],
   attack: { damage: 4, kind: "bite" },
+});
+
+/** A store record, for the list ops - a stock table is the reason they exist. */
+const store = (): JsonRecord => ({
+  store: "General Store",
+  normal: [{ tval: "soft armor", sval: "Leather Gloves" }],
 });
 
 describe("applyFieldPatch op semantics", () => {
@@ -64,6 +70,89 @@ describe("applyFieldPatch op semantics", () => {
       applyFieldPatch(kobold(), [{ op: "addFlag", path: "speed", flag: "X" }]),
     ).toThrow(PatchError);
   });
+
+  it("append adds entries to a list without restating it", () => {
+    const out = applyFieldPatch(store(), [
+      { op: "append", path: "normal", values: [{ tval: "soft armor", sval: "Padded Jerkin" }] },
+    ]);
+    expect(out["normal"]).toEqual([
+      { tval: "soft armor", sval: "Leather Gloves" },
+      { tval: "soft armor", sval: "Padded Jerkin" },
+    ]);
+  });
+
+  it("append keeps duplicates, because a stock table weights by repetition", () => {
+    const out = applyFieldPatch(store(), [
+      { op: "append", path: "normal", values: [{ tval: "soft armor", sval: "Leather Gloves" }] },
+    ]);
+    expect((out["normal"] as unknown[]).length).toBe(2);
+  });
+
+  it("append creates the list when the field is absent", () => {
+    const out = applyFieldPatch(store(), [
+      { op: "append", path: "always", values: ["a"] },
+    ]);
+    expect(out["always"]).toEqual(["a"]);
+  });
+
+  it("removeValue drops deep-equal entries and leaves the rest", () => {
+    const out = applyFieldPatch(store(), [
+      { op: "append", path: "normal", values: [{ tval: "light", sval: "Wooden Torch" }] },
+      { op: "removeValue", path: "normal", value: { tval: "soft armor", sval: "Leather Gloves" } },
+    ]);
+    expect(out["normal"]).toEqual([{ tval: "light", sval: "Wooden Torch" }]);
+  });
+
+  it("append does not mutate the base record's list", () => {
+    const base = store();
+    applyFieldPatch(base, [{ op: "append", path: "normal", values: ["x"] }]);
+    expect((base["normal"] as unknown[]).length).toBe(1);
+  });
+
+  it("rejects append and removeValue against a field that is not a list", () => {
+    expect(() =>
+      applyFieldPatch(kobold(), [{ op: "append", path: "speed", values: [1] }]),
+    ).toThrow(PatchError);
+    expect(() =>
+      applyFieldPatch(kobold(), [{ op: "removeValue", path: "attack", value: 1 }]),
+    ).toThrow(PatchError);
+  });
+
+  /*
+   * The three quiet-destruction cases. Each of these used to succeed and throw
+   * data away: an arithmetic op coerced a present non-number to 0 and wrote a
+   * number over whatever was there, and a merge treated a list as an unusable
+   * intermediate and replaced it with an object. A published documentation
+   * example did the first of these to a store's stock list while the composer
+   * reported no problems at all.
+   */
+  it("refuses arithmetic against a list instead of replacing it with a number", () => {
+    expect(() =>
+      applyFieldPatch(store(), [{ op: "add", path: "normal", value: 1 }]),
+    ).toThrow(/not a number/);
+  });
+
+  it("refuses arithmetic against a string instead of zeroing it", () => {
+    expect(() =>
+      applyFieldPatch(kobold(), [{ op: "mul", path: "name", value: 2 }]),
+    ).toThrow(/not a number/);
+  });
+
+  it("refuses an op name it does not know, rather than doing nothing", () => {
+    /* The op arrives as JSON and nothing checks the name on the way in, so a
+     * misspelling used to be a patch that silently did not happen. */
+    expect(() =>
+      applyFieldPatch(store(), [
+        { op: "apend", path: "normal", values: ["x"] } as unknown as FieldOp,
+      ]),
+    ).toThrow(/unknown op "apend"/);
+  });
+
+  it("refuses to merge into a list instead of replacing it with an object", () => {
+    expect(() =>
+      applyFieldPatch(store(), [{ op: "merge", path: "normal", value: { a: 1 } }]),
+    ).toThrow(/is a list/);
+  });
 });
 
 describe("composeFieldPatches conflict detection", () => {
@@ -106,6 +195,63 @@ describe("composeFieldPatches conflict detection", () => {
     ]);
     expect(conflicts).toEqual([]);
     expect(value["flags"]).toEqual(["EVIL", "GROUP_AI", "COLD", "MAGIC"]);
+  });
+
+  /*
+   * The stackability rule, stated as tests: two mods stack unless they write
+   * the same exact resource, and then the last to load wins and the collision
+   * is reported. A shared LIST is not a shared resource when both packs only
+   * add to it - that is the case a store's stock table lives in, and the case
+   * that decides whether two item mods can be installed together.
+   */
+  it("two packs appending to one list both keep their entries", () => {
+    const { value, conflicts } = composeFieldPatches(store(), [
+      { owner: "spears", ops: [{ op: "append", path: "normal", values: ["spear"] }] },
+      { owner: "jerkins", ops: [{ op: "append", path: "normal", values: ["jerkin"] }] },
+    ]);
+    expect(conflicts).toEqual([]);
+    expect(value["normal"]).toEqual([
+      { tval: "soft armor", sval: "Leather Gloves" },
+      "spear",
+      "jerkin",
+    ]);
+  });
+
+  it("a pack that REPLACES a list another pack appended to is a reported conflict", () => {
+    const { value, conflicts } = composeFieldPatches(store(), [
+      { owner: "jerkins", ops: [{ op: "append", path: "normal", values: ["jerkin"] }] },
+      { owner: "rework", ops: [{ op: "set", path: "normal", value: ["only-this"] }] },
+    ]);
+    expect(value["normal"]).toEqual(["only-this"]); // last to load wins
+    expect(conflicts).toEqual([{ path: "normal", owners: ["jerkins", "rework"] }]);
+  });
+
+  it("a removeValue against an appended entry is order-dependent and reported", () => {
+    const { value, conflicts } = composeFieldPatches(store(), [
+      { owner: "jerkins", ops: [{ op: "append", path: "normal", values: ["jerkin"] }] },
+      { owner: "purist", ops: [{ op: "removeValue", path: "normal", value: "jerkin" }] },
+    ]);
+    expect(value["normal"]).toEqual([{ tval: "soft armor", sval: "Leather Gloves" }]);
+    expect(conflicts).toEqual([{ path: "normal", owners: ["jerkins", "purist"] }]);
+  });
+
+  it("append order follows load order, and nothing is dropped either way", () => {
+    const forward = composeFieldPatches(store(), [
+      { owner: "a", ops: [{ op: "append", path: "normal", values: ["x"] }] },
+      { owner: "b", ops: [{ op: "append", path: "normal", values: ["y"] }] },
+    ]);
+    const reverse = composeFieldPatches(store(), [
+      { owner: "b", ops: [{ op: "append", path: "normal", values: ["y"] }] },
+      { owner: "a", ops: [{ op: "append", path: "normal", values: ["x"] }] },
+    ]);
+    expect(forward.value["normal"]).toEqual([
+      { tval: "soft armor", sval: "Leather Gloves" },
+      "x",
+      "y",
+    ]);
+    /* Order differs, membership does not - so neither mod loses its entry. */
+    expect(new Set(reverse.value["normal"] as unknown[]).size).toBe(3);
+    expect(reverse.conflicts).toEqual([]);
   });
 
   it("is deterministic and independent of base mutation", () => {

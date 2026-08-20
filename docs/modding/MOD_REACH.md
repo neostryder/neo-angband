@@ -1027,7 +1027,7 @@ plus field-level ops:
 | `patches` | PARTIAL delta, deep merge - objects merge per key, arrays and scalars replace whole, explicit `null` deletes a key | `mergePatch` `compose.ts:74-92`, applied `:147` |
 | `replaces` | whole-record swap, ref and owner preserved | `compose.ts:147-148` |
 | `removes` | DELETE the record from the composed game | `compose.ts:170-181` |
-| `fieldPatches` | typed ops on dot-paths: `set`, `merge`, `addFlag`, `removeFlag`, `add`, `mul` | `FieldOp` `packages/mod-sdk/src/patch.ts:25-40`, `applyFieldPatch` `:87-135`, applied `compose.ts:153-168` |
+| `fieldPatches` | typed ops on dot-paths: `set`, `merge`, `addFlag`, `removeFlag`, `add`, `mul`, `append`, `removeValue` | `FieldOp` `packages/mod-sdk/src/patch.ts:25-40`, `applyFieldPatch` `:87-135`, applied `compose.ts:153-168` |
 
 So the answer to "only ADD, or also OVERRIDE / PATCH / REMOVE" is **all four,
 plus field ops** - genuinely, with a live in-repo example

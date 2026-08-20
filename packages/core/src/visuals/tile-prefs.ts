@@ -102,8 +102,18 @@ export class TileMap {
 export interface TilePrefsDeps {
   features: FeatureRegistry;
   objects: ObjRegistry;
-  /** MonsterRegistry (or anything with lookup_monster's raceByName). */
-  monsters: { raceByName(name: string): { ridx: number } | null };
+  /**
+   * MonsterRegistry (or anything with lookup_monster's raceByName).
+   *
+   * `races` is optional because a caller that only resolves `monster:` lines
+   * needs nothing more than the name lookup - but `monster-base:` lines and
+   * `fillTilesFromKin` both walk the whole list, so a caller that omits it gets
+   * those two behaviours skipped rather than a type error.
+   */
+  monsters: {
+    raceByName(name: string): { ridx: number } | null;
+    races?: readonly { ridx: number; base: { name: string } }[];
+  };
   /** Bound trap kinds (t_idx order), or null when the pack has none. */
   traps: readonly TrapKind[] | null;
   /**
@@ -203,6 +213,118 @@ export function tileForShownObject(
   flavor: Pick<Flavor, "fidx"> | number | null,
 ): TileAtlas | null {
   return flavor === null ? tileForObject(map, kind) : tileForFlavor(map, flavor);
+}
+
+/* ------------------------------------------------------------------ *
+ * Provisioning an ADDED entity with a tile.
+ * ------------------------------------------------------------------ */
+
+/** How many entries a kin fill supplied, by category. */
+export interface KinTileFill {
+  readonly monsters: number;
+  readonly objects: number;
+}
+
+/** What a kin fill needs to know: who is kin to whom, and who added what. */
+export interface KinTileDeps {
+  readonly monsters: {
+    readonly races?: readonly {
+      ridx: number;
+      base: { name: string };
+      from?: { owner: string };
+    }[];
+  };
+  readonly objects: {
+    readonly kinds: readonly { kidx: number; tval: number; from?: { owner: string } }[];
+  };
+}
+
+/**
+ * The pack whose content is NOT provisioned - the base game. A record with no
+ * provenance is core's own and unmodified, and a record owned by `baseId` is
+ * core's own with a mod's patch applied; neither is something a tile pack could
+ * not have known about.
+ */
+const BASE_PACK = "core";
+
+/** Whether a record was ADDED by a mod, rather than being core's own. */
+function addedByMod(rec: { from?: { owner: string } }, baseId: string): boolean {
+  return rec.from !== undefined && rec.from.owner !== baseId;
+}
+
+/**
+ * Give every entity with no tile of its own the tile of its nearest KIN: a
+ * monster takes one from another race sharing its `base`, an object kind from
+ * another kind sharing its `tval`.
+ *
+ * WHY THIS IS NOT A CONVENIENCE. A pref file assigns tiles by ATLAS
+ * COORDINATE, and every tile pack lays its atlas out differently - so a mod
+ * that adds a monster cannot name a cell that is correct in Linoleum and also
+ * correct in a pack the author has never seen. The author's only portable
+ * options were to ship one pref file per known pack, or to accept a coloured
+ * glyph standing in a tiled dungeon. Neither is provisioning a creature; the
+ * first is unmaintainable and the second is the wart. Kin resolution is
+ * pack-independent because it copies whatever THAT pack already drew for the
+ * family, so an added ant is an ant in every tile set at once.
+ *
+ * ONLY MOD-ADDED RECORDS ARE FILLED, and that restriction is the whole safety
+ * argument. It was originally written to fill anything the pack had left blank,
+ * on the assumption that a shipped pack draws everything core ships. Measured
+ * against the real packs, that assumption is false twice over: rings, amulets,
+ * mushrooms and food are drawn by FLAVOUR, so their kind slots are empty by
+ * design and filling them would put art on an identified ring that the pack
+ * never drew; and an older pack such as adam-bolt simply has no tile for
+ * content added to the game after it was made - 19 monsters and a Knight's
+ * Shield among them - where a glyph is the honest answer and a sibling's tile
+ * would be a lie. Provenance is what separates the two cases: a record with no
+ * `from`, or one owned by the base pack, is core's and is left alone, so this
+ * cannot change how the unmodded game draws at all. An author who wants a
+ * specific cell still says so in a `.prf` and that wins, because their pref
+ * layers in before this runs.
+ *
+ * Donors are NOT restricted that way: core's art is exactly what a mod's ant
+ * should borrow.
+ *
+ * Deterministic: the donor is the lowest-index kin carrying a tile, and both
+ * registries are in bound order.
+ */
+export function fillTilesFromKin(
+  map: TileMap,
+  deps: KinTileDeps,
+  baseId: string = BASE_PACK,
+): KinTileFill {
+  let monsters = 0;
+  const races = deps.monsters.races;
+  if (races) {
+    const donor = new Map<string, TileAtlas>();
+    for (const race of races) {
+      const tile = map.monster[race.ridx];
+      if (tile && !donor.has(race.base.name)) donor.set(race.base.name, tile);
+    }
+    for (const race of races) {
+      if (map.monster[race.ridx] || !addedByMod(race, baseId)) continue;
+      const tile = donor.get(race.base.name);
+      if (!tile) continue;
+      map.monster[race.ridx] = { ...tile };
+      monsters++;
+    }
+  }
+
+  let objects = 0;
+  const donorByTval = new Map<number, TileAtlas>();
+  for (const kind of deps.objects.kinds) {
+    const tile = map.object[kind.kidx];
+    if (tile && !donorByTval.has(kind.tval)) donorByTval.set(kind.tval, tile);
+  }
+  for (const kind of deps.objects.kinds) {
+    if (map.object[kind.kidx] || !addedByMod(kind, baseId)) continue;
+    const tile = donorByTval.get(kind.tval);
+    if (!tile) continue;
+    map.object[kind.kidx] = { ...tile };
+    objects++;
+  }
+
+  return { monsters, objects };
 }
 
 /** Projection tile for a PROJ index and BOLT motion, or null. */

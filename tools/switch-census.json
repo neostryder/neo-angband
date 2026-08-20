@@ -262,6 +262,13 @@
       "verdict": "INTERNAL - grantCovers's dispatch on capability KIND (command/event/state/network/registry/display/ui/backup), same class as capability-describe.ts's 17-case row below: a mod cannot add a capability kind, because a kind is what the host defines. Resizing this switch is the symptom of the mod system growing a new kind (most recently backup:folder, #133), never a gap."
     },
     {
+      "file": "packages/mod-sdk/src/patch.ts",
+      "cases": 8,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - the field-patch op vocabulary (set/merge/addFlag/removeFlag/add/mul/append/removeValue). A mod cannot coin an op and should not: an op is the ABI between a mod's JSON and the composer, so adding one is a core change with a conflict-composition rule attached (is it commutative?) - the same class as the capability-kind rows. What a mod varies here is the PATH, not the verb."
+    },
+    {
       "file": "packages/web/src/birth.ts",
       "cases": 8,
       "hasDefault": true,
