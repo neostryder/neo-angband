@@ -29,6 +29,7 @@ my-item-mod/
   "engine": ">=0.20.0",
   "author": "your name",
   "license": "GPL-2.0-only",
+  "repository": "https://github.com/you/my-item-mod",
   "dependencies": { "core": "*" },
   "description": "Adds a padded jerkin."
 }
@@ -95,12 +96,20 @@ a sensible price. See [AUTHORING.md](../AUTHORING.md).
 
 ## What you should see
 
-Start a new character and walk into the General Store or the Armoury. Padded
-Jerkins turn up in stock at that depth range. Wear one and your armour class
-goes up by 5.
+Your item exists in the game as soon as the mod is on: it generates in the
+dungeon inside its own depth window, monsters can be carrying one, and wearing it
+raises your armour class by 5. Confirm it the quick way with wizard mode, or dive
+until one drops.
 
-Your item is `my-item-mod:padded-jerkin` as far as the game is concerned: a name
-in your own namespace, so it can never collide with the base game's items or with
+**No shop stocks it yet**, and that is not a bug in your mod - a shop's stock
+comes from that shop's own table, and nothing has put your item in one. The
+section below does that.
+
+Your item is `my-item-mod:soft-armor--padded-jerkin` as far as the game is
+concerned. An `object` record's identity is its `type` and its `name` joined by
+`--`, which is why the ref is not simply the name - and it is the same rule that
+made tutorial 1's dagger `core:sword--dagger`. The `my-item-mod:` half is your
+own namespace, so your item can never collide with the base game's or with
 another mod's, even if you both add a Padded Jerkin.
 
 ## Try changing this
@@ -176,15 +185,23 @@ Adding a line to a list is one op. Make a `store.json` beside your `object.json`
 
 Restart, walk into the Armoury, and your jerkin is in the rotation with
 everything else, sometimes in stock, sometimes not, at whatever enchantment the
-store rolled, priced from what it turned out to be.
+store rolled, priced from what it turned out to be. The stock roll picks from the
+store's own table and does not consult your item's `alloc` window, so a shop can
+offer it at any depth; `alloc` governs where it generates in the dungeon.
 
 Three things worth knowing about that patch:
 
 - **`core:store-armor`** is the store's record id: its code, `STORE_ARMOR`,
-  lowercased with `_` turned into `-`. Every ref works that way.
+  lowercased with `_` turned into `-`. That rule is the STORE file's, not a
+  universal one - each data file declares what identifies its records, and the
+  table of them is `packages/mod-sdk/src/record-key.ts`. Most files use `name`;
+  `object` uses `type` plus `name`; `brand`, `slay` and `projection` use `code`;
+  `constants` and `visuals` have one record each and are named by the file.
 - **`normal` is the "may stock" table; `always` is the staples.** Appending to
   `always` means a shop keeps one on the shelf at all times, which for most
-  items is not what you want.
+  items is not what you want - and note the Armoury ships no `always` list at
+  all, so appending to one there has nothing to append to and is reported rather
+  than working quietly.
 - **`sval` is the item's name without the `~`.** If it does not match an item
   that exists, the game drops that one line from the shop's table and reports it
   against your mod in the mod manager, so a typo costs you a line and tells you

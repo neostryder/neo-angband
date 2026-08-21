@@ -25,10 +25,11 @@ install, and how to mod the game. Start with the top-level
 - [PARITY.md](./PARITY.md) - what "feature parity with Angband 4.2.6,
   statistically verified (with no mods)" means, the numbers it currently holds
   at, and the one metric that is measured and deliberately not gated.
+- [PLANNED.md](./PLANNED.md) - the only place work that has NOT landed is
+  written down. `CHANGELOG.md` records what shipped and nothing else.
 - [WORKING_RECORD.md](./WORKING_RECORD.md) - why some comments cite documents
-  that are not in this tree: the audit runs, briefs and build plans that built
-  the port are kept privately, and this says what they concluded and where the
-  conclusions live.
+  that are not in this tree: the construction record is kept privately, and this
+  says what it concluded and where the conclusions live.
 - [RELEASING.md](./RELEASING.md) - the release runbook: how a tag becomes npm
   packages and downloadable builds, and the save-migration obligation that comes
   with any change to the save format.
@@ -52,35 +53,68 @@ install, and how to mod the game. Start with the top-level
 
 ## Modding
 
+**Writing a mod? Start at
+[modding/tutorials/README.md](./modding/tutorials/README.md).** Seven short
+tutorials, the first of which is two files. Everything below is reference.
+
 - [MODS.md](./MODS.md) - the mod system's TARGET design: content packs, tile
   packs, and scripted plugins, with the base game as a pack itself.
 - [modding/MOD_REACH.md](./modding/MOD_REACH.md) - the MEASURED current state:
   what a mod can actually change today, with counts and citations, plus the gap
-  list. Read this alongside MODS.md, which is the target.
-- [BORG_AS_MOD.md](./BORG_AS_MOD.md) - scope and plan for shipping the Borg as
-  a mod on the perceive/act agent API.
+  list. Read this before trusting a capability claim on any other page.
+- [BORG_AS_MOD.md](./BORG_AS_MOD.md) - why the Borg is a mod rather than core
+  code, and what surface an autoplayer needs. Design rationale, not the mod's
+  current state.
 - [LINOLEUM.md](./LINOLEUM.md) - the manifest-backed, loose-pack Linoleum tile
   format.
 
 ### Modding guides ([modding/](./modding/))
 
-- [modding/README.md](./modding/README.md) - the entry point to modding Neo
-  Angband and the moddability pillar.
-- [modding/MOD_LIFECYCLE.md](./modding/MOD_LIFECYCLE.md) - mod lifecycle,
-  saves, and how mods compose.
+Roughly in the order a mod author needs them.
+
+- [modding/tutorials/](./modding/tutorials/README.md) - the beginner path: seven
+  tiny mods, one idea each, each ending in something visible on screen.
+- [modding/README.md](./modding/README.md) - the reference entry point: pack
+  anatomy, manifests, record composition, namespaced fields of your own, and the
+  built-today-versus-design status table.
+- [modding/REQUIREMENTS.md](./modding/REQUIREMENTS.md) - exactly what a mod must
+  provide to be installable. GENERATED from the rules the game enforces, so it
+  cannot go stale.
+- [modding/AUTHORING.md](./modding/AUTHORING.md) - the shortcuts: `draftRecord`,
+  `checkRecords` and `ModProject`. Read before writing a record by hand.
+- [modding/MOD_SEAMS.md](./modding/MOD_SEAMS.md) - the `ModHooks` behaviour
+  seam, its per-hook fold rules, and why core stays faithful when untouched.
 - [modding/PLUGINS.md](./modding/PLUGINS.md) - the plugin ABI: one `plugin.js`,
   the engine handed in, and what it may reach.
 - [modding/MOD_COMPATIBILITY.md](./modding/MOD_COMPATIBILITY.md) - what the
   engine promises a mod across releases, and the four ways a mod can be
-  stranded by one.
-- [modding/MOD_SEAMS.md](./modding/MOD_SEAMS.md) - the `ModHooks` behaviour
-  seam, its per-hook fold rules, and why core stays faithful when untouched.
+  stranded by one. Read before publishing.
+- [modding/MOD_LIFECYCLE.md](./modding/MOD_LIFECYCLE.md) - mod lifecycle,
+  saves, load order, conflict reporting, and how mods compose. Design of
+  record; not yet fully built.
 - [modding/MOD_REACH.md](./modding/MOD_REACH.md) - measured mod reach: hook
   count, the dispatch-table census, what data layering really supports, what
   resources are overridable, and the ranked gap list.
-- [modding/BORG.md](./modding/BORG.md) - the Borg autoplayer mod and how to run
+
+The first-party mods, one page each - each is its own repository, and none is
+bundled:
+
+- [modding/QOL.md](./modding/QOL.md) - `qol`, the quality-of-life mod.
+- [modding/BUG_FIXES.md](./modding/BUG_FIXES.md) - `bug-fixes`, the unofficial
+  patch set for upstream defects core deliberately keeps.
+- [modding/FEATURE_RESTORATION.md](./modding/FEATURE_RESTORATION.md) -
+  `feature-restoration`, mechanics later Angband versions dropped, brought back
+  one toggle at a time.
+- [modding/BORG.md](./modding/BORG.md) - `borg`, the autoplayer, and how to run
   it.
-- [modding/QOL.md](./modding/QOL.md) - the first-party quality-of-life mod
-  (`qol`): design of record and changelog.
-- [modding/BUG_FIXES.md](./modding/BUG_FIXES.md) - the first-party bug-fix mod
-  (`bug-fixes`): design of record and changelog.
+
+Designs that are written down and not built. Read the status banner on each
+before building anything against it:
+
+- [modding/REGION_INPUT.md](./modding/REGION_INPUT.md) - per-cell pointer-input
+  ownership for the region stack.
+- [modding/CLOUD_BACKUP_DESIGN.md](./modding/CLOUD_BACKUP_DESIGN.md) - a save
+  backup folder as a `qol` feature, and the two host additions it needs.
+- [modding/UPSTREAM_CATCHUP_MOD_SCOPE.md](./modding/UPSTREAM_CATCHUP_MOD_SCOPE.md) -
+  what a mod for upstream's post-4.2.6 work would contain, and where its
+  boundary against `bug-fixes` runs.

@@ -11,9 +11,9 @@ Moddability is a ratified pillar of this project (PORT_PLAN.md decisions
 that do not exist in the base resources. The base game is itself a pack
 ("core", pack zero) loaded through the same pipeline your mod uses - if
 core can do it, your mod can do it, redefine it, or delete it. Core is
-parity plus the mod architecture only; everything else - including the
-first-party neo-linoleum and QoL mods - is a mod (decisions 17-18). Cheaty
-mods are allowed: the engine warns and labels, it does not forbid.
+parity plus the mod architecture only; everything else - the five first-party
+mods included - is a mod (decisions 17-18). Cheaty mods are allowed: the engine
+warns and labels, it does not forbid.
 
 This directory is the modding SDK documentation set. It grows with the
 engine; each page documents surfaces that exist and are tested. For the
@@ -78,7 +78,7 @@ write down at all.
 | Retitle, regroup, reorder, re-tag or rebind an existing web keypress command (`registry:menu`); the command's closure stays shell-private | **Complete** | `MOD_REACH.md` row 23 |
 | Rename one of your own rule flags without losing the player's saved choice (`renamedRuleFlags`) | **Complete** | `AUTHORING.md` |
 | Rebind keys, or add a gamepad: `input-door.ts` is host infrastructure, not a seam | **Not yet** | `MOD_SEAMS.md` |
-| Change the message table, the `MSG_`→sound map, or the pref-file handlers | **Complete** | `MOD_REACH.md` rows 20, 21, 8 |
+| Change the message table, the `MSG_`->sound map, or the pref-file handlers | **Complete** | `MOD_REACH.md` rows 20, 21, 8 |
 | Change the monster spell table or the command table | **Not yet** | `MOD_REACH.md` rows 22, 19 |
 | Install, update and uninstall UX: ratified in full, built in part | **WIP** | `MOD_LIFECYCLE.md` |
 
@@ -89,7 +89,7 @@ that has not been settled.
 
 ## Contents
 
-- `tutorials/`: **the beginner path** - six tiny mods, one idea each, each
+- `tutorials/`: **the beginner path** - seven tiny mods, one idea each, each
   ending in something visible on screen. The finished mod for every tutorial is
   a real folder under `samples/tutorials/` that gets composed against the real
   game data on every test run, so a tutorial cannot quietly stop working.
@@ -158,7 +158,7 @@ loaded). Each lives in its own repository and arrives through the mod manager's
 | `qol` | content | [own repo](https://github.com/neostryder/neo-angband-mod-qol) | Genuinely new conveniences, currently just auto-dig on walk. Built-in Angband `=` options are NOT here: they ship in core at their upstream defaults. See `QOL.md`. |
 | `bug-fixes` | content | [own repo](https://github.com/neostryder/neo-angband-mod-bug-fixes) | An unofficial patch set for upstream bugs core deliberately keeps. See `BUG_FIXES.md`. |
 | `neo-linoleum` | tiles | [own repo](https://github.com/neostryder/neo-angband-mod-linoleum) | An ALTERNATIVE tile engine: the Linoleum loose-pack format (individual PNGs addressed by readable target maps, plus variant pools). It does NOT supply the game's graphics - all five upstream tile sets (Original / Adam Bolt / David Gervais / Nomad / Shockbolt Dark and Light) are core content (`grafmode.c` / `lib/tiles/list.txt`) and appear in the Graphics screen with no mod enabled. It ships all six converted to loose packs, so you can compare the two engines on identical art. Declare a pack with `{ "grafID": >=100, "engine": "linoleum", "menuname": "...", "path": "..." }` - note `engine` is the FORMAT name and stays `linoleum`; `neo-linoleum` is the mod. Since its 0.15.0 it also carries the one rule the GAME used to hold: content a mod added, with no tile anywhere, is drawn from its nearest relative with the colour turned - under its own packs only, through `registry:tiles`. See `docs/LINOLEUM.md`. |
-| `borg` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player, driving the game through the same perceive/act API any third-party automation would use. Released at `v0.1.0`. The whole port lives there now - 171 tests, plus a suite that drives the BUILT `plugin.js`. Installing and enabling it does not hand it your character; its "Let the Borg play" toggle does. |
+| `borg` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player, driving the game through the same perceive/act API any third-party automation would use. The whole port lives there, with its own release tags and its own suite, including one that drives the BUILT `plugin.js`. Installing and enabling it does not hand it your character; its "Let the Borg play" toggle does. |
 | `feature-restoration` | content + plugin | [own repo](https://github.com/neostryder/neo-angband-mod-feature-restoration) | Beloved Angband features that a later version quietly dropped, brought back one named toggle at a time, every toggle off by default. `Teleport Other` (content: a `fieldPatches` addition to the Priest, Paladin and Ranger's own books, who lost the spell somewhere between an earlier Angband and 4.2.6 while the Mage and the Rogue kept it) and store discounts (plugin: 4.2.6 dropped the discount roll entirely, so this restoration installs a `registry:store` discount-roll handler instead of patching data that no longer exists). |
 
 **First-party is not a shortcut.** All five take the same route into the game as anybody else's mod, and that is on purpose: bundling the author's own mods would have hidden every defect in the install path behind mods that never used it. The download route, the folder code loader and the plugin ABI all work because nothing is exempt from them. What first-party buys is that these five are also the reference examples - read them to learn the seams.
@@ -198,13 +198,13 @@ A pack is a directory (or archive) with a manifest and content files:
 
 ```
 my-frost-pack/
-  pack.json          <- the manifest
+  manifest.json      <- the manifest; the file that makes this a mod
   monster.json       <- contributions to the "monster" record file
   object.json        <- contributions to the "object" record file
   ...
 ```
 
-### The manifest (`pack.json`)
+### The manifest (`manifest.json`)
 
 ```json
 {
@@ -387,8 +387,8 @@ Two levels:
    builders, monster-AI overrides, new vocabulary terms. These go
    through the capability-gated registry host
    (`packages/core/src/mod/registry-host.ts`), and they require a
-   **TRUSTED in-process** plugin (`<mod>/trusted.ts`), not the
-   sandboxed Worker tier - a Worker is async by construction and cannot
+   **TRUSTED in-process** plugin - your mod folder's `plugin.js` - not the
+   sandboxed Worker tier. A Worker is async by construction and cannot
    supply a handler that runs synchronously with live `rng` / `chunk` /
    `player` access deep inside the turn. The sandboxed tier keeps the
    reactive perceive/act/event surface and none of the registries.

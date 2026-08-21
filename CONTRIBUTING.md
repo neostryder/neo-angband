@@ -24,7 +24,7 @@ keep it faithful. Read it once before your first change.
 ## Prerequisites
 
 - **Node** `>=22` (the `.nvmrc` pins `24` - use it if you run `nvm`). CI runs 24
-  here; the two mod repositories run 22, so the `>=22` floor is exercised rather
+  here; the mod repositories run 22, so the `>=22` floor is exercised rather
   than merely claimed.
 - **pnpm** `11.18.0`, the version in the root `package.json` `packageManager`
   field. Get it with **`corepack enable pnpm`** and let that field decide - the
@@ -84,7 +84,9 @@ The full package table lives in the [README](README.md#repository-layout) and
 `core` (headless engine), `content` (Angband 4.2.6 gamedata as the core pack),
 `mod-sdk` (pack schemas, validation, tooling), `web` (web + PWA front-end),
 `cli` (terminal front-end and dev/stats harness), `desktop` (Electron wrapper),
-`linoleum` (tile-pack converter), and `borg` (the bundled autoplayer mod).
+`linoleum` (tile-pack converter), and `mcp` (the MCP server that lets an agent
+play the game). The Borg autoplayer is not in here: it ships from its own
+repository as a mod, like every other mod.
 
 ## The cardinal rule: faithfulness to Angband 4.2.6
 
@@ -110,10 +112,16 @@ game stays faithful; anything that adds or changes behavior ships as a **mod**.
 - Conveniences, tweaks, and new systems live as mods - see
   [docs/MODS.md](docs/MODS.md) and the modding guides in
   [docs/modding/](docs/modding/).
-- The first-party `qol`, `bug-fixes` and `neo-linoleum` mods, and the `borg`
-  autoplayer, are the worked examples of this boundary. `qol` and `bug-fixes`
-  are bundled; `neo-linoleum` installs from its own repository, because its six
-  converted tile packs are the mod's art and not the game's.
+- The first-party mods are the worked examples of this boundary: `qol`
+  (conveniences), `bug-fixes` (opt-in fixes for 4.2.6's own defects),
+  `feature-restoration` (features later Angband versions dropped, brought back
+  as toggles), `neo-linoleum` (an alternative tile engine and six converted tile
+  packs), and `borg` (the autoplayer).
+- **No mod is bundled into the build.** `mods/registry.json` names mod
+  repositories and nothing else; every fact about a mod - its id, version,
+  payload and the engine range it supports - comes from that repository's own
+  manifest at a tag. A first-party mod arrives by exactly the path a
+  third-party mod does.
 
 ## Parity provenance ledger
 
@@ -142,7 +150,7 @@ New original code (UI, mod-sdk) needs no ledger entry.
 - **ASCII only** in source and docs - no smart quotes, no em dashes (use
   " - "), no non-ASCII punctuation.
 - **Lint** with `pnpm lint` (ESLint + typescript-eslint, flat config in
-  `eslint.config.js`). It must report zero errors; the remaining warnings flag
+  `eslint.config.mjs`). It must report zero errors; the remaining warnings flag
   known parity idioms and are acceptable. CI runs it as a gate.
 
 ## Testing expectations

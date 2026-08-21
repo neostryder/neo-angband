@@ -10,12 +10,11 @@ With no mod loaded, every rule, formula, table, message, screen layout, key, and
 content record behaves as it does in Angband 4.2.6, including upstream quirks and
 bugs. Odds and per-level distributions match.
 
-### The standard is GAMEPLAY parity, not code parity (ruled 2026-08-09)
+### The standard is GAMEPLAY parity, not code parity (settled 2026-08-09)
 
 The bar is what a player can observe in play. It is not the shape of the C, and
-it never was `bit-for-bit` - that was already false in this document before the
-ruling, but the working practice had drifted stricter than the claim. Written
-down so it stops drifting back:
+it never was `bit-for-bit`. Written down explicitly, because the working
+practice had drifted stricter than the claim this document actually makes:
 
 - **Refactoring is allowed.** A ported routine may be restructured, simplified,
   merged, split, or made faster, provided the observable behaviour is the same.
@@ -44,16 +43,19 @@ it at load. There are exactly two, both verified in `session/game.ts`:
 
 | Seed | Re-derived at load | What a stream change does to a saved character |
 | --- | --- | --- |
-| `randartSeed` | `doRandart` (`game.ts:3892`) | every random artifact in the game becomes a different item - including ones the character has already found, identified and equipped |
-| `seedFlavor` | `flavorInit` (`game.ts:4210`) | every flavour reassigns; the potion the character learned was Cure Light Wounds is now something else |
+| `randartSeed` | `doRandart` | every random artifact in the game becomes a different item - including ones the character has already found, identified and equipped |
+| `seedFlavor` | `flavorInit`, reached through `wireGame` | every flavour reassigns; the potion the character learned was Cure Light Wounds is now something else |
+
+Both live in `packages/core/src/session/game.ts` and both run on the load path
+as well as at birth, which is what makes the seed the thing that matters.
 
 So: changes to the randart generator and to flavour assignment are stream-locked
 across released versions, not because upstream says so but because a player's
 character is on the other side of them. Everything else is free. The 834
-`randart-vectors.json` rows and the effect-info vectors exist to catch an
-*accidental* change on those paths; under this ruling they are a change
-detector, not a prohibition, and a deliberate change updates the vectors in the
-same commit that makes it.
+`randart-vectors.json` rows (`packages/core/src/obj/randart-vectors.json`) and
+the effect-info vectors exist to catch an *accidental* change on those paths.
+They are a change detector, not a prohibition: a deliberate change updates the
+vectors in the same commit that makes it.
 
 #### The one place a SEPARATE stream is mandatory
 
@@ -88,8 +90,8 @@ NEO_PARITY_RUNS=1000 npx vitest run packages/cli/src/parity-c-stat.test.ts
 ```
 
 1000 levels per depth from the port against 1000 from the real compiled C
-(`main-stats`), depths 1 to 20. **Passes**, at α = 0.01 Bonferroni-corrected
-across the family:
+(`main-stats`), depths 1 to 20. **Passes**, at alpha = 0.01
+Bonferroni-corrected across the family:
 
 | Metric | Shape | Result |
 | --- | --- | --- |
@@ -150,7 +152,7 @@ not flip argument order to chase a particular compiler's stream.
 `customized_interface_options.txt` with `msg()` (option.c:302, :320, :328).
 The port emits all three, and where they land depends on whether there is a game:
 
-- the **in-game** interface options page (`=` → User interface options, `r`)
+- the **in-game** interface options page (`=` -> User interface options, `r`)
   routes them to `state.msg`, which is upstream's message line and history
   screen. Same place, same text.
 - **at birth**, and inside `options_init_defaults` itself, there is no character
@@ -197,8 +199,10 @@ mod-neutral**:
    its aggregate per-level distributions into the harness `StatsReport` shape
    (`meta.generatedBy = "c-main-stats"`), and diffs the port against **those**
    within a statistical tolerance (distributions/rates, not integers, because
-   the streams differ by design). See `packages/cli/README` and the parity
-   harness.
+   the streams differ by design). The harness is
+   `packages/cli/src/parity-c-stat.test.ts` (the gate) driving
+   `packages/cli/src/main-cparity.ts`, against the committed
+   `packages/cli/baseline/c-stats-baseline.json`.
 3. **RNG-neutrality regression.** A fixed-seed draw-sequence test asserts that
    the no-mod path and the mod-system-absent path are identical (see the hard
    rule above).
@@ -249,9 +253,10 @@ A machine-readable map from port artifacts to upstream sources:
 The ledger serves two masters:
 
 1. **Parity audit now** - "what does this port and where did it come from."
-2. **AI-assisted rebasing later** - when upstream cuts a new release, diff
-   upstream, map changed files/functions through the ledger to affected port
-   modules, and generate a migration worklist.
+2. **Rebasing later** - when upstream cuts a new release, diff upstream, map
+   the changed files and functions through the ledger to the affected port
+   modules, and the result is a migration worklist rather than a re-read of the
+   whole tree.
 
 ## Tolerances
 
@@ -270,7 +275,7 @@ re-investigated. A row here is a candidate for the `qol` mod, never for core.
 |---|---|---|
 | Town floors are **black** at night, not faded | `cave_illuminate(c, false)` calls `square_forget` on every non-bright floor grid, so a town floor at night is *unknown*, not dim. Walls and shop doorways stay memorized, which is why the outline survives. | `cave-map.c` `cave_illuminate`; `map_info` draws `FEAT_NONE` for `!square_isknown` |
 | The **target survives** the monster leaving sight | Upstream keeps the target set and re-acquires it when the monster returns to view. Nothing fires at an unseen monster: every aim path re-checks `target_okay`, which needs `monster_is_obvious` and `projectable`. | `target.c:110` `target_able`, `:124` `target_okay` |
-| **Birth options are not remembered** | They are, but only after an explicit save. 4.2.6 writes `customized_birth_options.txt` from the `s` key on the options page; nothing writes it automatically. The next character's birth screen opens on that file. A file that was hand-edited and no longer parses now says so, in 4.2.6's own words. | `ui-options.c:170` (`s` → `options_save_custom`), `option.c:171`, `:225-333` |
+| **Birth options are not remembered** | They are, but only after an explicit save. 4.2.6 writes `customized_birth_options.txt` from the `s` key on the options page; nothing writes it automatically. The next character's birth screen opens on that file. A file that was hand-edited and no longer parses now says so, in 4.2.6's own words. | `ui-options.c:170` (`s` -> `options_save_custom`), `option.c:171`, `:225-333` |
 | A **cutpurse never steals** | `EAT_GOLD` has `power: 0` in `blow_effects.txt`, so its `check_hit` chance is `0 + level*3` - a depth-2 cutpurse lands the theft touch about **12%** of rounds against AC 16, and the victim then saves on `adj_dex_safe[DEX] + level`. At 18/20 DEX and level 8 that is a 23% save, so ~9% of rounds actually cost gold. | `mon-blows.c` `melee_effect_handler_EAT_GOLD`, `player-attack.c` `hit_chance`, `player-calcs.c:640` `adj_dex_safe` |
 | A **stunned monster still attacks on the same turn** | Stun is not a stunlock in 4.2.6. A stunned monster misses its turn only `one_in_(STUN_MISS_CHANCE)` = 1 time in 10; otherwise it acts with its to-hit cut by `STUN_HIT_REDUCTION` (25%) and its blow damage by `STUN_DAM_REDUCTION` (25%). All three are ported: `combat/hit.ts:25,:28`, applied at `combat/mon-melee.ts:219` and `:1290`, `game/mon-cmd.ts:370`, and the turn-miss roll at `game/monster-turn.ts:194,:1759`. Landing a stun and then being hit is the common case, not a failure. | `mon-move.c:1826-1836` `monster_turn_should_stagger`, `mon-attack.c:354`, `:622` |
 | **Wormtongue cackles and no traps appear** | `TRAPS` is `effect:TOUCH:MAKE_TRAP:3` with no dice - a radius-3 ball on the player, and each grid is `one_in_(4)` *and* must be an empty, trapless floor. The player's own grid never qualifies. Zero traps from one cast is ordinary. | `project-feat.c` `project_feature_handler_MAKE_TRAP` |

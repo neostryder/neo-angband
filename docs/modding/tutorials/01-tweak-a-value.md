@@ -31,10 +31,17 @@ my-first-mod/
   "engine": ">=0.20.0",
   "author": "your name",
   "license": "GPL-2.0-only",
+  "repository": "https://github.com/you/my-first-mod",
   "dependencies": { "core": "*" },
   "description": "Daggers hit harder and cost more."
 }
 ```
+
+`repository` is required even for a mod you never publish. It is the mod's
+identity across every way of getting it: the game pins an installed mod to the
+repository it came from and refuses a replacement from anywhere else, so a mod
+that names nowhere can be overwritten by anything claiming its id. Point it
+wherever you intend to publish, or wherever you would if you did.
 
 `object.json` is the change:
 
@@ -60,9 +67,15 @@ instead; the file name is how the game knows what you are talking about.
 
 **`core:sword--dagger`** names the record you are changing. The `core:` half says
 whose record it is: the base game's, as opposed to yours or another mod's. The
-rest is the dagger's identity within its file. You do not have to memorise these:
-type your best guess, and if it is wrong the game refuses the mod and *tells you
-the refs that would have worked*.
+rest is the dagger's identity within its file - for an object, its `type` and
+its `name` joined by `--`. You do not have to memorise these: type your best
+guess, and if it is wrong the game tells you *which rule builds the ref*, so you
+can work it out from the record you were aiming at. It does not hand you a list
+of candidates, and there is no "did you mean" for refs.
+
+A ref that resolves to nothing costs you that one contribution, not the whole
+mod: the game skips it, reports it on your mod's row in the mod manager, and
+loads everything else you wrote.
 
 **`fieldPatches`** is a list of small edits, each naming a path into the record
 and a new value. `attack.hd` is the damage dice; `cost` is the base price in
@@ -87,9 +100,10 @@ reloading the page is your whole edit-and-test loop.
 
 ## What you should see
 
-Buy a dagger in the General Store. It now costs around 300 gold rather than
-around 30. Inspect it with `I` and its damage reads `1d6`. Hit something with
-it and it hurts more.
+Buy a dagger in the **Weapon Smiths** (the `3` on the town map) - that is the
+shop that stocks daggers, not the General Store. It now costs around 300 gold
+rather than around 30. Inspect it with `I` and its damage reads `1d6`. Hit
+something with it and it hurts more.
 
 Turn the mod off and choose **Apply changes and reload**, and daggers are
 ordinary again. That is the part worth pausing on: your change is a layer over

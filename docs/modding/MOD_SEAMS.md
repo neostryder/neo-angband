@@ -111,14 +111,14 @@ control.
 
 ## 1. `GameState.modHooks` - the behaviour seam
 
-The one seam behind both bundled mods. `GameState.modHooks`
-(`packages/core/src/game/context.ts:712`) is an optional `ModHooks`
-(`packages/core/src/mod/hooks.ts:83`): a plain interface whose every member is an
+The one seam behind both first-party behaviour mods. `GameState.modHooks`
+(`packages/core/src/game/context.ts`) is an optional `ModHooks`
+(`packages/core/src/mod/hooks.ts`): a plain interface whose every member is an
 OPTIONAL function. An absent member means "no mod touches that point", and core
 takes its faithful path with one undefined check:
 
 ```ts
-/* obj-list.ts:242 - the whole shape of a seam read */
+/* game/obj-list.ts - the whole shape of a seam read */
 if (result === 0 && tiebreak) {
   result = tiebreak({ dy: ea.dy, dx: ea.dx }, { dy: eb.dy, dx: eb.dx });
 }
@@ -140,8 +140,8 @@ flag-gated fix is not excluded from core: **core shipped the fix body, core was
 tested on it, and core carried the mod's own flag name as a string literal.**
 Deleting the mod folder would not have deleted a line of it. `modRuleEnabled` is now GONE from core -
 deliberately deleted rather than left unused, because a helper that exists is a
-helper the next core function reaches for (see the tombstone comment at
-`packages/core/src/game/context.ts:932`).
+helper the next core function reaches for (see the tombstone comment in
+`packages/core/src/game/context.ts`).
 
 What core still contains, and cannot stop containing, is the SEAM ITSELF: one
 named, documented extension point per behaviour a mod may override. That is the
@@ -154,16 +154,23 @@ Each member of `ModHooks` documents its single call site, because a hook whose
 call site is not written down is a hook nobody can verify is still wired - the
 exact failure the call-site census exists to catch.
 
-| Hook | Kind | Call site | Faithful answer when absent |
+The `Fold` column uses the code's own vocabulary. `MOD_HOOK_FOLDS`
+(`packages/core/src/mod/hooks.ts`) is keyed by `keyof ModHooks`, so a hook added
+to the interface without a fold does not compile, and the conflict report the mod
+manager draws is rendered from that same table. Call sites are named by file and
+by the symbol that reads the hook rather than by line: a line number in a
+document has no test behind it and rots on the next commit.
+
+| Hook | Fold | Call site | Faithful answer when absent |
 | --- | --- | --- | --- |
-| `walkBlockedByDiggable(state, grid, deps)` | first-handler | `game/cave-cmd.ts:680` (`movementAutoDig`), reached from `game/player-turn.ts:493` | `?? 0` - bump the wall, spend nothing, draw no RNG |
-| `objectListTiebreak(a, b)` | ordering | `game/obj-list.ts:242` | `?? 0`, i.e. leave the entries equal (stable sort keeps collect order) |
-| `levelGenerated(gen, quest)` | veto | `gen/generate.ts:473` | accept the level as generated |
-| `artifactCommit(aidx, alreadyCreated)` | veto | `obj/make.ts:987` | commit it unconditionally |
-| `historyAdd(entry)` | veto | `session/game.ts:872` (the `HIST.SLAY_UNIQUE` path) | `?? true` - write every entry, duplicates included |
-| `saveNoiseScent()` | any | `session/save.ts:1203` | `?? false` - omit the heatmaps, which is upstream's behaviour and upstream's bug |
-| `messageText(raw)` | transform | `packages/web/src/main.ts:1244` (the HOST's single message sink, not core) | `?? raw` - show what core was given, warts and all |
-| `optionsChanged(snapshot)` | notification | `packages/web/src/options.ts` (`notifyOptionsChanged`, at the end of `runOptionsMenu`) | nothing happens; core reads no answer |
+| `walkBlockedByDiggable(state, grid, deps)` | `last-answer` | `game/cave-cmd.ts` (`movementAutoDig`), reached from `walkAction` in `game/player-turn.ts` | `?? null` - bump the wall, spend nothing, draw no RNG |
+| `objectListTiebreak(a, b)` | `last-answer` | `game/obj-list.ts` | `?? 0`, i.e. leave the entries equal (stable sort keeps collect order) |
+| `levelGenerated(gen, quest)` | `all-must-agree` | `gen/generate.ts` | accept the level as generated |
+| `artifactCommit(aidx, alreadyCreated)` | `all-must-agree` | `obj/make.ts` | commit it unconditionally |
+| `historyAdd(entry)` | `all-must-agree` | `session/game.ts` (the `HIST.SLAY_UNIQUE` path) | `?? true` - write every entry, duplicates included |
+| `saveNoiseScent()` | `any-yes` | `session/save.ts` | `?? false` - omit the heatmaps, which is upstream's behaviour and upstream's bug |
+| `messageText(raw)` | `chained` | `packages/web/src/main.ts` (the HOST's single message sink, not core) | `?? raw` - show what core was given, warts and all |
+| `optionsChanged(snapshot)` | `all-observe` | `packages/web/src/options.ts` (`notifyOptionsChanged`, at the end of `runOptionsMenu`) | nothing happens; core reads no answer |
 
 `optionsChanged` is the odd one and worth reading twice: it is the only member
 core does not ask a QUESTION. Every other hook's return value changes what the
@@ -201,32 +208,40 @@ so a hook that rolls a dig check and then declines has already moved the stream.
 Two enabled mods may both want the same hook. Core deliberately holds exactly ONE
 `ModHooks` and knows nothing about mod identity, ordering, or enablement; the host
 collects each enabled mod's contributions in LOAD order and folds them with
-`composeModHooks` (`packages/core/src/mod/hooks.ts:330`). This is the same
+`composeModHooks` (`packages/core/src/mod/hooks.ts`). This is the same
 layering as content: core consumes a composed result, never the pack list.
 
-"Later wins" is not a usable rule here, because the hooks differ in kind. What
-`composeModHooks` actually does, per hook:
+One rule holds across every fold: **no mod's opinion is ever discarded in favour
+of an earlier mod's.** Where a fold has to pick a single answer, the LAST mod in
+load order supplies it, which is what the mod manager's own "Move later (loads
+last, wins conflicts)" row promises. Where a fold combines answers, nothing is
+discarded and there is nothing for load order to decide. Per fold:
 
-- **VETO hooks** (`levelGenerated`, `artifactCommit`, `historyAdd`) are
-  **conjunctive**: every contributor runs and the **first refusal decides**
-  (`hooks.ts:366`, `:374`, `:382`). This is the only safe fold - a mod that
-  vetoes a duplicate artifact must not be overruled by a later mod that merely
-  has no opinion. Note for `levelGenerated` specifically: every contributor still
-  runs after an earlier one has REPAIRED the level, because a second mod's
-  invariant is not satisfied by the first mod's repair; only a refusal
-  short-circuits, since the level is being thrown away anyway.
-- **TRANSFORM hooks** (`messageText`) **chain in load order**, each seeing the
-  previous one's output (`hooks.ts:394`, a `reduce` over the contributors).
-- **FIRST-HANDLER hooks** (`walkBlockedByDiggable`) stop at the **first
-  non-`null`** (`hooks.ts:340-346`), so an earlier mod's handling wins and a later
-  one cannot double-spend the same turn's energy.
-- **ANY hooks** (`saveNoiseScent`) are **disjunctive** - `some()`
-  (`hooks.ts:389`). One mod asking for the data is enough, because the data is
-  additive and a second mod has nothing to object to.
-- **ORDERING hooks** (`objectListTiebreak`) stop at the **first non-zero**
-  answer (`hooks.ts:351-357`), the same way a lexicographic comparator chains.
+- **`all-must-agree`** (`levelGenerated`, `artifactCommit`, `historyAdd`) is
+  **conjunctive**: every contributor runs and the **first refusal decides**. This
+  is the only safe fold - a mod that vetoes a duplicate artifact must not be
+  overruled by a later mod that merely has no opinion. Note for `levelGenerated`
+  specifically: every contributor still runs after an earlier one has REPAIRED
+  the level, because a second mod's invariant is not satisfied by the first mod's
+  repair; only a refusal short-circuits, since the level is being thrown away
+  anyway.
+- **`chained`** (`messageText`) chains in load order, each contributor seeing the
+  previous one's output: a `reduce` over the contributors.
+- **`last-answer`** (`walkBlockedByDiggable`) asks the contributors in **REVERSE**
+  load order and stops at the first non-`null`, so the LAST mod's handling wins
+  and two mods cannot double-spend one turn's energy. The reversal is the whole
+  mechanism, and reading the loop as forward inverts the rule.
+- **`any-yes`** (`saveNoiseScent`) is **disjunctive**, a `some()`. One mod asking
+  for the data is enough, because the data is additive and a second mod has
+  nothing to object to.
+- **`last-answer` for a comparator** (`objectListTiebreak`) is the same reversal
+  read as a lexicographic chain: the last mod's ordering is the primary key and
+  earlier mods break only the ties it leaves. Still a total order, and still
+  later-wins.
+- **`all-observe`** (`optionsChanged`) runs every contributor in load order and
+  reads no answer, so there is nothing to win.
 
-`composeModHooks` returns `undefined` when nothing contributed (`hooks.ts:334`),
+`composeModHooks` returns `undefined` when nothing contributed,
 so the host leaves the field ABSENT rather than storing an empty object. That
 keeps "no mod loaded" and "a mod loaded that touches nothing" indistinguishable
 from core's side - which is the one thing the seam exists to guarantee.
@@ -235,7 +250,7 @@ from core's side - which is the one thing the seam exists to guarantee.
 
 A hook is third-party code running inside a turn, so it can throw. The host wraps
 each mod's contribution with `guardModHooks`
-(`packages/core/src/mod/hooks.ts:258`) BEFORE folding it - guarding per mod is
+(`packages/core/src/mod/hooks.ts`) BEFORE folding it - guarding per mod is
 what lets the fault be attributed, since the host holds the id and core does not.
 
 A throw becomes that hook's **neutral answer**, which is per-hook and is the same
@@ -268,23 +283,23 @@ exception unwound past it.
 
 ### Why `null` is the decline sentinel, and not `0` or `false`
 
-For the first-handler fold, the sentinel cannot be a value the hook might
+For the `last-answer` fold, the sentinel cannot be a value the hook might
 legitimately want to return. `walkBlockedByDiggable` returns an ENERGY COST, and
 `0` is a real energy cost - so if `0` meant "decline", a mod could not express
-"I handled this action and it costs nothing". `null` keeps the two apart:
-`hooks.ts:343` tests `energy !== null`, so a hook returning `0` HANDLES the walk
-and stops the chain, while `null` passes it to the next mod.
+"I handled this action and it costs nothing". `null` keeps the two apart: the
+fold tests `energy !== null`, so a hook returning `0` HANDLES the walk and stops
+the chain, while `null` passes it to the next mod.
 
-Two honest caveats, both verified in the code rather than assumed:
+Two details worth stating, both read off the code rather than assumed:
 
-- The **call site truncates the distinction today.** `movementAutoDig`
-  (`cave-cmd.ts:680`) collapses a declining hook to `0` with `?? 0`, and
-  `walkAction` (`player-turn.ts:493`) then tests `if (dug > 0)`. So a hook that
-  returns `0` short-circuits the FOLD (a later mod does not get the walk) but
-  still falls through to core's faithful bump. "Handled for zero energy" is
-  expressible in `ModHooks` and in `composeModHooks`, and is not yet honoured by
-  this one call site. A hook wanting to handle a walk must therefore return a
-  positive energy cost.
+- **Zero energy is honoured end to end.** `movementAutoDig` returns the hook's
+  answer with `?? null`, and `walkAction` tests `dug !== null`. So a mod may
+  consume a blocked walk and charge nothing, and it will not fall through to
+  core's faithful bump. This used to be `?? 0` against a `dug > 0` test, which
+  made "handled for free" and "no mod answered" the same answer and silently
+  discarded the first - the hook interface documented a case the engine could
+  not express. If you are writing a mod that consumes a blocked walk without
+  spending a turn, return `0`, not `null`.
 - `objectListTiebreak` uses `0` rather than `null` as its "no opinion" answer,
   because there `0` is also the faithful answer ("these two entries are equal"),
   so the two readings agree and no third value is needed.
@@ -305,28 +320,37 @@ host and the mod**:
    in `localStorage` (`neo:modRuleChoices`) - a client setting, like the
    enabled-mod set, NOT part of the savefile.
 4. `packages/web/src/mod-hooks.ts` `resolveModRuleFlagsByMod()` SLICES that map
-   per mod, then `activeModHooks()` (`mod-hooks.ts:159`) calls each enabled mod's
-   entry point once, in load order, with only that mod's own flags, and folds the
-   results with `composeModHooks`.
+   per mod, then `activeModHooks()` calls each enabled mod's entry point once, in
+   load order, with only that mod's own flags, and folds the results with
+   `composeModHooks`.
 5. `packages/web/src/main.ts` passes the composed object to `startGame` /
-   `loadGame` as `opts.modHooks` (`main.ts:756`, `main.ts:713`).
+   `loadGame` as `opts.modHooks`.
 
-The entry point every behaviour mod default-exports from
-`packages/web/mods/<id>/hooks.ts`:
+The entry point is the mod's `plugin.js` (`plugin.ts` before it is built), which
+default-exports a `ModPlugin`. Its `hooks` member is the behaviour half:
 
 ```ts
-export default function <mod>Hooks(
-  flags: Readonly<Record<string, boolean>>,
-): ModHooks;
+export default defineModPlugin({
+  hooks(ctx) {
+    // ctx.flags holds THIS mod's own rule flags, and nothing else.
+    // ctx.state is deliberately absent here - see PLUGINS.md.
+    return { /* ModHooks members */ };
+  },
+});
 ```
 
-It is discovered by a glob (`import.meta.glob("../mods/*/hooks.ts")`,
-`mod-hooks.ts:71`) rather than a hardcoded list, so the host knows no mod's id
-and no mod's flag names. A mod with no behaviour - every pure
-content mod - simply ships no `hooks.ts` and is never called. (The linoleum tile
-mod was the stock example of that until its 0.15.0, which added a `plugin.js`
-holding the kin rule core handed over. It still ships no `hooks.ts`: a filler is
-`register()`'s business, not a turn hook's.)
+An earlier ABI had each mod default-export a bare
+`(flags) => ModHooks` from its own `hooks.ts`. That signature is **gone** rather
+than kept as a second option, so there is one entry point to document and one to
+test. A mod compiled into the build is discovered by a glob over
+`packages/web/mods/*/plugin.ts`, and a mod installed from disk or from a
+repository has its `plugin.js` loaded from wherever its folder is; both arrive at
+the same adapter and the same `composeModHooks`, so the host knows no mod's id
+and no mod's flag names. A mod with no behaviour - every pure content mod -
+simply ships no `hooks` member, or no plugin at all, and is never called. (The
+linoleum tile mod was the stock example until its 0.15.0, which added a
+`plugin.js` holding the kin rule core handed over. It still contributes no turn
+hook: a tile filler is `register()`'s business.)
 
 Three rules make this shape work, and they are the contract a third-party
 behaviour mod must keep (spelled out in the header of
@@ -367,9 +391,9 @@ never a separate thing to install. Two layers, in this order:
   patch is then INDIVIDUALLY switchable in that mod's own Fixes & tweaks submenu,
   so a player can take the set minus one specific patch. That per-patch switch is
   the only reason the toggles exist.
-- **Every mod itself is OFF on a fresh install**, including the bundled
-  first-party ones (`DEFAULT_ENABLED_MODS` is `[]`, `mod-store.ts`). So an
-  untouched install has no mod, therefore no patches, therefore faithful 4.2.6.
+- **Every mod itself is OFF on a fresh install**, the first-party ones included
+  (`DEFAULT_ENABLED_MODS` is `[]`, `mod-store.ts`). So an untouched install has
+  no mod, therefore no patches, therefore faithful 4.2.6.
 
 So `default: true` on a rule means exactly one thing: **"on once its own mod is
 enabled"**. It never means "on in a fresh install", and it never means a flag sits
@@ -384,19 +408,19 @@ in core waiting to be switched - core has no flag to switch.
 
 ## 3. `StartGameOptions` / `LoadGameOptions`: `modHooks`, and the now-opaque `modRules`
 
-`startGame` and `loadGame` (`packages/core/src/session/game.ts:390`, `:3264`)
-each accept an optional `modHooks` and store it on `GameState`. Absent =>
-faithful core. The session threads the LIVE `state.modHooks` (read fresh, not
-captured - `session/game.ts:967`) into the deps bags that the pure layers need it
-in: `GenDeps.hooks` (`gen/generate.ts:80`) and `MakeDeps.hooks`
-(`obj/make.ts:1119`), because those layers have no `GameState` in scope.
+`startGame` and `loadGame` (`packages/core/src/session/game.ts`) each accept an
+optional `modHooks` and store it on `GameState`. Absent => faithful core. The
+session threads the LIVE `state.modHooks` - read fresh, not captured - into the
+deps bags that the pure layers need it in: `GenDeps.hooks`
+(`gen/generate.ts`) and `MakeDeps.hooks` (`obj/make.ts`), because those layers
+have no `GameState` in scope.
 
 `modRules` still exists on `GameState` and is still seeded at start/load, but it
 is now **OPAQUE to core**: nothing in `packages/core/src` reads it. It is the
 RECORD of the player's choices, kept because it is what the Fixes & tweaks menu
 is built from and what the host re-reads. Because core does not branch on it,
 writing it alone is a no-op - so the live per-patch toggle
-(`applyRuleLive`, `packages/web/src/main.ts:4956`) must REBUILD the hooks, and
+(`applyRuleLive`, `packages/web/src/main.ts`) must REBUILD the hooks, and
 must `delete game.state.modHooks` rather than assign `undefined` when nothing
 contributes, so "no mod loaded" stays absent rather than becoming an empty object
 core could detect.
@@ -407,11 +431,11 @@ on load. (This is what the removed `interfaceDefaults` seam used to do.)
 
 ## 4. `GameState.autoDigStep` - a plumbing indirection, not a mod seam
 
-`walkAction` (`packages/core/src/game/player-turn.ts:493`) calls
+`walkAction` (`packages/core/src/game/player-turn.ts`) calls
 `state.autoDigStep?.(state, next)` when a walk is blocked. This is NOT a second
 mod seam and holds no mod's behaviour: the session installs it
-(`session/game.ts:1670`) pointing at `movementAutoDig`
-(`game/cave-cmd.ts:675`), whose entire body is the `walkBlockedByDiggable`
+(`session/game.ts`) pointing at `movementAutoDig`
+(`game/cave-cmd.ts`), whose entire body is the `walkBlockedByDiggable`
 hook read plus `?? null`. It exists only so the movement code need not import the
 dig internals. With no hook installed it returns `null` having drawn no RNG, and
 the walk falls through to the faithful bump.
@@ -424,7 +448,7 @@ documented a case the engine could not express. If you are writing a mod that
 consumes a blocked walk without spending a turn, return `0`, not `null`.
 
 The two core primitives a digging mod needs are public and reused rather than
-reimplemented: `movementTunnelTest` (`cave-cmd.ts:662`, RNG-free, which is what
+reimplemented: `movementTunnelTest` (`cave-cmd.ts`, RNG-free, which is what
 lets the mod decline for free) and `tunnelAux` (one real `do_cmd_tunnel_aux`
 attempt with the upstream roll, messages, and payouts).
 
@@ -470,8 +494,6 @@ door here is not a refusal, it is a redirection to the door with hinges.
 - **Turning a patch off is a true revert, not an approximation**, because the
   faithful path is the only path core ever compiled.
 
-## Where to look
-
 ## Input-door groundwork
 
 `packages/web/src/input-door.ts` owns the only browser `keydown` listener. It
@@ -485,6 +507,8 @@ pump receive the literal key rather than a queued expansion. This is host infras
 yet. The player's stored keymap is resolved before screen subscribers, so a
 later mod input consumer cannot silently take a player-selected binding.
 
+## Where to look
+
 | Concern | File |
 | --- | --- |
 | The `ModHooks` interface + per-hook fold rules | `packages/core/src/mod/hooks.ts` |
@@ -496,7 +520,7 @@ later mod input consumer cannot silently take a player-selected binding.
 | Rule discovery | `packages/web/src/pack.ts` (`loadEnabledModRuleDecls`) |
 | Choice persistence + resolver | `packages/web/src/mod-store.ts` |
 | Per-mod hook discovery + fold | `packages/web/src/mod-hooks.ts` |
-| Bundled mods' own hook code | `neo-angband-mod-bug-fixes/plugin.ts`, `neo-angband-mod-qol/plugin.ts` |
+| The first-party mods' own hook code (their repositories, not this tree) | `neo-angband-mod-bug-fixes/plugin.ts`, `neo-angband-mod-qol/plugin.ts` |
 | Per-mod Fixes & tweaks submenu | `packages/web/src/mods.ts` (`managePatches`) |
 | Host wiring + message sink | `packages/web/src/main.ts` |
 | Per-mod design | `docs/modding/QOL.md`, `docs/modding/BUG_FIXES.md` |

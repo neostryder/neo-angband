@@ -2,13 +2,18 @@
 
 > **NOT BUNDLED.** The game ships no mods at all; this one lives in
 > [neo-angband-mod-bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes)
-> and installs through the mod manager's *Install a mod...* row, at a pinned tag,
-> verified against a digest that ships inside the game.
+> and installs through the mod manager's *Install a mod...* row, at a pinned tag.
+> The tag is what stops the download changing under you; the install records a
+> SHA-256 of the bytes that actually arrived, which is what later answers whether
+> the copy on the machine has changed. No digest ships inside the game.
 >
 > STATUS: DESIGN OF RECORD + CHANGELOG. This page is the source of truth and
 > public changelog for it. The mod DECLARES its fixes in `manifest.json` under
 > `rules` (flag / title / description / default) and carries each fix's BODY as its
-> own code: `plugin.ts` (the entry point), `stairs.ts`, `strings.ts`. Nothing in
+> own code: `plugin.ts` (the entry point), `stairs.ts`, `strings.ts`. It also ships
+> one `sections` entry, `text-corrections`, whose payload is DATA rather than a
+> hook - `object.json` and `artifact.json` - and which is switchable in the same
+> menu. Nothing in
 > `packages/core/src` holds a `bugfix.*` string, the staircase repair, the
 > duplicate-artifact guard, or the message rewriter - and now nothing in this
 > repository holds the fixes either. Do not install the mod and the code does not
@@ -37,11 +42,15 @@
 > one. See `docs/modding/MOD_SEAMS.md` for the seam contract, the per-hook fold
 > rules, and the full default policy.
 >
-> The menu lists only fixes with a real, functional gate today - the five marked
-> `IMPLEMENTED` below.
+> **The menu lists three rules, not one per entry below.** Six entries below are
+> marked `IMPLEMENTED`, and on 2026-08-15 their six per-bug flags were
+> consolidated into three per-CLASS flags, which is the standing rule: one toggle
+> per class of fix, never one per atomic fix. The mapping is in the mod's own
+> `renamedRuleFlags`, so a player's saved choice survived the rename. The
+> `text-corrections` section is a fourth switch beside them.
 >
-> RE-VERIFIED 2026-07-26 (`parity/mods-2026-07-26/BUGFIX-UPSTREAM-AUDIT.md`).
-> The whole catalogue was re-checked against `4.2.6..upstream/master` (161
+> RE-VERIFIED 2026-07-26. The whole catalogue was re-checked against
+> `4.2.6..upstream/master` (161
 > post-tag commits, inspected locally) and against the port source. **The
 > previous "blocked-on / not yet ported" notes were largely wrong** and have been
 > corrected per entry. Current state of the five `SPECIFIED` entries:
@@ -83,7 +92,7 @@ it. Each fix is then an individual toggle in this mod's Fixes & tweaks submenu, 
 a player who wants the patch set minus one specific fix can opt that one out
 (2026-07-26). Disable the mod again, or switch one
 fix off, and that behaviour is faithful 4.2.6 again. It is authored and maintained by neostryder
-(RPGM Tools) as its own standalone pack, separate from the neo-linoleum tile mod
+as its own standalone pack, separate from the neo-linoleum tile mod
 (decision 26).
 
 Balance and subjective changes are NOT bug fixes and do not belong here; they
@@ -118,16 +127,34 @@ this mod.
 - `NO UPSTREAM FIX` - a genuine, still-open upstream bug with no accepted fix;
   carried as a known issue, with an optional mitigation of the mod's own.
 
-The mod's flags (each `bugfix.*` declared in
-`neo-angband-mod-bug-fixes/manifest.json` under `rules`). Each declares
-`default: true`, which means one thing only: ON once this mod is enabled. It does
-not mean on in a fresh install, and it does not mean the flag sits in core
-waiting to be switched - with the mod off the flag is absent entirely. Enabling
-the mod gets you the whole patch set; individual patches are then switchable
-under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
-`bugfix.uniqueKillHistory` (#4245), `bugfix.noiseScentSave` (#4605),
-`bugfix.objectListOrder` (#4664), `bugfix.duplicateArtifact` (#4510),
-`bugfix.stairsReachable` (no upstream issue - entry 13).
+The mod's switches (declared in `neo-angband-mod-bug-fixes/manifest.json`). Each
+declares `default: true`, which means one thing only: ON once this mod is
+enabled. It does not mean on in a fresh install, and it does not mean the flag
+sits in core waiting to be switched - with the mod off the flag is absent
+entirely. Enabling the mod gets you the whole patch set; individual switches are
+then usable under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set
+minus one.
+
+**Three rule flags, one per CLASS of fix:**
+
+| Flag | Covers |
+|---|---|
+| `bugfix.textAndHistory` | the unique-kill history entry (entry 5, upstream #4245) and the misc. string fixes (entry 14) |
+| `bugfix.stateIntegrity` | noise/scent in the save (entry 8, #4605), object-list ordering (entry 4, #4664) and duplicate artifacts (entry 12, #4510) |
+| `bugfix.levelGeneration` | unreachable staircases (entry 13, no upstream issue) |
+
+**Plus one section**, `text-corrections`, which is data rather than a hook: four
+item descriptions that still describe a two-handed weapon rule Angband 4.2
+dropped (the Two-Handed Great Flail, the Pike, the Trident 'of Wrath' and
+Mundwine). Text only; no damage, weight or slot changes.
+
+Six per-bug flags preceded the three: `bugfix.uniqueKillHistory`,
+`bugfix.miscStrings`, `bugfix.noiseScentSave`, `bugfix.objectListOrder`,
+`bugfix.duplicateArtifact` and `bugfix.stairsReachable`. They are retired names
+in the manifest's `renamedRuleFlags`, which is what carried each player's saved
+choice across the rename rather than silently resetting it. Entry notes below
+still name the old flag where it explains which fix is which; the switch a
+player sees is the class flag in the table.
 
 ---
 
@@ -159,10 +186,10 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   ing the helper above.
 - Port status (2026-07-26, re-verified): **READY**. The previous "DEFERRED /
   not ported" note is WRONG and is retracted. `do_cmd_note` IS ported - the
-  take-notes command is `packages/web/src/main.ts:3413`, and it calls
-  `historyAdd(...)` with the fully-prefixed note at `main.ts:3445`, which is
+  take-notes command is `packages/web/src/main.ts`, and it calls
+  `historyAdd(...)` with the fully-prefixed note at `main.ts`, which is
   exactly the live truncation site. Display is
-  `packages/web/src/screens.ts:1053`. The gated fix stores the raw text and
+  `packages/web/src/screens.ts`. The gated fix stores the raw text and
   moves expansion to those display paths.
 - Upstream status (2026-07-26, re-verified): PR #6665 is **MERGED**, as
   `72aec1103ab8153911b503a10da5a1834c1e2b0a` ("Delay expanding user-supplied
@@ -224,12 +251,12 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   guard so a full destination stack refuses a partial merge.
 - Port status (2026-07-26, re-verified): **READY**. The previous "DEFERRED /
   `objectAbsorbPartial` exists but is unused" note is WRONG and is retracted.
-  The partial path IS live: `packages/core/src/game/gear.ts:851` tests
+  The partial path IS live: `packages/core/src/game/gear.ts` tests
   `invenCanStackPartial(...)` and `:852` calls
   `objectAbsorbPartial(obj2, obj1, mode2, mode1, limits, ORIGIN.MIXED)` inside
   `combinePack`'s merge loop. That is the one live caller, and it is exactly the
   precondition the upstream draft guards. The gated fix adds the
-  destination-at-`max_stack` refusal before `gear.ts:852`.
+  destination-at-`max_stack` refusal before `gear.ts`.
 
 ### 4. Object list ordering is not a strict total order (`IMPLEMENTED`)
 
@@ -245,7 +272,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   explain every report.
 - Implementation: the mod's `objectListTiebreak` hook
   (`neo-angband-mod-bug-fixes/plugin.ts`), serving core's comparator tiebreak
-  at `packages/core/src/game/obj-list.ts:242`; flag `bugfix.objectListOrder`.
+  at `packages/core/src/game/obj-list.ts`; flag `bugfix.objectListOrder`.
   Port status: the port's comparator is already a lexicographic strict weak order
   and feeds a guaranteed-STABLE `Array.sort`, and it already returns 0 for the
   two-unknowns case - so the port does not exhibit the qsort instability #4664
@@ -273,7 +300,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
 - Implementation: the mod's `historyAdd` hook
   (`neo-angband-mod-bug-fixes/plugin.ts`, a one-line `!entry.duplicate`),
   serving core's `onPlayerKill` `HIST.SLAY_UNIQUE` write at
-  `packages/core/src/session/game.ts:872`; flag `bugfix.uniqueKillHistory`. Core
+  `packages/core/src/session/game.ts`; flag `bugfix.uniqueKillHistory`. Core
   computes and passes `duplicate` and holds no opinion about it. The port's
   `monsterChangeShape` (`game/mon-shape.ts`) already carries the `original_race`
   null-check upstream's `monster_change_shape` lacks. This fix closes the
@@ -318,7 +345,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
 - Implementation: the mod's `saveNoiseScent` hook
   (`neo-angband-mod-bug-fixes/plugin.ts`, a one-line `true`), serving the
   live-level snapshot's `includeFlow` argument at
-  `packages/core/src/session/save.ts:1203`; core does the writing and the reading
+  `packages/core/src/session/save.ts`; core does the writing and the reading
   either way, in `packages/core/src/world/chunk.ts`
   (`snapshotSquares(includeFlow)` / `restoreSquares`, with optional `noise` /
   `scent` on `ChunkSquaresData`). Flag `bugfix.noiseScentSave`. Fold kind: this is
@@ -367,9 +394,9 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
 - Port status (2026-07-26, re-verified): **READY**, though it needs a repro
   first. The previous "quiver + inscription commands not yet ported" note is
   WRONG and is retracted - all three pieces are live: the full recompute is
-  `calcInventory` (`packages/core/src/game/gear.ts:655`), the inscribe command
-  is `inscribeItem` (`packages/web/src/main.ts:1997`), and the overflow it can
-  mis-fire is `packOverflow` (`packages/core/src/game/obj-cmd.ts:264`).
+  `calcInventory` (`packages/core/src/game/gear.ts`), the inscribe command
+  is `inscribeItem` (`packages/web/src/main.ts`), and the overflow it can
+  mis-fire is `packOverflow` (`packages/core/src/game/obj-cmd.ts`).
   Sequence before gating: reproduce the mis-fire against those three, THEN add
   the gate - this one is a suspected mis-fire rather than a proven one, so
   ordering matters.
@@ -384,9 +411,9 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   construction; optional mitigation is a defensive re-check on creation.
 - Implementation: the mod's `artifactCommit` hook
   (`neo-angband-mod-bug-fixes/plugin.ts`, a one-line `!alreadyCreated`),
-  serving core's commit branch at `packages/core/src/obj/make.ts:987`
+  serving core's commit branch at `packages/core/src/obj/make.ts`
   (`makeArtifact`); `MakeDeps` gains an optional `hooks: ModHooks`
-  (`obj/make.ts:1119`), threaded from the LIVE `state.modHooks` at the generation
+  (`obj/make.ts`), threaded from the LIVE `state.modHooks` at the generation
   deps in `session/game.ts`, because the pure object layer has no `GameState` in
   scope. Flag `bugfix.duplicateArtifact`. Fold kind: a VETO hook - conjunctive,
   first refusal decides. The hook is contractually RNG-FREE (it runs on the main
@@ -431,18 +458,19 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   - `alloc_stairs` (`gen-util.c:629`) places a stair on any `square_isempty`
     grid and does **not** exclude vault interiors, while `ensure_connectedness`
     is called with `allow_vault_disconnect = true` at five of its six sites
-    (`gen-cave.c:1271`, `2836`, `3083`, `3693`, `3953`; only `3464` passes
+    (`gen-cave.c:1263`, `2828`, `3075`, `3685`, `3945`; only `3456` passes
     `false`) - the tunneller is explicitly allowed to leave a vault sealed. So a
     vault it never joined can swallow a staircase, and nothing checks: the only
     post-build validation `cave_generate` runs is `chunk_validate_objects`
-    (`generate.c:1244`). Note the asymmetry - `find_start`, the player's own
+    (`generate.c:1238`). Note the asymmetry - `find_start`, the player's own
     spot, *does* exclude vaults; only stairs may land in one.
-  - `handle_level_stairs` (`gen-cave.c:958`) allocates `rand_range(3, 4)` down
-    stairs but only `rand_range(1, 2)` up, so one bad roll on the lone up stair
-    strands the floor, while three or four down stairs almost always leave one
-    reachable. A separate minority of cases is the player's own region being cut
-    off entirely, which `classic_gen` permits because it never calls
-    `ensure_connectedness` at all.
+  - **The stair counts are asymmetric.** `handle_level_stairs`
+    (`gen-cave.c:943`) takes the counts as parameters, and `classic_gen` passes
+    `rand_range(3, 4)` down stairs against only `rand_range(1, 2)` up
+    (`gen-cave.c:1273`). So one bad roll on the lone up stair strands the floor,
+    while three or four down stairs almost always leave one reachable.
+    `cavern_gen` is slightly kinder, passing `rand_range(1, 3)` down
+    (`gen-cave.c:2183`), which does not change the shape of the problem.
   - **A third route, and the rarest: a corridor upstream planned and then
     refused to dig.** `join_region`'s two halves treat vault grids differently
     (`gen-cave.c:1925`, and the port's `joinRegion` line for line). The search
@@ -451,7 +479,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
     into floor refuses to break one. So a crossing whose only route was through
     a vault WALL gets recoloured as joined and left physically holed, and an
     **ordinary** region stays sealed with no vault grid anywhere in it. Observed
-    once in 27,000 generated levels (d40 seed 400792, adjudicated 2026-08-09 for
+    once in 27,000 generated levels (d40 seed 400792, measured 2026-08-09 under
     task #148): one refused dig at (94,38) sealed a 385-grid region holding all
     three of the level's down staircases. This matters to a reader of this
     document because it is the one stranding shape that does **not** look like
@@ -468,8 +496,8 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   `ensureStairsReachable` in the MOD's own file
   (`neo-angband-mod-bug-fixes/stairs.ts`) - core carries no staircase
   repair. It serves core's accept branch inside `cave_generate`'s existing retry
-  loop (`packages/core/src/gen/generate.ts:473`); `GenDeps` gains an optional
-  `hooks: ModHooks` (`gen/generate.ts:80`), threaded from the LIVE
+  loop (`packages/core/src/gen/generate.ts`); `GenDeps` gains an optional
+  `hooks: ModHooks` (`gen/generate.ts`), threaded from the LIVE
   `state.modHooks` at the generation deps in `session/game.ts` (the same seam
   entry 12 uses). Flag `bugfix.stairsReachable`. Fold kind: a VETO hook -
   conjunctive, and note that every contributor still runs after an earlier one has
@@ -504,7 +532,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   - `packages/core/src/gen/gen.test.ts` keeps the CONTROL that faithful core
     (no hook) really does strand the measured seeds, so moving the repair back
     into core fails the suite and says why (the failure message names the mod -
-    `gen.test.ts:668`).
+    `gen.test.ts`).
   - `neo-angband-mod-bug-fixes/stairs.test.ts` carries the repair's own tests:
     the invariant across depths, the measured pre-fix failures as named
     regressions, and mechanical unit tests on a synthetic sealed-pocket level
@@ -518,8 +546,9 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   `437ad97c3`, 2026-07-25), moved to this mod on 2026-07-26 once upstream was
   confirmed to genuinely behave this way, and moved OUT of core entirely on
   2026-07-29 when the flag-registry design was replaced by `ModHooks` (it had
-  still been a core function behind a flag until then). Full write-up:
-  `parity/phase3-2026-07-25/findings/STAIRCASE-INVARIANT.md`.
+  still been a core function behind a flag until then). The full write-up is in
+  the private working record (see [../WORKING_RECORD.md](../WORKING_RECORD.md));
+  everything it concluded that a reader needs is in this entry.
 
 ### 14. Misc. string fixes (`IMPLEMENTED`, no upstream fix)
 
@@ -551,7 +580,8 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   count and the direction were wrong.
   - **ZERO** misspellings, in two corpora. The message literals above, swept for
     the usual suspects (recieve, seperate, occured, acheive, neccessary,
-    definately, teh, loosing, and ~40 more - `MISSPELLINGS` in mods/bug-fixes/strings.ts):
+    definately, teh, loosing, and sixteen more - the 24 pairs in `MISSPELLINGS`,
+    `neo-angband-mod-bug-fixes/strings.ts`):
     none. And the **gamedata descriptions**, which the message census structurally
     cannot see, swept three ways: the same known-misspelling list (0 hits), doubled
     words (1 hit, the room *named* "Dot dot dot"), and every post-4.2.6 upstream
@@ -567,7 +597,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   `MISC_STRING_CORRECTIONS` is the whole change if that reading is wrong.
 - Fix: `miscStringFix` (`neo-angband-mod-bug-fixes/strings.ts`), installed
   on the `messageText` hook (`neo-angband-mod-bug-fixes/plugin.ts`) and
-  applied at the host's single message sink (`packages/web/src/main.ts:1244`,
+  applied at the host's single message sink (`packages/web/src/main.ts`,
   `state.msg`) so one hook covers every message core or the shell emits. Fold
   kind: a TRANSFORM hook - several mods' rewriters chain in load order, each
   seeing the previous one's output. A hook here may only RESTATE a message;
