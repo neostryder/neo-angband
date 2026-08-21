@@ -163,17 +163,26 @@ it has no opinion about, so an overlap needs both mods to care about the same
 character in the same moment. What would close it is a row naming both mods and
 which one is being drawn.
 
-### The seam docs do not describe either new tile capability
+### The seam docs did not describe either new tile capability - PLUGINS.md and LINOLEUM.md done
 
 `TileFill.transform` and `TilesFacade.player` are in the tree, tested, and
-consumed by neo-linoleum 0.16.0, and the mod-facing documents that enumerate the
-seams do not mention them: `docs/modding/MOD_SEAMS.md`, `docs/modding/PLUGINS.md`,
-`docs/modding/MOD_REACH.md` and `docs/LINOLEUM.md`. A capability a mod author
-cannot find is a capability that only its first consumer uses, which is a failure
-mode this repository has hit under several names. The reference for both is
-currently the doc comment on `TileFill` in `packages/core/src/mod/registry-host.ts`
-and the header of `packages/web/src/tile-registry.ts`, which are complete but are
-not where somebody writing a mod looks first.
+consumed by neo-linoleum 0.16.0. `docs/modding/PLUGINS.md` now has a
+"Repainting a tile, and drawing the player's own cell" subsection (with the
+registry:tiles table row pointing at it), and `docs/LINOLEUM.md` names the new
+`transformed` slot kind alongside `derived` and corrects a stale reference to
+the renamed `derivedSlots` allocator.
+
+`docs/modding/MOD_SEAMS.md` and `docs/modding/MOD_REACH.md` deliberately were
+not touched. Neither one already covers `registry:tiles` at all (that seam's
+home has always been PLUGINS.md's registries walkthrough) - MOD_SEAMS.md picks
+a handful of seams for a deeper property-by-property treatment where the
+seam's semantics are non-obvious (see its new section 4a on `simulateLoadout`,
+for comparison), and a tile-drawing lookup does not need that kind of writeup;
+MOD_REACH.md's rows measure what a mod cannot YET reach, and this capability
+already being reachable is not that kind of fact. Revisit if a future mod
+author's confusion says otherwise - the test is "somebody writing a mod looked
+and could not find it," not a rule that every capability needs a row in every
+seam-enumerating file.
 
 ### No pixel has been seen through the transform
 
