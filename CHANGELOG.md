@@ -145,6 +145,22 @@ digest in the game's catalogue and must never be moved.
   at core for behaviour a mod caused. The list also moved out of `main.ts` into
   `mod-summary.ts` so it is testable at all — the entry module cannot be imported,
   which is why a list that was wrong for every content-only mod stayed green.
+- **A patch could make a field unreadable and take the game down at boot.** A
+  field patch that wrote a scalar, or `null`, over a field core writes as a list
+  or an object produced a record that composed perfectly and that no binder could
+  read: the store binder's `rec.owner.map(...)` threw a `TypeError` from inside
+  `bindCore` inside `startGame`, which the host runs at module top level, so the
+  player got the crash screen and no game. The composer already checked this —
+  the record check's `field/type` rule fired on it and named the mod — but that
+  check reports and never refuses by design, because the blueprint it reads is a
+  measurement of core's own records and an unlisted value is legal. Container-ness
+  is the exception, since nothing can iterate a string, so the composer now
+  refuses that one class: the field is put back to what the record had before, the
+  pack is told on its own row, and the rest of the patch still lands. Two things
+  it deliberately still allows: a scalar written as the wrong scalar (readable,
+  and the measurement cannot prove otherwise), and a patch that REMOVES a field,
+  because dropping fields is how a total conversion works and putting them back
+  would undo it.
 - **Randart games handed out the wrong gems.** flavor.txt writes a ring or
   amulet record's `fixed:` lines above its `flavor:` lines, and the binder bound
   them the other way round — so the flavour list was not in the file's order.

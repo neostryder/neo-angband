@@ -110,8 +110,30 @@ cannot be entered, and the mod is told. It is not removed from the store list,
 because that list is consumed positionally — dropping a record would renumber
 every store after it and move a saved game's stock between shops. The owner list
 resolves no names at all and so has nothing to refuse; a patch that replaces it
-with the wrong *shape* is a different problem, and one every binder in the port
-shares (see below).
+with the wrong *shape* is a different problem, and one the composer now answers
+one level up.
+
+**A patch cannot make a field unreadable.** The composer already checked shape on
+the load path — `field/type` in the record check — but that check reports and
+never refuses, deliberately, because the blueprint it reads is a *measurement* of
+core's records and an unlisted value is legal (a mod inventing a new tval is
+doing something the mod system exists to allow). That is right for a statistic
+and wrong for container-ness: every binder reads a list field by iterating it, so
+a list field holding a string, a number or `null` is a `TypeError` inside
+`bindCore` inside `startGame` — the crash screen, over one field. The composer now
+**refuses exactly that class**: the field is put back to what the record had
+before, the pack is told on its own row, and the rest of the patch lands.
+
+Two things it deliberately does not do, both load-bearing:
+
+- **A scalar written as the wrong scalar stays a finding.** `weight` as `"40"` is
+  readable, some binders coerce it, and the measurement cannot prove otherwise.
+- **A field the patch REMOVES is not put back.** Dropping a field is how a total
+  conversion works — `replaces` swaps the whole record, and a monster rewritten
+  as `{name, hp}` legitimately has no `flags`. Restoring an absent field would
+  silently undo a supported feature. An absent required field is reported
+  (`field/required`), and refusing a record the *mod itself owns* belongs in the
+  binders; `docs/PLANNED.md` carries that.
 
 ### 4. `ctx.core` is not covered by any of the above, and that is the honest gap
 
