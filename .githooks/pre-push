@@ -18,26 +18,38 @@
 #
 # Bypass, for the rare case this is genuinely wrong: git push --no-verify.
 
-# Slurped whole rather than parsed field-by-field with `read`: this only
-# needs to know WHETHER refs/heads/master is one of the refs being updated,
-# not the shas either side of it, so a coarser check is a more robust one.
-REFS=$(cat)
+# The LOCAL ref is the discriminator, not the remote one - both the push this
+# hook exists to catch and tools/publish.mjs's own legitimate push update
+# origin's refs/heads/master, and only the local side tells them apart:
+# publish.mjs pushes a bare commit SHA as its refspec source
+# ("<sha>:refs/heads/master"), never the symbolic ref "refs/heads/master"
+# itself. Blocking on the remote side alone would block publish.mjs too -
+# found by running it for real, not by inspection.
+if [ "$1" != "origin" ]; then
+  cat >/dev/null
+  exit 0
+fi
 
-case "$1 $REFS" in
-  *"origin"*"refs/heads/master"*)
-    echo "" >&2
-    echo "pre-push: refusing a plain push of master to origin." >&2
-    echo "" >&2
-    echo "This repo's public master is a curated replay, not this branch." >&2
-    echo "Publish with:" >&2
-    echo "" >&2
-    echo "    node tools/publish.mjs --push" >&2
-    echo "" >&2
-    echo "See docs/RELEASING.md. If you genuinely mean to push this ref" >&2
-    echo "directly, git push --no-verify skips this check." >&2
-    echo "" >&2
-    exit 1
-    ;;
-esac
+REFUSE=0
+while read -r local_ref _local_sha remote_ref _remote_sha; do
+  if [ "$local_ref" = "refs/heads/master" ] && [ "$remote_ref" = "refs/heads/master" ]; then
+    REFUSE=1
+  fi
+done
+
+if [ "$REFUSE" = "1" ]; then
+  echo "" >&2
+  echo "pre-push: refusing a plain push of master to origin." >&2
+  echo "" >&2
+  echo "This repo's public master is a curated replay, not this branch." >&2
+  echo "Publish with:" >&2
+  echo "" >&2
+  echo "    node tools/publish.mjs --push" >&2
+  echo "" >&2
+  echo "See docs/RELEASING.md. If you genuinely mean to push this ref" >&2
+  echo "directly, git push --no-verify skips this check." >&2
+  echo "" >&2
+  exit 1
+fi
 
 exit 0
