@@ -42,6 +42,7 @@ const mod = (over: Partial<DiscoveredMod> = {}): DiscoveredMod => ({
   compatible: true,
   engineNote: null,
   channelHeld: null,
+  engineHeld: null,
   payload: [{ kind: "file", path: "manifest.json" }],
   bytes: 14543,
   guessedPayload: false,
@@ -579,5 +580,52 @@ describe("what an install says it did", () => {
      * and a message that changed with it would mean the caller had to keep passing
      * something true. */
     expect(text("v0.13.0", "v0.14.0", true)).toBe(text("v0.13.0", "v0.14.0", false));
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* A newer version this build cannot run                              */
+/* ------------------------------------------------------------------ */
+
+describe("what the screen says about a version it stepped back from", () => {
+  const HELD = {
+    tag: "v0.15.0",
+    version: "0.15.0",
+    engine: ">=0.23.0",
+    why: "was written for engine >=0.23.0, and this game is 0.22.0",
+    newerGameHelps: true,
+  } as const;
+
+  it("names the held version on the row, without spending the description's space", () => {
+    const row = browseRow(found({ engineHeld: HELD }), null);
+    expect(row.hint).toContain("v0.15.0 needs a newer game");
+    /* The description still leads, because that is what a player is reading the
+     * row for. The clause is an aside. */
+    expect(row.hint?.startsWith("v0.15.0")).toBe(false);
+  });
+
+  it("tells the player in the pane what is being installed and what would get the rest", () => {
+    const lines = browseDetail(found({ engineHeld: HELD }), null, null).map((l) => l.text);
+    const text = lines.join(" ");
+    expect(text).toContain("v0.15.0 is newer and needs a newer game");
+    /* Both halves, because either one alone is misleading: the version that IS
+     * being installed, and the action that gets the other one. */
+    expect(text).toContain("Update the game to get v0.15.0");
+  });
+
+  it("does NOT say update the game when a newer game would not help", () => {
+    const lines = browseDetail(
+      found({ engineHeld: { ...HELD, engine: "<0.5.0", newerGameHelps: false } }),
+      null,
+      null,
+    ).map((l) => l.text);
+    const text = lines.join(" ");
+    expect(text).toContain("will not run here");
+    expect(text).not.toContain("Update the game");
+  });
+
+  it("says how many versions were checked when it could not find one that runs", () => {
+    const row = browseRow(found({ compatible: false, versionsChecked: 4 }), null);
+    expect(row.hint).toContain("previous version(s)");
   });
 });

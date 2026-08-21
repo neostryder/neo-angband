@@ -91,6 +91,52 @@ const OK: EngineVerdict = { ok: true };
  * Pure, and takes the version as an argument rather than importing it, so a test
  * can drive any build and so mod-sdk stays independent of core.
  */
+/**
+ * Whether a NEWER game could satisfy this range, when the current one does not.
+ *
+ * WHY THIS IS NOT PART OF THE VERDICT. `engineVerdict` deliberately refuses to say
+ * which side is behind, because a range does not give that away: `>=0.24.0` wants a
+ * newer game and `<0.5.0` wants an older one, and a confident "update the game"
+ * would be wrong half the time on the one line a player acts on. That restraint is
+ * right for the verdict, which has to be correct for every range. But a screen that
+ * has decided to OFFER an older version of a mod does need to know whether updating
+ * the game is the thing that would unlock the newer one, or whether it would make
+ * matters worse - so the question gets asked separately, and answered by probing
+ * rather than by reasoning about a range this matcher cannot decompose.
+ *
+ * A BOUNDED PROBE, NOT AN INTERVAL SOLVER, and the bound is the honest part. It
+ * tries the next nine patches, the next nine minors and the next nine majors above
+ * the running version, plus one far-future version for an open upper bound. `true`
+ * means one of those satisfies the range, so a game update really can get there.
+ * `false` means none of them does, which is not a proof that none ever could - so
+ * the caller must fall back to naming both versions and claiming nothing, exactly
+ * as the verdict does. `null` is a range this build cannot read at all.
+ */
+export function newerGameCouldRun(range: string, engineVersion: string): boolean | null {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)/u.exec(engineVersion);
+  if (!m) return null;
+  const major = Number(m[1]);
+  const minor = Number(m[2]);
+  const patch = Number(m[3]);
+  const ladder: string[] = [];
+  for (let i = 1; i <= 9; i++) ladder.push(`${String(major)}.${String(minor)}.${String(patch + i)}`);
+  for (let i = 1; i <= 9; i++) ladder.push(`${String(major)}.${String(minor + i)}.0`);
+  for (let i = 1; i <= 9; i++) ladder.push(`${String(major + i)}.0.0`);
+  ladder.push("9999.0.0");
+  for (const candidate of ladder) {
+    try {
+      if (satisfies(candidate, range)) return true;
+    } catch {
+      /* An unreadable range is unreadable for every candidate, so one throw settles
+       * it. Reported as "cannot tell" rather than "no", because the manifest being
+       * broken is a different fact from the game being the wrong version, and the
+       * caller says different words for each. */
+      return null;
+    }
+  }
+  return false;
+}
+
 export function engineVerdict(
   manifest: Pick<PackManifest, "engine" | "modApi">,
   engineVersion: string,
