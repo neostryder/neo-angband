@@ -131,6 +131,20 @@
  *                             write to it succeeded or failed. Its own kind,
  *                             like "display:replace" - there is nothing to
  *                             range over, so it has no wildcard either.
+ *  - "mod:install"         - install a CONTENT mod from archive bytes the mod
+ *                             holds in memory, through the same door the
+ *                             player's own zip import uses. Its own kind, like
+ *                             "display:replace": there is nothing to range over,
+ *                             so it has no wildcard. Two things bound it, and
+ *                             they are what make it proportionate rather than
+ *                             total. An archive that ships CODE, or whose
+ *                             manifest asks for any capability, is refused - so
+ *                             this grants "may add records to my library", not
+ *                             "may write and deploy a program". And an install
+ *                             is not an ENABLE: what arrives is switched off, and
+ *                             the player is shown its own capability list before
+ *                             any of it runs, which is what stops one grant
+ *                             turning into every grant.
  *  - "ui:panel.mount"      - draw with real HTML instead of the character grid: a
  *                             panel of the mod's own, mounted on the page above
  *                             the game. A THIRD "ui:" action, and the reason it is
@@ -178,7 +192,8 @@ export type ParsedCapability =
   | { kind: "registry"; domain: string }
   | { kind: "display"; action: "replace" }
   | { kind: "ui"; region: string; action: "replace" | "create" | "mount" }
-  | { kind: "backup"; action: "folder" };
+  | { kind: "backup"; action: "folder" }
+  | { kind: "mod"; action: "install" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 /**
@@ -277,6 +292,14 @@ export function parseCapability(cap: string): ParsedCapability {
   if (cap === "backup:folder") {
     return { kind: "backup", action: "folder" };
   }
+  /* "mod:install": hand archive bytes to the same install door the player's own
+   * zip import uses. Its own kind and no wildcard, same reasoning as the two
+   * above. What bounds it is not this grammar - it is that the door refuses an
+   * archive carrying code or asking for capabilities, and that installing is not
+   * enabling, so what arrives is consented to on its own terms before it runs. */
+  if (cap === "mod:install") {
+    return { kind: "mod", action: "install" };
+  }
   const ui = UI_RE.exec(cap);
   if (ui) {
     return { kind: "ui", region: ui[1] as string, action: "replace" };
@@ -348,6 +371,9 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
       /* Exact match only, same reasoning as "display" - there is exactly one
        * backup capability and no wildcard grant could ever cover it. */
       return grant.kind === "backup";
+    case "mod":
+      /* Exact match only. One capability, no wildcard, nothing to range over. */
+      return grant.kind === "mod";
     case "ui":
       /* Per region, with one wildcard. A `display` grant is NOT accepted here
        * and a `ui` grant is not accepted above: owning the dungeon and owning

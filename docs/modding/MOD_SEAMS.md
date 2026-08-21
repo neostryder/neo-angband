@@ -599,6 +599,61 @@ moment teardown begins. There is no other lifecycle: as everywhere else in this
 system, disabling a mod re-composes the page, and a panel not mounted on the way
 back up is not mounted.
 
+## 4c. `ctx.installMod` - a mod handing the game a mod
+
+`ModProject` has emitted a mod folder's exact bytes since it was written, and its
+own header named the caller it was waiting for: "a builder that returned paths
+and contents is equally usable from a CLI, from a test, and from an in-game mod
+editor." There was no in-game anything, because nothing a mod could reach turned
+bytes into an installed mod. `HostDir` has no `MODS` entry, `RAW_FS_OPS` has no
+`mkdir`, the desktop shell's loopback server has no write route into `mods/`, and
+an install lands in IndexedDB rather than on a filesystem at all.
+
+```js
+if (!ctx.installMod) return;                      // no grant, or no door
+const { files } = project.emit();                 // manifest.json + one file per record file
+const bytes = zipSync(Object.fromEntries(files.map((f) => [f.path, enc(f.contents)])));
+const outcome = await ctx.installMod(bytes);
+if (!outcome.ok) show(outcome.problem);           // one whole sentence, always
+```
+
+Four things about it:
+
+- **It is CONTENT ONLY, and that is what makes the grant proportionate.** An
+  archive that ships code - `.js`, `.mjs`, `.cjs`, `.ts`, `.wasm`, under any name,
+  not just `plugin.js` - is refused, and so is one whose manifest asks for any
+  capability. Without that, "may install a mod" would mean "may write a program,
+  install it, and have the player enable something it authored", which is a far
+  larger sentence than the one on the consent list. With it, the grant is what it
+  says: this mod may add records, patches and removals to your library.
+- **Installing is not enabling, and you have to tell the player so.** What you
+  install lands switched off, because no mod is ever enabled by default in this
+  game. The player finds it on the Mods screen, reads its own capability list,
+  and turns it on; and enabling a mod takes effect on RELOAD. So the monster your
+  builder just wrote is not in the dungeon this turn, and a tool that implies
+  otherwise has made the player think it is broken.
+- **The origin is pinned on first import and compared forever after.** A zip is
+  the one door where the game cannot go and ask where a mod came from, so what the
+  manifest SAYS is the only provenance there is - and pinning it makes the first
+  install the moment of trust. The consequence for a builder is concrete: persist
+  the `repository` string with your draft and emit the same one every time, or
+  your second install of your own mod is refused. Do not invent a plausible
+  GitHub URL the player does not own; that pins their work to somebody else's
+  repository, and the update check will later go and ask that repository for tags.
+- **A refusal is a value, never a throw.** Everything comes back as `{ok: false,
+  problem}` with one whole sentence in it, including a failure inside IndexedDB,
+  because the caller is a mod that will be putting the answer in front of a
+  player. And the bytes are copied before anything asynchronous runs, so what was
+  inspected is what is stored even though you still hold the array you passed.
+
+Everything else is `installModFromZip`'s and is not reimplemented at this door:
+the third-party consent switch is read at the moment of use, so a player turning
+third-party mods off turns this off with it; the archive is read under the same
+ceilings and the same zip-slip check; and `checkMod` runs the same standards
+inspection an author's own `neo-angband-mod-check` runs, so a mod your builder
+emitted fails for the same reasons in the same words as a mod somebody
+downloaded.
+
 ## 5. Doors that are exported but deliberately CLOSED
 
 An exported mutable table is an extension point whether anyone meant it to be one
@@ -670,6 +725,7 @@ later mod input consumer cannot silently take a player-selected binding.
 | The first-party mods' own hook code (their repositories, not this tree) | `neo-angband-mod-bug-fixes/plugin.ts`, `neo-angband-mod-qol/plugin.ts` |
 | Per-mod Fixes & tweaks submenu | `packages/web/src/mods.ts` (`managePatches`) |
 | DOM panels: the layer, the invariants, the way out | `packages/web/src/panel-runtime.ts` |
+| The content-only install door | `packages/web/src/install-runtime.ts` |
 | The one keydown registration, and the door's stand-down | `packages/web/src/input-door.ts` |
 | Host wiring + message sink | `packages/web/src/main.ts` |
 | Per-mod design | `docs/modding/QOL.md`, `docs/modding/BUG_FIXES.md` |
