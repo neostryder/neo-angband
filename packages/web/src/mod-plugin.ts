@@ -449,7 +449,7 @@ export interface ModPanel {
   /** The id as the host carries it: `${modId}:${declared}`. */
   readonly id: string;
   /**
-   * Build here. An OPEN shadow root on a container the host owns and positions.
+   * Build here. A CLOSED shadow root on a container the host owns and positions.
    *
    * SHADOW, AND WHAT THAT IS FOR. Styles you put in here do not reach the game,
    * and the page's do not reach you, so a `#title` of yours cannot collide with
