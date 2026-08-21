@@ -38,12 +38,12 @@ been found missing that way and are now ported (`finish_parse_feat`'s
 prefix/preposition space, store `shopnum`/`store_max` ordering, critical-level
 validation, hints order).
 
-**25 of ~45 hooks in the reference tree have been audited** — `init.c`'s 14 and
-`obj-init.c`'s 11, the latter on 2026-08-20. What is left, by file:
+**33 of ~45 hooks in the reference tree have been audited** — `init.c`'s 14,
+`obj-init.c`'s 11 and `mon-init.c`'s 8, the last two on 2026-08-20. What is
+left, by file:
 
 | Where | Hooks | Note |
 | --- | --- | --- |
-| `mon-init.c` | 8 | independent of the object side; safe to run in parallel with it |
 | `generate.c` | 3 | level generation; a divergence here moves the RNG stream |
 | singletons | 9 | one hook each, spread across the remaining files |
 
@@ -70,6 +70,19 @@ a curse with a negative weight adjustment. Two have no port subject:
 - **`finish_parse_randart`.** There is no `randart.txt` in the content pack; the
   port generates randarts in code (`obj/randart.ts`), so upstream's parser for
   them has nothing here to be faithful to.
+
+**What `mon-init.c`'s eight turned up.** One was missing and is now ported:
+**`finish_parse_lore`'s base-flag union**, which makes a monster's base flags
+known before the player has ever met it. Five of the rest have no port subject,
+and the reason is the same each time — the port resolves by NAME where the C
+resolves by index, so the array-building those hooks exist to do has nothing to
+correspond to: `meth` and `eff` (blow methods and effects are `Map`s keyed by
+name and are never indexed or iterated for a pick), `mon_spell` and `mon_base`
+(both hooks only publish the parser's list), and `monster`'s `mon_blows_max`
+padding (the port's blow arrays are exactly as long as the race's blows, so
+there are no empty slots to pad or to zero). Two were already reproduced:
+`pain` (a `Map` keyed by `pain_idx`, so upstream's gaps survive by
+construction) and `pit` (file-order indices).
 
 ### `flavor.txt` records that interleave `fixed:` and `flavor:`
 
