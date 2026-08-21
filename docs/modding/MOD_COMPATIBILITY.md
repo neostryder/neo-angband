@@ -174,9 +174,10 @@ What exists now is not a fence but a **ratchet**:
 
 #### Removals taken knowingly
 
-Five rows, and they are the shape the mechanism above is for. Four of them are
+Six rows, and they are the shape the mechanism above is for. Four of them are
 one removal: the parse-error limit, which had no counterpart in Angband 4.2.6
-and so had no business in a port.
+and so had no business in a port. The sixth is the same shape a release later,
+and the first one that had SHIPPED.
 
 | Version | Export | Why | What to use instead |
 |---|---|---|---|
@@ -185,6 +186,7 @@ and so had no business in a port.
 | unreleased (2026-08-14) | `getParserErrorLimit` | The reader for the above, including a `PARSE_ERROR_LIMIT` environment override that no upstream build has. Removed with its subject (#272). | `prefErrorPolicy()`, which answers with the policy in force - `UPSTREAM_PREF_ERROR_POLICY` unless a mod installed another. It answers a richer question, because one number could not express both "keep reading" and "keep reporting". |
 | unreleased (2026-08-14) | `setParserErrorLimit` | The test seam for the above. Nothing in the game ever called it, and its subject is gone (#272). | `setPrefErrorPolicy(policy \| null)`, which is a real seam rather than a test hook: it is the documented way a mod changes what a bad pref line costs, and `null` restores 4.2.6's behaviour. |
 | unreleased (2026-08-14) | `parseParserErrorLimitEnv` | Parsed `PARSE_ERROR_LIMIT` out of the environment with C's `strtol` rules, so a host could set the cap without owning the rule. There is no cap and no environment variable (#272). | Nothing. A mod that wants its policy configurable owns that decision, and `ctx.prefs` is where a mod keeps a player's answer to it. |
+| 0.23.0 | `fillTilesFromKin` | The port's own rule that a mod-added monster with no tile is drawn with the tile of a race sharing its `base`, and an added object kind with a kind sharing its `tval`. Shipped in 0.22.0 and removed one release later: 4.2.6 has no concept of a record a mod added, so it has no opinion about what one should look like, and "the lowest-index relative's picture" is authored taste rather than ported behaviour. It also made that call on behalf of tile sets the game does not own - a pack drawn in 2003 has no art for content added twenty years later, and a sibling's picture there is a confident lie where a letter was an honest answer. The port adds nothing (#272, again). | The seam it became: `registry:tiles`. A tileset mod registers a filler through `host.tiles.register`, reads what the game is made of through `ctx.registries`, and writes through a door that refuses any tile something else assigned (`TileFill`). `neo-linoleum` 0.15.0 carries exactly the rule that used to be here, applied to linoleum packs only. Its three supporting types went with it (`KinTileDeps`, `KinTileFill`, `KinTileDerivation`); being types, they never appeared in the surface list at all. |
 
 `parseCustomOptionsText` survives by name but **changed shape** on 2026-08-12: it
 returns `string[]` (the messages) rather than `ParserState[]`, and its fourth

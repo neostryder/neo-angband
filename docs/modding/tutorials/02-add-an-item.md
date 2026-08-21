@@ -127,6 +127,31 @@ Your Padded Jerkin is a soft armour, and the game treats it as one everywhere:
   in the drop tables from the moment the mod is on.
 - **Shops will buy it,** because a shop's buy list is by item kind too.
 
+## One thing that does NOT happen: a picture
+
+In ASCII your jerkin draws with its class's own symbol and needs nothing from you.
+**In tile mode it has no picture and the game will not invent one.** A tile set
+maps *named* items to pictures and has never heard of yours, so a player in tile
+mode sees a letter among pictures. The game used to guess - it drew an added item
+with the tile of another item sharing its `tval` - and that guess was removed in
+0.23.0: Angband 4.2.6 has no concept of an item a mod added, so it has no opinion
+about what one should look like, and making that call on behalf of somebody's art
+is the tile set's job rather than the port's.
+
+So if you ship content, ship tiles for it, and if you do not, say so in your mod's
+description and point players at a tile mod that fills blanks:
+
+> No tiles of its own: in tile mode the Padded Jerkin draws as a letter. Install
+> [neo-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) and it is
+> drawn from another item of its type instead.
+
+neo-linoleum draws an added item from a kind sharing its `tval`, with the colour
+turned, under its own tile packs. Under Angband's own tile sheets an added item
+keeps its letter, because those sheets are a fixed grid with no spare cell for a
+variant. **Do not make it a dependency:** your mod is complete in ASCII with no
+tile set at all, and a player using a different set should not have to install one
+they will not look at.
+
 ## Putting it in a shop
 
 One thing does not happen on its own: a shop will not **stock** your item. That

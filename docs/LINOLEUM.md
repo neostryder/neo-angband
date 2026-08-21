@@ -80,8 +80,9 @@ difference. Packs you convert yourself are yours.
 Known limits, shared by BOTH engines so they agree: conditional (`?:` /
 `:when:`) rules are not evaluated; `family` effect metadata (glow/tint/pulse) is
 parsed but not applied, so a family draws its base asset. The one place this
-engine deliberately draws something a pack did not author is a **derived** tile
-for a mod's own content, which the tilesheet engine has no room for - see
+engine draws something a pack did not author is a **derived** tile a tileset MOD
+asked for, on behalf of a mod's own content, which the tilesheet engine has no
+room for - see
 [Derived tiles for a mod's content](#derived-tiles-for-a-mods-content).
 
 Double-height (overdraw) tiles used to be on that list. They are drawn over the
@@ -242,53 +243,65 @@ arrays); a legacy tileset carries no pools of its own.
 
 ## Derived tiles for a mod's content
 
-A tile pack has never heard of a mod's monsters, so core gives an added creature
-or item the tile of its nearest KIN: a monster takes one from a race sharing its
-`base`, an object kind from a kind sharing its `tval`
-(`fillTilesFromKin`, `packages/core/src/visuals/tile-prefs.ts`). That is what
-stops a mod's content standing out as a coloured letter in a tiled dungeon, and
-both engines do it, because "does my mod look right" must not depend on which
-engine the player picked.
+A tile pack has never heard of a mod's monsters, so in tile mode a creature a mod
+added is a coloured letter standing in a tiled dungeon. Filling that in is a
+TILESET MOD's job, not the game's, and the two halves live in different places on
+purpose:
 
-It leaves half the problem. The added ant is now pixel-for-pixel the base game's
-ant, so nobody can tell which is which - not the player meeting both, and not the
-author checking their own work. **The tilesheet engine cannot do better:** its
-tiles are cells of a fixed atlas and there is no spare cell to put a variant in.
-The loose engine can, because its tiles are individual images.
+- **Who gets a tile, from whom, and in what colour** is policy, and it belongs to
+  the tile set. 0.22.0 shipped that rule in core (`fillTilesFromKin`) and 0.23.0
+  removed it: Angband 4.2.6 has no concept of a record a mod added, so it has no
+  opinion about what one should look like, and the port adds nothing. It also
+  meant the game deciding on behalf of art it does not own - an older pack has no
+  picture for content added since it was drawn, and a sibling's picture there is a
+  confident lie where a letter was honest. See
+  `docs/modding/MOD_COMPATIBILITY.md`.
+- **The mechanism** stays here, offered through `registry:tiles`
+  (`packages/web/src/tile-registry.ts`, and `TileFill` in
+  `packages/core/src/mod/registry-host.ts`). A filler reads what is assigned,
+  writes only where nothing is, and may ask for a derived tile.
 
-So a loose pack allocates a slot of its own for each filled entity, drawing the
-donor's image with its hue rotated (`deriveKinSlots`,
-`packages/web/src/linoleum-pack.ts`). It is a third slot kind, `derived`, and it
-is the only one a pack cannot declare:
+`neo-linoleum` 0.15.0 carries the rule that used to be in core, restricted to
+LINOLEUM packs: an added monster is drawn from a race sharing its `base` and an
+added object kind from a kind sharing its `tval`, recoloured. Under a tilesheet
+pack, modded content keeps its letter.
+
+**What this engine can do that a tilesheet cannot.** Copying a kin's tile leaves
+the added ant pixel-for-pixel the base game's ant, so nobody can tell which is
+which - not the player meeting both, and not the author checking their own work.
+A tilesheet's tiles are cells of a fixed atlas and there is no spare cell to put a
+variant in. A loose pack's tiles are individual images, so `hueDerivedSlots`
+(`packages/web/src/linoleum-pack.ts`) allocates a slot drawing an existing image
+with its hue rotated. It is a third slot kind, `derived`, and the only one a pack
+cannot declare:
 
 ```
-{ kind: "derived", from: <donor slot>, hue: <degrees>, of: "monster:123" }
+{ kind: "derived", from: <donor slot>, hue: <degrees> }
 ```
 
-Five things about it are worth stating, because each one is a claim somebody will
-otherwise have to re-derive from the code:
+What the ENGINE guarantees, each of which is otherwise re-derived from the code:
 
-- **Only mod-added records are touched**, and this engine adds no judgement of
-  its own: it derives exactly where core's fill decided to fill, and that
-  decision is restricted by PROVENANCE. A pack with no mods installed builds no
-  derived slots at all, so an unmodded game's drawing cannot change.
-- **A pref file still wins.** An author who names an asset for their own monster
-  layers in before the fill runs, and the fill only ever writes where there is
-  nothing.
-- **Hues are handed out per donor**, cycling through eight spread around the
-  wheel, in the order the fill walks the registries. So the first eight added
-  creatures sharing one base differ from each other as well as from the base
-  game's art, and the ninth repeats the first, which is a better answer than a
-  ninth colour nobody can name.
+- **The pack's own slot table is never rewritten.** Derived slots are appended, so
+  a derived slot cannot change what an existing rule draws.
+- **One slot per (donor, hue).** Asking twice returns the same slot rather than
+  growing the table, so a hundred added creatures on eight colours cost eight
+  slots.
+- **Three refusals, all answered with `null`**: a donor whose asset this pack does
+  not own (a mod pref naming a raw atlas cell has nothing to recolour), a donor
+  that is itself derived (the renderer will not chain recolours), and a rotation
+  of nothing. The caller copies the donor plainly instead.
 - **It is deterministic.** Nothing here reads the RNG, the clock or the save, so
-  the same set of installed mods gives the same colours every launch. A tile that
-  changed colour between launches would be worse than a duplicate one.
-- **A hue rotation is a no-op on grey.** A donor tile with no saturation comes
-  back the colour it went in, so a derived tile is distinctive exactly when its
-  donor has colour to turn. The saturation lift in `renderRecoloured` helps a
-  muted donor and cannot invent colour in a fully grey one. The alternative,
-  compositing a mark onto somebody else's art, is a bigger lie than a similar
-  colour.
+  the same requests give the same slots every launch. A tile that changed colour
+  between launches would be worse than a duplicate one.
+- **A hue rotation is a no-op on grey.** A donor with no saturation comes back the
+  colour it went in, so a derived tile is distinctive exactly when its donor has
+  colour to turn. The saturation lift in `renderRecoloured` helps a muted donor
+  and cannot invent colour in a fully grey one. The alternative, compositing a
+  mark onto somebody else's art, is a bigger lie than a similar colour.
+
+Hues themselves are the MOD's choice - it passes a number. neo-linoleum cycles
+eight spread around the wheel, per donor, so the first eight added creatures
+sharing one base differ from each other as well as from the base game's art.
 
 The recolour is a canvas `filter` rather than per-pixel arithmetic, which matters
 for one reason beyond speed: nothing calls `getImageData`, so an asset served
