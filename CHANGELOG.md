@@ -15,31 +15,108 @@ changelog describing intentions is indistinguishable from one describing
 features, and they go looking for the feature. Work that is planned but not yet
 implemented lives in [docs/PLANNED.md](docs/PLANNED.md).
 
+An entry also has to matter to somebody playing the game or writing a mod.
+Documentation wording, internal refactoring and test-only additions are not
+recorded here. Bug fixes are, however small.
+
 `0.x` is the pre-release line and `1.0.0` is reserved for the public release.
 Semver on `0.x` means a feature release bumps the MINOR number, so `0.9.0` is
 followed by `0.10.0` rather than by `1.0.0`. The first-party mods follow the same
 scheme and reach `1.0.0` with the game rather than ahead of it - and a mod whose
-released tag is iterated takes a MINOR bump, because a published tag is pinned by
-digest in the game's catalogue and must never be moved.
+released tag is iterated takes a MINOR bump, because a published tag must never be
+moved: the game records the commit a tag resolved to when the mod was installed,
+and a tag that has since been retargeted is reported as moved rather than as the
+version it still calls itself.
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-08-21
+
+Current state of the project at version `0.24.0` - a fixes release. Nothing
+about the game's rules changed. A game played with random artifacts on now
+reloads correctly, which it did not; the desktop build checks a URL before
+handing it to the operating system; a mod whose newest release needs a newer
+game now offers one that runs here instead of refusing outright; and the mod
+consent screen stopped implying that a short permission list bounds what a
+mod's code can reach.
+
+### Fixed
+
+- **Random artifacts keep their created, seen and everseen flags across a reload,
+  and a carried random artifact stays an artifact.** With `birth_randarts` on,
+  every artifact id in the savefile was matched against the STANDARD artifact
+  names rather than the random ones. An id is a slug of the artifact's name and
+  the save was written from the random names, so nothing matched: an artifact you
+  had already found came back unknown, and a random artifact in your pack, in a
+  shop or on the floor came back as its plain base item. The artifact set is now
+  rebuilt before those ids are resolved, reading the birth option and the seed as
+  the file recorded them, so one resolver serves the save migration, the flags and
+  every saved object alike. Upstream writes these fields positionally by index and
+  so has nothing to lose here, which makes this the port's own defect rather than a
+  wart to preserve. A game with `birth_randarts` off is unchanged.
+
+- **A mod's artifact keeps its provenance when random artifacts are on.** The
+  whole artifact array is replaced by the generated set, and the clone it was
+  built from dropped two fields: the stamp saying which pack contributed the
+  record, and the place a mod's own fields on that record live. An artifact's
+  savefile id is minted from that stamp, so a mod's artifact was written into the
+  save under core's namespace instead of the mod's, and a plugin reading its own
+  fields back off the artifact found nothing. Nothing about an unmodded run
+  changes: core's records carry neither field, and neither is read by artifact
+  generation, which the recorded whole-set vectors confirm.
+
+- **The desktop build checks a URL before handing it to the operating system.**
+  The update page's reveal link and the external-link opener both called
+  `shell.openExternal` with whatever string reached them, and the reveal link's
+  string usually begins as GitHub's own release JSON, fetched over the network
+  rather than built into the program. Both are also reachable directly from any
+  script running in the game page, a mod's plugin.js included, since a mod's code
+  is a plain module import into that same page. Neither origin was validated, so a
+  scheme other than http or https would have reached whatever program is
+  registered for it on your machine instead of a browser. The reveal link is now
+  checked against this project's own github.com releases pages and the
+  external-link opener against http and https generally; either rejection is
+  logged with what was rejected rather than failing silently.
+
 ### Changed
 
-- **The documentation says "I" where it used to say "we".** There is one person
-  building this, and prose that speaks as a team tells a reader something that is
-  not true. Every first-person plural outside a quotation is reworded: the README,
-  the install and release guides, the parity and port plans, the modding docs, the
-  issue and pull-request templates, and the comments in the packages that are this
-  project's own code rather than ported C. Three player-visible strings changed
-  with it, on the crash screen and the help screen's community rows.
+- **The mod consent screen warns about the code for every mod that ships code,
+  and the modding docs say what a permission actually gates.** The warning used to
+  appear only when one of the requested permissions was flagged powerful, which
+  made it read as a consequence of the list: a plugin asking for nothing but a
+  tile or vocabulary registry got a consent screen with no such line, and a plugin
+  asking for nothing at all got no consent screen and a manager row reading `Asks
+  for no permissions`. That reassurance was wrong. A `registry:*` permission gates
+  one convenience facade, and the same live registries arrive at the plugin a
+  second time with no check at all, so a mod that declared no domain can still
+  register a room builder, a cave builder, a dungeon profile, a vault glyph, an
+  item class, a rune, a randart ability or a message type. Fourteen of the gated
+  domains have such a twin. That is inherent in running trusted code inside the
+  engine rather than a gap to close, since nothing reachable from inside the engine
+  namespace can be withheld from code already inside it, so the words moved instead
+  of the mechanism: the screen names the code, the manager row on a code mod that
+  asks for nothing says it still runs code, and `docs/modding/PLUGINS.md` gains
+  "What a capability gates, and what it does not" with the table of twins and the
+  reason declaring still matters, which is that the player reads the declaration
+  and the conflict report is built from it. The boundary that does hold is the
+  install, which is where a player decides to trust a mod's code at all. A test
+  measures both halves, the gate refusing and the twin reaching, against the real
+  bound registries and the real plugin context, so the prose cannot drift back into
+  claiming containment.
 
-  Four kinds of "we" were left exactly as they are, because changing them would be
-  changing data rather than prose: a quotation of the project owner, a quotation of
-  upstream's own comments (`ui-birth.c`'s hierarchical-back rule, `option.c`'s
-  note about not using `run_parser`), the ported C narration in `packages/core`
-  that a reader diffs against `reference/`, and the fixture strings where the "we"
-  belongs to an imaginary mod author declaring a conflict.
+- **A mod whose newest release needs a newer game now offers the newest release
+  that does not.** The mod screen used to read `will not run on this version` and
+  stop there, even when the same mod still had an earlier release that ran
+  perfectly on your build. It now looks back through that mod's earlier releases
+  and offers the newest one your game can actually run. It names the newer release
+  it stepped past, and it tells you to update the game only when updating the game
+  is what would get you that release. A mod with nothing that runs here is still
+  refused, and now says how many of its releases were tried instead of leaving you
+  to wonder whether the older ones were looked at.
+  - **Update installed mods** stopped offering an update the game would then
+    refuse to load. A mod already on the newest release your build can run is
+    described that way rather than as out of date, and the row says which newer
+    release is waiting on a game update.
 
 ## [0.23.0] - 2026-08-20
 
@@ -436,7 +513,8 @@ The initial public alpha release.
 - **Deterministic and seeded** generation throughout, with a save format built
   to survive modular content.
 
-[Unreleased]: https://github.com/neostryder/neo-angband/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/neostryder/neo-angband/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/neostryder/neo-angband/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/neostryder/neo-angband/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/neostryder/neo-angband/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/neostryder/neo-angband/compare/v0.20.0...v0.21.0
