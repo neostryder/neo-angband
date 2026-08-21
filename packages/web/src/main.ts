@@ -290,7 +290,12 @@ import {
   mergePluginManifests,
   setModCode,
 } from "./mod-code";
-import { modOwnFiles, modPluginContext, type ModSessionFacts } from "./mod-context";
+import {
+  modOwnFiles,
+  modPluginContext,
+  setModRegistries,
+  type ModSessionFacts,
+} from "./mod-context";
 import type { ModPluginContext } from "./mod-plugin";
 import { migrateModBags } from "./mod-bags";
 import {
@@ -1121,6 +1126,14 @@ try {
   /* history/URL unavailable: harmless, the params just linger */
 }
 const { state, registry, booted, players } = game;
+/* Every plugin context built from here on reports these as `ctx.registries`.
+ *
+ * HERE, not at each of the seven places that build a context: the note below
+ * already says `booted.registries` is whichever set this launch built, and this
+ * is the one line that sees it on both boot paths. A mod asking what a monster it
+ * is TRACKING can do had no way to ask before this, and neither did a tile pack
+ * asking what content the session actually contains. */
+setModRegistries(booted.registries);
 /* A shop line no item answers is one mod's fault, not a failed launch.
  *
  * `bindStore` used to throw on it, from inside `startGame`/`loadGame` at module

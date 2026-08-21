@@ -12,7 +12,7 @@
 
 import * as neoCore from "@rpgm-tools/neo-angband-core";
 import { log } from "./logging";
-import type { GameState } from "@rpgm-tools/neo-angband-core";
+import type { CoreRegistries, GameState } from "@rpgm-tools/neo-angband-core";
 import {
   MOD_API_VERSION,
   type BackupFolder,
@@ -36,6 +36,34 @@ import type { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
  * accidental cross-talk, not a determined adversary - the security boundary for
  * in-process code is the consent prompt, not this object.
  */
+/**
+ * The bound registries, latched once per page load.
+ *
+ * A LATCH RATHER THAN AN ARGUMENT AT EVERY CALL SITE, which is the same choice
+ * `diskPacks()` made above and for a sharper reason here: there are seven places
+ * that build a context, they are spread across three modules, and a new one that
+ * forgot to pass this would hand its mod `registries: undefined` - a mod reading
+ * no monsters and reporting nothing, because absence is a legal state during
+ * composition and cannot be told apart from a call site that forgot. Latching it
+ * means every context that exists after boot has it, including the ones written
+ * next year.
+ *
+ * Set once, because binding happens once: toggling a mod reloads the page rather
+ * than rebinding in place (see docs/modding/MOD_LIFECYCLE.md), so there is no
+ * stale-value window to defend against.
+ */
+let boundRegistries: CoreRegistries | undefined;
+
+/** Latch the bound registries (the boot path, and the tests). */
+export function setModRegistries(registries: CoreRegistries | undefined): void {
+  boundRegistries = registries;
+}
+
+/** What a plugin context will report as `ctx.registries`. */
+export function modRegistries(): CoreRegistries | undefined {
+  return boundRegistries;
+}
+
 export function modPluginContext(
   id: string,
   flags: Readonly<Record<string, boolean>>,
@@ -48,6 +76,9 @@ export function modPluginContext(
    * by passing a different one - the id it gets is the id it was loaded under. */
   const assets = own.assetUrl;
   const backupFolder = backupFolderFor(id, session);
+  /* `session.registries` first so a test can supply its own without booting a
+   * game; the latch otherwise, which is what every real call site uses. */
+  const registries = session.registries ?? boundRegistries;
   return Object.freeze({
     id,
     api: MOD_API_VERSION,
@@ -69,6 +100,9 @@ export function modPluginContext(
       log.info(`mod:${id}`, `${msg}`);
     },
     ...(backupFolder ? { backupFolder } : {}),
+    /* Spread rather than set to undefined, so `"registries" in ctx` answers the
+     * same question as `ctx.registries !== undefined` - the shape `state` uses. */
+    ...(registries ? { registries } : {}),
   });
 }
 
@@ -104,6 +138,11 @@ export interface ModSessionFacts {
   readonly capabilities?: CapabilitySet;
   /** Override backupFolder directly (tests, and a front end with its own). */
   readonly backupFolder?: BackupFolder;
+  /**
+   * Override the bound registries, for a test that wants a plugin to see a
+   * registry it built by hand rather than one a booted game latched.
+   */
+  readonly registries?: CoreRegistries;
 }
 
 /**

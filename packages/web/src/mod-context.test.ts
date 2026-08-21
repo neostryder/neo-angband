@@ -10,7 +10,8 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { modPluginContext } from "./mod-context";
+import { modPluginContext, setModRegistries } from "./mod-context";
+import type { CoreRegistries } from "@rpgm-tools/neo-angband-core";
 import { modPrefs, modPrefsKey } from "./mod-prefs";
 
 const MAIN_TS_SOURCE = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
@@ -73,5 +74,82 @@ describe("main.ts actually passes the session facts (drift guard)", () => {
       MAIN_TS_SOURCE.match(/^\s*(?:sessionFacts,|\{\s*\.\.\.sessionFacts,.*\},)\s*$/gmu) ?? [];
     expect(contexts.length).toBeGreaterThan(0);
     expect(passed).toHaveLength(contexts.length);
+  });
+});
+
+describe("ctx.registries - the bound content a mod can ask about", () => {
+  /* A registry fixture, not a booted game. The claim under test is that whatever
+   * the host latched is what the plugin sees, unchanged; what a REAL registry
+   * contains after a mod composes into it is proved where real ones are built
+   * (tutorial-mods.node.test.ts, kin-tiles.node.test.ts). Keeping the two apart
+   * matters, because a fixture asserting its own shape proves nothing about the
+   * producer. */
+  const fixture = (): CoreRegistries =>
+    ({
+      monsters: {
+        races: [
+          { ridx: 0, name: "soldier ant" },
+          /* Provenance is the ONLY thing that marks this one as a mod's. */
+          { ridx: 1, name: "joiner ant", from: { owner: "tutorial-03" } },
+        ],
+      },
+      objects: { kinds: [{ kidx: 0, tval: 37 }] },
+    }) as unknown as CoreRegistries;
+
+  it("is absent until the host latches one, the composition-time shape", () => {
+    /* Content composition runs before binding, so during it there is no answer
+     * to give. Absent rather than an empty registry: an empty one reads as "this
+     * session has no monsters", which is a different and false claim. */
+    setModRegistries(undefined);
+    expect(modPluginContext("qol", {}).registries).toBeUndefined();
+    expect("registries" in modPluginContext("qol", {})).toBe(false);
+  });
+
+  it("reaches EVERY context once latched, with no call site passing it", () => {
+    /* The reason it is a latch. Seven call sites across three modules build a
+     * context today; none of them mentions registries, and all seven get it. */
+    setModRegistries(fixture());
+    try {
+      for (const id of ["qol", "borg", "linoleum"]) {
+        expect(modPluginContext(id, {}).registries?.monsters.races).toHaveLength(2);
+      }
+    } finally {
+      setModRegistries(undefined);
+    }
+  });
+
+  it("shows a mod's monster on the same terms as core's own", () => {
+    /* His requirement, 2026-08-21: modded creatures and items must work the same
+     * as vanilla ones. This is the mechanism that makes that free rather than
+     * something each consumer opts into - a consumer indexing by ridx cannot
+     * treat the two differently, because nothing in the lookup distinguishes
+     * them. `from` is present and is deliberately not consulted here. */
+    setModRegistries(fixture());
+    try {
+      const races = modPluginContext("borg", {}).registries?.monsters.races ?? [];
+      const byRidx = new Map(races.map((r) => [r.ridx, r]));
+      expect(byRidx.get(0)?.name).toBe("soldier ant");
+      expect(byRidx.get(1)?.name).toBe("joiner ant");
+      /* Contiguous ridx values, because mods APPEND: an index that resolves for
+       * core's content resolves for a mod's, so there is no gap for a consumer
+       * to fall into a default through. */
+      expect(races.map((r) => r.ridx)).toEqual([0, 1]);
+    } finally {
+      setModRegistries(undefined);
+    }
+  });
+
+  it("a test may override the latch without booting a game", () => {
+    setModRegistries(undefined);
+    const ctx = modPluginContext("qol", {}, undefined, {}, { registries: fixture() });
+    expect(ctx.registries?.monsters.races).toHaveLength(2);
+  });
+
+  it("main.ts actually latches the bound registries", () => {
+    /* THE ONE THAT MATTERS. Every test above passes against a seam no boot path
+     * ever fills - which is precisely how the Borg shipped with four inert
+     * resolvers and a green suite. This asserts the call exists, on the value the
+     * surrounding code already documents as "whichever set this launch built". */
+    expect(MAIN_TS_SOURCE).toMatch(/setModRegistries\(booted\.registries\);/u);
   });
 });

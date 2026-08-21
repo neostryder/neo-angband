@@ -26,6 +26,23 @@ digest in the game's catalogue and must never be moved.
 
 ### Added
 
+- **A plugin can now ask the game what it is made of: `ctx.registries`.** Every
+  race, object kind, feature, trap, store and projection the session actually runs
+  on, bound, at its real index. Until now a plugin could see `ctx.state` - the
+  monsters standing on the current level - which is enough to draw a frame and not
+  enough to answer a question about a thing by index: what a creature you are
+  merely remembering can do, what an item you have never picked up is worth, which
+  kinds share a `tval`. It is the whole registry set rather than a curated slice,
+  for the reason `ctx.core` is the whole namespace. **A mod's own content is in it
+  on the same terms as core's**, because binding happens after every enabled mod
+  composes and mods append, so nothing in a lookup tells a modded race from a core
+  one. That is what lets a consumer treat modded and vanilla content identically
+  without trying to.
+  - The first consumer is the **Borg**, which had shipped since its port with its
+    danger evaluator fed zeroes: `makeCoreResolvers` existed, was documented, and
+    had no caller, because the race registry was not reachable from a plugin. It
+    is now, so the Borg fears real monsters, including ones a mod added.
+
 - **A mod's monster or item is now drawn DISTINCTIVELY in the loose-tile engine,
   not just drawn.** 0.22.0 gave an added creature the tile of its nearest kin,
   which stopped it being a coloured letter in a tiled dungeon and left the other

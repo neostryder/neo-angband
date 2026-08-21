@@ -155,6 +155,7 @@ What `ctx` carries:
 | `data` | your own record files, parsed, keyed without `.json` |
 | `prefs` | `{ get(), set(value) }`, one JSON value of **yours**, kept outside every save |
 | `newCharacter` | whether this session's character was just created, rather than loaded |
+| `registries` | the **bound** content registries: every race, kind, feature, trap, store and projection this session actually runs on (absent during content composition) |
 | `log` | a diagnostic line; the host decides where it goes |
 
 `flags` is sliced per mod on purpose: a mod must not be able to read or act on
@@ -173,6 +174,48 @@ game built.
 If you need the engine at `hooks` time for something that is not the live game
 (classifying option names, reading a constant), `ctx.core` is there and is the
 same module instance the game runs on.
+
+### `registries` is the content, where `state` is the level
+
+These two are easy to confuse and the difference decides whether a whole class of
+mod can be written at all.
+
+`state` is **this level**: the monsters standing on it, the objects lying on it,
+the player. It is what you read to draw a frame or to answer a question about
+something in front of the player right now.
+
+`registries` is **what the game is made of**: `registries.monsters.races` is every
+race the pack defines, at its real `ridx`; `registries.objects.kinds` is every
+object kind, at its real `kidx`; and features, traps, stores and projections are
+there on the same terms. You need it whenever your question is about a thing by
+INDEX rather than by presence - what a creature you are merely remembering can do,
+what an item you have never seen is worth, which kinds share a `tval`.
+
+```js
+register(host, ctx) {
+  const races = ctx.registries?.monsters.races;
+  if (!races) return;                 // composition time, or an older host
+  const byRidx = new Map(races.map((r) => [r.ridx, r]));
+}
+```
+
+Three things about it:
+
+- **It is the whole `CoreRegistries`, not a curated slice**, for the reason
+  `ctx.core` is the whole namespace: a curated list is the thing that drifts. See
+  MOD_COMPATIBILITY.md decision 18.
+- **A mod's content is in it on exactly the same terms as core's.** Binding runs
+  after every enabled mod has composed its content, and mods append, so a monster
+  a mod added is a `MonsterRace` at a real `ridx` and an item a mod added is an
+  `ObjectKind` at a real `kidx`. Nothing in a lookup distinguishes them; the only
+  marker is the optional `from` provenance field, and most consumers should not
+  read it. **This is what makes modded content work the same as vanilla content
+  without anybody arranging it** - the alternative is every consumer keeping its
+  own table of core's content and silently ignoring everything a mod added.
+- **Guard it.** It is absent during content composition (at that point this is
+  what is being built) and absent on any host older than 2026-08-21, so
+  `if (!ctx.registries) return;` is the shape, the same one `ctx.backupFolder`
+  uses.
 
 ### Engine-wide settings you change through `ctx.core`, not through a hook
 
