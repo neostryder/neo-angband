@@ -121,10 +121,15 @@ that with the option off, the mod supplies **no hook at all**.
 
 ---
 
-## You have finished the tutorials
+## You have finished the core six
 
 Six mods, and between them they cover the shape of nearly everything else:
 changing data, adding data, running code, and letting the player decide.
 
-Where to go next depends on what you want to build. See
+**One more, if you want it:** [Tutorial 7](07-add-an-artifact.md) adds an
+artifact. It is the odd one out, because an artifact is a layer over an item
+rather than an item, so it is worth doing once even though nothing new about the
+mod system is in it.
+
+Where to go after that depends on what you want to build. See
 [the learning path](README.md#after-the-tutorials).

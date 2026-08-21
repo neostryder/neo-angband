@@ -1,6 +1,6 @@
 # Make a mod
 
-**Never made a mod before? That is fine.** These six tutorials assume you can
+**Never made a mod before? That is fine.** These seven tutorials assume you can
 edit a text file and nothing else. The first one takes about five minutes and
 changes the game.
 
@@ -10,7 +10,7 @@ in it.
 
 ---
 
-## The six tutorials
+## The seven tutorials
 
 Each one teaches exactly one idea and ends with something you can see on screen.
 
@@ -22,9 +22,12 @@ Each one teaches exactly one idea and ends with something you can see on screen.
 | 4 | [Change a spell](04-change-a-spell.md) | Reaching into a class, and what a positional path costs | 2 |
 | 5 | [Hook behaviour](05-hook-behaviour.md) | Your mod running code, in eleven lines | 2 |
 | 6 | [Add an option](06-add-an-option.md) | Letting the player switch your change on and off | 2 |
+| 7 | [Add an artifact](07-add-an-artifact.md) | Building on top of an item the game already has | 2 |
 
 Do them in order if you are new. They build on each other, and each one is short
-enough to read in full before you type anything.
+enough to read in full before you type anything. Tutorial 7 is the one exception:
+it needs tutorial 2 and nothing else, so you can jump to it if an artifact is
+what brought you here.
 
 **These are not snippets.** Every tutorial's finished mod is a real folder in
 this repository under `samples/tutorials/`, loaded and checked against the actual
@@ -36,7 +39,7 @@ the build fails before you find out the hard way.
 `samples/tutorials/` into the `mods/` folder beside the desktop build (or point a
 browser at `samples/tutorials/` with **Choose a mods folder...**), and they turn
 on from the Mods screen like any other mod. They are named `tutorial-01-...` to
-`tutorial-06-...` so all six can sit there at once. Typing your own is still the
+`tutorial-07-...` so all seven can sit there at once. Typing your own is still the
 better way to learn, but having a known-good copy to compare against is worth a
 lot when yours does not work and you cannot see why.
 
@@ -106,7 +109,7 @@ If you want a starting point rather than a blank folder:
 
 - Bring back a feature an older Angband had and a newer one dropped
 - Add a monster, or a family of them
-- Add an artifact worth descending for
+- Add an artifact worth descending for, which is [tutorial 7](07-add-an-artifact.md)
 - Write a new spell, or move one to a class that never got it
 - Change what the stores stock, or how they price it
 - Add a quality-of-life behaviour that has been annoying you for years
