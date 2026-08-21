@@ -36,7 +36,7 @@
  *   randNameFallback (a local syllable table) is retained only as a defensive
  *   guard for callers that pass no corpus (it never runs on the wired paths).
  * - randart.log (PORT_TODO 5.5): PORTED bar one line. do_randart opens and
- *   closes it through the host; the maintainer's disposition on 2026-08-04 was
+ *   closes it through the host; the 2026-08-04 decision was
  *   pursue parity, so the "it never affects an artifact field" argument the old
  *   note made here was never a reason to omit it. What is and is not written is
  *   MEASURED by obj/randart-log.census.test.ts rather than claimed in prose,
@@ -59,8 +59,20 @@
  *   before the fixed-artifact skip loop and never refreshes it inside the loop
  *   (obj-randart.c L2754, L2778). The QUEST_ART test therefore keeps reading
  *   the initial artifact's kind while the name test tracks the advancing
- *   artifact. In the standard set the quest artifacts are last and contiguous,
- *   so this is unobservable, but it is reproduced exactly. Noted.
+ *   artifact, which makes that branch of the condition permanently true once it
+ *   is true at all: the walk does not stop on the next non-quest artifact, it
+ *   consumes every remaining slot and returns having designed nothing.
+ *
+ *   IT IS OBSERVABLE ONCE A MOD IS LOADED, which is a correction to what this
+ *   note used to claim. In the standard set the quest artifacts are the last two
+ *   records, so the walk runs off the end and nothing is lost. Mod records are
+ *   appended after core's, so they sit BEHIND the slot where the walk begins and
+ *   every one of them is preserved verbatim rather than redesigned. A mod's
+ *   artifact therefore survives birth_randarts, by position rather than by any
+ *   rule - measured in obj/randart-mod-artifact.test.ts, which also measures the
+ *   converse (an artifact bound ahead of the quest artifacts IS redesigned) so
+ *   that a change in record order fails loudly instead of quietly randomising
+ *   somebody's mod. Reproduced exactly either way; this is faithful and stays.
  */
 
 import { FileMode, FileType, HostDir, host } from "../host/io.js";
@@ -164,6 +176,30 @@ export function copyArtifact(src: Artifact, dst: Artifact): void {
  * EXPORTED so a test harness can start from the same object shape production
  * mutates - a hand-built Artifact would be the harness asserting what the
  * struct looks like rather than measuring it.
+ *
+ * PROVENANCE AND MOD FIELDS RIDE ALONG (`from`, `ext`), and they have to, because
+ * this clone is what the game ends up RUNNING. swapRandartSet installs the array
+ * do_randart returns as the registry's artifacts wholesale (session/game.ts), so
+ * a field this function forgets is a field the rest of the run does not have. Two
+ * readers care. ContentIdResolver mints an artifact's savefile id from
+ * `from.owner` and its localid from `from.was.name` (mod/ids.ts), so dropping the
+ * stamp moved a mod artifact's id out of the mod's namespace and into core's -
+ * measured as "core:of-the-watchful-eye" where the unswapped registry says
+ * "tutorial:of-the-watchful-eye" (obj/randart-mod-artifact.test.ts). And `ext` is
+ * the only place a plugin can read back a field its own pack put on the record,
+ * so with birth_randarts on those fields simply were not there.
+ *
+ * NOTHING CHANGES FOR AN UNMODDED RUN. The composer stamps only records a mod
+ * added or changed, so every artifact in core's pack carries neither field and
+ * both spread to nothing. They are also read by no part of artifact generation,
+ * so no draw and no artifact field moves either way - the recorded whole-set
+ * vectors (obj/randart-vectors.json) are the check on that.
+ *
+ * ABSENT RATHER THAN PRESENT-AND-UNDEFINED, which is why these are spread in
+ * conditionally instead of assigned. The presence of `ext` is documented to MEAN
+ * that a mod put something there (mod/extension.ts), and `"ext" in art` would
+ * start answering yes for all 138 of core's artifacts if the key were written
+ * with an undefined value.
  */
 export function cloneArtifact(src: Artifact): Artifact {
   return {
@@ -193,6 +229,11 @@ export function cloneArtifact(src: Artifact): Artifact {
     activation: src.activation,
     altMsg: src.altMsg,
     time: { ...src.time },
+    /* Last, so a modded artifact's key order matches the one attachExt built
+     * (it assigns both after the binder's literal) and an unmodded one is
+     * untouched. */
+    ...(src.from === undefined ? {} : { from: src.from }),
+    ...(src.ext === undefined ? {} : { ext: src.ext }),
   };
 }
 

@@ -10,7 +10,7 @@
  *    so this file writes the DOWN-converters instead: take a real save from a
  *    real game at the current version, walk it backwards into the version-2 and
  *    version-1 shapes, migrate it forward again, and require the result to
- *    equal what we started with. The down-converters are derived from the two
+ *    equal the starting value. The down-converters are derived from the two
  *    commits that made the changes (26b207be1 and e300943d9) and they are the
  *    specification here: if the forward step misses a container the backward
  *    step touched, the documents differ and this fails. That catches the exact
