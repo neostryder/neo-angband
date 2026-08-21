@@ -3839,6 +3839,27 @@ function buildActivationSummarizer(
   });
 }
 
+/**
+ * birth_randarts as the save itself recorded it, read straight off the document
+ * before any migration runs: loadGame has to choose the artifact set before it
+ * can build the content-id resolver a migration needs. A blob that is not the
+ * option-store shape reads as off, which is the table default, so a damaged or
+ * future-shaped file cannot throw here and mask the error migrateSave gives.
+ */
+function savedBirthRandarts(save: SavedGame): boolean {
+  const opts: unknown = save.options;
+  if (typeof opts !== "object" || opts === null) return false;
+  const values: unknown = (opts as { values?: unknown }).values;
+  if (typeof values !== "object" || values === null) return false;
+  return (values as Record<string, unknown>).birth_randarts === true;
+}
+
+/** The randart seed a save recorded, or 0 for absent, damaged or non-finite. */
+function savedRandartSeed(save: SavedGame): number {
+  const seed: unknown = save.randartSeed;
+  return typeof seed === "number" && Number.isFinite(seed) ? seed : 0;
+}
+
 function swapRandartSet(
   reg: CoreRegistries,
   seed: number,
@@ -3953,6 +3974,31 @@ export function loadGame(
   const players = bindPlayer(pack.player);
   registerBookKinds(reg.objects, players.classes);
 
+  // OPT(player, birth_randarts): rebuild the same random artifact set from the
+  // persisted seed, so saved-object aidx references resolve to the identical
+  // randarts (do_randart preserves indices). Off / seed 0: the standard set.
+  //
+  // This has to happen BEFORE the resolver below is built. An artifact's id is a
+  // slug of its NAME (mod/ids.ts), and saveGame minted those ids from the RANDOM
+  // names, so a resolver built over the standard set resolves none of them: the
+  // aup_info created/seen/everseen flags and the artifact on every saved object
+  // all resolve to nothing and are dropped without a word.
+  //
+  // The decision reads the UN-MIGRATED document, because the resolver a
+  // migration needs does not exist until the set is chosen. Both fields have
+  // existed since save version 1 and no migration rewrites either; the check
+  // further down fails loudly if that ever stops being true.
+  const randartSeed = savedRandartSeed(saveDocument);
+  const wantRandarts = savedBirthRandarts(saveDocument) && randartSeed !== 0;
+  if (wantRandarts) {
+    swapRandartSet(
+      reg,
+      randartSeed,
+      buildCurseTimedFoil(players.timed),
+      buildActivationSummarizer(pack, reg),
+    );
+  }
+
   // The content-id resolver: every namespaced string id in the save resolves
   // back to a runtime index against this bound pack (mod/ids.ts).
   const ids = new ContentIdResolver(reg);
@@ -3991,28 +4037,28 @@ export function loadGame(
   // The feature remap turns the save's terrain-legend indices into this pack's.
   const featRemap = buildFeatRemap(save.featLegend, ids);
 
-  // Restore the option store (older saves lack it: table defaults). Do this
-  // before the artifact-set swap so birth_randarts is known.
+  // Restore the option store (older saves lack it: table defaults).
   const options = save.options
     ? OptionState.restore(save.options)
     : new OptionState();
 
-  // OPT(player, birth_randarts): rebuild the same random artifact set from the
-  // persisted seed, so saved-object aidx references resolve to the identical
-  // randarts (do_randart preserves indices). Off / seed 0: the standard set.
-  const randartSeed = save.randartSeed ?? 0;
-  if (options.get("birth_randarts") && randartSeed) {
-    swapRandartSet(
-      reg,
-      randartSeed,
-      buildCurseTimedFoil(players.timed),
-      buildActivationSummarizer(pack, reg),
+  /* The artifact-set swap near the top read the un-migrated document. If a
+   * migration ever begins rewriting the option store or the randart seed, that
+   * read goes stale and the character would load against the wrong artifact
+   * set, quietly. Say so instead: the read belongs after the migration then. */
+  const migratedWantsRandarts =
+    options.get("birth_randarts") && savedRandartSeed(save) !== 0;
+  if (migratedWantsRandarts !== wantRandarts) {
+    throw new Error(
+      "save: a migration rewrote the option store or the randart seed, so the " +
+        "artifact set was chosen from stale data - move the birth_randarts " +
+        "read in loadGame to after migrateSave",
     );
   }
 
-  // aup_info[] (load.c): the artifact-created registry. Restore the saved
-  // flags (built after swapRandartSet so aidx references align); older saves
-  // predate the field and load with an all-false set (a fresh game's state).
+  // aup_info[] (load.c): the artifact-created registry. The resolver was built
+  // after the artifact-set swap, so these ids line up with the live set; older
+  // saves predate the field and load with an all-false set (a fresh game's).
   const artifacts =
     save.artifactsCreated || save.artifactsSeen || save.artifactsEverseen
     ? ArtifactState.restore({
