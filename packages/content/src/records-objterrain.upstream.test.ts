@@ -216,7 +216,7 @@ describe("proj.c: projection field extraction", () => {
   it("code: starts a new record, so record order is the element order (test_code_mismatch0)", () => {
     /* parse_projection_code's index is "previous index + 1", which is exactly
      * the port's record position. bindProjections checks the position against
-     * list-elements.h; here we only pin that the positions are what it will
+     * list-elements.h; here it only pins that the positions are what it will
      * see. */
     const out = compileGamedata(
       "code:ACID\nname:acid\ncode:POIS\nname:poison\n",

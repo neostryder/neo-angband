@@ -3,7 +3,7 @@
  * own, and it never takes the game down with it.
  *
  * The pruning tests use a real directory. A mocked fs would let the prune assert
- * "we asked to delete these names", which is not the question - the question is
+ * "these names were handed to a delete call", which is not the question - the question is
  * what is left in the folder afterwards, and that includes the file the player
  * put there.
  */

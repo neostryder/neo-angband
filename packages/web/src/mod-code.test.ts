@@ -11,7 +11,7 @@
  *    a module's top-level statements run the instant it is imported, so a check
  *    performed on the imported object has already lost. The importer is injected
  *    and counted, which is the only way to assert an ABSENCE of execution - and an
- *    absence is exactly what a "we check the version" claim usually turns out to
+ *    absence is exactly what a "the version is checked" claim usually turns out to
  *    be.
  */
 

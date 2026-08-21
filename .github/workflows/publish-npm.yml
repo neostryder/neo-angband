@@ -74,9 +74,9 @@ jobs:
           # to reason about when a tarball looks wrong.
           #
           # setup-node has cached AUTOMATICALLY since v5 whenever package.json names
-          # a package manager. v6 narrowed that to npm only, and ours says pnpm, so
+          # a package manager. v6 narrowed that to npm only, and this one says pnpm, so
           # today the automatic path does not fire here - but "the default does not
-          # apply to us" is not the same as "we said no", and the line above says no
+          # apply here" is not the same as "this says no", and the line above says no
           # out loud. Turn it off out loud too.
           package-manager-cache: false
 

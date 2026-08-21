@@ -280,7 +280,7 @@ export async function runGroupedBrowser<T>(
   hooks: GroupedBrowserHooks<T> = {},
 ): Promise<void> {
   /* Upstream builds g_list from the sorted object list, so a group with no
-   * members cannot appear; ours are built per group, so drop the empties here. */
+   * members cannot appear; these are built per group, so drop the empties here. */
   const live = groups.filter((g) => g.rows.length > 0);
   if (live.length === 0) return;
 

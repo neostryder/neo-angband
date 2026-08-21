@@ -93,7 +93,7 @@ export const DEFAULT_AUTHORS_URL =
  *
  * A closed set rather than free text, so a row cannot be given a standing that
  * sounds official and means nothing. Every value here is something a person can
- * actually verify from outside; "we trust them" is deliberately not among them.
+ * actually verify from outside; "they are trusted" is deliberately not among them.
  */
 export type AuthorCheck =
   /** The owner published the mods this project itself ships and curates. */

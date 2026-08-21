@@ -87,7 +87,7 @@ describe("a live game", () => {
     expect(text).toContain("Human Warrior");
     /* The determinism ratchet: an agent is not a seeded RNG, and a character it
      * touched must say so. Read back from the session rather than asserted from
-     * the option we passed in. */
+     * the option passed in. */
     expect(host.session()?.nondeterministic).toBe(true);
   });
 

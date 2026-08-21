@@ -6,16 +6,16 @@ body:
   - type: markdown
     attributes:
       value: |
-        **This is the report we want most.**
+        **This is the most valuable report there is.**
 
         A missing message, a prompt that never appears, a screen laid out a
-        column off - those survive code review, they survive our automated
+        column off - those survive code review, they survive the automated
         checks, and they are why earlier claims that this port was "complete"
         kept turning out to be wrong. Somebody playing is the only thing that
         finds them.
 
         You do not need a copy of Angband to hand. "I expected X" is a
-        perfectly good report; we can check the C ourselves, and the original
+        perfectly good report; the C can be checked from here, and the original
         source is in `reference/` right here in the repository.
 
   - type: textarea

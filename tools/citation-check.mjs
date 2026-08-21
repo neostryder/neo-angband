@@ -575,7 +575,7 @@ function runCheck(root) {
           /* Either no adjacent word at all, or the adjacent word is not
            * anywhere in reference/ a real, brace-matched function
            * definition - e.g. a SQL table name or a struct field that
-           * merely reads like one. Neither is a symbol we can check the
+           * merely reads like one. Neither is a symbol this can check the
            * citation against with certainty, so it stays UNCHECKED rather
            * than guessed at. */
           counts.UNCHECKED++;

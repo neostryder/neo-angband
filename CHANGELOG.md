@@ -24,6 +24,23 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
+### Changed
+
+- **The documentation says "I" where it used to say "we".** There is one person
+  building this, and prose that speaks as a team tells a reader something that is
+  not true. Every first-person plural outside a quotation is reworded: the README,
+  the install and release guides, the parity and port plans, the modding docs, the
+  issue and pull-request templates, and the comments in the packages that are this
+  project's own code rather than ported C. Three player-visible strings changed
+  with it, on the crash screen and the help screen's community rows.
+
+  Four kinds of "we" were left exactly as they are, because changing them would be
+  changing data rather than prose: a quotation of the project owner, a quotation of
+  upstream's own comments (`ui-birth.c`'s hierarchical-back rule, `option.c`'s
+  note about not using `run_parser`), the ported C narration in `packages/core`
+  that a reader diffs against `reference/`, and the fixture strings where the "we"
+  belongs to an imaginary mod author declaring a conflict.
+
 ## [0.23.0] - 2026-08-20
 
 Current state of the project at version `0.23.0` - the release where the port

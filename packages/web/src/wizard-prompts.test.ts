@@ -1,7 +1,7 @@
 /**
  * The wizard/debug prompt ratchet.
  *
- * Every prompt on this surface used to be written in our own words. The text
+ * Every prompt on this surface used to be written in this port's own words. The text
  * census can measure whether upstream's literal is PRESENT, but it cannot see a
  * paraphrase sitting where the literal should be - which is exactly how "How
  * many good objects?" (no trailing space, on a full-screen numeric editor) and

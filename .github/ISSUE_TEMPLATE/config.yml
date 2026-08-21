@@ -14,7 +14,7 @@ contact_links:
   - name: Is it already known?
     url: https://github.com/neostryder/neo-angband#known-rough-edges
     about: >-
-      The README lists the rough edges we already know about, so you do not
+      The README lists the rough edges already known, so you do not
       spend your evening writing up something on the list. If it is not there,
       it is worth reporting.
 
@@ -23,7 +23,7 @@ contact_links:
     about: >-
       qol, bug-fixes, neo-linoleum and borg each have their own repository, and
       an issue filed there reaches the person who can fix it. Not sure whether
-      it is the mod or the game? File it here and we will move it.
+      it is the mod or the game? File it here and it can be moved.
 
   - name: Email, if an issue is not the right place
     url: https://github.com/neostryder/neo-angband/blob/master/SECURITY.md

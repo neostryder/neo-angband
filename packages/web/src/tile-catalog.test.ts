@@ -87,7 +87,7 @@ describe("coreTileModes", () => {
   });
 
   it("offers the WHOLE catalog once the player supplies their own pack", () => {
-    // With ?tiles=<url> we cannot know what the pack holds, and neither does
+    // With ?tiles=<url> there is no knowing what the pack holds, and neither does
     // upstream - it lists what list.txt says and degrades if an image is
     // missing, so the bundled-art restriction lifts entirely.
     const modes = coreTileModes({ customBaseUrl: true });

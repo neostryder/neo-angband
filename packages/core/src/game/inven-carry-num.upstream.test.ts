@@ -4,7 +4,7 @@
  * Mapping: inven_carry_num -> invenCarryNum; inven_carry_okay is
  * `invenCarryNum(obj) > 0`.
  *
- * Upstream setup forces pack_size=5, quiver_size=3. We override the bound
+ * Upstream setup forces pack_size=5, quiver_size=3. This overrides the bound
  * constants accordingly. quiver_slot_size and thrown_quiver_mult come from pack.
  */
 

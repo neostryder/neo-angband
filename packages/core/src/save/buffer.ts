@@ -17,7 +17,7 @@
  *   for real anti-tamper, saves must be server-authoritative.
  *
  * Parity note: the upstream 4-byte alignment padding is the literal byte
- * 'x' (0x78). We reproduce that so byte streams match upstream exactly.
+ * 'x' (0x78). Reproduced here so byte streams match upstream exactly.
  */
 
 /** File magic: the ASCII bytes of "Save". */

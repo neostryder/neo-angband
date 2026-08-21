@@ -498,7 +498,7 @@ function preparePfdistances(
 
 /**
  * A locked-door test for the pathfinder's penalty choice. Door locks are traps
- * (#21); without the trap deps wired here we treat every closed door as
+ * (#21); without the trap deps wired here every closed door is treated as
  * unlocked (the common case), which only under-penalizes locked doors.
  */
 function env_isLockedDoor(state: GameState, grid: Loc): boolean {

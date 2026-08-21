@@ -54,7 +54,7 @@ write down at all.
 | Change any value in any gamedata file, add a key, remove a key, on any record, including the ones with repeated names | **Complete** | gap 2 |
 | Add records core has never seen: objects, monsters, egos, artifacts, and whole new item **classes** (tvals) | **Complete** | gap 20 |
 | Extend a record with fields of your own, in your own namespace | **Complete** | gap 16 |
-| Ship real **code** that runs in the game, installed from disk with no build step of ours | **Complete** | gap 1 |
+| Ship real **code** that runs in the game, installed from disk with no build step here | **Complete** | gap 1 |
 | Change behaviour: the `ModHooks` points, plus the keyed registries listed in `MOD_REACH.md` §(c) | **Complete** | gap 3 |
 | Monster combat: blow effects, recording and live paths, one registration for both | **Complete** | gap 4 |
 | Store behaviour: the buy rule and stack sizes | **Complete** | gap 5 |

@@ -25,7 +25,7 @@
  * a row whose image is absent.
  *
  * Point the game at your own pack with `?tiles=<base-url>` and the full catalog
- * is offered regardless: with a user-supplied pack we cannot know what is in it,
+ * is offered regardless: with a user-supplied pack there is no knowing what is in it,
  * and upstream does not check either - it lists whatever list.txt says and
  * degrades if an image is missing.
  *
@@ -44,9 +44,9 @@ import type { TileModePack } from "./tile-mods";
  * decides which core modes are offerable on a stock install.
  *
  * Shockbolt (`shockbolt`) used to be absent, on the reading that its licence
- * forbids redistribution "with other games or projects" and that we could not
- * decide for ourselves whether a faithful re-implementation of 4.2.6 counts as
- * Angband. It ships now, with the author's permission, so all six catalog modes
+ * forbids redistribution "with other games or projects" and that this project
+ * could not decide on its own whether a faithful re-implementation of 4.2.6
+ * counts as Angband. It ships now, with the author's permission, so all six catalog modes
  * are offerable. That permission holds only while the project is non-commercial;
  * CREDITS.md in public/tiles/ carries the terms.
  *

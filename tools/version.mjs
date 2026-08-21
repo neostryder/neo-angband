@@ -52,7 +52,7 @@ export function versionSites() {
   ];
 
   /* Discovered, not listed. packages/ is the set of things that carry a version;
-   * enumerating them here would make "we forgot to add the new package" a thing
+   * enumerating them here would make "the new package never got added" a thing
    * that can happen, and it is exactly the class of miss this tool exists for. */
   for (const dir of readdirSync(join(repoRoot, "packages")).sort()) {
     if (!existsSync(join(repoRoot, "packages", dir, "package.json"))) continue;

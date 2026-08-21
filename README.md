@@ -18,14 +18,14 @@ anywhere and so you can change it without forking it.
 
 ---
 
-> ## Status: ALPHA, and we would like you to break it
+> ## Status: ALPHA, and I would like you to break it
 >
 > The whole game is playable start to finish: roll a character, shop the town,
 > descend, die permanently. It is not finished. Play sessions still turn up
-> things our automated checks cannot see: a message the original prints that
+> things the automated checks cannot see: a message the original prints that
 > this one does not, a screen laid out a column off, a prompt that never appears.
 >
-> **That is exactly what we need testers for.** Play it, and when something feels
+> **That is exactly what testers are for.** Play it, and when something feels
 > unlike Angband, [open an issue](https://github.com/neostryder/neo-angband/issues).
 > See [reporting a difference](#reporting-a-difference) for the one detail that
 > makes a report immediately actionable.
@@ -143,8 +143,8 @@ Close enough that a difference is treated as a bug.
   message text and the screen layout included.
 - **The original C source is kept in the repository** ([`reference/`](reference/)),
   buildable, and ported code cites the line it came from.
-- **We compare the two implementations automatically.** The original game ships
-  its own statistical tool for measuring dungeon generation; we run it against
+- **The two implementations are compared automatically.** The original game ships
+  its own statistical tool for measuring dungeon generation; it runs against
   the real compiled C and against this port, and test the results against each
   other across a range of depths.
 - **Where faithfulness and "improvement" disagree, faithfulness wins.**

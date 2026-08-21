@@ -47,7 +47,7 @@ function platformInfo(): HostBridgeInfo {
   } catch {
     /* fall through to the honest minimum */
   }
-  /* The channel is not there, so this is not the shell we think it is. Report
+  /* The channel is not there, so this is not the shell it was expected to be. Report
    * no argv rather than an empty-but-supported one. */
   return { argv: [], ...HOST_SHELL_LIMITS, dataDir: "", portable: false, logsDir: "" };
 }

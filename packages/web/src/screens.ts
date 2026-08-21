@@ -154,8 +154,8 @@ export function objLetter(i: number): string {
  * an equipment slot, from list-equip-slots.h's mention column - "Wielding",
  * "Shooting", "Light source", "On body"/"On back"/etc. For a name_in_desc slot
  * (ring/amulet/armour) the mention carries a %s that C fills with the slot's own
- * name via format(), giving "On right hand", "Around neck", "On head", ... We
- * reproduce that substitution here. The heavy_wield/heavy_shoot branch (which
+ * name via format(), giving "On right hand", "Around neck", "On head", ... That
+ * substitution is reproduced here. The heavy_wield/heavy_shoot branch (which
  * swaps in heavy_describe) is a describe-path detail not surfaced by these
  * listings, so it is intentionally omitted.
  */

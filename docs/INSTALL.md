@@ -201,7 +201,7 @@ start` launches without rebuilding.
 ### Package it
 
 Only needed if you want a build the [Releases](https://github.com/neostryder/neo-angband/releases)
-page does not offer - a platform we do not build, or a change of your own.
+page does not offer - a platform I do not build, or a change of your own.
 
 ```sh
 pnpm --filter @rpgm-tools/neo-angband-desktop dist

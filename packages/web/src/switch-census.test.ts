@@ -50,7 +50,7 @@
  *
  * All 39 rows now carry a verdict, and the distribution is the finding: ZERO
  * are content dispatch a mod would want. That number is asserted here rather
- * than described in a document, because "we looked at all of them" is exactly
+ * than described in a document, because "all of them were looked at" is exactly
  * the sort of claim that is true on the day it is written.
  *
  * It was 51 and 22 until project_p became a registry, and the count moving on
@@ -217,7 +217,7 @@ describe("the switch census", () => {
     expect(
       manifest.switches.reduce((sum, r) => sum + r.cases, 0),
     ).toBeGreaterThanOrEqual(508);
-    /* And it finds the biggest one we know about by name. */
+    /* And it finds the biggest one known by name. */
     expect(manifest.switches[0]?.file).toBe("packages/web/src/wizard.ts");
   });
 

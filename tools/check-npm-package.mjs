@@ -227,7 +227,7 @@ for (const pkg of packages) {
     );
 
     /* An extracted package has no node_modules of its own. For a package with zero
-     * runtime dependencies that is exactly the isolation we want; for one WITH deps
+     * runtime dependencies that is exactly the isolation wanted here; for one WITH deps
      * a bare specifier would fail for a legitimate reason, so say what was skipped
      * rather than pretend the check ran. */
     const deps = Object.keys(manifest.dependencies ?? {});

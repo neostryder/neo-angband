@@ -436,7 +436,7 @@ export function monsterIsDecoyed(mon: Monster, state: GameState): boolean {
 /**
  * square_remove_all_traps_of_type by trap flag: remove every trap at `grid` that
  * carries `flag` (glyph of warding / web / decoy all being distinguished only by
- * their tidx, which we recover from the first matching trap). Uses the existing
+ * their tidx, recovered here from the first matching trap). Uses the existing
  * trap.ts helpers (squareTrap / squareRemoveAllTraps); draws no RNG.
  */
 function removeTrapsWithFlag(state: GameState, grid: Loc, flag: number): void {

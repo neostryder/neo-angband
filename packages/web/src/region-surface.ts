@@ -80,7 +80,7 @@ export function clipSurface(
   cells: RegionCells,
   witness?: CellWitness,
 ): GridSurface {
-  /* Region-local (x, y) -> is it ours? Written against the same predicate the
+  /* Region-local (x, y) -> is it inside? Written against the same predicate the
    * stack uses, at the origin, so "inside a region" has one definition. */
   const inside = (x: number, y: number): boolean =>
     regionContains({ col: 0, row: 0, cols: cells.cols, rows: cells.rows }, x, y);
@@ -98,7 +98,7 @@ export function clipSurface(
       surface.eraseSpan(from, cells.row + y, spanFrom(x));
       return;
     }
-    /* No bounded erase. Honest only when our right edge is the host's - see
+    /* No bounded erase. Honest only when this right edge is the host's - see
      * clipSurfaceFault, which a caller is expected to have consulted. Doing it
      * anyway rather than silently skipping: a region that never erases leaves
      * the previous frame's text under its own, which reads as corruption. */

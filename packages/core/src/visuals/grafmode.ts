@@ -30,7 +30,7 @@ export const GRAPHICS_NONE = 0;
 
 /**
  * struct graphics_mode (grafmode.h). The C stores a fully-built absolute
- * `path` under ANGBAND_DIR_TILES; here we keep the raw `directory` name and
+ * `path` under ANGBAND_DIR_TILES; here the raw `directory` name is kept and
  * leave path/URL construction to the platform (no bundled assets).
  */
 export interface GraphicsMode {
