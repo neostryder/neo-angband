@@ -295,6 +295,19 @@ over a canvas that is itself using the Fullscreen API have behaved
 inconsistently across Electron versions, and this shell's own fullscreen events
 already fire before `isFullScreen()` flips.
 
+### A mod that installs a mod is not recorded as having done so
+
+`ctx.installMod` (2026-08-21) lands an archive through the same door the player's
+own zip import uses, so the arriving mod is keyed, digested, listed and consented
+to identically - and identically means the stored record does not say a mod put
+it there. `InstalledModMeta` carries `repo`, `tag`, the digest and the install
+timestamp; there is no field for "arrived by way of another mod", so the mod
+manager cannot show it and a player cannot later ask which of their mods the
+builder wrote. The origin pin is not a substitute: it records where the bytes
+CLAIM to come from, which is the honest answer to a different question. Closing
+it is a field on the meta record plus a row in the mod's detail pane, and it
+wants doing while there is still only one caller of that door.
+
 ### A player-visible speed control for a mod's autoplayer
 
 `ModPlugin.controller`'s pump (added 2026-08-21, see `CHANGELOG.md`) ticks on a

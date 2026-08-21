@@ -32,6 +32,29 @@ version it still calls itself.
 
 ### Added
 
+- **A mod can install a content mod.** `ctx.installMod(bytes)`, behind the new
+  `mod:install` capability, takes the bytes of a mod archive and lands it through
+  the same door the player's own zip import uses - so it is read under the same
+  ceilings, inspected against the same requirements in the same words, keyed and
+  digested the same way, and pinned to the same origin on first import. This is
+  the caller `ModProject` was written for: it has emitted a mod folder's exact
+  bytes since it was written and had nothing to hand them to, because nothing a
+  mod can reach turns bytes into an installed mod.
+
+  The door installs CONTENT only. An archive that ships code, under any name and
+  not merely `plugin.js`, is refused by file; so is one whose manifest asks for
+  any capability. That is what keeps the grant the size of its own sentence: "may
+  add records and tweaks to your library" rather than "may write a program,
+  install it, and have you enable something it authored". And an install is not
+  an enable - what arrives is switched off, the player is shown its own
+  capability list before any of it runs, and a mod takes effect on reload - which
+  is what stops one grant becoming every grant. The consent line says both halves
+  rather than leaving either to be discovered.
+
+  Refusals are values, never throws, because the caller is a mod that will be
+  showing the answer to a player. The bytes are copied before anything
+  asynchronous runs, so what was inspected is what is stored.
+
 - **A mod can draw with real HTML instead of the character grid.** A mod holding
   the new `ui:panel.mount` capability gets `ctx.ui.openPanel(spec)`, which mounts
   a panel on the page above the game and hands back a shadow root to build in.

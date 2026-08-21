@@ -194,6 +194,21 @@ export function describeCapability(cap: string): CapabilityDescription {
         text: "Write files into a folder you pick (it never learns the folder's real path, only whether a write succeeded)",
         elevated: false,
       };
+    case "mod":
+      /* BOTH HALVES OF THIS SENTENCE ARE LOAD-BEARING and neither is padding.
+       * "Install mods" alone reads as "grant itself any capability it likes by
+       * way of something it wrote", and that is not what the door does: it
+       * refuses an archive that ships code or asks for capabilities, and what
+       * arrives is switched off until the player has read its own list. A
+       * consent line that left either out would be describing a much larger
+       * grant than the one being made. */
+      return {
+        cap,
+        text:
+          "Add content mods to your library - records and tweaks, never code, and they arrive switched off until " +
+          "you read what they ask for and turn them on yourself",
+        elevated: true,
+      };
     case "ui":
       /* Named, because the consent is worth exactly as much as the player's
        * ability to picture what changes. "Replace part of the interface" tells
