@@ -165,6 +165,17 @@ The port emits all three, and where they land depends on whether there is a game
 The messages themselves are checked against the C's own format strings, argument
 order included, in `packages/core/src/player/options-file.test.ts`.
 
+### Accepted: front-end presentation has latitude gameplay does not
+
+A minor front-end tweak - a decoration, a spacing choice, a widget's own visual
+polish - is not held to the same bar as a rule, a number, or a message's own
+words. The test is whether a player's outcome or understanding changes: a help
+page that drops upstream's decorative dashed rule under a section heading
+(`packages/web/src/help.ts`'s section-heading comment) is a presentation choice
+with nothing behind it to diverge, not a parity deviation to close. This differs
+from the standard above only in scope - GAMEPLAY parity still means the rules,
+the numbers and the words match; a rule under a heading is none of those.
+
 ### RNG neutrality (the hard rule)
 
 The port owns its seed lineage, but that lineage must be **stable and
