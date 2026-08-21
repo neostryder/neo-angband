@@ -162,7 +162,7 @@ export function shQuote(s: string): string {
  *
  * IT HAS TO BE AN EXTERNAL PROCESS. A program cannot replace its own running
  * executable on Windows (the file is locked) and cannot reliably do it on macOS
- * either, so the last step belongs to something that outlives us. The script
+ * either, so the last step belongs to something that outlives this process. The script
  * waits for the app's PID, swaps, relaunches, and deletes the attic.
  *
  * THE WAIT IS BOUNDED. If the app somehow never exits, an unbounded wait leaves

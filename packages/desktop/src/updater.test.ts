@@ -21,6 +21,8 @@ import {
   downloadArchive,
   extractCommand,
   isAllowedAssetUrl,
+  isAllowedRevealUrl,
+  isHttpUrl,
   isWritable,
   sha256File,
   shapeOf,
@@ -70,6 +72,60 @@ describe("where a download may come from", () => {
   it("refuses something that is not a URL at all", () => {
     expect(isAllowedAssetUrl("not a url", REPO)).toBe(false);
     expect(isAllowedAssetUrl("", REPO)).toBe(false);
+  });
+});
+
+/*
+ * The "reveal" op takes this URL straight from `window.neoDesktop.update`, a
+ * bridge call any renderer script can make - a mod's plugin.js among them,
+ * since a mod's code is a plain ES module import into the same page - and the
+ * string it is normally given began as GitHub's own `html_url`, fetched over
+ * the network rather than built into this program. Neither origin is a
+ * constant this process controls, so isAllowedRevealUrl is the check that
+ * decides before shell.openExternal ever sees it.
+ */
+describe("where the update page's (U)pdate reveal may point", () => {
+  it("allows this project's own releases page and its tag pages", () => {
+    expect(isAllowedRevealUrl(`https://github.com/${REPO}/releases`, REPO)).toBe(true);
+    expect(isAllowedRevealUrl(`https://github.com/${REPO}/releases/tag/v0.17.0`, REPO)).toBe(true);
+  });
+
+  it("refuses another repository, another host, and plain http", () => {
+    expect(isAllowedRevealUrl("https://github.com/someone/else/releases", REPO)).toBe(false);
+    expect(isAllowedRevealUrl("https://evil.invalid/releases", REPO)).toBe(false);
+    expect(isAllowedRevealUrl(`http://github.com/${REPO}/releases`, REPO)).toBe(false);
+  });
+
+  it("refuses a non-http scheme a registered protocol handler would receive", () => {
+    expect(isAllowedRevealUrl("javascript:alert(1)", REPO)).toBe(false);
+    expect(isAllowedRevealUrl("file:///C:/Windows/System32/cmd.exe", REPO)).toBe(false);
+    expect(isAllowedRevealUrl("ms-settings:privacy", REPO)).toBe(false);
+  });
+
+  it("refuses something that is not a URL at all", () => {
+    expect(isAllowedRevealUrl("not a url", REPO)).toBe(false);
+    expect(isAllowedRevealUrl("", REPO)).toBe(false);
+  });
+});
+
+/* The general guard for `setWindowOpenHandler`, which is not scoped to one
+ * host the way the reveal URL is - the renderer's legitimate external links
+ * are not all on github.com, so only the scheme is checked here. */
+describe("what setWindowOpenHandler may hand to the real browser", () => {
+  it("allows http and https", () => {
+    expect(isHttpUrl("https://example.invalid/page")).toBe(true);
+    expect(isHttpUrl("http://example.invalid/page")).toBe(true);
+  });
+
+  it("refuses a scheme the operating system would route somewhere else", () => {
+    expect(isHttpUrl("javascript:alert(1)")).toBe(false);
+    expect(isHttpUrl("file:///C:/Windows/System32/cmd.exe")).toBe(false);
+    expect(isHttpUrl("ms-settings:privacy")).toBe(false);
+  });
+
+  it("refuses something that is not a URL at all", () => {
+    expect(isHttpUrl("not a url")).toBe(false);
+    expect(isHttpUrl("")).toBe(false);
   });
 });
 
