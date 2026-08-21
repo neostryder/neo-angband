@@ -24,6 +24,14 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-08-20
+
+Current state of the project at version `0.23.0` - the release where the port
+gives something back. Nothing about the game's rules changed. What changed is that
+a mod can ask what the game is made of, that the Borg finally uses it, and that
+the game stopped deciding what a mod's monster looks like - a rule 0.22.0 had
+added and 4.2.6 has no opinion about, handed to the tile set where it belongs.
+
 ### Added
 
 - **A plugin can now ask the game what it is made of: `ctx.registries`.** Every
@@ -411,7 +419,8 @@ The initial public alpha release.
 - **Deterministic and seeded** generation throughout, with a save format built
   to survive modular content.
 
-[Unreleased]: https://github.com/neostryder/neo-angband/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/neostryder/neo-angband/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/neostryder/neo-angband/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/neostryder/neo-angband/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/neostryder/neo-angband/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/neostryder/neo-angband/releases/tag/v0.20.0
