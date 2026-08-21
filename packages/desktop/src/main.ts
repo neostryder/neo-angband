@@ -63,6 +63,8 @@ import type { LogLevel } from "@rpgm-tools/neo-angband-core/log";
 import {
   UPDATE_REPO,
   downloadArchive,
+  isAllowedRevealUrl,
+  isHttpUrl,
   launchSwap,
   shapeOf,
   stageArchive,
@@ -274,7 +276,7 @@ function send(
  * A LIST rather than one path because `/mods/<id>/...` can be answered from two
  * places - the player's mods folder or the web bundle - and which one holds a
  * given file is not knowable without looking. See routes.ts for why, and for the
- * defect that taught us: a single-candidate lookup made every bundled mod asset
+ * defect worth recording: a single-candidate lookup made every bundled mod asset
  * a 404 on desktop while serving fine on Pages.
  */
 function serveFirst(
@@ -309,7 +311,7 @@ function serveFirst(
  * Why a loopback HTTP server instead of file:// -
  *  - service workers, fetch, and ES modules behave normally on http://127.0.0.1
  *    but are restricted or quirky under file://;
- *  - it lets us send Cross-Origin-Isolation headers (COOP + COEP), which turn on
+ *  - it allows sending Cross-Origin-Isolation headers (COOP + COEP), which turn on
  *    crossOriginIsolated and therefore SharedArrayBuffer. A static host (Pages)
  *    cannot send those headers, so the untrusted-Worker deep-override path that
  *    needs SAB is only possible on the desktop build. Nothing REQUIRES it - the
@@ -696,7 +698,7 @@ function installLogging(): void {
  * a string it can print is better than giving it a stack it cannot.
  */
 function installUpdater(): void {
-  /* Held between `download` and `apply` so the renderer cannot ask us to swap in
+  /* Held between `download` and `apply` so the renderer cannot ask the main process to swap in
    * a directory it names. The only path ever swapped is one this process
    * extracted itself, this session, from an archive it verified. */
   let staged: string | null = null;
@@ -750,7 +752,25 @@ function installUpdater(): void {
         return { ok: true };
       }
       if (op === "reveal") {
-        await shell.openExternal(typeof arg === "string" ? arg : `https://github.com/${UPDATE_REPO}/releases`);
+        const fallback = `https://github.com/${UPDATE_REPO}/releases`;
+        /* `arg` reaches here from `window.neoDesktop.update("reveal", arg)`, a
+         * bridge call any script in the renderer can make with any string - a
+         * mod's plugin.js among them - and the string itself usually started as
+         * GitHub's own `html_url`, fetched over the network rather than built
+         * into this program. Neither origin is trusted, so the URL is checked
+         * here rather than handed straight to the operating system. A rejection
+         * is logged with what was rejected, because a silent fallback to the
+         * releases page looks identical to a legitimate link that simply did
+         * not open, and that is a report nobody could diagnose. */
+        let url = fallback;
+        if (typeof arg === "string") {
+          if (isAllowedRevealUrl(arg, UPDATE_REPO)) {
+            url = arg;
+          } else {
+            mainLog("warn", "update", "refused to open a reveal url outside this project's releases", arg);
+          }
+        }
+        await shell.openExternal(url);
         return { ok: true };
       }
       return { ok: false, error: `unknown update op` };
@@ -1575,7 +1595,16 @@ async function createWindow(port: number): Promise<void> {
   // External links open in the user's real browser, not inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http://127.0.0.1")) return { action: "allow" };
-    void shell.openExternal(url);
+    /* `url` is whatever the renderer asked to open with `window.open` (or a
+     * target="_blank" click) - the renderer's own choice, not this process's,
+     * and a mod's plugin.js runs in that same page. A scheme other than http or
+     * https would reach the operating system's own handler for it rather than a
+     * browser, so it is refused here and logged rather than opened silently. */
+    if (isHttpUrl(url)) {
+      void shell.openExternal(url);
+    } else {
+      mainLog("warn", "window-open", "refused to open a non-http url in the real browser", url);
+    }
     return { action: "deny" };
   });
 
