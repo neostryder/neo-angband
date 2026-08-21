@@ -645,6 +645,15 @@ export interface CalcBonusesOptions {
    */
   statIndBoost?: { str: number; dex: number };
   /**
+   * p->upkeep->total_weight (the "Analyze weight" block, 2222-2230), in tenth
+   * pounds. Defaults to the player's own carried weight, which is the live
+   * answer. A HYPOTHETICAL loadout supplies the weight it would carry instead:
+   * wearing something already in the pack changes nothing, but buying a mail
+   * shirt adds its weight and can cost speed, and a derive that read the current
+   * burden would miss exactly that.
+   */
+  totalWeight?: number;
+  /**
    * p->depth (calc_light town-daytime early-out, 1607). Defaults to undefined,
    * treated as a nonzero depth so the town branch stays dormant.
    */
@@ -1289,7 +1298,7 @@ export function calcBonuses(
   }
 
   /* Analyze weight (2222-2230). */
-  const j = player.upkeep.totalWeight;
+  const j = options.totalWeight ?? player.upkeep.totalWeight;
   const limit = weightLimit(state);
   if (j > Math.trunc(limit / 2)) {
     state.speed -=

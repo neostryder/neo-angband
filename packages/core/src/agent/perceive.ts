@@ -15,28 +15,24 @@
  */
 
 import {
-  ELEMENT_ENTRIES,
   FEAT,
   MON_RACE_FLAG_ENTRIES,
   MON_SPELL_ENTRIES,
   MON_TMD,
-  OBJECT_FLAG_ENTRIES,
   SQUARE,
-  TMD,
   TRF,
 } from "../generated/index.js";
 import type { FlagSet } from "../bitflag.js";
 import { useFlavorGlyph } from "../visuals/object-glyph.js";
 import type { GameState } from "../game/context.js";
 import { gearGet } from "../game/gear.js";
-import type { GameObject } from "../obj/object.js";
 import { LIGHTING } from "../visuals/tile-prefs.js";
-import { OBJ_MOD_NAMES } from "../obj/bind.js";
-import { objectValue } from "../obj/value.js";
 import { monsterIsVisible } from "../mon/predicate.js";
 import { PY_SPELL, spellChance } from "../player/spell.js";
 import { makeSpellChanceEnv } from "../game/spell-cmd.js";
 import { priceItem } from "../store/price.js";
+import { itemView, playerViewFor } from "./entity-views.js";
+import { simulateLoadout } from "./loadout.js";
 import { AGENT_API_VERSION, AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types.js";
 import type {
   AgentCapabilities,
@@ -45,24 +41,15 @@ import type {
   AgentViewDeps,
   CellView,
   ItemView,
+  LoadoutChange,
+  LoadoutSimulation,
   MonsterView,
-  PlayerView,
   SpellbookView,
   SpellView,
   StoreItemView,
   StoreView,
   TargetView,
 } from "./types.js";
-
-/** OF_* codes for the set flags in an object-flag FlagSet (OF is 1-indexed). */
-function ofCodes(flags: FlagSet): string[] {
-  const out: string[] = [];
-  for (const f of flags) {
-    const entry = OBJECT_FLAG_ENTRIES[f - 1];
-    if (entry) out.push(entry.name);
-  }
-  return out;
-}
 
 /** RF_* codes for the set flags in a race-flag FlagSet (entry index == RF value). */
 function raceFlagCodes(flags: FlagSet): string[] {
@@ -82,155 +69,6 @@ function spellFlagCodes(flags: FlagSet): string[] {
     if (entry) out.push(entry.name);
   }
   return out;
-}
-
-function itemView(
-  handle: number,
-  obj: GameObject,
-  state: GameState,
-  deps: AgentViewDeps,
-): ItemView {
-  const modifiers: Array<{ code: string; value: number }> = [];
-  for (let i = 0; i < obj.modifiers.length; i++) {
-    const value = obj.modifiers[i] ?? 0;
-    if (value === 0) continue;
-    const code = OBJ_MOD_NAMES[i];
-    if (code) modifiers.push({ code, value });
-  }
-
-  const brands: string[] = [];
-  if (obj.brands) {
-    for (let i = 0; i < obj.brands.length; i++) {
-      if (!obj.brands[i]) continue;
-      const code = state.brands[i]?.code;
-      if (code) brands.push(code);
-    }
-  }
-
-  const slays: string[] = [];
-  if (obj.slays) {
-    for (let i = 0; i < obj.slays.length; i++) {
-      if (!obj.slays[i]) continue;
-      const code = state.slays[i]?.code;
-      if (code) slays.push(code);
-    }
-  }
-
-  const resists: Array<{ element: string; level: number }> = [];
-  for (let i = 0; i < obj.elInfo.length; i++) {
-    const level = obj.elInfo[i]?.resLevel ?? 0;
-    if (level === 0) continue;
-    const name = ELEMENT_ENTRIES[i]?.name;
-    if (name) resists.push({ element: name, level });
-  }
-
-  const curses: string[] = [];
-  if (obj.curses) {
-    for (let i = 0; i < obj.curses.length; i++) {
-      const power = obj.curses[i]?.power ?? 0;
-      if (power <= 0) continue;
-      /* Curse names resolve from the always-present RuneEnv curse table (real
-       * in production, inert [null] in the worldless harness), then the
-       * optional registry dep, then the numeric index as a last resort. */
-      curses.push(
-        state.runeEnv.curses[i]?.name ??
-          deps.reg?.curses[i]?.name ??
-          String(i),
-      );
-    }
-  }
-
-  const view: ItemView = {
-    handle,
-    label: obj.kind.name,
-    tval: obj.tval,
-    sval: obj.sval,
-    pval: obj.pval,
-    number: obj.number,
-    weight: obj.weight,
-    ac: obj.ac,
-    toA: obj.toA,
-    toH: obj.toH,
-    toD: obj.toD,
-    dd: obj.dd,
-    ds: obj.ds,
-    ego: obj.ego !== null,
-    artifact: obj.artifact !== null,
-    flags: ofCodes(obj.flags),
-    modifiers,
-    brands,
-    slays,
-    resists,
-    curses,
-    egoName: obj.ego?.name ?? null,
-    artifactName: obj.artifact?.name ?? null,
-    activation: obj.activation !== null,
-    timeout: obj.timeout,
-    inscription: obj.note ?? null,
-  };
-  if (deps.resolver) {
-    const kindId = deps.resolver.kindIdOrNull(obj.kind.kidx);
-    if (kindId !== null) view.kindId = kindId;
-  }
-  if (deps.reg) {
-    const aware = deps.aware ?? ((): boolean => true);
-    view.value = objectValue(deps.reg, obj, obj.number, aware(obj.kind));
-  }
-  return view;
-}
-
-function playerView(state: GameState, deps: AgentViewDeps): PlayerView {
-  const p = state.actor.player;
-  const combat = state.actor.combat;
-  const playerState = state.playerState;
-  const view: PlayerView = {
-    race: p.race.name,
-    cls: p.cls.name,
-    level: p.lev,
-    maxLevel: p.maxLev,
-    exp: p.exp,
-    maxExp: p.maxExp,
-    gold: p.au,
-    depth: state.chunk.depth,
-    maxDepth: p.maxDepth,
-    hp: p.chp,
-    maxHp: p.mhp,
-    sp: p.csp,
-    maxSp: p.msp,
-    speed: state.actor.speed,
-    /* Displayed AC is state->ac + state->to_a. */
-    ac: combat.ac + combat.toA,
-    toHit: combat.toH,
-    toDam: combat.toD,
-    stats: [...p.statCur],
-    light: state.actor.light,
-    grid: { x: state.actor.grid.x, y: state.actor.grid.y },
-    status: {
-      blind: p.timed[TMD.BLIND] ?? 0,
-      confused: p.timed[TMD.CONFUSED] ?? 0,
-      afraid: p.timed[TMD.AFRAID] ?? 0,
-      poisoned: p.timed[TMD.POISONED] ?? 0,
-      cut: p.timed[TMD.CUT] ?? 0,
-      stun: p.timed[TMD.STUN] ?? 0,
-      paralyzed: p.timed[TMD.PARALYZED] ?? 0,
-      food: p.timed[TMD.FOOD] ?? 0,
-    },
-    dead: state.isDead,
-    winner: p.totalWinner,
-    skills: [...p.skills],
-    shape: p.shape?.name ?? null,
-    objectFlags: playerState ? ofCodes(playerState.flags) : [],
-    seeInfra: playerState?.seeInfra ?? p.race.infravision,
-    blows: combat.numBlows,
-    shots: combat.numShots,
-  };
-  if (deps.resolver) {
-    const raceId = deps.resolver.playerRaceIdOrNull(p.race.ridx);
-    if (raceId !== null) view.playerRaceId = raceId;
-    const classId = deps.resolver.playerClassIdOrNull(p.cls.cidx);
-    if (classId !== null) view.playerClassId = classId;
-  }
-  return view;
 }
 
 function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
@@ -463,7 +301,7 @@ export function createAgentView(
   return {
     apiVersion: AGENT_API_VERSION,
     turn: gateRead(caps, D.turn, () => state.turn),
-    player: gateRead(caps, D.player, () => playerView(state, deps)),
+    player: gateRead(caps, D.player, () => playerViewFor(state, deps)),
     monsters: gateRead(caps, D.monsters, () => monsterViews(state, deps)),
     cell: gateRead(caps, D.map, (x: number, y: number) =>
       cellView(state, x, y, deps),
@@ -500,5 +338,16 @@ export function createAgentView(
     stores: gateRead(caps, D.stores, () => storeViews(state, deps)),
     spellbooks: gateRead(caps, D.spells, () => spellbookViews(state)),
     constants: gateRead(caps, D.constants, () => ({ ...state.z })),
+    /* The same deps as every accessor above, on purpose: an ItemView from a
+     * simulated loadout has to be interchangeable with one from the live pack,
+     * or an agent's decision would depend on which read produced the object.
+     * Gated on the player domain, since what it answers is a question about the
+     * player. */
+    simulateLoadout: gateRead(
+      caps,
+      D.player,
+      (change: LoadoutChange): LoadoutSimulation | null =>
+        simulateLoadout(state, change, { viewDeps: deps }),
+    ),
   };
 }

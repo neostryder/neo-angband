@@ -62,6 +62,32 @@ version it still calls itself.
   per-shape player picture, so what one should look like is a judgement, and a
   tile set gets to make judgements about its own art where the port does not.
 
+- **A loadout the character is not wearing can be derived.** `simulateLoadout`
+  answers "what would I be, wearing this instead": it runs the engine's own
+  `calc_bonuses` over a hypothetical set of worn objects and returns the
+  character before, the character after, and the difference between them - every
+  field of upstream's `player_state`, plus max hitpoints, max mana, the armour
+  encumbrance and the carried weight. Nothing in the live game is written.
+
+  It reuses the real derive rather than summing an item's own bonuses. That is
+  what keeps the answer from drifting away from the loadout the character is
+  actually in, and it is the only way the interactions are visible at all: the
+  ring of strength that changes the blow count, the cuirass that costs a caster
+  half their mana, the weight that costs speed. A test asserts the simulated
+  answer field for field against really equipping the item.
+
+  A whole before/after/delta surface rather than a score, because the two things
+  that want this want different halves of it. An autoplayer reduces it to one
+  number; a player comparing two items wants to see which resist was traded for
+  which, and a scalar can never say. Reachable by a mod as
+  `view.simulateLoadout(change)` on the agent view - additive and optional, so the
+  agent API is now 1.2.0 - and by the engine as the exported function.
+
+  `neo-angband-mod-borg` 0.6.0 is the first consumer, and this is what closes the
+  last of its four resolver seams: the Borg wears what it finds, buys what it
+  needs and sells what it is finished with, where before it could not tell whether
+  any of the three would help and so did none of them.
+
 ## [0.24.0] - 2026-08-21
 
 Current state of the project at version `0.24.0` - a fixes release. Nothing

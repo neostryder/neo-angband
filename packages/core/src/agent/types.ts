@@ -48,8 +48,17 @@ import type { ObjectKind } from "../obj/types.js";
  * an agent could not see the map the player sees, and the invented table would
  * drift from the gamedata with nothing to notice. Purely additive - every
  * field is absent without the dep, exactly as `featCode` is without a resolver.
+ *
+ * 1.2.0 (2026-08-21): `AgentView.simulateLoadout` and the `LoadoutChange` /
+ * `LoadoutSimulation` shapes it speaks in. Added because the view could describe
+ * the character it HAS and nothing else, so every decision of the form "would
+ * this item be better than the one I am wearing" had to be answered by summing
+ * the item's own bonuses - a second implementation of calc_bonuses, guaranteed to
+ * drift from the first. The accessor runs the engine's own derive over a
+ * hypothetical set of worn objects. Purely additive, and optional: a view that
+ * cannot derive omits it rather than answering approximately.
  */
-export const AGENT_API_VERSION = "1.1.0";
+export const AGENT_API_VERSION = "1.2.0";
 
 /**
  * A command an agent emits - identical to the engine's PlayerCommand (codes 1:1
@@ -372,6 +381,130 @@ export interface TargetView {
  * The perceive facade: a read-only view of the world. Every accessor returns
  * fresh plain data (no live engine references). Capability: state:*.read.
  */
+/* ------------------------------------------------------------------ *
+ * PERCEIVE - a loadout the player is NOT wearing.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Where one item in a hypothetical loadout comes from.
+ *
+ * Three arms because the three questions have three different answers to "which
+ * object is this". Something the character already has is a gear handle, which
+ * is what every other item verb takes. A ware in a shop is NOT in the gear at
+ * all, so it has no handle - `StoreItemView.index` inside `view.stores()[n]` is
+ * its only address, and pricing a purchase is one of the two decisions this
+ * whole capability exists for. The third arm is for a caller INSIDE the engine
+ * that is holding the object itself (a floor pile, a freshly rolled drop, a
+ * character-sheet comparison); an agent driving the frozen view has no
+ * GameObject and will never use it.
+ */
+export type LoadoutItemRef =
+  /** Something already in the gear, worn or packed. */
+  | { readonly from: "gear"; readonly handle: number }
+  /** Store stock: `store` indexes view.stores(), `index` the ware in it. */
+  | { readonly from: "store"; readonly store: number; readonly index: number }
+  /** An object in hand (engine-internal callers only). */
+  | { readonly from: "object"; readonly object: import("../obj/object.js").GameObject };
+
+/**
+ * A hypothetical change to what the character carries and wears.
+ *
+ * Every field is optional and they compose, applied in the order
+ * release -> remove -> wield -> carry, so "sell the ring I am wearing and put on
+ * this one instead" is one change rather than two simulations. An empty change
+ * derives the loadout the character is already in, which is what makes `before`
+ * and `after` comparable rather than two different derives.
+ */
+export interface LoadoutChange {
+  /**
+   * Wear or wield these, each routed to the body slot wield_slot picks for its
+   * tval (a ring goes to the first EMPTY ring slot, else the first ring slot).
+   * Whatever was in the slot moves to the pack. An item from `store` or
+   * `object` is being ACQUIRED, so its weight joins the carried total.
+   */
+  readonly wield?: readonly LoadoutItemRef[];
+  /**
+   * Take these into the pack without wearing them - a purchase of something the
+   * character will carry rather than wield. `number` defaults to the whole
+   * stack the reference names.
+   */
+  readonly carry?: readonly {
+    readonly item: LoadoutItemRef;
+    readonly number?: number;
+  }[];
+  /**
+   * Empty these body slots. What is worn there goes into the pack, so the
+   * carried weight does not change - this is taking something off, not
+   * getting rid of it.
+   */
+  readonly remove?: readonly number[];
+  /**
+   * Give these up entirely: a sale, or a drop. `number` defaults to the whole
+   * stack. A handle that names WORN gear empties its slot on the way out, so a
+   * caller pricing "sell the amulet I have on" does not have to remove it first.
+   */
+  readonly release?: readonly {
+    readonly handle: number;
+    readonly number?: number;
+  }[];
+}
+
+/** Where one wielded item landed, and what it pushed out of that slot. */
+export interface LoadoutPlacement {
+  /** The body slot index, as `equipment()` is indexed. */
+  readonly slot: number;
+  /** The item now in the slot. */
+  readonly worn: ItemView;
+  /** What was in the slot before, or null when it was empty. */
+  readonly displaced: ItemView | null;
+}
+
+/** One complete loadout: what is worn and carried, and what it derives to. */
+export interface LoadoutView {
+  /**
+   * The player as `player()` would report them wearing this loadout. Every
+   * derived field (speed, ac, toHit, toDam, blows, shots, light, seeInfra,
+   * objectFlags, maxHp, maxSp) is this loadout's; the rest of the character is
+   * unchanged.
+   */
+  readonly player: PlayerView;
+  /** Worn equipment by body slot; null for an empty slot. */
+  readonly equipment: readonly (ItemView | null)[];
+  /** The pack this loadout leaves behind, in pack order. */
+  readonly inventory: readonly ItemView[];
+  /**
+   * The WHOLE derived surface for this loadout - every field of upstream's
+   * player_state, plus max hitpoints, max mana, armour encumbrance and the
+   * carried weight. This is the deep answer; `player` is the frozen-contract
+   * projection of the same derive.
+   */
+  readonly stats: import("../player/loadout.js").DerivedStatsView;
+}
+
+/**
+ * The answer to "what would this loadout do for me": the character as it stands,
+ * the character with the change applied, and the difference between them.
+ *
+ * A BEFORE/AFTER/DELTA TRIPLE rather than a score, and deliberately. An
+ * autoplayer reduces it to one number and a player wants to see which resist was
+ * traded for which; a scalar can serve the first and never the second, and the
+ * two must not be allowed to disagree about the underlying derive.
+ */
+export interface LoadoutSimulation {
+  readonly before: LoadoutView;
+  readonly after: LoadoutView;
+  readonly delta: import("../player/loadout.js").DerivedStatsDelta;
+  /** Where each wielded item landed (empty when the change wields nothing). */
+  readonly placements: readonly LoadoutPlacement[];
+  /**
+   * References the change named that resolved to no object: a stale handle, a
+   * store index past the end of the stock, a shop number with no shop. They are
+   * SKIPPED rather than thrown for, and reported here, because a decision ladder
+   * evaluating a hundred candidates must not die on one stale handle.
+   */
+  readonly unresolved: readonly LoadoutItemRef[];
+}
+
 export interface AgentView {
   readonly apiVersion: string;
   /** The int32 game-turn counter. */
@@ -398,6 +531,23 @@ export interface AgentView {
   spellbooks(): SpellbookView[];
   /** A plain clone of the bound game constants (z_info). */
   constants(): GameConstants;
+  /**
+   * What the character would derive to wearing a DIFFERENT loadout: the same
+   * calc_bonuses the engine runs for the real one, over a hypothetical set of
+   * worn objects, with nothing in the live game touched.
+   *
+   * This is the read that had no answer at all. Every other accessor here
+   * reports the character as it is, so an agent deciding whether to wear, buy or
+   * sell something had to sum the item's own bonuses itself - which is a second
+   * implementation of calc_bonuses, and one that would drift from the first.
+   *
+   * OPTIONAL, and null-returning, for the honest reason: the derive needs the
+   * session's own calc_bonuses options (the bound timed table, the curse
+   * registry), so a view over a worldless harness cannot answer and says so
+   * rather than deriving a thinner state that would look like an answer.
+   * Capability: `state:player.read`.
+   */
+  simulateLoadout?(change: LoadoutChange): LoadoutSimulation | null;
 }
 
 /**

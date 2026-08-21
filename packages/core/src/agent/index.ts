@@ -21,6 +21,11 @@ export type {
   CellView,
   ControllerOptions,
   ItemView,
+  LoadoutChange,
+  LoadoutItemRef,
+  LoadoutPlacement,
+  LoadoutSimulation,
+  LoadoutView,
   MonsterView,
   PlayerStatusView,
   PlayerView,
@@ -31,6 +36,10 @@ export type {
   TargetView,
 } from "./types.js";
 export { createAgentView } from "./perceive.js";
+export { itemView, playerViewFor } from "./entity-views.js";
+export type { PlayerViewDerived } from "./entity-views.js";
+export { simulateLoadout } from "./loadout.js";
+export type { LoadoutDerive, LoadoutSimOptions } from "./loadout.js";
 export { createAgentActions } from "./act.js";
 export { AgentCapabilityError, installController } from "./controller.js";
 export { subscribeEvents } from "./events.js";
