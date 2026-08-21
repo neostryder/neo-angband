@@ -88,6 +88,49 @@ version it still calls itself.
   needs and sells what it is finished with, where before it could not tell whether
   any of the three would help and so did none of them.
 
+- **An autoplayer mod's character starts again when it dies, in the same
+  session.** `StartedGame.reincarnate` is upstream's `reincarnate_borg`
+  (`borg/borg-reincarnate.c`): it wipes the live player in place, rolls a new race
+  and class, outfits them from the class kit and carries on. The game loop's death
+  handler calls it instead of showing the tombstone whenever a mod holds the
+  keyboard, which is what turns an autoplayer from something that plays one
+  character into something that plays.
+
+  **It is a reincarnation, not a new game**, and every part of that is deliberate.
+  The `GameState` object, the player object inside it, the gear store, the RNG
+  stream, the option store, the turn counter and the save slot are all the same
+  objects afterwards - the same reason a level change swaps the chunk in place
+  rather than rebuilding the session around it. Nothing reloads the page, no
+  second slot is claimed, and the new character autosaves over the one that died.
+  Race and class are ROLLED unless a caller pins them, matching upstream's own
+  default (`borg_cfg[BORG_RESPAWN_RACE] == -1` is a reroll). The new character is
+  born from `generatePlayer` and `outfitPlayer`, the two functions a genuinely new
+  game births from, rather than from a second copy of the birth pipeline.
+
+  Two things upstream does here are deliberately not done: `seed_flavor` and
+  `seed_randart` are left alone, because this port's savefile re-derives the
+  flavour assignment and the randart set FROM those seeds (`docs/PARITY.md`), so
+  moving either mid-session would make the save describe a world the game is not
+  in. The flavour KNOWLEDGE is reset instead, which is the half a player can
+  observe - a reincarnated character does not inherit what the dead one identified,
+  and does not inherit its shopping or its home stash either (`store_reset`).
+
+- **`NOSCORE_BORG` is set, at last.** The bit was defined at upstream's own value,
+  included in the score-invalidating mask, persisted in the savefile and read at
+  death to print "Score not registered for borgs." - and set by nothing, so every
+  read answered false. It is now set at upstream's own activation gate
+  (`do_cmd_try_borg`, `cmd-misc.c:140`): the moment a mod takes the keyboard, so
+  the character that was already alive when it took over is marked too, and again
+  on every character the restart loop produces, because birth zeroes the field.
+
+  The mark is one-way - `markNoscore` only ORs, and no path clears it - so a save
+  that has run an autoplayer for one turn stays marked for the rest of its life.
+  The character dump says so in an `[Autoplayed]` block, on the same terms as
+  `[Mods enabled]`: written only when the bit is set, so a faithful dump ends
+  exactly where upstream's does. `[Mods enabled]` answers what was installed, and
+  an autoplayer mod can be installed and enabled without ever holding the
+  keyboard; this answers who played.
+
 ## [0.24.0] - 2026-08-21
 
 Current state of the project at version `0.24.0` - a fixes release. Nothing
