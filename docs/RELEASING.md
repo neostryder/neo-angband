@@ -234,16 +234,18 @@ git push origin v0.24.0
 
 This repository's history **descends from Angband's own**, so every upstream tag
 - `2.0alpha`, `4.2.6`, and 1,400-odd `4.2.1-190-g5c16b9e7`-style development tags
-- names a commit that really is an ancestor of `master`. They were pushed to the
-fork along with the history and buried the seven release tags among fifteen
-hundred; they were deleted from the remote on 2026-08-02, and from this clone, so
-that the tag list is the release list.
+- names a commit that really is an ancestor of `master`. They travelled to the
+fork with the history, and they are on it now. Measured 2026-08-21: `origin`
+carries 1,450 tags, of which 6 are this project's own. So the tag list is not the
+release list, and the Releases page is the only place that is.
 
-Both `--tags` and `--follow-tags` would put them all straight back, the second
-one silently, because "annotated tags reachable from the ref being pushed" is
-exactly what they are. A tag-to-object-id list was taken before the deletion and
-is kept outside this repository, and upstream Angband has every one of them
-regardless - so this is undoable, not irreversible.
+They were deleted from the remote on 2026-08-02 and the deletion did not hold.
+Both `--tags` and `--follow-tags` put every one of them straight back, the second
+silently, because "annotated tags reachable from the ref being pushed" is exactly
+what they are - which is why neither is ever used here, and why a push names the
+one tag it means. A tag-to-object-id list was taken before that deletion and is
+kept outside this repository, and upstream Angband has every one of them
+regardless, so clearing them again is undoable rather than irreversible.
 
 ## Give the version its own CHANGELOG heading
 
