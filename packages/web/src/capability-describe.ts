@@ -217,6 +217,26 @@ export function describeCapability(cap: string): CapabilityDescription {
           elevated: true,
         };
       }
+      /* MOUNT IS A THIRD SENTENCE, and the wording is the part of this grant
+       * that does any work. Everything else in the seam - the host-owned
+       * container, the panel stack, the keyboard handoff, Escape - is
+       * management, not containment: a plugin's code runs in the page and can
+       * reach the document with or without this string (see capabilities.ts's
+       * header, and capability-gate-reach.test.ts's measurement). So the one
+       * thing this line must do is tell the player the two facts they would
+       * otherwise have no way to learn - that what they are looking at may not
+       * be the game, and that what they type into it is the mod's to read. It
+       * deliberately does not say "mount a panel", which sounds like a bounded
+       * rectangle and is not what is being agreed to. */
+      if (parsed.action === "mount") {
+        return {
+          cap,
+          text:
+            "Draw its own interface over the game with real web pages - it can look exactly like the game's own screens, " +
+            "cover them completely, and read whatever you type, paste or drop into it",
+          elevated: true,
+        };
+      }
       return parsed.region === "*"
         ? {
             cap,

@@ -255,6 +255,46 @@ waiting on:
 - **Catch-up mod content**, so the first-party mods cover what the gate assumed
   they cover.
 
+### The input door does not know about IME composition
+
+Found 2026-08-21 while giving mod panels a keyboard, and it is older than that
+work and independent of it. `browserKeydown` (`packages/web/src/input-door.ts`)
+reads no `isComposing`, so while an input method is composing a character every
+intermediate keystroke is dispatched to whatever screen owns the keyboard and
+read as a game command. Nothing in the tree checks `isComposing` or the legacy
+`keyCode === 229` that stands in for it; a grep for either returns zero.
+
+It has been harmless so far for a reason that is about to stop being true: there
+was nothing on this page to compose INTO, every screen being a character grid the
+game types into itself. A mod panel is the first real text field this game has
+had, and inside a panel the composition is already safe, because the door stands
+down for the panel's own keystrokes and the escape hatch declines a composing
+Escape. What is still exposed is the game's OWN prompts - `getString` and its
+callers - where a player composing a character name in Japanese is also issuing
+commands. Closing it is one guard at the same choke point, and the reason it is
+not in that commit is that it changes what every existing screen receives, which
+wants its own measurement rather than riding along with a new seam.
+
+### A mod panel has never been driven on a phone or in Electron fullscreen
+
+`ui:panel.mount` (2026-08-21) was measured where it could be: its ownership,
+invariant and escape-hatch logic have unit tests, and the three browser semantics
+it rests on were probed in the shipping desktop build over CDP and are recorded
+in `panel-runtime.ts`. Two environments were not measured, because measuring them
+needs a mod that mounts a panel and the first one is still being written.
+
+A virtual keyboard resizes the visual viewport, which resizes the canvas, which
+repaints the whole game frame - so typing in a panel on a phone may stutter, and
+a field near the bottom of a `position: fixed; inset: 0` container may sit under
+the keyboard where the player cannot see what they are typing. The host sets
+`touch-action: manipulation` and draws its close control inside the safe-area
+insets; everything about where a panel puts its own fields is the mod's, and the
+guidance in `MOD_SEAMS.md` section 4b does not currently say to use
+`visualViewport`. Electron fullscreen is the other one: fixed-position overlays
+over a canvas that is itself using the Fullscreen API have behaved
+inconsistently across Electron versions, and this shell's own fullscreen events
+already fire before `isFullScreen()` flips.
+
 ### A player-visible speed control for a mod's autoplayer
 
 `ModPlugin.controller`'s pump (added 2026-08-21, see `CHANGELOG.md`) ticks on a

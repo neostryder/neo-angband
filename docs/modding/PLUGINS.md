@@ -169,6 +169,7 @@ What `ctx` carries:
 | `registries` | the whole bound `CoreRegistries`: every race, kind, feature, trap, store, projection, room, profile, constant, quest and hint this session actually runs on (absent during content composition) |
 | `log` | a diagnostic line; the host decides where it goes |
 | `backupFolder` | present only when your manifest declared `backup:folder` and the platform can actually offer a folder picker; absent everywhere else, so test for it rather than assuming it |
+| `ui` | `{ openPanel(spec), openPanels }`, panels of **real HTML** rather than character cells. Present only when your manifest declared `ui:panel.mount`; absent everywhere else, so test for it. See `MOD_SEAMS.md` section 4b - the two things that surprise everybody are that Escape is the player's and that a non-modal panel's container takes no pointer events |
 
 `flags` is sliced per mod on purpose: a mod must not be able to read or act on
 another mod's toggles, or its behaviour would silently depend on which other mods
@@ -1269,6 +1270,25 @@ id, because the unit a player can weigh is "the game's menus", not fifty
 individual screens. All three `ui:*` grants and `display:replace` are separate
 kinds in both directions: a mod holding the dungeon cannot draw the vitals, and a
 mod holding every menu cannot draw the dungeon.
+
+`ui:` has three ACTIONS, not one, and the action is compared as well as the
+region. `replace` hands over something the game already draws. `region.create`
+adds a rectangle of the game's own character grid beside it. `panel.mount` puts
+real HTML on the page above the game, reached through `ctx.ui` rather than
+through a `ModPlugin` member, because a panel is opened when the player asks for
+one rather than declared once at load. `ui:*.replace` covers none of the other
+two: the wildcard ranges over WHICH of the game's regions changes hands, and
+adding furniture or mounting a web page are different sentences for a player to
+agree to.
+
+What `ui:panel.mount` is, and is not, stated here because the difference is the
+whole of it. It is not a fence around the DOM: your `plugin.js` runs in the
+page's own realm, so `document` is ambient to it with or without any capability,
+and a mod that never declares this can still append an element to the body. What
+the grant carries is a sentence the player reads first, a container the host owns
+and can take away, and one thing a mod genuinely cannot do without it - stand the
+game's input door down, so a real `<input>` inside your panel can be typed into
+instead of the keystrokes being read as game commands.
 
 The live `WorldFrame` in
 `packages/web/src/world-view.ts`: `render()` invokes the extracted

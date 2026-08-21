@@ -18,10 +18,12 @@ import {
   type BackupFolder,
   type ModCoreApi,
   type ModPluginContext,
+  type ModUi,
 } from "./mod-plugin";
 import { diskPacks } from "./disk-packs";
 import { modPrefs, type ModPrefs } from "./mod-prefs";
 import { createBackupFolder } from "./mod-backup";
+import { createModUi, PANEL_CAPABILITY } from "./panel-runtime";
 import type { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /**
@@ -76,6 +78,7 @@ export function modPluginContext(
    * by passing a different one - the id it gets is the id it was loaded under. */
   const assets = own.assetUrl;
   const backupFolder = backupFolderFor(id, session);
+  const ui = modUiFor(id, session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
   const registries = session.registries ?? boundRegistries;
@@ -100,6 +103,7 @@ export function modPluginContext(
       log.info(`mod:${id}`, `${msg}`);
     },
     ...(backupFolder ? { backupFolder } : {}),
+    ...(ui ? { ui } : {}),
     /* Spread rather than set to undefined, so `"registries" in ctx` answers the
      * same question as `ctx.registries !== undefined` - the shape `state` uses. */
     ...(registries ? { registries } : {}),
@@ -124,6 +128,22 @@ function backupFolderFor(id: string, session: ModSessionFacts): BackupFolder | u
   return createBackupFolder(id);
 }
 
+/**
+ * `ctx.ui`: present only when this mod's manifest declared `ui:panel.mount`.
+ *
+ * ONE REASON FOR ABSENCE, not two. `backupFolder` above degrades on consent OR
+ * on the platform having no folder picker; this one is consent alone, because a
+ * front end with no document has no game either. What happens on a host with no
+ * `document` is that `openPanel` refuses with that sentence - which is the right
+ * place for it, since a mod that never opens a panel should not be told it
+ * cannot.
+ */
+function modUiFor(id: string, session: ModSessionFacts): ModUi | undefined {
+  if (session.ui !== undefined) return session.ui;
+  if (!session.capabilities?.has(PANEL_CAPABILITY)) return undefined;
+  return createModUi(id);
+}
+
 /** What the host knows about THIS session, as opposed to this mod's folder. */
 export interface ModSessionFacts {
   /** Whether the character was created this session rather than loaded. */
@@ -138,6 +158,8 @@ export interface ModSessionFacts {
   readonly capabilities?: CapabilitySet;
   /** Override backupFolder directly (tests, and a front end with its own). */
   readonly backupFolder?: BackupFolder;
+  /** Override ctx.ui directly (tests, and a front end with its own panels). */
+  readonly ui?: ModUi;
   /**
    * Override the bound registries, for a test that wants a plugin to see a
    * registry it built by hand rather than one a booted game latched.
