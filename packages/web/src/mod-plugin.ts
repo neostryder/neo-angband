@@ -266,6 +266,30 @@ export interface ModPluginContext {
    */
   readonly backupFolder?: BackupFolder;
   /**
+   * Panels of your own, drawn with real HTML rather than the character grid.
+   *
+   * Present only when your manifest declared `ui:panel.mount` and the player
+   * consented to it; `undefined` otherwise, the shape `backupFolder` uses and
+   * for the same reason - a facade that existed and threw on first use would put
+   * the refusal at the worst possible moment. Guard with `if (!ctx.ui) return;`.
+   *
+   * WHAT THIS IS FOR, and what it is not. `regions()` gives you a rectangle of
+   * the game's own character grid and it is the right answer for anything that
+   * belongs on the same screen as the dungeon. This is for a mod whose screen is
+   * a FORM - fields, lists, a table - which is a shape the grid cannot carry
+   * without reimplementing a caret and a tab order inside a text terminal.
+   *
+   * THE HOST OWNS THE CONTAINER, you own its contents. The host places it,
+   * stacks it, hands the keyboard to whatever inside it holds the caret, closes
+   * it on Escape, and takes it down when the mod set changes. That is
+   * management, not isolation - see `ModPanel.root`.
+   *
+   * See docs/modding/MOD_SEAMS.md section 4b for the whole contract, including
+   * the two things that will surprise you: Escape is the player's and cannot be
+   * taken, and a non-modal panel's container takes no pointer events.
+   */
+  readonly ui?: ModUi;
+  /**
    * The BOUND content registries: every race, kind, feature, trap, store and
    * projection the game actually runs on, after this session's mods composed
    * their content and core bound it.
@@ -298,6 +322,93 @@ export interface ModPluginContext {
    * `if (!ctx.registries) return;`.
    */
   readonly registries?: CoreRegistries;
+}
+
+/**
+ * What a mod asks for when it wants a panel of its own on the page.
+ *
+ * A panel is a rectangle of REAL DOM, not a rectangle of the character grid -
+ * that second thing is `regions()`, it is still there, and it is still the right
+ * answer for a compass or a carried-weight readout. This is for the mod whose
+ * screen is a form: a list with a scrollbar, a text field, a table the player
+ * sorts. Building one of those out of `RegionSurface`'s seven methods is
+ * possible and nobody enjoys the result.
+ */
+export interface ModPanelSpec {
+  /**
+   * A short name of your own - `"editor"`, `"preview"`. Namespaced by the host,
+   * so the live panel is `my-mod:editor`, for the same reason a region's id is:
+   * the names are what a fault report and a player both read.
+   */
+  readonly id: string;
+  /**
+   * Whether this panel takes the screen (`true`) or sits over it (`false`, the
+   * default).
+   *
+   * A MODAL PANEL COVERS THE VIEWPORT AND SWALLOWS THE POINTER, and it is
+   * focused on mount so the keyboard is yours immediately. That is what an
+   * authoring tool wants and it is a real cost to the player, which is why it is
+   * declared rather than inferred.
+   *
+   * A NON-MODAL PANEL'S CONTAINER TAKES NO POINTER EVENTS AT ALL. Style
+   * `pointer-events: auto` onto the elements you actually want clickable, the
+   * way the game's own touch bar does - otherwise an invisible full-viewport
+   * container would eat every tap meant for the dungeon underneath it. It is
+   * also not focused on mount, so the player keeps the keyboard until they put
+   * the caret in something of yours.
+   */
+  readonly modal?: boolean;
+  /**
+   * What assistive technology should call this panel. Defaults to the live id,
+   * which is better than nothing and worse than a sentence.
+   *
+   * Worth writing: a panel is the FIRST thing in this game a screen reader can
+   * read, because everything else is pixels on a canvas.
+   */
+  readonly label?: string;
+}
+
+/** A mounted panel: where to build, and how to take it down. */
+export interface ModPanel {
+  /** The id as the host carries it: `${modId}:${declared}`. */
+  readonly id: string;
+  /**
+   * Build here. An OPEN shadow root on a container the host owns and positions.
+   *
+   * SHADOW, AND WHAT THAT IS FOR. Styles you put in here do not reach the game,
+   * and the page's do not reach you, so a `#title` of yours cannot collide with
+   * anything and a stylesheet of yours cannot restyle the game's own furniture
+   * by accident. That is hygiene, and hygiene is all it is: it is NOT a sandbox
+   * and must not be described as one. Your plugin already runs in the page's own
+   * realm - see docs/modding/PLUGINS.md, "What a capability gates".
+   */
+  readonly root: ShadowRoot;
+  /** False once this panel has been closed, by you, by the player, or by teardown. */
+  readonly open: boolean;
+  /**
+   * Resolves when the panel closes, whoever closed it. Await it to know the
+   * player is done, rather than keeping a callback for every way out.
+   */
+  readonly closed: Promise<void>;
+  /** Take it down. Idempotent: closing a closed panel is not an error. */
+  close(): void;
+}
+
+/**
+ * `ctx.ui`: present only when this mod's manifest declared `ui:panel.mount` and
+ * the player consented to it, `undefined` otherwise - the same shape
+ * `ctx.backupFolder` uses, and guarded the same way (`if (!ctx.ui) return;`).
+ */
+export interface ModUi {
+  /**
+   * Mount a panel and return the handle. Throws with the reason when the spec is
+   * unusable, when too many panels are already open, or when the front end has
+   * no document to mount into - all three are author errors, and a facade that
+   * returned a dead handle would hide them.
+   */
+  openPanel(spec: ModPanelSpec): ModPanel;
+  /** THIS mod's open panels, topmost last. Never another mod's. */
+  readonly openPanels: readonly string[];
 }
 
 /**

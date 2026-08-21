@@ -60,6 +60,56 @@ export interface KeymapResolverOptions {
   readonly onExpanded?: (input: UiInput) => void;
 }
 
+/**
+ * A host-owned piece of REAL DOM that a keystroke may belong to instead of the
+ * game.
+ *
+ * WHY THIS HOOK IS HERE AND NOT ANYWHERE ELSE. `browserKeydown` below is the
+ * only DOM keyboard registration in the package: one listener, on `window`, in
+ * the capture phase, installed when this module is imported. Every screen in the
+ * game reaches the keyboard through it, and every modal handler on the far side
+ * of it opens with `preventDefault()` and `stopImmediatePropagation()`. So a
+ * real `<input>` anywhere on the page is unusable by construction - with a modal
+ * open the keystrokes drive the modal, and with none open they are read as game
+ * commands, which means typing a name walks the character across the level.
+ *
+ * That is the whole of the problem and this is the whole of the fix. One guard,
+ * at the one door, asked before anything is dispatched.
+ *
+ * ESCAPE IS PART OF THE CONTRACT, not a courtesy. The owner is asked to handle
+ * it, and the ordering is what makes the answer worth something: this listener
+ * is on `window` at capture, registered at import time, which is before any mod
+ * code exists and above every node a mod can attach a handler to. So a panel
+ * that has stopped responding cannot also have taken away the key that closes
+ * it. Note the honest limit - this defends the player against a mod that is
+ * BROKEN, not against one that is hostile. In-process code can reach `window`
+ * itself, and nothing here changes that.
+ */
+export interface DomKeyboardOwner {
+  /** True when this keydown belongs to mounted DOM rather than to the game. */
+  owns(event: KeyboardEvent): boolean;
+  /**
+   * The player's one way out. True when the key was consumed.
+   *
+   * Asked BEFORE `owns`, and about every Escape rather than only the ones the
+   * owner would have claimed. If the hatch worked only on a key the mounted DOM
+   * already owned, then focus drifting back to the game - which one stray click
+   * does - would take the way out away at exactly the moment it was needed.
+   */
+  escape(event: KeyboardEvent): boolean;
+}
+
+let domKeyboardOwner: DomKeyboardOwner | undefined;
+
+/**
+ * Install (or clear, with `undefined`) the DOM keyboard owner. One at a time:
+ * there is one page, and an owner that had to be consulted in an order would be
+ * a second place for "who has the keyboard" to be decided.
+ */
+export function setDomKeyboardOwner(owner: DomKeyboardOwner | undefined): void {
+  domKeyboardOwner = owner;
+}
+
 const entries: Entry[] = [];
 let nextSequence = 1;
 let keymapResolver: KeymapResolver | undefined;
@@ -158,7 +208,26 @@ function installBrowserAdapter(target: KeyTarget): void {
 }
 
 function browserKeydown(event: Event): void {
-  dispatchUiInput(fromKeyboard(event as KeyboardEvent), event as KeyboardEvent);
+  const key = event as KeyboardEvent;
+  const owner = domKeyboardOwner;
+  if (owner) {
+    /* ESCAPE FIRST, and asked whether or not the mounted DOM would have claimed
+     * this key. `preventDefault` only when it was actually consumed: an owner
+     * with nothing to close gives the key back rather than swallowing it, so the
+     * browser's own meaning of Escape is not quietly taken by DOM that is no
+     * longer there. */
+    if (key.key === "Escape" && owner.escape(key)) {
+      key.preventDefault();
+      return;
+    }
+    if (owner.owns(key)) {
+      /* Not dispatched, and not cancelled either. The event carries on to the
+       * element the player is typing into, which is the entire point - the game
+       * standing down is what lets a real field behave like a real field. */
+      return;
+    }
+  }
+  dispatchUiInput(fromKeyboard(key), key);
 }
 
 /** Compatibility facade used while individual screens still have onKey handlers. */
@@ -231,6 +300,7 @@ export function clearInputDoor(): void {
   clearQueuedUiInputs();
   keymapResolver = undefined;
   keymapResolverOptions = undefined;
+  domKeyboardOwner = undefined;
   nextSequence = 1;
   if (browserWindow) browserWindow.removeEventListener("keydown", browserKeydown, true);
   browserWindow = undefined;
