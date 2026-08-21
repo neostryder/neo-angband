@@ -541,6 +541,18 @@ export interface StartedGame {
    */
   changeLevel: (depth: number) => void;
   /**
+   * reincarnate_borg (borg/borg-reincarnate.c): wipe the live player, roll a new
+   * one from the real birth pipeline, and carry on in the SAME session - no new
+   * savefile, no return to a menu. Race and class are rolled unless pinned. See
+   * makeReincarnate for what it does and what it deliberately leaves alone.
+   *
+   * A HOST-SIDE CALL, by construction. `AgentCommand` is `PlayerCommand`, an
+   * in-game turn command, and birth has no representation there - so an autoplayer
+   * mod cannot ask for this through its per-turn return value and the host's own
+   * death handling has to be what calls it.
+   */
+  reincarnate: (opts?: ReincarnateOptions) => ReincarnateResult;
+  /**
    * The wizard/debug engine bundles (WP-14 / gap 15.2): effect interpreter,
    * ExpDeps, TrapDeps, live MonPlaceDeps and MakeDeps for the interactive debug
    * command menu. Assembled inside wireGame (single source of truth).
@@ -2982,6 +2994,218 @@ function makeChangeLevel(
 }
 
 /**
+ * What a caller may pin about the character a reincarnation rolls. Every field is
+ * optional, and every omission means "roll it", which is upstream's own default:
+ * `borg_cfg[BORG_RESPAWN_RACE]` and `[BORG_RESPAWN_CLASS]` are -1 unless a config
+ * file sets them, and -1 means `player_id2race(randint0(MAX_RACES))`.
+ */
+export interface ReincarnateOptions {
+  /** A race by name. Absent, or a name no pack defines, rolls one. */
+  raceName?: string;
+  /** A class by name. Absent, or a name no pack defines, rolls one. */
+  className?: string;
+  /**
+   * Cheat bits to OR onto the new character (game/wizard.ts NOSCORE). The mark is
+   * one-way - markNoscore never clears a bit and nothing else writes the field -
+   * so a character that came out of this loop stays marked for the rest of its
+   * life and across every save. Upstream's tail is the same line:
+   * `if (!(player->noscore & NOSCORE_BORG)) player->noscore |= NOSCORE_BORG`.
+   */
+  noscore?: number;
+  /** The new character's `full_name`. Absent leaves the blank birth value. */
+  fullName?: string;
+}
+
+/** Which character a reincarnation rolled. */
+export interface ReincarnateResult {
+  raceName: string;
+  className: string;
+}
+
+/**
+ * reincarnate_borg (borg/borg-reincarnate.c:408): wipe the live player in place,
+ * roll a new one, and carry on in the SAME session.
+ *
+ * WHAT MAKES THIS DIFFERENT FROM A NEW GAME. Upstream never exits to a menu and
+ * never opens a second savefile. It saves the level off, calls `player_init` and
+ * `player_generate` on the same `struct player *`, restores the level, and returns
+ * to the game loop. Everything a session owns - the turn counter, the RNG stream,
+ * the message log, the option store, the mod manifest, the save slot - is still
+ * the same object afterwards. This does the same thing for the same reason: a host
+ * that reloaded the page or claimed a new slot would be a different program that
+ * happens to end up somewhere similar.
+ *
+ * THE PLAYER OBJECT IS MUTATED, NOT REPLACED, and that is load-bearing rather than
+ * incidental. wireGame's closures captured `state`, and a good number of them
+ * captured `state.actor.player` - the same reason a level change swaps the chunk in
+ * place. Upstream reuses the pointer for the identical reason.
+ *
+ * WHERE THE NEW CHARACTER COMES FROM. `generatePlayer` and `outfitPlayer`, the
+ * same two functions `startGame` births from. Upstream's `borg_roll_hp` and
+ * `borg_outfit_player` are near-copies of `roll_hp` and `player_outfit` that exist
+ * because the borg cannot run the interactive birth UI; this port's birth pipeline
+ * is not interactive, so the real one is reachable and the copies are not needed.
+ * The one upstream detail with no equivalent here is `create_random_name`'s
+ * per-race syllable tables - this port has `playerRandomName`, so a caller passes
+ * `fullName` from that rather than a second name generator landing in core.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO. Upstream re-seeds `seed_flavor` and, under
+ * `birth_randarts`, `seed_randart`. Both are seeds this port's savefile stores and
+ * re-derives the world from (docs/PARITY.md names them as the two places a stream
+ * change IS a defect), so moving either mid-session would make the save describe a
+ * world the game is not in. The flavour KNOWLEDGE is reset instead, which is the
+ * half a player can observe: the new character does not inherit what the dead one
+ * identified.
+ */
+function makeReincarnate(
+  state: GameState,
+  reg: CoreRegistries,
+  players: PlayerRegistry,
+  flavor: FlavorKnowledge,
+  everseen: EverseenKnowledge,
+  changeLevel: (depth: number) => void,
+): (opts?: ReincarnateOptions) => ReincarnateResult {
+  return (opts: ReincarnateOptions = {}): ReincarnateResult => {
+    const rng = state.rng;
+
+    /* "save the existing dungeon. It is cleared later but needs to be blank when
+     * creating the new player" (borg-reincarnate.c:414-418). Nothing below clears
+     * it here - the wipe is confined to the player and their gear - so the restore
+     * at the end is a no-op in the ordinary case. It is still written both ways,
+     * because the pair is what says the level is not this function's to touch. */
+    const savedChunk = state.chunk;
+    const savedMonsters = state.monsters;
+    const savedGroups = state.groups;
+    const savedFloor = state.floor;
+    const savedTraps = state.traps;
+    const savedKnown = state.known;
+    const savedGrid = state.actor.grid;
+
+    /* Roll up a new character (borg-reincarnate.c:465-476). A named race or class
+     * that no pack defines falls through to the roll rather than throwing: the
+     * caller is a mod's configuration, and a typo there should cost a reroll. */
+    const race =
+      (opts.raceName ? players.raceByName(opts.raceName) : null) ??
+      players.races[rng.randint0(players.races.length)]!;
+    const cls =
+      (opts.className ? players.classByName(opts.className) : null) ??
+      players.classes[rng.randint0(players.classes.length)]!;
+    const body = players.bodies[race.body] ?? players.bodies[0]!;
+
+    const birth = generatePlayer(
+      race,
+      cls,
+      { body, historyChart: players.historyChart(race) },
+      rng,
+    );
+
+    /* player_init(player) then player_generate(player, race, class, false)
+     * (borg-reincarnate.c:435, :476), on the same object. Every own key goes and
+     * the fresh character's keys land, so a field added to Player later is carried
+     * across without this function being edited - the alternative, a field-by-field
+     * copy, is a list that silently stops being complete. */
+    const live = state.actor.player as unknown as Record<string, unknown>;
+    for (const key of Object.keys(live)) delete live[key];
+    Object.assign(live, birth.player);
+    const p = state.actor.player;
+
+    /* player_quests_reset (player-quest.c:157), as at birth. */
+    playerQuestsReset(p, reg.quests);
+
+    /* The dead character's belongings do not come forward. Emptied IN PLACE for
+     * the same reason the player object is: `state.gear` is captured. */
+    state.gear.store.clear();
+    state.gear.next = 1;
+    state.gear.pack.length = 0;
+    state.gear.inven = [];
+    state.gear.quiver = [];
+
+    /* Nor does what they identified. Upstream reaches this through flavor_init's
+     * reshuffle; see the header for why the seed itself is left alone. */
+    flavor.restore({ aware: [], tried: [] });
+
+    /* borg_outfit_player (borg-reincarnate.c:521) is player_outfit. */
+    const startKinds: ObjectKind[] = [];
+    outfitPlayer(state.gear, p, reg.objects, rng, reg.constants, {
+      opt: (name: string): boolean => state.options?.get(name) ?? false,
+      onStartKind: (kind): void => void startKinds.push(kind),
+    });
+    /* The same three passes over the new kit startGame runs after birth:
+     * kind->everseen (player-birth.c:658), object_flavor_aware (:650) and
+     * obj->known->effect (:650). */
+    for (const obj of state.gear.store.values()) everseen.markKind(obj.kind);
+    for (const kind of startKinds) {
+      flavor.objectFlavorAware(kind, NOOP_FLAVOR_AWARE_DEPS);
+    }
+    for (const obj of state.gear.store.values()) obj.knownEffect = obj.effect;
+
+    /* player_spells_init (borg-reincarnate.c:518), then the derived recompute -
+     * PU_BONUS | PU_HP | PU_MANA - which is what turns the rolled hitdice into
+     * mhp and the worn armour into the mana penalty. calcSpells wants the stat
+     * indices that recompute produces, so it follows rather than leads. */
+    playerSpellsInit(p);
+    state.updateBonuses?.();
+    calcSpells(p, state.statInd ?? [], (text) => state.msg?.(text));
+    /* rd_gear's tail / the first update_stuff after player_outfit. The ammo tval
+     * is the NEW class's, so it is read back off the recompute above. */
+    buildGearViews(state, reg, state.playerState?.ammoTval ?? 0);
+
+    /* player_learn_innate (borg-reincarnate.c:515) and the worn kit's obvious
+     * runes, exactly as startGame does them after the rune env exists. */
+    playerLearnInnate(p, state.runeEnv);
+    for (let i = 0; i < p.body.count; i++) {
+      const worn = state.runeEnv.slotObject(i);
+      if (worn) objectLearnOnWield(p, worn, state.runeEnv);
+    }
+
+    /* "fully healed and rested" (borg-reincarnate.c:569-571). */
+    p.chp = p.mhp;
+    p.csp = p.msp;
+
+    /* Mark the savefile (borg-reincarnate.c:587-589). One-way. */
+    if (opts.noscore) p.noscore = markNoscore(p.noscore, opts.noscore);
+    if (opts.fullName !== undefined) p.fullName = opts.fullName;
+
+    /* The new player is now ready (borg-reincarnate.c:585). Cheating death is
+     * upstream's other branch and not this one, so any suspended fatal blow is
+     * dropped with the character that took it. */
+    state.isDead = false;
+    state.playing = true;
+    state.pendingDeath = undefined;
+
+    /* Restore the level (borg-reincarnate.c:579-582). */
+    state.chunk = savedChunk;
+    state.monsters = savedMonsters;
+    state.groups = savedGroups;
+    state.floor = savedFloor;
+    state.traps = savedTraps;
+    state.known = savedKnown;
+    state.actor.grid = savedGrid;
+    installChunkFeatHook(state);
+
+    /* store_reset() and chunk_list_max = 0 (borg-reincarnate.c:534-535): the new
+     * character does not inherit the dead one's shopping, its home stash, or any
+     * frozen level. Dropping `stores` is what makes refreshTownStores rebuild them
+     * from scratch on arrival rather than age the old ones forward. */
+    delete state.stores;
+    state.daycount = 0;
+    state.levelCache?.clear();
+    state.townChunk = null;
+
+    /* "Start in town" plus generate_level = true (borg-reincarnate.c:483, :524).
+     * Upstream's restored cave survives only until run_game_loop's next pass calls
+     * prepare_next_level at the new depth of 0; changeLevel IS that call, so it is
+     * made here and the flag is left down rather than handed to the host as a
+     * second thing to remember. */
+    changeLevel(0);
+    state.generateLevel = false;
+    delete state.targetDepth;
+
+    return { raceName: race.name, className: cls.name };
+  };
+}
+
+/**
  * Resolve the quest guardians to place on a freshly generated level
  * (generate.c L1170-1191). Returns one QuestSpawn per active quest whose
  * level == depth, mapping the stored race index to its MonsterRace. A
@@ -3547,6 +3771,11 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     state.chunk.onlyPartial = false;
   }
 
+  /* One instance, shared: reincarnate ends by asking for the town, and it must be
+   * the same level changer the host drives so the arena bookkeeping inside it is
+   * not split across two closures with separate `inArena` flags. */
+  const changeLevel = makeChangeLevel(state, reg, wired.trapDeps);
+
   return {
     state,
     registry: wired.registry,
@@ -3564,7 +3793,15 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     orphansAcknowledged: false,
     options,
     randartSeed,
-    changeLevel: makeChangeLevel(state, reg, wired.trapDeps),
+    changeLevel,
+    reincarnate: makeReincarnate(
+      state,
+      reg,
+      players,
+      wired.flavor,
+      wired.everseen,
+      changeLevel,
+    ),
     wizardBundles: wired.wizardBundles,
     ...makeStoreApi(state, reg, wired.flavor, options),
   };
@@ -4421,6 +4658,11 @@ export function loadGame(
   /* Resuming in town: re-stock the shops (store stock is not persisted). */
   refreshTownStores(state, reg);
 
+  /* One level changer, shared with reincarnate - see the note at startGame's. */
+  const changeLevel = makeChangeLevel(state, reg, wired.trapDeps, {
+    inArena: !!save.arena,
+  });
+
   return {
     state,
     registry: wired.registry,
@@ -4439,9 +4681,15 @@ export function loadGame(
       : {}),
     options,
     randartSeed,
-    changeLevel: makeChangeLevel(state, reg, wired.trapDeps, {
-      inArena: !!save.arena,
-    }),
+    changeLevel,
+    reincarnate: makeReincarnate(
+      state,
+      reg,
+      players,
+      wired.flavor,
+      wired.everseen,
+      changeLevel,
+    ),
     wizardBundles: wired.wizardBundles,
     ...makeStoreApi(state, reg, wired.flavor, options),
   };

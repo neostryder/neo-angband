@@ -67,6 +67,7 @@ import {
   ODESC,
   OINFO,
   OPTION_ENTRIES,
+  NOSCORE,
   PARITY_BASELINE,
   playerSafeName,
 } from "@rpgm-tools/neo-angband-core";
@@ -703,6 +704,30 @@ export function buildCharacterDump(
     out.push("  [Mods enabled]", "");
     for (const m of extras.mods) out.push(`${m.id} ${m.version}`);
     out.push("");
+  }
+
+  /*
+   * [Autoplayed] - the NOSCORE_BORG mark, said out loud.
+   *
+   * WHY IT IS NOT COVERED BY THE BLOCK ABOVE. [Mods enabled] answers "what was
+   * installed"; this answers "who played this character", and an autoplayer mod
+   * can be installed and enabled without ever holding the keyboard. The bit is
+   * one-way and persisted, so a character that ran an autoplayer for one turn
+   * carries this for the rest of its life - and a dump is the artefact players
+   * hand each other, so a run nobody sat through should not read like one somebody
+   * did. The high-score table refuses the same character on the same bit
+   * (score.c:268).
+   *
+   * PARITY, on the same terms as the block above: written only when the bit is
+   * set, and nothing in a faithful game can set it.
+   */
+  if ((state.actor.player.noscore & NOSCORE.BORG) !== 0) {
+    out.push("  [Autoplayed]", "");
+    out.push(
+      "This character was played by an autoplayer mod and is not eligible for",
+      "the high-score table.",
+      "",
+    );
   }
 
   return out.join("\n");

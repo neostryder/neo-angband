@@ -210,3 +210,26 @@ waiting on:
   everything else a mod might want to change about the interface is this.
 - **Catch-up mod content**, so the first-party mods cover what the gate assumed
   they cover.
+
+### A mod's autoplayer has no clock of its own
+
+Found 2026-08-21 while wiring the restart-on-death loop, and separate from it:
+that loop works, and this is what stands between it and anybody watching it run.
+
+`ModPlugin.controller` is installed and then nothing drives it. The two runtimes
+that DO have a pump are the debug ones: the demo agent (`?agent=`) runs
+`advance()` on a `setInterval` and wraps its controller in a latch that yields
+one action per tick, and the sandboxed plugin runtime (`?plugin=`) does the same.
+A mod's controller gets neither. So the Borg takes a turn when a human presses a
+key, which is not what a mod that plays the game by itself is for, and a
+screensaver run cannot happen at all.
+
+The latch is the second half and it is not optional. `runGameLoop` asks
+`state.nextCommand()` for as long as the player has energy, so a controller that
+answers with a command every time never lets `advance()` return - the browser
+would hang inside one turn rather than animate a game. The demo agent's `latched`
+wrapper is exactly the fix and exactly the thing the mod path skipped.
+
+Both halves belong at the mod-controller install site in `main.ts`, beside the
+slot itself, and the tick interval wants to be a player-visible speed rather than
+a constant: watching an autoplayer is the whole point of having one.

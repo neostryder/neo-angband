@@ -31,6 +31,7 @@ import {
   COLOUR_L_GREEN,
   COLOUR_L_BLUE,
   COLOUR_YELLOW,
+  NOSCORE,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   GameState,
@@ -1294,5 +1295,50 @@ describe("character dump - enabled mods", () => {
      * the unmodded dump, unchanged. */
     const withMods = dumpOf([{ id: "qol", version: "0.4.1" }]);
     expect(withMods.startsWith(dumpOf())).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The character dump's [Autoplayed] block (NOSCORE_BORG).
+ *
+ * [Mods enabled] answers what was INSTALLED. This answers who PLAYED, which is a
+ * different question with a different answer: an autoplayer mod can be installed
+ * and enabled and never hold the keyboard. The bit is one-way and persisted, and
+ * the high-score table refuses the same character on it (score.c:268), so a dump
+ * that stayed silent would be the one artefact of the run that did not say.
+ * ------------------------------------------------------------------ */
+describe("character dump - the autoplayer mark", () => {
+  const dumpWithNoscore = (noscore: number): string => {
+    const state = makeTestState(loc(2, 2));
+    state.actor.player.noscore = noscore;
+    return buildCharacterDump(state, "Fred", {});
+  };
+
+  it("writes the block when NOSCORE_BORG is set", () => {
+    const text = dumpWithNoscore(NOSCORE.BORG);
+    expect(text).toContain("  [Autoplayed]");
+    expect(text).toContain("not eligible for");
+  });
+
+  it("writes NOTHING for a character no autoplayer touched", () => {
+    /* The parity half, on the same terms as [Mods enabled]: a faithful game has
+     * no way to set this bit, so a faithful dump ends where upstream's does. */
+    expect(dumpWithNoscore(0)).not.toContain("[Autoplayed]");
+  });
+
+  it("is not confused by the OTHER cheat bits", () => {
+    /* A wizard-mode character is disqualified from the score table too, and it is
+     * not an autoplayed one. Reading the mask rather than the BORG bit would put
+     * this block on every debug character in the project. */
+    expect(dumpWithNoscore(NOSCORE.WIZARD | NOSCORE.DEBUG)).not.toContain(
+      "[Autoplayed]",
+    );
+    expect(dumpWithNoscore(NOSCORE.WIZARD | NOSCORE.BORG)).toContain(
+      "  [Autoplayed]",
+    );
+  });
+
+  it("appends, changing the rest of the dump in no way", () => {
+    expect(dumpWithNoscore(NOSCORE.BORG).startsWith(dumpWithNoscore(0))).toBe(true);
   });
 });
