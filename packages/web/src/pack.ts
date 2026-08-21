@@ -33,7 +33,7 @@ import type {
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ConflictRow } from "./mod-conflicts";
 import { defaultModStore, isShippedMod, readEnabledModIds } from "./mod-store";
-import { diskPacks, type ModDirKind, type ModOrigin } from "./disk-packs";
+import { diskPacks, sessionPacks, type ModDirKind, type ModOrigin } from "./disk-packs";
 import { activeModCode } from "./mod-code";
 import { engineAllows, engineProblem } from "./mod-engine";
 import { dedupeProblems, modFaults, type ModProblem } from "./mod-problems";
@@ -342,6 +342,10 @@ export function enabledModIds(): string[] {
   return readEnabledModIds({
     discovered: [...discoverMods().keys()],
     diskOrder: diskPacks().order,
+    /* Staging a mod for one session IS enabling it - there is no row to turn on,
+     * and a leftover "off" choice from a copy the player once installed must not
+     * silence the copy they just asked to try (mod-session.ts). */
+    forced: sessionPacks().packs.map((p) => p.manifest.id),
   });
 }
 

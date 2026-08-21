@@ -201,7 +201,25 @@ export function describeCapability(cap: string): CapabilityDescription {
        * refuses an archive that ships code or asks for capabilities, and what
        * arrives is switched off until the player has read its own list. A
        * consent line that left either out would be describing a much larger
-       * grant than the one being made. */
+       * grant than the one being made.
+       *
+       * THE SESSION ARM IS A DIFFERENT SENTENCE, not a softer version of this
+       * one. "Switched off until you turn it on" is the whole reason the install
+       * line is proportionate, and it is untrue of a session load: that one is on
+       * as soon as the game reloads. Saying "just for this session" and stopping
+       * there would be the lie this file exists not to tell - the archive is
+       * forgotten, the records it composed were real, and anything they changed
+       * about a character stays changed. */
+      if (parsed.action === "session") {
+        return {
+          cap,
+          text:
+            "Put content mods into the game for the rest of this session - records and tweaks, never code - which " +
+            "start working as soon as the game reloads, without waiting to be switched on. The mod is forgotten " +
+            "when you close the game; what it did to a character is not",
+          elevated: true,
+        };
+      }
       return {
         cap,
         text:

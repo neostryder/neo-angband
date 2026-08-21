@@ -32,6 +32,48 @@ version it still calls itself.
 
 ### Added
 
+- **A mod can be loaded for one session, without joining your library.** A new
+  tier of mod source holds an archive in session storage instead of installing it:
+  the game picks it up on the next reload, composes it exactly as it composes any
+  other pack, and forgets it when the game is closed. It is reached two ways.
+
+  The player's way is a new row on `Import a mod` - "Try a .zip for this session
+  only" - and it accepts an archive that ships CODE, because a player choosing a
+  file is making the same decision they make when they import one permanently. It
+  asks in a screen of its own first, which names the code files, shows the archive's
+  size and digest, and lists what the manifest asks for in the same words and the
+  same order the install consent prompt uses. Grants made there are held beside the
+  archive rather than written to the stored consents, so trying somebody's mod once
+  leaves no standing permission behind.
+
+  A mod's way is `ctx.loadModForSession(bytes)`, behind the new `mod:session`
+  capability, and it is CONTENT ONLY on exactly the terms `mod:install` is: code
+  under any extension is refused, and so is an archive whose manifest asks for a
+  capability. A mod handing the engine another mod's code to run is a different act
+  from a player choosing a file, and it stays refused. `mod:session` is a separate
+  grant from `mod:install` rather than a relaxation of it - an install arrives
+  switched off and waits for the player, a session load is on as soon as the game
+  reloads - and the capability comparison checks the action so neither consent
+  sentence can be spent on the other.
+
+  Everything that makes an install safe runs here too, through the same functions:
+  the third-party switch before the archive is opened, the archive ceilings and the
+  zip-slip check, the standards inspection that refuses a mod which would install
+  and then do nothing, and the origin pin, so a staged archive cannot shadow an
+  installed mod of the same id under a different origin. A staged copy of an id you
+  already have DOES shadow the installed one for the session, which is the point of
+  trying a draft, and the collision is reported on that mod's row.
+
+  **What is temporary is the mod, not what it does.** The archive is forgotten; a
+  character it changed stays changed, anything it stored stays stored, and anything
+  it sent has been sent. Every screen involved says so, because "just for this
+  session" reads as a safety feature and is not one. The lifetime is also a strong
+  convention rather than a boundary: session storage survives a reload, which is
+  what makes the tier work, and a browser restoring a closed or crashed window
+  restores it too. So a session mod is always listed, always marked `SESSION ONLY`,
+  and its detail screen offers `Drop it` instead of an on/off switch - it is on
+  because it was staged, and dropping the archive is the only thing that stops it.
+
 - **A mod can conjure an item or a creature into the live game, and the character
   is marked for it.** `ctx.debug`, behind the new `debug:spawn` capability, drops
   one item at the player's feet or scatters one creature near them, exactly as the

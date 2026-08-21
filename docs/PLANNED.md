@@ -308,6 +308,71 @@ CLAIM to come from, which is the honest answer to a different question. Closing
 it is a field on the meta record plus a row in the mod's detail pane, and it
 wants doing while there is still only one caller of that door.
 
+### There is no isolation tier a mod's own `plugin.js` could run in
+
+A mod's code runs in the page's realm with `ctx.core`, `ctx.state`,
+`ctx.registries`, `document`, `fetch` and IndexedDB. That is true of an installed
+mod and it is equally true of one loaded for a session (2026-08-21), and the
+session tier is deliberately not sold as being safer than it is. The only tier in
+this tree that actually fences is the autoplayer sandbox
+(`packages/web/src/agents/sandbox/`): a Web Worker, a versioned message protocol,
+a view snapshot serialised per granted domain, and `fetch`/`XMLHttpRequest`/
+`WebSocket` neutered in the worker unless `network:*` is granted. It is real
+isolation and it hosts a CONTROLLER, not a mod.
+
+**Why the same shape does not extend to a plugin, measured against the ABI rather
+than guessed at.** `hooks(ctx)` is called before `startGame` and must RETURN
+FUNCTIONS, which the composed `ModHooks` then calls synchronously inside the turn
+loop; `register(host, ctx)` mutates a live state object and installs handlers by
+identity; `ctx.core` is a live namespace whose registry singletons are shared
+objects. `postMessage` copies data and cannot carry a function, a DOM node, an
+accessor or object identity, so a proxy over the boundary turns every one of those
+synchronous calls into an asynchronous one, and the turn loop cannot await inside
+itself. `SharedArrayBuffer` does not rescue it: blocking the main thread on a
+worker would freeze the frame, needs cross-origin isolation, and still does not
+transfer live object semantics.
+
+So a worker-hosted plugin needs a DIFFERENT ABI - snapshots in, declarative
+actions out - and that is the load-bearing objection rather than the cost:
+**isolation that changes the execution model does not test the artifact.** An
+author asking to try their own `plugin.js` would be running a different program
+from the one they ship, and a testing tool that gives false confidence is worse
+than one that admits what it is.
+
+What would fence the host without changing the plugin's execution model is a
+per-plugin JS realm sharing the thread, so hooks stay synchronous and `document`,
+`fetch` and `ctx.core` reach the plugin only when the host hands them over. No
+such primitive is available: the ShadowRealm proposal is not shipped in any
+browser this game targets, and a userland "realm" built out of proxies would be a
+reimplementation of the host, which is the thing that would then need auditing.
+Recorded as the shape to build if the platform ever grows it, not as work waiting
+on somebody here.
+
+**What is still worth doing without any of it**, and is not done: the session
+tier's own confirmation names the digest of the bytes it is about to run, and
+nothing re-asks when a re-staged draft changes them. Re-confirming on a changed
+digest is a small, real improvement to a consent that a player will otherwise give
+once and have carry across edits.
+
+### A save written under session-only content is loadable but not reproducible
+
+The save reconciliation handles a pack going away: `loadGame` quarantines live
+entities whose namespace is absent rather than resolving them wrongly, and that is
+as true of a session pack as of an uninstalled one. What it cannot see is a pack
+that PATCHED a record in a namespace that is still present. A session pack that
+changed a core sword's damage leaves a save in which the sword is core's, so it is
+never quarantined, and the value it had at save time is simply gone - the patch
+lived in the composition and the composition is not reproducible.
+
+This is a degraded outcome rather than corruption, and the same gap exists for a
+permanently installed pack that is later removed. What is different is
+discoverability: a removed install can be put back, and a session pack cannot.
+Closing it properly means recording the composed packs' digests in save metadata
+and warning on a mismatch rather than only on a missing namespace, which is a save
+format change and therefore not a small one. Until then the docs say it
+(`MOD_SEAMS.md`, section 4d) and the manager's session screens say it, which is
+the honest interim and not a fix.
+
 ### A player-visible speed control for a mod's autoplayer
 
 `ModPlugin.controller`'s pump (added 2026-08-21, see `CHANGELOG.md`) ticks on a

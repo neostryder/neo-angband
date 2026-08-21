@@ -269,7 +269,13 @@ import {
 import type { WorldLayer } from "./world-view";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
-import { combineDiskReports, diskPacks, loadDiskPacks, setDiskPacks } from "./disk-packs";
+import {
+  combineDiskReports,
+  diskPacks,
+  loadDiskPacks,
+  sessionPacks,
+  setDiskPacks,
+} from "./disk-packs";
 import {
   installModFromRepo,
   installedMeta,
@@ -277,6 +283,7 @@ import {
   loadInstalledMods,
   uninstallMod,
 } from "./mod-install";
+import { loadSessionMods } from "./mod-session";
 import type { ModUpgradeDeps } from "./mod-browse";
 import { pendingUpgrades, refreshInstalledMods, type ModUpgrade } from "./mod-refresh";
 import { zipImportDeps } from "./mod-zip-source";
@@ -718,6 +725,12 @@ initLaunchArgsFromHost();
  * still what applies it, and the manager still says so.
  */
 async function rediscoverModSources(): Promise<void> {
+  /* The session tier first, and through its OWN latch rather than into the report
+   * below (mod-session.ts). A mod staged for this session has to survive this
+   * function running again - the manager calls it after every download - and
+   * diskPacks() fuses the two latches with the session one in front, so a staged
+   * copy shadows an installed mod of the same id and the collision is reported. */
+  await loadSessionMods();
   const shellPacks = await loadDiskPacks();
   const folder = shellPacks.available ? shellPacks : await loadPickedModFolder();
   setDiskPacks(combineDiskReports([folder, await loadInstalledMods()]));
@@ -5767,6 +5780,10 @@ async function openModManager(): Promise<void> {
         // game ran it would be lying about the state of the game.
         enabled: enabledModIds(),
         consents: store.getConsents(),
+        /* Read off the packs that actually composed rather than off the staged
+         * records, so a row is marked "this session" only when there is really a
+         * pack behind it - the same rule presentNamespaces uses. */
+        session: sessionPacks().packs.map((p) => p.manifest.id),
       }),
     /* So a mod downloaded in this session is in the list on the way back out,
      * instead of after a reload the player has not been told to do yet. */

@@ -321,6 +321,39 @@ export interface ModPluginContext {
    */
   readonly installMod?: (bytes: Uint8Array) => Promise<ModInstallOutcome>;
   /**
+   * Put a content mod into THIS session only, so the player can try it now.
+   *
+   * Present only when your manifest declared `mod:session` and the player
+   * consented to it; `undefined` otherwise, so guard with
+   * `if (!ctx.loadModForSession) return;`.
+   *
+   * The bytes are the same zip `installMod` takes and are refused on the same
+   * terms: content only, no capability requests, the same ceilings, the same
+   * standards inspection, and the same origin pin against an installed copy of
+   * that id. What changes is where the archive is kept and how long. It is held in
+   * session storage instead of the library, it composes into the game on the next
+   * reload without waiting to be switched on, and it is gone when the player closes
+   * the game.
+   *
+   * A RELOAD IS STILL WHAT APPLIES IT. Content composes at load, so nothing you
+   * stage is in the game this turn - the mod manager offers the reload on the way
+   * out. Say that rather than letting the player wonder where their monster is.
+   *
+   * SAY WHAT "THIS SESSION" ACTUALLY MEANS, because a player will read it as "so
+   * nothing can go wrong". The ARCHIVE is forgotten. The records were as real as
+   * any other mod's while they were loaded, and a character that met them keeps
+   * whatever they did to it - and next time, with the pack gone, the game will treat
+   * that character's mod-owned monsters and items as belonging to something that is
+   * not installed. Do not stage content under a character somebody is playing
+   * seriously.
+   *
+   * `survivesReload` is false when the browser would not take the archive - a
+   * private window with storage switched off, most often. The mod is loadable this
+   * page and will NOT come back after the reload, which makes the reload pointless,
+   * so tell the player to save the file and import it instead.
+   */
+  readonly loadModForSession?: (bytes: Uint8Array) => Promise<ModSessionOutcome>;
+  /**
    * Conjure an item or a creature into the live game, for a mod that wants to
    * show the player the thing they just made.
    *
@@ -469,6 +502,28 @@ export type ModInstallOutcome =
       readonly id: string;
       /** The version it was recorded at. */
       readonly version: string;
+    }
+  | { readonly ok: false; readonly problem: string };
+
+/**
+ * What came of loading a mod for this session only.
+ *
+ * `ModInstallOutcome` plus one field, rather than a reuse of it, because the extra
+ * field is the one thing a caller cannot find out for itself and must not assume:
+ * whether the archive will still be there after the reload that applies it. A
+ * browser with storage switched off takes the mod for this page and loses it on the
+ * way back up, and a screen that said "reload to try it" in that case would be
+ * sending the player round a loop that cannot finish.
+ */
+export type ModSessionOutcome =
+  | {
+      readonly ok: true;
+      /** The id it will load under, from its own manifest. */
+      readonly id: string;
+      /** The version its manifest declares, or "unversioned". */
+      readonly version: string;
+      /** False when this browser would not hold the archive across the reload. */
+      readonly survivesReload: boolean;
     }
   | { readonly ok: false; readonly problem: string };
 

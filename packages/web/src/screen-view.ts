@@ -501,6 +501,7 @@ export const MODELLED_SCREENS = [
   "core:mod-conflicts",
   "core:mod-install-failure",
   "core:mod-zip-import-failure",
+  "core:mod-session-load",
   "core:hall-of-fame",
   "core:store-knowledge",
   "core:update",
