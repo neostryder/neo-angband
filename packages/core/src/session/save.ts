@@ -3151,7 +3151,7 @@ export function decodeSavedGame(
     try {
       payload = codec.decompress(body);
     } catch {
-      /* A codec we HAVE that cannot read these bytes is genuine damage. */
+      /* An installed codec that cannot read these bytes is genuine damage. */
       return { ...base, save: null };
     }
   }

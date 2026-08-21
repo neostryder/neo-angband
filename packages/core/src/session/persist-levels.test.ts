@@ -146,7 +146,7 @@ describe("birth_levels_persist (A1 persistent levels)", () => {
     });
     const state = game.state;
 
-    /* Wound a monster and put it to sleep on the level we are about to leave. */
+    /* Wound a monster and put it to sleep on the level about to be left. */
     const mon = firstMonster(state);
     mon.maxhp = 100;
     mon.hp = 1;

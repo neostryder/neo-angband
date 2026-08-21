@@ -254,7 +254,7 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     const state = game.state;
     const races = game.booted.registries.monsters.races;
 
-    /* Pick two distinct uniques: one we "kill", one we leave alone. */
+    /* Pick two distinct uniques: one gets "killed", one is left alone. */
     const uniques = races.filter((r) => r && r.flags.has(RF.UNIQUE));
     const killed = uniques[0]!;
     const spared = uniques[1]!;
@@ -913,6 +913,72 @@ describe("birth_randarts (obj-randart.c do_randart)", () => {
       expect(reArts[i]?.toD).toBe(rndArts[i]?.toD);
       expect(reArts[i]?.name).toBe(rndArts[i]?.name);
     }
+  });
+
+  it("a random artifact stays known as created, seen and everseen after a reload", () => {
+    const game = startGame(pack, {
+      seed: 88,
+      depth: 2,
+      optionOverrides: { birth_randarts: true },
+    });
+    expect(game.randartSeed).not.toBe(0);
+
+    const aidx = 3;
+    const art = game.booted.registries.objects.artifacts[aidx]!;
+    game.state.artifacts!.markCreated(aidx, true);
+    game.state.artifacts!.markSeen(aidx, true);
+    game.state.artifacts!.markEverseen(aidx, true);
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const restored = loadGame(pack, saved);
+
+    /* The rebuilt set is the same set, so the flags describe the same artifact. */
+    expect(restored.booted.registries.objects.artifacts[aidx]?.name).toBe(art.name);
+    expect(restored.state.artifacts!.isCreated(aidx)).toBe(true);
+    expect(restored.state.artifacts!.isSeen(aidx)).toBe(true);
+    expect(restored.state.artifacts!.isEverseen(aidx)).toBe(true);
+  });
+
+  it("keeps those same flags with the standard artifact set (randarts off)", () => {
+    const game = startGame(pack, { seed: 88, depth: 2 });
+    expect(game.randartSeed).toBe(0);
+
+    const aidx = 3;
+    game.state.artifacts!.markCreated(aidx, true);
+    game.state.artifacts!.markSeen(aidx, true);
+    game.state.artifacts!.markEverseen(aidx, true);
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const restored = loadGame(pack, saved);
+    expect(restored.state.artifacts!.isCreated(aidx)).toBe(true);
+    expect(restored.state.artifacts!.isSeen(aidx)).toBe(true);
+    expect(restored.state.artifacts!.isEverseen(aidx)).toBe(true);
+  });
+
+  it("a carried random artifact is still that artifact after a reload", () => {
+    const game = startGame(pack, {
+      seed: 91,
+      depth: 2,
+      optionOverrides: { birth_randarts: true },
+    });
+    const reg = game.booted.registries;
+    const art = reg.objects.artifacts[3]!;
+    const kind = reg.objects.kinds.find(
+      (k) => k && k.tval === art.tval && k.sval === art.sval,
+    )!;
+    const obj = objectNew(kind);
+    obj.tval = kind.tval;
+    obj.sval = kind.sval;
+    obj.number = 1;
+    obj.artifact = art;
+    const handle = invenCarry(game.state.gear, game.state.actor.player, obj, {
+      quiverSlotSize: reg.constants.quiverSlotSize,
+      thrownQuiverMult: reg.constants.thrownQuiverMult,
+    });
+
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    const restored = loadGame(pack, saved);
+    expect(restored.state.gear.store.get(handle)?.artifact?.name).toBe(art.name);
   });
 });
 
