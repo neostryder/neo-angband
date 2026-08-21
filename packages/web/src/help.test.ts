@@ -31,6 +31,21 @@ import type { GlyphTerm, GridPointerInput, GridSurface } from "./term";
 const MAIN_TS_SOURCE = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
 const HELP_TS_SOURCE = readFileSync(new URL("./help.ts", import.meta.url), "utf8");
 
+/*
+ * UPSTREAM'S OWN BYTES, read from the reference tree rather than pasted here.
+ *
+ * The commands page and the symbol legend transcribe lib/help/*.txt, so the
+ * question worth asking of them is not "did the renderer change" but "does this
+ * still say what upstream says". A snapshot recorded from the port can only
+ * answer the first, and it answers it about whatever the port happened to print
+ * on the day the snapshot was taken - which is how the page these tests used to
+ * pin came to state that 'S' saves the game and 'V' shows the hall of fame while
+ * every test passed.
+ */
+const HELP_DIR = new URL("../../../reference/lib/help/", import.meta.url);
+const upstream = (name: string): string[] =>
+  readFileSync(new URL(name, HELP_DIR), "utf8").split("\n");
+
 /** True if `key` is wired to a real branch in main.ts's keydown handler. */
 function keyIsWired(key: string): boolean {
   const esc = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -42,7 +57,71 @@ function keyIsWired(key: string): boolean {
   return patterns.some((re) => re.test(MAIN_TS_SOURCE));
 }
 
-describe("helpCommandLines (curated command reference)", () => {
+/**
+ * The rows of a keyset page, in order, as the terminal prints them.
+ *
+ * The table starts at the first row that opens with two spaces and a key, which
+ * is what separates it from the preamble above it: the preamble is wrapped prose
+ * and never starts a line that way.
+ */
+function keysetRows(roguelike: boolean): string[] {
+  const lines = helpCommandLines(80, roguelike).map((l) => l.text);
+  const first = lines.findIndex((l) => /^ {2}\S/u.test(l));
+  return lines.slice(first).filter((l) => l !== "");
+}
+
+describe("the command summary is lib/help's own, keyset for keyset", () => {
+  /*
+   * commands.txt:18-73 and r_comm.txt:18-74 are the tables; everything above is
+   * the heading and the preamble, which the page carries as a screen title and a
+   * wrapped paragraph instead (see help.ts).
+   */
+  const table = (name: string): string[] =>
+    upstream(name).slice(17).filter((l) => l !== "");
+
+  it("prints commands.txt for the original keyset", () => {
+    const expected = table("commands.txt");
+    const actual = keysetRows(false);
+    expect(actual).toHaveLength(expected.length);
+    expected.forEach((line, i) => {
+      /* THE TWO ROWS commands.txt INDENTS BY ONE EXTRA COLUMN, and the only
+       * lines here not expected to match byte for byte: it pushes the `~` and
+       * `?` of its last two paired rows under the letter of `^z`, where
+       * r_comm.txt - the same table, other keyset - leaves them in the regular
+       * key column. See KEY_COLUMNS in help.ts on why the port cannot follow
+       * without writing a space into a key cell. */
+      const irregular = /^ {2}[\\`] /u.test(line);
+      expect(actual[i], `row ${i}`).toBe(irregular ? line.replace(/ ([~?]) {3}/u, "$1    ") : line);
+    });
+  });
+
+  it("prints r_comm.txt for the roguelike keyset, byte for byte", () => {
+    expect(keysetRows(true)).toEqual(table("r_comm.txt"));
+  });
+
+  it("says which keyset the page is describing in its title", () => {
+    expect(helpCommandsScreen(false).title).toContain("Original");
+    expect(helpCommandsScreen(true).title).toContain("Roguelike");
+  });
+
+  it("carries commands.txt's preamble, minus the sentence about the ^ prefix", () => {
+    const prose = helpCommandLines().map((l) => l.text).join(" ");
+    expect(prose).toContain("^ followed by a letter is an abbreviation");
+    expect(prose).toContain("The autoexplore_commands option modifies");
+    /* Dropped on purpose: this port has no two-keystroke '^' route, so the
+     * fallback upstream offers for a host that eats control-plus-key would be a
+     * keystroke that does nothing. docs/PLANNED.md carries the gap. */
+    expect(prose).not.toContain("You may also press");
+  });
+
+  it("names every row it has nothing behind, once and above the table", () => {
+    const prose = helpCommandLines().map((l) => l.text).join(" ");
+    for (const unavailable of ["'\\\\'", "'`'", "'^e'", "'^z'"]) {
+      expect(prose).toContain(unavailable.replace("\\\\", "\\"));
+    }
+    expect(helpCommandLines(80, true).map((l) => l.text).join(" ")).toContain("alter keys");
+  });
+
   it("lists only keys that are actually wired in main.ts (drift guard)", () => {
     const singleKeys = [
       "g", "i", "e", "]", "w", "t", "d", "{", "}", "F", "I", "K", "=",
@@ -50,43 +129,52 @@ describe("helpCommandLines (curated command reference)", () => {
       "q", "r", "E", "u", "a", "z", "A",
       "f", "v", "o", "D", "*", "'", "l", "x",
       "C", "S", "N", "V", "Escape", "?", "M", "L",
+      /* The rows the curated page used to omit while implementing them. */
+      "R", "T", "Q", "b", "c", "k", "n", "s", "U", "W", "~", ":", "+", "<", ">", "/", "[", "|",
     ];
     for (const key of singleKeys) {
       expect(keyIsWired(key), `expected main.ts to wire up "${key}"`).toBe(true);
     }
   });
-
-  it("does not advertise upstream commands this port has not implemented", () => {
-    const text = helpCommandLines().map((l) => l.text).join("\n");
-    for (const forbidden of [
-      "Rest for", "Set options", "Check knowledge", "Take notes",
-      "Dump screen", "Retire character", "wizard", "Deep Descent",
-    ]) {
-      expect(text).not.toContain(forbidden);
-    }
-  });
-
-  it("groups the reference under headers and mentions the real bindings", () => {
-    const text = helpCommandLines().map((l) => l.text).join("\n");
-    for (const heading of ["Movement", "Items", "Magic", "Devices", "Combat & targeting", "Meta"]) {
-      expect(text).toContain(heading);
-    }
-    expect(text).toContain("Quaff a potion");
-    expect(text).toContain("Ctrl-P");
-    expect(text).toContain("Escape");
-    expect(text).toContain("Display map of entire level");
-    expect(text).toContain("Locate player on map");
-  });
 });
 
-describe("helpSymbolLines (near-verbatim symbols.txt)", () => {
-  it("matches the port's store and monster data", () => {
-    const text = helpSymbolLines().map((l) => l.text).join("\n");
-    expect(text).toContain("Entrance to General Store");
-    expect(text).toContain("Entrance to your Home");
-    expect(text).toContain("Kobold");
-    expect(text).toContain("A staircase down");
-    expect(text).toContain("Multiple items");
+describe("helpSymbolLines is symbols.txt", () => {
+  /** symbols.txt:26-90's glyph rows: every line that opens with a glyph. */
+  const glyphRows = (): string[] =>
+    upstream("symbols.txt").filter((l) => /^\S {2}\S/u.test(l));
+
+  it("prints every glyph row byte for byte", () => {
+    const actual = helpSymbolLines()
+      .map((l) => l.text)
+      .filter((l) => /^\S {2}\S/u.test(l));
+    expect(actual).toEqual(glyphRows());
+  });
+
+  it("carries the file's opening prose, only renaming the file it cross-references", () => {
+    const printed = helpSymbolLines().map((l) => l.text);
+    const expected = upstream("symbols.txt")
+      .slice(3, 19)
+      .map((l) => l.replace("(see 'commands.txt')", "(see the commands page)"));
+    expect(printed.slice(0, expected.length)).toEqual(expected);
+    /* The two paragraphs a curated version of this page had dropped. Both are
+     * true of this build: '/' is bound (querySymbolCmd) and pref files load
+     * (prefs-ui.ts), so neither had a reason to go. */
+    const prose = printed.join(" ");
+    expect(prose).toContain('The "slash" command');
+    expect(prose).toContain("user pref file");
+  });
+
+  it("gives the xorn the X the game actually draws for it", () => {
+    /* monster_base.txt gives the xorn `glyph:X`. The flattened list this
+     * replaced had dropped upstream's `x  -` row and slid "Xorn/Xaren" onto the
+     * lowercase letter left behind, so the legend named a glyph no xorn has. */
+    const monsters = helpSymbolsScreen().blocks.find(
+      (b): b is ScreenTableBlock => b.kind === "table" && b.key === "monsters",
+    );
+    const xorn = monsters?.rows.find((r) => r.cells.desc2?.text === "Xorn/Xaren");
+    expect(xorn?.cells.glyph2?.text).toBe("X");
+    expect(xorn?.cells.glyph?.text).toBe("x");
+    expect(xorn?.cells.desc?.text).toBe("-");
   });
 });
 
@@ -241,203 +329,8 @@ async function tick(): Promise<void> {
 }
 
 // --- the four pages as ScreenViews -----------------------------------------
-/*
- * THE GOLDEN VECTORS, recorded from the hand-laid `ScreenLine[]` builders before
- * the pages had a model and pasted here unchanged.
- *
- * They are the acceptance criterion for the commands and symbols pages, not a
- * regression net bolted on afterwards. Both are near-verbatim from upstream's
- * lib/help/commands.txt and symbols.txt, so parity owns their layout: a model
- * that publishes the key, the glyph and the section headings as data is only
- * allowed if the terminal goes on printing the same bytes. Anything the model
- * gets wrong - a column width, a gap, a blank row between sections - shows up
- * here as a diff rather than as a page nobody looked at.
- */
-const COMMANDS_BEFORE = `
-Original keyset - only the commands this port implements.
 
-Movement
-  1-9        Walk (numpad; diagonals need the numpad)
-  Arrows     Walk orthogonally (up/down/left/right)
-  (walk in)  Walking onto a shop entrance enters the store
-
-Items
-  g          Get objects on the floor
-  i          List contents of pack
-  e          List equipped items
-  ]          List objects you can see
-  w          Wear/wield equipment
-  t          Take off equipment
-  d          Drop an item
-  {          Inscribe an object
-  }          Uninscribe an object
-  F          Fuel your lantern/torch
-  I          Inspect an item
-  K          Toggle ignoring off
-
-Magic
-  m / p      Cast a spell / recite a prayer
-  G          Gain (study) new spells/prayers
-
-Devices
-  q          Quaff a potion
-  r          Read a scroll
-  E          Eat some food
-  u          Use a staff
-  a          Aim a wand
-  z          Zap a rod
-  A          Activate an item
-
-Combat & targeting
-  f          Fire ammo at a target
-  v          Throw an item
-  o          Open a door or chest
-  D          Disarm a trap or lock a door
-  *          Target a monster or location
-  '          Target the closest monster
-  l / x      Look around
-
-Meta
-  =          Options menu (interface/birth toggles, ignore setup)
-  M          Display map of entire level
-  L          Locate player on map
-  C          Character description
-  S          Save the game
-  N          New character (also available after death)
-  V          Display the hall of fame
-  Ctrl-P     Show previous messages
-  Enter      Browse every command by category
-  ?          Display this help
-  Escape     Game menu (save / switch / new character)
-
-More commands online: angband.readthedocs.io`;
-
-const SYMBOLS_BEFORE = `
-Symbols on your map fall into three categories: features of the
-dungeon such as walls, floors, doors, and traps; objects that can
-be picked up such as treasure, weapons, and magical devices; and
-monsters, which may or may not move about, and are mostly harmful.
-
-The "@" symbol (by default) represents your character.
-
-Features that do not block line of sight
-  .   A floor space
-  .   A trap (hidden)
-  1   Entrance to General Store
-  ^   A trap (known)
-  2   Entrance to Armoury
-  ;   A glyph of warding
-  3   Entrance to Weapon Smith
-  '   An open door
-  4   Entrance to Bookseller
-  '   A broken door
-  5   Entrance to Alchemy Shop
-  <   A staircase up
-  6   Entrance to Magic Shop
-  >   A staircase down
-  7   Entrance to the Black Market
-  #   A pool of lava
-  8   Entrance to your Home
-
-Features that block line of sight
-  #   A secret door
-  #   A wall
-  +   A closed door
-  %   A mineral vein
-  +   A locked door
-  *   A mineral vein with treasure
-  :   A pile of rubble
-  :   A pile of passable rubble
-
-Objects
-  !   A potion (or flask)
-  /   A pole-arm
-  ?   A scroll (or book)
-  |   An edged weapon
-  ,   A mushroom (or food)
-  \\   A hafted weapon
-  -   A wand or rod
-  }   A sling, bow, or x-bow
-  _   A staff
-  {   A shot, arrow, or bolt
-  =   A ring
-  (   Soft armour
-  "   An amulet
-  [   Hard armour
-  $   Gold or gems
-  ]   Misc. armour
-  ~   Lights, Tools, Chests, etc
-  )   A shield
-  &   Multiple items
-
-Monsters
-  $   Creeping Coins
-  ,   Mushroom Patch
-  a   Giant Ant
-  A   Ainu
-  b   Giant Bat
-  B   Bird
-  c   Giant Centipede
-  C   Canine (Dog)
-  d   Dragon
-  D   Ancient Dragon
-  e   Floating Eye
-  E   Elemental
-  f   Feline (Cat)
-  F   Dragon Fly
-  g   Golem
-  G   Ghost
-  h   Humanoid
-  H   Hybrid
-  i   Icky-Thing
-  I   Insect
-  j   Jelly
-  J   Snake
-  k   Kobold
-  K   Killer Beetle
-  l   Tree/Ent
-  L   Lich
-  m   Mold
-  M   Multi-Headed Hydra
-  n   Naga
-  o   Orc
-  O   Ogre
-  p   Human "person"
-  P   Giant "person"
-  q   Quadruped
-  Q   Quylthulg (Pulsing Flesh Mound)
-  r   Rodent
-  R   Reptile/Amphibian
-  s   Skeleton
-  S   Spider/Scorpion/Tick
-  t   Townsperson
-  T   Troll
-  u   Minor Demon
-  U   Major Demon
-  v   Vortex
-  V   Vampire
-  w   Worm or Worm Mass
-  W   Wight/Wraith
-  x   Xorn/Xaren
-  y   Yeek
-  Y   Yeti
-  z   Zombie/Mummy
-  Z   Zephyr Hound`;
-
-/** A page's body as one string, the way the golden vectors were recorded. */
-function rendered(view: Parameters<typeof screenBodyLines>[0]): string {
-  return `\n${screenBodyLines(view, 80).map((l) => l.text).join("\n")}`;
-}
-
-describe("the two upstream pages print exactly what they printed before", () => {
-  it("renders the commands page byte for byte", () => {
-    expect(rendered(helpCommandsScreen())).toBe(COMMANDS_BEFORE);
-  });
-
-  it("renders the symbols page byte for byte", () => {
-    expect(rendered(helpSymbolsScreen())).toBe(SYMBOLS_BEFORE);
-  });
-
+describe("the two upstream pages publish their key and glyph as data", () => {
   it("publishes the key and the glyph as cells rather than as a padded field", () => {
     /* The reason the pages were worth modelling at all. `cells.glyph.text` is
      * ONE character, which is the key a tileset mod already looks a sprite up
@@ -449,18 +342,16 @@ describe("the two upstream pages print exactly what they printed before", () => 
     const kobold = monsters?.rows.find((r) => r.cells.glyph?.text === "k");
     expect(kobold?.cells.desc?.text).toBe("Kobold");
 
-    const items = helpCommandsScreen().blocks.find(
-      (b): b is ScreenTableBlock => b.kind === "table" && b.key === "items",
+    const keys = helpCommandsScreen().blocks.find(
+      (b): b is ScreenTableBlock => b.kind === "table" && b.key === "keys",
     );
-    const quaff = helpCommandsScreen().blocks.find(
-      (b): b is ScreenTableBlock => b.kind === "table" && b.key === "devices",
-    );
-    expect(items?.rows.find((r) => r.cells.key?.text === "g")?.cells.desc?.text).toBe(
-      "Get objects on the floor",
-    );
-    expect(quaff?.rows.find((r) => r.cells.key?.text === "q")?.cells.desc?.text).toBe(
-      "Quaff a potion",
-    );
+    /* Both halves of the row are addressable, which is what a two-column table
+     * had to keep: upstream prints two commands per line, so a presenter drawing
+     * keycaps needs the second key as a key and not as the tail of a string. */
+    const quaff = keys?.rows.find((r) => r.cells.key?.text === "q");
+    expect(quaff?.cells.desc?.text).toBe("Quaff a potion");
+    expect(quaff?.cells.key2?.text).toBe("Q");
+    expect(quaff?.cells.desc2?.text).toBe("Retire character & quit");
   });
 
   it("leaves symbols.txt's own prose on `lines`, where upstream laid it out", () => {
@@ -732,9 +623,11 @@ describe("samples/sprite-inventory draws the help pages from their model", () =>
     expect(terminal).not.toContain("U+006B");
     expect(drawn).toContain("U+006B");
     /* And a count the terminal has no way to show, because it never computed
-     * one: the caption on the page is "Monsters" and nothing else. */
-    expect(terminal).not.toContain("Monsters · 52");
-    expect(drawn).toContain("Monsters · 52");
+     * one: the caption on the page is "Monsters" and nothing else. The count is
+     * symbols.txt's ROW count, 27, not its glyph count - upstream prints two
+     * glyphs to a line and the table is modelled the same way. */
+    expect(terminal).not.toContain("Monsters · 27");
+    expect(drawn).toContain("Monsters · 27");
     /* The description arrived as its own cell rather than as the tail of a
      * padded row, so it reaches the canvas whole and alone. */
     expect(drawn).toContain("Kobold");
@@ -758,9 +651,12 @@ describe("samples/sprite-inventory draws the help pages from their model", () =>
     expect(term.printed).toEqual([]);
     const drawn = texts(draws);
     const terminal = screenBodyLines(view, 80).map((l) => l.text).join("\n");
-    expect(terminal).not.toContain("[Ctrl-P]");
-    expect(drawn).toContain("[Ctrl-P]");
+    expect(terminal).not.toContain("[^p]");
+    expect(drawn).toContain("[^p]");
     expect(drawn).toContain("Show previous messages");
+    /* And the LEFT half of the same row, so the check cannot pass on a
+     * presenter that read only the second key. */
+    expect(drawn).toContain("[_]");
 
     pressDoc(fake, "Escape");
     await expect(done).resolves.toBeUndefined();
@@ -808,7 +704,7 @@ describe("runHelp (index -> page -> index modal loop)", () => {
     const snap = term.snapshot().join("\n");
     expect(snap).toContain("Angband Help");
     expect(snap).toContain("Available commands");
-    expect(snap).toContain("Symbols on your map");
+    expect(snap).toContain("Available symbols");
     expect(snap).toContain("Playing guide");
   });
 
@@ -822,10 +718,12 @@ describe("runHelp (index -> page -> index modal loop)", () => {
     press(win, "Enter"); // pick the first (default-cursor) item: Available commands
     await tick();
     let snap = term.snapshot().join("\n");
-    expect(snap).toContain("Angband Help - Commands");
-    expect(snap).toContain("Get objects on the floor"); // visible on the first screenful
+    expect(snap).toContain("Angband Help - Original Keyset Commands");
+    /* The preamble is what a player sees first now, so that is what the first
+     * screenful is checked for; the key table starts below it. */
+    expect(snap).toContain("^ followed by a letter");
 
-    press(win, "PageDown"); // scroll to reveal later content (Devices group)
+    press(win, "PageDown"); // scroll down into the key table
     await tick();
     snap = term.snapshot().join("\n");
     expect(snap).toContain("Quaff a potion");
@@ -846,7 +744,7 @@ describe("runHelp (index -> page -> index modal loop)", () => {
     const term = makeTerm(80, 24);
     void runHelp(term);
 
-    press(win, "ArrowDown"); // move cursor to "Symbols on your map"
+    press(win, "ArrowDown"); // move cursor to "Available symbols"
     await tick();
     press(win, "Enter");
     await tick();

@@ -94,6 +94,50 @@ now reproduces the shipped order exactly, so this is latent rather than live. It
 would become live the moment a mod interleaved them. Fixing it properly means the
 content compiler emitting one ordered list per record.
 
+### The `^` prefix as a second route to a control command
+
+`commands.txt` offers a fallback for a host that swallows control-plus-key: press
+and release `^`, then the letter. It resolves through upstream's keymap layer, so
+`^` plus `x` is `^x` wherever a control key is read. This port has no such route
+- the control branch of `main.ts`'s keydown handler requires `ev.ctrlKey` - so
+the command summary drops that sentence rather than describing a keystroke that
+does nothing.
+
+It is the one row on that page whose absence a player is likely to hit, because a
+browser tab is exactly the host the sentence was written for: `Ctrl-W` closes the
+tab before any page script sees it, and no amount of `preventDefault` changes
+that. Closing it means the keydown handler accepting a bare `^` as a pending
+prefix and folding the next letter into a control key, ahead of both keysets'
+command tables.
+
+### The roguelike keyset's `^` plus direction alter keys
+
+`r_comm.txt` maps `^b ^h ^j ^k ^l ^n ^u ^y` to alter-direction, which is how a
+roguelike-keyset player tunnels, opens and disarms without leaving the movement
+letters. The control branch handles that keyset's `^t`, `^d` and `^v` and stops
+there, so those eight are unbound and the command summary says so above its
+table. `alterCmd` already exists and takes a direction; what is missing is the
+eight-way dispatch in the control branch.
+
+### The birth screen's help is always the original keyset
+
+`do_cmd_help` picks its index file from `rogue_like_commands`, and during birth
+upstream reads it off the player it is building. This port's birth screen carries
+only the `birth_*` options, so `?` there shows the original-keyset summary whoever
+is reading it. Closing it means the interface-option defaults
+(`customized_interface_options.txt`, already read by `customPageDefaults`)
+reaching `openBirthHelp`.
+
+### The targeting banner's remaining clauses
+
+`target_display_help` builds its sentence from what the loop is offering, and two
+clauses are never reached here: `g` moves to the selection (pathfinding, which
+`runTargetLoop` takes as an argument and ignores) and the ignore key ignores the
+selected object. Upstream omits each in exactly the case this port is always in,
+so the banner is not saying anything false; the clauses arrive with the commands.
+Its `<click>` half is also absent, because taps are gated off while a modal owns
+input.
+
 ## Mod resilience
 
 The contract is in `docs/modding/MOD_COMPATIBILITY.md`, and its four gates are

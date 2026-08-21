@@ -177,7 +177,7 @@ const WATCH = ["core:monster-list"];
  * nowhere and which nothing but a one-character cell could have produced.
  *
  * The commands page is the same shape with `cells.key`, so a keycap can be drawn
- * where the terminal pads a field eleven wide; the community page's three routes
+ * where the terminal pads a fixed-width field; the community page's three routes
  * are one-row tables whose `cells.address` a presenter with a browser would hang
  * a link on; and the playing guide is prose, so it reaches the same panel the
  * recall pages do.
@@ -556,6 +556,33 @@ function spriteKey(glyph) {
  * a table publishes. Rows are matched on which cell they carry rather than on
  * which page they came from, so all four pages take the same walk.
  */
+/** One key-or-glyph plus its description, at `x`. Either cell may be absent. */
+function drawHelpPair(g, glyph, key, address, desc, x, cy) {
+  if (glyph) {
+    /* The sprite goes here in a mod that has one; the character and its
+     * lookup key stand in, so the sample stays free of assets. */
+    g.font = "16px monospace";
+    g.fillStyle = INK;
+    g.fillText(glyph.text, x, cy);
+    g.font = "12px monospace";
+    g.fillStyle = INK_DIM;
+    g.fillText(spriteKey(glyph.text), x + 22, cy);
+  } else if (key) {
+    g.font = "12px monospace";
+    g.fillStyle = INK_DIM;
+    g.fillText("[" + key.text + "]", x, cy);
+  } else if (address) {
+    g.font = "12px monospace";
+    g.fillStyle = INK;
+    g.fillText(address.text, x, cy);
+  }
+  if (desc && desc.text) {
+    g.font = "12px monospace";
+    g.fillStyle = INK;
+    g.fillText(desc.text, x + 96, cy);
+  }
+}
+
 function drawHelp(g, view, x, y, maxPx) {
   let cy = y;
   for (const block of view.blocks) {
@@ -571,33 +598,15 @@ function drawHelp(g, view, x, y, maxPx) {
       g.fillText(block.caption.text + " · " + block.rows.length, x, cy);
       cy += 20;
     }
+    /* BOTH HALVES OF THE ROW. lib/help prints two commands (and two glyphs) per
+     * line, so those tables carry a second key/glyph and a second description;
+     * a presenter that drew only the first would silently lose half the page. */
     for (const row of block.rows) {
-      const glyph = row.cells.glyph;
-      const key = row.cells.key;
-      const address = row.cells.address;
-      if (glyph) {
-        /* The sprite goes here in a mod that has one; the character and its
-         * lookup key stand in, so the sample stays free of assets. */
-        g.font = "16px monospace";
-        g.fillStyle = INK;
-        g.fillText(glyph.text, x, cy);
-        g.font = "12px monospace";
-        g.fillStyle = INK_DIM;
-        g.fillText(spriteKey(glyph.text), x + 22, cy);
-      } else if (key) {
-        g.font = "12px monospace";
-        g.fillStyle = INK_DIM;
-        g.fillText("[" + key.text + "]", x, cy);
-      } else if (address) {
-        g.font = "12px monospace";
-        g.fillStyle = INK;
-        g.fillText(address.text, x, cy);
-      }
-      const desc = row.cells.desc || row.cells.what;
-      if (desc && desc.text) {
-        g.font = "12px monospace";
-        g.fillStyle = INK;
-        g.fillText(desc.text, x + 96, cy);
+      drawHelpPair(g, row.cells.glyph, row.cells.key, row.cells.address, row.cells.desc
+        || row.cells.what, x, cy);
+      if (row.cells.glyph2 || row.cells.key2) {
+        drawHelpPair(g, row.cells.glyph2, row.cells.key2, null, row.cells.desc2,
+          x + 300, cy);
       }
       cy += 16;
     }
