@@ -79,13 +79,19 @@ export interface RecordProvenance {
    * changed, keyed exactly as they appear in the pack's JSON. Absent when
    * nothing was changed.
    *
-   * READ BY ONE PLACE: `mod/ids.ts`, which mints a record's content id from the
+   * READ BY TWO PLACES. `mod/ids.ts` mints a record's content id from the
    * definer's spelling rather than the one in front of it. A localid comes from
    * a record's own name or code, so without this a mod that renames a record it
    * does not own MOVES that record's id - and every save written before the mod
    * was installed loses the entity (task #233). Restoring the definer's value
    * is what makes "a record's id is fixed by the pack that DEFINED it, and a
    * patch cannot move it" true rather than aspirational.
+   *
+   * `mod/refusal.ts` reads it for a different question: whether one ENTRY of a
+   * list field came from the definer or from a later patch, which is the only
+   * thing that can tell core's own broken data (throw) from a mod's (drop and
+   * report) within a single list. That reader needs the definer's whole value
+   * rather than just its spelling, so it compares entries structurally.
    *
    * KEYED BY THE JSON's FIELD NAMES, not the bound record's. `attachExt` copies
    * the stamp onto the bound value verbatim, and rewriting the keys per binder

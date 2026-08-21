@@ -135,6 +135,15 @@ Two things it deliberately does not do, both load-bearing:
   (`field/required`), and refusing a record the *mod itself owns* belongs in the
   binders; `docs/PLANNED.md` carries that.
 
+**This is not a store-only rule.** An ego's `item:` list names specific base
+kinds and takes the same `append`, so it had the same defect and now gets the
+same answer: the line is dropped, the ego keeps its other candidates, and the
+mod is told. The core-versus-mod decision lives in `packages/core/src/mod/
+refusal.ts` — one `fieldOwner`, shared — precisely so that two binders cannot
+reach different verdicts about the same provenance. A binder that resolves names
+from a list a mod can append to should be reading from there rather than
+inventing its own rule; `docs/PLANNED.md` tracks which ones still do not.
+
 ### 4. `ctx.core` is not covered by any of the above, and that is the honest gap
 
 `ModPluginContext.core` is the **live core module namespace** - the whole engine,

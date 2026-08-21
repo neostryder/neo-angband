@@ -219,4 +219,25 @@ describe("main boot order", () => {
     expect(at, "main.ts never reads StoreRegistry.refused").toBeGreaterThan(-1);
     expect(noComments.slice(at, at + 200)).toMatch(/reportModFault\(/u);
   });
+  /**
+   * And every OTHER registry that refuses, for the same reason.
+   *
+   * Named one registry at a time on purpose. A test that only asserted "some
+   * `.refused` is read" would go green the moment the store's line existed and
+   * would never notice the next binder's list being collected and dropped on
+   * the floor - the same green-and-dead seam, one level out. Each name here is a
+   * registry that HAS a `refused` list; adding one to a third binder without
+   * adding it here is what this is meant to catch.
+   */
+  it.each([["stores"], ["objects"]])(
+    "reports the %s registry's refusals as mod faults",
+    (registry) => {
+      const noComments = mainSource
+        .replace(/\/\*[\s\S]*?\*\//gu, "")
+        .replace(/\/\/[^\n]*/gu, "");
+      const at = noComments.search(new RegExp(`${registry}\\?\\.refused`, "u"));
+      expect(at, `main.ts never reads the ${registry} registry's refusals`).toBeGreaterThan(-1);
+      expect(noComments.slice(at, at + 300)).toMatch(/reportModFault\(/u);
+    },
+  );
 });

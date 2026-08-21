@@ -470,3 +470,187 @@ describe("moddability", () => {
     expect(modReg.kinds.length).toBe(modReg.ordinaryKindCount + 14);
   });
 });
+
+/**
+ * THE SAME RULE THE STORE BINDER HAS, on the ego `item:` list.
+ *
+ * `item:` names a SPECIFIC base kind, and `append` (mod-sdk patch.ts) lets one
+ * mod add an entry to another pack's list - so "mod A gives an ego a base item
+ * mod B defines, the player disables mod B" is an ordinary pair of mods and an
+ * ordinary click, and it used to reach `ego: unknown sval` out of `bindCore`
+ * inside `startGame` at the host's module top level. That is the crash screen
+ * and no game, over one line of one ego.
+ *
+ * The attribution machinery is shared with the store binder (mod/refusal.ts)
+ * rather than rewritten here, so the two cannot come to different answers about
+ * the same provenance - which is why these tests assert the OUTCOME (dropped,
+ * blamed, everything else intact) rather than re-testing `fieldOwner`, whose own
+ * cases live in the store binder's tests.
+ */
+describe("ego item lines a mod got wrong", () => {
+  /** The ego records with one record's `item:` list under test. */
+  function packWithEgo(rec: unknown): ObjPackJson {
+    const egos = load("ego_item") as { records: unknown[] };
+    return {
+      ...loadPack(),
+      egoItem: {
+        ...egos,
+        records: egos.records.map((r) =>
+          (r as EgoRecordJson).name === "of Shadows" ? rec : r,
+        ),
+      },
+    } as ObjPackJson;
+  }
+
+  /** "of Shadows", whose real `item:` list is a single Lantern. */
+  function shadows(): EgoRecordJson {
+    const egos = load("ego_item") as { records: EgoRecordJson[] };
+    return JSON.parse(
+      JSON.stringify(egos.records.find((r) => r.name === "of Shadows")),
+    ) as EgoRecordJson;
+  }
+
+  const GHOST = { tval: "light", sval: "Bullseye Lantern of Kilroy" };
+
+  function stamped(
+    rec: EgoRecordJson,
+    from: { owner: string; modifiedBy?: string[]; was?: Record<string, unknown> },
+  ): EgoRecordJson {
+    return { ...rec, $from: from } as EgoRecordJson;
+  }
+
+  it("throws when nothing touched the record", () => {
+    const rec = shadows();
+    rec.item!.push(GHOST);
+    expect(() => new ObjRegistry(packWithEgo(rec))).toThrow(
+      /ego: unknown sval Bullseye Lantern of Kilroy/,
+    );
+  });
+
+  it("drops the line and names the appending mod", () => {
+    const base = shadows();
+    const was = { item: base.item!.map((i) => ({ ...i })) };
+    const rec = stamped(base, { owner: "core", modifiedBy: ["mod-a"], was });
+    rec.item!.push(GHOST);
+
+    const r = new ObjRegistry(packWithEgo(rec));
+    expect(r.refused.length).toBe(1);
+    expect(r.refused[0]!.id).toBe("mod-a");
+    expect(r.refused[0]!.file).toBe("ego_item");
+    expect(r.refused[0]!.record).toBe("of Shadows");
+    expect(r.refused[0]!.field).toBe("item");
+    expect(r.refused[0]!.why).toContain("Bullseye Lantern of Kilroy");
+
+    /* THE LINE IS GONE AND NOTHING ELSE IS. Compared against the same ego bound
+     * with no mod at all, so this cannot pass on an empty candidate set. */
+    const after = r.findEgo("of Shadows")!;
+    const before = reg.findEgo("of Shadows")!;
+    expect(after.possItems.size).toBe(before.possItems.size);
+    expect([...after.possItems].sort()).toEqual([...before.possItems].sort());
+  });
+
+  it("still throws for CORE's own line in a record a mod patched", () => {
+    /* The half that keeps core honest: the mod's append is fine, and the bad
+     * line is in the definer's own value, so the definer is answerable - and
+     * the definer is core. */
+    const base = shadows();
+    base.item!.push(GHOST);
+    const was = { item: base.item!.map((i) => ({ ...i })) };
+    const rec = stamped(base, { owner: "core", modifiedBy: ["mod-a"], was });
+    rec.item!.push({ tval: "light", sval: "Wooden Torch" });
+
+    expect(() => new ObjRegistry(packWithEgo(rec))).toThrow(
+      /ego: unknown sval Bullseye Lantern of Kilroy/,
+    );
+  });
+
+  it("drops a mod-defined ego's own bad line rather than throwing", () => {
+    /* A whole ego a mod added: no `was`, and the definer is not core, so every
+     * line in it is the mod's to get wrong. */
+    const rec = stamped({ ...shadows(), item: [GHOST] }, { owner: "mod-a" });
+    const r = new ObjRegistry(packWithEgo(rec));
+    expect(r.refused.length).toBe(1);
+    expect(r.refused[0]!.id).toBe("mod-a");
+  });
+
+  it("refuses nothing at all for the shipped pack", () => {
+    /* The check that the guard is not firing on core's own data - which is the
+     * thing a `refused` list makes easy to get wrong and impossible to notice.
+     */
+    expect(reg.refused).toEqual([]);
+  });
+});
+
+/**
+ * finish_parse_curse's OWN validation (obj-init.c L1379-1386).
+ *
+ * A curse carrying MULTIPLY_WEIGHT and a negative weight adjustment would
+ * multiply an object's weight by a negative factor. Upstream logs it and
+ * returns PARSE_ERROR_INVALID_VALUE, which fails the parse and stops the game.
+ *
+ * IT IS A FINISH HOOK, and that is why it was missing. The port reproduces
+ * `parse_curse_weight` faithfully - the int16 range check, with upstream's own
+ * test values cited - and carried a comment saying this other half was "a
+ * separate finalize-time check upstream and is not this one". A parity test
+ * written against upstream's curse.c PARSER tests passes in full either way,
+ * which is the structural blindness the finish-hook audit exists to find.
+ */
+describe("a curse that multiplies weight by a negative number", () => {
+  function packWithCurse(rec: unknown): ObjPackJson {
+    const curses = load("curse") as { records: unknown[] };
+    return {
+      ...loadPack(),
+      curse: { ...curses, records: [...curses.records, rec] },
+    } as ObjPackJson;
+  }
+
+  const BROKEN = {
+    name: "leadenness",
+    type: ["soft armor"],
+    weight: -50,
+    flags: ["MULTIPLY_WEIGHT"],
+    desc: ["It weighs less than nothing."],
+  };
+
+  it("throws when nothing touched the record", () => {
+    expect(() => new ObjRegistry(packWithCurse(BROKEN))).toThrow(
+      /curse: leadenness: uses MULTIPLY_WEIGHT and has a negative weight/,
+    );
+  });
+
+  it("drops the flag and names the mod when a mod wrote it", () => {
+    const rec = { ...BROKEN, $from: { owner: "mod-a" } };
+    const r = new ObjRegistry(packWithCurse(rec));
+
+    expect(r.refused.length).toBe(1);
+    expect(r.refused[0]!.id).toBe("mod-a");
+    expect(r.refused[0]!.file).toBe("curse");
+    expect(r.refused[0]!.record).toBe("leadenness");
+    expect(r.refused[0]!.field).toBe("weight");
+    expect(r.refused[0]!.why).toContain("MULTIPLY_WEIGHT dropped");
+
+    /* The curse still EXISTS, and the half that makes sense on its own is kept:
+     * a plain additive weight reduction. Only the flag is gone. */
+    const curse = r.curses.find((c) => c?.name === "leadenness");
+    expect(curse, "the curse was dropped instead of the flag").toBeDefined();
+    expect(curse!.obj.weight).toBe(-50);
+    expect(curse!.obj.flags.has(OF.MULTIPLY_WEIGHT)).toBe(false);
+  });
+
+  it("leaves a positive weight with MULTIPLY_WEIGHT alone", () => {
+    /* The combination upstream is fine with, and the reason the check is about
+     * the pair rather than about either half. */
+    const rec = { ...BROKEN, weight: 50, $from: { owner: "mod-a" } };
+    const r = new ObjRegistry(packWithCurse(rec));
+    expect(r.refused).toEqual([]);
+    const curse = r.curses.find((c) => c?.name === "leadenness")!;
+    expect(curse.obj.flags.has(OF.MULTIPLY_WEIGHT)).toBe(true);
+  });
+
+  it("refuses nothing for the shipped pack", () => {
+    /* Core ships no curse with MULTIPLY_WEIGHT at all, so this guard must be
+     * silent on the real data - which is the thing a new check makes easy to
+     * get wrong and hard to notice. */
+    expect(reg.refused).toEqual([]);
+  });
+});
