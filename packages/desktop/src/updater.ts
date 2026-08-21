@@ -106,6 +106,49 @@ export function isAllowedAssetUrl(url: string, repo: string): boolean {
   return true;
 }
 
+/**
+ * Only this project's own release page on github.com.
+ *
+ * This is the "reveal" op's URL, and it does not come from a build constant:
+ * it is `html_url` off GitHub's release JSON, forwarded through the renderer as
+ * plain input the way `isAllowedAssetUrl` already treats the asset catalogue.
+ * It also arrives at this process through `window.neoDesktop.update`, a bridge
+ * method any script running in the renderer can call directly with any string
+ * it likes - a loaded mod's plugin.js among them, since a mod's code is a plain
+ * ES module import into that same page. Nothing upstream of this function can
+ * be trusted to have kept the argument an http(s) URL, let alone one pointed at
+ * this project's own repository, so this is the one place that decides.
+ */
+export function isAllowedRevealUrl(url: string, repo: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "https:") return false;
+  if (u.hostname !== "github.com") return false;
+  return u.pathname === `/${repo}/releases` || u.pathname.startsWith(`/${repo}/releases/`);
+}
+
+/**
+ * Only http and https. The guard for `setWindowOpenHandler`, whose whole job is
+ * handing a URL the renderer named to the operating system - so a scheme other
+ * than http or https reaches whatever program Windows (or another OS) has
+ * registered for it, not a browser. Unlike the reveal URL above, this handler
+ * is not scoped to one host: it is the general "open this link in the real
+ * browser" path, and legitimate targets are not all on github.com.
+ */
+export function isHttpUrl(url: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  return u.protocol === "https:" || u.protocol === "http:";
+}
+
 /** The SHA-256 of a file, lowercase hex. */
 export async function sha256File(file: string): Promise<string> {
   const hash = createHash("sha256");
@@ -361,7 +404,7 @@ export function winCommandLine(parts: readonly string[]): string {
  * joins its creator's job automatically unless it is created with
  * CREATE_BREAKAWAY_FROM_JOB, which Node's `child_process` does not expose:
  * `detached: true` sets CREATE_NEW_PROCESS_GROUP, which is a different thing
- * entirely and does not help. So the swap script - spawned by us, from inside
+ * entirely and does not help. So the swap script - spawned by the app, from inside
  * Electron's job - was killed the instant the app exited.
  *
  * WHAT THAT LOOKED LIKE, because it looked like nothing: the download verified,
@@ -401,7 +444,7 @@ function pidAlive(pid: number): boolean {
 }
 
 /**
- * Write the swap script and hand it to a process that will outlive us.
+ * Write the swap script and hand it to a process that will outlive this one.
  *
  * Resolves after the swapper is CONFIRMED RUNNING, not after the swap: the
  * script's first act is to wait for this process to exit, so the caller's next
@@ -429,7 +472,7 @@ export async function launchSwap(args: {
   if (!isWin) fs.chmodSync(script, 0o755);
   /*
    * The one thing that still cannot be done in-process: a running program cannot
-   * replace its own files, so the swap has to outlive us. `powershell.exe` and
+   * replace its own files, so the swap has to outlive the running app. `powershell.exe` and
    * `/bin/sh` are components of their operating systems rather than tools a
    * player installs - but the Windows one is named ABSOLUTELY, because "whatever
    * PATH hands over" is exactly what put GNU tar in the extractor's place.
