@@ -209,6 +209,19 @@ export function describeCapability(cap: string): CapabilityDescription {
           "you read what they ask for and turn them on yourself",
         elevated: true,
       };
+    case "debug":
+      /* SAID IN THE GAME'S OWN VOCABULARY, not the seam's. The player has already
+       * been told once per character what the debug commands are and what using
+       * them costs, in those words, so naming them here is the shortest route to
+       * a grant they can actually picture. The score consequence is stated
+       * because it is permanent and because nothing else on this list has one. */
+      return {
+        cap,
+        text:
+          "Conjure items and creatures into your game, the way the debug commands do - it asks first, and the " +
+          "character it happens to is marked for good and can no longer be scored",
+        elevated: true,
+      };
     case "ui":
       /* Named, because the consent is worth exactly as much as the player's
        * ability to picture what changes. "Replace part of the interface" tells

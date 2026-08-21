@@ -32,6 +32,26 @@ version it still calls itself.
 
 ### Added
 
+- **A mod can conjure an item or a creature into the live game, and the character
+  is marked for it.** `ctx.debug`, behind the new `debug:spawn` capability, drops
+  one item at the player's feet or scatters one creature near them, exactly as the
+  debug commands do. It adds almost no ability and a good deal of honesty: every
+  primitive behind it was already on `ctx.core`, and the gate they check reads a
+  `debug` flag out of a deps bag the caller assembles - so a mod could always have
+  conjured whatever it liked, with no capability and no trace.
+
+  What the capability adds is the mark. The first use in a character asks the
+  game's own debug question, in the same words and through the same function `^A`
+  uses, and accepting sets the same permanent `NOSCORE.DEBUG` bit - before
+  anything is placed, so nothing can arrive in a character the player did not
+  agree to spend. It also adds a line on the consent list, its own kind with no
+  wildcard over it, so a player can see exactly which of their mods can do this.
+
+  The question is asked on the character grid, which a mod's own modal panel would
+  be covering, so the first spawn in a character is refused by name while one is
+  open rather than posing a prompt nobody can see or answer. Placement is the
+  game's and the API has no coordinates.
+
 - **A mod can install a content mod.** `ctx.installMod(bytes)`, behind the new
   `mod:install` capability, takes the bytes of a mod archive and lands it through
   the same door the player's own zip import uses - so it is read under the same

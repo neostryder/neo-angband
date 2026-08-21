@@ -164,6 +164,20 @@
       "verdict": "HOST - command-line option letters. Host wiring, not game content."
     },
     {
+      "file": "packages/mod-sdk/src/capabilities.ts",
+      "cases": 10,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - grantCovers's dispatch on capability KIND (command/event/state/network/registry/display/ui/backup/mod/debug), same class as capability-describe.ts's 17-case row below: a mod cannot add a capability kind, because a kind is what the host defines. Resizing this switch is the symptom of the mod system growing a new kind (backup:folder at #133, then mod:install and debug:spawn with the in-game authoring doors), never a gap. Note that ui:panel.mount, which landed alongside those two, did NOT resize it: a third ACTION on an existing kind widens an arm rather than adding one, which is the distinction grantCovers compares the action in order to make."
+    },
+    {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 10,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - describeCapability's dispatch on capability KIND, the consent-text sibling of capabilities.ts's grantCovers switch above and the same reasoning as this file's own 17-case row: a mod cannot add a capability kind, so this switch resizes only when the mod system itself grows one (backup:folder at #133, then mod:install and debug:spawn). The two switches move together by construction - a kind with a grant rule and no consent sentence would be a grant the player is never shown - which is why they are the same size in every revision of this census."
+    },
+    {
       "file": "packages/core/src/game/target-loop.ts",
       "cases": 9,
       "hasDefault": false,
@@ -185,25 +199,11 @@
       "verdict": "LOCALIZATION - skill_index_to_name. Index to display string; gap 14 owns the strings."
     },
     {
-      "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 9,
-      "hasDefault": false,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - grantCovers's dispatch on capability KIND (command/event/state/network/registry/display/ui/backup/mod), same class as capability-describe.ts's 17-case row below: a mod cannot add a capability kind, because a kind is what the host defines. Resizing this switch is the symptom of the mod system growing a new kind (backup:folder at #133, then mod:install with the in-game authoring door), never a gap. Note that ui:panel.mount, which landed just before it, did NOT resize this: a third ACTION on an existing kind widens an arm rather than adding one, which is the distinction grantCovers compares the action in order to make."
-    },
-    {
       "file": "packages/web/src/birth.ts",
       "cases": 9,
       "hasDefault": false,
       "kind": "SWITCH",
       "verdict": "CONTROL FLOW - the birth flow's stage machine. Replacing the birth screens is MOD_REACH gap 9 (whole-screen), which does not route through this switch."
-    },
-    {
-      "file": "packages/web/src/capability-describe.ts",
-      "cases": 9,
-      "hasDefault": false,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - describeCapability's dispatch on capability KIND, the consent-text sibling of capabilities.ts's grantCovers switch above and the same reasoning as this file's own 17-case row: a mod cannot add a capability kind, so this switch resizes only when the mod system itself grows one (backup:folder at #133, then mod:install). The two switches move together by construction - a kind with a grant rule and no consent sentence would be a grant the player is never shown - which is why they are the same size in every revision of this census."
     },
     {
       "file": "packages/web/src/charsheet.ts",
