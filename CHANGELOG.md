@@ -30,6 +30,14 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-08-21
+
+Current state of the project at version `0.25.0` - a features release for mod
+authors. A tileset mod can now say what the player's own cell draws and ask for
+a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
+scored without wearing it; and an autoplayer mod's character now starts again
+when it dies, in the same session, the way upstream's borg always has.
+
 ### Added
 
 - **A tileset mod can say what the PLAYER's own cell draws, and ask for a
