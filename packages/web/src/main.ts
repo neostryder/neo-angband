@@ -11818,6 +11818,7 @@ installRegions(
  * already advanced the save ratchet when the mod was enabled
  * (advanceSaveRatchets above), and asking the plugin again would be a second
  * source of truth for one fact. */
+const MOD_AUTOPLAYER_TICK_MS = 120; // matches the debug agent seam's "normal" speed
 for (const loaded of activeModCode().plugins) {
   const makeController = loaded.plugin.controller;
   if (!makeController) continue;
@@ -11843,7 +11844,22 @@ for (const loaded of activeModCode().plugins) {
     /* undefined is a decline, not a failure: a mod whose own autoplay toggle is
      * off says so by returning nothing, and the human keeps the keyboard. */
     if (!controller) continue;
-    const session = installController(state, controller, {
+    /* installController is installed and then nothing drove it (found
+     * 2026-08-21 while wiring the restart-on-death loop, see docs/PLANNED.md):
+     * a mod's controller took a turn only when a human happened to press a
+     * key, which is not what a mod that plays the game by itself is for. The
+     * debug-only agent and plugin seams both already solve this with a
+     * setInterval pump plus a latch that yields one action per tick - the
+     * latch is not optional, because runGameLoop asks nextCommand() for as
+     * long as the player has energy, and a controller that always answers
+     * would never let advance() return. Same shape here, for real. */
+    let modArmed = false;
+    const modLatched: AgentController = (view, act) => {
+      if (!modArmed) return null;
+      modArmed = false;
+      return controller(view, act);
+    };
+    const session = installController(state, modLatched, {
       capabilities: CapabilitySet.fromManifest(loaded.manifest),
     });
     installedController = { id: loaded.id, session };
@@ -11862,6 +11878,31 @@ for (const loaded of activeModCode().plugins) {
     const takenOver = state.actor.player;
     takenOver.noscore = markNoscore(takenOver.noscore, NOSCORE.BORG);
     log.info(`mod:${loaded.id}`, `installed an autoplayer`);
+    /* The pump. No tick cap: the demo/plugin seams cap ticks as a debug
+     * safety valve for a manual test run, and a real "let it play" mod has no
+     * such length limit - it plays until the human takes the keyboard back or
+     * the mod throws. MOD_AUTOPLAYER_TICK_MS is a plain constant rather than
+     * a player-visible speed control for now; that refinement is tracked in
+     * docs/PLANNED.md and is not what stood between this loop and being
+     * watchable. */
+    const modTimer = setInterval(() => {
+      if (dead) {
+        clearInterval(modTimer);
+        return;
+      }
+      if (scoresOpen || modalDepth > 0) return; // wait out birth / menus
+      modArmed = true;
+      /* A buggy or hostile autoplayer must not crash or hang the host: on a
+       * throw, stop the pump and hand the keyboard back rather than let the
+       * exception escape the timer. The human can still take over by hand;
+       * this only stops the automatic driving. */
+      try {
+        advance();
+      } catch (err) {
+        log.error(`mod:${loaded.id}`, `autoplayer pump failed:`, err);
+        clearInterval(modTimer);
+      }
+    }, MOD_AUTOPLAYER_TICK_MS);
   } catch (err) {
     /* Same containment as register(): a controller that will not install must
      * leave a game the player can still play by hand. The commonest cause is a
