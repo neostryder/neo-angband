@@ -48,6 +48,68 @@ two-sided range is for a mod that genuinely knows it breaks above some version.
 Omitting the field entirely is a reasonable choice for a data pack, and the
 core content pack does exactly that in spirit with `">=0.1.0"`.
 
+#### A range this build fails is no longer the end of the road
+
+Until 2026-08-21 a code pack whose newest release declared a range this build sits
+outside was simply refused. The row read `will not run on this version` and stopped
+there, even when the same repository still held a release that ran perfectly.
+Installing that older release was possible the whole time by pasting a
+`github.com/owner/repo/tree/<tag>` URL into **Add from a repository address**, so
+what was missing was never the capability. Nothing looked, and nothing said.
+
+Discovery now walks a repository's tags newest first and offers the newest release
+this build will actually run. What that walk guarantees:
+
+- **The same gate decides.** Each candidate is judged by the loader's own rule, so
+  a version a screen offers is a version load time accepts. There is no second
+  opinion about what "runnable" means: the install screen and *Update installed
+  mods* share the one walk, because two walks would be two chances to disagree.
+- **One manifest read in the ordinary case.** The loop stops at the first candidate
+  it accepts, and the newest release is nearly always that candidate, so a mod that
+  is keeping up costs exactly what it cost before. Manifests are read from
+  `raw.githubusercontent.com`, which is unmetered, rather than from the API, whose
+  sixty requests an hour a screenful of mod rows would spend on nothing but
+  walking.
+- **The walk is bounded at eight versions** (`MAX_VERSIONS_TRIED`). A mod whose
+  last eight releases all want a newer game is telling the player to update the
+  game, and that is what the refusal then says, along with how many releases were
+  tried.
+- **A pinned tag is never walked past.** A player who named a version is owed that
+  version, so a pin that will not run is refused as a pin rather than quietly
+  becoming a different install than the one that was asked for.
+- **A data pack out of range is never walked past either,** because gate 1 lets it
+  load. Its newest release is still the one offered, still carrying the line about
+  the range.
+- **The release that was passed over is named.** A player offered 0.14.4 while the
+  mod's front page shows 0.15.0 would otherwise conclude the game is broken or the
+  listing is stale, when the real answer is that 0.15.0 wants a newer game. The
+  row, the detail pane and the refusal screen all say which newer release was
+  stepped past and why.
+- **"Update the game" is said only when a newer game is what would help.** Gate 1
+  deliberately refuses to say which side is behind, because `>=0.24.0` wants a
+  newer game and `<0.5.0` wants an older one, and a confident instruction would be
+  wrong half the time on the one line a player acts on. A screen that has decided
+  to offer an older release still has to answer the question, so it is answered
+  separately and by probing: `newerGameCouldRun` tries the next nine patches, the
+  next nine minors and the next nine majors above the running version, plus one
+  far-future version for an open upper bound. Where none of those satisfies the
+  range, both versions are named and nothing is advised, which is the same
+  restraint the verdict itself shows.
+- **An update is never offered that the loader would refuse.** *Update installed
+  mods* counts only releases that run here, so a mod already sitting on the newest
+  release this build can run reads as exactly that rather than as out of date, and
+  the number of mods holding a release back for a newer game is shown beside it.
+- **A manifest that could not be read keeps the optimistic answer.** Withholding an
+  update over one failed request would be a claim about a mod made without asking,
+  which is the failure the update screen was rebuilt to avoid. The install path
+  runs the same walk with a live connection and steps back there.
+
+**What this asks of an author.** A range stricter than the mod needs now costs a
+player the mod's newest release rather than the mod itself. That is a smaller harm
+and still a real one, so a two-sided range should be one that was meant. It also
+means fixing a range in a new release reaches players immediately: the walk finds
+the fixed release without the game having to update first.
+
 ### 2. `modApi` accepts a window
 
 `MOD_API_VERSION` is what this host implements; `MOD_API_MIN` is the oldest it

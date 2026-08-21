@@ -147,6 +147,34 @@ export function sourceLabel(origin: ModOrigin, registryName: string): string {
  * would make a curated list quietly shrink, and the player would have no way to tell
  * a mod that was removed from one that could not be reached.
  */
+/**
+ * What to say about a newer version this build cannot run, or null when there is
+ * none to say anything about.
+ *
+ * ONE WORDING, three places: the row's hint has room for a clause, the detail pane
+ * has room for the sentence, and the refusal screen needs the same fact in a fourth
+ * shape. Three copies of this would be three chances to promise something the gate
+ * does not, which is the specific way compatibility wording goes wrong here.
+ *
+ * The instruction to update the game is given ONLY when updating the game is
+ * actually what would help. A range can want an older game as easily as a newer one
+ * (`newerGameCouldRun` says which, within a stated bound), and "update the game"
+ * aimed at a mod that wants 0.22.x would send a player backwards.
+ */
+export function engineHeldLines(m: DiscoveredMod): { short: string; full: string } | null {
+  const held = m.engineHeld;
+  if (held === null) return null;
+  const helps = held.newerGameHelps === true;
+  return {
+    short: helps ? `${held.tag} needs a newer game` : `${held.tag} will not run here`,
+    full:
+      `${held.tag} is newer and ${helps ? "needs a newer game" : "will not run here"}: ` +
+      `it ${held.why}. ${m.tag} is the newest version that runs on this build, and is ` +
+      `the one that will be installed.` +
+      (helps ? ` Update the game to get ${held.tag}.` : ""),
+  };
+}
+
 export function browseRow(entry: BrowseEntry, installedTag: string | null): MenuItem {
   if (!entry.ok) {
     return {
@@ -168,13 +196,20 @@ export function browseRow(entry: BrowseEntry, installedTag: string | null): Menu
    * mislead. */
   const who = displayName(m.name, m.author);
   if (!m.compatible) {
+    /* An older version was LOOKED FOR before this row gave up, so the row says so.
+     * Without it the player cannot tell a game that checked one version from a game
+     * that checked eight, and "install an older one" is the obvious next idea. */
+    const checked = m.versionsChecked ?? 1;
     return {
       label: `${who} ${m.version} - will not run on this version`,
       color: C_BAD,
-      hint: m.engineNote ?? `needs engine ${m.engine ?? "(unstated)"}`,
+      hint:
+        (m.engineNote ?? `needs engine ${m.engine ?? "(unstated)"}`) +
+        (checked > 1 ? `  (nor its ${String(checked - 1)} previous version(s))` : ""),
     };
   }
 
+  const held = engineHeldLines(m);
   const mark =
     installedTag === null ? " " : installedTag === m.tag ? "*" : "~";
   const state =
@@ -189,7 +224,8 @@ export function browseRow(entry: BrowseEntry, installedTag: string | null): Menu
     color: installedTag === null ? C_FG : C_GOOD,
     hint:
       (m.description?.split("\n")[0] ?? "No description.") +
-      (m.channelHeld !== null ? `  (${m.channelHeld} is on a faster channel)` : ""),
+      (m.channelHeld !== null ? `  (${m.channelHeld} is on a faster channel)` : "") +
+      (held === null ? "" : `  (${held.short})`),
   };
 }
 
@@ -285,6 +321,11 @@ export function browseDetail(
         C_WARN,
       ),
     );
+  }
+  const heldNewer = engineHeldLines(m);
+  if (heldNewer !== null) {
+    out.push({ text: "", color: C_FG });
+    out.push(...wrap(heldNewer.full, C_WARN));
   }
   if (m.guessedPayload) {
     /* Said out loud, because it is the difference between "the author decided what
@@ -817,10 +858,23 @@ async function showSource(
     if (!entry.mod.compatible) {
       /* Refused BEFORE the action menu, not after it. Offering "Install" on a mod
        * that cannot run and failing afterwards wastes a download and reads as a bug. */
+      const checked = entry.mod.versionsChecked ?? 1;
       await showTextScreen(term, entry.mod.name, [
         { text: `${entry.mod.name} will not run on this version of the game.`, color: C_BAD },
         { text: "", color: C_FG },
         { text: entry.mod.engineNote ?? `It needs engine ${entry.mod.engine ?? "?"}.`, color: C_WARN },
+        { text: "", color: C_FG },
+        /* Said out loud, because the alternative reads as "the game did not even
+         * look". It did: discovery walks back through a mod's versions and offers
+         * the newest one that runs, so reaching this screen means none of them
+         * does - which is a different situation, and different advice. */
+        {
+          text:
+            checked > 1
+              ? `The last ${String(checked)} versions of it were checked, and none of them runs here.`
+              : "No older version of it was available to try.",
+          color: C_DIM,
+        },
         { text: "", color: C_FG },
         { text: "Updating the game may be all it needs.", color: C_DIM },
       ]);

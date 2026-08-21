@@ -90,7 +90,7 @@ export type {
   NameOf,
 } from "./contested.js";
 export { compareSemver, satisfies, SemverError } from "./semver.js";
-export { engineVerdict } from "./engine.js";
+export { engineVerdict, newerGameCouldRun } from "./engine.js";
 export type { EngineVerdict } from "./engine.js";
 export { ComposeError, composePacks, mergePatch, RENAMED_HINT } from "./compose.js";
 export { composeContentPacks, composeDroppingBroken } from "./loader.js";

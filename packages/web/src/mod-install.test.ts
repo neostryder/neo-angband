@@ -1037,6 +1037,7 @@ function discovered(
     engine: null,
     compatible: true,
     channelHeld: null,
+    engineHeld: null,
     engineNote: null,
     payload,
     bytes: 0,

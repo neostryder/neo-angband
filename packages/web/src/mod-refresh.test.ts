@@ -181,6 +181,7 @@ describe("what the row is allowed to say", () => {
     standing,
     problem: standing === "unavailable" ? "not there (HTTP 404)" : null,
     channelHeld: null,
+    engineHeld: null,
     ...over,
   });
 
@@ -251,6 +252,7 @@ describe("one mod's own row", () => {
     standing: "behind",
     problem: null,
     channelHeld: null,
+    engineHeld: null,
   };
 
   it("shows the move it is offering", () => {
@@ -296,6 +298,7 @@ describe("the headline shrinks to fit what was actually asked", () => {
     standing,
     problem: standing === "unavailable" ? "not there (HTTP 404)" : null,
     channelHeld: null,
+    engineHeld: null,
   });
 
   it("says every ONLY when every mod was really asked", () => {
@@ -335,5 +338,115 @@ describe("the headline shrinks to fit what was actually asked", () => {
 
   it("says so plainly when there are no mods at all", () => {
     expect(upToDateHeadline([])).toBe("No mods are installed yet.");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* An update the loader would refuse is not an update                 */
+/* ------------------------------------------------------------------ */
+
+describe("the update check does not offer a version this build cannot run", () => {
+  /**
+   * A fetch that answers the tags API AND each tag's manifest, which the plain
+   * `tagsFetch` above deliberately does not: most of this module's behaviour is
+   * reachable with one call per mod, and only this part needs a second.
+   */
+  function net(
+    tags: readonly string[],
+    manifests: Record<string, Record<string, unknown>>,
+  ): { fetch: DiscoverEnv["fetch"]; urls: string[] } {
+    const urls: string[] = [];
+    const fetch = (url: string): Promise<DiscoverResponse> => {
+      urls.push(url);
+      if (url.includes("/tags?")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () => Promise.resolve(JSON.stringify(tags.map((name) => ({ name })))),
+        });
+      }
+      const tag = /refs\/tags\/([^/]+)\//u.exec(url)?.[1] ?? "";
+      const body = manifests[tag];
+      if (body === undefined) {
+        return Promise.resolve({ ok: false, status: 404, text: () => Promise.resolve("") });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify(body)),
+      });
+    };
+    return { fetch, urls };
+  }
+
+  const code = (engine: string): Record<string, unknown> => ({
+    id: "qol",
+    name: "Quality of Life",
+    version: "9.9.9",
+    shape: "content",
+    engine,
+    modApi: 1,
+  });
+
+  it("reports the installed copy as newest when the newer version will not load", async () => {
+    /*
+     * THE DEFECT THIS CLOSES. A tags call alone sees v0.14.0 and reports "behind",
+     * the player takes the update, and the loader then refuses the mod they just
+     * installed. The tag being newer was never the question.
+     */
+    const { fetch } = net(["v0.14.0", "v0.13.0"], {
+      "v0.14.0": code(">=0.19.0"),
+    });
+    const [r] = await refreshInstalledMods([meta("qol", "v0.13.0")], env(fetch));
+    expect(r?.standing).toBe("same");
+    expect(r?.newest).toBe("v0.13.0");
+    expect(r?.engineHeld?.tag).toBe("v0.14.0");
+    expect(pendingUpgrades(r ? [r] : [])).toEqual([]);
+  });
+
+  it("still offers an update that WILL load", async () => {
+    const { fetch } = net(["v0.14.0", "v0.13.0"], {
+      "v0.14.0": code(">=0.1.0"),
+    });
+    const [r] = await refreshInstalledMods([meta("qol", "v0.13.0")], env(fetch));
+    expect(r?.standing).toBe("behind");
+    expect(r?.newest).toBe("v0.14.0");
+    expect(r?.engineHeld).toBeNull();
+  });
+
+  it("asks for no manifest at all when nothing newer exists", async () => {
+    /* The cost guarantee for the common case: a screen of up-to-date mods still
+     * costs one request each, which is what makes this screen affordable. */
+    const { fetch, urls } = net(["v0.13.0"], {});
+    const [r] = await refreshInstalledMods([meta("qol", "v0.13.0")], env(fetch));
+    expect(r?.standing).toBe("same");
+    expect(urls.filter((u) => u.includes("manifest.json"))).toEqual([]);
+  });
+
+  it("keeps offering the newer tag when its manifest could not be read", async () => {
+    /*
+     * An unreadable manifest tells nothing either way, and withholding an update
+     * over one failed request would be this module's original sin in miniature: a
+     * claim about a mod, made without an answer. The install path runs the same
+     * walk with a live connection and steps back there if it has to.
+     */
+    const { fetch } = net(["v0.14.0", "v0.13.0"], {});
+    const [r] = await refreshInstalledMods([meta("qol", "v0.13.0")], env(fetch));
+    expect(r?.standing).toBe("behind");
+    expect(r?.newest).toBe("v0.14.0");
+    expect(r?.engineHeld).toBeNull();
+  });
+
+  it("says so on the row and in the headline, rather than claiming plain newest", async () => {
+    const { fetch } = net(["v0.14.0", "v0.13.0"], {
+      "v0.14.0": code(">=0.19.0"),
+    });
+    const [r] = await refreshInstalledMods([meta("qol", "v0.13.0")], env(fetch));
+    if (!r) throw new Error("no result");
+    expect(refreshRow(r)).toContain("v0.14.0 needs a newer game");
+    /* "Every installed mod is at its repository's newest version" would be false
+     * here, and false in a place the player has no way to check. */
+    expect(upToDateHeadline([r])).toContain("needs a newer game");
+    expect(modUpgradeRowLabel([r], 1)).toContain("need a newer game");
   });
 });

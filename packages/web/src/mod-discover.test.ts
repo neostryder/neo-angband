@@ -492,3 +492,145 @@ describe("discoverMod: the player's channel decides which version", () => {
     expect(r.problem).not.toMatch(/channel/u);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* The version walk: the newest version that RUNS, not simply the     */
+/* newest version.                                                    */
+/* ------------------------------------------------------------------ */
+
+describe("offering a version this build can actually run", () => {
+  /** A manifest that declares its own payload, so no tree call is needed. */
+  const at = (over: Record<string, unknown>): string =>
+    JSON.stringify({ ...MANIFEST, payload: { files: ["manifest.json", "plugin.js"] }, ...over });
+
+  /** A code pack: `modApi` is what makes an out-of-range engine a REFUSAL. */
+  const code = (engine: string): Record<string, unknown> => ({ engine, modApi: 1 });
+
+  it("walks back to the newest version that runs, and names the one it passed over", async () => {
+    const { env } = fakeNet({
+      [TAGS]: tagList("v2.0.0", "v1.0.0"),
+      [RAW("v2.0.0", "manifest.json")]: at({ ...code(">=0.19.0"), version: "2.0.0" }),
+      [RAW("v1.0.0", "manifest.json")]: at({ ...code(">=0.1.0"), version: "1.0.0" }),
+    });
+    const r = await discoverMod({ repo: "a/b" }, env);
+    if (!r.ok) throw new Error(r.problem);
+    expect(r.mod.tag).toBe("v1.0.0");
+    expect(r.mod.compatible).toBe(true);
+    expect(r.mod.versionsChecked).toBe(2);
+    /* The whole point: the row can now say what it is NOT offering, and that
+     * updating the game is what gets it. */
+    expect(r.mod.engineHeld).toEqual({
+      tag: "v2.0.0",
+      version: "2.0.0",
+      engine: ">=0.19.0",
+      why: expect.stringContaining(">=0.19.0"),
+      newerGameHelps: true,
+    });
+  });
+
+  it("reads ONE manifest when the newest version runs", async () => {
+    /* The cost guarantee. A mod that is keeping up must not pay for the walk, or
+     * every row on the screen pays for a case that almost never happens. */
+    const { env, asked } = fakeNet({
+      [TAGS]: tagList("v2.0.0", "v1.0.0"),
+      [RAW("v2.0.0", "manifest.json")]: at(code(">=0.1.0")),
+    });
+    const r = await discoverMod({ repo: "a/b" }, env);
+    expect(r.ok).toBe(true);
+    expect(asked.filter((u) => u.includes("manifest.json"))).toEqual([
+      RAW("v2.0.0", "manifest.json"),
+    ]);
+  });
+
+  it("does not walk past a DATA pack that is out of range, because it loads anyway", async () => {
+    /* `engineAllows` is the loader's own answer, and for a pack with no code an
+     * out-of-range engine is a label rather than a gate. Stepping back to an older
+     * version of a mod that was going to load perfectly well would be the game
+     * inventing a problem and then solving it. */
+    const { env } = fakeNet({
+      [TAGS]: tagList("v2.0.0", "v1.0.0"),
+      [RAW("v2.0.0", "manifest.json")]: at({ engine: ">=0.19.0" }),
+    });
+    const r = await discoverMod({ repo: "a/b" }, env);
+    if (!r.ok) throw new Error(r.problem);
+    expect(r.mod.tag).toBe("v2.0.0");
+    expect(r.mod.compatible).toBe(true);
+    expect(r.mod.engineHeld).toBeNull();
+    /* Still worth a line on the row, and it gets one. */
+    expect(r.mod.engineNote).toContain(">=0.19.0");
+  });
+
+  it("refuses with the NEWEST version when none of them runs, and counts what it tried", async () => {
+    const { env } = fakeNet({
+      [TAGS]: tagList("v2.0.0", "v1.0.0"),
+      [RAW("v2.0.0", "manifest.json")]: at(code(">=0.19.0")),
+      [RAW("v1.0.0", "manifest.json")]: at(code(">=0.19.0")),
+    });
+    const r = await discoverMod({ repo: "a/b" }, env);
+    if (!r.ok) throw new Error(r.problem);
+    expect(r.mod.tag).toBe("v2.0.0");
+    expect(r.mod.compatible).toBe(false);
+    expect(r.mod.versionsChecked).toBe(2);
+    /* Null on purpose: there is no older version being preferred, so naming
+     * v2.0.0 here as well would read as two separate problems. */
+    expect(r.mod.engineHeld).toBeNull();
+  });
+
+  it("does not walk past a PINNED tag, even one that will not run", async () => {
+    /* A player who typed a version is owed that version, and owed the refusal
+     * about the thing they actually asked for rather than a quiet substitution. */
+    const { env, asked } = fakeNet({
+      [TAGS]: tagList("v2.0.0", "v1.0.0"),
+      [RAW("v2.0.0", "manifest.json")]: at(code(">=0.19.0")),
+      [RAW("v1.0.0", "manifest.json")]: at(code(">=0.1.0")),
+    });
+    const r = await discoverMod({ repo: "a/b", tag: "v2.0.0" }, env);
+    if (!r.ok) throw new Error(r.problem);
+    expect(r.mod.tag).toBe("v2.0.0");
+    expect(r.mod.compatible).toBe(false);
+    expect(r.mod.versionsChecked).toBe(1);
+    expect(asked).not.toContain(RAW("v1.0.0", "manifest.json"));
+  });
+
+  it("stops walking at an older tag with no manifest instead of failing the row", async () => {
+    /* A repository has tags from before it was a mod at all. Those have no
+     * manifest.json, and treating that as the mod being broken would turn a
+     * perfectly ordinary history into an error message. */
+    const { env } = fakeNet({
+      [TAGS]: tagList("v2.0.0", "v0.0.1"),
+      [RAW("v2.0.0", "manifest.json")]: at(code(">=0.19.0")),
+    });
+    const r = await discoverMod({ repo: "a/b" }, env);
+    if (!r.ok) throw new Error(r.problem);
+    expect(r.mod.tag).toBe("v2.0.0");
+    expect(r.mod.compatible).toBe(false);
+    expect(r.mod.versionsChecked).toBe(1);
+  });
+
+  it("still reports a broken NEWEST manifest as the mod's problem", async () => {
+    const { env } = fakeNet({
+      [TAGS]: tagList("v2.0.0", "v1.0.0"),
+      [RAW("v2.0.0", "manifest.json")]: "{ not json",
+      [RAW("v1.0.0", "manifest.json")]: at(code(">=0.1.0")),
+    });
+    const r = await discoverMod({ repo: "a/b" }, env);
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("expected a problem");
+    expect(r.problem).toContain("not valid JSON");
+  });
+
+  it("does not tell a player to update the game when a newer game would not help", async () => {
+    /* A range can want an OLDER game as easily as a newer one, and this is the
+     * case the wording must not get wrong: sending a player to the update screen
+     * to fix a mod that wants 0.4.x moves them further away. */
+    const { env } = fakeNet({
+      [TAGS]: tagList("v2.0.0", "v1.0.0"),
+      [RAW("v2.0.0", "manifest.json")]: at(code("<0.5.0")),
+      [RAW("v1.0.0", "manifest.json")]: at(code(">=0.1.0")),
+    });
+    const r = await discoverMod({ repo: "a/b" }, env);
+    if (!r.ok) throw new Error(r.problem);
+    expect(r.mod.tag).toBe("v1.0.0");
+    expect(r.mod.engineHeld?.newerGameHelps).toBe(false);
+  });
+});

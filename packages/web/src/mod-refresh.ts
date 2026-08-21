@@ -22,8 +22,15 @@
  * player who reads "fine" stops looking.
  */
 
-import { listTags, type DiscoverEnv } from "./mod-discover";
+import {
+  listTags,
+  MAX_VERSIONS_TRIED,
+  pickRunnableVersion,
+  type DiscoverEnv,
+  type EngineHeld,
+} from "./mod-discover";
 import { isImported, type InstalledModMeta } from "./mod-install";
+import { compareTags } from "./mod-registry";
 import { tagsInChannel } from "./mod-source";
 import { classifyModTag, type ModTagStanding } from "./mod-updates";
 
@@ -60,6 +67,18 @@ export interface ModRefresh {
    * held it back" is the only answer that is both true and actionable.
    */
   readonly channelHeld: string | null;
+  /**
+   * The newest version that exists and that this build cannot run, or null.
+   *
+   * THE OTHER HALF OF THIS MODULE'S OWN DEFECT. The header explains why "up to
+   * date" must never be said about a repository that was not asked; this is the
+   * same mistake pointing the other way. A tags call alone can see that v0.15.0
+   * exists but not that v0.15.0 refuses to load here, so the screen would offer it,
+   * the player would take it, and the loader would then decline the mod they just
+   * installed. `newest` is now the newest version that will actually RUN, and this
+   * field carries the one that was passed over so the row can say why.
+   */
+  readonly engineHeld: EngineHeld | null;
 }
 
 /** One mod the player can move forward, and the two tags involved. */
@@ -106,6 +125,7 @@ async function refreshOne(meta: InstalledModMeta, env: DiscoverEnv): Promise<Mod
       standing: "no-repository",
       problem: null,
       channelHeld: null,
+      engineHeld: null,
     };
   }
   let all: readonly string[];
@@ -127,6 +147,7 @@ async function refreshOne(meta: InstalledModMeta, env: DiscoverEnv): Promise<Mod
       standing: "unavailable",
       problem: e instanceof Error ? e.message : String(e),
       channelHeld: null,
+      engineHeld: null,
     };
   }
 
@@ -152,17 +173,56 @@ async function refreshOne(meta: InstalledModMeta, env: DiscoverEnv): Promise<Mod
       standing: "unorderable",
       problem: null,
       channelHeld: held,
+      engineHeld: null,
     };
+  }
+
+  /*
+   * ONLY VERSIONS STRICTLY NEWER THAN THE ONE ON DISK are asked about, and only
+   * when there are any. The installed copy is not a candidate to be judged - it is
+   * already installed - and walking below it would spend requests to learn
+   * something that could not change the answer. A mod that is already at its
+   * newest therefore still costs exactly one tags call, which is what this whole
+   * screen was built to afford.
+   */
+  const ahead: string[] = [];
+  for (const t of tags) {
+    const order = compareTags(t, meta.tag);
+    if (order !== null && order > 0) ahead.push(t);
+  }
+
+  let engineHeld: EngineHeld | null = null;
+  let offer = newest;
+  if (ahead.length > 0) {
+    const pick = await pickRunnableVersion(meta.repo, ahead.slice(0, MAX_VERSIONS_TRIED), env);
+    if (pick.problem === null) {
+      engineHeld = pick.engineHeld;
+      /* Nothing newer RUNS here, so the copy on disk is already the newest usable
+       * one and there is nothing to offer. Answered with the installed tag rather
+       * than with "no newer version exists", because one does exist and
+       * `engineHeld` is where it gets named. */
+      offer = pick.chosen?.tag ?? meta.tag;
+    }
+    /*
+     * A MANIFEST THAT COULD NOT BE READ TELLS NOTHING EITHER WAY, so the old answer
+     * stands and the newer tag is still offered. That is the deliberate choice
+     * between two imperfect options: withholding an update over one failed request
+     * would reintroduce this module's original sin in miniature - a claim about a
+     * mod, made without asking - whereas offering it means the install path runs
+     * this same walk with a live connection and steps back to a runnable version
+     * there. The optimistic answer fails safe; the pessimistic one fails silent.
+     */
   }
 
   return {
     id: meta.id,
     repo: meta.repo,
     installed: meta.tag,
-    newest,
-    standing: classifyModTag(meta.tag, newest),
+    newest: offer,
+    standing: classifyModTag(meta.tag, offer),
     problem: null,
     channelHeld: held,
+    engineHeld,
   };
 }
 
@@ -182,6 +242,18 @@ export function pendingUpgrades(refreshed: readonly ModRefresh[]): readonly ModU
     out.push({ id: r.id, repo: r.repo, from: r.installed, to: r.newest });
   }
   return out;
+}
+
+/**
+ * The mods holding a newer version back because this build cannot run it.
+ *
+ * Its own function so that every sentence about "newest" can subtract them. A mod
+ * sitting on v0.14.4 while v0.15.0 exists is at its newest USABLE version, and a
+ * screen that says "at its repository's newest version" about it is saying
+ * something false in a place the player has no way to check.
+ */
+export function engineHeldMods(refreshed: readonly ModRefresh[]): readonly ModRefresh[] {
+  return refreshed.filter((r) => r.engineHeld !== null);
 }
 
 /**
@@ -237,6 +309,16 @@ export function modUpgradeRowLabel(
   if (imported > 0) {
     return `Update installed mods...  (the rest are at their newest; ${String(imported)} imported from a file)`;
   }
+  /* "Newest" has to mean newest RUNNABLE once a version can be held back by the
+   * engine, and the count is shown rather than folded in, because "update the game
+   * and there is more waiting" is a different action from "nothing to do". */
+  const held = engineHeldMods(refreshed).length;
+  if (held > 0) {
+    return (
+      `Update installed mods...  (each is at the newest version this game can run; ` +
+      `${String(held)} need a newer game)`
+    );
+  }
   return "Update installed mods...  (each mod is at its repository's newest version)";
 }
 
@@ -269,8 +351,12 @@ export function upToDateHeadline(refreshed: readonly ModRefresh[]): string {
       `${String(blind)} could not be reached.`
     );
   }
+  const held = engineHeldMods(refreshed).length;
   if (blind === 0 && imported === 0) {
-    return "Every installed mod is at its repository's newest version.";
+    return held === 0
+      ? "Every installed mod is at its repository's newest version."
+      : `Every installed mod is at the newest version this game can run. ` +
+          `${String(held)} of them has a newer version that needs a newer game.`;
   }
   return (
     `${String(asked)} of ${String(total)} are at their repository's newest version.`
@@ -322,6 +408,16 @@ export function refreshRow(r: ModRefresh): string {
     case "absent":
     case "same":
     default:
+      /* The engine's hold is named FIRST when there is one, because it is the only
+       * one of the three the player can act on: change channel, update the game, or
+       * nothing. "(newest)" alone about a mod whose repository visibly shows a newer
+       * tag is the sentence that makes a player distrust the whole screen. */
+      if (r.engineHeld !== null) {
+        const h = r.engineHeld;
+        return h.newerGameHelps === true
+          ? `${head} (newest that runs here; ${h.tag} needs a newer game)`
+          : `${head} (newest that runs here; ${h.tag} will not run on this build)`;
+      }
       return r.channelHeld === null
         ? `${head} (newest)`
         : `${head} (newest on your channel; ${r.channelHeld} is beyond it)`;
