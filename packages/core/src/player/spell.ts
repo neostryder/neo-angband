@@ -565,9 +565,74 @@ export function cumberArmorFrom(player: Player, armorWeight: number): boolean {
 }
 
 /**
+ * The worn-armor weight calc_mana penalizes: every equipped slot except the
+ * weapon, launcher and jewellery ones (player-calcs.c:1509-1522). `equipment` is
+ * indexed by body slot, matching CalcBonusesOptions.equipment.
+ *
+ * Exported because calc_mana has two kinds of caller now - the live refresh and
+ * a hypothetical loadout - and a second copy of the slot-type list is a second
+ * thing to keep in step with the body definition.
+ */
+export function wornArmorWeight(
+  player: Player,
+  equipment: readonly (GameObject | null)[],
+): number {
+  let weight = 0;
+  for (let i = 0; i < player.body.count; i++) {
+    const slotType = player.body.slots[i]?.type ?? "";
+    if (
+      slotType === "WEAPON" ||
+      slotType === "BOW" ||
+      slotType === "RING" ||
+      slotType === "AMULET" ||
+      slotType === "LIGHT"
+    ) {
+      continue;
+    }
+    const worn = equipment[i];
+    if (worn) weight += worn.weight;
+  }
+  return weight;
+}
+
+/**
+ * The maximum-mana ARITHMETIC of calc_mana (player-calcs.c:1489-1532), with no
+ * write to the player: effective levels times the casting stat's adj_mag_mana
+ * entry, less the armour-weight penalty when the worn armour cumbers.
+ *
+ * Split out of calcMana so a caller asking "what would my mana be" - a
+ * hypothetical loadout - gets the same number the live calc produces instead of
+ * a second copy of the formula. calcMana itself is this plus the msp/csp write.
+ */
+export function maxManaFrom(
+  player: Player,
+  statInd: readonly number[],
+  armorWeight: number,
+): number {
+  if (!player.cls.magic.totalSpells) return 0;
+
+  /* Extract "effective" player level. */
+  const levels = player.lev - player.cls.magic.spellFirst + 1;
+  let msp = 0;
+  if (levels > 0) {
+    msp = 1;
+    msp += Math.trunc(
+      (at(adj_mag_mana, averageSpellStat(player.cls, statInd)) * levels) / 100,
+    );
+  }
+
+  /* Heavy armor penalizes mana (L1524-1532). */
+  if (cumberArmorFrom(player, armorWeight)) {
+    msp -= Math.trunc((armorWeight - player.cls.magic.spellWeight) / 10);
+  }
+
+  return msp < 0 ? 0 : msp;
+}
+
+/**
  * calc_mana (player-calcs.c L1480): maximum mana from effective levels and
  * the casting stat, penalized by heavy armor over the class allowance.
- * `armorWeight` is the summed weight of worn body armor (the caller sums
+ * `armorWeight` is the summed weight of worn body armor (wornArmorWeight sums
  * the non-weapon/bow/ring/amulet/light slots). Updates msp and clamps csp.
  *
  * Returns state->cumber_armor (L1503, L1528) - true when the worn armour is
@@ -591,22 +656,8 @@ export function calcMana(
     return false;
   }
 
-  /* Extract "effective" player level. */
-  const levels = player.lev - player.cls.magic.spellFirst + 1;
-  let msp = 0;
-  if (levels > 0) {
-    msp = 1;
-    msp += Math.trunc(
-      (at(adj_mag_mana, averageSpellStat(player.cls, statInd)) * levels) / 100,
-    );
-  }
-
-  /* Heavy armor penalizes mana (L1524-1532). */
-  const over = Math.trunc((armorWeight - player.cls.magic.spellWeight) / 10);
+  const msp = maxManaFrom(player, statInd, armorWeight);
   const cumberArmor = cumberArmorFrom(player, armorWeight);
-  if (cumberArmor) msp -= over;
-
-  if (msp < 0) msp = 0;
 
   if (player.msp !== msp) {
     player.msp = msp;

@@ -191,6 +191,7 @@ import {
   cumberArmorFrom,
   playerSpellsInit,
   registerBookKinds,
+  wornArmorWeight,
 } from "../player/spell.js";
 import { installSpellCommands, makeSpellChanceEnv } from "../game/spell-cmd.js";
 import { installRangedCommands } from "../game/ranged-cmd.js";
@@ -804,6 +805,21 @@ function wireGame(
     state.actor.knownCombat = toCombatState(known);
   };
 
+  /**
+   * The calc_bonuses options bag for the world as it stands, minus the loadout.
+   * ONE definition, because a hypothetical derive that reads a different bag
+   * from the live one is a derive that quietly answers a different question -
+   * the curse traversal in particular is easy to leave out and impossible to
+   * notice from the number that comes back.
+   */
+  const liveBonusOptions = (update: boolean): CalcBonusesOptions => ({
+    timedEffects: players.timed,
+    curses: reg.objects.curses,
+    update,
+    depth: state.chunk.depth,
+    isDaytime: isDaytime(state.turn, state.z.dayLength),
+  });
+
   const refreshDerived = (): void => {
     const p = state.actor.player;
     const equipment = p.equipment.map((h) =>
@@ -813,14 +829,7 @@ function wireGame(
     /* p->state before the memcpy at the end of calc_bonuses: the encumbrance
      * notices below diff against it (player-calcs.c:2412-2453). */
     const before = derived;
-    const bonusOptions = {
-      equipment,
-      timedEffects: players.timed,
-      curses: reg.objects.curses,
-      update: true,
-      depth: state.chunk.depth,
-      isDaytime: daytime,
-    };
+    const bonusOptions = { ...liveBonusOptions(true), equipment };
     derived = calcBonuses(p, bonusOptions);
     state.playerState = derived;
     refreshKnownCombat(p, bonusOptions);
@@ -870,6 +879,24 @@ function wireGame(
     }
   };
   state.updateBonuses = refreshDerived;
+
+  /**
+   * calc_bonuses for a loadout the player is NOT wearing (update=false, so the
+   * derive keeps its hands off p->timed[TMD_FASTCAST] and the town-light redraw),
+   * over the same options bag the live refresh uses.
+   *
+   * This is the one thing a hypothetical derive could not do from outside: the
+   * bag carries the bound timed table and the curse registry, and a caller
+   * assembling its own would silently drop whichever it did not know about. It is
+   * installed here for the same reason updateBonuses is - the session is the only
+   * place that has all of it.
+   */
+  state.derivedFor = (equipment, totalWeight): PlayerState =>
+    calcBonuses(state.actor.player, {
+      ...liveBonusOptions(false),
+      equipment: equipment.slice(),
+      ...(totalWeight === undefined ? {} : { totalWeight }),
+    });
 
   /**
    * update_stuff's PU_UPDATE_VIEW arm (player-calcs.c:2608), as the DEFAULT.
@@ -3888,29 +3915,6 @@ function swapRandartSet(
   );
   reg.objects.artifacts.length = 0;
   reg.objects.artifacts.push(...randarts);
-}
-
-/** The worn-armor weight calc_mana penalizes (non-weapon/bow/jewelry slots). */
-function wornArmorWeight(
-  player: Player,
-  equipment: readonly (import("../obj/object.js").GameObject | null)[],
-): number {
-  let weight = 0;
-  for (let i = 0; i < player.body.count; i++) {
-    const slotType = player.body.slots[i]?.type ?? "";
-    if (
-      slotType === "WEAPON" ||
-      slotType === "BOW" ||
-      slotType === "RING" ||
-      slotType === "AMULET" ||
-      slotType === "LIGHT"
-    ) {
-      continue;
-    }
-    const worn = equipment[i];
-    if (worn) weight += worn.weight;
-  }
-  return weight;
 }
 
 /** Serialize a started game into the JSON save format (decision 9). */

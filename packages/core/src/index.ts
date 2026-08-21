@@ -84,6 +84,7 @@ export * from "./player/options-file.js";
 export * from "./player/bind.js";
 export * from "./player/player.js";
 export * from "./player/calcs.js";
+export * from "./player/loadout.js";
 export * from "./player/timed.js";
 export * from "./player/take-hit.js";
 export * from "./player/spell.js";
