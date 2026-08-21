@@ -6,11 +6,27 @@
  * packs are validated data that cannot execute, so they request none
  * (docs/MODS.md trust tiers). A plugin's `capabilities` list in its
  * manifest is the consent surface: the installer shows each one in plain
- * language, the user approves, and the runtime grants exactly that set -
- * nothing a plugin did not ask for and the user did not see. The
+ * language, the user approves, and the runtime opens exactly that set of
+ * facades and no others (read the next paragraph for the scope of that
+ * claim, which is narrower than it sounds). The
  * perceive/act facades (a later P7 phase) call `CapabilitySet.check()`
  * before honoring a request; an ungranted capability throws a clear
  * author-facing error rather than silently doing nothing or diverging.
+ *
+ * WHAT "GRANTS EXACTLY THAT SET" MEANS, AND WHAT IT DOES NOT. It is a
+ * statement about the FACADES, and it holds: a facade whose capability
+ * was not granted throws. It is not a statement about what in-process
+ * code can reach. A trusted plugin also receives `ctx.core` (the live
+ * engine namespace), `ctx.state` and `ctx.registries`, none of them
+ * capability-checked, and those carry the same live registry objects the
+ * `registry:*` facades write through - see docs/modding/PLUGINS.md,
+ * "What a capability gates", and the measurement in
+ * packages/web/src/capability-gate-reach.test.ts. So a capability list
+ * is a DECLARATION the player reads and the conflict report is built
+ * from, not a containment boundary; the boundary is the install consent.
+ * A capability granted to the SANDBOXED Worker tier is a different
+ * matter - that tier is isolated by construction and gets none of the
+ * registries.
  *
  * Vocabulary (four forms, MOD_LIFECYCLE section 4 / the frost example in
  * section 2):
