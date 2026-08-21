@@ -4,7 +4,7 @@
  *
  * Also dispatches the in-game wizard collectors (wiz-stats.ts <- wiz-stats.c)
  * so objMonStats / pitStats / disconnectStats and their DEFAULT_* params sit
- * on a live CLI entry path (W2-017…W2-022; cmd-core.c:132-133).
+ * on a live CLI entry path (W2-017 to W2-022; cmd-core.c:132-133).
  *
  * Usage: node dist/main-stats.js [--runs N] [--depth-min N] [--depth-max N]
  *          [--seed N] [--randarts]
@@ -97,7 +97,7 @@ function parseArgs(argv: string[]): {
 
 /**
  * Live dispatch into wiz-stats collectors. Uses DEFAULT_* params as the base
- * so those constants are reachable from this entry (W2-020…W2-022).
+ * so those constants are reachable from this entry (W2-020 to W2-022).
  */
 export function runWizStats(
   pack: ReturnType<typeof loadGamePack>,

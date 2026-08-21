@@ -1,5 +1,5 @@
 /**
- * Live-path tests: main-stats dispatches wiz-stats collectors (W2-017…022).
+ * Live-path tests: main-stats dispatches wiz-stats collectors (W2-017 to 022).
  * Exercises runWizStats (the entry main() calls for --wiz-*), not the helpers
  * alone.
  */

@@ -567,7 +567,7 @@ describe("a presenter that cannot stand aside hands the screen back", () => {
   });
 
   it("refuses a yieldTerminal that is present and is not callable", () => {
-    /* The same `typeof … === "function"` treatment `dismissed?.then` gets: a
+    /* The same `typeof x === "function"` treatment `dismissed?.then` gets: a
      * lying member reads as "can stand aside" and takes the seam down mid-prompt. */
     const faults: string[] = [];
     setScreenPresenter({

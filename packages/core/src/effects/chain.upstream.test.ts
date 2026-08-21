@@ -507,7 +507,7 @@ describe("effects/chain (reference/src/tests/effects/chain.c)", () => {
     expect(results).toEqual(expected);
   });
 
-  // upstream: test_iterate1 — effect_next skips RANDOM/SELECT subeffects
+  // upstream: test_iterate1: effect_next skips RANDOM/SELECT subeffects
   it("iterate1", () => {
     const ec = chainWithDice([
       { effect: "DAMAGE", dice: "0" },

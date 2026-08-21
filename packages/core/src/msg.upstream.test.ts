@@ -8,7 +8,7 @@
  *   message_color / message_color_define / message_type_color → MessageLog methods
  * - msg / msgt / sound / bell → Messages facade + GameEvents
  * - message_lookup_by_name → messageLookupByName (sound/engine.ts); C also
- *   accepts decimal numerals via strtoul — port name path only for names
+ *   accepts decimal numerals via strtoul, port name path only for names
  * - format (test_msg): C printf formatting is intentionally not ported;
  *   callers use template strings. This suite feeds the already-formatted
  *   expected strings into msg() so log/event behaviour still matches.
@@ -18,7 +18,7 @@
  *   they were added 2026-07-26 (UT-zlib2) and the case is asserted below.
  *
  * Two upstream assertions initially failed against the port and were pinned
- * with it.fails() — UT-001 (the numeric lookup path) and UT-002 (the NULL bell
+ * with it.fails(): UT-001 (the numeric lookup path) and UT-002 (the NULL bell
  * payload). Both are now FIXED in the port and asserted as plain it(); see
  * parity/phase3-2026-07-25/findings/W3-UNIT-TESTS-zlib-msg.md. A third,
  * UT-006, was found in the same pass: the name lookup compared with === where
@@ -284,7 +284,7 @@ describe("message/message upstream", () => {
     expect(log.color(2)).toBe(COLOUR_VIOLET);
   });
 
-  // C: test_msg (format) — printf path dropped; pre-formatted strings used.
+  // C: test_msg (format): printf path dropped; pre-formatted strings used.
   it("format", () => {
     const expected1 = "%   abcde   1  +2  3 4  ";
     const expected2 = "ab      -7";
@@ -363,7 +363,7 @@ describe("message/message upstream", () => {
   });
 
   /*
-   * UT-002 — FIXED in the port; kept as the guard.
+   * UT-002 is FIXED in the port; kept as the guard.
    *
    * reference/src/message.c:381 rings the bell with a NULL message pointer:
    *   event_signal_message(EVENT_BELL, MSG_BELL, NULL);
@@ -439,7 +439,7 @@ describe("message/message upstream", () => {
 
     /* The printed-number block is UT-001 below. */
 
-    /* Test failed lookups. NOTE: the last two currently pass VACUOUSLY —
+    /* Test failed lookups. NOTE: the last two pass VACUOUSLY, because
      * the port rejects every numeral, not just the out-of-range ones. */
     expect(messageLookupByName("")).toBe(-1);
     expect(messageLookupByName("kskl8bktk2b")).toBe(-1);
@@ -449,7 +449,7 @@ describe("message/message upstream", () => {
   });
 
   /*
-   * UT-001 — FIXED in the port; kept as the guard.
+   * UT-001 is FIXED in the port; kept as the guard.
    *
    * reference/src/message.c:304-309 runs strtoul over the name FIRST:
    *   unsigned long number = strtoul(name, &pe, 10);
@@ -468,7 +468,7 @@ describe("message/message upstream", () => {
   });
 
   /*
-   * UT-006 — found and FIXED in the same pass, and not covered by any upstream
+   * UT-006 was found and FIXED in the same pass, not covered by any upstream
    * test, which only ever probes canonical spellings.
    *
    * message.c:312 compares with my_stricmp, i.e. case-INSENSITIVELY; the port
@@ -503,7 +503,7 @@ describe("message/message upstream", () => {
   });
 
   /*
-   * C: test_sound_lookup — previously recorded BLOCKED here because the port had
+   * C: test_sound_lookup was previously recorded BLOCKED here because the port had
    * no counterpart to message_sound_name / message_lookup_by_sound_name; only
    * the underlying table (MESSAGE_ENTRIES[i].sound) existed. Both are now real
    * functions in sound/engine.ts, so the case ports directly.

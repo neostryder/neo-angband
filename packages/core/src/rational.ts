@@ -82,7 +82,7 @@ export interface UintRemainder {
  * saturating at UINT_MAX. When `out` is given it receives the numerator of the
  * part that was dropped (over the same denominator a.d) so the caller can round.
  *
- * Every early return that saturates ALSO zeroes the remainder — upstream does
+ * Every early return that saturates ALSO zeroes the remainder. Upstream does
  * that at four separate points and a caller that rounds on the remainder would
  * round differently if any were missed, so they are each reproduced.
  */

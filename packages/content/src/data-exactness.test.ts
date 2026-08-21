@@ -1,5 +1,5 @@
 /**
- * W5 — Data exactness: independent re-parse of every reference gamedata
+ * W5 data exactness: an independent re-parse of every reference gamedata
  * file, field-by-field / index-by-index against the committed pack the game
  * loads (packages/content/pack/*.json).
  *
@@ -14,8 +14,8 @@
  * parser_reg" guard below closes it by re-reading the format strings straight
  * out of reference/src/*.c and requiring an exact (strtok-normalized) match.
  *
- * The remaining port-supplied metadata — repeat, childOf, recordStart, header,
- * orderKey — is NOT independently derivable from the C sources (it is implicit
+ * The remaining port-supplied metadata (repeat, childOf, recordStart, header,
+ * orderKey) is NOT independently derivable from the C sources (it is implicit
  * in the handler bodies) and is therefore not verified here. See the coverage
  * guards for what is checked instead.
  *
@@ -78,7 +78,7 @@ const DEFERRED_SOURCES: readonly { readonly name: string; readonly reason: strin
 ];
 
 /**
- * Task #27 — directive-coverage guard.
+ * Task #27, the directive-coverage guard.
  *
  * A re-parse is only as good as the directive set it understands: a directive
  * that appears in the .txt but not in the reader's table would either throw or
@@ -92,7 +92,7 @@ const DEFERRED_SOURCES: readonly { readonly name: string; readonly reason: strin
  *
  * Direction 2 is what catches `drop-order`: it is not an upstream directive at
  * all but a key the pack's compiler generates, so only the pack side can
- * reveal it. Blanket skips are not permitted — each exclusion is an individual
+ * reveal it. Blanket skips are not permitted. Each exclusion is an individual
  * entry with a stated reason.
  */
 
@@ -444,7 +444,7 @@ describe("W5 directive coverage guard (task #27)", () => {
         if (handled.has(key)) continue;
         const id = `${spec.name}:${key}`;
         if (orderKeys.has(key)) {
-          // Generated, and the reader generates it too — but it still has to be
+          // Generated, and the reader generates it too, but it still has to be
           // named in SYNTHETIC_PACK_KEYS so nobody adds one without a reason.
           if (!allowed.has(id)) {
             unaccounted.push(`${id} (orderKey with no SYNTHETIC_PACK_KEYS entry)`);
@@ -565,7 +565,7 @@ describe("W5 data exactness: base inheritance", () => {
         continue;
       }
       // Effective glyph: monster glyph overrides base glyph (parse_monster_base + glyph).
-      // Pack stores unresolved base: reference — we only verify resolvability here.
+      // Pack stores unresolved base: reference. Only resolvability is verified.
       const flagsOff = m["flags-off"];
       if (Array.isArray(flagsOff)) {
         for (const line of flagsOff) {
@@ -596,7 +596,7 @@ describe("W5 data exactness: base inheritance", () => {
     }
     // C tval_find_idx also knows "none" (TV_NONE) for internal placeholders
     // (<pile>, <unknown item>, <unknown treasure>, <curse object>) that have
-    // no object_base row — same as reference/src/obj-tval.c.
+    // no object_base row, same as reference/src/obj-tval.c.
     tvals.add("none");
     const missing: string[] = [];
     for (const o of objects.records) {
@@ -611,7 +611,7 @@ describe("W5 data exactness: base inheritance", () => {
 describe("W5 data exactness: synthetic order keys match raw file order", () => {
   /**
    * Third derivation of the order groups, from the bare directive sequence of
-   * the .txt — no field parsing, no record assembly, no shared code with either
+   * the .txt: no field parsing, no record assembly, no shared code with either
    * compiler. If drop-order in the pack ever stops describing the actual file
    * order of drop:/drop-base:, this fails independently of the field diff.
    */

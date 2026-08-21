@@ -64,7 +64,7 @@ cost   = 300  <- the median of the 7 core object records closest to level 20 wit
 weight = 140  <- the median of the 7 core object records closest to level 20 with type "sword"
 ```
 
-`findings` holds what is still wrong with it — here, one hint that it has no
+`findings` holds what is still wrong with it: here, one hint that it has no
 `desc`.
 
 ### Why "modelled on", not "assembled from defaults"
@@ -75,7 +75,7 @@ across the whole file, and produced a sword carrying an `armor` block, because
 about any record in it.** So the shape is taken from core's nearest comparable
 record and only the numbers are averaged.
 
-A model never lends the fields that would confer behaviour or identity —
+A model never lends the fields that would confer behaviour or identity:
 `flags`, `values`, `slay`, `brand`, `curse`, `effect`, `act`, `blow`, `spells`,
 `name`, `desc`, `msg`. A template that quietly grants powers hands you an item
 that does things you never asked for and would not think to look for.
@@ -91,7 +91,7 @@ Every step of `draftRecord` is callable on its own.
 | `describeFile(file)` | what does a record of this kind contain? |
 | `requiredFields(file)` | what do **all** of core's records here carry? |
 | `fieldUsage(file)` | every field, most-used first, with its share |
-| `templateRecord(file, scope)` | a starting record — `"required"`, `"common"` (default) or `"all"` |
+| `templateRecord(file, scope)` | a starting record: `"required"`, `"common"` (default) or `"all"` |
 | `peersFor(file, draft, records)` | which of core's records are comparable to this one |
 | `suggestFields(file, draft, records)` | what core's comparable records would put in the gaps |
 | `checkRecords(subject, all)` | every way these records will silently not work |
@@ -99,7 +99,7 @@ Every step of `draftRecord` is callable on its own.
 
 ### "What should it cost?"
 
-A price is not derivable from first principles — Angband's costs are hand-set —
+A price is not derivable from first principles (Angband's costs are hand-set)
 but it **is** derivable from precedent, and precedent is what core's 375 objects
 are. `suggestFields` narrows twice: to the same item type, then to the seven
 records nearest in level. Only numeric fields are suggested; a name, a
@@ -118,8 +118,8 @@ Two arguments, and the split is the whole design:
 checkRecords(subject, all)
 ```
 
-`subject` is what is **reported on** — your records. `all` is what they may
-**resolve against** — core plus every loaded pack. Checking a mod against itself
+`subject` is what is **reported on**: your records. `all` is what they may
+**resolve against**: core plus every loaded pack. Checking a mod against itself
 would report every reference to core as broken.
 
 Findings are graded, and **nothing here refuses anything**. The refusals live in
@@ -128,8 +128,8 @@ engine's own.
 
 ### It also runs when the GAME loads your mod
 
-Since 2026-08-09 this is not only a build-time tool. `composeContentPacks` — the
-function every host composes through — runs the same check over every pack it
+Since 2026-08-09 this is not only a build-time tool. `composeContentPacks`, the
+function every host composes through, runs the same check over every pack it
 loads and puts what it finds on that mod's own row in the mod manager, so a
 player who installs your mod from a zip sees the same sentences you do. Three
 differences from `build()`, all deliberate:
@@ -139,7 +139,7 @@ differences from `build()`, all deliberate:
   one line that matters.
 - **The base game is not reported on.** Core's own data raises warnings against
   core's own blueprint; those are upstream warts the port keeps on purpose.
-- **A patch is checked as the record it produced**, not as you wrote it — so
+- **A patch is checked as the record it produced**, not as you wrote it, so
   `{"speed": 120}` is not a record missing twenty fields.
 
 The practical consequence: **your `build()` output is what your users will see.**
@@ -154,7 +154,7 @@ run and nothing to opt into.
 
 ### Dangling references
 
-`REFERENCE_EDGES` declares 37 fields that name another record — `object.type`
+`REFERENCE_EDGES` declares 37 fields that name another record: `object.type`
 into `object_base`, `monster.base` into `monster_base`, `ego_item.slay` into
 `slay`, `artifact.act` into `activation`, and so on. Every edge is measured
 against core's own data by `references.test.ts`, so an edge that is wrong is a
@@ -175,7 +175,7 @@ enough to reject them would reject Angband.
 ### Companion steps
 
 `COMPANION_RULES` is the list of things the record is fine without and **you**
-are not. They are all warnings or hints, because every one of them is legal —
+are not. They are all warnings or hints, because every one of them is legal:
 an object with no `alloc` is exactly how core defines an item that only comes
 from a store.
 
@@ -239,27 +239,27 @@ would refuse to build Angband.
 
 **Measured over the shipped pack**, and it used to be 24. Composition merges a
 file per record when every record has a ref no sibling claims, and it asks
-`packages/mod-sdk/src/record-key.ts` what a ref is — which is `name` for most
+`packages/mod-sdk/src/record-key.ts` what a ref is, which is `name` for most
 files and something else where upstream's identity is something else.
 
 Until 2026-08-08 the test was "a unique `name`", and three files failed it on
 core's own data, because Angband's convention for a greater form is to reuse the
-name with marks — `Acquirement` and `*Acquirement*`, `Little eruption` and
-`Little eruption+` — and `ego_item` ships 23 names twice over. So a mod adding
+name with marks: `Acquirement` and `*Acquirement*`, `Little eruption` and
+`Little eruption+`, and `ego_item` ships 23 names twice over. So a mod adding
 one object replaced all 375 of core's, one ego replaced all 107, one vault all
 162. Those were the three files most worth adding to. They now merge per record:
 
-| File | Records | A mod adding one record… |
+| File | Records | A mod adding one record... |
 |---|---|---|
-| `object` | 375 | adds one — 376 |
-| `ego_item` | 107 | adds one — 108 |
-| `vault` | 162 | adds one — 163 |
-| `store`, `flavor`, `brand`, `slay`, `object_base`, `trap`, `names`, … | — | adds one, keyed by whatever upstream keys it by |
+| `object` | 375 | adds one, 376 |
+| `ego_item` | 107 | adds one, 108 |
+| `vault` | 162 | adds one, 163 |
+| `store`, `flavor`, `brand`, `slay`, `object_base`, `trap`, `names`, ... | - | adds one, keyed by whatever upstream keys it by |
 
 **The three that still take a whole file, and why.** `constants` and `visuals`
 are config singletons: their identity *is* the file, the host binds exactly one,
 and "I shipped `constants.json`" means "use mine". `history` has no per-record
-identity at all — a history record is `{chart:{chart,next,roll}, phrase}` and
+identity at all: a history record is `{chart:{chart,next,roll}, phrase}` and
 every part of that is a value a mod would legitimately change. For those three,
 `ModProject.build` still raises `file/whole-file-replacement` as an `error`,
 because replacing the base game's copy of a file is not something to discover
@@ -271,22 +271,22 @@ Refs did not move. The per-record identity was already what
 `patchFields` / `replace` / `remove` used, so every ref that resolved before
 still resolves:
 
-- `object` is `type + name` — the Dagger is `core:sword--dagger`;
-- `ego_item` is `name`, plus a `#` discriminator where core ships the name twice
-  — `core:of-acid#shot-arrow`;
+- `object` is `type + name`, so the Dagger is `core:sword--dagger`;
+- `ego_item` is `name`, plus a `#` discriminator where core ships a name twice,
+  as in `core:of-acid#shot-arrow`;
 - `store` is its `STORE_*` code, `brand` and `slay` their `code`, `flavor` its
   base tval, and so on.
 
-A record answers to **several** refs — its base key, its discriminated form, and
-the pre-2026-08-08 lossy slug as an alias — so nothing an author wrote against an
+A record answers to **several** refs: its base key, its discriminated form, and
+the pre-2026-08-08 lossy slug as an alias, so nothing an author wrote against an
 older engine stops working. An alias is dropped where it would shadow a
 *different* record's real name: `*Healing*`'s old ref is plain `Healing`'s
 current one, and a record's own history must not cost another record its name.
 
 That is **8 of the pack's 19 legacy aliases**, and it depends on core's data
 rather than on the mark. `*Acquirement*` loses its alias, because core ships a
-plain `Acquirement` scroll. `*Destruction*` keeps both of its — as a scroll and
-as a staff — because core ships no plain `Destruction` at all, so there is
+plain `Acquirement` scroll. `*Destruction*` keeps both of its, as a scroll and
+as a staff, because core ships no plain `Destruction` at all, so there is
 nothing for it to shadow. `of *Slay Orc*` loses its and `of *Slay Animal*` keeps
 its, for the same reason. The full census is asserted row by row in
 `record-key.test.ts`, so the count cannot drift back into prose.
@@ -297,7 +297,7 @@ one that had *no* per-record addressing before the key table existed.
 ### Where a new record lands, and why it matters
 
 At the **end**, after core's. That is not cosmetic. Upstream's `sval` is not a
-field in the data — it is a counter, bumped per object base in file order
+field in the data: it is a counter, bumped per object base in file order
 (`parse_object_type`, `reference/src/obj-init.c`), and `kidx` is the position in
 the file. Appended, every one of core's 375 objects keeps its index, name, tval
 and sval, and the new one takes the next free sval of its own base. Prepended,
@@ -331,24 +331,24 @@ declared in one `resources` array in your manifest, each naming a `kind` and a
 ```
 
 `path` is never a URL. You cannot know where the game is serving your mod from,
-and two of the three places a mod can live have no path at all — a folder the
+and two of the three places a mod can live have no path at all: a folder the
 player picked, and a mod installed from a repository, which lives in the
 browser's database. The host composes your path with your mod's own resolver.
 
 | kind | what it is | several mods? |
 | --- | --- | --- |
 | `sound` | a **directory** of samples named as `sound.prf` names them, `.mp3` or `.ogg` | the last enabled one wins |
-| `font` | a bitmap font, `{ "w", "h", "glyphs" }` — one scanline number per row | the last enabled one wins |
+| `font` | a bitmap font, `{ "w", "h", "glyphs" }`, one scanline number per row | the last enabled one wins |
 | `prefs` | a `.prf` in ui-prefs.c's own grammar; ASCII glyphs, colours and sound prefs apply at install, and TILE assignments layer over a graphics pack's own prefs on every map build | **all of them apply**, in load order |
 | `help` | one page of plain text | per `slot` |
-| `art` | one screen of `{colour}…{/}` markup | per `slot` |
+| `art` | one screen of `{colour}...{/}` markup | per `slot` |
 | `locale` | one language, `slot` being its BCP 47 tag | per `slot` |
 
 Four things that will otherwise cost you an afternoon:
 
 - **A `.prf`'s `%:` includes resolve beside the file you declared.** They are
   followed (they were silently skipped before #278), to the same depth the
-  parser allows, and every one of them — including an include's own includes —
+  parser allows, and every one of them, including an include's own includes,
   is looked up in the directory of the `path` in your manifest. So
   `prefs/colours.prf` saying `%:shared.prf` reads `prefs/shared.prf`. A name
   that does not resolve is skipped without a message, which is what upstream
@@ -369,7 +369,7 @@ Four things that will otherwise cost you an afternoon:
 ### What happens when a resource is wrong
 
 Nothing is taken away except that resource. A pref file that will not parse costs
-you the pref file — not your records, not your sound pack, not the mod. But it is
+you the pref file, not your records, not your sound pack, not the mod. But it is
 never silent: whatever could not be used is written on your mod's row in the mod
 manager, in a sentence saying what was wrong with it.
 
@@ -381,7 +381,7 @@ Three checks run, and the last one can only run on the player's machine:
    silently dropped key is a belief of yours that would survive to ship.
 2. **Your file list.** A mod read from a folder or installed from a repository
    arrives with every filename it holds, so a typo is caught without a single
-   request. (Not available for a mod compiled into the app — check 3 catches
+   request. (Not available for a mod compiled into the app; check 3 catches
    those.)
 3. **The machine.** Whether this build can play `.mp3` or `.ogg` at all, and
    whether your font JSON is structurally a font. Only opening the file can say.
@@ -394,7 +394,7 @@ The bundled `demo-resources` mod is a working example of four of the six, and
 ## Translating the game
 
 English ships in the game and is what a player sees with no mod installed. A
-translation is a `locale` resource — a JSON file whose `slot` is its language
+translation is a `locale` resource, a JSON file whose `slot` is its language
 tag:
 
 ```json
@@ -409,7 +409,7 @@ tag:
 ```
 
 `tag` must match the `slot` that declared the file. They are two statements of
-the same fact and the check refuses them when they disagree — the slot decides
+the same fact and the check refuses them when they disagree: the slot decides
 which language your file *is offered as*, and the tag decides what it *is*.
 
 **You do not have to translate everything.** A missing id falls back through the
@@ -418,8 +418,8 @@ rather than as a screen of blanks.
 
 ### Patterns, not sentences you glue together
 
-Messages are [ICU MessageFormat](https://unicode-org.github.io/icu/userguide/format_parse/messages/)
-— a subset, but the ordinary one, so ordinary translation tools can edit your
+Messages are [ICU MessageFormat](https://unicode-org.github.io/icu/userguide/format_parse/messages/),
+a subset, but the ordinary one, so ordinary translation tools can edit your
 file:
 
 | you write | you get |
@@ -440,7 +440,7 @@ do the work is the single most common way a translation ends up wrong.
 ### When words are not enough
 
 Some text is *assembled*, not written. An object's name is built from a pattern
-like `& Scroll~ titled #` — the `~` is an English pluralizer, the `&` becomes
+like `& Scroll~ titled #`. The `~` is an English pluralizer, the `&` becomes
 `a`/`an` by the vowel after it, and the count goes in front. If your language
 counts with a classifier, inflects for case, or has no plural `s`, no amount of
 word replacement will get you there.
@@ -500,7 +500,7 @@ So do not simply replace one. Map each retired flag to its current rule under
 ```
 
 Every destination must be one of this manifest's current `rules`. The source
-must NOT be — a flag you still declare is live, and consuming its stored choice
+must NOT be: a flag you still declare is live, and consuming its stored choice
 as retired would destroy a setting you are still exposing. Renaming a flag to
 itself is refused for the same reason.
 
@@ -508,7 +508,7 @@ The host migrates its saved choices when it loads your enabled mod, before it
 resolves defaults. Where several retired flags become one rule, the result is on
 if ANY of them was on: turning off a fix the player had on would reintroduce a
 bug they had chosen to be rid of, and re-enabling a sibling is the smaller
-surprise — they can still turn the whole rule off. A choice already recorded for
+surprise: they can still turn the whole rule off. A choice already recorded for
 the current flag wins outright, since it was made against the new release. The
 old entries are then consumed, so loading again changes nothing.
 
@@ -593,6 +593,6 @@ node packages/mod-sdk/scripts/gen-blueprints.mjs
 
 Do not edit it by hand. `blueprints.test.ts` re-derives the whole table from
 `packages/content/pack` and fails in both directions, and separately asserts
-that it agrees, file for file, with core's own generated `CORE_RECORD_KEYS` —
+that it agrees, file for file, with core's own generated `CORE_RECORD_KEYS`:
 the day those two disagree is the day a field is an extension at one end and a
 core field at the other.

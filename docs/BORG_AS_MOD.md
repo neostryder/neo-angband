@@ -153,8 +153,8 @@ with an empty repository waiting for it.
 ### What the move actually costs
 
 Less than the file count suggests. The mod builder refuses a plugin that bundles
-its own copy of the engine — a second set of registries running beside the game's
-— so every value the Borg takes from core has to arrive through `ctx.core`
+its own copy of the engine, a second set of registries running beside the game's,
+so every value the Borg takes from core has to arrive through `ctx.core`
 instead of a bare import. That sounds like 37 files, which is how many mention
 `@rpgm-tools/neo-angband-core`. It is not: **28 of those are `import type`, which
 compiles to nothing.**
@@ -181,7 +181,7 @@ announces a hook.
 It does not need a new seam to work, though: `ctx.core` is the live engine
 namespace, entire, so a plugin can call `ctx.core.installController(ctx.state,
 borg)` from `register()`. Whether that stays the route or a first-class
-`controller?(ctx)` is added is the one open design question here — and it is worth
+`controller?(ctx)` is added is the one open design question here, and it is worth
 answering deliberately, because the answer is the contract every future agent mod
 uses, not just this one.
 
@@ -255,7 +255,7 @@ Steps 1 and 2 are done. Steps 3-7 are the move described in section 6.
 1. ~~Build the mod substrate and freeze the perceive/act facade (P7).~~ Done.
 2. ~~Port the Borg on that facade (P8), in the tier order above.~~ Done:
    `packages/borg`, 72 files, 135 tests.
-3. **Decide the controller route** — `ctx.core.installController` from
+3. **Decide the controller route**: `ctx.core.installController` from
    `register()`, or a first-class `controller?(ctx)` on `ModPlugin`. This is the
    contract every future agent mod inherits, so it is a decision and not an
    implementation detail.
@@ -273,7 +273,7 @@ Steps 1 and 2 are done. Steps 3-7 are the move described in section 6.
    without output and without a timeout. `think.ts` is the decision ladder, so
    the untested part is the part that decides. Fix before the tag, not after: the
    mod's own CI is the only thing that will ever run them again.
-7. **Release it like any other mod** — `npm run verify`, tag, push the tag. The
+7. **Release it like any other mod**: `npm run verify`, tag, push the tag. The
    game discovers it from its own repository, so there is nothing to pin here;
    `docs/RELEASING.md` has the procedure and the canary that checks it from
    outside.

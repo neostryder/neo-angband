@@ -42,7 +42,7 @@ reported as damage, and a save the game cannot open is never overwritten.
 
 **Prerequisites** for everything except the download and the PWA install:
 [Node](https://nodejs.org/)
-22 or newer, and [pnpm](https://pnpm.io/installation) **11** — run
+22 or newer, and [pnpm](https://pnpm.io/installation) **11**: run
 **`corepack enable pnpm`** and the `packageManager` field in the root
 `package.json` decides the exact version. The 11 is not advisory: pnpm 10 fails on
 *every* command in this repository, `--help` included, because 11 ships a

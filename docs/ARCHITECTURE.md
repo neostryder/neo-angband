@@ -95,7 +95,7 @@ chokepoint into data:
 
 ## Boot: nothing paints the map until there is a game
 
-`packages/web/src/main.ts` builds a real game at module scope — it has to, because
+`packages/web/src/main.ts` builds a real game at module scope. It has to, because
 every screen below the title reads from a live `GameState`. That made one thing
 very easy to get wrong, and the port got it wrong for months: the shell painted
 that game's map immediately, so the player watched a generated town belonging to
@@ -104,7 +104,7 @@ on the shipped Windows build (2026-08-13) the town was on screen from 6.9s to
 12.7s after launch.
 
 Two rules keep it fixed, and both are asserted by tests that read `main.ts` as
-text (it cannot be imported — importing it boots a game):
+text (it cannot be imported, because importing it boots a game):
 
 - **`gameScreenLive`** gates `renderBackground()` alongside `modalDepth`. It is
   false until the boot chain settles on a game. The two gates answer different
@@ -116,10 +116,10 @@ text (it cannot be imported — importing it boots a game):
 - **The loading screen owns the gap** (`packages/web/src/loading.ts`): a dungeon
   carving itself out, everything except the paint being pure functions over a
   seeded LCG so it can be tested without a clock or a canvas. It never draws from
-  the game's RNG — it runs before a character exists, and a draw there would move
+  the game's RNG: it runs before a character exists, and a draw there would move
   a stream position saves re-derive the world from. The `@` is **not** the
   digger: the digger is generation and is never drawn, while the `@` moves only
-  onto carved floor and plays a little — wanderers give chase, it fights or
+  onto carved floor and plays a little: wanderers give chase, it fights or
   flees, and it cannot die (there is no character to kill yet, so it escapes at
   zero instead). Both turns are exported so tests can drive them with the map
   frozen, which is the only way to tell a walker from a digger: the digger

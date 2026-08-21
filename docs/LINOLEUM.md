@@ -334,7 +334,7 @@ withholds is modification without permission, ToME-only tiles, and use or
 distribution "with other games or projects" without explicit permission. Two
 consequences for this converter:
 
-- **A Linoleum conversion is a modification** — it cuts the sheet into
+- **A Linoleum conversion is a modification.** It cuts the sheet into
   individual PNGs. That needs the author's permission regardless of how the
   "is this Angband?" question below is answered. Convert your own copy for your
   own use; do not redistribute the result.

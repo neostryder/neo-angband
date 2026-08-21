@@ -98,7 +98,7 @@ describe("object/util (reference/src/tests/object/util.c)", () => {
     // Equip a lantern instead.
     const lantern2 = makeNamed("& Lantern~", TV.LIGHT);
     lantern2.timeout = 7500;
-    // Replace light: take off torch path — just make a fresh state with lantern.
+    // Replace light: take off torch path, so make a fresh state with lantern.
     const state2 = makeState({ playerGrid: loc(5, 5) });
     equip(state2, lantern2);
 

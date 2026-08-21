@@ -1,6 +1,6 @@
 # @rpgm-tools/neo-angband-core
 
-The headless game engine behind [Neo Angband](https://github.com/neostryder/neo-angband) —
+The headless game engine behind [Neo Angband](https://github.com/neostryder/neo-angband),
 a TypeScript port of [Angband](https://angband.github.io/angband/) 4.2.6.
 
 No renderer, no input, no DOM, no filesystem: rules, world, entities, effects,
@@ -15,7 +15,7 @@ npm install @rpgm-tools/neo-angband-core
 Two audiences, and it is worth knowing which one you are:
 
 - **Writing a Neo Angband mod.** A mod's plugin receives the running engine as
-  `ctx.core`, so it never imports this package at runtime — but it wants the
+  `ctx.core`, so it never imports this package at runtime, but it wants the
   **types**, and its tests want a real engine to run against. That is what this
   package is for.
 - **Building something else on Angband's rules.** A bot, a solver, a simulator, a
@@ -40,7 +40,7 @@ Two entry points:
 | Import | What it holds |
 | --- | --- |
 | `@rpgm-tools/neo-angband-core` | The engine: rules, world, entities, effects, generation, saves |
-| `@rpgm-tools/neo-angband-core/host` | The `HostIo` seam — the shape of `z-file.c`, for a front end that gives the engine real file and terminal I/O |
+| `@rpgm-tools/neo-angband-core/host` | The `HostIo` seam: the shape of `z-file.c`, for a front end that gives the engine real file and terminal I/O |
 
 ## The API is upstream's, deliberately
 
@@ -72,7 +72,7 @@ the port is verified against and moves independently of `ENGINE_VERSION`.
 
 Neo Angband keeps Angband's dual licence, as the Angband project asks of its
 variants: **GNU GPL v2, or the Angband licence**, at your option. npm can only
-carry one SPDX identifier, so the manifest says `GPL-2.0-only` — the more
+carry one SPDX identifier, so the manifest says `GPL-2.0-only`, the more
 restrictive of the two. The full text of both, and what it means for the bundled
 art, is in [LICENSE.md](LICENSE.md).
 

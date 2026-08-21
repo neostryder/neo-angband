@@ -1,10 +1,10 @@
 # Modding Neo Angband
 
-> ## 🔧 New to this? Don't start here.
+> ## New to this? Don't start here.
 >
 > **[Make a mod](tutorials/README.md)** is the front door: six short tutorials,
 > the first of which is two files and takes about five minutes. This page is the
-> reference — it enumerates, it does not teach.
+> reference: it enumerates, it does not teach.
 
 Moddability is a ratified pillar of this project (PORT_PLAN.md decisions
 13-21): every aspect of the game is open to mods, including capabilities
@@ -33,54 +33,54 @@ This directory holds both **built-today** pages and **design-of-record** pages,
 and an author who cannot tell which is which builds against the wrong one. Every
 surface below carries one of three words, and they are meant literally:
 
-- **Complete** — built, tested, and driven end to end at least once along the
+- **Complete**: built, tested, and driven end to end at least once along the
   path a player's install actually uses. Write against it today.
-- **WIP** — partly built. What exists is real and is not going to be taken away,
+- **WIP**: partly built. What exists is real and is not going to be taken away,
   but the surface does not yet cover everything its name suggests. Read the
   linked row before assuming the part you need is in.
-- **Not yet** — there is no seam. Whatever the design pages say about it is a
+- **Not yet**: there is no seam. Whatever the design pages say about it is a
   proposal. Do not build around it, and do not build a *workaround* either: a
   workaround reaches through something that was never a seam, and it is exactly
   what the real seam breaks when it lands. Ask on the Discord instead.
 
 `MOD_REACH.md` is where each of these is measured, one row per capability; the
 table below is an index into it. `modding-status.test.ts` reads both files and
-fails if a status here stops matching the measurement there — the two cannot
+fails if a status here stops matching the measurement there, so the two cannot
 drift silently, which is the only reason a summary table like this is safe to
 write down at all.
 
 | What you want to do | Status | Measured in |
 | --- | --- | --- |
-| Change any value in any gamedata file, add a key, remove a key — any record, including the ones with repeated names | **Complete** | gap 2 |
-| Add records core has never seen — objects, monsters, egos, artifacts, and whole new item **classes** (tvals) | **Complete** | gap 20 |
+| Change any value in any gamedata file, add a key, remove a key, on any record, including the ones with repeated names | **Complete** | gap 2 |
+| Add records core has never seen: objects, monsters, egos, artifacts, and whole new item **classes** (tvals) | **Complete** | gap 20 |
 | Extend a record with fields of your own, in your own namespace | **Complete** | gap 16 |
 | Ship real **code** that runs in the game, installed from disk with no build step of ours | **Complete** | gap 1 |
 | Change behaviour: the `ModHooks` points, plus the keyed registries listed in `MOD_REACH.md` §(c) | **Complete** | gap 3 |
-| Monster combat — blow effects, recording and live paths, one registration for both | **Complete** | gap 4 |
-| Store behaviour — the buy rule and stack sizes | **Complete** | gap 5 |
-| Level generation — your own whole-cave builder and the profile that selects it | **Complete** | gap 6 |
+| Monster combat: blow effects, recording and live paths, one registration for both | **Complete** | gap 4 |
+| Store behaviour: the buy rule and stack sizes | **Complete** | gap 5 |
+| Level generation: your own whole-cave builder and the profile that selects it | **Complete** | gap 6 |
 | Vaults and room templates drawn with symbols core has never decoded | **Complete** | gap 17 |
-| Random artifacts — reach the **generator**, not just ship a fixed artifact | **Complete** | gap 19 |
+| Random artifacts: reach the **generator**, not just ship a fixed artifact | **Complete** | gap 19 |
 | An effect of your own that the game can **describe** to the player | **Complete** | gap 18 |
 | Tile packs: register a Graphics row, ship your own art, either tile engine | **Complete** | gap 8 |
-| Sounds, fonts, splash art, help text, and `.prf` effects — including classic TILE assignments layered over a graphics pack | **Complete** | gap 7 |
-| Localization — not a string table; the structural seam | **Complete** | gap 14 |
+| Sounds, fonts, splash art, help text, and `.prf` effects, including classic TILE assignments layered over a graphics pack | **Complete** | gap 7 |
+| Localization, not a string table; the structural seam | **Complete** | gap 14 |
 | Have your records schema-checked before they reach the game | **Complete** | gap 12 |
 | Survive a broken mod at boot, with the fault named and attributed | **Complete** | gap 13 |
 | Know which mod added or changed a record, in the running game and in the save | **Complete** | gap 10 |
 | Load order that means what the manager says it means | **Complete** | gap 11 |
-| **Replace the front end** — draw the world yourself, any way you like | **Complete** | gap 9 |
-| Know **where you may draw** — named regions, in grid cells and CSS pixels, on every frame | **Complete** | gap 9 |
-| Drive the game programmatically — an autoplayer, a bot, a test harness | **Complete** | `BORG.md`, `ModPlugin.controller` |
-| Menus — add, reorder, retitle and re-tag **rows** (`registry:menu`). How a menu is **presented** is not reachable | **WIP** | gap 21 |
-| **Replace the UI** — the HUD, the status line, the message area, menu presentation, the ~50 full screens | **Not yet** | gap 21 |
-| Own a HUD region (messages, vitals, status) with core drawing the ones you do not claim, or **create a region of your own** — ordered, overlapping, transparent, composited, and owning pointer input on the cells it paints | **WIP** | gap 21 |
+| **Replace the front end**: draw the world yourself, any way you like | **Complete** | gap 9 |
+| Know **where you may draw**: named regions, in grid cells and CSS pixels, on every frame | **Complete** | gap 9 |
+| Drive the game programmatically: an autoplayer, a bot, a test harness | **Complete** | `BORG.md`, `ModPlugin.controller` |
+| Menus: add, reorder, retitle and re-tag **rows** (`registry:menu`). How a menu is **presented** is not reachable | **WIP** | gap 21 |
+| **Replace the UI**: the HUD, the status line, the message area, menu presentation, the ~50 full screens | **Not yet** | gap 21 |
+| Own a HUD region (messages, vitals, status) with core drawing the ones you do not claim, or **create a region of your own**: ordered, overlapping, transparent, composited, and owning pointer input on the cells it paints | **WIP** | gap 21 |
 | Retitle, regroup, reorder, re-tag or rebind an existing web keypress command (`registry:menu`); the command's closure stays shell-private | **Complete** | `MOD_REACH.md` row 23 |
 | Rename one of your own rule flags without losing the player's saved choice (`renamedRuleFlags`) | **Complete** | `AUTHORING.md` |
-| Rebind keys, or add a gamepad — `input-door.ts` is host infrastructure, not a seam | **Not yet** | `MOD_SEAMS.md` |
+| Rebind keys, or add a gamepad: `input-door.ts` is host infrastructure, not a seam | **Not yet** | `MOD_SEAMS.md` |
 | Change the message table, the `MSG_`→sound map, or the pref-file handlers | **Complete** | `MOD_REACH.md` rows 20, 21, 8 |
 | Change the monster spell table or the command table | **Not yet** | `MOD_REACH.md` rows 22, 19 |
-| Install, update and uninstall UX — ratified in full, built in part | **WIP** | `MOD_LIFECYCLE.md` |
+| Install, update and uninstall UX: ratified in full, built in part | **WIP** | `MOD_LIFECYCLE.md` |
 
 Two things this table deliberately does not do. It does not rank surfaces by how
 much work they were, and it does not promise dates. A **Not yet** row is not a
@@ -128,8 +128,8 @@ that has not been settled.
   trusting a capability claim on any other page: this directory contains
   both design-of-record pages and built-today pages, and the two are not
   the same thing.
-- **Replacing the whole front end** — an 8/16-bit menu shell, isometric, full 3D,
-  first-person, controller-driven — is a design that has been written down and
+- **Replacing the whole front end** (an 8/16-bit menu shell, isometric, full 3D,
+  first-person, controller-driven) is a design that has been written down and
   measured, but **the seams for it do not exist yet**. Two facts from that work
   are worth knowing here: core is already headless and needs no change for any
   of it, and what stands in the way is `GlyphTerm`, which is both the surface

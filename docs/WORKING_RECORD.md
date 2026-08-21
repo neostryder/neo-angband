@@ -17,7 +17,7 @@ follow is a known thing rather than a loose end.
 This port was built against the C source with a lot of machinery: dated audit
 runs where several models reviewed the same lane independently, the raw logs
 underneath them, census tools and their TSV output, briefs, build plans, and
-correction punch lists. Together, roughly **220 files and 5.7 MB** — several
+correction punch lists. Together, roughly **220 files and 5.7 MB**, several
 times the size of the game's own source.
 
 None of it is secret. It is *construction*, and construction is not the
@@ -41,7 +41,7 @@ it concluded lives here:
 The **ledger** stayed. It is 102 machine-readable files naming, per module, the
 upstream C files and functions that module ports. A parity claim whose evidence
 is unpublished is a claim nobody can check, and that is the one thing this
-project cannot afford to ship — so the evidence is here even though the audit
+project cannot afford to ship, so the evidence is here even though the audit
 runs that produced it are not.
 
 `PORT_TODO.md` and `DEFERRALS.md` stayed for a plainer reason as well: **112
@@ -59,5 +59,5 @@ of them would have made the tree tidier and each explanation slightly less
 trustworthy, which is the wrong trade.
 
 If you are reading such a comment and the sentence does not stand on its own,
-that is a defect worth reporting — the citation is meant to be a footnote, not
+that is a defect worth reporting: the citation is meant to be a footnote, not
 the argument.

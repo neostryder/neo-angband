@@ -27,7 +27,7 @@ export type { DepthMetrics, StatsParams, StatsReport } from "./stats.js";
 
 /**
  * In-game wizard collectors (wiz-stats.c via do_cmd_wiz_collect_*), reachable
- * from main-stats --wiz-objmon / --wiz-pits / --wiz-disconnect (W2-017…022).
+ * from main-stats --wiz-objmon / --wiz-pits / --wiz-disconnect (W2-017 to 022).
  */
 export {
   DEFAULT_DISCONNECT_PARAMS,

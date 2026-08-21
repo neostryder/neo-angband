@@ -8,9 +8,9 @@ one-line claim with no evidence behind it.
 
 **Looking for something else?**
 
-- [DIVERGENCES.md](DIVERGENCES.md) — what is deliberately different from
+- [DIVERGENCES.md](DIVERGENCES.md): what is deliberately different from
   Angband 4.2.6, gameplay-affecting or not, with the reason.
-- [PORT_TODO.md](PORT_TODO.md) — the work-item checklist, including anything
+- [PORT_TODO.md](PORT_TODO.md): the work-item checklist, including anything
   still genuinely open.
 
 ## The three ways a deferral note resolves
@@ -30,7 +30,7 @@ Every `deferred:` note in this repository's ledger, and every `DEFERRED` /
    abused, so it carries two requirements: the `file:line` and the exact
    mechanism that makes it unreachable (no caller, a constant-false guard, a
    `#define` set nowhere), and the unreachability must be a property of
-   *upstream*, not of what this port happens to call — a port that simply
+   *upstream*, not of what this port happens to call: a port that simply
    never reaches a call site upstream does reach is a port defect wearing this
    state's clothes.
 
@@ -44,7 +44,7 @@ upstream's own 4.2.6 tree cannot reach either:
 
 - **The three `OSTACK_LIST` checks** (`obj-pile.c:409`, `:410`, `:485`).
   Nothing in Angband 4.2.6 ever passes `OSTACK_LIST`: it is declared at
-  `obj-pile.h:33`, tested three times and supplied never — every `OSTACK_*`
+  `obj-pile.h:33`, tested three times and supplied never, since every `OSTACK_*`
   argument in the C tree is PACK, QUIVER, MONSTER, STORE or FLOOR.
   `obj/ostack-list.test.ts` ratchets the callers, which are the thing that
   could change this.
@@ -52,8 +52,8 @@ upstream's own 4.2.6 tree cannot reach either:
 - **`RSF_BR_MANA` is declared and never used** (`list-mon-spells.h:38`,
   `monster_spell.txt:425`). Of 91 real spell flags, 90 appear somewhere in
   `lib/gamedata/monster.txt`; `BR_MANA` is the one no monster race ever sets.
-  The port carries the same shape — the enum entry, the spoiler record, a borg
-  case — and **the enum entry must not be removed**: `RSF` is a bit position
+  The port carries the same shape: the enum entry, the spoiler record, a borg
+  case, and **the enum entry must not be removed**: `RSF` is a bit position
   persisted in every save ([MOD_REACH.md](../docs/modding/MOD_REACH.md), row
   22), and dropping index 25 would shift every flag above it. Only the *data*
   fact is unreachable; the entry is load-bearing. `data-exactness.test.ts`
@@ -66,8 +66,8 @@ upstream's own 4.2.6 tree cannot reach either:
   halves: the file exists upstream, and no port spec reads it.
 
 - **`PRICE_DEBUG`'s seven `file_putf` sites** (`obj-power.c:1117` onward).
-  `PRICE_DEBUG` is defined nowhere in the build — not `configure.ac`, not any
-  `Makefile`, not `CMakeLists.txt` — so `pricing.log` cannot be written by any
+  `PRICE_DEBUG` is defined nowhere in the build, not `configure.ac`, not any
+  `Makefile`, not `CMakeLists.txt`, so `pricing.log` cannot be written by any
   shipped 4.2.6 build, and the port's `obj/value.ts` emits nothing on this
   path. `text-census.test.ts` ratchets it in both directions.
 
@@ -81,18 +81,18 @@ an unrelated file when the reference tag changes.
 
 | upstream | construct |
 |---|---|
-| `ui-equip-cmp.c` | `sel_better_than`, `sel_exclude_slot`, `sel_only_slot` — the port's `game/equip-cmp.ts` implements only the live selector categories |
+| `ui-equip-cmp.c` | `sel_better_than`, `sel_exclude_slot`, `sel_only_slot`: the port's `game/equip-cmp.ts` implements only the live selector categories |
 | `ui-entry.c:1292-1304` | the `OBJ_MOD_STEALTH` / `OBJ_MOD_SEARCH` cases in `modifier_to_skill` |
 | `wiz-stats.c:1342-1356` | `static double total(...)`, left unlinked upstream |
 | `main-sdl.c:995-1020` | `sdl_ButtonBankRemove` |
 | `main-win.c` | `Term_init_win` / `Term_nuke_win` and their hook assignments, both `/* XXX Unused */` stubs |
-| `main-xxx.c` | `color_data[MAX_COLORS]` — the whole file is dead: gated on `USE_XXX`, defined by a `Makefile.xxx` that does not exist in the tree |
+| `main-xxx.c` | `color_data[MAX_COLORS]`: the whole file is dead: gated on `USE_XXX`, defined by a `Makefile.xxx` that does not exist in the tree |
 
 A frontend excluded by a CMake *default* is not in this class: `SUPPORT_SDL_FRONTEND`
 and its siblings are user-settable options that build a working frontend when
 turned on, unlike `USE_XXX` (no enabling makefile exists) or `PRICE_DEBUG` (no
 switch anywhere). The same holds for `SCORE_BORGS`, gated by `#ifndef` rather
-than `#if 0` — its body fires by default.
+than `#if 0`, so its body fires by default.
 
 ## Keeping the census honest
 
@@ -109,7 +109,7 @@ node parity/tools/ledger-deferred-items.mjs       # the ledger's own deferred: l
 ```
 
 `deferral-report.test.ts` fails when the appendix below is stale, and fails on
-a new deferral note with no verdict or a verdict with no evidence — so this
+a new deferral note with no verdict or a verdict with no evidence, so this
 document cannot describe a census that has since changed. Re-run
 `ledger-deferred-items.mjs` after editing any `deferred:` bullet in a ledger
 file: the generator carries a verdict forward by the bullet's text, so a

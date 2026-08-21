@@ -2,27 +2,27 @@
 
 **Angband with a modern mod system.**
 
-It is the same game — the latest official release of
+It is the same game: the latest official release of
 [Angband](https://github.com/angband/angband), carefully rebuilt so it runs
 anywhere and so you can change it without forking it.
 
 - **Play it in a browser**, or install it as an app, or run a desktop build.
 - **Play vanilla.** With no mods on, it is the original game.
 - **Add mods** when you want something different.
-- **Make your own mods** — without maintaining a fork of Angband.
+- **Make your own mods** without maintaining a fork of Angband.
 
-> ### 🔧 Want to make a mod? [Start here.](docs/modding/tutorials/README.md)
+> ### Want to make a mod? [Start here.](docs/modding/tutorials/README.md)
 >
 > Never made one before? That is fine. The first tutorial takes about five
 > minutes, needs nothing but a text editor, and changes the game.
 
 ---
 
-> ## Status: ALPHA — and we would like you to break it
+> ## Status: ALPHA, and we would like you to break it
 >
 > The whole game is playable start to finish: roll a character, shop the town,
 > descend, die permanently. It is not finished. Play sessions still turn up
-> things our automated checks cannot see — a message the original prints that
+> things our automated checks cannot see: a message the original prints that
 > this one does not, a screen laid out a column off, a prompt that never appears.
 >
 > **That is exactly what we need testers for.** Play it, and when something feels
@@ -37,7 +37,7 @@ install, it installs as a real app on Windows, macOS and Linux, and it works
 offline. Same game, fewer obstacles.
 
 **If you have ever wanted to change something about Angband:** that is the
-point of the project. Not *"you can edit the data files"* — Angband has always
+point of the project. Not *"you can edit the data files"*. Angband has always
 let you do that. The difference is that here a change is a **thing you can
 hand to someone**: a folder you switch on and off, share, combine with other
 people's, and keep working when the game updates.
@@ -49,20 +49,20 @@ next ZAngband"*, using the same system for both.
 
 **[Download a build](https://github.com/neostryder/neo-angband/releases)** for
 Windows, macOS or Linux. The Windows **portable** `.exe` and the Linux
-**AppImage** need no installer at all — download, run, and the game keeps its
+**AppImage** need no installer at all: download, run, and the game keeps its
 saves in a folder beside itself.
 
 Those builds are **not code-signed**, so your OS will block the first launch.
 
-- **Windows:** one click — *More info → Run anyway*.
+- **Windows:** one click, *More info → Run anyway*.
 - **macOS:** the dialog you get does **not** contain the way through, so ignore
   it. Open **System Settings → Privacy & Security**, scroll down to
   **Security**, and press **Open Anyway** on the line naming the app.
   [The full steps are here.](docs/INSTALL.md#macos-blocks-it-first-time) On
   Apple Silicon, take the **arm64** build, not the Intel one.
 
-If you would rather not make that trade at all, play in a browser — which needs
-no trust decision — or build it yourself below.
+If you would rather not make that trade at all, play in a browser, which needs
+no trust decision, or build it yourself below.
 
 Or run it from source, which takes about two minutes and is the best way to test:
 
@@ -77,15 +77,15 @@ cd neo-angband && pnpm install && pnpm --filter @rpgm-tools/neo-angband-web dev
 Then open **http://localhost:5178**. You need [Node](https://nodejs.org/) 22+ and
 [pnpm](https://pnpm.io/installation) (`corepack enable` gets you pnpm).
 
-**Every other way** — the offline PWA install, self-hosting it as static files,
-the desktop app, per-browser notes — is in
+**Every other way** (the offline PWA install, self-hosting it as static files,
+the desktop app, per-browser notes) is in
 **[docs/INSTALL.md](docs/INSTALL.md)**.
 
-### ⚠️ Back your character up
+### Back your character up
 
 Saves live in your browser's storage, scoped to the address you play on. **Anything
 that clears that storage takes every character and every installed mod at once,
-with no undo** — "clear browsing data", a cleanup tool like CCleaner or Disk
+with no undo**: "clear browsing data", a cleanup tool like CCleaner or Disk
 Cleanup, resetting a browser profile, or deleting the desktop build's
 `neo-angband-data` folder. Death is permanent here, so there is nothing to
 recover from but a file you exported yourself.
@@ -98,7 +98,7 @@ The game explains the rest on **Where your characters live** (`Shift-W`).
 ## Mods
 
 Press `Escape`, choose **Mods**, choose **Install a mod...**, pick one, press
-Enter. That is the whole process — nothing needs a folder, an account or a tool.
+Enter. That is the whole process; nothing needs a folder, an account or a tool.
 
 The game **bundles no mods at all**, not even the author's. Each one lives in its
 own repository and installs by the same verified route anybody's would, which is
@@ -117,10 +117,10 @@ items, monsters, artifacts and whole new kinds of item; add or retune spells;
 change how stores behave; generate its own dungeon levels; ship art, sounds and
 fonts; run real code; expose its own settings; and draw the world itself. The
 [measured, honest table](docs/modding/README.md#surface-status-complete-wip-not-yet)
-of what is built today versus what is not is in the modding docs — including the
+of what is built today versus what is not is in the modding docs, including the
 parts that are still missing.
 
-**Vanilla stays vanilla.** With no mods enabled, this is the original game — that
+**Vanilla stays vanilla.** With no mods enabled, this is the original game. That
 is the shared baseline everything else layers on top of, and it is what the
 project measures itself against. A game's enabled mods and their versions are
 recorded in its diagnostics and in the character dump, so two players can always
@@ -139,7 +139,7 @@ source. A mod is a folder.
 
 Close enough that a difference is treated as a bug.
 
-- With no mods enabled, the target is the **original game's behaviour** — the
+- With no mods enabled, the target is the **original game's behaviour**, the
   message text and the screen layout included.
 - **The original C source is kept in the repository** ([`reference/`](reference/)),
   buildable, and ported code cites the line it came from.
@@ -151,8 +151,8 @@ Close enough that a difference is treated as a bug.
   Quality-of-life changes ship as mods you can turn off.
 
 It is **not** bit-exactness, and it is not a claim that the port is perfect. The
-full methodology — what is measured, what deliberately is not, and where the port
-sits against the original — is in **[docs/PARITY.md](docs/PARITY.md)**.
+full methodology (what is measured, what deliberately is not, and where the port
+sits against the original) is in **[docs/PARITY.md](docs/PARITY.md)**.
 
 ## Reporting a difference
 
@@ -172,7 +172,7 @@ or `bug-fixes` changing something is usually them working as intended.
 screens laid out differently from the original. Those are the class of bug that
 survives code review.
 
-Pull requests welcome — [CONTRIBUTING.md](CONTRIBUTING.md) covers setup, the
+Pull requests welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup, the
 faithfulness rules, and how a fix proves itself.
 
 ## Known rough edges
@@ -182,23 +182,23 @@ An honest list, so nobody wastes a report on something already written down:
 - **Some upstream messages are still missing.** The exact set is enumerated with a
   reason for each in `KNOWN_ABSENT`
   ([text-census.test.ts](packages/cli/src/text-census.test.ts)). A message that is
-  absent and *not* on that list fails CI — so finding one is a genuine bug report.
+  absent and *not* on that list fails CI, so finding one is a genuine bug report.
 - **The terminal is a fixed 80x24**, scaled to your window. That is the original's
   default and its minimum, but the original also lets you resize for a bigger map
   and this does not yet.
 - **No subwindows.** The original can put the monster list, messages and inventory
   in separate windows; this is one surface.
-- **The mod catalogue is short.** Not a stub — the game bundles nothing, so every
+- **The mod catalogue is short.** Not a stub: the game bundles nothing, so every
   mod arrives through *Install a mod...*, which downloads from the mod's own
   repository at a pinned tag and verifies every byte.
-- **The save format is pre-1.0 and still changes** — but your character comes with
+- **The save format is pre-1.0 and still changes**, but your character comes with
   it. Every format change ships the conversion that reads the one before it, and a
   save the game cannot open is never overwritten.
 
 ## Come and say hello
 
 **[The RPGM Tools Discord](https://discord.gg/YegtwbHTBQ)** is where to ask
-anything — whether something is supposed to happen, how to get a build running,
+anything: whether something is supposed to happen, how to get a build running,
 or mod help. No GitHub account needed, and often faster than an issue.
 
 For anything that does not belong in public, email **strider-angband (at)
@@ -219,8 +219,8 @@ rpgm.tools**. [SECURITY.md](SECURITY.md) says what is worth reporting.
 | [AI use and accountability](AI_USAGE_POLICY.md) | What AI tooling was used for, what it was not, and how contributions are judged |
 
 **AI-assisted development:** Neo Angband is built with AI development tools under
-a human-review and evidence-based verification policy. The complete answer —
-including what it was *not* used for — is in
+a human-review and evidence-based verification policy. The complete answer,
+including what it was *not* used for, is in
 [AI_USAGE_POLICY.md](AI_USAGE_POLICY.md).
 
 ## Repository layout
@@ -233,10 +233,10 @@ including what it was *not* used for — is in
 | `packages/web` | Web + PWA front-end |
 | `packages/cli` | Terminal front-end and dev/parity harness |
 | `packages/desktop` | Electron desktop wrapper |
-| `packages/mcp` | [MCP server](docs/MCP.md) — an AI client plays the game through the frozen agent API |
+| `packages/mcp` | [MCP server](docs/MCP.md): an AI client plays the game through the frozen agent API |
 | `packages/linoleum` | Linoleum tile-pack converter |
 | `packages/borg` | The Borg autoplayer |
-| `samples/` | Small, working example mods — including [the tutorials](docs/modding/tutorials/README.md) |
+| `samples/` | Small, working example mods, including [the tutorials](docs/modding/tutorials/README.md) |
 | `docs/` | Documentation |
 | `parity/` | Provenance ledger mapping port modules to upstream sources |
 | `reference/` | The original C tree, buildable, with its own docs |
@@ -256,20 +256,20 @@ release as its parity baseline. The [parity ledger](parity/README.md) maps every
 ported module to its upstream source so future Angband releases can be merged
 deliberately.
 
-This is a community port, **not an official Angband project** — all honour to the
+This is a community port, **not an official Angband project**. All honour to the
 Angband maintainers and three decades of contributors whose work this builds on.
 
 ## Author
 
 Built and maintained by [neostryder](https://github.com/neostryder) at RPGM
 Tools. The first-party mods are by the same author, and none of them is bundled
-with the game — a modding system whose author's own mods take a private path is a
+with the game: a modding system whose author's own mods take a private path is a
 modding system nobody has actually tested.
 
 ## License
 
-Dual-licensed under GPLv2 or the traditional Angband license, matching upstream —
-see [LICENSE.md](LICENSE.md). Game data derives from Angband.
+Dual-licensed under GPLv2 or the traditional Angband license, matching upstream.
+See [LICENSE.md](LICENSE.md). Game data derives from Angband.
 
 **Art is licensed separately from code, per pack.** The tile sets this build ships
 are Angband's own, by **Adam Bolt**, **David Gervais** (CC BY 3.0), **Nomad**, and
