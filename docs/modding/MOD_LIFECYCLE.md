@@ -182,6 +182,47 @@ owning part of the screen. They do not cover each other either. There is no
 `ui:map.replace`, because the dungeon is `display:replace`'s and one region
 answering to two capabilities would be two answers to "who draws this".
 
+The vocabulary has since grown `ui:region.create`, `ui:panel.mount`,
+`backup:folder`, `debug:spawn`, `mod:install` and `mod:session`. See
+`packages/mod-sdk/src/capabilities.ts`, whose own header is the reference list,
+and [PLUGINS.md](PLUGINS.md) for what each one is and is not. Two things about the
+family shape are worth reading here rather than there, because both are about how
+a grant is PRICED rather than about what it opens. First, an action is compared as
+well as a kind: `ui:*.replace` carries neither `region.create` nor `panel.mount`,
+and `mod:install` does not carry `mod:session`, because in each pair neither side
+is a superset. Second, a capability's consent sentence is what makes it
+proportionate, so two grants whose sentences differ cannot share a string:
+`mod:install` puts a pack in the library switched OFF and the player meets it
+before any of it runs, and `mod:session` switches one on for the rest of the
+session, which is more rather than less.
+
+### A mod that lasts one session
+
+There is a fourth way a mod arrives, alongside the shipped installer, a folder on
+disk, and a zip the player imports: it can be staged for the current browsing
+session only (`packages/web/src/mod-session.ts`). The archive is held in session
+storage rather than IndexedDB, the pack composes on the next reload without
+waiting to be enabled, and closing the game forgets it.
+
+Everything in this section still applies to it. The manifest is validated, the
+engine range is honoured, the standards inspection runs, the origin is pinned
+against an installed copy of the same id, and the pack goes through the same
+composer in the same load order - a staged copy of an installed id shadows it, and
+the collision is reported. What is different is the lifetime of the ARCHIVE, and
+nothing else: a session pack's records are as real as any while they are loaded,
+and section 4's account of what a capability does and does not fence is unchanged
+by how long the mod is remembered.
+
+Two honest limits, both recorded because the phrase "just for this session" does
+not carry them. The lifetime is a convention rather than a boundary - a browser
+restoring a closed or crashed window restores session storage with it - so the
+mitigation is that a session mod is always listed, always marked, and always
+droppable. And a save written while one was loaded stays loadable but is not
+reproducible: entities in the staged namespace are quarantined on the next load,
+which is correct, while a field the pack PATCHED on a core record simply returns
+to its unpatched value, because a patch lives in the composition and not in the
+save. `docs/PLANNED.md` carries the second as open work.
+
 ### From a git repository (proposed design, not the shipped path)
 
 [PROPOSED] throughout, and the heading used to read "(today)", which it was not.
