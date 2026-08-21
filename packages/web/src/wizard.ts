@@ -613,8 +613,14 @@ export const DEBUG_MENU: readonly DebugCategory[] = deepFreezeMenu([
  * accepting marks the savefile (noscore |= DEBUG). Returns whether the debug
  * command may run. Consulted for every debug command, not once per session, and
  * never a function of wizard mode.
+ *
+ * EXPORTED because a mod holding `debug:spawn` conjures things through the same
+ * gate (`spawn-runtime.ts`). One consent path rather than two: the sentence a
+ * player is asked, the bit it sets and the moment it is set all have to be the
+ * same whether the request came from `^A` or from a mod, or "the debug commands
+ * mark your character" stops being a true statement about this game.
  */
-async function confirmDebugGate(ctx: WizardUiCtx): Promise<boolean> {
+export async function confirmDebugGate(ctx: WizardUiCtx): Promise<boolean> {
   const p = ctx.state.actor.player;
   if (p.noscore & NOSCORE.DEBUG) return true;
   ctx.say(DEBUG_CONFIRM_MSG_1);

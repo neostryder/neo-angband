@@ -654,6 +654,50 @@ inspection an author's own `neo-angband-mod-check` runs, so a mod your builder
 emitted fails for the same reasons in the same words as a mod somebody
 downloaded.
 
+## 4d. `ctx.debug` - conjuring a thing, and paying for it
+
+This one is unusual and worth reading before using: it adds almost no ability and
+a great deal of honesty. Every primitive behind it is already on `ctx.core` -
+`wizCreateObj`, `wizSummonNamed`, `wizDropObject`, and under those `makeObject`,
+`dropNear` and `placeNewMonsterLive` - and the gate they all check, `debugEnabled`,
+reads a `debug` boolean out of a deps bag the CALLER assembles. So a mod could
+always pass `{ debug: true, ... }` and conjure whatever it liked, with no
+capability, and leave no mark on the character at all.
+
+```js
+if (!ctx.debug) return;
+const outcome = await ctx.debug.spawnMonster("Snarl, Farmer Maggot's other dog");
+if (!outcome.ok) show(outcome.problem);
+```
+
+Four things about it:
+
+- **What the capability buys is the MARK, not the power.** The first use in a
+  character asks the game's own debug question - the same two warning lines and
+  the same confirmation `^A` asks, through the same function - and accepting sets
+  the same `NOSCORE.DEBUG` bit, which is permanent and which invalidates the
+  score. The confirmation runs BEFORE anything is placed, so there is no path
+  where something has arrived in a character the player did not agree to spend.
+  That is what keeps "the debug commands mark your character" a true sentence
+  about this game rather than one with a mod-shaped hole in it.
+- **And the second thing it buys is a line on the consent list.** `debug:spawn`
+  is its own capability kind with no wildcard over it, so a player asking which
+  of their mods can conjure things reads the answer off one line and no broader
+  grant can carry it along.
+- **The question is asked on the GAME SCREEN, which your own modal panel would be
+  covering.** So the first spawn in a character is refused, by name, while one of
+  your modal panels is up - a refusal the player can read beats a prompt they
+  cannot see, and the natural flow does not hit it, because a builder showing the
+  player the dungeon has already closed its panel. After the character is marked
+  there is nothing to ask and the panel does not matter.
+- **Placement is the game's and there are no coordinates.** An item is dropped at
+  the player's feet through `dropNear`; a creature is scattered near them with the
+  engine's own ten attempts at a legal spot. A mod that could name a grid could
+  put a monster inside a wall, and "does the thing I just wrote work" does not
+  depend on where it lands. Ask by NAME rather than by index where you can: an
+  index is a fact about a registry, and the registry moved when another mod was
+  enabled.
+
 ## 5. Doors that are exported but deliberately CLOSED
 
 An exported mutable table is an extension point whether anyone meant it to be one
@@ -726,6 +770,7 @@ later mod input consumer cannot silently take a player-selected binding.
 | Per-mod Fixes & tweaks submenu | `packages/web/src/mods.ts` (`managePatches`) |
 | DOM panels: the layer, the invariants, the way out | `packages/web/src/panel-runtime.ts` |
 | The content-only install door | `packages/web/src/install-runtime.ts` |
+| Conjuring, and the debug mark that pays for it | `packages/web/src/spawn-runtime.ts` |
 | The one keydown registration, and the door's stand-down | `packages/web/src/input-door.ts` |
 | Host wiring + message sink | `packages/web/src/main.ts` |
 | Per-mod design | `docs/modding/QOL.md`, `docs/modding/BUG_FIXES.md` |

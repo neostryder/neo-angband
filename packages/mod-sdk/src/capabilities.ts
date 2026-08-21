@@ -145,6 +145,20 @@
  *                             the player is shown its own capability list before
  *                             any of it runs, which is what stops one grant
  *                             turning into every grant.
+ *  - "debug:spawn"         - conjure an item or a creature into the live game the
+ *                             way the debug commands do. Its own kind and no
+ *                             wildcard, and here that is the whole point rather
+ *                             than a consequence of there being one string: this
+ *                             is the grant a player is most likely to want to
+ *                             check for by name, so it must never arrive as part
+ *                             of something broader. What it adds over what a
+ *                             plugin can already reach through `ctx.core` is not
+ *                             the ability - `wizCreateObj` and friends take a
+ *                             `debug` flag the CALLER supplies - but the mark: the
+ *                             character is asked about and flagged, through the
+ *                             game's own confirmation and before anything is
+ *                             placed, so "the debug commands cannot be scored"
+ *                             stays true with a mod in the picture.
  *  - "ui:panel.mount"      - draw with real HTML instead of the character grid: a
  *                             panel of the mod's own, mounted on the page above
  *                             the game. A THIRD "ui:" action, and the reason it is
@@ -193,7 +207,8 @@ export type ParsedCapability =
   | { kind: "display"; action: "replace" }
   | { kind: "ui"; region: string; action: "replace" | "create" | "mount" }
   | { kind: "backup"; action: "folder" }
-  | { kind: "mod"; action: "install" };
+  | { kind: "mod"; action: "install" }
+  | { kind: "debug"; action: "spawn" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 /**
@@ -300,6 +315,14 @@ export function parseCapability(cap: string): ParsedCapability {
   if (cap === "mod:install") {
     return { kind: "mod", action: "install" };
   }
+  /* "debug:spawn": put an item or a creature into the live game the way the debug
+   * commands do, marking the character the way they do. Its own kind and no
+   * wildcard on purpose - a player asking "which of my mods can conjure things"
+   * must be able to read the answer off one line, and no broader grant may ever
+   * carry this one along. */
+  if (cap === "debug:spawn") {
+    return { kind: "debug", action: "spawn" };
+  }
   const ui = UI_RE.exec(cap);
   if (ui) {
     return { kind: "ui", region: ui[1] as string, action: "replace" };
@@ -374,6 +397,11 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
     case "mod":
       /* Exact match only. One capability, no wildcard, nothing to range over. */
       return grant.kind === "mod";
+    case "debug":
+      /* Exact match only, and here that is the point rather than a consequence:
+       * this is the grant a player is most likely to check for by name, so it
+       * must never be reachable through anything wider. */
+      return grant.kind === "debug";
     case "ui":
       /* Per region, with one wildcard. A `display` grant is NOT accepted here
        * and a `ui` grant is not accepted above: owning the dungeon and owning
