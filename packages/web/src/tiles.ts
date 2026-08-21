@@ -27,7 +27,6 @@
  */
 
 import {
-  fillTilesFromKin,
   getGraphicsMode,
   GRAPHICS_NONE,
   isDoubleHeightTile,
@@ -37,6 +36,7 @@ import {
 import type { GraphicsMode, TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
 import type { PackFileResolver } from "./pack-files";
 import { preloadPrefIncludes } from "./prefs-ui";
+import { tileRegistry } from "./tile-registry";
 
 // The Graphics-menu mode list, re-exported so the whole tile subsystem is
 // reachable through this module. CORE's tile sets come from the ported
@@ -347,10 +347,21 @@ export async function loadTilePrefs(
   }
   /*
    * LAST, so that any tile an author actually named - the pack's own, or a
-   * mod's pref layered above - is already in place and is left alone. This only
-   * supplies what nothing assigned, which in practice means content a mod added
-   * and the tile pack has never heard of. See fillTilesFromKin.
+   * mod's pref layered above - is already in place and is left alone. A filler
+   * only ever supplies what nothing assigned, which in practice means content a
+   * mod added and the tile pack has never heard of.
+   *
+   * `derive` IS NULL HERE, and that is the difference between the two engines
+   * rather than an omission. This pack is one image cut into a fixed grid of
+   * cells: every cell is somebody's tile and there is no spare one to put a
+   * variant of an existing tile into. A filler that wanted a distinctive
+   * picture gets null and copies a donor instead. The loose-pack engine
+   * (linoleum-pack.ts) can allocate, so it passes a real one.
    */
-  fillTilesFromKin(map, deps);
+  tileRegistry.run(
+    map,
+    { engine: "tilesheet", id: mode.directory, menuname: mode.menuname },
+    null,
+  );
   return map;
 }

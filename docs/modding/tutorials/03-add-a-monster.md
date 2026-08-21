@@ -109,26 +109,50 @@ Your ant already has an appearance, and you only wrote half of it:
 - **The letter `a` is not yours.** It comes from `"base": "ant"`, along with
   everything else the template carries. Change the base and the letter changes.
 
-In a tile set, `base` does more than pick the letter. A tile set maps *named*
-monsters to pictures and has never heard of yours, so the game gives your ant
-the tile of a monster that shares its `base`, whichever cell that pack happens to
-draw ants in. Your carpenter ant is an ant in a tiled dungeon, in every tile set,
-without you naming a picture.
+**In a tile set, your ant has no picture, and the game will not invent one.** A
+tile set maps *named* monsters to pictures and has never heard of yours, so in
+tile mode a player sees your brown `a` standing among pictures. The game used to
+guess - it drew an added monster with the tile of a relative sharing its `base` -
+and that guess was removed in 0.23.0, because Neo Angband is a faithful port of
+4.2.6 and 4.2.6 has no opinion about what a creature it has never heard of should
+look like. Deciding that on behalf of somebody's art is the tile set's call, not
+the port's.
 
-This is why `base` is worth choosing with care rather than filling in: it is the
-single field that decides the letter, the template, and the tile. A monster on
-`"base": "ant"` is provided for; one on a base whose family the pack does not
-draw falls back to the coloured letter, which is the honest answer rather than a
-wrong picture.
+**So ship tiles with your content if you can, and say what happens if you do not.**
+Two sentences in your mod's description are the difference between a player
+thinking your mod is broken and a player knowing what they are looking at:
 
-If you want a *specific* picture instead of your family's, a mod can say so. Both
-routes are past what this tutorial covers, and they differ more than they look:
+> Includes tiles for the carpenter ant.
+
+or
+
+> No tiles of its own: in tile mode the carpenter ant draws as a letter. Install
+> [neo-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) and it is
+> drawn from its family instead.
+
+That second one is a real fallback rather than a shrug. neo-linoleum, the loose-pack
+tile mod, fills content nothing drew: an added monster is drawn from a relative
+sharing its `base` with the colour turned, so your carpenter ant reads as an ant
+without being pixel-identical to the base game's. It applies to neo-linoleum's own
+packs only - under Angband's own tile sheets there is no spare cell for a variant,
+so a letter is what an added creature gets - and your players turn it on
+themselves. **It is not a dependency:** your mod is complete and correct in ASCII
+with no tile set at all, so do not require it. Point at it, and let the player
+choose.
+
+This is also why `base` is worth choosing with care rather than filling in: it is
+the single field that decides the letter, the template, and, for anyone running a
+tile mod that fills blanks, the family it borrows from.
+
+If you want a *specific* picture, a mod can say so. Both routes are past what this
+tutorial covers, and they differ more than they look:
 
 - **Point at a picture that already exists.** Ship a `.prf` as a `prefs`
   resource, and its `monster:carpenter ant:<attr>:<char>` line layers over the
-  player's tile set and wins over the family tile. One line, no art, but the
-  numbers are *atlas coordinates*, so they are correct for one pack and wrong for
-  every other. Reach for this when your mod ships or requires a particular set.
+  player's tile set and wins over anything a tile mod would have filled in. One
+  line, no art, but the numbers are *atlas coordinates*, so they are correct for
+  one pack and wrong for every other. Reach for this when your mod ships or
+  requires a particular set.
 - **Ship a whole tile set.** A mod with the `tiles` facet contributes a graphics
   mode of its own (`tilePacks`), which is how the Linoleum sets are delivered.
   That is a set the player chooses from the Graphics menu, not one picture added
@@ -165,8 +189,8 @@ that section is teaching beyond the ops themselves:
   and `append`, and not true of `set`, `merge`, `add` or `mul`. For those, two
   mods on the same field is a reported conflict and the one that loads last wins.
 
-A patched monster keeps its picture, because the tile set already knows it. Only
-the ant you *added* needed provisioning.
+A patched monster keeps its picture, because the tile set already knows it by
+name. Only the ant you *added* has nothing drawn for it.
 
 ---
 

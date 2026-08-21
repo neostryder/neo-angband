@@ -43,20 +43,45 @@ digest in the game's catalogue and must never be moved.
     had no caller, because the race registry was not reachable from a plugin. It
     is now, so the Borg fears real monsters, including ones a mod added.
 
-- **A mod's monster or item is now drawn DISTINCTIVELY in the loose-tile engine,
-  not just drawn.** 0.22.0 gave an added creature the tile of its nearest kin,
-  which stopped it being a coloured letter in a tiled dungeon and left the other
-  half: it was pixel-for-pixel its donor, so nobody could tell an added ant from
-  the base game's. The tilesheet engine cannot do better, because its tiles are
-  cells of a fixed atlas with no spare cell for a variant. The loose engine can,
-  and now does: it allocates a slot of its own that draws the donor's image with
-  its hue rotated. Hues are handed out per donor, cycling through eight, so the
-  first eight added creatures sharing one base differ from each other as well as
-  from core's art. Only records a mod ADDED are touched, so an unmodded game's
-  drawing is unchanged; a pref file naming a specific asset still wins; and
-  nothing reads the RNG, the clock or the save, so the colours are the same every
-  launch. A hue rotation is a no-op on a fully grey donor, which is a stated limit
-  rather than a defect to chase - see [docs/LINOLEUM.md](docs/LINOLEUM.md).
+- **A tileset mod can supply tiles for content the pack has never heard of:
+  `registry:tiles`.** A plugin registers one filler, which runs after every pref
+  layer - the pack's own and each mod's - and writes through a door that only ever
+  fills what nothing assigned. So it cannot repaint the tile set even by mistake,
+  and two mods filling different blanks cannot fight over one. The loose-pack
+  engine also hands a filler a `derive(donor, hue)`, which allocates a slot drawing
+  an existing asset with its hue rotated; the tilesheet engine answers null,
+  because its tiles are cells of a fixed atlas with no spare cell for a variant,
+  and a filler copies the donor instead.
+
+### Removed
+
+- **The game no longer decides what a mod's monster looks like
+  (`fillTilesFromKin`).** 0.22.0 gave an added creature the tile of a race sharing
+  its `base`, and an added item the tile of a kind sharing its `tval`. It is gone
+  one release later, on the rule that has not moved since the port started: the
+  port adds nothing to 4.2.6. Angband 4.2.6 has no concept of a record a mod added,
+  so it has no opinion about what one should look like, and "the lowest-index
+  relative's picture" is a judgement rather than ported behaviour. It was also a
+  judgement about art the game does not own - a tile set drawn in 2003 has no
+  picture for content added twenty years later, and a relative's picture there is a
+  confident lie where a letter was the honest answer.
+
+  **Nothing is lost for a player who wants the behaviour**, and it got better on
+  the way out: `neo-linoleum` 0.15.0 carries exactly that rule, restricted to its
+  own packs, and gives the added creature a recoloured tile of its own rather than
+  a pixel-identical copy of its cousin's. It is one switch in that mod's options,
+  on by default. Under Angband's own tile sheets an added creature is a letter
+  again, which is what it was before 0.22.0 and what a fixed atlas can honestly
+  offer.
+
+  For mod authors: **ship tiles with your content, and if you do not, say so in
+  your description and point players at a tile mod that fills blanks.** Tutorials 2
+  and 3 now say that where the tile question comes up, and neither treats
+  neo-linoleum as a dependency - a content mod is complete in ASCII with no tile
+  set at all. The removal and its replacement are recorded in
+  [docs/modding/MOD_COMPATIBILITY.md](docs/modding/MOD_COMPATIBILITY.md) under
+  "Removals taken knowingly", which is the fourth entry of exactly this shape and
+  the first whose subject had shipped.
 
 ## [0.22.0] - 2026-08-20
 

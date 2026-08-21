@@ -163,6 +163,7 @@ function targets() {
   registerCoreStoreBehaviour(stores);
   const projections = new ProjectionHandlerRegistry();
   const menus = { register: vi.fn(), handlerFor: vi.fn(() => null) };
+  const tiles = { register: vi.fn() };
   return {
     effects: new EffectRegistry(),
     rooms,
@@ -174,6 +175,7 @@ function targets() {
     state,
     projections,
     menus,
+    tiles,
     vocab,
     _rooms: rooms,
     _profiles: profiles,
@@ -183,6 +185,7 @@ function targets() {
     _state: state,
     _vocab: vocab,
     _menus: menus,
+    _tiles: tiles,
   };
 }
 
@@ -221,6 +224,9 @@ describe("createModRegistryHost - trusted host (no capabilities)", () => {
     expect(host.vocab.getValue("player", "demo:luck")).toBe(7);
     expect(() => host.menus.register("core:game-menu", (_id, rows) => rows)).not.toThrow();
     expect(t._menus.register).toHaveBeenCalledWith("core:game-menu", expect.any(Function));
+    const filler = (): void => undefined;
+    expect(() => host.tiles.register(filler)).not.toThrow();
+    expect(t._tiles.register).toHaveBeenCalledWith(filler);
   });
 });
 
@@ -252,6 +258,7 @@ describe("createModRegistryHost - capability gating", () => {
     expect(() => host.blows.names()).toThrow(/registry:blow/);
     expect(() => host.stores.massProduceTvals()).toThrow(/registry:store/);
     expect(() => host.menus.handlerFor("core:game-menu")).toThrow(/registry:menu/);
+    expect(() => host.tiles.register(() => undefined)).toThrow(/registry:tiles/);
   });
 
   it("gates each domain independently and only at call time", () => {
@@ -262,6 +269,26 @@ describe("createModRegistryHost - capability gating", () => {
     expect(() => host.effects.isRegistered("x")).toThrow(AgentCapabilityError);
     expect(() => host.monsters.setTurnHook(() => false)).not.toThrow();
     expect(t._state.monsterTurnHook).toBeTypeOf("function");
+  });
+});
+
+describe("the tiles facade", () => {
+  it("refuses something that is not a function before the target sees it", () => {
+    /* A filler is called with the door and nothing else, so a mod passing an
+     * object by mistake would fail deep inside the tile load, once per graphics
+     * change, attributed to nothing. */
+    const t = targets();
+    const host = createModRegistryHost(t);
+    expect(() => host.tiles.register({} as never)).toThrow(/must be a function/);
+    expect(t._tiles.register).not.toHaveBeenCalled();
+  });
+
+  it("throws a named error when the host wired no tile registry", () => {
+    /* A headless host has no tile map at all. The message has to name the domain,
+     * because "cannot read properties of undefined" in a plugin's register() is
+     * indistinguishable from the plugin's own bug. */
+    const host = createModRegistryHost({ ...targets(), tiles: null });
+    expect(() => host.tiles.register(() => undefined)).toThrow(/tiles/);
   });
 });
 

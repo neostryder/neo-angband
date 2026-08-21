@@ -80,6 +80,12 @@
  *                             "registry:menu" rewrites the semantic rows of
  *                             one stable front-end menu id. It is distinct from
  *                             a future full front-end selection capability.
+ *                             "registry:tiles" supplies tiles for content the
+ *                             loaded tile pack does not draw, which in practice
+ *                             means content a mod added. Additive only, and it
+ *                             cannot repaint what the pack or a pref file
+ *                             already assigned: the fill door writes where
+ *                             nothing has and refuses elsewhere.
  *  - "display:replace"     - become the game's FRONT END: everything the
  *                             player sees of the dungeon is drawn by this
  *                             plugin (ModPlugin.frontend). Its own kind
@@ -185,7 +191,7 @@ const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */
 const REGISTRY_RE =
-  /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|ui-entry|glyph|randart|rune|tval|vocab|menu|message)$/;
+  /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|ui-entry|glyph|randart|rune|tval|vocab|menu|message|tiles)$/;
 
 /**
  * Parse and validate a capability string against the vocabulary above,

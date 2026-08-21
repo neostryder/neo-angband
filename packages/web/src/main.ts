@@ -241,6 +241,7 @@ import { buildUiEntryConfig, setColorChannel, uiEntryRendererCustomize, uiEntryR
 import { host, setHost } from "@rpgm-tools/neo-angband-core";
 import { BrowserHost } from "./host-browser";
 import { menuRegistry, setMenuTransformProblemReporter } from "./menu-registry";
+import { tileRegistry, setTileFillProblemReporter } from "./tile-registry";
 import {
   glyphWorldFrameSink,
 } from "./world-view";
@@ -329,6 +330,11 @@ import { runModManager } from "./mods";
 /* A menu rewrite is optional mod decoration. Attribute a refusal to its owner,
  * but never turn a screen the player needs into a failed plugin install. */
 setMenuTransformProblemReporter((owner, problem) => reportModFault(owner ?? "mods", problem));
+
+/* Same shape for the same reason: a tile a mod could not supply is a letter,
+ * which the player can still read and play with. Attributed, because a mod that
+ * silently drew nothing is the bug this reporter exists to make visible. */
+setTileFillProblemReporter((owner, problem) => reportModFault(owner ?? "mods", problem));
 import { showModUpgrades } from "./mod-browse";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD, UI_BG, UI_MORE } from "./ui-colors";
 import { initA11y } from "./a11y";
@@ -11331,6 +11337,7 @@ function installTrusted(trustedId: string): void {
           rune: runeRegistry(),
           vocab: trustedVocab,
           menus: menuRegistry.forOwner(trustedId),
+          tiles: tileRegistry.forOwner(trustedId),
         },
         caps,
       );
@@ -11544,6 +11551,7 @@ for (const loaded of activeModCode().plugins) {
         rune: runeRegistry(),
         vocab: new VocabularyRegistry(),
         menus: menuRegistry.forOwner(loaded.id),
+        tiles: tileRegistry.forOwner(loaded.id),
       },
       CapabilitySet.fromManifest(loaded.manifest),
     );

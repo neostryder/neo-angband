@@ -322,8 +322,11 @@ export default function <mod>Hooks(
 
 It is discovered by a glob (`import.meta.glob("../mods/*/hooks.ts")`,
 `mod-hooks.ts:71`) rather than a hardcoded list, so the host knows no mod's id
-and no mod's flag names. A mod with no behaviour - the linoleum tile pack, and
-every pure content mod - simply ships no `hooks.ts` and is never called.
+and no mod's flag names. A mod with no behaviour - every pure
+content mod - simply ships no `hooks.ts` and is never called. (The linoleum tile
+mod was the stock example of that until its 0.15.0, which added a `plugin.js`
+holding the kin rule core handed over. It still ships no `hooks.ts`: a filler is
+`register()`'s business, not a turn hook's.)
 
 Three rules make this shape work, and they are the contract a third-party
 behaviour mod must keep (spelled out in the header of
