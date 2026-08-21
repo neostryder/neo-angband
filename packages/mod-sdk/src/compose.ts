@@ -17,6 +17,7 @@
  * modified it) for savefiles and debugging.
  */
 
+import { RECORD_BLUEPRINTS } from "./blueprints.js";
 import type { PackManifest, PackRef } from "./manifest.js";
 import { applyFieldPatch } from "./patch.js";
 import type { FieldPatch } from "./patch.js";
@@ -35,6 +36,91 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 export type JsonRecord = { [key: string]: JsonValue };
+
+/**
+ * A value's JSON shape, in the vocabulary `RECORD_BLUEPRINTS` measured core in.
+ *
+ * `null` IS ITS OWN SHAPE HERE, and that is the one deliberate difference from
+ * authoring.ts's `shapeOf`, which folds it into "object". The blueprint reader
+ * only has to name a shape; this decides whether a binder can READ the value,
+ * and `null.map(...)` throws exactly as loudly as `"a string".map(...)` does.
+ */
+function jsonShape(value: JsonValue): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
+}
+
+const CONTAINERS = new Set(["array", "object"]);
+
+/**
+ * Whether every shape core writes for a field is a container, none of them is,
+ * or the field is written both ways.
+ *
+ * "mixed" is not a failure to decide - it is core writing the field both ways,
+ * and a field core itself spells two ways cannot be proved unreadable from its
+ * shape alone.
+ */
+function coreShapeClass(types: readonly string[]): "container" | "scalar" | "mixed" {
+  const containers = types.filter((t) => CONTAINERS.has(t)).length;
+  if (containers === types.length) return "container";
+  if (containers === 0) return "scalar";
+  return "mixed";
+}
+
+/**
+ * Why this field of this record cannot be given this value, or null if it can.
+ *
+ * THE LINE THIS DRAWS, and why it is drawn there. `RECORD_BLUEPRINTS` is a
+ * MEASUREMENT of core's shipped records, not a schema, and blueprints.ts's own
+ * header says an unlisted value is legal - a mod inventing a new tval is doing
+ * something the mod system exists to allow. So a value that merely disagrees
+ * with the measurement is reported and kept (validate.ts, rule `field/type`),
+ * and that is right.
+ *
+ * It is not right for CONTAINER-NESS. Every binder in the port reads a list
+ * field by iterating it: `rec.owner.map(...)` in the store binder is the case
+ * that surfaced this, and a string, a number, `null` and a missing field all
+ * throw a TypeError there. That throw happens inside `bindCore` inside
+ * `startGame`, which the host runs at module top level, so the player gets the
+ * crash screen and no game - the whole cost of one patched field of one shop.
+ * No amount of experimentation makes a string iterable, so this class is not
+ * experimentation, and it is refused rather than reported.
+ *
+ * DELIBERATELY NARROW, in two ways that are both load-bearing.
+ *
+ * A scalar swapped for another scalar (`weight` written "40" instead of 40)
+ * stays a finding: a binder can usually read it, some of them coerce it, and
+ * refusing it would take the measurement's word for something it cannot prove.
+ *
+ * And a field that is simply GONE is not refused either, even though reading a
+ * missing list throws the same TypeError a string does. Dropping a field is how
+ * a total conversion works - `replaces` swaps the whole record, and a monster
+ * rewritten as `{name, hp}` legitimately has no `blows` - so refusing an absent
+ * field would put back the fields the mod meant to remove and quietly undo a
+ * supported feature. An absent required field is already reported
+ * (`field/required` in authoring.ts), and the binders are where a record the
+ * mod OWNS should be refused; see docs/PLANNED.md.
+ */
+function unreadableShape(file: string, key: string, value: JsonValue | undefined): string | null {
+  if (value === undefined) return null;
+  const shape = RECORD_BLUEPRINTS[file]?.fields[key];
+  /* No blueprint for the file, or a field core does not have: nothing to
+   * contradict. A mod's own namespaced field lands here, which is correct - it
+   * is the mod's field and the mod decides its shape. */
+  if (!shape) return null;
+  const want = coreShapeClass(shape.types);
+  if (want === "mixed") return null;
+  const got = jsonShape(value);
+  const isContainer = CONTAINERS.has(got);
+  if (want === "container" && !isContainer) {
+    return `\`${key}\` is ${got}, and core writes it as ${shape.types.join(" or ")} on every record that has it - nothing can read it`;
+  }
+  if (want === "scalar" && isContainer) {
+    return `\`${key}\` is ${got}, and core writes it as ${shape.types.join(" or ")} - nothing can read it`;
+  }
+  return null;
+}
 
 /**
  * The packs that wrote each top-level key of one composed record.
@@ -442,6 +528,47 @@ export function composePacks(
         }
       });
 
+      /**
+       * The record as it should be kept, and the fields that really changed.
+       *
+       * Every write below goes through this. A field the patch made unreadable
+       * is PUT BACK to what the record had before - not dropped, and not left
+       * broken - because the alternative outcomes are both worse than the
+       * defect: leaving it takes the game down at boot, and dropping the record
+       * would renumber a positional table (the store list is read by index, so
+       * removing one shop moves another shop's stock).
+       *
+       * The refused key is also withheld from `noteFieldWrites`, which is the
+       * subtle half. Provenance's `was[field]` is what tells core's own line
+       * from a mod's later on (see the store binder's `fieldOwner`), so
+       * recording a write that was refused would hand the mod the blame for a
+       * field it did not change.
+       */
+      const vetted = (
+        ref: PackRef,
+        before: JsonRecord,
+        after: JsonRecord,
+        changed: Iterable<string>,
+      ): { value: JsonRecord; wrote: string[] } => {
+        const wrote: string[] = [];
+        let value = after;
+        for (const key of new Set(changed)) {
+          const why = unreadableShape(file, key, value[key]);
+          if (why === null) {
+            wrote.push(key);
+            continue;
+          }
+          if (value === after) value = { ...after };
+          if (Object.hasOwn(before, key)) value[key] = before[key] as JsonValue;
+          else delete value[key];
+          refuse(
+            `${file} "${ref}": ${why}, so that field was left as it was`,
+            `${file}: unreadable shape for ${key} on ${ref}`,
+          );
+        }
+        return { value, wrote };
+      };
+
       for (const kind of ["patches", "replaces"] as const) {
         for (const [refStr, body] of Object.entries(contrib[kind] ?? {})) {
           const at = addressable(kind, refStr as PackRef);
@@ -451,8 +578,11 @@ export function composePacks(
             kind === "patches"
               ? Object.keys(body)
               : new Set([...Object.keys(existing.value), ...Object.keys(body)]);
-          existing.value = kind === "patches" ? mergePatch(existing.value, body) : body;
-          noteFieldWrites(fieldProvenanceOf(existing), changed, pid, existing.value);
+          const before = existing.value;
+          const next = kind === "patches" ? mergePatch(existing.value, body) : body;
+          const ok = vetted(at, before, next, changed);
+          existing.value = ok.value;
+          noteFieldWrites(fieldProvenanceOf(existing), ok.wrote, pid, existing.value);
           existing.modifiedBy.push(pid);
         }
       }
@@ -461,13 +591,15 @@ export function composePacks(
         const at = addressable("fieldPatches", refStr as PackRef);
         if (at === null) continue;
         const existing = table.get(at) as ComposedRecord;
-        existing.value = applyFieldPatch(existing.value, ops);
-        noteFieldWrites(
-          fieldProvenanceOf(existing),
+        const before = existing.value;
+        const ok = vetted(
+          at,
+          before,
+          applyFieldPatch(existing.value, ops),
           ops.map((op) => op.path.split(".")[0] as string),
-          pid,
-          existing.value,
         );
+        existing.value = ok.value;
+        noteFieldWrites(fieldProvenanceOf(existing), ok.wrote, pid, existing.value);
         existing.modifiedBy.push(pid);
       }
 
