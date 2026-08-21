@@ -1,0 +1,43 @@
+#!/bin/sh
+# Refuse a plain push of master to origin.
+#
+# This repository's local history and its public one are different graphs -
+# the public repo is a curated replay built by tools/publish.mjs, not a
+# fast-forward of this branch (see docs/RELEASING.md's "git push origin
+# master is NOT how this repository publishes"). A plain push of master is
+# harmless by itself: git already rejects it as a non-fast-forward, since the
+# two histories share no common tip. The actual risk is what happens next -
+# reaching for --force out of habit, which would publish the private
+# development history a curated repo exists to keep off the public one.
+#
+# So this hook turns "git rejects it, cryptically, after you already typed
+# --force" into a same-second, friendly refusal naming the right command,
+# for the one push that is never correct here. Nothing else is touched: a
+# tag push, a feature branch, or master under any remote but "origin" all go
+# through untouched.
+#
+# Bypass, for the rare case this is genuinely wrong: git push --no-verify.
+
+# Slurped whole rather than parsed field-by-field with `read`: this only
+# needs to know WHETHER refs/heads/master is one of the refs being updated,
+# not the shas either side of it, so a coarser check is a more robust one.
+REFS=$(cat)
+
+case "$1 $REFS" in
+  *"origin"*"refs/heads/master"*)
+    echo "" >&2
+    echo "pre-push: refusing a plain push of master to origin." >&2
+    echo "" >&2
+    echo "This repo's public master is a curated replay, not this branch." >&2
+    echo "Publish with:" >&2
+    echo "" >&2
+    echo "    node tools/publish.mjs --push" >&2
+    echo "" >&2
+    echo "See docs/RELEASING.md. If you genuinely mean to push this ref" >&2
+    echo "directly, git push --no-verify skips this check." >&2
+    echo "" >&2
+    exit 1
+    ;;
+esac
+
+exit 0
