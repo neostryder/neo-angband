@@ -6,7 +6,7 @@ design was implemented as written: `regionInputAt` in `ui-stack.ts`, the
 sites in `main.ts`, all covered by `region-input.node.test.ts` and
 `main-region-input.test.ts`. What follows is now a historical design record:
 read it for the *reasoning* (the cell-opaque ruling, the cost measurement, the
-composition with `modalDepth` and `setActiveCellTap`), not as a to-do; §9's
+composition with `modalDepth` and `setActiveCellTap`), not as a to-do; section 9's
 file-by-file plan and its RED-test listings describe a state the tree has since
 moved past. Line numbers below were read on 2026-08-14 against
 `work/parallel-2026-08-14` while four other streams edited the same tree, and
@@ -68,7 +68,7 @@ a mod blocking input somewhere it visibly is not.
 
 The known cost: **the compositor must retain per-region cell ownership, which it
 does not do today.** Designing that retention is the bulk of what follows. It is
-expensive rather than infeasible, and the cost is measured in §1.
+expensive rather than infeasible, and the cost is measured in section 1.
 
 ---
 
@@ -214,7 +214,7 @@ The pathological case is 0.046 % of a frame and requires eight mods each
 dwarfs the bookkeeping.
 
 **The retention is expensive in design attention and free at runtime.** There is
-no measurement here that argues for the fallback in §"If it were infeasible".
+no measurement here that argues for the fallback in the "If it were infeasible" section.
 
 ### When it is invalidated
 
@@ -305,7 +305,7 @@ designed here is exactly what it will need, and it will need nothing else from
 this milestone.
 
 **Keyboard is not routed and will not be**, and that is published rather than
-implied; see §"Out of scope: the focus model".
+implied; see the "Out of scope: the focus model" section.
 
 ---
 
@@ -423,7 +423,7 @@ required because the region question needs a cell, and the region question must
 be asked whether or not the player has tap-to-move switched on: a mod's panel
 belongs to the mod either way.
 
-**Assert this, do not assume it.** The test in §8 covers the unclaimed cell as
+**Assert this, do not assume it.** The test in section 8 covers the unclaimed cell as
 its control, and it is the assertion that fails loudest if the plane is ever
 filled too eagerly. A control that only ever passes is not evidence; this one has
 a failure mode: a `clear()` that claimed the terminal instead of the rectangle
@@ -586,7 +586,7 @@ shape has always been the host's to validate at install, which is why
 |---|---|---|
 | 1 | `packages/mod-sdk/src/frontend.ts` | `RegionPointer` interface + `input?` on `RegionDeclaration`, with the "absence is not transparency" note in the doc comment. `packages/mod-sdk/src/index.ts:201` re-exports the *type name* `RegionDeclaration` already; add `RegionPointer` beside it. |
 | 2 | `packages/web/src/region-runtime.ts:155` (`regionDeclarationFault`) | one arm: `if (d.input !== undefined && typeof d.input !== "function") return \`region "${d.id}" has an input that is not a function; ...\``, placed after the `paint` check, reading `d` as `unknown` fields exactly as the existing arms do (`region-runtime.ts:159-165` explains why). |
-| 3 | `packages/web/src/region-runtime.ts:208` (`specFor`) | forward `input` with the containment of §6, onto `RegionSpec.input?`. |
+| 3 | `packages/web/src/region-runtime.ts:208` (`specFor`) | forward `input` with the containment of section 6, onto `RegionSpec.input?`. |
 
 Plus `RegionSpec` in `ui-stack.ts:65` gains `input?(pointer): void`, which is a
 host-internal type and not part of any ABI.
@@ -722,7 +722,7 @@ nothing consults the plane until step 6.
 
 **2. `packages/web/src/ui-stack.ts`**: the plane, and the read.
 - `RegionSpec` (:65): add `input?(pointer: { col: number; row: number; kind: "tap" | "context" }): void;` with a comment that ownership is positional and this only supplies the handler.
-- Module state, beside `owners` (:123): `ownership`, `ownershipCols`, `ownershipFrame` as in §1.
+- Module state, beside `owners` (:123): `ownership`, `ownershipCols`, `ownershipFrame` as in section 1.
 - `paintRegionStack` (:338): after `const frame = ordered; const by = owners;`, size/reset the plane and set `ownershipFrame = frame`. Inside the loop, replace `clipSurface(host, region.cells)` (:379) with a witness-carrying call bound to that region's index in `frame`.
 - `resetRegionStack` (:317): clear all three, or a test leaks a frame into the next.
 - **New export** `regionInputAt(col, row)`, returning `{ region, spec, local } | undefined`. `spec` comes from the existing `owners` map: the entry is already there, no new lookup table.
@@ -740,7 +740,7 @@ list at :201.
 **5. `packages/web/src/region-runtime.ts`**: validate and contain.
 - `regionDeclarationFault` (:155): the `input` type arm, after the `paint` arm at :188.
 - `specFor` (:208): `let inputBroken = false;` beside `let broken = false;`, and the
-  `input` wrapper of §6: reported once, handler off, **region and claim retained**.
+  `input` wrapper of section 6: reported once, handler off, **region and claim retained**.
 
 **6. `packages/web/src/main.ts`**: the three call sites. This is the commit that
 closes the defect; everything before it is unobservable.
@@ -767,7 +767,7 @@ closes the defect; everything before it is unobservable.
   callers 2 and 3 have already returned before they reach it.
 
 **7. `packages/web/src/region-input.node.test.ts`** (new) and
-**`packages/web/src/main-region-input.test.ts`** (new), per §8.
+**`packages/web/src/main-region-input.test.ts`** (new), per section 8.
 
 **8. `samples/sprite-inventory/plugin.js`**: optional, and worth it. The panel
 already has `carried[i].tag`; an `input` that logs the tapped row through
@@ -842,7 +842,7 @@ forecloses it.
 
 ## If the retention were infeasible
 
-It is not, and the numbers in §1 are why: 7,680 bytes allocated once, 0.392 µs per
+It is not, and the numbers in section 1 are why: 7,680 bytes allocated once, 0.392 µs per
 frame on the shipped sample, 0.0024 % of a 60 Hz frame budget, with a per-frame
 cost that scales with cells written rather than with region count. There is no
 measurement in this document that argues for a fallback, so none is proposed and
@@ -855,7 +855,7 @@ the question was asked and answered with a number, not skipped.
 
 **"The port adds nothing" constrains CORE ONLY.** It is not an argument against
 this milestone. Core gains no capability here: a tap on a cell no mod drew reaches
-the same `queueWalk` on the same path with the same values (§5), and upstream's
+the same `queueWalk` on the same path with the same values (section 5), and upstream's
 `mouse_movement` gate and `textui_process_click` routing are untouched. What
 changes is that a mod's own furniture stops being transparent to the pointer,
 which is a *mod* capability, and giving mods capabilities is the entire point of
