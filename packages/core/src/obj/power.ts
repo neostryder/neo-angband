@@ -16,7 +16,7 @@
  *   calls slayPower with a log open, so an open log is the flag.
  *   This note used to say the logging was dropped "because it never affects
  *   the returned power". That is true, and it was never the question: the
- *   maintainer's disposition is pursue parity.
+ *   the disposition is to pursue parity.
  * - Every `wield_slot(obj) == slot_by_name(player, "shooting")` test in
  *   upstream is exactly `obj->tval == TV_BOW` for the standard body (only a bow
  *   maps to the shooting slot), so it is ported as tvalIsLauncher(obj.tval).

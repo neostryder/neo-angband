@@ -650,8 +650,8 @@ export function quiverAbsorbNum(
       }
     }
 
-    /* Only addable if there is free space and we either displace a pile with an
-     * empty slot available or don't displace at all (L712-738). */
+    /* Only addable if there is free space and either a pile is displaced with an
+     * empty slot available or nothing is displaced at all (L712-738). */
     if (spaceFree && ((displaces && nEmpty) || !displaces)) {
       const mult = ammo ? 1 : constants.thrownQuiverMult;
       const remainder = quiverCount % qSlot;
@@ -1212,7 +1212,7 @@ export function gearObjectForUse(
    * the same bit. */
   player.upkeep.notice |= PN.COMBINE;
 
-  /* Split off a usable object if we are not taking the whole stack. */
+  /* Split off a usable object if the whole stack is not being taken. */
   if (obj.number > num) {
     /* Only the items handed off leave the gear (obj-gear.c L541). The per-item
      * weight is read before the split, as upstream does, though objectSplit

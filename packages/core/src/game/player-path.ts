@@ -126,7 +126,7 @@ function seeWall(state: GameState, dir: number, grid: Loc): boolean {
 
 /**
  * run_init: initialize the running algorithm for a new direction, examining
- * the two grids on each side of the destination to decide whether we are in a
+ * the two grids on each side of the destination to decide whether the path is in a
  * hallway (both sides closed), the open, or alongside a single wall, and to
  * pick the diagonal / blunt-corridor entry direction.
  */
@@ -1218,7 +1218,7 @@ export function runStep(state: GameState, dir: number): number {
     runInit(state, dir);
     if (run.running === 0) run.running = 9999;
   } else if (!run.steps) {
-    /* Continue a plain run: an interesting change stops us. */
+    /* Continue a plain run: an interesting change stops it. */
     if (runTest(state)) {
       disturb(state);
       return 0;
@@ -1249,7 +1249,7 @@ export function runStep(state: GameState, dir: number): number {
   run.firstStep = false;
 
   /* Decrease the counter (after the move, so running works as a flag), then
-   * queue the next step while we are still running. */
+   * queue the next step while still running. */
   if (run.running > 0) run.running--;
   else if (!run.steps) return used;
 

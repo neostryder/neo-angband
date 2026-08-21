@@ -500,7 +500,7 @@ describe("the two port-addition pages give up their wrap instead", () => {
     }
   });
 
-  it("makes the three ways of reaching us a table, not three more lines of prose", () => {
+  it("makes the three ways of reaching support a table, not three more lines of prose", () => {
     /* Three routes with an address each is a list, and a list on `lines` is work
      * not yet done. A presenter reads `cells.address.text` and hangs a link on
      * it; the terminal reads the same cell and indents it four columns. */

@@ -10,9 +10,9 @@ static site? Should that restriction be dropped?
 
 ## Ratified 2026-07-28: the desktop build is the parity bar
 
-The owner's decision, in full: *"Yes, Desktop is parity build. If you think we can
-still make it playable in a static site, great, but I want the desktop version to
-have the fulness of all of the features, including mod support."*
+The decision, in full: parity is measured against the desktop build, which
+must carry the fulness of all the features, including mod support. Keeping the
+static site playable alongside it is a bonus, not a competing requirement.
 
 So:
 

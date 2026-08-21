@@ -166,7 +166,7 @@ export interface LoreFileParse {
   /**
    * Directives that were recognised but carry nothing this port models - the
    * drop / friends / mimic echo - counted rather than dropped silently, so a
-   * caller can say "this file held more than we read" instead of guessing.
+   * caller can say "this file held more than was read" instead of guessing.
    */
   readonly ignored: number;
   /** Lines that are not a directive at all. Named, because a broken file is a bug. */

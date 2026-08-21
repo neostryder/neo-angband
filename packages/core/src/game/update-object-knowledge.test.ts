@@ -102,8 +102,8 @@ function ringOfStrengthKind(): ObjectKind {
 
 /**
  * A ring whose ONLY non-curse rune is the STR modifier, so wielding (which
- * learns that rune) completes its non-curse runes and makes the kind aware. We
- * deliberately do not copy the kind's SUST_STR flag: it would just be a second
+ * learns that rune) completes its non-curse runes and makes the kind aware. This
+ * deliberately does not copy the kind's SUST_STR flag: it would just be a second
  * rune to learn and is not needed to exercise the sweep.
  */
 function mkStrRing(kind: ObjectKind) {
@@ -175,7 +175,7 @@ describe("update_player_object_knowledge sweep is wired (audit 03 KN-03/KN-04)",
     squareKnowPile(game.state, game.state.actor.grid);
     expect(game.state.isAware!(kind)).toBe(false);
 
-    /* A second ring of the same kind in the pack, which we wield. */
+    /* A second ring of the same kind in the pack, which gets wielded. */
     const wornRing = mkStrRing(kind);
     wornRing.notice |= OBJ_NOTICE.ASSESSED;
     const handle = carry(game, wornRing);

@@ -17,7 +17,7 @@
  * options - upstream's, mirrored - and a logging verbosity row there would be
  * the first entry in that list that is not about the game. It lives on the
  * report screen instead, which is the one place somebody is already trying to
- * tell us what went wrong, and is where they would be sent to turn it up.
+ * report what went wrong, and is where they would be sent to turn it up.
  */
 
 import { createLog, defaultLogLevel, isLogLevel } from "@rpgm-tools/neo-angband-core/log";

@@ -186,7 +186,7 @@ describe("a declaration that cannot work lands on the mod's own row", () => {
   });
 });
 
-describe("what only THIS machine could have told us", () => {
+describe("what only THIS machine could have reported", () => {
   it("refuses a sound pack when the build can play neither format, and says so", async () => {
     const { located } = locateResources(
       inputFor([

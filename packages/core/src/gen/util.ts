@@ -1569,12 +1569,10 @@ export function newPlayerSpot(
  * kept on purpose has to be measured after every generator change, or core ends
  * up defending its own bugs.
  *
- * This was briefly a core guarantee (owner ruling 2026-07-25) and was withdrawn
- * the next day once the owner learned the C really does strand floors:
- *
- *   "We can't fix bugs in the port. Those will belong in the bug fixes mod. I
- *    only said those couldn't exist because I thought that was how the C
- *    version worked. Core must retain all warts of the reference code."
+ * This was briefly a core guarantee (2026-07-25) and was withdrawn the next
+ * day once the reference source confirmed the C really does strand floors:
+ * core must retain all warts of the reference code; a bug in the port itself
+ * belongs in the bug-fixes mod, not here.
  *
  * A mod that wants the guarantee repairs the finished level through the
  * levelGenerated hook (mod/hooks.ts), which is handed the Gen and every
@@ -1663,7 +1661,7 @@ function placeNewMonsterOne(
   });
   g.attachMonster(grid, mon, g.nextMonIndex());
 
-  /* C bumps race->cur_num here (mon-make.c L1040-1041), and deliberately we do
+  /* C bumps race->cur_num here (mon-make.c L1040-1041), and this deliberately does
    * NOT. C places monsters straight into the live cave, so that increment is
    * the only one; the port generates into a detached Gen and establishes the
    * shared count once at the populate boundary (countMonsterRaces, from the

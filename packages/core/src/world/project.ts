@@ -600,7 +600,7 @@ export interface ProjectHooks {
  * hooks) in upstream order: bolt visuals, blast visuals, objects, monsters,
  * player, features. Returns true if the player observed any effect.
  *
- * Faithful deviation: on the player-death early return we clear the
+ * Faithful deviation: on the player-death early return, this clears the
  * SQUARE_PROJECT marks first. Upstream leaves them set (the level is torn down
  * on death), so this is unobservable but avoids leaving stale marks on a Chunk
  * the port may keep.

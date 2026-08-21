@@ -201,11 +201,11 @@ export interface JoinInfo {
  * it exists but recorded no stairs of the relevant kind.
  */
 export interface AdjacentJoins {
-  /** Level depth-1 (get_join_info: its FEAT_MORE become our FEAT_LESS). */
+  /** Level depth-1 (get_join_info: its FEAT_MORE become this level's FEAT_LESS). */
   above?: readonly Connector[];
   /** Level depth-2 (its FEAT_MORE become one_off_above FEAT_MORE). */
   twoAbove?: readonly Connector[];
-  /** Level depth+1 (its FEAT_LESS become our FEAT_MORE). */
+  /** Level depth+1 (its FEAT_LESS become this level's FEAT_MORE). */
   below?: readonly Connector[];
   /** Level depth+2 (its FEAT_LESS become one_off_below FEAT_LESS). */
   twoBelow?: readonly Connector[];
@@ -223,14 +223,14 @@ export function getJoinInfo(adj: AdjacentJoins): JoinInfo {
   const oneOffAbove: Connector[] = [];
   const oneOffBelow: Connector[] = [];
 
-  /* Level above: its down staircases become our up staircases. */
+  /* Level above: its down staircases become this level's up staircases. */
   if (adj.above) {
     for (const j of adj.above) {
       if (j.feat === FEAT.MORE) join.unshift({ grid: j.grid, feat: FEAT.LESS });
     }
   } else if (adj.twoAbove) {
     /* No level above, but one two levels up: remember its down staircases so
-     * our up staircases won't conflict if that level is later generated. */
+     * this level's up staircases won't conflict if that level is later generated. */
     for (const j of adj.twoAbove) {
       if (j.feat === FEAT.MORE) {
         oneOffAbove.unshift({ grid: j.grid, feat: FEAT.MORE });
@@ -238,7 +238,7 @@ export function getJoinInfo(adj: AdjacentJoins): JoinInfo {
     }
   }
 
-  /* Level below: its up staircases become our down staircases. */
+  /* Level below: its up staircases become this level's down staircases. */
   if (adj.below) {
     for (const j of adj.below) {
       if (j.feat === FEAT.LESS) join.unshift({ grid: j.grid, feat: FEAT.MORE });
@@ -261,8 +261,8 @@ export function getJoinInfo(adj: AdjacentJoins): JoinInfo {
  * wall beyond it, hence `+ 2`.
  *
  * `above` selects which neighbour is being measured, exactly as upstream: for
- * the level ABOVE the target we take its DOWN staircases (FEAT_MORE), because
- * those become our up staircases; for the level BELOW, its up staircases.
+ * the level ABOVE the target, this takes its DOWN staircases (FEAT_MORE), because
+ * those become this level's up staircases; for the level BELOW, its up staircases.
  *
  * Called by prepare_next_level (L1531-1546) only on the persistent first-visit
  * path, and threaded into the builders as ctx.minHeight / ctx.minWidth. It is

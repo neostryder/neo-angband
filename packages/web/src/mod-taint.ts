@@ -107,7 +107,7 @@ export function resetSessionTaint(): void {
 export function taintNotice(t: SessionTaint): string[] {
   /* The game's own fault. Same consequence for the save, different thing to do
    * about it: there is no mod to switch off, and the person who needs to hear
-   * about it is us. */
+   * about it is the game itself. */
   if (t.id === null) {
     return [
       "The game hit a bug while it was in the middle of a turn.",

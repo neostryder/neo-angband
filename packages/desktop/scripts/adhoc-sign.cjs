@@ -33,7 +33,7 @@
  * section of docs/INSTALL.md for that.
  *
  * IT NEVER FAILS THE BUILD. A signing problem should not cost the Windows and
- * Linux artifacts of a release, and an unsigned bundle is still what we shipped
+ * Linux artifacts of a release, and an unsigned bundle is still what was shipped
  * before this existed. It logs loudly instead.
  */
 

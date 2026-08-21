@@ -24,7 +24,7 @@
  *
  * MODULE-LEVEL, like `menu-runtime.ts`: `showTextScreen` is called from ~85 sites
  * and threading an installed object through all of them buys nothing, because a
- * mod being disabled takes effect on reload anyway (recorded ruling, 2026-08-11).
+ * mod being disabled takes effect on reload anyway.
  */
 
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";

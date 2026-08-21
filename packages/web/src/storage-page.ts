@@ -35,7 +35,7 @@ export interface StorageLine {
 export interface StoragePageInput {
   /** True for the Electron shell, which has a real folder to name. */
   readonly desktop: boolean;
-  /** The desktop data folder, when the shell told us one. */
+  /** The desktop data folder, when the shell reported one. */
   readonly home?: string | undefined;
   /** The origin the roster is scoped to - a real site, or the loopback shell. */
   readonly origin: string;

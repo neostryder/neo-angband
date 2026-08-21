@@ -11,8 +11,8 @@ notifies every consenting mod); see §"File-by-file implementation plan" steps
 `choose()` (step 6) is blocked on a UI-seam gap ("menu row → runs a mod's own
 callback") that this design's §3 assumed existed and does not; see the
 correction there. That gap is the same shape as `MOD_REACH.md` gap 21, and is
-deferred alongside it (neostryder's ruling, 2026-08-15: ship the alpha now,
-finish remaining seams in a later pass).
+deferred alongside it, so the alpha could ship before every remaining
+seam was finished.
 
 ---
 
@@ -127,7 +127,7 @@ arg)`, the browser tab keeps the File System Access path.
 
 ---
 
-## The ruling: qol mod, two small host seams, zero core changes
+## The design: qol mod, two small host seams, zero core changes
 
 **This lives entirely in `neo-angband-mod-qol`, and it needs two additions to
 `packages/web/src` (not `packages/core`).** Argued in three parts.

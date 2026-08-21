@@ -533,8 +533,8 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
             .map((f) => `  depth ${f.depth} ${f.metric}: ${f.detail} p=${f.p.toExponential(2)}`)
             .join("\n")
         : "");
-    /* Always emit the table: a green run should still tell us the effect size we
-     * could have detected, so "no evidence of divergence" is never mistaken for
+    /* Always emit the table: a green run should still show the effect size that
+     * could have been detected, so "no evidence of divergence" is never mistaken for
      * "proven identical". */
     console.log(summary);
     expect(failures, summary).toEqual([]);

@@ -15,7 +15,7 @@
  * the live game's changeLevel make) headlessly and emits a plain-JSON aggregate
  * instead of SQLite. Two deliberate, documented deviations from main-stats:
  *
- *  - We read the freshly generated level directly (g.monsters, g.objects,
+ *  - This reads the freshly generated level directly (g.monsters, g.objects,
  *    g.c.feeling) instead of birthing a player and killing every monster; the
  *    generation + allocation RNG is identical, so the distributions are the
  *    port's true generator output. Monster-held objects are still swept, as

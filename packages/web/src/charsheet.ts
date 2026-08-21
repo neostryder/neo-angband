@@ -1,6 +1,6 @@
 /**
  * The character screen (ui-player.c display_player + do_cmd_change_name). The
- * core hands us the faithful data models - statTable (the Self/RB/CB/EB/Best
+ * core hands this the faithful data models - statTable (the Self/RB/CB/EB/Best
  * stat block) and characterPanels (topleft / misc / midleft / combat / skills)
  * - and this places them on screen.
  *
@@ -40,8 +40,8 @@
  * writes the save with nothing visible on the screen at all.
  *
  * The fix is NOT to forbid a prompt inside `invoke` - that would make a mod's
- * actions a strict subset of the game's, which is the seam being given up
- * (owner ruling). It is `withTerminal`: the game ANNOUNCES the prompt from the
+ * actions a strict subset of the game's, which is the seam being given up.
+ * The fix is `withTerminal`: the game ANNOUNCES the prompt from the
  * `SCREEN_PROMPTS` census, whoever is holding the screen stands aside for it,
  * and one that cannot stand aside is reported once by name and has the prompt
  * drawn over it - ugly, and enormously better than an invisible question.

@@ -383,7 +383,7 @@ function playerPickupAux(
   }
 }
 
-/** gear_to_label for an object we hold by reference rather than by handle. */
+/** gear_to_label for an object held by reference rather than by handle. */
 function packLabelOf(state: GameState, obj: GameObject): string {
   for (const handle of state.gear.pack) {
     if (state.gear.store.get(handle) === obj) {

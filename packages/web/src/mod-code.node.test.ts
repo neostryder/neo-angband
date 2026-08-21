@@ -603,7 +603,7 @@ function ctx(id: string): Parameters<NonNullable<ModPlugin["hooks"]>>[0] {
  *
  * This one covers registry:profile (the dungeon-profile seam). It fails if the
  * facade is removed, if the capability stops parsing, or if the host stops
- * delegating to the live DungeonProfiles - none of which a mock could tell us.
+ * delegating to the live DungeonProfiles - none of which a mock could show.
  */
 describe("a mod folder on disk reaches the dungeon-profile registry", () => {
   it("registers a cave builder and a profile through the capability gate", async () => {
@@ -1452,8 +1452,8 @@ describe("a disk mod patches a record that used to be unaddressable", () => {
 /* ------------------------------------------------------------------ *
  * A disk mod ADDS a field to a core object and reads it back at runtime.
  *
- * The maintainer's test case, verbatim: make a dagger 1d5 instead of 1d4, and
- * give it a `bleed` key core has never heard of. Both halves matter and only one
+ * The case this exists for: make a dagger 1d5 instead of 1d4, and give it a
+ * `bleed` key core has never heard of. Both halves matter and only one
  * of them used to work - composition always carried the new key through, and
  * then every binder dropped it, so an author got no error and no effect. That is
  * the difference between a mod that can RETUNE the game and one that can EXTEND
@@ -1476,7 +1476,7 @@ describe("a disk mod adds a field core has never heard of", () => {
   }
 
   it("retunes the dagger AND carries its own declared field to the bound kind", async () => {
-    /* The maintainer's test case, verbatim: a dagger retuned to 1d5, plus a
+    /* The case this exists for: a dagger retuned to 1d5, plus a
      * `bleed` field core has never heard of, whose meaning the mod supplies. */
     writeMod(
       "bleeder",

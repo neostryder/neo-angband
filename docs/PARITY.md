@@ -72,7 +72,7 @@ So `packages/core/src/visuals/hallucination.ts` takes its randomness as an
 injected parameter, and the web shell backs it with a display-only `Rng` seeded
 from wall-clock entropy and never saved (`main.ts hallucinationRng`). Same
 1/128, same rejection loops, same distribution over races and kinds, but a
-different stream, which the ruling above allows. Hallucination is therefore not
+different stream, which the rule above allows. Hallucination is therefore not
 reproducible from a savefile, and nothing in the game depends on it being so.
 
 Anything else that wants randomness at draw time belongs here too, for the same

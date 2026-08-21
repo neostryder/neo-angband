@@ -772,7 +772,7 @@ describe("group AI: pack ambush (get_move_find_hiding)", () => {
   /**
    * get_move's pack-ambush branch (mon-move.c L889-915): a healthy player who
    * is NOT in the open (fewer than 5 passable/room grids around them) lures a
-   * pack monster to a hiding square. We box the player in so open < 5, mark the
+   * pack monster to a hiding square. The test boxes the player in so open < 5, mark the
    * monster's grid in view so get_move_advance beelines (no RNG on that path),
    * and confirm the branch overrides the advance target with the L613 hiding
    * square, clears MFLAG_TRACKING, and draws no RNG (the pack-ambush scan is
@@ -822,7 +822,7 @@ describe("group AI: pack ambush (get_move_find_hiding)", () => {
 
   /**
    * Group surround (mon-move.c L932): a healthy player in the OPEN and in the
-   * monster's line of sight triggers the surround branch. We occupy 7 of the
+   * monster's line of sight triggers the surround branch. The test occupies 7 of the
    * player's 8 neighbours with filler monsters, leaving only (15,9) empty.
    * Monsters do not change passability, so the pack-ambush open-count stays
    * >= 5 and that branch is skipped; the monster is not afraid; and its grid is

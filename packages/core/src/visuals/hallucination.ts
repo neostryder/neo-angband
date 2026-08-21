@@ -23,7 +23,7 @@
  * refresh, which is safe in a C program whose only repaint trigger is a game
  * event. This port repaints on window resize, on returning from a menu, and on
  * the animation timer, so binding these rolls to the game stream would make the
- * dungeon depend on how often the screen was painted. Owner ruling 2026-08-09
+ * dungeon depend on how often the screen was painted. Decided 2026-08-09
  * accepts a different RNG stream where the rules and the odds are unchanged,
  * which is exactly this case: same 1/128, same rejection loops, same
  * distribution over races and kinds. See docs/PARITY.md.

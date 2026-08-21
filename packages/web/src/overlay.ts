@@ -10,7 +10,7 @@
  * time, exactly as the upstream single-threaded UI does.
  *
  * These are platform UI, not core: the core stays UI-agnostic (decision 21) and
- * hands us data models (char-sheet panels, gear lists, spell menus); this turns
+ * hands the UI data models (char-sheet panels, gear lists, spell menus); this turns
  * them into faithful full-screen views a keyboard or touch can drive.
  */
 

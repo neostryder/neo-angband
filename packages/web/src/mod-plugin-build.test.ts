@@ -89,7 +89,7 @@ describe("the builder writes a loadable mod folder", () => {
     const manifest = JSON.parse(readFileSync(join(outDir, ID, "manifest.json"), "utf8")) as {
       id: string;
     };
-    /* Verbatim: the build step is not in the business of editing what a mod declares,
+    /* The build step is not in the business of editing what a mod declares,
      * and a rewritten id would install under the wrong name. */
     expect(manifest.id).toBe(ID);
   });

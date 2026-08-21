@@ -606,7 +606,7 @@ function drawHelp(g, view, x, y, maxPx) {
   return cy;
 }
 
-/** The screen's own commands as buttons: `actions` is the game telling us. */
+/** The screen's own commands as buttons: `actions` is what the game supplies. */
 function drawActions(g, view, x, y) {
   if (!view.actions) return;
   g.font = "12px monospace";

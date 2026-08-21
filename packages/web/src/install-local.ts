@@ -20,7 +20,7 @@
  *     signals: false at the same place, deliberately, because nothing yet holds
  *     a quit open long enough for the save to land.
  *
- * neostryder's ruling is parity: the desktop build, the static site and the installed
+ * The rule is parity: the desktop build, the static site and the installed
  * PWA should differ as little as possible, and this page describes ONLY what
  * genuinely cannot be done in a tab. That makes the honest list short, which is
  * the correct outcome and not a failure of the page.

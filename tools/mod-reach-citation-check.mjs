@@ -93,7 +93,7 @@ function parseArgs(argv) {
 
 /* ------------------------------------------------------------------ *
  * Source roots: every package's src/ directory the resolver may search.
- * Listed in the brief as the 8 packages under packages/ with a src/ tree.
+ * The 8 packages under packages/ that have a src/ tree.
  * ------------------------------------------------------------------ */
 
 const SOURCE_ROOTS = [

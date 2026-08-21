@@ -55,7 +55,7 @@ export function captureInstallPrompt(): void {
   });
 }
 
-/** Whether the browser has given us an install prompt to show. */
+/** Whether the browser has given this page an install prompt to show. */
 export function canPromptInstall(): boolean {
   return deferredPrompt !== null;
 }
