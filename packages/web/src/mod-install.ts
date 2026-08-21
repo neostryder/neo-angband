@@ -14,12 +14,24 @@
  * files are records and which are assets - stays in readModDir, so an installed mod and
  * a hand-unzipped one are the same mod.
  *
- * THE ORDER IS THE POINT. Fetch, hash, COMPARE, and only then store; nothing is written
- * under the mod's name until every byte has matched the digest the game shipped with.
- * A partial or tampered download therefore cannot become an installed mod that runs
- * once and fails later - it never becomes an installed mod at all. And the store is
- * written in one transaction with the meta record LAST, so the presence of the meta
- * record is proof the install completed rather than a hint that it started.
+ * THE ORDER IS THE POINT, AND THE CLAIM THIS PARAGRAPH USED TO MAKE IS GONE. It said
+ * nothing is written under the mod's name until every byte has matched "the digest the
+ * game shipped with". That model was replaced by origin-on-first-use (see
+ * mod-registry.ts, which is blunt that the shipped digest was the genuinely stronger
+ * check), and this header outlived it - which matters more than an ordinary stale
+ * comment, because it is the most authoritative-looking place a future doc writer would
+ * read, and the same overstatement had to be taken back out of four player-facing docs
+ * on 2026-08-21.
+ *
+ * What the order actually buys: the ORIGIN is checked before anything is fetched, so a
+ * copy from somewhere else never gets as far as the network; every file is fetched and
+ * hashed, and those hashes are RECORDED rather than compared against anything, because
+ * there is nothing here to compare a first download against; and the store is written in
+ * one transaction with the meta record LAST, so the presence of the meta record is proof
+ * the install completed rather than a hint that it started. A partial download therefore
+ * cannot become an installed mod that runs once and fails later. A TAMPERED one can, and
+ * saying so is the point: what the recorded digests answer is "has this copy changed
+ * since it was installed", not "is this what the author published".
  *
  * WHY THE BYTES ARE KEPT RATHER THAN REFETCHED. A mod's code has to be there at boot,
  * before anything is drawn, and boot cannot depend on the network: a player on a train

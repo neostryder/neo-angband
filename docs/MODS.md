@@ -1,7 +1,7 @@
 # The Mod System
 
 > **Want to make one? [Start with the tutorials](modding/tutorials/README.md)** -
-> six short ones, the first is two files. This page is the design, not the
+> seven short ones, the first is two files. This page is the design, not the
 > on-ramp.
 
 > STATUS: TARGET DESIGN, not a description of the current build. This page is
@@ -30,22 +30,40 @@ open to mods, including capabilities that do not exist in the base resources.
 
 Press `Escape`, choose **Mods**, choose **Install a mod...**, pick one from the
 **Recommended mods** list, press Enter. The game reads the mod from its own
-repository at a release tag, checks it against the requirements every mod has to
-meet, and records the digest of every byte that arrived so it can tell you later
-whether the copy on your machine has changed. Then turn it on and choose **Apply
-changes and reload**. Nothing else is required, and nothing needs a folder, an
-account or a tool.
+repository at a release tag: the newest one this build can actually run, which is
+not always the newest one that exists. It checks the mod against the requirements
+every mod has to meet, and records the digest of every byte that arrived so it can
+tell you later whether the copy on your machine has changed. Then turn it on and
+choose **Apply changes and reload**. Nothing else is required, and nothing needs
+a folder, an account or a tool.
 
 The recommended list is a list of **repositories and nothing else**. Names,
 versions, descriptions and compatibility all come from the mod itself when the
 screen opens, so a mod releases an update without waiting for a new version of the
 game - and the game never claims to know what a mod contains.
 
+**A mod's newest release is not always the one you are offered.** A mod that ships
+code declares which builds of the game it was written for, and a release outside
+that range is refused rather than loaded (the reasoning is in
+[modding/MOD_COMPATIBILITY.md](modding/MOD_COMPATIBILITY.md)). So the screen looks
+back through that mod's earlier releases, up to eight of them, and offers the
+newest one this build will run. When it steps past a newer release it says which
+one and why, and it tells you to update the game only when updating the game is
+what would get you that release. If none of the releases it tried runs here, the
+mod is refused and the screen says how many were checked, so you can tell a game
+that looked at one version from a game that looked at eight. **Update installed
+mods** works the same way and never offers an update this build would then refuse
+to load, so a mod already on the newest release your game can run is described
+that way instead of as out of date.
+
 Three more doors are on that same screen, all of them behind **Allow third-party
 mods**:
 
 - **Add from a registry address** - somebody else's list, of the same shape.
-- **Add from a repository address** - one mod, by `owner/repo` or a GitHub URL.
+- **Add from a repository address** - one mod, by `owner/repo` or a GitHub URL. A
+  URL naming a tag (`github.com/owner/repo/tree/v1.2.0`) pins that version: it is
+  installed as asked, with no looking for a nearer one, and refused rather than
+  substituted if it will not run here.
 - **Import a mod from a file** - a `.zip`. Either one you choose, or one you have
   dropped into the game's own `mods/` folder, which the screen lists for you. The
   archive has to hold one mod, with its `manifest.json` either at the top of the
@@ -84,7 +102,7 @@ tests - file a bug about what a mod *does* there, and a bug about the mod
 
 ### Writing one
 
-**[Start with the tutorials](modding/tutorials/README.md)** - six short ones,
+**[Start with the tutorials](modding/tutorials/README.md)** - seven short ones,
 each teaching a single idea, the first of which is two files and about twenty
 lines. They are the on-ramp; everything below is reference.
 
@@ -110,8 +128,8 @@ The dividing line (PORT_PLAN.md decisions 17-18) is deliberately sharp:
 - **NO MOD SHIPS IN THE BOX.** A fresh install is vanilla Angband and nothing
   else. The first-party mods each live in their own repository, carry their
   own release tags and tests, and arrive through the mod manager's *Install a
-  mod...* row - the same route, and the same digest verification, a third-party
-  mod uses. See [Where each mod lives](#where-each-mod-lives) below.
+  mod...* row - the same route, and the same pinned origin and recorded digests, a
+  third-party mod uses. See [Where each mod lives](#where-each-mod-lives) below.
 
   This is the load-bearing form of "the seams are real". A modding system whose
   author's own mods take a private path into the build is a modding system nobody

@@ -63,6 +63,7 @@ const R = (over: Partial<ModRefresh>): ModRefresh => ({
   standing: "same",
   problem: null,
   channelHeld: null,
+  engineHeld: null,
   ...over,
 });
 
@@ -451,7 +452,7 @@ describe("the consent read renders exactly what its hand-laid version did", () =
       { text: "  - Override effect, combat, and magic logic   [elevated]", color: UI_GOLD },
       { text: "", color: UI_TEXT },
       {
-        text: "This mod can change core game behavior in-process. Only enable mods you trust.",
+        text: "This mod runs its own code inside the game and can change how the game behaves. Only enable mods you trust.",
         color: UI_BAD,
       },
       { text: "It also marks your save permanently non-reproducible.", color: UI_GOLD },
@@ -482,6 +483,28 @@ describe("the consent read renders exactly what its hand-laid version did", () =
     /* The flag is a boolean, not the word "[elevated]" inside a sentence - which
      * is the whole reason this screen was worth modelling. */
     expect(table.rows[1]!.semantic?.data?.elevated).toBe(true);
+  });
+
+  it("warns about the code for a plugin whose whole list is modest", () => {
+    /* The line is about the CODE, not about the list. `registry:tiles` is
+     * deliberately not elevated - a tile filler can only write where nothing is
+     * assigned - so this mod's declared list is as harmless as a list gets, and
+     * the mod still runs in-process with `ctx.core`, `ctx.state` and
+     * `ctx.registries`, none of which is capability-checked. A screen that stayed
+     * quiet here would be telling the player the list bounds the access. */
+    const rows = text(
+      capabilityConsentScreen(CM({ kind: "trusted", capabilities: ["registry:tiles"] })),
+    );
+    expect(rows).toContain(
+      "This mod runs its own code inside the game and can change how the game behaves. Only enable mods you trust.",
+    );
+  });
+
+  it("stays quiet for a content pack, which executes nothing", () => {
+    /* A content pack is validated data. It cannot carry the line's subject, so
+     * giving it one would be a warning with no mechanism behind it. */
+    const rows = text(capabilityConsentScreen(CM({ kind: "content", capabilities: ["event:turn-start"] })));
+    expect(rows.some((r) => r.includes("runs its own code"))).toBe(false);
   });
 });
 
