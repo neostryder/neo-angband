@@ -1,5 +1,5 @@
 /**
- * The six tutorial mods in `samples/tutorials/`, exercised as mods.
+ * The seven tutorial mods in `samples/tutorials/`, exercised as mods.
  *
  * WHY THIS EXISTS. A tutorial is a promise that if the reader types what is on
  * the page, the thing on the page happens. Documentation cannot keep that
@@ -463,7 +463,143 @@ describe("samples/tutorials - the mods the tutorials tell you to write", () => {
     });
   });
 
-  describe("all six", () => {
+  describe("07 - add an artifact", () => {
+    /** The real object registry, with the composed artifact file swapped in. */
+    function objReg(artifacts: unknown) {
+      return new ObjRegistry({
+        ...(objPackFiles() as object),
+        object: readJson(join(CORE_PACK, "object.json")),
+        artifact: artifacts,
+      } as never);
+    }
+
+    /**
+     * Bound, not read back. An artifact record is almost entirely NUMBERS
+     * ADJUSTING A KIND THAT HAS TO EXIST, so the only reader that can say the
+     * record is real is the binder: reading the composed JSON would assert that
+     * the text I wrote is the text I wrote, and would pass just as happily on a
+     * `base-object` naming a shield the game does not have.
+     */
+    it("adds one artifact, standing on a base kind core actually ships", () => {
+      const core = corePack(["artifact"]);
+      const before = (core.files["artifact"] as { records: unknown[] }).records.length;
+      const composed = composeContentPacks([
+        core,
+        loadTutorial("tutorial-07-add-an-artifact", ["artifact"]),
+      ]);
+      expectNoProblems(composed);
+      expect((composed.records["artifact"] as unknown[]).length).toBe(before + 1);
+
+      const reg = objReg({ records: composed.records["artifact"] });
+      /* Nothing refused: the denominator for the resilience test below. */
+      expect(reg.refused).toEqual([]);
+
+      const art = reg.artifacts.find((a) => a?.name === "of the Watchful Eye");
+      expect(art, "the tutorial's artifact did not reach the registry").toBeDefined();
+
+      /* Its base resolved to a REAL kind, compared by identity against the same
+       * lookup the binder used, so an sval that merely looks right cannot pass.
+       * A miss here would not have thrown: an unresolved sval gets a dummy kind
+       * (write_dummy_object_record), which silently turns the artifact into a
+       * special one standing on a base object that does not exist. */
+      const sval = reg.lookupSval(TV.SHIELD, "Leather Shield");
+      expect(sval).toBeGreaterThan(-1);
+      expect(art!.sval).toBe(sval);
+      expect(reg.lookupKind(TV.SHIELD, sval)).toBeDefined();
+
+      expect(art!.toA).toBe(10);
+      expect(art!.level).toBe(12);
+    });
+
+    /**
+     * And it patches a core artifact relative to core's own value, the same way
+     * tutorial 3 patches a core monster: three MORE points of armour than
+     * whatever Angrist ships with, not a pinned number of its own.
+     */
+    it("also patches a core artifact, relative to core's own value", () => {
+      const core = corePack(["artifact"]);
+      const bare = objReg(core.files["artifact"]);
+      const beforeToA = bare.artifacts.find((a) => a?.name === "'Angrist'")!.toA;
+
+      const composed = composeContentPacks([
+        core,
+        loadTutorial("tutorial-07-add-an-artifact", ["artifact"]),
+      ]);
+      expectNoProblems(composed);
+      const reg = objReg({ records: composed.records["artifact"] });
+      expect(reg.artifacts.find((a) => a?.name === "'Angrist'")!.toA).toBe(beforeToA + 3);
+    });
+
+    /**
+     * And the mistake this tutorial's reader is most likely to make - a
+     * `base-object` naming an item type that is not there - costs the artifact
+     * and not the game.
+     *
+     * This is the store binder's defect in a third file (mod/refusal.ts), and the
+     * first where the right size of the drop is the WHOLE RECORD: an artifact
+     * with no base kind is not a degraded artifact, it is not one at all. The
+     * fixture is this tutorial's own record with one field spoiled, carrying the
+     * provenance the composer stamped on it, because the whole question is
+     * whether the binder can tell a mod's mistake from core's.
+     */
+    it("drops a mod's artifact whose base-object is not there, and keeps every other", () => {
+      const core = corePack(["artifact"]);
+      const coreCount = (core.files["artifact"] as { records: unknown[] }).records.length;
+      const composed = composeContentPacks([
+        core,
+        loadTutorial("tutorial-07-add-an-artifact", ["artifact"]),
+      ]);
+      const records = (composed.records["artifact"] as Record<string, unknown>[]).map((r) =>
+        r["name"] === "of the Watchful Eye"
+          ? { ...r, "base-object": { tval: "xyzzy", sval: "Leather Shield" } }
+          : r,
+      );
+
+      const reg = objReg({ records });
+
+      /* One fault, on the mod that wrote the record, naming the record. */
+      expect(reg.refused.length).toBe(1);
+      const fault = reg.refused[0]!;
+      expect(fault.file).toBe("artifact");
+      expect(fault.record).toBe("of the Watchful Eye");
+      expect(fault.field).toBe("base-object");
+      expect(fault.id).toBe("tutorial-07-add-an-artifact");
+      expect(fault.why).toContain("xyzzy");
+
+      /* And every artifact core ships is still there, still numbered. Derived
+       * from core's own data rather than a written-in number, and checked by
+       * aidx as well as by presence, because a binder that dropped the record
+       * but left its slot would pass a count check and hand out a null. */
+      const bare = objReg(core.files["artifact"]);
+      expect(reg.artifacts.length).toBe(coreCount + 1);
+      for (const art of bare.artifacts) {
+        if (!art) continue;
+        const same = reg.artifacts[art.aidx];
+        expect(same?.name, `core artifact ${art.name} moved or vanished`).toBe(art.name);
+      }
+
+      /* And no orphan kind was left behind by the dropped record. An unresolved
+       * sval appends a dummy object kind before the tval is ever questioned, so
+       * a drop that forgot to unwind would leave an INSTA_ART kind in the object
+       * list with no artifact pointing at it. */
+      expect(reg.kinds.length).toBe(bare.kinds.length);
+    });
+
+    /**
+     * CORE'S OWN still fails loudly, which is the half that makes the above a
+     * fix rather than a blanket suppression. Same spoiled field, no provenance,
+     * and no provenance is exactly what an unmodded boot looks like.
+     */
+    it("still throws for core's own broken base-object", () => {
+      const core = corePack(["artifact"]);
+      const recs = (core.files["artifact"] as { records: Record<string, unknown>[] }).records.map(
+        (r, i) => (i === 0 ? { ...r, "base-object": { tval: "xyzzy", sval: "Phial" } } : r),
+      );
+      expect(() => objReg({ records: recs })).toThrow(/unknown tval xyzzy/u);
+    });
+  });
+
+  describe("all seven", () => {
     const ALL = [
       "tutorial-01-tweak-a-value",
       "tutorial-02-add-an-item",
@@ -471,6 +607,7 @@ describe("samples/tutorials - the mods the tutorials tell you to write", () => {
       "tutorial-04-change-a-spell",
       "tutorial-05-hook-behaviour",
       "tutorial-06-add-an-option",
+      "tutorial-07-add-an-artifact",
     ] as const;
 
     it("pass the real manifest validator, and each has a tutorial page", () => {

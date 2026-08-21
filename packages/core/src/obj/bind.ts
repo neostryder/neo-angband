@@ -1242,9 +1242,55 @@ export class ObjRegistry {
       for (let i = ELEM_BASE_MIN; i < ELEM_HIGH_MIN; i++) {
         (elInfo[i] as ElementInfo).flags |= EL_INFO_IGNORE;
       }
+      /*
+       * `base-object:` IS THE ARTIFACT, and a mod can name one that is not there.
+       *
+       * Third instance of the store binder's defect (see mod/refusal.ts), and the
+       * first where the right size of the drop is the WHOLE RECORD rather than one
+       * entry of a field. A shop with one fewer stock line is a shop; an ego with
+       * one fewer candidate base is an ego; an artifact with no base kind is not an
+       * artifact at all, because every number on it is an adjustment to a kind that
+       * has to exist. So a mod-contributed artifact whose base-object resolves to
+       * nothing is dropped whole and reported, and core's own still throws the
+       * message it always threw.
+       *
+       * DROPPING ONE IS INDEX-SAFE IN THE DIRECTION THAT MATTERS. `aidx` is
+       * assigned by push order, so a drop shifts every artifact bound after it -
+       * but core's pack is composed first and mods append, so no core artifact can
+       * ever sit behind a mod's, and a savefile's core artifacts keep their
+       * numbers. A mod's own artifacts shifting relative to each other is the same
+       * situation as that mod not being installed, which is what the player just
+       * asked for.
+       *
+       * NOTE what is NOT covered: an invalid `flags`, `values` or `act` token on a
+       * mod's artifact still throws. Those are worth doing and are not this change,
+       * because each one needs its loop turned into something that can report
+       * instead of throw, inside a binder that is parity-sensitive. base-object is
+       * the field the tutorial teaches and the one a disabled dependency breaks.
+       */
+      const from = provenanceOf(rec);
+      /* Restored on the refusal paths below: resolving an sval can APPEND a dummy
+       * kind (write_dummy_object_record), and an artifact that is then dropped
+       * would leave that kind behind with nothing pointing at it. */
+      const kindsBefore = this.kinds.length;
+      const drop = (why: string): boolean => {
+        const owner = fieldOwner(from, "base-object", rec["base-object"]);
+        if (owner === null || from === undefined) return false;
+        this.kinds.length = kindsBefore;
+        this.refused.push({
+          file: "artifact",
+          record: rec.name,
+          field: "base-object",
+          id: owner,
+          why: refusalWhy(rec.name, "artifact dropped", why, from),
+        });
+        return true;
+      };
       const tval = tvalFindIdx(rec["base-object"].tval);
       if (tval < 0) {
-        throw new Error(`artifact: unknown tval ${rec["base-object"].tval}`);
+        const why = `unknown tval ${rec["base-object"].tval}`;
+        if (drop(why)) continue;
+        throw new Error(`artifact: ${why}`);
       }
       let sval = this.lookupSval(tval, rec["base-object"].sval);
       if (sval < 0) {
@@ -1252,9 +1298,9 @@ export class ObjRegistry {
       }
       const kind = this.lookupKind(tval, sval);
       if (!kind) {
-        throw new Error(
-          `artifact: no kind ${rec["base-object"].tval}:${sval}`,
-        );
+        const why = `no kind ${rec["base-object"].tval}:${sval}`;
+        if (drop(why)) continue;
+        throw new Error(`artifact: ${why}`);
       }
       const flags = newOfFlags();
       for (const tok of tokens(rec.flags)) {

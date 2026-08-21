@@ -101,18 +101,22 @@ what any of this has to satisfy. One area is known to be short of it.
 
 ### Bind-time resilience: the rest of the binders
 
-Two are done. Store records are complete: every field a patch can reach
+Three are done. Store records are complete: every field a patch can reach
 (`normal`, `always`, `buy`, and the `store:` entrance) refuses a mod's
-unresolvable entry and attributes it, and the ego `item:` list now does the
-same. The shared decision lives in `packages/core/src/mod/refusal.ts`, so a
-third binder is a small job rather than a repeat of the reasoning.
+unresolvable entry and attributes it; the ego `item:` list does the same; and an
+artifact's `base-object` now drops the whole record rather than the field, which
+is the first case where the record was the right unit. The shared decision lives
+in `packages/core/src/mod/refusal.ts`, so a fourth binder is a small job rather
+than a repeat of the reasoning.
 
 **What is missing is the denominator.** No systematic pass has been made over
 the remaining binders to find every field that resolves a NAME from a list a mod
-can append to, which is the shape that makes this reachable. `obj/bind.ts` still
-has more of them than the one that is fixed (artifact `base-object`, curse
-`type`), and the monster, trap and feature binders have never been looked at
-for this at all. The first piece of work is the census, not another fix.
+can append to, which is the shape that makes this reachable. Three are named and
+unfixed: an artifact's `flags`, `values` and `act` tokens still throw on a mod's
+typo, where `base-object` no longer does, and each needs its loop turned into
+something that can report instead of throw inside a parity-sensitive binder.
+`curse` `type` is untouched, and the monster, trap and feature binders have never
+been looked at for this at all. The first piece of work is still the census.
 
 Two known cases that the composer deliberately leaves to the binders:
 

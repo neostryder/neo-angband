@@ -49,9 +49,32 @@ digest in the game's catalogue and must never be moved.
 - Tutorial 2 now stocks its item in the Armoury, and its finished mod is checked
   against the real store binder, which is where an item name that does not
   resolve is caught, rather than becoming a shop that quietly lacks it.
+- **A seventh tutorial: add an artifact.** The one shape the first six did not
+  cover, and the last of the three examples a player asked for by name. An
+  artifact is a layer over an item the game already ships rather than an item of
+  its own, so it gets its own page: what `base-object` is, why an artifact's
+  `name` is only half a name and carries none of the `&` and `~` decoration an
+  ordinary item's does, and the trap that a wrong `tval` is reported while a
+  wrong `sval` silently invents a placeholder base object, because that is the
+  behaviour the Phial, the Star and the Arkenstone depend on. Its finished mod
+  is a real folder like the other six, bound by the real object registry rather
+  than read back as JSON.
 
 ### Fixed
 
+- **A mod's artifact naming a base object that is not there costs the artifact,
+  not the game.** Third instance of the store binder's defect, and the first
+  where the right size of the drop is the whole record: a shop with one fewer
+  stock line is a shop and an ego with one fewer candidate base is an ego, but an
+  artifact with no base kind is not an artifact, because every number on it is an
+  adjustment to a kind that has to exist. So a mod-contributed artifact whose
+  `base-object` resolves to nothing is dropped whole and reported against that
+  mod through the same mod-manager path the store and ego drops already use, and
+  core's own still throws the message it always threw. Index-safe in the
+  direction that matters: core's pack composes first and mods append, so no core
+  artifact can sit behind a mod's and a savefile's core artifacts keep their
+  numbers. An invalid `flags`, `values` or `act` token on a mod's artifact still
+  throws and is recorded in [docs/PLANNED.md](docs/PLANNED.md).
 - **The look/target UI ran terrain prefixes into the name: "the entrance to
   theArmoury", "You are inan open door", "somelava".** `terrain.txt` writes every
   `look-prefix` and `look-in-preposition` without a trailing space, and upstream

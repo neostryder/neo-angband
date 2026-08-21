@@ -1,0 +1,38 @@
+{
+  "records": [
+    {
+      "name": "of the Watchful Eye",
+      "base-object": {
+        "tval": "shield",
+        "sval": "Leather Shield"
+      },
+      "level": 12,
+      "weight": 50,
+      "cost": 14000,
+      "alloc": {
+        "common": 10,
+        "minmax": "12 to 70"
+      },
+      "attack": {
+        "hd": "0d0",
+        "to-h": 0,
+        "to-d": 0
+      },
+      "armor": {
+        "ac": 8,
+        "to-a": 10
+      },
+      "flags": ["SEE_INVIS", "PROT_FEAR"],
+      "values": ["INFRA[2]", "RES_DARK[1]"],
+      "desc": [
+        "A round shield of boiled leather, its boss worked into a single open eye.",
+        "  The eye does not blink, and neither, while you carry it, do you."
+      ]
+    }
+  ],
+  "fieldPatches": {
+    "core:angrist": [
+      { "op": "add", "path": "armor.to-a", "value": 3 }
+    ]
+  }
+}
