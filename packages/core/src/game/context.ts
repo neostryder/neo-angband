@@ -408,6 +408,24 @@ export interface GameState {
    */
   knownPlayerState?: import("../player/calcs.js").PlayerState;
   /**
+   * calc_bonuses for a loadout the player is NOT wearing: the derive behind
+   * "what would this item do for me". Installed by wireGame, which is the only
+   * place holding the whole options bag the live refresh uses (the bound timed
+   * table and the curse registry), so a caller cannot end up measuring a
+   * hypothetical loadout with a thinner derive than the real one.
+   *
+   * `equipment` is indexed by body slot, exactly as CalcBonusesOptions.equipment
+   * is; `totalWeight` is the burden that loadout would carry (omit to keep the
+   * player's current one). Runs with update=false, so it has no side effects.
+   *
+   * Absent in the worldless harness, and simulateLoadout (agent/loadout.ts)
+   * answers null rather than deriving a thinner state of its own.
+   */
+  derivedFor?: (
+    equipment: readonly (import("../obj/object.js").GameObject | null)[],
+    totalWeight?: number,
+  ) => import("../player/calcs.js").PlayerState;
+  /**
    * player->upkeep->health_who (health_track reduced to the tracked
    * monster; the health-bar redraw rides presentation, #25).
    */
