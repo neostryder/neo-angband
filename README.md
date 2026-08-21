@@ -237,7 +237,6 @@ including what it was *not* used for, is in
 | `packages/desktop` | Electron desktop wrapper |
 | `packages/mcp` | [MCP server](docs/MCP.md): an AI client plays the game through the frozen agent API |
 | `packages/linoleum` | Linoleum tile-pack converter |
-| `packages/borg` | The Borg autoplayer |
 | `samples/` | Small, working example mods, including [the tutorials](docs/modding/tutorials/README.md) |
 | `docs/` | Documentation |
 | `parity/` | Provenance ledger mapping port modules to upstream sources |

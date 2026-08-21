@@ -18,17 +18,17 @@ Windows certificate behind this project yet, so the first launch is blocked.
 -> Run anyway*. **macOS is not one click** and the way through is not on the
 dialog it shows you - see [the macOS steps](#macos-blocks-it-first-time) below.
 That is a real trust decision and it is yours to make; if you would rather not,
-build it yourself from §1, or play in a browser, which asks nothing of you.
+build it yourself from section 1, or play in a browser, which asks nothing of you.
 
 **Nothing needs any of the rest of this page.** It is here for the other four
 ways, all of which run the *same* build:
 
 | | Best for | Start at |
 |---|---|---|
-| **From source (dev server)** | testing, and fixing what you find | [§1](#1-run-it-from-source-recommended-for-testing) |
-| **Self-hosted static site** | your own copy, or one for a group | [§2](#2-self-host-as-a-static-site) |
-| **Installed PWA** | playing offline on a phone or tablet | [§3](#3-install-as-a-pwa-offline-any-platform) |
-| **Desktop app (Electron)** | building the packaged app yourself | [§4](#4-desktop-app-electron) |
+| **From source (dev server)** | testing, and fixing what you find | [section 1](#1-run-it-from-source-recommended-for-testing) |
+| **Self-hosted static site** | your own copy, or one for a group | [section 2](#2-self-host-as-a-static-site) |
+| **Installed PWA** | playing offline on a phone or tablet | [section 3](#3-install-as-a-pwa-offline-any-platform) |
+| **Desktop app (Electron)** | building the packaged app yourself | [section 4](#4-desktop-app-electron) |
 
 The engine, content, saves, and the entire mod framework behave the same on all
 of them. Where a surface genuinely differs, it is called out in the
@@ -131,7 +131,7 @@ Two things are genuinely Chromium-only, and neither is gameplay:
   a tab (offline caching still works), or the desktop build. Safari on macOS 14+ and
   iOS installs fine.
 
-**The recommended way to play is the desktop build** (§4), and not as a fallback for
+**The recommended way to play is the desktop build** (section 4), and not as a fallback for
 anything: it keeps real saves in a real folder, needs no network at all, and is not
 subject to a browser deciding to reclaim its storage. The browser build exists so the
 game is one link away, and so a bug report can be pinned to a build you control.
@@ -149,7 +149,7 @@ File System Access call anywhere is the directory picker named above.
 
 The game is a Progressive Web App, so any build served over **https** (or from
 `localhost`) can be installed and then played with no network at all. Install it
-from your own build in §1 or §2 - that keeps you on a version you control.
+from your own build in section 1 or section 2 - that keeps you on a version you control.
 
 - **Desktop Chrome / Edge:** click the install icon in the address bar (or menu
   -> "Install Neo Angband..."), then launch it like any app.
@@ -628,10 +628,10 @@ character sheet. They cannot be resumed; that is the point.
 
 ## Which should I use?
 
-- **Testing the port, or fixing something:** run it from source (§1). You know
+- **Testing the port, or fixing something:** run it from source (section 1). You know
   the commit you are on, which is what makes a bug report usable.
-- **Your own copy, or one for a group:** self-host the static build (§2).
-- **Playing offline on a phone or tablet:** install the PWA (§3) from your own
+- **Your own copy, or one for a group:** self-host the static build (section 2).
+- **Playing offline on a phone or tablet:** install the PWA (section 3) from your own
   https build.
 - **A native double-click install, or filesystem mods later:** the desktop app
-  (§4).
+  (section 4).

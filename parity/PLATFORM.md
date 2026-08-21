@@ -42,7 +42,7 @@ and Chromium's own caches - and the OS user directory is used only where keeping
 data in the folder would destroy it (an installed copy, whose uninstaller deletes
 the directory) or is not permitted (a read-only location, a signed `.app` bundle).
 That is `main-win.c`'s shape, where a downloaded Angband is an executable with
-`lib/` beside it. Resolution order and the exceptions: `docs/INSTALL.md` §4.
+`lib/` beside it. Resolution order and the exceptions: `docs/INSTALL.md` section 4.
 
 Two things this cost that reading the config would not have found. Electron
 resolves `sessionData`, `crashDumps` and `logs` separately from `userData`, so all
