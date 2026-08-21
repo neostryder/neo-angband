@@ -79,12 +79,20 @@ faithful conservative default rather than guessing:
   record that grants it - the same precedence `obj-make.c` applies. It can tell
   which shop it is standing in, which is what lets the town-flow ladder's
   shop-interaction steps fire at all.
-- **Hypothetical-loadout power deltas** are the one that is still on its
-  conservative default. The wear/swap/buy/sell paths assume no gain unless it is
-  proven, because scoring a hypothetical inventory needs the self-model
-  re-derived on a loadout the frozen view cannot represent - a core capability
-  that does not exist yet. The Borg fights, flows, heals, shops and dives
-  faithfully; only its gear *optimization* is cautious.
+- **Hypothetical-loadout power deltas** are wired from 0.25.0. The wear, buy and
+  sell paths all decide by comparing `borg_power` now against `borg_power` with a
+  candidate worn, bought or sold, and none of them had a way to compute the
+  second number: the frozen view describes the gear the character HAS. It now
+  asks the engine, through `view.simulateLoadout`, which re-runs `calc_bonuses`
+  over a hypothetical set of worn objects; the Borg then runs the ported
+  `borg_notice` and `borg_power` over the answer, which is the wield / recompute
+  / revert shape upstream uses. A mod's items are scored on the same terms as
+  core's, because what comes back is ordinary `ItemView`s and the scoring reads
+  their properties rather than their provenance.
+
+  On a game older than 0.25.0 this seam falls back to its conservative default
+  and the Borg's log says "no loadout evaluation" - the mod's engine range stays
+  permissive, so it degrades rather than refusing to load.
 
 The mod's own `PLANNED.md` is where this list is kept current, since the mod
 ships on its own schedule. None of it stops the Borg playing a full game; it

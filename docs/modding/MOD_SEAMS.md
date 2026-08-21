@@ -452,6 +452,72 @@ reimplemented: `movementTunnelTest` (`cave-cmd.ts`, RNG-free, which is what
 lets the mod decline for free) and `tunnelAux` (one real `do_cmd_tunnel_aux`
 attempt with the upstream roll, messages, and payouts).
 
+## 4a. `simulateLoadout` - a loadout the character is not wearing
+
+Every seam above this one lets a mod CHANGE the game. This one lets a mod ASK a
+question the engine could not previously be asked: what would this character be,
+wearing something else?
+
+`calc_bonuses` (`packages/core/src/player/calcs.ts`) answers that for the gear
+the character has on, and every read surface derives from it - `GameState
+.playerState`, `PlayerActor.combat`, `PlayerView`. There was no version for a
+loadout nobody is in. A caller wanting one had to sum the candidate item's own
+bonuses, which is a second implementation of `calc_bonuses`, blind to the
+interactions (a ring of strength changing the blow count, a cuirass costing a
+caster half their mana, weight costing speed), and free to drift from the first
+with nothing able to notice.
+
+```js
+const sim = view.simulateLoadout({ wield: [{ from: "gear", handle }] });
+if (sim) {
+  sim.delta.ac;            // armour class difference
+  sim.delta.maxSp;         // what it costs a caster
+  sim.delta.resists;       // per element, ELEM order
+  sim.after.player.blows;  // the frozen PlayerView for that loadout
+  sim.after.stats;         // every field of upstream's player_state
+}
+```
+
+Four things about it:
+
+- **It runs the REAL derive.** `state.derivedFor`, installed by `wireGame`, is
+  `calc_bonuses` with `update: false` over the same options bag the live refresh
+  uses - the bound timed table and the curse registry travel with it. That is
+  deliberately the only source: a derive assembled by a caller would have to
+  guess at both, and a hypothetical loadout measured with a thinner bag than the
+  live one is worse than no answer, because it looks like an answer. Where no
+  session installed one (the worldless harness), the accessor is absent and the
+  function returns `null`.
+- **It writes nothing.** Not the state, not the player, not the gear, not any
+  object. `update: false` is what keeps `calc_bonuses`' own two faithful side
+  effects (zeroing `TMD_FASTCAST` on a stun grade, the town-light redraw flag)
+  out of it. A test asserts the live `PlayerState` object is the same object
+  afterwards, not merely an equal one.
+- **The change is expressed in slots and gear references, not equipment
+  arrays.** `wield` routes each item through the engine's own `wield_slot`, so
+  the second of a pair of rings lands in the second ring slot exactly as it would
+  in play; `carry` takes something into the pack; `remove` empties a slot into the
+  pack; `release` gives a stack up entirely, emptying its slot when the handle
+  names worn gear. A reference is a gear handle, or a shop and a stock index for a
+  ware (which is not in the gear and so has no handle), or a `GameObject` for a
+  caller inside the engine. A reference that names nothing is skipped and reported
+  in `unresolved`, because a decision ladder evaluating a hundred candidates must
+  not die on one stale handle.
+- **The answer is the whole surface, not a score.** Two consumers want different
+  halves: an autoplayer reduces it to one number, and a player comparing two items
+  wants to see which resist was traded for which. A scalar can serve the first and
+  never the second, and the two must not be able to disagree about the underlying
+  derive - so `before`, `after` and `delta` carry every field of `player_state`
+  plus max hitpoints, max mana, the armour encumbrance and the carried weight.
+  `neo-angband-mod-borg` consumes a fraction of it today.
+
+The accessor lives on `AgentView`, which is what makes the `ItemView`s in the
+answer built with the same `AgentViewDeps` the live view's are. That is a
+correctness property rather than a convenience: an object carrying `value` in one
+read and not the other would change what an agent decides about the same object
+depending on which read produced it. The exported `simulateLoadout(state, change,
+opts)` is the same function for a caller inside the engine.
+
 ## 5. Doors that are exported but deliberately CLOSED
 
 An exported mutable table is an extension point whether anyone meant it to be one
