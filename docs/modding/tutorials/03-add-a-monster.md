@@ -50,15 +50,17 @@ file is `monster.json`:
 Every monster inherits from a *monster base*, the template that decides its
 symbol on the map, what it is made of, which attacks it can have, and a pile of
 other defaults. `ant` is one the base game ships. So are `canine`, `orc`,
-`dragon`, and about a hundred others, all listed in
-`packages/content/pack/monster_base.json`.
+`dragon`, and fifty-odd others - the file is
+`packages/content/pack/monster_base.json` and it holds 56 records in total, so it
+is short enough to read.
 
-Get it wrong and **nothing will tell you**. A ref that does not resolve is an
-error the game reports; a `base` that names nothing is a monster with no
-template, which is not a broken reference. It is a monster that simply does not
-work when the dungeon tries to place it. So: copy the `base` from a real monster
-of the kind you are making, and check it against `monster_base.json` if you typed
-it from memory.
+Get it wrong and you get told twice, which is worth knowing before you go looking
+for a subtler explanation. `base` is a declared reference, so composition reports
+it by name: *base names the monster base "aunt", and no loaded pack defines it in
+monster_base*, on your mod's row. And the monster binder then refuses to build the
+record at all rather than building a monster with no template. So: copy the `base`
+from a real monster of the kind you are making, and check it against
+`monster_base.json` if you typed it from memory.
 
 This is the single most common way a first monster mod fails, which is why the
 tutorial's own test asserts the base exists rather than trusting it.
@@ -71,15 +73,18 @@ Same principle as items: find a monster close to what you want in
 - **`speed`**: 110 is normal walking pace, the same as an unhasted player. 120
   is fast enough to be genuinely dangerous.
 - **`depth`** and **`rarity`**: where it lives and how often it shows up there.
-- **`experience`**: per player level, not a flat award.
+- **`experience`**: not a flat award. What the player actually gets is
+  `experience * the monster's level / the player's level`, so the same monster is
+  worth steadily less as the character grows.
 - **`sleepiness`**: how likely it is to be asleep when you arrive. 0 means it is
   always awake and coming for you.
 - **`blow`**: a list. Each entry is a `method` (how it attacks), an `effect`
   (what that does to you), and `damage` dice. Three blows means three attacks per
   turn. The available methods and effects are in `blow_methods.json` and
   `blow_effects.json` beside the monster file.
-- **`color`**: a single letter. `u` is brown, `W` white, `y` yellow. The base
-  game's own data is the colour chart.
+- **`color`**: a single letter, and the case matters. `u` is Umber (brown), `y`
+  is Yellow, `w` is White - `W` is Light Slate, which is what the soldier ant
+  actually is. `packages/core/src/color.ts` is the chart.
 
 ## What you should see
 

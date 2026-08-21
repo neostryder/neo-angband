@@ -98,8 +98,9 @@ core reprice fails a test rather than leaving the restoration stale.
 **Where a repricing is only partly measurable, say which half is which.** The
 mana and failure figures above are measured. The levels are not: 4.2 moved the
 Mage's level by 8 and the Rogue's by 1, and no rule says which of those a
-restored class should follow, so the restored classes move in the same direction
-by a smaller amount and the mod's README labels those values as judgement
+restored class should follow. So each restored class moves in the same direction
+by a defensible amount - the Priest by two levels, the Paladin and the Ranger by
+one, matching the Rogue - and the mod's README labels those values as judgement
 alongside the measured ones.
 
 **Adaptation proper is the last resort**, for the case where quoting is not

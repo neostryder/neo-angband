@@ -20,7 +20,7 @@ exist.
 | 1 | `engine` | a semver range over `ENGINE_VERSION` | **warns** for data, **refuses** code |
 | 2 | `modApi` | the plugin ABI, an integer | refuses outside the accepted window |
 | 3 | a patch target | one `patches` / `fieldPatches` / `removes` ref | **skips that op**, keeps the mod |
-| 4 | `ctx.core` | any of ~1800 engine exports | nothing. See below. |
+| 4 | `ctx.core` | any of the engine's ~1950 exports | nothing. See below. |
 
 ### 1. `engine` is a label on data and a gate on code
 
@@ -209,12 +209,12 @@ inventing its own rule; `docs/PLANNED.md` tracks which ones still do not.
 ### 4. `ctx.core` is not covered by any of the above, and that is the honest gap
 
 `ModPluginContext.core` is the **live core module namespace** - the whole engine,
-about 1900 runtime exports (1,898 as of 2026-08-12, up from 1,813 on 2026-08-09
-when the localization layer landed - MOD_REACH gap 14 - two more when record
-provenance did, gap 10, and one back down for the removal recorded below),
-deliberately not a
-curated slice (decision 18, and
-because a curated list is the thing that drifts).
+around 1,950 runtime exports, deliberately not a curated slice (decision 18, and
+because a curated list is the thing that drifts). The count is not maintained by
+hand: `packages/core/mod-api-surface.json` is the recorded surface and
+`mod-core-surface.test.ts` fails in BOTH directions against it, so a removal and
+an addition are each a visible diff rather than a number somebody has to
+remember to change here.
 
 `MOD_API_VERSION` does not version it. It versions the *shape of the plugin
 contract*: the members of `ModPlugin`, what the host passes, when it calls them.
@@ -350,7 +350,7 @@ behaves exactly as before when it is omitted.
 **This does not make `ctx.core` stable.** It makes breaking it visible to the
 person breaking it, in the repository where it happens, before it reaches a
 player's browser. The remaining pressure valve is `ModHooks`, which is a closed
-interface of seven members that the bug-fixes mod alone needed six of - if
+interface of eight members that the bug-fixes mod alone needed six of - if
 authors keep reaching past it into `ctx.core`, that is the signal to grow the
 seam, not to fence the namespace.
 

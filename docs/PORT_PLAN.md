@@ -2,10 +2,12 @@
 
 Status: ratified 2026-07-07; amended 2026-07-08 (decisions 13-15: total
 moddability guarantee, beyond-parity systems, networking seam; decisions
-16-21: saves and anti-cheese, scope discipline, everything-new-is-a-mod
-plus bundled mods, mod lifecycle and uninstall recovery, AI-first SDK,
-and the boot/HUD/settings UX). This is the governing plan for the port;
-changes land here first.
+16-21: saves and anti-cheese, scope discipline, everything-new-is-a-mod,
+mod lifecycle and uninstall recovery, an SDK an agent can author against,
+and the boot/HUD/settings UX). Later amendments are marked AMENDED in the
+decision they change, with their date; the largest is decision 18's, which
+ends bundled mods. This is the governing plan for the port; changes land
+here first.
 
 ## What this is
 
@@ -38,9 +40,10 @@ documentation lives here under `docs/`.
    follow from the same headless core.
 4. **Enhancement budget for v1**: UI-level quality-of-life only (message log,
    searchable knowledge, item comparison, recaps). Zero rules changes.
-   Refined by decision 18: these QoL enhancements ship as a BUNDLED QoL
-   mod, not baked into core. Core stays pure parity; the QoL mod is on by
-   default and fully removable.
+   Refined by decision 18: these QoL enhancements ship as a separate QoL
+   mod, not baked into core. Core stays pure parity. The mod is not bundled
+   and not on by default - see decision 18's 2026-08-20 amendment - and it is
+   fully removable.
 5. **Behavior model**: declarative-first. Effects, abilities, and generation
    parameters are schema-validated data interpreted by the engine; a
    capability-scoped sandboxed scripting layer is the escape hatch for exotic
@@ -65,8 +68,8 @@ documentation lives here under `docs/`.
 11. **License**: the upstream dual GPLv2-or-Angband-license statement is
     retained. See `LICENSE.md`.
 12. **Upstream tracking**: the parity/provenance ledger (`parity/`) maps every
-    port module to its upstream source so future upstream releases can be
-    diffed, triaged, and merged with AI assistance.
+    port module to its upstream source, so a future upstream release is diffed,
+    triaged and merged against a map instead of by re-reading the whole tree.
 13. **Total moddability guarantee** (ratified 2026-07-08): moddability is
     first-class over EVERY aspect of the game, not just the record types the
     base data happens to ship. Mods can add, patch, replace, and remove:
@@ -149,6 +152,27 @@ documentation lives here under `docs/`.
     may add, patch, replace, or remove anything - up to and including the
     rules that make the game Angband or even a roguelike. The engine warns
     and labels; it does not forbid.
+
+    **AMENDED 2026-08-20: NO mod is bundled, and no mod is enabled by
+    default.** Everything above about what a mod IS stands; what changed is
+    where a mod comes from and what a fresh install has switched on. A fresh
+    install is Angband 4.2.6 and nothing else. Each first-party mod is its own
+    repository with its own release tags and tests, and it arrives through the
+    mod manager's *Install a mod...* row over the same route, with the same
+    origin pinning and the same recorded digests, that anybody else's mod uses.
+    `mods/registry.json` names those repositories and carries no other fact
+    about them.
+
+    The reason is that "bundled and on by default" made the seams untestable.
+    A modding system whose author's own mods take a private path into the build
+    is a modding system nobody has exercised, and bundling hid every defect in
+    the install path behind the mods that never used it. Emptying the bundle is
+    what forced the download route, the folder code loader and the plugin ABI
+    to work. This supersedes "official mods are BUNDLED with the port and
+    enabled by default" above, and the same correction applies wherever the
+    word bundled appears in decisions 4, 23, 24 and 26 and in phase P8.
+    `docs/MODS.md` states the current rule; `docs/modding/MOD_COMPATIBILITY.md`
+    states what a mod is promised across engine releases.
 19. **Mod lifecycle and uninstall recovery** (ratified 2026-07-08): ratifies
     the six decisions in `docs/modding/MOD_LIFECYCLE.md` - string-id (not
     index) save serialization; namespaced per-mod save blocks with
@@ -227,10 +251,12 @@ documentation lives here under `docs/`.
     artifacts (the web/TypeScript platform, the single responsive surface, the
     save format); (b) the mod system itself; and (c) minor variations the
     maintainer has explicitly approved, each logged as a decision here. Anything not on
-    that approved-variation list must match the original. At release the two
-    bundled mods (neo-linoleum, QoL) are complete and default to active.
-    Certification is measured by the parity harness (decision 2, docs/
-    PARITY.md) plus a checklist of the approved variations.
+    that approved-variation list must match the original. Certification is
+    measured by the parity harness (decision 2, docs/PARITY.md) plus a
+    checklist of the approved variations. The release condition this decision
+    originally placed on the bundled mods is void: nothing is bundled, so the
+    parity bar is measured on the base game alone (decision 18's 2026-08-20
+    amendment).
 24. **Upstream tracking and the bug-fix mod** (ratified 2026-07-08): the port
     tracks upstream by TAGGED RELEASE, not tip-of-tree. The baseline is the
     4.2.6 tag and core stays faithful to it; the port does NOT cherry-pick post-tag
@@ -304,9 +330,11 @@ documentation lives here under `docs/`.
     not part of the upstream 4.2.6 tag, so it exists ONLY as a mod, never in
     the parity core. It ships as its own standalone `tiles`-shape pack (id
     `linoleum`), independent of and never combined with the QoL or `bug-fixes`
-    mods. Each bundled mod (decisions 18, 24) is a separate pack, installable
-    and removable on its own; `packages/linoleum` is the build-time converter
-    that produces the Linoleum tile pack, not an in-core feature.
+    mods. Each first-party mod (decisions 18, 24) is a separate pack from its
+    own repository, installable and removable on its own; `packages/linoleum`
+    is the build-time converter that produces a Linoleum tile pack, not an
+    in-core feature. The converted packs themselves live in the mod's
+    repository, not here.
 
 ## Phases
 
@@ -343,9 +371,9 @@ completeness where possible.
   Linoleum tile-pack support, AI-seam documentation, sample mods, the
   moddable-surface matrix audit (decision 13), and the modding SDK
   documentation set (`docs/modding/`).
-- **P8 - Borg**: a faithful port of the automatic player, packaged as a
-  BUNDLED MOD on the mod framework's perceive/act agent API rather than as
-  in-core code. It is the reference implementation and acceptance test of that
+- **P8 - Borg**: a faithful port of the automatic player, packaged as a MOD in
+  its own repository, on the mod framework's perceive/act agent API rather than
+  as in-core code. It is the reference implementation and acceptance test of that
   API - the most demanding "read the whole game, drive every command" consumer,
   so a Borg that plays faithfully proves the agent surface is complete. The
   same API hosts any third-party or AI-driven agent mod. Depends on the P7 mod

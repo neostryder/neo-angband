@@ -129,7 +129,7 @@ erase-does-not-claim, every panel with a background would be input-transparent
 across its own background, which is the defect, unchanged, wearing a new
 mechanism. Under erase-claims, the sample's panel becomes input-opaque with no
 change to the sample at all, and the radial dial that leaves its centre alone
-still lets the tap through. Both halves of the ruling hold.
+still lets the tap through. Both halves of the rule hold.
 
 ### Storage shape
 
@@ -185,8 +185,9 @@ entry per `pushRegion`. Counting what is actually in the tree:
 - **Base: 4.** They have no `spec` and no `paint`, so `baseRegionStack`
   (`regions.ts:413`) builds `LiveRegion`s directly, so they never write through
   `clipSurface` and never claim a cell. Core's own `render()` writes them.
-- **Core screens: 1 at a time**, from the 15 `pushRegion` sites in `birth.ts`,
-  `charsheet.ts`, `mod-browse.ts` and `overlay.ts`. Each is released on close.
+- **Core screens: 1 at a time**, from the 14 `pushRegion` sites in `birth.ts`,
+  `charsheet.ts`, `mod-browse.ts` and `overlay.ts`, plus one in
+  `region-runtime.ts`. Each is released on close.
   Nesting adds one per nested modal.
 - **Mod regions: 1.** `samples/sprite-inventory:carried` is the only `regions()`
   declaration in the tree; `samples/blueprint-view` and `samples/vitals-panel`
@@ -271,8 +272,8 @@ registration order:
 |---|---|---|---|---|
 | 0 | `term.ts:499` (GlyphTerm constructor) | `pointerdown` | canvas | delivers to the active `setActiveCellTap` owner; `preventDefault()` + **`stopImmediatePropagation()`** |
 | 1 | `main.ts:8634` | `pointerdown` | canvas | **tap-to-move** |
-| 2 | `main.ts:8689` | `contextmenu` | canvas | **desktop right-click → context menu** |
-| 3 | `main.ts:8731` | `pointerdown` | canvas | **touch long-press** (450 ms) → same context menu; a second finger while one is pending is ignored |
+| 2 | `main.ts:8689` | `contextmenu` | canvas | **desktop right-click -> context menu** |
+| 3 | `main.ts:8731` | `pointerdown` | canvas | **touch long-press** (450 ms) -> same context menu; a second finger while one is pending is ignored |
 | 4 | `main.ts:8758`, `:8759` | `pointerup`, `pointercancel` | canvas | cancel the long-press timer if the lifting pointer is the one that started it (#277); nothing else |
 | 5 | `main.ts:8760` | `pointermove` | canvas | for the pressing pointer only, cancel the long-press if that finger left the cell; **no hit-testing** |
 | - | `main.ts:4350`, `:4416`, `:7647` | `pointerdown` | canvas | transient per-loop taps (targeting, locate); every one raises `modalDepth` first (`main.ts:4298`) |
@@ -332,7 +333,7 @@ Region routing is added to handlers 1, 2 and 3 in the table above, all of them
 holds the tap, the region router is not consulted, is not reached, and cannot
 disagree.
 
-**Which is correct, not merely convenient.** Every one of the ~20
+**Which is correct, not merely convenient.** Every one of the 31
 `setActiveCellTap` call sites (`birth.ts`, `charsheet.ts`, `command-menu.ts`,
 `knowledge.ts`, `monster-list.ts`, `news.ts`, `overlay.ts`, `shop.ts`) is a core
 screen that owns the keyboard inside `openModal`. A screen that owns the keyboard
@@ -406,7 +407,7 @@ The path, end to end:
    modal owner, so it returns immediately without calling
    `stopImmediatePropagation`. **Unchanged.**
 3. `main.ts:8623` runs. `scoresOpen`/`dead`/`modalDepth` gates as today.
-4. `term.cellAt(ev.clientX, ev.clientY)` → `{ col, row }`, or `null` off-grid.
+4. `term.cellAt(ev.clientX, ev.clientY)` -> `{ col, row }`, or `null` off-grid.
    **Unchanged**: this call already exists, it only moves two lines earlier.
 5. **New:** `regionInputAt(col, row)` reads
    `ownership[row * ownershipCols + col]`. It is `-1`, so the function returns

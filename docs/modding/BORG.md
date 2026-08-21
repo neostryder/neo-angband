@@ -8,7 +8,13 @@ agent uses, with no privileged engine access.
 
 ## What it is
 
-The Borg is the flagship consumer of the agent seam (`AGENT_API_VERSION 1.0.0`):
+It lives in its own repository,
+[neo-angband-mod-borg](https://github.com/neostryder/neo-angband-mod-borg), with
+its own release tags and its own test suite, and it installs through the mod
+manager like any other mod. Nothing about it is compiled into the game.
+
+The Borg is the flagship consumer of the agent seam (`AGENT_API_VERSION`, frozen
+at 1.x and add-only, `packages/core/src/agent/types.ts`):
 
 - **PERCEIVE** - it reads the world only through `AgentView` (the read-only,
   serializable view facade), folding what it can see into its own remembered
@@ -26,28 +32,31 @@ untripped. A Borg run is replayable.
 
 ## How to run it
 
-The Borg is an in-process agent, enabled with a URL parameter (it boots straight
-into play with the default character - no manual character creation):
+Three steps, and the third is separate from the second on purpose.
 
-```
-https://<your-host>/?agent=borg
-```
+1. **Install it.** Escape menu -> **Mods** -> *Install a mod...*, pick **The
+   Borg** from the recommended list, press Enter.
+2. **Enable it**, then choose *Apply changes and reload*. The mod is now loaded
+   and has done nothing to your character.
+3. **Hand it the keyboard.** On the Borg's own screen, switch on **Let the Borg
+   play** (`borg.autoplay`, off by default). It takes over from the next turn.
 
-### Speed
+Installing a mod and giving away the keyboard are different decisions, which is
+why they are different switches. Only one autoplayer can hold the keyboard at a
+time: if a second mod also declares a controller, the host refuses it by name and
+says which one is already playing.
 
-Borgs are configurable-speed and **fast by default**. Add `?speed=`:
+It plays the same on every surface - browser, PWA, static self-host, desktop -
+because it arrives by the same route on all of them.
 
-| Value | Interval | Use |
-| --- | --- | --- |
-| `fast` (default) | 40 ms/turn | watch it rip through a level |
-| `normal` | 120 ms/turn | follow its decisions |
-| `slow` | 400 ms/turn | study one move at a time |
-| a number (10-5000) | that many ms | custom |
+### `?agent=` is a different thing
 
-Example: `?agent=borg&speed=slow`.
-
-It plays identically on every surface (browser, PWA, static self-host, desktop),
-since the Borg is part of the same bundle.
+The URL parameter `?agent=<id>` runs an agent **compiled into the build**, and
+the only one there is `demo-wanderer`, a few lines that walks in a circle. The
+port ships no built-in autoplayer, so `?agent=borg` matches nothing. The
+parameter is useful for exercising the controller seam without installing
+anything, and `?speed=fast|normal|slow` or a raw interval in milliseconds (10 to
+5000, default 120) sets its tick rate.
 
 ## Fidelity and current limitations
 
@@ -61,25 +70,33 @@ internals are supplied to the (trusted, in-process) Borg by the host rather than
 read from the view. Where a datum is not yet wired, the Borg degrades to a
 faithful conservative default rather than guessing:
 
-- **Monster race data** (blow dice, spell frequency, spell power) - wired from
-  the live monster registry via `makeCoreResolvers`, so danger sensing is exact.
-- **Artifact activation identity** and the **in-shop signal** - currently on
-  their conservative defaults (no artifact-activation attacks; town shopping is
-  driven by flow-to-shop rather than in-shop interaction). Wiring these is a
-  follow-up.
-- **Hypothetical-loadout power deltas** - the wear/swap/buy/sell paths use a
-  conservative "no gain unless proven" default, because scoring a hypothetical
-  inventory would require re-deriving the self-model on a loadout the frozen view
-  cannot represent. The Borg fights, flows, heals, and dives faithfully; only its
-  gear/shopping optimization is cautious until a loadout evaluator is added.
+- **Monster race data** (blow dice, spell frequency, spell power) is wired from
+  the live monster registry through `makeCoreResolvers`, so danger sensing is
+  exact - and a mod's monsters are read by the same lookup as core's.
+- **Artifact activation identity** and the **in-shop signal** are wired too. The
+  Borg can tell whether a worn item grants a named activation and whether it is
+  charged, by walking the item's artifact, ego or kind back to the `Activation`
+  record that grants it - the same precedence `obj-make.c` applies. It can tell
+  which shop it is standing in, which is what lets the town-flow ladder's
+  shop-interaction steps fire at all.
+- **Hypothetical-loadout power deltas** are the one that is still on its
+  conservative default. The wear/swap/buy/sell paths assume no gain unless it is
+  proven, because scoring a hypothetical inventory needs the self-model
+  re-derived on a loadout the frozen view cannot represent - a core capability
+  that does not exist yet. The Borg fights, flows, heals, shops and dives
+  faithfully; only its gear *optimization* is cautious.
 
-None of these limits stop the Borg from playing a full game; they bound how
-aggressively it optimizes edge decisions.
+The mod's own `PLANNED.md` is where this list is kept current, since the mod
+ships on its own schedule. None of it stops the Borg playing a full game; it
+bounds how aggressively it optimizes edge decisions.
 
 ## For mod authors
 
 The Borg is the reference implementation for building your own agent: an
-`AgentController` is just `(view, act) => AgentCommand | null`. See
-the `neo-angband-mod-borg` repository for a large worked example and `packages/web/src/agents/demo.ts`
-for a minimal one. Because the contract is frozen and capability-gated, the same
+`AgentController` is just `(view, act) => AgentCommand | null`, and a mod offers
+one from `ModPlugin.controller` (see `PLUGINS.md`). The
+`neo-angband-mod-borg` repository is the large worked example;
+`packages/web/src/agents/demo.ts` is the minimal one. A controller requires the
+`command:add` capability in the manifest, because a controller that cannot act is
+not a controller. Because the contract is frozen and capability-gated, the same
 shape runs in-process (like the Borg) or sandboxed in a Web Worker.

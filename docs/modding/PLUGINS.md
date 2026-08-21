@@ -2,7 +2,7 @@
 
 A mod that only changes records needs no code: drop `manifest.json` plus one
 `<record-type>.json` per thing you change into a folder and you are done (see
-[MODS.md](MODS.md)). This document is for the other kind: a mod that changes
+[../MODS.md](../MODS.md)). This document is for the other kind: a mod that changes
 *behaviour*.
 
 > **The mod API is UNSTABLE until 1.0.** It will change and your plugin will stop
@@ -86,15 +86,26 @@ export default {
 };
 ```
 
-Both members are optional. A plugin that declares neither is refused, because a
-mod with no code simply ships no `plugin.js`.
+Every member is optional, and the two above are only the two most common. The
+full set is `hooks`, `register`, `controller`, `frontend`, `hud`, `menu`,
+`screen` and `regions`, plus `migrateBag` and `uninstall`. A plugin is refused
+only when ALL eight of the first group are absent, because a mod with no code
+simply ships no `plugin.js` - so a plugin whose only member is `frontend`, or
+`controller`, or `regions`, loads fine. `migrateBag` deliberately does not count
+as code of its own: a plugin that can only migrate a bag it never writes has
+nothing to migrate.
 
 ## Your own saved data, and changing its shape
 
-You may keep whatever JSON you like in the player's save, under your mod's id
-(`ctx.state.mods[ctx.id]`). The engine round-trips it verbatim and never reads
-it. It is stored with a `schema` number, whatever your manifest's `saveSchema`
-was when it was written.
+You may keep whatever JSON you like in the player's save, under your mod's id.
+The engine round-trips it verbatim and never reads it. It is stored with a
+`schema` number, whatever your manifest's `saveSchema` was when it was written.
+
+**The bag is not on `ctx.state`.** `GameState` does not carry the bags at all;
+they live on the `StartedGame` the host holds, which is what `saveGame` reads.
+Your handle on your own bag is the `data` argument `migrateBag` is given, and the
+value the host writes back for you. Reaching for `ctx.state.mods` finds nothing,
+because there is no such field.
 
 When you change the SHAPE of that data, bump `saveSchema` and ship a
 `migrateBag`:
@@ -150,13 +161,14 @@ What `ctx` carries:
 | `engine` | the engine version, if you want to adapt rather than refuse |
 | `flags` | **your** resolved rule toggles: `choices[flag] ?? rule.default`, sliced to the rules your own manifest declares |
 | `core` | the live engine namespace: core's entire public API |
-| `state` | the live `GameState` (present in `register`, absent in `hooks`) |
+| `state` | the live `GameState`. Handed to `register`, `migrateBag`, `controller` and every display seam; **never** to `hooks`, because the host composes hooks before a game exists |
 | `assetUrl` | `(path) => Promise<string \| null>`, a URL for one of *your* files |
 | `data` | your own record files, parsed, keyed without `.json` |
 | `prefs` | `{ get(), set(value) }`, one JSON value of **yours**, kept outside every save |
 | `newCharacter` | whether this session's character was just created, rather than loaded |
-| `registries` | the **bound** content registries: every race, kind, feature, trap, store and projection this session actually runs on (absent during content composition) |
+| `registries` | the whole bound `CoreRegistries`: every race, kind, feature, trap, store, projection, room, profile, constant, quest and hint this session actually runs on (absent during content composition) |
 | `log` | a diagnostic line; the host decides where it goes |
+| `backupFolder` | present only when your manifest declared `backup:folder` and the platform can actually offer a folder picker; absent everywhere else, so test for it rather than assuming it |
 
 `flags` is sliced per mod on purpose: a mod must not be able to read or act on
 another mod's toggles, or its behaviour would silently depend on which other mods
@@ -325,7 +337,7 @@ Your mod has two places to put data and they are not interchangeable.
 
 | | lives in | dies when | for |
 |---|---|---|---|
-| save bag (`state.mods[id]`) | the character's save file | that character does | what happened to this character |
+| your save bag (through `migrateBag`) | the character's save file | that character does | what happened to this character |
 | `ctx.prefs` | the player's install | never, until you clear it | what this player likes |
 
 `prefs` is one JSON value, replaced whole, scoped to your mod's id by the host:
@@ -393,13 +405,20 @@ repeating the browser's message.
 
 ## Version contract
 
-`modApi` is an integer and it must match the host **exactly**. There is no range,
-because a range would imply a compatibility promise that does not exist before 1.0.
+`modApi` is an integer, and the host accepts a **window**: everything from
+`MOD_API_MIN` up to `MOD_API_VERSION` inclusive
+(`packages/web/src/mod-plugin.ts`). A plugin inside the window but below the
+current version loads and is reported as DEPRECATED, which is what gives its
+author a release's warning before the number that would strand it moves. Today
+`MOD_API_MIN` and `MOD_API_VERSION` are both `1`, so the window is one value wide
+and an exact match and a window are indistinguishable from the outside - but the
+mechanism is the window, and `MOD_COMPATIBILITY.md` is where the two-release rule
+that rides on it is written down.
 
-Every change to the ABI bumps it, and every plugin then stops loading until its
-author republishes. When that happens the mod manager names both numbers and which
-side is behind: a too-new mod needs a newer game, a too-old one needs a mod
-update, and "incompatible" on its own sends the player to the wrong place.
+Outside the window the plugin does not load, and the mod manager names both
+numbers and which side is behind: a too-new mod needs a newer game, a too-old one
+needs a mod update, and "incompatible" on its own sends the player to the wrong
+place.
 
 It is declared in the **manifest**, not only inside `plugin.js`, so an incompatible
 plugin can be refused *before* it is imported. A version check inside the module
@@ -741,7 +760,7 @@ and leaves the rest of the screen to the game.
 
 The third owner seam, and the one that is different in kind. A HUD section is
 **drawn**; a menu is **asked**. So the boundary is not `present(frame)` but
-`ask(question) → answer`, and taking a question means taking its input too: a
+`ask(question) -> answer`, and taking a question means taking its input too: a
 presentation that could not accept a choice would not be a presentation of a
 menu.
 
@@ -750,7 +769,7 @@ menu(ctx) {
   return {
     ask(question) {
       if (question.id !== "core:game-menu") return undefined;   // decline
-      return drawDialAndWait(question);                          // → MenuAnswer
+      return drawDialAndWait(question);                          // -> MenuAnswer
     },
   };
 }
@@ -892,7 +911,7 @@ under a table. A `text` block's `wrap` is the same idea for prose: the width
 a clamp and never a minimum. Ignore all four if you lay things out yourself.
 
 **Not every screen has a model yet.** `MODELLED_SCREENS`
-(`packages/web/src/screen-view.ts`) names the ones that do, today thirty-seven: the
+(`packages/web/src/screen-view.ts`) names the ones that do, today thirty-nine: the
 inventory, the equipment, the quiver, the object list, the monster list, the
 message history, the
 player history, the object recall, the object comparison, the monster recall, the
@@ -1233,8 +1252,10 @@ the root owns input; score pages, modals, and run interruption retain their
 existing literal-key gates, so a mod must not use injected input to outrank the
 player's chosen mapping or an active screen.
 
-`register` reaches fifteen registries, each gated by a capability your manifest must
-declare **and** the player must consent to:
+`register` reaches eighteen registries, each gated by a capability your manifest
+must declare **and** the player must consent to. `REGISTRY_CAPABILITIES`
+(`packages/core/src/mod/registry-host.ts`) is the one place the vocabulary is
+written down, and the table below is a reading of it:
 
 | Capability | What it opens |
 |---|---|
@@ -1253,6 +1274,7 @@ declare **and** the player must consent to:
 | `registry:randart` | how RANDOM artifacts are built: `randart.abilities` (what a power does), `.prep` (what an item class starts with), `.census` (which frequency bucket it feeds) and `.redundancy` (whether an activation duplicates something the artifact already has). Shipping a *fixed* artifact needs no capability; this is the generator |
 | `registry:rune` | what a RUNE is: the unit of object knowledge. `rune.desc` (the recall line), `.name` (the display decoration), `.knows` / `.learn` (the knowledge pair, handed the player so YOUR mod keeps the store, since core never grew a slot for it), `.objectHas` (whether an item carries it) and `.modMessage` (the "You feel stronger!" line, keyed on the modifier). Plus `.contribute`, which is how your rune gets into the list every consumer enumerates, and without it the six tables above are handlers nothing ever calls |
 | `registry:vocab` | declare genuinely new vocabulary (flags, stats, mod-coined kinds) and store per-entity values |
+| `registry:message` | message TYPES: `messages.define(name, sound?)` coins one and returns its number, `.lookup(name)` finds an existing one, `.types()` lists what has been added, `.addSounds(...)` attaches sounds. Adding a `message_type.json` RECORD needs no capability, the same way adding an item does; this is the code half, for a type your own plugin raises |
 | `registry:menu` | rewrite one stable menu id's semantic rows. `menus.handlerFor(id)` returns the earlier transformer, so a later mod wraps it before calling `menus.register(id, ...)`; a throw or a non-row-array result is reported against that mod and leaves the original menu usable |
 | `registry:tiles` | supply tiles for content the loaded tile pack does not draw, which in practice means content a mod added. `tiles.register(filler)` installs one filler per mod; every registered filler runs, in load order, after the pack's own prefs and every mod's. It can only write where NOTHING is assigned, so it cannot repaint the tile set even by mistake and two mods cannot fight over an index. See [Filling tiles](#filling-tiles) |
 
@@ -1292,7 +1314,7 @@ way a handler can touch the live `rng`, `chunk` and `player` deep inside a turn
 (the reasoning is in `packages/core/src/mod/registry-host.ts`, under WHY
 IN-PROCESS AND TRUSTED). Nothing reachable from inside that namespace can be
 withheld from code already inside it, and a read-only view over `ctx.registries`
-would close three of the fourteen twins above while reading as though it had
+would close three of the fifteen twins above while reading as though it had
 closed the class. `packages/web/src/capability-gate-reach.test.ts` measures both
 halves - the gate refusing, and the twin reaching - so this page cannot quietly
 drift into claiming containment.

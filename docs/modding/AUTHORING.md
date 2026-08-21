@@ -338,9 +338,11 @@ order records are bound in ever changes, it fails and names the reason.
 
 ## Shipping resources: sounds, a font, pref files, help pages, art
 
-Records are not the only thing a mod folder can hold. Five other categories are
+Records are not the only thing a mod folder can hold. Six other categories are
 declared in one `resources` array in your manifest, each naming a `kind` and a
-`path` **inside your mod folder**:
+`path` **inside your mod folder**. The kinds are `sound`, `font`, `prefs`,
+`help`, `art` and `locale` (`ResourceKind`,
+`packages/mod-sdk/src/resources.ts`):
 
 ```json
 "resources": [
@@ -408,8 +410,12 @@ Three checks run, and the last one can only run on the player's machine:
 3. **The machine.** Whether this build can play `.mp3` or `.ogg` at all, and
    whether your font JSON is structurally a font. Only opening the file can say.
 
-The bundled `demo-resources` mod is a working example of four of the six, and
-`packages/web/src/mod-resources.node.test.ts` reads it from disk in CI.
+`demo-resources` is a working example of four of the six, and
+`packages/web/src/mod-resources.node.test.ts` reads it from disk in CI. It is not
+a mod you can install: the `demo-*` mods under `packages/web/mods/` are framework
+proofs compiled into DEV builds only, and discovery strips them from a release
+build (`isShippedMod`, `packages/web/src/mod-store.ts`). Read it in this
+repository rather than looking for it in the game.
 
 ---
 
@@ -435,7 +441,7 @@ the same fact and the check refuses them when they disagree: the slot decides
 which language your file *is offered as*, and the tag decides what it *is*.
 
 **You do not have to translate everything.** A missing id falls back through the
-region (`pt-BR` → `pt`) to English, so a partial catalogue reads as part English
+region (`pt-BR` -> `pt`) to English, so a partial catalogue reads as part English
 rather than as a screen of blanks.
 
 ### Patterns, not sentences you glue together
@@ -536,8 +542,6 @@ old entries are then consumed, so loading again changes nothing.
 
 ---
 
-## Knowing which mod a record came from
-
 ## Front-end groundwork
 
 The host draws through a renderer-neutral `GridSurface`, and its existing canvas
@@ -572,16 +576,24 @@ without retaining live game state.
 
 Input follows the same staged rule. `UiInput` is available to host code through
 the one input door and can represent a continuous direction (vector, magnitude,
-angle) without translating it to a keyboard arrow. There is no front-end or
-input-binding plugin member yet: do not depend on one until its capability and
-disk-loaded integration path ship. Player keymaps keep precedence over any later
+angle) without translating it to a keyboard arrow. A front-end member DOES
+exist - `ModPlugin.frontend?(ctx)`, gated by `display:replace`, and pointer input
+arrives per region through `RegionDeclaration.input` - so what is still absent is
+narrower than "no seam": there is no plugin member for rebinding KEYS, and
+`input-door.ts` is host infrastructure rather than a capability. Do not build on
+key rebinding until it has one. Player keymaps keep precedence over any later
 input consumer while the root owns input; an active modal, score screen, or run
 interruption continues to receive the player's literal key first.
 
-Every record the game binds carries `from` when a mod was involved:
+## Knowing which mod a record came from
+
+Every record the game binds carries `from` when a mod was involved. Reach a bound
+record the way the binding exposes it - a monster race through the binding's
+`races` array, an object kind through `registries.objects.kinds`, and so on;
+there is no single `lookup` helper for every record type:
 
 ```js
-const race = ctx.core.lookupMonster(reg, "Modberry Slime");
+const race = someBoundRace;   // e.g. from ctx.registries
 race.from;            // { owner: "demo-modtest" }        - a mod ADDED it
 someCoreRace.from;    // { owner: "core", modifiedBy: ["qol"] } - a mod CHANGED it
 anotherCoreRace.from; // undefined                          - core's, untouched

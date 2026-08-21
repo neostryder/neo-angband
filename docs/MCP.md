@@ -28,7 +28,7 @@ wrap. Point a client at it:
   "mcpServers": {
     "neo-angband": {
       "command": "node",
-      "args": ["C:/Repositories/neo-angband/packages/mcp/dist/server.js"]
+      "args": ["/path/to/neo-angband/packages/mcp/dist/server.js"]
     }
   }
 }

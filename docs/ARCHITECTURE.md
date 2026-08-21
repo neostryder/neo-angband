@@ -11,6 +11,7 @@
 | `@rpgm-tools/neo-angband-cli` | Terminal front-end and dev harness (golden scenarios, stats runs). |
 | `@rpgm-tools/neo-angband-desktop` | Optional Electron desktop wrapper around the same web bundle. |
 | `@rpgm-tools/neo-angband-linoleum` | Linoleum loose-pack tile format: the converter (Node) plus the format readers and portable md5 the web renderer uses. |
+| `@rpgm-tools/neo-angband-mcp` | Model Context Protocol server: plays the game through the frozen agent API. See [MCP.md](./MCP.md). |
 | `reference/` | The original C tree at parity baseline 4.2.6, buildable, read-only. |
 | `parity/` | Machine-readable provenance ledger mapping port modules to upstream sources. |
 
@@ -25,8 +26,8 @@ mechanisms this port preserves as its public API:
   state-change events; front-ends subscribe. The engine holds no UI
   references.
 
-Everything that talks to the engine - the web UI, the CLI, the future Borg,
-scripted plugins - speaks through these two seams.
+Everything that talks to the engine - the web UI, the CLI, the Borg autoplayer,
+the MCP server, scripted plugins - speaks through these two seams.
 
 ## The screen, by name
 

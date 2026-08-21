@@ -17,10 +17,10 @@ Each one teaches exactly one idea and ends with something you can see on screen.
 | | Tutorial | What you learn | Files |
 | --- | --- | --- | --- |
 | 1 | [Change one thing](01-tweak-a-value.md) | Editing a value the game already has | 2 |
-| 2 | [Add an item](02-add-an-item.md) | Adding something the game has never seen | 2 |
-| 3 | [Add a monster](03-add-a-monster.md) | The same move in another file, plus the one gotcha nothing warns you about | 2 |
+| 2 | [Add an item](02-add-an-item.md) | Adding something the game has never seen | 3 |
+| 3 | [Add a monster](03-add-a-monster.md) | The same move in another file, plus the one field that will bite you | 2 |
 | 4 | [Change a spell](04-change-a-spell.md) | Reaching into a class, and what a positional path costs | 2 |
-| 5 | [Hook behaviour](05-hook-behaviour.md) | Your mod running code, in eleven lines | 2 |
+| 5 | [Hook behaviour](05-hook-behaviour.md) | Your mod running code, in ten lines | 2 |
 | 6 | [Add an option](06-add-an-option.md) | Letting the player switch your change on and off | 2 |
 | 7 | [Add an artifact](07-add-an-artifact.md) | Building on top of an item the game already has | 2 |
 
@@ -35,7 +35,7 @@ game data on every test run, including a check that each one would be accepted
 by the same folder reader the game itself uses. If a tutorial ever stops working,
 the build fails before you find out the hard way.
 
-**You can run them without typing anything.** Copy any of the six folders out of
+**You can run them without typing anything.** Copy any of the seven folders out of
 `samples/tutorials/` into the `mods/` folder beside the desktop build (or point a
 browser at `samples/tutorials/` with **Choose a mods folder...**), and they turn
 on from the Mods screen like any other mod. They are named `tutorial-01-...` to

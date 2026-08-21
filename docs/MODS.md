@@ -157,12 +157,14 @@ core are the upstream parity pieces (the vanilla town and its shops, the
 win condition), implemented through these same surfaces so mods can
 overhaul them. The matrix asserts what mods CAN do, not what core ships.
 
-> The matrix is the TARGET. Measured against the code on 2026-07-29, the "Add"
-> and "Patch/replace" columns hold for 24 of the 44 record files and are silently
-> inert on the other 20; the "Extend" column holds for effects, room builders,
-> and player commands only, and only for a mod compiled into the web bundle;
-> Shops, Sounds, UI panels, and Game constants have no seam at all. Row by row,
-> with citations: `docs/modding/MOD_REACH.md`.
+> The matrix is the TARGET, and the measured state moved a long way past the
+> figures this notice used to quote. Today the "Add" column holds for 41 of the
+> 44 record files and "Patch/replace" for 43 of 44; the "Extend" column reaches
+> eighteen capability-gated registries, and it reaches them from a mod installed
+> from disk or from a repository, not only from a mod compiled into the web
+> bundle. What is still absent, and which rows are thinner than they look, is
+> row by row with citations in `docs/modding/MOD_REACH.md`. Read that page for
+> the current numbers rather than trusting a figure quoted here.
 
 | Surface | Add | Patch/replace | Extend |
 |---|---|---|---|
@@ -189,16 +191,26 @@ state of each noted):
 - Every registry accepts runtime registration and is keyed by namespaced
   string IDs, never closed enums. Upstream's compiled dispatch tables
   (effects, commands) are ported as open handler registries.
-  *Measured: true for effects (112 codes), room builders (19), and player
-  commands (43). Not true for monster blow effects, projection-to-feature,
-  projection-to-object, or store behaviour, which are `switch` statements, nor
-  for the 31 generated `as const` tables.*
+  *Measured: true for effects and their descriptions, room builders, player
+  commands, dungeon profiles, monster blow effects, monster turns, store
+  behaviour, projections, glyphs, runes, tvals, randarts, messages, menus, UI
+  entries, tiles and the mod vocabulary - eighteen capability-gated registries
+  in all
+  (`REGISTRY_CAPABILITIES`, `packages/core/src/mod/registry-host.ts`). Still
+  not true for the generated `as const` tables, and a dispatch that never grew
+  to eight cases was never in the census's field of view. Counts per registry:
+  `docs/modding/MOD_REACH.md`.*
 - New record TYPES are supported: a pack may declare its own schemas, and
   scripted plugins may register loaders for them. The engine treats the base
   game's record types as pack-zero declarations, not engine specials.
   *Measured: the type list really is open (any `*.json` stem composes) and core
-  really is pack zero with no special casing. Per-pack SCHEMAS do not exist -
-  there is no record-schema validation at all.*
+  really is pack zero with no special casing. Record checking is real and runs
+  on the LOAD path, not only in the author's tool: `checkRecords` over
+  `RECORD_BLUEPRINTS` derives what a record needs from core's own shipped data
+  (`packages/mod-sdk/src/validate.ts`). It reports and never refuses, because
+  the blueprint is a measurement of core's data rather than a closed schema, so
+  a mod adding a new tval is doing something legal. What does not exist is a
+  pack declaring a schema of its OWN for a record type it invents.*
 - The base game must consume every surface through the same public API mods
   use. If core needs a private hook, the hook becomes public API instead.
   *Measured, and now structurally: the first-party mods are built OUTSIDE this
@@ -396,9 +408,12 @@ the documentation alone.
   bundles packs; validation errors point at the offending line of the
   author's JSON.
 - Sample mods maintained in-repo as living documentation and CI-tested
-  against every engine change, so the SDK cannot silently rot. The QoL and
-  bug-fixes mods are the largest such examples; neo-linoleum's sources and
-  tests are here too, though the mod itself installs from its own repository.
+  against every engine change, so the SDK cannot silently rot. They live in
+  `samples/`: the seven tutorial mods under `samples/tutorials/` (one per
+  tutorial, each the finished form of what the page builds), plus four
+  front-end samples - `blueprint-view`, `command-dial`, `sprite-inventory` and
+  `vitals-panel`. The first-party mods are NOT here; each is its own
+  repository, which is the point of them.
 - AI-agent accessibility (decision 20): machine-readable JSON Schemas for
   every record type, a generated registry/handler reference, a single-file
   agent context document (an `llms.txt`-style digest of the whole SDK),
