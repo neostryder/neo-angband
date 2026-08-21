@@ -24,6 +24,23 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
+### Added
+
+- **A mod's monster or item is now drawn DISTINCTIVELY in the loose-tile engine,
+  not just drawn.** 0.22.0 gave an added creature the tile of its nearest kin,
+  which stopped it being a coloured letter in a tiled dungeon and left the other
+  half: it was pixel-for-pixel its donor, so nobody could tell an added ant from
+  the base game's. The tilesheet engine cannot do better, because its tiles are
+  cells of a fixed atlas with no spare cell for a variant. The loose engine can,
+  and now does: it allocates a slot of its own that draws the donor's image with
+  its hue rotated. Hues are handed out per donor, cycling through eight, so the
+  first eight added creatures sharing one base differ from each other as well as
+  from core's art. Only records a mod ADDED are touched, so an unmodded game's
+  drawing is unchanged; a pref file naming a specific asset still wins; and
+  nothing reads the RNG, the clock or the save, so the colours are the same every
+  launch. A hue rotation is a no-op on a fully grey donor, which is a stated limit
+  rather than a defect to chase - see [docs/LINOLEUM.md](docs/LINOLEUM.md).
+
 ## [0.22.0] - 2026-08-20
 
 Current state of the project at version `0.22.0` - the mod-resilience release.
