@@ -503,10 +503,10 @@ describe("monster_attack_monster (mon-attack.c L765)", () => {
  * SHATTER's two gates and their boundaries (mon-blows.c L1086-1115).
  *
  * The M-1 deps-parity proof above holds only for the one config it ran: damage
- * 50, target surviving, radius 4. Codex flagged the untested sub-paths when it
- * approved that proof -- thrust_away firing vs not firing, the target dying
- * mid-blow, and radius variation -- and warned against letting the approval read
- * as exhaustive. This closes that debt.
+ * 50, target surviving, radius 4. Three sub-paths were left untested by it --
+ * thrust_away firing vs not firing, the target dying mid-blow, and radius
+ * variation -- so that proof must not be read as exhaustive. This closes the
+ * gap.
  *
  * The C, in order, after adjust_dam_armor:
  *
