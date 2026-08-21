@@ -2,7 +2,7 @@
 
 > ## New to this? Don't start here.
 >
-> **[Make a mod](tutorials/README.md)** is the front door: six short tutorials,
+> **[Make a mod](tutorials/README.md)** is the front door: seven short tutorials,
 > the first of which is two files and takes about five minutes. This page is the
 > reference: it enumerates, it does not teach.
 
@@ -393,7 +393,15 @@ Two levels:
    `player` access deep inside the turn. The sandboxed tier keeps the
    reactive perceive/act/event surface and none of the registries.
    Trust is explicit: the plugin declares each `registry:*` capability
-   in its manifest and the user consents at install.
+   in its manifest and the user consents at install. **Explicit is not
+   the same as enforced**, and the difference is worth knowing before
+   building on it: the capability gates the facade, while the same live
+   registries also arrive ungated through `ctx.core`, `ctx.state` and
+   `ctx.registries`, because a mod is meant to be able to read
+   everything without declaring anything. PLUGINS.md's
+   "What a capability gates, and what it does not" has the table of
+   twins and the reason the boundary is the install rather than the
+   list.
 
 > **This limitation is CLOSED, and what follows is what replaced it.** Until the
 > plugin ABI landed, both code paths were build-time Vite globs over

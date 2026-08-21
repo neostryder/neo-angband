@@ -87,6 +87,29 @@
  * conflict report covers what it touches. The untrusted Worker tier keeps the
  * reactive perceive/act/event surface (W2.1) and none of this.
  *
+ * WHAT THE GATE IS, SAID EXACTLY, because the difference decides what the
+ * consent screen is allowed to promise. The gate is on the FACADE, not on the
+ * registry behind it. Every target below is also reachable from the same plugin
+ * with no capability check: `ctx.registries` carries the bound CoreRegistries
+ * (so rooms, profiles and the glyph table), `ctx.state` carries the live
+ * GameState (so blows, stores, projections, ui-entry, command verbs and the
+ * monster hook) and `ctx.core` is the module namespace (so the module-level
+ * tval, rune, randart, effect-info, message-type and sound-pref registries -
+ * and this function, which grants everything when called with no capability
+ * set). Those are the same objects by identity, not copies.
+ *
+ * That is inherent in running in-process rather than a hole to plug: nothing
+ * reachable from inside the namespace can be withheld from code already inside
+ * it, and a read-only view over one of the three doors would close a third of
+ * the twins while reading as though it had closed the class. So the honest
+ * account of what a registry:* capability buys is: the player sees the declared
+ * list before consenting, the conflict report and the manager row are built from
+ * it, and an author who forgot a domain gets a named throw instead of a silent
+ * surprise. The boundary that actually holds is the INSTALL - a mod is code and
+ * nothing reviews it (packages/web/src/mod-consent.ts). Both halves are measured
+ * in packages/web/src/capability-gate-reach.test.ts, and the prose a mod author
+ * reads is docs/modding/PLUGINS.md, "What a capability gates".
+ *
  * Layering: core owns this facade because it gates access to core registries;
  * the HOST (web/cli) constructs it from the live registries and hands it to a
  * loaded trusted plugin. Capabilities are the same structural AgentCapabilities

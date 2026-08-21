@@ -585,14 +585,25 @@ export function rowDetail(
     /* "(content only)" was wrong for a plugin that requests nothing, and a folder
      * plugin is exactly that case: it runs code but asks for no registry domain,
      * so the row said "content only" about a mod whose whole substance is code.
-     * The parenthetical now describes the mod in front of the player. */
+     * The parenthetical now describes the mod in front of the player.
+     *
+     * AND IT SAYS THE CODE PART OUT LOUD, because "asks for no permissions" on
+     * its own reads as "cannot do anything" and that is not what an empty
+     * capability list means. A plugin is handed `ctx.core` (the live engine
+     * namespace), `ctx.state` and `ctx.registries` with no capability check at
+     * all, so a mod declaring nothing still reaches the registries the
+     * capability-gated facades guard - see docs/modding/PLUGINS.md, "What a
+     * capability gates". The list is what the mod DECLARED, and the code is what
+     * the player is actually trusting. Warning colour rather than dim for the
+     * same reason: it is the one row here that a player would otherwise read as
+     * a reassurance. */
     below.push(
       ...wrapped(
         m.kind === "content"
           ? "Asks for no permissions - it only adds and changes game contents."
-          : "Asks for no permissions.",
+          : "Asks for no permissions, but it still runs its own code in the game.",
         w,
-        C_DIM,
+        m.kind === "content" ? C_DIM : C_WARN,
       ),
     );
   } else {
@@ -782,10 +793,24 @@ export function capabilityConsentScreen(m: CatalogMod): ScreenView {
         kind: "lines",
         lines: [
           { text: "", color: C_FG },
-          ...(hasElevatedCapability(m.capabilities)
+          /* THE IN-PROCESS LINE IS ABOUT THE CODE, NOT ABOUT THE LIST above it.
+           *
+           * It used to appear only when some requested capability was elevated,
+           * which made it read as a consequence of the list - so a code mod
+           * asking for nothing but `registry:vocab`, `registry:tiles` or
+           * `backup:folder` got a consent screen with no such line, and the
+           * player was left to infer that a modest list meant modest access. It
+           * does not. A plugin receives `ctx.core` (the whole live engine
+           * namespace, including its module-level registry singletons),
+           * `ctx.state` and `ctx.registries` with no capability check, so what
+           * the declared domains bound is what the mod SAID it would override,
+           * not what its code can reach. See docs/modding/PLUGINS.md, "What a
+           * capability gates". Any mod that ships code gets the line; a content
+           * pack, which is validated data and executes nothing, still does not. */
+          ...(m.kind !== "content" || hasElevatedCapability(m.capabilities)
             ? [
                 {
-                  text: "This mod can change core game behavior in-process. Only enable mods you trust.",
+                  text: "This mod runs its own code inside the game and can change how the game behaves. Only enable mods you trust.",
                   color: C_DANGER,
                 },
               ]
