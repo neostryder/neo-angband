@@ -17,6 +17,7 @@ import {
   MOD_API_VERSION,
   type BackupFolder,
   type ModCoreApi,
+  type ModInstallOutcome,
   type ModPluginContext,
   type ModUi,
 } from "./mod-plugin";
@@ -24,6 +25,7 @@ import { diskPacks } from "./disk-packs";
 import { modPrefs, type ModPrefs } from "./mod-prefs";
 import { createBackupFolder } from "./mod-backup";
 import { createModUi, PANEL_CAPABILITY } from "./panel-runtime";
+import { createModInstaller, INSTALL_CAPABILITY, type InstallDoorDeps } from "./install-runtime";
 import type { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /**
@@ -79,6 +81,7 @@ export function modPluginContext(
   const assets = own.assetUrl;
   const backupFolder = backupFolderFor(id, session);
   const ui = modUiFor(id, session);
+  const installMod = installerFor(session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
   const registries = session.registries ?? boundRegistries;
@@ -104,6 +107,7 @@ export function modPluginContext(
     },
     ...(backupFolder ? { backupFolder } : {}),
     ...(ui ? { ui } : {}),
+    ...(installMod ? { installMod } : {}),
     /* Spread rather than set to undefined, so `"registries" in ctx` answers the
      * same question as `ctx.registries !== undefined` - the shape `state` uses. */
     ...(registries ? { registries } : {}),
@@ -144,6 +148,42 @@ function modUiFor(id: string, session: ModSessionFacts): ModUi | undefined {
   return createModUi(id);
 }
 
+/**
+ * `ctx.installMod`: present only when this mod's manifest declared `mod:install`
+ * AND the host has told this module where installs go.
+ *
+ * TWO REASONS FOR ABSENCE, like `backupFolder` and unlike `ui`. The second one
+ * is the one that matters for a test: `installDoor` is latched by the boot path,
+ * so a context built by a unit test has no install env and gets no door - which
+ * is the right answer, since an install needs IndexedDB and a network fetch
+ * primitive that a test has not supplied.
+ */
+function installerFor(
+  session: ModSessionFacts,
+): ((bytes: Uint8Array) => Promise<ModInstallOutcome>) | undefined {
+  if (session.installMod !== undefined) return session.installMod;
+  if (!session.capabilities?.has(INSTALL_CAPABILITY)) return undefined;
+  if (!installDoor) return undefined;
+  return createModInstaller(installDoor);
+}
+
+/**
+ * Where installs go, latched once per page.
+ *
+ * A LATCH FOR THE SAME REASON `boundRegistries` IS ONE, and the reason is the
+ * same seven context-building call sites: a new one that forgot to thread this
+ * through would hand its mod `installMod: undefined`, and a mod reporting that
+ * it cannot install anything is indistinguishable from a mod that was never
+ * granted the capability. Latching it means every context built after boot has
+ * it, including the ones written next year.
+ */
+let installDoor: InstallDoorDeps | undefined;
+
+/** Latch the install door (the boot path, and the tests). */
+export function setModInstallDoor(deps: InstallDoorDeps | undefined): void {
+  installDoor = deps;
+}
+
 /** What the host knows about THIS session, as opposed to this mod's folder. */
 export interface ModSessionFacts {
   /** Whether the character was created this session rather than loaded. */
@@ -160,6 +200,8 @@ export interface ModSessionFacts {
   readonly backupFolder?: BackupFolder;
   /** Override ctx.ui directly (tests, and a front end with its own panels). */
   readonly ui?: ModUi;
+  /** Override ctx.installMod directly (tests, and a front end with its own door). */
+  readonly installMod?: (bytes: Uint8Array) => Promise<ModInstallOutcome>;
   /**
    * Override the bound registries, for a test that wants a plugin to see a
    * registry it built by hand rather than one a booted game latched.

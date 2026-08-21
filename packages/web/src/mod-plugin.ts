@@ -290,6 +290,37 @@ export interface ModPluginContext {
    */
   readonly ui?: ModUi;
   /**
+   * Install a CONTENT mod from the bytes of an archive.
+   *
+   * Present only when your manifest declared `mod:install` and the player
+   * consented to it; `undefined` otherwise, so guard with
+   * `if (!ctx.installMod) return;`.
+   *
+   * The bytes are a zip of a mod folder - `manifest.json` beside one JSON file
+   * per record file, which is exactly what `ModProject.emit()` returns and what
+   * `fflate`'s `zipSync` will pack for you. They go through the same door the
+   * player's own zip import uses, so the archive is read under the same
+   * ceilings, inspected against the same requirements, and pinned to the same
+   * origin on first import.
+   *
+   * CONTENT ONLY. An archive that ships code, or whose manifest asks for any
+   * capability, is refused by name. Adding records, patches and removals to a
+   * player's library is what this is for; a mod that RUNS is something they
+   * install through the Mods screen, where they read what it asks for first.
+   *
+   * AND INSTALLING IS NOT ENABLING. What you install lands switched off. The
+   * player finds it on the Mods screen and turns it on themselves, and a mod
+   * takes effect on reload, so nothing you install is in the game this turn.
+   * Say so to them rather than letting them wonder why the monster they just
+   * made is not in the dungeon.
+   *
+   * Re-installing your own output replaces it, provided the manifest declares
+   * the same `repository` every time - the origin is pinned on the first import
+   * and a mismatch is refused, so persist that string with your draft rather
+   * than regenerating it.
+   */
+  readonly installMod?: (bytes: Uint8Array) => Promise<ModInstallOutcome>;
+  /**
    * The BOUND content registries: every race, kind, feature, trap, store and
    * projection the game actually runs on, after this session's mods composed
    * their content and core bound it.
@@ -410,6 +441,24 @@ export interface ModUi {
   /** THIS mod's open panels, topmost last. Never another mod's. */
   readonly openPanels: readonly string[];
 }
+
+/**
+ * What came of handing the game a mod's bytes.
+ *
+ * A RESULT, NEVER A THROW. The caller is a mod that will be putting this in front
+ * of a player, so every refusal is one whole sentence it can print without
+ * knowing which refusal it is - the shape the host's own install paths use
+ * (`InstallResult`), for the same reason.
+ */
+export type ModInstallOutcome =
+  | {
+      readonly ok: true;
+      /** The id the mod is stored under, from its own manifest. */
+      readonly id: string;
+      /** The version it was recorded at. */
+      readonly version: string;
+    }
+  | { readonly ok: false; readonly problem: string };
 
 /**
  * Ticket #133's cloud-backup folder primitive. One instance is capable of

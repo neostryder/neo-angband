@@ -294,6 +294,7 @@ import {
 import {
   modOwnFiles,
   modPluginContext,
+  setModInstallDoor,
   setModRegistries,
   type ModSessionFacts,
 } from "./mod-context";
@@ -1155,6 +1156,19 @@ const { state, registry, booted, players } = game;
  * is TRACKING can do had no way to ask before this, and neither did a tile pack
  * asking what content the session actually contains. */
 setModRegistries(booted.registries);
+/* And where a mod holding `mod:install` may land an archive. The env is the same
+ * one every other install path is given (`modBrowseDeps`), and the consent switch
+ * is read at the MOMENT OF USE rather than captured here, so a player turning
+ * third-party mods off mid-session turns this door off with it. */
+setModInstallDoor({
+  env: {
+    fetch: (url: string) => fetch(url),
+    subtle: crypto.subtle,
+    scope: globalThis,
+    now: () => new Date().toISOString(),
+  },
+  allowed: () => readConsent(channelStore()),
+});
 /* A shop line no item answers is one mod's fault, not a failed launch.
  *
  * `bindStore` used to throw on it, from inside `startGame`/`loadGame` at module

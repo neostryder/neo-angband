@@ -169,6 +169,7 @@ What `ctx` carries:
 | `registries` | the whole bound `CoreRegistries`: every race, kind, feature, trap, store, projection, room, profile, constant, quest and hint this session actually runs on (absent during content composition) |
 | `log` | a diagnostic line; the host decides where it goes |
 | `backupFolder` | present only when your manifest declared `backup:folder` and the platform can actually offer a folder picker; absent everywhere else, so test for it rather than assuming it |
+| `installMod` | `(bytes) => Promise<{ok, id, version} \| {ok, problem}>`, installing a **content** mod from the bytes of an archive. Present only when your manifest declared `mod:install`. Code is refused, and what you install lands **switched off** - the player enables it themselves, and a mod takes effect on reload |
 | `ui` | `{ openPanel(spec), openPanels }`, panels of **real HTML** rather than character cells. Present only when your manifest declared `ui:panel.mount`; absent everywhere else, so test for it. See `MOD_SEAMS.md` section 4b - the two things that surprise everybody are that Escape is the player's and that a non-modal panel's container takes no pointer events |
 
 `flags` is sliced per mod on purpose: a mod must not be able to read or act on
