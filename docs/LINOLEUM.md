@@ -276,7 +276,7 @@ pack, modded content keeps its letter.
 the added ant pixel-for-pixel the base game's ant, so nobody can tell which is
 which - not the player meeting both, and not the author checking their own work.
 A tilesheet's tiles are cells of a fixed atlas and there is no spare cell to put a
-variant in. A loose pack's tiles are individual images, so `hueDerivedSlots`
+variant in. A loose pack's tiles are individual images, so `derivedSlots`
 (`packages/web/src/linoleum-pack.ts`) allocates a slot drawing an existing image
 with its hue rotated. It is a third slot kind, `derived`, and the only one a pack
 cannot declare:
@@ -314,6 +314,22 @@ for one reason beyond speed: nothing calls `getImageData`, so an asset served
 from an installed mod's blob URL recolours without a canvas taint error. Where the
 filter is unavailable the copy comes out identical to its source, which is the
 undistinguished tile that was there before.
+
+**A fourth slot kind, `transformed`, is for a genuine palette swap rather than a
+hue rotation** - a rotation cannot turn a grey donor any colour, and a mod
+wanting a specific palette (not just the donor's own colours moved around the
+wheel) needs the real remap `fill.transform` offers (see
+`docs/modding/PLUGINS.md`, "Repainting a tile"). It shares `derivedSlots`'s one
+allocator rather than a second table of its own, since two allocators over the
+same donor would hand out different slot numbers for what is really one
+picture. Unlike `derived`, this path does call `getImageData` - there is no
+canvas-`filter` equivalent of an exact per-pixel palette remap - which needs
+the image to be readable. It is readable in every path a pack arrives by (a
+site-served pack is same-origin; a folder pick and a repository install both
+resolve through a same-origin `blob:` URL), measured rather than assumed. The
+try/catch stays anyway for the case that reasoning turns out wrong somewhere
+unmeasured: a taint throws, this returns `null`, and the caller falls back to
+a plain copy, the same as a failed recolour.
 
 ## Running the converter
 

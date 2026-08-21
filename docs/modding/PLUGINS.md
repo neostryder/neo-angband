@@ -284,6 +284,48 @@ register(host, ctx) {
 If you are shipping content rather than tiles: **draw your own.** A fallback is
 for the mods that do not, and it cannot know what you meant.
 
+### Repainting a tile, and drawing the player's own cell
+
+Two more things live on the same `registry:tiles` seam, and neither is filling a
+blank: both start from a tile that already has a picture.
+
+**`fill.transform(donor, spec)`** is `derive`'s sibling, for when rotating the
+donor's own hue is not what you want. `derive` keeps the donor's colours and
+turns them, which is a no-op on grey; `transform` replaces the palette outright.
+Every pixel is indexed by brightness into a ramp you hand over and repainted
+with the colour that index names, darkest first, so the result is in YOUR
+colours whatever the donor's were - grey donors included - and alpha carries
+through untouched, so the silhouette stays the donor's exactly. It can also
+mirror the picture horizontally, independently of the ramp. Like `derive`, it
+returns `null` on a fixed tilesheet (no spare cell for a variant) and on the
+same other two refusals; fall back to a plain copy.
+
+```js
+const tile = fill.transform(donor, { mirror: true, ramp: [[20, 10, 30], [90, 40, 110], [180, 120, 220]] });
+```
+
+**`tiles.player(provider)`** answers a different question, once per frame
+rather than once per map build: given who the character is right now, is there
+a tile that fits better than the pack's own player picture? The player is race
+0 in the monster tile table and every shipped pack assigns it, so there is no
+blank here for a filler to write into - this asks instead of filling, and
+`null` means "no", which is also what happens with no provider installed at
+all. First non-null answer in load order wins, so two such mods can coexist.
+
+```js
+host.tiles.player((view) => {
+  if (!view.shape) return null;          // normal shape: let the pack draw it
+  return shapeTileFor(view.shape, view.level, view.cls, view.race);
+});
+```
+
+The view you get (`shape`, `level`, `cls`, `race`) is deliberately not the live
+player record - naming facts rather than handing over something a render-time
+hook could mutate. Because this runs inside the render path, the provider must
+be a lookup: allocate whatever tiles your answers need (with `transform`, during
+the fill) and read the table here. A provider that throws loses that one
+frame's answer and nothing else.
+
 ### Engine-wide settings you change through `ctx.core`, not through a hook
 
 A few of the engine's decisions are not taken inside a turn and have no game
@@ -1276,7 +1318,7 @@ written down, and the table below is a reading of it:
 | `registry:vocab` | declare genuinely new vocabulary (flags, stats, mod-coined kinds) and store per-entity values |
 | `registry:message` | message TYPES: `messages.define(name, sound?)` coins one and returns its number, `.lookup(name)` finds an existing one, `.types()` lists what has been added, `.addSounds(...)` attaches sounds. Adding a `message_type.json` RECORD needs no capability, the same way adding an item does; this is the code half, for a type your own plugin raises |
 | `registry:menu` | rewrite one stable menu id's semantic rows. `menus.handlerFor(id)` returns the earlier transformer, so a later mod wraps it before calling `menus.register(id, ...)`; a throw or a non-row-array result is reported against that mod and leaves the original menu usable |
-| `registry:tiles` | supply tiles for content the loaded tile pack does not draw, which in practice means content a mod added. `tiles.register(filler)` installs one filler per mod; every registered filler runs, in load order, after the pack's own prefs and every mod's. It can only write where NOTHING is assigned, so it cannot repaint the tile set even by mistake and two mods cannot fight over an index. See [Filling tiles](#filling-tiles) |
+| `registry:tiles` | supply tiles for content the loaded tile pack does not draw, which in practice means content a mod added. `tiles.register(filler)` installs one filler per mod; every registered filler runs, in load order, after the pack's own prefs and every mod's. It can only write where NOTHING is assigned, so it cannot repaint the tile set even by mistake and two mods cannot fight over an index. The same seam also grew a repaint-in-place door (`fill.transform`, mirror and/or a palette remap over an existing tile) and a player-cell door (`tiles.player`, asked once per frame what the character's own cell should show). See [Filling tiles](#filling-tiles) and [Repainting a tile, and drawing the player's own cell](#repainting-a-tile-and-drawing-the-players-own-cell) |
 
 A facade you did not declare throws when you touch it, even if the player
 consented to something else. Consent says the player allowed these domains; the
