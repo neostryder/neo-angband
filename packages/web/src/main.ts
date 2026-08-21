@@ -324,6 +324,12 @@ import {
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, reportModFault } from "./mod-problems";
 import { teardownModPlugins } from "./mod-teardown";
+import {
+  closeAllModPanels,
+  installPanelKeyboardOwner,
+  revokeModPanels,
+  setPanelGameSurface,
+} from "./panel-runtime";
 import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-taint";
 import { runModManager } from "./mods";
 
@@ -741,6 +747,15 @@ async function rediscoverModSources(): Promise<void> {
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const term = new GlyphTerm(canvas);
+/* THE PANEL LAYER, wired here rather than beside the mod boot, because both of
+ * these are about the page and neither depends on a game existing. A mod's DOM
+ * panel needs the input door to stand down for the field the player is typing
+ * into, and it needs the door to know which element is the GAME so a keystroke
+ * aimed at the dungeon is never mistaken for one aimed at a mod - see
+ * panel-runtime.ts. Installed unconditionally: with no panel open the owner
+ * answers no to every question, which is what the game did before it existed. */
+setPanelGameSurface(canvas);
+installPanelKeyboardOwner();
 // The user's saved colour edits (do_cmd_colors) are a global pref in
 // localStorage; apply them to the live angband_color_table before the first
 // paint so custom colours are honoured from boot.
@@ -2150,12 +2165,25 @@ const ITEM_CMD_KEYS: Record<string, { o: string; r?: string }> = {
  */
 const EFFECT_ITEM_CMD_KEY = "A";
 
+/**
+ * The live `rogue_like_commands` option, which decides which keyset every
+ * key-naming screen is describing.
+ *
+ * Named because the help browser needs it and there is no game state on the
+ * other side of that call: help.ts reaches into the engine for the build version
+ * and the translator and nothing else, so the keyset arrives as an argument. The
+ * option is OFF before any character exists, which is also the default upstream
+ * ships.
+ */
+function rogueLikeKeys(): boolean {
+  return state.options?.get("rogue_like_commands") ?? false;
+}
+
 /** `code`'s command key under the live keyset (rogue_like_commands). */
 function itemCmdKey(code: string): string | undefined {
   const keys = ITEM_CMD_KEYS[code];
   if (!keys) return undefined;
-  const roguelike = state.options?.get("rogue_like_commands") ?? false;
-  return roguelike ? keys.r ?? keys.o : keys.o;
+  return rogueLikeKeys() ? keys.r ?? keys.o : keys.o;
 }
 
 /**
@@ -2497,7 +2525,7 @@ async function runContextMenuPlayerOther(): Promise<void> {
       autosave(true);
       break;
     case "help":
-      await runHelp(term);
+      await runHelp(term, rogueLikeKeys());
       break;
     case "abilities":
       await showAbilitiesScreen();
@@ -4045,18 +4073,41 @@ async function throwCmd(): Promise<void> {
 // chooseTarget/targetMenu/lookLines (the prior distance-sorted list picker)
 // are kept as a fallback utility, not wired into any key below.
 
-/** target_display_help (ui-target.c), reduced to the commands this port
- * implements: pathfinding ('g'), the ignore key, and nearest-stairs/
- * unexplored ('>'/'<'/'x') are sibling gaps and stay off this banner so it
- * never promises a key that does nothing. */
+/**
+ * target_display_help (ui-target.c:169), in upstream's own words and upstream's
+ * own order.
+ *
+ * WHAT IS OMITTED AND WHY. Upstream builds this sentence from the commands the
+ * loop is actually offering, so a clause it never reaches is not a clause it
+ * prints: pathfinding ('g') is off here, which is upstream's own
+ * `!allow_pathfinding` case, and the object-ignore clause needs a selected
+ * object to ignore. Both are sibling gaps and stay off the banner rather than
+ * promising a key that does nothing.
+ *
+ * TWO KNOWING SUBSTITUTIONS. Upstream writes "<dir> and <click> look around":
+ * this build has no click route into the loop (taps are gated off while a modal
+ * owns input, so `modalDepth` stands them down), and "<dir>" is a convention
+ * from a manual that ships beside the game rather than something a keyboard
+ * shows you, so the banner names the keys this port binds. Escape joins 'q'
+ * because Escape is the back-out every other screen here takes.
+ */
 function targetHelpLines(useFreeMode: boolean): string[] {
-  return [
-    "Arrows/numpad look around. 'p' selects player. 'q'/Esc exits.",
-    useFreeMode
-      ? "'m' restricts to interesting places. 't' targets the cursor."
-      : "space/'+'/'-' cycle places. 'o' allows free selection. 't' targets the selection.",
-    "'r' shows full recall for a visible monster.",
-  ];
+  /* THREE LINES, because HELP_HEIGHT is 3 (ui-target.c:164) and any more would
+   * cover the health bar the loop keeps visible. Upstream writes one sentence
+   * and lets text_out fold it; the banner is hand-laid here, so the clauses are
+   * split where they fit an 80-column row in upstream's order rather than
+   * reordered to make the split tidy. */
+  return useFreeMode
+    ? [
+        "Arrows/numpad look around. 'p' selects player. 'q'/Esc exits.",
+        "'r' displays details. 'm' restricts to interesting places.",
+        "'t' targets selection.",
+      ]
+    : [
+        "Arrows/numpad look around. 'p' selects player. 'q'/Esc exits.",
+        "'r' displays details. '+' and '-' cycle through places.",
+        "'o' allows free selection. 't' targets selection.",
+      ];
 }
 
 /**
@@ -5830,7 +5881,7 @@ async function gameMenuOnce(): Promise<boolean> {
       await openModManager();
       break;
     case "help":
-      await runHelp(term);
+      await runHelp(term, rogueLikeKeys());
       break;
     case "report":
       await showReportPage();
@@ -6650,15 +6701,44 @@ async function prefLineCmd(): Promise<void> {
 }
 
 /** Version info (V, do_cmd_version, cmd_hidden:212). Pure display. */
+/**
+ * 'V' (do_cmd_version, ui-command.c:143).
+ *
+ * UPSTREAM'S SHAPE, which this used to drop: a header naming the build and
+ * pointing at '?', and then `copyright` (buildid.c:43) as the body. The body is
+ * the part that matters and the part that was missing - it is the notice
+ * Angband's own licence asks to travel with the work, and 'V' is where upstream
+ * puts it, so a build that answers 'V' with credits and no licence is answering
+ * the wrong question.
+ *
+ * The header names this port and the version it is a port OF, because that is
+ * what the player has in front of them; the credit lines below the notice are
+ * this port's own addition and stay.
+ */
 function versionCmd(): void {
   void openModal(() =>
     showTextScreen(term, "Version", [
+      {
+        text:
+          `You are playing Neo Angband ${ENGINE_VERSION} (Angband ${PARITY_BASELINE}).` +
+          "  Type '?' for more info.",
+      },
       { text: "" },
-      { text: `  Neo Angband ${ENGINE_VERSION}` },
-      { text: `  A faithful port of Angband ${PARITY_BASELINE}.` },
+      { text: "Copyright (c) 1987-2022 Angband contributors." },
       { text: "" },
-      { text: "  Credits: neostryder / RPGM Tools." },
-      { text: "  Angband is maintained by the Angband development team." },
+      { text: "This work is free software; you can redistribute it and/or modify it" },
+      { text: "under the terms of either:" },
+      { text: "" },
+      { text: "a) the GNU General Public License as published by the Free Software" },
+      { text: "   Foundation, version 2, or" },
+      { text: "" },
+      { text: "b) the Angband licence:" },
+      { text: "   This software may be copied and distributed for educational, research," },
+      { text: "   and not for profit purposes provided that this copyright and statement" },
+      { text: "   are included in all such copies.  Other copyrights may also apply." },
+      { text: "" },
+      { text: "Neo Angband: neostryder / RPGM Tools." },
+      { text: "Angband is maintained by the Angband development team." },
     ]),
   );
 }
@@ -8894,7 +8974,7 @@ inputEvents.addEventListener("keydown", (ev) => {
   // ui-help.c:470-480), so a fallen hero can still read it.
   if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && ev.key === "?") {
     ev.preventDefault();
-    void openModal(() => runHelp(term));
+    void openModal(() => runHelp(term, rogueLikeKeys()));
     return;
   }
   // A re-entry, not part of the flow: death_screen's loop only ends by quitting
@@ -9281,7 +9361,7 @@ function installTouchActionBar(): void {
     ["Hist", () => { void openModal(() => showTextScreen(term, playerHistoryScreen(state))); }],
     ["Ignore", () => { void openModal(() => openIgnoreSetup()); }],
     ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx())).then(() => autosave(true)); }],
-    ["Help", () => { void openModal(() => runHelp(term)); }],
+    ["Help", () => { void openModal(() => runHelp(term, rogueLikeKeys())); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     ["Switch", () => { switchCharacter(); }],
     ["New", () => { if (!dead) persistSave(); newGame(); }],
@@ -9909,6 +9989,8 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
   teardownModPlugins({
     plugins: activeModCode().plugins,
     controller: installedController,
+    revokePanels: revokeModPanels,
+    closePanels: closeAllModPanels,
   });
   installedController = null;
   /* Back to candidate zero, not to nothing: the page has not re-composed yet
@@ -11734,7 +11816,14 @@ function displayCandidateContext(id: string): ModPluginContext {
     folderRuleFlags.get(id) ?? {},
     state,
     modOwnFiles(loaded.data),
-    sessionFacts,
+    /* `capabilities` for the same reason the register() loop above passes it:
+     * every capability-gated ctx member is absent without it. It matters here
+     * and not only there, because a mod's panel is opened from a player action -
+     * a tap on one of its regions - and the context a `regions()` declaration
+     * closed over is one of the two it could have got `ctx.ui` from. A candidate
+     * with no pack behind it (core's own renderer, above) has no manifest to
+     * read, which is the one case that legitimately has none. */
+    { ...sessionFacts, capabilities: CapabilitySet.fromManifest(loaded.manifest) },
   );
 }
 

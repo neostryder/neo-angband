@@ -30,6 +30,34 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- The `?` command summary is `lib/help`'s own again, keyset for keyset. It had
+  been a curated subset written when most of upstream's keyset was unbound here,
+  and the port has bound all of it since: the page had drifted into saying that
+  `S` saves the game and `V` shows the hall of fame (they are See abilities and
+  Display version info, as upstream), listed a `p` that recites prayers, and
+  omitted the staircase keys that the playing-guide page beside it explains. It
+  now prints `commands.txt` or `r_comm.txt` according to `rogue_like_commands`,
+  the way `do_cmd_help` chooses between `index.txt` and `r_index.txt`, and names
+  the keyset in its title. The rows this build has nothing behind are named
+  once, above the table, instead of being left out of it.
+- The symbol legend prints `symbols.txt`, two glyphs to a line as the file has
+  them, with the two paragraphs a curated version had dropped: `/` identifies a
+  symbol here and user pref files load here, so both were true all along.
+  Flattening the file into one column had also dropped upstream's `x  -` row and
+  slid "Xorn/Xaren" onto the lowercase `x`, so the legend named a glyph no xorn
+  has.
+- The help index offers "Available symbols", `index.txt`'s own wording, and
+  carries upstream's pointer to the manual - which had been sitting at the foot
+  of the command summary, 56 rows below where a player looks for it.
+- `V` prints the Angband copyright notice, which is what upstream's
+  `do_cmd_version` puts on that screen and which this build had replaced with
+  credits alone.
+- The targeting banner uses `target_display_help`'s own wording again ("`r`
+  displays details", "`+` and `-` cycle through places", "`t` targets
+  selection").
+
 ## [0.25.0] - 2026-08-21
 
 Current state of the project at version `0.25.0` - a features release for mod
