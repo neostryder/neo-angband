@@ -13,37 +13,47 @@
  * ui-help.c:263-333). runHelp just loops index -> page -> index, exactly the
  * upstream recursion, with no parallel viewer.
  *
- * CONTENT: the raw lib/help/*.txt files are not fetched or bundled verbatim.
- * commands.txt documents the FULL original Angband keyset, including many
- * commands this shell does not implement (screen dump ')', notes ':',
- * options '=' in the upstream sense, rest 'R', knowledge '~', wizard mode)
- * and omits web-native ones (Ctrl-P message history, Escape game menu, the
- * touch action bar) - a verbatim dump would actively mislead the player. The
- * command reference below is curated to list ONLY the shell's real key
- * bindings (kept in sync with main.ts's keydown handler), grouped the way
- * commands.txt groups them. The symbols page stays near-verbatim from
- * symbols.txt - those glyphs are base-Angband canonical and match this
- * port's feature/object/monster registries - minus the "/ identifies a
- * symbol" and "user pref file" lines, since neither exists in this shell yet.
- * The playing-guide page is new, short orientation prose (no invented
- * mechanics: it only states things this port actually does - permadeath,
- * shops 1-8, stairs).
+ * CONTENT: the raw lib/help/*.txt files are not fetched or bundled at runtime -
+ * they are TRANSCRIBED into the tables below, which is what keeps the build
+ * self-contained and offline. The transcription is the whole content, not a
+ * selection from it: commands.txt and r_comm.txt document the full original and
+ * roguelike keysets, and main.ts's command table mirrors cmd_lookup exactly, so
+ * every row upstream prints is a key this port answers to. `help.test.ts`
+ * renders both pages and the symbol legend and compares them line by line
+ * against `reference/lib/help/*.txt` itself, so the check is against upstream's
+ * bytes rather than against a snapshot of what the port used to print.
  *
- * EACH PAGE IS A `ScreenView`, not a hand-laid `ScreenLine[]`. The two
- * reference pages are LISTS - a key and what it does, a glyph and what it is -
- * and a list on `lines` is work not yet done (see screen-view.ts's header). So
- * each section is a `table` with a caption, the key or the glyph is its own
- * cell, and a tileset mod can draw the sprite for `k` where the terminal draws
- * the letter. Nothing about what the terminal prints moved: `help.test.ts`
- * pins the commands and symbols pages against the bytes they printed before
- * the model existed, because both are near-verbatim upstream and parity owns
- * their layout.
+ * The page used to be a CURATED subset instead, grouped under headings this
+ * port invented, on the premise that most of upstream's keyset was unbound
+ * here. That premise expired: the subset had drifted into stating that 'S'
+ * saves the game and 'V' shows the hall of fame, when 'S' is See abilities and
+ * 'V' is Display version info in this build as in upstream, and it omitted the
+ * staircase keys the playing-guide page two rows below it explains. Where a row
+ * genuinely has nothing behind it here, the platform note above the table says
+ * so once, rather than the table quietly not mentioning the command.
+ *
+ * KEYSET-AWARE, like upstream. do_cmd_help opens r_index.txt when
+ * rogue_like_commands is on and index.txt when it is off (ui-help.c:476), and
+ * those two index files differ only in which command summary their [a] row
+ * links to. So `runHelp` takes the option's value and hands the commands page
+ * the matching keyset. The port implements both keysets (keymap.ts, and the
+ * `r` column of main.ts's command table), so showing the original-keyset
+ * summary to a roguelike player was describing keys they had turned off.
+ *
+ * EACH PAGE IS A `ScreenView`, not a hand-laid `ScreenLine[]`. Both reference
+ * pages are LISTS - a key and what it does, a glyph and what it is - and a list
+ * on `lines` is work not yet done (see screen-view.ts's header). So each
+ * section is a `table` with a caption, the key or the glyph is its own cell,
+ * and a tileset mod can draw the sprite for `k` where the terminal draws the
+ * letter.
  *
  * The two PORT-ADDITION pages went the other way. The playing guide and the
  * community page have no upstream text to be faithful to, so their prose is
  * published UNWRAPPED - which is the only form a presenter can lay out at its
  * own width - and the faithful terminal now wraps it itself rather than
- * printing breaks that were typed in by hand.
+ * printing breaks that were typed in by hand. The commands page's preamble is
+ * in the same form for the same reason: it is upstream's paragraph with one
+ * sentence removed, so its breaks are no longer the file's.
  *
  * All content is inlined as TS data (no runtime fetch of the .txt files),
  * satisfying the offline-PWA / self-contained build. Pure display: no RNG,
@@ -89,8 +99,14 @@ function blankRow(): ScreenBlock {
 /* ------------------------------------------------------------------ */
 
 /**
- * commands.txt's row: two columns of indent, the key in a field eleven wide,
- * then what it does.
+ * commands.txt's row: two columns of indent, then TWO key/description pairs
+ * side by side - the file's own layout, which is the whole table in one screen
+ * width rather than a column of 56 rows.
+ *
+ * THE WIDTHS ARE UPSTREAM'S, measured off the file: the key field is five wide
+ * (so `^a` and the bare letters share it and `TAB` fits), the left description
+ * is 32, which puts the second key at column 39 and its description at 44,
+ * exactly where every row of both files puts them.
  *
  * THE INDENT IS A COLUMN because a table's first column starts at column 0 -
  * `gapBefore` ignores `gap` on it - and both alternatives lost something real.
@@ -98,275 +114,347 @@ function blankRow(): ScreenBlock {
  * key is `"g"`, which is the padded-field problem the whole model exists to
  * end. `tagged: true` writes a three-column `"x) "` prefix, which is one column
  * too many and offers a letter this page does not answer to.
+ *
+ * ONE KNOWING DEVIATION, two rows wide. commands.txt indents the `~` and `?` of
+ * its last two paired rows by one extra column so they line up under the letter
+ * of `^z` above them; r_comm.txt, the same table in the other keyset, does not.
+ * Reproducing it would mean writing `" ~"` into a cell whose value is the key a
+ * presenter looks a sprite up by, so those two rows render at the regular
+ * column and `help.test.ts` names them as the only lines it does not expect to
+ * match commands.txt byte for byte.
  */
-const COMMAND_COLUMNS: readonly ScreenColumn[] = [
+const KEY_COLUMNS: readonly ScreenColumn[] = [
   { key: "indent", width: 2 },
-  { key: "key", width: 11, gap: 0 },
-  { key: "desc", gap: 0 },
+  { key: "key", width: 5, gap: 0 },
+  { key: "desc", width: 32, gap: 0 },
+  { key: "key2", width: 5, gap: 0 },
+  { key: "desc2", gap: 0 },
 ];
-
-/** One group of the reference: its heading, and the rows under it. */
-interface HelpSection {
-  /** Stable identity for the table within its screen; see `ScreenTableBlock.key`. */
-  readonly key: string;
-  /** The heading commands.txt prints above the group. */
-  readonly caption: string;
-  /** `[key, description]` pairs, in source reading order. */
-  readonly rows: readonly (readonly [string, string])[];
-}
 
 /**
- * Curated command reference (commands.txt's layout, this shell's real keys).
- * Every key here corresponds to a live branch in main.ts's keydown handler
- * or keymap.ts's resolveKey - see help.test.ts's drift guard, which checks
- * this list against main.ts's source so the reference cannot silently rot.
+ * One line of a keyset summary: the left key and what it does, then the right
+ * key and what it does. The last two or three lines of each file have no right
+ * half, so those rows carry two entries.
  */
-const COMMAND_SECTIONS: readonly HelpSection[] = [
-  {
-    key: "movement",
-    caption: "Movement",
-    rows: [
-      ["1-9", "Walk (numpad; diagonals need the numpad)"],
-      ["Arrows", "Walk orthogonally (up/down/left/right)"],
-      ["(walk in)", "Walking onto a shop entrance enters the store"],
-    ],
-  },
-  {
-    key: "items",
-    caption: "Items",
-    rows: [
-      ["g", "Get objects on the floor"],
-      ["i", "List contents of pack"],
-      ["e", "List equipped items"],
-      ["]", "List objects you can see"],
-      ["w", "Wear/wield equipment"],
-      ["t", "Take off equipment"],
-      ["d", "Drop an item"],
-      ["{", "Inscribe an object"],
-      ["}", "Uninscribe an object"],
-      ["F", "Fuel your lantern/torch"],
-      ["I", "Inspect an item"],
-      ["K", "Toggle ignoring off"],
-    ],
-  },
-  {
-    key: "magic",
-    caption: "Magic",
-    rows: [
-      ["m / p", "Cast a spell / recite a prayer"],
-      ["G", "Gain (study) new spells/prayers"],
-    ],
-  },
-  {
-    key: "devices",
-    caption: "Devices",
-    rows: [
-      ["q", "Quaff a potion"],
-      ["r", "Read a scroll"],
-      ["E", "Eat some food"],
-      ["u", "Use a staff"],
-      ["a", "Aim a wand"],
-      ["z", "Zap a rod"],
-      ["A", "Activate an item"],
-    ],
-  },
-  {
-    key: "combat",
-    caption: "Combat & targeting",
-    rows: [
-      ["f", "Fire ammo at a target"],
-      ["v", "Throw an item"],
-      ["o", "Open a door or chest"],
-      ["D", "Disarm a trap or lock a door"],
-      ["*", "Target a monster or location"],
-      ["'", "Target the closest monster"],
-      ["l / x", "Look around"],
-    ],
-  },
-  {
-    key: "meta",
-    caption: "Meta",
-    rows: [
-      ["=", "Options menu (interface/birth toggles, ignore setup)"],
-      ["M", "Display map of entire level"],
-      ["L", "Locate player on map"],
-      ["C", "Character description"],
-      ["S", "Save the game"],
-      ["N", "New character (also available after death)"],
-      ["V", "Display the hall of fame"],
-      ["Ctrl-P", "Show previous messages"],
-      ["Enter", "Browse every command by category"],
-      ["?", "Display this help"],
-      ["Escape", "Game menu (save / switch / new character)"],
-    ],
-  },
+type KeyRow = readonly [string, string] | readonly [string, string, string, string];
+
+/**
+ * commands.txt:18-73, transcribed. The original keyset, which is the default
+ * (`rogue_like_commands` off).
+ *
+ * A `-` is upstream's own mark for a key that runs no command, and it is kept:
+ * a table that silently omitted them would leave a reader unable to tell an
+ * unbound key from one this transcription forgot.
+ */
+const ORIGINAL_KEYSET: readonly KeyRow[] = [
+  ["a", "Aim a wand", "A", "Activate an object"],
+  ["b", "Browse a book", "B", "-"],
+  ["c", "Close a door", "C", "Character description"],
+  ["d", "Drop an item", "D", "Disarm a trap or lock a door"],
+  ["e", "List equipped items", "E", "Eat some food"],
+  ["f", "Fire an item", "F", "Fuel your lantern/torch"],
+  ["g", "Get objects on floor", "G", "Gain new spells/prayers"],
+  ["h", "Fire default ammo at target", "H", "-"],
+  ["i", "List contents of pack", "I", "Inspect an item"],
+  ["j", "-", "J", "-"],
+  ["k", "Ignore an item", "K", "Toggle ignore"],
+  ["l", "Look around", "L", "Locate player on map"],
+  ["m", "Cast a spell", "M", "Display map of entire level"],
+  ["n", "Repeat previous command", "N", "-"],
+  ["o", "Open a door or chest", "O", "-"],
+  ["p", "- (see above)", "P", "-"],
+  ["q", "Quaff a potion", "Q", "Retire character & quit"],
+  ["r", "Read a scroll", "R", "Rest for a period"],
+  ["s", "Steal from a monster (rogues)", "S", "See abilities"],
+  ["t", "Take off equipment", "T", "Dig a tunnel"],
+  ["u", "Use a staff", "U", "Use an item"],
+  ["v", "Throw an item", "V", "Display version info"],
+  ["w", "Wear/wield equipment", "W", "Walk into a trap"],
+  ["x", "-", "X", "-"],
+  ["y", "-", "Y", "-"],
+  ["z", "Zap a rod", "Z", "-"],
+  ["!", "-", "^a", "(special - debug command)"],
+  ["@", "-", "^b", "-"],
+  ["#", "-", "^c", "(special - break)"],
+  ["$", "-", "^d", "-"],
+  ["%", "-", "^e", "Toggle inven/equip window"],
+  ["^", "(special - control key)", "^f", "Repeat level feeling"],
+  ["&", "-", "^g", "Do autopickup"],
+  ["*", "Target monster or location", "^h", "-"],
+  ["(", "-", "^i", "(special - tab)"],
+  [")", "Dump screen to a file", "^j", "(special - linefeed)"],
+  ["{", "Inscribe an object", "^k", "-"],
+  ["}", "Uninscribe an object", "^l", "Center map"],
+  ["[", "Display visible monster list", "^m", "(special - return)"],
+  ["]", "Display visible object list", "^n", "-"],
+  ["-", "-", "^o", "Show previous message"],
+  ["_", "-", "^p", "Show previous messages"],
+  ["+", "Alter grid", "^q", "-"],
+  ["=", "Set options", "^r", "Redraw the screen"],
+  [";", "Walk (with pickup)", "^s", "Save and don't quit"],
+  [":", "Take notes", "^t", "-"],
+  ["'", "Target closest monster", "^u", "-"],
+  ['"', "Enter a user pref command", "^v", "-"],
+  [",", "Stay still (with pickup)", "^w", "(special - wizard mode)"],
+  ["<", "Go up staircase (see above)", "^x", "Save and quit"],
+  [".", "Run", "^y", "-"],
+  [">", "Go down staircase (see above)", "^z", "(special - borg command)"],
+  ["\\", "(special - bypass keymap)", "~", "Check knowledge"],
+  ["`", "(special - escape)", "?", "Display help"],
+  ["/", "Identify symbol"],
+  ["|", "List contents of quiver"],
 ];
 
-/** One command group as a captioned table; `gapAfter` is the blank before the next. */
-function commandTable(section: HelpSection, gapAfter: number): ScreenTableBlock {
+/** r_comm.txt:18-74, transcribed. The roguelike keyset (`rogue_like_commands` on). */
+const ROGUELIKE_KEYSET: readonly KeyRow[] = [
+  ["a", "Zap a rod (Activate)", "A", "Activate an object"],
+  ["b", "(walk - south west)", "B", "(run - south west)"],
+  ["c", "Close a door", "C", "Character description"],
+  ["d", "Drop an item", "D", "Disarm a trap or lock a door"],
+  ["e", "List equipped items", "E", "Eat some food"],
+  ["f", "-", "F", "Fuel your lantern/torch"],
+  ["g", "Get objects on floor", "G", "Gain new spells/prayers"],
+  ["h", "(walk - west)", "H", "(run - west)"],
+  ["i", "List contents of pack", "I", "Inspect an item"],
+  ["j", "(walk - south)", "J", "(run - south)"],
+  ["k", "(walk - north)", "K", "(run - north)"],
+  ["l", "(walk - east)", "L", "(run - east)"],
+  ["m", "Cast a spell", "M", "Display map of entire level"],
+  ["n", "(walk - south east)", "N", "(run - south east)"],
+  ["o", "Open a door or chest", "O", "Toggle ignore"],
+  ["p", "- (see above)", "P", "Browse a book"],
+  ["q", "Quaff a potion", "Q", "Retire character & quit"],
+  ["r", "Read a scroll", "R", "Rest for a period"],
+  ["s", "Steal from a monster (rogues)", "S", "See abilities"],
+  ["t", "Fire an item", "T", "Take off equipment"],
+  ["u", "(walk - north east)", "U", "(run - north east)"],
+  ["v", "Throw an item", "V", "Display version info"],
+  ["w", "Wear/wield equipment", "W", "Locate player on map (Where)"],
+  ["x", "Look around", "X", "Use an item"],
+  ["y", "(walk - north west)", "Y", "(run - north west)"],
+  ["z", "Aim a wand (Zap)", "Z", "Use a staff (Zap)"],
+  ["!", "-", "^a", "(special - debug command)"],
+  ["@", "Center map", "^b", "(alter - south west)"],
+  ["#", "-", "^c", "(special - break)"],
+  ["$", "-", "^d", "Ignore an item"],
+  ["%", "-", "^e", "Toggle inven/equip window"],
+  ["^", "(special - control key)", "^f", "Repeat level feeling"],
+  ["&", "-", "^g", "Do autopickup"],
+  ["*", "Target monster or location", "^h", "(alter - west)"],
+  ["(", "-", "^i", "(special - tab)"],
+  [")", "Dump screen to a file", "^j", "(alter - south)"],
+  ["{", "Inscribe an object", "^k", "(alter - north)"],
+  ["}", "Uninscribe an object", "^l", "(alter - east)"],
+  ["[", "Display visible monster list", "^m", "(special - return)"],
+  ["]", "Display visible object list", "^n", "(alter - south east)"],
+  ["-", "Walk into a trap", "^o", "Show previous message"],
+  ["_", "-", "^p", "Show previous messages"],
+  ["+", "Alter grid (steal for rogues)", "^q", "-"],
+  ["=", "Set options", "^r", "Redraw the screen"],
+  [";", "Walk (with pickup)", "^s", "Save and don't quit"],
+  [":", "Take notes", "^t", "Dig a tunnel"],
+  ["'", "Target closest monster", "^u", "(alter - north east)"],
+  ['"', "Enter a user pref command", "^v", "Repeat previous command"],
+  [",", "Run", "^w", "(special - wizard mode)"],
+  ["<", "Go up staircase (see above)", "^x", "Save and quit"],
+  [".", "Stay still (with pickup)", "^y", "(alter - north west)"],
+  [">", "Go down staircase (see above)", "^z", "(special - borg command)"],
+  ["\\", "(special - bypass keymap)", "~", "Check knowledge"],
+  ["`", "(special - escape)", "?", "Display help"],
+  ["/", "Identify symbol"],
+  ["TAB", "Fire default ammo at target"],
+  ["|", "List contents of quiver"],
+];
+
+/**
+ * commands.txt:5-16 / r_comm.txt:5-16, minus one sentence.
+ *
+ * WHAT WAS REMOVED and why: upstream's second sentence offers a fallback for a
+ * system that swallows control-plus-key - press and release `^`, then the
+ * letter. This port does not implement it (the control branch of main.ts's
+ * keydown handler requires `ev.ctrlKey`), so printing the sentence would
+ * describe a keystroke that does nothing. The gap is worth closing rather than
+ * only documenting, because a browser tab is exactly the host that intercepts
+ * some of these combinations; it is written up in docs/PLANNED.md.
+ *
+ * The rest is upstream's words in upstream's order, published UNWRAPPED because
+ * removing a sentence already moved every break after it - see this file's
+ * header on which prose keeps its `lines` and which gives them up. It is ONE
+ * paragraph, as it is in the file: there is no blank line inside those twelve
+ * lines to split it on.
+ */
+const KEYSET_INTRO =
+  "^ followed by a letter is an abbreviation for pressing and releasing the " +
+  "letter key with the control key also depressed.  The autoexplore_commands " +
+  "option modifies the '<', '>', and 'p' commands.  When that option is off " +
+  "(that is the default), the commands act as described below.  When that " +
+  "option is on, '<' or '>' will use the staircase at the player's location " +
+  "if it is the appropriate kind of staircase or will move to the nearest " +
+  "known staircase of the appropriate kind if the player is not already at " +
+  "that kind of staircase.  'p' will move to the nearest unexplored location " +
+  "when the autoexplore_commands option is on.";
+
+/**
+ * The rows above that this build has nothing behind, said once and up front.
+ *
+ * WHY IT IS A NOTE AND NOT A CHANGE TO THE TABLE. Writing "- (not here)" into
+ * five cells would make the summary disagree with the file it transcribes on
+ * five rows, and a reader comparing the two would have no way to tell an
+ * adaptation from a transcription error. A player reads a preamble; the
+ * alternative was hoping they connect row `^e` to a footnote 40 lines down.
+ */
+function unavailableNote(roguelike: boolean): string {
+  const alter = roguelike
+    ? " The roguelike keyset's '^' plus direction alter keys are unbound as well."
+    : "";
+  return (
+    "Not bound in this port: the '^' prefix as a two-keystroke alternative to " +
+    "the control key, '\\' (bypass keymap) and '`' (escape), since a browser " +
+    "delivers the control key and Escape directly; '^e', because this is one " +
+    "terminal and has no second window to toggle; and '^z', because the borg " +
+    `ships as a mod rather than in the game.${alter}`
+  );
+}
+
+/** One keyset summary as a table; the key and its description are cells. */
+function keysetTable(rows: readonly KeyRow[]): ScreenTableBlock {
   return {
     kind: "table",
-    key: section.key,
+    key: "keys",
     tagged: false,
-    caption: { text: section.caption, color: LABEL },
-    columns: COMMAND_COLUMNS,
-    rows: section.rows.map(([key, desc]) => ({
-      cells: { key: { text: key }, desc: { text: desc } },
+    columns: KEY_COLUMNS,
+    rows: rows.map((row) => ({
+      cells: {
+        key: { text: row[0] },
+        desc: { text: row[1] },
+        ...(row.length === 4 ? { key2: { text: row[2] }, desc2: { text: row[3] } } : {}),
+      },
     })),
-    ...(gapAfter === 0 ? {} : { gapAfter }),
   };
 }
 
 /**
- * The command reference as a screen (`core:help-commands`).
+ * The command summary for the active keyset (`core:help-commands`).
  *
- * The intro and the closing pointer are prose the port wrote, so they are `text`
- * blocks and the terminal wraps them; both fit an 80-column line whole, which is
- * why routing them through the wrap changed nothing the player sees.
+ * `roguelike` is `rogue_like_commands`, passed in rather than read: help.ts
+ * reaches into the engine for the build version and the translator and nothing
+ * else, which is the guarantee help.test.ts pins, and a boolean keeps it.
  */
 export function helpCommandsScreen(
-  title = t("help.commands.title", "Angband Help - Commands"),
+  roguelike = false,
+  title = roguelike
+    ? t("help.commands.title.roguelike", "Angband Help - Roguelike Keyset Commands")
+    : t("help.commands.title", "Angband Help - Original Keyset Commands"),
 ): ScreenView {
-  const blocks: ScreenBlock[] = [
-    {
-      kind: "text",
-      color: DIM,
-      paragraphs: [[{ text: "Original keyset - only the commands this port implements." }]],
-    },
-    blankRow(),
-  ];
-  for (const section of COMMAND_SECTIONS) blocks.push(commandTable(section, 1));
-  blocks.push({
-    kind: "text",
-    color: DIM,
-    paragraphs: [[{ text: "More commands online: angband.readthedocs.io" }]],
+  return freezeView({
+    id: "core:help-commands",
+    title,
+    footer: SCREEN_FOOTER,
+    blocks: [
+      { kind: "text", color: FG, paragraphs: [[{ text: KEYSET_INTRO }]] },
+      blankRow(),
+      { kind: "text", color: DIM, paragraphs: [[{ text: unavailableNote(roguelike) }]] },
+      blankRow(),
+      keysetTable(roguelike ? ROGUELIKE_KEYSET : ORIGINAL_KEYSET),
+    ],
   });
-  return freezeView({ id: "core:help-commands", title, footer: SCREEN_FOOTER, blocks });
 }
 
 /** The faithful terminal's rows for `helpCommandsScreen`. */
-export function helpCommandLines(cols = 80): ScreenLine[] {
-  return screenBodyLines(helpCommandsScreen(), cols);
+export function helpCommandLines(cols = 80, roguelike = false): ScreenLine[] {
+  return screenBodyLines(helpCommandsScreen(roguelike), cols);
 }
 
 /* ------------------------------------------------------------------ */
 /* The symbol legend                                                   */
 /* ------------------------------------------------------------------ */
 
-/** [glyph, description] pairs for one symbols.txt table, in source reading order. */
-type Glyphs = readonly (readonly [string, string])[];
+/**
+ * One row of a symbols.txt table: the left glyph and what it is, then the right
+ * glyph and what it is. Three rows in the file have no right half.
+ */
+type GlyphRow = readonly [string, string] | readonly [string, string, string, string];
 
-const FEATURES_NO_LOS: Glyphs = [
-  [".", "A floor space"],
-  [".", "A trap (hidden)"],
-  ["1", "Entrance to General Store"],
-  ["^", "A trap (known)"],
-  ["2", "Entrance to Armoury"],
-  [";", "A glyph of warding"],
-  ["3", "Entrance to Weapon Smith"],
-  ["'", "An open door"],
-  ["4", "Entrance to Bookseller"],
-  ["'", "A broken door"],
-  ["5", "Entrance to Alchemy Shop"],
-  ["<", "A staircase up"],
-  ["6", "Entrance to Magic Shop"],
-  [">", "A staircase down"],
-  ["7", "Entrance to the Black Market"],
+const FEATURES_NO_LOS: readonly GlyphRow[] = [
+  [".", "A floor space", "1", "Entrance to General Store"],
+  [".", "A trap (hidden)", "2", "Entrance to Armoury"],
+  ["^", "A trap (known)", "3", "Entrance to Weapon Smith"],
+  [";", "A glyph of warding", "4", "Entrance to Bookseller"],
+  ["'", "An open door", "5", "Entrance to Alchemy Shop"],
+  ["'", "A broken door", "6", "Entrance to Magic Shop"],
+  ["<", "A staircase up", "7", "Entrance to the Black Market"],
+  [">", "A staircase down", "8", "Entrance to your Home"],
   ["#", "A pool of lava"],
-  ["8", "Entrance to your Home"],
 ];
 
-const FEATURES_BLOCK_LOS: Glyphs = [
-  ["#", "A secret door"],
-  ["#", "A wall"],
-  ["+", "A closed door"],
-  ["%", "A mineral vein"],
-  ["+", "A locked door"],
-  ["*", "A mineral vein with treasure"],
-  [":", "A pile of rubble"],
-  [":", "A pile of passable rubble"],
+const FEATURES_BLOCK_LOS: readonly GlyphRow[] = [
+  ["#", "A secret door", "#", "A wall"],
+  ["+", "A closed door", "%", "A mineral vein"],
+  ["+", "A locked door", "*", "A mineral vein with treasure"],
+  [":", "A pile of rubble", ":", "A pile of passable rubble"],
 ];
 
-const OBJECTS: Glyphs = [
-  ["!", "A potion (or flask)"],
-  ["/", "A pole-arm"],
-  ["?", "A scroll (or book)"],
-  ["|", "An edged weapon"],
-  [",", "A mushroom (or food)"],
-  ["\\", "A hafted weapon"],
-  ["-", "A wand or rod"],
-  ["}", "A sling, bow, or x-bow"],
-  ["_", "A staff"],
-  ["{", "A shot, arrow, or bolt"],
-  ["=", "A ring"],
-  ["(", "Soft armour"],
-  ['"', "An amulet"],
-  ["[", "Hard armour"],
-  ["$", "Gold or gems"],
-  ["]", "Misc. armour"],
-  ["~", "Lights, Tools, Chests, etc"],
-  [")", "A shield"],
+const OBJECTS: readonly GlyphRow[] = [
+  ["!", "A potion (or flask)", "/", "A pole-arm"],
+  ["?", "A scroll (or book)", "|", "An edged weapon"],
+  [",", "A mushroom (or food)", "\\", "A hafted weapon"],
+  ["-", "A wand or rod", "}", "A sling, bow, or x-bow"],
+  ["_", "A staff", "{", "A shot, arrow, or bolt"],
+  ["=", "A ring", "(", "Soft armour"],
+  ['"', "An amulet", "[", "Hard armour"],
+  ["$", "Gold or gems", "]", "Misc. armour"],
+  ["~", "Lights, Tools, Chests, etc", ")", "A shield"],
   ["&", "Multiple items"],
 ];
 
-const MONSTERS: Glyphs = [
-  ["$", "Creeping Coins"],
-  [",", "Mushroom Patch"],
-  ["a", "Giant Ant"],
-  ["A", "Ainu"],
-  ["b", "Giant Bat"],
-  ["B", "Bird"],
-  ["c", "Giant Centipede"],
-  ["C", "Canine (Dog)"],
-  ["d", "Dragon"],
-  ["D", "Ancient Dragon"],
-  ["e", "Floating Eye"],
-  ["E", "Elemental"],
-  ["f", "Feline (Cat)"],
-  ["F", "Dragon Fly"],
-  ["g", "Golem"],
-  ["G", "Ghost"],
-  ["h", "Humanoid"],
-  ["H", "Hybrid"],
-  ["i", "Icky-Thing"],
-  ["I", "Insect"],
-  ["j", "Jelly"],
-  ["J", "Snake"],
-  ["k", "Kobold"],
-  ["K", "Killer Beetle"],
-  ["l", "Tree/Ent"],
-  ["L", "Lich"],
-  ["m", "Mold"],
-  ["M", "Multi-Headed Hydra"],
-  ["n", "Naga"],
-  ["o", "Orc"],
-  ["O", "Ogre"],
-  ["p", 'Human "person"'],
-  ["P", 'Giant "person"'],
-  ["q", "Quadruped"],
-  ["Q", "Quylthulg (Pulsing Flesh Mound)"],
-  ["r", "Rodent"],
-  ["R", "Reptile/Amphibian"],
-  ["s", "Skeleton"],
-  ["S", "Spider/Scorpion/Tick"],
-  ["t", "Townsperson"],
-  ["T", "Troll"],
-  ["u", "Minor Demon"],
-  ["U", "Major Demon"],
-  ["v", "Vortex"],
-  ["V", "Vampire"],
-  ["w", "Worm or Worm Mass"],
-  ["W", "Wight/Wraith"],
-  ["x", "Xorn/Xaren"],
-  ["y", "Yeek"],
-  ["Y", "Yeti"],
-  ["z", "Zombie/Mummy"],
-  ["Z", "Zephyr Hound"],
+/**
+ * symbols.txt:64-90.
+ *
+ * `x` IS UNBOUND AND `X` IS THE XORN, which is the fix this transcription
+ * carries: the flattened list this replaced had dropped upstream's two `-` rows
+ * (`N` and `x`) and, in doing so, moved "Xorn/Xaren" onto the lowercase `x` it
+ * had left behind. monster_base.txt gives the xorn `glyph:X`, so the page was
+ * naming a letter the game never draws for it.
+ */
+const MONSTERS: readonly GlyphRow[] = [
+  ["$", "Creeping Coins", ",", "Mushroom Patch"],
+  ["a", "Giant Ant", "A", "Ainu"],
+  ["b", "Giant Bat", "B", "Bird"],
+  ["c", "Giant Centipede", "C", "Canine (Dog)"],
+  ["d", "Dragon", "D", "Ancient Dragon"],
+  ["e", "Floating Eye", "E", "Elemental"],
+  ["f", "Feline (Cat)", "F", "Dragon Fly"],
+  ["g", "Golem", "G", "Ghost"],
+  ["h", "Humanoid", "H", "Hybrid"],
+  ["i", "Icky-Thing", "I", "Insect"],
+  ["j", "Jelly", "J", "Snake"],
+  ["k", "Kobold", "K", "Killer Beetle"],
+  ["l", "Tree/Ent", "L", "Lich"],
+  ["m", "Mold", "M", "Multi-Headed Hydra"],
+  ["n", "Naga", "N", "-"],
+  ["o", "Orc", "O", "Ogre"],
+  ["p", 'Human "person"', "P", 'Giant "person"'],
+  ["q", "Quadruped", "Q", "Quylthulg (Pulsing Flesh Mound)"],
+  ["r", "Rodent", "R", "Reptile/Amphibian"],
+  ["s", "Skeleton", "S", "Spider/Scorpion/Tick"],
+  ["t", "Townsperson", "T", "Troll"],
+  ["u", "Minor Demon", "U", "Major Demon"],
+  ["v", "Vortex", "V", "Vampire"],
+  ["w", "Worm or Worm Mass", "W", "Wight/Wraith"],
+  ["x", "-", "X", "Xorn/Xaren"],
+  ["y", "Yeek", "Y", "Yeti"],
+  ["z", "Zombie/Mummy", "Z", "Zephyr Hound"],
 ];
 
 /**
- * symbols.txt's row: two columns of indent, the glyph in a field four wide,
- * then what it is. See `COMMAND_COLUMNS` on why the indent is a column.
+ * symbols.txt's row: the glyph in a field three wide, then what it is, then the
+ * same pair again. NO INDENT: unlike commands.txt, this file starts its rows at
+ * column 0.
+ *
+ * TWO WIDTHS, because the file has two. The feature and object tables put the
+ * second glyph at column 33; the monster table, whose descriptions are shorter,
+ * puts it at 30. Declaring one width for both would move every right-hand
+ * column on one of the two.
  *
  * THE GLYPH IS ITS OWN CELL, which is the whole reason this page was worth
  * modelling. `cells.glyph.text` is one character, so a tileset mod draws the
@@ -374,30 +462,49 @@ const MONSTERS: Glyphs = [
  * a page of letters. No colour is published on it: the terminal paints this page
  * in one colour, and a cell colour would make the row emit per-run colours and
  * change what the player sees on a page parity pins.
+ *
+ * WHAT THE SECTION HEADINGS GAVE UP, said here rather than left to be found: a
+ * `caption` is one run above the rows, so the row of dashes upstream rules each
+ * heading with, and the blank line after it, are not printed. A caption is what
+ * a presenter reads to label a group; a row of hyphens underneath it is the
+ * terminal drawing a box, and there is nowhere in the model between the two for
+ * it to live. The commands page gave up its own "Original Keyset Command
+ * Summary" heading the same way, to the screen title, which is the one place a
+ * player can see which keyset they are reading before they scroll.
  */
-const SYMBOL_COLUMNS: readonly ScreenColumn[] = [
-  { key: "indent", width: 2 },
-  { key: "glyph", width: 4, gap: 0 },
-  { key: "desc", gap: 0 },
-];
+function symbolColumns(descWidth: number): readonly ScreenColumn[] {
+  return [
+    { key: "glyph", width: 3 },
+    { key: "desc", width: descWidth, gap: 0 },
+    { key: "glyph2", width: 3, gap: 0 },
+    { key: "desc2", gap: 0 },
+  ];
+}
 
-const SYMBOL_SECTIONS: readonly { key: string; caption: string; glyphs: Glyphs }[] = [
+const SYMBOL_SECTIONS: readonly {
+  key: string;
+  caption: string;
+  descWidth: number;
+  glyphs: readonly GlyphRow[];
+}[] = [
   {
     key: "features-open",
     caption: "Features that do not block line of sight",
+    descWidth: 30,
     glyphs: FEATURES_NO_LOS,
   },
   {
     key: "features-wall",
     caption: "Features that block line of sight",
+    descWidth: 30,
     glyphs: FEATURES_BLOCK_LOS,
   },
-  { key: "objects", caption: "Objects", glyphs: OBJECTS },
-  { key: "monsters", caption: "Monsters", glyphs: MONSTERS },
+  { key: "objects", caption: "Objects", descWidth: 30, glyphs: OBJECTS },
+  { key: "monsters", caption: "Monsters", descWidth: 27, glyphs: MONSTERS },
 ];
 
 /**
- * symbols.txt's opening prose, on `lines` and staying there.
+ * symbols.txt:4-19, on `lines` and staying there.
  *
  * UPSTREAM ALREADY LAID THIS OUT. lib/help/symbols.txt is a fixed-width file
  * that show_file prints row by row, so its breaks are not a rendering of a
@@ -407,21 +514,39 @@ const SYMBOL_SECTIONS: readonly { key: string; caption: string; glyphs: Glyphs }
  * where parity owns the layout. That is the trade the guide and community pages
  * are allowed to make (nothing upstream wrote them) and this one is not.
  *
+ * ONE WORD CHANGED. Upstream ends the `/` sentence with "(see 'commands.txt')",
+ * a filename this port has nothing to open - the help files are transcribed, not
+ * shipped - so it names the page instead. Everything else, including the two
+ * paragraphs a curated version of this page used to drop, is the file's own
+ * text: '/' identifies a symbol here (main.ts binds `querySymbolCmd`) and user
+ * pref files load here (prefs-ui.ts over the virtual ANGBAND_DIR_USER), so both
+ * sentences are as true of this build as of upstream's.
+ *
  * The trailing blank belongs to the block for the same reason a table's
  * `gapAfter` does: it is the separation before the first section, and a `lines`
  * block passes its rows through untouched.
  */
 const SYMBOL_INTRO: readonly ScreenLine[] = [
-  { text: "Symbols on your map fall into three categories: features of the", color: FG },
-  { text: "dungeon such as walls, floors, doors, and traps; objects that can", color: FG },
-  { text: "be picked up such as treasure, weapons, and magical devices; and", color: FG },
-  { text: "monsters, which may or may not move about, and are mostly harmful.", color: FG },
+  { text: "Symbols on your map can be broken down into three categories: Features of", color: FG },
+  { text: "the dungeon such as walls, floor, doors, and traps; Objects which can be", color: FG },
+  { text: "picked up such as treasure, weapons, magical devices, etc; and creatures", color: FG },
+  { text: "which may or may not move about the dungeon, but are mostly harmful to your", color: FG },
+  { text: "character's well being.", color: FG },
   { text: "", color: FG },
-  { text: 'The "@" symbol (by default) represents your character.', color: FG },
+  { text: "Some symbols are used to represent more than one type of entity, and some", color: FG },
+  { text: 'symbols are used to represent entities in more than one category. The "@"', color: FG },
+  { text: "symbol (by default) is used to represent the character.", color: FG },
+  { text: "", color: FG },
+  { text: "It will not be necessary to remember all of the symbols and their meanings.", color: FG },
+  { text: "The \"slash\" command ('/') will identify any character appearing on your", color: FG },
+  { text: "map (see the commands page).", color: FG },
+  { text: "", color: FG },
+  { text: 'Note that you can use a "user pref file" to change any of these symbols to', color: FG },
+  { text: "something you are more comfortable with.", color: FG },
   { text: "", color: FG },
 ];
 
-/** Near-verbatim symbols.txt (intro + the four glyph tables) as `core:help-symbols`. */
+/** symbols.txt (intro + the four glyph tables) as `core:help-symbols`. */
 export function helpSymbolsScreen(
   title = t("help.symbols.title", "Angband Help - Symbols"),
 ): ScreenView {
@@ -432,9 +557,13 @@ export function helpSymbolsScreen(
       key: section.key,
       tagged: false,
       caption: { text: section.caption, color: LABEL },
-      columns: SYMBOL_COLUMNS,
-      rows: section.glyphs.map(([glyph, desc]) => ({
-        cells: { glyph: { text: glyph }, desc: { text: desc } },
+      columns: symbolColumns(section.descWidth),
+      rows: section.glyphs.map((row) => ({
+        cells: {
+          glyph: { text: row[0] },
+          desc: { text: row[1] },
+          ...(row.length === 4 ? { glyph2: { text: row[2] }, desc2: { text: row[3] } } : {}),
+        },
       })),
       /* The page ends on the last monster: no blank row after the last table. */
       ...(i === SYMBOL_SECTIONS.length - 1 ? {} : { gapAfter: 1 }),
@@ -741,8 +870,8 @@ function modPageView(label: string, lines: readonly ScreenLine[]): ScreenView {
 }
 
 /** Core's own pages, then a mod's, with a mod's replacement swapped in place. */
-function helpIndex(): readonly { label: string; page: HelpPage }[] {
-  const core = coreHelpIndex();
+function helpIndex(roguelike: boolean): readonly { label: string; page: HelpPage }[] {
+  const core = coreHelpIndex(roguelike);
   if (modPages.size === 0) return core;
   const seen = new Set<string>();
   const out = core.map((entry) => {
@@ -768,13 +897,26 @@ function helpIndex(): readonly { label: string; page: HelpPage }[] {
 
 /** The ids core's own pages answer to, so a mod knows what it can replace. */
 export function coreHelpPageIds(): string[] {
-  return coreHelpIndex().map((e) => e.id);
+  return coreHelpIndex(false).map((e) => e.id);
 }
 
 /** The index's row labels, so a test can assert a page is reachable at all. */
-export function helpIndexLabels(): string[] {
-  return helpIndex().map((e) => e.label);
+export function helpIndexLabels(roguelike = false): string[] {
+  return helpIndex(roguelike).map((e) => e.label);
 }
+
+/**
+ * index.txt:1-4 / r_index.txt:1-4, condensed to the one line the menu has room
+ * for.
+ *
+ * WHY IT IS HERE AT ALL. Upstream's index files are four fifths pointer: this is
+ * a short reference, and the manual is at readthedocs. The port had moved the
+ * address onto the foot of the commands page, where upstream's commands.txt has
+ * no such line and where a player who wanted the manual would have to scroll 56
+ * rows to find it. `selectFromMenu` publishes one subtitle row, so the sentence
+ * is upstream's two joined into one rather than its four lines transcribed.
+ */
+const INDEX_SUBTITLE = "A short in-game reference. Full manual: angband.readthedocs.io/en/latest/";
 
 /**
  * `id` is the name a mod's `help` resource names in its `slot` to REPLACE a
@@ -795,17 +937,24 @@ export function helpIndexLabels(): string[] {
  *
  * The title is not spelled here any more: it belongs to the VIEW, which carries
  * its own, and a title written twice is two transcriptions.
+ *
+ * THE TWO UPSTREAM LABELS ARE index.txt's OWN ("Available commands", line 9,
+ * and "Available symbols", line 10). The second used to read "Symbols on your
+ * map", which is symbols.txt's internal heading rather than the word the index
+ * offers, and the index is the screen a player is choosing from.
  */
-function coreHelpIndex(): readonly { id: string; label: string; page: HelpPage }[] {
+function coreHelpIndex(
+  roguelike: boolean,
+): readonly { id: string; label: string; page: HelpPage }[] {
   return [
     {
       id: "commands",
       label: t("help.commands.label", "Available commands"),
-      page: { view: helpCommandsScreen },
+      page: { view: () => helpCommandsScreen(roguelike) },
     },
     {
       id: "symbols",
-      label: t("help.symbols.label", "Symbols on your map"),
+      label: t("help.symbols.label", "Available symbols"),
       page: { view: helpSymbolsScreen },
     },
     {
@@ -826,18 +975,28 @@ function coreHelpIndex(): readonly { id: string; label: string; page: HelpPage }
  * (selectFromMenu) -> the chosen page (showTextScreen) -> back to the index,
  * exactly the show_file recursion (ui-help.c:337-453), resolving when ESC is
  * pressed at the index. Pure display: no RNG, no state mutation, no turn.
+ *
+ * `roguelike` is `rogue_like_commands`, and it is what upstream's do_cmd_help
+ * uses too: it opens r_index.txt rather than index.txt when the option is on,
+ * and the only difference between those two files is that one links r_comm.txt
+ * and the other commands.txt. A caller with no game state (the title screen's
+ * help, a test) leaves it at the option's own default.
  */
-export async function runHelp(term: GridSurface & GridPointerInput): Promise<void> {
+export async function runHelp(
+  term: GridSurface & GridPointerInput,
+  roguelike = false,
+): Promise<void> {
   for (;;) {
     /* Read PER OPEN, not captured: the list is core's plus whatever the enabled
      * mods supplied, and the mod pages are latched during boot. */
-    const index = helpIndex();
+    const index = helpIndex(roguelike);
     const pick = await selectFromMenu(
       term,
       "core:help-index",
       "Angband Help",
       index.map((entry) => ({ label: entry.label })),
       "[ a-z to choose, ESC to exit ]",
+      { subtitle: INDEX_SUBTITLE },
     );
     if (pick === null) return;
     const entry = index[pick];

@@ -330,7 +330,7 @@ describe("the consumers actually read what was latched", () => {
     expect(labels).toHaveLength(before);
     expect(labels).toContain("How to play MY game");
     expect(labels).not.toContain("Available commands");
-    expect(labels).toContain("Symbols on your map");
+    expect(labels).toContain("Available symbols");
   });
 
   it("ADDS a page when the slot is the mod's own", () => {

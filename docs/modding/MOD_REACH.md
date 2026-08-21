@@ -1407,7 +1407,7 @@ user, now, in this tab) over a mod over the bundled default.
 | Asset | Loaded how | Mod override |
 | --- | --- | --- |
 | Splash / title art (`news.txt`) | inlined as a TS constant, `packages/web/src/news.ts:31` (+ overdrawn "Neo" `:58-76`); not fetched | no |
-| Help (`lib/help/*.txt`) | NOT fetched or bundled - curated inline TS data, stated at `packages/web/src/help.ts:20-36` | no |
+| Help (`lib/help/*.txt`) | NOT fetched or bundled - transcribed into inline TS data, keyset for keyset, and checked line by line against `reference/lib/help/*.txt` by `help.test.ts` | yes, `help` resource (gap 7) |
 | Keymaps | localStorage `neo-angband:keymaps`, edited in game (`packages/web/src/keymap-store.ts:1-26`); upstream's pref-file keymaps are not read from a file | no (user only) |
 | Colour table | in-game RGB editor -> localStorage (`packages/web/src/colors.ts:1-35`); also writable by a loaded `.prf` | no (user only) |
 | User files (dumps, `.prf`) | real virtual `ANGBAND_DIR_USER`, `packages/web/src/userdir.ts:1-35` | no |
