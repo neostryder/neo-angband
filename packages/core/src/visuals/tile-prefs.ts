@@ -225,6 +225,25 @@ export interface KinTileFill {
   readonly objects: number;
 }
 
+/**
+ * One tile a kin fill is about to write, offered to an engine that would rather
+ * make its own. See the `derive` argument to `fillTilesFromKin`.
+ */
+export interface KinTileDerivation {
+  /** Which registry the entity is in. */
+  readonly kind: "monster" | "object";
+  /**
+   * The entity's index in that registry (`ridx` or `kidx`).
+   *
+   * The index rather than the name, because it is what `KinTileDeps` already
+   * requires: asking for a name here would force every caller's fixture to grow
+   * one, and an index is just as stable an identity for keying a variant on.
+   */
+  readonly index: number;
+  /** The kin tile that would otherwise be copied verbatim. */
+  readonly donor: TileAtlas;
+}
+
 /** What a kin fill needs to know: who is kin to whom, and who added what. */
 export interface KinTileDeps {
   readonly monsters: {
@@ -287,11 +306,23 @@ function addedByMod(rec: { from?: { owner: string } }, baseId: string): boolean 
  *
  * Deterministic: the donor is the lowest-index kin carrying a tile, and both
  * registries are in bound order.
+ *
+ * `derive` LETS A TILE ENGINE MAKE THE INHERITED TILE ITS OWN, and exists
+ * because copying the kin's tile solves half of the problem it was written for.
+ * A mod's ant is an ant in every pack now, but it is also pixel-for-pixel the
+ * same ant as its donor, so a player looking at two of them cannot tell which is
+ * which. An engine that can synthesise a picture - the loose-pack engine can,
+ * because its tiles are individual images rather than cells of a fixed atlas -
+ * passes a hook here and returns a tile of its own making instead. The default
+ * is the plain copy, so an engine that says nothing draws exactly what it drew
+ * before, and the decision about WHO is filled stays here rather than being
+ * reimplemented per engine.
  */
 export function fillTilesFromKin(
   map: TileMap,
   deps: KinTileDeps,
   baseId: string = BASE_PACK,
+  derive?: (d: KinTileDerivation) => TileAtlas,
 ): KinTileFill {
   let monsters = 0;
   const races = deps.monsters.races;
@@ -305,7 +336,9 @@ export function fillTilesFromKin(
       if (map.monster[race.ridx] || !addedByMod(race, baseId)) continue;
       const tile = donor.get(race.base.name);
       if (!tile) continue;
-      map.monster[race.ridx] = { ...tile };
+      map.monster[race.ridx] = derive
+        ? derive({ kind: "monster", index: race.ridx, donor: tile })
+        : { ...tile };
       monsters++;
     }
   }
@@ -320,7 +353,9 @@ export function fillTilesFromKin(
     if (map.object[kind.kidx] || !addedByMod(kind, baseId)) continue;
     const tile = donorByTval.get(kind.tval);
     if (!tile) continue;
-    map.object[kind.kidx] = { ...tile };
+    map.object[kind.kidx] = derive
+      ? derive({ kind: "object", index: kind.kidx, donor: tile })
+      : { ...tile };
     objects++;
   }
 

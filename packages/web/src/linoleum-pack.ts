@@ -77,6 +77,7 @@
  */
 
 import { fillTilesFromKin, parseTilePrefsInto, TileMap } from "@rpgm-tools/neo-angband-core";
+import type { KinTileFill } from "@rpgm-tools/neo-angband-core";
 import type { TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
 // Deliberately the `targets` subpath, not the package root: the root also
 // exports the converter, which imports node:fs and must never reach a browser
@@ -127,10 +128,18 @@ export function parseTallFile(text: string): Set<string> {
   return out;
 }
 
-/** What one slot draws: a single asset, or a pool resolved per grid. */
+/**
+ * What one slot draws: a single asset, a pool resolved per grid, or another
+ * slot's picture recoloured.
+ *
+ * `derived` is the only one a PACK cannot declare. It is allocated at load time
+ * for a mod-added monster or item that the pack has no tile for, on top of the
+ * kin tile core would otherwise have copied verbatim - see `deriveKinSlot`.
+ */
 export type LinoleumSlot =
   | { kind: "asset"; asset: string }
-  | { kind: "pool"; pool: PoolDefinition };
+  | { kind: "pool"; pool: PoolDefinition }
+  | { kind: "derived"; from: number; hue: number; of: `${"monster" | "object"}:${number}` };
 
 /** Rules a pack declared that this runtime could not turn into a slot. */
 export interface LinoleumSkipped {
@@ -174,6 +183,31 @@ export const LINOLEUM_MAX_SLOTS = 128 * 128;
 export function slotToAtlas(slot: number): { attr: number; char: number } {
   return { attr: 0x80 | (slot >> 7), char: 0x80 | (slot & 0x7f) };
 }
+
+/** The slot an (attr, char) pair addresses, straight off a core TileMap entry. */
+export function slotFromAtlas(atlas: { attr: number; char: number }): number {
+  return ((atlas.attr & 0x7f) << 7) | (atlas.char & 0x7f);
+}
+
+/**
+ * The hue rotations a derived tile can take, in the order they are handed out.
+ *
+ * Eight, spread around the wheel and none of them near zero, because a rotation
+ * of nothing is a tile indistinguishable from its donor and that is the whole
+ * failure this exists to fix. They are handed out per donor rather than per
+ * entity, so the first eight mod-added creatures sharing one base all differ
+ * from each other as well as from the base's own art; the ninth repeats the
+ * first, which is a better answer than a ninth colour nobody can name.
+ *
+ * A HUE ROTATION IS A NO-OP ON GREY. A donor tile with no saturation - stone,
+ * iron, bone, a black-and-white glyph-like tile - comes back the same colour it
+ * went in, so a derived tile is distinctive exactly when its donor has colour to
+ * turn. The saturation lift below helps a nearly-grey donor and cannot invent
+ * colour in a fully grey one. This is a limit, not a defect to chase: the
+ * alternative is compositing a mark onto somebody's art, which is a bigger lie
+ * than a similar colour.
+ */
+export const LINOLEUM_DERIVED_HUES: readonly number[] = [30, 60, 90, 135, 180, 225, 270, 315];
 
 /** The slot a decoded tile code addresses (the inverse of slotToAtlas). */
 export function atlasToSlot(code: TileCode): number {
@@ -361,6 +395,8 @@ export class LinoleumPack implements TileBlitter {
   private readonly imageDir: string;
   private readonly resolve: PackFileResolver;
   private readonly cache = new Map<string, CachedAsset>();
+  /** Recoloured copies, keyed `<asset>#<hue>`. A null entry is one that failed. */
+  private readonly recolours = new Map<string, CanvasImageSource | null>();
   private notifyScheduled = false;
 
   constructor(input: {
@@ -399,10 +435,38 @@ export class LinoleumPack implements TileBlitter {
 
   /** The asset a slot draws for a grid, or null (empty pool / unknown slot). */
   assetFor(slot: number, grid?: { x: number; y: number }): string | null {
+    return this.slotDraw(slot, grid)?.asset ?? null;
+  }
+
+  /**
+   * What a slot draws for a grid: which asset, and how far to rotate its hue.
+   *
+   * Split out of `assetFor` because a derived slot needs BOTH halves and every
+   * other caller needs only the asset - `isTall` asks about the picture's shape,
+   * which a recolour does not change, and `preload` warms the same file either
+   * way. So a derived slot answers `isTall` with its donor's own declaration for
+   * free, which is the correct answer and not a coincidence: it is the same
+   * image.
+   */
+  private slotDraw(
+    slot: number,
+    grid?: { x: number; y: number },
+  ): { asset: string; hue: number } | null {
     const entry = this.index.slots[slot];
     if (!entry) return null;
-    if (entry.kind === "asset") return entry.asset;
-    return selectPoolMember(entry.pool, { x: grid?.x ?? 0, y: grid?.y ?? 0 });
+    if (entry.kind === "asset") return { asset: entry.asset, hue: 0 };
+    if (entry.kind === "pool") {
+      const member = selectPoolMember(entry.pool, { x: grid?.x ?? 0, y: grid?.y ?? 0 });
+      return member === null ? null : { asset: member, hue: 0 };
+    }
+    /* One level, deliberately. A derived slot is always allocated over a slot the
+     * PACK declared (deriveKinSlot reads the pack's own table, which is fixed
+     * before any derivation happens), so a chain of them is not a case to
+     * support - it is a bug, and returning null makes it visible as a cell that
+     * stayed ASCII rather than as a wrong colour nobody questions. */
+    const base = this.slotDraw(entry.from, grid);
+    if (base === null || base.hue !== 0) return null;
+    return { asset: base.asset, hue: entry.hue };
   }
 
   /**
@@ -451,13 +515,21 @@ export class LinoleumPack implements TileBlitter {
     grid?: { x: number; y: number },
     tall = false,
   ): boolean {
-    const asset = this.assetFor(atlasToSlot(code), grid);
-    if (asset === null) return false;
-    const cached = this.request(asset);
+    const draw = this.slotDraw(atlasToSlot(code), grid);
+    if (draw === null) return false;
+    const cached = this.request(draw.asset);
     if (!cached.loaded || cached.image === null) return false;
+    /* A derived slot draws a recoloured COPY, built once per asset and hue and
+     * kept. Falling back to the donor's own image when the copy cannot be made
+     * is deliberate: the tile is then merely indistinguishable, which is what it
+     * was before this existed, rather than absent. */
+    const source =
+      draw.hue === 0
+        ? cached.image
+        : (this.recoloured(draw.asset, draw.hue, cached.image) ?? cached.image);
     try {
       ctx.drawImage(
-        cached.image,
+        source,
         dx,
         tall ? dy - dh : dy,
         dw,
@@ -467,6 +539,20 @@ export class LinoleumPack implements TileBlitter {
     } catch {
       return false;
     }
+  }
+
+  /** One asset recoloured, built on first use and cached (null once it failed). */
+  private recoloured(
+    asset: string,
+    hue: number,
+    image: HTMLImageElement,
+  ): CanvasImageSource | null {
+    const key = `${asset}#${hue}`;
+    const have = this.recolours.get(key);
+    if (have !== undefined) return have;
+    const made = renderRecoloured(image, hue);
+    this.recolours.set(key, made);
+    return made;
   }
 
   /**
@@ -552,6 +638,43 @@ export class LinoleumPack implements TileBlitter {
   }
 }
 
+/**
+ * One image redrawn with its hue rotated, or null where that cannot be done.
+ *
+ * A canvas filter rather than per-pixel arithmetic, because the browser's own
+ * `hue-rotate` is the same matrix a hand-rolled loop would apply and it does not
+ * need the image to be same-origin readable - nothing here calls
+ * `getImageData`, so an asset served from an installed mod's blob URL recolours
+ * without a taint error.
+ *
+ * Returns null in a document-less environment (the node tests) and on any
+ * failure, and the caller then draws the donor's own picture. A browser too old
+ * for `filter` is not a case to detect: it ignores the assignment, the copy comes
+ * out identical to its source, and the outcome is the undistinguished tile that
+ * was there before.
+ */
+function renderRecoloured(image: HTMLImageElement, hue: number): CanvasImageSource | null {
+  if (typeof document === "undefined") return null;
+  const w = image.naturalWidth;
+  const h = image.naturalHeight;
+  if (w === 0 || h === 0) return null;
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const g = canvas.getContext("2d");
+    if (g === null) return null;
+    /* The saturation lift is what makes a muted donor's rotation readable at a
+     * 16x16 tile. It is small on purpose: a big one turns somebody's carefully
+     * lit art into a poster. */
+    g.filter = `hue-rotate(${hue}deg) saturate(1.25)`;
+    g.drawImage(image, 0, 0);
+    return canvas;
+  } catch {
+    return null;
+  }
+}
+
 /** Fetch text, or null on any failure (404, offline, CORS). Never throws. */
 async function fetchText(url: string): Promise<string | null> {
   try {
@@ -588,6 +711,77 @@ async function readPackText(
  * `urlBaseResolver(base)`. Mod pref texts replay over the generated slot map in
  * enabled load order, so their synthetic tile assignments override pack targets.
  */
+/**
+ * Give a pack's kin fill DISTINCTIVE tiles instead of duplicate ones.
+ *
+ * WHAT THIS IS FOR. `fillTilesFromKin` (core) gives a mod-added monster or item
+ * the tile of its nearest kin, which is what stops a mod's content being a
+ * coloured letter in a tiled dungeon. It leaves half the problem: the added ant
+ * is now pixel-for-pixel the base game's ant, so a player who meets both cannot
+ * tell them apart, and neither can a mod author checking their own work. The
+ * tilesheet engine has no way out of that - its tiles are cells of a fixed
+ * atlas and there is no spare cell to put a variant in. This engine does: a
+ * loose pack's tiles are individual images, so a new slot can be allocated that
+ * draws an existing image with its hue turned.
+ *
+ * WHY IT IS SAFE, in the same terms the core fill earns it. Only entities the
+ * core fill decided to fill are touched, and that decision is restricted to
+ * records a MOD ADDED, by provenance. So no tile the pack declares is changed,
+ * nothing core ships is recoloured, and a pack with no mods installed builds no
+ * derived slots at all. An author who names a specific asset for their monster
+ * in a pref file wins outright, because their pref layers in before the fill
+ * runs and the fill only ever writes where there is nothing.
+ *
+ * DETERMINISTIC, which a tile has to be. Hues are handed out per donor slot in
+ * the order the core fill walks the registries, and both registries are in bound
+ * order, so the same set of installed mods produces the same colours every
+ * launch. Nothing here reads the RNG, the clock, or the save.
+ *
+ * Returns the slot table to use, which is the pack's own plus whatever was
+ * appended. The pack's own slots are never rewritten, so a derived slot cannot
+ * change what an existing rule draws.
+ */
+export function deriveKinSlots(input: {
+  map: TileMap;
+  slots: readonly LinoleumSlot[];
+  deps: TilePrefsDeps;
+}): { slots: readonly LinoleumSlot[]; fill: KinTileFill; derived: number; overflow: number } {
+  const slots: LinoleumSlot[] = [...input.slots];
+  /* How many variants a donor has already handed out, which is what makes two
+   * creatures sharing one base differ from each other and not just from it. */
+  const handedOut = new Map<number, number>();
+  /* One slot per (donor, hue), so the ninth creature on a donor shares the
+   * first's colour AND its slot rather than allocating an identical one. */
+  const bySignature = new Map<string, number>();
+  let overflow = 0;
+
+  const fill = fillTilesFromKin(input.map, input.deps, undefined, (d) => {
+    const donorSlot = slotFromAtlas(d.donor);
+    /* A donor tile this pack did not put there - a mod pref naming a raw atlas
+     * cell, say - has no asset to recolour, so it is copied as it was. */
+    if (input.slots[donorSlot] === undefined) return { ...d.donor };
+
+    const seen = handedOut.get(donorSlot) ?? 0;
+    handedOut.set(donorSlot, seen + 1);
+    const hue = LINOLEUM_DERIVED_HUES[seen % LINOLEUM_DERIVED_HUES.length] as number;
+    const signature = `${donorSlot}#${hue}`;
+
+    let slot = bySignature.get(signature);
+    if (slot === undefined) {
+      if (slots.length >= LINOLEUM_MAX_SLOTS) {
+        overflow += 1;
+        return { ...d.donor };
+      }
+      slot = slots.length;
+      slots.push({ kind: "derived", from: donorSlot, hue, of: `${d.kind}:${d.index}` });
+      bySignature.set(signature, slot);
+    }
+    return slotToAtlas(slot);
+  });
+
+  return { slots, fill, derived: slots.length - input.slots.length, overflow };
+}
+
 export async function loadLinoleumPack(input: {
   resolve: PackFileResolver;
   menuname: string;
@@ -638,12 +832,16 @@ export async function loadLinoleumPack(input: {
    * make "does my mod look right" depend on which tile engine the player picked,
    * which is exactly the split the two-engine seam exists to hide.
    */
-  fillTilesFromKin(index.map, input.deps);
   if (index.slots.length === 0) return null;
+  /* Derived rather than duplicated, which is this engine's own half of the
+   * answer and is why the fill runs through deriveKinSlots here and plainly in
+   * tiles.ts. Both engines still fill the same entities from the same kin; this
+   * one can also tell them apart afterwards. */
+  const derived = deriveKinSlots({ map: index.map, slots: index.slots, deps: input.deps });
   return new LinoleumPack({
     menuname: input.menuname,
     resolve: input.resolve,
     manifest,
-    index,
+    index: { ...index, slots: derived.slots },
   });
 }
