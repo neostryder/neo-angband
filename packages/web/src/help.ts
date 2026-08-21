@@ -471,6 +471,11 @@ const MONSTERS: readonly GlyphRow[] = [
  * it to live. The commands page gave up its own "Original Keyset Command
  * Summary" heading the same way, to the screen title, which is the one place a
  * player can see which keyset they are reading before they scroll.
+ *
+ * This is accepted rather than a gap to close: front-end presentation has
+ * latitude for a minor difference like a decorative rule without counting as a
+ * parity deviation, and the caption model would have to stop being a caption to
+ * regain a line that draws nothing else.
  */
 function symbolColumns(descWidth: number): readonly ScreenColumn[] {
   return [
