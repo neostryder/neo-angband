@@ -32,7 +32,7 @@ export const WORK_DIRNAME = ".neo-update";
 /**
  * How this launch can be updated.
  *
- *  - `swap`   the app is a folder we own and can replace in place.
+ *  - `swap`   the app is a folder this build owns and can replace in place.
  *  - `manual` an update exists and can be downloaded, but this launch cannot
  *             install it over itself - the file is revealed instead.
  *  - `none`   do not offer anything.
@@ -163,7 +163,7 @@ export function shQuote(s: string): string {
  * IT HAS TO BE AN EXTERNAL PROCESS. A program cannot replace its own running
  * executable on Windows (the file is locked) and cannot reliably do it on macOS
  * either, so the last step belongs to something that outlives us. The script
- * waits for our PID, swaps, relaunches, and deletes the attic.
+ * waits for the app's PID, swaps, relaunches, and deletes the attic.
  *
  * THE WAIT IS BOUNDED. If the app somehow never exits, an unbounded wait leaves
  * a process polling forever and, worse, a staged update that silently never

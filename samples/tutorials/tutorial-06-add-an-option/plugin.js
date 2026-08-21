@@ -10,7 +10,7 @@
  * SUPPLIED at all - not inside `messageText`, returning `raw` unchanged. Both look
  * identical to the player, but only this one leaves core running its own untouched
  * path when the option is off, instead of running core's message through a
- * function of ours on every single message.
+ * function of this mod's on every single message.
  */
 export default {
   api: 1,

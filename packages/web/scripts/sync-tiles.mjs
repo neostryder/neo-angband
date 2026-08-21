@@ -22,7 +22,7 @@
 //              grafmode-data.ts. The modes are compiled in and the game never
 //              fetches the file.
 //
-// CREDITS.md is ours, not upstream's, and is never touched: it carries Raymond
+// CREDITS.md is this project's, not upstream's, and is never touched: it carries Raymond
 // Gaustadnes' grant of free use for the Shockbolt tiles and the condition that
 // rides along with the art. It is committed, and it stays.
 //
@@ -40,7 +40,7 @@ const DEST = join(HERE, "..", "public", "tiles");
 /** Upstream files the game does not serve. See the header for the reasons. */
 const SKIP = new Set(["Makefile", "list.txt"]);
 
-/** Ours, not upstream's - never generated, never overwritten. */
+/** This project's, not upstream's - never generated, never overwritten. */
 const OURS = new Set(["CREDITS.md"]);
 
 /** Every file under `dir`, as paths relative to it, in a stable order. */
@@ -81,7 +81,7 @@ for (const rel of wanted) {
   copied += 1;
 }
 
-/* Anything served that upstream does not have, except our own files, is stale -
+/* Anything served that upstream does not have, except this project's own files, is stale -
  * a tileset renamed upstream would otherwise leave its old tree behind forever. */
 let stale = [];
 try {

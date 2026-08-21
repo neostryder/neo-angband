@@ -595,7 +595,7 @@ async function askConsent(term: GridSurface & GridPointerInput, deps: ModBrowseD
  * not switched off, and nothing about the player's choices changed - the second line
  * in particular tells someone whose mod is running that it is not, which is the kind
  * of message that sends a player to the mod list to fix something that is not broken.
- * It happened because "did we just turn it on" was the only thing being asked, and an
+ * It happened because "was it just turned on" was the only thing being asked, and an
  * already-enabled mod answers no to that.
  *
  * So the tag the player HAD is read before the install, and the outcome is one of

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PackManifest } from "./manifest.js";
 import { resolveLoadOrder, ResolveError } from "./resolve.js";
 
-/** Build a minimal manifest for resolver tests; only set the fields we need. */
+/** Build a minimal manifest for resolver tests; only set the fields these tests need. */
 function manifest(
   id: string,
   extra?: Partial<

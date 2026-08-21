@@ -1062,9 +1062,9 @@ export function showCharacterSheet(
 
 
       /**
-       * Run one of the sheet's commands with OUR listeners detached: `promptText`
+       * Run one of the sheet's commands with THIS MODULE'S listeners detached: `promptText`
        * and `getFile` listen in the capture phase and would otherwise be starved by
-       * ours. The command bodies themselves are shared with the presenter's `host`,
+       * them. The command bodies themselves are shared with the presenter's `host`,
        * which needs no detaching because it never installed anything.
        */
       const detached = (run: () => Promise<void>): void => {

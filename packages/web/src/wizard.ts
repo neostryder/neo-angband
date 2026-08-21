@@ -3,7 +3,7 @@
  * engine in @rpgm-tools/neo-angband-core (game/wizard.ts).
  *
  * Every prompt, confirmation and message in this file is transcribed from the
- * C, not described in our own words. The sources are cmd-wizard.c (the
+ * C, not described in this port's own words. The sources are cmd-wizard.c (the
  * command-level prompts), ui-wizard.c (the menu shims), ui-game.c L234-322
  * (the two-level menu tables) and cmd-misc.c L37-68 / game-input.c L281-295
  * (the two entry gates).

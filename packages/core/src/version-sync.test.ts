@@ -99,7 +99,7 @@ describe("a version is derived, not picked", () => {
 
   it("keeps 0.x as the pre-release line", () => {
     /* 1.0.0 is reserved for the game's public release, so it is never reached by
-     * routine bumping. The CLI refuses `major` without --release; here we just
+     * routine bumping. The CLI refuses `major` without --release; here this just
      * pin that the project has not accidentally already crossed it. */
     expect(projectVersion()).toMatch(/^0\./u);
   });

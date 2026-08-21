@@ -319,9 +319,9 @@ export interface PredictedScores {
 /**
  * predict_score (ui-score.c L193): find where the current character sits and
  * pick the neighbourhood to show. A dead character is already in `scores`
- * (enter_score ran), so we only locate it (highscore_where); a live character
+ * (enter_score ran), so it is only located (highscore_where); a live character
  * is provisionally inserted (highscore_add) so it appears in the table. On the
- * top ten we show ranks 1..15; otherwise a window around the entry.
+ * top ten the range shown is ranks 1..15; otherwise a window around the entry.
  *
  * This is the DATA half; the shell (display_scores_aux) owns the paging loop.
  */

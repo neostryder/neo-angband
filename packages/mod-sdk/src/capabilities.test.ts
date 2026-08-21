@@ -6,7 +6,7 @@ import {
 } from "./capabilities.js";
 import type { PackManifest, PackShape } from "./manifest.js";
 
-/** Build a minimal manifest for capability tests; only set the fields we need. */
+/** Build a minimal manifest for capability tests; only set the fields these tests need. */
 function manifest(
   shape: PackShape,
   extra?: Partial<Pick<PackManifest, "capabilities" | "nondeterministic" | "affectsGameplay">>,

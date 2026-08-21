@@ -50,7 +50,7 @@ describe("where a download may come from", () => {
 
   it("refuses another repository's assets", () => {
     /* The catalogue is fetched over the network, so it is input. A digest proves
-     * the bytes match what the API SAID; it cannot tell you the API was ours. */
+     * the bytes match what the API SAID; it cannot tell you the API was this project's. */
     expect(
       isAllowedAssetUrl("https://github.com/someone/else/releases/download/v1/x.zip", REPO),
     ).toBe(false);
@@ -105,7 +105,7 @@ describe("refusing to install what cannot be checked", () => {
 
   it("checks the host BEFORE it checks the digest", async () => {
     /* Order matters: the digest check is the expensive one and the host check is
-     * the one that decides whether we speak to a stranger at all. */
+     * the one that decides whether the updater speaks to a stranger at all. */
     await expect(
       downloadArchive({
         url: "https://evil.invalid/x.zip",

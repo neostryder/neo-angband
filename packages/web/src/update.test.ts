@@ -86,7 +86,7 @@ describe("which file this machine needs", () => {
     expect(pickAsset(old, MAC_ARM)?.name).toBe("Neo.Angband-0.16.0-arm64-mac.zip");
   });
 
-  it("answers null for a platform we do not ship", () => {
+  it("answers null for a platform this project does not ship", () => {
     expect(pickAsset(ASSETS, { platform: "freebsd", arch: "x64" })).toBeNull();
   });
 
@@ -94,7 +94,7 @@ describe("which file this machine needs", () => {
     /*
      * These are upstream Angband's real asset names, copied from its releases
      * API. Its Windows archive ends in `-win.zip` and its source tarball in
-     * `.tar.gz`, exactly like ours - so while the platform test was a bare
+     * `.tar.gz`, exactly like these - so while the platform test was a bare
      * suffix match, the ONLY thing stopping a foreign release from being
      * unpacked over this game was UPDATE_REPO holding the right string.
      *
@@ -115,7 +115,7 @@ describe("which file this machine needs", () => {
     }
   });
 
-  it("still finds our file when a foreign one sits beside it", () => {
+  it("still finds the right file when a foreign one sits beside it", () => {
     /* The filter must exclude the impostor, not give up on the whole list. */
     const mixed = [asset("Angband-4.2.6-166-gf0f6bd223-win.zip"), ...ASSETS];
     expect(pickAsset(mixed, WIN)?.name).toBe("Neo.Angband-0.17.0-win.zip");

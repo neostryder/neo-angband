@@ -9,7 +9,7 @@ body:
         For anything that is plainly wrong rather than merely different from the
         original. If your question is "does the real Angband do this too?", the
         [parity form](?template=1-parity-difference.yml) is the better fit -
-        but do not agonise over the choice, we will move it.
+        but do not agonise over the choice, it can be moved.
 
         **If a character will not load, do not delete anything.** The game
         leaves an unreadable save exactly where it is; a copy of it, exported

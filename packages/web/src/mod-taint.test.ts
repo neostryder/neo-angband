@@ -320,7 +320,7 @@ describe("the save refusal is wired into the one function every save goes throug
     expect(advance).toMatch(/try\s*\{[\s\S]*runGameLoop\(/u);
     expect(advance).toMatch(/catch/u);
     expect(advance).toMatch(/taintSession\(/u);
-    /* And it must taint as CORE, or the notice blames a mod for our bug. */
+    /* And it must taint as CORE, or the notice blames a mod for the game's own bug. */
     expect(advance).toMatch(/id:\s*null/u);
   });
 

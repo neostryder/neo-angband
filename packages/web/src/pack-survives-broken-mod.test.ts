@@ -228,7 +228,7 @@ describe("a boot-time compose error costs the mod, not the game", () => {
  * the producer is what this proves.
  */
 describe("a manifest that is not an object never becomes a pack", () => {
-  /** An in-memory mods directory holding whatever JSON we hand it. */
+  /** An in-memory mods directory holding whatever JSON it is handed. */
   function source(files: Record<string, unknown>): ModDirSource {
     return {
       kind: "picked",

@@ -29,7 +29,7 @@
  * absolute path are refused rather than escaping the staging directory, and a
  * symlink whose target leaves the tree is refused for the same reason - a link
  * is a path that gets followed later, which is the part that makes it worth
- * checking. The digest was already verified before we got here; that proves the
+ * checking. The digest was already verified before this point; that proves the
  * bytes are the ones GitHub described, not that they are harmless.
  *
  * MEMORY IS BOUNDED. These archives are 120-165 MB and the single largest file
@@ -148,7 +148,7 @@ export function readZipEntries(fd: number, fileSize: number): ArchiveEntry[] {
    * Zip64 is REFUSED rather than half-supported. Every field it widens is one
    * this reader would otherwise take a 0xFFFFFFFF placeholder for and treat as a
    * real offset, which is a corrupt extraction that looks like a successful one.
-   * Our archives are ~160 MB with a couple of thousand entries, well inside the
+   * These archives are ~160 MB with a couple of thousand entries, well inside the
    * 32-bit limits, so reaching this is a change in how releases are built and
    * deserves to stop rather than to be guessed at.
    */
@@ -429,7 +429,7 @@ export function unpackTar(archive: string, into: string, platform: string): numb
       }
       /* pax extended headers ('x'/'g') describe the NEXT entry in a key=value
        * block. Skipped rather than parsed: everything they can override is
-       * something the ustar fields already carry for our archives, and a
+       * something the ustar fields already carry for these archives, and a
        * half-read pax record is worse than none. */
       if (h.type === "x" || h.type === "g") continue;
 
@@ -495,7 +495,7 @@ export function unpackTar(archive: string, into: string, platform: string): numb
  * Unpack whichever of the two formats this is, by name.
  *
  * By EXTENSION rather than by sniffing the first bytes, because the name came
- * from the release asset we chose deliberately (`pickAsset`) and a file whose
+ * from the release asset chosen deliberately (`pickAsset`) and a file whose
  * contents disagree with its name is a release that is wrong in a way an
  * unpacker should not paper over.
  */

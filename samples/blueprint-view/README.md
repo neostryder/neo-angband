@@ -51,7 +51,7 @@ mod's fault*, and "there is no document here" is not a fault.
 resize and a sidebar-mode change without listening for either. Everything
 outside that rectangle is still core's, and still readable.
 
-## Two things about the seam, stated because they surprised us
+## Two things about the seam, stated because they were surprises
 
 **The first frame is always the game's.** The host installs front ends during
 the mod boot, which happens after the first `render()`. A front end must

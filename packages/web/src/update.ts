@@ -13,7 +13,7 @@
  * 1. `/releases/latest` EXCLUDES pre-releases. Every 0.x tag is published with
  *    `--prerelease` (see docs/RELEASING.md), so that endpoint answers 404 for
  *    this project today and would answer with a stale 1.x release later. The
- *    list endpoint is the only one that can see our releases at all.
+ *    list endpoint is the only one that can see these releases at all.
  * 2. DRAFTS ARE INVISIBLE to an unauthenticated caller and must stay that way -
  *    a draft is a release nobody has approved. `draft: true` is filtered anyway,
  *    so an authenticated run (a maintainer's token in the environment) behaves
@@ -292,8 +292,8 @@ export function pickAsset(
  * The highest published version among these releases, or null.
  *
  * `compareSemver` returns null for a version it cannot parse; such a release is
- * skipped rather than treated as 0.0.0, because an unparseable tag is a tag we
- * do not understand and offering it as an upgrade is a guess.
+ * skipped rather than treated as 0.0.0, because an unparseable tag is a tag nothing
+ * here understands and offering it as an upgrade is a guess.
  */
 export function newestRelease(releases: readonly Release[]): Release | null {
   /* compareSemver answers null for anything it cannot parse, so comparing a
@@ -361,7 +361,7 @@ export function decideUpdate(
   };
 }
 
-/** The shape of one release in GitHub's JSON, as far as we read it. */
+/** The shape of one release in GitHub's JSON, as far as this reads it. */
 interface ApiRelease {
   tag_name?: unknown;
   draft?: unknown;

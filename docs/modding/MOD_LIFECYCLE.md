@@ -35,15 +35,15 @@ follows:
 Upstream Angband serializes a monster as its `r_idx` and an item as its
 `k_idx` - array positions. Add or remove one record and every later
 index shifts, silently corrupting old saves. That fragility is exactly
-what breaks modded saves elsewhere. We serialize `core:kobold`,
-`frost:frost-wyrm`, `mypack:quest-of-the-lost-ring` and resolve the
+what breaks modded saves elsewhere. This port serializes `core:kobold`,
+`frost:frost-wyrm`, `mypack:quest-of-the-lost-ring` and resolves the
 string to a runtime index at load time. Adding, removing, or reordering
 content never moves an existing id.
 
 ### The save is block-structured and namespaced
 
 The savefile is already block-based (a faithful port of `savefile.c`:
-magic, then framed blocks). We extend it into three tiers:
+magic, then framed blocks). The port extends it into three tiers:
 
 - A `manifest` block: the exact mod set that produced this save - each
   pack's `id`, `version`, content hash, and source (git URL + ref, or
@@ -213,9 +213,9 @@ directly. Either way the installer consumes the same pack format.
 The marketplace is a delivery layer over the same pipeline, not a
 separate system. It serves pre-validated, pre-packaged `.ngpack` bundles
 (the pack directory, zipped, with the manifest and a signed content
-hash) from our own host, and adds browse / search / screenshots /
-ratings in-app. Building it later is cheap because we build the bundle
-format and the installer now, with "git" and "marketplace" as two
+hash) from its own host, and adds browse / search / screenshots /
+ratings in-app. Building it later is cheap because the bundle
+format and the installer are built now, with "git" and "marketplace" as two
 sources feeding one installer. [PROPOSED] The in-app browser is a view
 onto that source; actually building the marketplace backend is a future
 release, as noted.
@@ -373,7 +373,7 @@ says so with a band, which needs nobody's agreement.
   they touch the SAME FIELD.
 
 The existing composition model (`patches`, `replaces`, `removes`) is the
-lever. [PROPOSED] We make `patches` field-granular and composable: a
+lever. [PROPOSED] `patches` becomes field-granular and composable: a
 patch is a set of field operations (`set`, `merge`, `addFlag`,
 `removeFlag`, numeric `add`/`mul`, list `append`/`removeValue`), applied in
 load order. Two mods that
@@ -487,8 +487,8 @@ labour between them and the game:
   SORTING above all (rule sets, auto-sort, bulk reordering of a large
   set), plus deployment/staging, collections and bundles, per-profile
   installs, update watching, and bulk install/remove. Those are solved
-  problems in Vortex/MO2 and they are what those tools are for; we do not
-  compete with them and we do not grow the in-game UI to match them.
+  problems in Vortex/MO2 and they are what those tools are for; this project does not
+  compete with them and does not grow the in-game UI to match them.
 
 > **AMENDED 2026-08-01 (the project owner): auto-sort comes back in-game.**
 > The clause above putting load-order SORTING outside the game is revised; the
@@ -510,7 +510,7 @@ labour between them and the game:
   directory / zip with a manifest, so it is filesystem-friendly by
   construction. A desktop build watches a mod directory that a Vortex or
   MO2 extension deploys into and honours the explicit enabled-set and
-  order it finds there. One format serves both; we do not fork, and the
+  order it finds there. One format serves both; there is no fork, and the
   external tool never needs the game running to do its job.
 
 Consequence for the engine: the ENABLED SET and the LOAD ORDER must both

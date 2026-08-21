@@ -445,7 +445,7 @@ function field(text: string): DisplayRun[] {
 /**
  * prt_stat (ui-display.c:153-171) for one stat index. The 5-char label is drawn
  * at col 0, but the 6-char cnv_stat value is drawn at col+6 (c_put_str at
- * col + 6, L161/L165) - there is a blank column at col 5. We reproduce that gap
+ * col + 6, L161/L165) - there is a blank column at col 5. That gap is reproduced
  * by padding the label run to width 6 so the following value run begins at col
  * 6 exactly. The "!" natural-maximum indicator still overwrites index 3.
  */
@@ -498,7 +498,7 @@ function levelRuns(player: Player): DisplayRun[] {
 /**
  * prt_exp (ui-display.c:226-250). The 3-char label ("EXP"/"NXT"/"Exp"/"Nxt") is
  * drawn at col 0, but the 8-char "%8ld" value is drawn at col+4 (c_put_str at
- * col + 4, L245/L248) - there is a blank column at col 3. We pad the label run
+ * col + 4, L245/L248) - there is a blank column at col 3. The label run is padded
  * to width 4 so the value run begins at col 4 exactly.
  */
 function expRuns(player: Player): DisplayRun[] {
@@ -842,8 +842,8 @@ const MON_FEELING_COLOR = [
 /**
  * prt_level_feeling (ui-display.c:1053-1124). Draws "LF:<mon>-<obj>"; the
  * reference return width is new_col - col == 3 + strlen(mon) + 1 + strlen(obj)
- * + 1 (L1121-1123), i.e. the text plus exactly ONE trailing gap column. We bake
- * that single gap in with a trailing " " run so the segment renders with no
+ * + 1 (L1121-1123), i.e. the text plus exactly ONE trailing gap column. That
+ * single gap is baked in with a trailing " " run so the segment renders with no
  * external gap.
  */
 function levelFeelingRuns(state: GameState, deps: ResolvedDeps): DisplayRun[] {
@@ -899,8 +899,8 @@ function movesRuns(deps: ResolvedDeps): DisplayRun[] {
 
 /**
  * prt_unignore (ui-display.c:1280-1289). Draws "Unignoring", returns
- * strlen(str) + 1 (L1285) - the text width includes one trailing gap column. We
- * bake that gap into the text ("Unignoring ").
+ * strlen(str) + 1 (L1285) - the text width includes one trailing gap column. That
+ * gap is baked into the text ("Unignoring ").
  */
 function unignoreRuns(deps: ResolvedDeps): DisplayRun[] {
   return deps.unignoring
@@ -910,7 +910,7 @@ function unignoreRuns(deps: ResolvedDeps): DisplayRun[] {
 
 /**
  * prt_recall (ui-display.c:925-933). Draws "Recall", returns sizeof "Recall" ==
- * 7 (L929) - the text width includes one trailing gap column. We bake that gap
+ * 7 (L929) - the text width includes one trailing gap column. That gap is baked
  * into the text ("Recall ").
  */
 function recallRuns(player: Player): DisplayRun[] {
@@ -921,8 +921,8 @@ function recallRuns(player: Player): DisplayRun[] {
 
 /**
  * prt_descent (ui-display.c:939-947). Draws "Descent", returns sizeof "Descent"
- * == 8 (L943) - the text width includes one trailing gap column. We bake that
- * gap into the text ("Descent ").
+ * == 8 (L943) - the text width includes one trailing gap column. That gap is
+ * baked into the text ("Descent ").
  */
 function descentRuns(player: Player): DisplayRun[] {
   return player.deepDescent
@@ -940,7 +940,7 @@ function i2d(n: number): string {
  * repeat count. The rest field is always exactly ten characters wide. The
  * reference returns strlen(text) + 1 (L1016) - the width always includes one
  * trailing gap column, and when idle (text == "") it still returns 1, reserving
- * a single blank column. We bake the gap in: an active state emits its field
+ * a single blank column. The gap is baked in: an active state emits its field
  * plus a trailing space; an idle state emits a single space run.
  */
 function stateRuns(deps: ResolvedDeps): DisplayRun[] {
@@ -994,8 +994,8 @@ function stateRuns(deps: ResolvedDeps): DisplayRun[] {
 
 /**
  * prt_study (ui-display.c:1226-1245). Draws "Study (%d)", returns strlen(text)
- * + 1 (L1241) - the text width includes one trailing gap column. We bake that
- * gap into the text ("Study (N) ").
+ * + 1 (L1241) - the text width includes one trailing gap column. That gap is
+ * baked into the text ("Study (N) ").
  */
 function studyRuns(player: Player, deps: ResolvedDeps): DisplayRun[] {
   const n = player.upkeep.newSpells;

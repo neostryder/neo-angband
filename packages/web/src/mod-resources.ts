@@ -311,7 +311,7 @@ export async function verifyResource(
   if (spec.directory) {
     /* A DIRECTORY cannot be fetched and cannot be probed, so the two checks that
      * apply are the inventory (does it hold anything of the right type) and the
-     * codec table (could we play it if it did). */
+     * codec table (could it be played if it did). */
     const playable = SOUND_FORMATS.filter((f) => runtime.canPlayAudio(f.mime));
     if (playable.length === 0) {
       return (

@@ -38,7 +38,7 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SERVED = join(ROOT, "packages", "web", "public", "tiles");
 const SYNC = join(ROOT, "packages", "web", "scripts", "sync-tiles.mjs");
 
-/** Our own committed files live there too, so their presence proves nothing. */
+/** This project's own committed files live there too, so their presence proves nothing. */
 const OURS = new Set(["CREDITS.md"]);
 
 export function setup() {

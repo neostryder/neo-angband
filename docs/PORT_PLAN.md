@@ -233,7 +233,7 @@ documentation lives here under `docs/`.
     PARITY.md) plus a checklist of the approved variations.
 24. **Upstream tracking and the bug-fix mod** (ratified 2026-07-08): the port
     tracks upstream by TAGGED RELEASE, not tip-of-tree. The baseline is the
-    4.2.6 tag and core stays faithful to it; we do NOT cherry-pick post-tag
+    4.2.6 tag and core stays faithful to it; the port does NOT cherry-pick post-tag
     commits, merged PRs, or issue fixes into core, because that makes core
     diverge from the tag and turns every future upstream re-sync into a rebase
     over local patches. Instead, all such fixes ship in a single BUNDLED "bug
@@ -241,7 +241,7 @@ documentation lives here under `docs/`.
     patches): crash, data-corruption, save/load, determinism, and clear
     logic-error fixes drawn from post-tag commits, PRs, and issues. The mod's
     documentation MUST cite, directly and explicitly, every upstream commit
-    SHA, PR number, and issue number it patches. Any bug our own port code has
+    SHA, PR number, and issue number it patches. Any bug the port's own code has
     already "fixed" relative to the tag is likewise moved OUT of core and INTO
     the bug-fix mod, so core remains a faithful reproduction of the tag (bugs
     included) and the fixes stay opt-in. Balance and subjective changes are

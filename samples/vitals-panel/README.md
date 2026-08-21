@@ -48,7 +48,7 @@ would also lose the region, but would be *reported as this mod's fault*, and
 re-positioned from it on every frame, so it follows a window resize and a
 sidebar-mode change without listening for either.
 
-## Three things about the seam, stated because they surprised us
+## Three things about the seam, stated because they were surprises
 
 **The capability is the claim.** The host picks each region's owner from the
 *manifests*, before it calls anybody's `hud()`, so a mod that loses does not get

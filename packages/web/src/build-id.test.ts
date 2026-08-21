@@ -5,7 +5,7 @@
  * cosmetic bug: it puts an (U)pdate row in front of a player, reloads them onto
  * the same build, and puts the row straight back. There is no way out of that
  * loop from inside the game, so every uncertainty - an unstamped build, a failed
- * fetch, a body that is not what we expected - has to answer "up to date".
+ * fetch, a body that is not the expected shape - has to answer "up to date".
  */
 
 import { describe, expect, it, vi } from "vitest";

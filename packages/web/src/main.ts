@@ -640,8 +640,8 @@ let titleUp = false;
  * log and a resumed turn nobody asked for. Everywhere else the update waits
  * behind the title screen's (U)pdate row. */
 installAutoUpdate(() => titleUp);
-/* And on the desktop, where the new build is already on the disk and only our
- * own worker is still serving the old one, take it without asking. */
+/* And on the desktop, where the new build is already on the disk and only this
+ * app's own worker is still serving the old one, take it without asking. */
 void refreshStaleDesktopShell();
 /* Before anything else can miss it: beforeinstallprompt fires early and once, so
  * the (I)nstall locally page cannot go looking for it when the player asks. */
@@ -946,7 +946,7 @@ function isContinuation(): boolean {
  *
  * Dropping the active id is the whole mechanism. The boot below starts a
  * throwaway game behind the character select, and a throwaway game with an
- * active id autosaves INTO that id - so the slot holding the character we just
+ * active id autosaves INTO that id - so the slot holding the character just
  * failed to read would be overwritten by an empty level-1 nobody asked for,
  * within one turn, with no prompt. Clearing the id sends those autosaves to a
  * fresh slot instead and leaves the original byte-for-byte intact, which is
@@ -1522,7 +1522,7 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
       deps: { ...tileDeps, vars: playerPrefVars() },
       modPrefTexts: modTilePrefTexts,
     });
-    // Ignore a stale load if the mode changed while we were fetching.
+    // Ignore a stale load if the mode changed during the fetch.
     if (currentGrafID !== grafID) return;
     if (pack) {
       pack.onReady = () => repaintEverything();
@@ -1555,7 +1555,7 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
     ...tileDeps,
     vars: playerPrefVars(),
   }, modTilePrefTexts);
-  // Ignore a stale load if the mode changed while we were fetching.
+  // Ignore a stale load if the mode changed during the fetch.
   if (currentGrafID === grafID) {
     tileMap = map;
     repaintEverything();
@@ -3089,7 +3089,7 @@ async function wieldPrompts(
       "equip",
     );
     /* cmd_get_item != CMD_OK -> return (cmd-obj.c:305-306): ESC abandons the
-     * whole wield, it does not fall back to a hand of our choosing. */
+     * whole wield, it does not fall back to a hand of the port's choosing. */
     if (ref === null || !("handle" in ref)) return false;
     /* equipped_item_slot(player->body, equip_obj) (cmd-obj.c:309). */
     const chosen = player.equipment.findIndex((h) => h === ref.handle);
@@ -3269,8 +3269,8 @@ function usedEffectChain(obj: GameObject): Effect | null {
  * into the command args before it is queued. Returns whether the command should
  * be queued. On a cancelled prompt the command is queued ONLY for an unaware
  * consumable (upstream still runs it: the flavour is learned and the turn is
- * spent, but nothing is consumed); an aware carrier aborts with no turn, so we
- * return false and the caller drops the command.
+ * spent, but nothing is consumed); an aware carrier aborts with no turn, so this
+ * returns false and the caller drops the command.
  */
 async function applyEffectPrompts(
   obj: GameObject,
@@ -5321,9 +5321,9 @@ function wizardCtx(): WizardUiCtx {
       );
       return ok ? targetGet(state) : null;
     },
-    // wiz_hack_map (cmd-wizard.c:320): the debug query commands hand us the
-    // grids their probe selected, each with the colour that probe chose, and we
-    // overlay one glyph per grid on the visible panel exactly as print_rel
+    // wiz_hack_map (cmd-wizard.c:320): the debug query commands supply the
+    // grids their probe selected, each with the colour that probe chose, and one
+    // glyph per grid is overlaid on the visible panel exactly as print_rel
     // does - '@' on the player, '*' where the grid is passable, '#' otherwise.
     hackMap: (marks): void => {
       const { mapOriginX, mapTop, mapCols, mapRows, camX, camY } = viewport();
@@ -5422,7 +5422,7 @@ function persistSave(deliberate = false): boolean {
   if (!id) return true; // no active slot (e.g. the picker is up): nothing to save
   try {
     const b64 = bytesToB64(encodeSavedGame(saveGame(game), undefined, SAVE_CODEC));
-    /* writeSlot's own verdict, not just "we did not throw": the storage write
+    /* writeSlot's own verdict, not just "nothing threw": the storage write
      * itself is where a quota failure shows up. */
     const ok = writeSlot(id, b64, metaFromState(id));
     /* There is now a character worth protecting from the browser's own eviction, so
@@ -5753,7 +5753,7 @@ async function openModManager(): Promise<void> {
  * Module-scope rather than a local, so it survives the whole session: a player
  * who lives in Mods or Options should find the row they use under the cursor,
  * not row one. Upstream's menus keep `menu->cursor` in the long-lived struct for
- * the same reason; ours are one call per open, so this is where it lives.
+ * the same reason; these are one call per open, so this is where it lives.
  */
 let gameMenuCursor = 0;
 
@@ -9379,7 +9379,7 @@ void applyTileMode(readTileMode());
 // --- Birth: choose a character for a new game -------------------------------
 // A brand-new game opens the staged birth screen (ui-birth.c stage order). The
 // engine has already built a default Human Warrior this load; when the player
-// chooses, we persist the choice and reload so startGame rebuilds as that
+// chooses, the choice is persisted and the game reloads so startGame rebuilds as that
 // race/class (its stats and starting kit differ). A one-shot sessionStorage
 // flag suppresses the screen on that rebuild. Backing out (ESC) keeps whatever
 // character was built. Resuming a save never births.
@@ -9443,7 +9443,7 @@ async function maybeBirth(): Promise<BootStep> {
     // (:1615-1626 + :1661-1666), i.e. creation starts over. The web shell DOES
     // have a level above: the title screen is its "no game in progress" splash
     // (main-win.c:5475). So the hierarchical-back rule continues one step further
-    // here and we answer "back", letting bootMenus put the title up. What must
+    // here and the answer is "back", letting bootMenus put the title up. What must
     // NOT happen is accepting the null and playing on: the hero kept that way is
     // the throwaway one startGame rolled behind the birth screen, which the player
     // never chose - that was the "ESC instantly creates a default character" bug.
@@ -10159,7 +10159,7 @@ async function showUpdatePage(): Promise<void> {
       view = { ...view, phase: "failed", error: applied?.error };
       return true;
     }
-    /* The main process is quitting and a swap script is waiting on our pid.
+    /* The main process is quitting and a swap script is waiting on this pid.
      * There is nothing left to draw. */
     return false;
   };

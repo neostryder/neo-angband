@@ -2105,7 +2105,7 @@ export async function runBirth(
         name = entered.trim();
         // BIRTH_HISTORY_CHOICE follows naming (ui-birth.c:1723) when the shell
         // supplies get_history; otherwise history is generated engine-side and
-        // we go straight to the final confirm.
+        // the flow goes straight to the final confirm.
         advance(opts.historyFor ? "history" : "confirm");
         break;
       }

@@ -132,7 +132,7 @@ app.whenReady().then(async () => {
 
   /**
    * AN ARCHIVE THAT CONTAINS `resources/app.asar` CANNOT BE UNPACKED INSIDE
-   * ELECTRON without saying so first, and every archive we ship is one.
+   * ELECTRON without saying so first, and every archive shipped here is one.
    *
    * Electron patches `fs` so that any path containing `.asar` is an archive
    * rather than a file. Writing `resources/app.asar` therefore does not write a

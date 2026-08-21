@@ -72,7 +72,7 @@ describe("wieldPrompts asks do_cmd_wield's two questions", () => {
 
   it("aborts the whole wield when the ring picker is escaped", () => {
     /* cmd_get_item != CMD_OK -> return (cmd-obj.c:305-306). Falling through to a
-     * hand of our choosing would be the original bug wearing a hat. */
+     * hand of the port's choosing would be the original bug wearing a hat. */
     expect(body).toMatch(/if \(ref === null[\s\S]{0,60}return false/u);
   });
 
