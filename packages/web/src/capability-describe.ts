@@ -37,6 +37,17 @@ function describeRegistry(domain: string): { text: string; elevated: boolean } {
       elevated: true,
     };
   }
+  /* NOT elevated, on the same reasoning as registry:vocab: it is additive and
+   * it cannot take anything away. A tile filler is only ever asked for content
+   * the pack does not draw, and the door it writes through refuses an index
+   * something already assigned - so the worst it can do is put a picture where
+   * the player was seeing a letter. */
+  if (domain === "tiles") {
+    return {
+      text: "Supply tiles for creatures and items your tile set does not draw",
+      elevated: false,
+    };
+  }
   switch (domain) {
     case "*":
       return {

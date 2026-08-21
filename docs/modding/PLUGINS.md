@@ -217,6 +217,55 @@ Three things about it:
   `if (!ctx.registries) return;` is the shape, the same one `ctx.backupFolder`
   uses.
 
+### Filling tiles
+
+`registry:tiles` is the seam for one narrow thing: **a picture for content the
+loaded tile pack has never heard of.** No tile set was built knowing about your
+mod, so in tile mode a creature you added is a coloured letter standing in a
+tiled dungeon, and the only portable alternative used to be one pref file per
+tile set naming atlas coordinates, which is unmaintainable.
+
+```js
+register(host, ctx) {
+  host.tiles.register((fill) => {
+    if (fill.pack.engine !== "linoleum") return;   // only packs you know
+    const races = ctx.registries?.monsters.races;
+    if (!races) return;
+    for (const race of races) {
+      if (fill.monsterTile(race.ridx)) continue;   // somebody drew it already
+      const donor = fill.monsterTile(0);
+      if (donor) fill.fillMonster(race.ridx, fill.derive(donor, 90) ?? { ...donor });
+    }
+  });
+}
+```
+
+- **You cannot repaint the tile set.** `fillMonster` / `fillObject` write only
+  where nothing is assigned and return `false` otherwise. Every pref layer - the
+  pack's own, then each enabled mod's - runs before any filler, so a tile an
+  author named is not a blank. That also means two mods cannot fight: whoever
+  asks first for an index gets it, and neither can undo the other.
+- **`derive(donor, hue)` may return `null`, and usually does.** It asks the
+  engine for a tile drawing the donor's asset with its hue rotated. A tilesheet
+  cannot: its tiles are cells of a fixed atlas and there is no spare cell for a
+  variant, so it always answers `null`. A loose pack can, unless the donor's
+  asset is not one of its own. Fall back to a plain copy.
+- **Check `fill.pack`.** A tileset mod's rule is right for its own art and a
+  guess about anybody else's. Declining a pack you do not own is the normal case,
+  not an edge one.
+- **The game has no opinion about who deserves a tile.** It used to: 0.22.0
+  shipped a rule in core that drew a mod-added monster from a race sharing its
+  `base`, and 0.23.0 removed it, because Angband 4.2.6 has no concept of a record
+  a mod added and the port adds nothing. That rule now lives in `neo-linoleum`,
+  which is the worked example. Note what it does NOT fill: rings, amulets,
+  mushrooms and food are drawn by FLAVOUR and their kind slots are blank on
+  purpose, and an older pack has no art for content added since it was drawn -
+  both are blanks where a letter is the honest answer, so the rule is restricted
+  to records a mod added, by provenance.
+
+If you are shipping content rather than tiles: **draw your own.** A fallback is
+for the mods that do not, and it cannot know what you meant.
+
 ### Engine-wide settings you change through `ctx.core`, not through a hook
 
 A few of the engine's decisions are not taken inside a turn and have no game
@@ -1199,6 +1248,7 @@ declare **and** the player must consent to:
 | `registry:rune` | what a RUNE is: the unit of object knowledge. `rune.desc` (the recall line), `.name` (the display decoration), `.knows` / `.learn` (the knowledge pair, handed the player so YOUR mod keeps the store, since core never grew a slot for it), `.objectHas` (whether an item carries it) and `.modMessage` (the "You feel stronger!" line, keyed on the modifier). Plus `.contribute`, which is how your rune gets into the list every consumer enumerates, and without it the six tables above are handlers nothing ever calls |
 | `registry:vocab` | declare genuinely new vocabulary (flags, stats, mod-coined kinds) and store per-entity values |
 | `registry:menu` | rewrite one stable menu id's semantic rows. `menus.handlerFor(id)` returns the earlier transformer, so a later mod wraps it before calling `menus.register(id, ...)`; a throw or a non-row-array result is reported against that mod and leaves the original menu usable |
+| `registry:tiles` | supply tiles for content the loaded tile pack does not draw, which in practice means content a mod added. `tiles.register(filler)` installs one filler per mod; every registered filler runs, in load order, after the pack's own prefs and every mod's. It can only write where NOTHING is assigned, so it cannot repaint the tile set even by mistake and two mods cannot fight over an index. See [Filling tiles](#filling-tiles) |
 
 A facade you did not declare throws when you touch it, even if the player
 consented to something else. Consent says the player allowed these domains; the

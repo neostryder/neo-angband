@@ -104,6 +104,7 @@ import type { GlyphHandler, GlyphKind, GlyphRegistry } from "../gen/glyph.js";
 import type { CaveBuilder, DunProfile, DungeonProfiles } from "../gen/cave.js";
 import type { ActionRegistry, PlayerAction } from "../game/player-turn.js";
 import type { CommandVerbTable } from "../cmd.js";
+import type { TileAtlas } from "../visuals/tile-prefs.js";
 import type { GameState } from "../game/context.js";
 import type { Monster } from "../mon/monster.js";
 import type {
@@ -201,6 +202,8 @@ export const REGISTRY_CAPABILITIES = {
   message: "registry:message",
   /** Web-owned screen rows; kept here so the capability vocabulary has one source. */
   menu: "registry:menu",
+  /** Web-owned tile maps, same reason. See TilesFacade. */
+  tiles: "registry:tiles",
 } as const;
 
 export type RegistryDomain = keyof typeof REGISTRY_CAPABILITIES;
@@ -266,6 +269,8 @@ export interface RegistryTargets {
   sounds?: SoundPrefRegistryTarget | null;
   /** The front end's menu transformer registry (web owns the live implementation). */
   menus?: MenuRegistryTarget | null;
+  /** The front end's tile-filler registry (web owns the live implementation). */
+  tiles?: TileRegistryTarget | null;
 }
 
 /**
@@ -304,6 +309,81 @@ export type MenuTransformer = (
 export interface MenuRegistryTarget {
   register(id: string, transformer: MenuTransformer, owner?: string): void;
   handlerFor(id: string): MenuTransformer | null;
+}
+
+/**
+ * Which tile pack a fill is running for, so a filler can decline a pack it has
+ * no business drawing for. A tileset mod's fill is right for ITS OWN packs and
+ * a guess about anybody else's art.
+ */
+export interface TileFillPack {
+  /** The engine drawing it: "tilesheet" for a fixed atlas, "linoleum" for a loose pack. */
+  readonly engine: string;
+  /** The pack's stable id - its directory name - or "" when the engine has none. */
+  readonly id: string;
+  /** The name the Graphics screen shows for it. */
+  readonly menuname: string;
+}
+
+/**
+ * What a tile filler is handed, and deliberately NOT the tile map itself.
+ *
+ * WHY A DOOR RATHER THAN THE MAP. The map is the pack author's work plus every
+ * pref layer the player has. A filler exists for one narrow thing - content the
+ * pack has never heard of, which is to say content a mod added - and handing it
+ * the map would let it repaint the Balrog. `fillMonster` and `fillObject` write
+ * only where NOTHING is assigned and return false otherwise, so the guarantee
+ * that no filler can change what an existing rule draws is mechanical rather
+ * than a promise each mod keeps separately. It also makes two fillers
+ * order-independent: whoever asks first for a given index gets it, and neither
+ * can undo the other.
+ *
+ * WHAT IS NOT HERE, on purpose. Who is kin to whom, who deserves a tile at all,
+ * which donor to copy, and what colour to make it are all JUDGEMENTS, and the
+ * game does not get to make them: 4.2.6 has no opinion about what a creature it
+ * has never heard of should look like, and a rule invented here would be the
+ * port adding something. A tileset mod holds the policy and reads the bound
+ * registries through `ctx.registries` to apply it.
+ *
+ * `derive` is the one capability the game does supply, because it is mechanism
+ * with no taste in it: give me a tile that draws `donor`'s asset with its hue
+ * rotated `hue` degrees. It returns null when this engine cannot - a fixed
+ * atlas has no spare cell to put a variant in, and even a loose pack cannot
+ * recolour a donor it does not own the asset for - so a filler that wants a
+ * plain copy instead has to say so.
+ */
+export interface TileFill {
+  /** The pack being filled. */
+  readonly pack: TileFillPack;
+  /** The tile assigned to a race (`ridx`) right now, or null. A donor to copy. */
+  monsterTile(ridx: number): TileAtlas | null;
+  /** The tile assigned to an object kind (`kidx`) right now, or null. */
+  objectTile(kidx: number): TileAtlas | null;
+  /** Supply a race's tile IF nothing has. False means something already had. */
+  fillMonster(ridx: number, tile: TileAtlas): boolean;
+  /** Supply an object kind's tile IF nothing has. False means something already had. */
+  fillObject(kidx: number, tile: TileAtlas): boolean;
+  /** A tile drawing `donor`'s asset with its hue rotated, or null if impossible. */
+  derive(donor: TileAtlas, hue: number): TileAtlas | null;
+}
+
+/**
+ * A mod's tile filler: supply tiles for content this pack does not draw.
+ *
+ * Called once per built tile map, which is at graphics-mode change and at boot,
+ * after every pref layer (the pack's own, then each mod's) has been applied - so
+ * an author who named a specific tile has already won and the filler sees no
+ * blank there.
+ *
+ * Only monsters and object kinds, because that is what the one consumer needs.
+ * A terrain or trap filler would be a seam with nothing behind it, and this
+ * repository has shipped enough of those.
+ */
+export type TileFiller = (fill: TileFill) => void;
+
+/** Structural target implemented by the web front end, not by headless core. */
+export interface TileRegistryTarget {
+  register(filler: TileFiller, owner?: string): void;
 }
 
 /** The effect-override facade (gated by registry:effect). */
@@ -457,6 +537,19 @@ export interface MenuFacade {
   register(id: string, transformer: MenuTransformer): void;
   /** The currently installed transformer, for layering/wrapping an earlier mod. */
   handlerFor(id: string): MenuTransformer | null;
+}
+
+/**
+ * The tile-filling facade (gated by registry:tiles).
+ *
+ * One filler per mod: registering twice replaces this mod's own and never
+ * anybody else's, so there is nothing to wrap and no `handlerFor` here. Every
+ * registered filler runs, in load order, and each can only write where nothing
+ * has - see TileFill for why that is the whole safety argument.
+ */
+export interface TilesFacade {
+  /** Install (or replace) this mod's tile filler. */
+  register(filler: TileFiller): void;
 }
 
 /** The monster-AI facade (gated by registry:monster). */
@@ -877,6 +970,7 @@ export interface ModRegistryHost {
   readonly vocab: VocabFacade;
   readonly messages: MessageFacade;
   readonly menus: MenuFacade;
+  readonly tiles: TilesFacade;
 }
 
 /** Absent capabilities => trusted host, all granted (perceive/act convention). */
@@ -1363,6 +1457,15 @@ export function createModRegistryHost(
       handlerFor(id): MenuTransformer | null {
         requireCap(capabilities, "menu");
         return requireTarget(targets.menus, "menu").handlerFor(id);
+      },
+    },
+    tiles: {
+      register(filler): void {
+        requireCap(capabilities, "tiles");
+        if (typeof filler !== "function") {
+          throw new Error("mod registry: a tile filler must be a function");
+        }
+        requireTarget(targets.tiles, "tiles").register(filler);
       },
     },
   };
