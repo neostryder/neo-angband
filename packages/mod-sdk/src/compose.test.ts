@@ -440,3 +440,111 @@ describe("payload: which of a repository's files ARE the mod", () => {
     );
   });
 });
+
+/**
+ * THE SHAPE GUARD, on the two write paths the end-to-end tests do not reach.
+ *
+ * `packages/web/src/mod-shape.node.test.ts` measures this through the real
+ * composer against the real core pack and the real store binder, which is where
+ * the defect was found and where the cost of it is visible. It only exercises
+ * `fieldPatches`. `patches` and `replaces` reach the same guard by a different
+ * route - `replaces` computes its changed keys as the UNION of the old and new
+ * records, which is a different question - and "the same helper" is an argument,
+ * not a measurement.
+ *
+ * These use the `monster` fixture above because core's monster blueprint is
+ * real: `flags` is measured as an array on 595 of core's 624 monsters, so a
+ * patch writing a number over it is refusable without inventing a schema for
+ * the test. `blows` and `hp` are NOT usable for this, and that is worth knowing -
+ * core spells them differently, so the blueprint has no entry for either name
+ * and the guard correctly says nothing about them.
+ */
+describe("composePacks: a patch cannot make a field unreadable", () => {
+  const refusals = (): { refused: string[]; onRefuse: (id: string, why: string) => void } => {
+    const refused: string[] = [];
+    return { refused, onRefuse: (id, why) => refused.push(`${id}: ${why}`) };
+  };
+
+  it("refuses a `patches` body that writes a scalar over a list", () => {
+    const r = refusals();
+    const mod: PackContent = {
+      manifest: manifest("break", { core: "*" }),
+      files: { monster: { patches: { "core:kobold": { flags: 3 } } } },
+    };
+    const kobold = composePacks([core, mod], { onRefuse: r.onRefuse })
+      .get("monster")!
+      .get("core:kobold")!;
+
+    expect(r.refused.length).toBe(1);
+    expect(r.refused[0]).toContain("break:");
+    expect(r.refused[0]).toContain("`flags` is number");
+    /* Put BACK, not dropped: the record is still the one the game can read. */
+    expect(kobold.value["flags"]).toEqual(["EVIL"]);
+  });
+
+  it("lets the rest of the same patch through", () => {
+    const r = refusals();
+    const mod: PackContent = {
+      manifest: manifest("break", { core: "*" }),
+      files: { monster: { patches: { "core:kobold": { flags: 3, hp: 12 } } } },
+    };
+    const kobold = composePacks([core, mod], { onRefuse: r.onRefuse })
+      .get("monster")!
+      .get("core:kobold")!;
+    expect(r.refused.length).toBe(1);
+    expect(kobold.value["hp"]).toBe(12);
+    expect(kobold.value["flags"]).toEqual(["EVIL"]);
+  });
+
+  it("still lets a total conversion DROP a list field", () => {
+    /* The reason an absent field is not refused. `replaces` swaps the whole
+     * record, and a monster rewritten as `{name, hp}` legitimately has no
+     * `flags` - so a guard that put an absent field back would silently undo
+     * the feature compose.test.ts asserts two describes up. */
+    const r = refusals();
+    const tc: PackContent = {
+      manifest: manifest("total", { core: "*" }),
+      files: { monster: { replaces: { "core:kobold": { name: "Kobold", hp: 999 } } } },
+    };
+    const kobold = composePacks([core, tc], { onRefuse: r.onRefuse })
+      .get("monster")!
+      .get("core:kobold")!;
+    expect(r.refused).toEqual([]);
+    expect(kobold.value["hp"]).toBe(999);
+    expect(kobold.value["blows"]).toBeUndefined();
+    expect(kobold.value["flags"]).toBeUndefined();
+  });
+
+  it("refuses a `replaces` body that writes a scalar over a list", () => {
+    /* Dropping the field is the mod's business; writing something unreadable
+     * into it is not. */
+    const r = refusals();
+    const tc: PackContent = {
+      manifest: manifest("total", { core: "*" }),
+      files: { monster: { replaces: { "core:kobold": { name: "Kobold", flags: "EVIL" } } } },
+    };
+    const kobold = composePacks([core, tc], { onRefuse: r.onRefuse })
+      .get("monster")!
+      .get("core:kobold")!;
+    expect(r.refused.length).toBe(1);
+    expect(r.refused[0]).toContain("`flags` is string");
+    /* Restored from what the record had BEFORE the replace, which is core's. */
+    expect(kobold.value["flags"]).toEqual(["EVIL"]);
+  });
+
+  it("says nothing about a file core does not ship, or a field core does not have", () => {
+    /* No blueprint means nothing to contradict, and a mod's own field is the
+     * mod's to shape - which is the whole reason the guard reads core's
+     * measurement rather than a schema of its own. */
+    const r = refusals();
+    const mod: PackContent = {
+      manifest: manifest("odd", { core: "*" }),
+      files: {
+        monster: { patches: { "core:kobold": { "odd:mood": "grumpy" } } },
+        "odd:extra": { records: [{ name: "Thing", whatever: 3 }] },
+      },
+    };
+    composePacks([core, mod], { onRefuse: r.onRefuse });
+    expect(r.refused).toEqual([]);
+  });
+});

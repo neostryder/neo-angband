@@ -77,15 +77,29 @@ been audited at all**, so there is no honest denominator here yet; the first
 piece of work is to produce one. `obj/bind.ts`'s ego `sval` resolution is the
 known next case.
 
-### Record SHAPE is never validated
+### A record a MOD OWNS can still be unreadable
 
-`composeContentPacks` applies a mod's field patches and validates the *manifest*,
-but nothing validates the resulting *record* against its `FileSpec`. A patch that
-replaces a list-valued field with a scalar therefore produces a record every
-binder accepts syntactically and then crashes on. The composer is the one place
-that sees every patched record before anything binds it, and
-`packages/content/src/specs/*.ts` already describes each directive's field types,
-so this belongs there rather than in 40-odd binders.
+Closed on 2026-08-20 for the case that matters most: a patch can no longer write
+a scalar or `null` over a field core writes as a container — the composer refuses
+it, restores the field, and tells the pack. Two gaps are left, and the second is
+the interesting one.
+
+**A patch that REMOVES a container field is not refused**, on purpose: dropping
+fields is how a total conversion works, so putting an absent field back would
+undo a supported feature. Reading a missing list throws the same `TypeError` a
+string does, so a `replaces` body that omits a required container is still fatal
+at bind time. The answer is not at the composer — it is that a binder should
+refuse a record whose owner is a mod, the way the store binder already refuses a
+mod's unresolvable stock line. That makes this the same work as the line above.
+
+**A malformed field OP throws out of the composer.** `applyFieldPatch` assumes
+its ops are well-formed: an `append` written with `value` instead of `values`
+reaches `op.values is not iterable` and the exception leaves
+`composeContentPacks` entirely, so it is not attributed to anything and there is
+no partial result. Measured 2026-08-20 while writing the shape tests, by
+mistyping the op. `composeDroppingBroken` exists and may already be the intended
+answer for the host's load path; what is missing is knowing whether the game's
+own path uses it.
 
 ## Attribution
 
