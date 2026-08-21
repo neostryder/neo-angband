@@ -79,6 +79,7 @@
  * lives in mod-context.ts, which no plugin imports. */
 import type {
   AgentController,
+  CoreRegistries,
   ModHooks,
   ModRegistryHost,
   GameState,
@@ -264,6 +265,39 @@ export interface ModPluginContext {
    * seam" argument.
    */
   readonly backupFolder?: BackupFolder;
+  /**
+   * The BOUND content registries: every race, kind, feature, trap, store and
+   * projection the game actually runs on, after this session's mods composed
+   * their content and core bound it.
+   *
+   * WHY THE WHOLE THING RATHER THAN A SLICE. Two mods asked for this within a
+   * day of each other and asked for different halves - the Borg needs races by
+   * `ridx`, a tile pack needs races and object kinds with their `base`/`tval` and
+   * provenance - so the curated version was already two fields behind on the day
+   * it would have been written. `ctx.core` is the whole namespace for exactly
+   * this reason (MOD_COMPATIBILITY.md decision 18: a curated list is the thing
+   * that drifts), and the registries are the data half of the same argument.
+   *
+   * WHY IT IS NOT THE SAME AS `ctx.state`. `state` holds one level: the monsters
+   * standing on it, the objects lying on it. That is enough to draw a frame and
+   * not enough to answer a question about a creature that is merely REMEMBERED -
+   * which is what a danger evaluator asks, because it tracks what it has seen
+   * rather than only what it can see. There was no path from a plugin to the
+   * registry behind an index, so every such question got a conservative default.
+   *
+   * MOD-ADDED CONTENT IS IN HERE ON THE SAME TERMS AS CORE'S. Binding runs after
+   * composition and mods append, so a mod's monster is a `MonsterRace` at a real
+   * `ridx` in this list, indistinguishable from one of core's except by the
+   * `from` provenance field. A consumer that reads the registry therefore treats
+   * modded and vanilla content identically without trying to, which is the
+   * point: the alternative is every consumer keeping its own vanilla table and
+   * silently ignoring everything a mod added.
+   *
+   * Absent during content composition, for the same reason `state` is absent
+   * there: at that point this is what is being built. Guard with
+   * `if (!ctx.registries) return;`.
+   */
+  readonly registries?: CoreRegistries;
 }
 
 /**
