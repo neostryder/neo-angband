@@ -74,19 +74,27 @@ longer:
 {
   "fieldPatches": {
     "core:priest": [
-      { "op": "set", "path": "book.2.spell.6", "value": { "name": "Teleport Other", "level": 20, "mana": 10, "fail": 30, "exp": 15, "effect": [ { "eff": "BOLT_STATUS", "type": "AWAY_ALL", "dice": "$B", "expr": [ { "name": "B", "base": "PLAYER_LEVEL", "expr": "* 3" } ] } ], "desc": ["Produces a bolt that teleports away the first monster in its path."] } },
+      { "op": "set", "path": "book.2.spell.6", "value": { "name": "Teleport Other", "level": 18, "mana": 10, "fail": 30, "exp": 20, "effect": [ { "eff": "BOLT_STATUS", "type": "AWAY_ALL", "dice": "$B", "expr": [ { "name": "B", "base": "PLAYER_LEVEL", "expr": "* 3" } ] } ], "desc": ["Produces a bolt that teleports away the first monster in its path."] } },
       { "op": "set", "path": "book.2.spells", "value": 7 }
     ]
   }
 }
 ```
 
-That is not an invented example. It is very close to what the real
-`feature-restoration` mod does to give the Priest back a spell that a later
-version of Angband dropped. Its repository is worth reading once you are here,
-because it also shows the *research* half: what it takes to restore an old
-behaviour honestly rather than from memory. See
-[Feature restoration](../FEATURE_RESTORATION.md).
+That is not an invented example. It is what the real `feature-restoration` mod
+does to give the Priest back a spell a later version of Angband dropped, and the
+four numbers are the ones it ships.
+
+They are worth a moment, because they are not the numbers the old game used.
+Angband 4.1.2 gave the Priest this spell as `Teleport Other:20:20:80:16`, in that
+file's `name:level:mana:fail:exp` order, and those records are in this repository
+at `reference/lib/gamedata/old_class.txt`. Angband 4.2 then repriced spells to
+cost the same in every class that has them, so both classes that still have this
+one pay 10 mana at 30 percent failure. Quoting 20 and 80 into the current game
+would charge a Priest twice the mana of the identical spell in a Mage's book. Get
+the old data and read it, then check whether the units it is written in still mean
+what they meant: [Feature restoration](../FEATURE_RESTORATION.md) is the rule this
+follows, and its worked example is this exact spell.
 
 The `effect` block is the game's own effect vocabulary: `BOLT_STATUS`,
 `PLAYER_LEVEL`, dice expressions. You are not limited to the effects the base
