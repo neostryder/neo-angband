@@ -15,7 +15,7 @@ follow is a known thing rather than a loose end.
 ## What moved
 
 This port was built against the C source with a lot of machinery: dated audit
-runs where several models reviewed the same lane independently, the raw logs
+runs where the same lane was reviewed independently more than once, the raw logs
 underneath them, census tools and their TSV output, briefs, build plans, and
 correction punch lists. Together, roughly **220 files and 5.7 MB**, several
 times the size of the game's own source.
