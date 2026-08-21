@@ -1,5 +1,5 @@
 #!/bin/sh
-# Refuse a plain push of master to origin.
+# Refuse a plain push of master to origin - IN THIS REPO ONLY.
 #
 # This repository's local history and its public one are different graphs -
 # the public repo is a curated replay built by tools/publish.mjs, not a
@@ -16,15 +16,23 @@
 # tag push, a feature branch, or master under any remote but "origin" all go
 # through untouched.
 #
-# Bypass, for the rare case this is genuinely wrong: git push --no-verify.
+# THE FOUR MOD REPOSITORIES SHARE THIS FILE (same mechanism as pre-commit:
+# `git config core.hooksPath /path/to/neo-angband/.githooks`), and a mod repo's
+# master pushes NORMALLY - RELEASING.md's own mod section is "commit, tag,
+# push the tag", no publish.mjs, no replay. Found the hard way: it blocked
+# neo-angband-mod-borg's real, ordinary, fast-forward push of two already-
+# tagged-and-released commits, on the strength of a rule that only this one
+# repository's history needs. So the gate is "does tools/publish.mjs exist
+# in the repo actually being pushed", not just "is the ref master."
+#
+# Bypass, for the rare case this is genuinely wrong even here: git push --no-verify.
 
-# The LOCAL ref is the discriminator, not the remote one - both the push this
-# hook exists to catch and tools/publish.mjs's own legitimate push update
-# origin's refs/heads/master, and only the local side tells them apart:
-# publish.mjs pushes a bare commit SHA as its refspec source
-# ("<sha>:refs/heads/master"), never the symbolic ref "refs/heads/master"
-# itself. Blocking on the remote side alone would block publish.mjs too -
-# found by running it for real, not by inspection.
+TOPLEVEL=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -z "$TOPLEVEL" ] || [ ! -f "$TOPLEVEL/tools/publish.mjs" ]; then
+  cat >/dev/null
+  exit 0
+fi
+
 if [ "$1" != "origin" ]; then
   cat >/dev/null
   exit 0
