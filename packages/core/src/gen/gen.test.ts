@@ -400,10 +400,10 @@ describe("full level generation", () => {
    * THE STAIRCASE INVARIANT IS NOT CORE'S, and the control test below is what
    * says so out loud.
    *
-   * Faithful core does NOT hold it, deliberately (owner ruling 2026-07-26: "Core
-   * must retain all warts of the reference code"). The ruling only stands, of
+   * Faithful core does NOT hold it, deliberately: core must retain all warts of the
+   * reference code. That only stands, of
    * course, if the stranding really is upstream's; a port defect would have to be
-   * FIXED here and un-fixed in the mod. Adjudicated 2026-08-06 against the C, and
+   * FIXED here and un-fixed in the mod. Checked 2026-08-06 against the C, and
    * every piece of the mechanism is upstream's:
    *
    *   - alloc_stairs (gen-util.c:629) accepts any square_isempty grid with the
@@ -2736,7 +2736,7 @@ describe("quest monster placement (generate.c cave_generate L1170-1191)", () => 
     expect(placed.length).toBe(2);
   });
 
-  it("spawns no guardian without questSpawns (regression: the bug we fixed)", () => {
+  it("spawns no guardian without questSpawns (regression: a fixed bug)", () => {
     const g = generateLevel(new Rng(2026_0716), 5, makeDeps());
     expect(g.monsters.some((m) => m.mon.race === guardian)).toBe(false);
   });

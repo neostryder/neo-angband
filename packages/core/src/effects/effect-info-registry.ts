@@ -39,7 +39,7 @@
  * in order to prove the mod default policy holds here rather than assert it.
  * It has no production caller and is not meant to acquire one: calling it
  * mid-session would strip a running mod's handlers, which is precisely the
- * live-toggle behaviour the ruling says must not happen.
+ * live-toggle behaviour that must not happen.
  *
  * ORDER AND RNG. Core's handlers are the case bodies lifted unchanged. Nothing
  * here draws: upstream's `effect_describe` calls `dice_roll()` to populate the

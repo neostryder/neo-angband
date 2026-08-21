@@ -477,7 +477,7 @@ describe("a region's surface follows the region", () => {
     const seen: GridCell[] = [];
     surface.onCellTap((cell) => seen.push(cell));
     grid.fireTap(12, 5); // inside
-    grid.fireTap(0, 0); // outside: belongs to whoever is under us
+    grid.fireTap(0, 0); // outside: belongs to whoever is underneath
     grid.fireTap(16, 5); // one column past the right edge
     expect(seen).toEqual([{ col: 2, row: 1 }]);
   });

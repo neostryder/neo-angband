@@ -312,6 +312,28 @@ Phial, the Star, the rings of power); their array index shifts by one and
 nothing depends on it, because a savefile stores a namespaced string `kindId`
 rather than a `kidx`.
 
+### Your artifact and the `birth_randarts` option
+
+An artifact your mod adds **survives** a character born with random artifacts
+turned on. Every other artifact in the game is redesigned into a different item;
+yours keeps the name, the base object and the numbers you wrote.
+
+That is measured, in `packages/core/src/obj/randart-mod-artifact.test.ts`, and it
+is worth knowing WHY, because the mechanism is position rather than a rule.
+Upstream's `design_artifact` looks up an artifact's base kind once and its
+skip-the-fixed-artifacts loop never refreshes that lookup, so the moment the loop
+starts on a quest artifact it keeps skipping to the end of the array. Angband's
+two quest artifacts are the last two records in the file, and your records are
+appended after core's, which puts them behind the point where the skipping
+starts. The port reproduces the quirk exactly, because a behavioural wart a
+player can observe is core's to keep.
+
+Two consequences for an author. Your artifact is not a random artifact even in a
+random-artifact game, so a player who chose that option to be surprised will
+still meet yours as you designed it. And nothing about that is a guarantee the
+port makes on purpose, so the test above also measures the converse case: if the
+order records are bound in ever changes, it fails and names the reason.
+
 ---
 
 ## Shipping resources: sounds, a font, pref files, help pages, art

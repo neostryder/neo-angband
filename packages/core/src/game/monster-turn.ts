@@ -1406,7 +1406,7 @@ function monsterTurnAttackGlyph(
 /**
  * monster_turn: the monster acts. A ranged attack (spell / breath) is attempted
  * first through the injected state.monsterCast hook (make_ranged_attack, wired by
- * game/mon-ranged.ts installMonsterCasting); when it spends the turn we stop
+ * game/mon-ranged.ts installMonsterCasting); when it spends the turn this stops
  * here, exactly as upstream's `if (make_ranged_attack(mon)) return;`.
  * Item pickup, group behaviour and lore are all ported (PORT_TODO 7.2); this
  * line used to call the three of them partially deferred, which was already

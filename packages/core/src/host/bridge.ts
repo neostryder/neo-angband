@@ -142,7 +142,7 @@ export function serveRawFs(raw: RawFs): RawFsTransport {
   return (op: string, args: readonly unknown[]): unknown => {
     const dir = args[0];
     if (!isHostDir(dir)) {
-      /* Not a directory we own. Report each op's failure value. */
+      /* Not a directory this process owns. Report each op's failure value. */
       return op === "listFiles" ? [] : op === "readText" || op === "mtime" ? null
         : op === "writeText" ? "create-failed"
         : op === "displayPath" ? "" : false;

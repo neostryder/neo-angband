@@ -388,8 +388,7 @@ describe("buildCatalog", () => {
 });
 
 /**
- * The mod default policy, in mechanical form (neostryder's ruling 2026-07-26,
- * restated 2026-07-27 because the prose was ambiguous). The MOD is the unit the
+ * The mod default policy, in mechanical form. The MOD is the unit the
  * player switches; a patch is a part of a mod, never a separate install:
  *
  *  - while a mod is disabled its patches DO NOT EXIST - not "exist and resolve

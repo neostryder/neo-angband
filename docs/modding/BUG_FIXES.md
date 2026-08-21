@@ -81,7 +81,7 @@ there is nothing to switch and nothing listed in the menu.
 Enable the mod and you get the whole patch set at once - every fix comes on with
 it. Each fix is then an individual toggle in this mod's Fixes & tweaks submenu, so
 a player who wants the patch set minus one specific fix can opt that one out
-(the project owner's ruling, 2026-07-26). Disable the mod again, or switch one
+(2026-07-26). Disable the mod again, or switch one
 fix off, and that behaviour is faithful 4.2.6 again. It is authored and maintained by neostryder
 (RPGM Tools) as its own standalone pack, separate from the neo-linoleum tile mod
 (decision 26).
@@ -453,8 +453,8 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
 - Port relevance: none of this is a port defect - `allocStairs` in
   `packages/core/src/gen/util.ts` is a line-for-line match including the
   `walls = 3 -> 0` ladder and the absence of a vault test. Faithful core
-  reproduces the wart, per decision 24 and the owner's 2026-07-26 ruling
-  ("Core must retain all warts of the reference code").
+  reproduces the wart, per decision 24 and the 2026-07-26 ruling that core
+  must retain all warts of the reference code.
 - Implementation: the mod's `levelGenerated` hook
   (`neo-angband-mod-bug-fixes/plugin.ts`), whose body is
   `ensureStairsReachable` in the MOD's own file
@@ -506,9 +506,9 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
     that the session really hands `GameState.modHooks` to `cave_generate` - with
     a hook whose answer changes the outcome, because an all-neutral stream
     comparison cannot catch that wire coming loose.
-- History: briefly lived in core as an owner-ratified guarantee (commit
-  `437ad97c3`, 2026-07-25), moved to this mod on 2026-07-26 once the owner
-  learned upstream genuinely behaves this way, and moved OUT of core entirely on
+- History: briefly lived in core as a guarantee (commit
+  `437ad97c3`, 2026-07-25), moved to this mod on 2026-07-26 once upstream was
+  confirmed to genuinely behave this way, and moved OUT of core entirely on
   2026-07-29 when the flag-registry design was replaced by `ModHooks` (it had
   still been a core function behind a flag until then). Full write-up:
   `parity/phase3-2026-07-25/findings/STAIRCASE-INVARIANT.md`.
@@ -519,12 +519,12 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   so there is no issue, PR or commit to cite under the decision-24 referencing
   rule. Recorded against `reference/src` and against this port's own
   measurement, like entry 13.
-- Requested by the owner as a single catch-all item ("Let's flag the string
-  cleanup (spelling, extra spaces, etc.) for another bug-fixes mod fix. They can
-  all be under one item 'Misc. string fixes'").
-- Scope set by the owner: *"If all sentences use double spaces, those should not
-  be 'corrected'. I am only interested in normalizing. If some use double and
-  some single, whichever method is less frequently used should be corrected."*
+- Scope: a single catch-all item covering spelling and extra-space cleanup in
+  message text, filed under one item, 'Misc. string fixes'.
+- Normalization rule: a convention already in majority use should not be
+  'corrected' toward the minority form. Where a sentence break uses double
+  spaces in most cases and single spaces in a few, the minority form is what
+  gets normalized, not the reverse.
 - Problem, as MEASURED rather than assumed - this matters, because a catch-all
   title invites a pile of unexamined edits. Over the **577** distinct literals
   `reference/src` hands to `msg` / `msgt` / `get_check` / `get_string` /
@@ -629,13 +629,10 @@ not bug fixes.
 
 **Migrated 2026-07-26: entry 13, unreachable staircases.** This is the one and
 only thing that has ever had to make the trip. It was added to core the previous
-day as an owner-ratified guarantee, on the owner's understanding that vanilla
-could not strand a floor. Once the reference source showed that it can and does
-(10.2% of levels), the ruling was reversed:
-
-> We can't fix bugs in the port. Those will belong in the bug fixes mod. I only
-> said those couldn't exist because I thought that was how the C version worked.
-> Core must retain all warts of the reference code.
+day as a guarantee, based on the mistaken assumption that vanilla could not
+strand a floor. Once the reference source showed that it can and does (10.2% of
+levels), the guarantee was withdrawn: core must retain all warts of the
+reference code; a bug in the port itself belongs in the bug-fixes mod, not here.
 
 Precedent worth keeping: a "core must never do X" requirement is only safe to
 implement in core once `reference/src` has been read and confirmed to agree. If

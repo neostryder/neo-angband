@@ -58,14 +58,14 @@ Searched both repos for "opt-in mod," "gameplay addition," "catch-up," and
 private backlog of un-built mod concepts: AI borgs, soft caps, reach weapons,
 networking, AI-generated content, mod-manager integration) is the project's
 actual list of gameplay-addition mod candidates, and it is explicitly
-**not** upstream-commit-derived: every idea in it is the maintainer's own,
-dated by when it was raised, with zero SHA citations. It answers a different question
+**not** upstream-commit-derived: every idea in it originated within the
+project itself, dated by when it was raised, with zero SHA citations. It answers a different question
 ("what should this port add beyond Angband") than #237 asks ("what did real
 upstream add that the port should adopt").
 
-## What this means for #237, decided
+## What this means for #237
 
-**neostryder's ruling (2026-08-15): C, combined with B**, and the scope rule that
+**Scope: C, combined with B**, and the scope rule that
 makes the combination non-arbitrary rather than two options glued together:
 
 > #237 owns anything in upstream master that isn't in the 4.2.6 tag,

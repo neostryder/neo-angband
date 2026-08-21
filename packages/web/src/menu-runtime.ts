@@ -34,7 +34,7 @@
  * MODULE-LEVEL, like `menu-registry.ts` and for the same reason: `selectFromMenu`
  * is called from ~50 sites across the shell and threading an installed object
  * through all of them buys nothing, because a mod being disabled takes effect on
- * reload anyway (recorded ruling, 2026-08-11).
+ * reload anyway.
  */
 
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";

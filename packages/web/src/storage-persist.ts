@@ -87,7 +87,7 @@ export async function storageDurability(
   try {
     if (typeof mgr.persisted === "function") out.persisted = await mgr.persisted();
   } catch {
-    /* An engine that throws here is one that cannot tell us; false is the safe
+    /* An engine that throws here is one that cannot say; false is the safe
      * reading, because it only ever makes the game MORE careful. */
   }
   try {

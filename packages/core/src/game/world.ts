@@ -757,7 +757,7 @@ export function compactMonsters(state: GameState, numToCompact: number): void {
     }
   }
 
-  /* Excise dead monsters (backwards!). monsterMax shrinks as we go, exactly as
+  /* Excise dead monsters (backwards!). monsterMax shrinks while this runs, exactly as
    * c->mon_max-- does, so the monster pulled down into a hole always comes from
    * a slot this scan has already passed. */
   for (let mIdx = state.monsters.length - 1; mIdx >= 1; mIdx--) {

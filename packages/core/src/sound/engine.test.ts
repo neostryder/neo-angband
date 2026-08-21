@@ -115,7 +115,7 @@ describe("play selection via the RNG seam", () => {
   it("is a no-op for a message with no sounds", () => {
     const { hooks, played } = recordingHooks();
     const eng = new SoundEngine({ hooks, randint0: fixedRandint0(0) });
-    // DRAIN_STAT is defined in the pack, but we never map anything here.
+    // DRAIN_STAT is defined in the pack, but nothing is ever mapped here.
     eng.playSound(MSG.RECOVER);
     expect(played).toEqual([]);
   });

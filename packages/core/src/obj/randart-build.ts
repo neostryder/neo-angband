@@ -1379,7 +1379,7 @@ export function removeContradictoryActivation(
 ): void {
   if (!art.activation || !art.activation.effect) return;
 
-  /* Without the effects-domain summarizer we cannot prove redundancy; keep the
+  /* Without the effects-domain summarizer, redundancy cannot be proven; keep the
    * activation (conservative). */
   if (!summarize) return;
 

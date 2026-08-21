@@ -950,7 +950,7 @@ function isContinuation(): boolean {
  * failed to read would be overwritten by an empty level-1 nobody asked for,
  * within one turn, with no prompt. Clearing the id sends those autosaves to a
  * fresh slot instead and leaves the original byte-for-byte intact, which is
- * what makes "try again on the next build" and "export it and send it to us"
+ * what makes "try again on the next build" and "export it and send it in"
  * both still possible.
  */
 function keepSaveUntouched(): void {
@@ -5130,7 +5130,7 @@ async function driveRest(nArg: number): Promise<void> {
   try {
     for (;;) {
       // Interruptions before spending the turn (a keypress, a monster already
-      // in view, or the world moved us off the level): disturb().
+      // in view, or the world moved the player off the level): disturb().
       if (dead || interrupted || anyVisibleMonster()) {
         // Only the keypress arm reports it: "Cancelled." comes from
         // check_for_player_interrupt (ui-game.c:663), and the monster /
@@ -7104,7 +7104,7 @@ function composeMonster(under: CellGlyph, cell: MonsterCell): CellGlyph {
  * in a program whose only repaint trigger is a game event. Here the map also
  * repaints on a window resize, on returning from a menu and on the animation
  * timer, so binding the rolls to `state.rng` would make the dungeon a function
- * of how often the screen was painted. Owner ruling 2026-08-09 accepts a
+ * of how often the screen was painted. Decided 2026-08-09 accepts a
  * different stream where the rules and the odds are unchanged, which is exactly
  * this: same 1/128, same rejection loops, same distribution. It is seeded from
  * wall-clock entropy and never saved - hallucination is not reproducible from a
@@ -10532,7 +10532,7 @@ const INSTALL_TONE: Record<InstallLine["tone"], string> = {
 /**
  * The (I)nstall locally page, and the one action it offers.
  *
- * ENTER installs, when the browser gave us a prompt to show; showTextScreen
+ * ENTER installs, when the browser gave the page a prompt to show; showTextScreen
  * already closes on ENTER, so the install is attached to the same key the player
  * would press to dismiss the page - which is only honest because the page says so
  * in the line above the footer, and because a browser that offered no prompt

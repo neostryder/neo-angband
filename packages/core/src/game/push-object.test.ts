@@ -56,7 +56,7 @@ function boxIn(state: GameState, grid: Loc, d: number): void {
   }
 }
 
-/** Where the object is now, by search - obj.grid is what we want to check. */
+/** Where the object is now, by search - obj.grid is what the test checks. */
 function gridOf(state: GameState, obj: GameObject): Loc | null {
   for (const [idx, pile] of state.floor) {
     if (pile.includes(obj)) {

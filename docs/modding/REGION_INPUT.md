@@ -51,10 +51,10 @@ Both are live today. `samples/sprite-inventory` ships a real `regions()` panel
 
 ---
 
-## The ruling
+## The rule
 
-**A region is opaque to input by CELL, not by rectangle.** Settled by the owner,
-2026-08-14. This document designs to it and does not reopen it.
+**A region is opaque to input by CELL, not by rectangle.** Settled 2026-08-14.
+This document designs to it and does not reopen it.
 
 The reasoning, so the design follows it rather than works around it: a region is
 already transparent *visually* wherever it did not write a cell: that is not a
@@ -77,7 +77,7 @@ expensive rather than infeasible, and the cost is measured in §1.
 ### Where it is captured: at paint time, at the write
 
 Not declared up front. A declaration is a rectangle, and a rectangle is exactly
-the model the ruling rejected.
+the model this rule rejects.
 
 **`clipSurface` (`packages/web/src/region-surface.ts:75`) is the one choke point
 every region write already passes through.** Every `put`, `print`, `eraseToEol`,
@@ -243,7 +243,7 @@ Three cases that look like gaps and are not:
 top, so the last write to a cell is the topmost region's, and a plain
 last-writer-wins store gives the right answer with no comparison at all.
 
-This is not a convenience. It is the ruling restated: what the player sees at
+This is not a convenience. It is the rule restated: what the player sees at
 that cell is what the topmost writer drew, so that is who owns the tap. Any other
 answer routes a tap to a region whose pixels are not there. It is also the same
 invariant `topRegionAt` (`regions.ts:345`) already documents, "the composite has
@@ -470,8 +470,8 @@ export interface RegionDeclaration {
 
 `input` returns **`void`**. A `boolean` return was considered and is refused.
 
-- **It would be a second answer to a question the ruling already settled.** The
-  ruling is "you own what you drew". A handler returning `false` would say "I
+- **It would be a second answer to a question the rule already settles.** The
+  rule is "you own what you drew". A handler returning `false` would say "I
   drew here but the tap is not mine", which produces a tap-through under visible
   mod pixels, the exact bug class the rectangle model was rejected for, now
   reachable by an author's typo rather than by geometry.
@@ -550,13 +550,13 @@ on that mod's row in the manager with the fix in the sentence.
 
 ## 7. The four-place ABI: it is NOT triggered, and here is the proof
 
-**The brief asks for the four-place `ModPlugin` list. This milestone does not
-publish anything on `ModPlugin`, so the four-place agreement does not apply.**
+**The four-place `ModPlugin` list does not apply here. This milestone does not
+publish anything on `ModPlugin`, so the four-place agreement is not engaged.**
 Adding the member anyway "for consistency" would be adding a `ModPlugin` member
 with no purpose.
 
 The agreement is machine-checked by `packages/mod-sdk/src/plugin-abi-agreement.test.ts`
-(note: `packages/mod-sdk/src/`, **not** `packages/web/src/` as the brief states).
+(note: it lives in `packages/mod-sdk/src/`, not in `packages/web/src/`).
 It reads both files as **text** and compares exactly two things:
 
 ```ts
@@ -858,5 +858,5 @@ the same `queueWalk` on the same path with the same values (§5), and upstream's
 `mouse_movement` gate and `textui_process_click` routing are untouched. What
 changes is that a mod's own furniture stops being transparent to the pointer,
 which is a *mod* capability, and giving mods capabilities is the entire point of
-the gap-21 programme. Faithful means **gameplay** parity, not code shape (owner
-ruling 2026-08-09).
+the gap-21 programme. Faithful means **gameplay** parity, not code shape
+(2026-08-09).

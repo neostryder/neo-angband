@@ -9,8 +9,8 @@
  * database. This module reads that database and maps the cleanly-comparable
  * generation metrics into a StatsReport with meta.generatedBy = "c-main-stats".
  *
- * Reading SQLite: rather than add a native sqlite binding to the toolchain, we
- * shell out to the `sqlite3` CLI in `-json` mode. That binary is already part
+ * Reading SQLite: rather than add a native sqlite binding to the toolchain, this
+ * shells out to the `sqlite3` CLI in `-json` mode. That binary is already part
  * of the environment that produced the database (the C build needs the sqlite3
  * dev library), and the COMMITTED artifact is the resulting JSON - the fast
  * vitest parity check consumes that JSON and never needs sqlite at test time.

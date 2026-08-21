@@ -12,10 +12,10 @@
  * (measured 2026-07-25: depth 6 ranged 42.91-46.98 across four base seeds, with
  * the C's 46.47 inside that range).
  *
- * A tolerance cannot distinguish "the generators differ" from "we did not sample
- * enough levels". A hypothesis test can, and it states its own resolving power,
+ * A tolerance cannot distinguish "the generators differ" from "not enough
+ * levels were sampled". A hypothesis test can, and it states its own resolving power,
  * so the honest answer to a small sample is "no evidence of divergence yet, and
- * here is the effect size we could have detected".
+ * here is the effect size that could have been detected".
  *
  * Two tests, matched to the two shapes of metric:
  *   - a two-sample z-test on per-level MEANS (density, gold), with the variance
@@ -141,7 +141,7 @@ export interface MeanTest {
   /**
    * The smallest |delta| this sample could have called significant, i.e. the
    * test's resolving power. Reported so a pass never reads as "identical" when
-   * it only means "we could not have seen a difference this small".
+   * it only means "a difference this small could not have been seen".
    */
   resolution: number;
 }

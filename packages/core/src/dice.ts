@@ -307,12 +307,12 @@ export class Dice {
           break;
 
         case STATE_FLUSH_ALL:
-          /* Flush whatever comes after what we last saw. */
+          /* Flush whatever comes after the last token seen. */
           if (lastSeen < SEEN_BONUS) lastSeen++;
           break;
 
         case STATE_BONUS:
-          /* If we last saw dice, we are now seeing sides. */
+          /* If dice were the last token seen, sides come next. */
           if (lastSeen === SEEN_DICE) lastSeen = SEEN_SIDE;
           else lastSeen = SEEN_BONUS;
           break;

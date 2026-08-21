@@ -467,13 +467,20 @@ Notes:
    repository and arrive through the same route, and the same verification, as
    anybody else's. Nothing is second-class, including mine.
 2. The mod manager's **Install a mod...** row downloads from a mod's own repository
-   at a pinned TAG (never a branch, so what arrives cannot change under you) and
-   checks every file against a SHA-256 that ships inside your copy of the game - not
-   against anything the download claims about itself. A tampered, replaced or
-   truncated file is discarded and nothing is stored. It needs only a network request
-   and the browser's own storage, so it works on **every** browser, and it is the
-   reason no browser is excluded below. Installed mods are read back at boot by the
-   same validator that reads a folder on disk.
+   at a pinned TAG (never a branch, so what arrives cannot change under you). What
+   gets pinned is the ORIGIN: the first install records which repository the mod came
+   from, and only a copy from that same repository may ever replace it, so an update
+   cannot quietly arrive from somewhere else. Changing where a mod comes from means
+   uninstalling it first, and the game says so rather than doing it for you. The
+   install also records a SHA-256 of every byte that actually arrived, which is what
+   lets the manager answer "has this copy changed since it was installed" later on.
+   **It cannot tell you whether what arrived is what the author published.** There is
+   nothing to compare a first download against, and this build ships no digests of
+   its own, so that is a property the game does not have rather than one it checks
+   quietly. It needs only a network request and the browser's own storage, so it
+   works on **every** browser, and it is the reason no browser is excluded below.
+   Installed mods are read back at boot by the same validator that reads a folder on
+   disk.
 3. **"Choose a mods folder..." is the Chromium-only route**, because Firefox and
    Safari have no way to hand a directory to a web page - there is no workaround to
    find, the capability does not exist. It is for developing a mod, or using one that

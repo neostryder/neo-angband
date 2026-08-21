@@ -213,7 +213,7 @@ for (const pkg of packages) {
     }
 
     /* Resolve by BARE SPECIFIER through a real node_modules, not by joining the
-     * target path ourselves. Importing the file directly is what this check used
+     * target path directly. Importing the file directly is what this check used
      * to do, and it silently proves the wrong thing: a file URL bypasses the
      * exports map entirely, so it answers "does this file load" when the question
      * is "can a consumer reach it". */

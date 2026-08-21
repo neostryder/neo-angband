@@ -670,7 +670,7 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
   });
 });
 
-describe("RNG invariance (the maintainer's #1 anxiety)", () => {
+describe("RNG invariance (the sharpest risk in the port)", () => {
   afterEach(() => {
     delete (globalThis as { window?: unknown }).window;
   });

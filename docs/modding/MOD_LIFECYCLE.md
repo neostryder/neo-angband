@@ -1,11 +1,11 @@
 # Mod Lifecycle, Saves, and Composition
 
-> STATUS: RATIFIED 2026-07-08 (PORT_PLAN.md decision 19). The maintainer confirmed
-> decisions 1, 2, 3, 5, and 6 as written, and 4 (the determinism guard)
-> with the change recorded in section 4 below: it is a warning and label,
-> not a bar. The maintainer also added the uninstall-recovery behaviors in the new
-> section "When a mod's content leaves the game". This page is the design
-> of record; it is not yet fully built. [OPEN] items still need a decision.
+> STATUS: RATIFIED 2026-07-08 (PORT_PLAN.md decision 19). Decisions 1, 2, 3, 5,
+> and 6 are confirmed as written, and 4 (the determinism guard) stands with the
+> change recorded in section 4 below: it is a warning and label, not a bar. The
+> uninstall-recovery behaviors in the new section "When a mod's content leaves
+> the game" are ratified alongside them. This page is the design of record; it
+> is not yet fully built. [OPEN] items still need a decision.
 
 This page answers four questions that decide whether a mod system is
 pleasant or painful:
@@ -182,7 +182,14 @@ owning part of the screen. They do not cover each other either. There is no
 `ui:map.replace`, because the dungeon is `display:replace`'s and one region
 answering to two capabilities would be two answers to "who draws this".
 
-### From a git repository (today)
+### From a git repository (proposed design, not the shipped path)
+
+[PROPOSED] throughout, and the heading used to read "(today)", which it was not.
+The shipped installer reads `manifest.json` at a TAG and nothing else: no branch
+head, no bare commit, and no `pack.json`. What it actually does, including how it
+picks which release to offer and what an install pins, is in
+[MOD_COMPATIBILITY.md](MOD_COMPATIBILITY.md) and [../MODS.md](../MODS.md). The
+design below is kept as the design of record for where the installer is going.
 
 The user pastes a repository URL (or picks a ref). The app:
 
@@ -473,7 +480,7 @@ Two deliberate carve-outs remain, and neither is a load-order question:
 
 ### External managers (Vortex, MO2)
 
-**RATIFIED 2026-07-27 (the project owner).** Integrating with Vortex and the other
+**RATIFIED 2026-07-27.** Integrating with Vortex and the other
 popular mod managers is an explicit goal, and it sets the division of
 labour between them and the game:
 
@@ -490,7 +497,7 @@ labour between them and the game:
   problems in Vortex/MO2 and they are what those tools are for; this project does not
   compete with them and does not grow the in-game UI to match them.
 
-> **AMENDED 2026-08-01 (the project owner): auto-sort comes back in-game.**
+> **AMENDED 2026-08-01: auto-sort comes back in-game.**
 > The clause above putting load-order SORTING outside the game is revised; the
 > rest of the division of labour stands unchanged. What moved and why:
 >
@@ -593,7 +600,7 @@ reference-format-compatible `player.noscore` bitfield.
 
 ## 5. Ergonomics: designing out the usual complaints
 
-The brief was a mod UX that avoids the pitfalls people complain about
+The goal is a mod UX that avoids the pitfalls people complain about
 elsewhere. Each known complaint, and the design answer:
 
 - "A mod broke my save / I cannot uninstall safely."

@@ -292,7 +292,7 @@ export function optionsRestoreMaintainer(opts: OptionOpts, page: string): void {
  * (Upstream has a second false, from a failing `file_close` at :329. HostIo
  * reads a whole file in one call and has no handle to close, so there is no
  * counterpart and nothing is lost: a close that fails on a READ has already
- * given us the bytes.)
+ * delivered the bytes.)
  */
 export function optionsRestoreCustom(
   io: HostIo,

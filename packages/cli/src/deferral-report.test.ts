@@ -40,8 +40,8 @@ const VERDICTS = new Set([
   "real-dead",
   "partial",
   "n-a",
-  /* The third finished state (owner ruling 2026-08-09), added to the vocabulary
-   * 2026-08-14. Deliberately distinct from `n-a`: that one is a claim about this
+  /* The third finished state, added to the vocabulary 2026-08-14.
+   * Deliberately distinct from `n-a`: that one is a claim about this
    * port's platform, this one is a measurement of upstream's own C. */
   "unreachable-in-upstream",
   "divergence",
