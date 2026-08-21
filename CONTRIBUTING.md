@@ -147,8 +147,13 @@ New original code (UI, mod-sdk) needs no ledger entry.
   Keep the build clean with no new errors.
 - **Formatting** per `.editorconfig`: UTF-8, LF line endings, final newline,
   tabs at width 4 for code; 2-space indent for JSON, YAML, and Markdown.
-- **ASCII only** in source and docs - no smart quotes, no em dashes (use
-  " - "), no non-ASCII punctuation.
+- **Plain ASCII punctuation** in source and docs - no smart quotes, no
+  ellipsis character, no em dash or en dash. An em dash gets reworded away
+  rather than swapped for a hyphen or comma, since a substitution leaves the
+  same sentence shape behind; an en dash becomes a hyphen. This is a rule
+  about prose, not about data: a quoted string, a unit symbol, or example
+  text in another language keeps whatever character its source actually
+  uses.
 - **Lint** with `pnpm lint` (ESLint + typescript-eslint, flat config in
   `eslint.config.mjs`). It must report zero errors; the remaining warnings flag
   known parity idioms and are acceptable. CI runs it as a gate.

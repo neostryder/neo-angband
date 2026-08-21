@@ -5,13 +5,13 @@ sentence: "QoL: hands-off cloud backup via a player-chosen folder." This
 document is the rest of it: what defect it closes, where it lives, and the
 seams it needs. `ctx.backupFolder` exists end-to-end (both platforms,
 capability-gated, `hooks(ctx)` and `register(ctx)` both see it, `persistSave`
-notifies every consenting mod); see §"File-by-file implementation plan" steps
+notifies every consenting mod); see the "File-by-file implementation plan" section's steps
 0-5, all DONE.
 
 Two steps are NOT done. **Step 6**, the `neo-angband-mod-qol` menu row that
 would let a player actually call `choose()`, cannot be finished small: it is
 blocked on a UI-seam gap ("menu row -> runs a mod's own callback") that this
-design's §3 assumed existed and does not; see the correction there. That gap is
+design's section 3 assumed existed and does not; see the correction there. That gap is
 the same shape as `MOD_REACH.md` gap 21 and is deferred alongside it, so the
 alpha could ship before every remaining seam was finished. **Step 7**, the docs,
 has not been done either: `MOD_SEAMS.md` has no section for `ctx.backupFolder`
@@ -109,7 +109,7 @@ resolves**: a second call afterward fails immediately with `NotAllowedError:
 clears even though the OS-level interaction completed. `packages/desktop/src`
 wires no `session.setPermissionRequestHandler` (grepped, confirmed absent), so
 Chromium draws the picker but this app never completes the permission grant
-behind it, and the call hangs forever. This is exactly the failure §9 step 0
+behind it, and the call hangs forever. This is exactly the failure section 9 step 0
 anticipated a possible answer to, and it is the one that happened.
 
 **The fallback, now implemented rather than merely named.** `showDirectoryPicker`
@@ -126,7 +126,7 @@ capability's own promise ("the mod never learns the folder's real path") true of
 the IPC boundary as well as the mod boundary, for free. The browser-tab build is
 untouched and keeps `showDirectoryPicker` from `mod-folder.ts`; only the
 Electron shell was measured broken, and nothing here says the browser tab is.
-§9's step 3 (`mod-backup.ts`) now needs a per-platform `BackupFolder`
+section 9's step 3 (`mod-backup.ts`) now needs a per-platform `BackupFolder`
 implementation rather than one shared one: desktop calls `neoDesktop.backup(op,
 arg)`, the browser tab keeps the File System Access path.
 
@@ -163,7 +163,7 @@ So the right home is the **same shelf `frontend`, `hud`, `menu`, `screen`, and
 `ModPlugin` members, dispatched entirely from `packages/web`, that `packages/core`
 never imports and never mentions. This ticket adds **no line to
 `packages/core`**, a stronger and more checkable claim than "core is
-unaffected," and the file-by-file plan in §9 is written so that claim stays
+unaffected," and the file-by-file plan in section 9 is written so that claim stays
 true.
 
 **The rejected alternative: a new `ModHooks` member, `afterSave`.** It was the
@@ -200,7 +200,7 @@ export interface BackupFolder {
    *  prompts - a query, like folderPermission's non-request path. */
   name(): Promise<string | null>;
   /** Ask the player to choose (or replace) the folder. MUST be called from a
-   *  user gesture - see §3. Null means the player cancelled, which is not an
+   *  user gesture - see section 3. Null means the player cancelled, which is not an
    *  error and must not be reported as one (mod-folder.ts's own rule). */
   choose(): Promise<string | null>;
   /** Forget the folder. write() becomes a silent no-op until choose() runs again. */
@@ -212,7 +212,7 @@ export interface BackupFolder {
    * Replace this mod's "a save just landed" callback. There is exactly one per
    * mod; calling again replaces it, matching setPrefErrorPolicy's "last call
    * from hooks(ctx) wins" shape. `file` is a COMPLETE, already-encoded transfer
-   * file - see §2 - so the mod never touches save bytes directly.
+   * file - see section 2 - so the mod never touches save bytes directly.
    */
   onSave(fn: (file: { readonly name: string; readonly text: string }) => void): void;
 }
@@ -241,7 +241,7 @@ each is a **generic primitive**, independently usable by every consenting mod
 with no fold rule at all, because nothing about them is single-owner. `onSave`
 callbacks are dispatched to **every** mod that registered one, in load order,
 which is `optionsChanged`'s ALL-OBSERVE fold translated to a place that isn't
-core (§4).
+core (section 4).
 
 ### 2. `backup:folder`, the new capability
 
@@ -291,7 +291,7 @@ the one property that makes it safe to evaluate generically today, so this
 design does not touch it.
 
 **CORRECTION (2026-08-15, verified against the code rather than assumed, the
-same discipline this doc's §"Platform truth" already used once): the seam this
+same discipline this doc's "Platform truth" section already used once): the seam this
 section proposed does not exist.** The paragraph below described
 `registry:command` as a generic "run this mod code from a menu row" seam. It is
 not: `CommandFacade.register(code, action)` takes a `PlayerAction`
@@ -317,7 +317,7 @@ seam) is itself new UI-seam work of the same kind gap 21 (`MOD_REACH.md`)
 already covers and neostryder deferred past alpha on 2026-08-15. This section
 is left in place, corrected, as the plan to pick back up when that work
 resumes, not as something #133 can still finish small. What ships instead:
-`ctx.backupFolder` (§1) end-to-end and capability-gated, with no
+`ctx.backupFolder` (section 1) end-to-end and capability-gated, with no
 player-visible way to invoke `choose()` yet. A future mod update adds the
 actual trigger once the menu-dispatch seam exists.
 
@@ -396,7 +396,7 @@ per level-up.
 
 **Fault containment.** Closest precedent is `hud`'s per-mod, per-region scoping
 rather than `menu`/`screen`'s single-presenter session-wide rule, because, as
-in §1 above, there is no single shared resource for a throw to endanger.
+in section 1 above, there is no single shared resource for a throw to endanger.
 **A throw from one mod's `onSave` callback disables *that mod's* backup for the
 rest of the session, reported once by name; every other consenting mod's
 callback still runs, and the game's own save is completely unaffected**: the
@@ -436,14 +436,14 @@ not by new logic this ticket would otherwise have to write and prove.
 | Firefox / Safari | `folderPickingSupported()`-equivalent is false; `ctx.backupFolder` is `undefined`; the mod's manifest-declared capability is simply never usable there. No dead menu row: the row is only added if `ctx.backupFolder` was present at `hooks(ctx)` time. |
 | A save fails (`persistSave` returns `false`) | `onSave` is never called: it fires only after `writeSlot`'s own `ok`, matching "fires only when something actually changed." |
 | The mod's `onSave` throws | Reported once by name; that mod's backup stops for the session; the save that triggered it is already complete and unaffected; every other mod's `onSave` still runs. |
-| A dead character | The last successful backup before death is the last one written, and `persistSave` is not called again for that slot, `markDead` deletes the *local* bytes but never touches the backup folder. Importing that file later is refused by the existing death ledger (§ above). |
-| Two mods both hold `backup:folder` | Both run, independently, in load order: no conflict, no fold rule, by design (§1). |
+| A dead character | The last successful backup before death is the last one written, and `persistSave` is not called again for that slot, `markDead` deletes the *local* bytes but never touches the backup folder. Importing that file later is refused by the existing death ledger (see above). |
+| Two mods both hold `backup:folder` | Both run, independently, in load order: no conflict, no fold rule, by design (section 1). |
 
 ---
 
 ## File-by-file implementation plan
 
-Ordered so the one unverified claim (§ Platform truth, point 3) is checked
+Ordered so the one unverified claim (the Platform truth section, point 3) is checked
 before anything is built on top of it.
 
 **0. DONE, verified on the installed desktop build over CDP, and it failed.**
@@ -464,7 +464,7 @@ capability: the `ParsedCapability` union member, the `parseCapability` arm, the
 exhaustive switch the compiler caught missing a case for, and the consent-prompt
 text this ticket needed anyway).
 
-**2. `packages/web/src/mod-plugin.ts`**: no new `ModPlugin` member (§1's
+**2. `packages/web/src/mod-plugin.ts`**: no new `ModPlugin` member (section 1's
 ruling). `ModPluginContext` (`:184-252`) gains `readonly backupFolder?:
 BackupFolder`, with `BackupFolder` defined beside it, doc-commented in the same
 style as the surrounding fields.
@@ -515,13 +515,13 @@ if (ok) {
 
 `notifyBackupSinks` and `backupFilename` are new, small, host-internal
 functions in `mod-backup.ts`: the per-mod `onSave` callback registry and the
-lineage-stable naming rule from §"Composition with persistSave," respectively.
+lineage-stable naming rule from the "Composition with persistSave" section, respectively.
 `transferMetaFromState` factors the object literal `exportCharacter` already
 builds inline (`main.ts:10330-10340`) so both call sites share it rather than
 drift.
 
 **6. `neo-angband-mod-qol`** (the mod repository, not this one): **BLOCKED,
-2026-08-15, on §3's correction: `registry:command`+`registry:menu` do not
+2026-08-15, on section 3's correction: `registry:command`+`registry:menu` do not
 provide "run this mod code from a menu row," and building that dispatch seam
 is itself new UI-seam work deferred past alpha alongside `MOD_REACH.md` gap
 21.** `hooks(ctx)` keeping the `BackupFolder` reference and calling
@@ -551,7 +551,7 @@ mocks, wherever the existing tests already establish the pattern:
 **`packages/mod-sdk/src/capabilities.test.ts`** (existing file, extended):
 `parseCapability("backup:folder")` round-trips to `{kind:"backup",
 action:"folder"}`; an unknown variant (`"backup:file"`, `"backup:*"`) still
-throws `CapabilityError`: there is deliberately no wildcard (§1).
+throws `CapabilityError`: there is deliberately no wildcard (section 1).
 
 **`packages/web/src/mod-backup.test.ts`** (new, mocked File System Access,
 the same style `mod-folder.test.ts:180-277` already uses for
@@ -559,7 +559,7 @@ the same style `mod-folder.test.ts:180-277` already uses for
 overwrites in place on a second call with the same name (proving the
 lineage-stable naming actually produces one file, not one per call); resolves
 `false` without throwing when permission is denied; `onSave` set twice keeps
-only the second callback (§1's "there is exactly one" contract).
+only the second callback (section 1's "there is exactly one" contract).
 
 **`packages/web/src/mod-context.test.ts`** (existing file, extended):
 `modPluginContext()` supplies `backupFolder` only when both the injected
@@ -581,9 +581,9 @@ existing somewhere in the file.
 backup file via the real `encodeTransfer`/lineage-stable-name path, then feed it
 through the **existing** import gate exactly as a manually exported file would
 be, and assert a backup taken before a recorded death is refused on the same
-grounds a manual export would be, proving §"anti-scum" is inherited rather
+grounds a manual export would be, proving the "anti-scum" section is inherited rather
 than merely argued.
 
-**Manual verification on the installed desktop build** (per §9 step 0): confirm
+**Manual verification on the installed desktop build** (per section 9 step 0): confirm
 `readwrite` mode actually persists a file outside the Electron sandbox, over
 CDP, before any of the above is trusted as "done" on that platform.

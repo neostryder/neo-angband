@@ -55,7 +55,7 @@ write down at all.
 | Add records core has never seen: objects, monsters, egos, artifacts, and whole new item **classes** (tvals) | **Complete** | gap 20 |
 | Extend a record with fields of your own, in your own namespace | **Complete** | gap 16 |
 | Ship real **code** that runs in the game, installed from disk with no build step here | **Complete** | gap 1 |
-| Change behaviour: the `ModHooks` points, plus the keyed registries listed in `MOD_REACH.md` §(c) | **Complete** | gap 3 |
+| Change behaviour: the `ModHooks` points, plus the keyed registries listed in `MOD_REACH.md`, item (c) | **Complete** | gap 3 |
 | Monster combat: blow effects, recording and live paths, one registration for both | **Complete** | gap 4 |
 | Store behaviour: the buy rule and stack sizes | **Complete** | gap 5 |
 | Level generation: your own whole-cave builder and the profile that selects it | **Complete** | gap 6 |
