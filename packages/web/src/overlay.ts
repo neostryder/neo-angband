@@ -710,12 +710,22 @@ export function getCheck(term: GridSurface & GridPointerInput, prompt: string): 
  * This is get_com_ex / textui_get_com (ui-input.c:1407); textui_get_com is only
  * get_com_ex narrowed to an ASCII char, so it has no separate counterpart. The
  * C returns false on ESCAPE where callers here compare the resolved key.
+ *
+ * `col` is the column to draw at. get_com_ex is always column 0, but the same
+ * prt-then-inkey shape is written out by hand in a few places at a column of
+ * their own - close_game's "Press Return (or Escape)." sits at column 40
+ * (ui-game.c:1155) - and those are this function with a different anchor rather
+ * than a second copy of the keypress plumbing.
  */
-export function getKeyInline(term: GridSurface & GridPointerInput, prompt: string): Promise<string> {
+export function getKeyInline(
+  term: GridSurface & GridPointerInput,
+  prompt: string,
+  col = 0,
+): Promise<string> {
   return new Promise<string>((resolve) => {
     const { cols } = term.size();
     /* prt(prompt, 0, 0) (get_com_ex, ui-input.c:1427). */
-    term.prt(0, 0, prompt.slice(0, cols - 1), FG);
+    term.prt(col, 0, prompt.slice(0, Math.max(0, cols - 1 - col)), FG);
     const finish = (key: string): void => {
       inputEvents.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);

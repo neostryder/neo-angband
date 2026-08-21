@@ -5277,20 +5277,39 @@ function scoreBuildDeps(diedFrom: string): {
   return { diedFrom, turn: state.turn, depth: state.chunk.depth, fullName };
 }
 
-/** Open the Hall of Fame around the current character (predict_score). */
-async function openHallOfFame(): Promise<void> {
+/**
+ * predict_score around the current character (ui-score.c:193), with the keyboard
+ * handed over to the score screen for as long as it is up.
+ *
+ * `allowScrolling` is predict_score's own argument, and the two callers are
+ * upstream's two: the Hall of Fame command passes true (show_scores,
+ * ui-score.c:216) and close_game's living-character tail passes false
+ * (ui-game.c:1158). Nothing here writes to the table - see showPredictedScores.
+ */
+async function showHallOfFame(allowScrolling: boolean): Promise<void> {
   if (scoresOpen) return;
   scoresOpen = true;
-  await showPredictedScores(
-    term,
-    scoreStore,
-    state.actor.player,
-    scoreBuildDeps("nobody (yet!)"),
-    scoreNames,
-    state.isDead,
-  );
-  scoresOpen = false;
-  render();
+  try {
+    await showPredictedScores(
+      term,
+      scoreStore,
+      state.actor.player,
+      scoreBuildDeps("nobody (yet!)"),
+      scoreNames,
+      state.isDead,
+      allowScrolling,
+    );
+  } finally {
+    /* In a finally so a screen that throws cannot leave the keyboard gated for
+     * the rest of the session - scoresOpen suppresses every input path. */
+    scoresOpen = false;
+    render();
+  }
+}
+
+/** Open the Hall of Fame around the current character (show_scores). */
+function openHallOfFame(): Promise<void> {
+  return showHallOfFame(true);
 }
 
 // ---- Wizard / debug mode (WP-14, gaps 15.1-15.3) -------------------------
@@ -6630,16 +6649,56 @@ function saveQuitCmd(): void {
 }
 
 /**
- * The body of the quit: save, leave. Shared with the game menu's own Quit row so
- * there is exactly ONE implementation of "save and quit" - the previous defect in
- * this area survived precisely because two call sites drifted apart.
+ * The body of the quit: save, pause, preview the score, leave. Shared with the
+ * game menu's own Quit row so there is exactly ONE implementation of "save and
+ * quit" - the previous defect in this area survived precisely because two call
+ * sites drifted apart.
+ *
+ * The order is close_game's living-character branch (ui-game.c:1143-1159) and the
+ * two middle steps are the ones this used to skip; closeGameLeavePause is where
+ * they live. The save runs HERE rather than being left to exitToTitle so that the
+ * pause comes after it on both front ends, which is the order upstream has. That
+ * makes the browser path save twice (exitToTitle saves too, because its other
+ * callers need it to); the second write is the same bytes, since nothing between
+ * them advances the game.
  */
 async function saveQuitNow(): Promise<void> {
-  if (desktopQuitAvailable()) {
-    await closeGameSave(true);
-    if (desktopQuit()) return;
-  }
+  await closeGameSave(true);
+  await closeGameLeavePause();
+  if (desktopQuitAvailable() && desktopQuit()) return;
   await exitToTitle();
+}
+
+/**
+ * close_game's living-character tail (ui-game.c:1152-1159): after the save is
+ * written, print "Press Return (or Escape)." at row 0, column 40 and wait for one
+ * key. Any key but Escape then opens predict_score(false) - the character's
+ * would-be Hall of Fame entry, "Killed by nobody (yet!)" - and Escape leaves
+ * straight away.
+ *
+ * Both are flush points rather than confirmations: nothing here can cancel the
+ * quit, and there is no question asked. That is the distinction the port had
+ * wrong. It answered "does textui_quit confirm?" correctly (it does not, and
+ * inventing a prompt there was the bug that got removed) and then stopped, so the
+ * two pauses that follow `playing = false` were never built and a player pressing
+ * ^X went from the dungeon to the title screen with nothing in between.
+ *
+ * Upstream guards this with `Term->mapped_flag`, "is there a terminal to print
+ * on". Every front end here has one before a command can be typed, so there is no
+ * unmapped case and the guard has no counterpart.
+ *
+ * predict_score's argument is display_scores_aux's allow_scrolling, NOT a write
+ * flag - no path through here touches the stored table (see showPredictedScores).
+ * false is what close_game passes, so the preview pages forward and ends at the
+ * last page instead of wrapping.
+ */
+async function closeGameLeavePause(): Promise<void> {
+  /* prt("Press Return (or Escape).", 0, 40) then inkey() (ui-game.c:1155-1156).
+   * The wording and the column are upstream's own. */
+  const ch = await getKeyInline(term, "Press Return (or Escape).", 40);
+  /* if (ch.code != ESCAPE) predict_score(false) (ui-game.c:1157-1158). */
+  if (ch === "Escape") return;
+  await showHallOfFame(false);
 }
 
 /**

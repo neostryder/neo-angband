@@ -114,6 +114,16 @@ version it still calls itself.
 
 ### Fixed
 
+- `^X` pauses on the way out, and shows the score it would have scored. Saving and
+  quitting a living character prints "Press Return (or Escape)." and waits, and
+  then, unless that key was Escape, opens the character's would-be Hall of Fame
+  entry - "Killed by nobody (yet!)" - to page through before the game leaves. Both
+  are what `close_game` does once `playing` goes false, and the port had neither:
+  it wrote the save and went straight to the title screen, so the last thing a
+  quitting player saw was the dungeon. Neither pause asks a question or can cancel
+  the quit, and the preview writes nothing to the score table - a score is only
+  ever entered at a real death. `^S`, which saves without quitting, is unchanged,
+  because `save_game` stops at the save.
 - The `?` command summary is `lib/help`'s own again, keyset for keyset. It had
   been a curated subset written when most of upstream's keyset was unbound here,
   and the port has bound all of it since: the page had drifted into saying that
