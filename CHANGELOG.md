@@ -24,6 +24,15 @@ digest in the game's catalogue and must never be moved.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-08-20
+
+Current state of the project at version `0.22.0` - the mod-resilience release.
+Nothing about the game's rules changed. What changed is that a mod can now add
+one line to a list instead of restating it, that a mod's own content is drawn
+rather than lettered, and that thirteen defects are fixed - four of them ways one
+line of one mod could take the whole game down at boot, which now cost that mod
+its line and nothing else.
+
 ### Added
 
 - **A mod can add one entry to a list.** Two new field-patch ops: `append`, which
@@ -343,6 +352,7 @@ The initial public alpha release.
 - **Deterministic and seeded** generation throughout, with a save format built
   to survive modular content.
 
-[Unreleased]: https://github.com/neostryder/neo-angband/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/neostryder/neo-angband/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/neostryder/neo-angband/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/neostryder/neo-angband/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/neostryder/neo-angband/releases/tag/v0.20.0
