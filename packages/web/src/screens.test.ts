@@ -81,6 +81,8 @@ import type {
   LoreDeps,
   HighScore,
   ScoreNameResolver,
+  ScoreStore,
+  Player,
 } from "@rpgm-tools/neo-angband-core";
 import {
   wrapRuns,
@@ -133,7 +135,7 @@ import {
 } from "./screens";
 import { characterFlagsScreen } from "./charsheet";
 import { MessageLog } from "./messages";
-import { showScoreScreen } from "./score";
+import { showPredictedScores, showScoreScreen } from "./score";
 import { showMonsterList } from "./monster-list";
 import { setScreenPresenter } from "./screen-runtime";
 import type { GridPointerInput, GridSurface } from "./term";
@@ -2501,6 +2503,98 @@ describe("showScoreScreen: the seam, and the terminal underneath it", () => {
     const term = makeGridTerm();
     void showScoreScreen(term, HOF_SCORES, HOF_NAMES, { highlight: 1 });
     expect(term.grid()[0]).toBe("                              Neo Angband Hall of Fame");
+  });
+
+  /**
+   * The non-scrolling form, which close_game asks for on the way out of a living
+   * game (predict_score(false), ui-game.c:1158). Only the footer differs on the
+   * screen, and it differs at a different COLUMN too - 9 rather than 6
+   * (display_scores_aux, ui-score.c:155-160) - so the paint is what pins it.
+   */
+  it("foots the non-scrolling form at column 9, as display_scores_aux does", () => {
+    const term = makeGridTerm();
+    void showScoreScreen(term, HOF_SCORES, HOF_NAMES, {
+      highlight: 1,
+      allowScrolling: false,
+    });
+    expect(term.grid()[23]).toBe(
+      "         [Press ESC to exit, any other key to page forward till done.]",
+    );
+  });
+});
+
+/**
+ * predict_score (ui-score.c:193) as the port runs it: the living-character
+ * preview close_game shows after ^X, and the Hall of Fame command's scrolling
+ * form. What matters here is that NEITHER writes - predict_score's argument is
+ * display_scores_aux's allow_scrolling, and reading it as a write flag is the
+ * mistake this pins shut. The stored table is only ever written by enterScore, at
+ * a real death.
+ */
+describe("showPredictedScores previews without writing", () => {
+  /** The seven Player fields build_score reads (score.c L194). */
+  const LIVE_PLAYER = {
+    maxExp: 4000,
+    maxDepth: 8,
+    au: 250,
+    lev: 11,
+    maxLev: 12,
+    race: { ridx: 1 },
+    cls: { cidx: 1 },
+    fullName: "Alive",
+  } as unknown as Player;
+
+  /** A store that records every write, so "nothing was written" is measurable. */
+  function spyStore(): ScoreStore & { writes: HighScore[][] } {
+    const writes: HighScore[][] = [];
+    return {
+      writes,
+      read: () => HOF_SCORES.map((s) => ({ ...s })),
+      write: (scores: HighScore[]) => {
+        writes.push(scores);
+      },
+    };
+  }
+
+  it("shows the live character in the table and writes nothing (close_game's false)", () => {
+    const term = makeGridTerm();
+    const store = spyStore();
+    void showPredictedScores(
+      term,
+      store,
+      LIVE_PLAYER,
+      { diedFrom: "nobody (yet!)", turn: 1234, depth: 6, fullName: "Alive" },
+      HOF_NAMES,
+      false,
+      false,
+    );
+    const grid = term.grid();
+    /* The provisional row is IN the table (highscore_add into the list read out
+     * of the store), highlighted, and reads "Killed by nobody (yet!)". */
+    expect(grid.join("\n")).toContain("Alive the Human Mage, level 11");
+    expect(grid.join("\n")).toContain("Killed by nobody (yet!) on dungeon level 6");
+    /* allowScrolling false travelled all the way to the footer. */
+    expect(grid[23]).toBe(
+      "         [Press ESC to exit, any other key to page forward till done.]",
+    );
+    expect(store.writes).toEqual([]);
+  });
+
+  it("defaults to the scrolling footer, which is what show_scores asks for", () => {
+    const term = makeGridTerm();
+    const store = spyStore();
+    void showPredictedScores(
+      term,
+      store,
+      LIVE_PLAYER,
+      { diedFrom: "nobody (yet!)", turn: 1234, depth: 6, fullName: "Alive" },
+      HOF_NAMES,
+      false,
+    );
+    expect(term.grid()[23]).toBe(
+      "      [Press ESC to exit, up for prior page, any other key for next page.]",
+    );
+    expect(store.writes).toEqual([]);
   });
 });
 

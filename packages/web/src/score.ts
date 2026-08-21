@@ -373,6 +373,15 @@ export function showScoreScreen(
  * predict_score (ui-score.c L193): show the current character's neighbourhood
  * in the table. Builds the provisional entry (build_score with "nobody (yet!)"
  * when alive), resolves the window, and runs the screen.
+ *
+ * NOTHING IS WRITTEN. predict_score's parameter is display_scores_aux's
+ * `allow_scrolling`, not a write flag: a live character is inserted into the
+ * list `store.read()` handed back and that list is dropped when the screen
+ * closes, so this is a preview in every case. The score table is only ever
+ * written by `enterScore`, at a real death. `allowScrolling` false is the form
+ * close_game uses on the way out of a living game (ui-game.c:1158) - the pages
+ * run forward and the screen ends at the last one instead of wrapping to the
+ * top; true is the Hall of Fame command (show_scores, ui-score.c:216).
  */
 export function showPredictedScores(
   term: GridSurface & GridPointerInput,
@@ -384,6 +393,7 @@ export function showPredictedScores(
   },
   names: ScoreNameResolver,
   isDead: boolean,
+  allowScrolling = true,
 ): Promise<void> {
   const scores = store.read();
   const entry = buildScore(player, {
@@ -396,6 +406,6 @@ export function showPredictedScores(
     from: p.from,
     to: p.to,
     highlight: p.highlight,
-    allowScrolling: true,
+    allowScrolling,
   });
 }

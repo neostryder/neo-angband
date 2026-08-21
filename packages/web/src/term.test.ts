@@ -215,7 +215,12 @@ describe("prt census: every converted prompt site (2026-07-29)", () => {
     /* textui_get_check ui-input.c:1271; get_com_ex :1427; get_rep_dir :1512;
      * askfor_aux's caller prt :1153/:1189/:1357; prt("", 0, 0) :1275 etc. */
     expect(src).toContain('term.prt(0, 0, buf.slice(0, cols - 1), FG)'); // getCheck
-    expect(src).toContain('term.prt(0, 0, prompt.slice(0, cols - 1), FG)'); // getAimDir/getKeyInline
+    expect(src).toContain('term.prt(0, 0, prompt.slice(0, cols - 1), FG)'); // getAimDir
+    /* getKeyInline, which now takes the column too (close_game's own prompt sits
+     * at column 40, ui-game.c:1155); col defaults to 0, so this is the same call. */
+    expect(src).toContain(
+      'term.prt(col, 0, prompt.slice(0, Math.max(0, cols - 1 - col)), FG)',
+    );
     expect(src).toContain('term.prt(0, 0, "Direction or <click> (Escape to cancel)? "');
     expect(src).toContain('term.prt(0, row, prompt.slice(0, cols - 1), FG)'); // promptTextInline
     expect(src).toContain('term.prt(0, 0, "File name: ", FG)'); // get_file_text
