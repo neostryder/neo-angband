@@ -24,7 +24,7 @@ import { describe, expect, it } from "vitest";
 
 import { FlagSet } from "../bitflag.js";
 import { RF, RSF } from "../generated/index.js";
-import { RSF_SIZE } from "./types.js";
+import { RF_SIZE, RSF_SIZE } from "./types.js";
 import type { MonsterRace } from "./types.js";
 import { newMonsterLore } from "./lore.js";
 import type { LoreStore } from "./lore.js";
@@ -131,7 +131,11 @@ function fakeRace(ridx: number, name: string): MonsterRace {
   return {
     ridx,
     name,
-    base: { name: "kobold" },
+    /* A REAL flag set on the base, because the binder always builds one and a
+     * stub without it is a shape production cannot produce. `newMonsterLore`
+     * unions the base's flags (finish_parse_lore), so a base with no `flags` at
+     * all made eight tests in this file throw rather than measure anything. */
+    base: { name: "kobold", flags: new FlagSet(RF_SIZE) },
     blows: [],
     spellFlags: new FlagSet(RSF_SIZE),
     sleep: 0,

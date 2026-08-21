@@ -18,6 +18,7 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import {
   FlagSet,
   HostDir,
+  RF_SIZE,
   MemoryHost,
   NULL_HOST,
   newMonsterLore,
@@ -33,7 +34,13 @@ function fakeRace(ridx: number, name: string): MonsterRace {
   return {
     ridx,
     name,
-    base: { name: "kobold" },
+    /* A REAL flag set on the base, because the binder always builds one and a
+     * stub without it is a shape production cannot produce. `newMonsterLore`
+     * unions the base's flags (finish_parse_lore), so a base with no `flags`
+     * makes it throw rather than measure anything. RF_SIZE, not the 12 the
+     * spell flags use - a race flag set and a spell flag set are different
+     * widths, and `flagUnion` refuses a mismatch. */
+    base: { name: "kobold", flags: new FlagSet(RF_SIZE) },
     blows: [],
     spellFlags: new FlagSet(12),
     sleep: 0,

@@ -88,7 +88,7 @@ export type LoreStore = Map<number, MonsterLore>;
 
 /** A blank lore record for a race. */
 export function newMonsterLore(race: MonsterRace): MonsterLore {
-  return {
+  const lore: MonsterLore = {
     sights: 0,
     deaths: 0,
     pkills: 0,
@@ -111,6 +111,13 @@ export function newMonsterLore(race: MonsterRace): MonsterLore {
     spellFreqKnown: false,
     innateFreqKnown: false,
   };
+  /* The base's flags are known from the start (finish_parse_lore), so a record
+   * carries them from the moment it exists rather than waiting for a
+   * `loreUpdate` that a display path might not have run. `loreUpdate` does it
+   * too, because a record restored from a save never passes through here; the
+   * union is idempotent. See `knowBaseFlags`. */
+  knowBaseFlags(race, lore);
+  return lore;
 }
 
 /** get_lore (L1735): the race's lore record, created on first access. */
@@ -179,11 +186,63 @@ export function loreCountU16(
 }
 
 /**
+ * A MONSTER'S BASE FLAGS ARE KNOWN WITHOUT MEETING IT.
+ *
+ * `finish_parse_lore` (mon-init.c:2570-2575) walks every race at startup and
+ * does `rf_union(l->flags, r->base->flags)` before calling `lore_update`, so a
+ * player who has never seen a giant black ant still knows that ants are
+ * ANIMAL and WEIRD_MIND, and that ainu are IM_FIRE and NO_CONF. It is a
+ * FINISH hook, and the port did not have it: measured 2026-08-20, a fresh lore
+ * for a giant black ant knew neither of its base's two flags, so monster recall
+ * was quieter than upstream's for every unmet monster in the game - 54 of the
+ * 56 bases carry flags.
+ *
+ * IT IS DONE WHERE A RECORD IS BORN, because there is no startup pass in this
+ * port to put it in: upstream allocates `l_list` up front for every race, and
+ * the port creates a record lazily on first access. Creation is therefore the
+ * port's own "once per race", and `newMonsterLore` is the one place every new
+ * record passes through - including the one `wipeMonsterLore` builds, which is
+ * what makes a wiped record behave like upstream's rather than like a record
+ * that never existed.
+ *
+ * NOT FROM `loreUpdate`, which was the first thing tried and is wrong. Upstream
+ * unions once at startup and never again, so its wizard "wipe monster lore"
+ * really does lose the base flags and the next blow does not restore them.
+ * Putting the union in `lore_update`'s port would quietly make that command
+ * less complete than the C's, which the existing wipe test caught.
+ *
+ * A base flag the RACE removed is still marked known, and that is upstream's
+ * behaviour rather than an oversight: `lore.flags` means "this flag, or its
+ * absence, is known", so learning that a green glutton ghost lacks something
+ * its base has is knowledge too (see mon/bind.ts on races dropping inherited
+ * base flags).
+ *
+ * THE `if (r->base)` GUARD IS UPSTREAM'S OWN (mon-init.c:2571), kept because
+ * the C tolerates a race with no base and this should not be stricter than the
+ * thing it reproduces. It is deliberately NOT widened to `race.base?.flags`: a
+ * base with no flag set at all is a shape the binder cannot produce, and eight
+ * lore-file tests that threw here were a hand-made fixture claiming otherwise -
+ * the fixture was corrected rather than this guard loosened, because a guard
+ * that tolerates an impossible shape stops any test from noticing a real one.
+ */
+function knowBaseFlags(race: MonsterRace, lore: MonsterLore): void {
+  if (!race.base) return;
+  lore.flags.union(race.base.flags);
+}
+
+/**
  * lore_update (L303): derive which bits of lore are known from the
  * observation counters (obvious flags assumed; seen blows known; kills
  * reveal armour, drops and the racial/drop flags; the wake/ignore counts
  * reveal sleep; 50+ observed casts reveal the frequencies; all_known
  * spreads to everything).
+ *
+ * DOES NOT union the base's flags, and that is measured rather than assumed:
+ * upstream unions them once at startup (`finish_parse_lore`) and never again,
+ * so the wizard "wipe monster lore" command genuinely loses them and
+ * `lore_update` on the next blow does not bring them back. Doing it here would
+ * make the port's wipe less complete than upstream's. `newMonsterLore` is the
+ * placement that matches - see `knowBaseFlags`.
  */
 export function loreUpdate(race: MonsterRace, lore: MonsterLore): void {
   /* Assume some "obvious" flags. */
@@ -236,6 +295,13 @@ export function cheatMonsterLore(race: MonsterRace, lore: MonsterLore): void {
 /** wipe_monster_lore (L374): forget everything about a race. */
 export function wipeMonsterLore(race: MonsterRace, lore: MonsterLore): void {
   Object.assign(lore, newMonsterLore(race));
+  /* AS BLANK AS UPSTREAM'S, base flags included. `newMonsterLore` seeds them
+   * (`knowBaseFlags`) because upstream's startup pass does, but upstream runs
+   * that pass ONCE - so a wizard-wiped lore in the C really has no base flags
+   * and nothing puts them back. Reproducing that means clearing them here,
+   * which is the difference between "a fresh record" and "a wiped one" in a
+   * port where both are built by the same function. */
+  lore.flags.wipe();
 }
 
 /**
