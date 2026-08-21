@@ -6,7 +6,7 @@ map, fight, descend, and die permanently.
 
 It is not a debug hatch. Every read goes through core's frozen agent view and
 every write through its act facade, so the server has exactly the reach a
-third-party agent mod has — no privileged path and no test hook. That is the
+third-party agent mod has, with no privileged path and no test hook. That is the
 property worth protecting: an AI control surface with a private door into the
 engine would stop being a test of whether the modding API is honest.
 
@@ -20,7 +20,7 @@ pnpm build
 node packages/mcp/dist/server.js
 ```
 
-Plain `node`, no flags — an MCP client spawns a command, so there is nothing to
+Plain `node`, no flags: an MCP client spawns a command, so there is nothing to
 wrap. Point a client at it:
 
 ```json
@@ -59,7 +59,7 @@ Nineteen, in four groups. Read-only tools take no game time.
 | `shop_action` | yes | Buy, sell, leave |
 
 Plus one resource, `neo-angband://game/current`, which is the status and map as
-attachable text — no tool call, and cacheable.
+attachable text, with no tool call, and cacheable.
 
 Every mutating tool returns the same shape: **what happened** (the engine's own
 messages, and how many game turns passed) then **where you now are**. An agent
@@ -87,25 +87,25 @@ wall in the way!"* can try something else.
 Two places where **the engine accepts nonsense quietly** and this server does
 not, both found by driving it rather than by reading it:
 
-- **An unknown race or class name.** `startGame` does not reject one — asking for
+- **An unknown race or class name.** `startGame` does not reject one: asking for
   a `Balrog` produced a Human, with no error anywhere. The session compares what
   was asked against what was born and refuses.
 - **An unknown command code.** The loop accepted `ascend_to_heaven` cleanly, cost
-  zero turns and emitted no message — indistinguishable, to an agent, from a
+  zero turns and emitted no message, indistinguishable, to an agent, from a
   command that was tried and refused. `act` asks the live registry first, so a
   code a mod added still works.
 
 ## The gap this exercise found, and where it was actually fixed
 
 Measured on a fresh `startGame` boot, with no host seams wired: of 12740 cells,
-`known` was true for **0** and `inView` for **0** — including the player's own
+`known` was true for **0** and `inView` for **0**, including the player's own
 square. An agent driving the frozen facade could read its own statistics and see
 monsters, and had **no map at all**.
 
 The first diagnosis was that `runGameLoop` never refreshes the derived view. That
 was wrong in an instructive way. Core calls `state.updateFov` from about
-twenty-five sites — the level-entry flood, the after-action refresh in
-`player-turn.ts`, every light and terrain effect — and every one of them is `?.`,
+twenty-five sites: the level-entry flood, the after-action refresh in
+`player-turn.ts`, every light and terrain effect, and every one of them is `?.`,
 because `updateFov` is a **host seam**. What was missing was not a call. It was a
 **default**: core supplied none, so a host that installed nothing got silence from
 all twenty-five, and this host installed nothing.
@@ -120,14 +120,14 @@ Three things came out with it, none of which a code reading would have offered:
 
 - **`no_light` was disabled for every seam-less host.** `noLight` opened with `if
   (state.updateFov === undefined) return false`, described in its own comment as "a
-  seam guard, not a rule of the game" — it existed because SEEN was clear
+  seam guard, not a rule of the game". It existed because SEEN was clear
   everywhere, which would have made casting and reading permanently impossible. The
   premise is gone, so the guard is, and spell and scroll rules are upstream's for
   everyone.
 - **A live crash on arena entry.** `wizLightLevel` refreshed the view immediately,
   where upstream's `wiz_light` only sets `PU_UPDATE_VIEW` for the next
   `update_stuff`. On the arena path that ran while `state.chunk` was already the new
-  6×6 level and the player's grid was still the old one: `square out of bounds:
+  6x6 level and the player's grid was still the old one: `square out of bounds:
   75,31`. The web build has always installed a seam, so it was reachable there
   through `EF_SINGLE_COMBAT`; nothing had driven it.
 - **Both hosts read the wrong field for the UNLIGHT view radius**, passing
@@ -135,8 +135,8 @@ Three things came out with it, none of which a code reading would have offered:
   `viewerStateOf` in core and both use it.
 
 Nothing in the repository could have caught the original. The Borg's tests run
-against a hand-built fake `AgentView` — the Borg mod repository's `src/harness.ts` says so in
-its own header — so the live perceive path had never been driven by anything but
+against a hand-built fake `AgentView`: the Borg mod repository's `src/harness.ts` says so in
+its own header, so the live perceive path had never been driven by anything but
 the web shell, which refreshes for its own drawing reasons.
 
 ## What it does not do
@@ -160,7 +160,7 @@ Stated rather than left to be discovered:
 
   The desktop build then runs the agent in the window, drawing every step
   (`packages/desktop/src/agent-mode.ts`). It is the renderer's own agent path, not
-  this server — watchable, still not attachable.
+  this server, watchable but still not attachable.
 - **One game at a time.** `new_game` replaces the current one.
 
 ## Determinism is declared, not hidden
@@ -168,7 +168,7 @@ Stated rather than left to be discovered:
 An AI on the other end of a socket is not a seeded RNG, so the controller
 installs with `nondeterministic: true`, which trips core's one-way save ratchet.
 A character an agent touched is flagged for as long as it exists, and there is no
-option here to turn that off — the same rule the mod system applies to gameplay
+option here to turn that off, the same rule the mod system applies to gameplay
 mods.
 
 The seed is still reported, and a seed plus a command list replays exactly: the
@@ -188,5 +188,5 @@ maps.
 | `mcp.test.ts` | 28 tests, every one against a real booted game |
 
 The split at `tools.ts` is what lets the tests drive every tool through a real
-game with no transport — the difference between testing that a tool works and
+game with no transport: the difference between testing that a tool works and
 testing that it is registered.

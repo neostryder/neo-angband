@@ -198,7 +198,7 @@ export function showThroughPresenter(
     );
     return null;
   }
-  /* The same `typeof … === "function"` treatment `dismissed?.then` gets, and for
+  /* The same `typeof x === "function"` treatment `dismissed?.then` gets, and for
    * the same reason: a member that is present and is not callable reads as "this
    * presenter can stand aside" and then takes the seam down at the worst possible
    * moment - mid-prompt, with the player waiting. Absent is fine and is the

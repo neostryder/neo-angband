@@ -6,7 +6,7 @@ checklist: closed items are the record of what has been fixed, and the
 [Known remaining gaps](#known-remaining-gaps) section below names what is
 still open.
 
-**68 items covering all 13 confirmed-absent citations** — all 68 are closed.
+**68 items covering all 13 confirmed-absent citations**, and all 68 are closed.
 Restated for the record the test in `packages/cli/src/port-todo.test.ts`
 checks: **68 items, 13 citations, 5 `real` + 8 `partial`**. All thirteen
 citations live in the ledger tranche (`parity/reports/ledger-deferred-items.tsv`);
@@ -26,19 +26,19 @@ A citation is a `file:line` from `parity/reports/deferral-census.tsv` or
 |---|---|
 | **0** | The list cannot be trusted until this is done |
 | **1** | Unlocks other tiers; doing it later means doing downstream items twice |
-| **2** | Changes what *happens* — mechanics, and in one case RNG draw order |
-| **3** | Changes what the player is *told* — the numbers and text on screen |
+| **2** | Changes what *happens*: mechanics, and in one case RNG draw order |
+| **3** | Changes what the player is *told*: the numbers and text on screen |
 | **4** | A whole mode nobody had begun |
 | **5** | History, files and logs |
-| **6** | Wizard mode — closed |
-| **7** | Items originally filed as "a decision to take, not code to write" — closed once measured |
+| **6** | Wizard mode, closed |
+| **7** | Items originally filed as "a decision to take, not code to write", closed once measured |
 
 A tick means the behaviour is reachable in play and a test constructs the
 case that used to be wrong, not merely that the function exists.
 
 ---
 
-## Tier 0 — Made the list trustworthy
+## Tier 0: Made the list trustworthy
 
 - [x] **0.1 The ledger `deferred:` items are fully adjudicated.** All 343
   rows across 73 files in `parity/reports/ledger-deferred-items.tsv` have a
@@ -47,7 +47,7 @@ case that used to be wrong, not merely that the function exists.
   `parity/tools/deferral-crosscheck.mjs` are marked read; 8 overturned a
   stale verdict.
 
-## Tier 1 — Foundations that unlocked other rows
+## Tier 1: Foundations that unlocked other rows
 
 - [x] **1.1 `notice_stuff` / `PN_*` notice pipeline.** Ported.
   `PlayerUpkeep.notice` is a real bitfield (`packages/core/src/player/player.ts:33`)
@@ -69,7 +69,7 @@ case that used to be wrong, not merely that the function exists.
   player command instead of every ten game turns.
   Sites: `packages/core/src/game/loop.ts:361`, `packages/core/src/game/known.ts:977`
 
-## Tier 2 — Changes what happens in play
+## Tier 2: Changes what happens in play
 
 - [x] **2.1 `square_isempty` was weaker than upstream's.** Ported. The weak
   `context.ts` definition (missing the player trap, web and object checks) is
@@ -129,7 +129,7 @@ case that used to be wrong, not merely that the function exists.
   never learned.
   Sites: `packages/core/src/store/store.ts:232`
 
-- [x] **2.11 The `OSTACK_LIST` stacking checks.** Unreachable in upstream — no
+- [x] **2.11 The `OSTACK_LIST` stacking checks.** Unreachable in upstream: no
   4.2.6 caller ever passes `OSTACK_LIST`. A ratchet test fails if any port
   code ever does.
   Sites: `packages/core/src/obj/object.ts:923`
@@ -160,7 +160,7 @@ case that used to be wrong, not merely that the function exists.
   Sites: `packages/core/src/obj/make.ts:1238`
 
 - [x] **2.16 `history_find_artifact` on a store purchase.** Unreachable in
-  upstream — `do_cmd_buy` makes no history call of any kind; the only call
+  upstream: `do_cmd_buy` makes no history call of any kind; the only call
   upstream makes is on the sell path, which is wired.
   Sites: `packages/core/src/store/transact.ts:26`
 
@@ -175,7 +175,7 @@ case that used to be wrong, not merely that the function exists.
   machinery.
   Sites: `packages/core/src/game/mon-cmd.ts:583`
 
-- [x] **2.19 A commanded monster's blow.** Mostly already correct — the
+- [x] **2.19 A commanded monster's blow.** Mostly already correct: the
   status-effect and poison behaviour matched upstream, including upstream's
   own dead teleport-tail code. Two real defects fixed: `SMASH_WALL` no
   longer shares `KILL_WALL`'s body, and both door-bash branches now clear
@@ -194,7 +194,7 @@ case that used to be wrong, not merely that the function exists.
   instead of being optional fields with no supplier.
   Sites: `packages/core/src/game/context.ts:1322`, `packages/core/src/mon/take-hit.ts:180`
 
-## Tier 3 — Changes what the player is told
+## Tier 3: Changes what the player is told
 
 - [x] **3.1 `add_monster_message` had no queue.** Ported.
   `packages/core/src/game/mon-message.ts` implements the batching, stacking
@@ -229,12 +229,12 @@ case that used to be wrong, not merely that the function exists.
   Sites: `packages/core/src/game/ui-entry.ts`
 
 - [x] **3.7 Temporary resists never appeared in the resist grid (with 3.8).**
-  Ported as one wiring fix — see **3.8**.
+  Ported as one wiring fix; see **3.8**.
   Sites: `packages/core/src/game/ui-entry.ts:26`
 
 - [x] **3.8 The timed-flag column read empty.** Ported. `liveTimedUiDeps` /
   `liveUiEntryDeps` supply the `timedElementEffect` and `timedObjectFlags`
-  seams — both already-ported functions with no caller — at all four screen
+  seams, both already-ported functions with no caller, at all four screen
   sites, with the `TMD_TRAPSAFE` split preserved.
   Sites: `packages/core/src/game/ui-entry.ts:26`
 
@@ -324,7 +324,7 @@ case that used to be wrong, not merely that the function exists.
   test as fallback.
   Sites: `packages/core/src/obj/known-object.ts:167`
 
-- [x] **3.24 `equip_learn_flag` had no shape branch.** Ported — for the three
+- [x] **3.24 `equip_learn_flag` had no shape branch.** Ported, for the three
   neighbouring functions that actually needed it
   (`equip_learn_on_defend`/`_on_ranged_attack`/`_on_melee_attack`), which now
   consult the bound shape's own to-a/to-h/to-dam when no worn item teaches
@@ -348,7 +348,7 @@ case that used to be wrong, not merely that the function exists.
   `isIgnored` state; both markers appear and suppress correctly.
   Sites: `parity/ledger/obj-desc.yaml:65`
 
-## Tier 4 — Whole modes nobody had begun
+## Tier 4: Whole modes nobody had begun
 
 - [x] **4.1 Arena mode.** Ported. Fixed the three of 29 `arena_level` sites
   that were missing an arena guard: `EF_TELEPORT`, `EF_ALTER_REALITY`, and
@@ -369,7 +369,7 @@ case that used to be wrong, not merely that the function exists.
   connector joins being discarded at boot.
   Sites: `packages/core/src/gen/generate.ts`, `packages/core/src/gen/cave.ts`
 
-## Tier 5 — History, files and logs
+## Tier 5: History, files and logs
 
 - [x] **5.2 The player notes command.** Already built (`noteCmd`,
   `packages/web/src/main.ts:4547`); the absence claim rested on a
@@ -387,7 +387,7 @@ case that used to be wrong, not merely that the function exists.
   `doRandart` in a real boot) is added.
   Sites: `packages/core/src/session/boot.ts:163`
 
-- [x] **5.5 `randart.log` / `randart.txt`.** Ported — all 252 sites written
+- [x] **5.5 `randart.log` / `randart.txt`.** Ported: all 252 sites written
   across `obj-power.c` (59) and `obj-randart.c` (193). Fixed a live RNG-stream
   divergence found in the process: `artifactPower`'s curse-timeout rolls were
   skipped during generation, so randart sets differed from upstream's from
@@ -407,7 +407,7 @@ case that used to be wrong, not merely that the function exists.
   Sites: `packages/core/src/obj/object.ts:703`
 
 - [x] **5.8 `object_flag_is_known` on the store's buy list.** Same fix as
-  **2.10** — one gate, cited twice.
+  **2.10**: one gate, cited twice.
   Sites: `parity/ledger/store-maint.yaml:34`
 
 - [x] **5.9 A store's stock did not age.** Already built end to end
@@ -415,7 +415,7 @@ case that used to be wrong, not merely that the function exists.
   exercised it in a test. Tests added.
   Sites: `packages/core/src/game/loop.ts:397`
 
-## Tier 6 — Wizard mode, closed
+## Tier 6: Wizard mode, closed
 
 Wizard mode is fully ported: the item editor and its four commit steps, the
 Monte-Carlo collectors, `runWriteMap`, the free-form effect prompt, the
@@ -423,7 +423,7 @@ edit-player queue chain, `quit_no_save`, `dump_level_map`, `query_feature`,
 `peek_noise_scent`, the spoiler generators, and `ArtifactState` serialized
 in the save. All fourteen `wizard-debug.yaml` items are `ported`.
 
-## Tier 7 — Originally "decisions to take", closed once measured
+## Tier 7: Originally "decisions to take", closed once measured
 
 - [x] **7.1 `project-path`: wire it or cordon it.** Both halves of the
   offered decision were already resolved (the function is wired, and the UI
@@ -434,16 +434,16 @@ in the save. All fourteen `wizard-debug.yaml` items are `ported`.
 
 - [x] **7.2 Split the monster-turn partial into rows that can be closed.**
   Of the five bundled behaviours the row named, four were already live; the
-  fifth — a message on decoy destruction missing from two call sites, and
-  eight missing monster-lore flag learns — is now fixed.
+  fifth (a message on decoy destruction missing from two call sites, and
+  eight missing monster-lore flag learns) is now fixed.
   Sites: `packages/core/src/game/monster-turn.ts:1380`
 
-- [x] **7.3 Decide the level-rating question.** Retracted — level rating
+- [x] **7.3 Decide the level-rating question.** Retracted: level rating
   (`add_to_monster_rating`, `obj_rating`, `chunk->feeling`) is fully ported
   and tested; there was no decision to make.
   Sites: `parity/ledger/mon-make.yaml:32`
 
-- [x] **7.4 The world kernel's monster-list scan replacement.** Ported —
+- [x] **7.4 The world kernel's monster-list scan replacement.** Ported:
   fixed a live defect present since the port began: no monster's `light`
   field ever reached the map. `monsterLightSources`
   (`packages/core/src/game/known.ts`) supplies the view kernel's
@@ -458,36 +458,36 @@ Thirteen citations are still open, all `real` or `partial` rows in the
 ledger tranche (`parity/reports/ledger-deferred-items.tsv`), across ten
 files:
 
-- `parity/ledger/game-cave-cmd.yaml` — the steal command (`s`) has no
+- `parity/ledger/game-cave-cmd.yaml`: the steal command (`s`) has no
   shapechanged-player gate; `count_feats`' single-adjacent-door direction
   inference for `open` is absent. A third row in this file, disarming a
   locked door, is `partial` rather than fully open: it is not yet modelled
   as a trap instance, only the trap-disarm path exists.
-- `parity/ledger/game-effect-melee.yaml` — `EF_MOVE_ATTACK`'s pass-through
+- `parity/ledger/game-effect-melee.yaml`: `EF_MOVE_ATTACK`'s pass-through
   grids skip autopickup and disturb.
-- `parity/ledger/game-effect-terrain.yaml` — the `birth_levels_persist`
+- `parity/ledger/game-effect-terrain.yaml`: the `birth_levels_persist`
   option on `CREATE_STAIRS`, and the `total_winner`/recall interplay, remain
   open (tracked with the RECALL ledger separately).
-- `parity/ledger/game-known.yaml` — known traps are still per-grid memory
+- `parity/ledger/game-known.yaml`: known traps are still per-grid memory
   rather than per-trap-instance; sense markers don't record which predicate
   sensed them, so a know/sense of one object class can clear another's.
-- `parity/ledger/game-mon-ranged.yaml` — monster-vs-monster ranged casting
+- `parity/ledger/game-mon-ranged.yaml`: monster-vs-monster ranged casting
   always computes visibility from the player rather than the real target.
-- `parity/ledger/game-pickup.yaml` — there is no `OFLOOR_VISIBLE` marking;
+- `parity/ledger/game-pickup.yaml`: there is no `OFLOOR_VISIBLE` marking;
   every floor object is currently visible, so one can't yet be marked
   otherwise.
-- `parity/ledger/game-player-path.yaml` — two remainders: the movement-speed
+- `parity/ledger/game-player-path.yaml` has two remainders: the movement-speed
   class energy in the turn-penalty conversion, the digger-swap
   recalculation for rubble, and a dark/`PF_UNLIGHT` nuance in the lock
   penalty are unported; separately, the running torch-radius recompute, the
   running-into-a-trap auto-disarm nuance, and ignored floor objects not
   stopping a run are unported.
-- `parity/ledger/obj-desc.yaml` — rune/flag learn-by-use messages use an
+- `parity/ledger/obj-desc.yaml`: rune/flag learn-by-use messages use an
   approximate base name instead of the real object description.
-- `parity/ledger/obj-value.yaml` — object pricing reads the real object
+- `parity/ledger/obj-value.yaml`: object pricing reads the real object
   instead of the player's partial knowledge of it, so a partially-identified
   item is overvalued.
-- `parity/ledger/ui-display.yaml` — there is no top status bar at all
+- `parity/ledger/ui-display.yaml`: there is no top status bar at all
   (`update_topbar`/`SIDEBAR_TOP` and the short-form handlers have no port).
 
 ## What makes this list checkable
@@ -496,8 +496,8 @@ files:
 `partial` census row is not cited somewhere in this document, if the stated
 counts disagree with the census, if a cited path does not exist on disk, or
 if a cited line on an open item has drifted off the note it points at. Tier
-0's own unadjudicated backlog is deliberately not gated the same way — a
-test asserting it at zero would be turned off before it went green — so both
+0's own unadjudicated backlog is deliberately not gated the same way: a
+test asserting it at zero would be turned off before it went green, so both
 numbers are written down in Tier 0 instead.
 
 ---
@@ -511,12 +511,12 @@ Four things stand between "no open items" and "identical":
 ### 1. Things that are deliberately different, and stay different
 
 The ledger census carries rows adjudicated `divergence` or `n-a`, each with
-its mechanism named — see [DIVERGENCES.md](DIVERGENCES.md), which groups
+its mechanism named; see [DIVERGENCES.md](DIVERGENCES.md), which groups
 them by whether a faithful transliteration was impossible, would have been
 worse, or was simply not chosen. These are not owed work. The largest single
 one is structural: `obj->known` is synthesised on demand rather than stored,
 because the port has no persistent known-twin object. Others are forced by
-the platform — upstream's `exit(1)` when `randart.log` cannot be opened has
+the platform: upstream's `exit(1)` when `randart.log` cannot be opened has
 no analogue in a browser tab, so the message goes to the caller and
 generation continues.
 

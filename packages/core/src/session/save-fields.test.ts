@@ -1,15 +1,15 @@
 /**
- * W1 lane C — the save round-trip FIELD-COVERAGE guard.
+ * W1 lane C, the save round-trip FIELD-COVERAGE guard.
  *
  * `save.test.ts` proves that named features survive a reload (stores, quests,
- * messages, options, …). What it cannot catch is a field that quietly stops
+ * messages, options, ...). What it cannot catch is a field that quietly stops
  * being written, or a field upstream grows that the port never learns about:
  * every assertion there is hand-written per feature, so silence is passing.
  *
  * This file closes that hole from the C side. `reference/src/save.c` is the
  * oracle. Three guards, all driven off one table:
  *
- *  1. C-SIDE COUNT. save.c is re-read and the `wr_byte` / `wr_u16b` / … call
+ *  1. C-SIDE COUNT. save.c is re-read and the `wr_byte` / `wr_u16b` / ... call
  *     sites inside each `wr_*` function are counted. The table below declares
  *     the expected count per function. A field added to (or removed from)
  *     upstream changes a count and this fails, naming the function. (It counts
@@ -752,7 +752,7 @@ function saveOf(game: StartedGame): SavedGame {
 }
 
 /* ------------------------------------------------------------------ *
- * Guard 1 — the C side.
+ * Guard 1: the C side.
  * ------------------------------------------------------------------ */
 
 describe("save.c field-coverage guard: the C side", () => {
@@ -788,7 +788,7 @@ describe("save.c field-coverage guard: the C side", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * Guard 2 — the port side.
+ * Guard 2: the port side.
  * ------------------------------------------------------------------ */
 
 describe("save.c field-coverage guard: the port side", () => {
@@ -845,7 +845,7 @@ describe("save.c field-coverage guard: the port side", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * Guard 3 — the loader.
+ * Guard 3: the loader.
  * ------------------------------------------------------------------ */
 
 describe("save.c field-coverage guard: the loader round-trips every field", () => {

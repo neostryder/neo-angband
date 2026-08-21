@@ -1,7 +1,7 @@
-# Vitals Panel — a worked HUD mod
+# Vitals Panel: a worked HUD mod
 
 A complete, runnable example of `ModPlugin.hud`: it takes the **vitals** away
-from the game's glyph terminal and draws them as a graphical panel instead —
+from the game's glyph terminal and draws them as a graphical panel instead:
 each field labelled in its own typography, coloured through the mod's own
 palette.
 
@@ -12,39 +12,39 @@ with one owner, and the HUD is three things with three.
 
 ## Try it
 
-Copy this folder into your mods folder, keeping the folder name `vitals-panel` —
+Copy this folder into your mods folder, keeping the folder name `vitals-panel`:
 a mod folder must be named for the `id` in its manifest, and the game refuses it
-outright otherwise (`manifest says id "…"; rename the folder to match`):
+outright otherwise (`manifest says id "..."; rename the folder to match`):
 
 - **Desktop:** `neo-angband-data/mods/` beside the game.
-- **Browser (Chrome/Edge):** the folder you picked with *Choose a mods folder…*
+- **Browser (Chrome/Edge):** the folder picked with *Choose a mods folder...*
   on the Mods screen.
 
 Start the game, open **Mods**, enable **Vitals Panel**, and approve the
-`ui:sidebar.replace` capability when asked — it is the one that says *"Draw the
-vitals panel — your hit points, food, armour and depth"*. Answer **Reload now to
+`ui:sidebar.replace` capability when asked: it is the one that says *"Draw the
+vitals panel - your hit points, food, armour and depth"*. Answer **Reload now to
 apply**, and the panel is drawing by the time the character is back on screen.
 
 ## The four things it demonstrates
 
 **1. It reads the field NAMES, not the printed text.** Every decision comes from
-`entry.key` — `hp`, `sp`, `depth`, the engine's own `side_handlers[]` name minus
+`entry.key`: `hp`, `sp`, `depth`, the engine's own `side_handlers[]` name minus
 its `prt_` prefix. Matching on the string `"HP "` would have been shorter and
 would have demonstrated the opposite of the point.
 
 **2. It resolves colour by CODE, not by index.** `run.color` is the engine's
 COLOUR_* attribute; this panel maps it through `ctx.core.COLOUR_L_GREEN` and
 friends onto its own palette. It never reads `run.css`, which is the terminal's
-resolved colour and would tie the panel to the terminal's palette — including
+resolved colour and would tie the panel to the terminal's palette, including
 whatever a pref file did to it.
 
 **3. It declines instead of throwing.** With no DOM there is nothing to draw on,
 so `hud()` returns `undefined` and the game keeps the region. A throwing factory
-would also lose the region, but would be *reported as this mod's fault* — and
+would also lose the region, but would be *reported as this mod's fault*, and
 "there is no document here" is not a fault.
 
 **4. It draws in its region, not over the window.** The section carries
-`region.pixels` — where the vitals are, in CSS pixels — and the canvas is
+`region.pixels`: where the vitals are, in CSS pixels, and the canvas is
 re-positioned from it on every frame, so it follows a window resize and a
 sidebar-mode change without listening for either.
 
@@ -55,7 +55,7 @@ sidebar-mode change without listening for either.
 constructed and cannot mount a canvas it will never draw into. Two consequences
 follow. A sink for a region you did not ask for is dropped and reported. And a
 region you *won* and then declined goes back to the game rather than to the next
-claimant — so ask for the regions you actually draw.
+claimant, so ask for the regions you actually draw.
 
 **A fault costs you one region.** If this panel throws while drawing, the game
 resumes drawing the vitals for the rest of the session and says so, by name. It
@@ -68,14 +68,14 @@ not one to style.
 
 ## The bars, and the rule behind them
 
-Hit points and spell points are drawn as proportional bars from `entry.values` —
-`{ current: 7, max: 34 }` — and never from parsing `"HP   7/  34"`. That string is
+Hit points and spell points are drawn as proportional bars from `entry.values`:
+`{ current: 7, max: 34 }`, and never from parsing `"HP   7/  34"`. That string is
 a *rendering*: it changes when somebody loads a pref file, plays in another
 language, or installs a content pack that widens a field.
 
 The panel applies the general rule rather than a list of field names: **if an
 entry has both `current` and `max`, it is a proportion and gets a bar; otherwise
-draw the runs.** That is why a stat publishes `use` / `cur` / `max` instead — 118
+draw the runs.** That is why a stat publishes `use` / `cur` / `max` instead. 118
 is an encoding meaning 18/100, so a bar over it would report a maxed character as
 15%. The loop asks for the pair, does not find it, and correctly draws text. A
 panel written as `if (entry.key === "hp")` would pass a weaker test and would draw
@@ -83,7 +83,7 @@ nothing at all for a field a content pack adds.
 
 Two details worth copying. The bar's colour still comes from `run.color`, because
 the engine already decides that hit points go yellow below the warning line and
-red below a tenth — re-deciding it here would disagree with the game the day the
+red below a tenth: re-deciding it here would disagree with the game the day the
 player changes their `hitpoint_warn` option. And the fill is clamped: `chp > mhp`
 is reachable for a moment after a big heal, and an unclamped bar would paint
 outside its own region.

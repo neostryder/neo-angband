@@ -203,7 +203,7 @@ function expectedQuiver(expected: OutSlot[]): string[] {
  * verify_stability (calc-inventory.c:231-263): a second calc_inventory over
  * unchanged gear must reproduce the first result. Upstream reads
  * player->state.ammo_tval off the global player inside earlier_object
- * (player-calcs.c:948-956), so BOTH calls see the same ammo preference — the
+ * (player-calcs.c:948-956), so BOTH calls see the same ammo preference, and the
  * port must therefore be handed IDENTICAL opts, or the two calls are different
  * experiments and the check measures the argument default instead.
  */

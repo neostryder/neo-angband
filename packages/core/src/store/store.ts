@@ -255,9 +255,9 @@ export function storeSaleShouldReduceStock(store: Store, obj: GameObject): boole
  * how the gate came to be commented out in the first place, and a defaulted one
  * would have re-created the same hole silently.
  *
- * The branch is unreachable on 4.2.6 data — every `buy:` line in
+ * The branch is unreachable on 4.2.6 data: every `buy:` line in
  * `lib/gamedata/store.txt` is a bare tval and `buy-flag:` appears only in the
- * file's own format comment — but "no shipped data reaches it" is a fact about
+ * file's own format comment. But "no shipped data reaches it" is a fact about
  * the data, not about the code. A mod that adds a `buy-flag:` line gets
  * upstream's behaviour now instead of a store that buys on a rune the player has
  * never learned.

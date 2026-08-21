@@ -292,7 +292,7 @@ describe("O-combat damage path (birth_percent_damage)", () => {
  *
  * The predicate was ported and live for COMBAT the whole time
  * (`combat/brand-slay.ts`), but the session built its own private copy for the
- * melee hooks and nothing else could reach it — so obj-info carried a "temporary
+ * melee hooks and nothing else could reach it, so obj-info carried a "temporary
  * brands/slays are DEFERRED" note beside a working answer. There is one bound
  * instance on GameState now, and the melee path, obj-info and the spoiler dump all
  * read it.

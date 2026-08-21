@@ -1,6 +1,6 @@
-# Scoping #237 — a new mod for upstream gameplay additions since 4.2.6
+# Scoping #237: a new mod for upstream gameplay additions since 4.2.6
 
-> STATUS: scope decided (2026-08-15, ruling: C+B — see "What this means for
+> STATUS: scope decided (2026-08-15, ruling: C+B; see "What this means for
 > #237" below). No repo, no code yet. This document is the answer to "what
 > would #237 build", checked against the adjudication it is supposed to draw
 > from.
@@ -8,7 +8,7 @@
 ## The headline finding
 
 **Zero commits qualify.** The adjudication ticket #237 is supposed to draw
-from — "All 161 post-4.2.6 upstream commits adjudicated" — does not contain a
+from, "All 161 post-4.2.6 upstream commits adjudicated", does not contain a
 verdict category of "genuine gameplay addition, should exist as an opt-in
 mod." Every one of the 161 commits was sorted into one of six other buckets,
 and none of those buckets is a gameplay-addition backlog. #237 as titled has
@@ -22,14 +22,14 @@ repository, titled "The 161 upstream commits after 4.2.6, every one adjudicated,
 2026-08-08 over the range `f3082213b..upstream/master`. It is named as the
 authoritative record in the private repo's own `README.md`: *"POST_426_TRIAGE.md
 | All 161 post-4.2.6 upstream commits, adjudicated with citations."* No newer
-file supersedes it — nothing in that directory is dated after 2026-08-08 except
+file supersedes it: nothing in that directory is dated after 2026-08-08 except
 `MOD_IDEAS.md` (13:49) and `README.md` (09:34), both read below and neither
 re-triages the 161.
 
 A second, independent pass exists: `parity/mods-2026-07-26/BUGFIX-UPSTREAM-AUDIT.md`
 (2026-07-26, pre-dates POST_426_TRIAGE but covers the same 161-commit range from
 a bug-fixes-mod angle). It also finds nothing beyond bug-fixes and
-resilience-guard candidates — its own classification count is explicit: *"2
+resilience-guard candidates, and its own classification count is explicit: *"2
 already catalogued fixes... 4 newly identified bug/resilience fixes... 155
 excluded (frontend/platform/Borg, build/CI/docs, data/tiles, refactors,
 cosmetic wording, or non-bug design/balance)."* Two independent readings of the
@@ -39,43 +39,43 @@ same 161 commits, four months apart, both land on "no gameplay additions."
 
 | Verdict | Count | What it is |
 |---|---|---|
-| 1 — Already in core, and shouldn't be | 3 | Post-release drift that crept into core; one removed, one filed as #149 (stands), five tile commits move to Verdict 2 |
-| 2 — Was in core, now reverted; belongs to **bug-fixes** | 5 | Post-tag tile assignments for existing objects/monsters. Explicitly assigned to the bug-fixes mod, not a new mod. Blocked on a capability that does not exist yet: nothing lets a mod's `.prf` override the tile loader |
-| 3 — Real bug-fix candidates | 9 | Store-charge exploit, TELEPORT/RECHARGE dice, generation crash guard, etc. — bug-fixes mod backlog |
-| 4 — Text and data corrections | 7 | Flavor text, vault edge tiles, room template door counts — bug-fixes mod backlog |
-| 5 — Deliberately not adopted | 1 | `588bf5589` (room-template dedup) — rejected for core, would move every RNG-seeded parity vector |
-| 6 — No port impact | ~136 | 97 dismissed by class (C build/CI/SDL/Windows/macOS/DOS/Borg/hygiene) + 39 that survived the path filter but turned out to be comments, casts, signal handling, terminal plumbing, or docs |
+| 1: Already in core, and shouldn't be | 3 | Post-release drift that crept into core; one removed, one filed as #149 (stands), five tile commits move to Verdict 2 |
+| 2: Was in core, now reverted; belongs to **bug-fixes** | 5 | Post-tag tile assignments for existing objects/monsters. Explicitly assigned to the bug-fixes mod, not a new mod. Blocked on a capability that does not exist yet: nothing lets a mod's `.prf` override the tile loader |
+| 3: Real bug-fix candidates | 9 | Store-charge exploit, TELEPORT/RECHARGE dice, generation crash guard, etc., bug-fixes mod backlog |
+| 4: Text and data corrections | 7 | Flavor text, vault edge tiles, room template door counts, bug-fixes mod backlog |
+| 5: Deliberately not adopted | 1 | `588bf5589` (room-template dedup), rejected for core, would move every RNG-seeded parity vector |
+| 6: No port impact | ~136 | 97 dismissed by class (C build/CI/SDL/Windows/macOS/DOS/Borg/hygiene) + 39 that survived the path filter but turned out to be comments, casts, signal handling, terminal plumbing, or docs |
 
 None of the six is "genuine gameplay addition, ship as an opt-in mod." The
-nearest thing — Verdict 2's tile assignments — is explicitly routed to
+nearest thing (Verdict 2's tile assignments) is explicitly routed to
 bug-fixes in the source document's own words, not to a new mod, and its
 blocker (prf-override capability) is bug-fixes' problem to solve, not #237's.
 
 ## Checked for a hidden gameplay-addition list elsewhere
 
 Searched both repos for "opt-in mod," "gameplay addition," "catch-up," and
-`#237` — no hits anywhere except this new document. `MOD_IDEAS.md` (the
+`#237`: no hits anywhere except this new document. `MOD_IDEAS.md` (the
 private backlog of un-built mod concepts: AI borgs, soft caps, reach weapons,
 networking, AI-generated content, mod-manager integration) is the project's
 actual list of gameplay-addition mod candidates, and it is explicitly
-**not** upstream-commit-derived — every idea in it is the maintainer's own,
+**not** upstream-commit-derived: every idea in it is the maintainer's own,
 dated by when it was raised, with zero SHA citations. It answers a different question
 ("what should this port add beyond Angband") than #237 asks ("what did real
 upstream add that we should adopt").
 
-## What this means for #237 — decided
+## What this means for #237, decided
 
 **neostryder's ruling (2026-08-15): C, combined with B**, and the scope rule that
 makes the combination non-arbitrary rather than two options glued together:
 
 > #237 owns anything in upstream master that isn't in the 4.2.6 tag,
-> INCLUDING fixes master already carries — that's "master minus tag," full
+> INCLUDING fixes master already carries; that's "master minus tag," full
 > stop. The bug-fixes mod is for a different, narrower thing: bugs that are
-> still outstanding in Angband and NOT yet addressed in master — real defects
+> still outstanding in Angband and NOT yet addressed in master: real defects
 > this port fixes proactively ahead of upstream.
 
 Under that rule Verdict 2's five tile assignments belong in #237 **by
-definition**, since master already carries them — not because the earlier
+definition**, since master already carries them, not because the earlier
 adjudication's own routing was wrong (it wasn't; POST_426_TRIAGE.md was
 answering "which mod fixes this bug," and under the OLD two-mod split with no
 upstream-catchup mod, bug-fixes was the only place a fix could go). The scope
@@ -92,7 +92,7 @@ flagged blocked-on-prf-override, not implemented.
 
 Superseded by this ruling: options A (closing #237) is off the table since
 C gives it real content; the "not recommended without a stated reason" note
-against C above is resolved — the reason is the scope rule itself.
+against C above is resolved: the reason is the scope rule itself.
 
 Everything below builds the repo per B, with Verdict 2's five rows seeded
 into the README table per C.
@@ -112,7 +112,7 @@ neo-angband-mod-upstream-catchup/
 ├── manifest.json
 ├── package.json
 ├── plugin.ts                (composes per-commit modules; empty stub to start)
-├── plugin.js                 (built artifact, committed — SHA-256 catalogue source)
+├── plugin.js                 (built artifact, committed, SHA-256 catalogue source)
 ├── README.md                 (the "one row per SHA" table)
 ├── tsconfig.json
 └── vitest.config.mjs
@@ -141,9 +141,9 @@ overwhelmingly data + code, not tiles:
 }
 ```
 
-`rules: []` on purpose — there is nothing to gate yet. The bug-fixes mod's
+`rules: []` on purpose: there is nothing to gate yet. The bug-fixes mod's
 own rule from its README applies here without modification: **one toggle per
-CLASS of addition, never one per atomic commit** — e.g. if three unrelated
+CLASS of addition, never one per atomic commit**: e.g. if three unrelated
 upstream SHAs all touch "monster AI," they get one `catchup.monsterAI` flag,
 not three.
 
@@ -155,11 +155,11 @@ since this mod's citation unit is a SHA, not a GitHub issue:
 
 | SHA | Date | One-line | Class / toggle | Port site | Status |
 |---|---|---|---|---|---|
-| `7e8b58325` | n/a¹ | Post-tag tile: Beorn, the Mountain Bear | `catchup.tiles` | `gervais/graf-dvg.prf` | Blocked — needs prf-override capability |
-| `2e9703d42` | n/a¹ | Post-tag tile: Knight's Shield | `catchup.tiles` | `shockbolt/graf-shb-{dark,light}.prf` | Blocked — needs prf-override capability |
-| `9b04b692d` | n/a¹ | Post-tag tiles: Sip of Miruvor, Draught of the Ents (nomad set) | `catchup.tiles` | `nomad/graf-nmd.prf` | Blocked — needs prf-override capability |
-| `655812a54` | n/a¹ | Post-tag tiles: 8 adam-bolt monster/object assignments (old forest tree, witch, blackguard, Old Man Willow, red-hatted elf, Father Christmas, dúnadan of Angmar, Sip of Miruvor) | `catchup.tiles` | `adam-bolt/graf-new.prf` | Blocked — needs prf-override capability |
-| `ab2d65386` | n/a¹ | Comment-only: removes a stale note about numeric SVALs | — | — | No port needed |
+| `7e8b58325` | n/a¹ | Post-tag tile: Beorn, the Mountain Bear | `catchup.tiles` | `gervais/graf-dvg.prf` | Blocked: needs prf-override capability |
+| `2e9703d42` | n/a¹ | Post-tag tile: Knight's Shield | `catchup.tiles` | `shockbolt/graf-shb-{dark,light}.prf` | Blocked: needs prf-override capability |
+| `9b04b692d` | n/a¹ | Post-tag tiles: Sip of Miruvor, Draught of the Ents (nomad set) | `catchup.tiles` | `nomad/graf-nmd.prf` | Blocked: needs prf-override capability |
+| `655812a54` | n/a¹ | Post-tag tiles: 8 adam-bolt monster/object assignments (old forest tree, witch, blackguard, Old Man Willow, red-hatted elf, Father Christmas, dúnadan of Angmar, Sip of Miruvor) | `catchup.tiles` | `adam-bolt/graf-new.prf` | Blocked: needs prf-override capability |
+| `ab2d65386` | n/a¹ | Comment-only: removes a stale note about numeric SVALs | - | - | No port needed |
 
 ¹ Date not recorded in `POST_426_TRIAGE.md`; not fabricated here. Fill in
 from `git log` against the private adjudication repo before this ships if
@@ -182,7 +182,7 @@ before the bug-fixes mod's tile work could ship) automatically repeats here:
   dispatch of 8+ cases in the tree either has a registry already
   (`registry:effect`, `:room`, `:profile`, `:blow`, `:store`, `:command`,
   `:monster`, `:projection`, `:vocab`, `:tval`, `:rune`, `:effect-info`,
-  `:glyph`, `:menu`, `:ui-entry` — 15 capabilities total) or is UI/parser/host
+  `:glyph`, `:menu`, `:ui-entry`, 15 capabilities total) or is UI/parser/host
   wiring a gameplay mod would not need.
 - **Gamedata**: 41 of 44 record files accept a mod-added record without
   replacing the file; 43 of 44 are patchable per-record. A mod can add its own
@@ -193,7 +193,7 @@ before the bug-fixes mod's tile work could ship) automatically repeats here:
 **Conclusion: no core-seam prerequisite work is evident today**, unlike the
 tile-prf case (Verdict 2), which explicitly needs new capability before
 bug-fixes can carry it. This reads as good news but is conditional on there
-being no candidate commits to test it against — MOD_REACH's caveat about its
+being no candidate commits to test it against: MOD_REACH's caveat about its
 own blind spots (closed TypeScript unions, reshaped-not-registered dispatch)
 means a specific future commit could still land on one of the un-measured
 gaps the document itself flags. Re-check against the specific commit once one
@@ -203,7 +203,7 @@ identified.
 ## Size / complexity read
 
 Small either way. The repo skeleton itself is the same size as `-borg`'s
-scaffold before its first rule landed — a day, not a project. Verdict 2's
+scaffold before its first rule landed: a day, not a project. Verdict 2's
 five rows add no new size: the .prf lines are already written out above
 (§ Verdict 2 quoted verbatim from POST_426_TRIAGE.md), and all five are
 blocked on the same one missing capability rather than needing five separate
@@ -214,14 +214,14 @@ and these five unblock.
 
 ## Row-by-row implementation checklist
 
-Five rows, all blocked on the same capability (per the C+B ruling above —
+Five rows, all blocked on the same capability (per the C+B ruling above,
 folded in from Verdict 2, not newly found here):
 
-- [ ] `7e8b58325` — Beorn, the Mountain Bear tile — blocked on prf-override
-- [ ] `2e9703d42` — Knight's Shield tile — blocked on prf-override
-- [ ] `9b04b692d` — nomad-set food tiles (2 assignments) — blocked on prf-override
-- [ ] `655812a54` — adam-bolt set (8 assignments) — blocked on prf-override
-- [ ] `ab2d65386` — comment-only, no port needed, close without a code change
+- [ ] `7e8b58325`: Beorn, the Mountain Bear tile, blocked on prf-override
+- [ ] `2e9703d42`: Knight's Shield tile, blocked on prf-override
+- [ ] `9b04b692d`: nomad-set food tiles (2 assignments), blocked on prf-override
+- [ ] `655812a54`: adam-bolt set (8 assignments), blocked on prf-override
+- [ ] `ab2d65386`: comment-only, no port needed, close without a code change
 
 The checklist to execute NOW, since none of the five can land before the
 capability exists, is the repo skeleton itself:
@@ -234,7 +234,7 @@ capability exists, is the repo skeleton itself:
       "one toggle per class" rule
       stated up front, same as bug-fixes' README does
 - [ ] Register the (empty, disabled-by-default) mod in `mods/registry.json`
-      only once it has at least one real rule — an empty mod in the registry
+      only once it has at least one real rule: an empty mod in the registry
       is a support burden with no payoff
 - [ ] Add a recurring step to whatever process re-triages `upstream/master`
       (the same method `POST_426_TRIAGE.md` used) to route any future

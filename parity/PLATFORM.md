@@ -78,10 +78,10 @@ Not hard to read, not subtle C. They need a file, a command line, or a process
 that can be signalled:
 
 > **Corrected 2026-07-28, later the same day.** Sixteen, not eighteen. `pricing.log`
-> ×2 sits inside `#ifdef PRICE_DEBUG`, and PRICE_DEBUG is defined **nowhere** in
+> x2 sits inside `#ifdef PRICE_DEBUG`, and PRICE_DEBUG is defined **nowhere** in
 > the upstream tree - not in `configure.ac`, not in any Makefile - so those two
 > lines are unreachable in every build upstream ships and are not owed on any
-> platform. The `wiz-stats` ×8 stay owed, but to `packages/cli` (which *is* this
+> platform. The `wiz-stats` x8 stay owed, but to `packages/cli` (which *is* this
 > port's stats build) rather than to the game: `USE_STATS` is opt-in and needs
 > sqlite3, and the interactive build already reports the other arm honestly
 > ("Statistics generation not turned on in this build."). The conclusion does not
@@ -282,14 +282,14 @@ and the census gains a *present-on-desktop* verdict instead of an excuse.
 >
 > | Item | State |
 > | --- | --- |
-> | `ui-command.c` ×2 - screen dump + format prompt | **DONE.** `screenDumpCmd` writes both TEXT formats through the host, tagged `FTYPE_HTML`. |
-> | `ui-player.c` ×1 - `argv` for `-f` / `arg_force_name` | **DONE.** `launch.ts` reads `host().argv()`; `argForceName()` gates get_file's timestamp branch. |
+> | `ui-command.c` x2 - screen dump + format prompt | **DONE.** `screenDumpCmd` writes both TEXT formats through the host, tagged `FTYPE_HTML`. |
+> | `ui-player.c` x1 - `argv` for `-f` / `arg_force_name` | **DONE.** `launch.ts` reads `host().argv()`; `argForceName()` gates get_file's timestamp branch. |
 > | `ui-game.c` - `lore.txt` | **DONE 2026-08-03**, and it was mis-classified. `lore_save` is not a dump: the user directory outlives a character, so upstream's monster memory *survives death* - `tkills` is "killed in all lives" and mon-lore.c says "your ancestors have exterminated at least %d". The port kept the whole lore record in the savefile, which is why nothing noticed and why that sentence could never be true. Both halves of the file are now `core/src/mon/lore-file.ts`, wired in `web/src/lore-file.ts`. |
 > | `ui-game.c` - the panic save | **RATIFIED AS N/A**, with a mechanism, not an excuse: the panic file exists because upstream saves on demand, so a crash leaves the signal handler's file ahead of the savefile. This port autosaves the live slot continuously, so there is no second artifact and no window in which one could be newer. Recorded on `"A panic save exists.  Use it? "` in `cli/src/text-census.test.ts`. |
-> | `obj-power.c` ×2 - `pricing.log` | **RATIFIED AS N/A.** Inside `#ifdef PRICE_DEBUG`, and PRICE_DEBUG is defined nowhere upstream. |
-> | `wiz-stats.c` ×8 | **OWED TO `packages/cli`**, not to the game: `USE_STATS` is opt-in and needs sqlite3, and the interactive build already reports the other arm honestly. |
-> | `obj-randart.c` ×2 - `randart.log` | **STILL OPEN, and genuinely owed.** Not `#ifdef`'d, written whenever randarts are generated, and upstream `exit(1)`s if it cannot be opened - so it is part of a stock build with `birth_randarts` on. 193 `file_putf` call sites threaded through the generator (`randart-data.ts` / `randart-build.ts` both say the logging "is dropped throughout"). Mechanical but large; the port has every corresponding code path, so each line has a known home. |
-> | `ui-birth.c` ×1 - "A savefile for that name exists.  Overwrite it?" | **DIVERGENCE, upheld.** Upstream derives the savefile PATH from the character name, so two characters of one name are one file; the roster keys slots by UUID and nothing dedupes on name, so there is no file to overwrite. |
+> | `obj-power.c` x2 - `pricing.log` | **RATIFIED AS N/A.** Inside `#ifdef PRICE_DEBUG`, and PRICE_DEBUG is defined nowhere upstream. |
+> | `wiz-stats.c` x8 | **OWED TO `packages/cli`**, not to the game: `USE_STATS` is opt-in and needs sqlite3, and the interactive build already reports the other arm honestly. |
+> | `obj-randart.c` x2 - `randart.log` | **STILL OPEN, and genuinely owed.** Not `#ifdef`'d, written whenever randarts are generated, and upstream `exit(1)`s if it cannot be opened - so it is part of a stock build with `birth_randarts` on. 193 `file_putf` call sites threaded through the generator (`randart-data.ts` / `randart-build.ts` both say the logging "is dropped throughout"). Mechanical but large; the port has every corresponding code path, so each line has a known home. |
+> | `ui-birth.c` x1 - "A savefile for that name exists.  Overwrite it?" | **DIVERGENCE, upheld.** Upstream derives the savefile PATH from the character name, so two characters of one name are one file; the roster keys slots by UUID and nothing dedupes on name, so there is no file to overwrite. |
 >
 > So of the sixteen: eleven done or ratified N/A, eight owed to the CLI's stats
 > build, two (`randart.log`) genuinely open, one upheld divergence.

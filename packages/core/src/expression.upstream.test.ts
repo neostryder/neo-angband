@@ -69,7 +69,7 @@ describe("z-expression/expression upstream", () => {
     /* Basic problems. */
     expect(expr.addOperationsString(null)).toBe(EXPRESSION_ERR_GENERIC);
     /* C also checks expression_add_operations_string(NULL, "+ 1"); no null
-     * receiver in TS — covered by the null-string case above. */
+     * receiver in TS, so that is covered by the null-string case above. */
 
     /* Expressions must start with an operator. */
     expect(expr.addOperationsString("44 / 3")).toBe(

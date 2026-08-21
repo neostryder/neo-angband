@@ -6,16 +6,16 @@ and decides who sees.
 
 **Nothing is uploaded anywhere.** There is no server, no telemetry and no
 consent prompt to get wrong. A report is a file on the player's computer. That is
-a decision rather than an unfinished feature — see *If an uploader is ever added*
+a decision rather than an unfinished feature. See *If an uploader is ever added*
 at the bottom, which is short because the bundle was built so it could be.
 
 ## How much a build logs, and why it is not a setting
 
 | the build | level | what that means |
 | --- | --- | --- |
-| `1.2.3` — a finished release | `warn` | warnings and errors |
-| `0.16.0` — any `0.x` pre-release | `info` | plus what the game is doing |
-| `0.16.1-edge.2` — a per-commit build | `info` | as above |
+| `1.2.3`, a finished release | `warn` | warnings and errors |
+| `0.16.0`, any `0.x` pre-release | `info` | plus what the game is doing |
+| `0.16.1-edge.2`, a per-commit build | `info` | as above |
 
 The level comes from `ENGINE_VERSION`, not from the player's update channel.
 Those look interchangeable and are not: the channel is a preference about which
@@ -24,19 +24,19 @@ builds to *accept next*, and somebody who installed a beta and then chose
 drift from the thing it describes.
 
 While the project is `0.x` this returns `info` for everything, which is correct
-and temporary — `stable` selects nothing before `1.0.0` either. Both facts stop
+and temporary: `stable` selects nothing before `1.0.0` either. Both facts stop
 being true on the same day, by themselves, and `update.test.ts` ties
 `defaultLogLevel` to `defaultChannel` so one cannot move without the other.
 
 **To override it:** add `?log=debug` to the address (the thing to say over a
-support conversation — it beats a stored preference, so it works on a machine
+support conversation: it beats a stored preference, so it works on a machine
 whose settings say otherwise), or press `L` on the report screen, which
 remembers the choice.
 
 ## Where the log goes
 
 **Desktop:** `<game folder>/logs/neo-angband-<date>-<time>-<pid>.log`, one file
-per launch, the last ten kept. `<game folder>` is the same place your saves are —
+per launch, the last ten kept. `<game folder>` is the same place your saves are;
 for the default folder install that is beside the executable. It is *not*
 Electron's own `logs` directory, which lives under the user profile even for a
 portable copy, so "send me the logs folder from your game folder" finds
@@ -71,7 +71,7 @@ What goes in:
 | how many lines fell off the top | "the last 2,000 lines" and "the whole session" are the same file |
 
 **The home directory is removed** from every path, in all three spellings it
-appears in — raw, `file://` URL, and JSON-escaped. The third is the one that
+appears in: raw, `file://` URL, and JSON-escaped. The third is the one that
 matters: every path reaches the log through the value describer, which JSON-
 encodes it, so on Windows they all arrive with doubled backslashes and a matcher
 that only knew the first two caught none of them.
@@ -90,13 +90,13 @@ log.error("save", "could not write the character", err);
 
 The first argument is a short, stable **area** (`update`, `mods`, `save`,
 `mod:<id>`). An `Error` passed as the third argument keeps its name, message and
-stack — the generic object path would render every `Error` as `{}`, which is the
+stack: the generic object path would render every `Error` as `{}`, which is the
 least useful thing a log can say about a failure.
 
 `no-console` is an error in `packages/web/src` and `packages/desktop/src`. It is
 deliberately **not** on in `cli`, `linoleum` or `content`: there, console output
-is the program's output — a converter printing its license notes, upstream's own
-`list_saves` — and routing it through a logger would timestamp a report and hide
+is the program's output: a converter printing its license notes, upstream's own
+`list_saves`, and routing it through a logger would timestamp a report and hide
 it behind a level. The three files that legitimately reach for `console` carry a
 per-site disable naming why.
 
@@ -109,6 +109,6 @@ technical:
 
 - where it goes, and who can read it;
 - what the screen says about that, given it currently promises the opposite in
-  two places — the menu row's hint and the screen's second line, both of which
+  two places: the menu row's hint and the screen's second line, both of which
   are asserted by tests that would have to be deleted deliberately;
 - whether consent is per-report or a setting.

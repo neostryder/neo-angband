@@ -1,10 +1,10 @@
 # Input routed by region
 
-**Ticket #276 — gap 21, milestone 7. LANDED in `a2d8cd0ea`, 2026-08-14.** This
+**Ticket #276, gap 21, milestone 7. LANDED in `a2d8cd0ea`, 2026-08-14.** This
 design was implemented as written: `regionInputAt` in `ui-stack.ts`, the
 `RegionPointer` type and `input?` member in `frontend.ts`, and the three call
 sites in `main.ts`, all covered by `region-input.node.test.ts` and
-`main-region-input.test.ts`. What follows is now a historical design record —
+`main-region-input.test.ts`. What follows is now a historical design record:
 read it for the *reasoning* (the cell-opaque ruling, the cost measurement, the
 composition with `modalDepth` and `setActiveCellTap`), not as a to-do; §9's
 file-by-file plan and its RED-test listings describe a state the tree has since
@@ -57,13 +57,13 @@ Both are live today. `samples/sprite-inventory` ships a real `regions()` panel
 2026-08-14. This document designs to it and does not reopen it.
 
 The reasoning, so the design follows it rather than works around it: a region is
-already transparent *visually* wherever it did not write a cell — that is not a
+already transparent *visually* wherever it did not write a cell: that is not a
 flag and not an alpha, it is `region-surface.ts`'s entire implementation of
 transparency. Making input agree means **"you own what you drew"** is one rule an
 author never has to look up.
 
 The rejected alternative, rectangle-opaque, creates a class of bug where a radial
-dial with a transparent centre blocks tap-to-move across its whole bounding box —
+dial with a transparent centre blocks tap-to-move across its whole bounding box,
 a mod blocking input somewhere it visibly is not.
 
 The known cost: **the compositor must retain per-region cell ownership, which it
@@ -99,8 +99,8 @@ export function clipSurface(
 ): GridSurface
 ```
 
-Optional, so every existing caller — `regionSurface` at `ui-stack.ts:429`, and
-`ui-stack.test.ts` / `region-surface.test.ts`'s doubles — compiles and behaves
+Optional, so every existing caller (`regionSurface` at `ui-stack.ts:429`, and
+`ui-stack.test.ts` / `region-surface.test.ts`'s doubles) compiles and behaves
 unchanged.
 
 Which calls claim, and which do not:
@@ -110,13 +110,13 @@ Which calls claim, and which do not:
 | `put(x, y, glyph)` | that one cell | it wrote a glyph |
 | `print(x, y, text, ...)` | the clipped span `[from, to)` on row `y` | the same span it actually hands the host |
 | `eraseToEol(x, y)` | `x .. cells.cols` on row `y` | see below |
-| `clear()` | every cell of the rectangle | `clear()` is `rows` × `eraseRow` |
+| `clear()` | every cell of the rectangle | `clear()` is `rows` x `eraseRow` |
 | `prt(x, y, ...)` | the erased row, then the printed span | it is composed of the two above |
 | `setCursor` | nothing | a cursor occludes nothing; it does not change what a cell shows |
 
 **An erase CLAIMS, and this is the load-bearing decision of the whole design.**
 The temptation is to say an erase writes nothing so it owns nothing. That is
-wrong, and `samples/sprite-inventory/plugin.js` is the proof — its `paint()`
+wrong, and `samples/sprite-inventory/plugin.js` is the proof: its `paint()`
 opens with `surface.clear()` and its own comment says why:
 
 > IT CLEARS FIRST, and that is what makes it opaque. Transparency here is not a
@@ -126,7 +126,7 @@ opens with `surface.clear()` and its own comment says why:
 
 An erased cell is blank; the map is *not* visible through it. Under
 erase-does-not-claim, every panel with a background would be input-transparent
-across its own background — which is the defect, unchanged, wearing a new
+across its own background, which is the defect, unchanged, wearing a new
 mechanism. Under erase-claims, the sample's panel becomes input-opaque with no
 change to the sample at all, and the radial dial that leaves its centre alone
 still lets the tap through. Both halves of the ruling hold.
@@ -147,7 +147,7 @@ let ownershipFrame: readonly LiveRegion[] = [];
 An index into `paintRegionStack`'s existing `const frame = ordered` snapshot,
 **not** a `LiveRegion` reference and **not** an id string:
 
-- **Not an id.** Two screens may legitimately be open under the same id —
+- **Not an id.** Two screens may legitimately be open under the same id;
   `ui-stack.ts:117-123` already records that as the reason `owners` is keyed by
   object identity rather than by name. A plane of ids inherits that same defect.
 - **Not object references.** An `Array<LiveRegion | undefined>` of 1920 slots is
@@ -172,7 +172,7 @@ ownershipFrame = frame;
 
 ### Cost per frame, measured
 
-**Grid dimensions.** Production is the **fixed 80×24 grid** — `term.ts:307-308`
+**Grid dimensions.** Production is the **fixed 80x24 grid**: `term.ts:307-308`
 (`FIXED_COLS = 80`, `FIXED_ROWS = 24`), and `main.ts:727` constructs
 `new GlyphTerm(canvas)` with no options, so `reflow` defaults to `false`
 (`term.ts:459-461`). **1,920 cells.** Reflow mode is opt-in and is not what the
@@ -182,14 +182,14 @@ shell ships.
 is `baseRegionStack` (**4** in the Left layout, 3 under sidebar `none`) plus one
 entry per `pushRegion`. Counting what is actually in the tree:
 
-- **Base: 4.** They have no `spec` and no `paint` — `baseRegionStack`
+- **Base: 4.** They have no `spec` and no `paint`, so `baseRegionStack`
   (`regions.ts:413`) builds `LiveRegion`s directly, so they never write through
   `clipSurface` and never claim a cell. Core's own `render()` writes them.
 - **Core screens: 1 at a time**, from the 15 `pushRegion` sites in `birth.ts`,
   `charsheet.ts`, `mod-browse.ts` and `overlay.ts`. Each is released on close.
   Nesting adds one per nested modal.
 - **Mod regions: 1.** `samples/sprite-inventory:carried` is the only `regions()`
-  declaration in the tree — `samples/blueprint-view` and `samples/vitals-panel`
+  declaration in the tree; `samples/blueprint-view` and `samples/vitals-panel`
   discuss regions in prose only; `samples/command-dial` uses the menu seam.
 
 So the worst case I can point at is **6** (4 base + 1 open core screen + 1 mod
@@ -198,13 +198,13 @@ cost scales with **cells written**, not with region count, which is the property
 that makes an unbounded future mod count survivable.
 
 **Measured** (Node v24.15.0, the repo's baseline major; script in scratchpad, not
-committed). The design as written — a witness *closure* called once per cell,
+committed). The design as written, a witness *closure* called once per cell,
 which is the real indirection, not a direct array store:
 
 | Case | Per frame |
 |---|---|
 | `ownership.fill(-1)` alone, 1,920 cells | **0.041 µs** |
-| Shipped sample: `clear()` of a 24×9 panel + 9 label prints = **414 cell marks** | **0.392 µs** |
+| Shipped sample: `clear()` of a 24x9 panel + 9 label prints = **414 cell marks** | **0.392 µs** |
 | Pathological: 8 regions each claiming all 1,920 cells = 15,360 marks | **7.6 µs** |
 
 0.392 µs is **0.0024 %** of a 16.7 ms frame. Allocation is 7,680 bytes, once.
@@ -232,7 +232,7 @@ Three cases that look like gaps and are not:
    describes a mixture. **This is harmless and must be stated rather than fixed:**
    every one of those screens is inside `openModal` (`main.ts:1861`), so
    `modalDepth > 0` and every pointer handler in `main.ts` has already returned
-   before the plane is consulted. Do not add a reset for it — a second reset point
+   before the plane is consulted. Do not add a reset for it: a second reset point
    is a second answer to "which frame is this".
 3. **A mod region with no painter.** Unreachable: `regionDeclarationFault`
    (`region-runtime.ts:188`) refuses a declaration with no `paint`.
@@ -246,9 +246,9 @@ last-writer-wins store gives the right answer with no comparison at all.
 This is not a convenience. It is the ruling restated: what the player sees at
 that cell is what the topmost writer drew, so that is who owns the tap. Any other
 answer routes a tap to a region whose pixels are not there. It is also the same
-invariant `topRegionAt` (`regions.ts:345`) already documents — "the composite has
+invariant `topRegionAt` (`regions.ts:345`) already documents, "the composite has
 to be a function of the region set, not of the order some Map happened to iterate
-in" — narrowed from rectangles to cells.
+in", narrowed from rectangles to cells.
 
 ### What happens to `topRegionAt`
 
@@ -275,19 +275,19 @@ registration order:
 | 3 | `main.ts:8731` | `pointerdown` | canvas | **touch long-press** (450 ms) → same context menu; a second finger while one is pending is ignored |
 | 4 | `main.ts:8758`, `:8759` | `pointerup`, `pointercancel` | canvas | cancel the long-press timer if the lifting pointer is the one that started it (#277); nothing else |
 | 5 | `main.ts:8760` | `pointermove` | canvas | for the pressing pointer only, cancel the long-press if that finger left the cell; **no hit-testing** |
-| — | `main.ts:4350`, `:4416`, `:7647` | `pointerdown` | canvas | transient per-loop taps (targeting, locate); every one raises `modalDepth` first (`main.ts:4298`) |
-| — | `main.ts:7674` | `pointerdown` | window, capture | dismiss-on-click for one transient prompt |
-| — | `main.ts:8378` and 8 others | `keydown` | `inputEvents` | keyboard; **never** the canvas |
+| - | `main.ts:4350`, `:4416`, `:7647` | `pointerdown` | canvas | transient per-loop taps (targeting, locate); every one raises `modalDepth` first (`main.ts:4298`) |
+| - | `main.ts:7674` | `pointerdown` | window, capture | dismiss-on-click for one transient prompt |
+| - | `main.ts:8378` and 8 others | `keydown` | `inputEvents` | keyboard; **never** the canvas |
 
 **Two classes route in this milestone: TAP and LONG-PRESS/CONTEXT.** They are
-rows 1, 2 and 3 — three listeners, two player-visible gestures, one shared
+rows 1, 2 and 3: three listeners, two player-visible gestures, one shared
 routing decision.
 
 **Hover is OUT, and the reason is that it does not exist.** Row 5 is the only
 `pointermove` on the canvas and it is a long-press cancel: it ignores every
 pointer but the one holding the press, then compares the cell against
 `longPressTarget`, and never asks who owns anything. There is no hover state
-anywhere in the shell — no enter, no leave, no tooltip, no highlight. Routing
+anywhere in the shell: no enter, no leave, no tooltip, no highlight. Routing
 hover is therefore not *routing* at all; it is **adding a new event class**:
 enter/leave bookkeeping so a region is told when the pointer arrives and when it
 goes, a decision about whether a region is told about movement *within* itself, a
@@ -304,7 +304,7 @@ designed here is exactly what it will need, and it will need nothing else from
 this milestone.
 
 **Keyboard is not routed and will not be**, and that is published rather than
-implied — see §"Out of scope: the focus model".
+implied; see §"Out of scope: the focus model".
 
 ---
 
@@ -318,16 +318,16 @@ The mechanism, verified in the source rather than inferred:
 1. `GlyphTerm`'s own `pointerdown` listener is registered **in its constructor**
    (`term.ts:499`). `main.ts:727` constructs the term before it adds any of its
    own listeners, so the term's handler is **first** in the canvas's listener
-   list — the constructor comment says so in as many words: *"registered ONCE
+   list, and the constructor comment says so in as many words: *"registered ONCE
    here, ahead of the shell's own canvas pointerdown listeners"*.
 2. When an owner is registered it calls **`stopImmediatePropagation()`**
-   (`term.ts:502`). Not `stopPropagation` — *immediate*. No later listener on the
+   (`term.ts:502`). Not `stopPropagation`, but *immediate*. No later listener on the
    canvas runs at all.
 3. `setActiveCellTap` (`term.ts:173`) enforces the one-owner policy above that:
    registering a new owner disposes the previous one, so there is never more than
    one.
 
-Region routing is added to handlers 1, 2 and 3 in the table above — all of them
+Region routing is added to handlers 1, 2 and 3 in the table above, all of them
 *after* the term's in registration order. So while a `setActiveCellTap` owner
 holds the tap, the region router is not consulted, is not reached, and cannot
 disagree.
@@ -346,7 +346,7 @@ modal for the same reason the map is not.
 
 **The shape a mod's handler receives is the shape `setActiveCellTap`'s already
 is.** `regionSurface` (`ui-stack.ts:444-466`) already translates a tap into
-**region-local** cells for a core screen holding a region — *"a painter written
+**region-local** cells for a core screen holding a region: *"a painter written
 against the terminal reads taps in the same coordinates it draws in"*. A mod's
 `input` handler receives region-local cells for the identical reason: `paint`'s
 `(0, 0)` and `input`'s `(0, 0)` must be the same cell or the author is doing
@@ -356,7 +356,7 @@ arithmetic the host already did.
 
 ## 4. Composition with `modalDepth`
 
-**Both survive. They are not two mechanisms for one idea — the collision is in
+**Both survive. They are not two mechanisms for one idea: the collision is in
 the word "modal" and nowhere else.**
 
 | | `modalDepth` (`main.ts:1817`) | `RegionLayer "modal"` (`regions.ts:255`) |
@@ -364,18 +364,18 @@ the word "modal" and nowhere else.**
 | Answers | *is something else using the terminal and the keyboard right now* | *how high do I paint* |
 | Set by | `openModal` (`main.ts:1861`), incremented/decremented around a screen | a mod naming a band in its declaration |
 | Scope | the whole shell: every pointer handler and the key handler stand down | one region's position in `orderRegions`' bucket list |
-| Grants input | yes — exclusively, to the modal | **no** |
+| Grants input | yes, exclusively, to the modal | **no** |
 
-`RegionLayer` is documented as paint order and only paint order — `regions.ts`
+`RegionLayer` is documented as paint order and only paint order; `regions.ts`
 calls the bands *"bottom to top. Paint order, and the order `orderRegions`
-concatenates in"*. `modalDepth` is documented as input ownership — *"while a
-full-screen overlay owns the keyboard, the in-game key handler stands down —
+concatenates in"*. `modalDepth` is documented as input ownership: *"while a
+full-screen overlay owns the keyboard, the in-game key handler stands down,
 exactly the single-owner input model of the upstream UI"*.
 
 **A mod's `"modal"`-band region MUST NOT raise `modalDepth`, and refusing that is
 the safety decision of this section.** If a band name could take the keyboard,
 any mod could take the player's ability to reach the mod manager by declaring a
-band — which is precisely the failure `regions.ts:246-249` records
+band, which is precisely the failure `regions.ts:246-249` records
 `blueprint-view` causing (*"costing the player their hit points, their messages
 and the Mods screen at once"*) and precisely what reserving the `system` band
 exists to prevent. A band name is not consent.
@@ -383,7 +383,7 @@ exists to prevent. A band name is not consent.
 **Stated cost:** a mod cannot build a true modal through the region seam. It gets
 a rectangle that paints high and swallows taps on the cells it drew, and the
 player keeps every key. A mod that genuinely needs to ask the player something
-uses `menu()` or `screen()` — the seams that are *shaped* as taking input
+uses `menu()` or `screen()`, the seams that are *shaped* as taking input
 (`mod-plugin.ts`: *"a menu is ASKED, so the boundary is `ask(question) -> answer`
 rather than `present(frame)`"*).
 
@@ -402,30 +402,30 @@ handler runs the body it already runs.
 The path, end to end:
 
 1. `pointerdown` fires on the canvas.
-2. `GlyphTerm`'s listener (`term.ts:499`) runs first. `this.tapCb` is null — no
-   modal owner — so it returns immediately without calling
+2. `GlyphTerm`'s listener (`term.ts:499`) runs first. `this.tapCb` is null: no
+   modal owner, so it returns immediately without calling
    `stopImmediatePropagation`. **Unchanged.**
 3. `main.ts:8623` runs. `scoresOpen`/`dead`/`modalDepth` gates as today.
 4. `term.cellAt(ev.clientX, ev.clientY)` → `{ col, row }`, or `null` off-grid.
-   **Unchanged** — this call already exists, it only moves two lines earlier.
+   **Unchanged**: this call already exists, it only moves two lines earlier.
 5. **New:** `regionInputAt(col, row)` reads
    `ownership[row * ownershipCols + col]`. It is `-1`, so the function returns
    `undefined` and the handler does not return.
 6. The `mouse_movement` option gate, the map-rect test, the `Math.sign` keypad
-   arithmetic, `pendingChestAction`, `queueWalk(dir)` — **all unchanged, in the
+   arithmetic, `pendingChestAction`, `queueWalk(dir)`: **all unchanged, in the
    same order, with the same values.**
 
 The only behavioural difference on an unclaimed cell is that `term.cellAt` now
 runs before the `mouse_movement` check instead of after. Both are pure guards
 that return without side effects; swapping them cannot change any outcome. It is
 required because the region question needs a cell, and the region question must
-be asked whether or not the player has tap-to-move switched on — a mod's panel
+be asked whether or not the player has tap-to-move switched on: a mod's panel
 belongs to the mod either way.
 
 **Assert this, do not assume it.** The test in §8 covers the unclaimed cell as
 its control, and it is the assertion that fails loudest if the plane is ever
 filled too eagerly. A control that only ever passes is not evidence; this one has
-a failure mode — a `clear()` that claimed the terminal instead of the rectangle
+a failure mode: a `clear()` that claimed the terminal instead of the rectangle
 would kill every tap in the game, and this is the assertion that would see it.
 
 ---
@@ -472,7 +472,7 @@ export interface RegionDeclaration {
 
 - **It would be a second answer to a question the ruling already settled.** The
   ruling is "you own what you drew". A handler returning `false` would say "I
-  drew here but the tap is not mine" — which produces a tap-through under visible
+  drew here but the tap is not mine", which produces a tap-through under visible
   mod pixels, the exact bug class the rectangle model was rejected for, now
   reachable by an author's typo rather than by geometry.
 - **A missing `input` must not mean input-transparent.** `sprite-inventory` ships
@@ -497,7 +497,7 @@ containment precedents, and they are not interchangeable:
 
 | Precedent | Where | Treatment |
 |---|---|---|
-| `hooks()` throwing **mid-turn** | `mod-hooks.ts:220-238` (`hookThrew`) | `reportModFault` + **`taintSession`** — the game stops saving, the player is told now |
+| `hooks()` throwing **mid-turn** | `mod-hooks.ts:220-238` (`hookThrew`) | `reportModFault` + **`taintSession`**: the game stops saving, the player is told now |
 | `place()` throwing | `ui-stack.ts:200-222` | faulted out of the stack until the next relayout |
 | `paint()` throwing | `region-runtime.ts:223-243` | **ONCE, then out**: reported once, `broken = true`, handle released, region withdrawn |
 
@@ -534,12 +534,12 @@ input: (pointer) => {
 
 **The difference: the region is NOT withdrawn, and its cells stay claimed.**
 `paint()` withdraws because a region that has stopped drawing is a phantom
-occluder — a replacement front end asking `occludersOf(stack, "map")` would stand
+occluder: a replacement front end asking `occludersOf(stack, "map")` would stand
 its canvas down for a rectangle showing nothing (`region-runtime.ts:31-40`). A
 region whose *input* threw is still drawing correctly; withdrawing it would erase
 working furniture over a pointer bug. And releasing only the *claim* would be
 worse than either: the panel would still be visible, and taps on it would start
-walking the player through it — **the defect reappearing as the failure mode of
+walking the player through it, **the defect reappearing as the failure mode of
 its own fix.** A broken handler leaves a dead panel, which is legible; it must not
 leave a hole.
 
@@ -548,7 +548,7 @@ on that mod's row in the manager with the fix in the sentence.
 
 ---
 
-## 7. The four-place ABI — it is NOT triggered, and here is the proof
+## 7. The four-place ABI: it is NOT triggered, and here is the proof
 
 **The brief asks for the four-place `ModPlugin` list. This milestone does not
 publish anything on `ModPlugin`, so the four-place agreement does not apply.**
@@ -560,11 +560,11 @@ The agreement is machine-checked by `packages/mod-sdk/src/plugin-abi-agreement.t
 It reads both files as **text** and compares exactly two things:
 
 ```ts
-// plugin-abi-agreement.test.ts:40 — the host's member list
+// plugin-abi-agreement.test.ts:40, the host's member list
 const body = /export interface ModPlugin \{([\s\S]*?)\n\}/u.exec(hostSrc)?.[1] ?? "";
 return [...body.matchAll(/^\s{2}(\w+)\?\(/gmu)].map((m) => m[1]!).sort();
 
-// :46 — the builder's
+// :46, the builder's
 const list = /for \(const name of \[([^\]]*)\]\)/u.exec(builderSrc)?.[1] ?? "";
 ```
 
@@ -584,7 +584,7 @@ shape has always been the host's to validate at install, which is why
 | # | File | What it needs |
 |---|---|---|
 | 1 | `packages/mod-sdk/src/frontend.ts` | `RegionPointer` interface + `input?` on `RegionDeclaration`, with the "absence is not transparency" note in the doc comment. `packages/mod-sdk/src/index.ts:201` re-exports the *type name* `RegionDeclaration` already; add `RegionPointer` beside it. |
-| 2 | `packages/web/src/region-runtime.ts:155` (`regionDeclarationFault`) | one arm: `if (d.input !== undefined && typeof d.input !== "function") return \`region "${d.id}" has an input that is not a function; ...\`` — placed after the `paint` check, reading `d` as `unknown` fields exactly as the existing arms do (`region-runtime.ts:159-165` explains why). |
+| 2 | `packages/web/src/region-runtime.ts:155` (`regionDeclarationFault`) | one arm: `if (d.input !== undefined && typeof d.input !== "function") return \`region "${d.id}" has an input that is not a function; ...\``, placed after the `paint` check, reading `d` as `unknown` fields exactly as the existing arms do (`region-runtime.ts:159-165` explains why). |
 | 3 | `packages/web/src/region-runtime.ts:208` (`specFor`) | forward `input` with the containment of §6, onto `RegionSpec.input?`. |
 
 Plus `RegionSpec` in `ui-stack.ts:65` gains `input?(pointer): void`, which is a
@@ -593,7 +593,7 @@ host-internal type and not part of any ABI.
 **Two ratchets confirmed not to move:**
 
 - `tools/api-surface.mjs` reads `packages/core/dist/index.js` and writes
-  `packages/core/mod-api-surface.json` — **core's runtime exports only**. The SDK
+  `packages/core/mod-api-surface.json`: **core's runtime exports only**. The SDK
   is not in it. (Do not run it with `--update`; there is nothing for it to say.)
 - `MOD_COMPATIBILITY.md` records *removals*. An optional member is additive; no
   existing plugin changes meaning.
@@ -608,10 +608,10 @@ built the same way: **nothing mocked.** The declaration comes out of
 `samples/sprite-inventory/plugin.js` on disk, the capability out of its real
 manifest, `installRegions` is the shell's own installer, and the picture is read
 off a real cell grid after a real `paintRegionStack`. Reuse that file's
-`GridDouble`, `LAYOUT` (60×14, Left layout, sidebar 0..12, map at column 13),
+`GridDouble`, `LAYOUT` (60x14, Left layout, sidebar 0..12, map at column 13),
 `loadSample()`, `candidate()` and `paintLiveMap()` shapes.
 
-### The RED assertion — the defect in its own terms
+### The RED assertion: the defect in its own terms
 
 ```ts
 it("MILESTONE 7: a tap on the mod's panel does not walk the player", async () => {
@@ -657,7 +657,7 @@ top-left cell from the dungeon floor beside it, which is why the tap walks.
 ### Three assertions that keep it honest
 
 ```ts
-it("leaves an unclaimed map cell exactly as it was — the control", () => {
+it("leaves an unclaimed map cell exactly as it was, the control", () => {
   /* This control has a failure mode, which is what makes it worth writing: a
    * clear() that claimed the TERMINAL instead of the rectangle would kill every
    * tap in the game, and nothing else in this file would notice. */
@@ -686,8 +686,8 @@ it("gives an overdrawn cell to the HIGHER region", () => {
 A unit test on the compositor cannot see whether `main.ts` ever asks. That is the
 failure this repository keeps re-learning (`main-regions.test.ts:63-67` names
 #245, #246, #247), so a new **`packages/web/src/main-region-input.test.ts`** uses
-the same instrument `main-regions.test.ts` and `display-wiring.test.ts` use — the
-TypeScript AST over `main.ts`'s source — and is worth exactly what a source-text
+the same instrument `main-regions.test.ts` and `display-wiring.test.ts` use: the
+TypeScript AST over `main.ts`'s source, and is worth exactly what a source-text
 guard is worth: it proves the call is written, not that the pixels moved.
 
 ```ts
@@ -707,41 +707,41 @@ expect(tapHandler.indexOf("regionInputAt(")).toBeLessThan(tapHandler.indexOf("mo
 
 ## 9. File-by-file implementation plan
 
-Ordered so each step compiles and the suite stays green. Steps 1–4 are inert:
+Ordered so each step compiles and the suite stays green. Steps 1-4 are inert:
 nothing consults the plane until step 6.
 
-**1. `packages/web/src/region-surface.ts`** — the witness.
+**1. `packages/web/src/region-surface.ts`**: the witness.
 - After the `ClippableSurface` type (~:37): add `export type CellWitness`.
 - `clipSurface` (:75): third optional parameter `witness?: CellWitness`.
 - `eraseRow` (:84): after the bounds check, `if (witness) for (let x2 = Math.max(0, x); x2 < cells.cols; x2++) witness(x2, y);`
 - `put` (:133): after `if (!inside(x, y)) return;`, `witness?.(x, y);`
 - `print` (:138): after `const to = ...; if (to <= from) return;`, `if (witness) for (let x2 = from; x2 < to; x2++) witness(x2, y);`
-- `clear` and `prt` need nothing — they are composed of the above.
+- `clear` and `prt` need nothing: they are composed of the above.
 - `setCursor` deliberately does not witness. Comment it, or someone adds it later.
 
-**2. `packages/web/src/ui-stack.ts`** — the plane, and the read.
+**2. `packages/web/src/ui-stack.ts`**: the plane, and the read.
 - `RegionSpec` (:65): add `input?(pointer: { col: number; row: number; kind: "tap" | "context" }): void;` with a comment that ownership is positional and this only supplies the handler.
 - Module state, beside `owners` (:123): `ownership`, `ownershipCols`, `ownershipFrame` as in §1.
 - `paintRegionStack` (:338): after `const frame = ordered; const by = owners;`, size/reset the plane and set `ownershipFrame = frame`. Inside the loop, replace `clipSurface(host, region.cells)` (:379) with a witness-carrying call bound to that region's index in `frame`.
 - `resetRegionStack` (:317): clear all three, or a test leaks a frame into the next.
-- **New export** `regionInputAt(col, row)`, returning `{ region, spec, local } | undefined`. `spec` comes from the existing `owners` map — the entry is already there, no new lookup table.
+- **New export** `regionInputAt(col, row)`, returning `{ region, spec, local } | undefined`. `spec` comes from the existing `owners` map: the entry is already there, no new lookup table.
 
-**3. `packages/mod-sdk/src/frontend.ts`** — the author-facing type.
+**3. `packages/mod-sdk/src/frontend.ts`**: the author-facing type.
 - `RegionPointer` before `RegionDeclaration` (~:205).
 - `input?` on `RegionDeclaration` after `paint` (:217).
 - Extend the interface's doc block (:176-205) with the paragraph the "THERE IS NO
   LIST OF KEYS YOU WANT" block at :189-193 now needs beside it: **pointer input
   is positional, keyboard input is not offered.**
 
-**4. `packages/mod-sdk/src/index.ts`** — add `RegionPointer` to the type re-export
+**4. `packages/mod-sdk/src/index.ts`**: add `RegionPointer` to the type re-export
 list at :201.
 
-**5. `packages/web/src/region-runtime.ts`** — validate and contain.
+**5. `packages/web/src/region-runtime.ts`**: validate and contain.
 - `regionDeclarationFault` (:155): the `input` type arm, after the `paint` arm at :188.
 - `specFor` (:208): `let inputBroken = false;` beside `let broken = false;`, and the
-  `input` wrapper of §6 — reported once, handler off, **region and claim retained**.
+  `input` wrapper of §6: reported once, handler off, **region and claim retained**.
 
-**6. `packages/web/src/main.ts`** — the three call sites. This is the commit that
+**6. `packages/web/src/main.ts`**: the three call sites. This is the commit that
 closes the defect; everything before it is unobservable.
 - **Tap, `:8623`.** Move `const cell = term.cellAt(...)` and its null check above
   the `mouse_movement` gate at `:8628`. Insert between them:
@@ -766,9 +766,9 @@ closes the defect; everything before it is unobservable.
   callers 2 and 3 have already returned before they reach it.
 
 **7. `packages/web/src/region-input.node.test.ts`** (new) and
-**`packages/web/src/main-region-input.test.ts`** (new) — §8.
+**`packages/web/src/main-region-input.test.ts`** (new), per §8.
 
-**8. `samples/sprite-inventory/plugin.js`** — optional, and worth it. The panel
+**8. `samples/sprite-inventory/plugin.js`**: optional, and worth it. The panel
 already has `carried[i].tag`; an `input` that logs the tapped row through
 `ctx.log` turns the sample into the milestone's demonstration rather than its
 passive beneficiary. **The sample must keep working with the member removed**, so
@@ -783,13 +783,13 @@ document is the reference it should point at.
 > constraint that permitted creating this file and editing no other. Step 9 was
 > therefore not done and is not "already handled".
 >
-> **Update, post-landing:** it was done, in `a2d8cd0ea` itself — that commit
+> **Update, post-landing:** it was done, in `a2d8cd0ea` itself; that commit
 > touched `docs/modding/MOD_REACH.md` directly rather than deferring to this
 > file, which is why this note was left uncorrected until 2026-08-15.
 
 ### Verification order
 
-`pnpm build` **first** — `packages/web` resolves `@rpgm-tools/neo-angband-mod-sdk`
+`pnpm build` **first**: `packages/web` resolves `@rpgm-tools/neo-angband-mod-sdk`
 through its `exports` map, which points at `dist/`. A `pnpm test` that skips the
 build measures the SDK as it was last compiled, and step 3 is precisely a
 cross-package type change. Then `pnpm test`, then `pnpm lint`. Do not run
@@ -799,7 +799,7 @@ cross-package type change. Then `pnpm test`, then `pnpm lint`. Do not run
 
 ## Out of scope: the focus model
 
-Milestone 7 as originally written also contains a **focus model** — a D-pad
+Milestone 7 as originally written also contains a **focus model**, a D-pad
 walking a grid of item tiles inside a region. **It is not designed here, and it
 needs its own ruling before anyone designs it.**
 
@@ -813,13 +813,13 @@ It collides with a decision already published to mod authors in
 
 A focus model is a region consuming **arrow keys and Enter** while the player
 believes those keys still walk and confirm. That is not adjacent to the published
-decision, it is the thing the decision refuses, arriving through a different door
-— and the door matters, because the reason given is not about the *declaration
+decision, it is the thing the decision refuses, arriving through a different door,
+and the door matters, because the reason given is not about the *declaration
 syntax*, it is about **two answers to "what does this key do"**. Routing keys
 positionally rather than by declaration produces the same two answers; it only
 makes the second one invisible, since nothing in the manifest or the plugin says
-which keys were taken. Worse, pointer ownership is self-limiting — a tap has a
-location, and a location has one topmost drawer — while focus is **stateful**: it
+which keys were taken. Worse, pointer ownership is self-limiting: a tap has a
+location, and a location has one topmost drawer, while focus is **stateful**: it
 persists between events, it must survive a relayout that moves the region out from
 under it, it must be lost when the region is withdrawn, and it needs a published
 answer to "who has focus now" that both core and the mod agree on. None of that
@@ -832,7 +832,7 @@ seam."*
 So: **focus is a separate seam requiring its own ruling.** The question for the
 owner is not "should regions have focus" but "does a region get to take a
 keystroke the player has bound to something else, and if so, what tells the player
-it happened" — and until that has an answer, designing the D-pad would be
+it happened", and until that has an answer, designing the D-pad would be
 designing around `frontend.ts:189-193` rather than to it. The ownership plane this
 milestone builds is what a focus model would hit-test against, so nothing here
 forecloses it.
@@ -856,7 +856,7 @@ the question was asked and answered with a number, not skipped.
 this milestone. Core gains no capability here: a tap on a cell no mod drew reaches
 the same `queueWalk` on the same path with the same values (§5), and upstream's
 `mouse_movement` gate and `textui_process_click` routing are untouched. What
-changes is that a mod's own furniture stops being transparent to the pointer —
+changes is that a mod's own furniture stops being transparent to the pointer,
 which is a *mod* capability, and giving mods capabilities is the entire point of
 the gap-21 programme. Faithful means **gameplay** parity, not code shape (owner
 ruling 2026-08-09).

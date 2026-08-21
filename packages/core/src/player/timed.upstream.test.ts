@@ -208,7 +208,7 @@ describe("player/timed (reference/src/tests/player/timed.c)", () => {
     }
   });
 
-  // upstream: test_set_timed0 — SLOW on/off, up/end messages, no inc/dec msgs
+  // upstream: test_set_timed0: SLOW on/off, up/end messages, no inc/dec msgs
   it("set_timed0", () => {
     const slow = effect("SLOW");
     const max = firstGrade(slow).max;
@@ -304,7 +304,7 @@ describe("player/timed (reference/src/tests/player/timed.c)", () => {
     }
   });
 
-  // upstream: test_set_timed1 — POISONED with on-increase/decrease
+  // upstream: test_set_timed1: POISONED with on-increase/decrease
   it("set_timed1", () => {
     const pois = effect("POISONED");
     const max = firstGrade(pois).max;
@@ -416,7 +416,7 @@ describe("player/timed (reference/src/tests/player/timed.c)", () => {
   });
 
   /*
-   * upstream: test_set_timed2 (timed.c:497-869) — player_set_timed over every
+   * upstream: test_set_timed2 (timed.c:497-869): player_set_timed over every
    * ordered pair of CUT grades. Each grade has an up_msg and no down_msg; there
    * is an overall on_end but no on_increase / on_decrease. The C walks the grade
    * list from the implicit "off" grade, so the off grade participates as both
@@ -604,12 +604,12 @@ describe("player/timed (reference/src/tests/player/timed.c)", () => {
   });
 
   /*
-   * upstream: test_set_timed3 (timed.c:864-1224) — player_set_timed over every
+   * upstream: test_set_timed3 (timed.c:864-1224): player_set_timed over every
    * ordered pair of FOOD grades. Intermediate grades carry BOTH an up_msg and a
    * down_msg, the lowest ("Starving") only a down_msg, the highest ("Full") only
    * an up_msg, and there are no overall on_end / on_increase / on_decrease
    * messages. Because every reachable grade transition has a message, a change
-   * of grade ALWAYS notifies here, in either direction — the property that
+   * of grade ALWAYS notifies here, in either direction. That is what
    * distinguishes this case from set_timed2.
    *
    * The C walks from grade->next, i.e. it skips the implicit "off" grade,
@@ -640,7 +640,7 @@ describe("player/timed (reference/src/tests/player/timed.c)", () => {
     for (let si = 1; si < food.grades.length; si++) {
       const s = food.grades[si]!;
       /* s_l (timed.c:869-872): previous grade's max + 1, or 1 for the lowest
-         iterated grade — FOOD's lower_bound, since the off grade is skipped. */
+         iterated grade: FOOD's lower_bound, since the off grade is skipped. */
       const sL = si === 1 ? 1 : food.grades[si - 1]!.max + 1;
       expect(sL).toBeLessThanOrEqual(s.max);
 
@@ -771,7 +771,7 @@ describe("player/timed (reference/src/tests/player/timed.c)", () => {
   });
 
   /*
-   * upstream: test_set_timed4 (timed.c:1226-1458) — player_set_timed on the
+   * upstream: test_set_timed4 (timed.c:1226-1458): player_set_timed on the
    * on/off effect OPP_ACID, whose temp_resist OVERLAPS a known elemental
    * immunity. Messages: grade up_msg, overall on_end and on_increase, but no
    * on_decrease. The `immune` column drives the notify suppression at
@@ -961,7 +961,7 @@ describe("player/timed (reference/src/tests/player/timed.c)", () => {
     }
   });
 
-  // upstream: test_set_timed5 — oflag synonym notify suppression (SINVIS)
+  // upstream: test_set_timed5: oflag synonym notify suppression (SINVIS)
   it("set_timed5", () => {
     const sinvis = effect("SINVIS");
     const max = firstGrade(sinvis).max;
@@ -1153,7 +1153,7 @@ describe("player/timed (reference/src/tests/player/timed.c)", () => {
   });
 
   /*
-   * upstream: test_set_timed6 (timed.c:1687-1847) — player_set_timed's special
+   * upstream: test_set_timed6 (timed.c:1687-1847): player_set_timed's special
    * cases: the lapsing of SPRINT triggers SLOW, the onset of SCRAMBLE scrambles
    * the statistics, and the lapsing of SCRAMBLE unscrambles them.
    *
@@ -1316,7 +1316,7 @@ describe("player/timed (reference/src/tests/player/timed.c)", () => {
   });
 
   /*
-   * upstream: test_inc_check0 (timed.c:1848-2092) — player_inc_check across all
+   * upstream: test_inc_check0 (timed.c:1848-2092): player_inc_check across all
    * five TMD_FAIL_ codes (player-timed.c:923-1029): no protection, an object
    * flag, an elemental resist, an elemental vulnerability, a player flag, and
    * another timed effect.
@@ -1512,7 +1512,7 @@ describe("player/timed (reference/src/tests/player/timed.c)", () => {
   });
 
   /*
-   * upstream: test_inc_timed0 (timed.c:2093-2256) — player_inc_timed on the
+   * upstream: test_inc_timed0 (timed.c:2093-2256): player_inc_timed on the
    * on/off effect SLOW, which is protected by the object flag FREE_ACT via a
    * TMD_FAIL_FLAG_OBJECT fail entry. Messages: grade up_msg and an overall
    * on_end, but no on_increase / on_decrease. SLOW stacks, so an increase inside
@@ -1658,7 +1658,7 @@ describe("player/timed (reference/src/tests/player/timed.c)", () => {
   });
 
   /*
-   * upstream: test_inc_timed1 (timed.c:2257-2420) — player_inc_timed on
+   * upstream: test_inc_timed1 (timed.c:2257-2420): player_inc_timed on
    * PARALYZED, which carries TMD_FLAG_NONSTACKING. The table is inc_timed0's
    * with one difference that runs through two whole groups: once the effect is
    * active, ANY further increase is blocked outright and the duration is left
@@ -1803,7 +1803,7 @@ describe("player/timed (reference/src/tests/player/timed.c)", () => {
   });
 
   /*
-   * upstream: test_dec_timed0 (timed.c:2421-2522) — player_dec_timed on SLOW.
+   * upstream: test_dec_timed0 (timed.c:2421-2522): player_dec_timed on SLOW.
    * The behaviour that distinguishes it from player_set_timed: when the decrease
    * takes the duration to zero or below, `notify` is FORCED true, so the lapse
    * always notifies and always emits the on_end MSG_RECOVER message

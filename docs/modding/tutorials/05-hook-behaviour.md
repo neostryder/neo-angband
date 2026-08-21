@@ -7,7 +7,7 @@
 **Time:** ten minutes.
 
 **New idea:** your mod runs code. Still no compiler, no build step, no
-dependencies — one `.js` file beside the manifest.
+dependencies, just one `.js` file beside the manifest.
 
 ---
 
@@ -60,7 +60,7 @@ Eleven lines, and that is the entire mod.
 A mod that runs code **default-exports one object**. The game looks at that
 object and asks it questions.
 
-`hooks()` returns a plain object whose keys are **behaviour points** — places
+`hooks()` returns a plain object whose keys are **behaviour points**, places
 where the game will consult a mod before doing something. There are eight of
 them. You supply the ones you care about and omit the rest; a key you do not
 write is a place the game never asks you about, and it costs nothing.
@@ -73,7 +73,7 @@ module that the game loads from your folder; it does not import the engine,
 because the engine is passed *in* to the functions that need it. That is what
 keeps a mod from having to be built, bundled, or kept in step with the game's
 internal module layout. If you want more than one file, you can `import
-"./lib/whatever.js"` from your own folder — relative paths work on both the
+"./lib/whatever.js"` from your own folder; relative paths work on both the
 desktop and browser builds.
 
 ## One rule about this hook
@@ -81,7 +81,7 @@ desktop and browser builds.
 A message hook may **restate** a message. It must never change what a message
 means.
 
-"Congratulations!" in front of a level-up is a restatement — same fact, more
+"Congratulations!" in front of a level-up is a restatement: same fact, more
 enthusiasm. Turning *"You are poisoned."* into *"You feel fine."* is not, and a
 mod that does it has made the game lie to the player about their own character.
 
@@ -104,7 +104,7 @@ does, the default branch returns what it was given.
 
 ## Running it
 
-Exactly as before — the `mods/` folder on the desktop build, or **Choose a mods
+Exactly as before: the `mods/` folder on the desktop build, or **Choose a mods
 folder...** in a browser. A code mod is loaded from a folder the same way a data
 mod is.
 
@@ -128,10 +128,10 @@ Turn the mod off, reload, and it reads *"Welcome to level 2."* again.
 ## The finished version
 
 `samples/tutorials/tutorial-05-hook-behaviour/`, which really is imported and really is
-folded through the game's own hook composition on every test run — the test would
+folded through the game's own hook composition on every test run. The test would
 fail if this page's code stopped working.
 
 ---
 
-**Next:** [Tutorial 6: Add an option](06-add-an-option.md) — the same mod, with a
+**Next:** [Tutorial 6: Add an option](06-add-an-option.md), the same mod, with a
 switch the player controls.

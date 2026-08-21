@@ -79,13 +79,13 @@ owned frame snapshot on each real repaint, so retaining it cannot retain or
 mutate `state.actor.grid`; a throwing frontend falls back to the glyph sink and
 is reported on that mod's row.
 
-The frame also carries `regions` — the named parts of the screen (`map`,
+The frame also carries `regions`, the named parts of the screen (`map`,
 `messages`, `sidebar`, `status`) in grid cells and in CSS pixels, computed by
 `packages/web/src/regions.ts` from the same `viewport()` numbers `render()`
 draws with, and projected through `GlyphTerm.metrics()`. `map` is the selected
 front end's; the others are core's. This is what lets a replacement draw inside
 the map rectangle instead of over the window, and it is optional on the frame
-only because a host with no fitted surface has none to give — absent means draw
+only because a host with no fitted surface has none to give. Absent means draw
 nothing. See `PLUGINS.md` for the author-facing version.
 
 At startup, `main.ts` performs its boot `render()` before it installs a selected
@@ -296,7 +296,7 @@ all. The flags still exist, but they are now purely a **conversation between the
 host and the mod**:
 
 1. The mod DECLARES its patches in `manifest.json` under `rules`, each an entry
-   of `{ "flag": "qol.autoDig", "title": "…", "description": "…", "default": true }`.
+   of `{ "flag": "qol.autoDig", "title": "...", "description": "...", "default": true }`.
 2. `packages/web/src/pack.ts` `loadEnabledModRuleDecls()` gathers the `rules` of
    every ENABLED mod, in load order.
 3. `packages/web/src/mod-store.ts` `resolveModRules(decls, choices)` computes the

@@ -120,7 +120,7 @@ export interface LoreDeps {
    * OPT(player, purple_uniques): recolour a unique's title glyph violet
    * (ui-mon-lore.c L56-60). Required rather than optional, and named exactly as
    * `visuals/map-text.ts` names it, because the map layer already honours this
-   * option — a lore title that quietly ignored it would disagree with the glyph
+   * option. A lore title that quietly ignored it would disagree with the glyph
    * the player is looking at on the same screen.
    */
   purpleUniques: boolean;
@@ -1361,7 +1361,7 @@ function isFullyKnown(race: MonsterRace, lore: MonsterLore): boolean {
 
 /**
  * lore_title (ui-mon-lore.c L38): "The " for non-uniques, the name, and the
- * primary glyph — with OPT(purple_uniques) recolouring a unique's glyph violet
+ * primary glyph, with OPT(purple_uniques) recolouring a unique's glyph violet
  * (L56-60). Upstream also recolours the OPTIONAL attr there, but only when it is
  * not a tile index (`!(optional_attr & 0x80)`).
  *
@@ -1372,8 +1372,8 @@ function isFullyKnown(race: MonsterRace, lore: MonsterLore): boolean {
  * `monster_x_attr` / `monster_x_char` are a real table in the port
  * (`visuals/glyph-table.ts`, `GlyphTable.monsterGlyph`); and the
  * `tile_width == 1 && tile_height == 1` gate (L69) is unconditionally TRUE
- * here — the port has no multi-cell tiles, a ratified divergence recorded at
- * `packages/web/src/mapview.ts:70` — so the gate is omitted rather than
+ * here (the port has no multi-cell tiles, a ratified divergence recorded at
+ * `packages/web/src/mapview.ts:70`), so the gate is omitted rather than
  * deferred. Absent `monsterGlyph` (spoiler files, worldless tests) the pair
  * equals the race's own and nothing extra is emitted, exactly as upstream's
  * unmodified array would give.

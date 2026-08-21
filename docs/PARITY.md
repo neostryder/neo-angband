@@ -63,7 +63,7 @@ block in `map_info` (`cave-map.c:179`, `ui-map.c:41-80`). Those come off the mai
 RNG, which is safe in a C program whose only repaint trigger is a game event.
 
 It is not safe here. This port repaints on a window resize, on returning from a
-menu, on the animation timer and on the level-overview screen — none of which are
+menu, on the animation timer and on the level-overview screen, none of which are
 game events. Wiring those draws to `state.rng` would make the dungeon a function
 of how many times the player resized their window while hallucinating, which is
 a change to the *rules*, not merely to the stream.
@@ -71,7 +71,7 @@ a change to the *rules*, not merely to the stream.
 So `packages/core/src/visuals/hallucination.ts` takes its randomness as an
 injected parameter, and the web shell backs it with a display-only `Rng` seeded
 from wall-clock entropy and never saved (`main.ts hallucinationRng`). Same
-1/128, same rejection loops, same distribution over races and kinds — a
+1/128, same rejection loops, same distribution over races and kinds, but a
 different stream, which the ruling above allows. Hallucination is therefore not
 reproducible from a savefile, and nothing in the game depends on it being so.
 
