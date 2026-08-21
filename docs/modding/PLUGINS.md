@@ -216,6 +216,12 @@ Three things about it:
   what is being built) and absent on any host older than 2026-08-21, so
   `if (!ctx.registries) return;` is the shape, the same one `ctx.backupFolder`
   uses.
+- **It is the READ seam, and it is not read-only.** These are the live objects
+  the engine runs on, so `registries.rooms`, `registries.profiles` and
+  `registries.rooms.glyphs` carry the same mutators the capability-gated facades
+  write through. Use the facade and declare the capability: see
+  [What a capability gates, and what it does not](#what-a-capability-gates-and-what-it-does-not)
+  for why the gate cannot stop you and why declaring still matters.
 
 ### Filling tiles
 
@@ -1253,6 +1259,70 @@ declare **and** the player must consent to:
 A facade you did not declare throws when you touch it, even if the player
 consented to something else. Consent says the player allowed these domains; the
 manifest says you asked for them; both must hold.
+
+### What a capability gates, and what it does not
+
+The sentence above is exactly true and it is narrower than it looks. **The gate
+is on the facade, not on the registry behind it.** A `registry:*` capability is a
+DECLARATION, and what it buys is real but bounded:
+
+- the player sees the list, in plain language, before consenting;
+- the conflict report and the manager row are built from it;
+- an author who forgot to declare a domain gets a clear throw with the
+  capability name in it, rather than a silent surprise later.
+
+What it is **not** is a fence around the registry. Your `register(host, ctx)` is
+handed three things with no capability check at all, because a mod is meant to be
+able to LOOK at everything without declaring anything:
+
+| Handed to you ungated | The gated facade it is the twin of |
+|---|---|
+| `ctx.registries.rooms`, `.profiles`, `.rooms.glyphs` | `registry:room`, `registry:profile`, `registry:glyph` |
+| `ctx.state.blowEffects`, `.storeBehaviour`, `.projectionHandlers`, `.uiEntry`, `.commandVerbs`, `.monsterTurnHook` | `registry:blow`, `registry:store`, `registry:projection`, `registry:ui-entry`, `registry:command`, `registry:monster` |
+| `ctx.core.tvalRegistry()`, `.runeRegistry()`, `.randartRegistry()`, `.effectInfoRegistry()`, `.messageTypes`, `.soundPrefRegistry` | `registry:tval`, `registry:rune`, `registry:randart`, `registry:effect-info`, `registry:message` |
+
+Those are the same live objects, by identity, not copies. `ctx.core` also exports
+`createModRegistryHost` itself, which grants every domain when it is called
+without a capability set, so an ungated host is one call away for anything
+holding the namespace.
+
+**This is inherent, not an oversight waiting to be fixed.** A trusted plugin runs
+in-process, synchronously, holding the engine namespace, because that is the only
+way a handler can touch the live `rng`, `chunk` and `player` deep inside a turn
+(the reasoning is in `packages/core/src/mod/registry-host.ts`, under WHY
+IN-PROCESS AND TRUSTED). Nothing reachable from inside that namespace can be
+withheld from code already inside it, and a read-only view over `ctx.registries`
+would close three of the fourteen twins above while reading as though it had
+closed the class. `packages/web/src/capability-gate-reach.test.ts` measures both
+halves - the gate refusing, and the twin reaching - so this page cannot quietly
+drift into claiming containment.
+
+**`registry:*` is not the only family this is true of, in the in-process tier.**
+`state:<domain>.read` gates the perceive facade's accessors per domain, and
+`ctx.state` is the whole live `GameState`. `network:<host>` gates the act
+facade's request helper, and a plugin is an ES module in the game's own page with
+the global `fetch` in scope. Same shape, same reason.
+
+**Where these capabilities ARE enforcement is the sandboxed Worker tier.** That
+tier is isolated by construction: it gets the reactive perceive / act / event
+surface across a message boundary and none of `ctx.core`, `ctx.state` or
+`ctx.registries`, so there is no twin to reach and a denied domain is denied. The
+same capability string therefore means containment on one side of that boundary
+and declaration on the other, which is why this section is about the in-process
+tier specifically.
+
+**The boundary that IS real is the install.** A mod is code, nothing in this
+project reviews it, and the toggle on the Mods screen is where that decision gets
+made (`packages/web/src/mod-consent.ts`). The consent screen therefore says the
+in-process line for any mod that ships code, whatever its declared list looks
+like, and the manager row on a plugin declaring nothing says so rather than
+reading as a reassurance.
+
+**So declare what you override.** Not because the throw is the only thing
+stopping you, but because the declaration is what the player reads and what the
+conflict report is made of. Reaching a registry around its facade means the
+player consented to a mod that did not say what it does, and the manager will
+report a clash it has no way to see.
 
 ### Overwriting and extending: yours, core's, or somebody else's
 

@@ -135,7 +135,7 @@ An earlier build did this with a string-keyed flag registry:
 `modRuleEnabled(state, name)`, so a ported core function was written as
 `if (modRuleEnabled(state, "bugfix.objectListOrder")) { corrected } else { faithful }`.
 
-That was rejected (the project owner, 2026-07-29) on the grounds that a
+That was rejected (2026-07-29) on the grounds that a
 flag-gated fix is not excluded from core: **core shipped the fix body, core was
 tested on it, and core carried the mod's own flag name as a string literal.**
 Deleting the mod folder would not have deleted a line of it. `modRuleEnabled` is now GONE from core -
@@ -352,7 +352,7 @@ at `neo-angband-mod-bug-fixes/stairs.ts`; `miscStringFix` at
 `neo-angband-mod-qol/plugin.ts`. Delete a mod folder and its behaviour goes
 with it.
 
-**Default policy (the project owner's ruling, 2026-07-26; wording tightened 2026-07-27).**
+**Default policy (2026-07-26; wording tightened 2026-07-27).**
 The mod is the unit the player installs and switches; a patch is a part of a mod,
 never a separate thing to install. Two layers, in this order:
 

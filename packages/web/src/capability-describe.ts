@@ -4,10 +4,19 @@
  * A manifest's `capabilities` are terse machine strings (capabilities.ts
  * vocabulary: command:add, event:<name>, state:<domain>.read, network:<host>,
  * registry:<domain>). Before a user enables a plugin the manager must show, in
- * human terms, exactly what it is being allowed to do - and flag the powerful
- * ones (in-process system override, network egress, broad state reads) so
- * consent is informed. This module is the single source of that mapping; it is
- * pure so it can be unit-tested and reused by any host (web or Electron).
+ * human terms, what the mod DECLARED it means to do - and flag the powerful ones
+ * (in-process system override, network egress, broad state reads) so consent is
+ * informed. This module is the single source of that mapping; it is pure so it
+ * can be unit-tested and reused by any host (web or Electron).
+ *
+ * DECLARED, not bounded, and the wording here is careful about it. For a mod that
+ * ships code these lines are what its author said it would touch, not a limit on
+ * what its code can reach: an in-process plugin holds the engine namespace, so
+ * the registries the `registry:*` facades guard are reachable around them (see
+ * docs/modding/PLUGINS.md, "What a capability gates"). That is why the consent
+ * screen carries a separate in-process warning for every mod that ships code
+ * rather than deriving one from `elevated` (mods.ts, capabilityConsentScreen),
+ * and why no sentence in this file promises a mod CANNOT do something.
  */
 
 import { parseCapability } from "@rpgm-tools/neo-angband-mod-sdk";
