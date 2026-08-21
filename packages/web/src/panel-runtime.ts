@@ -210,16 +210,23 @@ export function setPanelGameSurface(element: Element | undefined): void {
 /**
  * Why this panel may no longer withhold a keystroke, or undefined when it may.
  *
- * FOUR INVARIANTS, CHECKED PER KEYSTROKE rather than at mount, because every one
- * of them is about a thing that can change afterwards. A mod holds its shadow
- * root, so it holds `root.host`, so it can detach the container, move it
- * somewhere else, or put the game's own canvas inside it - and a check that ran
- * once at mount would have been true at the only moment it was asked.
+ * THREE INVARIANTS, CHECKED PER KEYSTROKE rather than at mount, because every
+ * one of them is about a thing that can change afterwards. A mod holds its
+ * shadow root, so it holds `root.host`, so it can detach the container, move
+ * it somewhere else, or put the game's own canvas inside it - and a check that
+ * ran once at mount would have been true at the only moment it was asked.
+ *
+ * "Only the top panel may hold a keystroke" is a real fourth invariant, but it
+ * is not checked here: the sole caller, topPanel() below, already scans from
+ * the highest surviving index down and returns at the first one that passes
+ * these three, so whatever it returns is the top one by construction. There
+ * is nothing this function could add to that without a second, independent
+ * notion of "top" to compare against.
  *
  * Returning a REASON rather than a boolean, because the panel is about to be
  * closed for it and the author needs to know which one they tripped.
  */
-function panelInvariantFault(panel: LivePanel, index: number): string | undefined {
+function panelInvariantFault(panel: LivePanel): string | undefined {
   if (!panel.container.isConnected) {
     return `its container was removed from the page without close(); the panel is gone`;
   }
@@ -235,9 +242,6 @@ function panelInvariantFault(panel: LivePanel, index: number): string | undefine
   if (gameSurface !== undefined && panel.container.contains(gameSurface)) {
     return `its container was made a parent of the game's own display, which would have taken every keystroke`;
   }
-  /* ONLY THE TOP PANEL. Otherwise a mod holds focus in a panel underneath a
-   * visible one and the player is typing into something they cannot see. */
-  if (index !== panels.length - 1) return undefined;
   return undefined;
 }
 
@@ -253,7 +257,7 @@ function topPanel(): LivePanel | undefined {
   for (let i = panels.length - 1; i >= 0; i--) {
     const panel = panels[i];
     if (!panel) continue;
-    const fault = panelInvariantFault(panel, i);
+    const fault = panelInvariantFault(panel);
     if (fault === undefined) return panel;
     /* Closed rather than skipped. A container that broke an invariant is not
      * going to mend, and leaving it in the list would leave the next keystroke
