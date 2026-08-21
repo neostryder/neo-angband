@@ -112,7 +112,7 @@ export default defineConfig({
          * read who made what they are looking at.
          *
          * WHAT WAS EXCLUDED, AND WHY IT NO LONGER IS. Two globIgnores used to sit
-         * here, and neostryder's ruling on both is parity: the installed app, the
+         * here, and both fall to the same rule, parity: the installed app, the
          * static site and the desktop build should differ as little as possible.
          *
          *   **&#47;mods/**  - written when the linoleum packs were generated INTO this

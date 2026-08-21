@@ -190,7 +190,9 @@ An honest list, so nobody wastes a report on something already written down:
   in separate windows; this is one surface.
 - **The mod catalogue is short.** Not a stub: the game bundles nothing, so every
   mod arrives through *Install a mod...*, which downloads from the mod's own
-  repository at a pinned tag and verifies every byte.
+  repository at a pinned tag, pins the mod to that repository so nothing from
+  anywhere else can replace it, and records a digest of every byte that arrived so
+  you can ask later whether your copy has changed.
 - **The save format is pre-1.0 and still changes**, but your character comes with
   it. Every format change ships the conversion that reads the one before it, and a
   save the game cannot open is never overwritten.
@@ -208,7 +210,7 @@ rpgm.tools**. [SECURITY.md](SECURITY.md) says what is worth reporting.
 
 | | |
 | --- | --- |
-| [Make a mod](docs/modding/tutorials/README.md) | Six short tutorials, start to finish |
+| [Make a mod](docs/modding/tutorials/README.md) | Seven short tutorials, start to finish |
 | [How modding works](docs/MODS.md) | The design, and what a mod can reach |
 | [Modding reference](docs/modding/README.md) | Pack anatomy, records, plugins, the measured capability table |
 | [Feature restoration](docs/modding/FEATURE_RESTORATION.md) | Bringing back what Angband dropped, without changing vanilla |

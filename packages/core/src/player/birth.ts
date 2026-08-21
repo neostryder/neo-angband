@@ -229,7 +229,7 @@ export function generateStats(
         break;
       }
 
-      /* Step 2: sell back DEX that isn't getting us an extra blow. */
+      /* Step 2: sell back DEX that isn't earning an extra blow. */
       case 2: {
         while ((buy.stats[STAT.DEX] ?? 0) > dexBreak) {
           sellStat(buy, STAT.DEX);
@@ -467,7 +467,7 @@ export function generatePlayer(
 
   /*
    * Stats: point-based (a given allocation, drawing ZERO RNG) or the classic
-   * roller. For point-based we replay the allocation through reset_stats +
+   * roller. For point-based, the allocation is replayed through reset_stats +
    * buy_stat so the resulting stats match ui-birth.c's point-buy exactly. The
    * leftover-point pool no longer affects gold (get_money resets au to
    * start_gold at accept, see below). For the classic path the RNG draw is the

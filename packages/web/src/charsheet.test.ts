@@ -633,7 +633,7 @@ describe("a prompt inside invoke is announced before it lands (#258)", () => {
     press(win, "Enter");
     await running;
 
-    /* The rename STILL HAPPENED. The ruling is explicit that prompts inside
+    /* The rename STILL HAPPENED. The rule is explicit that prompts inside
      * `invoke` are not forbidden - a mod's actions must not be a strict subset
      * of the game's - so "no save was written" would be the wrong green. */
     expect(persisted).toEqual([{ name: "Bob", occluded: false }]);
@@ -778,7 +778,7 @@ describe("a prompt inside invoke is announced before it lands (#258)", () => {
   it("reports BY NAME the presenter that cannot stand aside, and prompts anyway", async () => {
     /* THE NEGATIVE CONTROL AS A SHIPPED CASE: every presenter that exists today
      * - `samples/sprite-inventory` included - returns a handle with no
-     * `yieldTerminal` at all. The prompt must still run (the ruling), the player
+     * `yieldTerminal` at all. The prompt must still run, the player
      * must still be able to answer it, and the mod must be named once. */
     const faults: string[] = [];
     setUiFaultReporter((id, message) => void faults.push(`${id}: ${message}`));

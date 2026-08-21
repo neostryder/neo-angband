@@ -143,7 +143,7 @@ describe("projectMonster - show_damage (project-mon.c:1111)", () => {
   it("passes the damage with the pain message for a survivor", () => {
     const gs = makeState();
     /* NO_FEAR is excluded by plainRace, so cap hp high enough that fear does
-     * not fire a second (never-damage-showing) message we would have to skip. */
+     * not fire a second (never-damage-showing) message that would have to be skipped. */
     addMon(gs, plainRace, loc(7, 7), { hp: 500 });
     const rec = damRecorder();
     projectMonster(

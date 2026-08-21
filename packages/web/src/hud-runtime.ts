@@ -9,7 +9,7 @@
  * WHY PER REGION. The map has one owner because it is one thing. The HUD is not:
  * the message line, the vitals and the status line are three answers to three
  * questions, and a mod that wants to draw hit points as a bar has no business
- * taking the message log with it. That follows the ruling that a screen is
+ * taking the message log with it. That follows the rule that a screen is
  * COMPOSED of regions rather than covering them (2026-08-13), and it is why the
  * capability is `ui:sidebar.replace` rather than one grant over "the interface":
  * a player consenting is told which part of their screen is changing hands.

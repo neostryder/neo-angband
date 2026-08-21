@@ -6,7 +6,7 @@
  * disturb() (player-util.c:1645) stops a run, cancels a rest, frees the path
  * steps and flushes the command queue. Upstream calls it from 53 places, and
  * every one of them is a promise to the player: THIS is a thing you would want to
- * know about, so we will not keep walking you into the dark. A missing call is
+ * know about, so this will not keep walking you into the dark. A missing call is
  * invisible in review - the function is right, the caller is simply not there -
  * and no coverage guard, lint rule or behaviour test in this repo could see it,
  * because nothing can distinguish a function nobody calls YET from one nobody

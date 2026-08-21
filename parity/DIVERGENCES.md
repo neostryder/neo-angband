@@ -24,10 +24,9 @@ every row. Three classes:
   was chosen. These are the ones worth arguing about, and they are marked so they can
   be.
 
-> **Owner ruling, 2026-08-09: the bar for a class C row moved.** The standard is
-> gameplay parity, not code parity: "please relax the ruling on exact code parity
-> in favor of gameplay parity. Slightly different RNG streams are not forbidden,
-> as long as play will feel the same." So a class C row is only a **divergence
+> **Decided 2026-08-09: the bar for a class C row moved.** The standard is
+> gameplay parity, not code parity: a slightly different RNG stream is not
+> forbidden, as long as play feels the same. So a class C row is only a **divergence
 > worth arguing about** if a player could notice it. A different data structure,
 > a merged function, a changed draw order: those stopped needing a defence, and
 > future rows of that kind do not belong on this page at all. What still belongs:

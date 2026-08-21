@@ -8,7 +8,7 @@
  * 174 `file_putf(log_file, ...)` sites in obj-randart.c and 59 `log_obj(...)`
  * sites in obj-power.c, which is where a randart's POWER is worked out. It is
  * the only account of why a generated artifact came out the way it did, and the
- * maintainer's disposition on 2026-08-04 was **pursue parity**, so it is a port
+ * the 2026-08-04 decision was to **pursue parity**, so it is a port
  * with no asterisk rather than a spoiler dump to drop.
  *
  * A MODULE-LEVEL SINK, DELIBERATELY. Upstream has exactly this shape: two

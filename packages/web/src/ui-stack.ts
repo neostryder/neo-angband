@@ -144,7 +144,7 @@ let listenerFaults: RegionStackFault[] = [];
  *
  * WHY THE DISTINCTION IS THE WHOLE FEATURE. `relayoutStack` runs once per frame,
  * so a listener called on every recompose would be called on every frame, and
- * the one consumer this exists for re-presents a frame when it hears from us.
+ * the one consumer this exists for re-presents a frame when it hears from this.
  * That would double every repaint for a notification whose content had not
  * changed. What a front end needs to hear is "a screen opened over you", and the
  * only honest signal for that is the composite being different from the last one.

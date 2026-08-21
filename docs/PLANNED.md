@@ -21,7 +21,7 @@ up in `CHANGELOG.md`), it is found not to apply (and says so, briefly, before it
 goes), or it is found to be unreachable in the thing being ported (and says
 that). "Still open" is not one of them, and neither is silence.
 
-Last reviewed: 2026-08-20.
+Last reviewed: 2026-08-21.
 
 ---
 
@@ -143,15 +143,16 @@ no fraction here: save provenance, log lines, and the conflict pane are the thre
 that are known to exist, and the first task is to find out whether that is the
 whole list.
 
-## Alpha gate
+## Moddability reach
 
-Renegotiated 2026-08-15: the moddability gate is otherwise met, and what remains
-is:
+This was the "alpha gate", narrowed 2026-08-15. Renamed on 2026-08-21 because
+the gate has been passed: `0.20.0` shipped as the initial public alpha on
+2026-08-16, so **the alpha cut itself has left this file by landing** and the job
+since then is each next minor or patch rather than reaching a cut. What was filed
+under that heading and is still genuinely open is the moddability work the cut was
+waiting on:
 
 - **Gap 21, UI moddability.** The world is a separate seam (gap 9) and is done;
   everything else a mod might want to change about the interface is this.
-- **Catch-up mod content**, so the first-party mods cover what the gate assumes
+- **Catch-up mod content**, so the first-party mods cover what the gate assumed
   they cover.
-- **The alpha cut itself**, on a tag the in-game updater can see. A draft release
-  cannot be a channel: `gh release view` 404s on a draft and so does the
-  updater.

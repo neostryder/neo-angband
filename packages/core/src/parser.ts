@@ -25,8 +25,8 @@
  * (parser.c L38) and at a range past the end of that 617-line file.
  *
  * So it was a port EXTENSION - a convenience, and the port adds nothing. The
- * owner's ruling (2026-08-14) was "if this parse error limit is a QoL
- * improvement, move it to the mod; if not, strike it", and it moved: core now
+ * 2026-08-14 decision was that a parse error limit is a QoL improvement and
+ * belongs in the mod, or else is struck, and it moved: core now
  * stops at the first bad line, and `visuals/prefs.ts`'s `setPrefErrorPolicy` is
  * the seam a mod installs the forgiving behaviour through. The four removed
  * exports are recorded in docs/modding/MOD_COMPATIBILITY.md.

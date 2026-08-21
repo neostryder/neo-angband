@@ -190,7 +190,7 @@ describe("animateMonsterAttr (do_animation)", () => {
       attrMulti: true,
       attrFlicker: false,
       frame: 0,
-      randint1: (n) => n, // return the max so we can assert it
+      randint1: (n) => n, // return the max so the test can assert it
     });
     expect(attr).toBe(BASIC_COLORS - 1);
   });

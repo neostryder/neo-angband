@@ -22,8 +22,8 @@
  *   n-a           not applicable to this port, with the mechanism named
  *   unreachable-in-upstream
  *                 no path in Angband 4.2.6 can execute it, so no player can
- *                 observe its absence. The THIRD finished state, created by the
- *                 owner ruling of 2026-08-09, and deliberately NOT spelled `n-a`:
+ *                 observe its absence. The THIRD finished state, decided
+ *                 2026-08-09, and deliberately NOT spelled `n-a`:
  *                 `n-a` is a claim about THIS PORT's platform or front end, and
  *                 this one is a claim about UPSTREAM, measured in the C. Merging
  *                 them makes the census unauditable - you can no longer tell

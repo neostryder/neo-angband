@@ -1081,8 +1081,8 @@ export class ObjRegistry {
       const possItems = new Set<number>();
       /* Upstream PREPENDS each parsed entry onto ego->poss_items (obj-init.c
        * L2322, L2350), so the list HEAD - the base kind object_info_ego
-       * describes the ego on - is whichever kidx was added LAST. Track it as
-       * we go; the Set cannot answer this, because re-adding a kidx is a
+       * describes the ego on - is whichever kidx was added LAST. Track it while
+       * iterating; the Set cannot answer this, because re-adding a kidx is a
        * no-op there but a re-prepend upstream. */
       let firstPossItem = -1;
       for (const tvalName of rec.type ?? []) {

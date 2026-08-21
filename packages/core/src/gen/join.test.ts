@@ -46,7 +46,7 @@ const constants = bindConstants(loadJson<ConstantsJson>("constants"));
  * ------------------------------------------------------------------ */
 
 describe("getJoinInfo (generate.c L893-992)", () => {
-  it("turns the level-above's down staircases into our up staircases", () => {
+  it("turns the level-above's down staircases into this level's up staircases", () => {
     /* The level above (depth-1) records FEAT_MORE stairs; on this level they
      * must become FEAT_LESS up staircases in dun.join (L905-917). Non-MORE
      * connectors from that level are ignored. */
@@ -65,7 +65,7 @@ describe("getJoinInfo (generate.c L893-992)", () => {
     ]);
   });
 
-  it("turns the level-below's up staircases into our down staircases", () => {
+  it("turns the level-below's up staircases into this level's down staircases", () => {
     /* The level below (depth+1) records FEAT_LESS stairs; here they become
      * FEAT_MORE down staircases (L955-967). */
     const below: Connector[] = [
@@ -93,7 +93,7 @@ describe("getJoinInfo (generate.c L893-992)", () => {
 
   it("remembers a two-levels-up level's down stairs as one_off_above", () => {
     /* No level directly above, but one two levels up: its FEAT_MORE stairs are
-     * remembered as one_off_above FEAT_MORE so our up staircases avoid them
+     * remembered as one_off_above FEAT_MORE so this level's up staircases avoid them
      * (L918-945). dun.join stays empty. */
     const twoAbove: Connector[] = [
       { grid: loc(4, 4), feat: FEAT.MORE },
@@ -218,7 +218,7 @@ describe("collectJoins (generate.c L1203-1214)", () => {
 
 describe("get_min_level_size (generate.c L997-1013)", () => {
   it("measures the level ABOVE by its DOWN staircases only", () => {
-    /* above=true takes FEAT_MORE (they become our up stairs). The FEAT_LESS
+    /* above=true takes FEAT_MORE (they become this level's up stairs). The FEAT_LESS
      * connector is further out in both axes and must be ignored, or the test
      * cannot tell the filter from a max over everything. */
     const join: Connector[] = [

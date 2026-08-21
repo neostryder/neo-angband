@@ -2,7 +2,7 @@
  * NOISE FLOOR PROBE: what can the distribution metrics actually resolve?
  *
  * `parity-c-stat.test.ts` compares the port's histograms against the C oracle
- * with a G-test. That answers "is the port different from C" only if we know how
+ * with a G-test. That answers "is the port different from C" only if it is known how
  * big G gets when NOTHING is different. This probe measures exactly that: it
  * runs the port against ITSELF at two different seeds, in the same sample shape
  * as the real comparison (1000 reference levels vs 400 observed levels), and
@@ -14,7 +14,7 @@
  * not the number of monsters. A G-test that counts monsters as independent is
  * overdispersed and reports huge G for samples that differ only by seed. This
  * probe quantifies that overdispersion instead of arguing about it, and it does
- * the same for the object/monster feeling histograms so we know which of the
+ * the same for the object/monster feeling histograms so it is known which of the
  * three metrics -- if any -- is a usable parity gate.
  *
  * READ THE NULL CORRECTLY. G_null here is what the same code produces against

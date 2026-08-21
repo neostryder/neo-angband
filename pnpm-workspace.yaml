@@ -17,7 +17,7 @@ packages:
 # `require("esbuild").version` answers and both `packages/web bundle` and the
 # mod-sdk plugin builder work with the postinstall skipped. Denying it is the same
 # call the two mod repositories make in their package.json `allowScripts`.
-# electron-winstaller is false, and it is the entry pnpm 10 never made us look at.
+# electron-winstaller is false, and it is the entry pnpm 10 never forced a look at.
 # It was not in the old `onlyBuiltDependencies` list, so its build script was
 # skipped SILENTLY; pnpm 11 defaults `strictDepBuilds` to true and turns that
 # silence into an install error, which is how it got here. Skipping it is right:
@@ -33,7 +33,7 @@ allowBuilds:
 # NOT SET, deliberately: minimumReleaseAge. pnpm 11 defaults it to 1440 minutes, so
 # a package published in the last day will not resolve.
 #
-# It cannot stall our own release, which was the first worry: every internal
+# It cannot stall the project's own release, which was the first worry: every internal
 # dependency here is `workspace:*`, and the two mod repositories that DO consume the
 # published engine install with npm, not pnpm. If that ever stops being true, prefer
 # `minimumReleaseAgeExclude: ["@rpgm-tools/*"]` over turning the protection off.

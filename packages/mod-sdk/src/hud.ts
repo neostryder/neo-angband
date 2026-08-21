@@ -10,7 +10,7 @@
  * OWNERSHIP IS PER REGION, which is the whole shape of this file. A plugin's
  * `hud()` returns a sink per region name it wants, each one gated by its own
  * `ui:<region>.replace` capability, and it receives ONLY those regions. The
- * others stay core's and keep being drawn. That follows the ruling that a screen
+ * others stay core's and keep being drawn. That follows the rule that a screen
  * is COMPOSED of regions rather than covering them.
  *
  * This module contains types only. A folder plugin may `import type` from the

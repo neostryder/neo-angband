@@ -58,8 +58,8 @@ deferred:
     survives only as the fallback for a caller that supplies no corpus.
   - randart.log: PORTED, all 233 emission sites (PORT_TODO 5.5, CLOSED
     2026-08-07). "It never affects an artifact field or an RNG draw" is true
-    and was never the question -- the maintainer's disposition on 2026-08-04
-    was pursue parity, so the file is a port. do_randart opens and closes it
+    and was never the question -- parity is the standard, so the file is a
+    port. do_randart opens and closes it
     through the host (obj/randart-log.ts is the sink, one module-level static
     because that is upstream's own shape); all 59 sites in obj-power.c and all
     174 in obj-randart.c are written, ratcheted two-way against the C source by

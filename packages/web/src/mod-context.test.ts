@@ -119,8 +119,8 @@ describe("ctx.registries - the bound content a mod can ask about", () => {
   });
 
   it("shows a mod's monster on the same terms as core's own", () => {
-    /* His requirement, 2026-08-21: modded creatures and items must work the same
-     * as vanilla ones. This is the mechanism that makes that free rather than
+    /* A hard requirement of the mod system: modded creatures and items must work
+     * the same as vanilla ones. This is the mechanism that makes that free rather than
      * something each consumer opts into - a consumer indexing by ridx cannot
      * treat the two differently, because nothing in the lookup distinguishes
      * them. `from` is present and is deliberately not consulted here. */

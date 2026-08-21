@@ -306,7 +306,7 @@ export class Expression {
         count++;
       }
 
-      /* Limit the number of operations, saving what we have. */
+      /* Limit the number of operations, saving what has been done so far. */
       if (count >= EXPRESSION_MAX_OPERATIONS) break;
     }
 
