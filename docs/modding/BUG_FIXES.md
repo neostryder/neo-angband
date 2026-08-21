@@ -416,9 +416,17 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
   the reference source itself (all citations below are `reference/src`, the
   4.2.6 tag) and against the port's own measurement.
 - Problem: a floor can have no staircase the player is able to walk to. Measured
-  on faithful core over 520 levels (depths 1-98, 40 seeds each): **53 stranded
-  levels, 10.2%**. 44 of the 53 were the UP stair; 37 had the orphaned stair
-  sealed inside `SQUARE_VAULT`.
+  on faithful core 2026-08-06 over 15,000 levels (3,000 each at depths 1, 20, 40,
+  50 and 60): **22 stranded levels, 0.15%**, all of them the UP stair, and all 22
+  carrying the mechanism's signature - the sealed stair is `SQUARE_VAULT` and the
+  region it is sealed into is vault to the last grid.
+- **This entry used to read 53 in 520, 10.2%** (depths 1-98, 40 seeds each), with
+  37 of the 53 inside `SQUARE_VAULT`. Both numbers were real and neither described
+  upstream: the non-vault majority was the port's own `build_streamer` predicate
+  bricking up secret doors, since fixed in `gen/cave.ts`, and the same sweep
+  against the old predicate splits 137 stranded into 33 upstream and 104 port
+  defect. A wart kept on purpose has to be re-measured after every generator
+  change, or core ends up defending its own bugs.
 - Root cause, in two halves:
   - `alloc_stairs` (`gen-util.c:629`) places a stair on any `square_isempty`
     grid and does **not** exclude vault interiors, while `ensure_connectedness`
@@ -630,8 +638,8 @@ not bug fixes.
 **Migrated 2026-07-26: entry 13, unreachable staircases.** This is the one and
 only thing that has ever had to make the trip. It was added to core the previous
 day as a guarantee, based on the mistaken assumption that vanilla could not
-strand a floor. Once the reference source showed that it can and does (10.2% of
-levels), the guarantee was withdrawn: core must retain all warts of the
+strand a floor. Once the reference source showed that it can and does, the
+guarantee was withdrawn: core must retain all warts of the
 reference code; a bug in the port itself belongs in the bug-fixes mod, not here.
 
 Precedent worth keeping: a "core must never do X" requirement is only safe to
