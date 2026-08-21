@@ -390,7 +390,7 @@ export class CapabilitySet {
   check(cap: string): void {
     if (this.has(cap)) return;
     throw new CapabilityError(
-      `this plugin needs capability "${cap}"; add it to pack.json capabilities`,
+      `this plugin needs capability "${cap}"; add it to manifest.json capabilities`,
     );
   }
 
