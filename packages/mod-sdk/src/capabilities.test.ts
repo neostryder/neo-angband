@@ -136,6 +136,87 @@ describe("parseCapability: valid forms", () => {
   });
 });
 
+describe("the mod: family - install and session are two grants, not one", () => {
+  it("parses both, each with its own action", () => {
+    expect(parseCapability("mod:install")).toEqual({ kind: "mod", action: "install" });
+    expect(parseCapability("mod:session")).toEqual({ kind: "mod", action: "session" });
+  });
+
+  it("rejects mod:* and anything else in the family - there is no wildcard", () => {
+    expect(() => parseCapability("mod:*")).toThrow(CapabilityError);
+    expect(() => parseCapability("mod:remove")).toThrow(CapabilityError);
+    expect(() => parseCapability("mod:enable")).toThrow(CapabilityError);
+  });
+
+  it("NEITHER covers the other (the #261 lesson, applied before it was re-learned)", () => {
+    /* THE ESCALATION THIS FORECLOSES. `mod:install` puts a pack in the library
+     * switched OFF, and the player meets it on the Mods screen before anything of
+     * it runs - that waiting is exactly why its consent sentence is proportionate.
+     * `mod:session` switches one ON for the rest of the session as soon as the game
+     * reloads. Neither is a superset, so a kind-only comparison in grantCovers
+     * would have let one consent buy the other, which is #261 with different
+     * nouns. */
+    const installer = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["mod:install"] }),
+    );
+    expect(installer.has("mod:install")).toBe(true);
+    expect(installer.has("mod:session")).toBe(false);
+
+    const stager = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["mod:session"] }),
+    );
+    expect(stager.has("mod:session")).toBe(true);
+    expect(stager.has("mod:install")).toBe(false);
+  });
+
+  it("is not reachable from any wider grant", () => {
+    /* Checked against every wildcard the vocabulary has, because "no wildcard
+     * covers this" is the claim and the only way to hold it is to ask them all. */
+    const wide = CapabilitySet.fromManifest(
+      manifest("plugin", {
+        capabilities: ["registry:*", "state:*.read", "network:*", "ui:*.replace"],
+      }),
+    );
+    expect(wide.has("mod:install")).toBe(false);
+    expect(wide.has("mod:session")).toBe(false);
+  });
+});
+
+describe("ui:panel.mount and debug:spawn are not reachable from anything wider", () => {
+  /* Neither had a parse or a grant test when `mod:session` was added, which is how
+   * #261 happened the first time: `ui:*.replace` carried `ui:region.create` because
+   * nothing asked whether it did. Added here rather than left for later because the
+   * question is the same question and the answer has to keep being no. */
+  it("parses each as its own shape", () => {
+    expect(parseCapability("ui:panel.mount")).toEqual({
+      kind: "ui",
+      region: "panel",
+      action: "mount",
+    });
+    expect(parseCapability("debug:spawn")).toEqual({ kind: "debug", action: "spawn" });
+    expect(() => parseCapability("ui:*.mount")).toThrow(CapabilityError);
+    expect(() => parseCapability("debug:*")).toThrow(CapabilityError);
+  });
+
+  it("a ui:*.replace grant carries neither mount nor create", () => {
+    const set = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["ui:*.replace"] }),
+    );
+    expect(set.has("ui:sidebar.replace")).toBe(true);
+    expect(set.has("ui:panel.mount")).toBe(false);
+    expect(set.has("ui:region.create")).toBe(false);
+  });
+
+  it("nothing but debug:spawn grants debug:spawn", () => {
+    const set = CapabilitySet.fromManifest(
+      manifest("plugin", {
+        capabilities: ["registry:*", "state:*.read", "command:add", "mod:install"],
+      }),
+    );
+    expect(set.has("debug:spawn")).toBe(false);
+  });
+});
+
 describe("backup:folder (#133)", () => {
   it("parses backup:folder as its own kind, with no domain and no wildcard", () => {
     expect(parseCapability("backup:folder")).toEqual({

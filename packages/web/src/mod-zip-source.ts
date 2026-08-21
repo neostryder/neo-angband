@@ -28,6 +28,11 @@
  */
 
 import { installModFromZip, type InstallResult, type InstallEnv } from "./mod-install";
+import {
+  sessionSurvivesReload,
+  stageSessionMod,
+  type SessionStageResult,
+} from "./mod-session";
 
 /** One archive waiting in the game's own mods folder. */
 export interface WaitingZip {
@@ -45,6 +50,26 @@ export interface ZipImportDeps {
   readonly pick: () => Promise<{ readonly name: string; readonly bytes: Uint8Array } | null>;
   /** Validate and store. Enforces consent itself - see installModFromZip. */
   readonly install: (bytes: Uint8Array) => Promise<InstallResult>;
+  /**
+   * Validate and hold for this session only, without storing (mod-session.ts).
+   *
+   * ACCEPTS CODE, where the mod-facing door does not. The difference is who is
+   * choosing: a player picking a file is making the same decision they make when
+   * they import one permanently, and this door asks them for it in the same words
+   * plus one more confirmation. A mod handing the engine another mod's code is a
+   * different act, and it stays refused.
+   *
+   * `granted` is what the player agreed the mod may do, for this session, and is
+   * held beside the archive rather than written into the persistent consent store -
+   * testing somebody's mod once must not leave a standing grant behind.
+   */
+  readonly loadForSession: (
+    bytes: Uint8Array,
+    source: string,
+    granted: readonly string[],
+  ) => Promise<SessionStageResult>;
+  /** Whether a staged archive will still be there after the reload that applies it. */
+  readonly sessionSurvivesReload: () => boolean;
   /**
    * Move an archive into `mods/imported/`, or null on a front end that cannot.
    *
@@ -186,6 +211,12 @@ export function zipImportDeps(
     },
     pick: pickZipFile,
     install: async (bytes) => await installModFromZip(bytes, env, allowed()),
+    loadForSession: async (bytes, source, granted) =>
+      await stageSessionMod(
+        { bytes, source, granted, allowed: allowed() },
+        env.scope ?? globalThis,
+      ),
+    sessionSurvivesReload: () => sessionSurvivesReload(env.scope ?? globalThis),
     archive:
       archiveFn === null
         ? null

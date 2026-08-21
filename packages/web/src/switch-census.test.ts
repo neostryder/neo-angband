@@ -160,9 +160,9 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 41 into a CLOSED vocabulary", () => {
+  it("classifies all 42 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 41 dispatch points, ZERO are content dispatch a
+     * than written in prose: of 42 dispatch points, ZERO are content dispatch a
      * mod would want. That is the finish line MOD_REACH gap list set - every
      * one of the eighteen candidates the 2026-08-09 census opened with is now
      * a registry, obj/knowledge.ts (gap 16) last. What is left is UI routing,
@@ -195,8 +195,11 @@ describe("the switch census", () => {
       REACHABLE: 6,
       /* 15 until #283. ui-entry.ts's COMBINERS row left when the array became a
        * registry, which is the count moving DOWN on a conversion - the same
-       * mechanism, and the same honesty, as it moving UP on a wider lens. */
-      UI: 14,
+       * mechanism, and the same honesty, as it moving UP on a wider lens.
+       * Back to 15 when the mod manager's own detail screen reached eight action
+       * arms: the count moves UP because a screen grew a control, which is the
+       * same honesty in the other direction. */
+      UI: 15,
     });
     /* The counts have to add up to the census, or a class went missing. */
     expect([...byClass.values()].reduce((a, b) => a + b, 0)).toBe(

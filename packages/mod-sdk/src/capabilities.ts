@@ -145,6 +145,16 @@
  *                             the player is shown its own capability list before
  *                             any of it runs, which is what stops one grant
  *                             turning into every grant.
+ *  - "mod:session"         - load a CONTENT mod into this session only, so it
+ *                             composes into the game on the next reload and is
+ *                             gone with the window. Bounded exactly as
+ *                             "mod:install" is - code and capability requests are
+ *                             refused - and deliberately NOT the same grant, since
+ *                             an install waits to be switched on and this does not.
+ *                             `grantCovers` compares the action so neither can be
+ *                             sold under the other's sentence. It is a shorter
+ *                             LIFETIME for the archive and not a smaller reach for
+ *                             the records: what composes, composes.
  *  - "debug:spawn"         - conjure an item or a creature into the live game the
  *                             way the debug commands do. Its own kind and no
  *                             wildcard, and here that is the whole point rather
@@ -207,7 +217,7 @@ export type ParsedCapability =
   | { kind: "display"; action: "replace" }
   | { kind: "ui"; region: string; action: "replace" | "create" | "mount" }
   | { kind: "backup"; action: "folder" }
-  | { kind: "mod"; action: "install" }
+  | { kind: "mod"; action: "install" | "session" }
   | { kind: "debug"; action: "spawn" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
@@ -315,6 +325,16 @@ export function parseCapability(cap: string): ParsedCapability {
   if (cap === "mod:install") {
     return { kind: "mod", action: "install" };
   }
+  /* "mod:session": load content into THIS session only, without it joining the
+   * library. Bounded the same way `mod:install` is - the door refuses an archive
+   * carrying code or asking for capabilities - and separated from it because the
+   * two say different things to a player. An install arrives switched OFF and waits
+   * to be turned on; a session load is on for the rest of the session as soon as
+   * the game reloads. That is more, not less, so it cannot be sold under the other
+   * one's sentence: `grantCovers` compares the action for exactly that reason. */
+  if (cap === "mod:session") {
+    return { kind: "mod", action: "session" };
+  }
   /* "debug:spawn": put an item or a creature into the live game the way the debug
    * commands do, marking the character the way they do. Its own kind and no
    * wildcard on purpose - a player asking "which of my mods can conjure things"
@@ -395,8 +415,12 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
        * backup capability and no wildcard grant could ever cover it. */
       return grant.kind === "backup";
     case "mod":
-      /* Exact match only. One capability, no wildcard, nothing to range over. */
-      return grant.kind === "mod";
+      /* THE ACTION IS COMPARED, not just the kind, and it is the #261 lesson
+       * applied before it could be re-learned here: `mod:install` puts a pack in
+       * the library switched off, `mod:session` switches one on for the rest of the
+       * session. Neither is a superset of the other, there is no wildcard, and a
+       * kind-only comparison would have let one consent buy both. */
+      return grant.kind === "mod" && grant.action === request.action;
     case "debug":
       /* Exact match only, and here that is the point rather than a consequence:
        * this is the grant a player is most likely to check for by name, so it

@@ -47,6 +47,7 @@
 import { getGraphicsMode, GRAPHICS_NONE } from "@rpgm-tools/neo-angband-core";
 import {
   diskPacks,
+  sessionPacks,
   type AssetUrlResolver,
   type DiskPackReport,
 } from "./disk-packs";
@@ -428,6 +429,11 @@ export function discoverMods(): DiscoveredMods & {
     enabledIds: readEnabledModIds({
       discovered: [...merged.manifests.keys()],
       diskOrder: disk.order,
+      /* Same forced set the composer uses (pack.ts): a tiles mod staged for this
+       * session has to contribute its Graphics row, or it would be enabled by one
+       * answer and disabled by the other in the same launch - which is the exact
+       * drift readEnabledModIds was made one function to prevent. */
+      forced: sessionPacks().packs.map((p) => p.manifest.id),
     }),
   };
 }

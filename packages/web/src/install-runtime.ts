@@ -59,10 +59,27 @@
 
 import { installModFromZip, type InstallEnv } from "./mod-install";
 import { readModZip } from "./mod-zip";
-import type { ModInstallOutcome } from "./mod-plugin";
+import { sessionSurvivesReload, stageSessionMod } from "./mod-session";
+import type { ModInstallOutcome, ModSessionOutcome } from "./mod-plugin";
 
 /** What a mod must hold in its manifest before it may install another mod. */
 export const INSTALL_CAPABILITY = "mod:install";
+
+/**
+ * What a mod must hold before it may load one into this session only.
+ *
+ * A SEPARATE GRANT, not a relaxation of the one above. The install door's consent
+ * sentence is proportionate because what arrives is switched OFF and waits for the
+ * player; a session load is switched ON the moment the game reloads. That is more
+ * than the install line describes, so it cannot be sold under it - and the SDK's
+ * `grantCovers` compares the action so neither string can carry the other.
+ *
+ * What it is NOT is a weaker security requirement. The archive is forgotten at the
+ * end of the session; the records it composed were as real as any, and a character
+ * that met them keeps whatever they did to it. Every sentence this door produces
+ * says that, because "only for this session" reads as "so it cannot do much".
+ */
+export const SESSION_CAPABILITY = "mod:session";
 
 /**
  * File extensions that make an archive a CODE mod rather than a content pack.
@@ -183,6 +200,70 @@ export function createModInstaller(deps: InstallDoorDeps): (bytes: Uint8Array) =
       return {
         ok: false,
         problem: `the install failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  };
+}
+
+/**
+ * Build the `ctx.loadModForSession` a consenting mod is handed.
+ *
+ * THE SAME DOOR WITH THE LIBRARY STEP REMOVED. It refuses everything the install
+ * door refuses, through the same functions - `contentOnlyRefusal` here, and then
+ * the third-party switch, the zip ceilings, the zip-slip check, the origin pin and
+ * `checkMod` inside `stageSessionMod`. A session load that accepted an archive the
+ * install door turns away would teach an author that a passing test means nothing.
+ *
+ * WHAT IT SWAPS. An install writes to IndexedDB and lands switched off; this writes
+ * to session storage and is on as soon as the game reloads. So the two differ in
+ * how long the archive is remembered and in who has to press what next, and in
+ * nothing else - not in what the records may do once they are in the game.
+ *
+ * NEVER THROWS AND NEVER REJECTS, for the reason the installer does not: the caller
+ * is a mod that will be showing this to a player, and devtools is not a channel a
+ * player has.
+ */
+export function createModSessionLoader(
+  deps: InstallDoorDeps,
+): (bytes: Uint8Array) => Promise<ModSessionOutcome> {
+  return async (bytes: Uint8Array): Promise<ModSessionOutcome> => {
+    if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
+      return { ok: false, problem: "loadModForSession needs the bytes of a mod archive" };
+    }
+    /* COPIED before anything asynchronous runs, for the reason the installer copies:
+     * the caller still holds the array it passed. */
+    const own = new Uint8Array(bytes);
+    try {
+      const refusal = contentOnlyRefusal(own);
+      if (refusal !== null) return { ok: false, problem: refusal };
+      const scope = deps.env.scope ?? globalThis;
+      const staged = await stageSessionMod(
+        {
+          bytes: own,
+          /* Named for the player, in the manager's list. A mod cannot choose this
+           * wording: a source line that a mod could write would be a place to
+           * claim the archive came from somewhere it did not. */
+          source: "a mod, for this session",
+          /* NOTHING GRANTED. A content pack asks for no capabilities - the door
+           * above refuses one that does - so there is nothing to grant, and an
+           * empty list here is what makes that true rather than assumed. */
+          granted: [],
+          contentOnly: true,
+          allowed: deps.allowed(),
+        },
+        scope,
+      );
+      if (!staged.ok) return { ok: false, problem: staged.problem };
+      return {
+        ok: true,
+        id: staged.mod.id,
+        version: staged.mod.version ?? "unversioned",
+        survivesReload: sessionSurvivesReload(scope),
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        problem: `loading it for this session failed: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
   };

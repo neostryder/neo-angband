@@ -219,6 +219,57 @@ export function requirementsRefusal(id: string): string {
 }
 
 /**
+ * Why these unpacked files are not a mod worth loading, or null when they are.
+ *
+ * The three checks that have to run on bytes that came out of an archive, in one
+ * place because there is now more than one thing a player can do with such bytes:
+ * store them permanently (`storeMod`) or load them for this session only
+ * (mod-session.ts). A second copy of this would drift, and the drift would be a
+ * session load accepting an archive the permanent install refuses - which teaches
+ * a player that "it worked when I tested it" means nothing.
+ *
+ * The zip-slip check belongs AFTER the unzip rather than before it, because these
+ * paths came out of the archive and are attacker-controlled in exactly the way a
+ * catalogue's listed paths are not.
+ */
+export function archiveFaults(
+  id: string,
+  files: ReadonlyArray<readonly [string, Uint8Array]>,
+): { readonly problem: string; readonly unmet?: readonly Finding[] } | null {
+  for (const [path] of files) {
+    const bad = badPath(path);
+    if (bad) return { problem: `${id}: ${path}: ${bad}` };
+  }
+  if (!files.some(([p]) => p.toLowerCase() === "manifest.json")) {
+    return { problem: `${id}: the download has no manifest.json` };
+  }
+
+  /* THE STANDARDS INSPECTION, on the bytes that actually arrived.
+   *
+   * The same rules the author's `neo-angband-mod-check` runs and the same rules
+   * docs/modding/REQUIREMENTS.md is generated from - imported, not restated. What
+   * this catches that nothing else can is a mod that will be stored, listed and
+   * enabled and then quietly do nothing: a plugin.js with no modApi to gate it, a
+   * manifest whose shape does not admit the code it ships. Those refuse at LOAD
+   * time otherwise, which means the player installs successfully and finds out
+   * later, from a problems list, why the thing they chose is inert.
+   *
+   * ADVICE IS NOT CONSULTED. A missing description or licence is a real thing to
+   * tell an author and not a reason to refuse a player the mod they asked for. */
+  const inspection = checkMod({
+    files: files.map(([p]) => p),
+    manifestText: manifestTextOf(files),
+  });
+  if (inspection.ok) return null;
+  /* The FINDINGS travel, and `problem` is the summary rather than the whole
+   * report. This used to flatten the list into `problem` with hand-typed bullets
+   * and a trailing sentence of advice, which made the screen that shows it split
+   * the string back apart on "\n" - see InstallResult.unmet. The bullet's wording
+   * is still this module's (requirementLine) so there is one copy of it. */
+  return { problem: requirementsRefusal(id), unmet: inspection.errors };
+}
+
+/**
  * The write half, shared by every way a mod can arrive.
  *
  * Extracted rather than copied because ONE SWAP is the whole point of it (see the
@@ -257,47 +308,16 @@ async function storeMod(
   const mod = who;
   try {
 
-    /* Re-checked here even though the catalogue was validated, because the archive
-     * path produces paths that came from the ZIP rather than from the catalogue -
-     * they are attacker-controlled in exactly the way the listed ones are not. This
-     * is the zip-slip check, and it belongs after the unzip, not before it. */
-    for (const [path] of files) {
-      const bad = badPath(path);
-      if (bad) return { ok: false, problem: `${mod.id}: ${path}: ${bad}` };
-    }
-    if (!files.some(([p]) => p.toLowerCase() === "manifest.json")) {
-      return { ok: false, problem: `${mod.id}: the download has no manifest.json` };
-    }
-
-    /* THE STANDARDS INSPECTION, on the bytes that actually arrived.
-     *
-     * The same rules the author's `neo-angband-mod-check` runs and the same rules
-     * docs/modding/REQUIREMENTS.md is generated from - imported, not restated. What
-     * this catches that nothing else can is a mod that will be stored, listed and
-     * enabled and then quietly do nothing: a plugin.js with no modApi to gate it, a
-     * manifest whose shape does not admit the code it ships. Those refuse at LOAD
-     * time today, which means the player installs successfully and finds out later,
-     * from a problems list, why the thing they chose is inert.
-     *
-     * Run here rather than at discovery because only here are the unpacked contents
-     * known - an archive's plugin.js is inside a zip that discovery never opened.
-     *
-     * ADVICE IS NOT CONSULTED. A missing description or licence is a real thing to
-     * tell an author and not a reason to refuse a player the mod they asked for. */
-    const inspection = checkMod({
-      files: files.map(([p]) => p),
-      manifestText: manifestTextOf(files),
-    });
-    if (!inspection.ok) {
-      /* The FINDINGS travel, and `problem` is the summary rather than the whole
-       * report. This used to flatten the list into `problem` with hand-typed bullets
-       * and a trailing sentence of advice, which made the screen that shows it split
-       * the string back apart on "\n" - see InstallResult.unmet. The bullet's wording
-       * is still this module's (requirementLine) so there is one copy of it. */
+    /* Checked here rather than at discovery because only here are the unpacked
+     * contents known - an archive's plugin.js is inside a zip that discovery never
+     * opened. Shared with the session-only load path, which has to refuse exactly
+     * what this refuses (archiveFaults). */
+    const fault = archiveFaults(mod.id, files);
+    if (fault !== null) {
       return {
         ok: false,
-        problem: requirementsRefusal(mod.id),
-        unmet: inspection.errors,
+        problem: fault.problem,
+        ...(fault.unmet === undefined ? {} : { unmet: fault.unmet }),
       };
     }
 

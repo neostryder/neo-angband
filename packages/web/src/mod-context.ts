@@ -20,13 +20,20 @@ import {
   type ModDebug,
   type ModInstallOutcome,
   type ModPluginContext,
+  type ModSessionOutcome,
   type ModUi,
 } from "./mod-plugin";
 import { diskPacks } from "./disk-packs";
 import { modPrefs, type ModPrefs } from "./mod-prefs";
 import { createBackupFolder } from "./mod-backup";
 import { createModUi, PANEL_CAPABILITY } from "./panel-runtime";
-import { createModInstaller, INSTALL_CAPABILITY, type InstallDoorDeps } from "./install-runtime";
+import {
+  createModInstaller,
+  createModSessionLoader,
+  INSTALL_CAPABILITY,
+  SESSION_CAPABILITY,
+  type InstallDoorDeps,
+} from "./install-runtime";
 import { createModDebug, SPAWN_CAPABILITY, type SpawnDoorDeps } from "./spawn-runtime";
 import type { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 
@@ -84,6 +91,7 @@ export function modPluginContext(
   const backupFolder = backupFolderFor(id, session);
   const ui = modUiFor(id, session);
   const installMod = installerFor(session);
+  const loadModForSession = sessionLoaderFor(session);
   const debug = debugFor(id, session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
@@ -111,6 +119,7 @@ export function modPluginContext(
     ...(backupFolder ? { backupFolder } : {}),
     ...(ui ? { ui } : {}),
     ...(installMod ? { installMod } : {}),
+    ...(loadModForSession ? { loadModForSession } : {}),
     ...(debug ? { debug } : {}),
     /* Spread rather than set to undefined, so `"registries" in ctx` answers the
      * same question as `ctx.registries !== undefined` - the shape `state` uses. */
@@ -169,6 +178,25 @@ function installerFor(
   if (!session.capabilities?.has(INSTALL_CAPABILITY)) return undefined;
   if (!installDoor) return undefined;
   return createModInstaller(installDoor);
+}
+
+/**
+ * `ctx.loadModForSession`: present only when this mod's manifest declared
+ * `mod:session` AND the host has latched the install door.
+ *
+ * THE SAME DOOR DEPS as `installerFor`, and that is deliberate rather than
+ * convenient: a session load runs the third-party switch and reads the installed
+ * mods to check the origin pin, so it needs exactly what an install needs. What
+ * separates the two is the capability, which is a different string precisely so
+ * that granting one does not grant the other.
+ */
+function sessionLoaderFor(
+  session: ModSessionFacts,
+): ((bytes: Uint8Array) => Promise<ModSessionOutcome>) | undefined {
+  if (session.loadModForSession !== undefined) return session.loadModForSession;
+  if (!session.capabilities?.has(SESSION_CAPABILITY)) return undefined;
+  if (!installDoor) return undefined;
+  return createModSessionLoader(installDoor);
 }
 
 /**
@@ -231,6 +259,8 @@ export interface ModSessionFacts {
   readonly ui?: ModUi;
   /** Override ctx.installMod directly (tests, and a front end with its own door). */
   readonly installMod?: (bytes: Uint8Array) => Promise<ModInstallOutcome>;
+  /** Override ctx.loadModForSession directly (tests, and a front end of its own). */
+  readonly loadModForSession?: (bytes: Uint8Array) => Promise<ModSessionOutcome>;
   /** Override ctx.debug directly (tests, and a front end with its own). */
   readonly debug?: ModDebug;
   /**

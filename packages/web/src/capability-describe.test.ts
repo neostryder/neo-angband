@@ -64,6 +64,37 @@ describe("describeCapability", () => {
     expect(describeCapability("network:*").text).toMatch(/ANY host/i);
   });
 
+  it("gives mod:install and mod:session DIFFERENT sentences, and neither is padding", () => {
+    const install = describeCapability("mod:install");
+    const session = describeCapability("mod:session");
+    expect(install.elevated).toBe(true);
+    expect(session.elevated).toBe(true);
+    expect(install.text).not.toBe(session.text);
+    /* THE INSTALL LINE'S PROPORTIONALITY IS THE WAITING. What arrives is off until
+     * the player reads its list and turns it on, and that clause is what stops the
+     * grant reading as "may run whatever it writes". */
+    expect(install.text).toMatch(/switched off/i);
+    expect(install.text).toMatch(/never code/i);
+    /* AND THE SESSION LINE MUST NOT BORROW IT, because it is not true there: the
+     * pack is on as soon as the game reloads. Instead it has to say the thing the
+     * "just for this session" framing hides - the mod is forgotten, what it did is
+     * not. A session sentence that claimed the mod waits to be switched on would be
+     * the exact laundering this separation exists to prevent. */
+    expect(session.text).not.toMatch(/switched off/i);
+    expect(session.text).toMatch(/never code/i);
+    expect(session.text).toMatch(/reloads/i);
+    expect(session.text).toMatch(/what it did to a character is not/i);
+  });
+
+  it("says what ui:panel.mount and debug:spawn actually are, not what they are called", () => {
+    /* Neither arm had a test when mod:session was added. They are the two grants a
+     * player is most likely to look for by name, so the wording is the whole
+     * product of the capability and an untested string is an unwatched one. */
+    expect(describeCapability("ui:panel.mount")).toMatchObject({ elevated: true });
+    expect(describeCapability("ui:panel.mount").text).toMatch(/cover them completely/i);
+    expect(describeCapability("debug:spawn")).toMatchObject({ elevated: true });
+  });
+
   it("fails safe on an unrecognized capability string", () => {
     const d = describeCapability("bogus:thing");
     expect(d.elevated).toBe(true);
