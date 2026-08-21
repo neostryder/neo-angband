@@ -8295,6 +8295,78 @@ function advance(): void {
   });
 }
 
+/**
+ * The autoplayer half of a death: reincarnate in place instead of ending the run
+ * (borg/borg-reincarnate.c, reached from borg_think.c:300 whenever the borg is the
+ * one playing and cheat-death is off).
+ *
+ * THE GATE IS THE KEYBOARD, and it is the gate this shell already had.
+ * `installedController` is the one autoplayer slot: a mod fills it only by
+ * returning a controller from `controller()`, and the Borg returns one only when
+ * its own `borg.autoplay` flag is on. So "is an autoplayer playing" needs no second
+ * flag and no mod id written into the engine - which is the same argument that
+ * settled `mods/registry.json` carrying no facts about a mod. Upstream's gate is
+ * the same sentence: `reincarnate_borg` is called from inside `borg_think`, so the
+ * borg running IS the condition.
+ *
+ * WHY THE MOD CANNOT ASK FOR THIS ITSELF. `AgentCommand` is `PlayerCommand` - an
+ * in-game turn command - and birth has no representation in that set. There is no
+ * value a controller could return that means "roll me a new character", so the
+ * decision has to be taken here, on the host side of the seam.
+ *
+ * NO NEW SAVE FILE AND NO NEW SLOT. `setActiveId` is not touched and `markDead` is
+ * not called, so the reborn character autosaves over the same slot the dead one
+ * used - which is what makes this a session that kept going rather than a sequence
+ * of games. The slot's roster row updates on the next save (metaFromState reads
+ * the live race, class and name).
+ *
+ * Returns false when nothing was reincarnated, and the caller runs the ordinary
+ * death flow. A throw is contained the same way a mod fault is: the character is
+ * dead either way, and a broken respawn must still reach the tombstone.
+ */
+function reincarnateAutoplayer(): boolean {
+  const holder = installedController;
+  if (!holder) return false;
+  const diedFrom = state.actor.player.diedFrom || "the dungeon";
+  const diedAt = state.chunk.depth;
+  const diedAtLevel = state.actor.player.lev;
+  let reborn;
+  try {
+    reborn = game.reincarnate({
+      /* Mark the savefile (borg-reincarnate.c:587-589). player_generate zeroed the
+       * field, so every character this loop produces is marked again. */
+      noscore: NOSCORE.BORG,
+      /* create_random_name (borg-reincarnate.c:499-501) through this port's own
+       * name generator rather than a second copy of upstream's syllable tables. */
+      fullName: playerRandomName(state.rng, tolkienNameProbs()),
+    });
+  } catch (err) {
+    log.error(`mod:${holder.id}`, `reincarnation failed:`, err);
+    reportModFault(
+      holder.id,
+      `it could not start a new character after this one died, so the run ends here: ${faultMessage(err)}`,
+    );
+    return false;
+  }
+  playerName = state.actor.player.fullName;
+  /* borg_note("# Respawning") (borg-reincarnate.c:566), with what happened to the
+   * character that just died - the log of a screensaver run is the only record of
+   * it, and "died" with no depth or level says nothing worth reading later. */
+  log.info(
+    `mod:${holder.id}`,
+    `died to ${diedFrom} at level ${diedAtLevel} on depth ${diedAt}; respawning as a ${reborn.raceName} ${reborn.className}`,
+  );
+  say(`You awaken as a ${reborn.raceName} ${reborn.className}.`);
+  message = "";
+  /* The turn's tail, the parts of it that still apply: the reborn character is on
+   * a fresh town level, so there is no floor pile to announce and no shop to walk
+   * into. Forced, because a respawn is a save point in the same way a level change
+   * is and the throttle would drop it. */
+  autosave(true);
+  render();
+  return true;
+}
+
 function continueAdvance(
   status: LoopStatus,
   preLen: number,
@@ -8317,6 +8389,20 @@ function continueAdvance(
     return;
   }
   if (status === LOOP_STATUS.DEAD) {
+    /* AN AUTOPLAYER'S DEATH IS NOT A PLAYER'S DEATH.
+     *
+     * While a mod holds the keyboard, a death starts the next character in place
+     * instead of ending the session - upstream's reincarnate_borg, which is what
+     * turns the Borg into something that plays itself over and over rather than
+     * once. It is FIRST in this branch on purpose: everything below is the human
+     * death flow (a tombstone, a dropped save slot, a score entry, a menu), and
+     * none of it may run for a character that is about to be alive again.
+     *
+     * A HUMAN'S DEATH CANNOT REACH IT. `installedController` is null unless a mod
+     * returned a controller from `controller()`, which the Borg does only when its
+     * own `borg.autoplay` flag is on. With nobody at the wheel this is a single
+     * null check that falls straight through to the flow that was here before. */
+    if (reincarnateAutoplayer()) return;
     dead = true;
     // Death is terminal (decision 16): the character's slot becomes a
     // tombstone - its save bytes are dropped so it can never be resumed, but
@@ -11761,6 +11847,20 @@ for (const loaded of activeModCode().plugins) {
       capabilities: CapabilitySet.fromManifest(loaded.manifest),
     });
     installedController = { id: loaded.id, session };
+    /* Mark the savefile (do_cmd_try_borg, cmd-misc.c:128-140): a character an
+     * autoplayer took over is not a character that earned its result, and the bit
+     * is what the score gate reads at death (score.c:268, the "Score not
+     * registered for borgs." line below). This is upstream's own activation gate -
+     * the moment the borg is switched on, not the moment it first respawns - so the
+     * character that was already alive when the mod took over is marked too.
+     *
+     * The bit was already defined, already score-invalidating, already persisted
+     * and already read at death. Nothing had ever SET it, so every read answered
+     * false: an inert seam of exactly the shape this project keeps finding. It is
+     * one-way (markNoscore only ORs) and there is no path that clears it, so a save
+     * that has run an autoplayer stays marked for the rest of its life. */
+    const takenOver = state.actor.player;
+    takenOver.noscore = markNoscore(takenOver.noscore, NOSCORE.BORG);
     log.info(`mod:${loaded.id}`, `installed an autoplayer`);
   } catch (err) {
     /* Same containment as register(): a controller that will not install must
