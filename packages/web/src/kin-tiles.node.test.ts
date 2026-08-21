@@ -46,6 +46,13 @@ import {
 import type { TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
 import { composeContentPacks, validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { LoadedPack, PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import {
+  deriveKinSlots,
+  LINOLEUM_DERIVED_HUES,
+  slotFromAtlas,
+  slotToAtlas,
+  type LinoleumSlot,
+} from "./linoleum-pack";
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));
 const CORE_PACK = join(REPO, "packages", "content", "pack");
@@ -263,5 +270,208 @@ describe("fillTilesFromKin against the shipped tile packs", () => {
     const chosen = { ...map.monster[kobold.ridx]! };
     fillTilesFromKin(map, d);
     expect(map.monster[kobold.ridx]).toEqual(chosen);
+  });
+});
+/**
+ * `deriveKinSlots` - the loose-pack engine's own half of provisioning a mod.
+ *
+ * WHAT THE CORE FILL LEAVES UNDONE. Everything above proves a mod's ant gets an
+ * ant's tile in every pack. It is also, necessarily, the SAME ant: the fill
+ * copies a kin's tile code, so the added creature and its donor are one picture.
+ * The tilesheet engine cannot do better - its tiles are cells of a fixed atlas
+ * and there is no spare cell for a variant. A loose pack's tiles are individual
+ * images, so this engine allocates a slot of its own that draws the donor's
+ * image with its hue turned.
+ *
+ * These tests are built on a HAND-MADE slot table rather than a real loose pack,
+ * and that is the honest way round here: the packs are this mod's art, they are
+ * gitignored, and they are built by the linoleum repository. What is under test
+ * is the derivation, whose whole input is "a slot table and a map", so a
+ * two-entry table exercises it exactly. The REGISTRIES are real, composed from
+ * the real core pack and real tutorial mods, because who gets filled is the part
+ * that must not drift.
+ */
+describe("deriveKinSlots - distinctive tiles for a mod's content", () => {
+  const core = (files: readonly string[]): LoadedPack => {
+    const out: Record<string, unknown> = {};
+    for (const f of files) out[f] = packFile(f);
+    return {
+      manifest: { id: "core", name: "Angband", version: "1.0.0", shape: "content" } as PackManifest,
+      files: out,
+    } as LoadedPack;
+  };
+  const tutorial = (dir: string, files: readonly string[]): LoadedPack => {
+    const manifest = validateManifest(readJson(join(TUTORIALS, dir, "manifest.json")));
+    const out: Record<string, unknown> = {};
+    for (const f of files) out[f] = readJson(join(TUTORIALS, dir, `${f}.json`));
+    return { manifest, files: out } as LoadedPack;
+  };
+
+  /** Core plus the two tutorial mods, composed for real. */
+  function modded(): { mon: MonsterRegistry; obj: ObjRegistry } {
+    const composed = composeContentPacks([
+      core(["monster", "monster_base", "object"]),
+      tutorial("tutorial-03-add-a-monster", ["monster"]),
+      tutorial("tutorial-02-add-an-item", ["object"]),
+    ]);
+    expect(composed.problems).toEqual([]);
+    return {
+      mon: monsterRegistry(composed.records["monster"]),
+      obj: objRegistry({ records: composed.records["object"] }),
+    };
+  }
+
+  /**
+   * A two-slot pack, with slot 0 on one ant and slot 1 on one soft armour.
+   *
+   * The donors are FOUND in the real registries rather than named, so this does
+   * not break when core's data moves, and it is the same donor the fill would
+   * pick: the fill takes the first kin carrying a tile, and exactly one does.
+   */
+  function twoSlotPack(mon: MonsterRegistry, obj: ObjRegistry, addedTval: number) {
+    const slots: LinoleumSlot[] = [
+      { kind: "asset", asset: "mon-donor" },
+      { kind: "asset", asset: "obj-donor" },
+    ];
+    const map = new TileMap();
+    const antDonor = mon.races.find((r) => r.base.name === "ant")!;
+    const armourDonor = obj.kinds.find((k) => k.tval === addedTval)!;
+    map.monster[antDonor.ridx] = slotToAtlas(0);
+    map.object[armourDonor.kidx] = slotToAtlas(1);
+    return { slots, map, antDonor, armourDonor };
+  }
+
+  it("gives an added monster and item a slot of their own, drawing the donor's asset", () => {
+    const { mon, obj } = modded();
+    const d = deps(mon, obj);
+    const ant = mon.races.find((r) => r.name === "carpenter ant")!;
+    const jerkin = obj.kinds.find((k) => k.name === "Padded Jerkin~")!;
+    const { slots, map, antDonor, armourDonor } = twoSlotPack(mon, obj, jerkin.tval);
+
+    const out = deriveKinSlots({ map, slots, deps: d });
+
+    /* Filled, which is the core claim this builds on. */
+    expect(out.fill).toEqual({ monsters: 1, objects: 1 });
+    expect(out.overflow).toBe(0);
+    /* Two new slots, and the pack's own two are untouched - a derived slot must
+     * not be able to change what an existing rule draws. */
+    expect(out.derived).toBe(2);
+    expect(out.slots.length).toBe(4);
+    expect(out.slots.slice(0, 2)).toEqual(slots.slice(0, 2));
+
+    /* NOT the donor's tile, which is the whole point and the one assertion the
+     * core fill's own tests cannot make. */
+    expect(map.monster[ant.ridx]).not.toEqual(map.monster[antDonor.ridx]);
+    expect(map.object[jerkin.kidx]).not.toEqual(map.object[armourDonor.kidx]);
+
+    const antSlot = out.slots[slotFromAtlas(map.monster[ant.ridx]!)]!;
+    expect(antSlot).toEqual({
+      kind: "derived",
+      from: 0,
+      hue: LINOLEUM_DERIVED_HUES[0],
+      of: `monster:${ant.ridx}`,
+    });
+    const jerkinSlot = out.slots[slotFromAtlas(map.object[jerkin.kidx]!)]!;
+    expect(jerkinSlot).toEqual({
+      kind: "derived",
+      from: 1,
+      hue: LINOLEUM_DERIVED_HUES[0],
+      of: `object:${jerkin.kidx}`,
+    });
+  });
+
+  it("derives nothing at all with no mod installed", () => {
+    const mon = monsterRegistry();
+    const obj = objRegistry();
+    const d = deps(mon, obj);
+    /* Any tval with a kin to donate; soft armor is the one the modded case uses. */
+    const tval = obj.kinds.find((k) => k.name === "Padded Jerkin~")?.tval
+      ?? obj.kinds.find((k) => k.tval > 0)!.tval;
+    const { slots, map } = twoSlotPack(mon, obj, tval);
+
+    const out = deriveKinSlots({ map, slots, deps: d });
+
+    /* The same restriction the core fill earns, seen from this side: with
+     * nothing added, there is nothing to derive, so an unmodded game's drawing
+     * cannot be changed by this code existing. */
+    expect(out.fill).toEqual({ monsters: 0, objects: 0 });
+    expect(out.derived).toBe(0);
+    expect(out.slots).toEqual(slots);
+  });
+
+  it("gives two added creatures on one donor different colours", () => {
+    /*
+     * The case a per-entity hash would get wrong one time in eight, and the
+     * reason hues are handed out per DONOR: two mod ants that look like each
+     * other are only marginally better than two that look like the base game's.
+     *
+     * The second ant is the tutorial's own record renamed, which is the shape
+     * the composer produces for an added monster - `$from` and all - rather than
+     * a fixture written to agree with the binder.
+     */
+    const composed = composeContentPacks([
+      core(["monster", "monster_base", "object"]),
+      tutorial("tutorial-03-add-a-monster", ["monster"]),
+    ]);
+    expect(composed.problems).toEqual([]);
+    const records = composed.records["monster"] as Record<string, unknown>[];
+    const added = records.find((r) => r["name"] === "carpenter ant")!;
+    expect(added["$from"], "the composer did not stamp the added monster").toBeDefined();
+    const mon = monsterRegistry([...records, { ...added, name: "joiner ant" }]);
+    const obj = objRegistry();
+    const d = deps(mon, obj);
+
+    const first = mon.races.find((r) => r.name === "carpenter ant")!;
+    const second = mon.races.find((r) => r.name === "joiner ant")!;
+    const { slots, map } = twoSlotPack(mon, obj, obj.kinds[0]!.tval);
+
+    const out = deriveKinSlots({ map, slots, deps: d });
+    expect(out.fill.monsters).toBe(2);
+
+    const a = out.slots[slotFromAtlas(map.monster[first.ridx]!)]!;
+    const b = out.slots[slotFromAtlas(map.monster[second.ridx]!)]!;
+    expect(a.kind).toBe("derived");
+    expect(b.kind).toBe("derived");
+    /* Same picture, different colour, different slot. */
+    expect((a as { from: number }).from).toBe((b as { from: number }).from);
+    expect((a as { hue: number }).hue).not.toBe((b as { hue: number }).hue);
+    expect(map.monster[first.ridx]).not.toEqual(map.monster[second.ridx]);
+  });
+
+  it("is deterministic across runs", () => {
+    /* A tile that changed colour between launches would be worse than a
+     * duplicate one, so this is not a nicety. Nothing in the derivation reads
+     * the RNG, the clock or the save; this is the check that keeps that true. */
+    const run = () => {
+      const { mon, obj } = modded();
+      const jerkin = obj.kinds.find((k) => k.name === "Padded Jerkin~")!;
+      const { slots, map } = twoSlotPack(mon, obj, jerkin.tval);
+      const out = deriveKinSlots({ map, slots, deps: deps(mon, obj) });
+      return { slots: out.slots, ant: map.monster[mon.races.find((r) => r.name === "carpenter ant")!.ridx] };
+    };
+    expect(run()).toEqual(run());
+  });
+
+  it("copies the tile plainly when the donor's slot is not the pack's", () => {
+    /*
+     * A donor tile that came from somewhere other than this pack's own table - a
+     * mod pref naming a raw atlas cell, which layers in before the fill - has no
+     * asset behind it to recolour. Copying it unchanged is the honest answer, and
+     * it is what happened before this code existed.
+     */
+    const { mon, obj } = modded();
+    const d = deps(mon, obj);
+    const ant = mon.races.find((r) => r.name === "carpenter ant")!;
+    const antDonor = mon.races.find((r) => r.base.name === "ant")!;
+    const slots: LinoleumSlot[] = [{ kind: "asset", asset: "mon-donor" }];
+    const map = new TileMap();
+    /* Slot 900: past the end of a one-entry table, so nothing defines it. */
+    map.monster[antDonor.ridx] = slotToAtlas(900);
+
+    const out = deriveKinSlots({ map, slots, deps: d });
+
+    expect(out.fill.monsters).toBe(1);
+    expect(out.derived).toBe(0);
+    expect(map.monster[ant.ridx]).toEqual(map.monster[antDonor.ridx]);
   });
 });

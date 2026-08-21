@@ -79,7 +79,10 @@ difference. Packs you convert yourself are yours.
 
 Known limits, shared by BOTH engines so they agree: conditional (`?:` /
 `:when:`) rules are not evaluated; `family` effect metadata (glow/tint/pulse) is
-parsed but not applied, so a family draws its base asset.
+parsed but not applied, so a family draws its base asset. The one place this
+engine deliberately draws something a pack did not author is a **derived** tile
+for a mod's own content, which the tilesheet engine has no room for - see
+[Derived tiles for a mod's content](#derived-tiles-for-a-mods-content).
 
 Double-height (overdraw) tiles used to be on that list. They are drawn over the
 cell above now, by both engines - but the two learn about them differently, and
@@ -236,6 +239,62 @@ converts byte-identically to the legacy-only export, so the parity tests are
 unaffected. They are enabled per pack through the converter's `authoring`
 option (`ConvertOptions.authoring[<packKey>]`, with `pools` and `targets`
 arrays); a legacy tileset carries no pools of its own.
+
+## Derived tiles for a mod's content
+
+A tile pack has never heard of a mod's monsters, so core gives an added creature
+or item the tile of its nearest KIN: a monster takes one from a race sharing its
+`base`, an object kind from a kind sharing its `tval`
+(`fillTilesFromKin`, `packages/core/src/visuals/tile-prefs.ts`). That is what
+stops a mod's content standing out as a coloured letter in a tiled dungeon, and
+both engines do it, because "does my mod look right" must not depend on which
+engine the player picked.
+
+It leaves half the problem. The added ant is now pixel-for-pixel the base game's
+ant, so nobody can tell which is which - not the player meeting both, and not the
+author checking their own work. **The tilesheet engine cannot do better:** its
+tiles are cells of a fixed atlas and there is no spare cell to put a variant in.
+The loose engine can, because its tiles are individual images.
+
+So a loose pack allocates a slot of its own for each filled entity, drawing the
+donor's image with its hue rotated (`deriveKinSlots`,
+`packages/web/src/linoleum-pack.ts`). It is a third slot kind, `derived`, and it
+is the only one a pack cannot declare:
+
+```
+{ kind: "derived", from: <donor slot>, hue: <degrees>, of: "monster:123" }
+```
+
+Five things about it are worth stating, because each one is a claim somebody will
+otherwise have to re-derive from the code:
+
+- **Only mod-added records are touched**, and this engine adds no judgement of
+  its own: it derives exactly where core's fill decided to fill, and that
+  decision is restricted by PROVENANCE. A pack with no mods installed builds no
+  derived slots at all, so an unmodded game's drawing cannot change.
+- **A pref file still wins.** An author who names an asset for their own monster
+  layers in before the fill runs, and the fill only ever writes where there is
+  nothing.
+- **Hues are handed out per donor**, cycling through eight spread around the
+  wheel, in the order the fill walks the registries. So the first eight added
+  creatures sharing one base differ from each other as well as from the base
+  game's art, and the ninth repeats the first, which is a better answer than a
+  ninth colour nobody can name.
+- **It is deterministic.** Nothing here reads the RNG, the clock or the save, so
+  the same set of installed mods gives the same colours every launch. A tile that
+  changed colour between launches would be worse than a duplicate one.
+- **A hue rotation is a no-op on grey.** A donor tile with no saturation comes
+  back the colour it went in, so a derived tile is distinctive exactly when its
+  donor has colour to turn. The saturation lift in `renderRecoloured` helps a
+  muted donor and cannot invent colour in a fully grey one. The alternative,
+  compositing a mark onto somebody else's art, is a bigger lie than a similar
+  colour.
+
+The recolour is a canvas `filter` rather than per-pixel arithmetic, which matters
+for one reason beyond speed: nothing calls `getImageData`, so an asset served
+from an installed mod's blob URL recolours without a canvas taint error. Where the
+filter is unavailable the copy comes out identical to its source, which is the
+undistinguished tile that was there before.
 
 ## Running the converter
 
