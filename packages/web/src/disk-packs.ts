@@ -105,7 +105,13 @@ export type ModDirKind =
    * (mod-install.ts). No path to show a player - they were never put anywhere -
    * so the manager names the repository and tag instead.
    */
-  | "installed";
+  | "installed"
+  /**
+   * A mod loaded for this browsing session only, held in `sessionStorage` rather
+   * than in IndexedDB (mod-session.ts). Nothing about it is written where a later
+   * launch will find it, and the mod manager marks every row that came from here.
+   */
+  | "session";
 
 export interface DiskPackReport {
   readonly packs: readonly DiskPack[];
@@ -208,26 +214,79 @@ export const NO_DISK_PACKS: DiskPackReport = {
 let current: DiskPackReport = NO_DISK_PACKS;
 
 /**
- * The packs found at boot.
+ * The session tier, latched separately (mod-session.ts).
+ *
+ * A SECOND LATCH rather than a third argument to `combineDiskReports` at the boot
+ * block, because the two have different owners and different lifetimes. The boot
+ * report is rebuilt by `rediscoverModSources`, which reads a directory and
+ * IndexedDB; the session tier is written by a player or a mod DURING the session
+ * and has to survive that function running again. Fusing them here means neither
+ * owner can drop the other's packs by forgetting to include them.
+ */
+let session: DiskPackReport = NO_DISK_PACKS;
+
+/* The fused answer, memoised on the identity of both halves. `composition()`
+ * (pack.ts) compares the report it was given BY IDENTITY to decide whether to
+ * compose again, so `diskPacks()` must return the same object every call until
+ * one of its inputs actually changes - and must return a DIFFERENT object the
+ * moment one does. A fresh combine per call would recompose the whole pack on
+ * every read; a permanently cached one would never see a session mod arrive. */
+let fused: {
+  readonly forCurrent: DiskPackReport;
+  readonly forSession: DiskPackReport;
+  readonly report: DiskPackReport;
+} | null = null;
+
+/**
+ * The packs found at boot, plus anything loaded for this session only.
  *
  * Synchronous on purpose. Content composition (pack.ts) runs at module load and
  * the game's own load path is synchronous throughout; making discovery async all
  * the way down would push `await` into the composer for the sake of one HTTP
  * round trip that happens once, before anything is drawn. So the entry module
  * awaits `loadDiskPacks()` ONCE and latches the answer here.
+ *
+ * THE SESSION TIER IS LISTED FIRST, so a session copy of an id outranks a
+ * permanently installed one. That is the point of loading a draft for a session:
+ * an author editing a mod they already have installed wants to see the draft, and
+ * `combineDiskReports` reports the collision on the mod's own row rather than
+ * resolving it in silence.
  */
 export function diskPacks(): DiskPackReport {
-  return current;
+  if (!session.available) return current;
+  if (fused && fused.forCurrent === current && fused.forSession === session) {
+    return fused.report;
+  }
+  fused = {
+    forCurrent: current,
+    forSession: session,
+    report: combineDiskReports([session, current]),
+  };
+  return fused.report;
 }
 
 /** Install a report (the boot path, and the tests). */
 export function setDiskPacks(report: DiskPackReport): void {
   current = report;
+  fused = null;
+}
+
+/** Install the session tier (mod-session.ts, and the tests). */
+export function setSessionPacks(report: DiskPackReport): void {
+  session = report;
+  fused = null;
+}
+
+/** The session tier on its own, for the manager's "loaded for this session" list. */
+export function sessionPacks(): DiskPackReport {
+  return session;
 }
 
 /** Back to "no directory", for tests. */
 export function resetDiskPacks(): void {
   current = NO_DISK_PACKS;
+  session = NO_DISK_PACKS;
+  fused = null;
 }
 
 /** The index endpoint's shape, as the desktop main process builds it. */
@@ -500,6 +559,8 @@ function describe(report: DiskPackReport): string {
       return "folder you chose";
     case "installed":
       return "installed";
+    case "session":
+      return "loaded for this session";
     default:
       return report.kind;
   }

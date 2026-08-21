@@ -654,7 +654,60 @@ inspection an author's own `neo-angband-mod-check` runs, so a mod your builder
 emitted fails for the same reasons in the same words as a mod somebody
 downloaded.
 
-## 4d. `ctx.debug` - conjuring a thing, and paying for it
+## 4d. `ctx.loadModForSession` - a mod handing the game a mod to TRY
+
+The same door with the library step removed, behind its own capability
+(`mod:session`). What it changes is where the archive is kept and for how long:
+session storage instead of IndexedDB, and it composes into the game on the next
+reload without waiting to be switched on.
+
+```js
+if (!ctx.loadModForSession) return;               // no grant, or no door
+const outcome = await ctx.loadModForSession(bytes);
+if (!outcome.ok) show(outcome.problem);
+else if (!outcome.survivesReload) show("this browser will not keep it across the reload");
+else show(`${outcome.id} is loaded for this session - reload to try it`);
+```
+
+Four things about it, and the first is the one to say to the player:
+
+- **What is temporary is the MOD, not what it does.** The archive is forgotten
+  when the game is closed. The records were as real as any other pack's while
+  they were loaded, so a character that met them keeps whatever they did to it -
+  and next launch, with the pack gone, that character's mod-owned monsters and
+  items belong to something that is not installed. The game handles that (it
+  quarantines them rather than resolving them wrongly), but the values a player
+  saw at save time can differ from the ones they see afterwards, because a
+  pack's PATCHES live in the composition and not in the save. So: do not stage
+  content under a character somebody is playing seriously, and say so.
+- **It is CONTENT ONLY, on exactly the same terms `installMod` is.** Code under
+  any extension is refused, and so is an archive whose manifest asks for a
+  capability. A mod may not hand the engine another mod's code to run - the
+  player consented to YOUR mod, not to whatever you chose to execute - and that
+  refusal is permanent by design rather than pending an isolation tier. The
+  honest limit of it is worth knowing: it stops the ENGINE being the vehicle, and
+  it is not a fence around a plugin that means to load code some other way, since
+  a plugin runs in the page. See PLUGINS.md, "What a capability gates".
+- **A reload is still what applies it.** Content composes at load. Nothing you
+  stage is in the game this turn, and the mod manager offers the reload on the way
+  out.
+- **`mod:session` is not `mod:install`, and neither grant carries the other.**
+  The install line is proportionate because what arrives waits to be switched on;
+  this one does not wait. `grantCovers` compares the action so the two consent
+  sentences cannot be swapped.
+
+Everything else is shared with the install door and is not reimplemented: the
+third-party switch read at the moment of use, the zip ceilings, the zip-slip
+check, `checkMod`'s standards inspection, and the origin pin against an installed
+copy of the same id. A staged copy of an id you already have SHADOWS the installed
+one for the session, and the collision appears on that mod's row.
+
+**A session mod is never invisible.** It is listed in the mod manager marked
+`SESSION ONLY`, and its detail screen offers `Drop it` instead of the ordinary
+on/off - because it is on by having been staged rather than by a stored choice,
+and dropping the archive is the only thing that actually stops it.
+
+## 4e. `ctx.debug` - conjuring a thing, and paying for it
 
 This one is unusual and worth reading before using: it adds almost no ability and
 a great deal of honesty. Every primitive behind it is already on `ctx.core` -
@@ -769,7 +822,8 @@ later mod input consumer cannot silently take a player-selected binding.
 | The first-party mods' own hook code (their repositories, not this tree) | `neo-angband-mod-bug-fixes/plugin.ts`, `neo-angband-mod-qol/plugin.ts` |
 | Per-mod Fixes & tweaks submenu | `packages/web/src/mods.ts` (`managePatches`) |
 | DOM panels: the layer, the invariants, the way out | `packages/web/src/panel-runtime.ts` |
-| The content-only install door | `packages/web/src/install-runtime.ts` |
+| The content-only install door, and its session sibling | `packages/web/src/install-runtime.ts` |
+| The session tier: staging, the lifetime, and what it is worth | `packages/web/src/mod-session.ts` |
 | Conjuring, and the debug mark that pays for it | `packages/web/src/spawn-runtime.ts` |
 | The one keydown registration, and the door's stand-down | `packages/web/src/input-door.ts` |
 | Host wiring + message sink | `packages/web/src/main.ts` |

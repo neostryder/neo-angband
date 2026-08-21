@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { modPluginContext, setModRegistries } from "./mod-context";
 import type { CoreRegistries } from "@rpgm-tools/neo-angband-core";
+import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modPrefs, modPrefsKey } from "./mod-prefs";
 
 const MAIN_TS_SOURCE = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
@@ -143,6 +144,61 @@ describe("ctx.registries - the bound content a mod can ask about", () => {
     setModRegistries(undefined);
     const ctx = modPluginContext("qol", {}, undefined, {}, { registries: fixture() });
     expect(ctx.registries?.monsters.races).toHaveLength(2);
+  });
+
+  it("the capability-gated doors are ABSENT without the capability", () => {
+    /* The gate is the whole product of these three fields, and none of them had a
+     * test for absence. `undefined` rather than a facade that refuses is the shape:
+     * a mod guards with `if (!ctx.installMod) return;`, so a present-but-throwing
+     * door would move every refusal from a branch the author wrote to a crash they
+     * did not. */
+    const ctx = modPluginContext("qol", {});
+    expect(ctx.installMod).toBeUndefined();
+    expect(ctx.loadModForSession).toBeUndefined();
+    expect(ctx.ui).toBeUndefined();
+    expect(ctx.debug).toBeUndefined();
+  });
+
+  it("mod:install does not hand over the session door, or the other way round", () => {
+    /* THE SAME ESCALATION the SDK's grantCovers refuses, checked at the place a mod
+     * actually reaches the door. Two capability strings that both produce a `mod`
+     * kind is exactly the shape #261 had, so this asks the question at both layers
+     * rather than trusting the one below. */
+    const installer = modPluginContext(
+      "qol",
+      {},
+      undefined,
+      {},
+      { loadModForSession: () => Promise.resolve({ ok: false, problem: "no" }) },
+    );
+    /* An explicit override is honoured - that is the test seam - but the CAPABILITY
+     * route is what the escalation would travel down, so it is checked with a real
+     * CapabilitySet below rather than with an override. */
+    expect(installer.loadModForSession).toBeDefined();
+
+    const set = CapabilitySet.fromManifest({
+      id: "qol",
+      name: "qol",
+      version: "1.0.0",
+      shape: "plugin",
+      capabilities: ["mod:install"],
+    });
+    expect(set.has("mod:install")).toBe(true);
+    expect(set.has("mod:session")).toBe(false);
+    /* And with no latched door there is nothing to hand over either way, which is
+     * the second half of the gate and the half a unit test would otherwise skip. */
+    const ctx = modPluginContext("qol", {}, undefined, {}, { capabilities: set });
+    expect(ctx.installMod).toBeUndefined();
+    expect(ctx.loadModForSession).toBeUndefined();
+  });
+
+  it("main.ts actually loads the session tier at boot", () => {
+    /* THE SAME CLASS OF CHECK as the registry latch below, and for the same reason:
+     * every test in mod-session.test.ts calls loadSessionMods itself, so all of
+     * them would pass against a boot path that never called it - and a staged mod
+     * that silently never loads is the failure mode this whole feature is one
+     * missing line away from. */
+    expect(MAIN_TS_SOURCE).toMatch(/await loadSessionMods\(\);/u);
   });
 
   it("main.ts actually latches the bound registries", () => {

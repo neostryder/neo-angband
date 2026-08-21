@@ -71,6 +71,8 @@ import {
   type InstallResult,
 } from "./mod-install";
 import type { WaitingZip, ZipImportDeps } from "./mod-zip-source";
+import { previewSessionArchive, type SessionPreview } from "./mod-session";
+import { describeCapabilities } from "./capability-describe";
 import {
   pendingUpgrades,
   refreshRow,
@@ -1108,6 +1110,13 @@ export async function showZipImport(term: GridSurface & GridPointerInput, deps: 
         color: C_FG,
         hint: "Any zip on your machine. Your copy of it is left alone.",
       },
+      {
+        label: "Try a .zip for this session only...",
+        color: C_WARN,
+        /* The hint says the true thing rather than the reassuring one. "Nothing is
+         * installed" is what a player wants to hear here and is only half of it. */
+        hint: "Not installed - loaded until you close the game. Code included, if it has any.",
+      },
       { label: "What is this?", color: C_DIM, hint: "What a mod zip has to look like." },
     ];
 
@@ -1130,6 +1139,13 @@ export async function showZipImport(term: GridSurface & GridPointerInput, deps: 
     if (pick === items.length - 2) {
       const chosen = await zip.pick();
       if (chosen === null) continue;
+      if (await tryOne(term, chosen.bytes, chosen.name, deps, zip)) changed = true;
+      continue;
+    }
+
+    if (pick === items.length - 3) {
+      const chosen = await zip.pick();
+      if (chosen === null) continue;
       if (await importOne(term, chosen.bytes, chosen.name, null, deps, zip)) changed = true;
       continue;
     }
@@ -1149,6 +1165,293 @@ export async function showZipImport(term: GridSurface & GridPointerInput, deps: 
     }
     if (await importOne(term, bytes, which.name, which.name, deps, zip)) changed = true;
   }
+}
+
+/**
+ * The screen that asks before a mod is run for one session.
+ *
+ * EVERY SENTENCE HERE IS DELIBERATE, because this is the one place a player is
+ * asked to run somebody's code on a lower-friction gesture than a permanent
+ * install, and the phrase "just for this session" does most of its damage by
+ * sounding like a safety feature. Four things it therefore has to say:
+ *
+ *   - WHAT IS SHORT-LIVED IS THE MOD, NOT WHAT IT DOES. The archive is forgotten.
+ *     A save it rewrote stays rewritten, a setting it changed stays changed, a
+ *     request it sent has been sent. Stated first, because it is the thing the
+ *     framing hides.
+ *   - THE CAPABILITY LIST IS NOT THE LIMIT. It is shown in full, in the same
+ *     words and the same order the install prompt uses - not shortened on the
+ *     grounds that this is only a test, since shortening it is precisely how a
+ *     temporary framing launders a consent. Above it, in plain terms, the reach
+ *     that the list does not bound: a mod's code runs inside the game, so it can
+ *     read and change anything the game can.
+ *   - WHICH BYTES. The id, the version, the size and the digest, so a player who
+ *     stages a draft twice can tell the two apart, and so "I tested this one" has
+ *     a referent.
+ *   - WHERE IT WILL BE AFTERWARDS. A browser that will not hold the archive across
+ *     the reload cannot run this loop at all, and saying so beats sending somebody
+ *     round it.
+ *
+ * A CONTENT-ONLY archive gets the same screen with the code paragraph absent. It
+ * is not a different question with a softer answer; it is the same question with
+ * one fewer thing to say.
+ */
+export function sessionLoadScreen(
+  preview: Extract<SessionPreview, { ok: true }>,
+  source: string,
+  survivesReload: boolean,
+): ScreenView {
+  const caps = describeCapabilities(preview.capabilities ?? []);
+  const runs = preview.code.length > 0;
+  const blocks: ScreenBlock[] = [
+    {
+      kind: "lines",
+      lines: [
+        {
+          text: `${preview.id}${preview.version === null ? "" : ` ${preview.version}`}, from ${source}`,
+          color: C_FG,
+        },
+        { text: `${formatBytes(preview.bytes)}${preview.digest === "" ? "" : `  -  ${preview.digest.slice(0, 16)}`}`, color: C_DIM },
+        { text: "", color: C_FG },
+        {
+          text: 'This loads it for THIS SESSION. It is not added to your mods.',
+          color: C_FG,
+        },
+        {
+          text: "The game reloads to pick it up, and forgets it when you close the game.",
+          color: C_DIM,
+        },
+        { text: "", color: C_FG },
+        {
+          text: "What is temporary is the MOD. What it does is not.",
+          color: C_WARN,
+        },
+        {
+          text: "A character it changed stays changed. Settings it wrote stay written.",
+          color: C_DIM,
+        },
+        {
+          text: "Anything it sent over the network has been sent.",
+          color: C_DIM,
+        },
+      ],
+    },
+  ];
+
+  if (runs) {
+    blocks.push({
+      kind: "lines",
+      lines: [
+        { text: "", color: C_FG },
+        { text: "THIS MOD RUNS CODE:", color: C_BAD },
+        ...preview.code.map((path) => ({ text: `  ${path}`, color: C_WARN })),
+        { text: "", color: C_FG },
+        {
+          text: "Code in a mod runs inside the game, with everything the game has.",
+          color: C_FG,
+        },
+        {
+          text: "It can read and rewrite your characters and talk to the network,",
+          color: C_FG,
+        },
+        {
+          text: "whatever the list below says - that list is what the mod DECLARED.",
+          color: C_FG,
+        },
+        {
+          text: "Load code you wrote, or code from somebody you would trust with the",
+          color: C_DIM,
+        },
+        { text: "same file if it were permanent. This is the same decision.", color: C_DIM },
+      ],
+    });
+  }
+
+  if (preview.capabilities === null) {
+    blocks.push({
+      kind: "lines",
+      lines: [
+        { text: "", color: C_FG },
+        { text: "Its manifest.json could not be read as JSON.", color: C_BAD },
+        { text: "So there is no list of what it asks for. It will be refused.", color: C_DIM },
+      ],
+    });
+  } else if (caps.length > 0) {
+    blocks.push({
+      kind: "lines",
+      lines: [
+        { text: "", color: C_FG },
+        { text: "It asks for:", color: C_FG },
+      ],
+    });
+    /* THE SAME TABLE THE INSTALL CONSENT SCREEN DRAWS (mods.ts's
+     * capabilityConsentScreen), column for column and unclamped for the same
+     * reason: a capability blurb runs to 200 characters, and padding to the
+     * longest would push the elevated flag off an 80-column terminal for every
+     * other row. Shown identically on purpose - a shorter list for a "temporary"
+     * load is exactly the shortening a temporary framing invites. */
+    blocks.push({
+      kind: "table",
+      key: "capabilities",
+      tagged: false,
+      columns: [
+        { key: "bullet", width: 3, align: "right" },
+        { key: "text", pad: false },
+        { key: "elevated", gap: 3, pad: false },
+      ],
+      rows: caps.map((d): ScreenRow => ({
+        id: d.cap,
+        semantic: { kind: "capability", ref: d.cap, data: { elevated: d.elevated } },
+        color: d.elevated ? C_WARN : C_FG,
+        cells: {
+          bullet: { text: "-" },
+          text: { text: d.text },
+          elevated: { text: d.elevated ? "[elevated]" : "" },
+        },
+      })),
+    });
+  } else if (runs) {
+    blocks.push({
+      kind: "lines",
+      lines: [
+        { text: "", color: C_FG },
+        { text: "It asks for no capabilities by name.", color: C_DIM },
+        {
+          text: "That bounds nothing: the code is in the game either way.",
+          color: C_DIM,
+        },
+      ],
+    });
+  }
+
+  blocks.push({
+    kind: "lines",
+    lines: [
+      { text: "", color: C_FG },
+      ...(survivesReload
+        ? [
+            {
+              text: "It will still be here after the reload, and gone the time after.",
+              color: C_DIM,
+            },
+          ]
+        : [
+            {
+              text: "This browser will not hold it across a reload, so it cannot load.",
+              color: C_BAD,
+            },
+            {
+              text: "Install it instead, or save the file and import it.",
+              color: C_FG,
+            },
+          ]),
+    ],
+  });
+
+  return freezeView({
+    id: "core:mod-session-load",
+    title: runs ? "Run this mod for one session?" : "Load this mod for one session?",
+    footer: SCREEN_FOOTER,
+    blocks,
+  });
+}
+
+/** What the screen says once an archive is staged. */
+export function sessionLoadedLines(
+  id: string,
+  source: string,
+  runs: boolean,
+): readonly ScreenLine[] {
+  return [
+    { text: `${id} is loaded for this session.`, color: C_GOOD },
+    { text: "", color: C_FG },
+    { text: `From ${source}. Nothing has been added to your mods.`, color: C_DIM },
+    { text: "", color: C_FG },
+    { text: "Reload to start using it - you are offered that on the way out.", color: C_FG },
+    {
+      text: "It is listed in the mod list, marked for this session, and can be dropped there.",
+      color: C_DIM,
+    },
+    { text: "", color: C_FG },
+    ...(runs
+      ? [
+          { text: "Its code will run every reload until you close the game.", color: C_WARN },
+          { text: "Dropping it and reloading is how you stop it.", color: C_DIM },
+        ]
+      : [
+          {
+            text: "Do not play a character you care about on session-only content:",
+            color: C_WARN,
+          },
+          {
+            text: "next time the pack is gone, and what it added goes with it.",
+            color: C_DIM,
+          },
+        ]),
+  ];
+}
+
+/** Look at an archive, ask, and stage it. True when something was staged. */
+async function tryOne(
+  term: GridSurface & GridPointerInput,
+  bytes: Uint8Array,
+  source: string,
+  deps: ModBrowseDeps,
+  zip: ZipImportDeps,
+): Promise<boolean> {
+  const preview = await paintWhile(term, "For this session", `Reading ${source}...`, () =>
+    previewSessionArchive(bytes),
+  );
+  if (!preview.ok) {
+    await showTextScreen(term, zipImportFailureScreen(preview.problem));
+    return false;
+  }
+
+  const survives = zip.sessionSurvivesReload();
+  await showTextScreen(term, sessionLoadScreen(preview, source, survives));
+  /* ASKED AFTER THE SCREEN, NOT ON IT. The read-through comes first and the choice
+   * second, which is the shape the install consent prompt uses - a player who
+   * pressed a key to get past a wall of text has not answered a question. */
+  const pick = await selectFromMenu(
+    term,
+    "core:mod-session-consent",
+    preview.code.length > 0
+      ? `Run ${preview.id} for this session?`
+      : `Load ${preview.id} for this session?`,
+    [
+      {
+        label: survives ? "Yes, load it for this session" : "Cannot: this browser will not hold it",
+        color: survives ? C_WARN : C_DIM,
+        hint: survives
+          ? "Applies on the next reload. Gone when you close the game."
+          : "Storage is off in this window, so a reload would lose it.",
+      },
+      { label: "No, leave it alone", color: C_FG, hint: "Nothing is loaded or changed." },
+    ],
+    "[ ESC to go back ]",
+  );
+  if (pick !== 0 || !survives) return false;
+
+  const staged = await paintWhile(term, "For this session", `Checking ${source}...`, () =>
+    /* The capabilities the archive DECLARED are what is granted, and only for this
+     * session. Granting exactly the declared list is what the install path does
+     * (`setConsent(id, m.capabilities)`); the difference is where it is kept. */
+    zip.loadForSession(bytes, source, preview.capabilities ?? []),
+  );
+  if (!staged.ok) {
+    await showTextScreen(
+      term,
+      zipImportFailureScreen(staged.problem, (staged.unmet ?? []) as readonly Finding[]),
+    );
+    return false;
+  }
+  await showTextScreen(
+    term,
+    staged.mod.id,
+    sessionLoadedLines(staged.mod.id, source, staged.code),
+  );
+  void deps;
+  return true;
 }
 
 /** What the "What is this?" row says, which depends on what this platform can do. */

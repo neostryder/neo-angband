@@ -59,6 +59,7 @@ import {
 import type { GridPointerInput, GridSurface } from "./term";
 import type { ModDirKind, ModOrigin } from "./disk-packs";
 import type { CatalogMod, ModStore } from "./mod-store";
+import { dropSessionMods } from "./mod-session";
 import type { ModRuleDecl } from "./pack";
 import {
   problemsFor,
@@ -356,6 +357,11 @@ export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuI
   if (broken) {
     flags.push("NOT WORKING");
   } else {
+    /* FIRST AMONG THE NON-EXCLUSIVE FLAGS, because it changes what every other
+     * word on the row means: a version, a kind and a permission list all read as
+     * facts about something the player has, and this one does not persist. Short
+     * for the reason the others are - it shares a line with a name. */
+    if (m.session) flags.push("SESSION ONLY");
     if (m.nondeterministic) flags.push("unseeded");
     if (m.affectsGameplay) flags.push("noscore");
     if (needsConsent) flags.push("NEEDS OK");
@@ -402,7 +408,12 @@ export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuI
     color,
     hint: broken
       ? `${problems.length === 1 ? "Something" : `${problems.length} things`} stopped this working. Enter to see what.`
-      : `${describeShape(m.shape)} ${capNote}`,
+      : m.session
+        ? /* The hint says what is different about this row rather than what the
+           * mod does, because the shape and the permissions are on the detail
+           * screen and "it goes away when you close the game" is not. */
+          "Loaded for this session, not installed. Gone when you close the game."
+        : `${describeShape(m.shape)} ${capNote}`,
   };
 }
 
@@ -1052,7 +1063,28 @@ async function manageMod(
     /* A mod's named parts (PackSection): the general form of a rule, since a
      * section can carry content and a load-order band as well as behaviour. */
     const sectionCount = m.manifest.sections?.length ?? 0;
-    if (m.enabled) {
+    if (m.session) {
+      /* NO DISABLE ROW FOR A SESSION MOD, and this is the reason rather than an
+       * omission: it is on because it was staged, not because a stored choice says
+       * so, and writing that choice would record a decision about a mod the player
+       * does not have while the row stayed on anyway. Dropping the archive is the
+       * control that means something, and it is the only honest way to stop a
+       * staged plugin's code from running on the next reload. */
+      items.push({
+        label: "Drop it (this is how you stop it)",
+        color: C_DANGER,
+        hint: "Forgets the archive. Takes effect on the next reload.",
+      });
+      acts.push("drop");
+      if (ruleCount > 0) {
+        items.push({
+          label: `Fixes & tweaks (${ruleCount})...`,
+          color: C_ENABLED,
+          hint: `All ${ruleCount} are on; switch any one off here.`,
+        });
+        acts.push("rules");
+      }
+    } else if (m.enabled) {
       items.push({ label: "Disable", color: C_WARN });
       acts.push("disable");
       if (ruleCount > 0) {
@@ -1144,6 +1176,8 @@ async function manageMod(
     } else if (act === "disable") {
       deps.store.setModEnabled(m.id, false);
       changed = true;
+    } else if (act === "drop") {
+      if (await dropSession(term, deps, m)) changed = true;
     } else if (act === "rules") {
       await managePatches(term, deps, m);
     } else if (act === "sections") {
@@ -1156,6 +1190,51 @@ async function manageMod(
       changed = true;
     }
   }
+}
+
+/**
+ * Drop a session-only mod: forget the archive, and say what that does and does not
+ * undo.
+ *
+ * THE SECOND SENTENCE IS THE POINT. Dropping stops the pack composing and stops a
+ * staged plugin's code running, from the next reload. It does not reach back into
+ * a character the mod already touched, and it does not remove anything the code
+ * wrote to storage or unsend anything it sent. A screen that said "dropped" and
+ * stopped there would be describing a rollback, which this is not.
+ */
+async function dropSession(
+  term: GridSurface & GridPointerInput,
+  deps: ModManagerDeps,
+  m: CatalogMod,
+): Promise<boolean> {
+  const pick = await selectFromMenu(
+    term,
+    "core:mod-session-drop",
+    `Drop ${m.name}?`,
+    [
+      {
+        label: "Yes, forget it",
+        color: C_DANGER,
+        hint: "It stops loading from the next reload. Nothing it already did is undone.",
+      },
+      { label: "Keep it for now", color: C_DIM, hint: "No change." },
+    ],
+    "[ Enter to choose; ESC to keep it ]",
+  );
+  if (pick !== 0) return false;
+  dropSessionMods(globalThis, m.id);
+  await showTextScreen(term, m.name, [
+    { text: `${m.name} is dropped.`, color: C_FG },
+    { text: "", color: C_FG },
+    { text: "It stops loading on the next reload.", color: C_FG },
+    {
+      text: "What it did while it was loaded stands: a character it changed is",
+      color: C_DIM,
+    },
+    { text: "still changed, and anything it stored is still stored.", color: C_DIM },
+  ]);
+  void deps;
+  return true;
 }
 
 /**

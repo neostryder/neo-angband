@@ -54,6 +54,24 @@ function strings(value: unknown): string[] {
 export const DEFAULT_ENABLED_MODS: readonly string[] = [];
 
 /**
+ * Capabilities granted to a mod staged for this session only (mod-session.ts).
+ *
+ * A LATCH rather than a parameter for the reason `boundRegistries` is one in
+ * mod-context.ts: `getConsent` has several callers across three modules, and a
+ * caller that forgot to thread the session grants would refuse a staged mod's code
+ * for want of a consent the player actually gave. Set once at boot, from the
+ * archives that are actually staged, so it can never name an id that is not there.
+ */
+let sessionConsents: Readonly<Record<string, readonly string[]>> = {};
+
+/** Publish the session grants (mod-session.ts's boot load, and the tests). */
+export function setSessionConsents(
+  granted: Readonly<Record<string, readonly string[]>>,
+): void {
+  sessionConsents = granted;
+}
+
+/**
  * The mods BUNDLED INTO THE BUILD, which is now none of them.
  *
  * WHAT THIS LIST MEANS, since it is empty and an empty list invites deletion. It is an
@@ -181,13 +199,29 @@ export function resolveEnabledIds(opts: {
    * manager's list wins - deploying it IS a request to enable it.
    */
   diskOrder?: readonly string[];
+  /**
+   * Ids that are enabled BY EXISTING, whatever anything else says: the mods staged
+   * for this session only (mod-session.ts).
+   *
+   * Separate from `diskOrder`, which is a request that the player may already have
+   * overruled, because a staged mod has no other way to be on. Staging it IS the
+   * gesture, there is no row the player set to false last week, and both of the
+   * paths that would otherwise silence it are real: a leftover `choices[id] ===
+   * false` from a copy they once installed and turned off, and a `?mods=` override
+   * on the URL, which discards every other input. A staged mod that loaded nothing
+   * and said nothing about why is the failure this exists to prevent.
+   *
+   * Ordered LAST, so a staged copy composes over the installed one it shadows.
+   */
+  forced?: readonly string[];
   /** Explicit per-mod decisions the player made in the manager. */
   choices?: Readonly<Record<string, boolean>>;
 }): string[] {
   /* Every id that came from OUTSIDE this build - the URL override, the saved set,
    * the choice map, an external manager's load order - goes through the rename map
    * first, so a store written before a rename still enables the same mod. */
-  if (opts.url !== null) return migrateModIds(opts.url);
+  const forced = opts.forced ?? [];
+  if (opts.url !== null) return withForced(migrateModIds(opts.url), forced);
   const choices = migrateModIdKeys(opts.choices ?? {});
   const base =
     opts.stored !== null
@@ -200,6 +234,20 @@ export function resolveEnabledIds(opts: {
      * player has reordered it - which matches "the manager owns disk order" and
      * keeps the bundled mods where they were. */
     if (!seen.has(id) && choices[id] !== false) {
+      out.push(id);
+      seen.add(id);
+    }
+  }
+  return withForced(out, forced);
+}
+
+/** Append the forced ids, once each, after everything the player chose. */
+function withForced(ids: readonly string[], forced: readonly string[]): string[] {
+  if (forced.length === 0) return [...ids];
+  const out = [...ids];
+  const seen = new Set(out);
+  for (const id of forced) {
+    if (!seen.has(id)) {
       out.push(id);
       seen.add(id);
     }
@@ -227,6 +275,8 @@ export function resolveEnabledIds(opts: {
 export function readEnabledModIds(input: {
   discovered: readonly string[];
   diskOrder?: readonly string[];
+  /** Ids staged for this session only, which are on whatever else says. */
+  forced?: readonly string[];
 }): string[] {
   let url: string[] | null = null;
   try {
@@ -266,6 +316,7 @@ export function readEnabledModIds(input: {
     stored,
     discovered: input.discovered,
     ...(input.diskOrder === undefined ? {} : { diskOrder: input.diskOrder }),
+    ...(input.forced === undefined ? {} : { forced: input.forced }),
     choices,
   });
 }
@@ -315,6 +366,19 @@ export interface CatalogMod {
    * sentence "it is gone" in the place they turned it on.
    */
   missing?: boolean;
+  /**
+   * This mod is loaded for THIS SESSION ONLY (mod-session.ts) - it is not
+   * installed, and it will be gone when the game is closed.
+   *
+   * A flag on the row rather than a separate list, because every question the
+   * manager asks about a mod has to be answerable about this one too, and a second
+   * list is a second thing to remember to check. What the manager does with it is
+   * refuse to offer the ordinary on/off toggle: a session mod is on because it was
+   * staged, so writing a persistent "off" choice for it would record a decision
+   * about a mod the player does not have, and the row would not go off anyway.
+   * Dropping it is the control that means something.
+   */
+  session?: boolean;
 }
 
 /** A named, restorable mod configuration. */
@@ -566,7 +630,16 @@ export class ModStore {
   }
 
   getConsent(id: string): string[] {
-    return this.getConsents()[id] ?? [];
+    /* A SESSION GRANT COUNTS AND IS NOT STORED. A mod staged for this session only
+     * (mod-session.ts) was consented to for this session only, so the grant lives
+     * beside the staged archive rather than in `neo:modConsents` - otherwise
+     * testing somebody's mod once would leave a standing grant for an id that is
+     * not installed, and the player would never see the row it belongs to.
+     *
+     * Read HERE rather than at each caller because there are several - the plugin
+     * loader, the manager's row, the conflict report - and one of them missing it
+     * would be a mod whose code is refused for want of a consent the player gave. */
+    return this.getConsents()[id] ?? sessionConsents[id]?.slice() ?? [];
   }
 
   /** Record that the user approved exactly `caps` for `id` (replaces prior). */
@@ -734,6 +807,8 @@ export interface CatalogInput {
   trusted: readonly PackManifest[];
   enabled: readonly string[];
   consents: Record<string, readonly string[]>;
+  /** Ids loaded for this session only (mod-session.ts), so the row can say so. */
+  session?: readonly string[];
 }
 
 function toCatalogMod(
@@ -741,6 +816,7 @@ function toCatalogMod(
   kind: ModKind,
   enabled: ReadonlySet<string>,
   consents: Record<string, readonly string[]>,
+  session: ReadonlySet<string>,
 ): CatalogMod {
   const capabilities = manifest.capabilities ?? [];
   const consented =
@@ -758,6 +834,7 @@ function toCatalogMod(
     nondeterministic: manifest.nondeterministic ?? false,
     affectsGameplay: manifest.affectsGameplay ?? false,
     consented,
+    ...(session.has(manifest.id) ? { session: true } : {}),
   };
 }
 
@@ -768,6 +845,7 @@ function toCatalogMod(
  */
 export function buildCatalog(input: CatalogInput): CatalogMod[] {
   const enabledSet = new Set(input.enabled);
+  const sessionSet = new Set(input.session ?? []);
   /**
    * ONE ROW PER MOD, not one per way it loads.
    *
@@ -795,7 +873,7 @@ export function buildCatalog(input: CatalogInput): CatalogMod[] {
     ["trusted", input.trusted],
   ] as const) {
     for (const manifest of list) {
-      const row = toCatalogMod(manifest, kind, enabledSet, input.consents);
+      const row = toCatalogMod(manifest, kind, enabledSet, input.consents, sessionSet);
       const prev = byId.get(row.id);
       if (!prev) byId.set(row.id, row);
       else if (RANK[row.kind] > RANK[prev.kind]) byId.set(row.id, row);

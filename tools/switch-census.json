@@ -288,6 +288,13 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "UI - keypress routing in a birth screen (MOD_REACH gap 23). Two screens, same finding."
+    },
+    {
+      "file": "packages/web/src/mods.ts",
+      "cases": 8,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "UI - menu action routing in the mod manager's own detail screen, items[idx].action (MOD_REACH gap 18/24). The arms are the manager's controls and a mod adding one has no arm to land in, which is the same finding as the other menu-routing rows. Nothing in it is game rules."
     }
   ]
 }

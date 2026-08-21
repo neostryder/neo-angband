@@ -171,6 +171,7 @@ What `ctx` carries:
 | `backupFolder` | present only when your manifest declared `backup:folder` and the platform can actually offer a folder picker; absent everywhere else, so test for it rather than assuming it |
 | `debug` | `{ spawnObject(kind), spawnMonster(race) }`, conjuring one item or creature into the live game. Present only when your manifest declared `debug:spawn` and there is a game to conjure into. The **first** use in a character asks the game's own debug question and marks that character permanently, so tell the player before they press your button |
 | `installMod` | `(bytes) => Promise<{ok, id, version} \| {ok, problem}>`, installing a **content** mod from the bytes of an archive. Present only when your manifest declared `mod:install`. Code is refused, and what you install lands **switched off** - the player enables it themselves, and a mod takes effect on reload |
+| `loadModForSession` | `(bytes) => Promise<{ok, id, version, survivesReload} \| {ok, problem}>`, loading a **content** mod for this session only. Present only when your manifest declared `mod:session`. Code is refused on the same terms. It is **on** from the next reload rather than waiting to be switched on, and the archive is forgotten when the game closes - but what it did to a character is not. Say that to the player |
 | `ui` | `{ openPanel(spec), openPanels }`, panels of **real HTML** rather than character cells. Present only when your manifest declared `ui:panel.mount`; absent everywhere else, so test for it. See `MOD_SEAMS.md` section 4b - the two things that surprise everybody are that Escape is the player's and that a non-modal panel's container takes no pointer events |
 
 `flags` is sliced per mod on purpose: a mod must not be able to read or act on
@@ -1282,6 +1283,34 @@ one rather than declared once at load. `ui:*.replace` covers none of the other
 two: the wildcard ranges over WHICH of the game's regions changes hands, and
 adding furniture or mounting a web page are different sentences for a player to
 agree to.
+
+`mod:` has two ACTIONS, and neither grant carries the other. `mod:install` puts a
+content pack in the player's library **switched off**, and that waiting is exactly
+why one sentence on a consent list is a proportionate price for it: the player
+still meets the arriving mod on the Mods screen and still reads its own list.
+`mod:session` loads one for the rest of the session, on from the next reload,
+without any of that - so it is MORE, not less, and it cannot be sold under the
+install line. `grantCovers` compares the action, which is the `ui:` lesson (#261)
+applied before it could be re-learned here. Both refuse code and both refuse an
+archive whose manifest asks for a capability, so neither is a route to running
+something a mod wrote.
+
+**"Only for this session" is a lifetime, not a privilege**, and the docs will not
+imply otherwise. A session-loaded pack composes into the game on the same terms as
+an installed one. What is short-lived is the archive: what the records did to a
+character, and anything a mod wrote while they were loaded, outlives the session
+exactly as it would have if the mod had been installed. The one thing the session
+tier genuinely buys a player is that it cannot accumulate: the mod is listed and
+marked, it can be dropped, and closing the game forgets it.
+
+And the lifetime is a strong convention rather than an enforced boundary. The
+archive lives in `sessionStorage`, which survives a reload - that is what makes
+the tier work at all, since a reload is what applies a mod - and which a browser
+restores when it restores a closed or crashed window, and which a window the page
+itself opens inherits a copy of. So "gone when you close the game" is what
+normally happens rather than a guarantee, and the mitigation is visibility: a
+session mod is always on the list, always marked, and always droppable, so it can
+never be quietly resident.
 
 What `ui:panel.mount` is, and is not, stated here because the difference is the
 whole of it. It is not a fence around the DOM: your `plugin.js` runs in the
