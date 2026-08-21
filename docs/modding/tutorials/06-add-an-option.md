@@ -23,6 +23,7 @@ Same two files. `manifest.json` gains a `rules` block:
   "engine": ">=0.20.0",
   "author": "your name",
   "license": "GPL-2.0-only",
+  "repository": "https://github.com/you/my-option-mod",
   "description": "Congratulates you on gaining a level, if you want it to.",
   "rules": [
     {
@@ -65,7 +66,11 @@ what the player reads, so write them for a player: say what turning it on does,
 not what it does internally.
 
 The flag name is prefixed with your mod's id by convention, and that convention
-is worth keeping: flags from every enabled mod live in the same map.
+is worth keeping. It is not because `ctx.flags` is shared - the host slices that
+per mod, so you cannot see another mod's toggles and they cannot see yours. It is
+because the player's SAVED choices all live in one flat map, keyed by flag name,
+so two mods that both called a flag `congratulate` would be sharing one stored
+setting.
 
 ## Where the check goes, and why it matters
 

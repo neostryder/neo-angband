@@ -6,13 +6,18 @@ document is the rest of it: what defect it closes, where it lives, and the
 seams it needs. `ctx.backupFolder` exists end-to-end (both platforms,
 capability-gated, `hooks(ctx)` and `register(ctx)` both see it, `persistSave`
 notifies every consenting mod); see §"File-by-file implementation plan" steps
-0-5, all DONE. What is NOT done, and cannot be finished small: the
-`neo-angband-mod-qol` menu row that would let a player actually call
-`choose()` (step 6) is blocked on a UI-seam gap ("menu row → runs a mod's own
-callback") that this design's §3 assumed existed and does not; see the
-correction there. That gap is the same shape as `MOD_REACH.md` gap 21, and is
-deferred alongside it, so the alpha could ship before every remaining
-seam was finished.
+0-5, all DONE.
+
+Two steps are NOT done. **Step 6**, the `neo-angband-mod-qol` menu row that
+would let a player actually call `choose()`, cannot be finished small: it is
+blocked on a UI-seam gap ("menu row -> runs a mod's own callback") that this
+design's §3 assumed existed and does not; see the correction there. That gap is
+the same shape as `MOD_REACH.md` gap 21 and is deferred alongside it, so the
+alpha could ship before every remaining seam was finished. **Step 7**, the docs,
+has not been done either: `MOD_SEAMS.md` has no section for `ctx.backupFolder`
+and `docs/modding/README.md` does not mention the `backup:folder` capability, so
+the only place an author meets either is `PLUGINS.md` in passing. A capability
+an author cannot find is a capability only its first consumer uses.
 
 ---
 
@@ -134,7 +139,7 @@ arg)`, the browser tab keeps the File System Access path.
 
 **It is not core's**, on the same grounds every other qol feature is excluded:
 faithful 4.2.6 has no concept of a backup folder, and a flag-gated version of
-one inside core would still be inside core (`CLAUDE.md`, "Mods" section).
+one inside core would still be inside core (PORT_PLAN.md decisions 17 and 18).
 Nothing here touches gameplay, RNG, or a save's *contents*, only what happens
 to the bytes after a save already landed.
 
@@ -342,12 +347,12 @@ gesture, checked against this codebase's own precedent rather than assumed.**
 `manageModFolder` (`packages/web/src/mods.ts:2001-2076`) already does exactly
 this shape today, in production: `await selectFromMenu(...)` resolves a row,
 and the very next line, still inside the same `async` continuation, calls
-`picker.pick()` → `pickModFolder()` → `showDirectoryPicker()`
+`picker.pick()` -> `pickModFolder()` -> `showDirectoryPicker()`
 (`mod-folder.ts:184-200`). That is not a hypothetical: it is the live "Choose
 a mods folder..." row, and it is proof that a directory picker call reached
 from a resolved menu selection in *this* engine keeps its user activation.
 Whatever the real dispatch mechanism turns out to be, it should preserve the
-same shape (menu selection → action → picker, a handful of microtask hops from
+same shape (menu selection -> action -> picker, a handful of microtask hops from
 the same keypress) for the same reason: Chromium's transient-activation window
 is time-bounded, not call-stack-bounded.
 
@@ -562,7 +567,7 @@ capability flag and `folderPickingSupported` are true; `undefined` on either
 alone: the two independent reasons for absence in the fault table above, each
 covered.
 
-**`packages/web/src/main-backup.test.ts`** (new, in the AST-guard style
+**a new `main-backup.test.ts`** (new, in the AST-guard style
 `main-region-input.test.ts` and `main-regions.test.ts` already use for "is the
 call site actually wired," since a unit test on `mod-backup.ts` cannot see
 whether `persistSave` ever asks): asserts `persistSave`'s source contains the

@@ -31,6 +31,7 @@ my-code-mod/
   "engine": ">=0.20.0",
   "author": "your name",
   "license": "GPL-2.0-only",
+  "repository": "https://github.com/you/my-code-mod",
   "description": "Congratulates you on gaining a level."
 }
 ```
@@ -53,7 +54,7 @@ export default {
 };
 ```
 
-Eleven lines, and that is the entire mod.
+Ten lines, and that is the entire mod.
 
 ## What is happening
 

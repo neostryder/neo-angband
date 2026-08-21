@@ -18,10 +18,13 @@ calls at runtime, so the interesting surface is narrower than most projects.
 The parts worth looking at:
 
 - **The mod install path.** A mod is downloaded from its own repository at a
-  pinned tag and every file is checked against a SHA-256 that ships inside the
-  build (`packages/web/src/mod-registry.ts`). A way to get an unverified file
-  installed, or to make the check pass on content it should not, is a real
-  finding.
+  pinned tag, and the gate on a later replacement is its **origin**: an
+  installed mod may only be replaced by a copy from the repository it came from
+  (`packages/web/src/mod-install.ts`, `installModFromRepo`). A SHA-256 of what
+  actually arrived is recorded at install, so "has this changed since I
+  installed it" stays answerable. A way to get a mod replaced from somewhere
+  else, to write outside the mod's own folder, or to make the origin check pass
+  when it should not, is a real finding.
 - **Scripted plugins.** A mod may ship one `plugin.js`, evaluated with the
   engine handed to it rather than imported. A way for a plugin to reach past
   the surface it is given - the filesystem, the network, another mod's

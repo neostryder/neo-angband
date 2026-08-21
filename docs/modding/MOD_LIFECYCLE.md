@@ -18,7 +18,7 @@ pleasant or painful:
 4. What makes the whole thing ergonomic instead of the usual mod-manager
    headache?
 
-It builds on the vocabulary already in `README.md` (packs, `pack.json`,
+It builds on the vocabulary already in `README.md` (packs, `manifest.json`,
 namespaced ids, `patches`/`replaces`/`removes`, provenance) and the
 ratified pillars in `../MODS.md`.
 
@@ -142,7 +142,7 @@ a cosmetic pack gone) degrades gracefully via quarantine.
 
 ### The manifest carries everything the installer needs
 
-`pack.json` (see README for the base fields) gains lifecycle fields:
+`manifest.json` (see README for the base fields) gains lifecycle fields:
 
 ```json
 {
@@ -186,7 +186,7 @@ answering to two capabilities would be two answers to "who draws this".
 
 [PROPOSED] throughout, and the heading used to read "(today)", which it was not.
 The shipped installer reads `manifest.json` at a TAG and nothing else: no branch
-head, no bare commit, and no `pack.json`. What it actually does, including how it
+head and no bare commit. What it actually does, including how it
 picks which release to offer and what an install pins, is in
 [MOD_COMPATIBILITY.md](MOD_COMPATIBILITY.md) and [../MODS.md](../MODS.md). The
 design below is kept as the design of record for where the installer is going.
@@ -195,7 +195,7 @@ The user pastes a repository URL (or picks a ref). The app:
 
 1. Resolves a specific ref (tag preferred, else branch head, else
    commit) and pins it - installs are reproducible, not "latest".
-2. Fetches the tree at that ref and reads `pack.json`.
+2. Fetches the tree at that ref and reads `manifest.json`.
 3. Validates: schema, `engine` compatibility, dependency availability
    and version ranges, and (for plugins) the capability list.
 4. Shows a pre-install summary: what it adds, what it patches/replaces/
@@ -212,8 +212,9 @@ from git" in the web build means fetching the repository tarball at a
 ref through the host's HTTP API (GitHub/GitLab both expose CORS-friendly
 archive and raw endpoints for public repos). Private or self-hosted
 repos need a user-supplied token or a small optional proxy; this is
-documented, not hidden. A desktop build (if one ships) can clone
-directly. Either way the installer consumes the same pack format.
+documented, not hidden. The desktop build could clone directly, since it has a
+real filesystem and a real process to run git in. Either way the installer
+consumes the same pack format.
 
 ### From a marketplace (future release)
 
@@ -416,9 +417,12 @@ resolve alike would be the RimWorld trap - XML, then xpath, then C#, each with
 its own effective precedence, so "load order" quietly means three things - but
 so is pretending they resolve DIFFERENTLY when they do not.
 
-Of the seven behaviour hooks, two are `last-answer` (the earlier mod's rule
-never runs), three `all-must-agree`, one `chained`, one `any-yes`.
-`MOD_HOOK_FOLDS` lives in core beside `composeModHooks`, and a test in
+Of the eight behaviour hooks, two are `last-answer` (the earlier mod's rule
+never runs), three `all-must-agree`, one `chained`, one `any-yes`, and one
+`all-observe` (every handler runs and none can veto).
+`MOD_HOOK_FOLDS` lives in core beside `composeModHooks`, keyed by
+`keyof ModHooks` so a hook added to the interface without a fold does not
+compile, and a test in
 `hooks.test.ts` OBSERVES each fold from what the composition actually does
 rather than restating the table - including *which* contributor ran, which is
 the half that can be wrong while the table still looks right.
@@ -472,11 +476,13 @@ Two deliberate carve-outs remain, and neither is a load-order question:
 - A contested Graphics row keeps the SLOT the first claimant put it in, so the
   Graphics menu does not reshuffle when mods are reordered. Only which pack
   draws it changes - **position, not precedence**.
-- A pack in the mods FOLDER that reuses a bundled pack's id loses to the
-  bundled one (`mergeModSources`, `discoverMods`). That is **identity, not
+- A pack in the mods FOLDER that reuses a compiled-in pack's id loses to the
+  compiled-in one (`mergeModSources`, `discoverMods`). That is **identity, not
   order**: the two are rival candidates for the same mod rather than two mods
-  in a sequence, and letting a folder silently redefine what `bug-fixes` means
-  would leave the player with no way to see which one they had enabled.
+  in a sequence, and letting a folder silently redefine what an id means would
+  leave the player with no way to see which one they had enabled. In a release
+  build the compiled-in set is EMPTY, so this rule only ever fires in dev,
+  against the `demo-*` framework proofs.
 
 ### External managers (Vortex, MO2)
 
@@ -488,7 +494,7 @@ labour between them and the game:
   off, nudging one earlier/later in the order (the existing "Move earlier"
   / "Move later" rows in `mods.ts`), opting out of one of its patches,
   seeing what conflicts, applying a saved profile. That is the floor a
-  player needs to run the bundled mods and a handful of others without
+  player needs to run the first-party mods and a handful of others without
   extra software - not a mod-manager reimplementation.
 - **Advanced management belongs to the mod manager.** Real load-order
   SORTING above all (rule sets, auto-sort, bulk reordering of a large
@@ -501,7 +507,7 @@ labour between them and the game:
 > The clause above putting load-order SORTING outside the game is revised; the
 > rest of the division of labour stands unchanged. What moved and why:
 >
-> The 2026-07-27 ruling was made when sorting meant "a UI for dragging a long
+> The 2026-07-27 division was drawn when sorting meant "a UI for dragging a long
 > list", which is genuinely Vortex/MO2's job. It is not what sorting means once
 > authors can declare compatibility: the inputs (`group`, `compat`,
 > `loadAfter`/`loadBefore`, the player's pins) are all things the ENGINE reads
@@ -678,10 +684,11 @@ UI next, marketplace last:
    runtime caller; this is Wave 1 of the integration plan and it precedes
    the UI below.
 2. Next: the in-app mod manager UI - deliberately rudimentary per the
-   2026-07-27 ruling (list, enable/disable, a one-step earlier/later
-   nudge, per-patch opt-out, install-from-url, conflict view, capability
-   consent, profiles). No load-order SORTER; real ordering work is the
-   external manager's job.
+   2026-07-27 division of labour (list, enable/disable, a one-step
+   earlier/later nudge, per-patch opt-out, install-from-url, conflict view,
+   capability consent, profiles), plus the one auto-sort button the
+   2026-08-01 amendment above adds. Bulk reordering, staging, collections
+   and update watching stay the external manager's job.
 3. Future release: the marketplace backend and in-app browser, plus the
    externally-authored enabled-set/order file and a Vortex/MO2 extension
    over the shared on-disk format.

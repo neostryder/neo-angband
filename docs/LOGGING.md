@@ -54,7 +54,7 @@ than filling somebody's disk quietly.
 
 ## Making a report
 
-Escape menu → **Report a problem**. The screen lists everything the file will
+Escape menu -> **Report a problem**. The screen lists everything the file will
 contain *before* it writes one, then `D` to describe the problem in up to three
 lines, `ENTER` to write it.
 

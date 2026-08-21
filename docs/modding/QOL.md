@@ -2,8 +2,10 @@
 
 > **NOT BUNDLED.** The game ships no mods at all; this one lives in
 > [neo-angband-mod-qol](https://github.com/neostryder/neo-angband-mod-qol) and
-> installs through the mod manager's *Install a mod...* row, at a pinned tag,
-> verified against a digest that ships inside the game.
+> installs through the mod manager's *Install a mod...* row, at a pinned tag.
+> The tag is what stops the download changing under you; the install records a
+> SHA-256 of the bytes that actually arrived, which is what later answers
+> whether the copy on the machine has changed.
 >
 > STATUS: DESIGN OF RECORD. This page is the source of truth and public changelog
 > for it. The mod adds NEW conveniences that are not part of faithful Angband; with
@@ -59,7 +61,7 @@ calls this function once per enabled mod in load order, and folds the returned
 `opts.modHooks`. The **Fixes & tweaks** submenu on this mod's own screen (mod
 manager -> Quality of Life) lists each tweak with its description and lets the
 player toggle it; a live toggle REBUILDS the composed hooks
-(`applyRuleLive`, `packages/web/src/main.ts:4956`), because core does not branch
+(`applyRuleLive`, `packages/web/src/main.ts`), because core does not branch
 on a flag and so writing one alone would do nothing.
 
 A tweak the player switched off does not install its hook at all - so it is not
@@ -89,17 +91,17 @@ step onto the dug-out grid in the same move, and each walk is a single attempt
 (you keep walking to keep digging), matching the source fork.
 
 - The tweak's code: `neo-angband-mod-qol/plugin.ts`, installing the
-  `walkBlockedByDiggable` hook (`packages/core/src/mod/hooks.ts:101`). It reuses
+  `walkBlockedByDiggable` hook (`packages/core/src/mod/hooks.ts`). It reuses
   two PUBLIC core primitives rather than reimplementing the dig - a reimplemented
   roll would drift from the tunnel command's: `movementTunnelTest`
-  (`packages/core/src/game/cave-cmd.ts:662`, RNG-free, which is what lets the mod
+  (`packages/core/src/game/cave-cmd.ts`, RNG-free, which is what lets the mod
   decline without moving the stream) and `tunnelAux` (one `do_cmd_tunnel_aux`
   attempt with the real roll, messages, and payouts, which DRAWS, so it is
   reached only after the decision to handle the walk is final).
 - Core's side of the seam: `walkAction`
-  (`packages/core/src/game/player-turn.ts:496`) consults `state.autoDigStep`,
-  installed by the session (`packages/core/src/session/game.ts:1670`) pointing at
-  `movementAutoDig` (`cave-cmd.ts:675`), whose whole body is the hook read plus
+  (`packages/core/src/game/player-turn.ts`) consults `state.autoDigStep`,
+  installed by the session (`packages/core/src/session/game.ts`) pointing at
+  `movementAutoDig` (`cave-cmd.ts`), whose whole body is the hook read plus
   `?? null`. Off (or no mod) => the hook is absent, `movementAutoDig` returns
   `null` having drawn no RNG, and `walkAction` bumps as in 4.2.6. `null` is the
   only value that bumps: a returned `0` means a mod handled the walk for free, and
@@ -137,9 +139,10 @@ Two halves, in two different entry points, for a reason:
 Extends the above to the cheat options. Off by default and opt-in on purpose:
 turning a `cheat_` option on forces its `score_` twin, which permanently bars
 that character from the high score list. Inheriting that unasked is the one case
-where remembering a setting does real damage. neostryder plays with the cheat
-options on and asked for the toggle, which is why it exists rather than the
-exclusion being absolute.
+where remembering a setting does real damage. It is a toggle rather than a flat
+exclusion because a player who deliberately runs with the cheat options on wants
+them to carry forward like any other setting; what must not happen is a player
+who never touched them inheriting an unscoreable character.
 
 The filter runs **on the way in as well as on the way out**, so turning the
 toggle off takes effect against settings that are already stored - otherwise the

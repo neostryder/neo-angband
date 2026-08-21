@@ -8,9 +8,9 @@ Three packages go to the public npm registry:
 | [`@rpgm-tools/neo-angband-mod-sdk`](https://www.npmjs.com/package/@rpgm-tools/neo-angband-mod-sdk) | manifest schema, load-order resolver, record composition |
 | [`@rpgm-tools/neo-angband-content`](https://www.npmjs.com/package/@rpgm-tools/neo-angband-content) | Angband 4.2.6 gamedata compiled to the pack format |
 
-Everything else in `packages/` stays private: `web`, `desktop`, `cli`, `mcp` and
-`borg` are applications, and `linoleum` is a build-time tool with no consumer
-outside this repository.
+Everything else in `packages/` stays private: `web`, `desktop`, `cli` and `mcp`
+are applications, and `linoleum` is a build-time tool with no consumer outside
+this repository.
 
 **The list is derived, not written here.** A package is publishable exactly when
 npm would publish it, which is when its manifest does not carry `private: true`.
@@ -42,12 +42,15 @@ git tag v0.24.0 && git push origin master v0.24.0
 > repository. This one is not normal, and the difference matters before anybody
 > types it:
 >
-> **The public `master` is a single squashed commit.** `ea5d5b3e4`, *"Squash:
-> curated tree on top of angband/angband"*, whose parent is upstream Angband's
-> own `dc40ec9e0` (`4.2.6-173`). `v0.20.0` and `v0.20.1-edge.1` both point at it.
-> The development history, over a thousand commits, has never been pushed and
-> is not meant to be. What the public repository holds is a curated *tree*, not
-> this repository's *history*.
+> **The public `master` is rooted in a single squashed commit**, `ea5d5b3e4`,
+> *"Squash: curated tree on top of angband/angband"*, whose parent is upstream
+> Angband's own `dc40ec9e0` (`4.2.6-173`) and which `v0.20.0` points at. Public
+> commits are stacked on top of it one at a time by `tools/publish.mjs` (see
+> **Publishing** below), so the public history grows - but it begins there, and
+> the pre-squash development history, over a thousand commits, has never been
+> pushed and is not meant to be. What the public repository holds is a curated
+> *tree* and the work replayed on top of it, never this repository's own
+> *history*.
 >
 > **Git will stop you, once.** The two histories have diverged, so a plain
 > `git push origin master` is rejected as a non-fast-forward. That rejection is
@@ -156,7 +159,7 @@ Once, by hand. Two accounts things and then one settings page per package.
 
 1. **An npm account**, done: `neostryder`. The account name is public and appears
    as the publisher on every package page.
-2. **Two-factor authentication.** Profile → Account → Two-Factor Authentication.
+2. **Two-factor authentication.** Profile -> Account -> Two-Factor Authentication.
    Required to publish by hand, which step 4 needs.
 3. **The organisation**, done: `rpgm-tools`. A scope that is not your username has
    to be an organisation, and it is **free** for public packages; the paid tier is
@@ -196,8 +199,8 @@ Once, by hand. Two accounts things and then one settings page per package.
    Check it with `npm publish --dry-run --access public` first if you want to see
    the file list; on 2026-08-01 that was 113 files, 298.3 kB packed, 2.3 MB unpacked.
 
-5. **Configure the trusted publisher, per package.** npmjs.com → the package →
-   Settings → Trusted Publisher → GitHub Actions:
+5. **Configure the trusted publisher, per package.** npmjs.com -> the package ->
+   Settings -> Trusted Publisher -> GitHub Actions:
 
    | Field | Value |
    | --- | --- |
@@ -214,7 +217,7 @@ Once, by hand. Two accounts things and then one settings page per package.
    any of this when you save it: a typo shows up as a failed publish months later,
    so re-read the row before saving.
 
-6. **Prove it before trusting it.** Actions → publish-npm → Run workflow, with
+6. **Prove it before trusting it.** Actions -> publish-npm -> Run workflow, with
    *Pack and check, publish nothing* left ticked. That packs, extracts and imports
    both tarballs and prints what it would publish, without needing the publisher to
    be configured at all. Then bump the version, tag, and push.
@@ -521,14 +524,19 @@ bump: it is a **promise you take on.** Raising it obliges the same commit to add
 the step that reads the version below it, in
 `packages/core/src/session/save-migrate.ts`:
 
+The current format is version 7, so raising it to 8 means writing `V7_TO_V8` and
+appending it to the list. The shape is the same every time:
+
 ```ts
-const V4_TO_V5: SaveMigration = {
-  from: 4,
-  to: 5,
+const V7_TO_V8: SaveMigration = {
+  from: 7,
+  to: 8,
   summary: "one line, present tense, for the changelog and the player's message",
-  step(save, ids, notes) { /* ... */ save.version = 5; return save; },
+  step(save, ids, notes) { /* ... */ save.version = 8; return save; },
 };
-export const SAVE_MIGRATIONS = [V1_TO_V2, V2_TO_V3, V3_TO_V4, V4_TO_V5];
+export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
+  V1_TO_V2, V2_TO_V3, V3_TO_V4, V4_TO_V5, V5_TO_V6, V6_TO_V7, V7_TO_V8,
+];
 ```
 
 Forget it and `save-migrate.test.ts` fails, naming the step it wants. That check
@@ -665,10 +673,10 @@ import monsters from "@rpgm-tools/neo-angband-content/pack/monster.json" with { 
   reserved on npm. Half its job now exists though: `@rpgm-tools/neo-angband-mod-sdk`
   ships a `neo-angband-mod-build` bin that compiles a mod's TypeScript into the
   `plugin.js` a mod folder distributes, and enforces the plugin ABI while doing it.
-- **The mods themselves**: see above. `neo-angband-mod-qol`,
-  `neo-angband-mod-bug-fixes` and `neo-angband-mod-linoleum` are `private: true` and
-  stay that way. Publishing one would create a second way to obtain a mod that
-  nothing in the game checks.
+- **The mods themselves**: see above. Every mod repository's manifest is
+  `private: true` - `neo-angband-mod-qol`, `-bug-fixes`, `-feature-restoration`,
+  `-linoleum` and `-borg` - and stays that way. Publishing one would create a
+  second way to obtain a mod that nothing in the game checks.
 - **`@rpgm-tools/neo-angband-linoleum`**: the tile-pack build tools. Their output
   ships as a mod; the tools that produce it have no consumer outside this
   repository.

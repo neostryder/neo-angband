@@ -17,10 +17,11 @@ TypeScript port of the fork's converter) that turns a legacy tileset into a
 pack of this shape; it is tooling, not a core feature.
 
 **It is not where the game's graphics come from.** The tile sets Angband
-ships - Original, Adam Bolt, David Gervais, Nomad - are CORE content, exactly
-as upstream: `lib/tiles/list.txt` is game data parsed by `grafmode.c`, and the
-Graphics screen is built from that catalog (`main-win.c:2897-2905`), with no
-mod enabled and none required. What this mod adds is an alternative way to
+ships - Original, Adam Bolt, David Gervais, Nomad, and Shockbolt in its Dark and
+Light modes - are CORE content, exactly as upstream. Every graphics mode in
+`lib/tiles/list.txt` is bundled, that file is game data parsed by `grafmode.c`,
+and the Graphics screen is built from that catalog (`main-win.c:2897-2905`), with
+no mod enabled and none required. What this mod adds is an alternative way to
 BUILD and express a tile set: a pack you can edit one PNG at a time, targets
 named after game entities instead of grid coordinates, and variant pools -
 several tiles for one symbol, creature or item, chosen by map position so a
@@ -49,8 +50,8 @@ differs. Assets load lazily - the first cell that wants one starts its fetch and
 draws its glyph until it arrives.
 
 **Proven equivalent, not asserted.** `packages/web/src/linoleum-equivalence.test.ts`
-converts all four bundled tile sets, builds both engines' maps, and asserts that
-every entity either engine draws - features at all four lightings, traps,
+converts all six bundled graphics modes, builds both engines' maps, and asserts
+that every entity either engine draws - features at all four lightings, traps,
 monsters, object kinds, flavours, projections - resolves to a PIXEL-IDENTICAL
 tile, with nothing the sheet covers left uncovered. Writing that test found two
 real converter defects - an asset-name collision that made two different scrolls
@@ -63,8 +64,13 @@ changes no tile in the bundled packs; `convert.test.ts` pins it).
 ships, and it ships all six pre-converted in its own repository -
 [neo-angband-mod-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum)
 - as seven committed archives (9161 files and 42 MiB of art, 24.6 MiB zipped). The
-installer verifies each against a digest built into this game and unpacks them into
-the mod's own folder, which is where `tilePackResolver` looks.
+installer fetches each one from a pinned TAG, records the SHA-256 of the bytes
+that arrived, and unpacks them into the mod's own folder, which is where
+`tilePackResolver` looks. The tag is what stops the download changing under you;
+the recorded digest is what answers "has this pack changed since I installed it"
+later. No digest ships inside the game, so it cannot tell you whether what
+arrived is what the author published - a property the game does not have rather
+than one it checks quietly.
 
 This repository holds the *converter* (`packages/linoleum`, a port of the upstream
 fork's `build-linoleum-packs.ps1`) and the *reader*
@@ -382,8 +388,9 @@ The same `tilePacks` entry works for a classic tilesheet: leave `engine` out (or
 are both reached through the same resolver, so they cannot come from different
 places.
 
-Nothing about this is loose-pack-specific and no bundled mod is privileged: the
-`linoleum` mod's own manifest is exactly the shape above.
+Nothing about this is loose-pack-specific and no first-party mod is privileged:
+the `linoleum` mod's own manifest is exactly the shape above, and it arrives by
+the same route yours does.
 
 ## Tileset licensing (why converted packs are not shipped)
 
@@ -407,20 +414,24 @@ distribution "with other games or projects" without explicit permission. Two
 consequences for this converter:
 
 - **A Linoleum conversion is a modification.** It cuts the sheet into
-  individual PNGs. That needs the author's permission regardless of how the
-  "is this Angband?" question below is answered. Convert your own copy for your
-  own use; do not redistribute the result.
+  individual PNGs, and modification is the one thing the licence withholds. A
+  pack you convert is yours to use; redistributing it needs the author's
+  permission.
 - **Whether this port counts as "Angband" or as "another project"** decides
-  whether the unmodified sheet may ship with it. Only the author can answer
-  that, and until he has, the port takes the conservative reading and bundles
-  none of his art (`packages/web/public/tiles/CREDITS.md` has the full text and
-  the reasoning).
+  whether the unmodified sheet may ship with it, and the author answered:
+  **the Shockbolt tilesheet is bundled here with his permission**, conditional
+  on this project remaining non-commercial. That grant is this project's and
+  does not travel: a project of your own needs its own permission.
+  `packages/web/public/tiles/CREDITS.md` carries the full licence text and the
+  grant.
 
 Independently of Shockbolt: rather than shipping some converted packs and not
-others, this port ships **no** converted packs. The converter runs locally
-against the `reference/` data, so every user derives their own packs from the
-original files under the original licences. The CLI prints the relevant licence
-notes, including a prominent warning for the Shockbolt packs, on every run.
+others, **this repository ships no converted packs at all.** The converter runs
+locally against the `reference/` data, so every user derives their own packs from
+the original files under the original licences, and the six pre-converted packs a
+player can install come from the `neo-linoleum` mod's own repository rather than
+from here. The CLI prints the relevant licence notes, including a prominent
+warning for the Shockbolt packs, on every run.
 
 ## Parity
 

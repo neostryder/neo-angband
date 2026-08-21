@@ -29,7 +29,11 @@ different from tutorial 2:
 - **It is unique.** The game generates each artifact at most once per character.
   There is no `alloc` fight with a hundred other shields; there is one of these,
   or there is not one yet.
-- **It inherits.** Anything you do not say, the base object says for you. A
+- **It inherits some things and not others.** The base object supplies the
+  kind's flags, and its activation when your artifact declares none. It does NOT
+  supply the numbers: `weight`, `ac`, `to-a`, `to-h`, `to-d` and the damage dice
+  all come from the artifact record, and one you leave out binds to zero rather
+  than to the base object's value. Say them. A
   leather shield's weight class, its material, how it reacts to acid: all of that
   arrives for free because you named the base.
 
@@ -42,7 +46,11 @@ my-artifact-mod/
 ```
 
 `manifest.json` is the same shape as every tutorial before this, with its own
-`id` and `description`. The new file is `artifact.json`:
+`id` and `description`, and one difference worth noticing: its `engine` floor is
+`>=0.22.0` rather than `>=0.20.0`, because that is the release the behaviour this
+page relies on landed in. An `engine` range is a claim about which builds a mod
+was written against, so it moves when what the mod depends on moves. The new file
+is `artifact.json`:
 
 ```json
 {
@@ -131,7 +139,10 @@ refuse. It creates an invisible placeholder base object for you and builds your
 artifact on that instead, because that is exactly how the base game's own
 Phial, Star and Arkenstone work: those three have no ordinary version anywhere in
 `object.json`. The behaviour is correct and it is load-bearing. It is also
-indistinguishable, from the outside, from you having misspelled `Leather Shield`.
+distinguishable from a misspelling, though, and that is the part worth knowing:
+`base-object.sval` is a declared reference, so a typo is reported by name on your
+mod's row - *base-object.sval names the base object the artifact is built on
+"lether shield", and no loaded pack defines it in object*.
 The symptom is an artifact that generates and equips but whose base is a blank:
 no weight class, none of the base's own behaviour, an item that is somehow not
 really a shield.
@@ -180,7 +191,11 @@ Everything below `base-object` is the fun part.
 - **`values`** are the ones that carry a number, written with the number in
   square brackets: `INFRA[2]`, `RES_DARK[1]`, `STR[2]`, `SPEED[5]`.
 
-Both lists are spelled out in full in `packages/content/pack/object_property.json`
+Both lists are in `packages/content/pack/object_property.json`. One catch when
+you go looking: a resistance's `code` there is the bare element
+(`resistance:DARK`), and the token you write in `values` is `RES_` plus that
+element, assembled when the record binds. Grepping the file for `RES_DARK` finds
+nothing. Flags and modifiers are spelled out
 under `code`, which is the file to have open while you write this rather than the
 one to guess at. A flag or a value the game does not recognise is refused when
 your mod loads, which is the good outcome; you get told, before you play.
