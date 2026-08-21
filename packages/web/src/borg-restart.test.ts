@@ -171,3 +171,72 @@ describe("the activation gate marks the savefile", () => {
     expect(NO_COMMENTS).toMatch(/borg:\s*\(player\.noscore & NOSCORE\.BORG\) !== 0/u);
   });
 });
+
+describe("a mod's controller has a clock of its own", () => {
+  /* Found while wiring the restart loop, and fixed here rather than left as a
+   * second gap: ModPlugin.controller was installed and then nothing drove it,
+   * so an autoplayer only took a turn when a human happened to press a key.
+   * A screensaver that only advances on a keypress is not a screensaver. */
+
+  /** From the mod-controller install loop to the next top-level statement. */
+  function installLoopBody(): string {
+    const at = NO_COMMENTS.indexOf("for (const loaded of activeModCode().plugins)");
+    expect(at, "the mod-controller install loop is still here").toBeGreaterThan(-1);
+    const end = NO_COMMENTS.indexOf('window as unknown as { __neo?: unknown }', at);
+    expect(end, "the loop still ends before the dev diagnostic hook").toBeGreaterThan(at);
+    return NO_COMMENTS.slice(at, end);
+  }
+
+  it("wraps the mod's controller in a latch before installing it", () => {
+    /* Not optional: runGameLoop asks nextCommand() for as long as the player
+     * has energy, so a controller answering every time would never let
+     * advance() return, and the tab would hang inside one turn. */
+    const body = installLoopBody();
+    expect(body).toMatch(/let modArmed = false;/u);
+    expect(body).toMatch(/if \(!modArmed\) return null;/u);
+    expect(body).toMatch(/installController\(state, modLatched,/u);
+  });
+
+  it("pumps advance() on an interval, arming one action per tick", () => {
+    const body = installLoopBody();
+    expect(body).toMatch(/setInterval\(\(\) => \{/u);
+    const timerAt = body.indexOf("setInterval(() => {");
+    const timerBody = body.slice(timerAt, body.indexOf("}, MOD_AUTOPLAYER_TICK_MS)"));
+    expect(timerBody).toMatch(/modArmed = true;/u);
+    expect(timerBody).toMatch(/advance\(\);/u);
+  });
+
+  it("waits out birth and menus rather than pumping through them", () => {
+    const body = installLoopBody();
+    const timerAt = body.indexOf("setInterval(() => {");
+    const timerBody = body.slice(timerAt, body.indexOf("}, MOD_AUTOPLAYER_TICK_MS)"));
+    expect(timerBody).toMatch(/if \(scoresOpen \|\| modalDepth > 0\) return;/u);
+  });
+
+  it("stops itself on death rather than racing the reincarnation check", () => {
+    /* Belt and suspenders: a successful reincarnation never sets dead, so this
+     * branch is normally not taken for an autoplayer. It still has to exist for
+     * the case reincarnateAutoplayer() itself declines (holder gone, engine too
+     * old) and the ordinary death flow runs - the pump must not keep calling
+     * advance() into a dead game. */
+    const body = installLoopBody();
+    const timerAt = body.indexOf("setInterval(() => {");
+    const timerBody = body.slice(timerAt, body.indexOf("}, MOD_AUTOPLAYER_TICK_MS)"));
+    expect(timerBody).toMatch(/if \(dead\) \{\s*clearInterval\(modTimer\);/u);
+  });
+
+  it("contains a throwing autoplayer instead of hanging the host", () => {
+    const body = installLoopBody();
+    const timerAt = body.indexOf("setInterval(() => {");
+    const timerBody = body.slice(timerAt, body.indexOf("}, MOD_AUTOPLAYER_TICK_MS)"));
+    expect(timerBody).toMatch(/catch \(err\) \{/u);
+    expect(timerBody).toMatch(/clearInterval\(modTimer\);/u);
+  });
+
+  it("has no tick cap, unlike the debug agent and plugin seams", () => {
+    /* AGENT_TICK_CAP / PLUGIN_TICK_CAP exist as a manual-test safety valve.
+     * A real "let it play" mod is supposed to keep going. */
+    const body = installLoopBody();
+    expect(body).not.toMatch(/MOD_AUTOPLAYER_TICK_CAP/u);
+  });
+});
