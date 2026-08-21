@@ -612,7 +612,7 @@ export function helpCommunityScreen(
       ),
       routeTable(
         "issues",
-        "Tell us something is wrong:",
+        "Report something wrong:",
         "github.com/neostryder/neo-angband/issues",
       ),
       {
@@ -815,7 +815,7 @@ function coreHelpIndex(): readonly { id: string; label: string; page: HelpPage }
     },
     {
       id: "community",
-      label: t("help.community.label", "Help, and telling us something is wrong"),
+      label: t("help.community.label", "Help, and reporting something wrong"),
       page: { view: helpCommunityScreen },
     },
   ];

@@ -23,7 +23,7 @@ body:
       description: A guess is fine - it is often a good discussion in itself.
       options:
         - A mod - it changes how the game plays
-        - Core - the original does this and we do not
+        - Core - the original does this and the port does not
         - Core - it is about the port itself (display, keys, saves, performance)
         - The mod system, the SDK, or the tools
         - No idea

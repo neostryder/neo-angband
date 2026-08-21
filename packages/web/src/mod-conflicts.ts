@@ -329,7 +329,7 @@ export interface ConflictReportLines {
    * ContestedSlots, in that order. A row's `record` is a RecordConflict for a
    * content row, a ContestedSlot for the rest, or null for the one case
    * `modConflictLines` itself still cannot attach a record to (see its doc
-   * comment) - null rather than a fabricated record, because "we have no record
+   * comment) - null rather than a fabricated record, because "there is no record
    * for this row" and "this row's record is empty" must not look alike.
    */
   readonly contestedRows: readonly ConflictRow<ContestedSlot | RecordConflict | null>[];

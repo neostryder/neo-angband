@@ -61,7 +61,7 @@ actual list of gameplay-addition mod candidates, and it is explicitly
 **not** upstream-commit-derived: every idea in it is the maintainer's own,
 dated by when it was raised, with zero SHA citations. It answers a different question
 ("what should this port add beyond Angband") than #237 asks ("what did real
-upstream add that we should adopt").
+upstream add that the port should adopt").
 
 ## What this means for #237, decided
 

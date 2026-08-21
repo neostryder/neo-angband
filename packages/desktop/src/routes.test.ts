@@ -21,7 +21,7 @@ const ROOTS = {
 
 const p = (...parts: string[]) => path.normalize(path.join(...parts));
 
-/** The candidate list, or a failure message naming what we got instead. */
+/** The candidate list, or a failure message naming what arrived instead. */
 function candidates(url: string): readonly string[] {
   const plan = planRequest(url, ROOTS);
   if (plan.kind !== "file") throw new Error(`expected a file plan, got ${plan.kind}`);

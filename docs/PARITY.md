@@ -141,7 +141,7 @@ Upstream C leaves the evaluation order of sibling function-argument draws
 unspecified. A stock GCC/MinGW build (which official Windows Angband uses) tends
 to evaluate them right-to-left; the port evaluates left-to-right. Under D1 = B
 this is **accepted, not a defect**: it shifts which specific values a seed
-produces but changes neither the rules nor the distribution of outcomes. We do
+produces but changes neither the rules nor the distribution of outcomes. The port does
 not flip argument order to chase a particular compiler's stream.
 
 ### Accepted: where the custom-options reader's three `msg()` lines go

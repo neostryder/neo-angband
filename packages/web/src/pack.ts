@@ -247,7 +247,7 @@ export function discoverContentModManifests(): PackManifest[] {
   const out: PackManifest[] = [];
   for (const [, mod] of discoverMods()) {
     const m = modManifest(mod.manifest);
-    // Plugins are surfaced by discoverPlugins/discoverTrustedPlugins; here we
+    // Plugins are surfaced by discoverPlugins/discoverTrustedPlugins; here it
     // list only packs with something to CONTRIBUTE as content, so the catalog
     // does not double-count. A hybrid (content + plugin) belongs here for its
     // content facet; a plugin-only pack does not.

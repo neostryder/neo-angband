@@ -11,7 +11,7 @@
  *
  * The port had only the two cursor-chasing tests, which move `top` toward the
  * cursor and never away from it. Upstream cannot notice the difference, because a
- * menu's region has a fixed page_rows for its whole life. Ours is recomputed on
+ * menu's region has a fixed page_rows for its whole life. This one is recomputed on
  * every paint from the height of the detail pane, so pressing '?' to hide the
  * description hands twenty rows to a thirty-mod list that goes on showing five,
  * with the rest of the pane blank. That is the "cannot scroll through it" half.

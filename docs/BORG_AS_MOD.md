@@ -16,7 +16,7 @@
 
 The procedural Borg is packaged as a **mod**, not ported into `packages/core`.
 It is first-party, which is not the same as bundled: NO mod ships inside the
-build, this one included. Every mod, ours or anyone's, is obtained the same way. Three things follow:
+build, this one included. Every mod, mine or anyone else's, is obtained the same way. Three things follow:
 
 1. **It behaves exactly as the original.** This is a faithful port of the
    upstream `borg/` autoplayer (Angband 4.2.6), not a reimplementation.

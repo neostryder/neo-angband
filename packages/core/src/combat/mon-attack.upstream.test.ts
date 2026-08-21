@@ -137,7 +137,7 @@ describe("monster/attack (reference/src/tests/monster/attack.c)", () => {
       // Check test_r_human / test_blow in unit-test-data.h
       const delta = 100 - p.chp;
       // Port: HURT with 1d4 under randFix maxes to 4, then armor adj.
-      // We assert positive damage matching the roll, not the C mdam quirk
+      // The assertion is positive damage matching the roll, not the C mdam quirk
       // of comparing to dice count, using the same 1d4 fixture as mon-melee
       // tests (totalDamage 4 with ac 0).
       expect(delta).toBe(4);

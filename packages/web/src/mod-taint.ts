@@ -21,8 +21,8 @@
  *
  * REFUSE, DO NOT FAIL. persistSave short-circuits on a taint and reports success.
  * That is not a lie about the write - it is the distinction between "the storage
- * would not take it" (retry, and tell the player the save is failing) and "we
- * chose not to offer it" (retrying changes nothing, and a "Saving failed."
+ * would not take it" (retry, and tell the player the save is failing) and "it was
+ * deliberately not offered" (retrying changes nothing, and a "Saving failed."
  * message on top of the modal below would point at the wrong culprit).
  *
  * ONE TAINT PER SESSION. The first fault is the one that names the mod, because

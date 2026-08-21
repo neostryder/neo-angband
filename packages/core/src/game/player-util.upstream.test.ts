@@ -9,7 +9,7 @@
  *   player_adjust_mana_precise -> playerAdjustManaPrecise (game/loop.ts)
  *
  * Upstream also asserts PR_HP / PR_MANA redraw bits when the whole part of
- * chp/csp changes. The port has no redraw mask on Player; we assert the same
+ * chp/csp changes. The port has no redraw mask on Player, so this asserts the same
  * predicate (chp/csp whole-part changed) as the observable "signaled" flag.
  */
 

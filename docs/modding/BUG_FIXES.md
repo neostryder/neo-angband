@@ -63,7 +63,7 @@
 ## Why this mod exists
 
 The port tracks upstream Angband by TAGGED RELEASE and keeps core faithful to
-the 4.2.6 tag, bugs included (PORT_PLAN.md decisions 2, 23, 24). We do NOT
+the 4.2.6 tag, bugs included (PORT_PLAN.md decisions 2, 23, 24). It does NOT
 cherry-pick post-tag commits, merged PRs, or issue fixes into core, because
 that would make core diverge from the tag and turn every future upstream
 re-sync into a rebase over local patches.
@@ -116,7 +116,7 @@ this mod.
   the core system it touches is not yet ported (blocked-on noted).
 - `READY` - the core system exists; the patch can be implemented now.
 - `NO UPSTREAM FIX` - a genuine, still-open upstream bug with no accepted fix;
-  carried as a known issue, with our own mitigation optional.
+  carried as a known issue, with an optional mitigation of the mod's own.
 
 The mod's flags (each `bugfix.*` declared in
 `neo-angband-mod-bug-fixes/manifest.json` under `rules`). Each declares
@@ -589,7 +589,7 @@ under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one:
 ## Already fixed in the 4.2.6 baseline (recorded, NOT carried here)
 
 Faithful core already reproduces these because they were fixed before the tag.
-Listed so we do not mistake them for open bugs.
+Listed so they are not mistaken for open bugs.
 
 | Issue | Fix PR | Merge commit | Note |
 |---|---|---|---|
@@ -614,9 +614,9 @@ this one:
 
 ---
 
-## Our own port code: what has been moved here
+## The port's own code: what has been moved here
 
-Decision 24 requires any bug our port code fixed relative to the tag to be
+Decision 24 requires any bug the port's own code fixed relative to the tag to be
 moved OUT of core and INTO this mod.
 
 Audit result (2026-07-08): the only non-faithful shortcut in core was the

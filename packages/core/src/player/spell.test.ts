@@ -220,7 +220,7 @@ describe("spellChance (player-spell.c L382)", () => {
 
     p.csp = 10;
     p.timed[4 /* TMD.STUN */] = 10;
-    /* Recompute with the real TMD index below in the game tests; here we
+    /* Recompute with the real TMD index below in the game tests; here this
      * just pin that a chance never exceeds 95. */
     p.timed[4] = 0;
     expect(spellChance(p, statInd, 0)).toBeLessThanOrEqual(95);

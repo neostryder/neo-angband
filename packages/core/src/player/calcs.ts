@@ -980,7 +980,7 @@ export function calcBonuses(
     if (isBowSlot) launcher = worn;
 
     /* curse := obj->curses, the worn item's curse_data array, held fixed while
-       we walk the item and its curse objects (1928, 2009-2023). */
+       the item and its curse objects are walked (1928, 2009-2023). */
     const curse = worn.curses;
     let obj: BonusSource | null = worn;
     /* The worn item's known twin on the first pass; from then on the curse

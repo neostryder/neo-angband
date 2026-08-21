@@ -262,8 +262,8 @@ function buildBasenameIndex(root) {
  *      cli). */
 function resolveFile(root, fileToken) {
   /* Normalise separators: the citation may use POSIX or native Windows
-   * separators when the prose was written from a different terminal. We
-   * treat both as POSIX for matching. */
+   * separators when the prose was written from a different terminal. Both
+   * are treated as POSIX for matching. */
   const normalised = fileToken.split(sep).join("/");
 
   if (normalised.startsWith("packages/")) {

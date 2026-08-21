@@ -634,7 +634,7 @@ export function doRandart(
   try {
     /*
      * Build the RANDNAME_TOLKIEN transition table once (build_prob is cached
-     * per-type upstream, randname.c L94-L103; here we build it once per run).
+     * per-type upstream, randname.c L94-L103; here it is built once per run).
      * When no corpus is supplied (the current game-path seam), fall back to the
      * non-faithful syllable generator (see module SEAM note). An empty word list
      * is treated as "no corpus" because build_prob/randname_make would otherwise

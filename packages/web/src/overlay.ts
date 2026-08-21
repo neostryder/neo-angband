@@ -78,10 +78,10 @@ export type MenuNav = "up" | "down" | "pageup" | "pagedown" | "home" | "end";
  * (ui-target.c:99-108) -> process_dir, where numpad digits and arrow keys are
  * interchangeable directions; for a vertical list only the y component matters,
  * so keypad 7/8/9 move up and 1/2/3 move down (ddy[7..9]=-1, ddy[1..3]=+1),
- * while 4/6 (pure horizontal) do nothing. We mirror that here so the numpad
+ * while 4/6 (pure horizontal) do nothing. That is mirrored here so the numpad
  * works in menus regardless of NumLock: event.key is the digit when NumLock is
- * ON and an Arrow* name when OFF, and event.code is Numpad* in both states (our
- * belt-and-suspenders). This is the single helper every overlay handler shares
+ * ON and an Arrow* name when OFF, and event.code is Numpad* in both states (the
+ * belt-and-suspenders half). This is the single helper every overlay handler shares
  * so the "numpad is dead in menus" asymmetry cannot creep back in per-screen.
  */
 export function menuNav(ev: KeyboardEvent): MenuNav | null {
@@ -1465,7 +1465,7 @@ export function selectFromMenu(
        * screen that is BODY_TOP's spare row; in a box it has to be counted. */
       const subtitleRow = extra?.subtitle ? 1 : 0;
       if (boxed) {
-        /* max_len over the rows we are about to draw - the header included, since
+        /* max_len over the rows about to be drawn - the header included, since
          * it sits inside the box - then the same clamp upstream applies: right-
          * align to fit, but never push the box past the prompt's own end, and give
          * up on the offset entirely once it is down to a few columns. */
@@ -1523,7 +1523,7 @@ export function selectFromMenu(
        * Pressing '?' to hide the mod manager's description pane is exactly that
        * case: it hands twenty rows to a thirty-mod list that goes on showing
        * five. Upstream cannot reach the state because its region's page_rows is
-       * fixed for the life of the menu; ours is recomputed every paint from the
+       * fixed for the life of the menu; this one is recomputed every paint from the
        * detail pane's height, which is what made the missing clamp visible. */
       if (cursor <= top && top > 0) top = cursor - 1;
       if (cursor >= top + (bodyRows - 1)) top = cursor - (bodyRows - 1) + 1;

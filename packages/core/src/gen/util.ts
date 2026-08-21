@@ -8,7 +8,7 @@
  * - The upstream Chunk stores objects and traps as pointer piles on each
  *   square; this port's Chunk only stores a monster index and no object or
  *   trap handles (those domains attach later via world integration). During
- *   generation we therefore track placed objects, placed monsters, and trap
+ *   generation the port therefore tracks placed objects, placed monsters, and trap
  *   grids on the Gen context and mirror monster occupancy into the Chunk's
  *   mon array so square_isempty / square_canputitem behave exactly as
  *   upstream for placement decisions.

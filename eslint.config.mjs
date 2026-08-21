@@ -4,7 +4,7 @@
 // as vitest.config.mts.
 //
 // Fast, non-type-checked preset by design:
-// we want quick feedback and no floating-promise noise on a faithful C port.
+// quick feedback matters more here, and a faithful C port draws floating-promise noise.
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 

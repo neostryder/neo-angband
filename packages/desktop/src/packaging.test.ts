@@ -9,7 +9,7 @@
  *   paths: @rpgm-toolsneo-angband-desktop
  *
  * Left unset, `linux.executableName` is derived from the package `name`, and
- * ours is scoped. Windows and macOS name their output from `productName`, so
+ * this one is scoped. Windows and macOS name their output from `productName`, so
  * they were fine - which is exactly why nobody found it: two thirds of the
  * matrix went green and the draft release looked plausible until you counted
  * the files in it.
@@ -125,7 +125,7 @@ describe("the config is one electron-builder will accept", () => {
 
   it("still asks for a desktop entry, and puts each half where it is read", () => {
     /* Kept as its own assertion rather than folded into the schema check: the
-     * schema says a key is spelled right, not that we set it - and this
+     * schema says a key is spelled right, not that it is set here - and this
      * particular setting is SPLIT across two places, which is what made it easy
      * to get wrong twice. `syncDesktopName` is a build option;
      * `desktopName` is manifest metadata at the ROOT (LinuxTargetHelper reads
@@ -219,7 +219,7 @@ describe("the macOS bundle gets a signature of some kind", () => {
   });
 });
 
-describe("what we tell a macOS user to do is what macOS does", () => {
+describe("what a macOS user is told to do is what macOS does", () => {
   /*
    * THE DEFECT: three places told the reader to "right-click the app and choose
    * Open". That was the standard answer for a decade, and Apple deleted the
@@ -396,7 +396,7 @@ describe("the updater's two halves name the same repository", () => {
 
   it("derives the asset prefix from the productName that names the files", () => {
     /*
-     * ASSET_PREFIX is the second, independent answer to "is this our file", and
+     * ASSET_PREFIX is the second, independent answer to "is this the app's own file", and
      * like any hardcoded name it can fall behind the thing it describes. Its
      * failure mode is silence - a release cut under a different productName
      * would simply never be offered - so it is derived from the same

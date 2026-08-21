@@ -32,6 +32,6 @@ from, and a fix that cannot cite one is usually a fix to the wrong thing.
 <!--
 The core game is a port: it keeps upstream's warts on purpose. An improvement -
 even an obviously good one - belongs in `bug-fixes` or `qol`, which are separate
-repositories. If you are not sure, say so here and we will work it out; it is a
+repositories. If you are not sure, say so here and I will work it out; it is a
 recurring and entirely reasonable question, not a mistake.
 -->

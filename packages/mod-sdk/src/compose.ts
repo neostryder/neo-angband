@@ -249,7 +249,7 @@ const fieldProvenanceByRecord = new WeakMap<ComposedRecord, FieldProvenance>();
  * from the mistake.
  *
  * Deliberately NOT a ComposeError. That type is the mod-attributable channel -
- * it carries a pack id and tells an author which line to fix - and this is our
+ * it carries a pack id and tells an author which line to fix - and this is the SDK's own
  * bug, not a mod's. Blaming whichever pack happened to be loading would send a
  * reader after the wrong thing entirely.
  */

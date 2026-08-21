@@ -3,7 +3,7 @@
  *
  * Angband has two movement keysets. The ORIGINAL keyset (the default,
  * upstream `rogue_like_commands` = false) moves with the numeric keypad;
- * the ROGUELIKE keyset (opt-in) adds hjkl + yubn diagonals. We honor that
+ * the ROGUELIKE keyset (opt-in) adds hjkl + yubn diagonals. The port honors that
  * default here: numpad and arrow keys always move; the roguelike letters
  * are gated behind the same option the engine exposes.
  *

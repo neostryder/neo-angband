@@ -56,7 +56,7 @@ describe("whether this launch can be updated in place", () => {
     expect(updatability(shape({ writable: false }))).toBe("manual");
   });
 
-  it("offers nothing on a platform we do not ship", () => {
+  it("offers nothing on a platform this project does not ship", () => {
     expect(updatability(shape({ platform: "freebsd" }))).toBe("none");
   });
 });
@@ -121,7 +121,7 @@ describe("the plan", () => {
   });
 });
 
-describe("the script that runs after we exit", () => {
+describe("the script that runs after the app exits", () => {
   const plan = swapPlan({
     platform: "win32",
     installRoot: "C:\\Games\\Neo Angband",
@@ -146,7 +146,7 @@ describe("the script that runs after we exit", () => {
     expect(posix).toMatch(/kill -0 4242/u);
   });
 
-  it("gives up rather than swapping if we never exit", () => {
+  it("gives up rather than swapping if the app never exits", () => {
     /* An unbounded wait would leave a poller running forever AND a staged update
      * that silently never lands. Bailing leaves a working old install. */
     expect(ps).toMatch(/if \(Get-Process -Id 4242[^)]*\) \{[^}]*exit 1 \}/u);

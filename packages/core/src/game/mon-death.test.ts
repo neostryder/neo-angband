@@ -202,7 +202,7 @@ describe("monsterDeath (mon_create_drop + monster_death)", () => {
 
   it("a DROP_GOOD monster's generic items are generated with good=true", () => {
     /* Good items skew to higher kinds; across seeds at least some are ego /
-     * enchanted. We assert the softer invariant that items are produced and
+     * enchanted. The softer invariant asserted here is that items are produced and
      * tagged, plus that the run is stable (determinism covered below). */
     const state = makeState({ seed: 3 });
     state.chunk.depth = 30;

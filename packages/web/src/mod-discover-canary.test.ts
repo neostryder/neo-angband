@@ -46,7 +46,7 @@ describe.skipIf(!ON)("the curated registry, live", () => {
       const res = await fetch(DEFAULT_REGISTRY_URL);
       expect(res.ok).toBe(true);
       /* The one header that decides whether the deployed site can do this at all.
-       * Measured rather than assumed, because it is not ours to guarantee. */
+       * Measured rather than assumed, because it is not this project's to guarantee. */
       expect(res.headers.get("access-control-allow-origin")).toBe("*");
 
       const r = await fetchRegistry(DEFAULT_REGISTRY_URL, { fetch: env.fetch });

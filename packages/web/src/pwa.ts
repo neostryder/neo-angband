@@ -246,7 +246,7 @@ async function evictWorkers(): Promise<void> {
  * The web is asked whether it wants a newer build, because the files are on
  * somebody else's server and the player is mid-game. The desktop has already
  * downloaded, verified and installed those files; they are on the disk, three
- * inches away, and the only thing still serving the old ones is our own
+ * inches away, and the only thing still serving the old ones is this app's own
  * service worker. The worker precaches the NEW shell during the launch that
  * follows an update and takes over on the launch after that, so the first
  * launch after every desktop update shows the previous version. Measured: the
@@ -391,7 +391,7 @@ export function installAutoUpdate(canReloadNow?: () => boolean): void {
 
   // Whether a worker already controlled this page when the script ran. If not,
   // the first `controllerchange` is that initial worker claiming a fresh visit
-  // (clientsClaim) - NOT an update - so we must not reload for it.
+  // (clientsClaim) - NOT an update - so it must not trigger a reload.
   const hadController = !!sw.controller;
   sw.addEventListener("controllerchange", () => {
     if (!hadController || reloading) return;

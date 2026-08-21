@@ -213,7 +213,7 @@ describe(`reference/ is upstream ${BASELINE_VERSION}`, () => {
     expect(
       extra,
       `${extra.length} file(s) under reference/ are not in ${BASELINE_VERSION}. ` +
-        `reference/ is a verbatim vendor of the tag; anything of ours belongs ` +
+        `reference/ is a verbatim vendor of the tag; anything of this project's belongs ` +
         `outside it.`,
     ).toEqual([]);
   });
@@ -229,7 +229,7 @@ describe(`reference/ is upstream ${BASELINE_VERSION}`, () => {
     expect(
       edited,
       `${edited.length} vendored file(s) differ from ${BASELINE_VERSION}: ` +
-        `${edited.join(", ")}. reference/ is upstream's tree, not ours - a fix ` +
+        `${edited.join(", ")}. reference/ is upstream's tree, not this project's - a fix ` +
         `belongs in the bug-fixes mod, and a change to gamedata here silently ` +
         `changes the compiled content pack.`,
     ).toEqual([]);

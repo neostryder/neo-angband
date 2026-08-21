@@ -123,7 +123,7 @@ export function showCrashScreen(err: unknown, context: string, version: string):
 
     const what = document.createElement("p");
     what.textContent =
-      `This is an alpha, and this is exactly the kind of thing we need to hear ` +
+      `This is an alpha, and this is exactly the kind of thing worth reporting ` +
       `about. Copy the text below into an issue at ${ISSUES}, or paste it in ` +
       `the Discord at ${DISCORD}, with a line about what you were doing.`;
     what.style.cssText = "margin:0 0 1em";

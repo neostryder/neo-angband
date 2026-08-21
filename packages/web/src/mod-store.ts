@@ -62,7 +62,7 @@ export const DEFAULT_ENABLED_MODS: readonly string[] = [];
  * decision. A mod that arrives any other way - the download catalogue, a folder on disk,
  * an external mod manager - is third-party as far as consent goes, and every capability
  * it declares has to be granted explicitly. That distinction is why the list survives
- * being empty: it is the definition of "we vouched for this by shipping it", and there is
+ * being empty: it is the definition of "this was vouched for by shipping it", and there is
  * currently nothing the game vouches for that way.
  *
  * IT WENT EMPTY DELIBERATELY. qol and bug-fixes were here; both now live in their own

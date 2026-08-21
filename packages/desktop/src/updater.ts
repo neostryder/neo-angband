@@ -16,7 +16,7 @@
  *    deleted, not installed - see the digest note in web/src/update.ts.
  *  - The URL. It must be an https release asset on github.com, so a poisoned or
  *    stale catalogue cannot point the updater at an arbitrary host.
- *  - Our own success. The swap runs from a script that keeps the outgoing files
+ *  - The updater's own success. The swap runs from a script that keeps the outgoing files
  *    until the incoming ones are in place (update-plan.ts).
  *
  * The decisions are in update-plan.ts and unit-tested; this file is the part
@@ -61,8 +61,8 @@ export const UPDATE_REPO = "neostryder/neo-angband";
 export function workDir(root: string, platform: string): string {
   const P = paths(platform);
   /* On macOS the install root IS the bundle, so the work directory goes beside
-   * it rather than inside - anything written into Contents/ breaks the seal we
-   * just spent a release adding. */
+   * it rather than inside - anything written into Contents/ breaks the seal that
+   * cost a release to add. */
   return platform === "darwin"
     ? P.join(P.dirname(root), WORK_DIRNAME)
     : P.join(root, WORK_DIRNAME);
@@ -141,7 +141,7 @@ export function systemProgram(name: string, systemRoot?: string): string {
 }
 
 /**
- * The extractor for a platform: a program, or null when we do it ourselves.
+ * The extractor for a platform: a program, or null when the updater does it itself.
  *
  * Only macOS still shells out, and only to `/usr/bin/ditto`, which is part of
  * the operating system rather than something a player installs - so the rule
@@ -283,7 +283,7 @@ export async function stageArchive(
   } else {
     /*
      * ELECTRON'S `fs` TREATS ANY PATH CONTAINING `.asar` AS AN ARCHIVE, and
-     * every archive we unpack contains `resources/app.asar`.
+     * every archive unpacked here contains `resources/app.asar`.
      *
      * Writing that file therefore does not write a file: the patched fs tries
      * to open the *directory it is in the middle of creating* as an asar and
@@ -312,7 +312,7 @@ export async function stageArchive(
     return P.join(staging, bundle);
   }
   /* A sanity check that costs nothing and catches an archive whose layout
-   * changed: the extracted tree must contain the executable we are replacing. */
+   * changed: the extracted tree must contain the executable being replaced. */
   if (fs.readdirSync(staging).length === 0) throw new Error("the archive was empty");
   return staging;
 }
@@ -372,12 +372,12 @@ export function winCommandLine(parts: readonly string[]): string {
  * version with a complete, correct, unused copy of the new one on disk.
  *
  * `Win32_Process.Create` is the way out: the process is created by the WMI
- * provider host, so its parent - and therefore its job - is not ours. It is
+ * provider host, so its parent - and therefore its job - is not this process's. It is
  * created in the CALLER'S SESSION on a local connection, which is what makes
  * the relaunch at the end of the script visible to the player rather than
  * invisible in session 0; that was measured, not assumed.
  *
- * The launcher we spawn to make the call is itself inside the job, and that is
+ * The launcher spawned to make the call is itself inside the job, and that is
  * fine: it only has to live for one WMI call, and the caller waits for it.
  */
 export function wmiCreateScript(commandLine: string): string {

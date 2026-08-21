@@ -27,7 +27,7 @@ afterEach(() => {
   resetComposition();
 });
 
-/** A content mod contributing one monster record, whatever we hand it. */
+/** A content mod contributing one monster record, whatever it is handed. */
 function monsterMod(id: string, record: Record<string, unknown>): DiskPack {
   return {
     manifest: { id, name: id, version: "1.0.0", shape: "content" } as DiskPack["manifest"],

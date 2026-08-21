@@ -697,8 +697,8 @@ function installLogging(): void {
  */
 function installUpdater(): void {
   /* Held between `download` and `apply` so the renderer cannot ask us to swap in
-   * a directory it names. The only path we will ever swap is one we extracted
-   * ourselves, this session, from an archive we verified. */
+   * a directory it names. The only path ever swapped is one this process
+   * extracted itself, this session, from an archive it verified. */
   let staged: string | null = null;
 
   ipcMain.handle(UPDATE_CHANNEL, async (event, op: unknown, arg: unknown) => {

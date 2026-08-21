@@ -26,7 +26,7 @@ import type { GameState } from "./context.js";
 /**
  * get_message_text's bracket state machine (mon-msg.c L376): "[a|b]" selects a
  * for singular and b for plural; "[s]" is shorthand for "[|s]". Characters
- * outside brackets pass through. Our callers are always singular.
+ * outside brackets pass through. Every caller here is singular.
  */
 function resolveBrackets(source: string, doPlural: boolean): string {
   const NORMAL = 0;

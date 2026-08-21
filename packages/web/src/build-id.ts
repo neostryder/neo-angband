@@ -54,7 +54,7 @@ export function isStampedBuild(id: string = WEB_BUILD_ID): boolean {
  *
  * Answers false for anything it is not sure about, and every uncertainty is a
  * reason to be sure: an unstamped dev build has nothing to compare, a fetch that
- * failed proves nothing, and a malformed answer is a server we do not
+ * failed proves nothing, and a malformed answer is a server this does not
  * understand. A false positive here puts an (U)pdate row in front of a player
  * that reloads them onto the same build, forever.
  */

@@ -119,7 +119,7 @@ public repository does not have.
 ### The changelog is the release notes
 
 The public repository is read by people who cannot see this history, so
-`CHANGELOG.md` is the only account of what changed. Every tag we push carries a
+`CHANGELOG.md` is the only account of what changed. Every pushed tag carries a
 curated section: what a player gets, what a mod author gets, what broke. Written
 for someone who has never read this file.
 

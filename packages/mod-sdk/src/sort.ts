@@ -297,7 +297,7 @@ export function sortModOrder(
   const dropped: DroppedEdge[] = [];
   const unresolvable: string[][] = [];
 
-  /* Drop the weakest edge on a cycle until nothing is left that we may drop.
+  /* Drop the weakest edge on a cycle until nothing is left that may be dropped.
    * Bounded by the edge count: every pass removes one edge or records one
    * unbreakable cycle and stops. */
   for (;;) {
