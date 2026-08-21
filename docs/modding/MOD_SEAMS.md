@@ -518,6 +518,87 @@ read and not the other would change what an agent decides about the same object
 depending on which read produced it. The exported `simulateLoadout(state, change,
 opts)` is the same function for a caller inside the engine.
 
+## 4b. `ctx.ui.openPanel` - a piece of web page above the game
+
+Every UI seam before this one draws with the same seven methods onto the same
+character grid. This one hands a mod a shadow root and stops. It exists because
+the shape a grid cannot carry is a FORM: fields with a caret, a list with a
+scrollbar, a table the player sorts by clicking a column. `RegionSurface`
+publishes `size`, `clear`, `print`, `prt`, `eraseToEol`, `setCursor` and
+`hideCursor`, and a text editor built out of those is a caret, a tab order and a
+focus model reimplemented inside a terminal - three things that exist in every
+browser already and in none of this codebase.
+
+```js
+// register(host, ctx) - the context that carries `ui`
+const panel = ctx.ui.openPanel({ id: "editor", modal: true, label: "Monster editor" });
+panel.root.innerHTML = `<style>:host{all:initial}</style><input id="name">`;
+panel.root.getElementById("name").focus();   // and it can actually be typed into
+await panel.closed;                          // the player is done, however they finished
+```
+
+Six things about it, and the first two are the ones that will surprise you:
+
+- **Escape is the player's, and you cannot have it.** The input door closes the
+  topmost panel on a real Escape before your panel is offered the key, and focus
+  goes back to the game rather than back to whatever your panel had focused. Use
+  another key for your own "back". A modal panel also carries a close control the
+  host draws, outside your shadow root, because this game is played on touch and
+  a phone has no Escape key. What that buys the player is a way out of a panel
+  that has stopped responding; it is not a defence against a mod that means harm,
+  and nothing here pretends to be - see the last bullet.
+- **A non-modal panel's container takes NO pointer events.** It is a
+  full-viewport rectangle, so any other answer would be an invisible layer eating
+  every tap meant for the dungeon underneath. Style `pointer-events: auto` onto
+  the elements you want clickable, which is exactly what the game's own touch
+  action bar does with its buttons. `modal: true` takes the pointer, takes the
+  focus on mount, and gets `role="dialog"`; a plain panel takes neither and gets
+  `role="group"`.
+- **The keyboard is decided per keystroke, by where the caret is.** The game's
+  front end has ONE keydown registration - `window`, capture phase, installed at
+  import - and every modal handler behind it calls `stopImmediatePropagation`. So
+  a real field is unusable on this page unless the door stands down, and the door
+  stands down for a key whose composed path runs through the top panel before it
+  reaches the game's canvas. Put the caret in your field and your field gets the
+  keys; click back on the map and the game does. This is the one thing the
+  capability grants that a mod could not already do.
+- **It fails OPEN, and the invariants are checked on the keystroke.** You hold
+  the shadow root, so you hold `root.host`, so you can detach the container, move
+  it, or make it a parent of the game's own canvas. Each of those is checked as
+  the key arrives, not once at mount, and any of them CLOSES the panel and gives
+  the keyboard back. A panel that is not the top of the stack is inert. The bias
+  is deliberate: a suppression path that errs towards suppressing is a game that
+  has stopped responding to the keyboard, and a player cannot tell that from a
+  crash.
+- **The player closing a panel puts your mod on a short pause.** Nothing stops a
+  `closed` continuation from opening a replacement, and a mod that does that in a
+  loop would turn the one key that gets the player out into a key that makes the
+  panel flicker. Closing your own panel costs you nothing, so an authoring tool's
+  ordinary step-to-step navigation is unaffected. At most eight panels are open
+  at once, for the same reason: Escape closes one, so the count is the number of
+  presses back to the game.
+- **The shadow root is hygiene, not a sandbox, and the docs will not say
+  otherwise.** Styles do not cross it in either direction, so your `#title`
+  cannot collide with anything and your stylesheet cannot restyle the
+  accessibility live-regions or the touch bar by accident. It is closed, so
+  another mod cannot read your panel's fields out of `element.shadowRoot`. That
+  is the extent of it. Your code and every other mod's runs in the page's own
+  realm, so none of this contains anybody, and an iframe would not either - it
+  would fence the half that draws a form while the half holding `ctx.core` sat
+  outside it, at the price of turning one authoring tool into two programs and a
+  message protocol, and of putting the keyboard somewhere the host can no longer
+  offer a way out of. The capability is a DECLARATION the player reads, the same
+  as every other capability in this system (see `PLUGINS.md`, "What a capability
+  gates").
+
+The panels a mod has open come down when the mod set changes, after every
+plugin's `uninstall()` and before the save - so your last moment on a live state
+can still read what the player typed into one, and nobody is left looking at a
+mod's interface over a game that is reloading. New panels are refused from the
+moment teardown begins. There is no other lifecycle: as everywhere else in this
+system, disabling a mod re-composes the page, and a panel not mounted on the way
+back up is not mounted.
+
 ## 5. Doors that are exported but deliberately CLOSED
 
 An exported mutable table is an extension point whether anyone meant it to be one
@@ -588,6 +669,8 @@ later mod input consumer cannot silently take a player-selected binding.
 | Per-mod hook discovery + fold | `packages/web/src/mod-hooks.ts` |
 | The first-party mods' own hook code (their repositories, not this tree) | `neo-angband-mod-bug-fixes/plugin.ts`, `neo-angband-mod-qol/plugin.ts` |
 | Per-mod Fixes & tweaks submenu | `packages/web/src/mods.ts` (`managePatches`) |
+| DOM panels: the layer, the invariants, the way out | `packages/web/src/panel-runtime.ts` |
+| The one keydown registration, and the door's stand-down | `packages/web/src/input-door.ts` |
 | Host wiring + message sink | `packages/web/src/main.ts` |
 | Per-mod design | `docs/modding/QOL.md`, `docs/modding/BUG_FIXES.md` |
 | Measured reach + gap list | `docs/modding/MOD_REACH.md` |

@@ -23,10 +23,14 @@
  * keyboard back to the human before the save is taken. That ordering is the claim
  * worth testing; it is not ceremony in front of a `location.reload()`.
  *
- * ORDER WITHIN THE PASS. Plugins first, the controller slot last. An autoplayer's
- * own `uninstall` may want to read the game or issue a final command, and pulling
- * the command provider out from under it first would be a teardown that breaks the
- * thing it is tearing down.
+ * ORDER WITHIN THE PASS. Plugins first, then their panels, then the controller
+ * slot. An autoplayer's own `uninstall` may want to read the game or issue a
+ * final command, and pulling the command provider out from under it first would
+ * be a teardown that breaks the thing it is tearing down. A mod's DOM panels
+ * come down after its `uninstall` for the same reason in a milder form - that is
+ * the mod's last chance to read what the player typed into one - and before the
+ * save, so nobody is left looking at a mod's interface over a game that is
+ * reloading (panel-runtime.ts).
  *
  * CONTAINMENT. Every call is wrapped: one mod's bad teardown must lose that mod's
  * teardown and nothing else, and must never be the reason the reload does not
@@ -59,6 +63,23 @@ export interface ModTeardownDeps {
   readonly plugins: readonly ModTeardownTarget[];
   /** The one installed autoplayer, or null while the human has the keyboard. */
   readonly controller: ModTeardownController | null;
+  /**
+   * Stop accepting new DOM panels (`revokeModPanels`). Called FIRST, ahead of
+   * every `uninstall()`, so a mod cannot open a panel on the way out and leave
+   * the player looking at an interface belonging to a mod that is going away.
+   */
+  readonly revokePanels?: () => void;
+  /**
+   * Take down every mounted DOM panel and say how many there were
+   * (`closeAllModPanels`). Called AFTER the `uninstall()` pass, because a
+   * panel's contents are exactly the kind of thing a mod's last moment on a live
+   * state is for reading.
+   *
+   * Both are passed rather than imported, for the reason the controller slot is
+   * structural: this module must stay callable from a test with no document
+   * behind it.
+   */
+  readonly closePanels?: () => number;
 }
 
 /** What the pass actually did, for the log and for the tests. */
@@ -69,6 +90,8 @@ export interface ModTeardownResult {
   readonly failed: readonly string[];
   /** The autoplayer whose slot was released, or null if there was none. */
   readonly released: string | null;
+  /** How many mounted DOM panels were taken down. */
+  readonly panelsClosed: number;
   /** False when the pass had already run for this page and did nothing. */
   readonly ran: boolean;
 }
@@ -91,11 +114,22 @@ export function resetModTeardown(): void {
  * the header. Never throws.
  */
 export function teardownModPlugins(deps: ModTeardownDeps): ModTeardownResult {
-  if (done) return { torndown: [], failed: [], released: null, ran: false };
+  if (done) {
+    return { torndown: [], failed: [], released: null, panelsClosed: 0, ran: false };
+  }
   done = true;
 
   const torndown: string[] = [];
   const failed: string[] = [];
+
+  /* BEFORE ANY MOD CODE RUNS. `uninstall()` is mod-authored and may do anything,
+   * including open a panel; shutting the door first is cheaper than deciding
+   * afterwards what to do about one that arrived during teardown. */
+  try {
+    deps.revokePanels?.();
+  } catch (err) {
+    log.error("mods", `revoking the mod panel layer failed:`, err);
+  }
 
   for (const loaded of deps.plugins) {
     const uninstall = loaded.plugin.uninstall;
@@ -113,6 +147,17 @@ export function teardownModPlugins(deps: ModTeardownDeps): ModTeardownResult {
       );
       log.error(`mod:${loaded.id}`, `uninstall() failed:`, err);
     }
+  }
+
+  /* After every `uninstall()`, before the controller slot and before the save.
+   * Never throws out of here: the panels are going away with the page whatever
+   * happens, and a failure to tidy them must not be the reason the reload does
+   * not happen. */
+  let panelsClosed = 0;
+  try {
+    panelsClosed = deps.closePanels?.() ?? 0;
+  } catch (err) {
+    log.error("mods", `closing mod panels failed:`, err);
   }
 
   let released: string | null = null;
@@ -133,5 +178,5 @@ export function teardownModPlugins(deps: ModTeardownDeps): ModTeardownResult {
     }
   }
 
-  return { torndown, failed, released, ran: true };
+  return { torndown, failed, released, panelsClosed, ran: true };
 }

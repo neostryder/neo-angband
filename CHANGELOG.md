@@ -30,6 +30,45 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- **A mod can draw with real HTML instead of the character grid.** A mod holding
+  the new `ui:panel.mount` capability gets `ctx.ui.openPanel(spec)`, which mounts
+  a panel on the page above the game and hands back a shadow root to build in.
+  The five UI seams before it all paint character cells through the same seven
+  methods, which is right for a compass or a carried-weight readout and wrong for
+  a form: a field with a caret, a list with a scrollbar and a table the player
+  sorts by clicking a column are three things every browser already has and this
+  codebase has none of.
+
+  The part a mod could not do for itself is the keyboard. The front end has one
+  keydown registration - `window`, capture phase, installed at import - and every
+  modal handler behind it cancels the event, so a real `<input>` on this page
+  received nothing and its keystrokes were read as game commands instead: typing
+  a name walked the character across the level. The door now stands down for a
+  keystroke whose composed path runs through the top panel before it reaches the
+  game's canvas, so the caret decides whose key it is, per keystroke.
+
+  Escape belongs to the player and a mod cannot take it. It closes the topmost
+  panel, decided at the door before the panel is offered the key, and focus
+  returns to the game rather than to whatever the panel had focused; a modal
+  panel also carries a close control the host draws outside the mod's shadow
+  root, because a phone has no Escape key. The suppression fails OPEN: a
+  container that has been detached, moved out of the panel layer, or made a
+  parent of the game's own canvas is closed and the keyboard goes back, checked
+  as each key arrives rather than once at mount, and a panel under another is
+  inert. A panel the player closed puts that mod on a brief pause, so reopening
+  cannot outrun the key they used to get out, and eight panels is the ceiling
+  because Escape closes one at a time.
+
+  The shadow root is style hygiene rather than a sandbox and the consent text
+  says so: a plugin runs in the page's own realm, so a mod can reach the document
+  with or without this grant. What the grant carries is the sentence the player
+  reads before enabling the mod - that it can draw something which looks exactly
+  like the game's own screens and read what is typed into it - and a container the
+  host owns, places, stacks and takes away. Panels come down when the mod set
+  changes, after each plugin's `uninstall()` and before the save.
+
 ### Fixed
 
 - The `?` command summary is `lib/help`'s own again, keyset for keyset. It had

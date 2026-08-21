@@ -131,6 +131,20 @@
  *                             write to it succeeded or failed. Its own kind,
  *                             like "display:replace" - there is nothing to
  *                             range over, so it has no wildcard either.
+ *  - "ui:panel.mount"      - draw with real HTML instead of the character grid: a
+ *                             panel of the mod's own, mounted on the page above
+ *                             the game. A THIRD "ui:" action, and the reason it is
+ *                             not a third region name is the same reason
+ *                             "ui:region.create" is not a seventh: the sentence a
+ *                             player agrees to is different. "replace" hands over
+ *                             something the game draws, "create" adds a rectangle
+ *                             of the game's own character grid, and this one puts
+ *                             a piece of web page on top - which can look like the
+ *                             game's own interface, style anything inside itself,
+ *                             and read what the player types into it. No wildcard,
+ *                             and "ui:*.replace" does not cover it: `grantCovers`
+ *                             compares the action, so a mod that may redraw the
+ *                             vitals still cannot mount a panel without asking.
  *  - "ui:region.create"    - ADD a rectangle of your own to the player's screen
  *                             (ModPlugin.regions), rather than take one of the
  *                             game's. The only "ui:" capability whose ACTION is
@@ -163,7 +177,7 @@ export type ParsedCapability =
   | { kind: "network"; host: string }
   | { kind: "registry"; domain: string }
   | { kind: "display"; action: "replace" }
-  | { kind: "ui"; region: string; action: "replace" | "create" }
+  | { kind: "ui"; region: string; action: "replace" | "create" | "mount" }
   | { kind: "backup"; action: "folder" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
@@ -203,6 +217,34 @@ const UI_RE = /^ui:(\*|messages|sidebar|status|menu|screen)\.replace$/;
  * the note there.
  */
 const UI_CREATE_RE = /^ui:region\.create$/;
+/**
+ * `ui:panel.mount` - draw with real HTML instead of the character grid.
+ *
+ * A THIRD ACTION, for the same reason `create` was a second one rather than a
+ * seventh region name: what the player is agreeing to is a different sentence.
+ * `replace` hands a mod something the game already draws. `create` gives it a
+ * rectangle of the game's own character grid, painted with the same seven
+ * methods every other surface has. This one puts a piece of WEB PAGE above the
+ * game - arbitrary markup and styling, which can be made to look exactly like
+ * the game's own interface, and which can hold a real text field and read what
+ * is typed into it.
+ *
+ * NO WILDCARD, for the reason `create` has none: a mod either may mount panels
+ * or it may not, and there is no set of panel names to range over, because a
+ * panel does not exist until the mod asks for one.
+ *
+ * AND `ui:*.replace` MUST NOT COVER IT. `grantCovers` compares the action as
+ * well as the region, so this holds by construction rather than by a rule
+ * somebody has to remember - which is exactly what that comparison was added
+ * for when `create` arrived.
+ *
+ * WHAT IT IS NOT. It is not a containment boundary and this module's header
+ * already says why: a plugin's code runs in the page's own realm and can reach
+ * the document with no capability at all. What this grant buys is a panel the
+ * HOST owns - one it can place, stack, take the keyboard back from and close -
+ * plus a sentence the player reads before any of it happens.
+ */
+const UI_MOUNT_RE = /^ui:panel\.mount$/;
 const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
 const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */
@@ -244,6 +286,12 @@ export function parseCapability(cap: string): ParsedCapability {
    * one shape rather than two. What distinguishes it is `action`. */
   if (UI_CREATE_RE.test(cap)) {
     return { kind: "ui", region: "region", action: "create" };
+  }
+  /* `panel` is the region NAME, on the same terms `region` is above: the literal
+   * the author wrote, so one `kind: "ui"` arm keeps one shape. `action` is what
+   * separates the three, and `grantCovers` compares it. */
+  if (UI_MOUNT_RE.test(cap)) {
+    return { kind: "ui", region: "panel", action: "mount" };
   }
   const event = EVENT_RE.exec(cap);
   if (event) {
