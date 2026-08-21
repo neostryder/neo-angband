@@ -131,6 +131,17 @@ version it still calls itself.
   an autoplayer mod can be installed and enabled without ever holding the
   keyboard; this answers who played.
 
+- **A mod's controller now has a clock of its own.** `ModPlugin.controller` was
+  installed and then nothing drove it, so an autoplayer only took a turn when a
+  human happened to press a key - which meant an autoplayer could not actually
+  play by itself, restart loop or not. The mod-controller install site now pumps
+  `advance()` on a plain interval, the same shape the debug agent (`?agent=`) and
+  sandboxed plugin (`?plugin=`) seams already used: a latch arms one action per
+  tick, because `runGameLoop` asks for a command for as long as the player has
+  energy, and a controller answering every call would never let `advance()`
+  return. Unlike the debug seams, there is no tick cap - a "let it play" mod is
+  supposed to keep going, not stop after a fixed number of turns.
+
 ## [0.24.0] - 2026-08-21
 
 Current state of the project at version `0.24.0` - a fixes release. Nothing
