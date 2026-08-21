@@ -132,6 +132,13 @@ export * from "./mod/registry-host.js";
 export * from "./mod/vocabulary.js";
 export * from "./mod/record-keys.js";
 export * from "./mod/extension.js";
+/* THE TYPE ONLY, not the functions. `RecordRefusal` is the published shape of
+ * `StoreRegistry.refused` and `ObjRegistry.refused`, so a consumer has to be
+ * able to name it. `fieldOwner`, `sameEntry` and `refusalWhy` are binder
+ * machinery: putting them on `ctx.core` would promise mods an interface this
+ * repository wants to keep free to change, and the ABI ratchet
+ * (mod-core-surface.test.ts) is right to have asked. */
+export type { RecordRefusal } from "./mod/refusal.js";
 export * from "./agent/index.js";
 export * from "./game/energy.js";
 export * from "./game/context.js";

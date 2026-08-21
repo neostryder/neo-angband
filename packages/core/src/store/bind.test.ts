@@ -176,7 +176,7 @@ describe("bindStore: an unresolvable stock line", () => {
 
     expect(bound.refused.length).toBe(1);
     expect(bound.refused[0]!.id).toBe("mod-a");
-    expect(bound.refused[0]!.store).toBe("STORE_ARMOR");
+    expect(bound.refused[0]!.record).toBe("STORE_ARMOR");
     expect(bound.refused[0]!.field).toBe("normal");
     expect(bound.refused[0]!.why).toContain("Padded Jerkin");
     /* One modifier, so no parenthetical set - the ordinary case pays nothing. */
@@ -214,7 +214,7 @@ describe("bindStore: an unresolvable stock line", () => {
      * order and it is the only one of the two core can single out - and the set
      * is in the sentence, so a fault on the wrong row is still traceable. */
     expect(bound.refused[0]!.id).toBe("mod-b");
-    expect(bound.refused[0]!.why).toContain("packs touching this store: core, mod-a, mod-b");
+    expect(bound.refused[0]!.why).toContain("packs touching this record: core, mod-a, mod-b");
   });
 
   it("drops a mod-defined store's own bad line rather than throwing", () => {
