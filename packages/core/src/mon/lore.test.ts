@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MFLAG, RF } from "../generated/index.js";
 import { Rng } from "../rng.js";
@@ -18,6 +19,7 @@ import {
   wipeMonsterLore,
 } from "./lore.js";
 import type { LoreStore } from "./lore.js";
+import { bindMonsters } from "./bind.js";
 
 describe("get_lore (mon-lore.c L1735) and the flag mask", () => {
   it("creates a blank record lazily and reuses it", () => {
@@ -151,5 +153,91 @@ describe("lore_treasure (L502) and observation helpers", () => {
     /* Knowing a flag the race lacks does not invent it. */
     lore.flags.on(RF.UNDEAD);
     expect(monsterFlagsKnown(race, lore).has(RF.UNDEAD)).toBe(false);
+  });
+});
+
+/**
+ * finish_parse_lore's base-flag union (mon-init.c:2570-2575).
+ *
+ * Upstream walks every race at startup and does
+ * `rf_union(l->flags, r->base->flags)` before `lore_update`, so a player who
+ * has never met a giant black ant still knows ants are ANIMAL and WEIRD_MIND.
+ *
+ * IT IS A FINISH HOOK, and the port did not have it. Measured 2026-08-20
+ * against the shipped pack: a fresh lore for a giant black ant knew neither of
+ * its base's flags, which made monster recall quieter than upstream's for every
+ * monster the player has not met - 54 of the 56 shipped bases carry flags. The
+ * race side of the inheritance was ported (mon/bind.ts unions the base's flags
+ * into the RACE), which is exactly why nothing noticed: the flags were there,
+ * they were simply never known.
+ *
+ * Run against the REAL monster pack rather than a fixture, because the claim is
+ * about what a player of the shipped game knows, and a fixture base whose flags
+ * this test chose would assert nothing about that.
+ */
+describe("a monster's base flags are known before meeting it", () => {
+  const packJson = <T,>(name: string): T[] =>
+    (
+      JSON.parse(
+        readFileSync(new URL(`../../../content/pack/${name}.json`, import.meta.url), "utf8"),
+      ) as { records: T[] }
+    ).records;
+  const registry = bindMonsters({
+    pain: packJson("pain"),
+    blowMethods: packJson("blow_methods"),
+    blowEffects: packJson("blow_effects"),
+    monsterSpells: packJson("monster_spell"),
+    monsterBases: packJson("monster_base"),
+    monsters: packJson("monster"),
+    summons: packJson("summon"),
+    pits: packJson("pit"),
+  } as never);
+
+  it("knows the flags an ant's base carries", () => {
+    const ant = registry.races.find((r) => r.name === "giant black ant")!;
+    expect(ant.base.name).toBe("ant");
+    /* The base really does carry them - otherwise the assertions below would
+     * pass for the wrong reason. */
+    expect(ant.base.flags.has(RF.ANIMAL)).toBe(true);
+    expect(ant.base.flags.has(RF.WEIRD_MIND)).toBe(true);
+
+    const lore = newMonsterLore(ant);
+    expect(lore.flags.has(RF.ANIMAL)).toBe(true);
+    expect(lore.flags.has(RF.WEIRD_MIND)).toBe(true);
+    /* And a flag the base does NOT carry is still unknown, so this is a union
+     * and not a `setall` wearing one's clothes. */
+    expect(lore.flags.has(RF.UNIQUE)).toBe(false);
+  });
+
+  it("does NOT come back after a wizard wipe, exactly as upstream", () => {
+    /* The half that pins the placement. Upstream unions the base flags ONCE at
+     * startup, so `wipe_monster_lore` genuinely loses them and `lore_update` on
+     * the next blow does not restore them. Doing the union in `loreUpdate`
+     * instead - which was the first thing tried here - would have made the
+     * port's wizard wipe less complete than the C's. */
+    const ant = registry.races.find((r) => r.name === "giant black ant")!;
+    const lore = newMonsterLore(ant);
+    expect(lore.flags.has(RF.ANIMAL)).toBe(true);
+
+    wipeMonsterLore(ant, lore);
+    expect(lore.flags.isEmpty()).toBe(true);
+    loreUpdate(ant, lore);
+    expect(lore.flags.has(RF.ANIMAL)).toBe(false);
+  });
+
+  it("does it for every race in the pack", () => {
+    /* The whole claim, on the whole pack: no race's base flags are unknown to a
+     * fresh lore. A per-race loop rather than one spot check, because the union
+     * reads `race.base` and a race with an odd base is exactly what would slip
+     * past a single example. */
+    for (const race of registry.races) {
+      const lore = newMonsterLore(race);
+      for (let i = 0; i < race.base.flags.bits.length; i++) {
+        expect(
+          (lore.flags.bits[i]! & race.base.flags.bits[i]!) === race.base.flags.bits[i]!,
+          `${race.name}: lore is missing a flag from base ${race.base.name}`,
+        ).toBe(true);
+      }
+    }
   });
 });

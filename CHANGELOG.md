@@ -145,6 +145,17 @@ digest in the game's catalogue and must never be moved.
   at core for behaviour a mod caused. The list also moved out of `main.ts` into
   `mod-summary.ts` so it is testable at all — the entry module cannot be imported,
   which is why a list that was wrong for every content-only mod stayed green.
+- **Monster recall did not know what a monster's KIND implies.** Upstream unions
+  each race's base flags into its lore at startup (`finish_parse_lore`), so a
+  player who has never met a giant black ant still knows ants are animals with
+  weird minds, and that ainu resist fire and cannot be confused. The port had
+  the race half of that inheritance and not the lore half — which is exactly why
+  nothing noticed, since the flags were on the race all along and simply never
+  known. Measured against the shipped pack: 54 of the 56 monster bases carry
+  flags, so recall was quieter than upstream's for every monster the player has
+  not met. The wizard "wipe monster lore" command still loses them for good,
+  because upstream's union runs once at startup and never again — the existing
+  wipe test is what caught the first attempt putting it in the wrong place.
 - **A curse could multiply an object's weight by a negative number.**
   `finish_parse_curse` refuses a curse that carries `MULTIPLY_WEIGHT` together
   with a negative weight adjustment, and the port had the parser-side weight
