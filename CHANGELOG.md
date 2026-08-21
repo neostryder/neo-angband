@@ -37,17 +37,17 @@ digest in the game's catalogue and must never be moved.
   entry, so it is reported and the mod that loads last wins.
 - **An added monster or item is drawn from its family in tile mode.** A tile set
   maps named monsters to pictures and has never heard of a mod's, so modded
-  content used to stand out as a coloured letter among pictures — and the only
+  content used to stand out as a coloured letter among pictures, and the only
   fix available to an author was a pref file naming *atlas coordinates*, which are
   correct for one tile set and wrong for every other. A monster with no tile of
   its own now takes one from a race sharing its `base`, and an object kind from a
   kind sharing its `tval`, so a modded ant is an ant in every tile set at once.
   Restricted to records a mod ADDED, by provenance, so core's own drawing is
-  untouched — including the object kinds that are deliberately blank because they
+  untouched, including the object kinds that are deliberately blank because they
   are drawn by flavour. Runs in both tile engines. A pref file naming a specific
   tile still wins.
 - Tutorial 2 now stocks its item in the Armoury, and its finished mod is checked
-  against the real store binder — which is where an item name that does not
+  against the real store binder, which is where an item name that does not
   resolve is caught, rather than becoming a shop that quietly lacks it.
 
 ### Fixed
@@ -60,12 +60,12 @@ digest in the game's catalogue and must never be moved.
   the data faithfully and never ported that hook, so the targeting code's
   `<preposition><prefix><name>` concatenation had nothing between its parts.
   Ten features, three visible strings: the eight store entrances ("the entrance
-  to the"), the open and broken doors ("in"), and lava ("some") — plus the
+  to the"), the open and broken doors ("in"), and lava ("some"), plus the
   stores' "at" preposition, which the same normalisation covers. Two comments in
   `known.ts` asserted this was upstream's own data rather than a missing hook
   and are corrected; the assertions that had encoded the unseparated values are
   now the test that would have caught it. A port defect rather than an upstream
-  wart — upstream renders these lines correctly — so it belongs in core, not in
+  wart: upstream renders these lines correctly, so it belongs in core, not in
   `bug-fixes`.
 - **The town laid out eight store lots no matter what the terrain data said, and
   three other post-parse hooks were absent.** `finish_parse_feat`'s trailing-space
@@ -73,7 +73,7 @@ digest in the game's catalogue and must never be moved.
   from the order of the `SHOP` flags and counts them into `z_info->store_max`
   (`init.c` L2249-2257, L2275), and the port hard-coded that eight-feature list in
   `town_gen_layout` instead. So a mod that flags another terrain `SHOP` got a
-  store with no door anywhere in town — unreachable for the whole game — and one
+  store with no door anywhere in town, unreachable for the whole game, and one
   that cleared a `SHOP` flag left a lot leading to a shop that no longer existed.
   `FeatureRegistry` now assigns `shopnum` in `FEAT` order and exposes
   `storeMax` / `shopFeats()`, and the town reads those. `TOWN_STORE_FEATS` stays
@@ -86,7 +86,7 @@ digest in the game's catalogue and must never be moved.
     `finish_parse_constants` runs `check_critical_levels` (`init.c` L986-1020) over
     the melee and ranged cutoff tables and refuses the data when the cutoffs do
     not strictly increase, because the `power >= cutoff` walk can never reach a
-    row whose cutoff did not rise — that critical grade simply stops happening and
+    row whose cutoff did not rise. That critical grade simply stops happening and
     the damage multiplier is quietly wrong. `bindConstants` did no such check, and
     `melee-critical-level` is a top-level key of the constants record that a mod
     can replace wholesale. It now rejects, with the last row's cutoff exempt
@@ -112,7 +112,7 @@ digest in the game's catalogue and must never be moved.
   (`obj/flavor.ts`).
 - **A shop line naming a missing item took the whole game down.** `bindStore`
   threw on a stock entry it could not resolve, from inside `bindCore` →
-  `startGame`, which the host runs at module top level — so the player got the
+  `startGame`, which the host runs at module top level, so the player got the
   crash screen and no game at all. The `append` field op made that reachable from
   an ordinary pair of mods and an ordinary click: mod A appends an item mod B
   defines to a store's `normal` table (tutorial 2 is exactly this patch), the
@@ -125,41 +125,41 @@ digest in the game's catalogue and must never be moved.
   always threw, which is every store in a modless game. Covers every field a
   patch can reach: `normal`, `always` (including its svalless book lines) and
   `buy` each lose one entry, and a `store:` entrance repointed at a feature that
-  does not exist leaves the shop unenterable rather than taking the game down —
-  the record keeps its place in the store list, because that list is read
+  does not exist leaves the shop unenterable rather than taking the game down.
+  The record keeps its place in the store list, because that list is read
   positionally and renumbering it would move a saved game's stock between shops.
   The owner list resolves no names and so has nothing to refuse.
 - **The character dump called every installed content mod "(not installed)".** The
   `[Mods enabled]` block resolved each enabled id's version out of the two bundled
-  PLUGIN registries only, so a mod carrying no `plugin.js` — most of them, and all
-  of the tutorial mods — matched neither and printed the "(not installed)"
+  PLUGIN registries only, so a mod carrying no `plugin.js` (most of them, and all
+  of the tutorial mods) matched neither and printed the "(not installed)"
   fallback. A pack in the player's own mods folder was equally invisible whether it
   shipped code or not, since those registries glob the bundle rather than the
   folder. Measured in the running desktop build: two tutorial content packs
   enabled and demonstrably composed, both reported as not installed. The version
-  now also resolves through the content-pack registry — every bundled pack plus
-  everything from the mods directory, a picked folder, or a repository install —
+  now also resolves through the content-pack registry: every bundled pack plus
+  everything from the mods directory, a picked folder, or a repository install,
   and "(not installed)" is kept for an id that genuinely resolves to nothing,
   which is a real state worth a line. This mattered because naming the mods is the
   block's entire purpose: a dump claiming a loaded mod is absent points the reader
   at core for behaviour a mod caused. The list also moved out of `main.ts` into
-  `mod-summary.ts` so it is testable at all — the entry module cannot be imported,
+  `mod-summary.ts` so it is testable at all: the entry module cannot be imported,
   which is why a list that was wrong for every content-only mod stayed green.
 - **Monster recall did not know what a monster's KIND implies.** Upstream unions
   each race's base flags into its lore at startup (`finish_parse_lore`), so a
   player who has never met a giant black ant still knows ants are animals with
   weird minds, and that ainu resist fire and cannot be confused. The port had
-  the race half of that inheritance and not the lore half — which is exactly why
+  the race half of that inheritance and not the lore half, which is exactly why
   nothing noticed, since the flags were on the race all along and simply never
   known. Measured against the shipped pack: 54 of the 56 monster bases carry
   flags, so recall was quieter than upstream's for every monster the player has
   not met. The wizard "wipe monster lore" command still loses them for good,
-  because upstream's union runs once at startup and never again — the existing
+  because upstream's union runs once at startup and never again; the existing
   wipe test is what caught the first attempt putting it in the wrong place.
 - **A curse could multiply an object's weight by a negative number.**
   `finish_parse_curse` refuses a curse that carries `MULTIPLY_WEIGHT` together
   with a negative weight adjustment, and the port had the parser-side weight
-  check but not this one — it is a FINISH hook, and the port's own comment said
+  check but not this one: it is a FINISH hook, and the port's own comment said
   as much while never implementing it, which is exactly the blindness a parity
   test written against upstream's parser tests cannot see. Core's own data now
   fails the same way upstream's does. A mod's curse instead loses the FLAG and
@@ -171,12 +171,12 @@ digest in the game's catalogue and must never be moved.
   same defect the store's stock table had, in a second file: `item:` names a
   specific base kind, `append` lets one mod add an entry to another pack's list,
   and "mod A gives an ego a base item mod B defines, player disables mod B" then
-  reached `ego: unknown sval` out of `bindCore` inside `startGame` — the crash
+  reached `ego: unknown sval` out of `bindCore` inside `startGame`, the crash
   screen over one line of one ego. A mod-contributed line that resolves to
   nothing is now dropped from that ego's candidate list and reported against the
   mod; core's own still throws the message it always threw. Dropping one entry is
   the whole cost here, because `poss_items` is a set of candidates and an ego
-  with one fewer candidate still works — it simply cannot land on the kind that
+  with one fewer candidate still works: it simply cannot land on the kind that
   went away, which is what the player asked for by disabling the pack that
   defined it. The core-versus-mod decision itself now lives in one place
   (`mod/refusal.ts`) rather than in each binder, so two binders cannot come to
@@ -186,8 +186,8 @@ digest in the game's catalogue and must never be moved.
   or an object produced a record that composed perfectly and that no binder could
   read: the store binder's `rec.owner.map(...)` threw a `TypeError` from inside
   `bindCore` inside `startGame`, which the host runs at module top level, so the
-  player got the crash screen and no game. The composer already checked this —
-  the record check's `field/type` rule fired on it and named the mod — but that
+  player got the crash screen and no game. The composer already checked this:
+  the record check's `field/type` rule fired on it and named the mod, but that
   check reports and never refuses by design, because the blueprint it reads is a
   measurement of core's own records and an unlisted value is legal. Container-ness
   is the exception, since nothing can iterate a string, so the composer now
@@ -199,13 +199,13 @@ digest in the game's catalogue and must never be moved.
   would undo it.
 - **Randart games handed out the wrong gems.** flavor.txt writes a ring or
   amulet record's `fixed:` lines above its `flavor:` lines, and the binder bound
-  them the other way round — so the flavour list was not in the file's order.
+  them the other way round, so the flavour list was not in the file's order.
   That list is walked backwards by `flavor_assign_random` (it reproduces C's
   prepend-into-a-linked-list), which makes a flavour's position in it the thing
   that decides which ring it lands on. In an ordinary game nothing showed: a
   fixed flavour keeps its own sval and the random assignment skips it, so the
   random ones kept their relative order and every ring looked right. Under
-  `birth_randarts` it did show — `flavor_reset_fixed` scrubs every fixed sval but
+  `birth_randarts` it did show: `flavor_reset_fixed` scrubs every fixed sval but
   the One Ring's, which drops seven more entries into the random pool at the
   wrong end of the list. The draw COUNT is identical either way, so the RNG
   stream never moved and no seed probe could have caught it; only the assignment
@@ -215,16 +215,18 @@ digest in the game's catalogue and must never be moved.
   or `mul` aimed at a path holding a list or a string treated it as `0` and wrote
   a number over it; a `merge` aimed at a list replaced the list with an object.
   All three now raise a patch error naming the path and what was actually there.
-  This was not theoretical — a documentation example shipped an `add` against a
+  This was not theoretical: a documentation example shipped an `add` against a
   store's stock list, which turned the list into a number while composition
   reported no problems at all.
 
 ### Changed
 
 - Tutorial 3 no longer says an added monster is stuck as a coloured letter in tile
-  mode, and no longer says a mod can carry its own art for its own monsters — a
+  mode, and no longer says a mod can carry its own art for its own monsters. A
   mod contributes a whole graphics mode, not one picture added to somebody else's
   set. Both claims had outgrown the code.
+- Cleaned up some artifacts in the documentation and in source comments: the
+  prose now uses plain ASCII punctuation throughout.
 
 ## [0.21.0] - 2026-08-19
 

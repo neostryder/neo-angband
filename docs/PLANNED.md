@@ -1,7 +1,7 @@
 # Planned, not yet implemented
 
 **This file is the only place in the repository where work that has NOT landed is
-written down.** `CHANGELOG.md` records what shipped and nothing else — an entry
+written down.** `CHANGELOG.md` records what shipped and nothing else: an entry
 appears there when the code is in the tree, never before. The two are easy to
 blur, and blurring them is expensive in a public repository: a changelog that
 describes intentions reads, to somebody who did not write it, exactly like a
@@ -12,7 +12,7 @@ going to work, it goes here.**
 
 What this file is *not*: it is not the plan. `docs/PORT_PLAN.md` holds the
 ratified decisions and the shape of the project, and it outranks this file
-wherever they touch. This is a worklist — the things known to be missing, with
+wherever they touch. This is a worklist: the things known to be missing, with
 enough of the evidence attached that picking one up does not mean rediscovering
 why it matters.
 
@@ -29,7 +29,7 @@ Last reviewed: 2026-08-20.
 
 ### The remaining `finish_parse_*` hooks
 
-Upstream runs a finish hook after parsing many of its data files — a second pass
+Upstream runs a finish hook after parsing many of its data files, a second pass
 that orders, validates, back-fills or reverses what the parser built. The port
 folds parse and finish together in a registry constructor, which means **a parity
 test mirroring upstream's parser tests is structurally blind to the finish
@@ -38,7 +38,7 @@ been found missing that way and are now ported (`finish_parse_feat`'s
 prefix/preposition space, store `shopnum`/`store_max` ordering, critical-level
 validation, hints order).
 
-**33 of ~45 hooks in the reference tree have been audited** — `init.c`'s 14,
+**33 of ~45 hooks in the reference tree have been audited**: `init.c`'s 14,
 `obj-init.c`'s 11 and `mon-init.c`'s 8, the last two on 2026-08-20. What is
 left, by file:
 
@@ -64,7 +64,7 @@ a curse with a negative weight adjustment. Two have no port subject:
 - **The 254-entry cap on slays, brands and curses.** Upstream returns
   `PARSE_ERROR_TOO_MANY_ENTRIES` past 254 because of the width C stores those
   indices in. The port stores an object's brands and slays as `boolean[]` and
-  saves them by CONTENT ID, not by index, so there is no width to overflow —
+  saves them by CONTENT ID, not by index, so there is no width to overflow, and
   reproducing the cap would add a restriction to mods that the port's own
   storage does not require, and the port adds nothing.
 - **`finish_parse_randart`.** There is no `randart.txt` in the content pack; the
@@ -74,7 +74,7 @@ a curse with a negative weight adjustment. Two have no port subject:
 **What `mon-init.c`'s eight turned up.** One was missing and is now ported:
 **`finish_parse_lore`'s base-flag union**, which makes a monster's base flags
 known before the player has ever met it. Five of the rest have no port subject,
-and the reason is the same each time — the port resolves by NAME where the C
+and the reason is the same each time: the port resolves by NAME where the C
 resolves by index, so the array-building those hooks exist to do has nothing to
 correspond to: `meth` and `eff` (blow methods and effects are `Map`s keyed by
 name and are never indexed or iterated for a pick), `mon_spell` and `mon_base`
@@ -87,7 +87,7 @@ construction) and `pit` (file-order indices).
 ### `flavor.txt` records that interleave `fixed:` and `flavor:`
 
 The compiled record splits the two directives into separate arrays, so the
-file's true line order is not recoverable from the compiled shape — and the entry
+file's true line order is not recoverable from the compiled shape, and the entry
 `index` cannot stand in for it, because flavor.txt's own numbering is not the
 order it writes the lines in. Nothing shipped interleaves them, and the binder
 now reproduces the shipped order exactly, so this is latent rather than live. It
@@ -101,9 +101,9 @@ what any of this has to satisfy. One area is known to be short of it.
 
 ### Bind-time resilience: the rest of the binders
 
-Two are done. Store records are complete — every field a patch can reach
+Two are done. Store records are complete: every field a patch can reach
 (`normal`, `always`, `buy`, and the `store:` entrance) refuses a mod's
-unresolvable entry and attributes it — and the ego `item:` list now does the
+unresolvable entry and attributes it, and the ego `item:` list now does the
 same. The shared decision lives in `packages/core/src/mod/refusal.ts`, so a
 third binder is a small job rather than a repeat of the reasoning.
 
@@ -118,7 +118,7 @@ Two known cases that the composer deliberately leaves to the binders:
 
 - **A record a mod OWNS whose required container field is absent.** The composer
   will not put back a field a patch removed, because dropping fields is how a
-  total conversion works — so a `replaces` body that omits a required list is
+  total conversion works, so a `replaces` body that omits a required list is
   still fatal where it is read. A binder refusing a record whose owner is a mod
   is the answer, and it is the same work as the census above.
 - **A malformed field OP throws out of the composer.** `applyFieldPatch` assumes
@@ -132,7 +132,7 @@ Two known cases that the composer deliberately leaves to the binders:
 
 ## Attribution
 
-When a mod causes something, the game should say so — otherwise the reader blames
+When a mod causes something, the game should say so; otherwise the reader blames
 core for behaviour a mod produced. The character dump's `[Mods enabled]` block is
 fixed. **The other surfaces have never been enumerated**, which is why there is
 no fraction here: save provenance, log lines, and the conflict pane are the three
@@ -144,10 +144,10 @@ whole list.
 Renegotiated 2026-08-15: the moddability gate is otherwise met, and what remains
 is:
 
-- **Gap 21 — UI moddability.** The world is a separate seam (gap 9) and is done;
+- **Gap 21, UI moddability.** The world is a separate seam (gap 9) and is done;
   everything else a mod might want to change about the interface is this.
 - **Catch-up mod content**, so the first-party mods cover what the gate assumes
   they cover.
 - **The alpha cut itself**, on a tag the in-game updater can see. A draft release
-  cannot be a channel — `gh release view` 404s on a draft and so does the
+  cannot be a channel: `gh release view` 404s on a draft and so does the
   updater.

@@ -1,14 +1,14 @@
 # Where this port is deliberately not Angband 4.2.6
 
 Written 2026-08-07, the day [PORT_TODO.md](PORT_TODO.md) closed the last of the 68
-gaps it had written down — and, later the same day, re-ran the census and reopened
+gaps it had written down, and, later the same day, re-ran the census and reopened
 two. So the honest version of that milestone is *every gap this project found and
 wrote down is closed except two, which are named in PORT_TODO.md*. This file is the
 other half of the sentence: the things that are different **on purpose** and are not
 going to be closed, each with the reason.
 
-It is derived from the ledger census — `parity/reports/deferral-census.tsv`, the
-**32 rows adjudicated `divergence`** and the **52 adjudicated `n-a`** — plus the
+It is derived from the ledger census: `parity/reports/deferral-census.tsv`, the
+**32 rows adjudicated `divergence`** and the **52 adjudicated `n-a`**, plus the
 divergences stated in the ledger files themselves. Everything below is a real,
 checkable claim about the code, not a category someone invented afterwards.
 
@@ -16,20 +16,20 @@ checkable claim about the code, not a category someone invented afterwards.
 that is the question actually being asked, and the honest answer is not the same for
 every row. Three classes:
 
-- **A** — the C construct has no counterpart. A transliteration is not merely hard,
+- **A**: the C construct has no counterpart. A transliteration is not merely hard,
   there is nothing to write.
-- **B** — a counterpart exists but writing it would produce something worse, and the
+- **B**: a counterpart exists but writing it would produce something worse, and the
   reason is external to the port (a browser, a garbage collector, a canvas).
-- **C** — **a decision.** A faithful transliteration was possible and something else
+- **C**: **a decision.** A faithful transliteration was possible and something else
   was chosen. These are the ones worth arguing about, and they are marked so they can
   be.
 
-> **Owner ruling, 2026-08-09 — the bar for a class C row moved.** The standard is
+> **Owner ruling, 2026-08-09: the bar for a class C row moved.** The standard is
 > gameplay parity, not code parity: "please relax the ruling on exact code parity
 > in favor of gameplay parity. Slightly different RNG streams are not forbidden,
 > as long as play will feel the same." So a class C row is only a **divergence
 > worth arguing about** if a player could notice it. A different data structure,
-> a merged function, a changed draw order — those stopped needing a defence, and
+> a merged function, a changed draw order: those stopped needing a defence, and
 > future rows of that kind do not belong on this page at all. What still belongs:
 > anything that changes the rules, the odds, or what the player sees. See
 > [docs/PARITY.md](../docs/PARITY.md#the-standard-is-gameplay-parity-not-code-parity-ruled-2026-08-09),
@@ -54,12 +54,12 @@ env, deps)` **derives** the twin on demand from the real object intersected with
 player's rune knowledge (`p->obj_k`), and every read site that upstream points at
 `obj->known` points at the shadow instead.
 
-**Class C — a decision, and the cost is nameable.** A stored twin was portable. What
+**Class C, a decision, and the cost is nameable.** A stored twin was portable. What
 it bought to leave it out: knowledge cannot drift out of step with the object (there
 is no second copy to forget to update), and a save carries no duplicate object graph.
 What it costs: any upstream sequence that **writes** `obj->known` and later reads back
 something the shadow cannot re-derive would differ. The census rows are the audit of
-exactly that — each one names a write site and says what re-derives it (e.g.
+exactly that: each one names a write site and says what re-derives it (e.g.
 `game/gear.ts`: `objKnown.toA` is set at birth by `player_outfit`, so the shadow at
 `known-object.ts:446` yields the true `toA` and the twin write has no observable
 consumer). That is an argument, not a proof, and it is the single most valuable thing
@@ -69,7 +69,7 @@ for a future reviewer to attack.
 the WRITE sites; a re-census over the four **reads** found one the shadow genuinely
 could not re-derive. `object_set_base_known`'s effect rule (obj-knowledge.c
 L1178-1182) is a statement about the **kind**, but upstream also writes the twin per
-**object** — `check_devices`' "Notice activations" (cmd-obj.c L98-101) teaches an
+**object**: `check_devices`' "Notice activations" (cmd-obj.c L98-101) teaches an
 item's own effect or activation *without* making its kind aware. `obj->known->
 activation` has no awareness route at all: all three of its writes are per-object, and
 the port had zero of them.
@@ -79,13 +79,13 @@ leaves every flavoured kind unaware, and skips the 14 special-artifact kinds by
 `kidx`. For any such item `use_aux`'s `known_aim` (cmd-obj.c L424-429) stayed false
 forever, so a Ring of Flames fired twenty times still threw its ball in a **random
 direction**. `object_effect_is_known` was NOT affected the way an earlier draft of
-this row claimed — `copy_artifact_data` never sets `obj->effect`, so an artifact's
+this row claimed: `copy_artifact_data` never sets `obj->effect`, so an artifact's
 `obj->effect` is its kind's (usually `NULL`) and the identity test already held.
 
 Fixed by adding exactly two optional per-object fields, `GameObject.knownEffect` and
 `.knownActivation` (`obj/object.ts`), in the same shape as the existing `knownPval`
 concession: the shadow consults them when the awareness rule does not fire, and they
-persist as one bit each — so **no `SAVE_VERSION` bump**, and a save written without
+persist as one bit each, so **no `SAVE_VERSION` bump**, and a save written without
 them loads as "whatever the awareness rule gives", which is the behaviour that
 character was played under. The rest of the twin is unchanged and the argument above
 still stands for it.
@@ -95,8 +95,8 @@ still stands for it.
 A second `C` row stood here. `add_brand` compared a brand's name against a local
 `ELEMENT_PROJ_NAMES` table mirroring `projection.txt`, because `ObjRegistry` is bound
 from the object domain of the content pack and carried no projections. The mirror was
-guarded by a test that re-derived the list from `reference/lib/gamedata/projection.txt`
-— which proved it matched 4.2.6 and nothing else. The cost that guard could not touch
+guarded by a test that re-derived the list from `reference/lib/gamedata/projection.txt`,
+which proved it matched 4.2.6 and nothing else. The cost that guard could not touch
 was named in the row itself: **a mod that renames an element would diverge at
 runtime**, upstream ceasing to match while this port carried on matching.
 
@@ -117,7 +117,7 @@ raw `aIdx` where upstream persists it by NAME and re-resolves through
 it was written.** `SavedHistoryInfo` carries `artifactName: string`
 (`session/save.ts:628`), serialisation writes `ids.artifactName(e.aIdx)` (`:682`), and
 load resolves it back through `objReg.artifacts.find(a => a?.name === artifactName)`
-and `continue`s when it fails (`:790-809`) — which is load.c:1748-1755 line for line.
+and `continue`s when it fails (`:790-809`), which is load.c:1748-1755 line for line.
 The numeric `aIdx` survives only as an optional legacy field a migration reads.
 
 It is recorded here rather than deleted because a divergence row is a standing claim
@@ -128,15 +128,15 @@ it was wrong. This one was wrong; the mechanism it named exists and matches upst
 
 ## B1. There is no redraw pipeline, because nothing needs one
 
-Upstream keeps dirty-flag bitmasks — `PU_BONUS`, `PR_HEALTH`, `PR_MONLIST`,
-`square_light_spot` — so a terminal can repaint only what changed. Roughly a dozen
+Upstream keeps dirty-flag bitmasks: `PU_BONUS`, `PR_HEALTH`, `PR_MONLIST`,
+`square_light_spot`, so a terminal can repaint only what changed. Roughly a dozen
 `n-a` rows are a `PR_*` or `PU_*` bit with no port equivalent.
 
 **Class B.** The front end recomputes and repaints unconditionally after every
 state-changing action; on a canvas that is cheaper than tracking what moved. Porting
 the flags would mean building a cache invalidation scheme for a renderer that has no
 cache. Note that the *derived-value* half (`update_stuff` and friends) is a separate
-matter and is tracked in the ledger as its own item — this entry is about the REDRAW
+matter and is tracked in the ledger as its own item; this entry is about the REDRAW
 bits only.
 
 ## B2. Manual memory management has nothing to port to
@@ -191,7 +191,7 @@ A `B` row stood here. `make_fake_artifact` rolls a curse timeout through
 `copy_curses`, and that roll draws; the knowledge browser passed a fresh `Rng` at a
 fixed seed instead of the game stream, so browsing could not perturb a run and an
 artifact previewed identically every time. Both of those are nicer than Angband and
-neither is Angband — `desc_art_fake` (ui-knowledge.c:1552) hands
+neither is Angband: `desc_art_fake` (ui-knowledge.c:1552) hands
 `make_fake_artifact` no stream of its own, so browsing an artifact **does** advance
 upstream's RNG.
 
@@ -200,12 +200,12 @@ and `FAKE_ARTIFACT_SEED` is deleted. The `rng` parameter stays required with no
 default even though the answer is now uniform, because a default is how the browser
 acquired a private stream in the first place. Measured before changing it: the recall
 fires once per explicit selection (`runGroupedBrowser` resolves only when a member is
-chosen), matching upstream's `if (recall)` gate at ui-knowledge.c:1063 — an
+chosen), matching upstream's `if (recall)` gate at ui-knowledge.c:1063, since an
 immediate-mode renderer calling it per repaint would have made the game stream far
 worse than the private one.
 
 Two neighbours went with it. The wizard item browser was calling `makeFakeArtifact`
-where upstream calls `get_art_name` (ui-wizard.c:154) — a **different function** that
+where upstream calls `get_art_name` (ui-wizard.c:154), a **different function** that
 does `object_prep(RANDOMISE)` with no `copy_artifact_data`, so it draws the base
 item's plusses and never rolls a curse. It is now ported rather than substituted. And
 the spoiler generator drew from its own `SPOIL_PREP_SEED`; it boots a headless game at
@@ -233,7 +233,7 @@ ones a player is most likely to notice.
 
 ### P1. A save is not a file
 
-On the web a save is a record in IndexedDB. **On the desktop build too** — the
+On the web a save is a record in IndexedDB. **On the desktop build too**: the
 Electron app is the same web build, so a player's saves are not files in a folder they
 can copy, and the storage a browser gives can be cleared by the player's own cleanup
 tools. This is the largest practical difference between playing this and playing
@@ -241,8 +241,8 @@ Angband, and it drives the import/export gate.
 
 ### P2. A mod is fetched, not compiled in
 
-Upstream has no mods. This port's model — a curated list naming REPOSITORIES, each mod
-discovered from its own repository at a tag, replacement gated on ORIGIN — is
+Upstream has no mods. This port's model (a curated list naming REPOSITORIES, each mod
+discovered from its own repository at a tag, replacement gated on ORIGIN) is
 additive, but the thing worth stating is that the game **downloads code**, and the
 gate on that is trust on first use rather than a signature. See
 `packages/web/src/mod-registry.ts`, which documents the check that was given up and
@@ -260,7 +260,7 @@ build is reduced by what a browser can do.
 
 ## What this list is not
 
-It is not a list of every difference — it is a list of every difference **anyone wrote
+It is not a list of every difference. It is a list of every difference **anyone wrote
 down**, which is the same limit [PORT_TODO.md](PORT_TODO.md)'s closing section names.
 A subsystem ported cleanly and never annotated appears nowhere in the census whether it
 is faithful or not.

@@ -928,7 +928,7 @@ const TILE_ENGINES: readonly string[] = ["tilesheet", "linoleum"];
  * `path` is checked for being MOD-RELATIVE, and that check is the point rather than
  * tidiness. It used to be a site-root-relative URL base, which only a bundled mod
  * could ever get right; a manifest carrying the old form would resolve to
- * `mods/<id>/mods/<id>/…` and 404 into ASCII with nothing said. An absolute path, a
+ * `mods/<id>/mods/<id>/...` and 404 into ASCII with nothing said. An absolute path, a
  * scheme, or a `..` escape is refused for the same reason a pack's code files are
  * read by pack-relative path: the host decides where a mod's bytes live.
  */

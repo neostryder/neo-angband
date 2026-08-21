@@ -116,7 +116,7 @@ describe("monster/attack (reference/src/tests/monster/attack.c)", () => {
       const res = monMeleeAttack(rng, makeMon("HURT", "1d4", false), p, def);
       expect(res.attacked).toBe(true);
       // mdam in C is blow[0].dice.dice which is the number of dice (1), not
-      // damage — wait, looking at C: mdam returns m->race->blow[0].dice.dice
+      // damage. Looking at C: mdam returns m->race->blow[0].dice.dice
       // which is the dice count field of random_value. For "NdS", dice.dice = N.
       // But take1 measures HP lost. eq(delta, mdam(m)) means HP loss == number
       // of dice (1 for 1dX under rand_fix which maximizes each die to S, so
@@ -138,7 +138,7 @@ describe("monster/attack (reference/src/tests/monster/attack.c)", () => {
       const delta = 100 - p.chp;
       // Port: HURT with 1d4 under randFix maxes to 4, then armor adj.
       // We assert positive damage matching the roll, not the C mdam quirk
-      // of comparing to dice count — using the same 1d4 fixture as mon-melee
+      // of comparing to dice count, using the same 1d4 fixture as mon-melee
       // tests (totalDamage 4 with ac 0).
       expect(delta).toBe(4);
       expect(res.totalDamage).toBe(4);

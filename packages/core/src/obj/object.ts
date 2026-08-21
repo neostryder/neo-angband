@@ -400,7 +400,7 @@ export function copySlays(
  * append_brand (obj-slays.c:132): add brand `pick` to `current`, replacing a
  * same-ELEMENT brand of lower multiplier. Returns the (possibly new) list when the
  * brand was added, or null when it was rejected for being weaker than or equal to
- * one already present — upstream's `bool` plus its in-place `bool **current`,
+ * one already present: upstream's `bool` plus its in-place `bool **current`,
  * expressed as a return value because this port does not pass pointers.
  *
  * Upstream's own note: "internally assumes that current has no redundant brands",

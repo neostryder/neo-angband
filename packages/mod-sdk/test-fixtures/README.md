@@ -13,7 +13,7 @@ violation is a rule nobody has watched work.
 
 `value-import-mod` is the important one. Before the builder marked every package
 specifier external, esbuild resolved that import (a mod repo has the engine as a
-devDependency, so it is right there) and copied what it found into `plugin.js` —
+devDependency, so it is right there) and copied what it found into `plugin.js`:
 exit 0, no warning, and a private duplicate of engine state inside the mod. The
 guard whose entire job was to catch it could not fire, because there was no bare
 import left to see.

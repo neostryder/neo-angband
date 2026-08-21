@@ -98,14 +98,14 @@ describe("screenRegions", () => {
      *
      * ONLY THE TITLE EVER LIED. The comment below was already scoped to the
      * base layout, and the overlapping stack has now arrived exactly as it
-     * predicted — so the test keeps its subject and loses the global promise it
+     * predicted, so the test keeps its subject and loses the global promise it
      * was being read as. What replaced that promise is
      * "exactly one visible owner" further down, which is the stronger claim:
      * this one says overlap cannot happen, and that one says overlap cannot be
      * AMBIGUOUS, which stays true once overlap is legal.
      *
      * Scope: the four regions that tile the terminal. Gap 21 is decided in the
-     * direction that breaks a global version — a full screen is COMPOSED of
+     * direction that breaks a global version: a full screen is COMPOSED of
      * regions rather than covering them, so a floating window sits over a map
      * that is still being drawn. */
     for (const layout of [LEFT, TOP, NONE]) {
@@ -116,7 +116,7 @@ describe("screenRegions", () => {
   it("keeps every base region inside the grid it was measured for", () => {
     /* Off-grid is worse than overlapping: an overlapping region is drawn and
      * the player can see the argument, but a region running off the edge is
-     * silently CLIPPED — a half-drawn window, no error anywhere, and nothing to
+     * silently CLIPPED: a half-drawn window, no error anywhere, and nothing to
      * search for. Asserted on core's own four first, because a rule the base
      * layout breaks is a rule no mod will be asked to keep. */
     for (const layout of [LEFT, TOP, NONE]) {
@@ -138,7 +138,7 @@ function live(id: string, layer: RegionLayer, cells: RegionCells): LiveRegion {
 describe("the region stack", () => {
   it("orders bands bottom to top, and keeps declaration order inside a band", () => {
     /* Within a band the later-declared region is on top, and for a mod that is
-     * load order — the same last-load-wins rule that already decides the front
+     * load order, the same last-load-wins rule that already decides the front
      * end, the HUD, the screen presenter and the menu transform. */
     const cells = { col: 0, row: 0, cols: 4, rows: 4 };
     const ordered = orderRegions([
@@ -162,7 +162,7 @@ describe("the region stack", () => {
   it("orders the same stack the same way however the declarations arrive", () => {
     /* Stability asserted, not assumed. An unstable ordering makes the composite
      * depend on the sort implementation, and the symptom is a window that is on
-     * top on one machine and behind on another — a bug no screenshot
+     * top on one machine and behind on another, a bug no screenshot
      * reproduces. `orderRegions` buckets rather than sorting, so it cannot have
      * that failure at all; this is what says so.
      *
@@ -194,7 +194,7 @@ describe("the region stack", () => {
   it("gives a cell claimed more than once exactly one visible owner: the top", () => {
     /* THIS IS THE ASSERTION THAT REPLACED "no cell is claimed twice". Two
      * regions writing one cell is now legal. Two answers to "who is on top"
-     * never is — the composite has to be a function of the region SET, not of
+     * never is: the composite has to be a function of the region SET, not of
      * the order some Map happened to iterate in.
      *
      * Deliberately overlapping: a base floor, a window over its middle, and a
@@ -226,7 +226,7 @@ describe("the region stack", () => {
   it("tells a front end what is covering the map, and bottom-most first", () => {
     /* The one question a replacement front end asks. `blueprint-view` draws to
      * its own canvas at the map's pixels, so when a screen opens it has to
-     * learn it is covered — otherwise it keeps showing a map nobody is
+     * learn it is covered. Otherwise it keeps showing a map nobody is
      * compositing it with, which is exactly what the photographed defect is. */
     const stack = orderRegions([
       ...baseRegionStack(screenRegions(LEFT)),
@@ -244,7 +244,7 @@ describe("the region stack", () => {
   it("says 'no such region' differently from 'nothing covers you'", () => {
     /* The awkward return type earns itself here. An empty array means nothing
      * covers you; undefined means you asked about a region that is not in this
-     * stack — a typo, or a name from a layout that does not have one (the
+     * stack: a typo, or a name from a layout that does not have one (the
      * sidebar under the None layout is exactly that). Collapsing the two would
      * report a misspelled id as GOOD NEWS, and the symptom would be a mod
      * canvas cheerfully painting over a screen forever. */

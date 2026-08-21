@@ -1,7 +1,7 @@
 # Tutorial 6: Add an option
 
 **What you will make:** Tutorial 5's mod, with a switch the player can turn on
-and off — from the game, without editing anything.
+and off, from the game, without editing anything.
 
 **Before this:** [Tutorial 5](05-hook-behaviour.md).
 
@@ -65,12 +65,12 @@ what the player reads, so write them for a player: say what turning it on does,
 not what it does internally.
 
 The flag name is prefixed with your mod's id by convention, and that convention
-is worth keeping — flags from every enabled mod live in the same map.
+is worth keeping: flags from every enabled mod live in the same map.
 
 ## Where the check goes, and why it matters
 
 Look at where the `if` is. It is in `hooks`, deciding **whether to supply the
-hook at all** — not inside `messageText`, returning `raw` unchanged.
+hook at all**, not inside `messageText`, returning `raw` unchanged.
 
 Both look identical to the player. They are not the same thing:
 
@@ -81,7 +81,7 @@ Both look identical to the player. They are not the same thing:
 
 The second is the shape to reach for. A disabled option should cost nothing and
 should be indistinguishable from your mod not existing. That is not
-micro-optimisation — it is what makes it *true* that turning something off gives
+micro-optimisation. It is what makes it *true* that turning something off gives
 you the base game back.
 
 ## Default off
@@ -99,7 +99,7 @@ changes nothing at all until you pick a feature.
 
 ## What you should see
 
-Enable the mod and reload. Nothing changes yet — that is correct.
+Enable the mod and reload. Nothing changes yet, and that is correct.
 
 Press `Escape`, choose **Mods**, choose your mod, and you will find *Congratulate
 me on gaining a level* on its own screen, off. Turn it on, choose **Apply changes
@@ -111,7 +111,7 @@ and reload**, and gain a level.
 - Make one **default on** and notice how differently the mod feels to install.
   Then decide whether you were right.
 - Rename a flag and read about `renamedRuleFlags` in
-  [AUTHORING.md](../AUTHORING.md) — there is a supported way to rename one
+  [AUTHORING.md](../AUTHORING.md), since there is a supported way to rename one
   without losing everyone's saved choice.
 
 ## The finished version
@@ -126,5 +126,5 @@ that with the option off, the mod supplies **no hook at all**.
 Six mods, and between them they cover the shape of nearly everything else:
 changing data, adding data, running code, and letting the player decide.
 
-Where to go next depends on what you want to build — see
+Where to go next depends on what you want to build. See
 [the learning path](README.md#after-the-tutorials).

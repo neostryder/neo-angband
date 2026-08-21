@@ -1,5 +1,5 @@
 /**
- * NOISE FLOOR PROBE — what can the distribution metrics actually resolve?
+ * NOISE FLOOR PROBE: what can the distribution metrics actually resolve?
  *
  * `parity-c-stat.test.ts` compares the port's histograms against the C oracle
  * with a G-test. That answers "is the port different from C" only if we know how

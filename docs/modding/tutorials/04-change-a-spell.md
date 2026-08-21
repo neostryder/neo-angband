@@ -37,9 +37,9 @@ Nothing new is being introduced except *where you are pointing*.
 
 `book.0.spell.2.mana` walks down through the Priest's record:
 
-- `book.0` — the Priest's first spell book.
-- `spell.2` — the third spell in it (counting from zero). That is Minor Healing.
-- `mana` — its cost.
+- `book.0`: the Priest's first spell book.
+- `spell.2`: the third spell in it (counting from zero). That is Minor Healing.
+- `mana`: its cost.
 
 `fail` is the percentage chance the spell fizzles, before your character's own
 stats adjust it.
@@ -53,7 +53,7 @@ spell menu, so you can count them on screen instead if that is easier.
 **A number in that path is a position, not a name.**
 
 `spell.2` means "whatever is third", not "Minor Healing". If another mod inserts
-a spell above it — or if a future release of the base game reorders that book —
+a spell above it, or if a future release of the base game reorders that book,
 your patch lands on a *different spell* and keeps working silently. Nothing is
 broken, so nothing complains; you just quietly retuned the wrong thing.
 
@@ -81,14 +81,14 @@ longer:
 }
 ```
 
-That is not an invented example — it is very close to what the real
+That is not an invented example. It is very close to what the real
 `feature-restoration` mod does to give the Priest back a spell that a later
 version of Angband dropped. Its repository is worth reading once you are here,
 because it also shows the *research* half: what it takes to restore an old
 behaviour honestly rather than from memory. See
 [Feature restoration](../FEATURE_RESTORATION.md).
 
-The `effect` block is the game's own effect vocabulary — `BOLT_STATUS`,
+The `effect` block is the game's own effect vocabulary: `BOLT_STATUS`,
 `PLAYER_LEVEL`, dice expressions. You are not limited to the effects the base
 game ships, but inventing a new one is a code job rather than a data job; that
 is [Tutorial 5](05-hook-behaviour.md) and the pages beyond it.
@@ -100,7 +100,7 @@ Roll a Priest, learn Minor Healing, and open the spell menu. Its mana cost reads
 
 ## Try changing this
 
-- Retune a **different class** — `core:mage`, `core:ranger`, `core:paladin`.
+- Retune a **different class**: `core:mage`, `core:ranger`, `core:paladin`.
 - Move a spell **earlier**: set its `level` to 1 and get it at character
   creation.
 - Make a class **worse** at something, which is often what makes a variant
@@ -112,5 +112,5 @@ Roll a Priest, learn Minor Healing, and open the spell menu. Its mana cost reads
 
 ---
 
-**Next:** [Tutorial 5: Hook behaviour](05-hook-behaviour.md) — the first tutorial
+**Next:** [Tutorial 5: Hook behaviour](05-hook-behaviour.md), the first tutorial
 where your mod runs code instead of shipping data.

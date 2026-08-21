@@ -99,7 +99,7 @@ describe("game/basic (reference/src/tests/game/basic.c)", () => {
     expect(p.timed[TMD.FOOD]).toBe(PY_FOOD_FULL_DEFAULT - 1);
   });
 
-  // upstream: test_stairs1 — after going down, depth is 1
+  // upstream: test_stairs1: after going down, depth is 1
   it("stairs1", () => {
     const game = startGame(pack, { seed: 3, depth: 0 });
     const descend = game.registry.get("descend");
@@ -115,7 +115,7 @@ describe("game/basic (reference/src/tests/game/basic.c)", () => {
     expect(game.state.chunk.depth).toBe(1);
   });
 
-  // upstream: test_stairs2 — walk off stairs then back before descending
+  // upstream: test_stairs2: walk off stairs then back before descending
   it("stairs2", () => {
     const game = startGame(pack, { seed: 3, depth: 1 });
     const { state, registry } = game;

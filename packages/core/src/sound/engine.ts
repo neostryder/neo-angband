@@ -95,7 +95,7 @@ export function messageLookupByName(name: string): number {
 /**
  * message_sound_name (message.c:349-361): the sound.prf name for a MSG_, or
  * null outside [MSG_GENERIC, MSG_MAX). Note MSG_GENERIC and MSG_BIRTH map to
- * the EMPTY STRING, not null — list-message.h gives only MSG_MAX a NULL — so a
+ * the EMPTY STRING, not null (list-message.h gives only MSG_MAX a NULL), so a
  * caller must distinguish "no name" from "out of range".
  */
 export function messageSoundName(message: number): string | null {
@@ -116,8 +116,8 @@ export function messageSoundName(message: number): string | null {
  *
  * Three warts kept deliberately. The compare is my_stricmp, so it is
  * case-INSENSITIVE. MSG_MAX is excluded from the scan (its name is NULL). And
- * the not-found answer is MSG_GENERIC, i.e. 0 — NOT -1 as in
- * message_lookup_by_name — so a caller cannot tell a miss from a real hit on
+ * the not-found answer is MSG_GENERIC, i.e. 0, and NOT -1 as in
+ * message_lookup_by_name, so a caller cannot tell a miss from a real hit on
  * MSG_GENERIC. The mapping is also not one-to-one: several messages share the
  * empty sound name, and the first of those (MSG_GENERIC) always wins.
  */

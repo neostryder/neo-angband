@@ -90,14 +90,14 @@ it fell out of the shape of core's own records.
 **A patch that applies cleanly can still name something that is not there,** and
 until 2026-08-20 that was a *worse* outcome than a missing target: the composer
 was satisfied, and the binder threw. A store's `normal` stock table is the case
-that made it ordinary — `append` exists so mod A can stock an item mod B defines,
+that made it ordinary: `append` exists so mod A can stock an item mod B defines,
 tutorial 2 teaches exactly that patch, and disabling mod B left an appended line
 naming nothing. `bindStore` threw `store: unknown sval` from inside `bindCore`,
 which the host runs at module top level, so one line of one shop's stock table
 produced the crash screen and no game.
 
 The rule is now gate 3's rule one layer down: the line is dropped, the mod is
-told on its own row, and the rest of the store — and every other store — is
+told on its own row, and the rest of the store, and every other store, is
 untouched. **Core's own data still throws,** and record provenance is what
 separates them: an unresolvable entry in a store no pack has touched is core's
 mistake and fails loudly, which is every store in a modless game.
@@ -107,20 +107,20 @@ This now covers every field of a store record a patch can reach. `normal`,
 `store:` entrance feature is a scalar, so there is no entry to drop and nothing
 left of the shop: the record survives with an entrance nothing matches, the shop
 cannot be entered, and the mod is told. It is not removed from the store list,
-because that list is consumed positionally — dropping a record would renumber
+because that list is consumed positionally: dropping a record would renumber
 every store after it and move a saved game's stock between shops. The owner list
 resolves no names at all and so has nothing to refuse; a patch that replaces it
 with the wrong *shape* is a different problem, and one the composer now answers
 one level up.
 
 **A patch cannot make a field unreadable.** The composer already checked shape on
-the load path — `field/type` in the record check — but that check reports and
+the load path with `field/type` in the record check, but that check reports and
 never refuses, deliberately, because the blueprint it reads is a *measurement* of
 core's records and an unlisted value is legal (a mod inventing a new tval is
 doing something the mod system exists to allow). That is right for a statistic
 and wrong for container-ness: every binder reads a list field by iterating it, so
 a list field holding a string, a number or `null` is a `TypeError` inside
-`bindCore` inside `startGame` — the crash screen, over one field. The composer now
+`bindCore` inside `startGame`: the crash screen, over one field. The composer now
 **refuses exactly that class**: the field is put back to what the record had
 before, the pack is told on its own row, and the rest of the patch lands.
 
@@ -129,7 +129,7 @@ Two things it deliberately does not do, both load-bearing:
 - **A scalar written as the wrong scalar stays a finding.** `weight` as `"40"` is
   readable, some binders coerce it, and the measurement cannot prove otherwise.
 - **A field the patch REMOVES is not put back.** Dropping a field is how a total
-  conversion works — `replaces` swaps the whole record, and a monster rewritten
+  conversion works: `replaces` swaps the whole record, and a monster rewritten
   as `{name, hp}` legitimately has no `flags`. Restoring an absent field would
   silently undo a supported feature. An absent required field is reported
   (`field/required`), and refusing a record the *mod itself owns* belongs in the
@@ -139,7 +139,7 @@ Two things it deliberately does not do, both load-bearing:
 kinds and takes the same `append`, so it had the same defect and now gets the
 same answer: the line is dropped, the ego keeps its other candidates, and the
 mod is told. The core-versus-mod decision lives in `packages/core/src/mod/
-refusal.ts` — one `fieldOwner`, shared — precisely so that two binders cannot
+refusal.ts`, one `fieldOwner`, shared, precisely so that two binders cannot
 reach different verdicts about the same provenance. A binder that resolves names
 from a list a mod can append to should be reading from there rather than
 inventing its own rule; `docs/PLANNED.md` tracks which ones still do not.
@@ -234,7 +234,7 @@ now has a slot per HUD region. An exhaustive `switch` over either gets a compile
 error naming the new arm, which is the intended outcome. `ModPlugin` itself only
 gained an optional member, so no existing plugin's shape changes.
 
-Two more SDK additions, and this pair breaks nothing at all — recorded because
+Two more SDK additions, and this pair breaks nothing at all, recorded because
 the entries above establish that a shape change gets written down whether or not
 it strands anybody, and a page that only lists the painful ones stops being a
 record. `WorldFrame` and `HudFrame` each gained an **optional** `stack`
@@ -242,7 +242,7 @@ record. `WorldFrame` and `HudFrame` each gained an **optional** `stack`
 exported from the SDK (#261, unreleased 2026-08-14). An optional member added to
 an interface a plugin *receives* cannot break a plugin: nothing that reads a
 frame stops compiling, and a host that publishes no stack simply leaves it
-`undefined` — which the seam gives a distinct meaning to on purpose, so a front
+`undefined`, which the seam gives a distinct meaning to on purpose, so a front
 end must not read a missing stack as "nothing is covering me". See
 [PLUGINS.md](PLUGINS.md#knowing-when-you-are-covered-framestack). Note the
 asymmetry with the `ParsedCapability` rows above: those broke exhaustive
@@ -251,8 +251,8 @@ switches over a frame.
 
 One SDK **removal**, and it is the first on this page that removes a name rather
 than reshaping one: `applyFieldPolicy` is gone from the package index (#285,
-unreleased 2026-08-15). It arrived public by accident — the index said
-`export * from "./fields.js"` — and it was unusable and dangerous in the same
+unreleased 2026-08-15). It arrived public by accident: the index said
+`export * from "./fields.js"`, and it was unusable and dangerous in the same
 breath. The function judges a namespace trespass from a `FieldProvenance` map
 built during composition, and the accessor that builds one (`fieldProvenanceOf`)
 was never exported. So the only form an outside caller could write was the
@@ -266,7 +266,7 @@ repositories called it, so no author is stranded; the door to the rule is
 `composeContentPacks`, which supplies both maps and always did.
 `checkUnqualified`, `declaredFields`, `fieldOwner`, `isExtensionKey` and
 `FIELD_TYPES` are unaffected, and are now named explicitly rather than swept up
-by a wildcard — which is what let this one out in the first place.
+by a wildcard, which is what let this one out in the first place.
 
 Two **field renames** that the export ratchet cannot see, and that is exactly why
 they are written here (#283, unreleased 2026-08-15). The ratchet compares the set
@@ -275,8 +275,8 @@ ui-entry config a plugin gets from `buildUiEntryConfig` changed two fields:
 
 | Was | Now | Why not aliased |
 |---|---|---|
-| `UiEntry.combinerIndex: number` (1-based into core's nine) | `UiEntry.combinerName: string` | The slot was the bug. It is a coordinate into core's own compiled table, so a combiner a mod registers has none — keeping the index would have frozen the table at nine and made `registry:ui-entry` inert. Keeping BOTH would mean two identities for one thing and a rule about which wins. |
-| `RendererInfo.backendIndex: number` (0..5), `RendererInfo.combinerIndex: number` | `RendererInfo.backendName: string`, `RendererInfo.combinerName: string` | Same reason, and the same fix: read the name. `RendererInfo` is now an exported TYPE as well, which it was not before — a plugin writing a renderer backend needs to name it. |
+| `UiEntry.combinerIndex: number` (1-based into core's nine) | `UiEntry.combinerName: string` | The slot was the bug. It is a coordinate into core's own compiled table, so a combiner a mod registers has none, and keeping the index would have frozen the table at nine and made `registry:ui-entry` inert. Keeping BOTH would mean two identities for one thing and a rule about which wins. |
+| `RendererInfo.backendIndex: number` (0..5), `RendererInfo.combinerIndex: number` | `RendererInfo.backendName: string`, `RendererInfo.combinerName: string` | Same reason, and the same fix: read the name. `RendererInfo` is now an exported TYPE as well, which it was not before, and a plugin writing a renderer backend needs to name it. |
 
 Nothing else about `UiEntryConfig` moved, and a plugin that only calls
 `characterGrid`, `equipCmpSummary`, `applyRenderer` or `combineValues` is

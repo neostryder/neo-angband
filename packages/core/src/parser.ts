@@ -1,5 +1,5 @@
 /**
- * reference/src/parser.c's shared machinery — the parts that are grammar-
+ * reference/src/parser.c's shared machinery: the parts that are grammar-
  * independent and were, until now, re-decided by each grammar that needed them.
  *
  * WHY THIS EXISTS
@@ -69,8 +69,8 @@ export function parserErrorText(code: number): string {
  *      first `strtok` call steps over both colons before taking a token.
  *   2. **Runs of delimiters collapse.** `option::show_damage` yields the two
  *      tokens `option` and `show_damage`, not three with an empty middle.
- *   3. **An empty delimiter set consumes the whole remainder** — that is how
- *      PARSE_T_STR takes the rest of the line, colons included — and returns
+ *   3. **An empty delimiter set consumes the whole remainder.** That is how
+ *      PARSE_T_STR takes the rest of the line, colons included. It returns
  *      null rather than "" when nothing is left.
  *
  * A split-based reader gets (2) and (3) wrong in the direction that ACCEPTS
@@ -83,7 +83,7 @@ export class Strtok {
   constructor(private readonly s: string) {}
 
   /**
-   * strtok(NULL, delims) — or strtok(s, delims) for the first call, which is
+   * strtok(NULL, delims), or strtok(s, delims) for the first call, which is
    * the same thing since the cursor starts at 0. Returns null at end of string,
    * exactly as C does when only delimiters remain.
    */
@@ -112,7 +112,7 @@ export function containsOnlySpaces(s: string): boolean {
  * stepped over with `isspace`, then an empty rest or a leading `#` is a skip.
  * Returns the line with that leading whitespace removed, or null to skip it.
  *
- * `isspace` is the C locale's set, which includes \v and \f — `String.trimStart`
+ * `isspace` is the C locale's set, which includes \v and \f. `String.trimStart`
  * would additionally eat NBSP and the Unicode space separators, so it is not a
  * substitute.
  */

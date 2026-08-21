@@ -399,7 +399,7 @@ function parseArg(body: string): Part | null {
   return arms === null ? null : { kind: "arg", name, type, arms };
 }
 
-/** `one {…} other {…}` -> a map of arm name to parsed body. */
+/** `one {...} other {...}` -> a map of arm name to parsed body. */
 function parseArms(s: string): Record<string, Part[]> | null {
   const arms: Record<string, Part[]> = {};
   let i = 0;

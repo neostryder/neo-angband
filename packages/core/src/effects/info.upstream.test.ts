@@ -33,7 +33,7 @@ function packJson<T>(name: string): T[] {
 
 const projections = bindProjections(packJson<ProjectionRecordJson>("projection"));
 
-/** timed_effects[i].desc — first desc string from player_timed.json, by TMD index. */
+/** timed_effects[i].desc, the first desc string from player_timed.json, by TMD index. */
 const timedDescByIdx: string[] = (() => {
   const recs = packJson<{ name: string; desc?: string[] }>("player_timed");
   const byName = new Map(recs.map((r) => [r.name, r.desc?.[0] ?? ""]));

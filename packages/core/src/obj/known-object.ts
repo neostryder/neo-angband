@@ -398,7 +398,7 @@ export function objectFullyKnown(
 
 /**
  * object_flag_is_known (obj-knowledge.c L773-787): does the player know this
- * object carries this flag? THREE routes out, in upstream's order — fully known
+ * object carries this flag? THREE routes out, in upstream's order: fully known
  * (L777), the player has learned the flag on any object (L780), or this object
  * has already had a chance to display it (L783, `obj->known->flags`).
  *
@@ -408,7 +408,7 @@ export function objectFullyKnown(
  * route 3 implies route 2; the one branch that copies flags wholesale (L597) is
  * gated on `objectFullyKnown`, where route 1 has already returned true. So
  * `game/ui-entry.ts:1256`, which inlines only the first two routes, is complete
- * rather than deficient — worth knowing, because a two-of-three inline of a
+ * rather than deficient. Worth knowing, because a two-of-three inline of a
  * three-branch C function looks exactly like a gap until the shadow is read.
  */
 export function objectFlagIsKnown(

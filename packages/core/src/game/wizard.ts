@@ -1591,12 +1591,12 @@ export function wizPlayItemReject(
  * changes.
  *
  * Upstream does FOUR things under `if (object_changed)`, in this order:
- *   1. L1734-1756 — if the object is carried AND either its number or its
+ *   1. L1734-1756: if the object is carried AND either its number or its
  *      object_weight_one has changed, subtract the old stack's weight from
  *      upkeep->total_weight and add the new one's.
- *   2. L1757 — object_touch(player, obj), which marks the object assessed and
+ *   2. L1757: object_touch(player, obj), which marks the object assessed and
  *      logs an artifact find.
- *   3. L1758-1764 — if it is EQUIPPED, clear the known WORN notice and re-run
+ *   3. L1758-1764: if it is EQUIPPED, clear the known WORN notice and re-run
  *      object_learn_on_wield.
  *   4. wiz_play_item_standard_upkeep (redraws; the shell's job here).
  *
