@@ -6990,6 +6990,14 @@ function doAnimation(): void {
  * currently draws the same base tile. That is a real gap, tracked separately -
  * but a base tile is not a partial fix of it, it is what upstream draws when the
  * expressions are absent.
+ *
+ * A MOD MAY ANSWER FOR THIS CELL, and only this cell (registry:tiles' player
+ * door, tile-registry.ts). It is asked before the race-0 lookup and its null
+ * answer is that lookup, so a game with no such mod behaves exactly as it did
+ * before the door existed. The COLOUR and the character are untouched either
+ * way: what a tile set draws is a tile set's business, but the '@' and its HP
+ * decile are upstream's own display code and a mod overriding a tile has said
+ * nothing about them.
  */
 function playerMapGlyph(): { ch: string; css: string; tile?: RenderAssetRef } {
   const slot = glyphs.monsterGlyph(0) ?? { attr: COLOUR_WHITE, char: "@" };
@@ -7002,10 +7010,36 @@ function playerMapGlyph(): { ch: string; css: string; tile?: RenderAssetRef } {
   /* Race 0 in the monster tile table, the same table and the same index the glyph
    * above came from - not a parallel "player tile" lookup that could disagree
    * with it. Undefined in ASCII mode, or when a pack resolves no player asset. */
-  const tile = tileMap
-    ? tileDrawFor(tileForMonster(tileMap, 0), state.actor.grid.x, state.actor.grid.y)
+  const atlas = tileMap ? (playerTileOverride() ?? tileForMonster(tileMap, 0)) : null;
+  const tile = atlas
+    ? tileDrawFor(atlas, state.actor.grid.x, state.actor.grid.y)
     : undefined;
   return { ch: g.char, css: colorToCss(g.attr), ...(tile ? { tile } : {}) };
+}
+
+/**
+ * Ask the installed mods whether the player's own cell should draw something
+ * other than the pack's player tile (registry:tiles' player door).
+ *
+ * Cheap when nothing is installed, which is the case that has to stay cheap: it
+ * runs once per rendered frame, and `playerProviders` is a map size read. The
+ * view is built only when somebody is going to be asked.
+ *
+ * `player_is_shapechanged` (player-util.c L1065) is a non-"normal" shape, and
+ * effect-general.ts normalises the normal shape to null when it assigns, so the
+ * name test is belt as well as braces - it is what keeps this honest if that
+ * invariant ever slips.
+ */
+function playerTileOverride(): TileAtlas | null {
+  if (tileRegistry.playerProviders === 0) return null;
+  const p = state.actor.player;
+  const shape = p.shape !== null && p.shape.name !== "normal" ? p.shape.name : null;
+  return tileRegistry.playerTile({
+    shape,
+    level: p.lev,
+    cls: p.cls.name,
+    race: p.race.name,
+  });
 }
 
 /** True if any visible monster animates (drives the display frame timer). */

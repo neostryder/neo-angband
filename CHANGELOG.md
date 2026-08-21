@@ -30,6 +30,38 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- **A tileset mod can say what the PLAYER's own cell draws, and ask for a
+  mirrored or palette-swapped copy of any tile.** Two additions to
+  `registry:tiles`, both mechanism with no taste in them, and both there because
+  a mod wanted something the door could not express.
+
+  `TileFill.transform` is the sibling of `derive`: where `derive` rotates a
+  donor's own hue, this replaces the palette outright, indexing each pixel by
+  brightness into a ramp the caller hands over and carrying alpha through
+  untouched. It refuses on the same three grounds `derive` does, and it returns
+  null on a fixed tilesheet for the same reason - there is no spare cell in an
+  atlas to put a variant in. `TilesFacade.player` is a provider asked once per
+  frame the player is drawn: given the character's shape, level, class and race,
+  which tile should this cell show? Null is "the tile set's own player picture",
+  which is what happens with no provider installed, and first non-null in load
+  order wins so two such mods can coexist.
+
+  The player's cell needed a door of its own rather than a fill. The player is
+  race 0 in the monster tile table (`grid_data_as_text`'s is_player branch reads
+  that slot for both the colour and the character) and every shipped tile set
+  assigns it, so `fillMonster(0, ...)` is refused and should be. What is asked
+  here is a different question, at a different time, and it owns nothing: the
+  tile map is never written, so a condition switching off restores the pack's own
+  tile with no rebuild, a provider that throws costs one frame's answer, and the
+  '@' and its HP decile are untouched either way.
+
+  Nothing in the game uses either of these. The consumer is neo-linoleum 0.16.0,
+  which draws a shapechanged character as the creature - Angband 4.2.6 has no
+  per-shape player picture, so what one should look like is a judgement, and a
+  tile set gets to make judgements about its own art where the port does not.
+
 ## [0.24.0] - 2026-08-21
 
 Current state of the project at version `0.24.0` - a fixes release. Nothing

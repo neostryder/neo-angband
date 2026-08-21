@@ -27,6 +27,18 @@
  *      failed to build is a black screen, which is not a price a mod's bug gets
  *      to charge the player.
  *
+ * THE PLAYER'S OWN CELL IS A SECOND DOOR, not a fill, and the difference is not
+ * a technicality. The player is race 0 in the monster tile table, every shipped
+ * tile set assigns it, so `fillMonster(0, ...)` is refused and should be: that
+ * picture is the pack author's. What a mod can have instead is a provider asked
+ * once per frame - given who the character is right now, is there a better
+ * tile? - whose null answer is the pack's own picture. Guarantee 1 above does
+ * not apply to it and cannot: the whole point is to replace an assigned tile,
+ * for one cell, for as long as some condition holds. What replaces guarantee 1
+ * there is that the answer is per FRAME and owns nothing - the tile map is never
+ * written, so switching the condition off restores the pack's tile with no
+ * rebuild, and a provider that throws costs one frame's answer.
+ *
  * AND SO THERE IS NO CONFLICT ROW FOR THIS, which is deliberate and is the kind
  * of omission an audit should be able to find an answer to. `mod-conflicts.ts`
  * reports CONTESTED slots - two mods wanting the same menu, the same HUD region,
@@ -34,16 +46,39 @@
  * anything. A row saying "these two mods both supply tiles" would report a
  * contest that cannot happen. The grafID claims a tiles mod makes are still
  * reported, because those are genuinely last-wins.
+ *
+ * THE PLAYER DOOR IS THE FIRST TILE SEAM WHERE A CONTEST IS REAL, and it has no
+ * conflict row yet. Two providers that both answer for the same character both
+ * had an opinion, and load order silently picks one. It is reported nowhere,
+ * which is a gap rather than a decision, and it is tracked in docs/PLANNED.md.
+ * What keeps it small is that a provider is expected to answer null for
+ * everything it has no opinion about, so an overlap needs both mods to care
+ * about the same character in the same moment.
  */
 
 import type {
+  PlayerTileProvider,
+  PlayerTileView,
   TileAtlas,
   TileFill,
   TileFillPack,
   TileFiller,
   TileMap,
   TileRegistryTarget,
+  TileTransform,
 } from "@rpgm-tools/neo-angband-core";
+
+/**
+ * The most colours a transform's ramp may name.
+ *
+ * HERE AND NOT IN CORE, because the reason for the number is this module's. The
+ * engine caches one image per distinct spec, so a spec's cost is what a ramp has
+ * to be bounded by - and past sixteen bands the difference between two
+ * neighbouring entries is below what the eye separates at tile size, so a longer
+ * ramp buys nothing to pay for. It is a cap, not a target: a five-entry ramp is
+ * an ordinary one.
+ */
+export const TILE_RAMP_MAX = 16;
 
 /** Report a filler's misbehaviour to the player, attributed to its mod. */
 export type TileFillProblem = (owner: string | null, message: string) => void;
@@ -51,6 +86,11 @@ export type TileFillProblem = (owner: string | null, message: string) => void;
 interface InstalledFiller {
   readonly owner: string | null;
   readonly filler: TileFiller;
+}
+
+interface InstalledProvider {
+  readonly owner: string | null;
+  readonly provider: PlayerTileProvider;
 }
 
 /** What one run of the fillers supplied. */
@@ -72,12 +112,41 @@ function isAtlas(value: unknown): value is TileAtlas {
   return Number.isInteger(tile.attr) && Number.isInteger(tile.char);
 }
 
+/**
+ * A transform spec, validated before an engine is asked to allocate for it.
+ *
+ * Checked HERE rather than in the engine because the engine caches one canvas
+ * per spec: a ramp with a NaN in it would key a cache entry that can never be
+ * hit again, and a ramp of four thousand colours would key a large one. The
+ * cap and the byte range are the two things that make a spec's cost bounded.
+ */
+function isTransform(value: unknown): value is TileTransform {
+  if (value === null || typeof value !== "object") return false;
+  const spec = value as Partial<TileTransform>;
+  if (typeof spec.mirror !== "boolean") return false;
+  if (!Array.isArray(spec.ramp) || spec.ramp.length > TILE_RAMP_MAX) return false;
+  for (const colour of spec.ramp) {
+    if (!Array.isArray(colour) || colour.length !== 3) return false;
+    for (const channel of colour) {
+      if (!Number.isInteger(channel) || channel < 0 || channel > 255) return false;
+    }
+  }
+  return true;
+}
+
 export class TileFillerRegistry implements TileRegistryTarget {
   /**
    * Keyed by owner so a mod registering twice replaces its OWN filler and never
    * another mod's. Insertion order is load order, which is the order they run.
    */
   readonly #fillers = new Map<string | null, InstalledFiller>();
+
+  /**
+   * Player-tile providers, keyed by owner for the same reason the fillers are.
+   * Separate map because the two are asked at different times: a filler runs
+   * once per built map, a provider once per frame the player is drawn.
+   */
+  readonly #players = new Map<string | null, InstalledProvider>();
 
   constructor(private readonly report: TileFillProblem) {}
 
@@ -88,9 +157,19 @@ export class TileFillerRegistry implements TileRegistryTarget {
     this.#fillers.set(owner ?? null, { filler, owner: owner ?? null });
   }
 
+  player(provider: PlayerTileProvider, owner?: string): void {
+    if (typeof provider !== "function") {
+      throw new Error("tile registry: a player-tile provider must be a function");
+    }
+    this.#players.set(owner ?? null, { provider, owner: owner ?? null });
+  }
+
   /** Bind registration attribution to one mod. */
   forOwner(owner: string): TileRegistryTarget {
-    return { register: (filler): void => this.register(filler, owner) };
+    return {
+      register: (filler): void => this.register(filler, owner),
+      player: (provider): void => this.player(provider, owner),
+    };
   }
 
   /** Whether anything would run, so a caller can skip building the door. */
@@ -98,9 +177,51 @@ export class TileFillerRegistry implements TileRegistryTarget {
     return this.#fillers.size;
   }
 
+  /** Whether any mod has an opinion about the player's own tile. */
+  get playerProviders(): number {
+    return this.#players.size;
+  }
+
   /** Test/session teardown: no installed mod means no filler survives. */
   clear(): void {
     this.#fillers.clear();
+    this.#players.clear();
+  }
+
+  /**
+   * The tile a mod wants the player's own cell to draw, or null for the pack's.
+   *
+   * FIRST NON-NULL IN LOAD ORDER, which is the only composition rule that lets
+   * two such mods coexist: a provider with no opinion returns null and the next
+   * one is asked, so "my mod draws the player differently while polymorphed" and
+   * "my mod draws the player differently in the town" are not in conflict unless
+   * both conditions hold at once, and then load order decides, visibly.
+   *
+   * A provider that throws is skipped for this frame and reported once per
+   * throw. It runs inside the render loop, so it cannot be allowed to take the
+   * frame down: the cost of a bad provider is the pack's own player tile, which
+   * is what the game drew before any of this existed.
+   */
+  playerTile(view: PlayerTileView): TileAtlas | null {
+    for (const installed of this.#players.values()) {
+      let answer: TileAtlas | null;
+      try {
+        answer = installed.provider(view);
+      } catch (err) {
+        this.report(
+          installed.owner,
+          `its player-tile provider threw, so the tile set's own player picture is drawn: ${message(err)}`,
+        );
+        continue;
+      }
+      if (answer === null) continue;
+      if (!isAtlas(answer)) {
+        this.report(installed.owner, `offered the player a tile that is not a tile`);
+        continue;
+      }
+      return { attr: answer.attr, char: answer.char };
+    }
+    return null;
   }
 
   /**
@@ -110,11 +231,18 @@ export class TileFillerRegistry implements TileRegistryTarget {
    * donor's asset with its hue rotated - or null on an engine that cannot,
    * which is every fixed atlas: its tiles are cells of a sheet and there is no
    * spare cell to put a variant in.
+   *
+   * `transform` is the same capability for the other kind of variant, mirrored
+   * and/or palette-swapped, and is null on the same engines for the same reason.
+   * It defaults to null so a caller that has neither passes neither.
    */
   run(
     map: TileMap,
     pack: TileFillPack,
     derive: ((donor: TileAtlas, hue: number) => TileAtlas | null) | null,
+    transform:
+      | ((donor: TileAtlas, spec: TileTransform) => TileAtlas | null)
+      | null = null,
   ): TileFillOutcome {
     let monsters = 0;
     let objects = 0;
@@ -156,6 +284,11 @@ export class TileFillerRegistry implements TileRegistryTarget {
         derive: (donor, hue) => {
           if (derive === null || !isAtlas(donor) || !Number.isFinite(hue)) return null;
           const made = derive(donor, hue);
+          return made !== null && isAtlas(made) ? made : null;
+        },
+        transform: (donor, spec) => {
+          if (transform === null || !isAtlas(donor) || !isTransform(spec)) return null;
+          const made = transform(donor, spec);
           return made !== null && isAtlas(made) ? made : null;
         },
       };

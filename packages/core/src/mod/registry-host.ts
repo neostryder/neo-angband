@@ -374,6 +374,11 @@ export interface TileFillPack {
  * atlas has no spare cell to put a variant in, and even a loose pack cannot
  * recolour a donor it does not own the asset for - so a filler that wants a
  * plain copy instead has to say so.
+ *
+ * `transform` is the second, on the same terms: give me a tile that draws
+ * `donor`'s asset mirrored, or with its colours replaced from a ramp I hand
+ * over, or both. Which donor, which way round and which colours are all the
+ * caller's - see TileTransform.
  */
 export interface TileFill {
   /** The pack being filled. */
@@ -388,7 +393,95 @@ export interface TileFill {
   fillObject(kidx: number, tile: TileAtlas): boolean;
   /** A tile drawing `donor`'s asset with its hue rotated, or null if impossible. */
   derive(donor: TileAtlas, hue: number): TileAtlas | null;
+  /**
+   * A tile drawing `donor`'s asset mirrored and/or palette-swapped, or null if
+   * impossible - the same three refusals `derive` has, for the same reasons.
+   */
+  transform(donor: TileAtlas, spec: TileTransform): TileAtlas | null;
 }
+
+/** One replacement colour in a palette remap: red, green, blue, each 0-255. */
+export type TileRampColour = readonly [number, number, number];
+
+/**
+ * How a transformed tile differs from the donor whose picture it draws.
+ *
+ * A PALETTE REMAP RATHER THAN A HUE ROTATION, and the two are not variants of
+ * one idea. `derive`'s rotation asks "the same picture, turned": it keeps the
+ * donor's own colours and moves them around the wheel, which is why it is a
+ * no-op on grey. A ramp remap asks for a DIFFERENT palette: every pixel is
+ * indexed into the ramp by its luminance and replaced by the colour that index
+ * names, so the result is in the caller's colours whatever the donor's were,
+ * grey donors included. Alpha is carried through untouched, so the silhouette
+ * is the donor's exactly.
+ *
+ * Fewer ramp entries read as flatter and more stylised; more preserve the
+ * donor's shading. Two is a hard duotone. The caller picks, because how
+ * stylised somebody's art should look is taste and the engine has none.
+ *
+ * A ramp of nothing (or of one colour) is not a palette, so it is treated as
+ * "no colour change" and only `mirror` applies. A transform that asks for
+ * neither is refused, the same way a rotation of nothing is: it would allocate
+ * a tile indistinguishable from its donor.
+ */
+export interface TileTransform {
+  /** Mirror the picture horizontally. */
+  readonly mirror: boolean;
+  /**
+   * Replacement colours, DARKEST FIRST.
+   *
+   * There is a cap on how many, and it lives with the DOOR rather than here
+   * (`TILE_RAMP_MAX`, the front end's tile-registry) because the reason for it is
+   * the front end's: it caches one image per distinct spec, so what bounds a ramp
+   * is what bounds that cache. Core describes the shape; the front end that pays
+   * for it sets the limit.
+   */
+  readonly ramp: readonly TileRampColour[];
+}
+
+/**
+ * What a player-tile provider is told about the character it is drawing.
+ *
+ * DELIBERATELY NOT THE PLAYER RECORD. A provider decides what picture to show,
+ * and the five facts below are what any such decision can be made from; handing
+ * over the live `Player` would make every field of it part of this contract and
+ * let a render-time hook mutate the character. Names rather than indices,
+ * because a mod's rule is written against "Druid", not against cidx 2, and an
+ * index moves when a content mod inserts a class.
+ */
+export interface PlayerTileView {
+  /**
+   * The current shape's name ("fox", "werewolf", ...), or null in the normal
+   * shape. Exactly player_is_shapechanged's question, answered with which shape.
+   */
+  readonly shape: string | null;
+  /** player->lev, 1 to PY_MAX_LEVEL. */
+  readonly level: number;
+  /** The character's class name (player.cls.name). */
+  readonly cls: string;
+  /** The character's race name (player.race.name). */
+  readonly race: string;
+}
+
+/**
+ * A mod's player-tile provider: which tile the PLAYER's own cell draws.
+ *
+ * WHY THIS IS NOT A FILL. The player is race 0 in the monster tile table
+ * (grid_data_as_text's is_player branch reads that slot for both the colour and
+ * the character), and every tile set the game ships assigns it - so there is no
+ * blank for `fillMonster` to write into, and there should not be: the pack's
+ * player picture is the pack author's work. This asks a different question,
+ * once per frame rather than once per map build: given who the character is
+ * right now, is there a tile that fits better than the standing one? Null means
+ * no, and the pack's own player tile is drawn, which is what happens with no
+ * provider installed at all.
+ *
+ * It runs inside the render path, so it must be a lookup and not a computation:
+ * allocate whatever tiles the answers need during the fill (where `transform`
+ * lives) and read the table here. A provider that throws loses its answer for
+ * that frame and nothing else.
+ */
+export type PlayerTileProvider = (view: PlayerTileView) => TileAtlas | null;
 
 /**
  * A mod's tile filler: supply tiles for content this pack does not draw.
@@ -407,6 +500,7 @@ export type TileFiller = (fill: TileFill) => void;
 /** Structural target implemented by the web front end, not by headless core. */
 export interface TileRegistryTarget {
   register(filler: TileFiller, owner?: string): void;
+  player(provider: PlayerTileProvider, owner?: string): void;
 }
 
 /** The effect-override facade (gated by registry:effect). */
@@ -573,6 +667,13 @@ export interface MenuFacade {
 export interface TilesFacade {
   /** Install (or replace) this mod's tile filler. */
   register(filler: TileFiller): void;
+  /**
+   * Install (or replace) this mod's player-tile provider. One per mod for the
+   * same reason as the filler, and first non-null in load order wins - so a
+   * provider that answers null for everything it has no opinion about leaves
+   * the next mod's answer, and the pack's own tile, both reachable.
+   */
+  player(provider: PlayerTileProvider): void;
 }
 
 /** The monster-AI facade (gated by registry:monster). */
@@ -1489,6 +1590,13 @@ export function createModRegistryHost(
           throw new Error("mod registry: a tile filler must be a function");
         }
         requireTarget(targets.tiles, "tiles").register(filler);
+      },
+      player(provider): void {
+        requireCap(capabilities, "tiles");
+        if (typeof provider !== "function") {
+          throw new Error("mod registry: a player-tile provider must be a function");
+        }
+        requireTarget(targets.tiles, "tiles").player(provider);
       },
     },
   };

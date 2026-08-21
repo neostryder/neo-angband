@@ -143,6 +143,51 @@ no fraction here: save provenance, log lines, and the conflict pane are the thre
 that are known to exist, and the first task is to find out whether that is the
 whole list.
 
+## The tile seams
+
+### Two mods answering for the player's cell is unreported
+
+`registry:tiles` grew a player-tile door in the Unreleased line: a provider asked
+once per frame the player is drawn, first non-null answer in load order winning.
+That is the first tile seam where a CONTEST between two mods is possible.
+`mod-conflicts.ts` reports contested slots - two mods wanting the same menu, the
+same HUD region, the same grafID - and it has no row for this one, so two mods
+that both answer for the same character both had an opinion and load order
+silently picks. The fill door deliberately has no conflict row either, and there
+the reason is that a contest cannot happen (a fill only writes a blank, first
+asker wins, neither can undo the other); here it can. `tile-registry.ts` says the
+same thing in its own header.
+
+What keeps it small is that a provider is expected to answer null for everything
+it has no opinion about, so an overlap needs both mods to care about the same
+character in the same moment. What would close it is a row naming both mods and
+which one is being drawn.
+
+### The seam docs do not describe either new tile capability
+
+`TileFill.transform` and `TilesFacade.player` are in the tree, tested, and
+consumed by neo-linoleum 0.16.0, and the mod-facing documents that enumerate the
+seams do not mention them: `docs/modding/MOD_SEAMS.md`, `docs/modding/PLUGINS.md`,
+`docs/modding/MOD_REACH.md` and `docs/LINOLEUM.md`. A capability a mod author
+cannot find is a capability that only its first consumer uses, which is a failure
+mode this repository has hit under several names. The reference for both is
+currently the doc comment on `TileFill` in `packages/core/src/mod/registry-host.ts`
+and the header of `packages/web/src/tile-registry.ts`, which are complete but are
+not where somebody writing a mod looks first.
+
+### No pixel has been seen through the transform
+
+`remapToRamp` is measured byte for byte and the slot allocation is measured
+through the real door, but nothing has photographed a mirrored, repainted tile on
+screen. The transform is the one part of this that leaves the pure-arithmetic
+world: it reads the image back with `getImageData`, which needs the image to be
+readable. Every path a pack arrives by is same-origin (the site, or a `blob:` URL
+this document minted), so it should never taint - and "should" is the word doing
+the work. A taint throws, the transform returns null, and the caller draws the
+donor's own picture, so the failure is silent by design. The instrument is the
+installed desktop build over CDP, which is the only one of the three that reports
+pixels.
+
 ## Moddability reach
 
 This was the "alpha gate", narrowed 2026-08-15. Renamed on 2026-08-21 because

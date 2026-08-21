@@ -54,12 +54,14 @@ import type {
 import { composeContentPacks, validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { LoadedPack, PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
-  hueDerivedSlots,
+  derivedSlots,
+  rampIndex,
+  remapToRamp,
   slotFromAtlas,
   slotToAtlas,
   type LinoleumSlot,
 } from "./linoleum-pack";
-import { TileFillerRegistry } from "./tile-registry";
+import { TILE_RAMP_MAX, TileFillerRegistry } from "./tile-registry";
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));
 const CORE_PACK = join(REPO, "packages", "content", "pack");
@@ -320,7 +322,7 @@ describe("the fill door cannot repaint a pack", () => {
     /* And that the difference between them is the DERIVE argument rather than
      * whether fillers run: null there, the allocator here. */
     expect(read("tiles.ts")).toMatch(/tileRegistry\.run\([\s\S]{0,200}?null,\n\s*\);/u);
-    expect(read("linoleum-pack.ts")).toMatch(/hueDerivedSlots\(index\.slots\)/u);
+    expect(read("linoleum-pack.ts")).toMatch(/derivedSlots\(index\.slots\)/u);
   });
 });
 
@@ -463,21 +465,21 @@ describe("the door is wide enough for the rule that left core", () => {
 });
 
 /**
- * `hueDerivedSlots` - the loose-pack engine's derive capability.
+ * `derivedSlots` - the loose-pack engine's derive capability.
  *
  * A hand-made slot table rather than a real pack, and that is the honest way
  * round: the packs are neo-linoleum's art, they are gitignored here, and they are
  * built by that repository. The whole input to a derivation is a slot table and a
  * request, so a two-entry table exercises it exactly.
  */
-describe("hueDerivedSlots - a tile of one's own", () => {
+describe("derivedSlots - a tile of one's own", () => {
   const base: readonly LinoleumSlot[] = [
     { kind: "asset", asset: "mon-donor" },
     { kind: "asset", asset: "obj-donor" },
   ];
 
   it("allocates one slot per donor and hue, and never rewrites the pack's own", () => {
-    const hues = hueDerivedSlots(base);
+    const hues = derivedSlots(base);
     const first = hues.derive(slotToAtlas(0), 30)!;
     const second = hues.derive(slotToAtlas(0), 60)!;
     const again = hues.derive(slotToAtlas(0), 30)!;
@@ -487,7 +489,7 @@ describe("hueDerivedSlots - a tile of one's own", () => {
     /* Asking twice for the same picture and colour returns the same slot rather
      * than growing the table. */
     expect(again).toEqual(first);
-    expect(hues.stats()).toEqual({ derived: 2, overflow: 0 });
+    expect(hues.stats()).toEqual({ derived: 2, transformed: 0, overflow: 0 });
 
     const slots = hues.slots();
     expect(slots.slice(0, 2)).toEqual(base);
@@ -500,13 +502,13 @@ describe("hueDerivedSlots - a tile of one's own", () => {
      * donor can be a tile with no asset behind it. There is nothing to recolour,
      * and the filler is told so rather than being handed a slot that draws
      * nothing. */
-    const hues = hueDerivedSlots(base);
+    const hues = derivedSlots(base);
     expect(hues.derive(slotToAtlas(900), 30)).toBeNull();
-    expect(hues.stats()).toEqual({ derived: 0, overflow: 0 });
+    expect(hues.stats()).toEqual({ derived: 0, transformed: 0, overflow: 0 });
   });
 
   it("refuses a derived donor and a rotation of nothing", () => {
-    const hues = hueDerivedSlots([...base, { kind: "derived", from: 0, hue: 30 }]);
+    const hues = derivedSlots([...base, { kind: "derived", from: 0, hue: 30 }]);
     /* The renderer will not chain recolours, and a copy of a copy is not more
      * distinctive than the copy. */
     expect(hues.derive(slotToAtlas(2), 60)).toBeNull();
@@ -516,7 +518,7 @@ describe("hueDerivedSlots - a tile of one's own", () => {
   });
 
   it("normalises a hue so the same colour is the same slot", () => {
-    const hues = hueDerivedSlots(base);
+    const hues = derivedSlots(base);
     expect(hues.derive(slotToAtlas(1), 45)).toEqual(hues.derive(slotToAtlas(1), 405));
     expect(hues.derive(slotToAtlas(1), -315)).toEqual(hues.derive(slotToAtlas(1), 45));
     expect(hues.stats().derived).toBe(1);
@@ -526,7 +528,7 @@ describe("hueDerivedSlots - a tile of one's own", () => {
     /* A tile that changed colour between launches would be worse than a
      * duplicate one, so this is not a nicety. */
     const run = (): unknown => {
-      const hues = hueDerivedSlots(base);
+      const hues = derivedSlots(base);
       const tiles = [30, 60, 30, 90].map((hue) => hues.derive(slotToAtlas(0), hue));
       return { tiles, slots: hues.slots(), stats: hues.stats() };
     };
@@ -556,7 +558,7 @@ describe("hueDerivedSlots - a tile of one's own", () => {
     map.monster[first.ridx] = undefined;
     map.monster[second.ridx] = undefined;
 
-    const hues = hueDerivedSlots(slots);
+    const hues = derivedSlots(slots);
     const { registry } = withFiller(kinFiller(mon, obj, [30, 60]));
     const out = registry.run(map, { engine: "linoleum", id: "test", menuname: "Test" }, hues.derive);
 
@@ -569,5 +571,436 @@ describe("hueDerivedSlots - a tile of one's own", () => {
     /* Same picture, different colour, and neither is the donor's own tile. */
     expect(map.monster[first.ridx]).not.toEqual(map.monster[second.ridx]);
     expect(map.monster[first.ridx]).not.toEqual(map.monster[antDonor.ridx]);
+  });
+});
+
+/**
+ * `remapToRamp` - the palette swap itself, decided in bytes.
+ *
+ * WHY THIS TEST IS IN BYTES AND NOT IN PIXELS ON A CANVAS. The colour decision
+ * is the whole feature: which ramp entry a pixel lands in, what it comes out as,
+ * and what is left alone. A canvas would add an image decode, a `getImageData`
+ * round trip and a browser to the measurement of arithmetic, and there is no
+ * canvas in a node run at all - so the arithmetic is a pure exported function
+ * and this asserts its exact output bytes. The arrangement around it (mirror,
+ * read back, write back) is what the joint test and the real game exercise.
+ */
+describe("remapToRamp - a palette, not a rotation", () => {
+  /** Four bands, chosen so every channel of every entry is distinguishable. */
+  const RAMP: readonly (readonly [number, number, number])[] = [
+    [10, 20, 30],
+    [40, 50, 60],
+    [70, 80, 90],
+    [100, 110, 120],
+  ];
+
+  it("puts each brightness in its band and writes that band's colour exactly", () => {
+    /* Rec. 601 luma, then 0-255 in four equal parts: 0-63, 64-127, 128-191,
+     * 192-255. Grey pixels, so luma is the channel value and the expected band
+     * can be read off the number rather than recomputed by the same code the
+     * test is measuring. */
+    const greys = [0, 63, 64, 127, 128, 191, 192, 255];
+    const pixels = new Uint8ClampedArray(greys.length * 4);
+    greys.forEach((v, i) => {
+      pixels[i * 4] = v;
+      pixels[i * 4 + 1] = v;
+      pixels[i * 4 + 2] = v;
+      pixels[i * 4 + 3] = 255;
+    });
+
+    remapToRamp(pixels, RAMP);
+
+    expect(Array.from(pixels)).toEqual([
+      10, 20, 30, 255,
+      10, 20, 30, 255,
+      40, 50, 60, 255,
+      40, 50, 60, 255,
+      70, 80, 90, 255,
+      70, 80, 90, 255,
+      100, 110, 120, 255,
+      100, 110, 120, 255,
+    ]);
+  });
+
+  it("weights the channels the way 601 luma does, so a green is not a blue", () => {
+    /* Pure red (luma 76), pure green (150) and pure blue (29) land in three
+     * different bands, which is the whole reason a luma is used rather than an
+     * average: an average would put all three in the same one. */
+    const pixels = new Uint8ClampedArray([
+      255, 0, 0, 255,
+      0, 255, 0, 255,
+      0, 0, 255, 255,
+    ]);
+    remapToRamp(pixels, RAMP);
+    expect(Array.from(pixels.slice(0, 3))).toEqual([40, 50, 60]);
+    expect(Array.from(pixels.slice(4, 7))).toEqual([70, 80, 90]);
+    expect(Array.from(pixels.slice(8, 11))).toEqual([10, 20, 30]);
+  });
+
+  it("carries alpha through and leaves a transparent pixel entirely alone", () => {
+    /* The silhouette is the donor's, to the pixel: this cannot change what shape
+     * the creature is. And a fully transparent pixel keeps its colour bytes,
+     * because ramping them would give every one index 0 and grow a dark fringe
+     * around badly-authored art. */
+    const pixels = new Uint8ClampedArray([
+      200, 200, 200, 0,
+      200, 200, 200, 128,
+    ]);
+    remapToRamp(pixels, RAMP);
+    expect(Array.from(pixels)).toEqual([200, 200, 200, 0, 100, 110, 120, 128]);
+  });
+
+  it("returns the buffer untouched for a ramp that is not a palette", () => {
+    /* The caller that wants only a mirror passes exactly this, so it is an
+     * ordinary case rather than a guard against a mistake. */
+    const original = [200, 100, 50, 255];
+    for (const ramp of [[], [[1, 2, 3]]]) {
+      const pixels = new Uint8ClampedArray(original);
+      expect(Array.from(remapToRamp(pixels, ramp as never))).toEqual(original);
+    }
+  });
+
+  it("is NOT idempotent in general, which is why a chain is refused", () => {
+    /* Measured, not assumed. A second pass over an already-remapped tile moves
+     * its pixels again, because a ramp entry's own brightness need not fall in
+     * the band that produced it: RAMP above is dark, its entry for band 1 has
+     * luma 48, and 48 is band 0 - so applying it twice darkens what one pass
+     * produced. That is the concrete reason the slot allocator refuses a
+     * transformed donor rather than treating a chain as merely redundant. */
+    const pixels = new Uint8ClampedArray([200, 30, 90, 255, 12, 240, 7, 255]);
+    const once = Array.from(remapToRamp(new Uint8ClampedArray(pixels), RAMP));
+    const twice = Array.from(
+      remapToRamp(remapToRamp(new Uint8ClampedArray(pixels), RAMP), RAMP),
+    );
+    expect(twice).not.toEqual(once);
+
+    /* A ramp whose entries each sit in their own band IS idempotent, so this is
+     * a property of the palette a caller chose and not of the remap. */
+    const aligned: readonly (readonly [number, number, number])[] = [
+      [32, 32, 32],
+      [96, 96, 96],
+      [160, 160, 160],
+      [224, 224, 224],
+    ];
+    const alignedOnce = Array.from(remapToRamp(new Uint8ClampedArray(pixels), aligned));
+    const alignedTwice = Array.from(
+      remapToRamp(remapToRamp(new Uint8ClampedArray(pixels), aligned), aligned),
+    );
+    expect(alignedTwice).toEqual(alignedOnce);
+  });
+
+  it("indexes into a ramp of any length up to the cap", () => {
+    for (const bands of [2, 3, 5, 8, TILE_RAMP_MAX]) {
+      expect(rampIndex(0, 0, 0, bands)).toBe(0);
+      expect(rampIndex(255, 255, 255, bands)).toBe(bands - 1);
+      /* Never out of range, whatever the brightness - the clamp is what stops a
+       * ramp lookup returning undefined and a pixel keeping the donor's colour
+       * for no visible reason. */
+      for (const v of [0, 1, 127, 128, 254, 255]) {
+        const i = rampIndex(v, v, v, bands);
+        expect(i).toBeGreaterThanOrEqual(0);
+        expect(i).toBeLessThan(bands);
+      }
+    }
+  });
+});
+
+/** `derivedSlots.transform` - the OTHER variant a loose pack can allocate. */
+describe("derivedSlots - mirrored and repainted", () => {
+  const base: readonly LinoleumSlot[] = [
+    { kind: "asset", asset: "mon-donor" },
+    { kind: "asset", asset: "obj-donor" },
+  ];
+  const RAMP: readonly (readonly [number, number, number])[] = [
+    [0, 0, 0],
+    [255, 255, 255],
+  ];
+
+  it("shares ONE slot table with derive, so the two never collide", () => {
+    /* The failure this exists to catch is two allocators over one base handing
+     * out the same slot number for different pictures, which shows up much later
+     * as one creature wearing another's tile. */
+    const alloc = derivedSlots(base);
+    const hue = alloc.derive(slotToAtlas(0), 30)!;
+    const flip = alloc.transform(slotToAtlas(0), { mirror: true, ramp: [] })!;
+    expect(hue).not.toEqual(flip);
+    expect(alloc.stats()).toEqual({ derived: 1, transformed: 1, overflow: 0 });
+    const slots = alloc.slots();
+    expect(slots.slice(0, 2)).toEqual(base);
+    expect(slots[slotFromAtlas(hue)]).toEqual({ kind: "derived", from: 0, hue: 30 });
+    expect(slots[slotFromAtlas(flip)]).toEqual({
+      kind: "transformed",
+      from: 0,
+      spec: { mirror: true, ramp: [] },
+    });
+  });
+
+  it("allocates one slot per (donor, spec) and reuses it", () => {
+    const alloc = derivedSlots(base);
+    const spec = { mirror: true, ramp: RAMP };
+    const first = alloc.transform(slotToAtlas(0), spec)!;
+    const again = alloc.transform(slotToAtlas(0), { mirror: true, ramp: [...RAMP] })!;
+    const other = alloc.transform(slotToAtlas(1), spec)!;
+    const unmirrored = alloc.transform(slotToAtlas(0), { mirror: false, ramp: RAMP })!;
+
+    /* A spec rebuilt from equal values is the same picture, so it is the same
+     * slot: the signature is the values, not the object. */
+    expect(again).toEqual(first);
+    expect(other).not.toEqual(first);
+    expect(unmirrored).not.toEqual(first);
+    expect(alloc.stats().transformed).toBe(3);
+  });
+
+  it("refuses a donor the pack does not own, and a chained one", () => {
+    const alloc = derivedSlots([
+      ...base,
+      { kind: "derived", from: 0, hue: 30 },
+      { kind: "transformed", from: 0, spec: { mirror: true, ramp: [] } },
+    ]);
+    expect(alloc.transform(slotToAtlas(900), { mirror: true, ramp: [] })).toBeNull();
+    expect(alloc.transform(slotToAtlas(2), { mirror: true, ramp: [] })).toBeNull();
+    expect(alloc.transform(slotToAtlas(3), { mirror: true, ramp: [] })).toBeNull();
+    expect(alloc.stats().transformed).toBe(0);
+  });
+
+  it("refuses a transform that changes nothing", () => {
+    /* No mirror and no usable palette is a request for the donor's own picture,
+     * and allocating a slot for that is how a table fills up with tiles nobody
+     * can tell apart. A one-colour ramp is not a palette: the renderer ignores
+     * it, so the refusal and the render agree. */
+    const alloc = derivedSlots(base);
+    expect(alloc.transform(slotToAtlas(0), { mirror: false, ramp: [] })).toBeNull();
+    expect(
+      alloc.transform(slotToAtlas(0), { mirror: false, ramp: [[9, 9, 9]] }),
+    ).toBeNull();
+    expect(alloc.stats().transformed).toBe(0);
+  });
+
+  it("normalises an unusable ramp away, so a mirror is one slot either way", () => {
+    const alloc = derivedSlots(base);
+    const bare = alloc.transform(slotToAtlas(0), { mirror: true, ramp: [] })!;
+    const single = alloc.transform(slotToAtlas(0), { mirror: true, ramp: [[9, 9, 9]] })!;
+    expect(single).toEqual(bare);
+    expect(alloc.stats().transformed).toBe(1);
+    expect(alloc.slots()[slotFromAtlas(bare)]).toEqual({
+      kind: "transformed",
+      from: 0,
+      spec: { mirror: true, ramp: [] },
+    });
+  });
+
+  it("is deterministic across runs", () => {
+    const run = (): unknown => {
+      const alloc = derivedSlots(base);
+      const tiles = [
+        alloc.transform(slotToAtlas(0), { mirror: true, ramp: RAMP }),
+        alloc.transform(slotToAtlas(1), { mirror: false, ramp: RAMP }),
+        alloc.transform(slotToAtlas(0), { mirror: true, ramp: RAMP }),
+      ];
+      return { tiles, slots: alloc.slots(), stats: alloc.stats() };
+    };
+    expect(run()).toEqual(run());
+  });
+});
+
+/**
+ * The door's own validation of a transform spec, which is the layer that keeps a
+ * mod's mistake from becoming an unbounded cache in the engine.
+ */
+describe("the fill door's transform", () => {
+  const linoPack: TileFillPack = { engine: "linoleum", id: "test", menuname: "Test" };
+
+  /** Run one filler and hand back whatever it asked the door for. */
+  function asked(spec: unknown): {
+    answer: TileAtlas | null;
+    requests: unknown[];
+  } {
+    const requests: unknown[] = [];
+    const registry = new TileFillerRegistry(() => undefined);
+    let answer: TileAtlas | null = null;
+    registry.register((fill) => {
+      answer = fill.transform({ attr: 0x80, char: 0x80 }, spec as never);
+    }, "mod");
+    registry.run(new TileMap(), linoPack, null, (donor, s) => {
+      requests.push(s);
+      return { attr: donor.attr, char: donor.char + 1 };
+    });
+    return { answer, requests };
+  }
+
+  it("passes a well-formed spec through and returns the engine's tile", () => {
+    const out = asked({ mirror: true, ramp: [[0, 0, 0], [255, 255, 255]] });
+    expect(out.answer).toEqual({ attr: 0x80, char: 0x81 });
+    expect(out.requests).toHaveLength(1);
+  });
+
+  it("answers null on an engine with no transform, without asking", () => {
+    /* A tilesheet is a fixed atlas: every cell is somebody's tile and there is
+     * no spare one, so the door is honest about it rather than allocating
+     * something that cannot be drawn. */
+    const registry = new TileFillerRegistry(() => undefined);
+    let answer: TileAtlas | null = { attr: 1, char: 1 };
+    registry.register((fill) => {
+      answer = fill.transform({ attr: 0x80, char: 0x80 }, { mirror: true, ramp: [] });
+    }, "mod");
+    registry.run(new TileMap(), { engine: "tilesheet", id: "x", menuname: "X" }, null);
+    expect(answer).toBeNull();
+  });
+
+  it("refuses a spec the engine would cache badly, and never asks the engine", () => {
+    /* Each of these would key a cache entry that can never be hit again, or a
+     * very large one. The engine caches one canvas per spec, so the bound on
+     * that cache is this check. */
+    const specs: unknown[] = [
+      null,
+      "mirror",
+      { ramp: [] },
+      { mirror: "yes", ramp: [] },
+      { mirror: true },
+      { mirror: true, ramp: [[0, 0]] },
+      { mirror: true, ramp: [[0, 0, 256]] },
+      { mirror: true, ramp: [[0, 0, -1]] },
+      { mirror: true, ramp: [[0, 0, Number.NaN]] },
+      { mirror: true, ramp: [[0, 0, 1.5]] },
+      { mirror: true, ramp: Array.from({ length: TILE_RAMP_MAX + 1 }, () => [0, 0, 0]) },
+    ];
+    for (const spec of specs) {
+      const out = asked(spec);
+      expect(out.answer, JSON.stringify(spec)).toBeNull();
+      expect(out.requests, JSON.stringify(spec)).toEqual([]);
+    }
+  });
+
+  it("refuses an engine answer that is not a tile", () => {
+    const registry = new TileFillerRegistry(() => undefined);
+    let answer: TileAtlas | null = { attr: 1, char: 1 };
+    registry.register((fill) => {
+      answer = fill.transform({ attr: 0x80, char: 0x80 }, { mirror: true, ramp: [] });
+    }, "mod");
+    registry.run(new TileMap(), linoPack, null, () => ({ attr: "red" }) as never);
+    expect(answer).toBeNull();
+  });
+});
+
+/**
+ * The player door: the one tile seam that REPLACES an assigned tile.
+ *
+ * Everything else in this file is about a fill, which can only write a blank.
+ * This cannot be a fill - the player is race 0 and every shipped pack assigns
+ * it - so the guarantees are different ones, and these are them.
+ */
+describe("the player-tile door", () => {
+  const view = { shape: "werewolf", level: 30, cls: "Druid", race: "Elf" } as const;
+
+  it("answers null with nothing installed, and says so cheaply", () => {
+    const registry = new TileFillerRegistry(() => undefined);
+    expect(registry.playerProviders).toBe(0);
+    expect(registry.playerTile(view)).toBeNull();
+  });
+
+  it("takes the FIRST non-null answer in load order", () => {
+    /* Which is what lets two such mods coexist: a provider with no opinion
+     * returns null and the next one is asked. */
+    const seen: string[] = [];
+    const registry = new TileFillerRegistry(() => undefined);
+    registry.player((v) => {
+      seen.push(`a:${String(v.shape)}`);
+      return null;
+    }, "a");
+    registry.player(() => {
+      seen.push("b");
+      return { attr: 0x81, char: 0x82 };
+    }, "b");
+    registry.player(() => {
+      seen.push("c");
+      return { attr: 0x8f, char: 0x8f };
+    }, "c");
+
+    expect(registry.playerTile(view)).toEqual({ attr: 0x81, char: 0x82 });
+    /* c was never asked, so a provider costs nothing once an earlier one has
+     * answered. */
+    expect(seen).toEqual(["a:werewolf", "b"]);
+  });
+
+  it("hands over the character's shape, level, class and race and nothing else", () => {
+    let got: unknown;
+    const registry = new TileFillerRegistry(() => undefined);
+    registry.player((v) => {
+      got = v;
+      return null;
+    }, "a");
+    registry.playerTile({ shape: null, level: 1, cls: "Warrior", race: "Half-Troll" });
+    expect(got).toEqual({ shape: null, level: 1, cls: "Warrior", race: "Half-Troll" });
+  });
+
+  it("replaces a mod's OWN provider and never another mod's", () => {
+    const registry = new TileFillerRegistry(() => undefined);
+    registry.player(() => null, "a");
+    registry.player(() => ({ attr: 0x83, char: 0x84 }), "a");
+    registry.player(() => ({ attr: 0x85, char: 0x86 }), "b");
+    expect(registry.playerProviders).toBe(2);
+    expect(registry.playerTile(view)).toEqual({ attr: 0x83, char: 0x84 });
+  });
+
+  it("survives a provider that throws, and reports it against its mod", () => {
+    /* It runs inside the render loop. A provider's bug costs its own answer and
+     * the pack's own player tile is drawn - not a dropped frame, and not a
+     * black screen. */
+    const problems: string[] = [];
+    const registry = new TileFillerRegistry((owner, why) => problems.push(`${String(owner)}|${why}`));
+    registry.player(() => {
+      throw new Error("boom");
+    }, "bad");
+    registry.player(() => ({ attr: 0x87, char: 0x88 }), "good");
+    expect(registry.playerTile(view)).toEqual({ attr: 0x87, char: 0x88 });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/^bad\|.*boom/u);
+  });
+
+  it("refuses an answer that is not a tile, and asks the next provider", () => {
+    const problems: string[] = [];
+    const registry = new TileFillerRegistry((owner, why) => problems.push(`${String(owner)}|${why}`));
+    registry.player(() => ({ attr: "red", char: null }) as never, "bad");
+    registry.player(() => ({ attr: 0x89, char: 0x8a }), "good");
+    expect(registry.playerTile(view)).toEqual({ attr: 0x89, char: 0x8a });
+    expect(problems[0]).toMatch(/not a tile/u);
+  });
+
+  it("copies the answer, so a provider cannot hand out a live object", () => {
+    const mutable = { attr: 0x8b, char: 0x8c };
+    const registry = new TileFillerRegistry(() => undefined);
+    registry.player(() => mutable, "a");
+    const first = registry.playerTile(view);
+    mutable.attr = 0x8e;
+    expect(first).toEqual({ attr: 0x8b, char: 0x8c });
+  });
+
+  it("refuses a provider that is not a function", () => {
+    const registry = new TileFillerRegistry(() => undefined);
+    expect(() => registry.player({} as never, "a")).toThrow(/must be a function/);
+    expect(registry.playerProviders).toBe(0);
+  });
+
+  it("clear() drops providers as well as fillers", () => {
+    /* Session teardown: no installed mod means no provider survives, or the
+     * next character is drawn by the last one's rules. */
+    const registry = new TileFillerRegistry(() => undefined);
+    registry.register(() => undefined, "a");
+    registry.player(() => ({ attr: 0x81, char: 0x81 }), "a");
+    registry.clear();
+    expect(registry.playerProviders).toBe(0);
+    expect(registry.size).toBe(0);
+    expect(registry.playerTile(view)).toBeNull();
+  });
+
+  it("is wired into the player's own draw site", () => {
+    /* A door with no caller is the failure mode this repository has shipped
+     * often enough to test for by name. playerMapGlyph is the is_player branch
+     * of grid_data_as_text; if the override is not consulted there, every test
+     * above passes and no shapechanged player ever looks different. */
+    const main = readFileSync(join(REPO, "packages", "web", "src", "main.ts"), "utf8");
+    expect(main).toMatch(/playerTileOverride\(\) \?\? tileForMonster\(tileMap, 0\)/u);
+    expect(main).toMatch(/tileRegistry\.playerTile\(/u);
+    expect(main).toMatch(/tileRegistry\.playerProviders === 0/u);
   });
 });

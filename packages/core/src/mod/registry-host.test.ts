@@ -163,7 +163,7 @@ function targets() {
   registerCoreStoreBehaviour(stores);
   const projections = new ProjectionHandlerRegistry();
   const menus = { register: vi.fn(), handlerFor: vi.fn(() => null) };
-  const tiles = { register: vi.fn() };
+  const tiles = { register: vi.fn(), player: vi.fn() };
   return {
     effects: new EffectRegistry(),
     rooms,
@@ -281,6 +281,33 @@ describe("the tiles facade", () => {
     const host = createModRegistryHost(t);
     expect(() => host.tiles.register({} as never)).toThrow(/must be a function/);
     expect(t._tiles.register).not.toHaveBeenCalled();
+  });
+
+  it("takes a player-tile provider, and refuses a non-function the same way", () => {
+    /* The player door is asked once per rendered frame, so a mod passing an
+     * object would throw inside the render loop rather than at registration -
+     * every frame, with the character's own cell as the casualty. */
+    const t = targets();
+    const host = createModRegistryHost(t);
+    const provider = (): null => null;
+    expect(() => host.tiles.player(provider)).not.toThrow();
+    expect(t._tiles.player).toHaveBeenCalledWith(provider);
+    expect(() => host.tiles.player({} as never)).toThrow(/must be a function/);
+    expect(t._tiles.player).toHaveBeenCalledTimes(1);
+  });
+
+  it("gates the player door behind the same capability as the filler", () => {
+    /* One capability for the domain, not one per door: a tileset mod that may
+     * supply a tile for a creature the pack never heard of is the same mod that
+     * may say what the player looks like, and a second capability string would
+     * be a consent prompt with no new decision in it. */
+    const host = createModRegistryHost(targets(), grant("registry:effect"));
+    expect(() => host.tiles.player(() => null)).toThrow(/registry:tiles/);
+  });
+
+  it("throws a named error for the player door when no tile registry is wired", () => {
+    const host = createModRegistryHost({ ...targets(), tiles: null });
+    expect(() => host.tiles.player(() => null)).toThrow(/tiles/);
   });
 
   it("throws a named error when the host wired no tile registry", () => {

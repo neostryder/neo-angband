@@ -78,7 +78,7 @@
 
 import { parseTilePrefsInto, TileMap } from "@rpgm-tools/neo-angband-core";
 import { tileRegistry } from "./tile-registry";
-import type { TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
+import type { TilePrefsDeps, TileTransform } from "@rpgm-tools/neo-angband-core";
 // Deliberately the `targets` subpath, not the package root: the root also
 // exports the converter, which imports node:fs and must never reach a browser
 // bundle. This subpath is pure format code (its md5 is portable - md5.ts).
@@ -130,16 +130,17 @@ export function parseTallFile(text: string): Set<string> {
 
 /**
  * What one slot draws: a single asset, a pool resolved per grid, or another
- * slot's picture recoloured.
+ * slot's picture recoloured, mirrored or repainted.
  *
- * `derived` is the only one a PACK cannot declare. It is allocated at load time,
- * on request, for content a tileset mod is supplying a tile for - see
- * `hueDerivedSlots`.
+ * `derived` and `transformed` are the two a PACK cannot declare. Both are
+ * allocated at load time, on request, for a tile a tileset mod is supplying -
+ * see `derivedSlots`.
  */
 export type LinoleumSlot =
   | { kind: "asset"; asset: string }
   | { kind: "pool"; pool: PoolDefinition }
-  | { kind: "derived"; from: number; hue: number };
+  | { kind: "derived"; from: number; hue: number }
+  | { kind: "transformed"; from: number; spec: TileTransform };
 
 /** Rules a pack declared that this runtime could not turn into a slot. */
 export interface LinoleumSkipped {
@@ -201,6 +202,12 @@ export function slotFromAtlas(atlas: { attr: number; char: number }): number {
  * WHICH hues to ask for, and in what order, is the caller's: a tileset mod hands
  * a number to `TileFill.derive`. It used to be a list here, back when core chose
  * who got a derived tile at all.
+ *
+ * `TileFill.transform` is the answer for the case a rotation cannot serve: it
+ * replaces the palette outright rather than turning the donor's own, so it works
+ * on a grey donor and can put a tile in colours the donor never had. It is a
+ * separate capability rather than a wider `derive` because the two want
+ * different arguments and refuse for different reasons.
  */
 /** The slot a decoded tile code addresses (the inverse of slotToAtlas). */
 export function atlasToSlot(code: TileCode): number {
@@ -388,8 +395,12 @@ export class LinoleumPack implements TileBlitter {
   private readonly imageDir: string;
   private readonly resolve: PackFileResolver;
   private readonly cache = new Map<string, CachedAsset>();
-  /** Recoloured copies, keyed `<asset>#<hue>`. A null entry is one that failed. */
-  private readonly recolours = new Map<string, CanvasImageSource | null>();
+  /**
+   * Recoloured, mirrored and repainted copies, keyed by the asset plus the
+   * variant's own signature. A null entry is one that failed and is kept so a
+   * failure is attempted once rather than once per frame.
+   */
+  private readonly variants = new Map<string, CanvasImageSource | null>();
   private notifyScheduled = false;
 
   constructor(input: {
@@ -444,22 +455,25 @@ export class LinoleumPack implements TileBlitter {
   private slotDraw(
     slot: number,
     grid?: { x: number; y: number },
-  ): { asset: string; hue: number } | null {
+  ): { asset: string; hue: number; spec: TileTransform | null } | null {
     const entry = this.index.slots[slot];
     if (!entry) return null;
-    if (entry.kind === "asset") return { asset: entry.asset, hue: 0 };
+    if (entry.kind === "asset") return { asset: entry.asset, hue: 0, spec: null };
     if (entry.kind === "pool") {
       const member = selectPoolMember(entry.pool, { x: grid?.x ?? 0, y: grid?.y ?? 0 });
-      return member === null ? null : { asset: member, hue: 0 };
+      return member === null ? null : { asset: member, hue: 0, spec: null };
     }
-    /* One level, deliberately. A derived slot is always allocated over a slot the
-     * PACK declared (deriveKinSlot reads the pack's own table, which is fixed
-     * before any derivation happens), so a chain of them is not a case to
-     * support - it is a bug, and returning null makes it visible as a cell that
-     * stayed ASCII rather than as a wrong colour nobody questions. */
+    /* One level, deliberately. A derived or transformed slot is always allocated
+     * over a slot the PACK declared (the allocator reads the pack's own table,
+     * which is fixed before any allocation happens), so a chain of them is not a
+     * case to support - it is a bug, and returning null makes it visible as a
+     * cell that stayed ASCII rather than as a wrong colour nobody questions. */
     const base = this.slotDraw(entry.from, grid);
-    if (base === null || base.hue !== 0) return null;
-    return { asset: base.asset, hue: entry.hue };
+    if (base === null || base.hue !== 0 || base.spec !== null) return null;
+    if (entry.kind === "transformed") {
+      return { asset: base.asset, hue: 0, spec: entry.spec };
+    }
+    return { asset: base.asset, hue: entry.hue, spec: null };
   }
 
   /**
@@ -512,14 +526,20 @@ export class LinoleumPack implements TileBlitter {
     if (draw === null) return false;
     const cached = this.request(draw.asset);
     if (!cached.loaded || cached.image === null) return false;
-    /* A derived slot draws a recoloured COPY, built once per asset and hue and
-     * kept. Falling back to the donor's own image when the copy cannot be made
-     * is deliberate: the tile is then merely indistinguishable, which is what it
-     * was before this existed, rather than absent. */
+    /* A derived or transformed slot draws a COPY, built once per asset and
+     * variant and kept. Falling back to the donor's own image when the copy
+     * cannot be made is deliberate: the tile is then merely indistinguishable,
+     * which is what it was before this existed, rather than absent. */
     const source =
-      draw.hue === 0
-        ? cached.image
-        : (this.recoloured(draw.asset, draw.hue, cached.image) ?? cached.image);
+      draw.spec !== null
+        ? (this.variant(draw.asset, transformKey(draw.spec), cached.image, (img) =>
+            renderTransformed(img, draw.spec as TileTransform),
+          ) ?? cached.image)
+        : draw.hue === 0
+          ? cached.image
+          : (this.variant(draw.asset, `#${String(draw.hue)}`, cached.image, (img) =>
+              renderRecoloured(img, draw.hue),
+            ) ?? cached.image);
     try {
       ctx.drawImage(
         source,
@@ -534,17 +554,18 @@ export class LinoleumPack implements TileBlitter {
     }
   }
 
-  /** One asset recoloured, built on first use and cached (null once it failed). */
-  private recoloured(
+  /** One asset's variant, built on first use and cached (null once it failed). */
+  private variant(
     asset: string,
-    hue: number,
+    signature: string,
     image: HTMLImageElement,
+    build: (image: HTMLImageElement) => CanvasImageSource | null,
   ): CanvasImageSource | null {
-    const key = `${asset}#${hue}`;
-    const have = this.recolours.get(key);
+    const key = `${asset}${signature}`;
+    const have = this.variants.get(key);
     if (have !== undefined) return have;
-    const made = renderRecoloured(image, hue);
-    this.recolours.set(key, made);
+    const made = build(image);
+    this.variants.set(key, made);
     return made;
   }
 
@@ -668,6 +689,133 @@ function renderRecoloured(image: HTMLImageElement, hue: number): CanvasImageSour
   }
 }
 
+/**
+ * A transform's cache signature. Stable, total, and short enough to be a map
+ * key: two specs that would draw the same pixels share one canvas.
+ */
+export function transformKey(spec: TileTransform): string {
+  const ramp = spec.ramp.map((c) => c.map((n) => n.toString(16).padStart(2, "0")).join("")).join(",");
+  return `!${spec.mirror ? "m" : "-"}:${ramp}`;
+}
+
+/**
+ * Which ramp entry a pixel's brightness names.
+ *
+ * Rec. 601 luma in integer arithmetic (the same weights ITU-R BT.601 gives and
+ * every 8-bit greyscale conversion has used since), then a flat division of
+ * 0-255 into `bands` equal parts. Integers throughout, so the answer is exact on
+ * every platform and a test can assert a specific index rather than a range - a
+ * float luma would put the boundary pixels of a band at the mercy of the last
+ * bit.
+ */
+export function rampIndex(r: number, g: number, b: number, bands: number): number {
+  const luma = (299 * r + 587 * g + 114 * b) / 1000;
+  const index = Math.floor((luma * bands) / 256);
+  return index < 0 ? 0 : index >= bands ? bands - 1 : index;
+}
+
+/**
+ * Replace every pixel's colour with the ramp entry its brightness names, in
+ * place, and return the same buffer.
+ *
+ * PURE, EXPORTED, AND OPERATING ON BYTES rather than on a canvas, so the whole
+ * colour decision is testable without a browser: a test hands in a known input
+ * palette and a known ramp and asserts the exact output bytes. Everything a
+ * canvas adds - reading the image out, writing it back, the mirror - is
+ * arrangement around this function, and arrangement is what the joint test
+ * covers.
+ *
+ * ALPHA IS CARRIED THROUGH UNTOUCHED and a fully transparent pixel is left
+ * exactly as it was, colour bytes included. The silhouette is therefore the
+ * donor's own, to the pixel, which is the whole reason this is a palette swap
+ * and not new art: it cannot change what shape the creature is, only what
+ * colours the shape is drawn in. Leaving transparent pixels alone rather than
+ * ramping them (they would all be index 0, black) also keeps a premultiplied
+ * or badly-authored PNG from growing a dark fringe.
+ *
+ * A ramp of fewer than two colours is not a palette. It returns the buffer
+ * unchanged rather than throwing, because the caller that wants only a mirror
+ * passes exactly that.
+ */
+export function remapToRamp(
+  pixels: Uint8ClampedArray,
+  ramp: readonly (readonly [number, number, number])[],
+): Uint8ClampedArray {
+  const bands = ramp.length;
+  if (bands < 2) return pixels;
+  for (let i = 0; i + 3 < pixels.length; i += 4) {
+    if (pixels[i + 3] === 0) continue;
+    const slot = ramp[rampIndex(pixels[i] ?? 0, pixels[i + 1] ?? 0, pixels[i + 2] ?? 0, bands)];
+    if (slot === undefined) continue;
+    pixels[i] = slot[0];
+    pixels[i + 1] = slot[1];
+    pixels[i + 2] = slot[2];
+  }
+  return pixels;
+}
+
+/**
+ * One image mirrored and/or repainted from a ramp, or null where that cannot be
+ * done.
+ *
+ * PER-PIXEL, WHERE `renderRecoloured` USES A CANVAS FILTER, and the difference
+ * is forced rather than chosen. A hue rotation is a matrix on the colours the
+ * donor already has, which is exactly what the browser's `hue-rotate` filter
+ * computes; a palette remap has to know each pixel's brightness to pick its
+ * replacement, and no filter chain expresses that. So this one calls
+ * `getImageData`, which needs the image to be readable.
+ *
+ * IT IS READABLE IN EVERY PATH A PACK ARRIVES BY, measured rather than assumed:
+ * a pack served from the site is same-origin, a pack in a folder the player
+ * picked and a pack installed from a repository are both read through a `blob:`
+ * URL minted by this document, and a blob URL is same-origin too. A canvas is
+ * tainted by a cross-origin image without CORS headers, and no pack path
+ * produces one. The try/catch is still here for the case that reasoning is wrong
+ * somewhere it has not been measured: a taint throws, this returns null, and the
+ * caller draws the donor's own picture - the same fallback a failed recolour
+ * takes.
+ *
+ * Returns null in a document-less environment (the node tests), which is why the
+ * colour decision lives in `remapToRamp` where a test can reach it.
+ */
+function renderTransformed(
+  image: HTMLImageElement,
+  spec: TileTransform,
+): CanvasImageSource | null {
+  if (typeof document === "undefined") return null;
+  const w = image.naturalWidth;
+  const h = image.naturalHeight;
+  if (w === 0 || h === 0) return null;
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const g = canvas.getContext("2d");
+    if (g === null) return null;
+    /* Mirror at draw time rather than by walking the buffer backwards: the
+     * transform is one matrix the browser applies during the blit, and it costs
+     * nothing on top of a copy that has to happen anyway. */
+    if (spec.mirror) {
+      g.translate(w, 0);
+      g.scale(-1, 1);
+    }
+    g.drawImage(image, 0, 0);
+    if (spec.ramp.length >= 2) {
+      /* setTransform back to identity first: putImageData ignores the current
+       * transform, but a later getImageData/putImageData pair on this context
+       * would not, and leaving a flipped matrix behind is a trap for whoever
+       * adds the next step. */
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      const data = g.getImageData(0, 0, w, h);
+      remapToRamp(data.data, spec.ramp);
+      g.putImageData(data, 0, 0);
+    }
+    return canvas;
+  } catch {
+    return null;
+  }
+}
+
 /** Fetch text, or null on any failure (404, offline, CORS). Never throws. */
 async function fetchText(url: string): Promise<string | null> {
   try {
@@ -706,7 +854,8 @@ async function readPackText(
  */
 /**
  * This engine's own answer to "draw something the pack has no art for": a slot
- * that draws another slot's asset with its hue turned.
+ * that draws another slot's asset with its hue turned, or mirrored and
+ * repainted from a ramp.
  *
  * WHAT THIS IS AND IS NOT. It is mechanism, offered to a tileset mod through
  * `TileFill.derive` (registry:tiles) and to nothing else. It does not decide who
@@ -728,45 +877,87 @@ async function readPackText(
  *
  * REFUSALS, all three of which mean "ask for a plain copy instead":
  * a donor this pack did not put there (a mod pref naming a raw atlas cell has
- * no asset to recolour), a donor that is itself derived (the renderer will not
- * chain them, and a copy of a copy is not more distinctive), and a rotation of
- * nothing, which would allocate a slot indistinguishable from its donor.
+ * no asset to recolour), a donor that is itself derived or transformed (the
+ * renderer will not chain them, and a copy of a copy is not more distinctive),
+ * and a request that changes nothing - a rotation of zero, or a transform with
+ * no mirror and no usable ramp - which would allocate a slot indistinguishable
+ * from its donor.
+ *
+ * ONE ALLOCATOR FOR BOTH, not two, because both append to the SAME slot table
+ * and two allocators over one base would hand out the same slot numbers for
+ * different pictures. That is the kind of collision that shows up as one
+ * creature wearing another's tile long after the change that caused it.
  */
-export function hueDerivedSlots(base: readonly LinoleumSlot[]): {
+export function derivedSlots(base: readonly LinoleumSlot[]): {
   /** The capability handed to a filler: donor tile plus hue, or null. */
   derive: (donor: { attr: number; char: number }, hue: number) => { attr: number; char: number } | null;
+  /** The other capability: donor tile plus a mirror/ramp spec, or null. */
+  transform: (
+    donor: { attr: number; char: number },
+    spec: TileTransform,
+  ) => { attr: number; char: number } | null;
   /** The slot table to use, the pack's own plus whatever was appended. */
   slots: () => readonly LinoleumSlot[];
-  /** Diagnostics: how many slots were appended, and how many requests hit the cap. */
-  stats: () => { derived: number; overflow: number };
+  /** Diagnostics: what was appended, by kind, and how many requests hit the cap. */
+  stats: () => { derived: number; transformed: number; overflow: number };
 } {
   const slots: LinoleumSlot[] = [...base];
-  /** One slot per (donor, hue), so asking twice does not allocate twice. */
+  /** One slot per (donor, variant), so asking twice does not allocate twice. */
   const bySignature = new Map<string, number>();
+  let derived = 0;
+  let transformed = 0;
   let overflow = 0;
+
+  /** The pack's own slot a donor names, or null when it is not one. */
+  const donorOf = (donor: { attr: number; char: number }): number | null => {
+    const donorSlot = slotFromAtlas(donor);
+    const src = base[donorSlot];
+    if (src === undefined || src.kind === "derived" || src.kind === "transformed") return null;
+    return donorSlot;
+  };
+
+  const allocate = (signature: string, make: () => LinoleumSlot): number | null => {
+    const have = bySignature.get(signature);
+    if (have !== undefined) return have;
+    if (slots.length >= LINOLEUM_MAX_SLOTS) {
+      overflow += 1;
+      return null;
+    }
+    const slot = slots.length;
+    slots.push(make());
+    bySignature.set(signature, slot);
+    return slot;
+  };
 
   return {
     derive: (donor, hue) => {
-      const donorSlot = slotFromAtlas(donor);
-      const src = base[donorSlot];
-      if (src === undefined || src.kind === "derived") return null;
+      const donorSlot = donorOf(donor);
+      if (donorSlot === null) return null;
       const turn = ((Math.round(hue) % 360) + 360) % 360;
       if (turn === 0) return null;
-      const signature = `${donorSlot}#${turn}`;
-      let slot = bySignature.get(signature);
-      if (slot === undefined) {
-        if (slots.length >= LINOLEUM_MAX_SLOTS) {
-          overflow += 1;
-          return null;
-        }
-        slot = slots.length;
-        slots.push({ kind: "derived", from: donorSlot, hue: turn });
-        bySignature.set(signature, slot);
-      }
-      return slotToAtlas(slot);
+      const slot = allocate(`${donorSlot}#${turn}`, () => {
+        derived += 1;
+        return { kind: "derived", from: donorSlot, hue: turn };
+      });
+      return slot === null ? null : slotToAtlas(slot);
+    },
+    transform: (donor, spec) => {
+      const donorSlot = donorOf(donor);
+      if (donorSlot === null) return null;
+      /* A ramp of one colour is not a palette, and the renderer ignores it, so a
+       * spec carrying only that is a request for nothing. Normalising it away
+       * here is what keeps the refusal and the render agreeing. */
+      const ramp = spec.ramp.length >= 2 ? spec.ramp : [];
+      if (!spec.mirror && ramp.length === 0) return null;
+      const normalised: TileTransform = { mirror: spec.mirror, ramp };
+      const slot = allocate(`${donorSlot}${transformKey(normalised)}`, () => {
+        transformed += 1;
+        return { kind: "transformed", from: donorSlot, spec: normalised };
+      });
+      return slot === null ? null : slotToAtlas(slot);
     },
     slots: () => slots,
-    stats: () => ({ derived: slots.length - base.length, overflow }),
+    stats: () => ({ derived, transformed, overflow }),
   };
 }
 
@@ -823,16 +1014,17 @@ export async function loadLinoleumPack(input: {
    * differs is what the two can OFFER: this one hands over a real `derive`, and
    * tiles.ts hands over null.
    */
-  const hues = hueDerivedSlots(index.slots);
+  const allocator = derivedSlots(index.slots);
   tileRegistry.run(
     index.map,
     { engine: "linoleum", id: manifest.packId, menuname: input.menuname },
-    hues.derive,
+    allocator.derive,
+    allocator.transform,
   );
   return new LinoleumPack({
     menuname: input.menuname,
     resolve: input.resolve,
     manifest,
-    index: { ...index, slots: hues.slots() },
+    index: { ...index, slots: allocator.slots() },
   });
 }
