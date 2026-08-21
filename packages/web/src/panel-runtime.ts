@@ -345,6 +345,22 @@ export function resetModPanels(): void {
   revoked = false;
 }
 
+/**
+ * Whether a MODAL panel is currently holding the screen.
+ *
+ * Exported for one caller and a real reason: the game's own prompts are painted
+ * on the character grid, which a modal panel is sitting on top of. So a host
+ * path that needs to ASK the player something - the debug confirmation is the
+ * first - has to know that the question would be posed underneath a mod's
+ * interface, where nobody can read it and the keyboard belongs to the panel.
+ * Better to refuse with a sentence naming the panel than to deadlock on a prompt
+ * the player cannot see.
+ */
+export function modalModPanelOpen(): boolean {
+  const top = topPanel();
+  return top !== undefined && top.modal;
+}
+
 /** This mod's open panel ids, topmost last. */
 function openPanelsFor(modId: string): readonly string[] {
   topPanel(); // reaps anything that has stopped being a panel

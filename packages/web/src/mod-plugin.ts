@@ -321,6 +321,18 @@ export interface ModPluginContext {
    */
   readonly installMod?: (bytes: Uint8Array) => Promise<ModInstallOutcome>;
   /**
+   * Conjure an item or a creature into the live game, for a mod that wants to
+   * show the player the thing they just made.
+   *
+   * Present only when your manifest declared `debug:spawn` and the player
+   * consented to it, and only while there is a game to conjure into; guard with
+   * `if (!ctx.debug) return;`. Read `ModDebug` before using it: the first use in
+   * a character asks the game's own debug question and marks the character
+   * permanently, which is a thing to tell the player before they click your
+   * button rather than after.
+   */
+  readonly debug?: ModDebug;
+  /**
    * The BOUND content registries: every race, kind, feature, trap, store and
    * projection the game actually runs on, after this session's mods composed
    * their content and core bound it.
@@ -459,6 +471,47 @@ export type ModInstallOutcome =
       readonly version: string;
     }
   | { readonly ok: false; readonly problem: string };
+
+/** What came of conjuring something into the live game. */
+export type ModSpawnOutcome =
+  | { readonly ok: true; /** What was placed, by the name the game knows it by. */ readonly what: string }
+  | { readonly ok: false; readonly problem: string };
+
+/**
+ * `ctx.debug`: put an item or a creature into the game the player is playing.
+ *
+ * Present only when your manifest declared `debug:spawn` and the player
+ * consented to it, `undefined` otherwise.
+ *
+ * WHAT IT COSTS THE PLAYER, because you should be the one who tells them rather
+ * than the prompt. The first use in a character asks the game's own debug
+ * question - the same two warning lines and the same confirmation `^A` asks -
+ * and accepting marks the character permanently: it cannot be scored, and the
+ * mark is written before anything is conjured, so there is no path where
+ * something arrives in a character the player did not agree to spend. If they
+ * decline, you get `{ ok: false }` and nothing happened.
+ *
+ * THE QUESTION IS ASKED ON THE GAME SCREEN, which one of your own modal panels
+ * would be covering. So close your panel before the first spawn in a character,
+ * or you will get a refusal saying so. Once the character is marked, later
+ * spawns ask nothing and the panel does not matter.
+ *
+ * PLACEMENT IS THE GAME'S. An item is dropped at the player's feet and a
+ * creature is scattered near them, both exactly as the debug commands do it.
+ * There are no coordinates in this API on purpose: a mod that could name a grid
+ * could put a monster inside a wall, and "does the thing I just wrote work" does
+ * not depend on where it lands.
+ */
+export interface ModDebug {
+  /**
+   * Drop one item at the player's feet. Takes the kind's `name` - which is what
+   * you know, if you just wrote it - or its index. Prefer the name: an index is a
+   * fact about a registry, and the registry moved when another mod was enabled.
+   */
+  spawnObject(kind: number | string): Promise<ModSpawnOutcome>;
+  /** Place one creature near the player, by name or by race index. */
+  spawnMonster(race: number | string): Promise<ModSpawnOutcome>;
+}
 
 /**
  * Ticket #133's cloud-backup folder primitive. One instance is capable of

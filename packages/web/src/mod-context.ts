@@ -17,6 +17,7 @@ import {
   MOD_API_VERSION,
   type BackupFolder,
   type ModCoreApi,
+  type ModDebug,
   type ModInstallOutcome,
   type ModPluginContext,
   type ModUi,
@@ -26,6 +27,7 @@ import { modPrefs, type ModPrefs } from "./mod-prefs";
 import { createBackupFolder } from "./mod-backup";
 import { createModUi, PANEL_CAPABILITY } from "./panel-runtime";
 import { createModInstaller, INSTALL_CAPABILITY, type InstallDoorDeps } from "./install-runtime";
+import { createModDebug, SPAWN_CAPABILITY, type SpawnDoorDeps } from "./spawn-runtime";
 import type { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /**
@@ -82,6 +84,7 @@ export function modPluginContext(
   const backupFolder = backupFolderFor(id, session);
   const ui = modUiFor(id, session);
   const installMod = installerFor(session);
+  const debug = debugFor(id, session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
   const registries = session.registries ?? boundRegistries;
@@ -108,6 +111,7 @@ export function modPluginContext(
     ...(backupFolder ? { backupFolder } : {}),
     ...(ui ? { ui } : {}),
     ...(installMod ? { installMod } : {}),
+    ...(debug ? { debug } : {}),
     /* Spread rather than set to undefined, so `"registries" in ctx` answers the
      * same question as `ctx.registries !== undefined` - the shape `state` uses. */
     ...(registries ? { registries } : {}),
@@ -184,6 +188,31 @@ export function setModInstallDoor(deps: InstallDoorDeps | undefined): void {
   installDoor = deps;
 }
 
+/**
+ * `ctx.debug`: present only when this mod's manifest declared `debug:spawn` AND
+ * there is a live game to conjure into.
+ *
+ * The second condition is not a formality. The spawn door needs the wizard deps
+ * bundle, which `wireGame` assembles and which does not exist during content
+ * composition - the same reason `ctx.state` and `ctx.registries` are absent
+ * there. A facade that existed then and failed on first use would put the
+ * refusal at the worst moment.
+ */
+function debugFor(id: string, session: ModSessionFacts): ModDebug | undefined {
+  if (session.debug !== undefined) return session.debug;
+  if (!session.capabilities?.has(SPAWN_CAPABILITY)) return undefined;
+  if (!spawnDoor) return undefined;
+  return createModDebug(id, spawnDoor);
+}
+
+/** Where a mod's conjuring goes, latched once per page. Same argument as above. */
+let spawnDoor: SpawnDoorDeps | undefined;
+
+/** Latch the spawn door (the boot path, and the tests). */
+export function setModSpawnDoor(deps: SpawnDoorDeps | undefined): void {
+  spawnDoor = deps;
+}
+
 /** What the host knows about THIS session, as opposed to this mod's folder. */
 export interface ModSessionFacts {
   /** Whether the character was created this session rather than loaded. */
@@ -202,6 +231,8 @@ export interface ModSessionFacts {
   readonly ui?: ModUi;
   /** Override ctx.installMod directly (tests, and a front end with its own door). */
   readonly installMod?: (bytes: Uint8Array) => Promise<ModInstallOutcome>;
+  /** Override ctx.debug directly (tests, and a front end with its own). */
+  readonly debug?: ModDebug;
   /**
    * Override the bound registries, for a test that wants a plugin to see a
    * registry it built by hand rather than one a booted game latched.
