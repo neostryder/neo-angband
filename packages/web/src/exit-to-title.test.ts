@@ -152,6 +152,88 @@ describe("^X (textui_quit)", () => {
 });
 
 /**
+ * close_game does not stop at the save (ui-game.c:1143-1159). For a LIVING
+ * character it then prints "Press Return (or Escape)." and waits, and unless that
+ * key was Escape it opens predict_score(false) - the character's would-be Hall of
+ * Fame entry, "Killed by nobody (yet!)".
+ *
+ * The port had neither, and the reason is worth keeping: "does ^X confirm?" was
+ * answered correctly (textui_quit is `playing = false` and nothing on the path
+ * calls get_check, so the "Save and quit?" prompt that used to be here was an
+ * invention) and the question stopped there. Everything close_game does AFTER
+ * `playing` goes false was never traced, so a player pressing ^X went from the
+ * dungeon to the title with no pause and no score.
+ *
+ * Neither pause is a confirmation - nothing here can cancel the quit - which is
+ * why they coexist with the asks-nothing assertions above rather than replacing
+ * them.
+ */
+describe("close_game's living-character tail (^X)", () => {
+  const body = functionBody(MAIN, "closeGameLeavePause");
+
+  it("saveQuitNow runs it AFTER the save and BEFORE leaving", () => {
+    const quit = functionBody(MAIN, "saveQuitNow");
+    expect(quit).toContain("closeGameLeavePause()");
+    /* The order is the whole point: a pause before the save would be a pause the
+     * player could lose the turn to, and a pause after the navigation cannot run
+     * at all. */
+    expect(quit.indexOf("closeGameSave")).toBeLessThan(quit.indexOf("closeGameLeavePause"));
+    expect(quit.indexOf("closeGameLeavePause")).toBeLessThan(quit.indexOf("exitToTitle()"));
+    expect(quit.indexOf("closeGameLeavePause")).toBeLessThan(quit.indexOf("desktopQuit()"));
+  });
+
+  it("prints upstream's own wording, at upstream's own column", () => {
+    /* prt("Press Return (or Escape).", 0, 40) (ui-game.c:1155). The string is
+     * verbatim, including the full stop, and 40 is the column - an invented
+     * paraphrase in a prompt slot is the failure this file already records once. */
+    expect(body).toContain('"Press Return (or Escape)."');
+    expect(body).toMatch(/getKeyInline\(\s*term,\s*"Press Return \(or Escape\)\.",\s*40,?\s*\)/u);
+  });
+
+  it("skips the score preview on Escape, and shows it on anything else", () => {
+    /* if (ch.code != ESCAPE) predict_score(false) (ui-game.c:1157-1158). */
+    expect(body).toMatch(/if \(ch === "Escape"\) return;/u);
+    expect(body.indexOf('"Escape"')).toBeLessThan(body.indexOf("showHallOfFame"));
+    /* false = display_scores_aux's allow_scrolling, NOT a write flag. The
+     * preview must be the non-scrolling form and it must not be enterScore. */
+    expect(body).toContain("showHallOfFame(false)");
+    expect(body, "the quit path must never write a score entry").not.toContain("enterScore");
+  });
+
+  it("shares ONE predict_score with the Hall of Fame command", () => {
+    /* Two copies is how the last defect in this file survived. showHallOfFame is
+     * the single body; its callers differ only in allow_scrolling, exactly as
+     * upstream's two do (show_scores true, close_game false). */
+    expect(functionBody(MAIN, "openHallOfFame")).toContain("showHallOfFame(true)");
+    const shared = functionBody(MAIN, "showHallOfFame");
+    expect(shared).toContain("showPredictedScores(");
+    expect(shared).toContain("allowScrolling");
+    /* The keyboard gate has to come back even when the screen throws - scoresOpen
+     * suppresses every input path in the shell. */
+    expect(shared).toMatch(/finally \{[\s\S]*?scoresOpen = false/u);
+  });
+
+  it("leaves the death flow alone", () => {
+    /* A human death runs death_screen and enterScore (the dead branch,
+     * ui-game.c:1130-1142) and must not acquire either of these pauses. */
+    expect(functionBody(MAIN, "quitAfterDeath")).not.toContain("closeGameLeavePause");
+    expect(functionBody(MAIN, "quitAfterDeath")).not.toContain("Press Return");
+    expect(functionBody(MAIN, "exitToTitle")).not.toContain("closeGameLeavePause");
+  });
+
+  it("^S is untouched: save_game asks nothing and shows nothing", () => {
+    /* ui-game.c:198 binds ^S to save_game, which is save_game_checked and stops
+     * there (ui-game.c:1016-1019) - no prompt, no score screen. It shares no code
+     * with ^X beyond writing the save, so it gains nothing here. */
+    const save = MAIN.slice(MAIN.indexOf('// Save (^S, cmd_util "Save and don\'t quit")'));
+    const block = save.slice(0, save.indexOf("// Toggle wizard mode"));
+    expect(block).toContain("autosave(true)");
+    expect(block).not.toContain("closeGameLeavePause");
+    expect(block).not.toContain("showHallOfFame");
+  });
+});
+
+/**
  * Leaving play and quitting the program are two actions, and collapsing them onto
  * one function is how the menu came to lie.
  *

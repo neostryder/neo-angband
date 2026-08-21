@@ -56,9 +56,20 @@ upstream:
         showScoreScreen (the Term loop is the shell's, per the slice pattern)
       - predict_score (L193; provisional insert when alive, locate when dead,
         top-15 vs windowed neighbourhood) -> predictScore (core, returns
-        {scores, from, to, highlight}) + showPredictedScores (web)
-      - show_scores (L221; screen_save/predict/screen_load) -> the web 'V'
-        keybinding + openHallOfFame in main.ts
+        {scores, from, to, highlight}) + showPredictedScores (web). Its bool
+        argument is display_scores_aux's allow_scrolling, NOT a write flag:
+        neither caller writes, and the table is only written by enter_score
+      - show_scores (L221; screen_save/predict_score(true)/screen_load) -> the
+        web 'V' keybinding + openHallOfFame in main.ts
+  - path: src/ui-game.c
+    items:
+      - close_game's living-character tail (L1152-1159; prt("Press Return (or
+        Escape).", 0, 40), inkey, and predict_score(false) unless the key was
+        ESCAPE) -> closeGameLeavePause in main.ts, which shares one
+        showHallOfFame body with the 'V' command and differs only in
+        allow_scrolling. Term->mapped_flag has no counterpart: both front ends
+        always have a terminal before a command can be typed. The dead branch
+        (L1130-1142) is the separate death flow (death_screen + enter_score)
 persistence-seam:
   - ScoreStore { read(): HighScore[]; write(scores): void } is the whole
     storage boundary; core never touches localStorage or a filesystem. The web
@@ -120,3 +131,11 @@ verified-by:
     dungeon level 5" three-line format, in-the-town at depth 0, (Max N)
     appends, highlight L_GREEN, <none> for unknown race/class, TODAY passthrough,
     rank/points right-justification, 5-per-page paging + range clamp)
+  - packages/web/src/screens.test.ts (showScoreScreen's positioned paint in both
+    footer forms; showPredictedScores puts the live character in the table with
+    "Killed by nobody (yet!)" and writes NOTHING through the store, in the
+    scrolling and non-scrolling forms alike)
+  - packages/web/src/exit-to-title.test.ts (close_game's living-character tail:
+    the prompt wording and column, save-then-pause-then-leave order, Escape
+    skipping the preview, one shared predict_score body, and the death flow and
+    ^S both left alone)
