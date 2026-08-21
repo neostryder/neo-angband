@@ -41,7 +41,9 @@ import {
 } from "../generated/index.js";
 import type { RandomValue } from "../rng.js";
 import type { ProjectionInfo } from "../world/projection.js";
-import { attachExt } from "../mod/extension.js";
+import { attachExt, provenanceOf } from "../mod/extension.js";
+import { fieldOwner, refusalWhy } from "../mod/refusal.js";
+import type { RecordRefusal } from "../mod/refusal.js";
 import { tvalIsLight } from "./object.js";
 import type {
   Activation,
@@ -465,6 +467,16 @@ export class ObjRegistry {
     return this.curses.length;
   }
 
+  /**
+   * The mod-contributed entries this bind dropped, in record order.
+   *
+   * Same contract as `StoreRegistry.refused`, and the same reason it is a field
+   * rather than a second return value: `bindCore` builds a dozen registries and
+   * hands back one object, and both game paths already expose
+   * `booted.registries`. Empty for the shipped pack with no mods loaded.
+   */
+  readonly refused: RecordRefusal[] = [];
+
   constructor(pack: ObjPackJson) {
     /* Upstream init_arrays order: bases, slays, brands, curses,
      * objects, activations, egos, artifacts, properties, flavors. */
@@ -489,6 +501,30 @@ export class ObjRegistry {
       if (kind.tval === tval && kind.sval === sval) return kind;
     }
     return null;
+  }
+
+  /**
+   * The base kind an ego's `item:` entry names, or the reason it names nothing.
+   *
+   * Returns the miss rather than throwing it, for the same reason the store
+   * binder's `resolveKind` does: whether a miss is fatal depends on WHOSE entry
+   * it is, which is a question about the record's provenance and not about the
+   * entry. The three `why` strings are the three messages `bindEgos` used to
+   * throw, verbatim, so a core-owned miss still reads exactly as it did. It
+   * hands back the KIND rather than just a verdict because `lookupSval` is a
+   * linear scan of every kind, and resolving twice to learn the same answer
+   * would double it for every ego line in the pack.
+   */
+  private egoItemKind(
+    item: { tval: string; sval: string },
+  ): { readonly kind: ObjectKind } | { readonly why: string } {
+    const tval = tvalFindIdx(item.tval);
+    if (tval < 0) return { why: `unknown tval ${item.tval}` };
+    const sval = this.lookupSval(tval, item.sval);
+    if (sval < 0) return { why: `unknown sval ${item.sval}` };
+    const kind = this.lookupKind(tval, sval);
+    if (!kind || kind.kidx <= 0) return { why: `invalid item ${item.tval}:${item.sval}` };
+    return { kind };
   }
 
   /** objkind_byid. */
@@ -721,7 +757,8 @@ export class ObjRegistry {
    * the int16_t it is stored in: `< -32768 || > 32767` is
    * PARSE_ERROR_INVALID_VALUE (curse.c test_weight_bad0 plants 32769 and
    * -32780). Negative-with-MULTIPLY_WEIGHT is a separate finalize-time check
-   * upstream and is not this one.
+   * upstream and is not this one - see `curseWeightConflict` below, which is
+   * where that half now lives.
    */
   private static curseWeight(name: string, weight: number | undefined): number {
     if (weight === undefined) return 0;
@@ -732,6 +769,56 @@ export class ObjRegistry {
       );
     }
     return weight;
+  }
+
+  /**
+   * finish_parse_curse's own validation (obj-init.c L1379-1386), which the
+   * parser-side check above deliberately is not.
+   *
+   * Upstream logs `Curse '<name>' uses MULTIPLY_WEIGHT and has a negative
+   * weight adjustment` and returns PARSE_ERROR_INVALID_VALUE, which fails the
+   * parse and stops the game - because the combination is nonsense: a curse
+   * that MULTIPLIES an object's weight by a negative factor. It is a FINISH
+   * hook, and this is exactly the blindness that makes a finish hook worth
+   * auditing separately: the port reproduces `parse_curse_weight` faithfully,
+   * carries a comment saying this other half is a different check, and never
+   * had it. A parity test written against upstream's curse.c PARSER tests would
+   * pass in full either way.
+   *
+   * WHAT A MOD GETS INSTEAD OF A DEAD GAME. Core's own curse still throws - the
+   * data is core's mistake and it fails where it breaks. For a mod's curse,
+   * failing the parse means `bindCore` throwing inside `startGame` at the host's
+   * module top level, i.e. the crash screen and no game, which gate 3 of the
+   * mod resilience contract forbids. So the FLAG is dropped and the pack is
+   * told: upstream's complaint is about the combination, and of the two halves
+   * the flag is the one whose removal leaves a coherent curse - a plain
+   * additive weight reduction, which is a thing curses legitimately are. That
+   * is a guess about intent and it is the only guess here; it is reported
+   * rather than silent for exactly that reason.
+   */
+  private curseWeightConflict(
+    rec: CurseRecordJson,
+    weight: number,
+    flags: FlagSet,
+  ): void {
+    if (weight >= 0 || !flags.has(OF.MULTIPLY_WEIGHT)) return;
+    const why =
+      `uses MULTIPLY_WEIGHT and has a negative weight adjustment ` +
+      `(${String(weight)}), which would multiply an object's weight by a ` +
+      `negative factor`;
+    const from = provenanceOf(rec);
+    const owner = fieldOwner(from, "weight", rec.weight);
+    if (owner === null || from === undefined) {
+      throw new Error(`curse: ${rec.name}: ${why}`);
+    }
+    flags.off(OF.MULTIPLY_WEIGHT);
+    this.refused.push({
+      file: "curse",
+      record: rec.name,
+      field: "weight",
+      id: owner,
+      why: refusalWhy(rec.name, "MULTIPLY_WEIGHT dropped", why, from),
+    });
   }
 
   private bindCurses(records: CurseRecordJson[]): void {
@@ -778,12 +865,14 @@ export class ObjRegistry {
       for (const name of rec.conflict ?? []) {
         conflict = (conflict ?? "") + "|" + name + "|";
       }
+      const weight = ObjRegistry.curseWeight(rec.name, rec.weight);
+      this.curseWeightConflict(rec, weight, objFlags);
       this.curses.push(attachExt<Curse>("curse", rec, {
         index: this.curses.length,
         name: rec.name,
         poss,
         obj: {
-          weight: ObjRegistry.curseWeight(rec.name, rec.weight),
+          weight,
           toH: rec.combat?.["to-h"] ?? 0,
           toD: rec.combat?.["to-d"] ?? 0,
           toA: rec.combat?.["to-a"] ?? 0,
@@ -1011,17 +1100,45 @@ export class ObjRegistry {
           throw new Error(`ego: no kind for ego type ${tvalName}`);
         }
       }
+      /*
+       * `item:` NAMES A SPECIFIC BASE KIND, and a mod can append to the list.
+       *
+       * This is the store binder's defect in a second file: mod A gives an ego
+       * a base item mod B defines, the player turns mod B off, and
+       * `ego: unknown sval` came out of `bindCore` inside `startGame` at the
+       * host's module top level - the crash screen, over one line of one ego.
+       * So a mod-contributed entry that resolves to nothing is dropped and
+       * reported against that mod, and core's own still throws exactly the
+       * message it always threw. `fieldOwner` (mod/refusal.ts) is the whole of
+       * how the two are told apart, and it is shared with the store binder
+       * rather than rewritten here, so the two cannot come to different answers
+       * about the same provenance.
+       *
+       * DROPPING ONE ENTRY IS THE RIGHT SIZE HERE, unlike a store's entrance
+       * feature: `poss_items` is a set of candidates, so an ego with one fewer
+       * candidate still works - it simply cannot land on the kind that went
+       * away, which is exactly what the player asked for by disabling the pack
+       * that defined it. An ego left with NO candidates is a different question
+       * and is not one this can answer, since upstream ships egos whose whole
+       * candidate list comes from `type:`.
+       */
+      const from = provenanceOf(rec);
       for (const item of rec.item ?? []) {
-        const tval = tvalFindIdx(item.tval);
-        if (tval < 0) throw new Error(`ego: unknown tval ${item.tval}`);
-        const sval = this.lookupSval(tval, item.sval);
-        if (sval < 0) throw new Error(`ego: unknown sval ${item.sval}`);
-        const kind = this.lookupKind(tval, sval);
-        if (!kind || kind.kidx <= 0) {
-          throw new Error(`ego: invalid item ${item.tval}:${item.sval}`);
+        const res = this.egoItemKind(item);
+        if ("kind" in res) {
+          possItems.add(res.kind.kidx);
+          firstPossItem = res.kind.kidx;
+          continue;
         }
-        possItems.add(kind.kidx);
-        firstPossItem = kind.kidx;
+        const owner = fieldOwner(from, "item", item);
+        if (owner === null || from === undefined) throw new Error(`ego: ${res.why}`);
+        this.refused.push({
+          file: "ego_item",
+          record: rec.name,
+          field: "item",
+          id: owner,
+          why: refusalWhy(rec.name, "item line dropped", res.why, from),
+        });
       }
       const ego: EgoItem = {
         name: rec.name,

@@ -145,6 +145,31 @@ digest in the game's catalogue and must never be moved.
   at core for behaviour a mod caused. The list also moved out of `main.ts` into
   `mod-summary.ts` so it is testable at all — the entry module cannot be imported,
   which is why a list that was wrong for every content-only mod stayed green.
+- **A curse could multiply an object's weight by a negative number.**
+  `finish_parse_curse` refuses a curse that carries `MULTIPLY_WEIGHT` together
+  with a negative weight adjustment, and the port had the parser-side weight
+  check but not this one — it is a FINISH hook, and the port's own comment said
+  as much while never implementing it, which is exactly the blindness a parity
+  test written against upstream's parser tests cannot see. Core's own data now
+  fails the same way upstream's does. A mod's curse instead loses the FLAG and
+  is told: of the two halves, the flag is the one whose removal leaves a
+  coherent curse (a plain additive weight reduction), and failing the parse for
+  a mod would mean the crash screen and no game. Core ships no curse using the
+  flag at all, so nothing shipped changes.
+- **An ego's `item:` line naming a missing base item took the game down.** The
+  same defect the store's stock table had, in a second file: `item:` names a
+  specific base kind, `append` lets one mod add an entry to another pack's list,
+  and "mod A gives an ego a base item mod B defines, player disables mod B" then
+  reached `ego: unknown sval` out of `bindCore` inside `startGame` — the crash
+  screen over one line of one ego. A mod-contributed line that resolves to
+  nothing is now dropped from that ego's candidate list and reported against the
+  mod; core's own still throws the message it always threw. Dropping one entry is
+  the whole cost here, because `poss_items` is a set of candidates and an ego
+  with one fewer candidate still works — it simply cannot land on the kind that
+  went away, which is what the player asked for by disabling the pack that
+  defined it. The core-versus-mod decision itself now lives in one place
+  (`mod/refusal.ts`) rather than in each binder, so two binders cannot come to
+  different answers about the same provenance.
 - **A patch could make a field unreadable and take the game down at boot.** A
   field patch that wrote a scalar, or `null`, over a field core writes as a list
   or an object produced a record that composed perfectly and that no binder could

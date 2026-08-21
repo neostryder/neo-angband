@@ -38,20 +38,38 @@ been found missing that way and are now ported (`finish_parse_feat`'s
 prefix/preposition space, store `shopnum`/`store_max` ordering, critical-level
 validation, hints order).
 
-**14 of ~45 hooks in the reference tree have been audited.** What is left, by
-file:
+**25 of ~45 hooks in the reference tree have been audited** — `init.c`'s 14 and
+`obj-init.c`'s 11, the latter on 2026-08-20. What is left, by file:
 
 | Where | Hooks | Note |
 | --- | --- | --- |
-| `obj-init.c` | 11 | the largest group, and the one closest to visible behaviour |
 | `mon-init.c` | 8 | independent of the object side; safe to run in parallel with it |
 | `generate.c` | 3 | level generation; a divergence here moves the RNG stream |
 | singletons | 9 | one hook each, spread across the remaining files |
 
-The audit method that found the four: read the upstream `finish_parse_*` body,
-find the port's equivalent constructor, and ask what the hook does that the
-constructor does not. A hook that has no port subject (because nothing binds
-that file) is a finished answer and should be recorded as one.
+The audit method: read the upstream `finish_parse_*` body, find the port's
+equivalent constructor, and ask what the hook does that the constructor does
+not. A hook with no port subject is a finished answer and should be recorded as
+one.
+
+**What `obj-init.c`'s eleven turned up**, recorded so the reading is not
+repeated. Eight were already reproduced: `projection` (its element-count
+validation is present, and in a mod-aware form that names the offending code),
+`object_base` (tval indexing), `act`, `object` (the base-kind flag union and
+`ordinaryKindCount`), `ego` (`eidx`), `artifact` (the four object-like kinds),
+`object_property`, and the 1-based arrays the rest of them build. One was
+missing and is now ported: **`finish_parse_curse`'s MULTIPLY_WEIGHT check**, on
+a curse with a negative weight adjustment. Two have no port subject:
+
+- **The 254-entry cap on slays, brands and curses.** Upstream returns
+  `PARSE_ERROR_TOO_MANY_ENTRIES` past 254 because of the width C stores those
+  indices in. The port stores an object's brands and slays as `boolean[]` and
+  saves them by CONTENT ID, not by index, so there is no width to overflow —
+  reproducing the cap would add a restriction to mods that the port's own
+  storage does not require, and the port adds nothing.
+- **`finish_parse_randart`.** There is no `randart.txt` in the content pack; the
+  port generates randarts in code (`obj/randart.ts`), so upstream's parser for
+  them has nothing here to be faithful to.
 
 ### `flavor.txt` records that interleave `fixed:` and `flavor:`
 
@@ -66,40 +84,38 @@ content compiler emitting one ordered list per record.
 ## Mod resilience
 
 The contract is in `docs/modding/MOD_COMPATIBILITY.md`, and its four gates are
-what any of this has to satisfy. Two areas are known to be short of it.
+what any of this has to satisfy. One area is known to be short of it.
 
-### Bind-time resilience beyond stores
+### Bind-time resilience: the rest of the binders
 
-Store records are now complete: every field a patch can reach — `normal`,
-`always`, `buy`, and the `store:` entrance — refuses a mod's unresolvable entry
-and attributes it, while core's own bad data still throws. **No other binder has
-been audited at all**, so there is no honest denominator here yet; the first
-piece of work is to produce one. `obj/bind.ts`'s ego `sval` resolution is the
-known next case.
+Two are done. Store records are complete — every field a patch can reach
+(`normal`, `always`, `buy`, and the `store:` entrance) refuses a mod's
+unresolvable entry and attributes it — and the ego `item:` list now does the
+same. The shared decision lives in `packages/core/src/mod/refusal.ts`, so a
+third binder is a small job rather than a repeat of the reasoning.
 
-### A record a MOD OWNS can still be unreadable
+**What is missing is the denominator.** No systematic pass has been made over
+the remaining binders to find every field that resolves a NAME from a list a mod
+can append to, which is the shape that makes this reachable. `obj/bind.ts` still
+has more of them than the one that is fixed (artifact `base-object`, curse
+`type`), and the monster, trap and feature binders have never been looked at
+for this at all. The first piece of work is the census, not another fix.
 
-Closed on 2026-08-20 for the case that matters most: a patch can no longer write
-a scalar or `null` over a field core writes as a container — the composer refuses
-it, restores the field, and tells the pack. Two gaps are left, and the second is
-the interesting one.
+Two known cases that the composer deliberately leaves to the binders:
 
-**A patch that REMOVES a container field is not refused**, on purpose: dropping
-fields is how a total conversion works, so putting an absent field back would
-undo a supported feature. Reading a missing list throws the same `TypeError` a
-string does, so a `replaces` body that omits a required container is still fatal
-at bind time. The answer is not at the composer — it is that a binder should
-refuse a record whose owner is a mod, the way the store binder already refuses a
-mod's unresolvable stock line. That makes this the same work as the line above.
-
-**A malformed field OP throws out of the composer.** `applyFieldPatch` assumes
-its ops are well-formed: an `append` written with `value` instead of `values`
-reaches `op.values is not iterable` and the exception leaves
-`composeContentPacks` entirely, so it is not attributed to anything and there is
-no partial result. Measured 2026-08-20 while writing the shape tests, by
-mistyping the op. `composeDroppingBroken` exists and may already be the intended
-answer for the host's load path; what is missing is knowing whether the game's
-own path uses it.
+- **A record a mod OWNS whose required container field is absent.** The composer
+  will not put back a field a patch removed, because dropping fields is how a
+  total conversion works — so a `replaces` body that omits a required list is
+  still fatal where it is read. A binder refusing a record whose owner is a mod
+  is the answer, and it is the same work as the census above.
+- **A malformed field OP throws out of the composer.** `applyFieldPatch` assumes
+  well-formed ops: an `append` written with `value` instead of `values` reaches
+  `op.values is not iterable`, and the exception leaves `composeContentPacks`
+  entirely, so it is attributed to nothing and there is no partial result.
+  Measured 2026-08-20 while writing the shape tests, by mistyping the op.
+  `composeDroppingBroken` exists and may already be the intended answer for the
+  host's load path; what is missing is knowing whether the game's own path uses
+  it.
 
 ## Attribution
 

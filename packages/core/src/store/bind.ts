@@ -21,8 +21,11 @@
  * to nothing is now DROPPED and collected in `StoreRegistry.refused`, which the
  * host turns into a per-mod fault.
  *
- * CORE'S OWN DATA STILL THROWS, and `fieldOwner` below is the whole of how the
- * two are told apart.
+ * CORE'S OWN DATA STILL THROWS, and `fieldOwner` (mod/refusal.ts) is the whole
+ * of how the two are told apart. That decision lives there rather than here
+ * because a second binder needed the same answer and the two must not differ;
+ * this file is where it was worked out, and mod/refusal.ts carries the
+ * reasoning.
  *
  * The same policy covers every field of a store record a mod can reach: both
  * stocking tables, the `buy` list, and the `store:` entrance feature. The three
@@ -37,7 +40,8 @@ import type { ObjRegistry } from "../obj/bind.js";
 import type { ObjectKind } from "../obj/types.js";
 import { attachExt, provenanceOf } from "../mod/extension.js";
 import type { RecordProvenance } from "../mod/extension.js";
-import { CORE_NS } from "../mod/ids.js";
+import { fieldOwner, refusalWhy } from "../mod/refusal.js";
+import type { RecordRefusal } from "../mod/refusal.js";
 import type {
   BoundStore,
   ObjectBuy,
@@ -55,25 +59,6 @@ import type {
  * is a scalar and costs the whole shop.
  */
 export type StoreField = "normal" | "always" | "buy" | "store";
-
-/**
- * One entry that resolved to nothing and was dropped rather than thrown,
- * because a mod contributed it.
- *
- * ATTRIBUTED, NOT PREFIXED, the same way the host's own `ModProblem` is: the mod
- * manager has to be able to ask "what is wrong with THIS mod" and get an answer
- * without parsing punctuation, so the pack id rides beside the sentence.
- */
-export interface StoreRefusal {
-  /** FEAT_* name of the store that lost the entry, as the record spells it. */
-  readonly store: string;
-  /** Which field it was dropped from. */
-  readonly field: StoreField;
-  /** The pack the fault is attributed to - never `core`. */
-  readonly id: string;
-  /** What went wrong, in the player's terms, with no id prefix. */
-  readonly why: string;
-}
 
 /**
  * The entrance feature of a store whose `store:` a mod pointed at a feature
@@ -117,116 +102,16 @@ function resolveKind(item: StoreItemJson, reg: ObjRegistry): StockResolution {
 }
 
 /**
- * Two record fragments as the same entry.
+ * What a store record lost, phrased for the field it lost it from.
  *
- * Structural rather than field-by-field, because the fields compared here are
- * no longer one shape: a stock line is `{tval, sval}`, a buy entry is either a
- * bare tval string or `{tval, flag}`, and the entrance feature is a string on
- * its own. Key ORDER must not matter - a patched record is rebuilt by the
- * composer, and `JSON.stringify` would call a reordered but identical entry a
- * mod's - so this walks the keys instead of serialising.
+ * The sentence itself is `refusalWhy`'s (mod/refusal.ts); this supplies only the
+ * half that is about stores, because "dropped a stock line" and "cannot be
+ * entered" are not interchangeable to the player reading the row.
  */
-function sameEntry(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-  const ka = Object.keys(a);
-  const kb = Object.keys(b);
-  if (ka.length !== kb.length) return false;
-  return ka.every(
-    (k) =>
-      Object.hasOwn(b, k) &&
-      sameEntry((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]),
-  );
-}
-
-/**
- * The pack answerable for one entry, or null when the base game is.
- *
- * THIS IS THE WHOLE CORE-VERSUS-MOD DISTINCTION, so it is worth saying exactly
- * what each answer rests on.
- *
- *   - No provenance at all means no pack touched the record (`stampProvenance`
- *     leaves the base game's own untouched records unmarked, on purpose). Every
- *     line is core's, and a miss throws. This is the case for all eight shipped
- *     stores in a modless game, and it is what makes "core's data fails loudly"
- *     true of the path that actually guards core - the whole test suite and
- *     every unmodded boot run through it.
- *   - `was[field]` is the DEFINING pack's own value for a field a later pack
- *     changed (mod-sdk provenance.ts). An entry deep-equal to one of those -
- *     or, for a scalar field, to the value itself - is the definer's, so it is
- *     core's when core defined the record, and a mod's own when a mod did,
- *     which is why a mod's bad line in a store it defines itself does not throw
- *     either.
- *   - Anything else in the field arrived from a modifier. The LAST modifier is
- *     named, because load order applies patches in order and it is the only one
- *     of them core can single out; the message carries the full list so a fault
- *     landing on the wrong row is still traceable.
- *
- * THE ONE CASE THIS DECIDES IN THE MOD'S FAVOUR WITHOUT PROOF: `was` records
- * only fields the definer HAD and a patch CHANGED, so an absent `was[field]`
- * means either "core's field, which nothing changed" or "a field core never had
- * and a mod added outright". Provenance cannot separate those two, and this
- * returns the last modifier for both. Deciding it the other way would turn a
- * mod's added table back into a failed boot, which is the defect this file is
- * fixing; deciding it this way can only ever downgrade a broken CORE line to a
- * reported drop, and only on a record a mod has already patched.
- */
-function fieldOwner(
-  from: RecordProvenance | undefined,
-  field: StoreField,
-  entry: unknown,
-): string | null {
-  if (from === undefined) return null;
-  const definer = from.was?.[field];
-  const mods = from.modifiedBy ?? [];
-  /* A list field's `was` holds the definer's whole list, so the entry is theirs
-   * when it appears anywhere in it. A scalar field's `was` IS their value, so
-   * the entry is theirs when it still equals that - which for a scalar means a
-   * patch that put back what was already there, and the definer keeps the blame
-   * for a value they wrote. */
-  const definers = Array.isArray(definer)
-    ? definer.some((d) => sameEntry(d, entry))
-    : definer !== undefined && sameEntry(definer, entry);
-  const answerable = definers ? from.owner : (mods[mods.length - 1] ?? from.owner);
-  /* Never blame core, and never excuse it. A stamped record with no modifiers is
-   * a mod's own (an unmodified base-game record is not stamped at all), so this
-   * guard should be unreachable - but a hand-written `$from` is a shape this
-   * file has to survive, and putting "core" on the mod manager's own row would
-   * be worse than throwing. */
-  return answerable === CORE_NS ? null : answerable;
-}
-
-/**
- * One dropped line, said the way a player reading the mod manager needs it.
- *
- * Names the store, the table and the entry, because "which line" is the only
- * question a mod author has after "which mod".
- *
- * The pack list is appended only when TWO OR MORE packs patched the store, and
- * that condition is the honest one rather than a tidy one: attribution picks the
- * last modifier and cannot prove it, so the set is worth showing exactly when
- * there was a choice to get wrong. One modifier is the ordinary case, the
- * attribution is then certain, and it should not pay a parenthetical.
- */
-function refusalWhy(
-  rec: StoreRecordJson,
-  field: StoreField,
-  why: string,
-  from: RecordProvenance,
-): string {
-  const mods = from.modifiedBy ?? [];
-  const also =
-    mods.length > 1
-      ? ` (packs touching this store: ${[from.owner, ...mods].join(", ")})`
-      : "";
-  const lost =
-    field === "store"
-      ? "shop cannot be entered"
-      : field === "buy"
-        ? "buy list entry dropped"
-        : `${field} stock line dropped`;
-  return `${rec.store}: ${lost} - ${why}${also}`;
+function lostWhat(field: StoreField): string {
+  if (field === "store") return "shop cannot be entered";
+  if (field === "buy") return "buy list entry dropped";
+  return `${field} stock line dropped`;
 }
 
 /** A resolved buy rule, or the reason it resolved to nothing. */
@@ -272,7 +157,7 @@ function resolveBuy(entry: StoreBuyJson): BuyResolution {
 export function bindStore(
   rec: StoreRecordJson,
   reg: ObjRegistry,
-  refused?: StoreRefusal[],
+  refused?: RecordRefusal[],
 ): BoundStore {
   const owners: StoreOwner[] = rec.owner.map((o, index) => ({
     index,
@@ -281,6 +166,19 @@ export function bindStore(
   }));
 
   const from = provenanceOf(rec);
+  /** One refusal for this record, so four call sites cannot disagree. */
+  const refusal = (
+    field: StoreField,
+    why: string,
+    id: string,
+    prov: RecordProvenance,
+  ): RecordRefusal => ({
+    file: "store",
+    record: rec.store,
+    field,
+    id,
+    why: refusalWhy(rec.store, lostWhat(field), why, prov),
+  });
   /**
    * One stock line, or null when it resolved to nothing and was a mod's to get
    * wrong. A core-owned miss throws here with exactly the message it always
@@ -291,12 +189,7 @@ export function bindStore(
     if ("kind" in res) return res.kind;
     const owner = fieldOwner(from, table, it);
     if (owner === null || from === undefined) throw new Error(`store: ${res.why}`);
-    refused?.push({
-      store: rec.store,
-      field: table,
-      id: owner,
-      why: refusalWhy(rec, table, res.why, from),
-    });
+    refused?.push(refusal(table, res.why, owner, from));
     return null;
   };
 
@@ -316,12 +209,7 @@ export function bindStore(
         if (owner === null || from === undefined) {
           throw new Error(`store: unknown always tval ${it.tval}`);
         }
-        refused?.push({
-          store: rec.store,
-          field: "always",
-          id: owner,
-          why: refusalWhy(rec, "always", `unknown always tval ${it.tval}`, from),
-        });
+        refused?.push(refusal("always", `unknown always tval ${it.tval}`, owner, from));
         continue;
       }
       alwaysBookTvals.push(tval);
@@ -349,12 +237,7 @@ export function bindStore(
       }
       const owner = fieldOwner(from, "buy", entry);
       if (owner === null || from === undefined) throw new Error(`store: ${res.why}`);
-      refused?.push({
-        store: rec.store,
-        field: "buy",
-        id: owner,
-        why: refusalWhy(rec, "buy", res.why, from),
-      });
+      refused?.push(refusal("buy", res.why, owner, from));
     }
   }
 
@@ -367,12 +250,7 @@ export function bindStore(
     if (owner === null || from === undefined) {
       throw new Error(`store: unknown entrance feature ${rec.store}`);
     }
-    refused?.push({
-      store: rec.store,
-      field: "store",
-      id: owner,
-      why: refusalWhy(rec, "store", `unknown entrance feature ${rec.store}`, from),
-    });
+    refused?.push(refusal("store", `unknown entrance feature ${rec.store}`, owner, from));
     feat = NO_FEAT;
   }
 
@@ -410,10 +288,10 @@ export class StoreRegistry {
    *
    * Empty for the shipped pack with no mods loaded. See `bindStore`.
    */
-  readonly refused: readonly StoreRefusal[];
+  readonly refused: readonly RecordRefusal[];
 
   constructor(records: StoreRecordJson[], reg: ObjRegistry) {
-    const refused: StoreRefusal[] = [];
+    const refused: RecordRefusal[] = [];
     this.stores = records.map((rec) => attachExt("store", rec, bindStore(rec, reg, refused)));
     this.refused = refused;
   }

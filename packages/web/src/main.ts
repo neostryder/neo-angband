@@ -1135,8 +1135,17 @@ const { state, registry, booted, players } = game;
  *
  * Both boot paths are covered by reading the registry rather than the call: the
  * resume path binds its own registries inside `loadGame`, and `booted.registries`
- * is whichever set this launch actually built. */
-for (const dropped of booted.registries.stores?.refused ?? []) {
+ * is whichever set this launch actually built.
+ *
+ * The object registry is read for the same reason and reports the same way: an
+ * ego's `item:` line names a specific base kind, a mod can append to it, and
+ * that list had the identical defect. One loop over both, because a fault is a
+ * fault to the mod manager and which binder found it is not the player's
+ * business. */
+for (const dropped of [
+  ...(booted.registries.stores?.refused ?? []),
+  ...(booted.registries.objects?.refused ?? []),
+]) {
   reportModFault(dropped.id, dropped.why);
 }
 /* lore.txt over the store the save (or the birth) just produced, which is
