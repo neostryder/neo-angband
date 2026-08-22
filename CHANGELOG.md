@@ -50,10 +50,13 @@ version it still calls itself.
 
 ### Added
 - A player-visible speed control for a mod's autoplayer: the mod's own Fixes &
-  tweaks screen (Mods -> the mod) now shows an Autoplayer speed row - Fast,
-  Normal or Slow - beside the rule that hands it the keyboard in the first
-  place, once it holds the controller slot. Takes effect at once, no reload.
-  Matches the debug agent seam's existing `?speed=fast|normal|slow` tiers.
+  tweaks screen (Mods -> the mod) now shows an Autoplayer speed row - Turbo,
+  Fast, Normal or Slow - beside the rule that hands it the keyboard in the
+  first place, once it holds the controller slot. Takes effect at once, no
+  reload. Fast, Normal and Slow match the debug agent seam's existing
+  `?speed=fast|normal|slow` tiers; Turbo (10ms) has no named equivalent there,
+  since the debug seam already reaches 10ms by passing a raw millisecond
+  value instead of a tier name.
 - **`ctx.authoring`: the mod SDK's authoring stack, handed to a plugin.** The
   whole public barrel, live, on the terms `ctx.core` is handed over: blueprints
   measured from core's own records, `peersFor`, `suggestFields`, `templateRecord`,

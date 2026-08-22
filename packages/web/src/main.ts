@@ -12575,6 +12575,7 @@ installRegions(
  * autoplaying mod's own screen -> Autoplayer speed (mods.ts managePatches),
  * beside the rule that hands the mod its controller in the first place. */
 const AUTOPLAYER_SPEED_MS: Record<AutoplayerSpeed, number> = {
+  turbo: 10,
   fast: 40,
   normal: 120,
   slow: 400,

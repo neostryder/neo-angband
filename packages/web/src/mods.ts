@@ -1854,11 +1854,13 @@ async function manageProfiles(
 
 /** Display name and pump rate for each autoplayer speed tier (mod-store.ts). */
 const AUTOPLAYER_SPEED_LABEL: Record<AutoplayerSpeed, string> = {
+  turbo: "Turbo",
   fast: "Fast",
   normal: "Normal",
   slow: "Slow",
 };
 const AUTOPLAYER_SPEED_MS: Record<AutoplayerSpeed, number> = {
+  turbo: 10,
   fast: 40,
   normal: 120,
   slow: 400,
@@ -1875,7 +1877,7 @@ async function pickAutoplayerSpeed(
   autoplayer: NonNullable<ModManagerDeps["autoplayer"]>,
   m: CatalogMod,
 ): Promise<void> {
-  const tiers: AutoplayerSpeed[] = ["fast", "normal", "slow"];
+  const tiers: AutoplayerSpeed[] = ["turbo", "fast", "normal", "slow"];
   const current = autoplayer.getSpeed();
   const items: MenuItem[] = tiers.map((t) => ({
     label: `${t === current ? "[x]" : "[ ]"} ${AUTOPLAYER_SPEED_LABEL[t]}`,

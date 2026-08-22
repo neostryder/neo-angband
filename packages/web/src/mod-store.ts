@@ -40,11 +40,13 @@ const SECTION_CHOICES_KEY = "neo:modSectionChoices";
 const AUTOPLAYER_SPEED_KEY = "neo:autoplayerSpeed";
 
 /**
- * A mod's autoplayer pump rate, in the same three tiers as the debug agent
- * seam's `?speed=fast|normal|slow` (main.ts) - so a player who has met either
- * control reads the other the same way.
+ * A mod's autoplayer pump rate. "fast", "normal" and "slow" match the debug
+ * agent seam's `?speed=fast|normal|slow` (main.ts) - so a player who has met
+ * either control reads the other the same way. "turbo" has no equivalent
+ * named tier there; the debug seam reaches the same 10ms by passing a raw
+ * millisecond value instead of a name.
  */
-export type AutoplayerSpeed = "fast" | "normal" | "slow";
+export type AutoplayerSpeed = "turbo" | "fast" | "normal" | "slow";
 
 /** A list of strings from untrusted JSON, dropping anything else. */
 function strings(value: unknown): string[] {
@@ -791,7 +793,7 @@ export class ModStore {
    */
   getAutoplayerSpeed(): AutoplayerSpeed {
     const raw = readJson<unknown>(this.storage, AUTOPLAYER_SPEED_KEY, "normal");
-    return raw === "fast" || raw === "normal" || raw === "slow" ? raw : "normal";
+    return raw === "turbo" || raw === "fast" || raw === "normal" || raw === "slow" ? raw : "normal";
   }
 
   setAutoplayerSpeed(speed: AutoplayerSpeed): void {
