@@ -79,6 +79,33 @@ that only knew the first two caught none of them.
 The log *file* keeps the full paths. It is on the player's own machine and it is
 theirs; the report is the artefact handed to a stranger.
 
+## Where to send it
+
+Once the file is written the screen offers a tracker per project and opens the
+chosen one in the player's real browser. `G` is Neo Angband, `C` is the RPGM
+Tools Discord, and each enabled mod that has a recorded origin takes the next
+digit. Nothing is uploaded: opening a page is not sending a report, and the file
+is still attached by hand.
+
+Two rules decide the addresses, and both exist because only one of these projects
+is this one:
+
+- **Neo Angband gets `/issues/new/choose`.** Its two templates are known to
+  exist, and choosing between "something is broken" and "does not match Angband"
+  is most of what makes a first report readable.
+- **A mod gets `/issues`, the tracker root.** Whether somebody else's repository
+  has issue templates, or has its tracker open at all, is not knowable from
+  inside the game, so the address that means the same thing in every case is the
+  one used.
+
+A mod's origin is read from its **install record** - the repository
+trust-on-first-use pinned when it was installed, which every later fetch for
+that mod has had to match - and not from the copy of its manifest on disk. Where
+that origin is not a repository the game can address, including a mod imported
+from a file that declared none, the row says **no repository recorded** and
+offers no key rather than guessing at a URL. Every address is printed on the
+screen beneath its row, so nothing opens that the player has not read first.
+
 ## For contributors: writing a log line
 
 ```ts

@@ -133,6 +133,7 @@ import {
   SCREEN_NO_PROMPT,
   screenPromptFor,
 } from "./screens";
+import { REPORT_MAX_MOD_TRACKERS, reportDestinations } from "./report";
 import { characterFlagsScreen } from "./charsheet";
 import { MessageLog } from "./messages";
 import { showPredictedScores, showScoreScreen } from "./score";
@@ -2730,6 +2731,24 @@ describe("every action is on exactly one side of the prompt census", () => {
     for (const phase of ["compose", "saved", "failed"] as const) {
       out.push(reportScreen({ phase }, proseLines, ""));
     }
+    /* The saved page again, with the report screen's destination rows FULL: one
+     * per mod up to the cap, so every `tracker-*` id the builder can produce is
+     * published and the census below is asked about all of them. Driven through
+     * `reportDestinations` rather than hand-written, because a hand-written list
+     * is exactly the second copy that goes stale when the cap moves. */
+    out.push(
+      reportScreen(
+        { phase: "saved" },
+        proseLines,
+        "",
+        reportDestinations(
+          Array.from({ length: REPORT_MAX_MOD_TRACKERS }, (_, i) => ({
+            id: `mod-${String(i)}`,
+            repo: `someone/mod-${String(i)}`,
+          })),
+        ),
+      ),
+    );
     return out.filter((v) => (v.actions?.length ?? 0) > 0);
   }
 
