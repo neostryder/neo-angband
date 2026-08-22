@@ -325,20 +325,24 @@ instead of quietly fighting it for the file. Both are in `main.ts` and both chan
 what every existing save path reads, which wants its own measurement rather than
 riding along with a mod seam.
 
-### The wizard door is latched under the spawn door's name
+### Two `help.test.ts` cases fail only in a full run
 
-`ctx.wizard` (2026-08-21) reads the live wizard context out of the latch
-`setModSpawnDoor` sets, because there is one live game on a page and
-`SpawnDoorDeps.wizard` is already the getter over it. That is the right shape - a
-second latch would be one more thing a new boot path could forget, and forgetting
-it would hand every mod `wizard: undefined`, which is indistinguishable from a
-capability the player never granted. What is wrong is only the NAME: a function
-called `setModSpawnDoor` now feeds two surfaces, one of which does no spawning.
+Observed 2026-08-21, twice in one sitting and then not again with no change to the
+tree between the runs: `samples/sprite-inventory draws the help pages from their
+model` fails its symbol-legend and keycap cases inside
+`pnpm exec vitest run packages/web/src`, and the same file run on its own passes
+all thirty-two. A second full run was green. So it is order or parallelism, not a
+broken assertion.
 
-The rename touches `main.ts`'s single call site, `mod-context.ts` and the tests
-that latch a door directly. It is not in the commit that added the seam because
-`main.ts` was being edited concurrently for unrelated work, and a rename is
-exactly the kind of change that is cheap alone and expensive interleaved.
+The suspect is the generated tile tree. `packages/web/public/tiles` is gitignored
+and produced by a vitest `globalSetup` hook rather than by the build, the sample
+tests read art out of it, and a reader that starts before the generator has
+finished writing is exactly the shape of a failure that appears in a full run and
+never alone. That is a guess and should be measured rather than acted on.
+
+Worth closing rather than living with, because this suite is the gate on every
+commit: a case that fails one run in two teaches whoever meets it to re-run until
+it is green, which is the habit that lets a real failure through.
 
 ### A mod panel has never been driven on a phone or in Electron fullscreen
 

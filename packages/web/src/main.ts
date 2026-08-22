@@ -303,7 +303,7 @@ import {
   modPluginContext,
   setModInstallDoor,
   setModRegistries,
-  setModSpawnDoor,
+  setModDebugDoor,
   type ModSessionFacts,
 } from "./mod-context";
 import type { ModPluginContext } from "./mod-plugin";
@@ -5448,14 +5448,19 @@ function wizardCtx(): WizardUiCtx {
   };
 }
 
-/* Where a mod holding `debug:spawn` conjures things, latched once.
+/* Where a mod's debug commands go, latched once. Feeds BOTH capability-gated
+ * surfaces - `debug:spawn`'s `ctx.debug` and `debug:wizard`'s `ctx.wizard` -
+ * because there is one live game on this page and this is the getter over it.
+ * Two latches would be one more thing a future boot path could forget, and
+ * forgetting it hands every mod an absent seam that reads exactly like a
+ * capability the player never granted.
  *
  * THE SAME CONTEXT AND THE SAME CONFIRMATION the `^A` menu dispatches through,
  * passed rather than reassembled: one consent path, one bit, one moment at which
  * it is set. A second gate here would be a second answer to "does using the debug
  * commands mark your character", and the whole value of this door over what a
  * plugin can already reach through `ctx.core` is that the answer stays one. */
-setModSpawnDoor({ wizard: wizardCtx, confirm: confirmDebugGate });
+setModDebugDoor({ wizard: wizardCtx, confirm: confirmDebugGate });
 
 /** The roster metadata for the current character, drawn from the live game. */
 function metaFromState(id: string): CharMeta {
