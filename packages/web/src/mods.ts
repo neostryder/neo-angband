@@ -58,7 +58,7 @@ import {
 } from "./screen-view";
 import type { GridPointerInput, GridSurface } from "./term";
 import type { ModDirKind, ModOrigin } from "./disk-packs";
-import type { CatalogMod, ModStore } from "./mod-store";
+import type { AutoplayerSpeed, CatalogMod, ModStore } from "./mod-store";
 import { dropSessionMods } from "./mod-session";
 import type { ModRuleDecl } from "./pack";
 import {
@@ -211,6 +211,23 @@ export interface ModManagerDeps {
    * no game is running (the choice still persists and applies on next start).
    */
   applyRuleLive?: (flag: string, on: boolean) => void;
+  /**
+   * The player-facing speed control for a mod's autoplayer (ModPlugin.controller),
+   * surfaced beside the mod's own rule row that hands back a controller in the
+   * first place (e.g. the Borg's `borg.autoplay`) - this is the row that reads
+   * "does the mod insist on playing" and this control is the one that reads "how
+   * fast is it going while it does". Absent while no game is running; `activeId`
+   * lets the mod's own Fixes & tweaks screen show the row only for the mod that
+   * actually holds the controller slot right now, since the pump rate means
+   * nothing for a mod that is not the one pumping.
+   */
+  autoplayer?: {
+    /** The id of the mod currently holding the one autoplayer slot, or null. */
+    activeId: () => string | null;
+    getSpeed: () => AutoplayerSpeed;
+    /** Persists the choice and, if a controller is live, re-paces it at once. */
+    setSpeed: (speed: AutoplayerSpeed) => void;
+  };
   isModNoscore?: () => boolean;
   advanceSaveRatchets?: (mod: CatalogMod) => void;
   /**
@@ -1060,6 +1077,17 @@ async function manageMod(
       return changed;
     }
     const ruleCount = m.manifest.rules?.length ?? 0;
+    /* This mod holds the one autoplayer slot right now: its Fixes & tweaks
+     * screen carries the speed row even on the (unusual) mod that ships a
+     * controller but declares no rule of its own - see managePatches. */
+    const autoplayerActive = deps.autoplayer?.activeId() === m.id;
+    const showRulesRow = ruleCount > 0 || autoplayerActive;
+    const rulesLabel =
+      ruleCount > 0 ? `Fixes & tweaks (${ruleCount})...` : "Autoplayer speed...";
+    const rulesHint =
+      ruleCount > 0
+        ? `All ${ruleCount} are on; switch any one off here.`
+        : "How fast this mod plays out its turns while it holds the keyboard.";
     /* A mod's named parts (PackSection): the general form of a rule, since a
      * section can carry content and a load-order band as well as behaviour. */
     const sectionCount = m.manifest.sections?.length ?? 0;
@@ -1076,23 +1104,15 @@ async function manageMod(
         hint: "Forgets the archive. Takes effect on the next reload.",
       });
       acts.push("drop");
-      if (ruleCount > 0) {
-        items.push({
-          label: `Fixes & tweaks (${ruleCount})...`,
-          color: C_ENABLED,
-          hint: `All ${ruleCount} are on; switch any one off here.`,
-        });
+      if (showRulesRow) {
+        items.push({ label: rulesLabel, color: C_ENABLED, hint: rulesHint });
         acts.push("rules");
       }
     } else if (m.enabled) {
       items.push({ label: "Disable", color: C_WARN });
       acts.push("disable");
-      if (ruleCount > 0) {
-        items.push({
-          label: `Fixes & tweaks (${ruleCount})...`,
-          color: C_ENABLED,
-          hint: `All ${ruleCount} are on; switch any one off here.`,
-        });
+      if (showRulesRow) {
+        items.push({ label: rulesLabel, color: C_ENABLED, hint: rulesHint });
         acts.push("rules");
       }
       if (sectionCount > 0) {
@@ -1832,6 +1852,65 @@ async function manageProfiles(
   }
 }
 
+/** Display name and pump rate for each autoplayer speed tier (mod-store.ts). */
+const AUTOPLAYER_SPEED_LABEL: Record<AutoplayerSpeed, string> = {
+  fast: "Fast",
+  normal: "Normal",
+  slow: "Slow",
+};
+const AUTOPLAYER_SPEED_MS: Record<AutoplayerSpeed, number> = {
+  fast: 40,
+  normal: 120,
+  slow: 400,
+};
+
+/**
+ * The autoplayer speed sub-screen: three tiers, current one marked, same shape
+ * as every other named-choice picker on this screen. Reached from the row
+ * managePatches shows beside a mod's own rule that hands back a controller,
+ * only while that mod actually holds the one autoplayer slot.
+ */
+async function pickAutoplayerSpeed(
+  term: GridSurface & GridPointerInput,
+  autoplayer: NonNullable<ModManagerDeps["autoplayer"]>,
+  m: CatalogMod,
+): Promise<void> {
+  const tiers: AutoplayerSpeed[] = ["fast", "normal", "slow"];
+  const current = autoplayer.getSpeed();
+  const items: MenuItem[] = tiers.map((t) => ({
+    label: `${t === current ? "[x]" : "[ ]"} ${AUTOPLAYER_SPEED_LABEL[t]}`,
+    color: t === current ? C_ENABLED : C_FG,
+  }));
+  const pick = await selectFromMenu(
+    term,
+    "core:mod-autoplayer-speed",
+    `Autoplayer speed - ${m.name}`,
+    items,
+    "[ Enter to choose; ESC to leave it as it is ]",
+    {
+      initialCursor: tiers.indexOf(current),
+      detail: (i) => {
+        const t = tiers[i];
+        if (!t) return [];
+        return [
+          { text: AUTOPLAYER_SPEED_LABEL[t], color: C_TITLE },
+          { text: `A turn every ${AUTOPLAYER_SPEED_MS[t]}ms while ${m.name} holds the keyboard.`, color: C_DIM },
+          { text: "", color: C_FG },
+          {
+            text: "The same three tiers the debug agent seam's ?speed= URL parameter offers - takes effect at once, no reload.",
+            color: C_DIM,
+          },
+        ];
+      },
+      detailToggleKey: "?",
+      detailInitiallyShown: true,
+    },
+  );
+  if (pick === null) return;
+  const chosen = tiers[pick];
+  if (chosen) autoplayer.setSpeed(chosen);
+}
+
 /**
  * ONE MOD's Fixes & tweaks: the toggleable rules that mod declares, each with an
  * on/off box and its full description. Reached from the mod itself (manageMod),
@@ -1847,6 +1926,13 @@ async function manageProfiles(
  * mod brings its whole patch set on with it (every bundled patch declares
  * `default: true`, i.e. "on once its mod is on"); these rows exist so a player
  * can then opt out of individual patches and take the set minus one.
+ *
+ * When this mod is the one currently holding the autoplayer slot (deps.autoplayer),
+ * an extra row appears after its rules: the speed the pump runs at, beside the
+ * rule that made it a controller at all (e.g. the Borg's own `borg.autoplay`).
+ * It is a host-level setting rather than a rule choice - it paces whichever mod
+ * is playing, not this mod specifically - which is why it lives outside `decls`
+ * and is keyed on `deps.autoplayer.activeId()` rather than on a declared flag.
  */
 async function managePatches(
   term: GridSurface & GridPointerInput,
@@ -1859,7 +1945,8 @@ async function managePatches(
   let cursor = 0;
   for (;;) {
     const decls = getDecls().filter((d) => d.modId === m.id);
-    if (decls.length === 0) {
+    const autoplayer = deps.autoplayer?.activeId() === m.id ? deps.autoplayer : undefined;
+    if (decls.length === 0 && !autoplayer) {
       // Only reachable if discovery and the catalog disagree (the mod declares
       // rules but the host does not surface them) - say so plainly.
       await showTextScreen(term, title, [
@@ -1879,6 +1966,12 @@ async function managePatches(
         color: on ? C_ENABLED : C_DISABLED,
       };
     });
+    if (autoplayer) {
+      items.push({
+        label: `Autoplayer speed: ${AUTOPLAYER_SPEED_LABEL[autoplayer.getSpeed()]}`,
+        color: C_FG,
+      });
+    }
     const pick = await selectFromMenu(
       term,
       "core:mod-rule-flags",
@@ -1893,6 +1986,21 @@ async function managePatches(
         /* Every row here is a rule, so space simply means Enter. */
         commands: { " ": (cur) => cur },
         detail: (i) => {
+          if (autoplayer && i === decls.length) {
+            return [
+              { text: "Autoplayer speed", color: C_TITLE },
+              {
+                text: `${AUTOPLAYER_SPEED_LABEL[autoplayer.getSpeed()]} - how often ${m.name} takes a turn while it holds the keyboard`,
+                color: C_DIM,
+              },
+              { text: "", color: C_FG },
+              ...wrapped(
+                "Faster is more to watch happen at once; slower is easier to follow. Changes at once, no reload.",
+                term.size().cols - 1,
+                C_DIM,
+              ),
+            ];
+          }
           const d = decls[i];
           if (!d) return [];
           const cols = term.size().cols;
@@ -1917,6 +2025,10 @@ async function managePatches(
       },
     );
     if (pick === null) return;
+    if (autoplayer && pick === decls.length) {
+      await pickAutoplayerSpeed(term, autoplayer, m);
+      continue;
+    }
     const d = decls[pick];
     if (!d) continue;
     const now = choices[d.rule.flag] ?? d.rule.default;
