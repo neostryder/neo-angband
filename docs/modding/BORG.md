@@ -46,11 +46,6 @@ why they are different switches. Only one autoplayer can hold the keyboard at a
 time: if a second mod also declares a controller, the host refuses it by name and
 says which one is already playing.
 
-Once the Borg holds the keyboard, its own Fixes & tweaks screen (Mods -> The
-Borg) grows an **Autoplayer speed** row beside `borg.autoplay`: Fast, Normal
-or Slow, matching the debug agent seam's own tiers below. It takes effect at
-once, no reload.
-
 It plays the same on every surface - browser, PWA, static self-host, desktop -
 because it arrives by the same route on all of them.
 
