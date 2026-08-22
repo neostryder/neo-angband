@@ -1,6 +1,6 @@
 {
   "name": "@rpgm-tools/neo-angband-core",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "description": "Headless Neo Angband game engine: rules, world, entities, effects, generation",
   "license": "GPL-2.0-only",
   "author": "neostryder (RPGM Tools)",
