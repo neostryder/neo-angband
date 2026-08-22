@@ -535,6 +535,18 @@ import {
   listDeaths,
 } from "./roster";
 import type { CharMeta } from "./roster";
+/* WHERE A SAVE GOES, which is this page's own answer and not the roster's.
+ * `getActiveId` names the character to OFFER on the next launch and is shared by
+ * every tab on the origin; `attachedSlot` names the one this page may write, and
+ * no other page can see it. Reading the wrong one of those two is the bug
+ * slot-attach.ts exists to close, so every save path below reads the second. */
+import {
+  attachSlot,
+  attachedSlot,
+  detachSlot,
+  onSlotLost,
+  slotHeldElsewhere,
+} from "./slot-attach";
 import { SAVE_CODEC, SAVE_CODECS } from "./save-codec";
 // --- High scores (task #28) ---
 import {
@@ -1005,6 +1017,12 @@ function isContinuation(): boolean {
  * both still possible.
  */
 function keepSaveUntouched(): void {
+  /* Both halves, because they answer different questions. Not attaching is what
+   * actually stops this page writing (persistSave reads the attachment); clearing
+   * the shared id is what stops the next launch offering a character this build
+   * cannot open. The detach is belt and braces for a caller reached after an
+   * attach has already happened. */
+  detachSlot();
   setActiveId(null);
 }
 
@@ -1022,7 +1040,7 @@ function bootGame(): ReturnType<typeof startGame> {
   migrateLegacySave();
   if (!forcedNew) {
     const activeId = getActiveId();
-    const stored = activeId ? readSlotSave(activeId) : null;
+    const stored = activeId !== null ? readSlotSave(activeId) : null;
     // Auto-resume the active character ONLY on an internal continuation: the
     // player chose Continue from the title's character select (resumeSelected
     // sets SKIP_TITLE), or the autoplayer boot (?agent). A GENUINE launch - a
@@ -1030,7 +1048,7 @@ function bootGame(): ReturnType<typeof startGame> {
     // save; it always shows the title, then the character select. That is what
     // makes every launch open fresh and reinforces the anti-scum rule that a
     // refresh returns to the title, not to the live game.
-    if (stored && isContinuation()) {
+    if (activeId !== null && stored && isContinuation()) {
       try {
         const decoded = decodeSavedGame(
           b64ToBytes(stored),
@@ -1072,6 +1090,14 @@ function bootGame(): ReturnType<typeof startGame> {
           if (loaded.saveMigration) {
             loadedNote = describeMigration(loaded.saveMigration);
           }
+          /* THE MOMENT THIS PAGE BECOMES THIS CHARACTER'S WRITER, and the only
+           * one on the resume path. Everything above this line is reading; from
+           * here the autosave has somewhere to land. The cross-page hold is
+           * asked for in the background, and a tab that is refused it - the
+           * duplicated tab, which carries sessionStorage across and so resumes
+           * without ever passing the character select - is detached again and
+           * told (onSlotLost, below). */
+          attachSlot(activeId);
           return loaded;
         }
       } catch (err) {
@@ -1095,7 +1121,22 @@ function bootGame(): ReturnType<typeof startGame> {
   bootedNew = true;
   // A genuine new character (forcedNew, or an empty roster with nothing to
   // pick) gets an active slot now so its autosaves land.
-  if (!needsSelect && !getActiveId()) setActiveId(newCharId());
+  //
+  // AND THE GAME BEHIND THE PICKER GETS NOTHING, which is the case this used to
+  // get wrong. `needsSelect` means a throwaway is running behind the character
+  // select and must claim no slot; it already minted no id, but a leftover id in
+  // the shared key (a legacy migration, or the character this tab last played)
+  // was still what the save path read, so the throwaway could write itself over
+  // a real character as soon as birthPending stopped covering for it. Attaching
+  // is now the only thing that grants a write, and it does not happen here.
+  if (!needsSelect) {
+    let id = getActiveId();
+    if (!id) {
+      id = newCharId();
+      setActiveId(id);
+    }
+    attachSlot(id);
+  }
   // Resume the main stream after the birth UI advanced it (ui-birth.c draws
   // before level gen). Absent, start from seed as a normal new game.
   let birthRngState: ReturnType<Rng["getState"]> | undefined;
@@ -1317,7 +1358,11 @@ const birthPending = ((): boolean => {
 // alone would give every character the last-birthed name. Mutable because the
 // character sheet's 'c' (do_cmd_change_name) renames in place.
 let playerName = ((): string => {
-  const id = getActiveId();
+  /* The slot THIS page took up, not the one the origin last offered: a throwaway
+   * running behind the character select is attached to nothing, and reading the
+   * shared key there would name it after whichever character this tab happened to
+   * play last. */
+  const id = attachedSlot();
   const metaName = id ? getMeta(id)?.name : "";
   return metaName || birthChoice?.name || "";
 })();
@@ -5559,8 +5604,15 @@ function persistSave(deliberate = false): boolean {
    * four ways to overwrite the file the moment the player walked downstairs. */
   if (sessionTaint()) return true;
   if (suppressSave || birthPending) return true; // a throwaway claims no slot
-  const id = getActiveId();
-  if (!id) return true; // no active slot (e.g. the picker is up): nothing to save
+  /* THIS PAGE'S SLOT, not the origin's. `getActiveId` would answer with whatever
+   * character any tab most recently chose to resume, which is how two tabs on one
+   * character autosaved over each other every three seconds with neither told.
+   * `attachedSlot` is set once, in this page's memory, when this page took a
+   * character up - so a second tab cannot redirect this one's saves, and a page
+   * whose slot turned out to belong to another tab has already been detached and
+   * writes nowhere (slot-attach.ts). */
+  const id = attachedSlot();
+  if (!id) return true; // attached to nothing (e.g. the picker is up): nothing to save
   try {
     const b64 = bytesToB64(encodeSavedGame(saveGame(game), undefined, SAVE_CODEC));
     /* writeSlot's own verdict, not just "nothing threw": the storage write
@@ -5669,6 +5721,11 @@ function autosave(force = false): void {
 /** Start a brand-new character in a fresh roster slot (birth, then play). */
 function newGame(): void {
   suppressSave = true; // the outgoing page must not save into the new slot
+  /* Let go of the character being left, before naming the one being started.
+   * The reload attaches the new slot; this page is on its way out and must not
+   * be attached to anything while it goes, so its unload-time flush writes
+   * nowhere rather than into either character. */
+  detachSlot();
   setActiveId(newCharId()); // a fresh slot so the new character does not
   // overwrite any existing one
   try {
@@ -5685,6 +5742,10 @@ function newGame(): void {
 /** Switch characters: flush the current one, then show the picker on reload. */
 function switchCharacter(): void {
   persistSave();
+  /* AFTER the flush and not before: detaching first would send that last save
+   * nowhere. The hold on the slot goes back with it, so the character is free
+   * for the next page - including this one, after the reload. */
+  detachSlot();
   setActiveId(null); // boot finds no active character -> shows the select screen
   try {
     sessionStorage.setItem(SKIP_TITLE_KEY, "1"); // already past the title
@@ -8714,11 +8775,18 @@ function continueAdvance(
     // tombstone - its save bytes are dropped so it can never be resumed, but
     // its record stays in the roster for the memorial. Clearing the active id
     // sends the next boot to the picker (or birth if no one else is left).
-    const activeId = getActiveId();
+    /* THE SLOT THIS PAGE IS ATTACHED TO, and nothing else may be read here. This
+     * is the one path that DESTROYS bytes: markDead drops the save and writes a
+     * death into a ledger that outlives the tombstone. Reading the shared key
+     * would mean a character dying in this tab could tombstone whichever
+     * character another tab most recently resumed - a real hero, still alive over
+     * there, with a memorial to prove otherwise. */
+    const activeId = attachedSlot();
     // close_game's dead branch (ui-game.c:1152-1158): the tombstone IS the
     // port's dead-player save (decision 16 drops the resumable bytes), so a
     // failed metadata write loses the memorial and gets upstream's message.
     if (activeId && !markDead(activeId)) say("death save failed!");
+    detachSlot();
     setActiveId(null);
     // death_knowledge (player-util.c L278-317), in full: retire a winner in a
     // good state, reveal the gear and the home's stock, then unmask the
@@ -9711,6 +9779,54 @@ onSessionTaint((t) => {
   }, 0);
 });
 
+/* This page took a character up and another page already had it, so this page has
+ * stopped writing (slot-attach.ts detached it before saying so).
+ *
+ * IT HAS TO BE A SCREEN, not a message line. The failure this replaces was silent
+ * and that is the whole of what made it costly: a tab that is no longer saving
+ * looks exactly like a tab that is, and the player finds out when they close it.
+ * A line in the message log is missed by the same player for the same reason, so
+ * this stops the game and says it.
+ *
+ * It cannot happen through the character select, which refuses a character
+ * somebody else is playing before this page ever attaches. What reaches here is
+ * the door that has no picker in it: a DUPLICATED tab, which carries
+ * `sessionStorage` across and so satisfies `isContinuation()` and resumes
+ * straight into the same character.
+ *
+ * Deferred for the reason onSessionTaint is - the refusal lands from a background
+ * lock request, which can resolve mid-turn - and the same macrotask puts it after
+ * whatever turn is unwinding. */
+onSlotLost((id) => {
+  const who = getMeta(id)?.name || "that character";
+  setTimeout(() => {
+    void openModal(async () => {
+      await showTextScreen(
+        term,
+        "This character is open in another window",
+        [
+          { text: `${who} is already being played somewhere else.`, color: UI_BAD },
+          { text: "" },
+          {
+            text: "Nothing you do in THIS window will be saved. The other window",
+            color: UI_TEXT,
+          },
+          { text: "has the character and is saving normally.", color: UI_TEXT },
+          { text: "" },
+          {
+            text: "Close this window and carry on in the other one. If you would",
+            color: UI_DIM,
+          },
+          {
+            text: "rather play here, close the other window first and reload.",
+            color: UI_DIM,
+          },
+        ],
+      );
+    });
+  }, 0);
+});
+
 // ---- Sound subsystem wiring (faithful to init_sound + EVENT_SOUND) ----
 // The core SoundEngine subscribes to the "sound" event and plays a sample from
 // the pack. The Dubtrain pack (CC-BY 4.0) ships bundled in public/sounds/ as the
@@ -9982,6 +10098,39 @@ async function maybeBirth(): Promise<BootStep> {
     location.assign(url.toString());
     return "done";
   });
+}
+
+/**
+ * Refuse to open a character another window is already playing, and say why.
+ *
+ * THE DELIBERATE DOOR. `onSlotLost` catches a page that has already attached and
+ * turns out to have lost the race, which works but costs the player a window they
+ * thought they were playing in. This is the same collision caught one step
+ * earlier, where the answer is a sentence and a menu the player is still standing
+ * in rather than a game they have to abandon.
+ *
+ * Answers false whenever it cannot know (no Web Locks in this browser) - see
+ * `slotHeldElsewhere`. Being unable to detect the collision must not become a
+ * refusal to open a character at all.
+ */
+async function refusedAsPlayedElsewhere(id: string): Promise<boolean> {
+  if (!(await slotHeldElsewhere(id))) return false;
+  const who = getMeta(id)?.name || "That character";
+  await showTextScreen(term, "Already being played", [
+    { text: `${who} is open in another window.`, color: UI_BAD },
+    { text: "" },
+    {
+      text: "Two windows playing one character overwrite each other's saves,",
+      color: UI_TEXT,
+    },
+    { text: "so only one at a time may have them.", color: UI_TEXT },
+    { text: "" },
+    {
+      text: "Carry on in that window, or close it and try again here.",
+      color: UI_DIM,
+    },
+  ]);
+  return true;
 }
 
 /** Reload to resume the chosen character (clears the fresh-start params). */
@@ -11267,6 +11416,10 @@ async function openRoster(): Promise<BootStep> {
         continue;
       }
       if (res.action === "resume") {
+        /* Back to the list rather than into the character: another window has
+         * them, and letting this one in would start the two-tab overwrite this
+         * check exists to prevent. */
+        if (await refusedAsPlayedElsewhere(res.id)) continue;
         resumeSelected(res.id);
         return "done";
       }
@@ -11527,8 +11680,13 @@ async function bootMenus(): Promise<void> {
       if (resumedActive) return;
       const recent = livingRoster()[0];
       if (recent) {
-        resumeSelected(recent.id);
-        return;
+        /* The same refusal the picker gives, because this is the same act with
+         * the list skipped. Refused, it falls through to the picker below rather
+         * than stalling on the title with nothing said. */
+        if (!(await refusedAsPlayedElsewhere(recent.id))) {
+          resumeSelected(recent.id);
+          return;
+        }
       }
       /* Nothing living after all: show the picker rather than stalling. */
     }
