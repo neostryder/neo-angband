@@ -35,7 +35,7 @@ import {
   SESSION_CAPABILITY,
   type InstallDoorDeps,
 } from "./install-runtime";
-import { createModDebug, SPAWN_CAPABILITY, type SpawnDoorDeps } from "./spawn-runtime";
+import { createModDebug, SPAWN_CAPABILITY, type DebugDoorDeps } from "./spawn-runtime";
 import { createModWizard, WIZARD_CAPABILITY, type WizardDoorDeps } from "./wizard-runtime";
 import type { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 
@@ -233,8 +233,8 @@ export function setModInstallDoor(deps: InstallDoorDeps | undefined): void {
 function debugFor(id: string, session: ModSessionFacts): ModDebug | undefined {
   if (session.debug !== undefined) return session.debug;
   if (!session.capabilities?.has(SPAWN_CAPABILITY)) return undefined;
-  if (!spawnDoor) return undefined;
-  return createModDebug(id, spawnDoor);
+  if (!debugDoor) return undefined;
+  return createModDebug(id, debugDoor);
 }
 
 /**
@@ -251,7 +251,7 @@ function wizardFor(id: string, session: ModSessionFacts): ModWizard | undefined 
   if (!session.capabilities?.has(WIZARD_CAPABILITY)) return undefined;
   /* THE SAME LATCH, NOT A SECOND ONE, and that is a decision rather than reuse.
    *
-   * There is exactly one live game on a page, and `SpawnDoorDeps.wizard` is the
+   * There is exactly one live game on a page, and `DebugDoorDeps.wizard` is the
    * getter over it - `WizardDoorDeps` is that field and nothing else, so the door
    * already latched satisfies both surfaces by construction. A second latch would
    * have added one more thing for a new boot path to forget, and forgetting it
@@ -262,16 +262,24 @@ function wizardFor(id: string, session: ModSessionFacts): ModWizard | undefined 
    *
    * The two surfaces stay two capability checks over one source. Sharing where the
    * game is says nothing about who may reach it. */
-  if (!spawnDoor) return undefined;
-  return createModWizard(id, spawnDoor satisfies WizardDoorDeps);
+  if (!debugDoor) return undefined;
+  return createModWizard(id, debugDoor satisfies WizardDoorDeps);
 }
 
-/** Where a mod's conjuring goes, latched once per page. Same argument as above. */
-let spawnDoor: SpawnDoorDeps | undefined;
+/**
+ * Where the live game is, for both debug surfaces, latched once per page.
+ *
+ * NAMED FOR THE FAMILY RATHER THAN FOR ITS FIRST CALLER. It was `spawnDoor`, and
+ * it stayed that when `ctx.wizard` began reading it, which left a function called
+ * `setModSpawnDoor` feeding a surface that does no spawning. The name is what a
+ * reader trusts about which surfaces depend on it, so the wrong one is a
+ * standing invitation to add a second latch that duplicates this one.
+ */
+let debugDoor: DebugDoorDeps | undefined;
 
-/** Latch the spawn door (the boot path, and the tests). */
-export function setModSpawnDoor(deps: SpawnDoorDeps | undefined): void {
-  spawnDoor = deps;
+/** Latch the debug door (the boot path, and the tests). */
+export function setModDebugDoor(deps: DebugDoorDeps | undefined): void {
+  debugDoor = deps;
 }
 
 /** What the host knows about THIS session, as opposed to this mod's folder. */
