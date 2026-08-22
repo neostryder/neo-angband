@@ -18,10 +18,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createModWizard, MAX_AT_ONCE } from "./wizard-runtime";
 import type { ModWizard, ModWizardOutcome } from "./mod-plugin";
-import { resetSlotWriteSurrender, setActiveId } from "./roster";
+import { resetSlotWriteSurrender } from "./roster";
+import { attachSlot, detachSlot, resetSlotAttachment } from "./slot-attach";
 import type { WizardUiCtx } from "./wizard";
 
-/** localStorage's shape: the sandbox reads the active slot id out of it. */
+/** localStorage's shape: the sandbox reads a character's name out of it. */
 class FakeStorage {
   private map = new Map<string, string>();
   getItem(key: string): string | null {
@@ -108,6 +109,9 @@ beforeEach(() => {
    * every test after the first `sandbox()` would find the gate already open and
    * "the gate refuses" would pass by not being exercised. */
   resetSlotWriteSurrender();
+  /* And the attachment, for the same reason: it is this page's memory of which
+   * character it may write, and a page is what a test stands in for. */
+  resetSlotAttachment();
   Object.defineProperty(globalThis, "localStorage", {
     value: new FakeStorage(),
     configurable: true,
@@ -158,7 +162,7 @@ const COMMANDS: readonly { name: string; run: (w: ModWizard) => ModWizardOutcome
 describe("nothing works until the session is cut loose", () => {
   it("refuses every command while the character is still being saved", () => {
     const l = log();
-    setActiveId("slot-1"); // a real character, being autosaved
+    attachSlot("slot-1"); // a real character, being autosaved
     const w = createModWizard("builder", { wizard: wizardStub(l, { marked: true }) });
 
     const allowed = COMMANDS.filter(({ run }) => run(w).ok);
@@ -178,7 +182,7 @@ describe("nothing works until the session is cut loose", () => {
 
   it("lets every command through afterwards", () => {
     const l = log();
-    setActiveId("slot-1");
+    attachSlot("slot-1");
     const w = createModWizard("builder", { wizard: wizardStub(l) });
     w.sandbox();
 
@@ -196,7 +200,7 @@ describe("nothing works until the session is cut loose", () => {
      * mark. Every wiz* function is gated on that bit and would no-op silently, so
      * this is the difference between a control that is off and one that lies. */
     const l = log();
-    setActiveId(null);
+    detachSlot();
     const w = createModWizard("builder", { wizard: wizardStub(l) });
     expect(w.mapLevel()).toEqual({
       ok: false,
@@ -213,7 +217,7 @@ describe("sandbox() is the consent moment, and it marks the character", () => {
      * about - and it would have to be posed on the character grid, underneath
      * whatever the mod is drawing. Detaching is the consent. */
     const l = log();
-    setActiveId("slot-1");
+    attachSlot("slot-1");
     const w = createModWizard("builder", { wizard: wizardStub(l) });
 
     expect(w.sandbox().ok).toBe(true);
@@ -226,7 +230,7 @@ describe("sandbox() is the consent moment, and it marks the character", () => {
     /* In a sandboxed session the log is the only trace there is, because nothing
      * is written down. */
     const l = log();
-    setActiveId("slot-1");
+    attachSlot("slot-1");
     const w = createModWizard("builder", { wizard: wizardStub(l) });
     w.sandbox();
     expect(l.said.join(" ")).toContain("Nothing from here on is saved");
@@ -234,7 +238,7 @@ describe("sandbox() is the consent moment, and it marks the character", () => {
 
   it("is idempotent", () => {
     const l = log();
-    setActiveId("slot-1");
+    attachSlot("slot-1");
     const w = createModWizard("builder", { wizard: wizardStub(l) });
     expect(w.sandbox().ok).toBe(true);
     expect(w.sandbox().ok).toBe(true);
@@ -277,7 +281,7 @@ describe("the catalogue", () => {
     /* Deciding what to test is how a player decides whether to detach. A browser
      * that only filled in after they had agreed would be asking them to agree to
      * something they cannot see. */
-    setActiveId("slot-1");
+    attachSlot("slot-1");
     expect(catalogue().creatures.length).toBe(2);
   });
 
@@ -294,7 +298,7 @@ describe("the catalogue", () => {
 
 describe("where() fills in a panel's fields", () => {
   it("reports the depth, the level, the purse and the stats by name", () => {
-    setActiveId("slot-1");
+    attachSlot("slot-1");
     const w = createModWizard("builder", { wizard: wizardStub(log()) });
     expect(w.where()).toEqual({
       depth: 18,
@@ -318,7 +322,7 @@ describe("where() fills in a panel's fields", () => {
 
 describe("arguments are checked before the engine sees them", () => {
   const armed = (): ModWizard => {
-    setActiveId("slot-1");
+    attachSlot("slot-1");
     const w = createModWizard("builder", { wizard: wizardStub(log()) });
     w.sandbox();
     return w;

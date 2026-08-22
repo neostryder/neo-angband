@@ -206,7 +206,7 @@ reach different verdicts about the same provenance. A binder that resolves names
 from a list a mod can append to should be reading from there rather than
 inventing its own rule; `docs/PLANNED.md` tracks which ones still do not.
 
-### 4. The handed-in namespaces are not covered by any of the above, and that is the honest gap
+### 4. `ctx.core` is not covered by any of the above, and that is the honest gap
 
 `ModPluginContext.core` is the **live core module namespace** - the whole engine,
 around 1,950 runtime exports, deliberately not a curated slice (decision 18, and
@@ -233,39 +233,6 @@ What exists now is not a fence but a **ratchet**:
   tolerated additions would go stale, an export added in one release and removed
   in the next would never have been recorded, and the removal check would be
   measuring nothing.
-
-#### There are two such namespaces now, watched the same way
-
-`ctx.authoring` is the mod SDK's public barrel, 94 runtime exports, handed over
-whole on exactly the terms `ctx.core` is and for exactly the same reason: a
-curated subset of an authoring API is a second list to maintain, and the first
-thing that happens to a curated list is that it lags the function somebody needs.
-
-Until it was handed to a plugin, a rename inside the SDK was caught by `tsc -b`
-over this repository, because every consumer of it was in the repository. That
-stops being true the moment a plugin holds the namespace: a plugin ships as built
-JavaScript and resolves no specifier, so the compiler never sees the call. The
-second door therefore arrived carrying the first door's hole, and closes it the
-same way. `packages/mod-sdk/mod-sdk-api-surface.json` is the recorded surface,
-`mod-authoring-surface.test.ts` fails in both directions against it, and
-`node tools/api-surface.mjs` checks and updates both baselines in one run.
-
-The SDK barrel is a considered surface rather than everything that happens to be
-exported: `applyFieldPolicy` is deliberately kept out of its `index.ts`, and says
-so in a comment there. A removal from it is recorded in the table below on the
-same terms a core removal is.
-
-#### Additions, which strand nobody
-
-An added `ctx` field cannot break an existing plugin: it reads what it reads, and
-a name it never mentions cannot change its meaning. So `MOD_API_VERSION` does not
-move for one (its own doc comment says as much), and the additions are recorded
-here for discoverability rather than as a warning.
-
-| Version | Field | What it is |
-|---|---|---|
-| unreleased (2026-08-22) | `ctx.authoring` | The mod SDK's public barrel: blueprints, `peersFor`, `suggestFields`, `checkRecords`, `ModProject` and the rest of the authoring stack. Always present, because these are pure functions over data the caller supplies and there is no boot state they wait on. Ungated, on the reasoning `capability-gate-reach.test.ts` already pins for `ctx.core` and `ctx.registries`: nothing here reads game state, nothing mutates a registry, and every name is reachable to anybody who can install the published npm package. |
-| unreleased (2026-08-22) | `ctx.composedRecords` | Every content record the running game was composed from, as JSON, keyed by pack-file stem with no extension. The UNBOUND twin of `ctx.registries`, and the shape the authoring functions above accept: `registries.monsters.races` is bound and carries neither the JSON key names nor the fields that bound to nothing, so a peer table cannot be built from it. Mod-added records are in it on the same terms as core's, each carrying its provenance. Absent during content composition, for the same reason `registries` is. |
 
 #### Removals taken knowingly
 
