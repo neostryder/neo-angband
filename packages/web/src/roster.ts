@@ -109,18 +109,14 @@ function removeItem(key: string): void {
 /**
  * Whether this PAGE has surrendered its right to write a character. One way.
  *
- * WHAT IT ADDS OVER DETACHING, now that where a save goes is a page-local fact
- * (`slot-attach.ts`) rather than a shared `localStorage` key. Detaching stops this
- * page writing until it attaches again; both are ordinary, reversible states a
- * page moves through as the player switches characters. This latch is the
- * irreversible one: after it, `writeSlot` and `markDead` refuse this page for the
- * rest of its life, whatever it attaches to afterwards.
- *
- * That distinction is the sandbox's whole guarantee. A page cut loose so a mod can
- * cheat on it freely must not be able to come back, and "it is not attached right
- * now" is not that promise - some later code path attaching a slot would put a
- * cheated character back on the road to disk with nothing having gone wrong
- * anywhere.
+ * WHY THIS EXISTS WHEN THE ACTIVE ID ALREADY DECIDES WHERE A SAVE GOES. Dropping
+ * the active id is how a session stops being written (`test-sandbox.ts`, and
+ * `keepSaveUntouched` before it), and inside one page that is complete. The active
+ * id lives in `localStorage`, which is shared by every tab on the origin - so a
+ * SECOND tab reaching the character select and resuming a character writes a real
+ * slot id back into the key that the first tab's save path reads. The first tab,
+ * which had given its save up and may since have been cheated freely, is then
+ * silently re-attached to somebody's real character.
  *
  * The consequences are not symmetrical and the worse one is easy to miss. A write
  * puts cheated state over a good save, which is bad. The DEATH path calls
@@ -128,10 +124,15 @@ function removeItem(key: string): void {
  * that outlives the tombstone - so a monster killing the cheated character would
  * have deleted a real one, irreversibly, with the memorial to prove it.
  *
- * So it is process-local: it lives in this page's memory, no other tab can see it,
- * and nothing can clear it. Both doors into slot storage check it, which is every
- * door - `writeSlot` and `markDead` are the only two, and `upsertMeta` is reached
- * only through them.
+ * So the decision cannot rest on shared storage. This latch is process-local: it
+ * lives in this page's memory, no other tab can see it, and nothing can clear it.
+ * Both doors into slot storage check it, which is every door - `writeSlot` and
+ * `markDead` are the only two, and `upsertMeta` is reached only through them.
+ *
+ * WHAT IT DOES NOT FIX. A second tab's sandbox still clears the shared active id,
+ * so a first tab playing normally stops being saved until it sets one again. That
+ * is lost progress rather than damage, and two tabs on one character already lose
+ * each other's progress to last-writer-wins. It is recorded in `docs/PLANNED.md`.
  */
 let surrendered = false;
 
@@ -188,18 +189,6 @@ export function upsertMeta(meta: CharMeta): boolean {
   return writeRoster(list);
 }
 
-/**
- * Which character to OFFER on the next launch, and nothing more than that.
- *
- * IT IS NOT WHERE A SAVE GOES, and reading it as though it were is the bug this
- * comment exists to stop being rewritten. The key lives in `localStorage`, which
- * every tab on the origin shares, so it answers with whichever character the
- * origin most recently took up - not with the one the calling page is playing.
- * Two tabs on one character read it, both believed themselves its writer, and
- * autosaved over each other every three seconds with neither told. The save
- * destination is `attachedSlot()` in `slot-attach.ts`: this page's own memory,
- * which no other page can reach.
- */
 export function getActiveId(): string | null {
   return getItem(ACTIVE_KEY);
 }

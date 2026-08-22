@@ -128,11 +128,6 @@ describe("the reincarnation itself", () => {
     expect(body).not.toMatch(/setActiveId\(/u);
     expect(body).not.toMatch(/newCharId\(/u);
     expect(body).not.toMatch(/markDead\(/u);
-    /* And it does not let go of the slot either. Detaching is how a page stops
-     * being a character's writer (slot-attach.ts), so a reincarnation that did it
-     * would leave the reborn character playing to nowhere - the same "new game
-     * that happens to follow one" this test is about, arriving by a newer door. */
-    expect(body).not.toMatch(/detachSlot\(/u);
     expect(body).not.toMatch(/newGame\(/u);
     expect(body).not.toMatch(/location\.assign/u);
     expect(body).not.toMatch(/location\.reload/u);
