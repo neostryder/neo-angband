@@ -36,18 +36,6 @@ version it still calls itself.
 
 ## [Unreleased]
 
-### Fixed
-
-- Two windows open on the same character no longer overwrite each other's saves.
-  The character a window writes to is now that window's own, held for as long as
-  it is open, instead of being read from a setting every window on the origin
-  shared. Opening a character that is already being played somewhere else is
-  refused with an explanation rather than allowed and then silently lost, and a
-  window that ends up without the character - a duplicated tab, which resumes
-  without passing the character select - says so instead of playing on unsaved.
-  `neo-angband-active` still records which character to offer at the next launch;
-  it no longer decides where a save goes.
-
 ## [0.27.2] - 2026-08-22
 
 An install-clarity and defaults release: picking (I)nstall locally now lays
