@@ -30,6 +30,18 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-08-21
+
+A mod-authoring release: a mod can now drive the debug/wizard command set on a
+throwaway session, load and run for a single session without installing,
+conjure an item or creature into the live game, install a content mod through
+the same door the player's own import uses, and draw a real HTML panel over
+the game. Alongside these, an autoplayer no longer stalls at a `-more-` prompt
+or loops forever on a locked door, a stale capability check that compared kind
+rather than action is fixed, quitting a living character shows the two pauses
+upstream shows, and several help screens are transcribed from `lib/help`
+instead of a curated subset that had drifted from it.
+
 ### Added
 
 - **A mod can drive the game's debug commands, on a session that has stopped being
@@ -254,7 +266,7 @@ version it still calls itself.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.25.0` - a features release for mod
+Current state of the project at version `0.26.0` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again
