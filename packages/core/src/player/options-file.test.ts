@@ -26,7 +26,11 @@ import {
   parseCustomOptionsText,
 } from "./options-file.js";
 import type { OptionOpts } from "./options-file.js";
-import { DEFAULT_DELAY_FACTOR, DEFAULT_HITPOINT_WARN } from "./options.js";
+import {
+  DEFAULT_DELAY_FACTOR,
+  DEFAULT_HITPOINT_WARN,
+  DEFAULT_OVERRIDES,
+} from "./options.js";
 
 /** A HostIo over a Map, so the failure paths are reachable. */
 function memHost(
@@ -52,6 +56,15 @@ function tableDefaults(): OptionOpts {
   const out: OptionOpts = {};
   for (const e of OPTION_ENTRIES) out[e.name] = e.normal;
   return out;
+}
+
+/**
+ * What optionsInitDefaults returns with no customised file on disk: the
+ * table defaults plus core's one deliberate override (DEFAULT_OVERRIDES; see
+ * docs/PARITY.md "Accepted: birth_no_selling defaults to off in core").
+ */
+function initDefaults(): OptionOpts {
+  return { ...tableDefaults(), ...DEFAULT_OVERRIDES };
 }
 
 describe("option_type_name (option.c:42-73)", () => {
@@ -439,8 +452,8 @@ describe("options_init_defaults (option.c:148-164)", () => {
     }
   });
 
-  it("is the plain table defaults when no customised file exists", () => {
-    expect(optionsInitDefaults(memHost()).opts).toEqual(tableDefaults());
+  it("is the table defaults (plus core's one deliberate override) when no customised file exists", () => {
+    expect(optionsInitDefaults(memHost()).opts).toEqual(initDefaults());
   });
 
   it("sets delay_factor and hitpoint_warn AFTER the files, so no file can move them", () => {
@@ -457,7 +470,7 @@ describe("options_init_defaults (option.c:148-164)", () => {
     const io = memHost(new Map(), {
       unreadable: new Set([customOptionsFileName("BIRTH")]),
     });
-    expect(optionsInitDefaults(io).opts).toEqual(tableDefaults());
+    expect(optionsInitDefaults(io).opts).toEqual(initDefaults());
   });
 });
 

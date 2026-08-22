@@ -56,7 +56,11 @@ import { OPTION_ENTRIES } from "../generated/options.js";
 import { FileMode, FileType, HostDir } from "../host/io.js";
 import type { HostIo } from "../host/io.js";
 import { containsOnlySpaces } from "../parser.js";
-import { DEFAULT_DELAY_FACTOR, DEFAULT_HITPOINT_WARN } from "./options.js";
+import {
+  DEFAULT_DELAY_FACTOR,
+  DEFAULT_HITPOINT_WARN,
+  DEFAULT_OVERRIDES,
+} from "./options.js";
 
 /**
  * `struct player_options.opt[]` (player.h): every option's boolean value, keyed
@@ -334,6 +338,26 @@ export interface InitialOptions {
  * because the files only carry booleans. And the two restore calls have their
  * return values discarded: an unreadable customised file leaves the page on the
  * table defaults and does not stop a character being made.
+ *
+ * One deliberate, documented divergence applies on top of the table defaults
+ * (DEFAULT_OVERRIDES; see docs/PARITY.md "Accepted: birth_no_selling defaults
+ * to off in core"), applied twice for one reason each:
+ *
+ *   - BEFORE the restore calls, so a page with no customised file (parsed
+ *     normally, or unreadable) keeps the override - `optionsRestoreCustom`
+ *     leaves an unreadable file's page untouched, and a readable file's
+ *     `parseCustomOptionsText` only overwrites names it actually finds a line
+ *     for, so an override applied here survives both.
+ *   - AFTER the restore calls, but only for a page whose file does not exist
+ *     at all: that is the one case `optionsRestoreCustom` reaches
+ *     `optionsRestoreMaintainer`, which - faithfully, as its own name says -
+ *     resets every option on the page to the raw table `normal`, erasing the
+ *     first application.
+ *
+ * A page whose file exists and sets the option explicitly always wins either
+ * way, because `optionsSaveCustomText` always lists every option on its page,
+ * so an explicit line and this override cannot both apply silently - the
+ * explicit line runs last.
  */
 export function optionsInitDefaults(
   io: HostIo,
@@ -341,8 +365,22 @@ export function optionsInitDefaults(
 ): InitialOptions {
   const opts: OptionOpts = {};
   for (const entry of OPTION_ENTRIES) opts[entry.name] = entry.normal;
+  const applyOverrides = (onlyIfPageFileMissing: boolean): void => {
+    for (const [name, value] of Object.entries(DEFAULT_OVERRIDES)) {
+      if (value === undefined) continue;
+      const entry = OPTION_ENTRIES.find((e) => e.name === name);
+      if (!entry) continue;
+      const pageFileMissing = !io.exists(
+        HostDir.USER,
+        customOptionsFileName(entry.type),
+      );
+      if (!onlyIfPageFileMissing || pageFileMissing) opts[name] = value;
+    }
+  };
+  applyOverrides(false);
   optionsRestoreCustom(io, opts, "BIRTH", msg);
   optionsRestoreCustom(io, opts, "INTERFACE", msg);
+  applyOverrides(true);
   return {
     opts,
     delayFactor: DEFAULT_DELAY_FACTOR,

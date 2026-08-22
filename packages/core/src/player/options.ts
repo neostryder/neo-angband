@@ -13,7 +13,9 @@
  *
  * Faithful notes:
  * - Defaults are read straight from OPTION_ENTRIES (do not hand-copy the
- *   table): each option is seeded from its `normal` field.
+ *   table): each option is seeded from its `normal` field, with exactly one
+ *   deliberate, documented divergence applied on top (DEFAULT_OVERRIDES; see
+ *   docs/PARITY.md "Accepted: birth_no_selling defaults to off in core").
  * - hitpoint_warn is the 0..9 integer op_ptr->hitpoint_warn (DEFAULT 3), kept
  *   alongside the booleans. delay_factor (default 40) and lazymove_delay
  *   (player->opts.lazymove_delay, default 0, uint8) are carried too.
@@ -48,6 +50,20 @@ export const DEFAULT_LAZYMOVE_DELAY = 0;
 
 /** A plain map of option name -> boolean value (the serialized form). */
 export type OptionValues = Record<string, boolean>;
+
+/**
+ * Deliberate, documented divergence from OPTION_ENTRIES' own `normal` field
+ * (see docs/PARITY.md "Accepted: birth_no_selling defaults to off in core").
+ * list-options.h ships `birth_no_selling` ON; core ships it OFF, so a new
+ * character starts able to sell to stores without visiting the birth options
+ * page first. Applied wherever a default option set is built - here and in
+ * options-file.ts's optionsInitDefaults - so both paths agree. A player's own
+ * customized_birth_options.txt (or an explicit birth choice) still overrides
+ * it, exactly as it would any other option.
+ */
+export const DEFAULT_OVERRIDES: Partial<Record<OptionName, boolean>> = {
+  birth_no_selling: false,
+};
 
 /** The serialized OptionState (save format). */
 export interface OptionStateData {
@@ -117,6 +133,11 @@ export class OptionState {
     /* options_init_defaults: seed every option from its table `normal`. */
     for (const entry of OPTION_ENTRIES) {
       this.values[entry.name] = entry.normal;
+    }
+    /* Apply the one deliberate default divergence (see DEFAULT_OVERRIDES),
+     * before any preset chosen at creation so a birth choice still wins. */
+    for (const [name, value] of Object.entries(DEFAULT_OVERRIDES)) {
+      if (value !== undefined) this.values[name] = value;
     }
     /* Apply the birth/interface presets chosen at creation. Cheat presets
      * still couple to their score twins (as option_set would). */

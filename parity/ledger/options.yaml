@@ -7,7 +7,9 @@ upstream:
       - The OPT_* option table (name, description, page type, normal default).
         Codegen'd to packages/core/src/generated/options.ts as OPTION_ENTRIES
         and the OPT name->index map; OptionState reuses that table verbatim,
-        never hand-copying it.
+        never hand-copying it, with exactly one deliberate, documented
+        override applied on top (player/options.ts DEFAULT_OVERRIDES; see
+        docs/PARITY.md "Accepted: birth_no_selling defaults to off in core").
   - path: src/option.c
     items:
       - options_init_defaults (L190): seed every option from options[opt].normal
@@ -109,8 +111,9 @@ save_format:
     seedFlavor). serializeGame writes them; loadGame restores via
     OptionState.restore and re-runs do_randart from the seed.
 verified-by:
-  - player/options.test.ts (12 tests): defaults match every OPTION_ENTRIES.
-    normal; hitpoint_warn 3 / delay_factor 40 and the 0..9 clamp; the
+  - player/options.test.ts (13 tests): defaults match every OPTION_ENTRIES.
+    normal except birth_no_selling (DEFAULT_OVERRIDES, off by design);
+    hitpoint_warn 3 / delay_factor 40 and the 0..9 clamp; the
     cheat->score coupling (including the twin staying set after the cheat is
     cleared, and coupling applied to construction overrides); birth-option lock
     + immutable birth snapshot; interface options mutable in play; serialize /

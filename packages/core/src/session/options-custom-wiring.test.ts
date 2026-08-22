@@ -19,7 +19,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { OPTION_ENTRIES } from "../generated/options.js";
 import { HostDir, NULL_HOST, setHost } from "../host/io.js";
 import type { HostIo } from "../host/io.js";
-import { OptionState } from "../player/options.js";
+import { DEFAULT_OVERRIDES, OptionState } from "../player/options.js";
 import { optionsSaveCustomText } from "../player/options-file.js";
 import { startGame } from "./game.js";
 import type { GamePack } from "./game.js";
@@ -103,6 +103,18 @@ function invertedFile(page: string): string {
   return optionsSaveCustomText(opts, page);
 }
 
+/**
+ * The table default a fresh option store carries for `name`, folding in
+ * core's own documented overrides (DEFAULT_OVERRIDES; see docs/PARITY.md
+ * "Accepted: birth_no_selling defaults to off in core") the same way
+ * options_init_defaults' first two steps do.
+ */
+function tableDefault(e: (typeof OPTION_ENTRIES)[number]): boolean {
+  return Object.hasOwn(DEFAULT_OVERRIDES, e.name)
+    ? DEFAULT_OVERRIDES[e.name as keyof typeof DEFAULT_OVERRIDES]!
+    : e.normal;
+}
+
 /** state.options is optional on GameState; a booted game always has one. */
 function opts(game: ReturnType<typeof boot>): OptionState {
   const o = game.state.options;
@@ -121,10 +133,10 @@ function boot(files: Map<string, string>, overrides?: Record<string, boolean>) {
 afterEach(() => setHost(NULL_HOST));
 
 describe("options_init_defaults reaches a booted character (PORT_TODO 5.3)", () => {
-  it("CONTROL: with no customised file the store is the table, exactly", () => {
+  it("CONTROL: with no customised file the store is the table (plus core's own overrides), exactly", () => {
     const game = boot(new Map());
     for (const e of OPTION_ENTRIES) {
-      expect(opts(game).get(e.name), e.name).toBe(e.normal);
+      expect(opts(game).get(e.name), e.name).toBe(tableDefault(e));
     }
   });
 
@@ -133,7 +145,7 @@ describe("options_init_defaults reaches a booted character (PORT_TODO 5.3)", () 
     expect(opts(game).get(IFACE.name)).toBe(!IFACE.normal);
     /* And only that page moved. */
     for (const e of OPTION_ENTRIES) {
-      if (e.type !== "INTERFACE") expect(opts(game).get(e.name), e.name).toBe(e.normal);
+      if (e.type !== "INTERFACE") expect(opts(game).get(e.name), e.name).toBe(tableDefault(e));
     }
   });
 
