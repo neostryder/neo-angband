@@ -366,6 +366,20 @@ export interface ModPluginContext {
    */
   readonly debug?: ModDebug;
   /**
+   * The game's own debug commands, for a mod that TESTS rather than one that
+   * shows.
+   *
+   * Present only when your manifest declared `debug:wizard` and the player
+   * consented to it, and only while there is a game to drive; guard with
+   * `if (!ctx.wizard) return;`.
+   *
+   * Read `ModWizard` before using any of it. The whole set is behind one
+   * irreversible call - `sandbox()`, which cuts this session loose from its save
+   * slot - and telling the player what that costs before they press your button is
+   * your job, not the game's, because you are the one with a screen to say it on.
+   */
+  readonly wizard?: ModWizard;
+  /**
    * The BOUND content registries: every race, kind, feature, trap, store and
    * projection the game actually runs on, after this session's mods composed
    * their content and core bound it.
@@ -566,6 +580,161 @@ export interface ModDebug {
   spawnObject(kind: number | string): Promise<ModSpawnOutcome>;
   /** Place one creature near the player, by name or by race index. */
   spawnMonster(race: number | string): Promise<ModSpawnOutcome>;
+}
+
+/** What came of one debug command. `did` is a sentence, ready to show a player. */
+export type ModWizardOutcome =
+  | { readonly ok: true; readonly did: string }
+  | { readonly ok: false; readonly problem: string };
+
+/** The save a session is still attached to, for a sentence naming what is at risk. */
+export interface ModWizardSandbox {
+  /** The character's name, or the empty string for a slot with no roster row yet. */
+  readonly name: string;
+}
+
+/** One record a mod's browser can offer, and which pack put it in the game. */
+export interface ModWizardEntry {
+  /** The name the game knows it by. */
+  readonly name: string;
+  /** Its index in the registry this came from, for a caller that wants to be exact. */
+  readonly index: number;
+  /** Native depth, for sorting a list by where a thing belongs. */
+  readonly level: number;
+  /**
+   * The pack that ADDED this record, absent when the base game did.
+   *
+   * Absent is the common case and means core's own, the same convention
+   * `provenanceOf` uses. This is what lets a browser put a mod's own content first
+   * without keeping a list of what vanilla contains.
+   */
+  readonly from?: string;
+}
+
+/** Everything the running game has, after this session's mods composed. */
+export interface ModWizardCatalogue {
+  readonly items: readonly ModWizardEntry[];
+  readonly creatures: readonly ModWizardEntry[];
+  readonly artifacts: readonly ModWizardEntry[];
+}
+
+/** Where the character is and what it has, for filling in a panel's fields. */
+export interface ModWizardWhere {
+  /** Current dungeon level; 0 is the town. */
+  readonly depth: number;
+  /** The deepest level this game's dungeon has. */
+  readonly maxDepth: number;
+  /** Character level. */
+  readonly level: number;
+  readonly experience: number;
+  readonly gold: number;
+  /** Current stats, in the engine's own order, named. */
+  readonly stats: readonly { readonly name: string; readonly value: number }[];
+}
+
+/**
+ * `ctx.wizard`: the game's own debug commands, for testing a mod.
+ *
+ * Present only when your manifest declared `debug:wizard` and the player consented
+ * to it, and only while there is a game to drive; guard with
+ * `if (!ctx.wizard) return;`.
+ *
+ * READ THIS BEFORE YOU BUILD A BUTTON. Every command here refuses until you have
+ * called `sandbox()`, which cuts this session loose from its save slot and cannot
+ * be undone. That is the deal: you get the whole debug set, and in exchange the
+ * character it happens to has already stopped being written to disk. A mod cannot
+ * opt out of it and neither can the player, which is what makes the grant offerable
+ * at all.
+ *
+ * WHAT `sandbox()` COSTS, and you are the one who has to say it, because you are
+ * the one with a screen. The character on disk keeps whatever the last save left,
+ * and every turn from then on is discarded. The autosave runs at the tail of a turn
+ * and throttles to three seconds, so what is lost is at most three seconds of
+ * turns. Afterwards the session plays on in memory; reloading the page returns the
+ * player to the character select with their character waiting as it was. Call
+ * `attached()` first to get the name, so you can put it in the question.
+ *
+ * NOT THE SAME AS `ctx.debug`, and neither is a bigger version of the other.
+ * `ctx.debug` conjures one thing into the character the player is actually playing,
+ * after the game's own once-per-character question, and it is the right seam for a
+ * mod that made a monster and wants to show it to you. This one is for a mod that
+ * needs the character to be somewhere else, some other level, carrying something
+ * else - which is testing, not showing - and it pays for that with the save.
+ *
+ * PLACEMENT IS THE GAME'S, as it is there: items land at the player's feet,
+ * creatures are scattered nearby, and there are no coordinates in this API.
+ */
+export interface ModWizard {
+  /** Whether `sandbox()` has already happened. Everything else refuses until it has. */
+  sandboxed(): boolean;
+  /**
+   * The save this session would write to, or null when it would write nowhere.
+   *
+   * Ask this BEFORE `sandbox()`: it is how you name the character in the question
+   * you put to the player. Null afterwards, and null for a session that never had
+   * a slot.
+   */
+  attached(): ModWizardSandbox | null;
+  /**
+   * Cut this session loose from its save. One way, and the gate on everything else.
+   *
+   * Also takes the character's debug mark, because after this it is simply true.
+   * Idempotent: calling it on a session that is already loose succeeds.
+   */
+  sandbox(): ModWizardOutcome;
+  /**
+   * Every item, creature and artifact this game has, each saying which pack added
+   * it. Readable BEFORE `sandbox()` - deciding what to test is how a player decides
+   * whether to detach at all.
+   */
+  catalogue(): ModWizardCatalogue;
+  /** Where the character is and what it has, or null when there is no game. */
+  where(): ModWizardWhere | null;
+
+  /** Drop `quantity` of one item at the player's feet, by name or registry index. */
+  spawnItem(which: number | string, quantity?: number): ModWizardOutcome;
+  /** Put `quantity` of one creature beside the player, by name or race index. */
+  spawnCreature(which: number | string, quantity?: number): ModWizardOutcome;
+  /** Drop one artifact at the player's feet, by name or index. */
+  spawnArtifact(which: number | string): ModWizardOutcome;
+
+  /** Go to a dungeon level. 0 is the town. */
+  goToDepth(depth: number): ModWizardOutcome;
+  /** Gain experience, levelling up on the way as normal play would. */
+  grantExperience(amount: number): ModWizardOutcome;
+  /** Set the experience total outright, gaining or losing to reach it. */
+  setExperience(value: number): ModWizardOutcome;
+  setGold(value: number): ModWizardOutcome;
+  /** Set one stat by name ("STR", "INT", ...). Clamped to the game's own band. */
+  setStat(stat: string, value: number): ModWizardOutcome;
+  /** Everything at maximum: stats, experience, gold, hit points. */
+  maxOut(): ModWizardOutcome;
+  /** Full hit points and spell points, every affliction cured, fed. */
+  heal(): ModWizardOutcome;
+  /** Reroll the per-level hit point table. */
+  rerollLife(): ModWizardOutcome;
+
+  /** Drop `quantity` good (or `great`) random items, the way acquirement does. */
+  acquire(quantity: number, great?: boolean): ModWizardOutcome;
+  /** Summon `quantity` random creatures near the player. */
+  summonRandom(quantity: number): ModWizardOutcome;
+  /** Remove every creature within `range` squares. Defaults to the whole level. */
+  banish(range?: number): ModWizardOutcome;
+  /** Hit everything in line of sight, hard. */
+  killVisible(): ModWizardOutcome;
+  /** Teleport the player up to `range` squares away. */
+  teleport(range: number): ModWizardOutcome;
+
+  /** Map this level. */
+  mapLevel(): ModWizardOutcome;
+  /** Light the whole level. */
+  lightLevel(): ModWizardOutcome;
+  /** Show every creature on this level. */
+  findCreatures(): ModWizardOutcome;
+  /** Learn every item found down to `upTo` (the whole dungeon when omitted). */
+  learnItems(upTo?: number): ModWizardOutcome;
+  /** Learn every creature's lore. */
+  learnCreatures(): ModWizardOutcome;
 }
 
 /**

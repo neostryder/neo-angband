@@ -22,6 +22,7 @@ import {
   type ModPluginContext,
   type ModSessionOutcome,
   type ModUi,
+  type ModWizard,
 } from "./mod-plugin";
 import { diskPacks } from "./disk-packs";
 import { modPrefs, type ModPrefs } from "./mod-prefs";
@@ -35,6 +36,7 @@ import {
   type InstallDoorDeps,
 } from "./install-runtime";
 import { createModDebug, SPAWN_CAPABILITY, type SpawnDoorDeps } from "./spawn-runtime";
+import { createModWizard, WIZARD_CAPABILITY, type WizardDoorDeps } from "./wizard-runtime";
 import type { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /**
@@ -93,6 +95,7 @@ export function modPluginContext(
   const installMod = installerFor(session);
   const loadModForSession = sessionLoaderFor(session);
   const debug = debugFor(id, session);
+  const wizard = wizardFor(id, session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
   const registries = session.registries ?? boundRegistries;
@@ -121,6 +124,7 @@ export function modPluginContext(
     ...(installMod ? { installMod } : {}),
     ...(loadModForSession ? { loadModForSession } : {}),
     ...(debug ? { debug } : {}),
+    ...(wizard ? { wizard } : {}),
     /* Spread rather than set to undefined, so `"registries" in ctx` answers the
      * same question as `ctx.registries !== undefined` - the shape `state` uses. */
     ...(registries ? { registries } : {}),
@@ -233,6 +237,35 @@ function debugFor(id: string, session: ModSessionFacts): ModDebug | undefined {
   return createModDebug(id, spawnDoor);
 }
 
+/**
+ * `ctx.wizard`: present only when this mod's manifest declared `debug:wizard` AND
+ * there is a live game to drive.
+ *
+ * The same two conditions `debugFor` checks and for the same reason - the wizard
+ * deps bundle is assembled by `wireGame` and does not exist during content
+ * composition - and a DIFFERENT capability, checked separately, because a mod that
+ * may conjure one monster has not thereby been allowed to detach the player's save.
+ */
+function wizardFor(id: string, session: ModSessionFacts): ModWizard | undefined {
+  if (session.wizard !== undefined) return session.wizard;
+  if (!session.capabilities?.has(WIZARD_CAPABILITY)) return undefined;
+  /* THE SAME LATCH, NOT A SECOND ONE, and that is a decision rather than reuse.
+   *
+   * There is exactly one live game on a page, and `SpawnDoorDeps.wizard` is the
+   * getter over it - `WizardDoorDeps` is that field and nothing else, so the door
+   * already latched satisfies both surfaces by construction. A second latch would
+   * have added one more thing for a new boot path to forget, and forgetting it
+   * would hand every mod `wizard: undefined`, which is indistinguishable from a
+   * capability the player never granted. That is the failure `boundRegistries` and
+   * `installDoor` both carry a comment about; a seam that cannot be forgotten is
+   * better than a seam with a note asking not to forget it.
+   *
+   * The two surfaces stay two capability checks over one source. Sharing where the
+   * game is says nothing about who may reach it. */
+  if (!spawnDoor) return undefined;
+  return createModWizard(id, spawnDoor satisfies WizardDoorDeps);
+}
+
 /** Where a mod's conjuring goes, latched once per page. Same argument as above. */
 let spawnDoor: SpawnDoorDeps | undefined;
 
@@ -263,6 +296,8 @@ export interface ModSessionFacts {
   readonly loadModForSession?: (bytes: Uint8Array) => Promise<ModSessionOutcome>;
   /** Override ctx.debug directly (tests, and a front end with its own). */
   readonly debug?: ModDebug;
+  /** Override ctx.wizard directly (tests, and a front end with its own). */
+  readonly wizard?: ModWizard;
   /**
    * Override the bound registries, for a test that wants a plugin to see a
    * registry it built by hand rather than one a booted game latched.
