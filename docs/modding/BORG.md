@@ -41,6 +41,11 @@ Three steps, and the third is separate from the second on purpose.
 3. **Hand it the keyboard.** On the Borg's own screen, switch on **Let the Borg
    play** (`borg.autoplay`, off by default). It takes over from the next turn.
 
+Beyond that one switch, the same screen carries eight further toggles mapped to
+upstream's `borg_cfg[]` settings, covering risk tolerance and the five
+gear-weighting priorities among others, each defaulting to upstream's own
+value. The mod's own README lists all eight and what each one changes.
+
 Installing a mod and giving away the keyboard are different decisions, which is
 why they are different switches. Only one autoplayer can hold the keyboard at a
 time: if a second mod also declares a controller, the host refuses it by name and
