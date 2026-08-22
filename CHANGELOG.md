@@ -37,11 +37,30 @@ version it still calls itself.
 ## [Unreleased]
 
 ### Added
-- A player-visible speed control for a mod's autoplayer: the mod's own Fixes &
-  tweaks screen (Mods -> the mod) now shows an Autoplayer speed row - Fast,
-  Normal or Slow - beside the rule that hands it the keyboard in the first
-  place, once it holds the controller slot. Takes effect at once, no reload.
-  Matches the debug agent seam's existing `?speed=fast|normal|slow` tiers.
+
+- **`ctx.authoring`: the mod SDK's authoring stack, handed to a plugin.** The
+  whole public barrel, live, on the terms `ctx.core` is handed over: blueprints
+  measured from core's own records, `peersFor`, `suggestFields`, `templateRecord`,
+  `draftRecord`, `checkRecords` and `ModProject`. Always present and gated by no
+  capability, because these are pure functions over data the caller supplies. A
+  tool that helps somebody write a monster could reach none of it before: a plugin
+  resolves no bare specifier, so the published npm package was out of reach of the
+  game it describes.
+- **`ctx.composedRecords`: the records the running game was composed from.**
+  Every content record as JSON, keyed by pack-file stem with no extension, which
+  is the shape the authoring functions accept. This is the unbound twin of
+  `ctx.registries`: a bound `MonsterRace` has no `base`, because the binder
+  resolved the name into a pointer, so a table of comparable records could not be
+  built from the registry. Mod-added records are in it on the same terms as
+  core's, each carrying its provenance, so a draft based on another mod's content
+  can name the dependency it just acquired. Absent during content composition,
+  for the reason `ctx.registries` is.
+- **A second API-surface ratchet, over the SDK.**
+  `packages/mod-sdk/mod-sdk-api-surface.json` records its 94 runtime exports and
+  `mod-authoring-surface.test.ts` fails in both directions against it. Handing a
+  namespace to a plugin puts every name in it beyond the compiler's reach, which
+  is why core has had this since 2026-08-02; `node tools/api-surface.mjs` now
+  checks and updates both baselines in one run.
 
 ## [0.27.2] - 2026-08-22
 

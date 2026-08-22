@@ -301,6 +301,7 @@ import {
 import {
   modOwnFiles,
   modPluginContext,
+  setModComposedRecords,
   setModInstallDoor,
   setModRegistries,
   setModDebugDoor,
@@ -321,7 +322,7 @@ import { applyPrefText } from "./prefs-ui";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, presentNamespaces, diskPackStatus, enabledModIds, composedRecords } from "./pack";
 import { liveConflictLines } from "./mod-conflicts";
-import { resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
+import { composedObjects, resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   defaultModStore,
   buildCatalog,
@@ -329,7 +330,6 @@ import {
   resolveEnabledIds,
   resolveModRules,
   FIRST_PARTY_MOD_IDS,
-  type AutoplayerSpeed,
 } from "./mod-store";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, reportModFault } from "./mod-problems";
@@ -1192,6 +1192,17 @@ const { state, registry, booted, players } = game;
  * is TRACKING can do had no way to ask before this, and neither did a tile pack
  * asking what content the session actually contains. */
 setModRegistries(booted.registries);
+/* And the UNBOUND half of the same composition, as `ctx.composedRecords`.
+ *
+ * ON THIS LINE rather than anywhere else, because the two are one composition
+ * seen twice: `booted.registries` is what the binder produced and this is what it
+ * read. Setting one without the other would hand an authoring tool a peer table
+ * drawn from a different game than its registry lookups answer about.
+ *
+ * `composedObjects` is the SDK's own narrowing, so the host and the authoring
+ * functions cannot disagree about which elements of a passthrough file are
+ * records. */
+setModComposedRecords(composedObjects(composedRecords()));
 /* And where a mod holding `mod:install` may land an archive. The env is the same
  * one every other install path is given (`modBrowseDeps`), and the consent switch
  * is read at the MOMENT OF USE rather than captured here, so a player turning
@@ -5849,18 +5860,6 @@ async function openModManager(): Promise<void> {
     // Fixes & tweaks: the enabled mods' declared rules, and a live-apply so a
     // toggle takes effect at once (no reload).
     ruleDecls: () => loadEnabledModRuleDecls(),
-    // The autoplayer speed row (Fixes & tweaks, beside the rule that hands the
-    // mod its controller in the first place): activeId says which mod's screen
-    // gets the row, getSpeed/setSpeed read and write the persisted tier and,
-    // through installedControllerSpeed, re-pace the live pump at once.
-    autoplayer: {
-      activeId: () => installedController?.id ?? null,
-      getSpeed: () => defaultModStore().getAutoplayerSpeed(),
-      setSpeed: (speed) => {
-        defaultModStore().setAutoplayerSpeed(speed);
-        installedControllerSpeed?.(speed);
-      },
-    },
     applyRuleLive: (flag, on) => {
       /* modRules is now only the RECORD of the player's choice - core never
        * branches on it - so writing it alone was a SILENT NO-OP for all seven
@@ -10279,7 +10278,6 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
     closePanels: closeAllModPanels,
   });
   installedController = null;
-  installedControllerSpeed = null;
   /* Back to candidate zero, not to nothing: the page has not re-composed yet
    * and the autosave below can still repaint, so the map needs an owner the
    * whole way down. A departing mod's sink must not be that owner. */
@@ -11881,17 +11879,6 @@ const installedPluginIds = new Set<string>();
  */
 let installedController: { id: string; session: AgentSession } | null = null;
 
-/**
- * Re-paces the live autoplayer pump to a newly chosen speed tier, when one is
- * installed - null while `installedController` is null. Set alongside it (the
- * controller-install loop below), cleared alongside it (reloadAfterModChange).
- * The mod manager's "Autoplayer speed" row (mods.ts) calls through this rather
- * than through `installedController` directly, because a slot ID is not enough
- * to rebuild a `setInterval` at a new rate - only the closure that owns the
- * timer can do that.
- */
-let installedControllerSpeed: ((speed: AutoplayerSpeed) => void) | null = null;
-
 function installSandbox(pluginId: string): void {
   const found = discoverPlugins().get(pluginId);
   if (!found) {
@@ -12389,17 +12376,7 @@ installRegions(
  * already advanced the save ratchet when the mod was enabled
  * (advanceSaveRatchets above), and asking the plugin again would be a second
  * source of truth for one fact. */
-/* Same three tiers and millisecond values as the debug agent seam's
- * ?speed=fast|normal|slow (AGENT_TICK_MS above), so the two pumps read the
- * same way to a player who has met either. Player-set via Mods -> the
- * autoplaying mod's own screen -> Autoplayer speed (mods.ts managePatches),
- * beside the rule that hands the mod its controller in the first place. */
-const AUTOPLAYER_SPEED_MS: Record<AutoplayerSpeed, number> = {
-  fast: 40,
-  normal: 120,
-  slow: 400,
-};
-let MOD_AUTOPLAYER_TICK_MS = AUTOPLAYER_SPEED_MS[defaultModStore().getAutoplayerSpeed()] ?? 120;
+const MOD_AUTOPLAYER_TICK_MS = 120; // matches the debug agent seam's "normal" speed
 for (const loaded of activeModCode().plugins) {
   const makeController = loaded.plugin.controller;
   if (!makeController) continue;
@@ -12462,55 +12439,43 @@ for (const loaded of activeModCode().plugins) {
     /* The pump. No tick cap: the demo/plugin seams cap ticks as a debug
      * safety valve for a manual test run, and a real "let it play" mod has no
      * such length limit - it plays until the human takes the keyboard back or
-     * the mod throws.
-     *
-     * startModTimer is a named function rather than an inline setInterval so a
-     * live speed change (installedControllerSpeed, driven by the mod manager's
-     * Autoplayer speed row) can tear the pump down and rebuild it at the new
-     * rate at once - no reload, the same bar the rule toggles above already
-     * clear. */
-    let modTimer: ReturnType<typeof setInterval> | undefined;
-    const startModTimer = (): void => {
-      modTimer = setInterval(() => {
-        if (dead) {
-          clearInterval(modTimer);
-          return;
-        }
-        if (scoresOpen) return;
-        if (modalDepth > 0) {
-          /* THE AUTOPLAYER ANSWERS ITS OWN PROMPTS (answerBlockingPrompt).
-           *
-           * This line used to be `if (scoresOpen || modalDepth > 0) return`, and
-           * that made every blocking prompt a full stop: descending prints "You
-           * enter a maze of down staircases." behind a forced -more-, so a mod
-           * that plays the game by itself could not change level without a human
-           * pressing a key. The floor-pile list and the store screen are the same
-           * shape, and the `auto_more` option reaches neither.
-           *
-           * Before gameScreenLive the birth flow owns the terminal, and a mod's
-           * clock must not answer for the player who is rolling a character. */
-          if (gameScreenLive) answerBlockingPrompt(`mod:${loaded.id}`);
-          return;
-        }
-        modArmed = true;
-        /* A buggy or hostile autoplayer must not crash or hang the host: on a
-         * throw, stop the pump and hand the keyboard back rather than let the
-         * exception escape the timer. The human can still take over by hand;
-         * this only stops the automatic driving. */
-        try {
-          advance();
-        } catch (err) {
-          log.error(`mod:${loaded.id}`, `autoplayer pump failed:`, err);
-          clearInterval(modTimer);
-        }
-      }, MOD_AUTOPLAYER_TICK_MS);
-    };
-    startModTimer();
-    installedControllerSpeed = (speed) => {
-      MOD_AUTOPLAYER_TICK_MS = AUTOPLAYER_SPEED_MS[speed] ?? 120;
-      clearInterval(modTimer);
-      startModTimer();
-    };
+     * the mod throws. MOD_AUTOPLAYER_TICK_MS is a plain constant rather than
+     * a player-visible speed control for now; that refinement is tracked in
+     * docs/PLANNED.md and is not what stood between this loop and being
+     * watchable. */
+    const modTimer = setInterval(() => {
+      if (dead) {
+        clearInterval(modTimer);
+        return;
+      }
+      if (scoresOpen) return;
+      if (modalDepth > 0) {
+        /* THE AUTOPLAYER ANSWERS ITS OWN PROMPTS (answerBlockingPrompt).
+         *
+         * This line used to be `if (scoresOpen || modalDepth > 0) return`, and
+         * that made every blocking prompt a full stop: descending prints "You
+         * enter a maze of down staircases." behind a forced -more-, so a mod
+         * that plays the game by itself could not change level without a human
+         * pressing a key. The floor-pile list and the store screen are the same
+         * shape, and the `auto_more` option reaches neither.
+         *
+         * Before gameScreenLive the birth flow owns the terminal, and a mod's
+         * clock must not answer for the player who is rolling a character. */
+        if (gameScreenLive) answerBlockingPrompt(`mod:${loaded.id}`);
+        return;
+      }
+      modArmed = true;
+      /* A buggy or hostile autoplayer must not crash or hang the host: on a
+       * throw, stop the pump and hand the keyboard back rather than let the
+       * exception escape the timer. The human can still take over by hand;
+       * this only stops the automatic driving. */
+      try {
+        advance();
+      } catch (err) {
+        log.error(`mod:${loaded.id}`, `autoplayer pump failed:`, err);
+        clearInterval(modTimer);
+      }
+    }, MOD_AUTOPLAYER_TICK_MS);
   } catch (err) {
     /* Same containment as register(): a controller that will not install must
      * leave a game the player can still play by hand. The commonest cause is a
