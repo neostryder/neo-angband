@@ -38,6 +38,20 @@ version it still calls itself.
 
 ### Fixed
 
+- Repeated identical messages showed as one top line with a ticking `<Nx>`
+  counter instead of being reprinted. Upstream keeps the run-length count for
+  the recall screen only: the top line is redrawn for every occurrence, several
+  share the line, and a `-more-` prompt stops for each screenful. The recall
+  screen (`Ctrl-P`) still collapses the run, unchanged. Two related cases came
+  with it: the top line no longer carries a `<Nx>` suffix that belongs only to
+  the recall screen, and the partial line left by a step of a run or a rest now
+  carries into the next step instead of being wiped, so its `-more-` arrives
+  when the line fills rather than never. A dig, an open or a disarm keeps
+  starting each attempt on a fresh line, which is what upstream does for a
+  command repeating on its own count. Reported by `nck_m`.
+- Leaving a level with several screenfuls of pending messages read only the
+  earlier ones: the last screenful got no `-more-` and was wiped by the new
+  level. The flush before a level change now stops for every screenful.
 - A run of identical messages on the recall screen (`Ctrl-P`) read `text (xN)`;
   upstream's own format (`ui-knowledge.c`, `ui-display.c`) is `text <Nx>`. Three
   comments describing the old, wrong format as upstream's are corrected too.

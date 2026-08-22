@@ -449,7 +449,7 @@ import {
   GAME_MENU_FOOTER,
   DEATH_MENU_FOOTER,
 } from "./game-menu";
-import { MessageLog, messageTypeCode, paginateMessages, pushTypedMessage } from "./messages";
+import { MessageLog, messageTypeCode, packMessages, pushTypedMessage } from "./messages";
 import {
   inventoryScreen,
   equipmentScreen,
@@ -1831,6 +1831,14 @@ let liveHudSink: HudFrameSink = hudFrameSink(coreHudSlot, reportDisplayFault);
 // central message sink; routing it here means command/effect messages surface
 // without each call site knowing about the shell.
 const msglog = new MessageLog();
+/**
+ * The port's `message_column`, expressed as a cursor rather than a column: the
+ * first raw message event that has NOT yet been flushed past a "-more-". Reset
+ * when a player command is read (upstream's `msg_flag = false`,
+ * ui-input.c:1824) and carried across the steps of a self-continuing command,
+ * so the top line fills up over a long run or dig exactly as upstream's does.
+ */
+let msgPending = 0;
 function say(text: string, type?: MessageType): void {
   if (!text) return;
   if (state.messages) {
@@ -8170,46 +8178,49 @@ function waitAnyKey(): Promise<void> {
 }
 
 /**
- * Page the messages logged during the turn that started at log length `preLen`,
- * pausing with "-more-" between pages unless auto_more is set. A single page
- * (the common case) needs no pause - render() has already put it on the top
- * line - so this returns immediately. Runs inside a modal so the game key
- * handler stands down while the player reads.
+ * Page the raw message events recorded since cursor `preLen`, pausing with
+ * "-more-" between pages unless auto_more is set. A single page (the common
+ * case) needs no pause - render() has already put it on the top line - so this
+ * returns immediately. Runs inside a modal so the game key handler stands down
+ * while the player reads.
+ *
+ * The feed is the RAW stream (`rawSince`), not the collapsed history, because
+ * upstream's `event_signal_message` fires on every occurrence while
+ * `message_add` collapses only the recall screen's copy. A dig repeated until
+ * the wall gives way therefore reprints its line and pauses, instead of ticking
+ * a `<Nx>` counter in place.
  */
 async function pumpMessages(preLen: number, force = false): Promise<void> {
-  const fresh = msglog.all().slice(preLen);
-  const pages = paginateMessages(fresh, term.size().cols);
+  const fresh = msglog.rawSince(preLen);
+  const { pages, pendingFrom } = packMessages(fresh, term.size().cols);
+  const autoMore = state.options?.get("auto_more") ?? false;
+  /* `force` is message_flush (ui-input.c L609-635), which the caller signals
+   * before replacing the screen: it flushes the PENDING line too, so nothing is
+   * left on row 0 to be wiped unread. on_new_level (game-world.c:1027) sends
+   * EVENT_MESSAGE_FLUSH before EVENT_NEW_LEVEL_DISPLAY for exactly that reason.
+   * Ordinary paging instead leaves the final page standing, because that is
+   * what message_column still holds when display_message returns.
+   *
+   * Either way the flushed pages are gone: msg_flush erases row 0 and zeroes
+   * message_column, and this cursor is that erasure - only the unflushed tail
+   * may be shown again on the next step of a self-continuing command. */
+  msgPending = force ? msglog.rawLength() : preLen + pendingFrom;
   if (fresh.length > 0) {
     messageColor = fresh[fresh.length - 1]?.color ?? UI_TEXT;
   }
-  /* `force` is msg_flush proper (ui-input.c L565-595): the caller is about to
-   * replace the screen, so even a single page has to be READ first - it gets
-   * the "-more-" prompt and waits, exactly as on_new_level's
-   * EVENT_MESSAGE_FLUSH does before EVENT_NEW_LEVEL_DISPLAY. Without a key to
-   * wait for, the last thing that happened on the old level is wiped unread. */
-  if (force && pages.length === 1 && !(state.options?.get("auto_more") ?? false)) {
-    const page = pages[0] ?? "";
-    message = page;
-    render();
-    term.print(page.length + 1, 0, "-more-", MORE_COLOR);
-    await waitAnyKey();
-    return;
-  }
-  if (pages.length <= 1) {
+  if (pages.length === 0) return;
+  /* How many pages end in a "-more-" the player has to answer. auto_more (and a
+   * keymap's auto-more) skips msg_flush's anykey() but not its erase, so the
+   * pages still happen; only the waiting does not. */
+  const prompts = autoMore ? 0 : force ? pages.length : pages.length - 1;
+  const last = pages[pages.length - 1] ?? "";
+  if (prompts === 0) {
     // display_message packs the whole turn's messages onto row 0 (ui-input.c
     // L570-590), so a turn with several short messages ("You are covered in
     // acid!" + "You feel your life draining away!") shows them concatenated -
-    // not just msglog.latest(), which is all render() drew. Put the single
-    // packed page on the top line so no earlier message is dropped.
-    if (pages.length === 1) {
-      message = pages[0] ?? message;
-      render();
-    }
-    return;
-  }
-  const last = pages[pages.length - 1] ?? "";
-  if (state.options?.get("auto_more")) {
-    message = last;
+    // not just the newest one, which is all render() drew. Put the packed page
+    // on the top line so no earlier message is dropped.
+    message = force ? "" : last;
     render();
     return;
   }
@@ -8218,7 +8229,7 @@ async function pumpMessages(preLen: number, force = false): Promise<void> {
       const page = pages[i] ?? "";
       message = page;
       render();
-      if (i < pages.length - 1) {
+      if (i < prompts) {
         // msg_flush(message_column + split + 1) (ui-input.c L575): the -more-
         // prompt sits one column after the message text, which now starts at
         // col 0 (REND-5), so no sidebar offset.
@@ -8227,7 +8238,9 @@ async function pumpMessages(preLen: number, force = false): Promise<void> {
       }
     }
   });
-  message = last;
+  // Term_erase(0, 0, 255) at the tail of the forced flush; otherwise the last
+  // page stays on row 0, which is where display_message left it.
+  message = force ? "" : last;
   render();
 }
 
@@ -8458,8 +8471,32 @@ function advance(): void {
   // A key held over from a pump that ended some other way (a level change, a
   // death) must not abort the NEXT run.
   if (!pumping) interruptKey = false;
+  /* Is this the first step of a player command, or the next step of one that is
+   * continuing itself (a run, a pathfind, an auto-repeated dig)? Upstream asks
+   * the same question by whether inkey was reached: `textui_get_command` clears
+   * `msg_flag` (ui-input.c:1824) and the next `display_message` therefore zeroes
+   * `message_column`, but a self-continuing command never gets there, so its
+   * top line keeps filling across steps until it overflows into a "-more-". */
+  const continuing = pumping;
   pumping = false;
-  const preLen = msglog.all().length; // messages before this turn, for -more-
+  /* THE OTHER HALF, and it is the one that is easy to get backwards.
+   * process_player asks `cmd_get_nrepeats() > 0` at the top of every iteration
+   * (game-world.c:972). A command repeating on its own COUNT - tunnel, open,
+   * close, disarm, alter, the five with auto_repeat_n 99 (cmd-core.c L82-87) -
+   * takes the yes branch, which signals EVENT_COMMAND_REPEAT, and
+   * repeated_command_display (ui-display.c:2495) assumes those messages were
+   * seen: `msg_flag = false` and `prt("", 0, 0)`. So a long dig gets a FRESH top
+   * line every attempt and never builds towards a "-more-". A run, a rest or a
+   * pathfind carries no repeat count, takes the no branch, and accumulates.
+   * `repeatRemaining` is this port's nrepeats, the same field
+   * checkForPlayerInterrupt reads (loop.ts). */
+  const repeating = (state.cmdQueue ?? []).some((c) => (c.repeatRemaining ?? 0) > 0);
+  // Raw events before this command, for -more-. A fresh command and a counted
+  // repeat both start clean; only a run/rest/pathfind step inherits the partial
+  // line the step before it left pending.
+  const startsClean = !continuing || repeating;
+  if (startsClean) msgPending = msglog.rawLength();
+  const preLen = msgPending;
   const beforeX = state.actor.grid.x;
   const beforeY = state.actor.grid.y;
   const seeFloorReq = seeFloorRequested; // do_cmd_hold requested a floor look
@@ -8472,7 +8509,13 @@ function advance(): void {
   // leaves row 0 blank instead of stranding the previous line (e.g. "You have
   // killed a rat.") across every subsequent step. Free-action/prompt commands
   // that set `message` directly do not call advance(), so they are unaffected.
-  message = "";
+  //
+  // A RUN OR REST STEP IS NOT A NEW COMMAND, so it does not erase row 0 -
+  // nothing upstream clears the line between those steps, and clearing it here
+  // threw away the partial line the pending cursor above is still carrying. A
+  // counted repeat DOES erase it, because repeated_command_display does
+  // (prt("", 0, 0)); that is the same condition, so it is the same flag.
+  if (startsClean) message = "";
   /* THE ENGINE IS NOT EXEMPT FROM ITS OWN CONTAINMENT RULE.
    *
    * A mod's hook throwing mid-turn is caught, named and taints the session
