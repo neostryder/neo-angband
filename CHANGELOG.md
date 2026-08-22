@@ -85,6 +85,13 @@ version it still calls itself.
   tracker and the RPGM Tools Discord, and the two issue form templates note
   that the report file already answers several of their required fields.
   Reported by `nck_m`.
+- An agent's `shopBuy` / `shopSell` / `shopExit` commands reached no handler at
+  all: the engine's command registry had nobody registered for `shop-buy`,
+  `shop-sell` or `shop-exit`, so a controller's shopping decisions were a
+  silent no-op and an autoplayer that stepped into a shop could not spend or
+  raise a copper. The three now resolve a stock index or a gear handle into a
+  real object, re-check standing in the right store, and commit through the
+  same buy/sell path the interactive shop screen uses.
 
 ## [0.26.0] - 2026-08-21
 
