@@ -138,6 +138,29 @@ so the banner is not saying anything false; the clauses arrive with the commands
 Its `<click>` half is also absent, because taps are gated off while a modal owns
 input.
 
+### The top line during a long repeated action (resting, digging, running)
+
+Upstream's `msg()` does two separate things on an identical repeat:
+`message_add` (`message.c`) collapses it into a history run-length count, and
+`event_signal_message` fires unconditionally, so `display_message`
+(`ui-input.c:484`) still redraws the top line for every single occurrence,
+paginating with `-more-` once a page fills. The port's `MessageLog.push`
+(`packages/web/src/messages.ts`) folds both jobs into one: an identical repeat
+increments `count` and returns without appending, so the top line shows the
+same text with a ticking `<Nx>` counter instead of being reprinted, and
+`pumpMessages`'s length-based slice never sees a run long enough to page. A
+player watching a long rest sees one line update its count rather than the
+repeated lines and pauses upstream shows. Reported from a real playthrough,
+2026-08-21 (r/angband thread).
+
+Closing it means splitting the two jobs `message_add` does: keep the history
+dedupe (`MessageLog`'s own run-length count is faithful on its own terms, it is
+what the recall screen wants), but feed the top-line/paging path from the raw
+per-turn event stream instead of from the deduped history. Touches
+`MessageLog`, `pumpMessages`, and the `-more-` pacing logic together, and at
+least `messages.test.ts` and `screens.test.ts` pin the current (collapsed)
+behavior, so this needs its own measured pass rather than a quick edit.
+
 ## Mod resilience
 
 The contract is in `docs/modding/MOD_COMPATIBILITY.md`, and its four gates are
