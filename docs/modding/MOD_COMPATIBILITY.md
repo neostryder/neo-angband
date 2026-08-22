@@ -257,6 +257,27 @@ calling it for its own diagnostics gets a type error at build and a different
 array at runtime. Recorded here rather than aliased: there is no honest alias for
 "the same call now answers a different question."
 
+`CellView.trap` survives by name but **changed meaning**, unreleased
+(2026-08-21). It used to be "this grid holds any trap record" and it is now
+`square_isdisarmabletrap`: a VISIBLE PLAYER trap that is not already disabled.
+
+Recorded here rather than kept and supplemented with a second field, because the
+old answer was not a different question - it was the wrong answer to this one. The
+trap list is also where a closed door's LOCK lives (`square_set_door_lock`, flagged
+`LOCK | INVISIBLE`), along with a glyph of warding, a web and a decoy. None of
+those is a trap a player can see or the `disarm` command will act on, so a mod
+reading the old field got a locked door presented as something to disarm - and
+`disarm` refuses it without spending a turn, which turns a plausible decision into
+a hang. The old meaning also contradicted the view's own rule, stated on the
+neighbouring `trapGlyph`: a trap the player has not found is not on the screen and
+so is not in the view.
+
+**What to do about it.** A mod that used `trap` to decide whether to disarm needs
+no change and stops hanging. A mod that used it to ask "is there anything in the
+trap list here" - a map overlay counting glyphs of warding, say - now gets `false`
+for a glyph and needs the trap layer instead: `trapGlyph` is present for exactly
+the traps the player can see, glyph included.
+
 `ProcessPrefOptions` **changed shape** for the same reason and in the same
 direction (#272, unreleased 2026-08-14): its `errorLimit?: number` is now
 `errorPolicy?: PrefErrorPolicy`. A plugin that called

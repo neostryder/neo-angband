@@ -354,7 +354,11 @@ describe("CellView rich fields", () => {
     expect(before?.trap).toBe(false);
 
     state.chunk.sqinfoOn(grid, SQUARE["GLOW"]);
-    state.traps.set(idx, [{} as unknown as Trap]);
+    /* A trap the player has FOUND: `trap` is square_isdisarmabletrap, so it
+     * needs a visible player trap rather than merely a record on the square. */
+    state.traps.set(idx, [
+      { tidx: 3, timeout: 0, flags: new Set([TRF["TRAP"], TRF["VISIBLE"]]) } as unknown as Trap,
+    ]);
 
     const after = createAgentView(state).cell(10, 10);
     expect(after?.glow).toBe(true);
@@ -376,6 +380,7 @@ describe("CellView / MonsterView glyphs (1.1.0)", () => {
   /** A trap the player can see, or cannot. */
   function trapAt(state: GameState, grid: ReturnType<typeof loc>, visible: boolean): void {
     const flags = new Set<number>();
+    flags.add(TRF["TRAP"]); // a player trap, which is what square_isplayertrap asks
     if (visible) flags.add(TRF["VISIBLE"]);
     state.traps.set(grid.y * state.chunk.width + grid.x, [
       {
@@ -451,17 +456,52 @@ describe("CellView / MonsterView glyphs (1.1.0)", () => {
   });
 
   it("reports a trap the player can see, and hides one they cannot", () => {
-    /* Measured on the MCP renderer before this landed: 15 levels, 74 trapped
-     * squares, 74 undetected, and all 74 drawn. `trap` means a trap is there;
-     * only `trapGlyph` means the player has found it. */
+    /* Measured on the MCP renderer before the glyph layer landed: 15 levels, 74
+     * trapped squares, 74 undetected, and all 74 drawn. BOTH fields answer for
+     * what is on the player's screen: `trapGlyph` is the character, and `trap`
+     * is square_isdisarmabletrap, which needs TRF_VISIBLE. An undetected trap an
+     * agent could read is the cheat this pair exists to refuse. */
     const state = makeState({ playerGrid: loc(10, 10) });
     trapAt(state, loc(11, 10), false);
     trapAt(state, loc(12, 10), true);
     const view = createAgentView(state, undefined, { glyphs: spy });
 
-    expect(view.cell(11, 10)?.trap, "the boolean still says a trap is there").toBe(true);
-    expect(view.cell(11, 10)?.trapGlyph, "but it is not on the player's screen").toBeUndefined();
+    expect(view.cell(11, 10)?.trap, "an undetected trap is not in the view").toBe(false);
+    expect(view.cell(11, 10)?.trapGlyph, "and it is not on the player's screen").toBeUndefined();
+    expect(view.cell(12, 10)?.trap, "a found trap is").toBe(true);
     expect(view.cell(12, 10)?.trapGlyph).toBe("t3");
+  });
+
+  it("does not report a locked door, a glyph or a disabled trap as a trap", () => {
+    /* THE HANG THIS FIELD USED TO CAUSE. A closed door's lock is a "door lock"
+     * trap record (square_set_door_lock, trap.c:706; flags LOCK | INVISIBLE),
+     * and "the trap list is non-empty" therefore put every locked door in front
+     * of an agent as something to disarm. `disarm` tests
+     * square_isdisarmabletrap, refuses, and spends NO energy - so an autoplayer
+     * that trusted this field looped against one door for as long as it was left
+     * running. A glyph of warding (GLYPH | VISIBLE) and a trap already disabled
+     * by Disable Traps (a non-zero timeout) are excluded by the same predicate. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const put = (grid: ReturnType<typeof loc>, flags: number[], timeout: number): void => {
+      state.traps.set(grid.y * state.chunk.width + grid.x, [
+        {
+          tidx: 3,
+          kind: { tidx: 3, glyph: "^", color: "w" },
+          grid,
+          power: 0,
+          timeout,
+          flags: new Set(flags),
+        } as unknown as Trap,
+      ]);
+    };
+    put(loc(11, 10), [TRF["LOCK"]], 0); // a door lock: invisible, not a trap
+    put(loc(12, 10), [TRF["GLYPH"], TRF["VISIBLE"]], 0); // a glyph of warding
+    put(loc(13, 10), [TRF["TRAP"], TRF["VISIBLE"]], 5); // disabled, so not disarmable
+    const view = createAgentView(state, undefined, { glyphs: spy });
+
+    expect(view.cell(11, 10)?.trap, "a locked door is not a trap").toBe(false);
+    expect(view.cell(12, 10)?.trap, "a glyph of warding is not a trap").toBe(false);
+    expect(view.cell(13, 10)?.trap, "a disabled trap is not disarmable").toBe(false);
   });
 
   it("takes a monster's character from the table", () => {

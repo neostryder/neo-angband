@@ -585,7 +585,7 @@ import type { CommandCategory } from "./command-menu";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu } from "./options";
 import { loadColorPrefs, saveColorPrefs } from "./colors";
-import { inputEvents, setKeymapResolver } from "./input-door";
+import { dispatchUiInput, inputEvents, setKeymapResolver } from "./input-door";
 import { enqueueKeys } from "./input-queue";
 import { keymapFind, keymapModeFor, loadKeymapPrefs } from "./keymap-store";
 import {
@@ -6340,9 +6340,16 @@ async function showFloorPileScreen(pile: GameObject[]): Promise<void> {
      * single weight, not the raw kind weight. */
     weight: o.number * objectWeightOne(o, state.runeEnv.curses),
   }));
-  await showFloorList(term, `You ${p}: `, rows, (key) =>
-    enqueueKeys([{ key }]),
-  );
+  await showFloorList(term, `You ${p}: `, rows, (key) => {
+    /* The key that dismissed the list is re-fed as the next command, so a player
+     * who read "You see: a Long Sword" and pressed `g` picks it up. NOT while an
+     * autoplayer holds the keyboard: the key that dismissed the list was then the
+     * autoplayer's own ESCAPE (answerBlockingPrompt), and feeding it back would
+     * put a keystroke nobody pressed into the command stream of a mod that drives
+     * the game through commands instead. */
+    if (installedController) return;
+    enqueueKeys([{ key }]);
+  });
   /* screen_load (ui-display.c:2646): put the map back. */
   render();
 }
@@ -8100,6 +8107,47 @@ async function runLocate(): Promise<void> {
 // persists on the top line (no trailing -more-), exactly as the last message
 // does in normal play.
 const MORE_COLOR = UI_MORE; // COLOUR_L_BLUE (#00ffff)
+
+/**
+ * ANSWER THE BLOCKING PROMPT THE AUTOPLAYER IS PARKED ON - the port's
+ * `inkey_hack` (borg.c:189, `borg_inkey_hack`).
+ *
+ * Upstream's borg is compiled into the game and installs itself as the hook
+ * `inkey()` consults for EVERY key the game reads, prompt or not. Reading its
+ * own hook in order says the rest: before it thinks about a move at all it looks
+ * at the message line, and a trailing " -more-" is answered with a space
+ * (borg.c:371-388) while a set of named prompts get their own reply
+ * (borg-messages-react.c). So a blocking prompt is never something the borg
+ * waits out. It is the borg's next keypress, delivered through the same input
+ * function every other key goes through.
+ *
+ * This port's controller seam answers a different question: it supplies a
+ * `PlayerCommand`, and "dismiss this message" is not one. Meanwhile every
+ * blocking read in this shell - the `-more-` pager, the floor-pile list, the
+ * store screen, a yes/no confirm - resolves on a keydown delivered through the
+ * ONE input door (input-door.ts). Feeding a key into that door is therefore the
+ * same mechanism in this shell's terms, and it is why this reaches all of them
+ * rather than only the pager, which is what the `auto_more` option reaches.
+ *
+ * ESCAPE, for two reasons that agree: "any key" satisfies the pager, and ESCAPE
+ * is the answer that closes an overlay and reads as "no" at a confirm - which is
+ * what upstream's borg answers to "Die?" (borg-messages-react.c:133).
+ *
+ * Called ONLY from an autoplayer's own pump, and only while a modal is open on a
+ * live game screen. So the human's keyboard is never doubled: with no modal open
+ * nothing is waiting, and before `gameScreenLive` the birth flow owns the
+ * terminal and must not be answered by a mod's clock.
+ */
+function answerBlockingPrompt(who: string): void {
+  dispatchUiInput(
+    { key: { key: "Escape", modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false } },
+    undefined,
+    true, // bypass keymaps: this is the autoplayer's key, not the player's
+  );
+  /* borg_note("clearing -more-") (borg.c:385): an unattended run's log is the
+   * only record that a prompt came up and who answered it. */
+  log.debug(who, "answered a blocking prompt");
+}
 
 /** Wait for any keypress or tap (anykey, ui-input.c) - the -more- gate. */
 function waitAnyKey(): Promise<void> {
@@ -11460,7 +11508,14 @@ if (agentId && agentMake) {
       clearInterval(agentTimer);
       return;
     }
-    if (scoresOpen || modalDepth > 0) return; // wait out birth / menus
+    if (scoresOpen) return;
+    if (modalDepth > 0) {
+      /* Not "wait out birth / menus" any more: a prompt raised by the agent's
+       * own turn is the agent's to answer (see answerBlockingPrompt). Before
+       * gameScreenLive the birth flow owns the terminal, so this still waits. */
+      if (gameScreenLive) answerBlockingPrompt(`agent:${agentId}`);
+      return;
+    }
     armed = true;
     // A buggy agent mod must not crash or hang the host: on a throw, stop the
     // runner and record the error rather than letting it escape the timer.
@@ -11560,7 +11615,13 @@ function installSandbox(pluginId: string): void {
         sb.uninstall();
         return;
       }
-      if (scoresOpen || modalDepth > 0) return; // wait out birth / menus
+      if (scoresOpen) return;
+      if (modalDepth > 0) {
+        /* The sandboxed autoplayer answers its own prompts too, on the same
+         * terms as the mod pump below (answerBlockingPrompt). */
+        if (gameScreenLive) answerBlockingPrompt(`plugin:${pluginId}`);
+        return;
+      }
       // A crashing pump must not wedge the host: stop and record on a throw.
       try {
         advance();
@@ -12080,7 +12141,22 @@ for (const loaded of activeModCode().plugins) {
         clearInterval(modTimer);
         return;
       }
-      if (scoresOpen || modalDepth > 0) return; // wait out birth / menus
+      if (scoresOpen) return;
+      if (modalDepth > 0) {
+        /* THE AUTOPLAYER ANSWERS ITS OWN PROMPTS (answerBlockingPrompt).
+         *
+         * This line used to be `if (scoresOpen || modalDepth > 0) return`, and
+         * that made every blocking prompt a full stop: descending prints "You
+         * enter a maze of down staircases." behind a forced -more-, so a mod
+         * that plays the game by itself could not change level without a human
+         * pressing a key. The floor-pile list and the store screen are the same
+         * shape, and the `auto_more` option reaches neither.
+         *
+         * Before gameScreenLive the birth flow owns the terminal, and a mod's
+         * clock must not answer for the player who is rolling a character. */
+        if (gameScreenLive) answerBlockingPrompt(`mod:${loaded.id}`);
+        return;
+      }
       modArmed = true;
       /* A buggy or hostile autoplayer must not crash or hang the host: on a
        * throw, stop the pump and hand the keyboard back rather than let the

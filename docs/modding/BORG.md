@@ -98,6 +98,39 @@ The mod's own `PLANNED.md` is where this list is kept current, since the mod
 ships on its own schedule. None of it stops the Borg playing a full game; it
 bounds how aggressively it optimizes edge decisions.
 
+## The host answers blocking prompts for an autoplayer
+
+An `AgentController` returns a `PlayerCommand`, and "dismiss this message" is not
+one. Meanwhile the shell has places that block for a keypress: the `-more-` pager
+between two screenfuls of messages, the forced `-more-` a level change puts in
+front of the stair message, the floor-item list on a pile of two or more, the shop
+screen, a yes/no confirm. Each of those raises the modal gate, and the autoplayer
+clock used to skip every tick while it was up - so descending needed a human to
+press a key, and the run stopped there until somebody did.
+
+**So the host presses the key itself.** While an autoplayer holds the keyboard and
+a modal is open on a live game screen, the pump feeds one ESCAPE through the same
+input door every real keystroke goes through, and logs that it did. That is
+upstream Angband's own mechanism in this shell's terms: its borg installs itself
+as the hook `inkey()` consults for EVERY key the game reads, sees the `-more-` on
+the message line before it thinks about a move at all, and answers it with a space
+(`borg.c:371-388`). A blocking prompt was never something upstream's borg waited
+out.
+
+Three things follow, and an author driving a controller should know all three:
+
+- **ESCAPE, not a per-prompt answer.** Any key satisfies the pager, and ESCAPE is
+  what closes an overlay and reads as "no" at a confirm - which is what upstream's
+  borg answers to "Die?" (`borg-messages-react.c:133`). A controller cannot choose
+  a different answer, and does not need to: a decision the autoplayer should be
+  making arrives as a command it returns, not as a prompt it dismisses.
+- **Nothing is answered before there is a game.** Character creation owns the
+  terminal, and a mod's 120ms clock does not get to answer for the player rolling
+  a character.
+- **The shop screen closes rather than opening.** An autoplayer that steps onto a
+  shop door gets the screen dismissed, because that screen is a UI for a human.
+  Trading is `shopBuy` / `shopSell` / `shopExit` on the act facade.
+
 ## For mod authors
 
 The Borg is the reference implementation for building your own agent: an

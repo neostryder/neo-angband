@@ -356,9 +356,24 @@ function describe(
  * one at every call site.
  *
  * PURE: nothing on the GameState, the player, the gear or any object is written.
- * The derive runs with `update: false`, which is what keeps calc_bonuses' own two
- * faithful side effects (zeroing TMD_FASTCAST on a stun grade, the town-light
- * redraw flag) out of it.
+ * The derive runs with `update: false`, which is what keeps calc_bonuses' own
+ * faithful side effects (zeroing TMD_FASTCAST on a stun grade) out of it.
+ *
+ * COMPARE AN `after` AGAINST THIS `before`, NEVER AGAINST THE LIVE CHARACTER'S
+ * OWN NUMBERS. Both sides here come out of the same `update: false` derive, and
+ * upstream's calc_bonuses does not answer identically in both modes: its
+ * town-daylight shortcut in calc_light is gated on `update`
+ * (player-calcs.c:1607), so in a daytime town a shadow derive reports the light
+ * radius of the equipment and the live derive reports zero. That is upstream's
+ * asymmetry and the port keeps it.
+ *
+ * MEASURED, 2026-08-21, which is why this paragraph exists: an autoplayer scored
+ * a candidate loadout through this function and compared the result against the
+ * score it had computed from the LIVE view. In a daytime town the two derives
+ * differed by 14000 points of the Borg's own power metric, so every wearable item
+ * looked like an upgrade and it spent 3964 of 4000 decisions swapping one wooden
+ * torch for an identical one. `delta` - or the difference between an `after` and
+ * this `before` - is the quantity a decision wants; an absolute `after` is not.
  */
 export function simulateLoadout(
   state: GameState,

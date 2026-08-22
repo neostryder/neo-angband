@@ -240,7 +240,21 @@ export interface CellView {
   objectCount: number;
   /** SQUARE_GLOW: the square is self-illuminating. */
   glow: boolean;
-  /** A live trap pile occupies this square. */
+  /**
+   * `square_isdisarmabletrap` (cave-square.c:832): the square holds a VISIBLE
+   * player trap that is not already disabled - the same predicate the `disarm`
+   * command tests before it will spend a turn, and the same one the trap layer
+   * draws from.
+   *
+   * NOT "any trap record exists", which is what this reported until 0.25.1. The
+   * trap list is also where a closed door's lock lives (`square_set_door_lock`
+   * stores a "door lock" trap, flagged LOCK | INVISIBLE) and where a glyph of
+   * warding, a web and a decoy live. None of those is a trap a player can see or
+   * disarm, so reporting them here contradicted this view's own rule that an
+   * invisible trap is not in the view (see `trapGlyph`) - and it put a locked
+   * door in front of an agent as something to disarm, which `disarm` then
+   * refuses for free.
+   */
   trap: boolean;
   /** Namespaced terrain-feature id, when a ContentIdResolver dep is supplied
    * and the feature index is bound (never present for an unset sentinel). */
