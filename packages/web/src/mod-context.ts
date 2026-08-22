@@ -11,11 +11,16 @@
  */
 
 import * as neoCore from "@rpgm-tools/neo-angband-core";
+/* The SDK as a VALUE, for the same reason core is one here and only here: this
+ * is the module that hands a live namespace to a plugin, and it is the module no
+ * plugin imports. mod-plugin.ts keeps its SDK imports type-only. */
+import * as neoAuthoring from "@rpgm-tools/neo-angband-mod-sdk";
 import { log } from "./logging";
 import type { CoreRegistries, GameState } from "@rpgm-tools/neo-angband-core";
 import {
   MOD_API_VERSION,
   type BackupFolder,
+  type ModAuthoringApi,
   type ModCoreApi,
   type ModDebug,
   type ModInstallOutcome,
@@ -37,7 +42,7 @@ import {
 } from "./install-runtime";
 import { createModDebug, SPAWN_CAPABILITY, type DebugDoorDeps } from "./spawn-runtime";
 import { createModWizard, WIZARD_CAPABILITY, type WizardDoorDeps } from "./wizard-runtime";
-import type { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { CapabilitySet, ComposedRecords } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /**
  * `core` is the module namespace this host itself imported, so a plugin and the
@@ -79,6 +84,34 @@ export function modRegistries(): CoreRegistries | undefined {
   return boundRegistries;
 }
 
+/**
+ * The composed records the binder read, latched beside the registries it bound.
+ *
+ * THE SAME LATCH ARGUMENT, and the pair is the point: these two are one
+ * composition seen twice, so a boot path that set one and forgot the other would
+ * hand a mod a peer table drawn from a different game than its registry lookups.
+ * They are set on the same line of main.ts for that reason, and a drift guard in
+ * mod-context.test.ts reads main.ts to confirm it.
+ *
+ * NOT READ FROM pack.ts ON DEMAND, which was the shorter option. `composition()`
+ * is what BUILDS this, and content composition is when a mod's `hooks(ctx)` runs,
+ * so a context that pulled the value itself would be asking the composer for its
+ * own output partway through producing it. Absence during composition is the
+ * honest answer there, exactly as it is for `registries`, and a latch set after
+ * boot gives that for free.
+ */
+let composedRecords: ComposedRecords | undefined;
+
+/** Latch the composed records (the boot path, and the tests). */
+export function setModComposedRecords(records: ComposedRecords | undefined): void {
+  composedRecords = records;
+}
+
+/** What a plugin context will report as `ctx.composedRecords`. */
+export function modComposedRecords(): ComposedRecords | undefined {
+  return composedRecords;
+}
+
 export function modPluginContext(
   id: string,
   flags: Readonly<Record<string, boolean>>,
@@ -99,12 +132,17 @@ export function modPluginContext(
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
   const registries = session.registries ?? boundRegistries;
+  const records = session.composedRecords ?? composedRecords;
   return Object.freeze({
     id,
     api: MOD_API_VERSION,
     engine: neoCore.ENGINE_VERSION,
     flags: Object.freeze({ ...flags }),
     core: neoCore as unknown as ModCoreApi,
+    /* Unconditional, unlike every optional field below it. The SDK is a module
+     * this host already imported, so there is no boot state it waits on and no
+     * consent to check - see the field's own comment in mod-plugin.ts. */
+    authoring: neoAuthoring as unknown as ModAuthoringApi,
     ...(state ? { state } : {}),
     assetUrl: (path: string): Promise<string | null> =>
       assets ? assets(id, path) : Promise.resolve(null),
@@ -128,6 +166,7 @@ export function modPluginContext(
     /* Spread rather than set to undefined, so `"registries" in ctx` answers the
      * same question as `ctx.registries !== undefined` - the shape `state` uses. */
     ...(registries ? { registries } : {}),
+    ...(records ? { composedRecords: records } : {}),
   });
 }
 
@@ -311,6 +350,11 @@ export interface ModSessionFacts {
    * registry it built by hand rather than one a booted game latched.
    */
   readonly registries?: CoreRegistries;
+  /**
+   * Override the composed records, for a test that wants a plugin to draft
+   * against a record set it wrote rather than one a booted game latched.
+   */
+  readonly composedRecords?: ComposedRecords;
 }
 
 /**

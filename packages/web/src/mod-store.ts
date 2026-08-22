@@ -35,16 +35,6 @@ const PINS_KEY = "neo:modPins";
 /* Per-mod, per-section on/off - the general form of a rule choice, for the named
  * parts of a mod (PackSection). */
 const SECTION_CHOICES_KEY = "neo:modSectionChoices";
-/* The pump rate for a mod's autoplayer (ModPlugin.controller), player-set
- * beside the mod's own rule row that turns the controller on at all. */
-const AUTOPLAYER_SPEED_KEY = "neo:autoplayerSpeed";
-
-/**
- * A mod's autoplayer pump rate, in the same three tiers as the debug agent
- * seam's `?speed=fast|normal|slow` (main.ts) - so a player who has met either
- * control reads the other the same way.
- */
-export type AutoplayerSpeed = "fast" | "normal" | "slow";
 
 /** A list of strings from untrusted JSON, dropping anything else. */
 function strings(value: unknown): string[] {
@@ -779,23 +769,6 @@ export class ModStore {
     this.setEnabled(prof.enabledMods);
     writeJson(this.storage, CONSENT_KEY, prof.consents);
     return true;
-  }
-
-  /* --- Autoplayer speed ----------------------------------------------- */
-
-  /**
-   * The player's chosen pump rate for a mod's autoplayer. Defaults to
-   * "normal" - the flat 120ms both this seam and the debug agent seam shipped
-   * with before either had a speed control - so an untouched install plays
-   * exactly as it always did.
-   */
-  getAutoplayerSpeed(): AutoplayerSpeed {
-    const raw = readJson<unknown>(this.storage, AUTOPLAYER_SPEED_KEY, "normal");
-    return raw === "fast" || raw === "normal" || raw === "slow" ? raw : "normal";
-  }
-
-  setAutoplayerSpeed(speed: AutoplayerSpeed): void {
-    writeJson(this.storage, AUTOPLAYER_SPEED_KEY, speed);
   }
 }
 
