@@ -17,7 +17,16 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { attachedSave, sandboxSession, sessionIsSandboxed } from "./test-sandbox";
 import * as sandbox from "./test-sandbox";
-import { getActiveId, listRoster, readSlotSave, setActiveId, writeSlot } from "./roster";
+import {
+  getActiveId,
+  listRoster,
+  markDead,
+  readSlotSave,
+  resetSlotWriteSurrender,
+  setActiveId,
+  slotWritesSurrendered,
+  writeSlot,
+} from "./roster";
 import type { CharMeta } from "./roster";
 
 /** localStorage's shape, with a switch for the failure that matters. */
@@ -60,6 +69,7 @@ let storage: FakeStorage;
 const realStorage = globalThis.localStorage;
 
 beforeEach(() => {
+  resetSlotWriteSurrender(); // the latch is one way per PAGE, and each test is a page
   storage = new FakeStorage();
   Object.defineProperty(globalThis, "localStorage", {
     value: storage,
@@ -162,5 +172,86 @@ describe("there is no way back", () => {
       "sandboxSession",
       "sessionIsSandboxed",
     ]);
+  });
+});
+
+/**
+ * Another tab, which is where dropping the active id stops being sufficient.
+ *
+ * `localStorage` is shared across every tab on the origin, so the key that decides
+ * where a save lands is not this page's to hold. A second tab resuming a character
+ * writes a real slot id back into it, and a page that had given up its save - and
+ * has since been cheated freely - is re-attached to somebody's real character
+ * without either player doing anything wrong.
+ *
+ * The write is the obvious half. The DEATH path is the half that does permanent
+ * damage, because it destroys the slot's bytes and records a death in a ledger that
+ * deliberately outlives the tombstone.
+ */
+describe("another tab cannot re-attach a sandboxed page", () => {
+  const twoTabs = (): void => {
+    writeSlot("slot-1", "REAL-SAVE", meta("slot-1"));
+    setActiveId("slot-1");
+    sandboxSession();
+    /* The other tab reaches the character select and resumes. `resumeSelected`
+     * calls setActiveId, and it is writing to storage this page also reads. */
+    setActiveId("slot-1");
+  };
+
+  it("still reports itself sandboxed, though the shared key says otherwise", () => {
+    twoTabs();
+    expect(getActiveId()).toBe("slot-1"); // the other tab really did do this
+    expect(sessionIsSandboxed()).toBe(true);
+    expect(slotWritesSurrendered()).toBe(true);
+  });
+
+  it("cannot write a save over the character the other tab resumed", () => {
+    twoTabs();
+    /* The save path reads the shared key, finds a real slot id, and asks for the
+     * write. Refused here rather than there, because "there" is a decision made
+     * from storage anybody can edit. */
+    expect(writeSlot("slot-1", "CHEATED-SAVE", meta("slot-1", { level: 50 }))).toBe(true);
+    expect(readSlotSave("slot-1")).toBe("REAL-SAVE");
+    expect(listRoster()[0]?.level).toBe(22);
+  });
+
+  it("cannot tombstone the character the other tab resumed", () => {
+    /* THE WORST ONE. A monster killing the cheated character would otherwise run
+     * the death path against whichever slot the shared key named by then - and the
+     * death path DESTROYS the bytes and writes a memorial for a character that is
+     * still alive in another tab. */
+    twoTabs();
+    expect(markDead("slot-1")).toBe(true);
+    expect(readSlotSave("slot-1")).toBe("REAL-SAVE");
+    expect(listRoster()[0]?.alive).toBe(true);
+    expect(sandbox.attachedSave()).not.toBeNull(); // the key still points at them
+  });
+
+  it("reports a refused write as success rather than as a storage failure", () => {
+    /* mod-taint.ts's distinction, and made here for its reason: "the storage would
+     * not take it" is worth telling a player about because retrying might work, and
+     * "it was deliberately not offered" is not - a save-failure warning would send
+     * them looking for a broken browser. */
+    twoTabs();
+    expect(writeSlot("slot-1", "CHEATED-SAVE", meta("slot-1"))).toBe(true);
+  });
+});
+
+describe("the latch is not thrown by a refused detach", () => {
+  it("leaves a still-attached page able to save", () => {
+    /* One way means the order matters. Latching before the detach is known to have
+     * worked would leave a page that is STILL being pointed at by the active key
+     * and can no longer write to it, which is the worst of both and not what a
+     * refused call should leave behind. */
+    writeSlot("slot-1", "REAL-SAVE", meta("slot-1"));
+    setActiveId("slot-1");
+    storage.frozen = true;
+
+    expect(sandboxSession().ok).toBe(false);
+
+    storage.frozen = false;
+    expect(slotWritesSurrendered()).toBe(false);
+    expect(writeSlot("slot-1", "LATER-SAVE", meta("slot-1"))).toBe(true);
+    expect(readSlotSave("slot-1")).toBe("LATER-SAVE");
   });
 });

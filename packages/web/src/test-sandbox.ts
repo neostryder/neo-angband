@@ -50,9 +50,29 @@
  * ONE WAY, AND THIS IS NOT AN OVERSIGHT. There is no re-attach. Re-attaching
  * would mean writing a cheated character over the save it was protected from,
  * which is the one outcome this whole module exists to make unreachable.
+ *
+ * AND DROPPING THE ACTIVE ID IS NOT ENOUGH ON ITS OWN, which is the one thing
+ * about this design that is not obvious from the mechanism. The active id lives in
+ * `localStorage`, which every tab on the origin shares. A second tab reaching the
+ * character select and resuming a character writes a real slot id back into the
+ * key this page's save path reads - so a page that had given up its save, and has
+ * since been cheated freely, is silently re-attached to somebody's real character.
+ * The DEATH path is the worse half of that: it does not write over the slot, it
+ * DESTROYS the slot's bytes and records a death in a ledger that outlives the
+ * tombstone, so a monster killing the cheated character would delete a real one.
+ *
+ * So the guarantee cannot rest on shared storage, and it does not. Detaching also
+ * throws a one-way latch in this page's own memory (`surrenderSlotWrites`), which
+ * both doors into slot storage check and which no other tab can see or clear.
  */
 
-import { getActiveId, getMeta, setActiveId } from "./roster";
+import {
+  getActiveId,
+  getMeta,
+  setActiveId,
+  slotWritesSurrendered,
+  surrenderSlotWrites,
+} from "./roster";
 
 /** What the session was attached to before it was cut loose. */
 export interface SandboxedSave {
@@ -70,14 +90,17 @@ export type SandboxOutcome =
 /**
  * Whether this page has already been cut loose.
  *
- * DERIVED, NOT REMEMBERED. A flag of this module's own could disagree with the
- * thing that actually decides where a save goes; reading the active id cannot.
- * The one thing it cannot tell apart is a session that was never attached (a
- * throwaway behind the character select), and for every caller's purposes those
- * are the same session: neither one writes anywhere.
+ * TWO SOURCES, AND BOTH ARE NEEDED. The active id is the mechanism, so reading it
+ * catches every session that writes nowhere - including one that was never
+ * attached, like a throwaway behind the character select, which for every caller's
+ * purposes is the same thing. But the active id lives in shared storage, so a
+ * second tab resuming a character can put a real slot id back into it and make
+ * this read `false` again on a page that has been cheated freely. The surrender
+ * latch is this page's own memory and nothing outside it can clear it, so it is
+ * what makes the answer stick.
  */
 export function sessionIsSandboxed(): boolean {
-  return getActiveId() === null;
+  return slotWritesSurrendered() || getActiveId() === null;
 }
 
 /**
@@ -113,11 +136,22 @@ export function attachedSave(): SandboxedSave | null {
  */
 export function sandboxSession(): SandboxOutcome {
   const left = attachedSave();
-  if (left === null) return { ok: true, left: null };
+  if (left === null) {
+    /* Already loose, but latch anyway: a session with no active id is safe only
+     * until another tab writes one, and this page has now declared that it never
+     * wants one again. */
+    surrenderSlotWrites();
+    return { ok: true, left: null };
+  }
   setActiveId(null);
   /* Read back rather than trust the write. `setActiveId` swallows a storage
    * failure, and a failure here is the one that matters: a caller told the
-   * session was safe would go on to cheat a character that is still being saved. */
+   * session was safe would go on to cheat a character that is still being saved.
+   *
+   * The latch is deliberately NOT set yet. It is one way, so setting it before
+   * knowing whether the detach worked would leave a page that is still attached
+   * and can no longer save - which is the worst of both, and not what a refused
+   * call should leave behind. */
   if (getActiveId() !== null) {
     return {
       ok: false,
@@ -126,5 +160,11 @@ export function sandboxSession(): SandboxOutcome {
         "nothing here is safe to use",
     };
   }
+  /* AFTER the detach is confirmed, and this is the half that survives another tab.
+   * Dropping the active id stops this page saving; the latch stops it starting
+   * again when somebody else's tab puts a real slot id back into the shared key.
+   * Without it a monster killing this cheated character would run the death path
+   * against whatever slot was active by then, and the death path DESTROYS bytes. */
+  surrenderSlotWrites();
   return { ok: true, left };
 }
