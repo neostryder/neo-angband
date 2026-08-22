@@ -4,8 +4,10 @@
  *  1. FAITHFUL CORE OPTIONS. Every upstream Angband option ships in core with
  *     its upstream default (OPTION_ENTRIES.normal) - the qol mod does NOT
  *     redefine option defaults (that was the earlier mistake). A new character
- *     gets exactly the table defaults; there is no interface-defaults override
- *     seam any more.
+ *     gets exactly the table defaults, with exactly one deliberate, documented
+ *     exception at the CORE level (DEFAULT_OVERRIDES in player/options.ts; see
+ *     docs/PARITY.md "Accepted: birth_no_selling defaults to off in core");
+ *     there is no interface-defaults override seam any more.
  *
  *  2. THE modRules SEAM. startGame / loadGame accept the host-resolved mod-rule
  *     flags and seed GameState.modRules with a COPY; absent = faithful (no map).
@@ -17,6 +19,7 @@ import { describe, expect, it } from "vitest";
 import { startGame } from "./game.js";
 import type { GamePack } from "./game.js";
 import { OPTION_ENTRIES } from "../generated/options.js";
+import { DEFAULT_OVERRIDES } from "../player/options.js";
 import { FEAT } from "../generated/index.js";
 import { loc } from "../loc.js";
 import type { Loc } from "../loc.js";
@@ -79,11 +82,14 @@ const pack: GamePack = {
 } as unknown as GamePack;
 
 describe("faithful core option defaults", () => {
-  it("a new character gets the upstream OPTION_ENTRIES.normal default for every option", () => {
+  it("a new character gets the upstream OPTION_ENTRIES.normal default for every option, except core's own documented overrides", () => {
     const { state } = startGame(pack, { seed: 123, depth: 1 });
     const opts = state.options!;
     for (const entry of OPTION_ENTRIES) {
-      expect(opts.get(entry.name)).toBe(entry.normal);
+      const expected = Object.hasOwn(DEFAULT_OVERRIDES, entry.name)
+        ? DEFAULT_OVERRIDES[entry.name as keyof typeof DEFAULT_OVERRIDES]
+        : entry.normal;
+      expect(opts.get(entry.name)).toBe(expected);
     }
   });
 

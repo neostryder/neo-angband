@@ -176,6 +176,30 @@ with nothing behind it to diverge, not a parity deviation to close. This differs
 from the standard above only in scope - GAMEPLAY parity still means the rules,
 the numbers and the words match; a rule under a heading is none of those.
 
+### Accepted: birth_no_selling defaults to off in core
+
+`list-options.h:90` ships `birth_no_selling` ON (`OP(birth_no_selling, "Increase
+gold drops but disable selling", BIRTH, true)`). Core ships it OFF: a new
+character starts able to sell to stores, rather than starting with selling
+disabled and gold drops increased 5x until the player finds the birth options
+page and turns it off.
+
+This is a third named exception to "the port adds nothing," alongside the two
+RNG seams above, and it is narrower than either: the option itself, its
+in-game behavior (`make_gold`'s 5x inflation, `do_cmd_sell`'s zero-gold refusal),
+and the player's ability to turn it back on - at birth, or permanently through
+a `customized_birth_options.txt` line - are all unchanged and fully faithful to
+4.2.6. Only the shipped DEFAULT moves, from upstream's own ON to core's OFF.
+Nothing new exists that upstream did not already provide; a new character
+simply starts on the other side of a switch upstream already ships.
+
+Implemented as `DEFAULT_OVERRIDES` in `packages/core/src/player/options.ts`,
+applied in the `OptionState` constructor and in `optionsInitDefaults`
+(`packages/core/src/player/options-file.ts`) after the table default and
+before any customized-options-file restore, so a player's own saved preference
+- or an explicit birth choice - still wins, exactly as it would for any other
+option.
+
 ### RNG neutrality (the hard rule)
 
 The port owns its seed lineage, but that lineage must be **stable and
