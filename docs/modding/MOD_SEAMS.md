@@ -615,9 +615,11 @@ const { files } = project.emit();                 // manifest.json + one file pe
 const bytes = zipSync(Object.fromEntries(files.map((f) => [f.path, enc(f.contents)])));
 const outcome = await ctx.installMod(bytes);
 if (!outcome.ok) show(outcome.problem);           // one whole sentence, always
+show(outcome.lines.join("\n"));                   // the manager's own wording, either way
+if (outcome.ok) await ctx.reloadGame?.();         // save, tear down, come back on the same character
 ```
 
-Four things about it:
+Five things about it:
 
 - **It is CONTENT ONLY, and that is what makes the grant proportionate.** An
   archive that ships code - `.js`, `.mjs`, `.cjs`, `.ts`, `.wasm`, under any name,
@@ -645,6 +647,28 @@ Four things about it:
   because the caller is a mod that will be putting the answer in front of a
   player. And the bytes are copied before anything asynchronous runs, so what was
   inspected is what is stored even though you still hold the array you passed.
+- **`lines` is the host's own wording, and printing it is the right default.**
+  Every outcome carries the lines the Mods screen itself prints for that same
+  install, built by the same functions - the headline, the closing reassurance
+  that nothing else was touched, and under a standards refusal one row per unmet
+  requirement plus the advice under them. A mod that writes its own sentence
+  teaches the player a second vocabulary for one concept, and a failure that reads
+  differently depending on which door the archive came through is a failure they
+  cannot look up. `problem` is still there for a log or a one-line row.
+
+Then apply it:
+
+- **`ctx.reloadGame()` is behind the same capability, because installing and
+  applying are one act.** Content composes at load, so what you just installed is
+  not in the game and will not be until the page comes back. This is the game's own
+  mod-change sequence: every plugin's `uninstall()` runs, the autoplayer hands the
+  keyboard back, the live character is written down, and the session resumes that
+  character rather than landing on the title screen. Calling `location.reload()`
+  yourself skips all four, and the third is the player's progress. It is not a
+  permission - a plugin reaches `location` with no grant at all - it is the four
+  steps you cannot do for yourself. What you installed is still switched OFF when
+  the game comes back, so the reload applies a session load and puts an install in
+  front of the player rather than into their game; say which.
 
 Everything else is `installModFromZip`'s and is not reimplemented at this door:
 the third-party consent switch is read at the moment of use, so a player turning

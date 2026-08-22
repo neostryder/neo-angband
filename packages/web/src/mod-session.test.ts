@@ -237,6 +237,9 @@ describe("the code asymmetry, which is the whole design", () => {
         now: () => new Date(0).toISOString(),
       },
       allowed: () => true,
+      /* Never called by the session door - the reload belongs to `mod:install` -
+       * and required by the deps type so a real boot path cannot omit it. */
+      reload: () => undefined,
     });
     const outcome = await load(WITH_CODE());
     expect(outcome.ok).toBe(false);
@@ -258,6 +261,9 @@ describe("the code asymmetry, which is the whole design", () => {
         now: () => new Date(0).toISOString(),
       },
       allowed: () => true,
+      /* Never called by the session door - the reload belongs to `mod:install` -
+       * and required by the deps type so a real boot path cannot omit it. */
+      reload: () => undefined,
     });
     const outcome = await load(CONTENT());
     expect(outcome.ok).toBe(true);
@@ -276,6 +282,9 @@ describe("the code asymmetry, which is the whole design", () => {
         now: () => new Date(0).toISOString(),
       },
       allowed: () => true,
+      /* Never called by the session door - the reload belongs to `mod:install` -
+       * and required by the deps type so a real boot path cannot omit it. */
+      reload: () => undefined,
     });
     await load(CONTENT());
     expect(sessionMods(scopeWith(s))[0]?.granted).toEqual([]);

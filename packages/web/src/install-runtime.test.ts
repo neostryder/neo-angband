@@ -12,7 +12,9 @@
 
 import { describe, expect, it } from "vitest";
 import { zipSync } from "fflate";
-import { contentOnlyRefusal, createModInstaller } from "./install-runtime";
+import { contentOnlyRefusal, createModInstaller, createModReload } from "./install-runtime";
+import { installFailureLines } from "./mod-browse";
+import { MOD_CHECK_ADVICE } from "./mod-install";
 
 const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
 
@@ -100,13 +102,15 @@ describe("the door itself", () => {
       now: () => "2026-08-21T00:00:00.000Z",
     },
     allowed: () => true,
+    reload: () => undefined,
   };
 
   it("answers with a value, never a throw, on anything that is not an archive", async () => {
     const install = createModInstaller(deps);
     /* The caller is a mod that will be showing this to a player. A rejected
      * promise arrives in devtools, which is not a channel a player has. */
-    await expect(install(new Uint8Array(0))).resolves.toEqual({
+    const empty = await install(new Uint8Array(0));
+    expect(empty).toMatchObject({
       ok: false,
       problem: "installMod needs the bytes of a mod archive",
     });
@@ -137,5 +141,101 @@ describe("the door itself", () => {
     /* The point: it got past the content check on the copy, rather than failing
      * as an unreadable archive because the caller scribbled on its bytes. */
     expect((outcome as { problem: string }).problem).not.toContain("CONTENT mods only");
+  });
+});
+
+describe("the words a mod prints are the game's own", () => {
+  const deps = {
+    env: {
+      fetch: () => Promise.reject(new Error("no network in this test")),
+      subtle: { digest: () => Promise.reject(new Error("unused")) } as unknown as SubtleCrypto,
+      scope: {},
+      now: () => "2026-08-21T00:00:00.000Z",
+    },
+    allowed: () => true,
+    reload: () => undefined,
+  };
+
+  it("hands back the manager's lines, not a sentence of the door's own", async () => {
+    const install = createModInstaller(deps);
+    const zip = archive({ "manifest.json": manifest(), "plugin.js": "export default {};" });
+    const outcome = await install(zip);
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    /* DERIVED FROM THE PRODUCER, not retyped. The claim is that this door prints
+     * what the Mods screen prints for the same refusal, so the expectation has to
+     * come from the function the Mods screen calls - a hand-written copy of the
+     * wording would pass while the two drifted, which is the whole failure the
+     * `lines` field exists to make impossible. */
+    expect(outcome.lines).toEqual(
+      installFailureLines("made-in-game", outcome.problem).map((line) => line.text),
+    );
+    /* And it really is the manager's frame around it, headline and all. */
+    expect(outcome.lines[0]).toBe("made-in-game was not installed.");
+    expect(outcome.lines.join("\n")).toContain("Nothing was stored");
+  });
+
+  it("names the archive rather than a mod when the manifest could not be read", async () => {
+    const install = createModInstaller(deps);
+    const outcome = await install(enc("this is not a zip at all"));
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    /* There is no id to print, and inventing one would be worse than a label: a
+     * player reading a mod's name here would go looking for a mod. */
+    expect(outcome.lines[0]).toBe("That archive was not installed.");
+  });
+
+  it("carries a requirements refusal's rows and the author's advice", async () => {
+    /* THE CASE THE FIELD WAS ADDED FOR. `checkMod` answers a LIST, and the list is
+     * the only thing that says WHICH requirement failed; a mod holding `problem`
+     * alone can only tell the player that something did. Declaring no repository
+     * is the shortest way to fail the same inspection a downloaded mod faces. */
+    const install = createModInstaller(deps);
+    const zip = archive({
+      "manifest.json": manifest({ repository: undefined }),
+      "monster.json": "[]",
+    });
+    const outcome = await install(zip);
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.problem).toContain("does not meet the requirements");
+    /* Joined on a space and re-collapsed, because these are terminal lines: the
+     * manager wraps them at its own width, so an assertion on the unwrapped
+     * sentence would be an assertion about where the wrap happened to fall. */
+    const text = outcome.lines.join(" ").replaceAll(/\s+/gu, " ");
+    expect(text).toContain("Say where the mod lives");
+    expect(text).toContain(MOD_CHECK_ADVICE);
+  });
+});
+
+describe("ctx.reloadGame", () => {
+  const doorWith = (reload: () => void) => ({
+    env: {
+      fetch: () => Promise.reject(new Error("no network in this test")),
+      subtle: { digest: () => Promise.reject(new Error("unused")) } as unknown as SubtleCrypto,
+      scope: {},
+      now: () => "2026-08-21T00:00:00.000Z",
+    },
+    allowed: () => true,
+    reload,
+  });
+
+  it("runs the host's own mod-change sequence, once", async () => {
+    /* Not `location.reload()`. What the host does here is tear the plugins down,
+     * write the live character and mark the session to resume it, and none of
+     * those four is something a mod can do for itself. */
+    let calls = 0;
+    await createModReload(doorWith(() => void calls++))();
+    expect(calls).toBe(1);
+  });
+
+  it("resolves rather than hanging, so a caller's own finally still runs", async () => {
+    let ran = false;
+    try {
+      await createModReload(doorWith(() => undefined))();
+    } finally {
+      ran = true;
+    }
+    expect(ran).toBe(true);
   });
 });

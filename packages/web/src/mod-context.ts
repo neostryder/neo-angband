@@ -35,6 +35,7 @@ import { createBackupFolder } from "./mod-backup";
 import { createModUi, PANEL_CAPABILITY } from "./panel-runtime";
 import {
   createModInstaller,
+  createModReload,
   createModSessionLoader,
   INSTALL_CAPABILITY,
   SESSION_CAPABILITY,
@@ -126,6 +127,7 @@ export function modPluginContext(
   const backupFolder = backupFolderFor(id, session);
   const ui = modUiFor(id, session);
   const installMod = installerFor(session);
+  const reloadGame = reloadGameFor(session);
   const loadModForSession = sessionLoaderFor(session);
   const debug = debugFor(id, session);
   const wizard = wizardFor(id, session);
@@ -160,6 +162,7 @@ export function modPluginContext(
     ...(backupFolder ? { backupFolder } : {}),
     ...(ui ? { ui } : {}),
     ...(installMod ? { installMod } : {}),
+    ...(reloadGame ? { reloadGame } : {}),
     ...(loadModForSession ? { loadModForSession } : {}),
     ...(debug ? { debug } : {}),
     ...(wizard ? { wizard } : {}),
@@ -221,6 +224,28 @@ function installerFor(
   if (!session.capabilities?.has(INSTALL_CAPABILITY)) return undefined;
   if (!installDoor) return undefined;
   return createModInstaller(installDoor);
+}
+
+/**
+ * `ctx.reloadGame`: present on exactly the terms `ctx.installMod` is - the same
+ * capability, the same latched door.
+ *
+ * THE SAME CAPABILITY ON PURPOSE, which is the one thing about this seam somebody
+ * will want to change. Content composes at load, so an install a mod cannot follow
+ * with a reload leaves the player holding something this process will never load;
+ * and a mod with nothing to apply has no business reloading anybody's game. A
+ * third capability string would put half an act on the consent list.
+ *
+ * THE SAME LATCH, NOT A SECOND ONE, for the reason `wizardFor` reads the debug
+ * door rather than latching its own: a seam that cannot be forgotten beats a seam
+ * with a note asking not to forget it. `InstallDoorDeps.reload` is required, so a
+ * boot path cannot latch a door that installs and then cannot apply.
+ */
+function reloadGameFor(session: ModSessionFacts): (() => Promise<void>) | undefined {
+  if (session.reloadGame !== undefined) return session.reloadGame;
+  if (!session.capabilities?.has(INSTALL_CAPABILITY)) return undefined;
+  if (!installDoor) return undefined;
+  return createModReload(installDoor);
 }
 
 /**
@@ -339,6 +364,8 @@ export interface ModSessionFacts {
   readonly ui?: ModUi;
   /** Override ctx.installMod directly (tests, and a front end with its own door). */
   readonly installMod?: (bytes: Uint8Array) => Promise<ModInstallOutcome>;
+  /** Override ctx.reloadGame directly (tests, and a front end with its own). */
+  readonly reloadGame?: () => Promise<void>;
   /** Override ctx.loadModForSession directly (tests, and a front end of its own). */
   readonly loadModForSession?: (bytes: Uint8Array) => Promise<ModSessionOutcome>;
   /** Override ctx.debug directly (tests, and a front end with its own). */
