@@ -10,7 +10,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { modPluginContext, setModRegistries } from "./mod-context";
+import { modPluginContext, setModInstallDoor, setModRegistries } from "./mod-context";
 import type { CoreRegistries } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modPrefs, modPrefsKey } from "./mod-prefs";
@@ -154,9 +154,64 @@ describe("ctx.registries - the bound content a mod can ask about", () => {
      * did not. */
     const ctx = modPluginContext("qol", {});
     expect(ctx.installMod).toBeUndefined();
+    expect(ctx.reloadGame).toBeUndefined();
     expect(ctx.loadModForSession).toBeUndefined();
     expect(ctx.ui).toBeUndefined();
     expect(ctx.debug).toBeUndefined();
+  });
+
+  it("reloadGame arrives with the install door and with nothing else", () => {
+    /* ONE CAPABILITY FOR BOTH HALVES, checked here because it is the kind of pairing
+     * that gets separated by somebody tidying. Content composes at load, so an
+     * install a mod cannot follow with a reload leaves the player holding something
+     * this process will never load. What must NOT happen is the reload arriving on
+     * its own grant, or on the session grant, or on no grant at all. */
+    const install = CapabilitySet.fromManifest({
+      id: "qol",
+      name: "qol",
+      version: "1.0.0",
+      shape: "plugin",
+      capabilities: ["mod:install"],
+    });
+    const session = CapabilitySet.fromManifest({
+      id: "qol",
+      name: "qol",
+      version: "1.0.0",
+      shape: "plugin",
+      capabilities: ["mod:session"],
+    });
+    setModInstallDoor({
+      env: {
+        fetch: () => Promise.reject(new Error("no network in this test")),
+        subtle: { digest: () => Promise.reject(new Error("unused")) } as unknown as SubtleCrypto,
+        scope: {},
+        now: () => "2026-08-22T00:00:00.000Z",
+      },
+      allowed: () => true,
+      reload: () => undefined,
+    });
+    try {
+      const granted = modPluginContext("qol", {}, undefined, {}, { capabilities: install });
+      expect(granted.reloadGame).toBeDefined();
+      expect(granted.installMod).toBeDefined();
+      /* The session grant buys the session door and nothing beside it. */
+      const staged = modPluginContext("qol", {}, undefined, {}, { capabilities: session });
+      expect(staged.loadModForSession).toBeDefined();
+      expect(staged.reloadGame).toBeUndefined();
+      /* And no grant at all buys neither, even with the door latched. */
+      expect(modPluginContext("qol", {}).reloadGame).toBeUndefined();
+    } finally {
+      setModInstallDoor(undefined);
+    }
+  });
+
+  it("main.ts hands the install door the game's own mod-change reload", () => {
+    /* THE DRIFT GUARD, and the one the tests above cannot stand in for: every one
+     * of them passes against a boot path that latches a door with no reload in it,
+     * and TypeScript only proves the field is present, not that it is the sequence
+     * that saves the character. A bare location.reload() here would compile, pass,
+     * and lose the player's progress since the last save. */
+    expect(MAIN_TS_SOURCE).toMatch(/reload: \(\) => \{\s*reloadAfterModChange\(\);\s*\},/u);
   });
 
   it("mod:install does not hand over the session door, or the other way round", () => {

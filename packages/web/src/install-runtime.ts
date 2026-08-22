@@ -48,6 +48,18 @@
  * yes. One mod's grant cannot become another mod's grant that way, which is the
  * escalation this door would otherwise have opened.
  *
+ * THIRD, THE HOST'S WORDS TRAVEL WITH THE ANSWER. Every outcome carries `lines`:
+ * the very lines the mod manager prints for the same install, built by
+ * `installOutcomeLines` and `installFailureLines` and carrying, under a standards
+ * refusal, `requirementsRefusal`'s summary and `MOD_CHECK_ADVICE`'s closing line.
+ * A mod that fails a requirement must fail in the same words a downloaded mod
+ * fails in, or a player learns two vocabularies for one concept and stops
+ * trusting both. Returning the lines rather than a code is what makes that cost
+ * nothing.
+ *
+ * AND THE RELOAD IS HERE TOO, behind the same capability rather than one of its
+ * own - see `createModReload` for why installing and applying are one act.
+ *
  * WHAT IS STILL A DECLARATION RATHER THAN A FENCE, said here because the honest
  * version of this file has to say it: the stores this writes are ordinary
  * same-origin browser storage, and a plugin runs in the page. A mod that means
@@ -57,10 +69,12 @@
  * system gives of itself (docs/modding/PLUGINS.md, "What a capability gates").
  */
 
-import { installModFromZip, type InstallEnv } from "./mod-install";
-import { readModZip } from "./mod-zip";
+import { installedMeta, installModFromZip, type InstallEnv } from "./mod-install";
+import { installFailureLines, installOutcomeLines } from "./mod-browse";
+import { readModZip, type ZipRead } from "./mod-zip";
 import { sessionSurvivesReload, stageSessionMod } from "./mod-session";
 import type { ModInstallOutcome, ModSessionOutcome } from "./mod-plugin";
+import type { Finding } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** What a mod must hold in its manifest before it may install another mod. */
 export const INSTALL_CAPABILITY = "mod:install";
@@ -108,6 +122,19 @@ const CODE_SUFFIXES = [".js", ".mjs", ".cjs", ".ts", ".wasm"] as const;
 export function contentOnlyRefusal(bytes: Uint8Array): string | null {
   const read = readModZip(bytes);
   if (!read.ok) return read.problem;
+  return contentOnlyFault(read);
+}
+
+/**
+ * The same judgement over an archive somebody has already read.
+ *
+ * SPLIT OUT SO THE ID SURVIVES. A refusal the install door returns is printed in
+ * the manager's own words, and those words start with the mod's NAME - which the
+ * archive knows and a `string | null` does not. Re-reading the zip to recover it
+ * would be a third unzip of the same bytes, and a second call to `readModZip`
+ * whose answer this one is trusted to agree with.
+ */
+function contentOnlyFault(read: Extract<ZipRead, { ok: true }>): string | null {
   const code = read.files
     .map(([path]) => path)
     .filter((path) => CODE_SUFFIXES.some((suffix) => path.toLowerCase().endsWith(suffix)));
@@ -165,7 +192,38 @@ export interface InstallDoorDeps {
   readonly env: InstallEnv;
   /** Whether the player's third-party switch is on, read at the moment of use. */
   readonly allowed: () => boolean;
+  /**
+   * The host's own mod-change reload: tear the plugins down, write the live
+   * character, and bring the page back on the same character.
+   *
+   * REQUIRED RATHER THAN OPTIONAL, so a boot path cannot latch a door that
+   * installs and then cannot apply. An optional field would degrade to
+   * `ctx.reloadGame: undefined`, which a mod cannot tell apart from a capability
+   * the player never granted - the failure `mod-context.ts` already carries two
+   * comments about. The compiler is a cheaper reminder than either.
+   */
+  readonly reload: () => void;
 }
+
+/**
+ * The host's wording for an install outcome, flattened to plain strings.
+ *
+ * FROM THE MANAGER'S OWN BUILDERS, never restated here. `installFailureLines`
+ * and `installOutcomeLines` are what the Mods screen prints, and a requirements
+ * refusal carries `requirementsRefusal`'s summary and `MOD_CHECK_ADVICE`'s
+ * closing line through them. Colour is dropped because a mod's surface is its
+ * own; the words are not.
+ */
+function refusalLines(
+  name: string,
+  problem: string,
+  unmet: readonly Finding[] = [],
+): readonly string[] {
+  return Object.freeze(installFailureLines(name, problem, unmet).map((line) => line.text));
+}
+
+/** What a refusal calls an archive whose own manifest it could not read. */
+const UNREADABLE_ARCHIVE = "That archive";
 
 /**
  * Build the `ctx.installMod` a consenting mod is handed.
@@ -180,7 +238,8 @@ export interface InstallDoorDeps {
 export function createModInstaller(deps: InstallDoorDeps): (bytes: Uint8Array) => Promise<ModInstallOutcome> {
   return async (bytes: Uint8Array): Promise<ModInstallOutcome> => {
     if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
-      return { ok: false, problem: "installMod needs the bytes of a mod archive" };
+      const problem = "installMod needs the bytes of a mod archive";
+      return { ok: false, problem, lines: refusalLines(UNREADABLE_ARCHIVE, problem) };
     }
     /* COPIED, exactly-sized, before anything asynchronous runs. The caller still
      * holds the array it passed and the install reads it across several awaits;
@@ -188,20 +247,90 @@ export function createModInstaller(deps: InstallDoorDeps): (bytes: Uint8Array) =
      * copy is cheaper than reasoning about whether anybody would. */
     const own = new Uint8Array(bytes);
     try {
-      const refusal = contentOnlyRefusal(own);
-      if (refusal !== null) return { ok: false, problem: refusal };
+      /* Read here rather than inside `contentOnlyRefusal`, for the mod's ID: the
+       * manager's wording names the mod, and a refusal that called every archive
+       * "that archive" would be the one place this door speaks differently from
+       * the screen it is borrowing its words from. */
+      const read = readModZip(own);
+      if (!read.ok) {
+        return {
+          ok: false,
+          problem: read.problem,
+          lines: refusalLines(UNREADABLE_ARCHIVE, read.problem),
+        };
+      }
+      const refusal = contentOnlyFault(read);
+      if (refusal !== null) {
+        return { ok: false, problem: refusal, lines: refusalLines(read.id, refusal) };
+      }
+      /* What is on disk BEFORE, so the outcome can say "installed" or "updated
+       * 1.0.0 -> 1.1.0" in the manager's own words. Read here because the answer
+       * stops being available the moment the install writes over it. */
+      const before = await installedMeta(read.id, deps.env.scope ?? globalThis);
       const result = await installModFromZip(own, deps.env, deps.allowed());
-      if (!result.ok) return { ok: false, problem: result.problem };
-      return { ok: true, id: result.meta.id, version: result.meta.tag };
+      if (!result.ok) {
+        return {
+          ok: false,
+          problem: result.problem,
+          lines: refusalLines(read.id, result.problem, result.unmet ?? []),
+        };
+      }
+      return {
+        ok: true,
+        id: result.meta.id,
+        version: result.meta.tag,
+        /* `enabled: false` is a fact, not a default. This door never enables
+         * anything - that is what keeps the grant the size of its sentence - so
+         * the lines are the ones the manager prints when the player declined the
+         * offer, which say the mod is off until they turn it on. */
+        lines: Object.freeze(
+          installOutcomeLines(
+            read.id,
+            result.meta.tag,
+            before === null ? null : before.tag,
+            result.meta.tag,
+            false,
+          ).map((line) => line.text),
+        ),
+      };
     } catch (err) {
       /* An install that threw is an install that did not happen, and the mod
        * asking has to be able to say so to the player without knowing which of
        * IndexedDB's dozen failure modes it hit. */
-      return {
-        ok: false,
-        problem: `the install failed: ${err instanceof Error ? err.message : String(err)}`,
-      };
+      const problem = `the install failed: ${err instanceof Error ? err.message : String(err)}`;
+      return { ok: false, problem, lines: refusalLines(UNREADABLE_ARCHIVE, problem) };
     }
+  };
+}
+
+/**
+ * Build the `ctx.reloadGame` a consenting mod is handed.
+ *
+ * BEHIND `mod:install`, NOT A CAPABILITY OF ITS OWN, and the reason is that the
+ * two are one act rather than two. Content composes at load, so an install that
+ * cannot be followed by a reload leaves the player holding a mod this process
+ * will never load; and a mod with nothing to apply has no reason to reload
+ * anybody's game. Splitting them would produce a consent line describing half of
+ * something, which is the failure `grantCovers` exists to stop in the other
+ * direction.
+ *
+ * WHAT IT IS NOT is permission to reload. A plugin runs in the page and reaches
+ * `location` with no grant at all (capabilities.ts's header, and
+ * capability-gate-reach.test.ts's measurement). What the host supplies is the
+ * SEQUENCE: every plugin's `uninstall()`, the autoplayer's keyboard handed back,
+ * the live character written down, and the session marked to resume that
+ * character. A mod calling `location.reload()` itself skips all four, and the
+ * fourth is the one a player notices.
+ *
+ * THE PROMISE RESOLVES rather than hanging. The page is going away, so nothing
+ * after the await is guaranteed to run - but a promise that never settled would
+ * be untestable, would strand a caller's own `finally`, and would report a reload
+ * that was refused as one that is still in progress.
+ */
+export function createModReload(deps: InstallDoorDeps): () => Promise<void> {
+  return (): Promise<void> => {
+    deps.reload();
+    return Promise.resolve();
   };
 }
 

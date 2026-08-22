@@ -356,8 +356,41 @@ export interface ModPluginContext {
    * the same `repository` every time - the origin is pinned on the first import
    * and a mismatch is refused, so persist that string with your draft rather
    * than regenerating it.
+   *
+   * PRINT `lines`, NOT A SENTENCE OF YOUR OWN. Every outcome carries the wording
+   * the mod manager itself would show for it, including the per-requirement rows
+   * of a standards refusal and the advice under them. A mod that writes its own
+   * teaches the player a second vocabulary for one concept, and the first thing
+   * they do with two vocabularies is stop trusting either.
    */
   readonly installMod?: (bytes: Uint8Array) => Promise<ModInstallOutcome>;
+  /**
+   * Save the game and reload the page, so what you installed this session is in
+   * the game.
+   *
+   * Present on exactly the terms `installMod` is - your manifest declared
+   * `mod:install`, the player consented, and the host latched a door - so guard
+   * with `if (!ctx.reloadGame) return;`.
+   *
+   * GATED BY THE INSTALL CAPABILITY RATHER THAN BY ONE OF ITS OWN, because the
+   * two halves are one act. Content composes at load, so a mod that may install
+   * and may not reload leaves the player holding something this process will
+   * never load; and reloading is not a thing a mod with nothing to apply has any
+   * business doing.
+   *
+   * WHAT IT IS NOT is a permission to reload. A plugin runs in the page and can
+   * reach `location` with or without any grant (docs/modding/PLUGINS.md, "What a
+   * capability gates"). What this buys is the SEQUENCE the game does for its own
+   * mod changes and a mod cannot do for itself: every plugin's `uninstall()` runs,
+   * the autoplayer hands the keyboard back, the live character is written down,
+   * and the session is marked to resume that character rather than to land on the
+   * title screen. Calling `location.reload()` yourself skips all of it.
+   *
+   * The promise resolves once the host has taken the save and asked for the
+   * reload. The page is on its way out at that point, so treat anything after the
+   * await as best-effort: your own `uninstall()` has already run.
+   */
+  readonly reloadGame?: () => Promise<void>;
   /**
    * Put a content mod into THIS session only, so the player can try it now.
    *
@@ -580,6 +613,15 @@ export interface ModUi {
  * of a player, so every refusal is one whole sentence it can print without
  * knowing which refusal it is - the shape the host's own install paths use
  * (`InstallResult`), for the same reason.
+ *
+ * AND `lines` IS THE HOST'S OWN WORDING, not a second vocabulary. It is what the
+ * mod manager itself prints for the very same outcome, built by the very same
+ * functions (`installOutcomeLines`, `installFailureLines`, and under a
+ * requirements refusal `requirementsRefusal` and `MOD_CHECK_ADVICE`). A mod that
+ * prints it says what the game says: one concept, one set of words, whichever
+ * door the archive arrived through. Returning the lines rather than a code is
+ * what makes that free - a caller reproducing the wording from `problem` and a
+ * failure code would drift the first time either side was edited.
  */
 export type ModInstallOutcome =
   | {
@@ -588,8 +630,15 @@ export type ModInstallOutcome =
       readonly id: string;
       /** The version it was recorded at. */
       readonly version: string;
+      /** The host's own wording for this outcome, ready to print. */
+      readonly lines: readonly string[];
     }
-  | { readonly ok: false; readonly problem: string };
+  | {
+      readonly ok: false;
+      readonly problem: string;
+      /** The host's own wording for this refusal, ready to print. */
+      readonly lines: readonly string[];
+    };
 
 /**
  * What came of loading a mod for this session only.

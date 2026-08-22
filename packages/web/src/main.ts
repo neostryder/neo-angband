@@ -1248,7 +1248,14 @@ setModComposedRecords(composedObjects(composedRecords()));
 /* And where a mod holding `mod:install` may land an archive. The env is the same
  * one every other install path is given (`modBrowseDeps`), and the consent switch
  * is read at the MOMENT OF USE rather than captured here, so a player turning
- * third-party mods off mid-session turns this door off with it. */
+ * third-party mods off mid-session turns this door off with it.
+ *
+ * `reload` is `ctx.reloadGame`, and it is the game's OWN mod-change sequence
+ * rather than a bare `location.reload()`: every plugin's uninstall() runs, the
+ * autoplayer hands the keyboard back, the live character is written down, and the
+ * session resumes that character instead of landing on the title screen. A mod
+ * that installed something has to be able to apply it, and the four steps above
+ * are the ones it cannot do for itself. */
 setModInstallDoor({
   env: {
     fetch: (url: string) => fetch(url),
@@ -1257,6 +1264,9 @@ setModInstallDoor({
     now: () => new Date().toISOString(),
   },
   allowed: () => readConsent(channelStore()),
+  reload: () => {
+    reloadAfterModChange();
+  },
 });
 /* A shop line no item answers is one mod's fault, not a failed launch.
  *

@@ -71,6 +71,24 @@ version it still calls itself.
   core's, each carrying its provenance, so a draft based on another mod's content
   can name the dependency it just acquired. Absent during content composition,
   for the reason `ctx.registries` is.
+- **`ctx.reloadGame`: a mod can apply what it just installed.** The game's own
+  mod-change sequence, behind the `mod:install` capability that already gates
+  `ctx.installMod`, because content composes at load and the two are one act: an
+  install a mod cannot follow with a reload leaves the player holding something
+  the running process will never load. What the host does that a mod cannot do
+  for itself is the sequence - every plugin's `uninstall()` runs, the autoplayer
+  hands the keyboard back, the live character is written down, and the session
+  comes back on that character instead of on the title screen. It is not a
+  permission to reload: a plugin runs in the page and reaches `location` with no
+  grant at all, and a mod calling that directly loses the player's progress since
+  the last save.
+- **An install outcome now carries the game's own wording.**
+  `ctx.installMod(bytes)` answers with `lines` on both arms: the lines the Mods
+  screen itself prints for that same install, including one row per unmet
+  requirement and the author's advice under them. A mod built inside the game
+  therefore fails a standards check in the same words as one somebody downloaded,
+  rather than in a second vocabulary a player cannot look up. `problem` is
+  unchanged and is still one whole sentence.
 - **A second API-surface ratchet, over the SDK.**
   `packages/mod-sdk/mod-sdk-api-surface.json` records its 94 runtime exports and
   `mod-authoring-surface.test.ts` fails in both directions against it. Handing a
