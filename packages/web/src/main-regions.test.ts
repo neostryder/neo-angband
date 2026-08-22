@@ -243,6 +243,11 @@ const TERM_CLEAR_REGIONS: Readonly<Record<string, readonly string[]>> = {
    * the player cannot interrupt - the worst possible time to wipe a front end
    * with no way for it to learn that it happened. */
   "mod-browse.ts": ["installOne > result", "openRegistry", "paintWhile", "showSource"],
+  /* The install-choice screen ahead of "(I)nstall locally" needs two keys
+   * (D and W) `showTextScreen` does not offer, so it paints itself - and is a
+   * region from the start rather than a conversion, copying `showLevelMap`'s
+   * show/paint split verbatim. */
+  "main.ts": ["paintInstallChoiceOnTerminal > paint"],
 };
 
 /**
@@ -413,9 +418,9 @@ describe("term.clear() is a ratchet: the list of full-screen erases may only shr
      * with no push behind it anywhere in the file, is exactly the accident this
      * catches, and it is the accident a table of claims invites. */
     expect(siteCount(TERM_CLEAR_COMPOSITOR)).toBe(1);
-    expect(siteCount(TERM_CLEAR_REGIONS)).toBe(12);
+    expect(siteCount(TERM_CLEAR_REGIONS)).toBe(13);
     expect(siteCount(TERM_CLEAR_PENDING), "MOD_REACH.md's gap-21 row quotes this").toBe(20);
-    expect(siteCount(TERM_CLEAR_ALLOWED)).toBe(33);
+    expect(siteCount(TERM_CLEAR_ALLOWED)).toBe(34);
 
     for (const file of Object.keys(TERM_CLEAR_REGIONS)) {
       const text = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");

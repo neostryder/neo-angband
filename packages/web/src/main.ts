@@ -369,9 +369,18 @@ import {
 } from "./context-menu";
 import type { CaveMenuCtx, MenuEntry, ObjectMenuCtx, PlayerMenuCtx } from "./context-menu";
 import { GlyphTerm } from "./term";
-import type { RenderAssetRef } from "./term";
+import type { GridPointerInput, GridSurface, RenderAssetRef } from "./term";
 import { screenRegions, type ScreenRegions } from "./regions";
-import { liveRegionStack, onStackChanged, paintRegionStack, regionInputAt, relayoutStack } from "./ui-stack";
+import {
+  liveRegionStack,
+  onStackChanged,
+  paintRegionStack,
+  popRegion,
+  pushRegion,
+  regionInputAt,
+  regionSurface,
+  relayoutStack,
+} from "./ui-stack";
 import {
   buildHudFrame,
   glyphHudSectionSink,
@@ -417,6 +426,7 @@ import {
   getString,
   setUiFaultReporter,
   screenFault,
+  screenRegionSpec,
 } from "./overlay";
 import type { MenuItem, ItemMenuSource, ObjListRow, ScreenLine } from "./overlay";
 import { installMenu, setMenuPresenter } from "./menu-runtime";
@@ -610,6 +620,7 @@ import type { UpdateChannel, UpdateCheck, UpdaterBridge } from "./update";
 import { checkPhase, updateFooter, updateLines } from "./update-ui";
 import type { UpdateHow, UpdateLine, UpdateView } from "./update-ui";
 import { installLines, offerInstall, type InstallLine } from "./install-local";
+import { installChoiceLines } from "./install-choice";
 import { installLogSinks, log, setLogLevel } from "./logging";
 import { formatLogLine, LOG_LEVELS, LOG_RING_DEFAULT } from "@rpgm-tools/neo-angband-core/log";
 import { WEB_BUILD_ID } from "./build-id";
@@ -11069,8 +11080,103 @@ const INSTALL_TONE: Record<InstallLine["tone"], string> = {
   warn: UI_BAD,
 };
 
+/** Tones to this shell's palette, so install-choice.ts stays free of the terminal. */
+const INSTALL_CHOICE_TONE: Record<"head" | "body" | "dim", string> = {
+  head: UI_GOLD,
+  body: UI_TEXT,
+  dim: UI_DIM,
+};
+
 /**
- * The (I)nstall locally page, and the one action it offers.
+ * The choice ahead of "(I)nstall locally": the desktop app, or installing this
+ * page itself as a PWA. See install-choice.ts for where each claim it shows
+ * comes from.
+ *
+ * (D) opens the Releases page in the player's real browser. That is the whole
+ * download flow this screen needs - `openExternalUrl` needs no bridge, and
+ * "get the desktop build" already has one door (docs/RELEASING.md's own asset
+ * table lives there, not duplicated into this screen). (W) hands off to the
+ * existing PWA install screen (`showInstallPage`, below), which already reads
+ * the live capabilities and does the one action a PWA install has: prompt, or
+ * say where the browser's own button is.
+ *
+ * A REGION, for the same reason `showLevelMap` is one: this screen needs two
+ * keys `showTextScreen` does not offer (D and W, not just ESC/Enter/Space), so
+ * it paints itself rather than going through that helper - and a hand-painted
+ * screen that skipped declaring its rectangle is exactly the full-screen-erase
+ * gap `docs/modding/MOD_REACH.md`'s row 21 tracks. Declaring it here means this
+ * screen adds nothing to that count. The split into a `show*`/`paint*` pair and
+ * the `.finally(popRegion)` are copied from `showLevelMap` verbatim; the
+ * painter's body only differs from a plain `term.clear()`/`print()` loop in
+ * that `term` here is already the clipped region surface.
+ */
+function showInstallChoicePage(): Promise<void> {
+  const handle = pushRegion(screenRegionSpec(), term.size());
+  return paintInstallChoiceOnTerminal(regionSurface(term, handle.cells)).finally(() => {
+    popRegion(handle);
+  });
+}
+
+async function paintInstallChoiceOnTerminal(
+  surface: GridSurface & GridPointerInput,
+): Promise<void> {
+  const lines = installChoiceLines({ canPromptInstall: canPromptInstall() });
+  const footer = "[ D: desktop app   W: install as an app   ESC: back ]";
+
+  const paint = (): void => {
+    const { cols, rows } = surface.size();
+    surface.clear();
+    surface.print(0, 1, "Install Neo Angband locally".slice(0, cols - 1), UI_GOLD);
+    for (let r = 0; r < lines.length && 3 + r < rows - 1; r++) {
+      const line = lines[r];
+      if (!line) continue;
+      surface.print(0, 3 + r, line.text.slice(0, cols - 1), INSTALL_CHOICE_TONE[line.tone]);
+    }
+    surface.print(0, rows - 1, footer.slice(0, cols - 1), UI_DIM);
+  };
+
+  const key = (): Promise<string> =>
+    new Promise<string>((resolve) => {
+      const onKey = (ev: KeyboardEvent): void => {
+        if (ev.key.length !== 1 && ev.key !== "Escape") return;
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        inputEvents.removeEventListener("keydown", onKey, true);
+        resolve(ev.key);
+      };
+      inputEvents.addEventListener("keydown", onKey, true);
+    });
+
+  for (;;) {
+    paint();
+    const pressed = await key();
+    if (pressed === "Escape") return;
+    if (pressed === "d" || pressed === "D") {
+      /* Synchronous, and before anything else: a browser only honours
+       * window.open while the gesture that asked for it is still being
+       * handled - see external-link.ts. */
+      const url = `https://github.com/${UPDATE_REPO}/releases`;
+      const opened = openExternalUrl(url);
+      await showTextScreen(term, "Getting the desktop app", [
+        opened
+          ? { text: "Opening the Releases page in your browser.", color: UI_GOOD }
+          : { text: "Could not open a new tab. Go to this address:", color: UI_BAD },
+        ...(opened ? [] : [{ text: url, color: UI_TEXT }]),
+        { text: "", color: UI_TEXT },
+        { text: "Download the build for your system, then run it.", color: UI_TEXT },
+      ]);
+      return;
+    }
+    if (pressed === "w" || pressed === "W") {
+      await showInstallPage();
+      return;
+    }
+  }
+}
+
+/**
+ * The (I)nstall locally page's PWA half, reached by pressing (W) on the choice
+ * screen above - and the one action it offers.
  *
  * ENTER installs, when the browser gave the page a prompt to show; showTextScreen
  * already closes on ENTER, so the install is attached to the same key the player
@@ -11401,7 +11507,7 @@ async function bootMenus(): Promise<void> {
     /* Not a File-menu item and not a way into the game: read it, then back to the
      * title, the same as ESC out of any other pre-game screen. */
     if (choice === "install") {
-      await openModal(() => showInstallPage());
+      await openModal(() => showInstallChoicePage());
       continue;
     }
     /* Same shape as (I)nstall locally: read it, act or do not, come back to the
