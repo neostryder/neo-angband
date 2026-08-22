@@ -169,6 +169,18 @@
  *                             game's own confirmation and before anything is
  *                             placed, so "the debug commands cannot be scored"
  *                             stays true with a mod in the picture.
+ *  - "debug:wizard"        - drive the WHOLE debug set, not just the two spawns:
+ *                             depth, experience, gold, stats, acquirement,
+ *                             mapping. Its own action beside "spawn" rather than a
+ *                             wider reading of it, because the two cost the player
+ *                             different things. Spawning happens to the character
+ *                             they are playing and costs them the score. This one
+ *                             refuses to run until the session has been cut loose
+ *                             from its save slot - one way, checked by the host on
+ *                             every call - so it costs them the session and leaves
+ *                             the character on disk untouched. Neither is a
+ *                             superset of the other and `grantCovers` compares the
+ *                             action, so one consent cannot buy both.
  *  - "ui:panel.mount"      - draw with real HTML instead of the character grid: a
  *                             panel of the mod's own, mounted on the page above
  *                             the game. A THIRD "ui:" action, and the reason it is
@@ -218,7 +230,7 @@ export type ParsedCapability =
   | { kind: "ui"; region: string; action: "replace" | "create" | "mount" }
   | { kind: "backup"; action: "folder" }
   | { kind: "mod"; action: "install" | "session" }
-  | { kind: "debug"; action: "spawn" };
+  | { kind: "debug"; action: "spawn" | "wizard" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 /**
@@ -343,6 +355,19 @@ export function parseCapability(cap: string): ParsedCapability {
   if (cap === "debug:spawn") {
     return { kind: "debug", action: "spawn" };
   }
+  /* "debug:wizard": drive the whole debug set - depth, experience, gold, stats,
+   * acquirement, mapping - and not just the two spawns. A separate string from
+   * "debug:spawn" because it is a separate bargain, not a bigger helping of the
+   * same one. Spawning acts on the character the player is actually playing, after
+   * the game's own question, and leaves them playing it. This one refuses to run
+   * at all until the session has been cut loose from its save slot, one way, so
+   * the character it happens to has already stopped being written to disk. Neither
+   * is a superset of the other - one costs the score, the other costs the session -
+   * so `grantCovers` compares the action and neither can be sold under the other's
+   * sentence. */
+  if (cap === "debug:wizard") {
+    return { kind: "debug", action: "wizard" };
+  }
   const ui = UI_RE.exec(cap);
   if (ui) {
     return { kind: "ui", region: ui[1] as string, action: "replace" };
@@ -424,8 +449,15 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
     case "debug":
       /* Exact match only, and here that is the point rather than a consequence:
        * this is the grant a player is most likely to check for by name, so it
-       * must never be reachable through anything wider. */
-      return grant.kind === "debug";
+       * must never be reachable through anything wider.
+       *
+       * THE ACTION IS COMPARED, and until "debug:wizard" landed it was not - which
+       * was invisible while "spawn" was the only action, and would have been a real
+       * hole the moment a second one existed: a player who agreed to a mod
+       * conjuring one monster would have been granting it the depth jumps, the
+       * experience and the acquirement too. Exactly the #261 lesson, caught by
+       * adding the second action rather than by shipping it. */
+      return grant.kind === "debug" && grant.action === request.action;
     case "ui":
       /* Per region, with one wildcard. A `display` grant is NOT accepted here
        * and a `ui` grant is not accepted above: owning the dungeon and owning

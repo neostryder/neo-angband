@@ -228,6 +228,24 @@ export function describeCapability(cap: string): CapabilityDescription {
         elevated: true,
       };
     case "debug":
+      /* THE WIZARD ARM IS A DIFFERENT SENTENCE, and the difference is what the
+       * player pays rather than how much the mod gets. Spawning happens to the
+       * character they are playing and they go on playing it, having lost the
+       * score. This one cannot run until the session has been cut loose from its
+       * save, so what they lose is the session - and the character on disk is
+       * safer under this grant than under the other one. A consent line that
+       * described it as "more debug commands" would have the risk exactly
+       * backwards. */
+      if (parsed.action === "wizard") {
+        return {
+          cap,
+          text:
+            "Use the game's debug commands to test with - depth, experience, gold, items, creatures - after " +
+            "stopping this session from being saved at all. Your character on disk keeps whatever the last save " +
+            "left and nothing after that is written, which cannot be undone without reloading",
+          elevated: true,
+        };
+      }
       /* SAID IN THE GAME'S OWN VOCABULARY, not the seam's. The player has already
        * been told once per character what the debug commands are and what using
        * them costs, in those words, so naming them here is the shortest route to

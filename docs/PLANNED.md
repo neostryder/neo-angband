@@ -275,6 +275,21 @@ commands. Closing it is one guard at the same choke point, and the reason it is
 not in that commit is that it changes what every existing screen receives, which
 wants its own measurement rather than riding along with a new seam.
 
+### The wizard door is latched under the spawn door's name
+
+`ctx.wizard` (2026-08-21) reads the live wizard context out of the latch
+`setModSpawnDoor` sets, because there is one live game on a page and
+`SpawnDoorDeps.wizard` is already the getter over it. That is the right shape - a
+second latch would be one more thing a new boot path could forget, and forgetting
+it would hand every mod `wizard: undefined`, which is indistinguishable from a
+capability the player never granted. What is wrong is only the NAME: a function
+called `setModSpawnDoor` now feeds two surfaces, one of which does no spawning.
+
+The rename touches `main.ts`'s single call site, `mod-context.ts` and the tests
+that latch a door directly. It is not in the commit that added the seam because
+`main.ts` was being edited concurrently for unrelated work, and a rename is
+exactly the kind of change that is cheap alone and expensive interleaved.
+
 ### A mod panel has never been driven on a phone or in Electron fullscreen
 
 `ui:panel.mount` (2026-08-21) was measured where it could be: its ownership,

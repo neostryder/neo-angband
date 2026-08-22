@@ -32,6 +32,28 @@ version it still calls itself.
 
 ### Added
 
+- **A mod can drive the game's debug commands, on a session that has stopped being
+  saved.** A new capability, `debug:wizard`, hands a consenting mod `ctx.wizard`:
+  the depth jumps, the experience and gold and stat edits, acquirement, summoning,
+  banishment, mapping, lighting and lore, plus a catalogue of every item, creature
+  and artifact the running game has with the pack that added each one. Every
+  command is the function the `^A` menu already dispatches to, called from a mod's
+  screen instead of from a text prompt, so nothing about the rules is reproduced
+  here.
+
+  What makes it offerable is that it refuses to run until the session has been cut
+  loose from its save. The character on disk keeps whatever the last save left,
+  everything after that is discarded, and there is no way back - so a mod holding
+  this can never write a cheated character over one somebody cares about. The
+  autosave runs at the tail of a turn and throttles to three seconds, so what is
+  given up is at most three seconds of turns; reloading the page returns to the
+  character select with the character waiting as it was.
+
+  It is a separate grant from `debug:spawn` and neither covers the other. Spawning
+  happens to the character the player is actually playing and costs them that
+  character's score permanently; this one costs the session and leaves the save
+  alone, which makes it the safer of the two for anything on disk.
+
 - **A mod can be loaded for one session, without joining your library.** A new
   tier of mod source holds an archive in session storage instead of installing it:
   the game picks it up on the next reload, composes it exactly as it composes any
@@ -155,6 +177,55 @@ version it still calls itself.
   changes, after each plugin's `uninstall()` and before the save.
 
 ### Fixed
+
+- **An autoplayer mod stopped dead at every `-more-`, and only a human could
+  free it.** A turn's tail can raise a prompt that blocks for a keypress - two
+  screenfuls of messages, the forced `-more-` a level change puts in front of the
+  stair message, the floor-item list on a pile of two or more, a shop screen - and
+  the autoplayer clock skipped every tick while one was up. So a mod that plays the
+  game by itself could not go downstairs: it printed "You enter a maze of down
+  staircases." and waited for a key that was never coming. The `auto_more` option
+  cleared the pager and reached neither of the other two, and it is stored per
+  character, so it reverted every time the autoplayer started a new one.
+
+  While an autoplayer holds the keyboard, the host now answers the prompt itself:
+  one ESCAPE through the same input door every real keystroke goes through, logged
+  each time. That is upstream's own mechanism in this shell's terms - its borg
+  installs itself as the hook `inkey()` consults for every key the game reads, and
+  answers a `-more-` with a space before it thinks about a move at all. Nothing is
+  answered before there is a game to play, so character creation still belongs to
+  the player. See `docs/modding/BORG.md`.
+
+- **`CellView.trap` reported a locked door as a trap, and an agent that believed
+  it hung.** The field meant "this grid holds any trap record", and a closed door's
+  lock IS a trap record - so is a glyph of warding, a web and a decoy. The `disarm`
+  command wants a VISIBLE PLAYER trap and refuses anything else without spending a
+  turn, so an autoplayer that walked up to a locked door disarmed it forever with
+  game time frozen. The field is now `square_isdisarmabletrap`, the same predicate
+  `disarm` tests and the trap layer draws from.
+
+  It also closes a leak: an undetected trap used to be readable through this
+  field, on a view whose own rule is that a trap the player has not found is not on
+  the screen and therefore not in the view. **This is a behaviour change for any mod
+  reading `CellView.trap`**; see `docs/modding/MOD_COMPATIBILITY.md`.
+
+- **A simulated loadout reported a light radius the character does not have.**
+  `calc_light` returns early in a daytime town, where the level is lit and the
+  character's own light contributes nothing. The port gated that early return on
+  the caller wanting side effects - and `simulateLoadout`, which asks for none,
+  therefore derived every hypothetical loadout with a torch's radius added. Worth
+  14000 points to `borg_power`, which made every wearable item look like an
+  upgrade: measured on a headless run, the Borg spent 3964 of 4000 decisions
+  swapping one wooden torch for an identical one. Upstream has no such gate; the
+  early return is the value and the flag it sets is the redraw, which this port
+  already does elsewhere.
+
+- **`debug:spawn` would have carried a second `debug:` capability along with it.**
+  The grant check compared the capability's kind and not its action, which was
+  correct by accident while `spawn` was the only debug action. Adding a second one
+  would have meant a player who agreed to a mod conjuring one monster had also
+  agreed to the depth jumps, the experience grants and the acquirement. The action
+  is now compared, as it already was for `mod:` and `ui:`.
 
 - `^X` pauses on the way out, and shows the score it would have scored. Saving and
   quitting a living character prints "Press Return (or Escape)." and waits, and
