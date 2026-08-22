@@ -11,7 +11,12 @@
 import { describe, expect, it } from "vitest";
 import {
   describeCharacter,
+  modTrackerUrl,
+  NEO_ANGBAND_TRACKER,
   REPORT_LOG_LINES,
+  REPORT_MAX_MOD_TRACKERS,
+  REPORT_TRACKER_ACTION_IDS,
+  reportDestinations,
   reportFooter,
   reportLines,
   reportText,
@@ -222,10 +227,254 @@ describe("the screen", () => {
 });
 
 describe("the footer", () => {
-  it("offers every action while composing, and only escape once saved", () => {
+  it("offers every action while composing, and the way out once saved", () => {
     expect(reportFooter(view())).toContain("D to describe");
     expect(reportFooter(view())).toContain("L logging level");
-    expect(reportFooter(view({ phase: "saved" }))).toBe("[ ESC to go back ]");
+    expect(reportFooter(view({ phase: "saved" }))).toContain("ESC to go back");
     expect(reportFooter(view({ phase: "failed" }))).toContain("try again");
+  });
+
+  it("names only keys that a row on the screen actually has", () => {
+    /* The failure this guards is a footer offering `2` on a screen with one mod:
+     * both are built from `reportDestinations`, so they cannot disagree. */
+    const one = view({
+      phase: "saved",
+      modOrigins: [{ id: "qol", repo: "neostryder/neo-angband-mod-qol" }],
+    });
+    expect(reportFooter(one)).toContain("G/1/C");
+    const none = view({ phase: "saved" });
+    expect(reportFooter(none)).toContain("G/C");
+    expect(reportFooter(none)).not.toContain("/1");
+  });
+
+  it("gives no key to a mod it cannot address", () => {
+    const f = reportFooter(
+      view({ phase: "saved", modOrigins: [{ id: "mystery", repo: "file:import" }] }),
+    );
+    expect(f).toContain("G/C");
+    expect(f).not.toContain("/1");
+  });
+});
+
+describe("a mod's tracker url", () => {
+  it("is the tracker root, not the template chooser", () => {
+    /* `/issues/new/choose` presumes templates exist and that the tracker is open.
+     * Neither is knowable for somebody else's repository from in here. */
+    expect(modTrackerUrl("neostryder/neo-angband-mod-qol")).toBe(
+      "https://github.com/neostryder/neo-angband-mod-qol/issues",
+    );
+  });
+
+  it("reads the spellings a manifest is allowed to declare", () => {
+    for (const spelling of [
+      "https://github.com/a/b",
+      "git@github.com:a/b",
+      "github:a/b",
+      "https://github.com/a/b.git",
+      "a/b",
+    ]) {
+      expect(modTrackerUrl(spelling), spelling).toBe("https://github.com/a/b/issues");
+    }
+  });
+
+  it("is null for anything it cannot address, the import sentinel included", () => {
+    /* `file:import` is what an install record carries when the mod declared no
+     * repository this game could resolve. It is not special-cased: it simply is
+     * not a repository, which is the question being asked. */
+    for (const repo of [
+      "file:import",
+      "",
+      "https://gitlab.com/a/b",
+      "https://github.com/a/b/tree/v1.0.0",
+      "a/b/c",
+      "a",
+    ]) {
+      expect(modTrackerUrl(repo), repo).toBeNull();
+    }
+  });
+});
+
+describe("where to report it", () => {
+  it("always offers the game first, and the chat last", () => {
+    const d = reportDestinations([]);
+    expect(d.map((x) => x.id)).toEqual(["tracker-game", "tracker-chat"]);
+    expect(d[0]?.url).toBe(NEO_ANGBAND_TRACKER);
+  });
+
+  it("offers the game's template chooser, because its templates are known", () => {
+    /* The one URL here that is a build constant, and the only one that may name a
+     * specific submission flow. Picking bug versus parity difference is most of
+     * what makes a first report readable, so the chooser is worth the assumption
+     * exactly where the assumption is checkable. */
+    expect(NEO_ANGBAND_TRACKER).toContain("/issues/new/choose");
+    expect(reportDestinations([])[0]?.url).toContain("neostryder/neo-angband");
+  });
+
+  it("gives each addressable mod a digit, in the order they are enabled", () => {
+    const d = reportDestinations([
+      { id: "qol", repo: "neostryder/neo-angband-mod-qol" },
+      { id: "bug-fixes", repo: "neostryder/neo-angband-mod-bug-fixes" },
+    ]);
+    expect(d.map((x) => `${x.key} ${x.label}`)).toEqual([
+      "G Neo Angband itself",
+      "1 qol",
+      "2 bug-fixes",
+      "C Ask in the RPGM Tools Discord",
+    ]);
+  });
+
+  it("still LISTS a mod it cannot address, with no key and no url", () => {
+    /* Dropping it would tell a player with a broken imported mod that no mod
+     * could be involved, which is the one thing this list exists to prevent. */
+    const d = reportDestinations([{ id: "mystery", repo: "file:import" }]);
+    const row = d.find((x) => x.label === "mystery");
+    expect(row).toBeDefined();
+    expect(row?.url).toBeNull();
+    expect(row?.key).toBe("");
+  });
+
+  it("does not spend a digit on the mod it could not address", () => {
+    /* The numbering counts openable rows, so the digits stay contiguous and the
+     * footer's `G/1/C` matches what is on the screen. */
+    const d = reportDestinations([
+      { id: "mystery", repo: "file:import" },
+      { id: "qol", repo: "neostryder/neo-angband-mod-qol" },
+    ]);
+    expect(d.find((x) => x.label === "qol")?.key).toBe("1");
+  });
+
+  it("stops at the cap rather than drawing a screen nobody can read", () => {
+    const many = Array.from({ length: REPORT_MAX_MOD_TRACKERS + 4 }, (_, i) => ({
+      id: `m${String(i)}`,
+      repo: `someone/m${String(i)}`,
+    }));
+    /* The game and the chat, plus the capped mods. */
+    expect(reportDestinations(many)).toHaveLength(REPORT_MAX_MOD_TRACKERS + 2);
+  });
+
+  it("only ever emits an id the action census knows about", () => {
+    /* `SCREEN_NO_PROMPT` names these ids, and its totality test fails on an action
+     * that is in neither of its tables. An id built from a mod's own id could
+     * never be listed there, so the set has to stay finite and this is the check
+     * that it did. */
+    const many = Array.from({ length: REPORT_MAX_MOD_TRACKERS + 4 }, (_, i) => ({
+      id: `m${String(i)}`,
+      repo: `someone/m${String(i)}`,
+    }));
+    for (const d of reportDestinations(many)) {
+      expect(REPORT_TRACKER_ACTION_IDS, d.id).toContain(d.id);
+    }
+  });
+
+  it("keeps every id distinct even when some mods cannot be addressed", () => {
+    const d = reportDestinations([
+      { id: "a", repo: "file:import" },
+      { id: "b", repo: "someone/b" },
+      { id: "c", repo: "" },
+      { id: "d", repo: "someone/d" },
+    ]);
+    expect(new Set(d.map((x) => x.id)).size).toBe(d.length);
+  });
+});
+
+describe("the saved page", () => {
+  const saved = (over: Partial<ReportView> = {}): string =>
+    reportLines(view({ phase: "saved", savedAs: "X", ...over }))
+      .map((l) => l.text)
+      .join("\n");
+
+  it("prints the address of every row, so nothing opens blind", () => {
+    /* The player reads where a key will send them BEFORE pressing it. That is the
+     * whole guard against a mod's claimed repository turning out to be a
+     * stranger's project. */
+    const t = saved({ modOrigins: [{ id: "qol", repo: "neostryder/neo-angband-mod-qol" }] });
+    expect(t).toContain(NEO_ANGBAND_TRACKER);
+    expect(t).toContain("https://github.com/neostryder/neo-angband-mod-qol/issues");
+  });
+
+  it("warns that a mod's address is the mod's own claim, and only when one is listed", () => {
+    const withMod = saved({ modOrigins: [{ id: "qol", repo: "neostryder/neo-angband-mod-qol" }] });
+    expect(withMod).toContain("has not been");
+    expect(withMod).toContain("Read it before you open it");
+    /* Nothing to caution about on an unmodded game, and a caution about nothing
+     * is how a player learns to skip the one that matters. */
+    expect(saved()).not.toContain("Read it before you open it");
+  });
+
+  it("puts the warning ABOVE the rows it is about", () => {
+    /* The painter stops at the last terminal row, so whatever is lowest is what a
+     * small window loses. A caution below the rows it qualifies is a caution the
+     * player never reads on exactly the screen where it matters. */
+    const lines = reportLines(
+      view({
+        phase: "saved",
+        savedAs: "X",
+        modOrigins: [{ id: "qol", repo: "neostryder/neo-angband-mod-qol" }],
+      }),
+    ).map((l) => l.text);
+    const caution = lines.findIndex((l) => l.includes("Read it before you open it"));
+    const row = lines.findIndex((l) => l.includes("neo-angband-mod-qol/issues"));
+    expect(caution).toBeGreaterThan(-1);
+    expect(caution).toBeLessThan(row);
+  });
+
+  it("puts the advice above the list, for the same reason", () => {
+    const lines = reportLines(view({ phase: "saved", savedAs: "X" })).map((l) => l.text);
+    const advice = lines.findIndex((l) => l.includes("One problem per report"));
+    const list = lines.findIndex((l) => l.includes("Where to report it"));
+    expect(advice).toBeGreaterThan(-1);
+    expect(advice).toBeLessThan(list);
+  });
+
+  it("tells a first-time reporter the three things that make a report readable", () => {
+    const t = saved();
+    expect(t).toContain("One problem per report");
+    expect(t).toContain("search the tracker first");
+    expect(t).toContain("what you did, what you expected, and what happened");
+    /* Which of the two forms to pick is itself the guidance: the trackers ask. */
+    expect(t).toContain("parity difference");
+  });
+
+  it("fits a report with one mod into the rows a small window paints", () => {
+    /* MEASURED, not chosen. The painter draws from row 3 and stops at `rows - 2`,
+     * keeping the last row for the footer, so a 27-row window paints 23 lines. At
+     * five lines of advice the final destination's address fell off the bottom in
+     * the desktop build. This is the test that notices the next line added here. */
+    const lines = reportLines(
+      view({
+        phase: "saved",
+        savedAs: "C:\\logs\\report.txt",
+        modOrigins: [{ id: "demo-hooks", repo: "" }],
+      }),
+    );
+    expect(lines.length).toBeLessThanOrEqual(23);
+  });
+
+  it("says a mod has no recorded address rather than guessing at one", () => {
+    expect(saved({ modOrigins: [{ id: "mystery", repo: "file:import" }] })).toContain(
+      "no repository recorded",
+    );
+  });
+
+  it("says how many mods it left off the list", () => {
+    const many = Array.from({ length: REPORT_MAX_MOD_TRACKERS + 3 }, (_, i) => ({
+      id: `m${String(i)}`,
+      repo: `someone/m${String(i)}`,
+    }));
+    expect(saved({ modOrigins: many })).toContain("3 more enabled mods not listed");
+  });
+
+  it("shows a notice when one is set, and it is not there otherwise", () => {
+    expect(saved({ notice: "qol did not open." })).toContain("qol did not open.");
+    expect(saved()).not.toContain("did not open");
+  });
+});
+
+describe("the compose page", () => {
+  it("says what to write, where the key that asks for it is", () => {
+    const t = reportLines(view())
+      .map((l) => l.text)
+      .join("\n");
+    expect(t).toContain("what you did, what you expected, and what happened");
   });
 });
