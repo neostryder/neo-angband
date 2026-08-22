@@ -225,3 +225,68 @@ describe("the DOM keyboard owner", () => {
     expect(door.seen).toEqual(["y"]);
   });
 });
+
+describe("an autoplayer's own keypress", () => {
+  /**
+   * THE MECHANISM THE PROMPT SEAM RESTS ON (main.ts answerBlockingPrompt).
+   *
+   * Upstream's borg installs itself as the hook inkey() consults for every key
+   * the game reads, so a "-more-" is answered by its next keypress rather than
+   * waited out (borg.c:371-388). This shell's equivalent is a synthetic key at
+   * this door, and the load-bearing assumption is that such a key reaches a
+   * listener registered the way the -more- gate registers one: on `inputEvents`,
+   * keydown, CAPTURE phase, resolving a promise and stopping propagation.
+   *
+   * Pinned here rather than only asserted against main.ts's source, because a
+   * source assertion cannot tell whether the key arrives.
+   */
+  it("reaches a capture-phase waiter registered the way the -more- gate is", async () => {
+    let resolved = false;
+    const done = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      inputEvents.removeEventListener("keydown", done, true);
+      resolved = true;
+    };
+    inputEvents.addEventListener("keydown", done, true);
+
+    /* Exactly what the pump dispatches: keymaps bypassed, because this is the
+     * autoplayer's key and not the player's. */
+    dispatchUiInput(key("Escape"), undefined, true);
+    await macrotask();
+
+    expect(resolved, "the pager's waiter saw the autoplayer's key").toBe(true);
+  });
+
+  it("does not reach the game's command handler behind a modal that consumed it", async () => {
+    /* The pump only dispatches while a modal is open, and a modal handler stops
+     * propagation. So the answer cannot also arrive as a game command - which
+     * would walk the character or open a menu nobody asked for. */
+    const seen: string[] = [];
+    const modal = (ev: KeyboardEvent): void => {
+      seen.push(`modal:${ev.key}`);
+      ev.stopImmediatePropagation();
+    };
+    inputEvents.addEventListener("keydown", modal, true);
+    inputEvents.addEventListener("keydown", (ev) => seen.push(`game:${ev.key}`));
+
+    dispatchUiInput(key("Escape"), undefined, true);
+    await macrotask();
+
+    expect(seen).toEqual(["modal:Escape"]);
+  });
+
+  it("bypasses a player keymap, so a rebound Escape cannot redirect it", async () => {
+    /* A player who bound Escape to something else has bound their own keyboard,
+     * not the autoplayer's. Upstream's borg queue is read before the keymap layer
+     * for the same reason. */
+    const seen: string[] = [];
+    setKeymapResolver((input) => (input.key?.key === "Escape" ? [key("q")] : null));
+    inputEvents.addEventListener("keydown", (ev) => seen.push(ev.key), true);
+
+    dispatchUiInput(key("Escape"), undefined, true);
+    await macrotask();
+
+    expect(seen).toEqual(["Escape"]);
+  });
+});
