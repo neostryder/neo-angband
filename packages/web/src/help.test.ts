@@ -104,14 +104,15 @@ describe("the command summary is lib/help's own, keyset for keyset", () => {
     expect(helpCommandsScreen(true).title).toContain("Roguelike");
   });
 
-  it("carries commands.txt's preamble, minus the sentence about the ^ prefix", () => {
+  it("carries commands.txt's preamble in full, including the ^ prefix fallback", () => {
     const prose = helpCommandLines().map((l) => l.text).join(" ");
     expect(prose).toContain("^ followed by a letter is an abbreviation");
     expect(prose).toContain("The autoexplore_commands option modifies");
-    /* Dropped on purpose: this port has no two-keystroke '^' route, so the
-     * fallback upstream offers for a host that eats control-plus-key would be a
-     * keystroke that does nothing. docs/PLANNED.md carries the gap. */
-    expect(prose).not.toContain("You may also press");
+    /* #3: the keydown handler now has the caret-prefix route this sentence
+     * describes (caretPending in main.ts), so it is upstream's text again. */
+    expect(prose).toContain(
+      "You may also press and release ^ and then press and release the letter key",
+    );
   });
 
   it("names every row it has nothing behind, once and above the table", () => {
@@ -119,7 +120,9 @@ describe("the command summary is lib/help's own, keyset for keyset", () => {
     for (const unavailable of ["'\\\\'", "'`'", "'^e'", "'^z'"]) {
       expect(prose).toContain(unavailable.replace("\\\\", "\\"));
     }
-    expect(helpCommandLines(80, true).map((l) => l.text).join(" ")).toContain("alter keys");
+    /* #4: the roguelike '^' plus direction alter keys are wired up now, so
+     * they no longer belong on the "not bound" list. */
+    expect(helpCommandLines(80, true).map((l) => l.text).join(" ")).not.toContain("alter keys");
   });
 
   it("lists only keys that are actually wired in main.ts (drift guard)", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveKey } from "./keymap";
+import { resolveKey, DIRS_ROGUELIKE } from "./keymap";
 
 /**
  * resolveKey is a pure function (no DOM dependency beyond reading a few
@@ -76,5 +76,27 @@ describe("resolveKey: rogue_like_commands option (this gap's wiring)", () => {
   it("an unrelated letter stays unbound in either keyset", () => {
     expect(resolveKey(key("q"), false)).toBeNull();
     expect(resolveKey(key("q"), true)).toBeNull();
+  });
+});
+
+/**
+ * #4: r_comm.txt's eight caret+direction alter-keys (^b/^h/^j/^k/^l/^n/^u/^y)
+ * route through main.ts's control branch to the same direction DIRS_ROGUELIKE
+ * already gives a plain movement keypress, so this table is the shared
+ * source of truth for both. Exported specifically so that claim is checkable
+ * without duplicating the letter-to-direction mapping in main.ts.
+ */
+describe("DIRS_ROGUELIKE: the alter-direction letters #4 wires up", () => {
+  it("has exactly the eight r_comm.txt movement letters, each to its keypad direction", () => {
+    expect(DIRS_ROGUELIKE).toEqual({
+      h: 4,
+      j: 2,
+      k: 8,
+      l: 6,
+      y: 7,
+      u: 9,
+      b: 1,
+      n: 3,
+    });
   });
 });

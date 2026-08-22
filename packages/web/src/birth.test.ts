@@ -1303,6 +1303,51 @@ describe("runBirth: '?' opens help and returns to the same screen", () => {
     expect(term.snapshot().join("\n")).not.toContain("Angband Help");
     expect(term.snapshot().join("\n")).toBe(before);
   });
+
+  /**
+   * Gap #5: do_cmd_help (ui-help.c:476) reads rogue_like_commands LIVE off the
+   * player being built, not a fixed default - so the birth screen's help has
+   * to open the roguelike command summary once that is the keyset in effect,
+   * exactly like the running game's own '?' already does (help.ts's
+   * runHelp). Before this fix runBirth's openBirthHelp always called
+   * runHelp(term) with no keyset argument, so it defaulted to the original
+   * keyset's summary regardless of rogue_like_commands.
+   */
+  it("shows the ROGUELIKE command summary when that keyset is the customised default", async () => {
+    setHost(memHost(new Map([
+      ["customized_interface_options.txt", optionsSaveCustomText({ rogue_like_commands: true }, "INTERFACE")],
+    ])));
+
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    void runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+    await tick();
+
+    press(win, "?"); await tick(); // the race menu's help key
+    press(win, "a"); await tick(); // "Available commands", the index's first row
+    press(win, "PageDown"); await tick(); // row 'h' is past the first screenful
+    const page = term.snapshot().join("\n");
+    // r_comm.txt-only text: the original-keyset table has no such row (its 'h'
+    // is "Fire default ammo at target").
+    expect(page).toContain("(walk - west)");
+  });
+
+  it("shows the ORIGINAL command summary by default (rogue_like_commands off)", async () => {
+    setHost(NULL_HOST);
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    void runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+    await tick();
+
+    press(win, "?"); await tick();
+    press(win, "a"); await tick();
+    press(win, "PageDown"); await tick();
+    const page = term.snapshot().join("\n");
+    expect(page).not.toContain("(walk - west)");
+    expect(page).toContain("Fire default ammo at target"); // commands.txt's 'h'
+  });
 });
 
 /* ------------------------------------------------------------------ */

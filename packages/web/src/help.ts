@@ -267,31 +267,32 @@ const ROGUELIKE_KEYSET: readonly KeyRow[] = [
 ];
 
 /**
- * commands.txt:5-16 / r_comm.txt:5-16, minus one sentence.
+ * commands.txt:5-16 / r_comm.txt:5-16, verbatim.
  *
- * WHAT WAS REMOVED and why: upstream's second sentence offers a fallback for a
- * system that swallows control-plus-key - press and release `^`, then the
- * letter. This port does not implement it (the control branch of main.ts's
- * keydown handler requires `ev.ctrlKey`), so printing the sentence would
- * describe a keystroke that does nothing. The gap is worth closing rather than
- * only documenting, because a browser tab is exactly the host that intercepts
- * some of these combinations; it is written up in docs/PLANNED.md.
+ * The second sentence - press and release `^`, then the letter, for a system
+ * that swallows control-plus-key - used to be dropped here, because the
+ * control branch of main.ts's keydown handler required `ev.ctrlKey` and had
+ * no such route. That gap is closed (#3: caretPending in main.ts), so the
+ * sentence is upstream's again.
  *
- * The rest is upstream's words in upstream's order, published UNWRAPPED because
- * removing a sentence already moved every break after it - see this file's
- * header on which prose keeps its `lines` and which gives them up. It is ONE
- * paragraph, as it is in the file: there is no blank line inside those twelve
- * lines to split it on.
+ * Published UNWRAPPED, upstream's words in upstream's order: it is ONE
+ * paragraph, as it is in the file - there is no blank line inside those twelve
+ * lines to split it on - and this port's faithful terminal wraps prose itself
+ * (see this file's header on which prose keeps its `lines` and which gives
+ * them up).
  */
 const KEYSET_INTRO =
   "^ followed by a letter is an abbreviation for pressing and releasing the " +
-  "letter key with the control key also depressed.  The autoexplore_commands " +
-  "option modifies the '<', '>', and 'p' commands.  When that option is off " +
-  "(that is the default), the commands act as described below.  When that " +
-  "option is on, '<' or '>' will use the staircase at the player's location " +
-  "if it is the appropriate kind of staircase or will move to the nearest " +
-  "known staircase of the appropriate kind if the player is not already at " +
-  "that kind of staircase.  'p' will move to the nearest unexplored location " +
+  "letter key with the control key also depressed.  You may also press and " +
+  "release ^ and then press and release the letter key to activate the same " +
+  "command in case your system intercepts the control plus key combination " +
+  "and does not pass it on.  The autoexplore_commands option modifies the " +
+  "'<', '>', and 'p' commands.  When that option is off (that is the " +
+  "default), the commands act as described below.  When that option is on, " +
+  "'<' or '>' will use the staircase at the player's location if it is the " +
+  "appropriate kind of staircase or will move to the nearest known " +
+  "staircase of the appropriate kind if the player is not already at that " +
+  "kind of staircase.  'p' will move to the nearest unexplored location " +
   "when the autoexplore_commands option is on.";
 
 /**
@@ -302,17 +303,17 @@ const KEYSET_INTRO =
  * five rows, and a reader comparing the two would have no way to tell an
  * adaptation from a transcription error. A player reads a preamble; the
  * alternative was hoping they connect row `^e` to a footnote 40 lines down.
+ *
+ * The '^' prefix and the roguelike keyset's '^'-plus-direction alter keys used
+ * to be listed here too (#3, #4); both are wired up in the keydown handler's
+ * control branch now, so neither belongs on this "not bound" list any more.
  */
-function unavailableNote(roguelike: boolean): string {
-  const alter = roguelike
-    ? " The roguelike keyset's '^' plus direction alter keys are unbound as well."
-    : "";
+function unavailableNote(): string {
   return (
-    "Not bound in this port: the '^' prefix as a two-keystroke alternative to " +
-    "the control key, '\\' (bypass keymap) and '`' (escape), since a browser " +
-    "delivers the control key and Escape directly; '^e', because this is one " +
-    "terminal and has no second window to toggle; and '^z', because the borg " +
-    `ships as a mod rather than in the game.${alter}`
+    "Not bound in this port: '\\' (bypass keymap) and '`' (escape), since a " +
+    "browser delivers the control key and Escape directly; '^e', because " +
+    "this is one terminal and has no second window to toggle; and '^z', " +
+    "because the borg ships as a mod rather than in the game."
   );
 }
 
@@ -353,7 +354,7 @@ export function helpCommandsScreen(
     blocks: [
       { kind: "text", color: FG, paragraphs: [[{ text: KEYSET_INTRO }]] },
       blankRow(),
-      { kind: "text", color: DIM, paragraphs: [[{ text: unavailableNote(roguelike) }]] },
+      { kind: "text", color: DIM, paragraphs: [[{ text: unavailableNote() }]] },
       blankRow(),
       keysetTable(roguelike ? ROGUELIKE_KEYSET : ORIGINAL_KEYSET),
     ],

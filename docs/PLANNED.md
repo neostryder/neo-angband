@@ -21,7 +21,7 @@ up in `CHANGELOG.md`), it is found not to apply (and says so, briefly, before it
 goes), or it is found to be unreachable in the thing being ported (and says
 that). "Still open" is not one of them, and neither is silence.
 
-Last reviewed: 2026-08-21.
+Last reviewed: 2026-08-22.
 
 ---
 
@@ -44,31 +44,6 @@ file's true line order is not recoverable from the compiled shape. Nothing
 shipped interleaves them today, so this is latent rather than live.
 
 Tracked as issue #2.
-
-### The `^` prefix as a second route to a control command
-
-`commands.txt` offers a fallback for a host that swallows control-plus-key, and
-this port has no such route. It is the one row on that page whose absence a
-player is likely to hit, because a browser tab is exactly the host the sentence
-was written for: `Ctrl-W` closes the tab before any page script sees it.
-
-Tracked as issue #3.
-
-### The roguelike keyset's `^` plus direction alter keys
-
-`r_comm.txt` maps eight `^`-plus-direction combinations to alter-direction, and
-only three of that keyset's control combinations are wired up. `alterCmd`
-already exists and takes a direction; what is missing is the dispatch.
-
-Tracked as issue #4.
-
-### The birth screen's help is always the original keyset
-
-`do_cmd_help` picks its index file off the player being built, and this port's
-birth screen has no player yet to read it from, so the help always shows the
-original keyset regardless of what the new character will use.
-
-Tracked as issue #5.
 
 ### The targeting banner's remaining clauses
 
