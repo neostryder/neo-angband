@@ -8,7 +8,7 @@
  * instead of a single overwritten line.
  *
  * It keeps a rolling buffer (like message__buf) with duplicate run-length
- * squashing (msg "you hit it. (x3)"), surfaces the messages emitted since the
+ * squashing (msg "you hit it. <3x>"), surfaces the messages emitted since the
  * last render as the top status line, and feeds the full history screen.
  */
 
@@ -49,7 +49,7 @@ export class MessageLog {
   /** Count of messages appended since the last `takeFresh()` (this turn). */
   private freshFrom = 0;
 
-  /** Append a message, squashing an immediate duplicate into a (xN) run. */
+  /** Append a message, squashing an immediate duplicate into a <Nx> run. */
   push(text: string, color?: string): void {
     if (!text) return;
     const last = this.buf[this.buf.length - 1];
@@ -98,9 +98,9 @@ export class MessageLog {
   }
 }
 
-/** "text" or "text (xN)" for a run of N identical messages. */
+/** "text" or "text <Nx>" for a run of N identical messages (ui-knowledge.c "%s <%dx>"). */
 export function format(m: LoggedMessage): string {
-  return m.count > 1 ? `${m.text} (x${m.count})` : m.text;
+  return m.count > 1 ? `${m.text} <${m.count}x>` : m.text;
 }
 
 /**

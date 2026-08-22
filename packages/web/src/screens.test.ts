@@ -912,7 +912,7 @@ describe("the four listings that gave up their models in step 5b", () => {
     log.push("You hit it.");
     const block = messageHistoryScreen(log).blocks[0] as ScreenTableBlock;
     expect(block.rows[0]!.values).toEqual({ count: 2 });
-    expect(block.rows[0]!.cells.message!.text).toBe("You hit it. (x2)");
+    expect(block.rows[0]!.cells.message!.text).toBe("You hit it. <2x>");
   });
 });
 

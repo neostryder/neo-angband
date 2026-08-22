@@ -30,6 +30,16 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- A run of identical messages on the recall screen (`Ctrl-P`) read `text (xN)`;
+  upstream's own format (`ui-knowledge.c`, `ui-display.c`) is `text <Nx>`. Three
+  comments describing the old, wrong format as upstream's are corrected too.
+- "Report a problem" told a player to send the written file "wherever you got
+  the game from," naming no actual destination. It now names the GitHub issue
+  tracker and the RPGM Tools Discord, and the two issue form templates note
+  that the report file already answers several of their required fields.
+
 ## [0.26.0] - 2026-08-21
 
 A mod-authoring release: a mod can now drive the debug/wizard command set on a

@@ -214,12 +214,16 @@ export function reportLines(v: ReportView): ReportLine[] {
     say("  " + (v.savedAs ?? ""), "dim");
     say("");
     if (v.shell === "browser" || v.shell === "installed") {
-      say("Your browser has downloaded it. Attach it to a message and send it", "body");
-      say("wherever you got the game from.", "body");
+      say("Your browser has downloaded it. Attach it to a GitHub issue or", "body");
+      say("post it in the RPGM Tools Discord - either one reaches somebody.", "body");
     } else {
-      say("Send that file wherever you got the game from. Nothing has been", "body");
-      say("uploaded anywhere - it is a file on your computer.", "body");
+      say("Attach that file to a GitHub issue or post it in the RPGM Tools", "body");
+      say("Discord - either one reaches somebody. Nothing has been uploaded", "body");
+      say("automatically; it is a file on your computer until you send it.", "body");
     }
+    say("");
+    say("  github.com/neostryder/neo-angband/issues/new/choose", "dim");
+    say("  discord.gg/YegtwbHTBQ", "dim");
     return out;
   }
 
