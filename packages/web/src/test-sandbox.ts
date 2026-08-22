@@ -12,13 +12,13 @@
  *
  * WHAT IS ALREADY TRUE, AND IS THE WHOLE MECHANISM. Every write to a character's
  * save goes through one funnel, and that funnel reads one thing to decide where
- * the bytes land: the active slot id. The turn-tail autosave, the level-change
- * save, `S`, the options screen, `pagehide` and the death save all end up there.
- * A session with no active slot id therefore writes nowhere at all - and the game
- * already relies on exactly that in two places, both documented as such: a save
- * this build could not read keeps its bytes because the active id is dropped
- * (`keepSaveUntouched`), and a throwaway game booted behind the character select
- * claims no slot for the same reason.
+ * the bytes land: the slot this PAGE is attached to (`slot-attach.ts`). The
+ * turn-tail autosave, the level-change save, `S`, the options screen, `pagehide`
+ * and the death save all end up there. A session attached to nothing therefore
+ * writes nowhere at all - and the game already relies on exactly that in two
+ * places, both documented as such: a save this build could not read keeps its
+ * bytes because the page never attaches (`keepSaveUntouched`), and a throwaway
+ * game booted behind the character select claims no slot for the same reason.
  *
  * SO THE SANDBOX IS NOT NEW MACHINERY. It is that same one-line mechanism, named,
  * made one-way, and offered to a mod that is about to do something a player would
@@ -51,28 +51,30 @@
  * would mean writing a cheated character over the save it was protected from,
  * which is the one outcome this whole module exists to make unreachable.
  *
- * AND DROPPING THE ACTIVE ID IS NOT ENOUGH ON ITS OWN, which is the one thing
- * about this design that is not obvious from the mechanism. The active id lives in
- * `localStorage`, which every tab on the origin shares. A second tab reaching the
- * character select and resuming a character writes a real slot id back into the
- * key this page's save path reads - so a page that had given up its save, and has
- * since been cheated freely, is silently re-attached to somebody's real character.
+ * WHY IT DOES NOT REST ON SHARED STORAGE. `neo-angband-active` lives in
+ * `localStorage`, which every tab on the origin shares, so it was never this
+ * page's to hold: a second tab resuming a character wrote a real slot id into the
+ * key the save path read, and a page that had given up its save - and has since
+ * been cheated freely - was silently pointed back at somebody's real character.
  * The DEATH path is the worse half of that: it does not write over the slot, it
  * DESTROYS the slot's bytes and records a death in a ledger that outlives the
  * tombstone, so a monster killing the cheated character would delete a real one.
  *
- * So the guarantee cannot rest on shared storage, and it does not. Detaching also
- * throws a one-way latch in this page's own memory (`surrenderSlotWrites`), which
- * both doors into slot storage check and which no other tab can see or clear.
+ * That key no longer decides anything. The destination is `attachedSlot()`, which
+ * is this page's own memory and which nothing outside this page can set - so
+ * detaching is final by construction rather than by patch. It cannot fail either,
+ * which is the second thing shared storage cost: a browser refusing to write is
+ * no longer a browser refusing to sandbox.
+ *
+ * The one-way latch (`surrenderSlotWrites`) stays, and guards a different door.
+ * Detaching says this page writes nowhere for now; the latch says `writeSlot` and
+ * `markDead` refuse this page for the rest of its life, whatever it later attaches
+ * to. The sandbox wants both, because the sandbox is the one caller for whom
+ * "for now" is not good enough.
  */
 
-import {
-  getActiveId,
-  getMeta,
-  setActiveId,
-  slotWritesSurrendered,
-  surrenderSlotWrites,
-} from "./roster";
+import { getMeta, slotWritesSurrendered, surrenderSlotWrites } from "./roster";
+import { attachedSlot, detachSlot } from "./slot-attach";
 
 /** What the session was attached to before it was cut loose. */
 export interface SandboxedSave {
@@ -90,17 +92,16 @@ export type SandboxOutcome =
 /**
  * Whether this page has already been cut loose.
  *
- * TWO SOURCES, AND BOTH ARE NEEDED. The active id is the mechanism, so reading it
+ * TWO SOURCES, AND BOTH ARE NEEDED. The attachment is the mechanism, so reading it
  * catches every session that writes nowhere - including one that was never
  * attached, like a throwaway behind the character select, which for every caller's
- * purposes is the same thing. But the active id lives in shared storage, so a
- * second tab resuming a character can put a real slot id back into it and make
- * this read `false` again on a page that has been cheated freely. The surrender
- * latch is this page's own memory and nothing outside it can clear it, so it is
- * what makes the answer stick.
+ * purposes is the same thing. The latch is the second source because it outranks a
+ * later attach: a page that has surrendered is sandboxed even if something
+ * attaches it to a slot afterwards, and reading the attachment alone would answer
+ * `false` for a page that can no longer write a byte.
  */
 export function sessionIsSandboxed(): boolean {
-  return slotWritesSurrendered() || getActiveId() === null;
+  return slotWritesSurrendered() || attachedSlot() === null;
 }
 
 /**
@@ -110,10 +111,10 @@ export function sessionIsSandboxed(): boolean {
  * player whether to leave it.
  */
 export function attachedSave(): SandboxedSave | null {
-  const id = getActiveId();
+  const id = attachedSlot();
   if (id === null) return null;
   const meta = getMeta(id);
-  /* An active id with no roster row is a slot mid-birth: it has been allocated so
+  /* An attachment with no roster row is a slot mid-birth: it has been allocated so
    * the first autosave lands, and nothing has written a row yet. Naming it as the
    * empty string rather than refusing keeps "is there something to protect" and
    * "what is it called" as two separate questions. */
@@ -126,45 +127,39 @@ export function attachedSave(): SandboxedSave | null {
  * SYNCHRONOUS, WHICH IS WHAT CLOSES THE RACE a reader will look for here. The
  * obvious worry about any such mechanism is that the game advances a turn - and
  * autosaves - between reading the slot and detaching from it. It cannot: this runs
- * to completion in one turn of the event loop, `localStorage` is synchronous, and
- * the game's own turn loop and its `pagehide` handler are both callbacks that
+ * to completion in one turn of the event loop, both writes below are to memory,
+ * and the game's own turn loop and its `pagehide` handler are both callbacks that
  * cannot interleave with it. There is no `await` in this function and there must
  * not be one.
+ *
+ * AND IT CANNOT FAIL ANY MORE, which is a change worth stating rather than
+ * quietly enjoying. It used to detach by clearing a `localStorage` key, so a
+ * browser with storage switched off could refuse the detach and the honest answer
+ * was `ok: false` - a mod asking for a safe session had to be told it had not got
+ * one. The destination now lives in this page's memory, so there is nothing left
+ * to refuse it. `SandboxOutcome` keeps its refusal arm: it is the return type mods
+ * already handle, and a future reason to refuse is likelier than a caller
+ * benefiting from being told this one can no longer happen.
  *
  * Reported as `ok` when the session was already loose, with `left: null`, because
  * a caller asking for a session that writes nowhere has got one.
  */
 export function sandboxSession(): SandboxOutcome {
   const left = attachedSave();
-  if (left === null) {
-    /* Already loose, but latch anyway: a session with no active id is safe only
-     * until another tab writes one, and this page has now declared that it never
-     * wants one again. */
-    surrenderSlotWrites();
-    return { ok: true, left: null };
-  }
-  setActiveId(null);
-  /* Read back rather than trust the write. `setActiveId` swallows a storage
-   * failure, and a failure here is the one that matters: a caller told the
-   * session was safe would go on to cheat a character that is still being saved.
-   *
-   * The latch is deliberately NOT set yet. It is one way, so setting it before
-   * knowing whether the detach worked would leave a page that is still attached
-   * and can no longer save - which is the worst of both, and not what a refused
-   * call should leave behind. */
-  if (getActiveId() !== null) {
-    return {
-      ok: false,
-      problem:
-        "this browser would not let go of the save slot, so the character is still being written to and " +
-        "nothing here is safe to use",
-    };
-  }
-  /* AFTER the detach is confirmed, and this is the half that survives another tab.
-   * Dropping the active id stops this page saving; the latch stops it starting
-   * again when somebody else's tab puts a real slot id back into the shared key.
-   * Without it a monster killing this cheated character would run the death path
-   * against whatever slot was active by then, and the death path DESTROYS bytes. */
+  /* BOTH, and in this order. Detaching is what stops the save path finding a
+   * destination, and it also hands back the cross-page hold so the character is
+   * free for a window that will actually play them. The latch is what stops this
+   * page ever writing again, whatever it attaches to later - without it a mod
+   * could sandbox, then reach a code path that attaches a slot, and the cheated
+   * character would start being written down as if nothing had happened. */
+  detachSlot();
   surrenderSlotWrites();
+  /* AND THE SHARED KEY IS LEFT ALONE, which is the opposite of what this used to
+   * do and is the point. `neo-angband-active` now names only which character to
+   * OFFER on the next launch, and that character is untouched, real, and worth
+   * offering - sandboxing a page says nothing about them. Clearing it was a
+   * cross-tab side effect with no upside: every other window on the origin reads
+   * the same key, so one mod cutting one page loose emptied the launch offer for
+   * all of them. */
   return { ok: true, left };
 }

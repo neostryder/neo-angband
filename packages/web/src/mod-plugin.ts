@@ -88,7 +88,6 @@ import type {
  * and a value import would put the host's code in every plugin's bundle. */
 import type { ModPrefs } from "./mod-prefs";
 import type {
-  ComposedRecords,
   HudOwnership,
   MenuPresenter,
   RegionDeclaration,
@@ -98,12 +97,6 @@ import type {
 
 /** The renderer-neutral map snapshot a selected front end receives. */
 export type { WorldFrame } from "@rpgm-tools/neo-angband-mod-sdk";
-
-/**
- * The shape of `ctx.composedRecords`, re-exported so a plugin's own source can
- * name it without resolving the SDK for itself.
- */
-export type { ComposedRecords, JsonRecord } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /**
  * The ABI version this host implements. Bump ONLY when an existing plugin would
@@ -207,37 +200,6 @@ export interface ModPluginContext {
    * the engine API, entire - not a curated subset. See the header.
    */
   readonly core: ModCoreApi;
-  /**
-   * The mod SDK's public barrel: the authoring stack, handed in the way `core`
-   * is handed in.
-   *
-   * WHAT IS BEHIND IT. Everything a tool needs to draft a record against the
-   * game's real content rather than against a fixture. `RECORD_BLUEPRINTS`,
-   * `BLUEPRINT_FILES` and `blueprintFor` carry every field's measured shape,
-   * type set and range; `fieldUsage` and `requiredFields` say how common a field
-   * is; `templateRecord` and `draftRecord` fill a new record with typical values;
-   * `peersFor` builds the comparable-records table; `suggestFields` proposes a
-   * value with the sentence explaining it; `checkRecords` and `COMPANION_RULES`
-   * validate at the three levels the running game uses; `ModProject` and
-   * `modProject` assemble and emit the mod itself.
-   *
-   * ALWAYS PRESENT, unlike `registries` and `composedRecords`. These are pure
-   * functions over data the caller supplies, so there is no boot state they wait
-   * for and no moment at which the honest answer is absence.
-   *
-   * NO CAPABILITY GATES IT, and that is the same argument `registries` and `core`
-   * already settle rather than a new one. Nothing here reads game state, nothing
-   * here mutates a registry, and every name is already reachable to anybody who
-   * can install the published npm package. See capability-gate-reach.test.ts for
-   * what a `registry:*` grant does and does not buy.
-   *
-   * WHY THE WHOLE BARREL rather than a curated subset: decision 18's argument
-   * unchanged, which is that a curated list is the thing that drifts. The barrel
-   * is already a considered surface - `applyFieldPolicy` is deliberately left out
-   * of the SDK's index.ts and says so there - and it is watched by the same kind
-   * of ratchet `ctx.core` has (packages/mod-sdk/mod-sdk-api-surface.json).
-   */
-  readonly authoring: ModAuthoringApi;
   /** The live game state, when there is one (absent during content composition). */
   readonly state?: GameState;
   /**
@@ -450,40 +412,6 @@ export interface ModPluginContext {
    * `if (!ctx.registries) return;`.
    */
   readonly registries?: CoreRegistries;
-  /**
-   * The UNBOUND content: every record the running game was composed from, as
-   * JSON, keyed by pack-file stem with no extension - `"monster"`, `"object"`,
-   * `"store"`.
-   *
-   * WHY THIS EXISTS WHEN `registries` DOES. They are different shapes and only
-   * one of them is what the authoring stack on `ctx.authoring` accepts. Every
-   * `records` parameter in the SDK is `Readonly<Record<string, readonly
-   * JsonRecord[]>>` keyed by file stem, and `peersFor`, `suggestFields`,
-   * `templateRecord`, `draftRecord` and `checkRecords` all take it.
-   * `registries.monsters.races` is `MonsterRace[]`: bound, resolved, and
-   * carrying neither the JSON key names nor the fields that bound to nothing. A
-   * peer table built from bound races cannot answer what `base` says on the dogs
-   * near depth 3, because `base` is not a field on a bound race.
-   *
-   * MOD-ADDED RECORDS ARE IN HERE ON THE SAME TERMS AS CORE'S, exactly as they
-   * are in `registries`, and each one carries its provenance under the SDK's
-   * `PROVENANCE_KEY`. A tool basing a new sword on another mod's sword can
-   * therefore see that record and name the dependency it just acquired.
-   *
-   * NON-RECORD ELEMENTS ARE FILTERED OUT. Passthrough files can hold arrays and
-   * scalars, and the authoring functions read `Object.entries` off every element,
-   * so the host narrows through the SDK's own `composedObjects` rather than
-   * leaving each consumer to guess what a record is.
-   *
-   * NO CAPABILITY GATES IT: this is the same content the player already has, in
-   * the shape it was read in, and it is strictly less than `registries` already
-   * publishes ungated - data rather than live objects.
-   *
-   * Absent during content composition, for the same reason `registries` is
-   * absent there: at that point this is what is being built. Guard with
-   * `if (!ctx.composedRecords) return;`.
-   */
-  readonly composedRecords?: ComposedRecords;
 }
 
 /**
@@ -849,13 +777,6 @@ export interface BackupFolder {
  * actually exports - the drift is the whole failure mode a curated list has.
  */
 export type ModCoreApi = typeof import("@rpgm-tools/neo-angband-core");
-
-/**
- * The authoring surface, typed as the mod SDK's own public module. Declared as
- * an import type for the same reason `ModCoreApi` is: a hand-written list is the
- * thing that drifts from what the package actually exports.
- */
-export type ModAuthoringApi = typeof import("@rpgm-tools/neo-angband-mod-sdk");
 
 /** A mod's code. Both members optional: a plugin may do either job, or both. */
 export interface ModPlugin {

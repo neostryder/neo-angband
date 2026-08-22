@@ -18,36 +18,6 @@ SDK asks them.
 Everything on this page is in `@rpgm-tools/neo-angband-mod-sdk` and needs no
 game running.
 
-## Two ways in, and the `import` is only one of them
-
-An offline tool installs the package and imports it, which is what every example
-below does. That path needs core's records from somewhere, and `coreRecords` in
-those examples is that: the pack's JSON, keyed by file stem.
-
-**A plugin inside a running game takes neither step.** A plugin resolves no bare
-specifier, so the import would not work; and it does not need a copy of core's
-records, because the game it is running in already composed them. Both arrive on
-`ctx`:
-
-```js
-register(host, ctx) {
-  const records = ctx.composedRecords;              // the coreRecords argument
-  if (!records) return;
-  const drafted = ctx.authoring.draftRecord(        // the imported barrel
-    "object",
-    { name: "& Sludge Dagger~", type: "sword", level: 20 },
-    records,
-  );
-}
-```
-
-`ctx.composedRecords` is better than a shipped copy of the pack would be: it is
-what THIS game composed, so every enabled mod's records are in it too, each
-carrying its provenance. A tool drafting against a bundled snapshot could not see
-them and would report a reference to another mod's sword as dangling. See
-[PLUGINS.md](PLUGINS.md#authoring-ctxauthoring-and-ctxcomposedrecords) for the
-guard rules and what each field is absent for.
-
 ## Writing another mod's extension field
 
 Your mod may write `<owner>:<field>` only after declaring `<owner>` in

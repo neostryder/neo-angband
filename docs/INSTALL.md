@@ -614,6 +614,13 @@ Pick a character by its letter, or tap its row; `ESC` resumes the most recent
 one. Play autosaves continuously, so "resume" always means where you actually
 left off - there is nothing to save manually before closing the tab.
 
+**One window per character.** A character can only be played in one window at a
+time, and opening one that is already open somewhere else is refused with a note
+saying so. Two windows on one character would autosave over each other every few
+seconds and whichever you closed last would be the one you kept, so this is a
+refusal rather than a warning. Different characters in different windows are
+fine. Closing the window that has a character frees them immediately.
+
 **Saving on purpose.** The in-game menu has **Save and exit**, which writes and
 returns you to the title. `^S` saves without leaving.
 

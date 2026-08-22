@@ -135,16 +135,6 @@ callers) are not.
 
 Tracked as issue #14.
 
-### Two tabs of the game share one active-character key
-
-`neo-angband-active` names the character every save is written to, and it
-lives in `localStorage`, which every tab on the origin shares, so two tabs open
-on the same character both autosave into the same slot with last writer wins
-and no warning to the losing tab. The sandbox `ctx.wizard` runs in is already
-defended against this; the ordinary two-tab case is not.
-
-Tracked as issue #15.
-
 ### Two `help.test.ts` cases fail only in a full run
 
 Observed twice in one sitting and then not again with no change to the tree

@@ -240,56 +240,6 @@ Three things about it:
   [What a capability gates, and what it does not](#what-a-capability-gates-and-what-it-does-not)
   for why the gate cannot stop you and why declaring still matters.
 
-### Authoring: `ctx.authoring` and `ctx.composedRecords`
-
-For a mod that WRITES content rather than one that plays it. A tool that helps an
-author draft a monster needs two things the seams above cannot give it: the
-functions that know what a well-formed record looks like, and the records the
-game was actually composed from.
-
-`ctx.authoring` is the mod SDK's public barrel, live and always present.
-`RECORD_BLUEPRINTS` and `blueprintFor` carry every field's measured shape, type
-set and range; `fieldUsage` and `requiredFields` say how common a field is;
-`peersFor` builds a table of comparable records with the sentence saying why they
-are comparable; `suggestFields` proposes a value with its reason; `checkRecords`
-and `COMPANION_RULES` validate at the three levels the running game uses; and
-`ModProject` assembles and emits a mod folder. It is ungated, because these are
-pure functions over data you pass them.
-
-`ctx.composedRecords` is the UNBOUND twin of `ctx.registries`: every record the
-running game composed, as JSON, keyed by pack-file stem with no extension.
-
-```js
-register(host, ctx) {
-  const records = ctx.composedRecords;
-  if (!records) return;               // composition time, or an older host
-  const { peers, because } = ctx.authoring.peersFor(
-    "monster",
-    { name: "Warg matriarch", base: "canine", depth: 22 },
-    records,
-  );
-  ctx.log(`${peers.length} comparable monsters: ${because}`);
-}
-```
-
-- **Use `composedRecords`, not `registries`, for anything the SDK takes.** Every
-  `records` parameter in the authoring functions is keyed by file stem and holds
-  raw JSON. `registries.monsters.races` is bound: the binder resolved `base` into
-  a pointer and dropped the string, so a peer table grouped on `base` cannot be
-  built from it, and neither can a question about a field that bound to nothing.
-- **Mod-added records are in it on the same terms as core's**, exactly as they
-  are in `registries`, each carrying its provenance. A draft based on another
-  mod's sword has acquired a dependency, and this is what lets you see that at
-  the moment the base is chosen rather than at install time.
-- **Guard `composedRecords`, not `authoring`.** The records are absent during
-  content composition, for the reason `registries` is. The barrel is not: it
-  waits on nothing and is there on every context. An older host has neither, so
-  `if (!ctx.composedRecords) return;` covers both.
-- **It holds record objects only.** Passthrough files can carry arrays and
-  scalars, and the host narrows through the SDK's own `composedObjects` before
-  handing it over, so the authoring functions never meet an element they cannot
-  read.
-
 ### Filling tiles
 
 `registry:tiles` is the seam for one narrow thing: **a picture for content the
@@ -1446,12 +1396,6 @@ able to LOOK at everything without declaring anything:
 | `ctx.registries.rooms`, `.profiles`, `.rooms.glyphs` | `registry:room`, `registry:profile`, `registry:glyph` |
 | `ctx.state.blowEffects`, `.storeBehaviour`, `.projectionHandlers`, `.uiEntry`, `.commandVerbs`, `.monsterTurnHook` | `registry:blow`, `registry:store`, `registry:projection`, `registry:ui-entry`, `registry:command`, `registry:monster` |
 | `ctx.core.tvalRegistry()`, `.runeRegistry()`, `.randartRegistry()`, `.effectInfoRegistry()`, `.messageTypes`, `.soundPrefRegistry` | `registry:tval`, `registry:rune`, `registry:randart`, `registry:effect-info`, `registry:message` |
-
-`ctx.authoring` and `ctx.composedRecords` are ungated too, and for a different
-reason worth keeping separate from the one above: they are not twins of anything.
-The barrel is pure functions over data you pass in, and the records are the
-content the player already has, in the shape it was read in. Nothing there is a
-second route to a gated door.
 
 Those are the same live objects, by identity, not copies. `ctx.core` also exports
 `createModRegistryHost` itself, which grants every domain when it is called

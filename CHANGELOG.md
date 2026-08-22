@@ -36,31 +36,17 @@ version it still calls itself.
 
 ## [Unreleased]
 
-### Added
+### Fixed
 
-- **`ctx.authoring`: the mod SDK's authoring stack, handed to a plugin.** The
-  whole public barrel, live, on the terms `ctx.core` is handed over: blueprints
-  measured from core's own records, `peersFor`, `suggestFields`, `templateRecord`,
-  `draftRecord`, `checkRecords` and `ModProject`. Always present and gated by no
-  capability, because these are pure functions over data the caller supplies. A
-  tool that helps somebody write a monster could reach none of it before: a plugin
-  resolves no bare specifier, so the published npm package was out of reach of the
-  game it describes.
-- **`ctx.composedRecords`: the records the running game was composed from.**
-  Every content record as JSON, keyed by pack-file stem with no extension, which
-  is the shape the authoring functions accept. This is the unbound twin of
-  `ctx.registries`: a bound `MonsterRace` has no `base`, because the binder
-  resolved the name into a pointer, so a table of comparable records could not be
-  built from the registry. Mod-added records are in it on the same terms as
-  core's, each carrying its provenance, so a draft based on another mod's content
-  can name the dependency it just acquired. Absent during content composition,
-  for the reason `ctx.registries` is.
-- **A second API-surface ratchet, over the SDK.**
-  `packages/mod-sdk/mod-sdk-api-surface.json` records its 94 runtime exports and
-  `mod-authoring-surface.test.ts` fails in both directions against it. Handing a
-  namespace to a plugin puts every name in it beyond the compiler's reach, which
-  is why core has had this since 2026-08-02; `node tools/api-surface.mjs` now
-  checks and updates both baselines in one run.
+- Two windows open on the same character no longer overwrite each other's saves.
+  The character a window writes to is now that window's own, held for as long as
+  it is open, instead of being read from a setting every window on the origin
+  shared. Opening a character that is already being played somewhere else is
+  refused with an explanation rather than allowed and then silently lost, and a
+  window that ends up without the character - a duplicated tab, which resumes
+  without passing the character select - says so instead of playing on unsaved.
+  `neo-angband-active` still records which character to offer at the next launch;
+  it no longer decides where a save goes.
 
 ## [0.27.2] - 2026-08-22
 
