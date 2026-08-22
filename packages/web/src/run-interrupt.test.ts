@@ -73,9 +73,15 @@ describe("a run can be interrupted", () => {
 
   it("clears the pump flag on every exit from a turn", () => {
     // advance() returns early on a level change and on death; leaving `pumping`
-    // set there would swallow the player's keys forever.
+    // set there would swallow the player's keys forever. The flag is read
+    // first - a continuing step must not reset the message-pending cursor, so
+    // advance() needs to know which kind of step it is - and cleared straight
+    // after, with nothing able to return in between.
     const body = functionBody(MAIN, "advance");
-    expect(body).toMatch(/if \(!pumping\) interruptKey = false;\s*pumping = false;/);
+    expect(body).toMatch(/if \(!pumping\) interruptKey = false;/);
+    const clear = body.indexOf("pumping = false;");
+    expect(clear).toBeGreaterThan(-1);
+    expect(body.slice(0, clear)).not.toContain("return");
   });
 
   it("swallows keys while pumping instead of executing them", () => {

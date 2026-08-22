@@ -268,9 +268,11 @@ describe("prt census: every converted prompt site (2026-07-29)", () => {
 describe("prt census: the sites that must NOT erase (put_str, ui-output.c:362-379)", () => {
   it('msg_flush\'s "-more-" stays a Term_putstr', () => {
     /* ui-input.c:393 is `Term_putstr(x, 0, -1, a, "-more-")`, appended one column
-     * past the message text (:575). prt there would erase the message it follows. */
+     * past the message text (:575). prt there would erase the message it follows.
+     * One site: the pager's page loop prints every prompt, the forced flush's
+     * last page included (message_flush, ui-input.c L609-635). */
     const src = WEB("main.ts");
-    expect(src.match(/term\.print\(page\.length \+ 1, 0, "-more-", MORE_COLOR\)/gu)?.length).toBe(2);
+    expect(src.match(/term\.print\(page\.length \+ 1, 0, "-more-", MORE_COLOR\)/gu)?.length).toBe(1);
     expect(src).not.toContain('term.prt(page.length + 1, 0, "-more-"');
   });
 
