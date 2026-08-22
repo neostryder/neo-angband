@@ -15,6 +15,10 @@ body:
         leaves an unreadable save exactly where it is; a copy of it, exported
         from the character select, is often the fastest route to a fix.
 
+        **The in-game "Report a problem" row writes a file with your version,
+        platform, mods and recent log already in it.** Drag that file into any
+        box below and you can skip retyping the fields it already answers.
+
   - type: textarea
     id: what
     attributes:

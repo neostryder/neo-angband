@@ -1494,7 +1494,7 @@ export function objectListLines(state: GameState): ScreenLine[] {
 /**
  * The message history (Ctrl-P) as a screen: the whole log, oldest first.
  *
- * The repeat count is BOTH in the text (upstream's "you hit it. (x3)") and in the
+ * The repeat count is BOTH in the text (upstream's "you hit it. <3x>") and in the
  * row's `values`, because a presenter that wants to draw the count as a badge
  * should not have to parse it back out of a sentence.
  */

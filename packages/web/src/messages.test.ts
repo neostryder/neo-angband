@@ -50,7 +50,7 @@ describe("paginateMessages (-more- packing, ui-input.c display_message)", () => 
   it("a run-length count is rendered before packing (format())", () => {
     const pages = paginateMessages([m("You are hit.", 3)], 80);
     expect(pages).toEqual([format(m("You are hit.", 3))]);
-    expect(pages[0]).toBe("You are hit. (x3)");
+    expect(pages[0]).toBe("You are hit. <3x>");
   });
 
   it("draws its fresh set from the MessageLog buffer tail (advance's preLen)", () => {

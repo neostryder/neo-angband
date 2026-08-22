@@ -18,6 +18,10 @@ body:
         perfectly good report; the C can be checked from here, and the original
         source is in `reference/` right here in the repository.
 
+        **The in-game "Report a problem" row writes a file with your version,
+        platform, mods and recent log already in it.** Drag that file into any
+        box below and you can skip retyping the fields it already answers.
+
   - type: textarea
     id: expected
     attributes:
