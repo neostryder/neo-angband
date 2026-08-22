@@ -4,16 +4,24 @@ import {
   DEFAULT_DELAY_FACTOR,
   DEFAULT_HITPOINT_WARN,
   DEFAULT_LAZYMOVE_DELAY,
+  DEFAULT_OVERRIDES,
   OptionState,
 } from "./options.js";
 import type { OptionStateData } from "./options.js";
 
 describe("OptionState defaults (option.c options_init_defaults)", () => {
-  it("seeds every option from OPTION_ENTRIES.normal", () => {
+  it("seeds every option from OPTION_ENTRIES.normal, except core's own documented overrides", () => {
     const opts = new OptionState();
     for (const entry of OPTION_ENTRIES) {
-      expect(opts.get(entry.name)).toBe(entry.normal);
+      const expected = Object.hasOwn(DEFAULT_OVERRIDES, entry.name)
+        ? DEFAULT_OVERRIDES[entry.name as keyof typeof DEFAULT_OVERRIDES]
+        : entry.normal;
+      expect(opts.get(entry.name)).toBe(expected);
     }
+  });
+
+  it("DEFAULT_OVERRIDES is exactly birth_no_selling (see docs/PARITY.md)", () => {
+    expect(DEFAULT_OVERRIDES).toEqual({ birth_no_selling: false });
   });
 
   it("defaults hitpoint_warn to 3 and delay_factor to 40", () => {

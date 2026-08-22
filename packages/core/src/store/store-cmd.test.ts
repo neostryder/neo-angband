@@ -145,8 +145,15 @@ function runCommand(
 
 describe("shop-buy / shop-sell / shop-exit reach a real handler (docs/PLANNED.md)", () => {
   /** A fresh town game standing on the General Store's entrance. */
-  function townOnGeneralStore(seed: number) {
-    const game = startGame(pack, { seed, depth: 0 });
+  function townOnGeneralStore(
+    seed: number,
+    optionOverrides?: Record<string, boolean>,
+  ) {
+    const game = startGame(pack, {
+      seed,
+      depth: 0,
+      ...(optionOverrides ? { optionOverrides } : {}),
+    });
     const state = game.state;
     const messages: string[] = [];
     state.msg = (text: string): void => {
@@ -190,7 +197,9 @@ describe("shop-buy / shop-sell / shop-exit reach a real handler (docs/PLANNED.md
   });
 
   it("shop-sell resolves a gear handle into a real storeSell, through the registry", () => {
-    const { game, state, messages, general } = townOnGeneralStore(4301);
+    const { game, state, messages, general } = townOnGeneralStore(4301, {
+      birth_no_selling: true,
+    });
     const index = general.stock.findIndex((o) => o.tval === TV.FOOD);
     const foodBefore = foodCount(state);
     runCommand(game, { code: "shop-buy", args: { index, quantity: 1 } });
@@ -200,10 +209,11 @@ describe("shop-buy / shop-sell / shop-exit reach a real handler (docs/PLANNED.md
     )!;
     expect(handle).toBeDefined();
 
-    /* birth_no_selling defaults to true (generated/options.ts): a real game
-     * starts with shops paying nothing for a sale, so the item is still
-     * taken (do_cmd_sell L1966-1969) but no gold changes hands - "You had
-     * ..." rather than "You sold ... for N gold." */
+    /* birth_no_selling on (opted in here; core's own default is now off, see
+     * docs/PARITY.md): a game with the option enabled has shops paying
+     * nothing for a sale, so the item is still taken (do_cmd_sell
+     * L1966-1969) but no gold changes hands - "You had ..." rather than
+     * "You sold ... for N gold." */
     expect(state.options?.get("birth_no_selling")).toBe(true);
     const goldAfterBuy = state.actor.player.au;
     runCommand(game, { code: "shop-sell", args: { handle, quantity: 1 } });
