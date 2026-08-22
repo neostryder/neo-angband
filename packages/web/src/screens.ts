@@ -109,7 +109,8 @@ import type { ScreenLine, MenuItem } from "./overlay";
  * off these views to decide which actions the page offers, and a runtime import
  * would drag the updater and the log into every module that draws a screen. */
 import type { UpdateView } from "./update-ui";
-import type { ReportView } from "./report";
+import { REPORT_TRACKER_ACTION_IDS } from "./report";
+import type { ReportDestination, ReportView } from "./report";
 import {
   freezeView,
   screenBlockLines,
@@ -2707,10 +2708,18 @@ export function reportScreen(
   view: Pick<ReportView, "phase">,
   lines: readonly ScreenLine[],
   footer: string,
+  destinations: readonly ReportDestination[] = [],
 ): ScreenView {
   const actions: ScreenAction[] =
     view.phase === "saved"
-      ? []
+      ? /* A row the player cannot act on is not published as an action. A mod
+         * without a resolvable repository has no `url`, so there is nothing for
+         * `invoke` to do and an action offering to do it would be a button that
+         * lies. The LINE naming that mod is still drawn; only the action is
+         * withheld. */
+        destinations
+          .filter((d) => d.url !== null && d.key !== "")
+          .map((d) => ({ id: d.id, key: d.key, label: d.label }))
       : view.phase === "failed"
         ? [{ id: "confirm", key: "ENTER", label: "try again" }]
         : [
@@ -2825,13 +2834,17 @@ export const SCREEN_PROMPTS: Readonly<
  *   updater bridge.
  * - `log-level` cycles the logging level and logs it; `confirm` on `core:report`
  *   writes the file or offers a download. Neither asks the player anything.
+ * - the `tracker-*` actions on `core:report`: `showReportPage`'s `act` ->
+ *   `openExternalUrl` (external-link.ts) -> `window.open`. Nothing is drawn and
+ *   nothing is read, which is the whole reason they are safe to run underneath a
+ *   presenter that is holding the page.
  */
 export const SCREEN_NO_PROMPT: Readonly<Record<string, readonly string[]>> = {
   "core:character": ["page-next", "page-prev"],
   "core:character-flags": ["page-next", "page-prev"],
   "core:monster-list": ["sort-exp"],
   "core:update": ["confirm", "channel"],
-  "core:report": ["log-level", "confirm"],
+  "core:report": ["log-level", "confirm", ...REPORT_TRACKER_ACTION_IDS],
 };
 
 /**

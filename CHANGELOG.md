@@ -36,6 +36,30 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- **"Report a problem" now opens the right issue tracker, for the game or for a
+  mod.** Once the report file is written the screen lists a destination per
+  project and opens the chosen one in the real browser: `G` for Neo Angband, `C`
+  for the RPGM Tools Discord, and a digit for each enabled mod that has a
+  recorded origin. Nothing is uploaded; the file is still attached by hand.
+
+  A mod's address is read from its install record, which is the repository the
+  mod was pinned to on first install rather than whatever the copy on disk now
+  claims. Neo Angband's own row goes to the template chooser, because its two
+  templates are known to exist; a mod's row goes to the tracker root instead,
+  because whether somebody else's repository has templates, or has issues open at
+  all, cannot be known from inside the game. A mod whose origin is not a
+  repository the game can address - one imported from a file that declared none,
+  for instance - says so and offers no key, rather than guessing at a URL that
+  might open a stranger's project. Every address is printed under its row, so no
+  page is opened that the player has not read first.
+
+  The same screen now gives the advice that decides whether a report is
+  actionable: one problem per report, search the tracker first, say what you did
+  and expected and got, and which of the two forms a difference from Angband
+  belongs in.
+
 ### Fixed
 
 - Repeated identical messages showed as one top line with a ticking `<Nx>`

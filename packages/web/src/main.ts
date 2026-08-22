@@ -616,11 +616,20 @@ import { WEB_BUILD_ID } from "./build-id";
 import {
   REPORT_DESCRIPTION_LINES,
   REPORT_LOG_LINES,
+  reportDestinations,
   reportFooter,
   reportLines,
   reportText,
 } from "./report";
-import type { ReportCharacter, ReportInput, ReportLine, ReportShell, ReportView } from "./report";
+import type {
+  ReportCharacter,
+  ReportInput,
+  ReportLine,
+  ReportModOrigin,
+  ReportShell,
+  ReportView,
+} from "./report";
+import { openExternalUrl } from "./external-link";
 import {
   TRANSFER_EXT,
   decodeTransfer,
@@ -10768,6 +10777,34 @@ function reportInput(description: readonly string[]): ReportInput {
  */
 async function showReportPage(): Promise<void> {
   const description: string[] = [];
+  /*
+   * WHERE A MOD'S ADDRESS COMES FROM: its INSTALL RECORD, not its manifest.
+   *
+   * `InstalledModMeta.repo` is the origin trust-on-first-use pinned when the mod
+   * was installed, and every later fetch for that mod has had to match it
+   * (mod-source.ts, originConflict). The manifest's `repository` is the same
+   * string only until somebody edits the copy on disk, and this screen is one a
+   * player reaches precisely when something is wrong with their mods.
+   *
+   * Read once, here, rather than per repaint: it is an IndexedDB round trip, and
+   * an enabled mod's origin cannot change while this page is open.
+   *
+   * A FAILURE IS NOT AN EMPTY LIST OF MODS. If the records cannot be read the
+   * mods are still listed, with no address - which is the truth. Dropping them
+   * would tell a player with a broken mod set that no mod could be involved.
+   */
+  const origins = await (async (): Promise<ReportModOrigin[]> => {
+    const enabled = enabledModSummary();
+    if (enabled.length === 0) return [];
+    let byId = new Map<string, string>();
+    try {
+      byId = new Map((await installedMods(globalThis)).map((m) => [m.id, m.repo]));
+    } catch (error: unknown) {
+      log.warn("report", "could not read where the enabled mods came from", error);
+    }
+    return enabled.map((m) => ({ id: m.id, repo: byId.get(m.id) ?? "" }));
+  })();
+
   let view: ReportView = {
     phase: "compose",
     shell: reportShell(),
@@ -10776,6 +10813,7 @@ async function showReportPage(): Promise<void> {
     lineCount: log.recent().length,
     modCount: enabledModSummary().length,
     logsDir: desktopLogsDir() ?? undefined,
+    modOrigins: origins,
   };
 
   /* True while a presenter holds the page; see the update page's own `owned`. */
@@ -10812,6 +10850,47 @@ async function showReportPage(): Promise<void> {
    * update page's `act` on why this is shared rather than copied. */
   const act = async (pressed: string): Promise<boolean> => {
     if (pressed === "Escape") return false;
+
+    /*
+     * OPENING A TRACKER, and why this branch is first and holds no `await`.
+     *
+     * A browser only honours `window.open` while the gesture that asked for it is
+     * still being handled. Anything awaited before the call spends that gesture
+     * and the popup blocker takes the page, which presents as a key that does
+     * nothing at all. So the lookup is a synchronous walk over rows this function
+     * already has, and the open happens on the same tick as the key.
+     *
+     * Only in the saved phase: the keys are digits and letters that mean nothing
+     * on the compose page, and claiming them there would take `1` away from a
+     * screen that may one day want it.
+     */
+    if (view.phase === "saved") {
+      const dest = reportDestinations(origins).find(
+        (d) => d.key !== "" && d.key.toLowerCase() === pressed.toLowerCase(),
+      );
+      if (dest?.url != null) {
+        const opened = openExternalUrl(dest.url);
+        log.info(
+          "report",
+          opened
+            ? `opened the tracker for ${dest.label}`
+            : `could not open the tracker for ${dest.label}`,
+          dest.url,
+        );
+        /* Said on the screen rather than only in the log. A refused popup is
+         * indistinguishable from a broken link to the person looking at it, and
+         * the address is already printed on the row below, so the recoverable
+         * answer is to say so and leave them the address to copy. Cleared on a
+         * success, or the warning outlives the failure it describes. */
+        view = {
+          ...view,
+          ...(opened
+            ? { notice: undefined }
+            : { notice: `${dest.label} did not open. Its address is listed below.` }),
+        };
+        return true;
+      }
+    }
 
     if (pressed === "d" || pressed === "D") {
       /*
@@ -10884,14 +10963,20 @@ async function showReportPage(): Promise<void> {
       view,
       reportLines(view).map((line) => ({ text: line.text, color: REPORT_TONE[line.tone] })),
       reportFooter(view),
+      reportDestinations(origins),
     );
 
   const host: ScreenHost = {
     invoke: async (id: string): Promise<ScreenView | undefined> => {
-      const pressed = REPORT_ACTION_KEYS[id];
+      /* The three fixed keys, then the destination rows - which carry their own
+       * key because how many there are depends on the player's mods. Looked up
+       * from the same builder the screen drew from, so a presenter cannot invoke
+       * a row the player was never shown. */
+      const pressed =
+        REPORT_ACTION_KEYS[id] ?? reportDestinations(origins).find((d) => d.id === id)?.key;
       /* An unknown id is a no-op returning the current view; see the update
        * page's host on why it is never an error. */
-      if (pressed === undefined) return screenNow();
+      if (pressed === undefined || pressed === "") return screenNow();
       const again = await announcedAction(screenNow(), id, () => act(pressed));
       return again ? screenNow() : undefined;
     },
