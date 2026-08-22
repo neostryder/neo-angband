@@ -201,6 +201,14 @@ differ cannot share a string:
 before any of it runs, and `mod:session` switches one on for the rest of the
 session, which is more rather than less.
 
+The same pricing runs the other way, which is why `mod:install` opens two ctx
+fields rather than one. It carries `ctx.reloadGame` as well as `ctx.installMod`,
+because content composes at load: a grant that installed and could not apply
+would leave the player holding something the running process never loads, and a
+reload is nothing anybody would ask for on its own. Splitting them would have put
+half an act on the consent list, which is the same defect as pricing two acts at
+one line.
+
 ### A mod that lasts one session
 
 There is a fourth way a mod arrives, alongside the shipped installer, a folder on
