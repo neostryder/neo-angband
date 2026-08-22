@@ -230,12 +230,13 @@ exists for a permanently installed pack that is later removed.
 
 Tracked as issue #20.
 
-### A player-visible speed control for a mod's autoplayer
+### An autoplayer's unattended long-run resource behaviour is unmeasured
 
-`ModPlugin.controller`'s pump ticks on a plain constant,
-`MOD_AUTOPLAYER_TICK_MS`. The debug agent seam (`?agent=`) already has a
-`?speed=fast|normal|slow` URL param for the same pump shape; the mod-controller
-path has no player-facing equivalent, and unattended-long-run resource
-behaviour is also unmeasured.
+`ModPlugin.controller`'s pump has no tick cap by design - a "let it play" mod
+is supposed to keep going, unlike the debug agent and plugin seams' manual-test
+safety caps - but nothing has observed what an hours-long unattended run does
+to memory or performance. The pump itself now has a player-visible speed
+control (Mods -> the autoplaying mod's own screen -> Autoplayer speed,
+`packages/web/src/mods.ts`), matching the debug agent seam's `?speed=` tiers.
 
 Tracked as issue #21.

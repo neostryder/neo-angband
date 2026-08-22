@@ -36,6 +36,13 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Added
+- A player-visible speed control for a mod's autoplayer: the mod's own Fixes &
+  tweaks screen (Mods -> the mod) now shows an Autoplayer speed row - Fast,
+  Normal or Slow - beside the rule that hands it the keyboard in the first
+  place, once it holds the controller slot. Takes effect at once, no reload.
+  Matches the debug agent seam's existing `?speed=fast|normal|slow` tiers.
+
 ## [0.27.2] - 2026-08-22
 
 An install-clarity and defaults release: picking (I)nstall locally now lays
