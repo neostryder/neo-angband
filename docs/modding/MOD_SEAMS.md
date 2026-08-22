@@ -776,11 +776,10 @@ ctx.wizard.grantExperience(50000);
   experience" would be a second set of rules about levelling up.
 - **`sandbox()` is the price, and the host checks it rather than trusting the mod.**
   Every command refuses until it has been called, and it cannot be undone. What it
-  does is detach the page from its save slot, which is the single thing every write
-  to a character consults - the turn-tail autosave, the level-change save, `S`, the
-  options screen, `pagehide` and the death save all end up there. A page attached to
-  no slot writes nowhere. The attachment lives in that page's own memory, so no
-  other window can put it back.
+  does is drop the active save slot id, which is the single thing every write to a
+  character consults - the turn-tail autosave, the level-change save, `S`, the
+  options screen, `pagehide` and the death save all end up there. A session with no
+  active slot id writes nowhere.
 - **Which is why this seam is SAFER for the character on disk than `debug:spawn`
   is, not more dangerous.** Spawning happens to the character the player is
   actually playing and costs them the score of that character for good. This one
