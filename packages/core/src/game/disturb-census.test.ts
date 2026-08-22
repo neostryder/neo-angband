@@ -139,7 +139,7 @@ const UPSTREAM: readonly { at: string; sites: number; port: string }[] = [
   {
     at: "player-util.c:player_resting_complete_special",
     sites: 3,
-    port: "the HOST owns the rest lifecycle (restingCompleteSpecial, web/src/main.ts): it returns true and the host stops the rest, which is the disturb's whole effect there",
+    port: "game/world.ts playerRestingCompleteSpecial - the three REST_ stopping conditions (REST_ALL_POINTS, REST_COMPLETE, REST_SOME_POINTS)",
   },
   {
     at: "player-util.c:player_handle_post_move",
@@ -194,8 +194,10 @@ const PORT_SITES: readonly { file: string; n: number; what: string }[] = [
   { file: "game/take-hit-hooks.ts", n: 1, what: "take_hit / project_p" },
   {
     file: "game/world.ts",
-    n: 4,
-    what: "recharged_notice, fainting from hunger, light gone out, light growing faint",
+    n: 7,
+    what:
+      "recharged_notice, fainting from hunger, light gone out, light growing faint; " +
+      "player_resting_complete_special's three REST_ stopping conditions",
   },
   {
     file: "session/game.ts",

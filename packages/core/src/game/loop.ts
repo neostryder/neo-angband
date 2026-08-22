@@ -49,6 +49,7 @@ import {
   playAmbientSound,
   playerHasWorld,
   playerOfHasWorld,
+  playerRestingCompleteSpecial,
   playerUpdateLight,
   processDamageOverTime,
   processExpDrain,
@@ -177,7 +178,8 @@ const REST_REQUIRED_FOR_REGEN = 5;
  * player_resting_can_regenerate (player-util.c:1461): the player earns the x2
  * regeneration bonus once REST_REQUIRED_FOR_REGEN turns of the current rest
  * have elapsed, or immediately for the conditional REST_ modes. The rest
- * command (WP-11, web) sets state.resting; absent when not resting. No RNG.
+ * command's restAction (game/player-turn.ts) sets state.resting; absent when
+ * not resting. No RNG.
  */
 function playerRestingCanRegenerate(state: GameState): boolean {
   const r = state.resting;
@@ -551,10 +553,10 @@ function loopStop(state: GameState): LoopStatus | null {
  * keeps the headless harnesses, the borg and the tests driving a whole run
  * inside one call.
  *
- * The upstream call sits at the top of process_player, before its do-while;
- * calling it immediately before processPlayer() is the same point in the order.
- * player_resting_complete_special, signalled on the line above it, is ported as
- * a predicate the host's rest lifecycle owns (restingCompleteSpecial, WP-11).
+ * The upstream call sits at the top of process_player, right after
+ * player_resting_complete_special (game-world.c:936-937); processPlayerChecked
+ * calls playerRestingCompleteSpecial immediately before this, which is the
+ * same point in the order.
  */
 export function checkForPlayerInterrupt(state: GameState): InterruptResponse {
   if (!state.checkInterrupt) return "go";
@@ -582,8 +584,15 @@ export function checkForPlayerInterrupt(state: GameState): InterruptResponse {
 }
 
 /**
- * process_player (game-world.c:933): the interrupt check, then the turn. "pause"
- * is the host asking for its event loop back before the turn is taken.
+ * process_player (game-world.c:933-937): player_resting_complete_special, the
+ * interrupt check, then the turn. "pause" is the host asking for its event
+ * loop back before the turn is taken.
+ *
+ * playerRestingCompleteSpecial runs first, exactly as upstream orders it -
+ * a conditional rest (REST_ALL_POINTS / REST_COMPLETE / REST_SOME_POINTS) that
+ * has already met its own stopping condition (HP/SP full, no bad statuses) is
+ * disturbed before the interrupt check or the turn, so it does not spend one
+ * extra turn beyond upstream's.
  *
  * mayPause is false for the FIRST turn of a runGameLoop call. A call resumed
  * after LOOP_STATUS.PAUSE re-enters at that same point, so pausing there would
@@ -596,6 +605,7 @@ function processPlayerChecked(
   registry: ActionRegistry,
   mayPause: boolean,
 ): PlayerTurnResult | "pause" {
+  playerRestingCompleteSpecial(state);
   if (checkForPlayerInterrupt(state) === "pause" && mayPause) return "pause";
   return processPlayer(state, registry);
 }
