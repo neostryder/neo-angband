@@ -1,6 +1,6 @@
 {
   "name": "@rpgm-tools/neo-angband-mcp",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "private": true,
   "description": "Model Context Protocol server: play Neo Angband through the frozen agent API",
   "license": "GPL-2.0-only",
