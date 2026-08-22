@@ -36,6 +36,17 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-08-21
+
+A trading and rest release: an agent's `shop-buy`, `shop-sell` and `shop-exit`
+commands now reach a real handler instead of a silent no-op, and the `rest`
+command carries its own multi-turn continuation matching upstream instead of
+spending exactly one turn per call, so resting reaches the doubled
+regeneration rate upstream gives it. Alongside these, "Report a problem" opens
+the right issue tracker for the game or an installed mod directly from the
+report screen, repeated messages page correctly during a run or a rest, and
+the recall screen's run-length format matches upstream's own.
+
 ### Added
 
 - **"Report a problem" now opens the right issue tracker, for the game or for a
@@ -342,7 +353,7 @@ instead of a curated subset that had drifted from it.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.26.0` - a features release for mod
+Current state of the project at version `0.27.0` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again
