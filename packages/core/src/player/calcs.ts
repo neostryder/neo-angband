@@ -721,6 +721,18 @@ function calcLight(
      calc_light sets p->upkeep->update |= (PU_UPDATE_VIEW | PU_MONSTERS) when
      the town light changes (1608-1611), and the port has no dirty-flag pipeline
      to set: the front end recomputes and repaints after every action. */
+  /* GATED ON `update`, exactly as upstream gates it (player-calcs.c:1607 -
+   * `if (!p->depth && is_daytime() && update)`). So a SHADOW derive computes
+   * cur_light from the equipment even in a lit town, and the live derive reports
+   * zero. That asymmetry is upstream's, and it is a wart the port keeps.
+   *
+   * WHAT IT COSTS, because it was measured and is worth knowing: a consumer that
+   * compares a shadow derive's score against the LIVE derive's score is comparing
+   * two different answers, and in a daytime town the gap is a whole torch's light
+   * radius. `simulateLoadout` derives both of its sides through this same shadow
+   * path, so its own `before` / `after` / `delta` are consistent; the baseline to
+   * compare an `after` against is that `before`, never the live score. See
+   * agent/loadout.ts. */
   const depth = options.depth;
   const update = options.update ?? true;
   if (depth === 0 && (options.isDaytime ?? false) && update) {

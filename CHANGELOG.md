@@ -209,17 +209,6 @@ version it still calls itself.
   the screen and therefore not in the view. **This is a behaviour change for any mod
   reading `CellView.trap`**; see `docs/modding/MOD_COMPATIBILITY.md`.
 
-- **A simulated loadout reported a light radius the character does not have.**
-  `calc_light` returns early in a daytime town, where the level is lit and the
-  character's own light contributes nothing. The port gated that early return on
-  the caller wanting side effects - and `simulateLoadout`, which asks for none,
-  therefore derived every hypothetical loadout with a torch's radius added. Worth
-  14000 points to `borg_power`, which made every wearable item look like an
-  upgrade: measured on a headless run, the Borg spent 3964 of 4000 decisions
-  swapping one wooden torch for an identical one. Upstream has no such gate; the
-  early return is the value and the flag it sets is the redraw, which this port
-  already does elsewhere.
-
 - **`debug:spawn` would have carried a second `debug:` capability along with it.**
   The grant check compared the capability's kind and not its action, which was
   correct by accident while `spawn` was the only debug action. Adding a second one

@@ -31,6 +31,7 @@ import { monsterIsVisible } from "../mon/predicate.js";
 import { PY_SPELL, spellChance } from "../player/spell.js";
 import { makeSpellChanceEnv } from "../game/spell-cmd.js";
 import { priceItem } from "../store/price.js";
+import { squareIsDisarmableTrap } from "../game/trap.js";
 import { itemView, playerViewFor } from "./entity-views.js";
 import { simulateLoadout } from "./loadout.js";
 import { AGENT_API_VERSION, AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types.js";
@@ -129,7 +130,11 @@ function cellView(
     monster: c.mon(grid),
     objectCount: (state.floor.get(idx) ?? []).length,
     glow: c.sqinfoHas(grid, SQUARE["GLOW"]),
-    trap: (state.traps.get(idx)?.length ?? 0) > 0,
+    /* square_isdisarmabletrap, not "the trap list is non-empty": a closed door's
+     * lock, a glyph of warding, a web and a decoy are all trap records, and none
+     * of them is a trap the player sees or the disarm command will act on. See
+     * CellView.trap. */
+    trap: squareIsDisarmableTrap(state, grid),
   };
   if (deps.resolver) {
     const code = deps.resolver.featIdOrNull(feat);
