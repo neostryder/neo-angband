@@ -230,13 +230,30 @@ exists for a permanently installed pack that is later removed.
 
 Tracked as issue #20.
 
-### An autoplayer's unattended long-run resource behaviour is unmeasured
+### An autoplayer's real long-run resource behaviour is still unmeasured
 
 `ModPlugin.controller`'s pump has no tick cap by design - a "let it play" mod
 is supposed to keep going, unlike the debug agent and plugin seams' manual-test
-safety caps - but nothing has observed what an hours-long unattended run does
-to memory or performance. The pump itself now has a player-visible speed
-control (Mods -> the autoplaying mod's own screen -> Autoplayer speed,
-`packages/web/src/mods.ts`), matching the debug agent seam's `?speed=` tiers.
+safety caps. The pump itself now has a player-visible speed control (Mods ->
+the autoplaying mod's own screen -> Autoplayer speed, `packages/web/src/mods.ts`),
+matching the debug agent seam's `?speed=` tiers.
+
+**Measured, 2026-08-22**: the turn-loop/controller/message-drain path itself -
+`installController` plus `runGameLoop`, the same shape the host's pump drives -
+holds no memory across 20 million simulated turns (`process.memoryUsage().heapUsed`
+sampled every 500k turns with a forced GC between samples; flat at ~34MB from
+turn 500k through turn 19.5M on the worldless test harness, `game/harness.ts`).
+That rules out the pump and the agent-facade plumbing as a leak source.
+
+**Still unmeasured**: this used the worldless harness - no dungeon generation,
+no level changes, no monsters, and a scripted bounce-in-place controller rather
+than a real decision-making agent. A real "let it play" mod generates many
+dungeon levels over an hours-long run (each a fresh `Chunk` the old one must be
+freed behind), keeps its own remembered-world state (a Borg's map/monster/object
+memory grows with what it has seen), and runs inside a browser tab whose
+`render()`/canvas/animation-frame path is a second resource surface core's tests
+cannot see at all. None of those are exercised here, and a real run - a browser
+tab with the Borg actually playing for several real hours - is what would close
+this the rest of the way.
 
 Tracked as issue #21.
