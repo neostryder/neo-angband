@@ -593,9 +593,13 @@ host-internal type and not part of any ABI.
 
 **Two ratchets confirmed not to move:**
 
-- `tools/api-surface.mjs` reads `packages/core/dist/index.js` and writes
-  `packages/core/mod-api-surface.json`: **core's runtime exports only**. The SDK
-  is not in it. (Do not run it with `--update`; there is nothing for it to say.)
+- `tools/api-surface.mjs` records **runtime exports only**, and a type is not one:
+  `RegionPointer` is a type and `RegionDeclaration.input` is a member of one, so
+  neither baseline moves for this work. (The tool watches two surfaces since
+  `ctx.authoring` landed - `packages/core/mod-api-surface.json` and
+  `packages/mod-sdk/mod-sdk-api-surface.json` - and the SDK one is the reason
+  this row no longer reads "the SDK is not in it". It still has nothing to say
+  about a type.)
 - `MOD_COMPATIBILITY.md` records *removals*. An optional member is additive; no
   existing plugin changes meaning.
 
