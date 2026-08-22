@@ -97,6 +97,13 @@ faithful conservative default rather than guessing:
   the only thing upstream has that stops a borg resting through a beating. A mod's
   own blow method is recognised on the same terms.
 
+- **What an object kind is worth, and whether the character knows the flavour**,
+  from `registries.objects` and `state.isAware`. Upstream prices every object it
+  can see on the floor at its kind's shop value, or at 1 while the flavour is
+  unidentified, and every rung that walks to an object skips anything priced at
+  zero or less. A Borg without the price sees a floor of worthless things and
+  collects none of them. A mod's own object is priced by the same lookup.
+
 The mod declares an engine range rather than degrading: a Borg missing any of the
 above is not a Borg with a feature switched off. Its own `PLANNED.md` is where
 this list is kept current, since the mod ships on its own schedule, and it also
