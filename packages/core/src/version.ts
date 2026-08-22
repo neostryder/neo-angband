@@ -23,4 +23,4 @@ export const PARITY_BASELINE = "4.2.6";
  * released tag is iterated takes a MINOR bump, because a published tag is pinned
  * by digest in a catalogue and must never be moved.
  */
-export const ENGINE_VERSION = "0.27.1";
+export const ENGINE_VERSION = "0.27.2";
