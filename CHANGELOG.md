@@ -36,6 +36,26 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- Pressing and releasing `^` (caret) and then a letter did nothing: only a
+  real Ctrl-plus-key chord reached a control command. `commands.txt` documents
+  the caret sequence specifically for a host that swallows the real chord
+  before any page script sees it, and a browser tab is exactly that host -
+  `Ctrl-W` closes the tab outright, and no `preventDefault` changes that. The
+  keydown handler now arms a pending-caret flag on a bare `^` and resolves the
+  next keypress through the same dispatch a real Ctrl chord uses.
+- The roguelike keyset's eight caret-plus-direction alter keys (`^b`, `^h`,
+  `^j`, `^k`, `^l`, `^n`, `^u`, `^y`) were unbound; only `^t`, `^d` and `^v`
+  reached a command. All eight now resolve to alter (attack, tunnel, open,
+  disarm or close) in the direction their letter already walks.
+- The birth screen's help key always showed the original keyset's command
+  summary, even when the roguelike keyset was the customised default or had
+  already been chosen for the character being born. `do_cmd_help` reads the
+  keyset live off the player under construction; the birth screen now reads
+  the same customised interface-option default the running game does and
+  opens the matching summary.
+
 ## [0.27.0] - 2026-08-21
 
 A trading and rest release: an agent's `shop-buy`, `shop-sell` and `shop-exit`

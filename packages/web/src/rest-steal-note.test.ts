@@ -99,6 +99,8 @@ describe("WP-11 keyboard-parity sweep (ui-game.c cmd_* tables)", () => {
     expect(MAIN_TS).toMatch(/code: "run", dir/);
   });
   it("binds ^S as a save alias (cmd_util)", () => {
-    expect(MAIN_TS).toMatch(/ev\.key === "s" \|\| ev\.key === "S"/);
+    // Read inside dispatchControlKey (#3), whose `key` param is fed by both a
+    // real Ctrl chord and the caret-prefix fallback - see caret-input.test.ts.
+    expect(MAIN_TS).toMatch(/key === "s" \|\| key === "S"/);
   });
 });

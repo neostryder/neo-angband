@@ -380,7 +380,7 @@ import {
   type HudFrameSink,
   type HudModel,
 } from "./hud-view";
-import { resolveKey } from "./keymap";
+import { resolveKey, DIRS_ROGUELIKE } from "./keymap";
 import { installWebSound } from "./sound";
 import {
   composeTileModes,
@@ -6409,6 +6409,15 @@ let interruptKey = false;
 /* True while a self-continuing command (a run, a pathfind, an auto-repeated
  * dig) is being pumped one step per event-loop turn - see advance(). */
 let pumping = false;
+/**
+ * The caret (^) prefix fallback (#3, command.rst / commands.txt): "It is
+ * often possible to specify control-keys without actually pressing the
+ * control key, by typing a caret (^) followed by the key." True for exactly
+ * one keydown after a bare, unmodified '^' - the keydown handler clears it
+ * unconditionally at the top of every call, so it can never survive to color
+ * a later, unrelated key.
+ */
+let caretPending = false;
 state.checkInterrupt = (): InterruptResponse => {
   /* The resting arm of the C's gate is answered by driveRest, which owns the
    * rest lifecycle in this port (WP-11) and already yields - and pauses - once
@@ -9133,8 +9142,134 @@ setKeymapResolver(
   },
 );
 
+/**
+ * Ctrl-key command aliases (cmd_action / cmd_util faithful bindings that use a
+ * control modifier). `key` is the plain letter as it would follow a real
+ * Ctrl chord (e.g. "s" for both an actual Ctrl-S and a caret-then-s fallback
+ * keypress); `roguelike` is the live rogue_like_commands option. Returns
+ * whether a binding fired, so a caller knows whether to swallow the key.
+ *
+ * Shared by two callers: a real `ev.ctrlKey` chord, and the caret (^) prefix
+ * fallback (#3) below, which resolves to the exact same commands - upstream's
+ * documented "type a caret, then the key" route exists specifically because a
+ * host (a browser tab) can swallow the real chord before any page script
+ * sees it, so the fallback has to reach every command a real chord reaches.
+ */
+function dispatchControlKey(key: string, roguelike: boolean): boolean {
+  /* The keypress table's one control-bound row is declarative too. Its action
+   * remains private, but a registry:menu rewrite of `controlKey` must change
+   * the real key route as well as the label the ENTER browser displays. This
+   * is before the table-external control aliases below; with no mod it is the
+   * same ^A debug branch that used to live there. */
+  const tableControl = commandTable().find(
+    (command) => command.ctrl?.toLowerCase() === key.toLowerCase(),
+  );
+  if (tableControl) {
+    tableControl.act();
+    return true;
+  }
+  // Dig a tunnel (^T): the roguelike-keyset alias of Tunnel, whose original
+  // key is the plain 'T' (ui-game.c:146 { 'T', KTRL('T') }). Roguelike 'T' is
+  // Take off, so tunnel moves to ^T there; in the original keyset ^T is unbound.
+  if (roguelike && (key === "t" || key === "T")) {
+    void openModal(tunnelCmd);
+    return true;
+  }
+  // Save (^S, cmd_util "Save and don't quit"): same autosave 'S' triggers.
+  if (key === "s" || key === "S") {
+    autosave(true);
+    message = "Saving game... done.";
+    render();
+    return true;
+  }
+  // Toggle wizard mode (^W, do_cmd_wizard / ui-game.c L222). First entry
+  // confirms and marks player.noscore |= NOSCORE_WIZARD (15.1 / cmd-misc.c).
+  if (key === "w" || key === "W") {
+    void openModal(async () => {
+      wizardMode = await runWizardToggle(wizardCtx(), wizardMode);
+      /* player->wizard for take_hit's cheat-death gate (W2-009). */
+      state.wizard = wizardMode;
+    });
+    return true;
+  }
+  // Repeat level feeling (^F, do_cmd_feeling / ui-game.c:186): a free action.
+  if (key === "f" || key === "F") {
+    feelingCmd();
+    return true;
+  }
+  // Show previous message (^O, do_cmd_message_one / ui-game.c:187): free.
+  if (key === "o" || key === "O") {
+    showPrevMessageCmd();
+    return true;
+  }
+  // Do autopickup (^G, CMD_AUTOPICKUP / ui-game.c:224): pick up everything on
+  // the grid that needs no action - gold, plus =g / pickup_always items - a
+  // single key active in both keysets. Distinct from 'g' (interactive pickup);
+  // the core doAutopickup path is registered as the "autopickup" command.
+  if (key === "g" || key === "G") {
+    commandBuffer.push({ code: "autopickup" });
+    advance();
+    return true;
+  }
+  // Repeat previous command (^V): the roguelike-keyset alias of Repeat, whose
+  // original key is the plain 'n' (ui-game.c:223 { 'n', KTRL('V') }). Roguelike
+  // 'n' is a movement key, so repeat moves to ^V; original-keyset ^V is unbound.
+  if (roguelike && (key === "v" || key === "V")) {
+    void repeatLastCommand();
+    return true;
+  }
+  // Save and quit (^X, textui_quit / cmd_util:199). The browser reserves some
+  // Ctrl combos, but the game takes ownership so its bindings never differ.
+  if (key === "x" || key === "X") {
+    saveQuitCmd();
+    return true;
+  }
+  // Redraw the screen (^R, do_cmd_redraw / cmd_util:201).
+  if (key === "r" || key === "R") {
+    redrawCmd();
+    return true;
+  }
+  // Center map on the player (^L original keyset, do_cmd_center_map /
+  // cmd_hidden:221). In the roguelike keyset ^L is alter-east, so ^L centers
+  // only in the original keyset; the roguelike center-map key is '@' (below).
+  if (!roguelike && (key === "l" || key === "L")) {
+    centerMapCmd();
+    return true;
+  }
+  // Ignore an item (^D): the roguelike-keyset alias of Ignore, whose original
+  // key is the plain 'k' (ui-game.c:165 { 'k', KTRL('D') }). Roguelike 'k' is a
+  // movement key, so ignore moves to ^D; in the original keyset ^D is unbound.
+  if (roguelike && (key === "d" || key === "D")) {
+    void openModal(ignoreItemCmd);
+    return true;
+  }
+  // The roguelike keyset's caret+direction alter-keys (#4, r_comm.txt:
+  // ^b/^h/^j/^k/^l/^n/^u/^y -> alter-direction): the movement.rst fallback
+  // ("Preceding this command with CTRL will cause you to alter... in the
+  // appropriate direction") for every hjkl/yubn letter DIRS_ROGUELIKE binds to
+  // a direction. A real direction is known from the letter itself, so this
+  // pushes straight to the core 'alter' action instead of prompting like the
+  // '+' key's alterCmd does.
+  if (roguelike) {
+    const dir = DIRS_ROGUELIKE[key.toLowerCase()];
+    if (dir !== undefined) {
+      commandBuffer.push({ code: "alter", dir });
+      advance();
+      return true;
+    }
+  }
+  return false;
+}
+
 inputEvents.addEventListener("keydown", (ev) => {
   logKeypress(ev);
+  // Caret (^) prefix fallback (#3): the flag armed below survives to color
+  // exactly the next keydown and no further - captured and cleared here, at
+  // the very top, so a modal, an interrupt, or any other early return between
+  // the arming keypress and this one can never leave it stuck on for a later,
+  // unrelated key.
+  const wasCaretPending = caretPending;
+  caretPending = false;
   if (scoresOpen || modalDepth > 0) return; // a modal owns the keyboard
   // While a run / pathfind / repeated command is being pumped, ANY key is the
   // abort and nothing else: check_for_player_interrupt flushes the input and
@@ -9198,111 +9333,32 @@ inputEvents.addEventListener("keydown", (ev) => {
   // key through this exactly like cmd_info's key[0] (original) / key[1]
   // (roguelike) pair, so no binding differs from the reference.
   const roguelike = state.options?.get("rogue_like_commands") ?? false;
+  // Caret (^) prefix fallback (#3): the previous keydown armed this one.
+  // command.rst: "It is often possible to specify control-keys without
+  // actually pressing the control key, by typing a caret followed by the
+  // key" - the documented route for a host that swallows the real chord (a
+  // browser tab intercepts Ctrl-W outright; no preventDefault changes that).
+  // A caret followed by something with no control meaning has, per that same
+  // page, "no useful way" to be an underlying command, so it is simply
+  // dropped rather than falling through to plain-key handling below.
+  if (wasCaretPending) {
+    if (!ev.altKey && !ev.metaKey && ev.key.length === 1 && ev.key !== "^") {
+      if (dispatchControlKey(ev.key, roguelike)) ev.preventDefault();
+    }
+    return;
+  }
   // Player keymaps are resolved by input-door before this root screen (and
   // before any future mod input consumer); queued expansion bypasses that
   // resolver so an action never recursively re-keymaps itself.
+  if (!ev.ctrlKey && !ev.altKey && !ev.metaKey && ev.key === "^") {
+    ev.preventDefault();
+    caretPending = true;
+    return;
+  }
   // Ctrl-key command aliases (cmd_action / cmd_util faithful bindings that use a
   // control modifier). Checked before the modifier-free block below.
   if (ev.ctrlKey && !ev.altKey && !ev.metaKey) {
-    /* The keypress table's one control-bound row is declarative too. Its action
-     * remains private, but a registry:menu rewrite of `controlKey` must change
-     * the real key route as well as the label the ENTER browser displays. This
-     * is before the table-external control aliases below; with no mod it is the
-     * same ^A debug branch that used to live there. */
-    const tableControl = commandTable().find(
-      (command) => command.ctrl?.toLowerCase() === ev.key.toLowerCase(),
-    );
-    if (tableControl) {
-      ev.preventDefault();
-      tableControl.act();
-      return;
-    }
-    // Dig a tunnel (^T): the roguelike-keyset alias of Tunnel, whose original
-    // key is the plain 'T' (ui-game.c:146 { 'T', KTRL('T') }). Roguelike 'T' is
-    // Take off, so tunnel moves to ^T there; in the original keyset ^T is unbound.
-    if (roguelike && (ev.key === "t" || ev.key === "T")) {
-      ev.preventDefault();
-      void openModal(tunnelCmd);
-      return;
-    }
-    // Save (^S, cmd_util "Save and don't quit"): same autosave 'S' triggers.
-    if (ev.key === "s" || ev.key === "S") {
-      ev.preventDefault();
-      autosave(true);
-      message = "Saving game... done.";
-      render();
-      return;
-    }
-    // Toggle wizard mode (^W, do_cmd_wizard / ui-game.c L222). First entry
-    // confirms and marks player.noscore |= NOSCORE_WIZARD (15.1 / cmd-misc.c).
-    if (ev.key === "w" || ev.key === "W") {
-      ev.preventDefault();
-      void openModal(async () => {
-        wizardMode = await runWizardToggle(wizardCtx(), wizardMode);
-        /* player->wizard for take_hit's cheat-death gate (W2-009). */
-        state.wizard = wizardMode;
-      });
-      return;
-    }
-    // Repeat level feeling (^F, do_cmd_feeling / ui-game.c:186): a free action.
-    if (ev.key === "f" || ev.key === "F") {
-      ev.preventDefault();
-      feelingCmd();
-      return;
-    }
-    // Show previous message (^O, do_cmd_message_one / ui-game.c:187): free.
-    if (ev.key === "o" || ev.key === "O") {
-      ev.preventDefault();
-      showPrevMessageCmd();
-      return;
-    }
-    // Do autopickup (^G, CMD_AUTOPICKUP / ui-game.c:224): pick up everything on
-    // the grid that needs no action - gold, plus =g / pickup_always items - a
-    // single key active in both keysets. Distinct from 'g' (interactive pickup);
-    // the core doAutopickup path is registered as the "autopickup" command.
-    if (ev.key === "g" || ev.key === "G") {
-      ev.preventDefault();
-      commandBuffer.push({ code: "autopickup" });
-      advance();
-      return;
-    }
-    // Repeat previous command (^V): the roguelike-keyset alias of Repeat, whose
-    // original key is the plain 'n' (ui-game.c:223 { 'n', KTRL('V') }). Roguelike
-    // 'n' is a movement key, so repeat moves to ^V; original-keyset ^V is unbound.
-    if (roguelike && (ev.key === "v" || ev.key === "V")) {
-      ev.preventDefault();
-      void repeatLastCommand();
-      return;
-    }
-    // Save and quit (^X, textui_quit / cmd_util:199). The browser reserves some
-    // Ctrl combos, but the game takes ownership so its bindings never differ.
-    if (ev.key === "x" || ev.key === "X") {
-      ev.preventDefault();
-      saveQuitCmd();
-      return;
-    }
-    // Redraw the screen (^R, do_cmd_redraw / cmd_util:201).
-    if (ev.key === "r" || ev.key === "R") {
-      ev.preventDefault();
-      redrawCmd();
-      return;
-    }
-    // Center map on the player (^L original keyset, do_cmd_center_map /
-    // cmd_hidden:221). In the roguelike keyset ^L is alter-east, so ^L centers
-    // only in the original keyset; the roguelike center-map key is '@' (below).
-    if (!roguelike && (ev.key === "l" || ev.key === "L")) {
-      ev.preventDefault();
-      centerMapCmd();
-      return;
-    }
-    // Ignore an item (^D): the roguelike-keyset alias of Ignore, whose original
-    // key is the plain 'k' (ui-game.c:165 { 'k', KTRL('D') }). Roguelike 'k' is a
-    // movement key, so ignore moves to ^D; in the original keyset ^D is unbound.
-    if (roguelike && (ev.key === "d" || ev.key === "D")) {
-      ev.preventDefault();
-      void openModal(ignoreItemCmd);
-      return;
-    }
+    if (dispatchControlKey(ev.key, roguelike)) ev.preventDefault();
     return;
   }
   if (!ev.ctrlKey && !ev.altKey && !ev.metaKey) {
