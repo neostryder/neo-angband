@@ -53,8 +53,15 @@ import type { ModDebug, ModSpawnOutcome } from "./mod-plugin";
 /** What a mod must hold in its manifest before it may conjure anything. */
 export const SPAWN_CAPABILITY = "debug:spawn";
 
-/** What the host has to supply before a mod can be handed this door. */
-export interface SpawnDoorDeps {
+/**
+ * What the host has to supply before a mod can be handed a debug surface.
+ *
+ * Named for the family rather than for spawning, because `ctx.wizard` reads the
+ * same latch: `WizardDoorDeps` is this interface's `wizard` field and nothing
+ * else, so one latched door satisfies both by construction. `confirm` is the half
+ * only spawning wants - detaching the save is `ctx.wizard`'s own consent moment.
+ */
+export interface DebugDoorDeps {
   /**
    * The live wizard context, read FRESH on every call rather than captured.
    *
@@ -81,7 +88,7 @@ export interface SpawnDoorDeps {
  * message log names the mod that conjured something - a line in the log is the
  * only trace a player would otherwise have.
  */
-export function createModDebug(modId: string, deps: SpawnDoorDeps): ModDebug {
+export function createModDebug(modId: string, deps: DebugDoorDeps): ModDebug {
   return {
     spawnObject: (kind: number | string): Promise<ModSpawnOutcome> =>
       spawn(modId, deps, "object", kind),
@@ -92,7 +99,7 @@ export function createModDebug(modId: string, deps: SpawnDoorDeps): ModDebug {
 
 async function spawn(
   modId: string,
-  deps: SpawnDoorDeps,
+  deps: DebugDoorDeps,
   what: "object" | "monster",
   which: number | string,
 ): Promise<ModSpawnOutcome> {
