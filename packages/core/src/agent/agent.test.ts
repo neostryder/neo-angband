@@ -721,7 +721,10 @@ describe("facade capability enforcement (W1.4)", () => {
     const state = makeState();
     const act = createAgentActions(state);
     expect(act.move(1)).toEqual({ code: "walk", dir: 1 });
-    expect(act.rest()).toEqual({ code: "rest" });
+    /* Omitting count rests as needed (REST_COMPLETE = -2), matching the human
+     * UI's own default prompt answer ("&"). */
+    expect(act.rest()).toEqual({ code: "rest", args: { count: -2 } });
+    expect(act.rest(50)).toEqual({ code: "rest", args: { count: 50 } });
   });
 
   it("act: command:add is required per verb when caps are supplied", () => {

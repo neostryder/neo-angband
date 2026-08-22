@@ -62,6 +62,19 @@ version it still calls itself.
 
 ### Fixed
 
+- The `rest` command spent exactly one game turn per invocation no matter what
+  duration was requested, because it was wired to the same handler as standing
+  still in place. Upstream's own rest command takes one turn too, but re-queues
+  itself on the internal command queue so a single keypress runs to the full
+  requested duration - a turn count, "until HP and SP are full", "until nothing
+  is needed", or "until either is full" - without asking for input again, and
+  stops early on a disturbance exactly as any other rest would. The port's
+  desktop keyboard worked around the gap with its own turn-by-turn loop outside
+  the engine, so it looked correct at the keyboard; every other caller of the
+  command queue got only the single turn, and never reached the five-turn
+  threshold for resting's doubled regeneration rate. The command now carries
+  its own multi-turn continuation, matching upstream, and reaches every caller
+  the same way.
 - Repeated identical messages showed as one top line with a ticking `<Nx>`
   counter instead of being reprinted. Upstream keeps the run-length count for
   the recall screen only: the top line is redrawn for every occurrence, several

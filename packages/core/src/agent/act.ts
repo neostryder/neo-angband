@@ -17,6 +17,7 @@
  */
 
 import type { GameState } from "../game/context.js";
+import { REST_COMPLETE } from "../game/context.js";
 import { targetSetLocation, targetSetMonster } from "../game/target.js";
 import { loc } from "../loc.js";
 import { AgentCapabilityError } from "./types.js";
@@ -67,7 +68,7 @@ export function createAgentActions(
     move: (dir) => dirCmd("walk", dir),
     melee: (dir) => dirCmd("walk", dir),
     hold: () => cmd("hold"),
-    rest: () => cmd("rest"),
+    rest: (count) => cmd("rest", { count: count ?? REST_COMPLETE }),
     descend: () => cmd("descend"),
     ascend: () => cmd("ascend"),
     tunnel: (dir) => dirCmd("tunnel", dir),
