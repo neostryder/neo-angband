@@ -36,6 +36,12 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-08-22
+
+A keyboard-input release: the documented `^` fallback for a control command
+now works, the roguelike keyset's caret-plus-direction alter keys are fully
+wired, and the birth screen's help matches the keyset actually in use.
+
 ### Fixed
 
 - Pressing and releasing `^` (caret) and then a letter did nothing: only a
@@ -373,7 +379,7 @@ instead of a curated subset that had drifted from it.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.27.0` - a features release for mod
+Current state of the project at version `0.27.1` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again
