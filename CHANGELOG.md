@@ -36,6 +36,13 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.27.2] - 2026-08-22
+
+An install-clarity and defaults release: picking (I)nstall locally now lays
+out the desktop-vs-browser tradeoff before committing to either, and a new
+character starts able to sell to stores instead of needing to find the birth
+options page first.
+
 ### Added
 
 - "(I)nstall locally" now opens a choice screen first instead of going
