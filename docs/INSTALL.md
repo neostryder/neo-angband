@@ -610,9 +610,10 @@ history. `ESC` steps back a screen; `ESC` on the first screen returns to the
 title. When birth finishes you are standing in the town.
 
 **Resuming.** Launch the game again and the title screen offers your roster.
-Pick a character by its letter, or tap its row; `ESC` resumes the most recent
-one. Play autosaves continuously, so "resume" always means where you actually
-left off - there is nothing to save manually before closing the tab.
+Pick a character by its letter, or tap its row; `ESC` returns to the title
+screen without resuming anything. Play autosaves continuously, so picking a
+character always resumes where you actually left off - there is nothing to
+save manually before closing the tab.
 
 **Saving on purpose.** The in-game menu has **Save and exit**, which writes and
 returns you to the title. `^S` saves without leaving.
