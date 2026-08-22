@@ -206,11 +206,34 @@ describe("a mod's controller has a clock of its own", () => {
     expect(timerBody).toMatch(/advance\(\);/u);
   });
 
-  it("waits out birth and menus rather than pumping through them", () => {
+  it("answers a blocking prompt instead of parking on it, and never during birth", () => {
+    /* THIS ASSERTION USED TO SAY THE OPPOSITE, and the opposite was the bug: the
+     * pump skipped every tick while a modal was up, so a `-more-` in the tail of
+     * a turn - the forced one a level change puts in front of the stair message,
+     * for instance - stopped the run until a human pressed a key. It now feeds the
+     * autoplayer's own key through the input door, which is what upstream's
+     * inkey_hack does.
+     *
+     * The `gameScreenLive` half is the part that must not be lost: before boot
+     * settles on a game the birth flow owns the terminal, and a mod's 120ms clock
+     * must not answer for the player rolling a character. */
     const body = installLoopBody();
     const timerAt = body.indexOf("setInterval(() => {");
     const timerBody = body.slice(timerAt, body.indexOf("}, MOD_AUTOPLAYER_TICK_MS)"));
-    expect(timerBody).toMatch(/if \(scoresOpen \|\| modalDepth > 0\) return;/u);
+    expect(timerBody).toMatch(/if \(scoresOpen\) return;/u);
+    expect(timerBody).toMatch(/if \(modalDepth > 0\) \{/u);
+    expect(timerBody).toMatch(/if \(gameScreenLive\) answerBlockingPrompt\(/u);
+  });
+
+  it("answers with a key through the one input door, not with its own listener", () => {
+    /* The mechanism is upstream's: the borg's key goes through the same function
+     * every other key goes through (borg.c:189). A second dispatch path here
+     * would be a second answer to "who has the keyboard". */
+    const at = NO_COMMENTS.indexOf("function answerBlockingPrompt(");
+    expect(at, "main.ts still has the prompt answer").toBeGreaterThan(-1);
+    const fn = NO_COMMENTS.slice(at, NO_COMMENTS.indexOf("function waitAnyKey", at));
+    expect(fn).toMatch(/dispatchUiInput\(/u);
+    expect(fn).toMatch(/"Escape"/u);
   });
 
   it("stops itself on death rather than racing the reincarnation check", () => {
