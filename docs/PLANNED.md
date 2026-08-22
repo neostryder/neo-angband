@@ -255,6 +255,29 @@ waiting on:
 - **Catch-up mod content**, so the first-party mods cover what the gate assumed
   they cover.
 
+### An agent cannot trade, because three command codes have no handler
+
+Found 2026-08-21 while making the Borg play. `createAgentActions`
+(`packages/core/src/agent/act.ts`) offers `shopBuy`, `shopSell` and `shopExit`,
+which build commands with the codes `shop-buy`, `shop-sell` and `shop-exit`.
+**Nothing in the engine's command registry handles any of the three.** Those two
+lines in `act.ts` and the sandbox worker's mirror of them are every occurrence of
+the strings in the tree; the verb-wiring tests cover the codes a human's keystroke
+reaches, and a code nothing registers is silently a no-op there.
+
+So an autoplayer's shopping decisions are inert, and that is invisible from the
+outside: the controller returns a legal command, the loop accepts it, and the run
+carries on looking like an agent that chose not to buy anything. The Borg's whole
+store ladder - buy, sell, the home shelves, the anti-loop memory - is ported and
+reachable and cannot spend a copper.
+
+Three handlers, on the same terms as every other verb, plus the question they
+raise: `StartedGame.buy` / `.sell` are town-only and take a `Store` and a
+`GameObject`, while the agent addresses a ware by its stock index, so the handler
+owns that resolution and the "am I standing on this shop's door" check. Until then
+an autoplayer that steps onto a shop door has the screen dismissed by the prompt
+seam (`docs/modding/BORG.md`), which keeps the run going and buys nothing.
+
 ### The input door does not know about IME composition
 
 Found 2026-08-21 while giving mod panels a keyboard, and it is older than that
@@ -274,6 +297,33 @@ callers - where a player composing a character name in Japanese is also issuing
 commands. Closing it is one guard at the same choke point, and the reason it is
 not in that commit is that it changes what every existing screen receives, which
 wants its own measurement rather than riding along with a new seam.
+
+### Two tabs of the game share one active-character key
+
+Found 2026-08-21 while reviewing the sandbox `ctx.wizard` runs in, and it is older
+than that work and independent of it. `neo-angband-active` names the character
+every save is written to, and it lives in `localStorage`, which every tab on the
+origin shares. So two tabs open on the same character both resume it and both
+autosave into the same slot every three seconds with different game states:
+last writer wins and the other player's session is gone, silently, with no warning
+anywhere. That is true today with no mod in the picture.
+
+The sandbox is defended against it - detaching also throws a one-way latch in the
+page's own memory, which both doors into slot storage check, so a sandboxed page
+can neither write a character nor tombstone one however the shared key is edited
+(`roster.ts`, `surrenderSlotWrites`). What is NOT defended is the ordinary case:
+while any page has surrendered, the shared key is empty, so a second tab playing
+normally stops being saved until something sets it again, and nothing tells that
+player.
+
+Closing it properly means the save destination stopping being a shared fact.
+`persistSave` would consult a page-local attachment rather than
+`localStorage["neo-angband-active"]`, with the shared key demoted to "which
+character to offer on the next launch"; a per-slot `navigator.locks` hold would
+then let a second tab refuse to open a character somebody is already playing
+instead of quietly fighting it for the file. Both are in `main.ts` and both change
+what every existing save path reads, which wants its own measurement rather than
+riding along with a mod seam.
 
 ### The wizard door is latched under the spawn door's name
 

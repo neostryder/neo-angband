@@ -796,6 +796,16 @@ ctx.wizard.grantExperience(50000);
 - **There is no re-attach, and the absence is the feature.** Re-attaching would mean
   writing a cheated character over the save it was detached from, which is the one
   outcome the mechanism exists to make unreachable.
+- **Dropping the active id is not the whole guarantee**, because that key lives in
+  storage every tab on the origin shares. A second tab reaching the character select
+  and resuming somebody writes a real slot id back into it, and a page that had
+  given up its save - and has since been cheated freely - would be silently
+  re-attached to a real character. The death path is the worse half of that: it does
+  not overwrite the slot, it DESTROYS the slot's bytes and records a death in a
+  ledger that deliberately outlives the tombstone, so a monster killing the cheated
+  character would delete a real one. Detaching therefore also throws a one-way latch
+  in the page's own memory, which both doors into slot storage check and which no
+  other tab can see or clear.
 - **Why not fork the save into a branded copy instead**, which is the other obvious
   shape. A fork is a real, resumable second character in the roster, and that is
   what this game deliberately does not have: death is terminal, a slot's bytes are

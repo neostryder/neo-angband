@@ -102,6 +102,60 @@ function removeItem(key: string): void {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * A session that has given up its save.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Whether this PAGE has surrendered its right to write a character. One way.
+ *
+ * WHY THIS EXISTS WHEN THE ACTIVE ID ALREADY DECIDES WHERE A SAVE GOES. Dropping
+ * the active id is how a session stops being written (`test-sandbox.ts`, and
+ * `keepSaveUntouched` before it), and inside one page that is complete. The active
+ * id lives in `localStorage`, which is shared by every tab on the origin - so a
+ * SECOND tab reaching the character select and resuming a character writes a real
+ * slot id back into the key that the first tab's save path reads. The first tab,
+ * which had given its save up and may since have been cheated freely, is then
+ * silently re-attached to somebody's real character.
+ *
+ * The consequences are not symmetrical and the worse one is easy to miss. A write
+ * puts cheated state over a good save, which is bad. The DEATH path calls
+ * `markDead`, which DESTROYS the slot's bytes and records the death in a ledger
+ * that outlives the tombstone - so a monster killing the cheated character would
+ * have deleted a real one, irreversibly, with the memorial to prove it.
+ *
+ * So the decision cannot rest on shared storage. This latch is process-local: it
+ * lives in this page's memory, no other tab can see it, and nothing can clear it.
+ * Both doors into slot storage check it, which is every door - `writeSlot` and
+ * `markDead` are the only two, and `upsertMeta` is reached only through them.
+ *
+ * WHAT IT DOES NOT FIX. A second tab's sandbox still clears the shared active id,
+ * so a first tab playing normally stops being saved until it sets one again. That
+ * is lost progress rather than damage, and two tabs on one character already lose
+ * each other's progress to last-writer-wins. It is recorded in `docs/PLANNED.md`.
+ */
+let surrendered = false;
+
+/**
+ * Give up this page's right to write any character, permanently.
+ *
+ * Called by `test-sandbox.ts` alongside dropping the active id: that is the
+ * mechanism, this is the guarantee that nothing outside this page can undo it.
+ */
+export function surrenderSlotWrites(): void {
+  surrendered = true;
+}
+
+/** Whether this page has given up writing characters. */
+export function slotWritesSurrendered(): boolean {
+  return surrendered;
+}
+
+/** Test seam: forget the surrender, so one suite can exercise both states. */
+export function resetSlotWriteSurrender(): void {
+  surrendered = false;
+}
+
 /** The roster metadata, newest save first. Never throws. */
 export function listRoster(): CharMeta[] {
   const raw = getItem(ROSTER_KEY);
@@ -155,6 +209,12 @@ export function readSlotSave(id: string): string | null {
  * character-select screen can offer.
  */
 export function writeSlot(id: string, saveB64: string, meta: CharMeta): boolean {
+  /* REFUSE, AND REPORT SUCCESS, which is mod-taint.ts's distinction and is made
+   * here for its reason: "the storage would not take it" is worth telling the
+   * player about because retrying might work, and "it was deliberately not
+   * offered" is not, because retrying changes nothing and a save-failure warning
+   * would point at the wrong thing entirely. */
+  if (surrendered) return true;
   const bytes = setItem(SLOT_PREFIX + id, saveB64);
   const metaOk = upsertMeta(meta);
   return bytes && metaOk;
@@ -163,6 +223,12 @@ export function writeSlot(id: string, saveB64: string, meta: CharMeta): boolean 
 /** Mark a slot dead (a tombstone): its meta stays, its bytes are dropped so a
  * dead character can never be resumed - faithful terminal death. */
 export function markDead(id: string): boolean {
+  /* THE ONE THAT MATTERS MOST. This destroys the slot's bytes and writes a death
+   * that outlives the tombstone, so a page that has given up its save must not
+   * reach it: the character dying is not the character whose slot the shared
+   * active id now points at. Reported as success for the same reason `writeSlot`
+   * does - there was nothing to tombstone here. */
+  if (surrendered) return true;
   removeItem(SLOT_PREFIX + id);
   const meta = getMeta(id);
   /* No meta at all means there is nothing to tombstone, which is not a

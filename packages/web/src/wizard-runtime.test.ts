@@ -18,7 +18,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createModWizard, MAX_AT_ONCE } from "./wizard-runtime";
 import type { ModWizard, ModWizardOutcome } from "./mod-plugin";
-import { setActiveId } from "./roster";
+import { resetSlotWriteSurrender, setActiveId } from "./roster";
 import type { WizardUiCtx } from "./wizard";
 
 /** localStorage's shape: the sandbox reads the active slot id out of it. */
@@ -97,6 +97,10 @@ function log(): Log {
 const realStorage = globalThis.localStorage;
 
 beforeEach(() => {
+  /* The surrender latch is one way per PAGE and each test is a page. Without this,
+   * every test after the first `sandbox()` would find the gate already open and
+   * "the gate refuses" would pass by not being exercised. */
+  resetSlotWriteSurrender();
   Object.defineProperty(globalThis, "localStorage", {
     value: new FakeStorage(),
     configurable: true,
