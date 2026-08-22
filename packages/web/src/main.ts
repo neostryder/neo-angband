@@ -301,6 +301,7 @@ import {
 import {
   modOwnFiles,
   modPluginContext,
+  setModComposedRecords,
   setModInstallDoor,
   setModRegistries,
   setModDebugDoor,
@@ -321,7 +322,7 @@ import { applyPrefText } from "./prefs-ui";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, presentNamespaces, diskPackStatus, enabledModIds, composedRecords } from "./pack";
 import { liveConflictLines } from "./mod-conflicts";
-import { resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
+import { composedObjects, resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   defaultModStore,
   buildCatalog,
@@ -1233,6 +1234,17 @@ const { state, registry, booted, players } = game;
  * is TRACKING can do had no way to ask before this, and neither did a tile pack
  * asking what content the session actually contains. */
 setModRegistries(booted.registries);
+/* And the UNBOUND half of the same composition, as `ctx.composedRecords`.
+ *
+ * ON THIS LINE rather than anywhere else, because the two are one composition
+ * seen twice: `booted.registries` is what the binder produced and this is what it
+ * read. Setting one without the other would hand an authoring tool a peer table
+ * drawn from a different game than its registry lookups answer about.
+ *
+ * `composedObjects` is the SDK's own narrowing, so the host and the authoring
+ * functions cannot disagree about which elements of a passthrough file are
+ * records. */
+setModComposedRecords(composedObjects(composedRecords()));
 /* And where a mod holding `mod:install` may land an archive. The env is the same
  * one every other install path is given (`modBrowseDeps`), and the consent switch
  * is read at the MOMENT OF USE rather than captured here, so a player turning
