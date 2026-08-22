@@ -36,6 +36,28 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- "(I)nstall locally" now opens a choice screen first instead of going
+  straight to the browser's PWA install page. It lays out the desktop app and
+  the installed-PWA path side by side - platform list, update mechanism, the
+  desktop's real mods folder versus the PWA's offline service-worker cache,
+  and the desktop build's current lack of code signing - so the player picks
+  a platform before committing to either download. Picking the desktop app
+  opens the Releases page in the real browser; picking the PWA path continues
+  into the existing install screen unchanged.
+
+### Changed
+
+- A new character now starts with selling enabled. Core's `birth_no_selling`
+  option still exists and still works exactly as upstream describes it - it
+  can be turned back on at birth, or made the permanent default again through
+  a `customized_birth_options.txt` line - but the shipped default flips from
+  upstream's own ON to OFF, so a new player is not silently locked out of
+  every shop until they find the birth options page. See
+  [docs/PARITY.md](docs/PARITY.md) ("Accepted: birth_no_selling defaults to
+  off in core") for the parity accounting.
+
 ## [0.27.1] - 2026-08-22
 
 A keyboard-input release: the documented `^` fallback for a control command
