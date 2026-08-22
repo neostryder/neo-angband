@@ -19,6 +19,12 @@ An entry also has to matter to somebody playing the game or writing a mod.
 Documentation wording, internal refactoring and test-only additions are not
 recorded here. Bug fixes are, however small.
 
+**A bug or a difference somebody outside the project reported gets their name
+on the fix.** "Reported by `<name>`" closes the entry, with the name exactly as
+they gave it in public (a GitHub issue author, a named commenter in a public
+thread) - never a real name learned any other way, and never for a private
+conversation. A fix nobody outside reported carries no such line.
+
 `0.x` is the pre-release line and `1.0.0` is reserved for the public release.
 Semver on `0.x` means a feature release bumps the MINOR number, so `0.9.0` is
 followed by `0.10.0` rather than by `1.0.0`. The first-party mods follow the same
@@ -35,10 +41,12 @@ version it still calls itself.
 - A run of identical messages on the recall screen (`Ctrl-P`) read `text (xN)`;
   upstream's own format (`ui-knowledge.c`, `ui-display.c`) is `text <Nx>`. Three
   comments describing the old, wrong format as upstream's are corrected too.
+  Reported by `nck_m`.
 - "Report a problem" told a player to send the written file "wherever you got
   the game from," naming no actual destination. It now names the GitHub issue
   tracker and the RPGM Tools Discord, and the two issue form templates note
   that the report file already answers several of their required fields.
+  Reported by `nck_m`.
 
 ## [0.26.0] - 2026-08-21
 
