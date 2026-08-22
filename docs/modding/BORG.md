@@ -90,13 +90,17 @@ faithful conservative default rather than guessing:
   core's, because what comes back is ordinary `ItemView`s and the scoring reads
   their properties rather than their provenance.
 
-  On a game older than 0.25.0 this seam falls back to its conservative default
-  and the Borg's log says "no loadout evaluation" - the mod's engine range stays
-  permissive, so it degrades rather than refusing to load.
+- **The attack-message table** is wired from `registries.monsters.blowMethods`.
+  Upstream builds its `suffix_hit_by` list from the same records at start-up, and
+  it is how the borg recognises that something just hit it. Without it a blow
+  from a monster the Borg cannot see raises no regional fear, and regional fear is
+  the only thing upstream has that stops a borg resting through a beating. A mod's
+  own blow method is recognised on the same terms.
 
-The mod's own `PLANNED.md` is where this list is kept current, since the mod
-ships on its own schedule. None of it stops the Borg playing a full game; it
-bounds how aggressively it optimizes edge decisions.
+The mod declares an engine range rather than degrading: a Borg missing any of the
+above is not a Borg with a feature switched off. Its own `PLANNED.md` is where
+this list is kept current, since the mod ships on its own schedule, and it also
+names what is not ported at all - the detection scheduler is the largest piece.
 
 ## The host answers blocking prompts for an autoplayer
 
