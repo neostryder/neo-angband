@@ -455,7 +455,15 @@ function gatherCatalogue(ctx: WizardUiCtx | null): ModWizardCatalogue {
      * an index to a function that reads another is the classic way to conjure the
      * wrong item and never find out. */
     items: entries(kinds),
-    creatures: entries(races),
+    /* SKIPPING INDEX 0, which is upstream's reserved `<player>` pseudo-race
+     * (`r_info[0]`, monster.txt's `name:<player>` / `base:player`). It has a real
+     * name, so a filter that only dropped holes and blanks kept it - and because
+     * its level is 0 it sorted to the very front, making "conjure the player" the
+     * first row a builder was offered. Core already skips it in every place that
+     * walks the table for something a player can meet: allocation
+     * (`gen-monster.ts`, `mon/make.ts`), the spoiler generators (`game/spoil.ts`),
+     * and hallucination. */
+    creatures: entries(races, 1),
     artifacts: entries(artifacts),
   };
 }
@@ -473,9 +481,10 @@ function gatherCatalogue(ctx: WizardUiCtx | null): ModWizardCatalogue {
  */
 function entries(
   list: readonly ({ name?: string; level?: number; from?: RecordProvenance } | null | undefined)[],
+  from = 0,
 ): readonly ModWizardEntry[] {
   const out: ModWizardEntry[] = [];
-  for (let i = 0; i < list.length; i++) {
+  for (let i = from; i < list.length; i++) {
     const record = list[i];
     /* A hole is normal: these arrays are indexed by the game's own index and
      * upstream's tables start at 1. An unnamed row is upstream's terminator. */
