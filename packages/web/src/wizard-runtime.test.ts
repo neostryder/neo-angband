@@ -64,7 +64,14 @@ function wizardStub(log: Log, opts: { marked?: boolean } = {}): () => WizardUiCt
     { name: "Wooden Torch", level: 1 },
     { name: "Bag of Holding", level: 20, from: { owner: "builder" } },
   ];
-  const races = [null, { name: "Snarl", level: 3 }, { name: "Bag Wraith", level: 40, from: { owner: "builder" } }];
+  /* Index 0 is upstream's reserved `<player>` pseudo-race, which has a REAL name
+   * and so survives a filter that only drops holes and blanks. Present in the
+   * fixture on purpose: it is the row that has to not appear. */
+  const races = [
+    { name: "<player>", level: 0 },
+    { name: "Snarl", level: 3 },
+    { name: "Bag Wraith", level: 40, from: { owner: "builder" } },
+  ];
   const artifacts = [null, { name: "The Phial of Galadriel", level: 5 }];
   return () =>
     ({
@@ -255,6 +262,15 @@ describe("the catalogue", () => {
      * the wrong item and nothing would report it. */
     expect(catalogue().items.map((i) => i.index)).toEqual([1, 2]);
     expect(catalogue().creatures.map((c) => c.index)).toEqual([1, 2]);
+  });
+
+  it("leaves out the reserved <player> pseudo-race", () => {
+    /* `r_info[0]` has a real name, so a filter that only dropped holes and blanks
+     * kept it - and its level is 0, so it sorted to the very front and "conjure the
+     * player" was the first row a builder was offered. Seen on screen in a running
+     * game, not deduced. Core skips index 0 everywhere it walks the table for
+     * something a player can meet. */
+    expect(catalogue().creatures.map((c) => c.name)).toEqual(["Snarl", "Bag Wraith"]);
   });
 
   it("is readable before the session is cut loose", () => {
