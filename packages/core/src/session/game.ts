@@ -215,6 +215,7 @@ import {
 } from "../store/transact.js";
 import type { BuyResult, SellResult, TxnKnowledge } from "../store/transact.js";
 import { storeCheckNum } from "../store/store.js";
+import { installStoreCommands } from "../store/store-cmd.js";
 import { priceItem } from "../store/price.js";
 import {
   addMonsterMessage,
@@ -3803,7 +3804,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
       changeLevel,
     ),
     wizardBundles: wired.wizardBundles,
-    ...makeStoreApi(state, reg, wired.flavor, options),
+    ...makeStoreApi(state, reg, wired.flavor, options, wired.registry),
   };
 }
 
@@ -3818,6 +3819,7 @@ function makeStoreApi(
   reg: CoreRegistries,
   flavor: FlavorKnowledge,
   options: OptionState,
+  registry: ActionRegistry,
 ): Pick<StartedGame, "buy" | "sell" | "sellFloor" | "price" | "willBuy"> {
   const storeCtx = (): StoreMaintContext => ({
     rng: state.rng,
@@ -3901,7 +3903,7 @@ function makeStoreApi(
      * stale. Unused by storeBuy, which learns flavour only. */
     learnRunes: { env: state.runeEnv, runes: buildRuneList(state.runeEnv) },
   });
-  return {
+  const storeApi: Pick<StartedGame, "buy" | "sell" | "sellFloor" | "price" | "willBuy"> = {
     buy: (store, obj, amt): BuyResult => {
       /* do_cmd_retrieve (store.c:1783): Home Take is free - no price, no
        * ORIGIN_STORE, no shuffle/maint RNG. Reuse the existing homeRetrieve. */
@@ -4055,6 +4057,12 @@ function makeStoreApi(
         state.storeBehaviour,
       ),
   };
+  /* shop-buy / shop-sell / shop-exit (docs/PLANNED.md, "An agent cannot
+   * trade"): wire the agent-facing store commands through the SAME buy/sell
+   * closures the interactive shop screen calls, so a keystroke and an
+   * agent's command reach identical pack/gold/knowledge effects. */
+  installStoreCommands(registry, { buy: storeApi.buy, sell: storeApi.sell });
+  return storeApi;
 }
 
 /**
@@ -4691,6 +4699,6 @@ export function loadGame(
       changeLevel,
     ),
     wizardBundles: wired.wizardBundles,
-    ...makeStoreApi(state, reg, wired.flavor, options),
+    ...makeStoreApi(state, reg, wired.flavor, options, wired.registry),
   };
 }

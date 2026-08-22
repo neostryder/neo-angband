@@ -267,29 +267,6 @@ waiting on:
 - **Catch-up mod content**, so the first-party mods cover what the gate assumed
   they cover.
 
-### An agent cannot trade, because three command codes have no handler
-
-Found 2026-08-21 while making the Borg play. `createAgentActions`
-(`packages/core/src/agent/act.ts`) offers `shopBuy`, `shopSell` and `shopExit`,
-which build commands with the codes `shop-buy`, `shop-sell` and `shop-exit`.
-**Nothing in the engine's command registry handles any of the three.** Those two
-lines in `act.ts` and the sandbox worker's mirror of them are every occurrence of
-the strings in the tree; the verb-wiring tests cover the codes a human's keystroke
-reaches, and a code nothing registers is silently a no-op there.
-
-So an autoplayer's shopping decisions are inert, and that is invisible from the
-outside: the controller returns a legal command, the loop accepts it, and the run
-carries on looking like an agent that chose not to buy anything. The Borg's whole
-store ladder - buy, sell, the home shelves, the anti-loop memory - is ported and
-reachable and cannot spend a copper.
-
-Three handlers, on the same terms as every other verb, plus the question they
-raise: `StartedGame.buy` / `.sell` are town-only and take a `Store` and a
-`GameObject`, while the agent addresses a ware by its stock index, so the handler
-owns that resolution and the "am I standing on this shop's door" check. Until then
-an autoplayer that steps onto a shop door has the screen dismissed by the prompt
-seam (`docs/modding/BORG.md`), which keeps the run going and buys nothing.
-
 ### The input door does not know about IME composition
 
 Found 2026-08-21 while giving mod panels a keyboard, and it is older than that
