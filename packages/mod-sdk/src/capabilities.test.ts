@@ -217,6 +217,35 @@ describe("ui:panel.mount and debug:spawn are not reachable from anything wider",
   });
 });
 
+describe("the two debug actions are two consents", () => {
+  /* `grantCovers` compared the KIND here and not the action, which was invisible
+   * while "spawn" was the only debug action and would have been a real hole the
+   * moment a second one existed. The two cost a player different things - spawning
+   * costs the score of the character they go on playing, the wizard set costs the
+   * session it refuses to run without detaching - so neither is a bigger helping of
+   * the other and one grant must not buy both. */
+  it("parses debug:wizard as its own action, with no wildcard over either", () => {
+    expect(parseCapability("debug:wizard")).toEqual({ kind: "debug", action: "wizard" });
+    expect(() => parseCapability("debug:*")).toThrow(CapabilityError);
+  });
+
+  it("debug:spawn does not carry debug:wizard", () => {
+    const set = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["debug:spawn"] }),
+    );
+    expect(set.has("debug:spawn")).toBe(true);
+    expect(set.has("debug:wizard")).toBe(false);
+  });
+
+  it("debug:wizard does not carry debug:spawn", () => {
+    const set = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["debug:wizard"] }),
+    );
+    expect(set.has("debug:wizard")).toBe(true);
+    expect(set.has("debug:spawn")).toBe(false);
+  });
+});
+
 describe("backup:folder (#133)", () => {
   it("parses backup:folder as its own kind, with no domain and no wildcard", () => {
     expect(parseCapability("backup:folder")).toEqual({

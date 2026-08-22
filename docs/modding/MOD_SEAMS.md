@@ -751,6 +751,78 @@ Four things about it:
   index is a fact about a registry, and the registry moved when another mod was
   enabled.
 
+### 4d. `ctx.wizard`: the whole debug set, on a session that is not being saved
+
+`debug:wizard`. Everything `^A` can do, driven from a mod's own screen instead of
+from a text menu, and priced differently from `debug:spawn` in a way that is worth
+reading before either is requested.
+
+```js
+if (!ctx.wizard) return;
+const save = ctx.wizard.attached();   // who is about to stop being saved
+if (!confirmWithThePlayer(save?.name)) return;
+ctx.wizard.sandbox();                 // one way, and the gate on everything else
+ctx.wizard.goToDepth(40);
+ctx.wizard.spawnCreature("Bag Wraith", 3);
+ctx.wizard.grantExperience(50000);
+```
+
+- **The commands are not new and are not reimplemented.** `game/wizard.ts` already
+  holds the forty-odd `do_cmd_wiz_*` functions, ported and faithful, and until this
+  landed the only front end for them was a text menu a mod cannot drive. Every
+  method here is a name, an argument check and one call into the function the `^A`
+  menu dispatches to, through the same live `WizardDeps`. Where a method looks thin
+  that is the property being kept: a second implementation of "give the player
+  experience" would be a second set of rules about levelling up.
+- **`sandbox()` is the price, and the host checks it rather than trusting the mod.**
+  Every command refuses until it has been called, and it cannot be undone. What it
+  does is drop the active save slot id, which is the single thing every write to a
+  character consults - the turn-tail autosave, the level-change save, `S`, the
+  options screen, `pagehide` and the death save all end up there. A session with no
+  active slot id writes nowhere.
+- **Which is why this seam is SAFER for the character on disk than `debug:spawn`
+  is, not more dangerous.** Spawning happens to the character the player is
+  actually playing and costs them the score of that character for good. This one
+  refuses to touch a character that is still being written down at all. A consent
+  line describing it as "more debug commands" would have the risk exactly
+  backwards, so it does not.
+- **What it costs is the session, and the mod has to say so.** The character on disk
+  keeps whatever the last save left. The autosave runs at the tail of a turn and
+  throttles to three seconds, so what is lost is at most three seconds of TURNS -
+  not three seconds of sitting in a menu, which takes none. Afterwards the session
+  plays on in memory, and reloading the page lands on the character select with the
+  character waiting as it was. `attached()` exists so the question the player is
+  asked can name them.
+- **There is no re-attach, and the absence is the feature.** Re-attaching would mean
+  writing a cheated character over the save it was detached from, which is the one
+  outcome the mechanism exists to make unreachable.
+- **Why not fork the save into a branded copy instead**, which is the other obvious
+  shape. A fork is a real, resumable second character in the roster, and that is
+  what this game deliberately does not have: death is terminal, a slot's bytes are
+  destroyed when its character dies, and the death ledger outlives even the
+  tombstone so that clearing a memorial cannot launder a resurrection. A branded
+  fork made at dungeon level 40 and left in the roster is a restore point whatever
+  the brand says, and the brand is the part a player can ignore. A fork also has to
+  be swept up later, which means a purge at boot, which means a purge that can be
+  missed. Detaching has none of those properties because it never writes anything.
+- **`sandbox()` takes the debug mark itself, and does not pose the game's own
+  question.** `ctx.debug` asks because it acts on a character that is still being
+  saved and the mark is permanent for that character. Here the character has already
+  stopped being written down, so the question has no consequence left to warn about -
+  and it would have to be posed on the character grid, underneath whatever the mod
+  is drawing, which is the refusal `debug:spawn` has to carry. Detaching is the
+  consent moment; the mod asks for it in its own words on its own screen, and the
+  bit is then simply true.
+- **`catalogue()` is readable BEFORE `sandbox()`**, and it is the one thing here
+  that is. Listing is reading, and deciding what to test is exactly how a player
+  decides whether to detach at all - a browser that only filled in after they had
+  agreed would be asking them to agree to something they cannot see. Each entry
+  carries `from`, the pack that added the record, absent for the base game's own.
+  That is what lets a browser put a mod author's own content first without keeping
+  its own list of what vanilla contains.
+- **Placement is the game's and there are no coordinates**, on the same terms as
+  `debug:spawn`.
+
 ## 5. Doors that are exported but deliberately CLOSED
 
 An exported mutable table is an extension point whether anyone meant it to be one

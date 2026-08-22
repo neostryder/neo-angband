@@ -183,15 +183,20 @@ owning part of the screen. They do not cover each other either. There is no
 answering to two capabilities would be two answers to "who draws this".
 
 The vocabulary has since grown `ui:region.create`, `ui:panel.mount`,
-`backup:folder`, `debug:spawn`, `mod:install` and `mod:session`. See
+`backup:folder`, `debug:spawn`, `debug:wizard`, `mod:install` and `mod:session`. See
 `packages/mod-sdk/src/capabilities.ts`, whose own header is the reference list,
 and [PLUGINS.md](PLUGINS.md) for what each one is and is not. Two things about the
 family shape are worth reading here rather than there, because both are about how
 a grant is PRICED rather than about what it opens. First, an action is compared as
 well as a kind: `ui:*.replace` carries neither `region.create` nor `panel.mount`,
 and `mod:install` does not carry `mod:session`, because in each pair neither side
-is a superset. Second, a capability's consent sentence is what makes it
-proportionate, so two grants whose sentences differ cannot share a string:
+is a superset. `debug:spawn` does not carry `debug:wizard` for the same reason, and
+that comparison was added by the arrival of the second `debug:` action rather than
+in advance of it: with only one action in the family the check read the kind alone,
+which was correct by accident and would have let a mod that asked to conjure one
+monster reach the depth jumps and the acquirement too. Second, a capability's
+consent sentence is what makes it proportionate, so two grants whose sentences
+differ cannot share a string:
 `mod:install` puts a pack in the library switched OFF and the player meets it
 before any of it runs, and `mod:session` switches one on for the rest of the
 session, which is more rather than less.
