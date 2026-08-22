@@ -33,8 +33,15 @@ const DIRS_ORIGINAL: Record<string, number> = {
   ArrowRight: 6,
 };
 
-/** Roguelike keyset: hjkl orthogonals + yubn diagonals. Opt-in. */
-const DIRS_ROGUELIKE: Record<string, number> = {
+/**
+ * Roguelike keyset: hjkl orthogonals + yubn diagonals. Opt-in.
+ *
+ * Exported so the keydown handler's control branch (main.ts) can route the
+ * caret-plus-direction alter-keys (r_comm.txt: ^b/^h/^j/^k/^l/^n/^u/^y ->
+ * alter-direction) to the same direction a plain movement key would use,
+ * rather than re-deriving the mapping.
+ */
+export const DIRS_ROGUELIKE: Record<string, number> = {
   h: 4,
   j: 2,
   k: 8,

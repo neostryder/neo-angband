@@ -924,6 +924,7 @@ function standardRoller(
   cls: Named,
   rng: Rng,
   sheet?: (roll: readonly number[]) => PreviewSheet | null,
+  roguelike = false,
 ): Promise<number[] | null> {
   const handle = pushRegion(screenRegionSpec(), host.size());
   return paintStandardRollerOnTerminal(
@@ -932,6 +933,7 @@ function standardRoller(
     cls,
     rng,
     sheet,
+    roguelike,
   ).finally(() => {
     popRegion(handle);
   });
@@ -943,6 +945,7 @@ function paintStandardRollerOnTerminal(
   cls: Named,
   rng: Rng,
   sheet?: (roll: readonly number[]) => PreviewSheet | null,
+  roguelike = false,
 ): Promise<number[] | null> {
   return new Promise<number[] | null>((resolve) => {
     let current = rollStats(rng);
@@ -1018,7 +1021,7 @@ function paintStandardRollerOnTerminal(
             inputEvents.addEventListener("keydown", onKey, true);
             installTap();
             paint();
-          });
+          }, roguelike);
           return;
         case "r":
         case "R":
@@ -1100,11 +1103,18 @@ type BirthMenuResult =
  * browser needs. `restore` is the stage's job and must re-register its tap
  * handler as well as its listener - the overlay nulls term.onCellTap on the way
  * out - and repaint, since help has cleared the screen.
+ *
+ * `roguelike` is the keyset the character being born will actually use (#5,
+ * runBirth's roguelikeAtBirth) - do_cmd_help (ui-help.c:476) reads
+ * rogue_like_commands live off the player being built, not a fixed default,
+ * so the birth screen's help has to match whichever keyset is in effect
+ * rather than always showing the original-keyset summary.
  */
 function openBirthHelp(
   term: GridSurface & GridPointerInput,
   onKey: (ev: KeyboardEvent) => void,
   restore: () => void,
+  roguelike = false,
 ): void {
   inputEvents.removeEventListener("keydown", onKey, true);
   /* Nulling the tap is belt-and-braces and mutation-verified as such: runHelp's
@@ -1114,7 +1124,7 @@ function openBirthHelp(
    * this call, and a help screen that opened without a tap handler would
    * otherwise let a stray tap pick a race nobody could see. */
   setActiveCellTap(term, null);
-  void runHelp(term)
+  void runHelp(term, roguelike)
     .catch((err: unknown) => {
       log.error("birth", "the help browser failed", err);
     })
@@ -1145,6 +1155,7 @@ function birthMenu(
   hint: string,
   frozen: readonly FrozenColumn[],
   active: ActiveColumn,
+  roguelike = false,
 ): Promise<BirthMenuResult> {
   const handle = pushRegion(screenRegionSpec(), host.size());
   return paintBirthMenuOnTerminal(
@@ -1152,6 +1163,7 @@ function birthMenu(
     hint,
     frozen,
     active,
+    roguelike,
   ).finally(() => {
     popRegion(handle);
   });
@@ -1162,6 +1174,7 @@ function paintBirthMenuOnTerminal(
   hint: string,
   frozen: readonly FrozenColumn[],
   active: ActiveColumn,
+  roguelike = false,
 ): Promise<BirthMenuResult> {
   return new Promise<BirthMenuResult>((resolve) => {
     const count = active.rows.length;
@@ -1287,7 +1300,7 @@ function paintBirthMenuOnTerminal(
             inputEvents.addEventListener("keydown", onKey, true);
             installTap();
             paint();
-          });
+          }, roguelike);
           return;
         default:
           break;
@@ -1558,6 +1571,14 @@ export async function runBirth(
     ...customPageDefaults("BIRTH"),
     ...(opts.birthOptions ?? {}),
   };
+  // The keyset the character being born will actually use (#5). do_cmd_help
+  // (ui-help.c:476) reads rogue_like_commands live off the player, and that
+  // option is restored from customized_interface_options.txt in player_init
+  // the same way OP_BIRTH is restored above - before any birth stage runs, so
+  // there is no savefile to read it from yet either. Without this, '?' during
+  // birth always opened the original-keyset command summary even when the
+  // roguelike keyset was the one about to be (or already) chosen.
+  const roguelikeAtBirth = customPageDefaults("INTERFACE").rogue_like_commands ?? false;
   // Wrap birthMenu so '=' opens the editable birth-options screen and then
   // re-shows the SAME stage (ui-birth.c:848-850, next = current), for every
   // menu_question stage without threading the option state into each.
@@ -1567,7 +1588,7 @@ export async function runBirth(
     active: ActiveColumn,
   ): Promise<BirthMenuResult> => {
     for (;;) {
-      const res = await birthMenu(term, hint, frozen, active);
+      const res = await birthMenu(term, hint, frozen, active, roguelikeAtBirth);
       if (res.kind === "options") {
         await runBirthOptionsEditor(term, birthOptions);
         continue;
@@ -2055,7 +2076,7 @@ export async function runBirth(
             { rolledStats: roll, sheetName: name },
             term.size().cols,
           );
-        const result = await standardRoller(term, race, cls, rollRng, sheet);
+        const result = await standardRoller(term, race, cls, rollRng, sheet, roguelikeAtBirth);
         if (result === null) {
           if (!goBack()) return null;
           break;
