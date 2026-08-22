@@ -59,7 +59,13 @@ import { floorPile } from "./floor.js";
 import { monsterGroupChangeIndex } from "./mon-group.js";
 import { disturb } from "./player-path.js";
 import { DEFAULT_HITPOINT_WARN } from "./project-cast.js";
-import { deleteMonster } from "./context.js";
+import {
+  REST_ALL_POINTS,
+  REST_COMPLETE,
+  REST_SOME_POINTS,
+  deleteMonster,
+  playerRestingIsSpecial,
+} from "./context.js";
 import type { GameState } from "./context.js";
 
 /** player-util.h PY_EXERT_* over-exertion bit flags. */
@@ -124,6 +130,52 @@ export function playerOfHasWorld(state: GameState, flag: number): boolean {
 /** player_has over the live derived state (class / race player flags). */
 export function playerHasWorld(state: GameState, flag: number): boolean {
   return state.playerState?.pflags.has(flag) ?? false;
+}
+
+/**
+ * player_resting_complete_special (player-util.c:1495-1520): decide whether a
+ * conditional rest (one of the REST_ special counts) has met its own stopping
+ * condition, and disturb() to end it if so. A no-op when not resting on a
+ * special count. No RNG.
+ *
+ * Lives here rather than in context.ts (where state.resting and the REST_
+ * constants are declared) because it needs disturb() (player-path.ts) and
+ * playerHasWorld (below); context.ts cannot import either without a cycle
+ * (player-path.ts and this module both import GameState from context.ts).
+ * loop.ts calls this at the top of every process_player equivalent
+ * (game-world.c:936, immediately before EVENT_CHECK_INTERRUPT), which is
+ * upstream's own call site.
+ */
+export function playerRestingCompleteSpecial(state: GameState): void {
+  const r = state.resting;
+  if (!r || !playerRestingIsSpecial(r.count)) return;
+  const p = state.actor.player;
+  const t = p.timed;
+
+  if (r.count === REST_ALL_POINTS) {
+    if (p.chp === p.mhp && p.csp === p.msp) disturb(state);
+  } else if (r.count === REST_COMPLETE) {
+    if (
+      p.chp === p.mhp &&
+      (p.csp === p.msp || playerHasWorld(state, PF.COMBAT_REGEN)) &&
+      !(t[TMD.BLIND] ?? 0) &&
+      !(t[TMD.CONFUSED] ?? 0) &&
+      !(t[TMD.POISONED] ?? 0) &&
+      !(t[TMD.AFRAID] ?? 0) &&
+      !(t[TMD.TERROR] ?? 0) &&
+      !(t[TMD.STUN] ?? 0) &&
+      !(t[TMD.CUT] ?? 0) &&
+      !(t[TMD.SLOW] ?? 0) &&
+      !(t[TMD.PARALYZED] ?? 0) &&
+      !(t[TMD.IMAGE] ?? 0) &&
+      !p.wordRecall &&
+      !p.deepDescent
+    ) {
+      disturb(state);
+    }
+  } else if (r.count === REST_SOME_POINTS) {
+    if (p.chp === p.mhp || p.csp === p.msp) disturb(state);
+  }
 }
 
 /** state.dam_red / state.perc_dam_red from the last calc_bonuses (else zero). */

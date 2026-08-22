@@ -634,7 +634,17 @@ export interface AgentActions {
   /** Melee an adjacent monster (a walk into its grid). */
   melee(dir: number): AgentCommand;
   hold(): AgentCommand;
-  rest(): AgentCommand;
+  /**
+   * do_cmd_rest (cmd-cave.c:1619): rest for `count` game turns, or one of the
+   * REST_ special modes (REST_COMPLETE / REST_ALL_POINTS / REST_SOME_POINTS,
+   * player-util.h:53-55, exported from game/context.js). One command turn is
+   * many game turns: the engine self-continues on its internal queue exactly
+   * like a run, so a caller normally issues this ONCE and is not asked for
+   * another command until the rest ends (disturbed, or its own condition met).
+   * Omitting `count` rests as needed (REST_COMPLETE), matching the human UI's
+   * own default prompt answer ("&").
+   */
+  rest(count?: number): AgentCommand;
   descend(): AgentCommand;
   ascend(): AgentCommand;
   tunnel(dir: number): AgentCommand;

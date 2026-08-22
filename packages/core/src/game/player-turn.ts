@@ -59,6 +59,8 @@ import {
   deleteMonster,
   gameTakeHitHooks,
   movePlayer,
+  playerIsResting,
+  playerRestingIsSpecial,
   squareMonster,
 } from "./context.js";
 import { gearGet } from "./gear.js";
@@ -801,6 +803,98 @@ export function sleepAction(state: GameState, _cmd: PlayerCommand): number {
 }
 
 /**
+ * rest (do_cmd_rest, cmd-cave.c:1619-1669): rest for `cmd.args.count` turns, or
+ * until one of the REST_ special conditions (REST_COMPLETE / REST_ALL_POINTS /
+ * REST_SOME_POINTS, player-util.h:53-55). A DIFFERENT upstream function from
+ * hold/sleep - it calls neither search nor autopickup nor the shop-entry
+ * disturb (see holdAction's doc for the contrast).
+ *
+ * ONE CALL IS ONE GAME TURN, exactly like upstream's own do_cmd_rest: the C
+ * takes a single player_resting_step_turn and then re-queues itself with
+ * cmdq_push(CMD_REST) so process_player's do-while keeps draining it without a
+ * fresh keypress. This is the same shape as runAction's self-continuation
+ * (player-path.ts) - the command pushes its own follow-up onto
+ * state.cmdQueue, which processPlayer drains before asking the host's
+ * nextCommand for anything. A host that never pauses (a headless harness, an
+ * agent, the tests) therefore gets every turn of a whole rest inside one
+ * runGameLoop call, same as it already does for a run.
+ *
+ * disturb() (player-path.ts) is what stops the self-continuation: it deletes
+ * state.resting AND empties state.cmdQueue, so a rest interrupted mid-flight
+ * (a monster becoming visible, damage taken, the HP/SP-full check in
+ * playerRestingCompleteSpecial) simply has nothing left to pop next time
+ * process_player asks - upstream's player_rest_disturb flag achieves the same
+ * "the stale queued continuation must not fire" result with a lagging flag;
+ * this port's synchronous queue-clear needs no flag at all.
+ */
+export function restAction(state: GameState, cmd: PlayerCommand): number {
+  /* cmd_get_arg_choice returning != CMD_OK (cmd-cave.c:1624-1625): no count at
+   * all is a silent no-op, taking no turn. */
+  const arg = cmd.args?.count;
+  let n = typeof arg === "number" ? arg : NaN;
+  if (!Number.isFinite(n)) return 0;
+
+  /* "A little sanity checking on the input" (cmd-cave.c:1627-1632): only the
+   * three REST_ codes are valid negative choices. */
+  if (n < 0 && !playerRestingIsSpecial(n)) return 0;
+
+  /* Do some upkeep on the first turn of rest (cmd-cave.c:1634-1644). Checked
+   * BEFORE this call's count takes effect, exactly as upstream checks
+   * player_is_resting() before player_resting_set_count() runs. */
+  if (!playerIsResting(state)) {
+    /* player->upkeep->update |= PU_BONUS (cmd-cave.c:1636): applied eagerly
+     * here rather than deferred, matching how the rest of this port recomputes
+     * derived state through direct hook calls instead of dirty bits. */
+    state.updateBonuses?.();
+
+    if (n > 1) state.restRepeatCount = n;
+    else if (n === 1) n = state.restRepeatCount ?? 0;
+  }
+
+  /* player_resting_set_count (player-util.c:1425-1445): store the count (or
+   * cancel to the not-resting sentinel), clamped at 9999. This port represents
+   * "not resting" as state.resting being absent rather than count === 0, so a
+   * count of 0 (an explicit "0 turns", or a repeat with nothing remembered)
+   * deletes the field instead of storing a zero. */
+  if (n === 0 || (n < 0 && !playerRestingIsSpecial(n))) {
+    delete state.resting;
+  } else if (!state.resting) {
+    state.resting = { count: Math.min(n, 9999), turnsRested: 0 };
+  } else {
+    state.resting.count = Math.min(n, 9999);
+  }
+
+  /* "Set the counter, and stop if told to" (cmd-cave.c:1646-1649). */
+  if (!playerIsResting(state)) return 0;
+  const r = state.resting!;
+
+  /* player_resting_step_turn (player-util.c:1472-1489): spend the turn,
+   * decrement a timed count, bump both rested counters. */
+  if (r.count > 0) r.count--;
+  r.turnsRested++;
+  state.restingTurn = (state.restingTurn ?? 0) + 1;
+
+  /* "Prepare to continue, or cancel and clean up" (cmd-cave.c:1657-1667). `n`
+   * here is upstream's own local n: unchanged since the upkeep block above for
+   * a special rest, or the count this call was asked to do, decremented by
+   * step_turn's already-applied r.count-- for a timed one - so r.count IS
+   * upstream's `n - 1` at this point, and pushing it as the next choice is
+   * pushing exactly that. */
+  if (r.count > 0) {
+    if (!state.cmdQueue) state.cmdQueue = [];
+    state.cmdQueue.push({ code: "rest", args: { count: r.count } });
+  } else if (playerRestingIsSpecial(n)) {
+    if (!state.cmdQueue) state.cmdQueue = [];
+    state.cmdQueue.push({ code: "rest", args: { count: n } });
+    state.restRepeatCount = 0;
+  } else {
+    delete state.resting;
+  }
+
+  return state.z.moveEnergy;
+}
+
+/**
  * descend / ascend: signal a level change (player->upkeep->generate_level).
  * The generation and depth change belong to the world integration, which does
  * them (session/game.ts changeLevel); the loop observes the signal and clears it.
@@ -854,7 +948,7 @@ export function createDefaultRegistry(): ActionRegistry {
   reg.register("walk", walkAction);
   reg.register("jump", jumpAction);
   reg.register("hold", holdAction);
-  reg.register("rest", holdAction);
+  reg.register("rest", restAction);
   reg.register("sleep", sleepAction);
   reg.register("descend", descendAction);
   reg.register("ascend", ascendAction);

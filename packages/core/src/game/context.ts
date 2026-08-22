@@ -458,8 +458,7 @@ export interface GameState {
    * (the per-session file-static player_turns_rested that gates the x2 regen):
    * resting_turn accumulates for the character's whole life. Bumped once per rested
    * turn (player-util.c:1487). Persists in the save; absent is treated as 0.
-   * The live producer (the rest command) lives outside this module - see the
-   * WIRING-NEEDED note in session/save.ts.
+   * The live producer is the rest command's restAction (game/player-turn.ts).
    */
   restingTurn?: number;
   /**
@@ -604,10 +603,19 @@ export interface GameState {
    * player->upkeep->resting + the file-static player_turns_rested
    * (player-util.c:1417,1472). count mirrors upkeep->resting (>0 = timed turns
    * left, or a REST_ special: COMPLETE=-2, ALL_POINTS=-1, SOME_POINTS=-3);
-   * turnsRested gates the x2 regen. Set/tracked by the web rest command
-   * (packages/web main.ts driveRest); absent when not resting.
+   * turnsRested gates the x2 regen. Set/tracked by the rest command
+   * (restAction, game/player-turn.ts); absent when not resting.
    */
   resting?: { count: number; turnsRested: number };
+
+  /**
+   * player_resting_repeat_count (player-util.c:1523): the file-static count
+   * remembered from the last TIMED rest, so re-issuing rest with count === 1
+   * repeats it (cmd-cave.c:1638-1643). Session-transient like the file-static
+   * it mirrors - never persisted, reset only by a fresh rest that supplies a
+   * new count > 1. Absent is the upstream static's zero-initialized state.
+   */
+  restRepeatCount?: number;
 
   /* --- injected hooks --- */
   /**
@@ -1169,6 +1177,17 @@ export interface RunState {
  * Fixes & tweaks menu is built from it) - that reading lives in the host. */
 
 /**
+ * The REST_ constants (player-util.h:53-55): conditional rest modes, which
+ * rest until a condition is met rather than for a fixed turn count. Exported
+ * so callers outside the engine (the agent facade, a mod, a host UI) can build
+ * a rest command's `args.count` without re-declaring the magic numbers - the
+ * web shell used to carry its own private copy of exactly these three.
+ */
+export const REST_COMPLETE = -2;
+export const REST_ALL_POINTS = -1;
+export const REST_SOME_POINTS = -3;
+
+/**
  * player_resting_is_special (player-util.c:1382): the conditional REST_ modes,
  * which rest until a condition is met rather than for a fixed count.
  * REST_COMPLETE = -2, REST_ALL_POINTS = -1, REST_SOME_POINTS = -3
@@ -1180,7 +1199,11 @@ export interface RunState {
  * three bodies only agrees by luck.
  */
 export function playerRestingIsSpecial(count: number): boolean {
-  return count === -1 || count === -2 || count === -3;
+  return (
+    count === REST_ALL_POINTS ||
+    count === REST_COMPLETE ||
+    count === REST_SOME_POINTS
+  );
 }
 
 /**
