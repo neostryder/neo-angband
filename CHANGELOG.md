@@ -45,6 +45,19 @@ version it still calls itself.
   today; a regular installed mod's digest is a documented follow-up
   (docs/modding/MOD_SEAMS.md section 4d).
 
+### Fixed
+- **`flavor.txt`'s `fixed:`/`flavor:` order is now recoverable from the
+  compiled record.** The content compiler used to split the two directives
+  into separate arrays, so a record that interleaved them could not be
+  reproduced from the compiled shape at all - the entry `index` cannot stand
+  in for file order either, since flavor.txt's own numbering is not the order
+  the file writes lines in. Nothing shipped interleaves the two directives, so
+  this was latent rather than live; it would have become live the moment a
+  mod's flavor.txt did. The compiler now emits one ordered `entries` list per
+  record, each entry tagged with which directive produced it, so binding
+  follows the file's real line order regardless of how a flavor.txt
+  interleaves `fixed:` and `flavor:`.
+
 ## [0.28.1] - 2026-08-23
 
 A fixes release: two keymap defects are corrected, and the Mod Builder mod is

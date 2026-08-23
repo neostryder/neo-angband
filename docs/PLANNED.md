@@ -104,14 +104,6 @@ documents. Recorded here so the next audit does not repeat the reading:
 
 Tracked as issue #1.
 
-### `flavor.txt` records that interleave `fixed:` and `flavor:`
-
-The compiled record splits the two directives into separate arrays, so the
-file's true line order is not recoverable from the compiled shape. Nothing
-shipped interleaves them today, so this is latent rather than live.
-
-Tracked as issue #2.
-
 ### The targeting banner's remaining clauses
 
 `target_display_help` builds its sentence from what the loop is offering, and

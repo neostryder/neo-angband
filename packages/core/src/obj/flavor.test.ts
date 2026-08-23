@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { KF, TV } from "../generated/index.js";
 import { ObjRegistry } from "./bind.js";
 import { SV_UNKNOWN } from "./types.js";
-import type { ObjPackJson, ObjectKind } from "./types.js";
+import type { FlavorRecordJson, ObjPackJson, ObjectKind } from "./types.js";
 import { objectNew, tvalCanHaveFlavor } from "./object.js";
 import { FlavorKnowledge } from "./knowledge.js";
 import { flavorInit } from "./flavor.js";
@@ -354,5 +354,50 @@ describe("bindFlavors: flavor.txt line order", () => {
 
     /* And the same seed reproduces it, which is what seed_flavor is for. */
     expect(draw()).toEqual(texts);
+  });
+
+  /**
+   * ISSUE #2: the compiled record used to split `fixed:` and `flavor:` into
+   * two arrays, so a record that interleaves the two directives could not be
+   * reproduced from that shape at all - the old binder always bound every
+   * `fixed:` entry before every `flavor:` entry, regardless of the file's
+   * real line order, because "regardless of the real order" was the only
+   * thing the split-array shape could express. Nothing shipped interleaves
+   * them (every test above exercises the shipped fixed-then-random layout,
+   * which is why the bug stayed latent), so this constructs the interleaved
+   * case directly rather than waiting for a mod to trip over it.
+   */
+  it("binds an interleaved fixed:/flavor: record in the file's own line order", () => {
+    const interleaved: FlavorRecordJson = {
+      kind: { tval: "ring", glyph: "=" },
+      entries: [
+        { kind: "flavor", index: 50, attr: "Red", desc: "Ruby-ish" },
+        { kind: "fixed", index: 1, sval: "7", attr: "Yellow", desc: "Plain-Gold-ish" },
+        { kind: "flavor", index: 51, attr: "Green", desc: "Emerald-ish" },
+        { kind: "fixed", index: 2, sval: "9", attr: "Blue", desc: "Sapphire-ish" },
+        { kind: "flavor", index: 52, attr: "White", desc: "Diamond-ish" },
+      ],
+    };
+    const pack: ObjPackJson = { ...objPack, flavor: { records: [interleaved] } };
+    const reg = new ObjRegistry(pack);
+
+    /* The bound list is the entries array, unchanged in order - not fixed
+     * entries first, which is what a binder still reading split `fixed`/
+     * `flavor` arrays would have produced regardless of this input. */
+    expect(reg.flavors.map((f) => f.text)).toEqual([
+      "Ruby-ish",
+      "Plain-Gold-ish",
+      "Emerald-ish",
+      "Sapphire-ish",
+      "Diamond-ish",
+    ]);
+    /* Fixed entries keep the sval they named; flavor entries stay unknown -
+     * confirming the interleaving didn't scramble which is which. */
+    expect(reg.flavors.map((f) => f.sval)).toEqual([SV_UNKNOWN, 7, SV_UNKNOWN, 9, SV_UNKNOWN]);
+    /* The entry's own `index` (flavor.txt's numbering) is deliberately NOT
+     * ascending in file order here (50, 1, 51, 2, 52) - exactly the "the
+     * entry index cannot stand in for it" case the issue describes - and the
+     * bound order follows the entries array, not a re-sort by index. */
+    expect(reg.flavors.map((f) => f.fidx)).toEqual([50, 1, 51, 2, 52]);
   });
 });
