@@ -320,9 +320,9 @@ import {
 import type { PrefsUiCtx } from "./prefs-ui";
 import { applyPrefText } from "./prefs-ui";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
-import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, presentNamespaces, presentPackDigests, diskPackStatus, enabledModIds, composedRecords } from "./pack";
+import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, presentNamespaces, presentPackDigests, prefetchInstalledPackDigests, diskPackStatus, enabledModIds, composedRecords } from "./pack";
 import { liveConflictLines } from "./mod-conflicts";
-import { composedObjects, resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
+import { composedObjects, hasFacet, resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   defaultModStore,
   buildCatalog,
@@ -773,7 +773,33 @@ async function rediscoverModSources(): Promise<void> {
   await loadSessionMods();
   const shellPacks = await loadDiskPacks();
   const folder = shellPacks.available ? shellPacks : await loadPickedModFolder();
-  setDiskPacks(combineDiskReports([folder, await loadInstalledMods()]));
+  const installed = await loadInstalledMods();
+  setDiskPacks(combineDiskReports([folder, installed]));
+
+  /* `presentPackDigests()` has to be synchronous because `bootGame()` is. Read
+   * IndexedDB's provenance records here, while boot is still awaiting setup,
+   * then give pack.ts only the enabled content mods whose installed copy is the
+   * one that can actually compose. A folder or session copy may shadow the
+   * installed id, and bundled packs always win too; caching one of those hashes
+   * would falsely describe bytes the game is not using. */
+  const shadowed = new Set([
+    ...folder.packs.map((pack) => pack.manifest.id),
+    ...sessionPacks().packs.map((pack) => pack.manifest.id),
+  ]);
+  const enabled = new Set(enabledModIds());
+  const installedContentIds = new Set(
+    installed.packs
+      .filter(
+        (pack) =>
+          enabled.has(pack.manifest.id) &&
+          hasFacet(pack.manifest, "content") &&
+          !shadowed.has(pack.manifest.id),
+      )
+      .map((pack) => pack.manifest.id),
+  );
+  await prefetchInstalledPackDigests(
+    (await installedMods()).filter((meta) => installedContentIds.has(meta.id)),
+  );
 }
 
 {
@@ -1090,8 +1116,8 @@ function bootGame(): ReturnType<typeof startGame> {
              * the same reason the flags are: which mods are on is a client
              * setting, not part of the save. */
             ...(loadHooks ? { modHooks: loadHooks } : {}),
-            /* issue #20: the digest of every present pack this host can measure
-             * right now (session packs only - see presentPackDigests), so
+            /* issue #20: the digest of every present session or installed pack
+             * this host can measure right now (see presentPackDigests), so
              * loadGame can tell a pack that PATCHED a record apart from one
              * that only added content: the patch leaves no orphan behind when
              * it changes, because the record still resolves under its own,
@@ -1106,9 +1132,9 @@ function bootGame(): ReturnType<typeof startGame> {
             loadedNote = describeMigration(loaded.saveMigration);
           }
           /* issue #20: a still-present pack's composed content no longer
-           * matches what this save was written with - most often a session
-           * mod that patched a core record differently, or is simply gone,
-           * since dropping it stops it composing but does not touch a
+           * matches what this save was written with - most often a session or
+           * installed mod that patched a core record differently, or is simply
+           * gone, since dropping it stops it composing but does not touch a
            * character it already changed (mods.ts's dropSession says the same
            * thing at the point a player drops one). Said after the migration
            * note rather than instead of it, so neither silently wins. */

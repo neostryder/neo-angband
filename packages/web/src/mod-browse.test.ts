@@ -67,11 +67,11 @@ const register: AuthorRegister = (() => {
 })();
 
 describe("browseRow", () => {
-  it("shows the mod's own name, version and exact size", () => {
+  it("shows the mod's own name, version and size", () => {
     const row = browseRow(found(), null);
     expect(row.label).toContain("Quality of Life");
     expect(row.label).toContain("0.13.0");
-    expect(row.label).toContain("14,543 bytes");
+    expect(row.label).toContain("14 KiB");
   });
 
   it("uses only the FIRST line of the description as the hint", () => {
@@ -145,7 +145,7 @@ describe("browseDetail", () => {
     const t = text(found());
     expect(t).toContain("0.13.0");
     expect(t).toContain(">=0.18.0");
-    expect(t).toContain("14,543 bytes");
+    expect(t).toContain("14 KiB");
     expect(t).toContain("https://github.com/neostryder/neo-angband-mod-qol");
   });
 
@@ -493,8 +493,8 @@ describe("what the screen says after importing a zip", () => {
     }
   });
 
-  it("names the archive on its row with its exact byte count", () => {
-    expect(waitingZipRow({ name: "qol.zip", bytes: 5550 })).toBe("qol.zip  (5,550 bytes)");
+  it("names the archive on its row with a size a player can read", () => {
+    expect(waitingZipRow({ name: "qol.zip", bytes: 5550 })).toBe("qol.zip  (5.4 KiB)");
   });
 });
 

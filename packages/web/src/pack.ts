@@ -38,6 +38,7 @@ import type {
 import type { ConflictRow } from "./mod-conflicts";
 import { defaultModStore, isShippedMod, readEnabledModIds } from "./mod-store";
 import { diskPacks, sessionPacks, type ModDirKind, type ModOrigin } from "./disk-packs";
+import type { InstalledModMeta } from "./mod-install";
 import { sessionMods } from "./mod-session";
 import { activeModCode } from "./mod-code";
 import { engineAllows, engineProblem } from "./mod-engine";
@@ -743,6 +744,73 @@ export function presentNamespaces(): ReadonlySet<string> {
   return new Set(packs.map((p) => p.manifest.id).filter((id) => !gone.has(id)));
 }
 
+/** Installed content-pack hashes prefetched from IndexedDB before synchronous boot. */
+let installedPackDigests = new Map<string, string>();
+
+interface DigestScope {
+  readonly crypto?: { readonly subtle?: Pick<SubtleCrypto, "digest"> };
+}
+
+/**
+ * Pre-fetch the installed content packs' digests while IndexedDB is still
+ * available to await, before `bootGame()` enters its synchronous load path.
+ *
+ * `InstalledModMeta` records a SHA-256 for every stored path, not one archive
+ * hash. The sorted path/hash pairs are themselves hashed into one stable pack
+ * digest so `SavePackRef` can compare one opaque value. Every file must have a
+ * recorded digest and the list must have no extras; an old or malformed record
+ * is deliberately omitted rather than reported as unchanged.
+ */
+export async function prefetchInstalledPackDigests(
+  metas: readonly InstalledModMeta[],
+  scope: DigestScope = globalThis,
+): Promise<void> {
+  const next = new Map<string, string>();
+  const subtle = scope.crypto?.subtle;
+  if (!subtle) {
+    installedPackDigests = next;
+    return;
+  }
+  for (const meta of metas) {
+    /* Bundled packs always win discovery over an installed pack with the same
+     * id. Keeping that installed hash would describe bytes the game did not
+     * compose, so omit it before it can ever reach `currentPacks`. */
+    if (bundledModIds().has(meta.id) && isShippedMod(meta.id)) continue;
+    const hash = await installedPackDigest(meta, subtle);
+    if (hash) next.set(meta.id, hash);
+  }
+  installedPackDigests = next;
+}
+
+/** One whole-pack SHA-256 from the trusted, per-file install-time digests. */
+async function installedPackDigest(
+  meta: InstalledModMeta,
+  subtle: Pick<SubtleCrypto, "digest">,
+): Promise<string | null> {
+  const digests = meta.digests;
+  if (!digests) return null;
+  const files = [...meta.files].sort();
+  if (files.length === 0 || new Set(files).size !== files.length) return null;
+  const fileSet = new Set(files);
+  if (Object.keys(digests).some((path) => !fileSet.has(path))) return null;
+  const entries: Array<readonly [string, string]> = [];
+  for (const path of files) {
+    const digest = digests[path];
+    if (typeof digest !== "string" || !/^[0-9a-f]{64}$/u.test(digest)) return null;
+    entries.push([path, digest]);
+  }
+  try {
+    const bytes = new TextEncoder().encode(JSON.stringify(entries));
+    const digest = await subtle.digest("SHA-256", bytes);
+    return [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  } catch {
+    /* A browser that cannot calculate this hash must say nothing about it. */
+    return null;
+  }
+}
+
 /**
  * The current content digest for every present pack THIS HOST CAN MEASURE
  * right now, fed to `loadGame`'s `currentPacks` option (issue #20) so it can
@@ -750,27 +818,35 @@ export function presentNamespaces(): ReadonlySet<string> {
  * `presentNamespaces` alone cannot see, because a patched record still
  * resolves under its own, still-present namespace.
  *
- * SESSION PACKS ONLY, for now. `stageSessionMod` already hashes the whole
- * archive once, at staging time (mod-session.ts), and `sessionMods()` reads
- * that back synchronously - which matters, because `loadGame` runs on the
- * synchronous boot path and cannot itself await anything. A regular installed
- * mod's digest (`InstalledModMeta.digests`, mod-install.ts) is real, but it is
- * read back from IndexedDB, which is asynchronous; wiring that in would mean
- * pre-fetching it into a synchronous cache ahead of boot, which is a larger
- * change than this fix and is tracked separately as issue #72 (see also
- * MOD_SEAMS.md section 4d). Omitting an installed mod here is the honest
- * "not measured", never "unchanged" - `mismatchedNamespaces` skips a
+ * Session packs contribute the whole-archive digest `stageSessionMod` recorded
+ * at staging time. Installed content packs contribute a whole-pack digest
+ * derived from their recorded per-file hashes, prefetched from IndexedDB during
+ * main.ts's awaited setup phase. The boot path only reads that cache here, so
+ * this function remains synchronous. A pack with no measurable digest is
+ * omitted rather than reported as unchanged - `mismatchedNamespaces` skips a
  * namespace with no current hash rather than reporting a false match.
  *
  * A session mod's `digest` is `""` on a host with no `crypto.subtle` at
  * staging time (mod-session.ts); such an entry is skipped here for the same
- * reason.
+ * reason. Installed records with missing or malformed per-file digests are
+ * likewise skipped.
  */
 export function presentPackDigests(): SavePackRef[] {
   const out: SavePackRef[] = [];
   for (const m of sessionMods()) {
     if (!m.digest) continue;
     out.push({ id: m.id, version: m.version ?? "0.0.0", hash: m.digest });
+  }
+  const { packs, dropped } = composition();
+  const gone = new Set(dropped.map((d) => d.id));
+  const seen = new Set(out.map((p) => p.id));
+  for (const pack of packs) {
+    const { id, version } = pack.manifest;
+    if (id === "core" || gone.has(id) || seen.has(id)) continue;
+    const hash = installedPackDigests.get(id);
+    if (!hash) continue;
+    out.push({ id, version, hash });
+    seen.add(id);
   }
   return out;
 }

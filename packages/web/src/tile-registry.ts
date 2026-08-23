@@ -47,13 +47,13 @@
  * contest that cannot happen. The grafID claims a tiles mod makes are still
  * reported, because those are genuinely last-wins.
  *
- * THE PLAYER DOOR IS THE FIRST TILE SEAM WHERE A CONTEST IS REAL. Two providers
- * that both answer for the same character both have an opinion, and load order
- * silently picks one. The conflict report lists every mod-owned provider, so the
- * player can choose their load order with that overlap visible. What keeps it
- * small is that a provider is expected to answer null for everything it has no
- * opinion about, so an overlap needs both mods to care about the same character
- * in the same moment.
+ * THE PLAYER DOOR IS THE FIRST TILE SEAM WHERE A CONTEST IS REAL, and it has no
+ * conflict row yet. Two providers that both answer for the same character both
+ * had an opinion, and load order silently picks one. It is reported nowhere,
+ * which is a gap rather than a decision, and it is tracked in docs/PLANNED.md.
+ * What keeps it small is that a provider is expected to answer null for
+ * everything it has no opinion about, so an overlap needs both mods to care
+ * about the same character in the same moment.
  */
 
 import type {
@@ -180,11 +180,6 @@ export class TileFillerRegistry implements TileRegistryTarget {
   /** Whether any mod has an opinion about the player's own tile. */
   get playerProviders(): number {
     return this.#players.size;
-  }
-
-  /** Mod-owned player-tile providers, in registration order. */
-  get playerProviderOwners(): readonly string[] {
-    return [...this.#players.keys()].filter((owner): owner is string => owner !== null);
   }
 
   /** Test/session teardown: no installed mod means no filler survives. */

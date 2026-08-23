@@ -721,20 +721,19 @@ Four things about it, and the first is the one to say to the player:
   the sword still reads as core's and nothing is ever quarantined. The composed
   value from save time is simply gone on the next load, silently, unless the
   save can say so on its own. It does: the manifest records the content digest
-  of every present pack this host can measure at save time (session packs -
-  `mismatchedNamespaces` / `reconcilePackManifest`, `packages/core/src/mod/save-blocks.ts`),
-  and a load that finds a namespace still present but its recorded digest no
-  longer matching the current one says so, the same way a save updated across
-  a format change says so (`describePackMismatch`, `packages/web/src/save-recovery.ts`).
-  This is discoverability, not prevention - a patch that changed and a patch
-  that is simply gone read the same to the digest, and the fix is the same for
-  both: stage the pack again, or accept what is now composed. The identical gap
-  exists for a permanently INSTALLED pack that patches a core record and is
-  later uninstalled; only a session pack's digest is measured today, because a
-  regular installed mod's is read back from IndexedDB asynchronously and
-  `loadGame` runs on the synchronous boot path (see `presentPackDigests`,
-  `packages/web/src/pack.ts`) - tracked as issue #72, not a claim that the
-  installed case is covered.
+  of every present session or permanently INSTALLED pack this host can measure
+  at save time (`mismatchedNamespaces` / `reconcilePackManifest`,
+  `packages/core/src/mod/save-blocks.ts`), and a load that finds a namespace
+  still present but its recorded digest no longer matching the current one says
+  so, the same way a save updated across a format change says so
+  (`describePackMismatch`, `packages/web/src/save-recovery.ts`). Session packs
+  carry the whole-archive digest made at staging; an installed pack's recorded
+  per-file digests are prefetched from IndexedDB before the synchronous boot
+  path and combined into its current pack digest (`presentPackDigests`,
+  `packages/web/src/pack.ts`). This is discoverability, not prevention - a
+  patch that changed and a patch that is simply gone read the same to the
+  digest, and the fix is the same for both: stage or install the pack again,
+  or accept what is now composed.
 - **It is CONTENT ONLY, on exactly the same terms `installMod` is.** Code under
   any extension is refused, and so is an archive whose manifest asks for a
   capability. A mod may not hand the engine another mod's code to run - the
