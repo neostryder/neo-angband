@@ -812,14 +812,6 @@ function askforAuxKeypress(
   return "edit";
 }
 
-/** Insert one pasted, single-line value at the line editor cursor. */
-function pasteLineEdit(st: LineEdit, maxLen: number, clipboardText: string): void {
-  const text = clipboardText.split(/\r\n?|\n/u, 1)[0] ?? "";
-  const inserted = text.slice(0, Math.max(0, maxLen - st.buf.length));
-  st.buf = st.buf.slice(0, st.curs) + inserted + st.buf.slice(st.curs);
-  st.curs += inserted.length;
-}
-
 /**
  * Draw the buffer with its cursor. There is no Term_gotoxy on this surface, so
  * the cursor is an inverted cell. The text renders in COLOUR_YELLOW while the
@@ -908,7 +900,6 @@ export function promptTextInline(
   return new Promise<string | null>((resolve) => {
     const st: LineEdit = { buf: initial, curs: 0 };
     let firsttime = true;
-    let composing = false;
     const x = prompt.length;
     const paint = (): void => {
       const { cols } = term.size();
@@ -920,18 +911,10 @@ export function promptTextInline(
     };
     const finish = (value: string | null): void => {
       inputEvents.removeEventListener("keydown", onKey, true);
-      inputEvents.removeEventListener("paste", onPaste, true);
-      inputEvents.removeEventListener("compositionstart", onCompositionStart, true);
-      inputEvents.removeEventListener("compositionend", onCompositionEnd, true);
       clearPromptRow(term, row);
       resolve(value);
     };
     const onKey = (ev: KeyboardEvent): void => {
-      if (composing || ev.isComposing) {
-        ev.preventDefault();
-        ev.stopImmediatePropagation();
-        return;
-      }
       ev.preventDefault();
       ev.stopImmediatePropagation();
       const wasFirst = firsttime;
@@ -951,23 +934,7 @@ export function promptTextInline(
       if (r === "enter") return finish(st.buf);
       paint();
     };
-    const onPaste = (ev: ClipboardEvent): void => {
-      ev.preventDefault();
-      ev.stopImmediatePropagation();
-      pasteLineEdit(st, maxLen, ev.clipboardData?.getData("text") ?? "");
-      firsttime = false;
-      paint();
-    };
-    const onCompositionStart = (): void => {
-      composing = true;
-    };
-    const onCompositionEnd = (): void => {
-      composing = false;
-    };
     inputEvents.addEventListener("keydown", onKey, true);
-    inputEvents.addEventListener("paste", onPaste, true);
-    inputEvents.addEventListener("compositionstart", onCompositionStart, true);
-    inputEvents.addEventListener("compositionend", onCompositionEnd, true);
     paint();
   });
 }
@@ -1102,7 +1069,6 @@ export function promptText(
   return new Promise<string | null>((resolve) => {
     const st: LineEdit = { buf: initial, curs: 0 };
     let firsttime = true;
-    let composing = false;
     const PROMPT = "> ";
     const paint = (): void => {
       const { cols, rows } = term.size();
@@ -1114,17 +1080,9 @@ export function promptText(
     };
     const finish = (value: string | null): void => {
       inputEvents.removeEventListener("keydown", onKey, true);
-      inputEvents.removeEventListener("paste", onPaste, true);
-      inputEvents.removeEventListener("compositionstart", onCompositionStart, true);
-      inputEvents.removeEventListener("compositionend", onCompositionEnd, true);
       resolve(value);
     };
     const onKey = (ev: KeyboardEvent): void => {
-      if (composing || ev.isComposing) {
-        ev.preventDefault();
-        ev.stopImmediatePropagation();
-        return;
-      }
       ev.preventDefault();
       ev.stopImmediatePropagation();
       const wasFirst = firsttime;
@@ -1151,23 +1109,7 @@ export function promptText(
       if (r === "enter") return finish(st.buf);
       paint();
     };
-    const onPaste = (ev: ClipboardEvent): void => {
-      ev.preventDefault();
-      ev.stopImmediatePropagation();
-      pasteLineEdit(st, maxLen, ev.clipboardData?.getData("text") ?? "");
-      firsttime = false;
-      paint();
-    };
-    const onCompositionStart = (): void => {
-      composing = true;
-    };
-    const onCompositionEnd = (): void => {
-      composing = false;
-    };
     inputEvents.addEventListener("keydown", onKey, true);
-    inputEvents.addEventListener("paste", onPaste, true);
-    inputEvents.addEventListener("compositionstart", onCompositionStart, true);
-    inputEvents.addEventListener("compositionend", onCompositionEnd, true);
     paint();
   });
 }
@@ -1198,7 +1140,6 @@ export function promptNumber(
   return new Promise<number | null>((resolve) => {
     const st: LineEdit = { buf: String(current), curs: 0 };
     let firsttime = true;
-    let composing = false;
     const PROMPT = "> ";
     const paint = (): void => {
       const { cols, rows } = term.size();
@@ -1215,16 +1156,9 @@ export function promptNumber(
     };
     const finish = (value: number | null): void => {
       inputEvents.removeEventListener("keydown", onKey, true);
-      inputEvents.removeEventListener("compositionstart", onCompositionStart, true);
-      inputEvents.removeEventListener("compositionend", onCompositionEnd, true);
       resolve(value);
     };
     const onKey = (ev: KeyboardEvent): void => {
-      if (composing || ev.isComposing) {
-        ev.preventDefault();
-        ev.stopImmediatePropagation();
-        return;
-      }
       ev.preventDefault();
       ev.stopImmediatePropagation();
       const wasFirst = firsttime;
@@ -1243,15 +1177,7 @@ export function promptNumber(
       }
       paint();
     };
-    const onCompositionStart = (): void => {
-      composing = true;
-    };
-    const onCompositionEnd = (): void => {
-      composing = false;
-    };
     inputEvents.addEventListener("keydown", onKey, true);
-    inputEvents.addEventListener("compositionstart", onCompositionStart, true);
-    inputEvents.addEventListener("compositionend", onCompositionEnd, true);
     paint();
   });
 }
