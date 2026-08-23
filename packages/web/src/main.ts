@@ -12794,18 +12794,20 @@ if (import.meta.env.DEV) {
       const enabled = enabledModIds();
       const manifests = discoverContentModManifests().filter((m) => enabled.includes(m.id));
       const lines = liveConflictLines();
+      const store = defaultModStore();
+      store.migrateSectionChoices(manifests);
       return {
         enabled,
         sections: Object.fromEntries(
           [...resolveSectionState(
             manifests,
-            defaultModStore().getSectionChoices(),
+            store.getSectionChoices(),
             new Set(enabled),
           )].map(([id, table]) => [id, Object.fromEntries(table)]),
         ),
         order: sortModOrder(manifests, {
-          pins: defaultModStore().getPins(),
-          current: defaultModStore().getEnabled(),
+          pins: store.getPins(),
+          current: store.getEnabled(),
         }),
         conflicts: lines,
         /* Composed record counts per file, so a section switching off is visible

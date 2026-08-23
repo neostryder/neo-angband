@@ -1508,6 +1508,7 @@ async function manageSections(
       .listCatalog()
       .filter((c) => c.enabled)
       .map((c) => c.manifest);
+    deps.store.migrateSectionChoices(enabledManifests);
     const resolved = resolveSectionState(
       enabledManifests,
       deps.store.getSectionChoices(),

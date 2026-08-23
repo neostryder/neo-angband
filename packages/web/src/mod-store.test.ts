@@ -7,7 +7,7 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import { resolveSectionState, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   ModStore,
   buildCatalog,
@@ -293,6 +293,108 @@ describe("ModStore - profiles", () => {
     expect(store.applyProfile("missing")).toBe(false);
     store.deleteProfile("mine");
     expect(Object.keys(store.getProfiles())).toEqual([]);
+  });
+});
+
+describe("ModStore - renamed section flags", () => {
+  const enabled = (m: PackManifest): boolean =>
+    resolveSectionState([m], {}, new Set([m.id])).get(m.id)?.get(m.sections?.[0]?.id ?? "") ??
+    false;
+
+  const resolved = (store: ModStore, m: PackManifest): boolean =>
+    resolveSectionState(
+      [m],
+      store.getSectionChoices(),
+      new Set([m.id]),
+    ).get(m.id)?.get(m.sections?.[0]?.id ?? "") ?? false;
+
+  it("moves a legacy rule choice into a section with the same flag", () => {
+    const m = manifest("bug-fixes", {
+      sections: [
+        {
+          id: "text-corrections",
+          title: "Text corrections",
+          default: true,
+          flag: "bugfix.textAndHistory",
+          renamedSectionFlags: ["bugfix.textAndHistory"],
+        },
+      ],
+    });
+    const store = new ModStore(fakeStorage());
+    store.setRuleChoice("bugfix.textAndHistory", false);
+
+    store.migrateSectionChoices([m]);
+
+    expect(resolved(store, m)).toBe(false);
+    expect(store.getSectionChoices()).toEqual({ "bug-fixes": { "text-corrections": false } });
+    expect(store.getRuleChoices()).toEqual({});
+  });
+
+  it("moves a legacy section choice into a renamed section", () => {
+    const m = manifest("bug-fixes", {
+      sections: [
+        {
+          id: "text-corrections",
+          title: "Text corrections",
+          default: true,
+          renamedSectionFlags: ["old-text-corrections"],
+        },
+      ],
+    });
+    const store = new ModStore(fakeStorage());
+    store.setSectionChoice("bug-fixes", "old-text-corrections", false);
+
+    store.migrateSectionChoices([m]);
+
+    expect(resolved(store, m)).toBe(false);
+    expect(store.getSectionChoices()).toEqual({ "bug-fixes": { "text-corrections": false } });
+  });
+
+  it("uses the section default when no retired choice exists", () => {
+    const m = manifest("bug-fixes", {
+      sections: [
+        {
+          id: "text-corrections",
+          title: "Text corrections",
+          default: false,
+          renamedSectionFlags: ["old-text-corrections"],
+        },
+      ],
+    });
+    const store = new ModStore(fakeStorage());
+
+    store.migrateSectionChoices([m]);
+
+    expect(enabled(m)).toBe(false);
+    expect(resolved(store, m)).toBe(false);
+    expect(store.getSectionChoices()).toEqual({});
+  });
+
+  it("keeps a current section choice and otherwise uses the first legacy name", () => {
+    const m = manifest("bug-fixes", {
+      sections: [
+        {
+          id: "text-corrections",
+          title: "Text corrections",
+          default: true,
+          renamedSectionFlags: ["first", "second"],
+        },
+      ],
+    });
+    const store = new ModStore(fakeStorage());
+    store.setRuleChoice("first", false);
+    store.setRuleChoice("second", true);
+
+    store.migrateSectionChoices([m]);
+
+    expect(resolved(store, m)).toBe(false);
+    expect(store.getRuleChoices()).toEqual({});
+
+    store.setSectionChoice("bug-fixes", "text-corrections", true);
+    store.setRuleChoice("first", false);
+    store.migrateSectionChoices([m]);
+    expect(resolved(store, m)).toBe(true);
+    expect(store.getRuleChoices()).toEqual({});
   });
 });
 
