@@ -160,12 +160,13 @@ describe("ctx.registries - the bound content a mod can ask about", () => {
     expect(ctx.debug).toBeUndefined();
   });
 
-  it("reloadGame arrives with the install door and with nothing else", () => {
-    /* ONE CAPABILITY FOR BOTH HALVES, checked here because it is the kind of pairing
-     * that gets separated by somebody tidying. Content composes at load, so an
-     * install a mod cannot follow with a reload leaves the player holding something
-     * this process will never load. What must NOT happen is the reload arriving on
-     * its own grant, or on the session grant, or on no grant at all. */
+  it("reloadGame arrives with either staging door and with nothing else", () => {
+    /* TWO CAPABILITIES, ONE DOOR, checked here because it is the kind of pairing
+     * that gets separated by somebody tidying. Content composes at load, so a
+     * mod that stages something - by install or by session - and cannot follow
+     * it with a reload leaves the player holding something this process will
+     * never load. What must NOT happen is the reload arriving on its own grant,
+     * or with no grant at all. */
     const install = CapabilitySet.fromManifest({
       id: "qol",
       name: "qol",
@@ -194,10 +195,10 @@ describe("ctx.registries - the bound content a mod can ask about", () => {
       const granted = modPluginContext("qol", {}, undefined, {}, { capabilities: install });
       expect(granted.reloadGame).toBeDefined();
       expect(granted.installMod).toBeDefined();
-      /* The session grant buys the session door and nothing beside it. */
+      /* The session grant buys the session door AND the same reload. */
       const staged = modPluginContext("qol", {}, undefined, {}, { capabilities: session });
       expect(staged.loadModForSession).toBeDefined();
-      expect(staged.reloadGame).toBeUndefined();
+      expect(staged.reloadGame).toBeDefined();
       /* And no grant at all buys neither, even with the door latched. */
       expect(modPluginContext("qol", {}).reloadGame).toBeUndefined();
     } finally {

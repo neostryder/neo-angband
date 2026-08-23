@@ -137,14 +137,16 @@ export interface UpdateView {
   readonly modUpdates?: readonly ModUpgrade[] | undefined;
 }
 
-/** Bytes as a human reads them. Two significant figures is enough for a download. */
+/**
+ * The archive's size exactly, comma-grouped and unrounded - not KB or MB, on
+ * purpose. This screen is a terminal (see `progressBar` below), and a terminal
+ * says how many bytes moved. A number climbing by the actual byte count also
+ * reads as live progress; a figure rounded to one decimal place barely moves
+ * across a whole download.
+ */
 export function humanBytes(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "?";
-  if (n < 1024) return `${String(Math.round(n))} B`;
-  const mb = n / (1024 * 1024);
-  if (mb < 1) return `${String(Math.round(n / 1024))} KB`;
-  if (mb < 100) return `${mb.toFixed(1)} MB`;
-  return `${String(Math.round(mb))} MB`;
+  return `${Math.round(n).toLocaleString("en-US")} Bytes`;
 }
 
 /**
