@@ -25,6 +25,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 
 const REPO_CONFIG = {
   "neo-angband": {
@@ -101,7 +102,83 @@ function changelogSection(markdown, version) {
   return lines.slice(start, end).join("\n").trim();
 }
 
-function fitToLimit(body, maxChars, fullChangelogUrl) {
+/**
+ * Discord renders a literal newline as a hard line break, so a paragraph or
+ * list item hand-wrapped in CHANGELOG.md at ~80-90 columns shows up as a
+ * ragged column of short lines instead of flowing to the embed's actual
+ * width. This rejoins each paragraph/list item's wrapped lines into one
+ * line so Discord's own soft-wrap takes over. Blank lines (paragraph
+ * breaks), headings, list-item boundaries, and fenced code blocks are left
+ * untouched.
+ */
+function joinWrapped(text, next) {
+  return text.endsWith("/") ? text + next : `${text} ${next}`;
+}
+
+function reflow(markdown) {
+  const lines = markdown.split(/\r?\n/u);
+  const out = [];
+  let inFence = false;
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (/^\s*```/u.test(line)) {
+      inFence = !inFence;
+      out.push(line);
+      i++;
+      continue;
+    }
+    if (inFence || line.trim() === "" || /^#{1,6}\s/u.test(line)) {
+      out.push(line);
+      i++;
+      continue;
+    }
+
+    const bulletMatch = line.match(/^(\s*(?:[-*]|\d+[.)])\s+)(.*)$/u);
+    if (bulletMatch) {
+      const [, marker, firstText] = bulletMatch;
+      const indent = " ".repeat(marker.length);
+      let text = firstText;
+      i++;
+      while (
+        i < lines.length &&
+        lines[i].trim() !== "" &&
+        lines[i].startsWith(indent) &&
+        !/^\s*(?:[-*]|\d+[.)])\s+/u.test(lines[i])
+      ) {
+        text = joinWrapped(text, lines[i].trim());
+        i++;
+      }
+      out.push(marker + text);
+      continue;
+    }
+
+    let text = line.trim();
+    i++;
+    while (
+      i < lines.length &&
+      lines[i].trim() !== "" &&
+      !/^#{1,6}\s/u.test(lines[i]) &&
+      !/^\s*(?:[-*]|\d+[.)])\s+/u.test(lines[i]) &&
+      !/^\s*```/u.test(lines[i])
+    ) {
+      text = joinWrapped(text, lines[i].trim());
+      i++;
+    }
+    out.push(text);
+  }
+  return out.join("\n");
+}
+
+/**
+ * Blocks are split on blank lines (`\n\n`), so a paragraph fits or doesn't as a
+ * whole. A markdown list has no blank lines between items, though, so an
+ * entire bulleted list is one block - if IT alone overflows the budget, the
+ * fallback below adds as many of its own lines (list items, or reflow's
+ * single-line paragraphs) as fit, rather than dropping the whole list.
+ */
+export function fitToLimit(body, maxChars, fullChangelogUrl) {
   if (body.length <= maxChars) return body;
   const notice = `\n\n*(cut short - [full changelog](${fullChangelogUrl}))*`;
   const budget = maxChars - notice.length;
@@ -109,8 +186,23 @@ function fitToLimit(body, maxChars, fullChangelogUrl) {
   let out = "";
   for (const block of blocks) {
     const next = out ? `${out}\n\n${block}` : block;
-    if (next.length > budget) break;
-    out = next;
+    if (next.length <= budget) {
+      out = next;
+      continue;
+    }
+
+    const prefix = out ? `${out}\n\n` : "";
+    const remaining = budget - prefix.length;
+    if (remaining > 0) {
+      let partial = "";
+      for (const line of block.split("\n")) {
+        const nextPartial = partial ? `${partial}\n${line}` : line;
+        if (nextPartial.length > remaining) break;
+        partial = nextPartial;
+      }
+      if (partial) out = prefix + partial;
+    }
+    break;
   }
   if (!out) out = body.slice(0, Math.max(0, budget));
   return out + notice;
@@ -174,6 +266,7 @@ async function main() {
     console.log(`::warning::no CHANGELOG.md section found for ${version}; posting without one`);
     section = `See the [release page](${releaseUrl}) for details.`;
   }
+  section = reflow(section);
   section = fitToLimit(section, EMBED_DESCRIPTION_LIMIT, releaseUrl);
 
   const headline =
@@ -216,7 +309,11 @@ async function main() {
   console.log(`Posted ${config.title} ${tag} to the announcements forum.`);
 }
 
-main().catch((err) => {
-  console.error(`::error::${err.stack || err}`);
-  process.exit(1);
-});
+// Guarded so a test file can `import` this module for its exported helpers
+// (fitToLimit, reflow) without also triggering a live run against process.env.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(`::error::${err.stack || err}`);
+    process.exit(1);
+  });
+}
