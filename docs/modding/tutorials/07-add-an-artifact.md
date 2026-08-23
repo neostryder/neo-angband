@@ -214,9 +214,12 @@ that already activates and change the numbers before writing one from scratch.
   because the base game needs that behaviour for the Phial. Copy the sval.
 - `add` beats `set` when you are adjusting a number the base game owns.
 
----
+## The finished version
 
-**Finished mod:** [`samples/tutorials/tutorial-07-add-an-artifact`](../../../samples/tutorials/tutorial-07-add-an-artifact)
+`samples/tutorials/tutorial-07-add-an-artifact/` in this repository is exactly
+this mod. It is not a copy of the tutorial. It is a mod that gets loaded and
+checked against the real game data on every test run, so if anything on this
+page ever stops being true, the build fails.
 
 **Next:** nothing, this is the last one. What is worth reading after these is
 listed at the end of the [tutorial index](README.md), and
