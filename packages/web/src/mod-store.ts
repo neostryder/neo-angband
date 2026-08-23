@@ -396,16 +396,6 @@ export interface CatalogMod {
    * Dropping it is the control that means something.
    */
   session?: boolean;
-  /**
-   * The id of the mod that installed this one through `ctx.installMod`, or
-   * absent when the player installed it directly.
-   *
-   * Carried in from `InstalledModMeta.installedByModId` (mod-install.ts) rather
-   * than computed here - this row is a straight pass-through of that fact so
-   * the manager's detail pane can print it, and `buildCatalog`'s own
-   * `CatalogInput.installedBy` is where a caller supplies it.
-   */
-  installedByModId?: string;
 }
 
 /** A named, restorable mod configuration. */
@@ -853,15 +843,6 @@ export interface CatalogInput {
   consents: Record<string, readonly string[]>;
   /** Ids loaded for this session only (mod-session.ts), so the row can say so. */
   session?: readonly string[];
-  /**
-   * Installed-mod-id -> the id of the mod that installed it, for every installed
-   * mod that arrived through `ctx.installMod` rather than by the player's own
-   * hand. Read off `InstalledModMeta.installedByModId` (mod-install.ts) by the
-   * caller and handed in here, the same shape `consents` already is - a plain
-   * record rather than the meta records themselves, since this is the only field
-   * off them the catalog needs.
-   */
-  installedBy?: Readonly<Record<string, string>>;
 }
 
 function toCatalogMod(
@@ -870,13 +851,11 @@ function toCatalogMod(
   enabled: ReadonlySet<string>,
   consents: Record<string, readonly string[]>,
   session: ReadonlySet<string>,
-  installedBy: Readonly<Record<string, string>>,
 ): CatalogMod {
   const capabilities = manifest.capabilities ?? [];
   const consented =
     capabilities.length === 0 ||
     consentSatisfied(capabilities, consents[manifest.id] ?? []);
-  const installedByModId = installedBy[manifest.id];
   return {
     id: manifest.id,
     name: manifest.name,
@@ -890,7 +869,6 @@ function toCatalogMod(
     affectsGameplay: manifest.affectsGameplay ?? false,
     consented,
     ...(session.has(manifest.id) ? { session: true } : {}),
-    ...(installedByModId === undefined ? {} : { installedByModId }),
   };
 }
 
@@ -902,7 +880,6 @@ function toCatalogMod(
 export function buildCatalog(input: CatalogInput): CatalogMod[] {
   const enabledSet = new Set(input.enabled);
   const sessionSet = new Set(input.session ?? []);
-  const installedBy = input.installedBy ?? {};
   /**
    * ONE ROW PER MOD, not one per way it loads.
    *
@@ -930,7 +907,7 @@ export function buildCatalog(input: CatalogInput): CatalogMod[] {
     ["trusted", input.trusted],
   ] as const) {
     for (const manifest of list) {
-      const row = toCatalogMod(manifest, kind, enabledSet, input.consents, sessionSet, installedBy);
+      const row = toCatalogMod(manifest, kind, enabledSet, input.consents, sessionSet);
       const prev = byId.get(row.id);
       if (!prev) byId.set(row.id, row);
       else if (RANK[row.kind] > RANK[prev.kind]) byId.set(row.id, row);

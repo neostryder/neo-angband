@@ -234,20 +234,8 @@ const UNREADABLE_ARCHIVE = "That archive";
  * devtools, which is not a channel a player has, and it would arrive in the
  * middle of whatever the mod was doing rather than as the answer to what it
  * asked.
- *
- * `callerId` is the id of the mod being HANDED this door - `mod-context.ts` builds
- * one context per mod and always knows whose it is, so every real call site can
- * pass it. It travels no further than `installModFromZip`'s `installedByModId`:
- * the record for whatever gets installed says which mod asked for it, which is a
- * different fact from where the bytes claim to come from (see that field's own
- * comment in mod-install.ts). Optional so a test built before this existed still
- * compiles; a call site that omits it simply records no caller, same as a
- * player's own zip import.
  */
-export function createModInstaller(
-  deps: InstallDoorDeps,
-  callerId?: string,
-): (bytes: Uint8Array) => Promise<ModInstallOutcome> {
+export function createModInstaller(deps: InstallDoorDeps): (bytes: Uint8Array) => Promise<ModInstallOutcome> {
   return async (bytes: Uint8Array): Promise<ModInstallOutcome> => {
     if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
       const problem = "installMod needs the bytes of a mod archive";
@@ -279,7 +267,7 @@ export function createModInstaller(
        * 1.0.0 -> 1.1.0" in the manager's own words. Read here because the answer
        * stops being available the moment the install writes over it. */
       const before = await installedMeta(read.id, deps.env.scope ?? globalThis);
-      const result = await installModFromZip(own, deps.env, deps.allowed(), callerId);
+      const result = await installModFromZip(own, deps.env, deps.allowed());
       if (!result.ok) {
         return {
           ok: false,

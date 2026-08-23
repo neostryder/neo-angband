@@ -642,15 +642,6 @@ Five things about it:
   your second install of your own mod is refused. Do not invent a plausible
   GitHub URL the player does not own; that pins their work to somebody else's
   repository, and the update check will later go and ask that repository for tags.
-- **This install is recorded as YOURS, not as the player's own.** The mod that
-  arrives through this door gets `InstalledModMeta.installedByModId` set to your
-  own id, alongside the `repo`, `tag` and per-file digest every install already
-  records. That is a DIFFERENT fact from the origin pin above: the origin says
-  where the bytes claim to come from, this says who asked the game to fetch
-  them. The mod manager's detail pane shows it as `Installed by: <your id>`, so a
-  player who used a mod-building tool can tell which of their mods it actually
-  wrote. A zip the player picked themselves never sets this field, which is what
-  makes its absence mean "the player did this" rather than "unknown".
 - **A refusal is a value, never a throw.** Everything comes back as `{ok: false,
   problem}` with one whole sentence in it, including a failure inside IndexedDB,
   because the caller is a mod that will be putting the answer in front of a

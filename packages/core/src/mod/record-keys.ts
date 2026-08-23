@@ -28,7 +28,7 @@ export const CORE_RECORD_KEYS: Readonly<Record<string, readonly string[]>> = {
   "curse": ["combat", "conflict", "conflict-flags", "desc", "effect", "flags", "msg", "name", "time", "type", "values"],
   "dungeon_profile": ["alloc", "min-level", "name", "params", "room", "streamer", "tunnel"],
   "ego_item": ["alloc", "brand", "combat", "desc", "flags", "flags-off", "info", "item", "min-combat", "min-values", "name", "slay", "type", "values"],
-  "flavor": ["fixed", "flavor", "kind"],
+  "flavor": ["entries", "kind"],
   "hints": ["H"],
   "history": ["chart", "phrase"],
   "monster": ["armor-class", "base", "blow", "color", "color-cycle", "depth", "desc", "drop", "drop-base", "drop-order", "experience", "flags", "flags-off", "friends", "friends-base", "glyph", "hearing", "hit-points", "innate-freq", "light", "message-invis", "message-vis", "mimic", "name", "plural", "rarity", "shape", "sleepiness", "smell", "speed", "spell-freq", "spell-power", "spells"],
@@ -82,10 +82,9 @@ export const CORE_RECORD_KEYS: Readonly<Record<string, readonly string[]>> = {
  * `ext`, believe the patch worked, and never learn the real field went
  * untouched. The namespace is also what stops two mods coining the same word
  * from silently overwriting each other. The rule is enforced at composition
- * (mod-sdk fields.ts): the owning mod must DECLARE the field, and another pack
- * may write it only when it declares that owner as a dependency. This is the
- * same rule at the other end, so a record that reached core by some other route
- * cannot bypass it.
+ * (mod-sdk fields.ts), which additionally requires the owning mod to have
+ * DECLARED the field; this is the same rule at the other end, so a record that
+ * reached core by some other route cannot bypass it.
  */
 export function extensionData(
   file: string,

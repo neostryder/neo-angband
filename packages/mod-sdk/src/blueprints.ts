@@ -1801,56 +1801,36 @@ export const RECORD_BLUEPRINTS: Readonly<Record<string, RecordBlueprint>> = {
     file: "flavor",
     records: 8,
     fields: {
-      "fixed": {
-        count: 2,
+      "entries": {
+        count: 8,
         types: ["array"],
         items: {
-          count: 8,
+          count: 302,
           types: ["object"],
           fields: {
             "attr": {
-              count: 8,
+              count: 302,
               types: ["string"],
-              values: ["Blue", "Green", "Light Blue", "Light Umber", "Red", "White", "Yellow"],
+              values: ["Blue", "Deep Light Blue", "Green", "Light Blue", "Light Dark", "Light Green", "Light Pink", "Light Purple", "Light Red", "Light Slate", "Light Teal", "Light Umber", "Light Violet", "Light Yellow", "Magenta-Pink", "Mud", "Mustard", "Orange", "Purple", "Red", "Slate", "Teal", "Umber", "Violet", "White", "Yellow"],
             },
             "desc": {
-              count: 8,
+              count: 251,
               types: ["string"],
-              values: ["Bronze", "Golden", "Green", "Mithril", "Plain Gold", "Ruby", "Sapphire", "White"],
             },
             "index": {
-              count: 8,
+              count: 302,
               types: ["number"],
-              range: { min: 1, max: 55, median: 44 },
+              range: { min: 1, max: 302, median: 152 },
+            },
+            "kind": {
+              count: 302,
+              types: ["string"],
+              values: ["fixed", "flavor"],
             },
             "sval": {
               count: 8,
               types: ["string"],
               values: ["Amulet", "Elfstone", "Jewel", "Necklace", "Ring of Adamant", "Ring of Fire", "Ring of Firmament", "Ring of Power"],
-            },
-          },
-        },
-      },
-      "flavor": {
-        count: 8,
-        types: ["array"],
-        items: {
-          count: 294,
-          types: ["object"],
-          fields: {
-            "attr": {
-              count: 294,
-              types: ["string"],
-              values: ["Blue", "Deep Light Blue", "Green", "Light Blue", "Light Dark", "Light Green", "Light Pink", "Light Purple", "Light Red", "Light Slate", "Light Teal", "Light Umber", "Light Violet", "Light Yellow", "Magenta-Pink", "Mud", "Mustard", "Orange", "Purple", "Red", "Slate", "Teal", "Umber", "Violet", "White", "Yellow"],
-            },
-            "desc": {
-              count: 243,
-              types: ["string"],
-            },
-            "index": {
-              count: 294,
-              types: ["number"],
-              range: { min: 2, max: 302, median: 156 },
             },
           },
         },

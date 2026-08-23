@@ -26,7 +26,6 @@ import {
   installModFromRepo,
   importedOrigin,
   installModFromZip,
-  installedMeta,
   installedModSource,
   MOD_CHECK_ADVICE,
   installedMods,
@@ -42,8 +41,7 @@ import { badPath, rawUrl } from "./mod-registry";
 import { originConflict } from "./mod-source";
 import { contributedTileModes, mergeModSources } from "./tile-mods";
 import { loadModCode, type ModCodeReport } from "./mod-code";
-import { modPluginContext, setModInstallDoor } from "./mod-context";
-import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
+import { modPluginContext } from "./mod-context";
 
 const subtle = webcrypto.subtle;
 
@@ -1577,80 +1575,6 @@ describe("installModFromZip: the fourth door ends where the other three do", () 
     expect(await installedMods({ indexedDB: (env.scope as { indexedDB: IDBFactory }).indexedDB })).toEqual(
       [],
     );
-  });
-
-  it("records which mod triggered the install, separately from where it came from", async () => {
-    /* Issue #18: `ctx.installMod` lands an archive through this same door, and the
-     * caller (mod-context.ts's installerFor) always knows which mod it is handing
-     * the door to. That id has to survive all the way to the stored meta, and it is
-     * a different fact from `repo` - a mod-building tool can install a copy that
-     * declares its OWN repository while still being recorded as installed by the
-     * builder. */
-    const { env } = await envFor({});
-    const r = await installModFromZip(
-      zipOf({ "manifest.json": enc(MANIFEST) }),
-      env,
-      true,
-      "mod-builder",
-    );
-    expect(r.ok, r.ok ? "" : r.problem).toBe(true);
-    if (!r.ok) return;
-    expect(r.meta.installedByModId).toBe("mod-builder");
-    expect(r.meta.repo).toBe(MOD_REPO);
-  });
-
-  it("leaves installedByModId unset for a zip the player imported themselves", async () => {
-    /* The player's own zip-import path (mod-zip-source.ts) never passes a caller
-     * id, and this is the case that has to mean "the player did this" - absent,
-     * not a sentinel string, so an old record and a player-direct one read the
-     * same way. */
-    const { env } = await envFor({});
-    const r = await installModFromZip(zipOf({ "manifest.json": enc(MANIFEST) }), env, true);
-    expect(r.ok, r.ok ? "" : r.problem).toBe(true);
-    if (!r.ok) return;
-    expect(r.meta.installedByModId).toBeUndefined();
-    expect("installedByModId" in r.meta).toBe(false);
-  });
-});
-
-describe("ctx.installMod, end to end: who asked for it survives the whole door", () => {
-  afterEach(() => {
-    setModInstallDoor(undefined);
-  });
-
-  it("a mod that calls ctx.installMod is recorded as this mod's installer", async () => {
-    /* The wiring the issue is about: mod-context.ts's installerFor hands
-     * createModInstaller the id of the mod IT is building a context for, not the
-     * id of whatever gets installed, and that id has to reach the stored meta. */
-    const { env } = await envFor({});
-    setModInstallDoor({ env, allowed: () => true, reload: () => undefined });
-    const capabilities = CapabilitySet.fromManifest({
-      id: "mod-builder",
-      name: "mod-builder",
-      version: "1.0.0",
-      shape: "plugin",
-      capabilities: ["mod:install"],
-    });
-    const ctx = modPluginContext("mod-builder", {}, undefined, {}, { capabilities });
-    expect(ctx.installMod).toBeDefined();
-    const outcome = await ctx.installMod!(zipSync({ "manifest.json": enc(MANIFEST) }, { level: 0 }));
-    expect(outcome.ok, outcome.ok ? "" : outcome.problem).toBe(true);
-    const meta = await installedMeta("demo", env.scope);
-    expect(meta?.installedByModId).toBe("mod-builder");
-    /* Still a different fact from where the bytes claim to come from. */
-    expect(meta?.repo).toBe(MOD_REPO);
-  });
-
-  it("a mod with no mod:install grant never reaches the door at all", async () => {
-    /* No door, no field to set - a mod that was never handed ctx.installMod
-     * cannot have triggered an install, so there is nothing here to test beyond
-     * the capability gate itself, which mod-context.test.ts already covers. This
-     * just confirms the same context that would have installed something above
-     * has no installer when the grant is missing. */
-    const { env } = await envFor({});
-    setModInstallDoor({ env, allowed: () => true, reload: () => undefined });
-    const ctx = modPluginContext("mod-builder", {});
-    expect(ctx.installMod).toBeUndefined();
   });
 });
 

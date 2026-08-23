@@ -195,24 +195,3 @@ describe("a paragraph break in a mod's description becomes a blank line", () => 
     }
   });
 });
-
-/**
- * Issue #18: a mod installed by another mod is not otherwise distinguishable
- * from one the player picked themselves. `installedByModId` is CatalogMod's
- * only carrier of that fact (buildCatalog reads it off InstalledModMeta), so
- * this is the row's only test.
- */
-describe("a mod installed by another mod says so", () => {
-  it("shows who installed it when installedByModId is set", () => {
-    const m = mod({ installedByModId: "mod-builder" });
-    const text = rowDetail(m, 80).map((l) => l.text).join("\n");
-    expect(text).toContain("Installed by: mod-builder");
-  });
-
-  it("says nothing when the player installed it directly", () => {
-    const m = mod();
-    expect(m.installedByModId).toBeUndefined();
-    const text = rowDetail(m, 80).map((l) => l.text).join("\n");
-    expect(text).not.toContain("Installed by");
-  });
-});
