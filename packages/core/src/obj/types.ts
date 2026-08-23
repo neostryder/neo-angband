@@ -318,7 +318,14 @@ export interface ObjectPropertyRecordJson {
   bindui?: unknown;
 }
 
+/**
+ * One `flavor:` or `fixed:` line. `kind` tags which directive it came from -
+ * only a `fixed:` line carries `sval` - and its position in the record's
+ * `entries` array is the file's true line order (issue #2): flavor.txt's own
+ * `index` numbering is not that order, so it cannot stand in for it.
+ */
 export interface FlavorEntryJson {
+  kind: "flavor" | "fixed";
   index: number;
   sval?: string;
   attr: string;
@@ -327,8 +334,8 @@ export interface FlavorEntryJson {
 
 export interface FlavorRecordJson {
   kind: { tval: string; glyph: string };
-  flavor?: FlavorEntryJson[];
-  fixed?: FlavorEntryJson[];
+  /** `flavor:` and `fixed:` lines, ONE list, in the order flavor.txt writes them. */
+  entries: FlavorEntryJson[];
 }
 
 /** The full bundle of pack JSON record arrays the registry binds from. */

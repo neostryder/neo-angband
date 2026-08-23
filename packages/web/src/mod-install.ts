@@ -115,25 +115,6 @@ export interface InstalledModMeta {
    * an honest gap.
    */
   readonly digests?: Readonly<Record<string, string>>;
-  /**
-   * The id of the mod that called `ctx.installMod` to trigger this install, or
-   * absent when the player installed it directly (through the browse screen or
-   * their own zip import).
-   *
-   * A DIFFERENT QUESTION FROM THE ORIGIN PIN. `repo` records where these bytes
-   * claim to come from; this records who asked the game to fetch them. A
-   * mod-building tool that emits a companion mod and installs it through
-   * `ctx.installMod` produces a record with a real `repo` (whatever the emitted
-   * manifest declared) AND this field set to the builder's own id - the two
-   * answer "where from" and "at whose request" independently, and neither
-   * substitutes for the other.
-   *
-   * Absent on every record written before this field existed and on every
-   * install the player triggered themselves, which is the majority case and the
-   * reason this is an addition rather than a required field: "absent" already
-   * means "the player did this", so no back-fill is needed for old records.
-   */
-  readonly installedByModId?: string;
 }
 
 /* ------------------------------------------------------------------ *
@@ -320,7 +301,6 @@ async function storeMod(
     readonly repo: string;
     readonly tag: string;
     readonly sha?: string;
-    readonly installedByModId?: string;
   },
   files: ReadonlyArray<readonly [string, Uint8Array]>,
   env: InstallEnv,
@@ -364,7 +344,6 @@ async function storeMod(
       files: files.map(([p]) => p),
       installedAt: env.now(),
       digests,
-      ...(mod.installedByModId === undefined ? {} : { installedByModId: mod.installedByModId }),
     };
 
     /* ONE SWAP, NOT A DELETE AND THEN A WRITE.
@@ -573,19 +552,11 @@ export function isImported(meta: { readonly repo: string }): boolean {
  * pinning every zip to one shared sentinel, is strictly weaker: it lets any archive
  * claiming an id replace any other, and it leaves the mod with no repository to ask for
  * updates at all.
- *
- * `installedByModId` IS NOT ABOUT THE ORIGIN. It is the id of the mod that called
- * `ctx.installMod` to trigger this install, so the manager can later say "a
- * mod-building tool wrote this" instead of showing it identically to a zip the
- * player picked themselves. Absent for that direct case - the player's own zip
- * import (mod-zip-source.ts) never passes it - which is what makes absence mean
- * "the player did this" rather than "unknown".
  */
 export async function installModFromZip(
   bytes: Uint8Array,
   env: InstallEnv,
   allowed: boolean,
-  installedByModId?: string,
 ): Promise<InstallResult> {
   const blocked = installBlocked("third-party", allowed);
   /* Before the archive is even opened. A refused import must not have parsed an
@@ -600,12 +571,7 @@ export async function installModFromZip(
   if (conflict !== null) return { ok: false, problem: conflict };
   try {
     return await storeMod(
-      {
-        id: read.id,
-        repo,
-        tag: read.version ?? "imported",
-        ...(installedByModId === undefined ? {} : { installedByModId }),
-      },
+      { id: read.id, repo, tag: read.version ?? "imported" },
       read.files,
       env,
     );
@@ -718,14 +684,6 @@ function asMeta(v: unknown): InstalledModMeta | null {
    * value. Only a value that is present and not a real string is a malformed
    * record. */
   if (m.sha !== undefined && (typeof m.sha !== "string" || m.sha === "")) return null;
-  /* Same backward-compatible shape as `sha`: absent means "the player did this"
-   * (or "written before this field existed"), never rejected and never defaulted. */
-  if (
-    m.installedByModId !== undefined &&
-    (typeof m.installedByModId !== "string" || m.installedByModId === "")
-  ) {
-    return null;
-  }
   return m as InstalledModMeta;
 }
 

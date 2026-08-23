@@ -7,227 +7,268 @@
         "tval": "ring",
         "glyph": "="
       },
-      "flavor": [
+      "entries": [
         {
-          "index": 2,
-          "attr": "Green",
-          "desc": "Alexandrite"
-        },
-        {
-          "index": 3,
-          "attr": "Violet",
-          "desc": "Amethyst"
-        },
-        {
-          "index": 4,
-          "attr": "Light Blue",
-          "desc": "Aquamarine"
-        },
-        {
-          "index": 5,
-          "attr": "Light Blue",
-          "desc": "Azurite"
-        },
-        {
-          "index": 6,
-          "attr": "Light Green",
-          "desc": "Beryl"
-        },
-        {
-          "index": 7,
-          "attr": "Red",
-          "desc": "Bloodstone"
-        },
-        {
-          "index": 8,
-          "attr": "White",
-          "desc": "Calcite"
-        },
-        {
-          "index": 9,
-          "attr": "Red",
-          "desc": "Carnelian"
-        },
-        {
-          "index": 10,
-          "attr": "Slate",
-          "desc": "Corundum"
-        },
-        {
-          "index": 11,
-          "attr": "White",
-          "desc": "Diamond"
-        },
-        {
-          "index": 12,
-          "attr": "Green",
-          "desc": "Emerald"
-        },
-        {
-          "index": 13,
-          "attr": "Light Green",
-          "desc": "Fluorite"
-        },
-        {
-          "index": 14,
-          "attr": "Red",
-          "desc": "Garnet"
-        },
-        {
-          "index": 15,
-          "attr": "Light Slate",
-          "desc": "Hematite"
-        },
-        {
-          "index": 16,
-          "attr": "Light Green",
-          "desc": "Jade"
-        },
-        {
-          "index": 17,
-          "attr": "Umber",
-          "desc": "Jasper"
-        },
-        {
-          "index": 18,
-          "attr": "Blue",
-          "desc": "Lapis Lazuli"
-        },
-        {
-          "index": 19,
-          "attr": "Green",
-          "desc": "Malachite"
-        },
-        {
-          "index": 20,
-          "attr": "White",
-          "desc": "Marble"
-        },
-        {
-          "index": 21,
-          "attr": "Light Slate",
-          "desc": "Moonstone"
-        },
-        {
-          "index": 22,
-          "attr": "Light Red",
-          "desc": "Onyx"
-        },
-        {
-          "index": 23,
-          "attr": "Light Slate",
-          "desc": "Opal"
-        },
-        {
-          "index": 24,
-          "attr": "White",
-          "desc": "Pearl"
-        },
-        {
-          "index": 25,
-          "attr": "Light Slate",
-          "desc": "Quartz"
-        },
-        {
-          "index": 26,
-          "attr": "Light Slate",
-          "desc": "Quartzite"
-        },
-        {
-          "index": 27,
-          "attr": "Light Red",
-          "desc": "Rhodonite"
-        },
-        {
-          "index": 30,
-          "attr": "Yellow",
-          "desc": "Tiger Eye"
-        },
-        {
-          "index": 31,
-          "attr": "Yellow",
-          "desc": "Topaz"
-        },
-        {
-          "index": 32,
-          "attr": "Light Blue",
-          "desc": "Turquoise"
-        },
-        {
-          "index": 33,
-          "attr": "Light Umber",
-          "desc": "Zircon"
-        },
-        {
-          "index": 34,
-          "attr": "White",
-          "desc": "Platinum"
-        },
-        {
-          "index": 35,
-          "attr": "Light Umber",
-          "desc": "Bronze"
-        },
-        {
-          "index": 36,
-          "attr": "Yellow",
-          "desc": "Gold"
-        },
-        {
-          "index": 37,
-          "attr": "Light Dark",
-          "desc": "Obsidian"
-        },
-        {
-          "index": 38,
-          "attr": "Light Slate",
-          "desc": "Silver"
-        },
-        {
-          "index": 39,
-          "attr": "Umber",
-          "desc": "Amber"
-        },
-        {
-          "index": 41,
-          "attr": "Light Dark",
-          "desc": "Jet"
-        },
-        {
-          "index": 42,
-          "attr": "Yellow",
-          "desc": "Jewelled"
-        },
-        {
-          "index": 43,
-          "attr": "Light Green",
-          "desc": "Adamantite"
-        }
-      ],
-      "fixed": [
-        {
+          "kind": "fixed",
           "index": 1,
           "sval": "Ring of Power",
           "attr": "Yellow",
           "desc": "Plain Gold"
         },
         {
+          "kind": "fixed",
           "index": 28,
           "sval": "Ring of Fire",
           "attr": "Red",
           "desc": "Ruby"
         },
         {
+          "kind": "fixed",
           "index": 40,
           "sval": "Ring of Adamant",
           "attr": "Light Blue",
           "desc": "Mithril"
         },
         {
+          "kind": "fixed",
           "index": 29,
           "sval": "Ring of Firmament",
           "attr": "Blue",
           "desc": "Sapphire"
+        },
+        {
+          "kind": "flavor",
+          "index": 2,
+          "attr": "Green",
+          "desc": "Alexandrite"
+        },
+        {
+          "kind": "flavor",
+          "index": 3,
+          "attr": "Violet",
+          "desc": "Amethyst"
+        },
+        {
+          "kind": "flavor",
+          "index": 4,
+          "attr": "Light Blue",
+          "desc": "Aquamarine"
+        },
+        {
+          "kind": "flavor",
+          "index": 5,
+          "attr": "Light Blue",
+          "desc": "Azurite"
+        },
+        {
+          "kind": "flavor",
+          "index": 6,
+          "attr": "Light Green",
+          "desc": "Beryl"
+        },
+        {
+          "kind": "flavor",
+          "index": 7,
+          "attr": "Red",
+          "desc": "Bloodstone"
+        },
+        {
+          "kind": "flavor",
+          "index": 8,
+          "attr": "White",
+          "desc": "Calcite"
+        },
+        {
+          "kind": "flavor",
+          "index": 9,
+          "attr": "Red",
+          "desc": "Carnelian"
+        },
+        {
+          "kind": "flavor",
+          "index": 10,
+          "attr": "Slate",
+          "desc": "Corundum"
+        },
+        {
+          "kind": "flavor",
+          "index": 11,
+          "attr": "White",
+          "desc": "Diamond"
+        },
+        {
+          "kind": "flavor",
+          "index": 12,
+          "attr": "Green",
+          "desc": "Emerald"
+        },
+        {
+          "kind": "flavor",
+          "index": 13,
+          "attr": "Light Green",
+          "desc": "Fluorite"
+        },
+        {
+          "kind": "flavor",
+          "index": 14,
+          "attr": "Red",
+          "desc": "Garnet"
+        },
+        {
+          "kind": "flavor",
+          "index": 15,
+          "attr": "Light Slate",
+          "desc": "Hematite"
+        },
+        {
+          "kind": "flavor",
+          "index": 16,
+          "attr": "Light Green",
+          "desc": "Jade"
+        },
+        {
+          "kind": "flavor",
+          "index": 17,
+          "attr": "Umber",
+          "desc": "Jasper"
+        },
+        {
+          "kind": "flavor",
+          "index": 18,
+          "attr": "Blue",
+          "desc": "Lapis Lazuli"
+        },
+        {
+          "kind": "flavor",
+          "index": 19,
+          "attr": "Green",
+          "desc": "Malachite"
+        },
+        {
+          "kind": "flavor",
+          "index": 20,
+          "attr": "White",
+          "desc": "Marble"
+        },
+        {
+          "kind": "flavor",
+          "index": 21,
+          "attr": "Light Slate",
+          "desc": "Moonstone"
+        },
+        {
+          "kind": "flavor",
+          "index": 22,
+          "attr": "Light Red",
+          "desc": "Onyx"
+        },
+        {
+          "kind": "flavor",
+          "index": 23,
+          "attr": "Light Slate",
+          "desc": "Opal"
+        },
+        {
+          "kind": "flavor",
+          "index": 24,
+          "attr": "White",
+          "desc": "Pearl"
+        },
+        {
+          "kind": "flavor",
+          "index": 25,
+          "attr": "Light Slate",
+          "desc": "Quartz"
+        },
+        {
+          "kind": "flavor",
+          "index": 26,
+          "attr": "Light Slate",
+          "desc": "Quartzite"
+        },
+        {
+          "kind": "flavor",
+          "index": 27,
+          "attr": "Light Red",
+          "desc": "Rhodonite"
+        },
+        {
+          "kind": "flavor",
+          "index": 30,
+          "attr": "Yellow",
+          "desc": "Tiger Eye"
+        },
+        {
+          "kind": "flavor",
+          "index": 31,
+          "attr": "Yellow",
+          "desc": "Topaz"
+        },
+        {
+          "kind": "flavor",
+          "index": 32,
+          "attr": "Light Blue",
+          "desc": "Turquoise"
+        },
+        {
+          "kind": "flavor",
+          "index": 33,
+          "attr": "Light Umber",
+          "desc": "Zircon"
+        },
+        {
+          "kind": "flavor",
+          "index": 34,
+          "attr": "White",
+          "desc": "Platinum"
+        },
+        {
+          "kind": "flavor",
+          "index": 35,
+          "attr": "Light Umber",
+          "desc": "Bronze"
+        },
+        {
+          "kind": "flavor",
+          "index": 36,
+          "attr": "Yellow",
+          "desc": "Gold"
+        },
+        {
+          "kind": "flavor",
+          "index": 37,
+          "attr": "Light Dark",
+          "desc": "Obsidian"
+        },
+        {
+          "kind": "flavor",
+          "index": 38,
+          "attr": "Light Slate",
+          "desc": "Silver"
+        },
+        {
+          "kind": "flavor",
+          "index": 39,
+          "attr": "Umber",
+          "desc": "Amber"
+        },
+        {
+          "kind": "flavor",
+          "index": 41,
+          "attr": "Light Dark",
+          "desc": "Jet"
+        },
+        {
+          "kind": "flavor",
+          "index": 42,
+          "attr": "Yellow",
+          "desc": "Jewelled"
+        },
+        {
+          "kind": "flavor",
+          "index": 43,
+          "attr": "Light Green",
+          "desc": "Adamantite"
         }
       ]
     },
@@ -236,132 +277,154 @@
         "tval": "amulet",
         "glyph": "\""
       },
-      "flavor": [
+      "entries": [
         {
-          "index": 45,
-          "attr": "Light Umber",
-          "desc": "Driftwood"
-        },
-        {
-          "index": 47,
-          "attr": "Light Slate",
-          "desc": "Agate"
-        },
-        {
-          "index": 48,
-          "attr": "White",
-          "desc": "Ivory"
-        },
-        {
-          "index": 49,
-          "attr": "Light Dark",
-          "desc": "Obsidian"
-        },
-        {
-          "index": 50,
-          "attr": "White",
-          "desc": "Bone"
-        },
-        {
-          "index": 51,
-          "attr": "Light Umber",
-          "desc": "Brass"
-        },
-        {
-          "index": 53,
-          "attr": "Slate",
-          "desc": "Pewter"
-        },
-        {
-          "index": 54,
-          "attr": "Umber",
-          "desc": "Tortoise Shell"
-        },
-        {
-          "index": 56,
-          "attr": "Light Blue",
-          "desc": "Azure"
-        },
-        {
-          "index": 57,
-          "attr": "White",
-          "desc": "Crystal"
-        },
-        {
-          "index": 58,
-          "attr": "Light Slate",
-          "desc": "Silver"
-        },
-        {
-          "index": 59,
-          "attr": "Light Umber",
-          "desc": "Copper"
-        },
-        {
-          "index": 60,
-          "attr": "Umber",
-          "desc": "Carved Oak"
-        },
-        {
-          "index": 61,
-          "attr": "Light Slate",
-          "desc": "Dragon Tooth"
-        },
-        {
-          "index": 62,
-          "attr": "Red",
-          "desc": "Ruby"
-        },
-        {
-          "index": 63,
-          "attr": "Light Blue",
-          "desc": "Mithril"
-        },
-        {
-          "index": 64,
-          "attr": "Light Green",
-          "desc": "Adamant"
-        },
-        {
-          "index": 65,
-          "attr": "Slate",
-          "desc": "Flint Stone"
-        },
-        {
-          "index": 66,
-          "attr": "Light Blue",
-          "desc": "Sea Shell"
-        },
-        {
-          "index": 67,
-          "attr": "Light Slate",
-          "desc": "Mother-of-Pearl"
-        }
-      ],
-      "fixed": [
-        {
+          "kind": "fixed",
           "index": 52,
           "sval": "Amulet",
           "attr": "Light Umber",
           "desc": "Bronze"
         },
         {
+          "kind": "fixed",
           "index": 55,
           "sval": "Necklace",
           "attr": "Yellow",
           "desc": "Golden"
         },
         {
+          "kind": "fixed",
           "index": 44,
           "sval": "Elfstone",
           "attr": "Green",
           "desc": "Green"
         },
         {
+          "kind": "fixed",
           "index": 46,
           "sval": "Jewel",
           "attr": "White",
           "desc": "White"
+        },
+        {
+          "kind": "flavor",
+          "index": 45,
+          "attr": "Light Umber",
+          "desc": "Driftwood"
+        },
+        {
+          "kind": "flavor",
+          "index": 47,
+          "attr": "Light Slate",
+          "desc": "Agate"
+        },
+        {
+          "kind": "flavor",
+          "index": 48,
+          "attr": "White",
+          "desc": "Ivory"
+        },
+        {
+          "kind": "flavor",
+          "index": 49,
+          "attr": "Light Dark",
+          "desc": "Obsidian"
+        },
+        {
+          "kind": "flavor",
+          "index": 50,
+          "attr": "White",
+          "desc": "Bone"
+        },
+        {
+          "kind": "flavor",
+          "index": 51,
+          "attr": "Light Umber",
+          "desc": "Brass"
+        },
+        {
+          "kind": "flavor",
+          "index": 53,
+          "attr": "Slate",
+          "desc": "Pewter"
+        },
+        {
+          "kind": "flavor",
+          "index": 54,
+          "attr": "Umber",
+          "desc": "Tortoise Shell"
+        },
+        {
+          "kind": "flavor",
+          "index": 56,
+          "attr": "Light Blue",
+          "desc": "Azure"
+        },
+        {
+          "kind": "flavor",
+          "index": 57,
+          "attr": "White",
+          "desc": "Crystal"
+        },
+        {
+          "kind": "flavor",
+          "index": 58,
+          "attr": "Light Slate",
+          "desc": "Silver"
+        },
+        {
+          "kind": "flavor",
+          "index": 59,
+          "attr": "Light Umber",
+          "desc": "Copper"
+        },
+        {
+          "kind": "flavor",
+          "index": 60,
+          "attr": "Umber",
+          "desc": "Carved Oak"
+        },
+        {
+          "kind": "flavor",
+          "index": 61,
+          "attr": "Light Slate",
+          "desc": "Dragon Tooth"
+        },
+        {
+          "kind": "flavor",
+          "index": 62,
+          "attr": "Red",
+          "desc": "Ruby"
+        },
+        {
+          "kind": "flavor",
+          "index": 63,
+          "attr": "Light Blue",
+          "desc": "Mithril"
+        },
+        {
+          "kind": "flavor",
+          "index": 64,
+          "attr": "Light Green",
+          "desc": "Adamant"
+        },
+        {
+          "kind": "flavor",
+          "index": 65,
+          "attr": "Slate",
+          "desc": "Flint Stone"
+        },
+        {
+          "kind": "flavor",
+          "index": 66,
+          "attr": "Light Blue",
+          "desc": "Sea Shell"
+        },
+        {
+          "kind": "flavor",
+          "index": 67,
+          "attr": "Light Slate",
+          "desc": "Mother-of-Pearl"
         }
       ]
     },
@@ -370,178 +433,213 @@
         "tval": "staff",
         "glyph": "_"
       },
-      "flavor": [
+      "entries": [
         {
+          "kind": "flavor",
           "index": 68,
           "attr": "Light Umber",
           "desc": "Aspen"
         },
         {
+          "kind": "flavor",
           "index": 69,
           "attr": "Light Umber",
           "desc": "Balsa"
         },
         {
+          "kind": "flavor",
           "index": 70,
           "attr": "Light Umber",
           "desc": "Banyan"
         },
         {
+          "kind": "flavor",
           "index": 71,
           "attr": "Light Umber",
           "desc": "Birch"
         },
         {
+          "kind": "flavor",
           "index": 72,
           "attr": "Light Umber",
           "desc": "Cedar"
         },
         {
+          "kind": "flavor",
           "index": 73,
           "attr": "Light Umber",
           "desc": "Cottonwood"
         },
         {
+          "kind": "flavor",
           "index": 74,
           "attr": "Light Umber",
           "desc": "Cypress"
         },
         {
+          "kind": "flavor",
           "index": 75,
           "attr": "Light Umber",
           "desc": "Dogwood"
         },
         {
+          "kind": "flavor",
           "index": 76,
           "attr": "Light Umber",
           "desc": "Elm"
         },
         {
+          "kind": "flavor",
           "index": 77,
           "attr": "Light Umber",
           "desc": "Eucalyptus"
         },
         {
+          "kind": "flavor",
           "index": 78,
           "attr": "Light Umber",
           "desc": "Hemlock"
         },
         {
+          "kind": "flavor",
           "index": 79,
           "attr": "Light Umber",
           "desc": "Hickory"
         },
         {
+          "kind": "flavor",
           "index": 80,
           "attr": "Umber",
           "desc": "Ironwood"
         },
         {
+          "kind": "flavor",
           "index": 81,
           "attr": "Light Umber",
           "desc": "Locust"
         },
         {
+          "kind": "flavor",
           "index": 82,
           "attr": "Umber",
           "desc": "Mahogany"
         },
         {
+          "kind": "flavor",
           "index": 83,
           "attr": "Umber",
           "desc": "Maple"
         },
         {
+          "kind": "flavor",
           "index": 84,
           "attr": "Umber",
           "desc": "Mulberry"
         },
         {
+          "kind": "flavor",
           "index": 85,
           "attr": "Umber",
           "desc": "Oak"
         },
         {
+          "kind": "flavor",
           "index": 86,
           "attr": "Umber",
           "desc": "Pine"
         },
         {
+          "kind": "flavor",
           "index": 87,
           "attr": "Red",
           "desc": "Redwood"
         },
         {
+          "kind": "flavor",
           "index": 88,
           "attr": "Red",
           "desc": "Rosewood"
         },
         {
+          "kind": "flavor",
           "index": 89,
           "attr": "Light Umber",
           "desc": "Spruce"
         },
         {
+          "kind": "flavor",
           "index": 90,
           "attr": "Light Umber",
           "desc": "Sycamore"
         },
         {
+          "kind": "flavor",
           "index": 91,
           "attr": "Light Umber",
           "desc": "Teak"
         },
         {
+          "kind": "flavor",
           "index": 92,
           "attr": "Umber",
           "desc": "Walnut"
         },
         {
+          "kind": "flavor",
           "index": 93,
           "attr": "Green",
           "desc": "Mistletoe"
         },
         {
+          "kind": "flavor",
           "index": 94,
           "attr": "Light Umber",
           "desc": "Hawthorn"
         },
         {
+          "kind": "flavor",
           "index": 95,
           "attr": "Light Umber",
           "desc": "Bamboo"
         },
         {
+          "kind": "flavor",
           "index": 96,
           "attr": "Light Slate",
           "desc": "Silver Birch"
         },
         {
+          "kind": "flavor",
           "index": 97,
           "attr": "Umber",
           "desc": "Hazel"
         },
         {
+          "kind": "flavor",
           "index": 98,
           "attr": "Yellow",
           "desc": "Golden"
         },
         {
+          "kind": "flavor",
           "index": 99,
           "attr": "Slate",
           "desc": "Blackthorn"
         },
         {
+          "kind": "flavor",
           "index": 100,
           "attr": "Light Umber",
           "desc": "Gnarled"
         },
         {
+          "kind": "flavor",
           "index": 101,
           "attr": "White",
           "desc": "Ivory"
         },
         {
+          "kind": "flavor",
           "index": 102,
           "attr": "Light Umber",
           "desc": "Willow"
@@ -553,178 +651,213 @@
         "tval": "wand",
         "glyph": "-"
       },
-      "flavor": [
+      "entries": [
         {
+          "kind": "flavor",
           "index": 103,
           "attr": "Light Blue",
           "desc": "Aluminium"
         },
         {
+          "kind": "flavor",
           "index": 104,
           "attr": "Light Dark",
           "desc": "Cast Iron"
         },
         {
+          "kind": "flavor",
           "index": 105,
           "attr": "White",
           "desc": "Chromium"
         },
         {
+          "kind": "flavor",
           "index": 106,
           "attr": "Light Umber",
           "desc": "Copper"
         },
         {
+          "kind": "flavor",
           "index": 107,
           "attr": "Yellow",
           "desc": "Gold"
         },
         {
+          "kind": "flavor",
           "index": 108,
           "attr": "Slate",
           "desc": "Iron"
         },
         {
+          "kind": "flavor",
           "index": 109,
           "attr": "Light Slate",
           "desc": "Magnesium"
         },
         {
+          "kind": "flavor",
           "index": 110,
           "attr": "Light Slate",
           "desc": "Molybdenum"
         },
         {
+          "kind": "flavor",
           "index": 111,
           "attr": "Light Umber",
           "desc": "Nickel"
         },
         {
+          "kind": "flavor",
           "index": 112,
           "attr": "Red",
           "desc": "Rusty"
         },
         {
+          "kind": "flavor",
           "index": 113,
           "attr": "Light Slate",
           "desc": "Silver"
         },
         {
+          "kind": "flavor",
           "index": 114,
           "attr": "Light Slate",
           "desc": "Steel"
         },
         {
+          "kind": "flavor",
           "index": 115,
           "attr": "Light Slate",
           "desc": "Tin"
         },
         {
+          "kind": "flavor",
           "index": 116,
           "attr": "White",
           "desc": "Titanium"
         },
         {
+          "kind": "flavor",
           "index": 117,
           "attr": "White",
           "desc": "Tungsten"
         },
         {
+          "kind": "flavor",
           "index": 118,
           "attr": "Light Slate",
           "desc": "Zirconium"
         },
         {
+          "kind": "flavor",
           "index": 119,
           "attr": "Light Slate",
           "desc": "Zinc"
         },
         {
+          "kind": "flavor",
           "index": 120,
           "attr": "Light Blue",
           "desc": "Aluminium-Plated"
         },
         {
+          "kind": "flavor",
           "index": 121,
           "attr": "Light Umber",
           "desc": "Copper-Plated"
         },
         {
+          "kind": "flavor",
           "index": 122,
           "attr": "Yellow",
           "desc": "Gold-Plated"
         },
         {
+          "kind": "flavor",
           "index": 123,
           "attr": "Light Umber",
           "desc": "Nickel-Plated"
         },
         {
+          "kind": "flavor",
           "index": 124,
           "attr": "Light Slate",
           "desc": "Silver-Plated"
         },
         {
+          "kind": "flavor",
           "index": 125,
           "attr": "Light Slate",
           "desc": "Steel-Plated"
         },
         {
+          "kind": "flavor",
           "index": 126,
           "attr": "Light Slate",
           "desc": "Tin-Plated"
         },
         {
+          "kind": "flavor",
           "index": 127,
           "attr": "Light Slate",
           "desc": "Zinc-Plated"
         },
         {
+          "kind": "flavor",
           "index": 128,
           "attr": "Light Blue",
           "desc": "Mithril-Plated"
         },
         {
+          "kind": "flavor",
           "index": 129,
           "attr": "Light Blue",
           "desc": "Mithril"
         },
         {
+          "kind": "flavor",
           "index": 130,
           "attr": "Umber",
           "desc": "Runed"
         },
         {
+          "kind": "flavor",
           "index": 131,
           "attr": "Light Umber",
           "desc": "Bronze"
         },
         {
+          "kind": "flavor",
           "index": 132,
           "attr": "Light Umber",
           "desc": "Brass"
         },
         {
+          "kind": "flavor",
           "index": 133,
           "attr": "White",
           "desc": "Platinum"
         },
         {
+          "kind": "flavor",
           "index": 134,
           "attr": "Slate",
           "desc": "Lead"
         },
         {
+          "kind": "flavor",
           "index": 135,
           "attr": "Slate",
           "desc": "Lead-Plated"
         },
         {
+          "kind": "flavor",
           "index": 136,
           "attr": "White",
           "desc": "Ivory"
         },
         {
+          "kind": "flavor",
           "index": 137,
           "attr": "Slate",
           "desc": "Pewter"
@@ -736,178 +869,213 @@
         "tval": "rod",
         "glyph": "-"
       },
-      "flavor": [
+      "entries": [
         {
+          "kind": "flavor",
           "index": 138,
           "attr": "Light Blue",
           "desc": "Aluminium"
         },
         {
+          "kind": "flavor",
           "index": 139,
           "attr": "Light Dark",
           "desc": "Cast Iron"
         },
         {
+          "kind": "flavor",
           "index": 140,
           "attr": "White",
           "desc": "Chromium"
         },
         {
+          "kind": "flavor",
           "index": 141,
           "attr": "Light Umber",
           "desc": "Copper"
         },
         {
+          "kind": "flavor",
           "index": 142,
           "attr": "Yellow",
           "desc": "Gold"
         },
         {
+          "kind": "flavor",
           "index": 143,
           "attr": "Slate",
           "desc": "Iron"
         },
         {
+          "kind": "flavor",
           "index": 144,
           "attr": "Light Slate",
           "desc": "Magnesium"
         },
         {
+          "kind": "flavor",
           "index": 145,
           "attr": "Light Slate",
           "desc": "Molybdenum"
         },
         {
+          "kind": "flavor",
           "index": 146,
           "attr": "Light Umber",
           "desc": "Nickel"
         },
         {
+          "kind": "flavor",
           "index": 147,
           "attr": "Red",
           "desc": "Rusty Iron"
         },
         {
+          "kind": "flavor",
           "index": 148,
           "attr": "Light Slate",
           "desc": "Silver"
         },
         {
+          "kind": "flavor",
           "index": 149,
           "attr": "Light Slate",
           "desc": "Steel"
         },
         {
+          "kind": "flavor",
           "index": 150,
           "attr": "Light Slate",
           "desc": "Tin"
         },
         {
+          "kind": "flavor",
           "index": 151,
           "attr": "White",
           "desc": "Titanium"
         },
         {
+          "kind": "flavor",
           "index": 152,
           "attr": "White",
           "desc": "Tungsten"
         },
         {
+          "kind": "flavor",
           "index": 153,
           "attr": "Light Slate",
           "desc": "Zirconium"
         },
         {
+          "kind": "flavor",
           "index": 154,
           "attr": "Light Slate",
           "desc": "Zinc"
         },
         {
+          "kind": "flavor",
           "index": 155,
           "attr": "Light Blue",
           "desc": "Aluminium-Plated"
         },
         {
+          "kind": "flavor",
           "index": 156,
           "attr": "Light Umber",
           "desc": "Copper-Plated"
         },
         {
+          "kind": "flavor",
           "index": 157,
           "attr": "Yellow",
           "desc": "Engraved Gold"
         },
         {
+          "kind": "flavor",
           "index": 158,
           "attr": "Light Umber",
           "desc": "Nickel-Plated"
         },
         {
+          "kind": "flavor",
           "index": 159,
           "attr": "Light Slate",
           "desc": "Silver-Gilt"
         },
         {
+          "kind": "flavor",
           "index": 160,
           "attr": "Light Slate",
           "desc": "Polished Steel"
         },
         {
+          "kind": "flavor",
           "index": 161,
           "attr": "Light Slate",
           "desc": "Tin-Plated"
         },
         {
+          "kind": "flavor",
           "index": 162,
           "attr": "White",
           "desc": "White Gold"
         },
         {
+          "kind": "flavor",
           "index": 163,
           "attr": "Light Blue",
           "desc": "Mithril-Plated"
         },
         {
+          "kind": "flavor",
           "index": 164,
           "attr": "Light Blue",
           "desc": "Mithril"
         },
         {
+          "kind": "flavor",
           "index": 165,
           "attr": "Umber",
           "desc": "Runed"
         },
         {
+          "kind": "flavor",
           "index": 166,
           "attr": "Light Umber",
           "desc": "Bronze"
         },
         {
+          "kind": "flavor",
           "index": 167,
           "attr": "Light Umber",
           "desc": "Brass"
         },
         {
+          "kind": "flavor",
           "index": 168,
           "attr": "White",
           "desc": "Platinum"
         },
         {
+          "kind": "flavor",
           "index": 169,
           "attr": "Red",
           "desc": "Rusted Steel"
         },
         {
+          "kind": "flavor",
           "index": 170,
           "attr": "Slate",
           "desc": "Lead-Plated"
         },
         {
+          "kind": "flavor",
           "index": 171,
           "attr": "White",
           "desc": "Ivory"
         },
         {
+          "kind": "flavor",
           "index": 172,
           "attr": "Slate",
           "desc": "Pewter"
@@ -919,103 +1087,123 @@
         "tval": "mushroom",
         "glyph": ","
       },
-      "flavor": [
+      "entries": [
         {
+          "kind": "flavor",
           "index": 173,
           "attr": "Light Purple",
           "desc": "Spotted"
         },
         {
+          "kind": "flavor",
           "index": 174,
           "attr": "Light Dark",
           "desc": "Rubbery"
         },
         {
+          "kind": "flavor",
           "index": 175,
           "attr": "Mustard",
           "desc": "Crumbly"
         },
         {
+          "kind": "flavor",
           "index": 176,
           "attr": "Light Yellow",
           "desc": "Moldy"
         },
         {
+          "kind": "flavor",
           "index": 177,
           "attr": "Blue",
           "desc": "Mottled"
         },
         {
+          "kind": "flavor",
           "index": 178,
           "attr": "Green",
           "desc": "Firm"
         },
         {
+          "kind": "flavor",
           "index": 179,
           "attr": "Mud",
           "desc": "Woody"
         },
         {
+          "kind": "flavor",
           "index": 180,
           "attr": "Yellow",
           "desc": "Wrinkled"
         },
         {
+          "kind": "flavor",
           "index": 181,
           "attr": "Light Slate",
           "desc": "Furry"
         },
         {
+          "kind": "flavor",
           "index": 182,
           "attr": "Light Red",
           "desc": "Fragile"
         },
         {
+          "kind": "flavor",
           "index": 183,
           "attr": "Slate",
           "desc": "Marbled"
         },
         {
+          "kind": "flavor",
           "index": 184,
           "attr": "Light Blue",
           "desc": "Gelatinous"
         },
         {
+          "kind": "flavor",
           "index": 185,
           "attr": "Light Green",
           "desc": "Speckled"
         },
         {
+          "kind": "flavor",
           "index": 186,
           "attr": "Violet",
           "desc": "Glowing"
         },
         {
+          "kind": "flavor",
           "index": 187,
           "attr": "Red",
           "desc": "Striped"
         },
         {
+          "kind": "flavor",
           "index": 188,
           "attr": "Slate",
           "desc": "Slimy"
         },
         {
+          "kind": "flavor",
           "index": 189,
           "attr": "Deep Light Blue",
           "desc": "Moist"
         },
         {
+          "kind": "flavor",
           "index": 190,
           "attr": "White",
           "desc": "Withered"
         },
         {
+          "kind": "flavor",
           "index": 191,
           "attr": "White",
           "desc": "Waxy"
         },
         {
+          "kind": "flavor",
           "index": 192,
           "attr": "Umber",
           "desc": "Smelly"
@@ -1027,298 +1215,357 @@
         "tval": "potion",
         "glyph": "!"
       },
-      "flavor": [
+      "entries": [
         {
+          "kind": "flavor",
           "index": 193,
           "attr": "White",
           "desc": "Clear"
         },
         {
+          "kind": "flavor",
           "index": 194,
           "attr": "Light Umber",
           "desc": "Light Brown"
         },
         {
+          "kind": "flavor",
           "index": 195,
           "attr": "Green",
           "desc": "Icky Green"
         },
         {
+          "kind": "flavor",
           "index": 196,
           "attr": "Light Blue",
           "desc": "Azure"
         },
         {
+          "kind": "flavor",
           "index": 197,
           "attr": "Blue",
           "desc": "Blue"
         },
         {
+          "kind": "flavor",
           "index": 198,
           "attr": "Light Blue",
           "desc": "Cerulean"
         },
         {
+          "kind": "flavor",
           "index": 199,
           "attr": "Light Dark",
           "desc": "Black"
         },
         {
+          "kind": "flavor",
           "index": 200,
           "attr": "Umber",
           "desc": "Brown"
         },
         {
+          "kind": "flavor",
           "index": 201,
           "attr": "Umber",
           "desc": "Ochre"
         },
         {
+          "kind": "flavor",
           "index": 202,
           "attr": "Light Slate",
           "desc": "Bubbling"
         },
         {
+          "kind": "flavor",
           "index": 203,
           "attr": "Light Green",
           "desc": "Chartreuse"
         },
         {
+          "kind": "flavor",
           "index": 204,
           "attr": "White",
           "desc": "Cloudy"
         },
         {
+          "kind": "flavor",
           "index": 205,
           "attr": "Light Umber",
           "desc": "Copper Speckled"
         },
         {
+          "kind": "flavor",
           "index": 206,
           "attr": "Red",
           "desc": "Crimson"
         },
         {
+          "kind": "flavor",
           "index": 207,
           "attr": "Light Blue",
           "desc": "Cyan"
         },
         {
+          "kind": "flavor",
           "index": 208,
           "attr": "Blue",
           "desc": "Ultramarine"
         },
         {
+          "kind": "flavor",
           "index": 209,
           "attr": "Green",
           "desc": "Dark Green"
         },
         {
+          "kind": "flavor",
           "index": 210,
           "attr": "Red",
           "desc": "Dark Red"
         },
         {
+          "kind": "flavor",
           "index": 211,
           "attr": "Light Yellow",
           "desc": "Light Yellow"
         },
         {
+          "kind": "flavor",
           "index": 212,
           "attr": "Green",
           "desc": "Green"
         },
         {
+          "kind": "flavor",
           "index": 213,
           "attr": "Mud",
           "desc": "Muddy"
         },
         {
+          "kind": "flavor",
           "index": 214,
           "attr": "Slate",
           "desc": "Grey"
         },
         {
+          "kind": "flavor",
           "index": 215,
           "attr": "Slate",
           "desc": "Vespertine"
         },
         {
+          "kind": "flavor",
           "index": 216,
           "attr": "Light Slate",
           "desc": "Hazy"
         },
         {
+          "kind": "flavor",
           "index": 217,
           "attr": "Violet",
           "desc": "Indigo"
         },
         {
+          "kind": "flavor",
           "index": 218,
           "attr": "Light Blue",
           "desc": "Light Blue"
         },
         {
+          "kind": "flavor",
           "index": 219,
           "attr": "Light Green",
           "desc": "Light Green"
         },
         {
+          "kind": "flavor",
           "index": 220,
           "attr": "Magenta-Pink",
           "desc": "Magenta"
         },
         {
+          "kind": "flavor",
           "index": 221,
           "attr": "Deep Light Blue",
           "desc": "Metallic Blue"
         },
         {
+          "kind": "flavor",
           "index": 222,
           "attr": "Red",
           "desc": "Metallic Red"
         },
         {
+          "kind": "flavor",
           "index": 223,
           "attr": "Green",
           "desc": "Metallic Green"
         },
         {
+          "kind": "flavor",
           "index": 224,
           "attr": "Violet",
           "desc": "Metallic Purple"
         },
         {
+          "kind": "flavor",
           "index": 225,
           "attr": "Light Slate",
           "desc": "Misty"
         },
         {
+          "kind": "flavor",
           "index": 226,
           "attr": "Orange",
           "desc": "Orange"
         },
         {
+          "kind": "flavor",
           "index": 227,
           "attr": "Orange",
           "desc": "Orange Speckled"
         },
         {
+          "kind": "flavor",
           "index": 228,
           "attr": "Magenta-Pink",
           "desc": "Pink"
         },
         {
+          "kind": "flavor",
           "index": 229,
           "attr": "Light Teal",
           "desc": "Light Teal"
         },
         {
+          "kind": "flavor",
           "index": 230,
           "attr": "Light Violet",
           "desc": "Light Violet"
         },
         {
+          "kind": "flavor",
           "index": 231,
           "attr": "Purple",
           "desc": "Purple"
         },
         {
+          "kind": "flavor",
           "index": 232,
           "attr": "Purple",
           "desc": "Purple Speckled"
         },
         {
+          "kind": "flavor",
           "index": 233,
           "attr": "Red",
           "desc": "Red"
         },
         {
+          "kind": "flavor",
           "index": 234,
           "attr": "Teal",
           "desc": "Teal"
         },
         {
+          "kind": "flavor",
           "index": 235,
           "attr": "Mustard",
           "desc": "Mustard Yellow"
         },
         {
+          "kind": "flavor",
           "index": 236,
           "attr": "Light Dark",
           "desc": "Smoky"
         },
         {
+          "kind": "flavor",
           "index": 237,
           "attr": "Orange",
           "desc": "Tangerine"
         },
         {
+          "kind": "flavor",
           "index": 238,
           "attr": "Violet",
           "desc": "Violet"
         },
         {
+          "kind": "flavor",
           "index": 239,
           "attr": "Red",
           "desc": "Vermilion"
         },
         {
+          "kind": "flavor",
           "index": 240,
           "attr": "White",
           "desc": "White"
         },
         {
+          "kind": "flavor",
           "index": 241,
           "attr": "Yellow",
           "desc": "Yellow"
         },
         {
+          "kind": "flavor",
           "index": 242,
           "attr": "Light Purple",
           "desc": "Light Purple"
         },
         {
+          "kind": "flavor",
           "index": 243,
           "attr": "Light Red",
           "desc": "Pungent"
         },
         {
+          "kind": "flavor",
           "index": 244,
           "attr": "Light Purple",
           "desc": "Lavender"
         },
         {
+          "kind": "flavor",
           "index": 245,
           "attr": "Light Red",
           "desc": "Viscous Pink"
         },
         {
+          "kind": "flavor",
           "index": 246,
           "attr": "Yellow",
           "desc": "Oily Yellow"
         },
         {
+          "kind": "flavor",
           "index": 247,
           "attr": "Green",
           "desc": "Gloopy Green"
         },
         {
+          "kind": "flavor",
           "index": 248,
           "attr": "Violet",
           "desc": "Shimmering"
         },
         {
+          "kind": "flavor",
           "index": 249,
           "attr": "Red",
           "desc": "Coagulated Crimson"
         },
         {
+          "kind": "flavor",
           "index": 250,
           "attr": "Light Pink",
           "desc": "Light Pink"
         },
         {
+          "kind": "flavor",
           "index": 251,
           "attr": "Yellow",
           "desc": "Gold"
@@ -1330,208 +1577,259 @@
         "tval": "scroll",
         "glyph": "?"
       },
-      "flavor": [
+      "entries": [
         {
+          "kind": "flavor",
           "index": 252,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 253,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 254,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 255,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 256,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 257,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 258,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 259,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 260,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 261,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 262,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 263,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 264,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 265,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 266,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 267,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 268,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 269,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 270,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 271,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 272,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 273,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 274,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 275,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 276,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 277,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 278,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 279,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 280,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 281,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 282,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 283,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 284,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 285,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 286,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 287,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 288,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 289,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 290,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 291,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 292,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 293,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 294,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 295,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 296,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 297,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 298,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 299,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 300,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 301,
           "attr": "White"
         },
         {
+          "kind": "flavor",
           "index": 302,
           "attr": "White"
         }

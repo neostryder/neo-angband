@@ -588,15 +588,6 @@ export function rowDetail(
     ? Object.entries(m.manifest.dependencies).map(([d, v]) => `${d} ${v}`)
     : [];
   if (deps.length) below.push(...wrapped(`Needs: ${deps.join(", ")}`, w));
-  /* WHO ASKED FOR THIS, not where it came from - that is `browseDetail`'s "From"
-   * line, on a different screen entirely, and this pane has never shown it. A
-   * mod-building tool can install a mod it generated through `ctx.installMod`,
-   * and the player is owed the difference between that and a zip they picked
-   * themselves - the same reason `session` gets its own row rather than being
-   * folded into "enabled". */
-  if (m.installedByModId !== undefined) {
-    below.push(...wrapped(`Installed by: ${m.installedByModId}`, w, C_DIM));
-  }
   /* THE TWO ONE-WAY DOORS, said as one-way doors.
    *
    * "Non-deterministic: enabling this permanently marks the save
