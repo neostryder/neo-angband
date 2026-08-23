@@ -40,6 +40,13 @@ version it still calls itself.
 - Home/PageUp/End/PageDown now walk the same diagonal the numpad digits
   7/9/1/3 do with Num Lock on, matching the numpad's own orthogonal keys
   (Arrow keys), which already worked either way.
+- A custom keymap can now be triggered by a plain F-key (F1-F12, no modifier)
+  or by Enter, and an action sequence can now include Enter as one of its
+  keypresses - so a macro ending in Enter, such as the rest command
+  `R&[Enter]`, can be bound. Both the keymap editor's capture prompt and the
+  keymap resolver that fires a bound key during play now accept the same set
+  of trigger keys, so a trigger the editor accepted could no longer silently
+  fail to ever fire.
 
 ### Changed
 - The Mod Builder mod is now named ModForge, with a new manifest id (`forge`).
