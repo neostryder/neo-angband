@@ -47,3 +47,20 @@ export function describeMigration(migration: {
   if (migration.applied.length > 0) return "Save updated to this version's format.";
   return "";
 }
+
+/**
+ * The line shown when a still-present pack's content no longer matches what
+ * this save was written with (issue #20) - a session-only mod that PATCHED a
+ * record (a core sword's damage, say) rather than only adding one, so nothing
+ * was orphaned when the patch changed or the pack was dropped: the record
+ * still resolves under its own, still-present namespace, and the composed
+ * value from save time is simply gone. Named rather than silent, on the same
+ * "say so once" reasoning as `describeMigration` - MOD_SEAMS.md section 4d.
+ *
+ * Kept to the 78-column message line `describeMigration`/`describeLoadFailure`
+ * budget for the common one-pack case; a longer list of ids is not truncated,
+ * the same tradeoff `describeMigration` already makes for multiple notes.
+ */
+export function describePackMismatch(mismatchedPacks: readonly string[]): string {
+  return `Session mod content changed since this was saved: ${mismatchedPacks.join(", ")}.`;
+}

@@ -14,7 +14,11 @@
  */
 
 import { CORE_RECORD_KEYS } from "@rpgm-tools/neo-angband-core";
-import type { GamePack, UiEntryPackRecords } from "@rpgm-tools/neo-angband-core";
+import type {
+  GamePack,
+  SavePackRef,
+  UiEntryPackRecords,
+} from "@rpgm-tools/neo-angband-core";
 import { log } from "./logging";
 import {
   checkUnqualified,
@@ -34,6 +38,7 @@ import type {
 import type { ConflictRow } from "./mod-conflicts";
 import { defaultModStore, isShippedMod, readEnabledModIds } from "./mod-store";
 import { diskPacks, sessionPacks, type ModDirKind, type ModOrigin } from "./disk-packs";
+import { sessionMods } from "./mod-session";
 import { activeModCode } from "./mod-code";
 import { engineAllows, engineProblem } from "./mod-engine";
 import { dedupeProblems, modFaults, type ModProblem } from "./mod-problems";
@@ -728,6 +733,38 @@ export function presentNamespaces(): ReadonlySet<string> {
   const { packs, dropped } = composition();
   const gone = new Set(dropped.map((d) => d.id));
   return new Set(packs.map((p) => p.manifest.id).filter((id) => !gone.has(id)));
+}
+
+/**
+ * The current content digest for every present pack THIS HOST CAN MEASURE
+ * right now, fed to `loadGame`'s `currentPacks` option (issue #20) so it can
+ * catch a pack that PATCHED a record instead of only adding one - the case
+ * `presentNamespaces` alone cannot see, because a patched record still
+ * resolves under its own, still-present namespace.
+ *
+ * SESSION PACKS ONLY, for now. `stageSessionMod` already hashes the whole
+ * archive once, at staging time (mod-session.ts), and `sessionMods()` reads
+ * that back synchronously - which matters, because `loadGame` runs on the
+ * synchronous boot path and cannot itself await anything. A regular installed
+ * mod's digest (`InstalledModMeta.digests`, mod-install.ts) is real, but it is
+ * read back from IndexedDB, which is asynchronous; wiring that in would mean
+ * pre-fetching it into a synchronous cache ahead of boot, which is a larger
+ * change than this fix and is tracked separately as issue #72 (see also
+ * MOD_SEAMS.md section 4d). Omitting an installed mod here is the honest
+ * "not measured", never "unchanged" - `mismatchedNamespaces` skips a
+ * namespace with no current hash rather than reporting a false match.
+ *
+ * A session mod's `digest` is `""` on a host with no `crypto.subtle` at
+ * staging time (mod-session.ts); such an entry is skipped here for the same
+ * reason.
+ */
+export function presentPackDigests(): SavePackRef[] {
+  const out: SavePackRef[] = [];
+  for (const m of sessionMods()) {
+    if (!m.digest) continue;
+    out.push({ id: m.id, version: m.version ?? "0.0.0", hash: m.digest });
+  }
+  return out;
 }
 
 // DEV-only diagnostic: proves an enabled mod's changes reach the running

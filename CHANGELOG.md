@@ -36,18 +36,14 @@ version it still calls itself.
 
 ## [Unreleased]
 
-### Fixed
-- **`flavor.txt`'s `fixed:`/`flavor:` order is now recoverable from the
-  compiled record.** The content compiler used to split the two directives
-  into separate arrays, so a record that interleaved them could not be
-  reproduced from the compiled shape at all - the entry `index` cannot stand
-  in for file order either, since flavor.txt's own numbering is not the order
-  the file writes lines in. Nothing shipped interleaves the two directives, so
-  this was latent rather than live; it would have become live the moment a
-  mod's flavor.txt did. The compiler now emits one ordered `entries` list per
-  record, each entry tagged with which directive produced it, so binding
-  follows the file's real line order regardless of how a flavor.txt
-  interleaves `fixed:` and `flavor:`.
+### Added
+- A save's manifest now records the content digest of every present pack.
+  Loading warns when a still-present pack's digest no longer matches what the
+  save was written with, catching a session-only mod that patched a core
+  record (rather than only adding one) differently, or dropped the patch
+  entirely, even though nothing was orphaned. Only session mods are measured
+  today; a regular installed mod's digest is a documented follow-up
+  (docs/modding/MOD_SEAMS.md section 4d).
 
 ## [0.28.1] - 2026-08-23
 
