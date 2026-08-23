@@ -372,6 +372,24 @@ describe("buildCatalog", () => {
     expect(cat[0]!.missing).toBeUndefined();
   });
 
+  it("carries installedByModId through for a mod installed by another mod", () => {
+    /* Issue #18: this is the row's only source. `installedBy` is keyed by the
+     * INSTALLED mod's id, and buildCatalog looks itself up by that key rather
+     * than trusting the caller to have filtered it. */
+    const cat = buildCatalog({
+      content: [manifest("companion"), manifest("hand-picked")],
+      sandbox: [],
+      trusted: [],
+      enabled: [],
+      consents: {},
+      installedBy: { companion: "mod-builder" },
+    });
+    expect(cat.find((m) => m.id === "companion")!.installedByModId).toBe("mod-builder");
+    /* Unset for a mod the player installed themselves - absent, not a sentinel,
+     * so a row can test for it with a plain truthiness check. */
+    expect(cat.find((m) => m.id === "hand-picked")!.installedByModId).toBeUndefined();
+  });
+
   it("surfaces the gameplay flag and fires its warning exactly once", async () => {
     const gameplay = buildCatalog({
       content: [manifest("gameplay", { affectsGameplay: true })],
