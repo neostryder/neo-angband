@@ -5911,6 +5911,14 @@ async function exitToTitle(): Promise<void> {
  */
 async function openModManager(): Promise<void> {
   const store = defaultModStore();
+  /* Fetched once for the life of this screen, the same way `store` above is: an
+   * install through ctx.installMod only happens while a mod's plugin is running
+   * in a live game, which this screen is not, so nothing here can go stale while
+   * the player is looking at it. */
+  const installedBy: Record<string, string> = {};
+  for (const meta of await installedMods(globalThis)) {
+    if (meta.installedByModId !== undefined) installedBy[meta.id] = meta.installedByModId;
+  }
   await runModManager(term, {
     store,
     listCatalog: () =>
@@ -5935,6 +5943,7 @@ async function openModManager(): Promise<void> {
          * records, so a row is marked "this session" only when there is really a
          * pack behind it - the same rule presentNamespaces uses. */
         session: sessionPacks().packs.map((p) => p.manifest.id),
+        installedBy,
       }),
     /* So a mod downloaded in this session is in the list on the way back out,
      * instead of after a reload the player has not been told to do yet. */
