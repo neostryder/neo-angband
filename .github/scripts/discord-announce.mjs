@@ -12,18 +12,14 @@
  *   REPO                 "owner/name", e.g. "neostryder/neo-angband"
  *   TAG                  the tag being announced, e.g. "v0.27.2"
  *   DISCORD_WEBHOOK_URL  the announcements forum's webhook URL
- *   MODE                 "release" (default) or "init" - init skips the
- *                         minor-or-higher check and posts unconditionally,
- *                         with "currently on" phrasing instead of "just
- *                         shipped" - for a one-time status post, not tied to
- *                         a fresh release event.
- *
- * Exits 0 without posting when MODE=release and the bump since the previous
- * real version is patch-only - by design, only minor and major versions get
- * announced.
+ *   MODE                 "release" (default) or "init" - init uses "currently
+ *                         on" phrasing instead of "just shipped", for a
+ *                         one-time status post not tied to a fresh release
+ *                         event. Every real release is announced regardless
+ *                         of version-bump size - patch, minor and major all
+ *                         post.
  */
 
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -75,10 +71,6 @@ const REPO_CONFIG = {
 const RELEASE_TAG_ID = "1540858028381962240"; // "Release" tag in #neo-angband-announcements
 
 const EMBED_DESCRIPTION_LIMIT = 4096;
-
-function sh(cmd, args) {
-  return execFileSync(cmd, args, { encoding: "utf8" }).trim();
-}
 
 /** The lines under `## [<version>]` or `## <version>`, up to the next `## `. */
 function changelogSection(markdown, version) {
@@ -208,28 +200,6 @@ export function fitToLimit(body, maxChars, fullChangelogUrl) {
   return out + notice;
 }
 
-/** Real semver tags only - excludes upstream/edge/prerelease noise. */
-function realVersionTags() {
-  const raw = sh("git", ["tag", "--list", "v[0-9]*.[0-9]*.[0-9]*"]);
-  return raw
-    .split("\n")
-    .map((t) => t.trim())
-    .filter((t) => /^v\d+\.\d+\.\d+$/u.test(t))
-    .sort((a, b) => {
-      const pa = a.slice(1).split(".").map(Number);
-      const pb = b.slice(1).split(".").map(Number);
-      for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
-      return 0;
-    });
-}
-
-function bumpIsMinorOrHigher(current, previous) {
-  if (!previous) return true;
-  const c = current.slice(1).split(".").map(Number);
-  const p = previous.slice(1).split(".").map(Number);
-  return c[0] !== p[0] || c[1] !== p[1];
-}
-
 async function main() {
   const repoFull = process.env.REPO;
   const tag = process.env.TAG;
@@ -246,16 +216,6 @@ async function main() {
   if (!config) {
     console.error(`::error::no REPO_CONFIG entry for "${repoName}"`);
     process.exit(1);
-  }
-
-  if (mode === "release") {
-    const tags = realVersionTags();
-    const idx = tags.indexOf(tag);
-    const previous = idx > 0 ? tags[idx - 1] : null;
-    if (!bumpIsMinorOrHigher(tag, previous)) {
-      console.log(`${tag} is a patch-only bump over ${previous}; skipping the announcement`);
-      return;
-    }
   }
 
   const version = tag.replace(/^v/u, "");
