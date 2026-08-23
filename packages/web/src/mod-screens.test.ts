@@ -526,7 +526,6 @@ const NO_CONFLICT_INPUTS: ConflictInputs = {
   manifests: [],
   recordRows: [],
   tileClaims: [],
-  playerTileProviders: [],
   hookContributions: [],
   ruleDecls: [],
   controllers: [],

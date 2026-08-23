@@ -859,13 +859,21 @@ describe("boot reads installed mods", () => {
     // one question. Installed mods are not an alternative to having a folder, and the
     // bug this guards is the shape `shellPacks.available ? shell : picked` had: one
     // winner, and no third seat at all.
-    expect(main).toMatch(/combineDiskReports\(\[folder, await loadInstalledMods\(\)\]\)/u);
+    expect(main).toMatch(/const installed = await loadInstalledMods\(\);/u);
+    expect(main).toMatch(/combineDiskReports\(\[folder, installed\]\)/u);
     expect(main).toMatch(/setDiskPacks\(combineDiskReports\(/u);
   });
 
   it("lists the folder FIRST, so a mod put there deliberately outranks a download", () => {
     const at = main.indexOf("combineDiskReports([folder,");
     expect(at, "the combine call must be present").toBeGreaterThan(0);
+  });
+
+  it("prefetches installed digests before the synchronous game boot", () => {
+    const prefetch = main.indexOf("await prefetchInstalledPackDigests(");
+    const boot = main.indexOf("const game = bootGame();");
+    expect(prefetch, "installed digest prefetch must be present").toBeGreaterThan(0);
+    expect(prefetch).toBeLessThan(boot);
   });
 });
 

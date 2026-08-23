@@ -45,11 +45,10 @@ version it still calls itself.
   rule or section choice before applying the section default.
 - A save's manifest now records the content digest of every present pack.
   Loading warns when a still-present pack's digest no longer matches what the
-  save was written with, catching a session-only mod that patched a core
-  record (rather than only adding one) differently, or dropped the patch
-  entirely, even though nothing was orphaned. Only session mods are measured
-  today; a regular installed mod's digest is a documented follow-up
-  (docs/modding/MOD_SEAMS.md section 4d).
+  save was written with, catching a session or installed mod that patched a
+  core record (rather than only adding one) differently, or dropped the patch
+  entirely, even though nothing was orphaned. Installed mods use their
+  install-time per-file digests, prefetched before the synchronous boot path.
 - **The agent view can answer "does this player's class have flag X."**
   `PlayerView.classFlags` reports the PF_* codes on the player class's own flag
   set (class.txt's `player-flags:` lines) - COMBAT_REGEN for a Blackguard, ZERO_FAIL
