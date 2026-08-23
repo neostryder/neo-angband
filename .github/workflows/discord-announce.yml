@@ -1,0 +1,35 @@
+# Post a Discord forum announcement when a real version is published.
+#
+# "Published" is the operative word: release.yml always drafts, and a draft
+# never fires `release: published`. Nothing here runs until a human presses
+# Publish - the same gate docs/RELEASING.md already describes for the updater.
+#
+# The `early` channel (edge.yml) DOES publish immediately, once per commit on
+# master, so its tags are excluded here the same way release.yml excludes them
+# from drafting in the first place - otherwise this would post to Discord on
+# every push.
+#
+# The script itself decides whether the bump is worth posting (minor or higher
+# only) and builds the message; see .github/scripts/discord-announce.mjs.
+name: Discord release announcement
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  announce:
+    if: ${{ !contains(github.event.release.tag_name, '-edge.') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: node .github/scripts/discord-announce.mjs
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}

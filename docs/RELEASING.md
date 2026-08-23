@@ -430,6 +430,18 @@ the normal path, so this is a list of things not to "tidy up":
 hiding them would mean the feature never worked before 1.0; the version
 comparison is what decides, not the label.
 
+### Publishing also announces it on Discord
+
+`.github/workflows/discord-announce.yml` listens for the same `published`
+event and posts to the RPGM Tools Discord's Neo Angband announcements forum,
+via `.github/scripts/discord-announce.mjs`. It skips `early` channel tags the
+same way `release.yml` excludes them from drafting, and it skips a patch-only
+bump even on a real release: only a minor or major version gets announced. The
+post body is the matching `CHANGELOG.md` heading, so there is one account of
+what changed rather than a second one written for Discord. Each first-party
+mod repository carries the same script and workflow, triggered on its own tag
+push instead, since a mod's tag has no separate draft/publish step.
+
 ### The three channels, and why `draft` is not one of them
 
 The update screen offers `stable`, `beta` and `early`, and they are **inclusive
