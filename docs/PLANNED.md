@@ -188,6 +188,23 @@ waiting on:
 - **Catch-up mod content**, so the first-party mods cover what the gate assumed
   they cover. Tracked as issue #13.
 
+### The Borg's PF_COMBAT_REGEN rest check is still not wired
+
+One arm of the Borg's `borg_check_rest` asks a player-class flag, PF_COMBAT_REGEN,
+and `PlayerView` had object flags and derived skills but no way to answer "does
+this player's class have flag X" - class-definition data, not anything gear or
+level derives. `PlayerView.classFlags` (agent API 1.3.0) closes that half: PF_*
+codes off the class's own flag set (`p.cls.pflags`, class.txt's `player-flags:`
+lines), COMBAT_REGEN for a Blackguard among them.
+
+**What is still not done**: the seam is in this tree, but `neo-angband-mod-borg`
+depends on a published `@rpgm-tools/neo-angband-core` version rather than a
+local link, so the mod cannot consume or test against `classFlags` until a core
+release ships with it - and wiring the Borg's own check to read it is separate
+work in that repository, still open.
+
+Tracked as issue #34.
+
 ### The input door does not know about IME composition
 
 `browserKeydown` (`packages/web/src/input-door.ts`) reads no `isComposing`, so
