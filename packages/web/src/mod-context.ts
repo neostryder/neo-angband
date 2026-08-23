@@ -126,7 +126,7 @@ export function modPluginContext(
   const assets = own.assetUrl;
   const backupFolder = backupFolderFor(id, session);
   const ui = modUiFor(id, session);
-  const installMod = installerFor(session);
+  const installMod = installerFor(id, session);
   const reloadGame = reloadGameFor(session);
   const loadModForSession = sessionLoaderFor(session);
   const debug = debugFor(id, session);
@@ -216,14 +216,23 @@ function modUiFor(id: string, session: ModSessionFacts): ModUi | undefined {
  * so a context built by a unit test has no install env and gets no door - which
  * is the right answer, since an install needs IndexedDB and a network fetch
  * primitive that a test has not supplied.
+ *
+ * `id` TRAVELS WITH THE DOOR, not just with the context. This is the one place
+ * that knows, without asking, which mod is about to be handed `ctx.installMod` -
+ * it is this function's own argument - so it is also the one place that can
+ * tell `createModInstaller` who to blame an install on. A mod that installs
+ * another mod through this door gets that recorded on the arriving mod's meta
+ * (`InstalledModMeta.installedByModId`), which is a different fact from where
+ * the bytes claim to come from.
  */
 function installerFor(
+  id: string,
   session: ModSessionFacts,
 ): ((bytes: Uint8Array) => Promise<ModInstallOutcome>) | undefined {
   if (session.installMod !== undefined) return session.installMod;
   if (!session.capabilities?.has(INSTALL_CAPABILITY)) return undefined;
   if (!installDoor) return undefined;
-  return createModInstaller(installDoor);
+  return createModInstaller(installDoor, id);
 }
 
 /**
