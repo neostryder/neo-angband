@@ -36,6 +36,15 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+- A custom keymap can now be triggered by a plain F-key (F1-F12, no modifier)
+  or by Enter, and an action sequence can now include Enter as one of its
+  keypresses - so a macro ending in Enter, such as the rest command
+  `R&[Enter]`, can be bound. Both the keymap editor's capture prompt and the
+  keymap resolver that fires a bound key during play now accept the same set
+  of trigger keys, so a trigger the editor accepted could no longer silently
+  fail to ever fire.
+
 ## [0.28.0] - 2026-08-22
 
 A mod-authoring release: a plugin now gets the SDK's authoring stack and the
