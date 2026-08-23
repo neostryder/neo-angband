@@ -26,7 +26,12 @@
  * the defensive pattern qol-mod.test.ts uses for the same reason.
  */
 
+import { webcrypto } from "node:crypto";
+
+import { loadGame, saveGame, startGame } from "@rpgm-tools/neo-angband-core";
 import { describe, expect, it, vi } from "vitest";
+import type { DiskPackReport } from "./disk-packs";
+import type { InstalledModMeta } from "./mod-install";
 
 describe("presentNamespaces feeds loadGame the reconciliation set (mid-game add/remove)", () => {
   /* 20s, and not because the assertions are slow. This is the first import of
@@ -96,10 +101,9 @@ describe("presentNamespaces feeds loadGame the reconciliation set (mid-game add/
  * presentPackDigests's web wiring (issue #20): the digest sibling of
  * presentNamespaces above. loadGame's `currentPacks` option needs one
  * `SavePackRef` per present pack this host can measure right now, so it can
- * catch a pack that PATCHED a record instead of only adding one - a session
- * mod's whole-archive digest (mod-session.ts's `SessionMod.digest`, already
- * hashed once at staging time) is the one case this host can measure
- * synchronously on the boot path today.
+ * catch a pack that PATCHED a record instead of only adding one. Session mods
+ * carry a whole-archive digest from staging; installed content mods carry a
+ * whole-pack digest assembled from their recorded per-file hashes before boot.
  *
  * Same node-environment caveat as above: no `sessionStorage` global exists
  * here by default, so a fake one is stubbed in directly (a plain property
@@ -131,7 +135,56 @@ function stashSessionModRecord(mod: {
   );
 }
 
-describe("presentPackDigests feeds loadGame a session pack's already-hashed digest", () => {
+/** One installed content pack whose only contribution patches a core monster. */
+function installedPatchReport(name: string): DiskPackReport {
+  return {
+    packs: [
+      {
+        manifest: {
+          id: "installed-hound",
+          name: "Installed Hound",
+          version: "1.0.0",
+          shape: "content",
+          dependencies: { core: "*" },
+        },
+        files: {
+          monster: {
+            patches: {
+              "core:grip-farmer-maggot-s-dog": { name },
+            },
+          },
+        },
+        code: [],
+        assets: [],
+      },
+    ],
+    order: ["installed-hound"],
+    problems: [],
+    dir: null,
+    available: true,
+    kind: "installed",
+    codeUrl: null,
+    assetUrl: null,
+    origins: [{ kind: "installed", dir: null, count: 1 }],
+  };
+}
+
+/** The two per-file hashes an installed mod has after its bytes are stored. */
+function installedPatchMeta(monsterDigest: string): InstalledModMeta {
+  return {
+    id: "installed-hound",
+    repo: "a-player/installed-hound",
+    tag: "v1.0.0",
+    files: ["manifest.json", "monster.json"],
+    installedAt: "2026-08-23T00:00:00.000Z",
+    digests: {
+      "manifest.json": "a".repeat(64),
+      "monster.json": monsterDigest,
+    },
+  };
+}
+
+describe("presentPackDigests feeds loadGame measured content-pack digests", () => {
   it("returns nothing when no session pack is staged", async () => {
     const { presentPackDigests } = await import("./pack");
     expect(presentPackDigests()).toEqual([]);
@@ -174,4 +227,58 @@ describe("presentPackDigests feeds loadGame a session pack's already-hashed dige
       vi.resetModules();
     }
   });
+
+  it("warns when an enabled installed content patch's stored bytes change", async () => {
+    vi.resetModules();
+    const { resetDiskPacks, setDiskPacks } = await import("./disk-packs");
+    const pack = await import("./pack");
+    try {
+      setDiskPacks(installedPatchReport("Grip, the Installed Hound"));
+      await pack.prefetchInstalledPackDigests([installedPatchMeta("b".repeat(64))], {
+        crypto: webcrypto,
+      });
+
+      const savedPack = pack.loadGamePack();
+      const savedMonsters = savedPack.mon as { monsters: readonly { name: string }[] };
+      expect(savedMonsters.monsters.some((monster) => monster.name === "Grip, the Installed Hound")).toBe(
+        true,
+      );
+      const saved = saveGame(
+        startGame(savedPack, { seed: 20260823, depth: 1, className: "Warrior" }),
+      );
+      const before = pack.presentPackDigests().find((entry) => entry.id === "installed-hound");
+      expect(before).toBeDefined();
+      if (!before) throw new Error("installed pack digest was not prefetched");
+      if (!before.hash) throw new Error("installed pack digest was empty");
+      if (!saved.manifest) throw new Error("save has no pack manifest");
+      /* loadGamePack owns the web composition, while this core save fixture owns
+       * its manifest explicitly, as the core issue #20 proof does. The entry is
+       * exactly what the host's save path writes once `currentPacks` is supplied. */
+      saved.manifest.packs.push(before);
+      saved.manifest.loadOrder.push(before.id);
+
+      /* A re-install with changed monster bytes changes both the composed patch
+       * and InstalledModMeta.digests. The next synchronous boot only sees the
+       * prefetched aggregate, which is enough for loadGame to report the change. */
+      setDiskPacks(installedPatchReport("Grip, the Changed Installed Hound"));
+      await pack.prefetchInstalledPackDigests([installedPatchMeta("c".repeat(64))], {
+        crypto: webcrypto,
+      });
+      const changedPack = pack.loadGamePack();
+      const changedMonsters = changedPack.mon as { monsters: readonly { name: string }[] };
+      expect(
+        changedMonsters.monsters.some(
+          (monster) => monster.name === "Grip, the Changed Installed Hound",
+        ),
+      ).toBe(true);
+
+      const restored = loadGame(changedPack, saved, pack.presentNamespaces(), {
+        currentPacks: pack.presentPackDigests(),
+      });
+      expect(restored.mismatchedPacks).toEqual(["installed-hound"]);
+    } finally {
+      resetDiskPacks();
+      vi.resetModules();
+    }
+  }, 30_000);
 });
