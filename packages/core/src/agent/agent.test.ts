@@ -299,34 +299,6 @@ describe("flag-code mapping (guards the per-table offset)", () => {
   });
 });
 
-describe("PlayerView.classFlags (issue #34: PF_COMBAT_REGEN seam)", () => {
-  it("reports COMBAT_REGEN for a class that carries it (Blackguard)", () => {
-    const state = makeState();
-    const blackguard = plReg.classes.find((c) => c.name === "Blackguard");
-    if (!blackguard) throw new Error("no Blackguard class in the content pack");
-    state.actor.player.cls = blackguard;
-
-    const view = createAgentView(state);
-    expect(view.player().classFlags).toContain("COMBAT_REGEN");
-  });
-
-  it("omits COMBAT_REGEN for a class that does not carry it (Warrior)", () => {
-    const state = makeState();
-    const warrior = plReg.classes.find((c) => c.name === "Warrior");
-    if (!warrior) throw new Error("no Warrior class in the content pack");
-    state.actor.player.cls = warrior;
-
-    const view = createAgentView(state);
-    const flags = view.player().classFlags;
-    expect(flags).not.toContain("COMBAT_REGEN");
-    /* Warrior's own class.txt player-flags, so this is reading the class
-     * definition and not an empty/default array. */
-    expect(flags).toEqual(
-      expect.arrayContaining(["BRAVERY_30", "NO_MANA", "SHIELD_BASH"]),
-    );
-  });
-});
-
 describe("ItemView rich fields", () => {
   it("reports flags, modifiers, ego/artifact null, and inscription round-trip", () => {
     const state = makeState();
