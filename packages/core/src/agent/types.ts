@@ -57,8 +57,14 @@ import type { ObjectKind } from "../obj/types.js";
  * drift from the first. The accessor runs the engine's own derive over a
  * hypothetical set of worn objects. Purely additive, and optional: a view that
  * cannot derive omits it rather than answering approximately.
+ *
+ * 1.3.0 (2026-08-23): `PlayerView.classFlags` - PF_* codes from the player
+ * class's own flag set. Added because the view had object flags and derived
+ * skills but no way to answer "does this class have flag X" (issue #34: the
+ * Borg's `borg_check_rest` needs PF_COMBAT_REGEN), which is class-definition
+ * data rather than anything derivable from gear or level. Purely additive.
  */
-export const AGENT_API_VERSION = "1.2.0";
+export const AGENT_API_VERSION = "1.3.0";
 
 /**
  * A command an agent emits - identical to the engine's PlayerCommand (codes 1:1
@@ -162,6 +168,16 @@ export interface PlayerView {
   shape: string | null;
   /** OF_* codes from the derived player state's flag set (empty if absent). */
   objectFlags: string[];
+  /**
+   * PF_* codes from the player CLASS's own flag set (`p.cls.pflags`, class.txt's
+   * `player-flags:` lines) - e.g. COMBAT_REGEN for a Blackguard. This is the
+   * class's declared flags, not the equipment-derived `objectFlags` above and
+   * not upstream's full `player_has` union (race | class | shape): a caller
+   * that needs the race's own player-flags reads `playerRaceId` and looks the
+   * race up, exactly as `objectFlags` already requires a lookup for anything
+   * equipment does not grant.
+   */
+  classFlags: string[];
   /** Infravision range in grids. */
   seeInfra: number;
   /** state->num_blows (hundredths of a blow; 0 if the combat state is absent). */

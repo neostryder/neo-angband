@@ -48,12 +48,11 @@
  *   not compared, and the counts are pinned per pack below.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   bindCore,
   GRAPHICS_MODE_CATALOG,
@@ -81,14 +80,7 @@ import { loadGamePack } from "./pack";
 
 const webRoot = fileURLToPath(new URL("..", import.meta.url));
 const tilesRoot = join(webRoot, "public", "tiles");
-/* Unique per process, not a fixed `.test-out` under webRoot: two vitest
- * invocations against the same checkout (two agent worktrees, or a rerun
- * overlapping a still-running one) used to share this path and race on it -
- * one run's rmSync/mkdir could delete or read the other's mid-write output.
- * mkdtempSync's random suffix means concurrent processes never collide, and
- * os.tmpdir() keeps it off the checkout entirely so nothing here needs
- * gitignoring. See #67. */
-const outputRoot = mkdtempSync(join(tmpdir(), "neo-linoleum-equiv-"));
+const outputRoot = join(webRoot, ".test-out");
 
 const registries = bindCore(loadGamePack());
 const deps: TilePrefsDeps = {
@@ -329,11 +321,9 @@ function atlasByLabel(map: TileMap, label: string): TileAtlas | undefined {
   throw new Error(`unlabelled entity: ${label}`);
 }
 
-/* outputRoot is freshly created by mkdtempSync above, so there is nothing
- * stale to clear before use; only clean it up afterward. */
-afterAll(() => {
+beforeAll(() => {
   rmSync(outputRoot, { recursive: true, force: true });
-});
+}, 30_000);
 
 /**
  * True when a pref entry actually addresses a tile. A pack may assign a plain
