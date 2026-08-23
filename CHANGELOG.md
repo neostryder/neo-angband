@@ -36,6 +36,14 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-08-22
+
+A mod-authoring release: a plugin now gets the SDK's authoring stack and the
+game's own composed records live in `ctx`, and can apply a staged mod with a
+proper reload instead of asking the player to press one - alongside a fix for
+two windows open on the same character overwriting each other's saves, and a
+Turbo speed tier for a mod's autoplayer.
+
 ### Fixed
 
 - Two windows open on the same character no longer overwrite each other's saves.
@@ -479,7 +487,7 @@ instead of a curated subset that had drifted from it.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.27.2` - a features release for mod
+Current state of the project at version `0.28.0` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again
