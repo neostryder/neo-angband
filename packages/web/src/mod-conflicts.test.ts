@@ -31,7 +31,6 @@ function inputs(over: Partial<ConflictInputs> = {}): ConflictInputs {
     manifests: [],
     recordRows: [],
     tileClaims: [],
-    playerTileProviders: [],
     hookContributions: [],
     ruleDecls: [],
     controllers: [],
@@ -216,24 +215,6 @@ describe("controller: two mods each shipping an autoplayer", () => {
 
   it("says nothing about one autoplayer", () => {
     expect(layerSlots(inputs({ controllers: ["borg"] }))).toEqual([]);
-  });
-});
-
-describe("player tile: mods providing the player's own tile", () => {
-  it("does not report no provider", () => {
-    expect(layerSlots(inputs({ playerTileProviders: [] }))).toEqual([]);
-  });
-
-  it("does not report one provider", () => {
-    expect(layerSlots(inputs({ playerTileProviders: ["shape"] }))).toEqual([]);
-  });
-
-  it("reports every provider in the one draw slot", () => {
-    const { contested } = conflictLines(
-      inputs({ playerTileProviders: ["shape", "town", "class"] }),
-    );
-    expect(contested).toHaveLength(1);
-    for (const id of ["shape", "town", "class"]) expect(contested[0]).toContain(id);
   });
 });
 
