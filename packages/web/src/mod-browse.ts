@@ -1436,7 +1436,7 @@ async function tryOne(
     /* The capabilities the archive DECLARED are what is granted, and only for this
      * session. Granting exactly the declared list is what the install path does
      * (`setConsent(id, m.capabilities)`); the difference is where it is kept. */
-    zip.loadForSession(bytes, source, preview.capabilities ?? []),
+    zip.loadForSession(bytes, source, preview.capabilities ?? [], preview.digest),
   );
   if (!staged.ok) {
     await showTextScreen(
