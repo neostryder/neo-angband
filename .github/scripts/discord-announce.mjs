@@ -57,6 +57,12 @@ const REPO_CONFIG = {
     color: 0x27ae60,
     kind: "mod",
   },
+  "neo-angband-mod-builder": {
+    title: "Mod Builder",
+    emoji: "\u{1F9F0}", // toolbox
+    color: 0x607d8b,
+    kind: "mod",
+  },
   "neo-angband-mod-qol": {
     title: "Quality of Life",
     emoji: "\u{1F6E0}\u{FE0F}", // hammer and wrench
