@@ -14,8 +14,6 @@ import type { GridPointerInput, GridSurface } from "./term";
 import { selectFromMenu } from "./overlay";
 import { UI_TEXT } from "./ui-colors";
 import {
-  encodeActionToken,
-  isBindableTriggerKey,
   keymapAdd,
   keymapEntries,
   keymapFind,
@@ -37,14 +35,7 @@ function captureKey(term: GridSurface & GridPointerInput, prompt: string): Promi
       }
       ev.preventDefault();
       ev.stopImmediatePropagation();
-      // Ignore Shift/Arrows/etc, but not Escape (cancel) or anything
-      // isBindableTriggerKey accepts - Enter and a plain F-key are real,
-      // distinct trigger keys the runtime resolver (main.ts) also accepts, by
-      // way of the same shared predicate (r_comm.txt binds sequences ending
-      // in [enter] directly).
-      if (ev.key !== "Escape" && !isBindableTriggerKey(ev.key)) {
-        return;
-      }
+      if (ev.key.length !== 1 && ev.key !== "Escape") return; // ignore Shift/Arrows/etc.
       inputEvents.removeEventListener("keydown", onKey, true);
       resolve(ev.key === "Escape" ? null : ev.key);
     };
@@ -56,22 +47,15 @@ function captureKey(term: GridSurface & GridPointerInput, prompt: string): Promi
  * Read an action sequence (ui_keymap_create's inner loop, L648-690): printable
  * keys accumulate, '=' finishes, Backspace/Delete removes the last, Ctrl-U
  * resets, ESC cancels. Returns the action string, or null if cancelled.
- *
- * Each accepted keypress is stored as one `encodeActionToken` token - a plain
- * character literally, a named key (Enter, F1-F12: the same set
- * isBindableTriggerKey accepts for a trigger) as bracketed text, e.g. an
- * action ending in Enter reads "R&[Enter]". `tokens` (not the painted string)
- * is the buffer of record so Backspace removes one whole token - "[Enter]" is
- * one keypress, not seven characters.
  */
 function captureAction(term: GridSurface & GridPointerInput, prompt: string): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
-    let tokens: string[] = [];
+    let buf = "";
     const paint = (): void => {
       const { cols } = term.size();
       /* c_prt(color, format("Action: %s", tmp), 15, 0) (ui-options.c:647): the
        * erase is prt's, not a padEnd - which left the row's last column stale. */
-      term.prt(0, 0, `${prompt}${tokens.join("")}`.slice(0, cols - 1), UI_TEXT);
+      term.prt(0, 0, `${prompt}${buf}`.slice(0, cols - 1), UI_TEXT);
     };
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
@@ -82,23 +66,23 @@ function captureAction(term: GridSurface & GridPointerInput, prompt: string): Pr
         return;
       }
       if ((ev.ctrlKey && (ev.key === "u" || ev.key === "U"))) {
-        tokens = []; // Ctrl-U reset
+        buf = ""; // Ctrl-U reset
         paint();
         return;
       }
       if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
       if (ev.key === "Backspace" || ev.key === "Delete") {
-        tokens.pop();
+        buf = buf.slice(0, -1);
         paint();
         return;
       }
       if (ev.key === "=") {
         inputEvents.removeEventListener("keydown", onKey, true);
-        resolve(tokens.join(""));
+        resolve(buf);
         return;
       }
-      if (isBindableTriggerKey(ev.key)) {
-        tokens.push(encodeActionToken(ev.key));
+      if (ev.key.length === 1) {
+        buf += ev.key;
         paint();
       }
     };

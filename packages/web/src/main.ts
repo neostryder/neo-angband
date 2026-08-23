@@ -611,13 +611,7 @@ import type { TileModeMenu, SidebarModeMenu } from "./options";
 import { loadColorPrefs, saveColorPrefs } from "./colors";
 import { dispatchUiInput, inputEvents, setKeymapResolver } from "./input-door";
 import { enqueueKeys } from "./input-queue";
-import {
-  decodeActionTokens,
-  isBindableTriggerKey,
-  keymapFind,
-  keymapModeFor,
-  loadKeymapPrefs,
-} from "./keymap-store";
+import { keymapFind, keymapModeFor, loadKeymapPrefs } from "./keymap-store";
 import {
   applyWebUpdate,
   canPromptInstall,
@@ -9232,24 +9226,13 @@ function logKeypress(ev: Pick<KeyboardEvent, "key" | "ctrlKey" | "shiftKey" | "a
 setKeymapResolver(
   (input) => {
     const key = input.key;
-    // isBindableTriggerKey (keymap-store.ts) is the SAME predicate the
-    // keymap-editor's trigger capture uses: a single character, Enter, or a
-    // plain F-key. Gating on it here rather than on `key.key.length === 1`
-    // is what lets a keymap actually bound to Enter/F1-F12 fire (#62, #63) -
-    // upstream's own dispatch (textui_get_command, ui-input.c:1882) runs
-    // keymap_find for every key including KC_ENTER, unconditionally, before
-    // anything downstream gets a chance to treat Enter as "open the command
-    // menu" (ui-game.c:533-538 only reaches that fallback when no keymap
-    // claimed the key).
-    if (!key || key.modifiers.ctrl || key.modifiers.alt || key.modifiers.meta || !isBindableTriggerKey(key.key)) {
-      return null;
-    }
+    if (!key || key.modifiers.ctrl || key.modifiers.alt || key.modifiers.meta || key.key.length !== 1) return null;
     const roguelike = state.options?.get("rogue_like_commands") ?? false;
     // These root affordances deliberately precede upstream keymaps.
     if (key.key === "?" || (key.key === "N" && !roguelike) || dead) return null;
     const action = keymapFind(keymapModeFor(roguelike), key.key);
     return action
-      ? decodeActionTokens(action).map((mapped) => ({
+      ? [...action].map((mapped) => ({
         key: { key: mapped, modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false },
       }))
       : null;
