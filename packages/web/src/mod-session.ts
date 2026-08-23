@@ -113,14 +113,6 @@ export interface SessionMod {
    * `neo:modConsents` ever being written.
    */
   readonly granted: readonly string[];
-  /**
-   * The archive digest when `granted` was approved.
-   *
-   * Older session records have no value here. Their archive can still be read,
-   * but its grants do not count: consent without the bytes it named is no
-   * consent at all.
-   */
-  readonly grantedDigest?: string;
   /** The archive itself, base64. */
   readonly zip: string;
 }
@@ -230,7 +222,6 @@ function isSessionMod(value: unknown): value is SessionMod {
   if (typeof m.digest !== "string" || typeof m.source !== "string") return false;
   if (typeof m.code !== "boolean" || typeof m.zip !== "string") return false;
   if (!Array.isArray(m.granted)) return false;
-  if (m.grantedDigest !== undefined && typeof m.grantedDigest !== "string") return false;
   return m.granted.every((c) => typeof c === "string");
 }
 
@@ -359,8 +350,6 @@ export async function stageSessionMod(
     readonly bytes: Uint8Array;
     readonly source: string;
     readonly granted?: readonly string[];
-    /** The digest shown when the player approved `granted`. */
-    readonly grantedDigest?: string;
     readonly contentOnly?: boolean;
     readonly allowed: boolean;
   },
@@ -438,7 +427,6 @@ export async function stageSessionMod(
     source: opts.source,
     code,
     granted: [...(opts.granted ?? [])],
-    ...(opts.grantedDigest === undefined ? {} : { grantedDigest: opts.grantedDigest }),
     zip,
   };
   if (!writeSessionMods([...kept, mod], scope)) {
@@ -621,9 +609,7 @@ export async function loadSessionMods(scope: unknown = globalThis): Promise<Disk
       continue;
     }
     entries.push({ id: read.id, files: new Map(read.files.map(([p, b]) => [p, b])) });
-    /* A grant names one archive. Re-staging the id with different bytes has to
-     * return the mod to the same consent screen. */
-    consents[read.id] = mod.grantedDigest === mod.digest ? mod.granted : [];
+    consents[read.id] = mod.granted;
   }
 
   /* The consents go in even when the pack turns out to be unusable, because the

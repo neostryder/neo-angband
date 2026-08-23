@@ -955,23 +955,13 @@ async function openRegistry(
 
 
 /**
- * A size in the units a player thinks in.
+ * An exact byte count for a player-visible mod size.
  *
- * Binary units with their real names: 24.6 MiB is what the seven neo-linoleum
- * archives actually weigh, and rounding that to "25 MB" understates a download
- * someone may be paying for by the megabyte.
- *
- * It lives here because this is the screen that shows sizes. It used to live in
- * mod-catalogue.ts, which was the front end for the compiled-in catalogue and is
- * gone; a helper left behind in a deleted module's neighbour is how a file nobody
- * needs stays alive.
+ * Measurements are exact, so the display keeps that count instead of reducing it to
+ * an approximation a player cannot use for precise comparisons.
  */
 export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${String(bytes)} B`;
-  const kib = bytes / 1024;
-  if (kib < 1024) return `${kib.toFixed(kib < 10 ? 1 : 0)} KiB`;
-  const mib = kib / 1024;
-  return `${mib.toFixed(mib < 10 ? 1 : 0)} MiB`;
+  return `${bytes.toLocaleString("en-US")} bytes`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1436,7 +1426,7 @@ async function tryOne(
     /* The capabilities the archive DECLARED are what is granted, and only for this
      * session. Granting exactly the declared list is what the install path does
      * (`setConsent(id, m.capabilities)`); the difference is where it is kept. */
-    zip.loadForSession(bytes, source, preview.capabilities ?? [], preview.digest),
+    zip.loadForSession(bytes, source, preview.capabilities ?? []),
   );
   if (!staged.ok) {
     await showTextScreen(
