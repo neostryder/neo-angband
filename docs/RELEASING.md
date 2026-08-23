@@ -438,9 +438,12 @@ via `.github/scripts/discord-announce.mjs`. It skips `early` channel tags the
 same way `release.yml` excludes them from drafting, but every real release
 gets announced regardless of version-bump size - patch, minor and major all
 post. The post body is the matching `CHANGELOG.md` heading, so there is one account of
-what changed rather than a second one written for Discord. Each first-party
-mod repository carries the same script and workflow, triggered on its own tag
-push instead, since a mod's tag has no separate draft/publish step.
+what changed rather than a second one written for Discord. The post
+@-mentions the Neo Angband News role, a self-assigned, opt-in role members
+pick up via the server's Channels & Roles page - members who have not added it
+see the post like anyone else in the forum, they just are not pinged. Each
+first-party mod repository carries the same script and workflow, triggered on
+its own tag push instead, since a mod's tag has no separate draft/publish step.
 
 ### The three channels, and why `draft` is not one of them
 

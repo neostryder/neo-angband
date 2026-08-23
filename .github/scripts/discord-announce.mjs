@@ -69,6 +69,7 @@ const REPO_CONFIG = {
 };
 
 const RELEASE_TAG_ID = "1540858028381962240"; // "Release" tag in #neo-angband-announcements
+const NEWS_ROLE_ID = "1541208721533968484"; // "Neo Angband News" role, self-assigned via Channels & Roles
 
 const EMBED_DESCRIPTION_LIMIT = 4096;
 
@@ -242,7 +243,8 @@ async function main() {
     avatar_url: "https://cdn.discordapp.com/avatars/373993501559619596/09bcc0d0aa00500da04e119d2473c6da.png?size=256",
     thread_name: threadName,
     applied_tags: [RELEASE_TAG_ID],
-    content: headline,
+    content: `<@&${NEWS_ROLE_ID}> ${headline}`,
+    allowed_mentions: { roles: [NEWS_ROLE_ID] },
     embeds: [
       {
         title: `v${version}`,
