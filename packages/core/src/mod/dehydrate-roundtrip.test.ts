@@ -482,3 +482,101 @@ describe("mod dehydrate/rehydrate end-to-end (D1, decision 19)", () => {
     });
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Digest-mismatch reporting (issue #20): the sibling case the lifecycle
+ * end-to-end proof above cannot exercise, because every claim up there is
+ * about a pack that ADDS content and later goes away - exactly the shape
+ * `orphanedNamespaces`/quarantine already handles. What neither of them can
+ * see is a pack that only PATCHES a record in a namespace that stays
+ * present: a session mod re-pricing a core sword's damage leaves the sword
+ * reading as core's own, so no entity is ever orphaned when the patch
+ * changes or the session pack is dropped - the composed value from save
+ * time is simply gone on the next load, silently.
+ *
+ * `mismatchedNamespaces` / `StartedGame.mismatchedPacks` close that gap: the
+ * manifest also records each present pack's CONTENT DIGEST (SavePackRef.hash),
+ * and a load compares its recorded digest against whatever the host can
+ * currently measure for the same namespace - `loadGame`'s `currentPacks`
+ * option, the same shape a web host builds from `presentPackDigests()`
+ * (packages/web/src/pack.ts).
+ *
+ * DELIBERATELY A PLAIN SAVE, NOT `buildModdedSave()`'s. A PATCH is exactly
+ * the case with no frost-namespaced entity anywhere in the save - that is
+ * the whole point, and it is also why this save can safely mark "frost"
+ * PRESENT: `buildModdedSave()`'s injected `frost:*` ids are only ever safe to
+ * load with frost ABSENT (the ADD case above, where core's own registries -
+ * this test file's `pack` fixture carries no mod content - correctly cannot
+ * resolve them and quarantine takes over). Core does not itself model "a
+ * patch" - that is a mod-sdk/composition-time concept exercised elsewhere
+ * (session-composition.test.ts) - so what these tests demonstrate is the
+ * manifest bookkeeping and comparison a host builds on top of it.
+ * ------------------------------------------------------------------ */
+
+describe("digest-mismatch reporting when a present pack's content changed (issue #20)", () => {
+  const hashedManifest: SaveManifest = {
+    packs: [
+      { id: "core", version: "0.1.0" },
+      { id: "frost", version: "1.2.0", hash: "digest-when-saved" },
+    ],
+    loadOrder: ["core", "frost"],
+    determinism: "deterministic",
+    modNoscore: false,
+  };
+
+  function savedWithFrostManifest(): SavedGame {
+    const game = startGame(pack, { seed: 20260717, depth: 1, className: "Warrior" });
+    const saved = clone(saveGame(game));
+    saved.manifest = hashedManifest;
+    return saved;
+  }
+
+  it("reports no mismatch when the present pack's current digest still matches", () => {
+    const restored = loadGame(pack, savedWithFrostManifest(), new Set(["core", "frost"]), {
+      currentPacks: [{ id: "frost", version: "1.2.0", hash: "digest-when-saved" }],
+    });
+    expect(restored.mismatchedPacks).toEqual([]);
+  });
+
+  it("fires when the present pack's content digest has changed since the save", () => {
+    const restored = loadGame(pack, savedWithFrostManifest(), new Set(["core", "frost"]), {
+      currentPacks: [{ id: "frost", version: "1.2.0", hash: "digest-now-different" }],
+    });
+    expect(restored.mismatchedPacks).toEqual(["frost"]);
+  });
+
+  it("reports no NEW mismatch when the pack is removed rather than changed - the ORIGINAL missing-namespace path is what would catch that instead", () => {
+    const saved = savedWithFrostManifest();
+    const restored = loadGame(pack, saved, new Set(["core"]));
+    /* Not a digest mismatch: frost is not present, so there is nothing to
+     * compare its recorded hash against - this is deliberately the ORIGINAL
+     * case, not the new one. Its recorded entry survives untouched, which is
+     * exactly what lets orphanedNamespaces keep reporting it missing on every
+     * subsequent load until it is reinstalled. */
+    expect(restored.mismatchedPacks).toEqual([]);
+    expect(restored.manifest.packs.find((p) => p.id === "frost")).toEqual(
+      hashedManifest.packs[1],
+    );
+  });
+
+  it("carries today's digest (and version) forward for the NEXT load to compare against", () => {
+    const restored = loadGame(pack, savedWithFrostManifest(), new Set(["core", "frost"]), {
+      currentPacks: [{ id: "frost", version: "1.3.0", hash: "digest-now-different" }],
+    });
+    expect(restored.mismatchedPacks).toEqual(["frost"]);
+    expect(restored.manifest.packs.find((p) => p.id === "frost")).toEqual({
+      id: "frost",
+      version: "1.3.0",
+      hash: "digest-now-different",
+    });
+  });
+
+  it("never mismatches core, and does nothing when the caller measures nothing at all", () => {
+    /* No currentPacks option at all - the pre-issue-#20 call shape, still
+     * legal, and it must behave exactly as it did before this option existed:
+     * no mismatch, and the recorded manifest carried through unchanged. */
+    const restored = loadGame(pack, savedWithFrostManifest(), new Set(["core", "frost"]));
+    expect(restored.mismatchedPacks).toEqual([]);
+    expect(restored.manifest.packs).toEqual(hashedManifest.packs);
+  });
+});

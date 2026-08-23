@@ -311,9 +311,7 @@ upstream:
     items: [init_parse_flavor]
 notes: >-
   Records are kind: groups; flavor: and fixed: lines both map to
-  parse_flavor_flavor upstream and are kept as one ordered entries: array
-  here, each entry tagged kind: "flavor" | "fixed", so the file's line order
-  survives regardless of how the two directives interleave.
+  parse_flavor_flavor upstream but are kept as separate arrays here.
 ---
 module: packages/content/pack/pain.json
 status: ported

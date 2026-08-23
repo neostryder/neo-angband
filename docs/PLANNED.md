@@ -21,7 +21,7 @@ up in `CHANGELOG.md`), it is found not to apply (and says so, briefly, before it
 goes), or it is found to be unreachable in the thing being ported (and says
 that). "Still open" is not one of them, and neither is silence.
 
-Last reviewed: 2026-08-23.
+Last reviewed: 2026-08-22.
 
 ---
 
@@ -36,6 +36,14 @@ test mirroring upstream's parser tests is structurally blind to the finish
 hook**: it can pass in full while the finish pass is simply absent.
 
 Tracked as issue #1.
+
+### `flavor.txt` records that interleave `fixed:` and `flavor:`
+
+The compiled record splits the two directives into separate arrays, so the
+file's true line order is not recoverable from the compiled shape. Nothing
+shipped interleaves them today, so this is latent rather than live.
+
+Tracked as issue #2.
 
 ### The targeting banner's remaining clauses
 

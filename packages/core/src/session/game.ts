@@ -337,10 +337,17 @@ import { migrateSave } from "./save-migrate.js";
 import { ContentIdResolver } from "../mod/ids.js";
 import {
   coreOnlyManifest,
+  mismatchedNamespaces,
   quarantineSave,
+  reconcilePackManifest,
   rehydrateSave,
 } from "../mod/save-blocks.js";
-import type { ModBag, OrphanStore, SaveManifest } from "../mod/save-blocks.js";
+import type {
+  ModBag,
+  OrphanStore,
+  SaveManifest,
+  SavePackRef,
+} from "../mod/save-blocks.js";
 
 /**
  * The getItem seam body (cmd_get_item's "tgtitem" fast path, cmd-core.c L1060):
@@ -518,6 +525,17 @@ export interface StartedGame {
   orphans: OrphanStore;
   /** decision-8: whether the one-time orphan keep/purge prompt has been shown. */
   orphansAcknowledged: boolean;
+  /**
+   * Namespaces present now whose recorded content hash no longer matches
+   * their current one (issue #20, save-blocks.ts mismatchedNamespaces): a
+   * pack that PATCHED a record - a session mod re-pricing a core sword,
+   * say - instead of only adding one, so nothing was orphaned when the patch
+   * changed or the pack went away. Empty on a core-only game, on a save
+   * written before this field, and whenever the loading host supplied no
+   * `currentPacks` (or none with a measurable hash) to compare against -
+   * absent evidence is not evidence of a match.
+   */
+  mismatchedPacks: readonly string[];
   /**
    * What loadGame had to convert to read this save (session/save-migrate.ts).
    * Absent on a new game and on a save already at SAVE_VERSION. `applied` is one
@@ -3792,6 +3810,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     mods: {},
     orphans: {},
     orphansAcknowledged: false,
+    mismatchedPacks: [],
     options,
     randartSeed,
     changeLevel,
@@ -4211,6 +4230,19 @@ export interface LoadGameOptions {
    * entry (WP-14) passes this; a normal load leaves it false.
    */
   wizard?: boolean;
+  /**
+   * The content digest this host can measure RIGHT NOW for each present pack
+   * (issue #20) - one `SavePackRef` per namespace it can hash, with the pack's
+   * CURRENT id/version/hash, not the save's recorded one. Compared against
+   * the save's own recorded manifest (`mismatchedNamespaces`) to catch a
+   * pack that PATCHED a record rather than only adding one, then folded into
+   * the manifest this load returns (`reconcilePackManifest`) so the NEXT save
+   * carries today's hash forward. Omitting an entry for a present namespace
+   * is the honest "cannot measure this one yet" - it is compared against
+   * nothing and never flagged as a mismatch. Absent/empty: no pack is
+   * compared or updated, which is the behavior before this option existed.
+   */
+  currentPacks?: readonly SavePackRef[];
 }
 
 export function loadGame(
@@ -4276,9 +4308,23 @@ export function loadGame(
     modNoscore: saveIn.manifest?.modNoscore ?? false,
   };
   const isPresent = (ns: string): boolean => present.has(ns);
+
+  /* Issue #20's sibling check: a pack that PATCHED a record (rather than only
+   * adding one) leaves nothing for quarantine to catch when the patch changes
+   * or the pack goes away, because the record still resolves under its own,
+   * still-present namespace. Computed against the manifest AS RECORDED, before
+   * folding in what the host can measure now, so a genuinely different hash is
+   * what gets reported rather than something this call just overwrote.
+   * `reconcilePackManifest` then carries today's hash forward for the NEXT
+   * save - a namespace the host cannot measure keeps its old recorded entry,
+   * exactly as if this option had not been passed. */
+  const currentPacks = opts.currentPacks ?? [];
+  const mismatchedPacks = mismatchedNamespaces(manifest, currentPacks);
+  const reconciledManifest = reconcilePackManifest(manifest, currentPacks);
+
   const quarantine = quarantineSave(
     rehydrateSave(saveIn, isPresent),
-    manifest,
+    reconciledManifest,
     isPresent,
   );
   const save = quarantine.save;
@@ -4680,10 +4726,11 @@ export function loadGame(
     flavor: wired.flavor,
     everseen: wired.everseen,
     seedFlavor,
-    manifest,
+    manifest: reconciledManifest,
     mods: save.mods ?? {},
     orphans: quarantine.orphans,
     orphansAcknowledged: save.orphansAcknowledged ?? false,
+    mismatchedPacks,
     ...(migration.applied.length > 0 || migration.notes.length > 0
       ? { saveMigration: { applied: migration.applied, notes: migration.notes } }
       : {}),

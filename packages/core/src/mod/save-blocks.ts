@@ -86,7 +86,19 @@ export interface SavePackRef {
   id: string;
   /** Semver version string, e.g. "1.2.0". */
   version: string;
-  /** Content hash of the pack that produced the save (optional). */
+  /**
+   * Content hash of the pack that produced the save (optional).
+   *
+   * ABSENT MEANS UNMEASURED, NEVER "UNCHANGED" - the same convention
+   * `InstalledModMeta.digests` and `SessionMod.digest` already use on the web
+   * side. Compared by `mismatchedNamespaces` (below) against the SAME
+   * namespace's current hash, when a caller has one: this is what lets a load
+   * tell "this pack patched a record instead of only adding one, and the
+   * patch is now different or gone" apart from an ordinary reload, which
+   * `orphanedNamespaces` alone cannot (issue #20) - a PATCHED core record
+   * still resolves under core's own, still-present namespace, so no entity is
+   * ever orphaned by the patch going away.
+   */
   hash?: string;
   /** Source (git URL + ref, or marketplace id) the pack was installed from. */
   source?: string;
@@ -267,6 +279,71 @@ export function orphanedNamespaces(
     if (!present.has(pack.id)) out.push(pack.id);
   }
   return out;
+}
+
+/**
+ * Compare the pack set that produced a save against the packs present NOW,
+ * for the namespaces on BOTH sides - the sibling case `orphanedNamespaces`
+ * cannot see (issue #20). A pack that ADDS content and later goes away leaves
+ * an orphan behind (its own ids no longer resolve, so quarantine catches it);
+ * a pack that only PATCHES an existing record - a session mod re-pricing a
+ * core sword's damage, say - leaves nothing behind to orphan, because the
+ * record it touched still resolves under its own, still-present namespace.
+ * The composed value from save time is simply gone, silently, on the next
+ * load. This is that load's chance to notice: it returns the namespaces whose
+ * recorded hash and current hash are both known and disagree.
+ *
+ * "core" is never reported: core's own content changing between builds is an
+ * engine-version question (ENGINE_VERSION / SAVE_VERSION), not a mod-patch one.
+ *
+ * A namespace missing a hash on EITHER side is never reported - not measured
+ * is not the same claim as changed, and a false "this mod changed" alarm off
+ * a gap in the data would be worse than the silent gap this function exists
+ * to close. `currentPacks` need not cover every present namespace: a caller
+ * that cannot measure a pack's current content simply omits it, and that
+ * pack's own comparison is skipped rather than guessed at.
+ */
+export function mismatchedNamespaces(
+  manifest: SaveManifest,
+  currentPacks: readonly SavePackRef[],
+): string[] {
+  const current = new Map(currentPacks.map((p) => [p.id, p]));
+  const out: string[] = [];
+  for (const recorded of manifest.packs) {
+    if (recorded.id === "core") continue;
+    if (!recorded.hash) continue;
+    const now = current.get(recorded.id);
+    if (!now?.hash) continue;
+    if (now.hash !== recorded.hash) out.push(recorded.id);
+  }
+  return out;
+}
+
+/**
+ * Fold the packs present now into a manifest's pack list, for the NEXT save to
+ * carry forward: a namespace `currentPacks` supplies replaces whatever was
+ * recorded for it (so a changed hash/version is what the next
+ * `mismatchedNamespaces`/`orphanedNamespaces` call compares against); a
+ * namespace it does NOT supply keeps its old recorded entry untouched, rather
+ * than being dropped, so a pack this host cannot currently measure - or one
+ * that has gone away entirely - is still there for `orphanedNamespaces` to
+ * find missing later. Pure: neither argument is mutated.
+ */
+export function reconcilePackManifest(
+  manifest: SaveManifest,
+  currentPacks: readonly SavePackRef[],
+): SaveManifest {
+  const current = new Map(currentPacks.map((p) => [p.id, p]));
+  const seen = new Set<string>();
+  const packs: SavePackRef[] = [];
+  for (const recorded of manifest.packs) {
+    packs.push(current.get(recorded.id) ?? recorded);
+    seen.add(recorded.id);
+  }
+  for (const pack of currentPacks) {
+    if (!seen.has(pack.id)) packs.push(pack);
+  }
+  return { ...manifest, packs };
 }
 
 /** The version each pack was at when the save was written (for orphan keys). */

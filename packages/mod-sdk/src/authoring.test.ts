@@ -236,7 +236,7 @@ describe("checkRecords", () => {
     const supply =
       (core["flavor"] ?? [])
         .filter((r) => (r["kind"] as { tval?: string } | undefined)?.tval === "potion")
-        .reduce((n, r) => n + (Array.isArray(r["entries"]) ? r["entries"].length : 0), 0);
+        .reduce((n, r) => n + (Array.isArray(r["flavor"]) ? r["flavor"].length : 0), 0);
     const extra = supply - potions.length + 1;
     const added: JsonRecord[] = Array.from({ length: extra }, (_, i) => ({
       name: `& Sludge Potion ${String(i)}~`,
