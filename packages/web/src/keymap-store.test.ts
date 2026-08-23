@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   clearKeymaps,
+  decodeActionTokens,
+  encodeActionToken,
+  isBindableTriggerKey,
   keymapAdd,
   keymapEntries,
   keymapFind,
@@ -73,5 +76,74 @@ describe("keymap store (keymap_add / find / remove)", () => {
     localStorage.setItem("neo-angband:keymaps", "{not json");
     expect(() => loadKeymapPrefs()).not.toThrow();
     expect(keymapEntries("orig")).toHaveLength(0);
+  });
+});
+
+/**
+ * isBindableTriggerKey (#62/#63): the shared predicate keymap-edit.ts's
+ * trigger capture and main.ts's runtime resolver both call, so accepting a
+ * key in the editor and accepting it at the door cannot drift apart.
+ */
+describe("isBindableTriggerKey", () => {
+  it("accepts a single printable character", () => {
+    expect(isBindableTriggerKey("q")).toBe(true);
+    expect(isBindableTriggerKey("&")).toBe(true);
+    expect(isBindableTriggerKey("1")).toBe(true);
+  });
+
+  it("accepts Enter (#63)", () => {
+    expect(isBindableTriggerKey("Enter")).toBe(true);
+  });
+
+  it("accepts a plain F-key, F1 through F12 (#62)", () => {
+    for (let n = 1; n <= 12; n++) expect(isBindableTriggerKey(`F${n}`)).toBe(true);
+  });
+
+  it("rejects F13+ and other multi-character keys with no trigger meaning", () => {
+    expect(isBindableTriggerKey("F13")).toBe(false);
+    expect(isBindableTriggerKey("Tab")).toBe(false);
+    expect(isBindableTriggerKey("ArrowLeft")).toBe(false);
+    expect(isBindableTriggerKey("Shift")).toBe(false);
+  });
+});
+
+/** encodeActionToken / decodeActionTokens: the action-string wire format. */
+describe("action-string token encoding (#63's 'R&[enter]' case)", () => {
+  afterEach(() => clearKeymaps());
+
+  it("encodes a single character literally", () => {
+    expect(encodeActionToken("q")).toBe("q");
+    expect(encodeActionToken("&")).toBe("&");
+  });
+
+  it("encodes a named key as bracketed text", () => {
+    expect(encodeActionToken("Enter")).toBe("[Enter]");
+    expect(encodeActionToken("F5")).toBe("[F5]");
+  });
+
+  it("decodes a plain action into one token per character", () => {
+    expect(decodeActionTokens("qc")).toEqual(["q", "c"]);
+  });
+
+  it("decodes a bracketed name as a single token, not its individual letters", () => {
+    expect(decodeActionTokens("R&[Enter]")).toEqual(["R", "&", "Enter"]);
+    expect(decodeActionTokens("[F5]")).toEqual(["F5"]);
+  });
+
+  it("round-trips encode -> decode for a mixed sequence", () => {
+    const action = ["R", "&", "Enter"].map(encodeActionToken).join("");
+    expect(action).toBe("R&[Enter]");
+    expect(decodeActionTokens(action)).toEqual(["R", "&", "Enter"]);
+  });
+
+  it("treats an unterminated '[' as a literal character, not a broken token", () => {
+    expect(decodeActionTokens("a[b")).toEqual(["a", "[", "b"]);
+  });
+
+  it("stores and replays a keymap action containing Enter end to end", () => {
+    keymapAdd("orig", "X", ["R", "&", "Enter"].map(encodeActionToken).join(""));
+    const action = keymapFind("orig", "X");
+    expect(action).toBe("R&[Enter]");
+    expect(decodeActionTokens(action ?? "")).toEqual(["R", "&", "Enter"]);
   });
 });
