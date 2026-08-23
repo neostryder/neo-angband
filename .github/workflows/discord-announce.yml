@@ -9,8 +9,8 @@
 # from drafting in the first place - otherwise this would post to Discord on
 # every push.
 #
-# The script itself decides whether the bump is worth posting (minor or higher
-# only) and builds the message; see .github/scripts/discord-announce.mjs.
+# Every real release is announced regardless of version-bump size - patch,
+# minor and major all post; see .github/scripts/discord-announce.mjs.
 name: Discord release announcement
 
 on:
