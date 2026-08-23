@@ -1,6 +1,6 @@
 {
   "name": "@rpgm-tools/neo-angband-desktop",
-  "version": "0.28.0",
+  "version": "0.28.1",
   "private": true,
   "description": "Electron front end: the same web app, handed a real filesystem and argv",
   "license": "GPL-2.0-only",
