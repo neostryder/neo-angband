@@ -45,6 +45,13 @@ export type UiInputEvent = KeyboardEvent & { readonly uiInput: UiInput };
 
 type KeydownListener = (event: UiInputEvent) => void;
 type Entry = { readonly listener: KeydownListener; readonly capture: boolean };
+type AuxiliaryInputType = "paste" | "compositionstart" | "compositionend";
+type AuxiliaryListener = (event: Event) => void;
+type AuxiliaryEntry = {
+  readonly type: AuxiliaryInputType;
+  readonly listener: AuxiliaryListener;
+  readonly capture: boolean;
+};
 type KeymapResolver = (input: UiInput) => readonly UiInputDraft[] | null;
 type KeyTarget = Pick<Window, "addEventListener" | "removeEventListener">;
 
@@ -111,6 +118,7 @@ export function setDomKeyboardOwner(owner: DomKeyboardOwner | undefined): void {
 }
 
 const entries: Entry[] = [];
+const auxiliaryEntries: AuxiliaryEntry[] = [];
 let nextSequence = 1;
 let keymapResolver: KeymapResolver | undefined;
 let keymapResolverOptions: KeymapResolverOptions | undefined;
@@ -180,6 +188,30 @@ function deliver(input: UiInput, original?: KeyboardEvent): void {
   }
 }
 
+function deliverAuxiliary(type: AuxiliaryInputType, event: Event): void {
+  let stopped = false;
+  const proxy = new Proxy(event, {
+    get(target, prop) {
+      if (prop === "stopImmediatePropagation") {
+        return () => {
+          stopped = true;
+          target.stopImmediatePropagation();
+        };
+      }
+      const value = Reflect.get(target, prop);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  for (const capture of [true, false]) {
+    for (const entry of [...auxiliaryEntries]) {
+      if (entry.type === type && entry.capture === capture && auxiliaryEntries.includes(entry)) {
+        entry.listener(proxy);
+      }
+      if (stopped) return;
+    }
+  }
+}
+
 /** Register a legacy screen callback with the one dispatcher, never window. */
 export function onKeydown(listener: KeydownListener, capture = false): void {
   // EventTarget ignores a duplicate listener with the same capture flag.
@@ -193,17 +225,44 @@ export function offKeydown(listener: KeydownListener, capture = false): void {
   if (index >= 0) entries.splice(index, 1);
 }
 
+function onAuxiliary(
+  type: AuxiliaryInputType,
+  listener: AuxiliaryListener,
+  capture = false,
+): void {
+  if (auxiliaryEntries.some((entry) => entry.type === type && entry.listener === listener && entry.capture === capture)) return;
+  auxiliaryEntries.push({ type, listener, capture });
+}
+
+function offAuxiliary(
+  type: AuxiliaryInputType,
+  listener: AuxiliaryListener,
+  capture = false,
+): void {
+  const index = auxiliaryEntries.findIndex(
+    (entry) => entry.type === type && entry.listener === listener && entry.capture === capture,
+  );
+  if (index >= 0) auxiliaryEntries.splice(index, 1);
+}
+
 function installBrowserAdapter(target: KeyTarget): void {
   if (browserWindow === target) return;
   if (browserWindow) {
     browserWindow.removeEventListener("keydown", browserKeydown, true);
+    browserWindow.removeEventListener("paste", browserPaste, true);
+    browserWindow.removeEventListener("compositionstart", browserCompositionStart, true);
+    browserWindow.removeEventListener("compositionend", browserCompositionEnd, true);
     // A different global window is a different document/session (this is also
     // how the lightweight UI tests isolate their fake browser). No screen from
     // the old document may receive input in the new one.
     entries.length = 0;
+    auxiliaryEntries.length = 0;
     clearQueuedUiInputs();
   }
   target.addEventListener("keydown", browserKeydown, true);
+  target.addEventListener("paste", browserPaste, true);
+  target.addEventListener("compositionstart", browserCompositionStart, true);
+  target.addEventListener("compositionend", browserCompositionEnd, true);
   browserWindow = target;
 }
 
@@ -230,18 +289,60 @@ function browserKeydown(event: Event): void {
   dispatchUiInput(fromKeyboard(key), key);
 }
 
+function browserPaste(event: Event): void {
+  deliverAuxiliary("paste", event);
+}
+
+function browserCompositionStart(event: Event): void {
+  deliverAuxiliary("compositionstart", event);
+}
+
+function browserCompositionEnd(event: Event): void {
+  deliverAuxiliary("compositionend", event);
+}
+
+function addInputEventListener(type: "keydown", listener: KeydownListener, capture?: boolean): void;
+function addInputEventListener(type: "paste", listener: (event: ClipboardEvent) => void, capture?: boolean): void;
+function addInputEventListener(
+  type: "compositionstart" | "compositionend",
+  listener: (event: CompositionEvent) => void,
+  capture?: boolean,
+): void;
+function addInputEventListener(type: string, listener: (event: never) => void, capture?: boolean): void {
+  if (typeof listener !== "function") throw new Error(`input door does not handle ${type}`);
+  // Unit tests install a tiny fake window after modules load. Install the
+  // door there too; never attach this screen callback directly to it.
+  if (typeof window !== "undefined") installBrowserAdapter(window);
+  if (type === "keydown") {
+    onKeydown(listener as KeydownListener, capture);
+    return;
+  }
+  if (type === "paste" || type === "compositionstart" || type === "compositionend") {
+    onAuxiliary(type, listener as AuxiliaryListener, capture);
+    return;
+  }
+  throw new Error(`input door does not handle ${type}`);
+}
+
+function removeInputEventListener(type: "keydown", listener: KeydownListener, capture?: boolean): void;
+function removeInputEventListener(type: "paste", listener: (event: ClipboardEvent) => void, capture?: boolean): void;
+function removeInputEventListener(
+  type: "compositionstart" | "compositionend",
+  listener: (event: CompositionEvent) => void,
+  capture?: boolean,
+): void;
+function removeInputEventListener(type: string, listener: (event: never) => void, capture?: boolean): void {
+  if (type === "keydown") {
+    offKeydown(listener as KeydownListener, capture);
+  } else if (type === "paste" || type === "compositionstart" || type === "compositionend") {
+    offAuxiliary(type, listener as AuxiliaryListener, capture);
+  }
+}
+
 /** Compatibility facade used while individual screens still have onKey handlers. */
 export const inputEvents = {
-  addEventListener(type: string, listener: KeydownListener, capture?: boolean): void {
-    if (type !== "keydown" || typeof listener !== "function") throw new Error(`input door does not handle ${type}`);
-    // Unit tests install a tiny fake window after modules load. Install the
-    // door there too; never attach this screen callback directly to it.
-    if (typeof window !== "undefined") installBrowserAdapter(window);
-    onKeydown(listener as KeydownListener, capture);
-  },
-  removeEventListener(type: string, listener: KeydownListener, capture?: boolean): void {
-    if (type === "keydown") offKeydown(listener, capture);
-  },
+  addEventListener: addInputEventListener,
+  removeEventListener: removeInputEventListener,
 };
 
 /** Player keymaps are resolved before registered (including mod) input consumers. */
@@ -297,12 +398,18 @@ export function clearQueuedUiInputs(): void {
 /** Test hook: remove registrations and queued input between isolated tests. */
 export function clearInputDoor(): void {
   entries.length = 0;
+  auxiliaryEntries.length = 0;
   clearQueuedUiInputs();
   keymapResolver = undefined;
   keymapResolverOptions = undefined;
   domKeyboardOwner = undefined;
   nextSequence = 1;
-  if (browserWindow) browserWindow.removeEventListener("keydown", browserKeydown, true);
+  if (browserWindow) {
+    browserWindow.removeEventListener("keydown", browserKeydown, true);
+    browserWindow.removeEventListener("paste", browserPaste, true);
+    browserWindow.removeEventListener("compositionstart", browserCompositionStart, true);
+    browserWindow.removeEventListener("compositionend", browserCompositionEnd, true);
+  }
   browserWindow = undefined;
 }
 
