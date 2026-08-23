@@ -197,6 +197,13 @@ that section is teaching beyond the ops themselves:
 A patched monster keeps its picture, because the tile set already knows it by
 name. Only the ant you *added* has nothing drawn for it.
 
+## The finished version
+
+`samples/tutorials/tutorial-03-add-a-monster/` in this repository is exactly
+this mod. It is not a copy of the tutorial. It is a mod that gets loaded and
+checked against the real game data on every test run, so if anything on this
+page ever stops being true, the build fails.
+
 ---
 
 **Next:** [Tutorial 4: Change a spell](04-change-a-spell.md), reaching into a

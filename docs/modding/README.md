@@ -114,9 +114,20 @@ that has not been settled.
   uninstall, installing from git (and a future marketplace), multi-mod
   composition and conflict resolution, uninstall recovery, and the UX
   principles. RATIFIED (decision 19); not yet fully built.
+- `PLUGINS.md`: shipping CODE in a mod folder, for a mod that a manifest
+  and a few record files cannot express - `plugin.js`, its `hooks(ctx)`/
+  `register(host, ctx)` entry points, and the doors each opens onto a live
+  game.
 - `MOD_SEAMS.md`: the CORE seams a mod reaches through - the `ModHooks`
   behaviour interface, its per-hook fold rules, and how a patch is turned
   on. Describes what is built.
+- `REGION_INPUT.md`: how pointer taps, context menus and long-presses route
+  by per-cell region ownership rather than by rectangle. Landed; historical
+  design record.
+- `CLOUD_BACKUP_DESIGN.md`: a player-chosen save-backup folder as a `qol`
+  feature - the two small host seams it needs, and why the trigger is
+  blocked on a seam that does not exist yet even though the engine side is
+  done.
 - `MOD_COMPATIBILITY.md`: what an engine release may and may not break, and
   what you have to do about it. The four gates that can strand a mod, what
   to write in `engine`, the two-release rule for an ABI bump, and the honest
@@ -141,6 +152,9 @@ that has not been settled.
   referenced changelog for upstream crash/corruption/save/determinism fixes
   that core deliberately does not carry (decision 24). Design of record;
   patches land with the mod runtime and the systems they touch.
+- `UPSTREAM_CATCHUP_MOD_SCOPE.md`: where a hypothetical "upstream catch-up"
+  mod (post-4.2.6 upstream fixes) would draw its line against `bug-fixes`.
+  Scope of record; no repository or code exists yet.
 - Coming as the engine lands them (P7 deliverables): handler registry
   catalog (effects, commands, room builders), the sandbox capability
   reference for scripted plugins, dialog/quest/shop cookbooks, the
@@ -148,7 +162,7 @@ that has not been settled.
 
 ## The first-party mods
 
-Five, **none of them bundled**, all OFF until enabled (see
+Six, **none of them bundled**, all OFF until enabled (see
 `DEFAULT_ENABLED_MODS` - an untouched install is the faithful base game with no mod
 loaded). Each lives in its own repository and arrives through the mod manager's
 *Install a mod...* row:
@@ -160,8 +174,9 @@ loaded). Each lives in its own repository and arrives through the mod manager's
 | `neo-linoleum` | tiles | [own repo](https://github.com/neostryder/neo-angband-mod-linoleum) | An ALTERNATIVE tile engine: the Linoleum loose-pack format (individual PNGs addressed by readable target maps, plus variant pools). It does NOT supply the game's graphics - all five upstream tile sets (Original / Adam Bolt / David Gervais / Nomad / Shockbolt Dark and Light) are core content (`grafmode.c` / `lib/tiles/list.txt`) and appear in the Graphics screen with no mod enabled. It ships all six converted to loose packs, so you can compare the two engines on identical art. Declare a pack with `{ "grafID": >=100, "engine": "linoleum", "menuname": "...", "path": "..." }` - note `engine` is the FORMAT name and stays `linoleum`; `neo-linoleum` is the mod. Since its 0.15.0 it also carries the one rule the GAME used to hold: content a mod added, with no tile anywhere, is drawn from its nearest relative with the colour turned - under its own packs only, through `registry:tiles`. See `docs/LINOLEUM.md`. |
 | `borg` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player, driving the game through the same perceive/act API any third-party automation would use. The whole port lives there, with its own release tags and its own suite, including one that drives the BUILT `plugin.js`. Installing and enabling it does not hand it your character; its "Let the Borg play" toggle does. |
 | `feature-restoration` | content + plugin | [own repo](https://github.com/neostryder/neo-angband-mod-feature-restoration) | Beloved Angband features that a later version quietly dropped, brought back one named toggle at a time, every toggle off by default. `Teleport Other` (content: a `fieldPatches` addition to the Priest, Paladin and Ranger's own books, who lost the spell somewhere between an earlier Angband and 4.2.6 while the Mage and the Rogue kept it) and store discounts (plugin: 4.2.6 dropped the discount roll entirely, so this restoration installs a `registry:store` discount-roll handler instead of patching data that no longer exists). |
+| `forge` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-forge) | An in-game workshop for building other mods without leaving the game: pick an existing record, see its neighbours, change what would have to change, and pack the result up to try in-session, install, or hand off as a file. Early - the workshop's own content is a demonstration fixture until the remaining engine seams land. See `docs/ENGINE_SEAMS.md` in its own repository. |
 
-**First-party is not a shortcut.** All five take the same route into the game as anybody else's mod, and that is on purpose: bundling the author's own mods would have hidden every defect in the install path behind mods that never used it. The download route, the folder code loader and the plugin ABI all work because nothing is exempt from them. What first-party buys is that these five are also the reference examples - read them to learn the seams.
+**First-party is not a shortcut.** All six take the same route into the game as anybody else's mod, and that is on purpose: bundling the author's own mods would have hidden every defect in the install path behind mods that never used it. The download route, the folder code loader and the plugin ABI all work because nothing is exempt from them. What first-party buys is that these six are also the reference examples - read them to learn the seams.
 
 Enable one in the in-app mod manager (game menu -> Mods), or with
 `?mods=qol,bug-fixes,neo-linoleum` for a one-off.

@@ -411,26 +411,26 @@ the same route yours does.
 ## Tileset licensing (why converted packs are not shipped)
 
 The bundled legacy tilesheets under `reference/lib/tiles/` carry different
-licences. None of the tileset directories contains its own licence or
+licenses. None of the tileset directories contains its own license or
 readme file; the authoritative statements are in `reference/docs/copying.rst`.
 
-| Tileset (pack keys) | Licence | Redistributable? |
+| Tileset (pack keys) | License | Redistributable? |
 | --- | --- | --- |
-| Original 8x8 (`original-tiles`) | No separate exception in copying.rst; Angband dual licence (GPL v2 or Angband licence) | Yes, under those terms |
+| Original 8x8 (`original-tiles`) | No separate exception in copying.rst; Angband dual license (GPL v2 or Angband license) | Yes, under those terms |
 | Adam Bolt 16x16 (`adam-bolt`) | "may be redistributed and used for any purpose, with or without modification" | Yes |
 | David Gervais 32x32 (`gervais`) | Creative Commons Attribution 3.0 | Yes, with attribution |
-| Nomad 8x16 (`nomad`) | No separate exception in copying.rst; Angband dual licence (GPL v2 or Angband licence) | Yes, under those terms |
-| Shockbolt 64x64 (`shockbolt-dark`, `shockbolt-light`) | Custom licence, copyright (C) Raymond Gaustadnes 2012 | Distribution **with Angband** is granted (no fee); **modification is not**, so a converted pack needs the author's permission |
+| Nomad 8x16 (`nomad`) | No separate exception in copying.rst; Angband dual license (GPL v2 or Angband license) | Yes, under those terms |
+| Shockbolt 64x64 (`shockbolt-dark`, `shockbolt-light`) | Custom license, copyright (C) Raymond Gaustadnes 2012 | Distribution **with Angband** is granted (no fee); **modification is not**, so a converted pack needs the author's permission |
 
 Read that last row carefully, because it is easy to get backwards. Shockbolt's
-licence is not a blanket prohibition: it *grants* use and fee-free distribution
+license is not a blanket prohibition: it *grants* use and fee-free distribution
 of the tileset with in-development and released versions of Angband. What it
 withholds is modification without permission, ToME-only tiles, and use or
 distribution "with other games or projects" without explicit permission. Two
 consequences for this converter:
 
 - **A Linoleum conversion is a modification.** It cuts the sheet into
-  individual PNGs, and modification is the one thing the licence withholds. A
+  individual PNGs, and modification is the one thing the license withholds. A
   pack you convert is yours to use; redistributing it needs the author's
   permission.
 - **Whether this port counts as "Angband" or as "another project"** decides
@@ -438,15 +438,15 @@ consequences for this converter:
   **the Shockbolt tilesheet is bundled here with his permission**, conditional
   on this project remaining non-commercial. That grant is this project's and
   does not travel: a project of your own needs its own permission.
-  `packages/web/public/tiles/CREDITS.md` carries the full licence text and the
+  `packages/web/public/tiles/CREDITS.md` carries the full license text and the
   grant.
 
 Independently of Shockbolt: rather than shipping some converted packs and not
 others, **this repository ships no converted packs at all.** The converter runs
 locally against the `reference/` data, so every user derives their own packs from
-the original files under the original licences, and the six pre-converted packs a
+the original files under the original licenses, and the six pre-converted packs a
 player can install come from the `neo-linoleum` mod's own repository rather than
-from here. The CLI prints the relevant licence notes, including a prominent
+from here. The CLI prints the relevant license notes, including a prominent
 warning for the Shockbolt packs, on every run.
 
 ## Parity
