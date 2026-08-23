@@ -31,6 +31,13 @@ const DIRS_ORIGINAL: Record<string, number> = {
   ArrowDown: 2,
   ArrowUp: 8,
   ArrowRight: 6,
+  // The same numpad diagonals with NumLock off: 7/9/1/3 report as
+  // Home/PageUp/End/PageDown instead of digits. The four orthogonals need no
+  // such entry - 8/2/4/6 already coincide with the Arrow* names above.
+  Home: 7,
+  PageUp: 9,
+  End: 1,
+  PageDown: 3,
 };
 
 /**
