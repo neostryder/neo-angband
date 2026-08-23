@@ -21,86 +21,19 @@ up in `CHANGELOG.md`), it is found not to apply (and says so, briefly, before it
 goes), or it is found to be unreachable in the thing being ported (and says
 that). "Still open" is not one of them, and neither is silence.
 
-Last reviewed: 2026-08-23.
+Last reviewed: 2026-08-22.
 
 ---
 
 ## Core fidelity
 
-### The `finish_parse_*` hooks - audit complete
+### The remaining `finish_parse_*` hooks
 
 Upstream runs a finish hook after parsing many of its data files, a second pass
 that orders, validates, back-fills or reverses what the parser built. The port
 folds parse and finish together in a registry constructor, which means **a parity
 test mirroring upstream's parser tests is structurally blind to the finish
 hook**: it can pass in full while the finish pass is simply absent.
-
-All 45 `finish_parse_*` hooks in the reference tree are now audited: 33 across
-`init.c`, `obj-init.c` and `mon-init.c` (several gaps found and fixed there; see
-`CHANGELOG.md`), and the remaining 12 - `generate.c`'s three level-generation
-hooks plus nine singletons spread one each across `grafmode.c`, `mon-summon.c`,
-`obj-chest.c`, `player-quest.c`, `player-timed.c`, `store.c`,
-`ui-entry-renderers.c`, `ui-entry.c` and `ui-prefs.c`. **None of the 12 needed a
-code change** - each is either already faithfully ported, a no-op upstream with
-nothing to port, or a deliberate no-port-subject case the port already
-documents. Recorded here so the next audit does not repeat the reading:
-
-- `finish_parse_profile`, `finish_parse_room`, `finish_parse_vault`
-  (`generate.c` L223, L450, L614) reverse a prepended parse list back to file
-  order (`cave_profiles`), or leave it in reverse file order to match the
-  prepend (`room_templates`, `vaults`). Order matters here: `random_room_template`,
-  `random_vault` (`gen-room.c` L55-90) and `choose_profile`'s weighted pass
-  (`generate.c` L813-880) are single-pass reservoir/weighted-reservoir samplers
-  that draw from the RNG once per candidate walked, so a wrong order would be
-  an RNG-stream defect, not merely a wrong pick - exactly the class of bug this
-  file's RNG-drift caution exists for. `createDungeonProfiles`
-  (`packages/core/src/gen/cave.ts` L3043) and `loadRoomTemplates` / `loadVaults`
-  (`packages/core/src/gen/room.ts` L131, L159) already reproduce upstream's
-  exact order and say so in their own comments; `gen.test.ts`'s "Round" vault
-  case already pins a prior regression of exactly this kind. No RNG-position
-  check was needed because there is no change to make.
-- `finish_parse_grafmode` (`grafmode.c` L105): reverses the parsed list to file
-  order, appends the hardcoded "None" fallback entry, and records the highest
-  `grafID`. `packages/core/src/visuals/grafmode.ts` plus the generator that
-  feeds it (`packages/core/scripts/gen-grafmode.mjs`) reproduce all three, in
-  file order.
-- `finish_parse_summon` (`mon-summon.c` L164): reverses the list to file order
-  and resolves each `fallback:` name to an index. `SummonTable` in
-  `packages/core/src/mon/summon.ts` does both - the constructor builds in file
-  order, then a second pass resolves `fallbackName` through `nameToIdx`.
-- `finish_parse_chest_trap` (`obj-chest.c` L262) and `finish_parse_stores`
-  (`store.c` L314) do nothing upstream but destroy the parser: both write
-  straight into a pre-sized or non-listed structure while parsing, so there is
-  no finish-time logic to port.
-- `finish_parse_player_timed` (`player-timed.c` L655) is the same shape: it
-  frees the parser's scratch state and nothing else, because `player_timed`
-  writes directly into the static `timed_effects[TMD_MAX]` array as it parses.
-- `finish_parse_quest` (`player-quest.c` L90): reverses the list to file order
-  and stamps each record's `index`. `bindQuests`
-  (`packages/core/src/game/quest.ts` L65) builds the array in file order with
-  `index` set to the array position; `quest->index` has no other reader
-  upstream (checked by grep), so there is nothing else riding on it.
-- `finish_parse_ui_entry_renderer` (`ui-entry-renderers.c` L1660): resolves a
-  `combined-renderer` name, backs the combiner in from the backend's default
-  when `combine:` is absent, and pads `colors` / `labelcolors` / `symbols` out
-  to the backend's default length when the record's own palette is shorter.
-  All four are ported in `packages/core/src/game/ui-entry.ts` (`buildRenderers`,
-  `combinerForRenderer`, `augmentColors`, `augmentSymbols`) - the combiner
-  resolution is deliberately done live, at apply time, rather than baked in at
-  parse, which the port's own comment records as an intentional improvement
-  rather than a gap.
-- `finish_parse_ui_entry` (`ui-entry.c` L2278): defaults an entry's label to its
-  name when none was set, fills the shortened-label ladder, and back-fills a
-  category's priority from the entry's default when the category never set one
-  of its own. All three are in `buildEntries`
-  (`packages/core/src/game/ui-entry.ts` L1008-1027), the priority back-fill
-  citing a previously-fixed bug in its own comment.
-- `finish_parse_prefs` (`ui-prefs.c` L1162): merges newly-parsed subwindow flags
-  over the existing set, so a term the pref file never mentions keeps its prior
-  flags. The port has one terminal and no persistent per-term state to merge
-  into; `packages/core/src/visuals/prefs.ts` (`parseWindow`) already records
-  this as a no-port-subject case, the same shape as `world`'s hook among the
-  first 33.
 
 Tracked as issue #1.
 
@@ -115,8 +48,12 @@ Tracked as issue #2.
 ### The targeting banner's remaining clauses
 
 `target_display_help` builds its sentence from what the loop is offering, and
-two clauses - and the `<click>` half - are never reached here because the
-underlying commands are not implemented.
+two clauses are never reached here because the underlying commands are not
+implemented: pathfinding to the selection, and ignoring the selected object.
+Upstream omits each in exactly this case too, so the banner is not saying
+anything false; it is just missing the two commands themselves. The `<click>`
+half is not one of the gaps - a tap on the canvas already moves the cursor and
+selects, and the banner names it.
 
 Tracked as issue #6.
 
