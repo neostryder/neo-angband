@@ -110,19 +110,29 @@ const UNHANDLED_TXT_DIRECTIVES: readonly {
 
 /**
  * Keys the pack's compiler synthesizes rather than reading from a directive.
- * The reader must generate each of these too (via DirectiveDef.orderKey), or
- * the field-level diff below would report the whole column as missing.
+ * The reader must generate each of these too (via DirectiveDef.orderKey or
+ * DirectiveDef.mergeInto - `kind` distinguishes which), or the field-level
+ * diff below would report the whole column as missing.
  */
 const SYNTHETIC_PACK_KEYS: readonly {
   readonly file: string;
   readonly key: string;
   readonly reason: string;
+  /** Which mechanism generates it. Defaults to "orderKey". */
+  readonly kind?: "orderKey" | "mergeInto";
 }[] = [
   {
     file: "monster",
     key: "drop-order",
     reason:
       "C keeps drop: and drop-base: in one monster_drop list (parse_monster_drop / parse_monster_drop_base both prepend to r->drops, mon-init.c:1534,1558), so the two directives interleave. The pack splits them into per-directive arrays and records the original file order here; declared via orderKey on both directives in specs/mon-init.ts.",
+  },
+  {
+    file: "flavor",
+    key: "entries",
+    kind: "mergeInto",
+    reason:
+      "flavor.txt's fixed: and flavor: lines both belong to one per-record list (issue #2): a record's true line order was not recoverable from split fixed/flavor arrays because the entry index is flavor.txt's own numbering, not file order. The pack now emits one array per record, each entry tagged kind: \"fixed\" | \"flavor\", declared via mergeInto on both directives in specs/init.ts.",
   },
 ];
 
@@ -156,7 +166,11 @@ const PROGRAMMATIC_PARSER_REG: readonly {
 
 /** Structural view shared by the port's FileSpec and the reader's FileSpec. */
 interface AnySpec {
-  readonly directives: readonly { readonly fmt: string; readonly orderKey?: string }[];
+  readonly directives: readonly {
+    readonly fmt: string;
+    readonly orderKey?: string;
+    readonly mergeInto?: string;
+  }[];
 }
 
 function handledDirectives(spec: AnySpec): Set<string> {
@@ -167,6 +181,14 @@ function declaredOrderKeys(spec: AnySpec): Set<string> {
   const out = new Set<string>();
   for (const d of spec.directives) {
     if (d.orderKey !== undefined) out.add(d.orderKey);
+  }
+  return out;
+}
+
+function declaredMergeKeys(spec: AnySpec): Set<string> {
+  const out = new Set<string>();
+  for (const d of spec.directives) {
+    if (d.mergeInto !== undefined) out.add(d.mergeInto);
   }
   return out;
 }
@@ -189,6 +211,7 @@ function toReaderSpec(spec: (typeof gamedataSpecs)[number]): ReaderFileSpec {
       ...(d.repeat === undefined ? {} : { repeat: d.repeat }),
       ...(d.childOf === undefined ? {} : { childOf: d.childOf }),
       ...(d.orderKey === undefined ? {} : { orderKey: d.orderKey }),
+      ...(d.mergeInto === undefined ? {} : { mergeInto: d.mergeInto }),
     })),
   };
 }
@@ -430,7 +453,7 @@ describe("W5 directive coverage guard (task #27)", () => {
     expect([...allowed].filter((k) => !usedAllowances.has(k))).toEqual([]);
   });
 
-  it("every key the pack emits at record root is a registered directive or a declared order key", () => {
+  it("every key the pack emits at record root is a registered directive, a declared order key, or a declared merge key", () => {
     const unaccounted: string[] = [];
     const allowed = new Map<string, (typeof SYNTHETIC_PACK_KEYS)[number]>(
       SYNTHETIC_PACK_KEYS.map((s) => [`${s.file}:${s.key}`, s]),
@@ -440,36 +463,38 @@ describe("W5 directive coverage guard (task #27)", () => {
     for (const spec of gamedataSpecs) {
       const handled = handledDirectives(spec);
       const orderKeys = declaredOrderKeys(spec);
+      const mergeKeys = declaredMergeKeys(spec);
       for (const key of packRootKeys(readPack(spec.name))) {
         if (handled.has(key)) continue;
         const id = `${spec.name}:${key}`;
-        if (orderKeys.has(key)) {
+        if (orderKeys.has(key) || mergeKeys.has(key)) {
           // Generated, and the reader generates it too, but it still has to be
           // named in SYNTHETIC_PACK_KEYS so nobody adds one without a reason.
           if (!allowed.has(id)) {
-            unaccounted.push(`${id} (orderKey with no SYNTHETIC_PACK_KEYS entry)`);
+            unaccounted.push(`${id} (order/merge key with no SYNTHETIC_PACK_KEYS entry)`);
             continue;
           }
           usedAllowances.add(id);
           continue;
         }
-        unaccounted.push(`${id} (not a directive, not a declared orderKey)`);
+        unaccounted.push(`${id} (not a directive, not a declared order/merge key)`);
       }
     }
     expect(unaccounted).toEqual([]);
     expect([...allowed.keys()].filter((k) => !usedAllowances.has(k))).toEqual([]);
   });
 
-  it("every synthetic pack key is declared as an orderKey the reader also generates", () => {
+  it("every synthetic pack key is declared as an order/merge key the reader also generates", () => {
     for (const entry of SYNTHETIC_PACK_KEYS) {
       const spec = gamedataSpecs.find((s) => s.name === entry.file);
       expect(spec, `no spec for ${entry.file}`).toBeDefined();
+      const declared = entry.kind === "mergeInto" ? declaredMergeKeys : declaredOrderKeys;
       // Declared on the spec (so the pack compiler emits it) ...
-      expect(declaredOrderKeys(spec!), `${entry.file}:${entry.key}`).toContain(entry.key);
+      expect(declared(spec!), `${entry.file}:${entry.key}`).toContain(entry.key);
       // ... and surviving the port -> reader spec translation (so the
       // independent re-parse emits it as well). Dropping it here is exactly the
       // drop-order gap this guard exists to catch.
-      expect(declaredOrderKeys(toReaderSpec(spec!))).toContain(entry.key);
+      expect(declared(toReaderSpec(spec!))).toContain(entry.key);
       expect(entry.reason.length).toBeGreaterThan(40);
     }
   });

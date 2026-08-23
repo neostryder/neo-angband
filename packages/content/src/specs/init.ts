@@ -309,8 +309,18 @@ export const flavorSpec: FileSpec = {
   recordStart: "kind",
   directives: [
     { fmt: "kind sym tval char glyph" },
-    { fmt: "flavor uint index sym attr ?str desc", repeat: true },
-    { fmt: "fixed uint index sym sval sym attr ?str desc", repeat: true },
+    /*
+     * `flavor:` and `fixed:` both build ONE list upstream (C prepends both
+     * onto the same flavor_type linked list, parse_flavor_flavor,
+     * init.c). mergeInto keeps that: instead of splitting them into two
+     * per-directive arrays, the pack emits one "entries" array per record,
+     * each entry tagged kind: "flavor" | "fixed", in the file's own line
+     * order - so a mod's flavor.txt that interleaves the two directives
+     * (issue #2) is reproducible from the compiled shape, not just the
+     * shipped file's own fixed-then-random layout.
+     */
+    { fmt: "flavor uint index sym attr ?str desc", mergeInto: "entries" },
+    { fmt: "fixed uint index sym sval sym attr ?str desc", mergeInto: "entries" },
   ],
 };
 
