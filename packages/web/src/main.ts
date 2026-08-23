@@ -4216,13 +4216,11 @@ async function throwCmd(): Promise<void> {
  * promising a key that does nothing.
  *
  * TWO KNOWING SUBSTITUTIONS. Upstream writes "<dir> and <click> look around":
- * this build's click route is a tap on the canvas rather than upstream's mouse
- * buttons (runTargetLoop's own onTap, wired independently of the modalDepth-
- * gated tap-to-move handler - #62), so the banner says "tap" for it rather
- * than naming a button this build does not have. "<dir>" is a convention from
- * a manual that ships beside the game rather than something a keyboard shows
- * you, so the banner names the keys this port binds. Escape joins 'q' because
- * Escape is the back-out every other screen here takes.
+ * this build has no click route into the loop (taps are gated off while a modal
+ * owns input, so `modalDepth` stands them down), and "<dir>" is a convention
+ * from a manual that ships beside the game rather than something a keyboard
+ * shows you, so the banner names the keys this port binds. Escape joins 'q'
+ * because Escape is the back-out every other screen here takes.
  */
 function targetHelpLines(useFreeMode: boolean): string[] {
   /* THREE LINES, because HELP_HEIGHT is 3 (ui-target.c:164) and any more would
@@ -4232,14 +4230,14 @@ function targetHelpLines(useFreeMode: boolean): string[] {
    * reordered to make the split tidy. */
   return useFreeMode
     ? [
-        "Arrows/numpad/tap look around. 'p' selects player. 'q'/Esc exits.",
+        "Arrows/numpad look around. 'p' selects player. 'q'/Esc exits.",
         "'r' displays details. 'm' restricts to interesting places.",
-        "'t'/tap targets selection.",
+        "'t' targets selection.",
       ]
     : [
-        "Arrows/numpad/tap look around. 'p' selects player. 'q'/Esc exits.",
+        "Arrows/numpad look around. 'p' selects player. 'q'/Esc exits.",
         "'r' displays details. '+' and '-' cycle through places.",
-        "'o' allows free selection. 't'/tap targets selection.",
+        "'o' allows free selection. 't' targets selection.",
       ];
 }
 
@@ -4602,14 +4600,6 @@ async function showMonsterKnowledge(): Promise<void> {
  * keyboard like getAimDir/selectFromMenu (its own capturing keydown
  * listener) - the caller gates the main handler via openModal. Returns
  * target_is_set() once the loop finishes (selection or cancel).
- *
- * `allowPathfinding` is accepted for call-site parity with
- * target_set_interactive's own parameter (every call site above passes the
- * value upstream's matching call site would) but is not wired to anything:
- * CMD_PATHFIND's 'g'/alt-click routes (ui-target.c L1488-1493, L1376-1383)
- * have no port here, so stepTargetLoop has no 'g' branch and targetHelpLines
- * always omits the pathfinding clause - the same "not a clause it prints"
- * rule the banner's own doc comment above states for the ignore-object gap.
  */
 function runTargetLoop(
   mode: number,
@@ -5893,6 +5883,14 @@ async function exitToTitle(): Promise<void> {
  */
 async function openModManager(): Promise<void> {
   const store = defaultModStore();
+  /* Fetched once for the life of this screen, the same way `store` above is: an
+   * install through ctx.installMod only happens while a mod's plugin is running
+   * in a live game, which this screen is not, so nothing here can go stale while
+   * the player is looking at it. */
+  const installedBy: Record<string, string> = {};
+  for (const meta of await installedMods(globalThis)) {
+    if (meta.installedByModId !== undefined) installedBy[meta.id] = meta.installedByModId;
+  }
   await runModManager(term, {
     store,
     listCatalog: () =>
@@ -5917,6 +5915,7 @@ async function openModManager(): Promise<void> {
          * records, so a row is marked "this session" only when there is really a
          * pack behind it - the same rule presentNamespaces uses. */
         session: sessionPacks().packs.map((p) => p.manifest.id),
+        installedBy,
       }),
     /* So a mod downloaded in this session is in the list on the way back out,
      * instead of after a reload the player has not been told to do yet. */
