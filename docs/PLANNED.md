@@ -48,12 +48,8 @@ Tracked as issue #2.
 ### The targeting banner's remaining clauses
 
 `target_display_help` builds its sentence from what the loop is offering, and
-two clauses are never reached here because the underlying commands are not
-implemented: pathfinding to the selection, and ignoring the selected object.
-Upstream omits each in exactly this case too, so the banner is not saying
-anything false; it is just missing the two commands themselves. The `<click>`
-half is not one of the gaps - a tap on the canvas already moves the cursor and
-selects, and the banner names it.
+two clauses - and the `<click>` half - are never reached here because the
+underlying commands are not implemented.
 
 Tracked as issue #6.
 
