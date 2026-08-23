@@ -8,7 +8,9 @@ This document was also prepared with AI assistance.
 
 AI assistance does not transfer authorship, responsibility, or engineering judgment away from the maintainer. The maintainer accepts responsibility for every change merged into this project, regardless of how the first draft of that change was produced.
 
-## Governing Principle
+This project's development model is human-first and AI-augmented: a human sets direction, reviews every change, and is accountable for the result; AI tooling accelerates the mechanical work inside that boundary and does not move the boundary itself.
+
+## Governing Principle: Human-First, AI-Augmented
 
 **AI may propose. The maintainer decides, verifies, and owns the result.**
 
