@@ -935,10 +935,12 @@ describe("the player-tile door", () => {
 
   it("replaces a mod's OWN provider and never another mod's", () => {
     const registry = new TileFillerRegistry(() => undefined);
+    registry.player(() => null);
     registry.player(() => null, "a");
     registry.player(() => ({ attr: 0x83, char: 0x84 }), "a");
     registry.player(() => ({ attr: 0x85, char: 0x86 }), "b");
-    expect(registry.playerProviders).toBe(2);
+    expect(registry.playerProviders).toBe(3);
+    expect(registry.playerProviderOwners).toEqual(["a", "b"]);
     expect(registry.playerTile(view)).toEqual({ attr: 0x83, char: 0x84 });
   });
 

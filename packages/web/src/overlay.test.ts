@@ -8,6 +8,7 @@ import {
   showTextScreen,
   promptNumber,
   promptText,
+  promptTextInline,
   getRepDir,
   getAimDir,
   getCheck,
@@ -112,10 +113,24 @@ function makeTerm(cols = 20, rows = 12): FakeTerm {
   } as unknown as FakeTerm;
 }
 
-function press(win: FakeWindow, key: string): void {
+function press(win: FakeWindow, key: string, isComposing = false): void {
   const ev = new Event("keydown", { cancelable: true }) as Event & { key: string };
   ev.key = key;
+  if (isComposing) Object.defineProperty(ev, "isComposing", { value: true });
   win.dispatchEvent(ev);
+}
+
+function paste(win: FakeWindow, text: string): ClipboardEvent {
+  const ev = new Event("paste", { cancelable: true }) as ClipboardEvent;
+  Object.defineProperty(ev, "clipboardData", {
+    value: { getData: (type: string) => (type === "text" ? text : "") },
+  });
+  win.dispatchEvent(ev);
+  return ev;
+}
+
+function compose(win: FakeWindow, type: "compositionstart" | "compositionend"): void {
+  win.dispatchEvent(new Event(type, { cancelable: true }));
 }
 
 function tap(win: FakeWindow): void {
@@ -808,6 +823,42 @@ describe("promptText (askfor_aux + askfor_aux_keypress, ui-input.c:662-800)", ()
     for (const ch of ["a", "b", "c", "d", "e"]) press(win, ch);
     press(win, "Enter");
     expect(await done).toBe("abc");
+  });
+
+  it("pastes a single line, truncated to maxLen", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = promptText(term, "Repository", "", 8);
+    const ev = paste(win, "owner/repo\nignored");
+    expect(ev.defaultPrevented).toBe(true);
+    expect(term.snapshot().join("\n")).toContain("> owner/re");
+    press(win, "Enter");
+    expect(await done).toBe("owner/re");
+  });
+
+  it("does not insert keydowns during IME composition", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = promptText(term, "Name");
+    compose(win, "compositionstart");
+    press(win, "x");
+    compose(win, "compositionend");
+    press(win, "y", true);
+    press(win, "z");
+    press(win, "Enter");
+    expect(await done).toBe("z");
+  });
+
+  it("pastes text into an inline prompt", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = promptTextInline(term, "Repository: ", "", 10);
+    paste(win, "owner/repo\nignored");
+    press(win, "Enter");
+    expect(await done).toBe("owner/repo");
   });
 
   it("Escape cancels with null and leaves the default unreturned (L669-673)", async () => {
