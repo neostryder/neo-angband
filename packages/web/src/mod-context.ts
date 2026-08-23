@@ -227,14 +227,19 @@ function installerFor(
 }
 
 /**
- * `ctx.reloadGame`: present on exactly the terms `ctx.installMod` is - the same
- * capability, the same latched door.
+ * `ctx.reloadGame`: present on either of the two capabilities that stage
+ * content a reload is needed to apply - `mod:install` and `mod:session` - on
+ * the same latched door both already use.
  *
- * THE SAME CAPABILITY ON PURPOSE, which is the one thing about this seam somebody
- * will want to change. Content composes at load, so an install a mod cannot follow
- * with a reload leaves the player holding something this process will never load;
- * and a mod with nothing to apply has no business reloading anybody's game. A
- * third capability string would put half an act on the consent list.
+ * BOTH CAPABILITIES ON PURPOSE, not just `mod:install` any more. Content
+ * composes at load, and that is true of a session stage exactly as it is of an
+ * install: a mod that calls `loadModForSession` and cannot follow it with a
+ * reload leaves the player holding a mod that will not be in the game until
+ * something reloads it. A mod with nothing staged either way has no business
+ * reloading anybody's game, which is what keeps this off every other
+ * capability. A third capability string for reload alone would still put half
+ * an act on the consent list - the fix for that is covering both staging
+ * capabilities here, not inventing one.
  *
  * THE SAME LATCH, NOT A SECOND ONE, for the reason `wizardFor` reads the debug
  * door rather than latching its own: a seam that cannot be forgotten beats a seam
@@ -243,7 +248,9 @@ function installerFor(
  */
 function reloadGameFor(session: ModSessionFacts): (() => Promise<void>) | undefined {
   if (session.reloadGame !== undefined) return session.reloadGame;
-  if (!session.capabilities?.has(INSTALL_CAPABILITY)) return undefined;
+  if (!session.capabilities?.has(INSTALL_CAPABILITY) && !session.capabilities?.has(SESSION_CAPABILITY)) {
+    return undefined;
+  }
   if (!installDoor) return undefined;
   return createModReload(installDoor);
 }
