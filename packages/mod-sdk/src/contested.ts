@@ -37,6 +37,7 @@
 export type ContestedLayer =
   | "record" // a content record's field
   | "graphics" // a grafID (a Graphics-menu row)
+  | "tiles" // the player-tile provider door
   | "behaviour" // a ModHooks member
   | "rule" // a player-facing flag name
   | "controller" // the single autoplayer slot
