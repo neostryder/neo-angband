@@ -41,6 +41,7 @@ import { menuClaimants } from "./menu-runtime";
 import { screenClaimants } from "./screen-runtime";
 import { activeModCode } from "./mod-code";
 import { enabledModHookContributions } from "./mod-hooks";
+import { tileRegistry } from "./tile-registry";
 import {
   discoverContentModManifests,
   enabledModIds,
@@ -63,6 +64,8 @@ export interface ConflictInputs {
   recordRows: readonly ConflictRow<RecordConflict | null>[];
   /** Every grafID every enabled tiles mod claims, losers included, in load order. */
   tileClaims: readonly { modId: string; grafID: number; menuname: string }[];
+  /** Mod-owned player-tile providers, in registration order. */
+  playerTileProviders: readonly string[];
   /** What each enabled mod's hooks factory returned, in load order. */
   hookContributions: readonly { id: string; hooks: ModHooks }[];
   /** Every rule flag every enabled mod declares, in load order. */
@@ -116,6 +119,22 @@ export function layerSlots(inputs: ConflictInputs): ContestedSlot[] {
         key: `graphics:${t.grafID}`,
         what: `the "${t.menuname}" graphics mode`,
         claim: { packId: t.modId } as Claim,
+      })),
+    ),
+  );
+
+  /* PLAYER TILE. TileRegistry.playerTile takes the first non-null answer in
+   * load order. Unlike fillers, which only write blanks and cannot undo each
+   * other, a later provider's answer is silently discarded when an earlier one
+   * answers. One tile is drawn per frame, so this is a single slot. */
+  slots.push(
+    ...contestedSlots(
+      "tiles",
+      "single-slot",
+      inputs.playerTileProviders.map((id) => ({
+        key: "player-tile",
+        what: "how the player's own tile is drawn",
+        claim: { packId: id } as Claim,
       })),
     ),
   );
@@ -355,6 +374,7 @@ export function liveConflictLines(): ConflictReportLines {
       grafID: t.grafID,
       menuname: t.menuname,
     })),
+    playerTileProviders: tileRegistry.playerProviderOwners,
     hookContributions: enabledModHookContributions(),
     ruleDecls: loadEnabledModRuleDecls().map((d) => ({ modId: d.modId, flag: d.rule.flag })),
     controllers: activeModCode()
