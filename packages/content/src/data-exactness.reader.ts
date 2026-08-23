@@ -39,14 +39,6 @@ export interface DirectiveDef {
    * key must be declared here so the coverage guard can see it.
    */
   readonly orderKey?: string;
-  /**
-   * Fold this directive's occurrences into ONE ordered array shared with
-   * every other directive naming the same key, each entry tagged
-   * `kind: <directive name>`, instead of a per-directive array. Mirrors
-   * records.ts's DirectiveDef.mergeInto exactly, so the independent re-parse
-   * produces the same shape the compiler does.
-   */
-  readonly mergeInto?: string;
 }
 
 export interface FileSpec {
@@ -326,7 +318,6 @@ class Container {
   fields: Array<[string, JsonPrimitive]> = [];
   children = new Map<string, Slot>();
   orderGroups = new Map<string, string[]>();
-  unions = new Map<string, JsonObject[]>();
 }
 
 interface CompiledDirective {
@@ -362,7 +353,7 @@ function makeValue(cd: CompiledDirective, values: Record<string, string | number
     node.fields.push(...entries);
     return node;
   }
-  if (cd.def.mergeInto === undefined && cd.sig.fields.length === 1) {
+  if (cd.sig.fields.length === 1) {
     const only = entries[0];
     return only === undefined ? true : only[1];
   }
@@ -375,19 +366,9 @@ function finalize(slot: Value, spec: FileSpec): JsonValue {
   if (!(slot instanceof Container)) return slot;
   const out: JsonObject = {};
   for (const [k, v] of slot.fields) out[k] = v;
-  // Emit children in registration order (upstream registration order). A
-  // mergeInto directive emits its shared array once, at the first directive
-  // that feeds it - mirrors records.ts's finalizeNode exactly.
-  const emittedUnions = new Set<string>();
+  // Emit children in registration order (upstream registration order).
   for (const def of spec.directives) {
     const directive = def.fmt.split(/\s+/, 1)[0]!;
-    if (def.mergeInto !== undefined) {
-      if (emittedUnions.has(def.mergeInto)) continue;
-      emittedUnions.add(def.mergeInto);
-      const list = slot.unions.get(def.mergeInto);
-      if (list !== undefined) out[def.mergeInto] = list.map((v) => ({ ...v }));
-      continue;
-    }
     const child = slot.children.get(directive);
     if (child === undefined) continue;
     out[directive] = Array.isArray(child)
@@ -460,18 +441,7 @@ export function independentCompile(text: string, spec: FileSpec): CompiledFile {
       if (best !== null) target = best.node;
     }
 
-    if (cd.def.mergeInto !== undefined) {
-      if (value instanceof Container) {
-        throw new Error(`${where}: mergeInto directive "${parsed.directive}" cannot be a container`);
-      }
-      const tagged: JsonObject =
-        typeof value === "object" && value !== null
-          ? { kind: parsed.directive, ...value }
-          : { kind: parsed.directive, value };
-      const list = target.unions.get(cd.def.mergeInto) ?? [];
-      list.push(tagged);
-      target.unions.set(cd.def.mergeInto, list);
-    } else if (cd.def.repeat === true) {
+    if (cd.def.repeat === true) {
       const existing = target.children.get(parsed.directive);
       const occurrence = Array.isArray(existing) ? existing.length : 0;
       if (existing === undefined) target.children.set(parsed.directive, [value]);

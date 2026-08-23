@@ -5,13 +5,15 @@ import {
   advanceDeterminism,
   coreOnlyManifest,
   migrateModBag,
+  mismatchedNamespaces,
   namespaceOf,
   orphanCount,
   orphanedNamespaces,
   quarantineSave,
+  reconcilePackManifest,
   rehydrateSave,
 } from "./save-blocks.js";
-import type { SaveManifest } from "./save-blocks.js";
+import type { SaveManifest, SavePackRef } from "./save-blocks.js";
 import { ENGINE_VERSION } from "../version.js";
 
 /* A manifest whose save was produced by core + a "frost" mod at 1.2.0. */
@@ -144,6 +146,96 @@ describe("orphanedNamespaces", () => {
   });
   it("never orphans core (its absence is an engine-incompat, not quarantine)", () => {
     expect(orphanedNamespaces(manifest, new Set(["frost"]))).toEqual([]);
+  });
+});
+
+/* issue #20: a pack that PATCHES a record (a session mod re-pricing a core
+ * sword) instead of only adding one leaves nothing for orphanedNamespaces to
+ * catch, because the record still resolves under its own, still-present
+ * namespace. mismatchedNamespaces is the sibling check: same manifest, but
+ * compared against the CURRENT content hash of each present pack. */
+describe("mismatchedNamespaces", () => {
+  const patched: SaveManifest = {
+    packs: [
+      { id: "core", version: "0.1.0" },
+      { id: "frost", version: "1.2.0", hash: "aaa" },
+    ],
+    loadOrder: ["core", "frost"],
+    determinism: "deterministic",
+    modNoscore: false,
+  };
+
+  it("reports a namespace whose recorded hash disagrees with its current one", () => {
+    const current: SavePackRef[] = [{ id: "frost", version: "1.2.0", hash: "bbb" }];
+    expect(mismatchedNamespaces(patched, current)).toEqual(["frost"]);
+  });
+
+  it("reports nothing when the current hash matches the recorded one", () => {
+    const current: SavePackRef[] = [{ id: "frost", version: "1.2.0", hash: "aaa" }];
+    expect(mismatchedNamespaces(patched, current)).toEqual([]);
+  });
+
+  it("reports nothing when the recorded manifest has no hash at all (an older save)", () => {
+    expect(mismatchedNamespaces(manifest, [{ id: "frost", version: "1.2.0", hash: "bbb" }])).toEqual([]);
+  });
+
+  it("reports nothing when the caller cannot measure the pack's current hash", () => {
+    /* Absent from currentPacks entirely - "not measured", not "unchanged". */
+    expect(mismatchedNamespaces(patched, [])).toEqual([]);
+    /* Present but with no hash of its own - same "not measured" answer. */
+    expect(mismatchedNamespaces(patched, [{ id: "frost", version: "1.2.0" }])).toEqual([]);
+  });
+
+  it("never reports core (core's own content differing is an engine-version question)", () => {
+    const coreHashed: SaveManifest = {
+      ...patched,
+      packs: [{ id: "core", version: "0.1.0", hash: "core-old" }, patched.packs[1]!],
+    };
+    const current: SavePackRef[] = [
+      { id: "core", version: "0.1.0", hash: "core-new" },
+      { id: "frost", version: "1.2.0", hash: "aaa" },
+    ];
+    expect(mismatchedNamespaces(coreHashed, current)).toEqual([]);
+  });
+});
+
+describe("reconcilePackManifest", () => {
+  const patched: SaveManifest = {
+    packs: [
+      { id: "core", version: "0.1.0" },
+      { id: "frost", version: "1.2.0", hash: "aaa" },
+    ],
+    loadOrder: ["core", "frost"],
+    determinism: "deterministic",
+    modNoscore: false,
+  };
+
+  it("replaces a present namespace's recorded entry with the current one", () => {
+    const current: SavePackRef[] = [{ id: "frost", version: "1.3.0", hash: "bbb" }];
+    const out = reconcilePackManifest(patched, current);
+    expect(out.packs).toEqual([
+      { id: "core", version: "0.1.0" },
+      { id: "frost", version: "1.3.0", hash: "bbb" },
+    ]);
+  });
+
+  it("leaves a namespace's recorded entry untouched when the caller supplies nothing for it", () => {
+    /* The "cannot measure this pack yet" case (a regular installed mod today) -
+     * behaves exactly as if reconcilePackManifest had never been called. */
+    const out = reconcilePackManifest(patched, []);
+    expect(out.packs).toEqual(patched.packs);
+  });
+
+  it("adds a newly-present namespace the manifest never recorded before", () => {
+    const current: SavePackRef[] = [{ id: "qol", version: "1.0.0", hash: "ccc" }];
+    const out = reconcilePackManifest(patched, current);
+    expect(out.packs).toEqual([...patched.packs, { id: "qol", version: "1.0.0", hash: "ccc" }]);
+  });
+
+  it("does not mutate either argument", () => {
+    const before = JSON.stringify(patched);
+    reconcilePackManifest(patched, [{ id: "frost", version: "1.3.0", hash: "bbb" }]);
+    expect(JSON.stringify(patched)).toBe(before);
   });
 });
 

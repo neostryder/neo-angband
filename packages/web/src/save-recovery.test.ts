@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { SaveFromFutureError } from "@rpgm-tools/neo-angband-core";
-import { describeLoadFailure, describeMigration } from "./save-recovery.js";
+import {
+  describeLoadFailure,
+  describeMigration,
+  describePackMismatch,
+} from "./save-recovery.js";
 
 /* The terminal is a fixed 80 columns and the message line shares it with
  * nothing, but a line that reaches the edge reads as a wall. 78 leaves room. */
@@ -54,5 +58,23 @@ describe("describeMigration", () => {
       notes: ["2 items referred to game data this build does not have."],
     });
     expect(line).toContain("2 items");
+  });
+});
+
+/* issue #20: a still-present pack's content no longer matches what this save
+ * was written with - a session mod that PATCHED a record rather than only
+ * adding one, so nothing was orphaned when it changed or the pack was
+ * dropped. */
+describe("describePackMismatch", () => {
+  it("names the mismatched pack", () => {
+    const line = describePackMismatch(["frost"]);
+    expect(line).toContain("frost");
+    expect(line.length).toBeLessThanOrEqual(MAX);
+  });
+
+  it("names every mismatched pack when there is more than one", () => {
+    const line = describePackMismatch(["frost", "bigmonsters"]);
+    expect(line).toContain("frost");
+    expect(line).toContain("bigmonsters");
   });
 });

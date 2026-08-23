@@ -91,3 +91,87 @@ describe("presentNamespaces feeds loadGame the reconciliation set (mid-game add/
     }
   });
 });
+
+/**
+ * presentPackDigests's web wiring (issue #20): the digest sibling of
+ * presentNamespaces above. loadGame's `currentPacks` option needs one
+ * `SavePackRef` per present pack this host can measure right now, so it can
+ * catch a pack that PATCHED a record instead of only adding one - a session
+ * mod's whole-archive digest (mod-session.ts's `SessionMod.digest`, already
+ * hashed once at staging time) is the one case this host can measure
+ * synchronously on the boot path today.
+ *
+ * Same node-environment caveat as above: no `sessionStorage` global exists
+ * here by default, so a fake one is stubbed in directly (a plain property
+ * assignment, not a storage API call, so it needs no try/catch) and always
+ * torn back down, mirroring session-composition.test.ts's own `store()` fake
+ * for the same reason (this file's SessionStorageLike shape).
+ */
+function fakeSessionStorage(): Storage {
+  const map = new Map<string, string>();
+  return {
+    getItem: (k: string) => map.get(k) ?? null,
+    setItem: (k: string, v: string) => void map.set(k, v),
+    removeItem: (k: string) => void map.delete(k),
+  } as Storage;
+}
+
+/** Write one staged-mod record in the exact shape sessionMods() reads back. */
+function stashSessionModRecord(mod: {
+  id: string;
+  version: string;
+  digest: string;
+}): void {
+  (globalThis as { sessionStorage: Storage }).sessionStorage.setItem(
+    "neo:sessionMods",
+    JSON.stringify({
+      v: 1,
+      mods: [{ ...mod, source: "draft.zip", code: false, granted: [], zip: "" }],
+    }),
+  );
+}
+
+describe("presentPackDigests feeds loadGame a session pack's already-hashed digest", () => {
+  it("returns nothing when no session pack is staged", async () => {
+    const { presentPackDigests } = await import("./pack");
+    expect(presentPackDigests()).toEqual([]);
+  });
+
+  it("reports a staged session pack's id/version/digest as a SavePackRef", async () => {
+    const original = (globalThis as { sessionStorage?: unknown }).sessionStorage;
+    (globalThis as { sessionStorage?: unknown }).sessionStorage = fakeSessionStorage();
+    try {
+      stashSessionModRecord({ id: "frost", version: "1.2.0", digest: "abc123" });
+      vi.resetModules();
+      const { presentPackDigests } = await import("./pack");
+      expect(presentPackDigests()).toEqual([
+        { id: "frost", version: "1.2.0", hash: "abc123" },
+      ]);
+    } finally {
+      if (original === undefined) {
+        delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+      } else {
+        (globalThis as { sessionStorage?: unknown }).sessionStorage = original;
+      }
+      vi.resetModules();
+    }
+  });
+
+  it("skips a staged pack whose digest could not be measured (empty string, not a hash of nothing)", async () => {
+    const original = (globalThis as { sessionStorage?: unknown }).sessionStorage;
+    (globalThis as { sessionStorage?: unknown }).sessionStorage = fakeSessionStorage();
+    try {
+      stashSessionModRecord({ id: "no-subtle", version: "1.0.0", digest: "" });
+      vi.resetModules();
+      const { presentPackDigests } = await import("./pack");
+      expect(presentPackDigests()).toEqual([]);
+    } finally {
+      if (original === undefined) {
+        delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+      } else {
+        (globalThis as { sessionStorage?: unknown }).sessionStorage = original;
+      }
+      vi.resetModules();
+    }
+  });
+});
