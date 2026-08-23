@@ -43,7 +43,7 @@ import {
   type DiskPack,
   type DiskPackReport,
 } from "./disk-packs";
-import { buildCatalog, resolveEnabledIds } from "./mod-store";
+import { buildCatalog, ModStore, resolveEnabledIds } from "./mod-store";
 import { createModSessionLoader } from "./install-runtime";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 
@@ -217,14 +217,91 @@ describe("staging an archive", () => {
 describe("the code asymmetry, which is the whole design", () => {
   it("the PLAYER's door takes an archive that ships code", async () => {
     const s = store();
+    const bytes = WITH_CODE();
+    const preview = await previewSessionArchive(bytes, scopeWith(s));
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
     const staged = await stageSessionMod(
-      { bytes: WITH_CODE(), source: "theirs.zip", granted: ["command:add"], allowed: true },
+      {
+        bytes,
+        source: "theirs.zip",
+        granted: ["command:add"],
+        grantedDigest: preview.digest,
+        allowed: true,
+      },
       scopeWith(s),
     );
     expect(staged.ok).toBe(true);
     if (!staged.ok) return;
     expect(staged.code).toBe(true);
     expect(staged.mod.granted).toEqual(["command:add"]);
+  });
+
+  it("requires a fresh grant when re-staging changes the archive digest", async () => {
+    const s = store();
+    const scope = scopeWith(s);
+    const firstBytes = WITH_CODE();
+    const firstPreview = await previewSessionArchive(firstBytes, scope);
+    expect(firstPreview.ok).toBe(true);
+    if (!firstPreview.ok) return;
+
+    const first = await stageSessionMod(
+      {
+        bytes: firstBytes,
+        source: "draft.zip",
+        granted: ["command:add"],
+        grantedDigest: firstPreview.digest,
+        allowed: true,
+      },
+      scope,
+    );
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    await loadSessionMods(scope);
+    expect(new ModStore(null).getConsent("draft")).toEqual(["command:add"]);
+
+    const changedBytes = archive({
+      "manifest.json": manifest({
+        facets: ["content", "plugin"],
+        shape: "plugin",
+        capabilities: ["command:add"],
+      }),
+      "monster.json": "[]",
+      "plugin.js": "export default { api: 1, hooks: () => ({ changed: true }) };",
+    });
+    const changedPreview = await previewSessionArchive(changedBytes, scope);
+    expect(changedPreview.ok).toBe(true);
+    if (!changedPreview.ok) return;
+
+    const restaged = await stageSessionMod(
+      {
+        bytes: changedBytes,
+        source: "draft.zip",
+        granted: first.mod.granted,
+        grantedDigest: first.mod.digest,
+        allowed: true,
+      },
+      scope,
+    );
+    expect(restaged.ok).toBe(true);
+    if (!restaged.ok) return;
+    expect(restaged.mod.digest).not.toBe(first.mod.digest);
+    await loadSessionMods(scope);
+    expect(new ModStore(null).getConsent("draft")).toEqual([]);
+
+    const approvedAgain = await stageSessionMod(
+      {
+        bytes: changedBytes,
+        source: "draft.zip",
+        granted: ["command:add"],
+        grantedDigest: changedPreview.digest,
+        allowed: true,
+      },
+      scope,
+    );
+    expect(approvedAgain.ok).toBe(true);
+    await loadSessionMods(scope);
+    expect(new ModStore(null).getConsent("draft")).toEqual(["command:add"]);
   });
 
   it("the MOD's door refuses one, and names the file", async () => {
