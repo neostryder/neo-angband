@@ -76,7 +76,7 @@ write down at all.
 | **Replace the UI**: the HUD, the status line, the message area, menu presentation, the ~50 full screens | **Not yet** | gap 21 |
 | Own a HUD region (messages, vitals, status) with core drawing the ones you do not claim, or **create a region of your own**: ordered, overlapping, transparent, composited, and owning pointer input on the cells it paints | **WIP** | gap 21 |
 | Retitle, regroup, reorder, re-tag or rebind an existing web keypress command (`registry:menu`); the command's closure stays shell-private | **Complete** | `MOD_REACH.md` row 23 |
-| Rename one of your own rule flags without losing the player's saved choice (`renamedRuleFlags`) | **Complete** | `AUTHORING.md` |
+| Rename one of your own rule flags or sections without losing the player's saved choice (`renamedRuleFlags`, `renamedSectionFlags`) | **Complete** | `AUTHORING.md` |
 | Rebind keys, or add a gamepad: `input-door.ts` is host infrastructure, not a seam | **Not yet** | `MOD_SEAMS.md` |
 | Change the message table, the `MSG_`->sound map, or the pref-file handlers | **Complete** | `MOD_REACH.md` rows 20, 21, 8 |
 | Change the monster spell table or the command table | **Not yet** | `MOD_REACH.md` rows 22, 19 |

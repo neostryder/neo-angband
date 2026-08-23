@@ -37,6 +37,10 @@ version it still calls itself.
 ## [Unreleased]
 
 ### Added
+- Mod authors can now put `renamedSectionFlags` on a `PackSection` to preserve
+  a player's explicit on/off decision when a section is renamed or when a rule
+  becomes a section to gate content. The host imports the first matching legacy
+  rule or section choice before applying the section default.
 - A save's manifest now records the content digest of every present pack.
   Loading warns when a still-present pack's digest no longer matches what the
   save was written with, catching a session-only mod that patched a core

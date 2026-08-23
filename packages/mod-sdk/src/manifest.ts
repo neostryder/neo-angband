@@ -161,6 +161,13 @@ export interface PackSection {
    * flag string its code already reads. Defaults to `id`.
    */
   flag?: string;
+  /**
+   * Flags this section used to be known by. The host moves the first matching
+   * saved rule or section choice here when this section has no choice of its
+   * own, so changing a rule into a content-carrying section does not reset the
+   * player's deliberate on/off decision.
+   */
+  renamedSectionFlags?: string[];
 }
 
 /**
@@ -831,6 +838,7 @@ function validateSections(
         `manifest ${id}: section ${sid} flag must be a non-empty string`,
       );
     }
+    validateRenamedSectionFlags(s["renamedSectionFlags"], id, sid);
     const flag = (s["flag"] as string | undefined) ?? sid;
     if (flags.has(flag)) {
       /* Names the OTHER declaration, because "duplicate flag" alone sends an
@@ -843,6 +851,33 @@ function validateSections(
     flags.add(flag);
   }
   return ids;
+}
+
+/**
+ * Validate the optional retired-flag list on one current section. Unlike
+ * `renamedRuleFlags`, the destination is inherent in the containing section,
+ * and every source may have been either a rule or a section (including this
+ * section's current flag during a rule-to-section migration).
+ */
+function validateRenamedSectionFlags(value: unknown, id: string, sectionId: string): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    throw new ManifestError(`manifest ${id}: section ${sectionId} renamedSectionFlags must be an array`);
+  }
+  const seen = new Set<string>();
+  for (const oldFlag of value) {
+    if (typeof oldFlag !== "string" || oldFlag.length === 0) {
+      throw new ManifestError(
+        `manifest ${id}: section ${sectionId} renamedSectionFlags entries must be non-empty strings`,
+      );
+    }
+    if (seen.has(oldFlag)) {
+      throw new ManifestError(
+        `manifest ${id}: section ${sectionId} renamedSectionFlags repeats ${oldFlag}`,
+      );
+    }
+    seen.add(oldFlag);
+  }
 }
 
 /** Validate the optional `group` field against PACK_GROUPS. */

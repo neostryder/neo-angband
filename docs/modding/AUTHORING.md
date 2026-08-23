@@ -572,6 +572,39 @@ old entries are then consumed, so loading again changes nothing.
 
 ---
 
+## Renaming a section or turning a rule into a section
+
+Sections persist their choices separately from rules, under the owning mod and
+the section's `id`. If you rename a section, or promote a `rules[]` entry into a
+section so it can gate content, put its old names in the new section's
+`renamedSectionFlags` list:
+
+```json
+"sections": [
+  {
+    "id": "text-corrections",
+    "title": "Text corrections",
+    "flag": "bugfix.textAndHistory",
+    "renamedSectionFlags": ["bugfix.textAndHistory", "old-text-corrections"]
+  }
+]
+```
+
+Each name may find either a retired rule choice or a retired section choice. For
+a previous section using its default flag, that name is its old `id`, which is
+also the key the host stored; a previous section with a custom `flag` still uses
+its old `id` for this purpose. Listing the current `flag` is valid and is how a
+rule that became a section under the same name preserves its existing choice.
+
+An explicit choice already stored for the current section wins. Otherwise the
+host checks `renamedSectionFlags` in list order and copies the first matching
+choice into the current section; if both stores happen to carry the same old
+name, the old section choice wins. It consumes retired entries afterwards, so a
+later load is unchanged. With no current or retired choice, the section uses its
+declared `default` as usual.
+
+---
+
 ## Front-end groundwork
 
 The host draws through a renderer-neutral `GridSurface`, and its existing canvas

@@ -50,6 +50,35 @@ describe("sections", () => {
     ).not.toThrow();
   });
 
+  it("accepts retired rule or section names on the current section", () => {
+    expect(
+      validateManifest(
+        manifest({
+          sections: [
+            {
+              id: "text-corrections",
+              title: "Text corrections",
+              flag: "bugfix.textAndHistory",
+              /* The self-name is deliberate: this used to be a rule and is
+               * now a section with the same hook flag. */
+              renamedSectionFlags: ["bugfix.textAndHistory", "old-text-section"],
+            },
+          ],
+        }),
+      ).sections?.[0]?.renamedSectionFlags,
+    ).toEqual(["bugfix.textAndHistory", "old-text-section"]);
+  });
+
+  it("refuses malformed or repeated retired section names", () => {
+    const section = (renamedSectionFlags: unknown): Record<string, unknown> =>
+      manifest({ sections: [{ id: "text", title: "Text", renamedSectionFlags }] });
+    expect(() => validateManifest(section("old-text"))).toThrow(/must be an array/);
+    expect(() => validateManifest(section([""]))).toThrow(/non-empty strings/);
+    expect(() => validateManifest(section(["old-text", "old-text"]))).toThrow(
+      /repeats old-text/,
+    );
+  });
+
   it("refuses a section id that is not kebab-case, naming what it got", () => {
     const why = refusal(() =>
       validateManifest(manifest({ sections: [{ id: "Kobold_Rebalance", title: "x" }] })),

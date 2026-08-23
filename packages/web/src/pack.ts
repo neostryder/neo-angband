@@ -655,12 +655,7 @@ function composition(): Composition {
 function sectionChoiceTable(
   manifests: readonly PackManifest[],
 ): Record<string, Record<string, boolean>> {
-  let choices: Record<string, Record<string, boolean>> = {};
-  try {
-    choices = defaultModStore().getSectionChoices();
-  } catch {
-    choices = {};
-  }
+  const choices = migratedSectionChoices(manifests);
   const resolved = resolveSectionState(
     manifests,
     choices,
@@ -672,6 +667,19 @@ function sectionChoiceTable(
     out[modId] = Object.fromEntries(table);
   }
   return out;
+}
+
+/** Read saved section choices after importing any retired rule/section names. */
+function migratedSectionChoices(
+  manifests: readonly PackManifest[],
+): Record<string, Record<string, boolean>> {
+  try {
+    const store = defaultModStore();
+    store.migrateSectionChoices(manifests);
+    return store.getSectionChoices();
+  } catch {
+    return {};
+  }
 }
 
 /** Forget the composition, so a test can compose again over different inputs. */
@@ -959,12 +967,7 @@ export function loadEnabledModSectionFlags(): Map<string, Record<string, boolean
     const mod = mods.get(id);
     if (mod) manifests.push(modManifest(mod.manifest));
   }
-  let choices: Record<string, Record<string, boolean>> = {};
-  try {
-    choices = defaultModStore().getSectionChoices();
-  } catch {
-    choices = {};
-  }
+  const choices = migratedSectionChoices(manifests);
   const resolved = resolveSectionState(
     manifests,
     choices,
