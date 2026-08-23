@@ -57,8 +57,8 @@ const REPO_CONFIG = {
     color: 0x27ae60,
     kind: "mod",
   },
-  "neo-angband-mod-builder": {
-    title: "Mod Builder",
+  "neo-angband-mod-forge": {
+    title: "ModForge",
     emoji: "\u{1F9F0}", // toolbox
     color: 0x607d8b,
     kind: "mod",
