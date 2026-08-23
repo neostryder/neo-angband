@@ -36,6 +36,28 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-08-23
+
+### Added
+- The mod conflict report now includes a row for two or more mods that both
+  provide the player's own tile. `TileRegistry.playerTile` already took the
+  first non-null answer in load order; a later provider's opinion was
+  silently discarded with nothing to show for it, unlike every other
+  contested slot the report already covers.
+
+### Changed
+- Mod sizes now display as their exact byte count instead of a KiB/MiB
+  approximation. Every size in the pipeline was already measured exactly;
+  only the display step was rounding it.
+
+### Fixed
+- Text-entry prompts (including the mod install "Repository" prompt) now
+  accept a pasted value, and no longer insert a character typed while
+  composing text through an IME.
+- A session-only mod's consent now refreshes when a re-staged draft changes
+  the archive's bytes, instead of carrying the original consent across the
+  edit.
+
 ## [0.29.0] - 2026-08-23
 
 ### Added
@@ -542,7 +564,7 @@ instead of a curated subset that had drifted from it.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.29.0` - a features release for mod
+Current state of the project at version `0.30.0` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again
