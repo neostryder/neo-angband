@@ -435,7 +435,7 @@ mod would reach through records, not code.
 | 27 | ~~`project_p` player side effects~~ **now `PLAYER_SIDE_HANDLERS`** (was 21) | **yes**: the SAME registry, third side |
 | 28 | `tval`: 34 class predicates + `kindIsGood` + `objectValueBase` + the base NAME | **yes** (`registry:tval`, 2026-08-09) |
 | 8a | `message_type` records -> sound samples (the content-pack door) | **yes** (2026-08-14): samples now bind on the `already` and `refused` paths too, so a pack with no `plugin.js` can re-point MSG_HIT |
-| - | A mod RENAMES one of its own rule flags without silently losing the player's saved choice | **yes** (#280, 2026-08-14): declare `renamedRuleFlags` as retired flag -> current declared rule; the host rewrites its own rule-choice store when it loads the enabled mod, OR-folding many retired flags into one current flag. LISTED, not counted: it is a host/mod-state seam, not a dispatch point, so counting it would inflate the denominator this table exists to measure |
+| - | A mod RENAMES one of its own rule flags or sections without silently losing the player's saved choice | **yes** (#280, 2026-08-14): declare `renamedRuleFlags` as retired flag -> current declared rule, or put `renamedSectionFlags` on the current section; the host consumes old choices when it loads the enabled mod. Rule merges OR-fold their sources; section migrations take the first listed explicit source. LISTED, not counted: it is a host/mod-state seam, not a dispatch point, so counting it would inflate the denominator this table exists to measure |
 
 **Row 23 closed through the EXISTING menu registry, not a second input
 registry** (2026-08-14). `commandTable()` keeps the memoised shell rows and

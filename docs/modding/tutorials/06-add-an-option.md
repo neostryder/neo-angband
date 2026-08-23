@@ -115,9 +115,9 @@ and reload**, and gain a level.
 - Add a **second** option, controlling something else, and see both appear.
 - Make one **default on** and notice how differently the mod feels to install.
   Then decide whether you were right.
-- Rename a flag and read about `renamedRuleFlags` in
-  [AUTHORING.md](../AUTHORING.md), since there is a supported way to rename one
-  without losing everyone's saved choice.
+- Rename a rule flag or a section and read about `renamedRuleFlags` and
+  `renamedSectionFlags` in [AUTHORING.md](../AUTHORING.md), since there is a
+  supported way to do either without losing everyone's saved choice.
 
 ## The finished version
 

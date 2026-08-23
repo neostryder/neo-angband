@@ -643,6 +643,61 @@ export class ModStore {
     writeJson(this.storage, SECTION_CHOICES_KEY, all);
   }
 
+  /**
+   * Consume retired flag choices declared by current sections. A choice already
+   * stored for the current section wins; otherwise the first legacy name with a
+   * choice, in manifest order, seeds it. A legacy section choice wins over a
+   * legacy rule choice with the same name because it is already in this mod's
+   * section store. Every consumed source is removed, so loading again is a
+   * no-op just like migrateRuleChoices.
+   */
+  migrateSectionChoices(
+    manifests: readonly Pick<PackManifest, "id" | "sections">[],
+  ): void {
+    const sections = this.getSectionChoices();
+    const rules = this.getRuleChoices();
+    let sectionsChanged = false;
+    let rulesChanged = false;
+
+    for (const manifest of manifests) {
+      let sectionChoices = sections[manifest.id];
+      for (const section of manifest.sections ?? []) {
+        let hasCurrentChoice = sectionChoices?.[section.id] !== undefined;
+        for (const oldFlag of section.renamedSectionFlags ?? []) {
+          const oldSectionChoice = sectionChoices?.[oldFlag];
+          const oldRuleChoice = rules[oldFlag];
+          const oldChoice = oldSectionChoice ?? oldRuleChoice;
+          if (oldChoice === undefined) continue;
+
+          if (!hasCurrentChoice) {
+            if (!sectionChoices) {
+              sectionChoices = {};
+              sections[manifest.id] = sectionChoices;
+            }
+            sectionChoices[section.id] = oldChoice;
+            sectionsChanged = true;
+            hasCurrentChoice = true;
+          }
+
+          /* A section may list its own current flag to consume an old RULE
+           * choice after a rule-to-section conversion. Its own section choice
+           * is the destination, not a retired source, so leave that one alone. */
+          if (oldSectionChoice !== undefined && oldFlag !== section.id) {
+            delete sectionChoices![oldFlag];
+            sectionsChanged = true;
+          }
+          if (oldRuleChoice !== undefined) {
+            delete rules[oldFlag];
+            rulesChanged = true;
+          }
+        }
+      }
+    }
+
+    if (sectionsChanged) writeJson(this.storage, SECTION_CHOICES_KEY, sections);
+    if (rulesChanged) writeJson(this.storage, RULE_CHOICES_KEY, rules);
+  }
+
   /* --- Consent ------------------------------------------------------- */
 
   getConsents(): Record<string, string[]> {
