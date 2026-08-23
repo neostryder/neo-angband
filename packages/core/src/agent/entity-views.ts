@@ -13,7 +13,12 @@
  * (perceive and loadout both depend on this; neither depends on the other).
  */
 
-import { ELEMENT_ENTRIES, OBJECT_FLAG_ENTRIES, TMD } from "../generated/index.js";
+import {
+  ELEMENT_ENTRIES,
+  OBJECT_FLAG_ENTRIES,
+  PLAYER_FLAG_ENTRIES,
+  TMD,
+} from "../generated/index.js";
 import type { FlagSet } from "../bitflag.js";
 import type { GameState } from "../game/context.js";
 import type { GameObject } from "../obj/object.js";
@@ -28,6 +33,20 @@ export function ofCodes(flags: FlagSet): string[] {
   const out: string[] = [];
   for (const f of flags) {
     const entry = OBJECT_FLAG_ENTRIES[f - 1];
+    if (entry) out.push(entry.name);
+  }
+  return out;
+}
+
+/**
+ * PF_* codes for the set flags in a player-flag FlagSet (PF is 0-indexed: PF_NONE
+ * is entry 0 and never set, since bitflag iteration starts at FLAG_START = 1, so
+ * no "-1" offset is needed here the way ofCodes needs one for OF_*).
+ */
+export function pfCodes(flags: FlagSet): string[] {
+  const out: string[] = [];
+  for (const f of flags) {
+    const entry = PLAYER_FLAG_ENTRIES[f];
     if (entry) out.push(entry.name);
   }
   return out;
@@ -213,6 +232,7 @@ export function playerViewFor(
     skills: [...p.skills],
     shape: p.shape?.name ?? null,
     objectFlags: playerState ? ofCodes(playerState.flags) : [],
+    classFlags: pfCodes(p.cls.pflags),
     seeInfra: playerState?.seeInfra ?? p.race.infravision,
     blows: combat.numBlows,
     shots: combat.numShots,

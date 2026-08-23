@@ -44,6 +44,13 @@ version it still calls itself.
   entirely, even though nothing was orphaned. Only session mods are measured
   today; a regular installed mod's digest is a documented follow-up
   (docs/modding/MOD_SEAMS.md section 4d).
+- **The agent view can answer "does this player's class have flag X."**
+  `PlayerView.classFlags` reports the PF_* codes on the player class's own flag
+  set (class.txt's `player-flags:` lines) - COMBAT_REGEN for a Blackguard, ZERO_FAIL
+  for a Mage, and so on. The view already carried equipment-derived object flags
+  and derived skills, but nothing that read the class definition itself, so a mod
+  asking a class-flag question had no seam to ask it through. A new field on an
+  existing view rather than a new accessor, so the agent API is now 1.3.0.
 
 ### Fixed
 - **`flavor.txt`'s `fixed:`/`flavor:` order is now recoverable from the
