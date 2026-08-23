@@ -32,6 +32,18 @@ export interface DirectiveDef {
   /** Preserve encounter order for a cross-directive repeated list. */
   readonly orderKey?: string;
   /**
+   * Fold this directive's occurrences into ONE ordered array shared with
+   * every other directive naming the same key, each entry tagged with
+   * `kind: <directive name>` ahead of its own fields, instead of the
+   * per-directive array `repeat` would produce. Where `orderKey` keeps the
+   * split arrays and adds a third pointer array recording their true
+   * interleaving (monster.txt's drop/drop-base), `mergeInto` skips the
+   * split arrays entirely: there is one list, and it already IS the file's
+   * line order. Prefer this for a fresh cross-directive group; `orderKey`
+   * exists for the shape existing consumers already depend on.
+   */
+  readonly mergeInto?: string;
+  /**
    * Reject a repeated occurrence.  This models the two upstream handlers
    * that explicitly test already-initialized state: parse_feat_name
    * (init.c:2059-2060) and parse_class_magic (init.c:3714-3716).
@@ -90,6 +102,8 @@ class Node {
   readonly fields: Array<readonly [string, JsonPrimitive]> = [];
   readonly children = new Map<string, Slot>();
   readonly orderGroups = new Map<string, string[]>();
+  /** mergeInto key -> tagged entries, already in file encounter order. */
+  readonly unions = new Map<string, JsonObject[]>();
 }
 
 type Value = JsonPrimitive | JsonObject | Node;
@@ -142,7 +156,7 @@ function makeValue(cd: CompiledDirective, values: Readonly<Record<string, string
     node.fields.push(...entries);
     return node;
   }
-  if (cd.sig.fields.length === 1) {
+  if (cd.def.mergeInto === undefined && cd.sig.fields.length === 1) {
     const only = entries[0];
     /* A lone optional field that is absent leaves a bare presence marker. */
     return only === undefined ? true : only[1];
@@ -167,10 +181,24 @@ function finalizeNode(
   for (const [k, v] of node.fields) {
     out[k] = v;
   }
-  /* Emit child directives in spec (upstream registration) order. */
+  /* Emit child directives in spec (upstream registration) order. A mergeInto
+   * directive emits its shared array once, at the position of the FIRST
+   * spec-declared directive that feeds it. */
+  const emittedUnions = new Set<string>();
   for (const def of spec.directives) {
     const directive = def.fmt.split(" ", 1)[0];
     if (directive === undefined) {
+      continue;
+    }
+    if (def.mergeInto !== undefined) {
+      if (emittedUnions.has(def.mergeInto)) {
+        continue;
+      }
+      emittedUnions.add(def.mergeInto);
+      const list = node.unions.get(def.mergeInto);
+      if (list !== undefined) {
+        out[def.mergeInto] = list.map((v) => ({ ...v }));
+      }
       continue;
     }
     const slot = node.children.get(directive);
@@ -293,7 +321,20 @@ export function compileGamedata(text: string, spec: FileSpec): CompiledFile {
       throw new Error(`${where}: ${validation}: rejected by upstream handler`);
     }
 
-    if (cd.def.repeat === true) {
+    if (cd.def.mergeInto !== undefined) {
+      if (value instanceof Node) {
+        throw new Error(
+          `${where}: mergeInto directive "${parsed.directive}" cannot be a container`,
+        );
+      }
+      const tagged: JsonObject =
+        typeof value === "object" && value !== null
+          ? { kind: parsed.directive, ...value }
+          : { kind: parsed.directive, value };
+      const list = target.unions.get(cd.def.mergeInto) ?? [];
+      list.push(tagged);
+      target.unions.set(cd.def.mergeInto, list);
+    } else if (cd.def.repeat === true) {
       const slot = target.children.get(parsed.directive);
       const occurrence = slot === undefined ? 0 : Array.isArray(slot) ? slot.length : 0;
       if (slot === undefined) {
