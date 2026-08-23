@@ -7,6 +7,7 @@
     { "repo": "neostryder/neo-angband-mod-bug-fixes" },
     { "repo": "neostryder/neo-angband-mod-linoleum" },
     { "repo": "neostryder/neo-angband-mod-borg" },
-    { "repo": "neostryder/neo-angband-mod-feature-restoration" }
+    { "repo": "neostryder/neo-angband-mod-feature-restoration" },
+    { "repo": "neostryder/neo-angband-mod-forge" }
   ]
 }
