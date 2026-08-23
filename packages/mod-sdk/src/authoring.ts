@@ -587,9 +587,8 @@ function flavourPressure(all: Readonly<Record<string, readonly JsonRecord[]>>): 
   for (const record of all["flavor"] ?? []) {
     const tval = valuesAtPath(record, "kind.tval").map(String)[0];
     if (tval === undefined) continue;
-    const flavours = Array.isArray(record["flavor"]) ? record["flavor"].length : 0;
-    const fixed = Array.isArray(record["fixed"]) ? record["fixed"].length : 0;
-    supply.set(tval, (supply.get(tval) ?? 0) + flavours + fixed);
+    const entries = Array.isArray(record["entries"]) ? record["entries"].length : 0;
+    supply.set(tval, (supply.get(tval) ?? 0) + entries);
   }
   const demand = new Map<string, number>();
   for (const record of all["object"] ?? []) {
