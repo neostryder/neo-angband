@@ -11,7 +11,7 @@ anywhere and so you can change it without forking it.
 - **Add mods** when you want something different.
 - **Make your own mods** without maintaining a fork of Angband.
 
-> ### Want to make a mod? [Start here.](docs/modding/tutorials/README.md)
+> ## Want to make a mod? [Start here.](docs/modding/tutorials/README.md)
 >
 > Never made one before? That is fine. The first tutorial takes about five
 > minutes, needs nothing but a text editor, and changes the game.
@@ -129,7 +129,7 @@ tell whether they were playing the same thing.
 
 ### Making one
 
-**[Start with the tutorials.](docs/modding/tutorials/README.md)** Six of them,
+**[Start with the tutorials.](docs/modding/tutorials/README.md)** Seven of them,
 each teaching one idea and ending with something you can see on screen. The first
 is two files and about twenty lines.
 
@@ -211,13 +211,21 @@ rpgm.tools**. [SECURITY.md](SECURITY.md) says what is worth reporting.
 
 | | |
 | --- | --- |
+| [Every doc, indexed](docs/README.md) | The full documentation hub, organized by task |
 | [Make a mod](docs/modding/tutorials/README.md) | Seven short tutorials, start to finish |
 | [How modding works](docs/MODS.md) | The design, and what a mod can reach |
 | [Modding reference](docs/modding/README.md) | Pack anatomy, records, plugins, the measured capability table |
 | [Feature restoration](docs/modding/FEATURE_RESTORATION.md) | Bringing back what Angband dropped, without changing vanilla |
+| [The Borg as a mod](docs/BORG_AS_MOD.md) | Why the autoplayer ships outside core, and its build order |
+| [Linoleum tile packs](docs/LINOLEUM.md) | The loose-pack tile format, the converter, and tileset licensing |
 | [How faithful is the port?](docs/PARITY.md) | The methodology, in full |
 | [Installing and playing](docs/INSTALL.md) | Every platform, every install method |
+| [Logs and problem reports](docs/LOGGING.md) | What is logged, where, and what is never uploaded |
 | [Architecture](docs/ARCHITECTURE.md) | How the engine is put together |
+| [Port plan](docs/PORT_PLAN.md) | The ratified governing decisions and phase plan |
+| [Planned, not yet implemented](docs/PLANNED.md) | Open work, each item tied to a GitHub issue |
+| [Releasing](docs/RELEASING.md) | The npm, tag, and mod-repository release runbook |
+| [The working record](docs/WORKING_RECORD.md) | Why some code comments cite documents outside this tree |
 | [Contributing](CONTRIBUTING.md) | Setup, the faithfulness rules, how a fix proves itself |
 | [AI use and accountability](AI_USAGE_POLICY.md) | What AI tooling was used for, what it was not, and how contributions are judged |
 

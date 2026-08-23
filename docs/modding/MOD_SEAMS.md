@@ -805,7 +805,7 @@ Four things about it:
   index is a fact about a registry, and the registry moved when another mod was
   enabled.
 
-### 4d. `ctx.wizard`: the whole debug set, on a session that is not being saved
+## 4f. `ctx.wizard`: the whole debug set, on a session that is not being saved
 
 `debug:wizard`. Everything `^A` can do, driven from a mod's own screen instead of
 from a text menu, and priced differently from `debug:spawn` in a way that is worth

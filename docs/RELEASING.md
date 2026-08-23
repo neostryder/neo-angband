@@ -687,8 +687,8 @@ import monsters from "@rpgm-tools/neo-angband-content/pack/monster.json" with { 
   `plugin.js` a mod folder distributes, and enforces the plugin ABI while doing it.
 - **The mods themselves**: see above. Every mod repository's manifest is
   `private: true` - `neo-angband-mod-qol`, `-bug-fixes`, `-feature-restoration`,
-  `-linoleum` and `-borg` - and stays that way. Publishing one would create a
-  second way to obtain a mod that nothing in the game checks.
+  `-linoleum`, `-borg` and `-forge` - and stays that way. Publishing one would
+  create a second way to obtain a mod that nothing in the game checks.
 - **`@rpgm-tools/neo-angband-linoleum`**: the tile-pack build tools. Their output
   ships as a mod; the tools that produce it have no consumer outside this
   repository.

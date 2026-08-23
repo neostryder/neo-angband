@@ -116,7 +116,8 @@ game stays faithful; anything that adds or changes behavior ships as a **mod**.
   (conveniences), `bug-fixes` (opt-in fixes for 4.2.6's own defects),
   `feature-restoration` (features later Angband versions dropped, brought back
   as toggles), `neo-linoleum` (an alternative tile engine and six converted tile
-  packs), and `borg` (the autoplayer).
+  packs), `borg` (the autoplayer), and `forge` (an in-game workshop for building
+  other mods).
 - **No mod is bundled into the build.** `mods/registry.json` names mod
   repositories and nothing else; every fact about a mod - its id, version,
   payload and the engine range it supports - comes from that repository's own
