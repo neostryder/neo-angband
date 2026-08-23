@@ -32,6 +32,16 @@ describe("resolveKey: original keyset (numpad + arrows), always active", () => {
     expect(resolveKey(key("ArrowDown"))).toEqual({ kind: "walk", dir: 2 });
   });
 
+  it("walks diagonally on the numpad diagonals with NumLock off (#61)", () => {
+    // 7/9/1/3 report as Home/PageUp/End/PageDown instead of digits when
+    // NumLock is off; the four orthogonals need no such case since 8/2/4/6
+    // already coincide with the Arrow* names above.
+    expect(resolveKey(key("Home"))).toEqual({ kind: "walk", dir: 7 });
+    expect(resolveKey(key("PageUp"))).toEqual({ kind: "walk", dir: 9 });
+    expect(resolveKey(key("End"))).toEqual({ kind: "walk", dir: 1 });
+    expect(resolveKey(key("PageDown"))).toEqual({ kind: "walk", dir: 3 });
+  });
+
   it("ignores any key held with a modifier (ctrl/alt/meta)", () => {
     expect(resolveKey(key("6", { ctrlKey: true }))).toBeNull();
     expect(resolveKey(key("ArrowLeft", { altKey: true }))).toBeNull();
