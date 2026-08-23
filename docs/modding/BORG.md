@@ -41,10 +41,10 @@ Three steps, and the third is separate from the second on purpose.
 3. **Hand it the keyboard.** On the Borg's own screen, switch on **Let the Borg
    play** (`borg.autoplay`, off by default). It takes over from the next turn.
 
-Beyond that one switch, the same screen carries eight further toggles mapped to
+Beyond that one switch, the same screen carries nine further toggles mapped to
 upstream's `borg_cfg[]` settings, covering risk tolerance and the five
 gear-weighting priorities among others, each defaulting to upstream's own
-value. The mod's own README lists all eight and what each one changes.
+value. The mod's own README lists all nine and what each one changes.
 
 Installing a mod and giving away the keyboard are different decisions, which is
 why they are different switches. Only one autoplayer can hold the keyboard at a
@@ -52,9 +52,10 @@ time: if a second mod also declares a controller, the host refuses it by name an
 says which one is already playing.
 
 Once the Borg holds the keyboard, its own Fixes & tweaks screen (Mods -> The
-Borg) grows an **Autoplayer speed** row beside `borg.autoplay`: Fast, Normal
-or Slow, matching the debug agent seam's own tiers below. It takes effect at
-once, no reload.
+Borg) grows an **Autoplayer speed** row beside `borg.autoplay`: Turbo, Fast,
+Normal or Slow. Fast, Normal and Slow match the debug agent seam's own tiers
+below; Turbo (10ms) has no named equivalent there. It takes effect at once, no
+reload.
 
 It plays the same on every surface - browser, PWA, static self-host, desktop -
 because it arrives by the same route on all of them.
