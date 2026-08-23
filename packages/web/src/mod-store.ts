@@ -164,9 +164,14 @@ export function isShippedMod(id: string, dev = import.meta.env.DEV): boolean {
  *
  * `linoleum` -> `neo-linoleum` (2026-07-31): the mod always DISPLAYED as
  * neo-linoleum; the id, its folder and the docs had not caught up.
+ *
+ * `builder` -> `forge` (2026-08-22): the mod-builder repository was renamed to
+ * neo-angband-mod-forge and its display name to ModForge; the manifest id
+ * follows so it no longer names a discarded display name.
  */
 export const RENAMED_MOD_IDS: Readonly<Record<string, string>> = {
   linoleum: "neo-linoleum",
+  builder: "forge",
 };
 
 /**
