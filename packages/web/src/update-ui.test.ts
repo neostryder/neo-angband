@@ -143,7 +143,7 @@ describe("while it downloads", () => {
 
   it("shows a bar, a size and a percentage", () => {
     const t = text(going);
-    expect(t).toContain("50.0 MB of 160 MB");
+    expect(t).toContain("52,428,800 Bytes of 167,772,160 Bytes");
     expect(t).toContain("31%");
     expect(t).toMatch(/\[=+ +\]/u);
   });
@@ -326,11 +326,11 @@ describe("channels on the screen", () => {
 });
 
 describe("the arithmetic", () => {
-  it("reads sizes the way a download dialog does", () => {
-    expect(humanBytes(0)).toBe("0 B");
-    expect(humanBytes(2048)).toBe("2 KB");
-    expect(humanBytes(1.5 * 1024 * 1024)).toBe("1.5 MB");
-    expect(humanBytes(162343507)).toBe("155 MB");
+  it("reads sizes as a terminal would - the exact byte count, comma-grouped", () => {
+    expect(humanBytes(0)).toBe("0 Bytes");
+    expect(humanBytes(2048)).toBe("2,048 Bytes");
+    expect(humanBytes(1.5 * 1024 * 1024)).toBe("1,572,864 Bytes");
+    expect(humanBytes(162343507)).toBe("162,343,507 Bytes");
     expect(humanBytes(-1)).toBe("?");
     expect(humanBytes(Number.NaN)).toBe("?");
   });

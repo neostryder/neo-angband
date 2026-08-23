@@ -306,13 +306,14 @@ export function createModInstaller(deps: InstallDoorDeps): (bytes: Uint8Array) =
 /**
  * Build the `ctx.reloadGame` a consenting mod is handed.
  *
- * BEHIND `mod:install`, NOT A CAPABILITY OF ITS OWN, and the reason is that the
- * two are one act rather than two. Content composes at load, so an install that
- * cannot be followed by a reload leaves the player holding a mod this process
- * will never load; and a mod with nothing to apply has no reason to reload
- * anybody's game. Splitting them would produce a consent line describing half of
- * something, which is the failure `grantCovers` exists to stop in the other
- * direction.
+ * BEHIND `mod:install` OR `mod:session`, NOT A CAPABILITY OF ITS OWN, and the
+ * reason is that reloading is one act with whichever of those staged the
+ * content, rather than a third thing. Content composes at load, so a stage a
+ * mod cannot follow with a reload leaves the player holding a mod this process
+ * will never load; and a mod with nothing staged has no reason to reload
+ * anybody's game. Splitting reload out into its own capability would produce a
+ * consent line describing half of something, which is the failure
+ * `grantCovers` exists to stop in the other direction.
  *
  * WHAT IT IS NOT is permission to reload. A plugin runs in the page and reaches
  * `location` with no grant at all (capabilities.ts's header, and

@@ -74,17 +74,17 @@ version it still calls itself.
   core's, each carrying its provenance, so a draft based on another mod's content
   can name the dependency it just acquired. Absent during content composition,
   for the reason `ctx.registries` is.
-- **`ctx.reloadGame`: a mod can apply what it just installed.** The game's own
-  mod-change sequence, behind the `mod:install` capability that already gates
-  `ctx.installMod`, because content composes at load and the two are one act: an
-  install a mod cannot follow with a reload leaves the player holding something
-  the running process will never load. What the host does that a mod cannot do
-  for itself is the sequence - every plugin's `uninstall()` runs, the autoplayer
-  hands the keyboard back, the live character is written down, and the session
-  comes back on that character instead of on the title screen. It is not a
-  permission to reload: a plugin runs in the page and reaches `location` with no
-  grant at all, and a mod calling that directly loses the player's progress since
-  the last save.
+- **`ctx.reloadGame`: a mod can apply what it just staged.** The game's own
+  mod-change sequence, behind either `mod:install` or `mod:session` - whichever
+  capability the mod already holds - because content composes at load and
+  staging plus reload are one act: a mod that cannot follow a stage with a
+  reload leaves the player holding something the running process will never
+  load. What the host does that a mod cannot do for itself is the sequence -
+  every plugin's `uninstall()` runs, the autoplayer hands the keyboard back, the
+  live character is written down, and the session comes back on that character
+  instead of on the title screen. It is not a permission to reload: a plugin
+  runs in the page and reaches `location` with no grant at all, and a mod
+  calling that directly loses the player's progress since the last save.
 - **An install outcome now carries the game's own wording.**
   `ctx.installMod(bytes)` answers with `lines` on both arms: the lines the Mods
   screen itself prints for that same install, including one row per unmet
@@ -98,6 +98,14 @@ version it still calls itself.
   namespace to a plugin puts every name in it beyond the compiler's reach, which
   is why core has had this since 2026-08-02; `node tools/api-surface.mjs` now
   checks and updates both baselines in one run.
+
+### Changed
+
+- The download screen's size line now shows the exact byte count, comma-grouped,
+  instead of rounding to KB or MB - "162,343,507 Bytes" rather than "155 MB".
+  The screen already reads as a terminal (the ASCII progress bar); an unrounded
+  count fits that and visibly climbs while the download runs, where a
+  one-decimal MB figure barely moves.
 
 ## [0.27.2] - 2026-08-22
 
