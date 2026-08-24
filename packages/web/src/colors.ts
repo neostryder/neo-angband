@@ -22,6 +22,8 @@ import {
   setColorChannel,
 } from "@rpgm-tools/neo-angband-core";
 import type { GridPointerInput, GridSurface } from "./term";
+import { screenRegionSpec } from "./overlay";
+import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import { UI_TEXT } from "./ui-colors";
 
 /** localStorage key for the user's edited colour table (a global pref). */
@@ -61,7 +63,9 @@ function hx(n: number): string {
  * colors_modify (ui-options.c L876): edit the live colour table. `persist` is
  * called on exit so the front end can save the edited table (localStorage).
  */
-export function runColorsEditor(term: GridSurface & GridPointerInput, persist: () => void): Promise<void> {
+export function runColorsEditor(host: GridSurface & GridPointerInput, persist: () => void): Promise<void> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
   return new Promise<void>((resolve) => {
     let a = 0; // the current colour index (colors_modify's static `a`).
 
@@ -135,5 +139,7 @@ export function runColorsEditor(term: GridSurface & GridPointerInput, persist: (
 
     inputEvents.addEventListener("keydown", onKey, true);
     paint();
+  }).finally(() => {
+    popRegion(handle);
   });
 }
