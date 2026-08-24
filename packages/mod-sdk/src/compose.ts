@@ -266,20 +266,32 @@ export function fieldProvenanceOf(record: ComposedRecord): FieldProvenance {
 
 export class ComposeError extends Error {}
 
+/**
+ * `patch`'s keys come from parsed mod-authored JSON. `__proto__`, `prototype`,
+ * and `constructor` are rejected outright rather than merely skipped, so a
+ * key like this can never silently do nothing while looking accepted -
+ * see NA-CORE-002 (the same class of escape as patch.ts's dot-path segments).
+ */
+const UNSAFE_PATCH_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+
 /** Deep merge per the pack patch rules. Returns a new object. */
 export function mergePatch(base: JsonRecord, patch: JsonRecord): JsonRecord {
   const out: JsonRecord = { ...base };
   for (const [key, val] of Object.entries(patch)) {
+    if (UNSAFE_PATCH_KEYS.has(key)) {
+      throw new ComposeError(`patch: "${key}" is not an allowed field name`);
+    }
+    const existing = Object.hasOwn(out, key) ? out[key] : undefined;
     if (val === null) {
       delete out[key];
     } else if (
       typeof val === "object" &&
       !Array.isArray(val) &&
-      typeof out[key] === "object" &&
-      out[key] !== null &&
-      !Array.isArray(out[key])
+      typeof existing === "object" &&
+      existing !== null &&
+      !Array.isArray(existing)
     ) {
-      out[key] = mergePatch(out[key] as JsonRecord, val as JsonRecord);
+      out[key] = mergePatch(existing as JsonRecord, val as JsonRecord);
     } else {
       out[key] = val;
     }
@@ -288,10 +300,12 @@ export function mergePatch(base: JsonRecord, patch: JsonRecord): JsonRecord {
 }
 
 function mayModify(m: PackManifest, ownerPack: string): boolean {
+  const deps = m.dependencies ?? {};
+  const optDeps = m.optionalDependencies ?? {};
   return (
     ownerPack === m.id ||
-    (m.dependencies ?? {})[ownerPack] !== undefined ||
-    (m.optionalDependencies ?? {})[ownerPack] !== undefined
+    (Object.hasOwn(deps, ownerPack) && deps[ownerPack] !== undefined) ||
+    (Object.hasOwn(optDeps, ownerPack) && optDeps[ownerPack] !== undefined)
   );
 }
 

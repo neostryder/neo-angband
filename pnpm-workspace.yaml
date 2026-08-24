@@ -1,6 +1,15 @@
 packages:
   - packages/*
 
+# Two dependencies only npm audit flags, pinned deep in devDependency trees
+# (js-yaml under electron-builder, nanoid under vite/postcss) where a plain
+# `pnpm update` does not reach. Both advisories require a code path this
+# repository's build and test tooling does not exercise, but both patched
+# versions are drop-in, so pinned rather than left at a known-vulnerable one.
+overrides:
+  js-yaml@<4.3.1: ">=4.3.1"
+  nanoid@<3.3.18: ">=3.3.18"
+
 # pnpm blocks a dependency's postinstall unless it is named here. pnpm 10 spelled
 # this `onlyBuiltDependencies` (a list); pnpm 11 removed that in favour of
 # `allowBuilds` (a map), so the old key is not deprecated - it is simply not read,
