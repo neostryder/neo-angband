@@ -36,6 +36,20 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- **`upstream-catchup`** added to the recommended first-party mods
+  ([mods/registry.json](mods/registry.json)): changes upstream Angband accepted
+  after the `4.2.6` tag core is pinned to, each cited to the commit that made it,
+  one toggle per class of change and every toggle off by default. Its first
+  release carries the four post-4.2.6 tile-assignment commits, which give a
+  creature or an item a picture in a tile set that was leaving it as a coloured
+  letter. A change with no accepted upstream commit still belongs to `bug-fixes`;
+  that one question is the whole boundary between the two mods, and a fix
+  upstream later accepts moves across at the next release. The mod expires by
+  design - a rebaseline onto a newer upstream tag makes every row in it redundant.
+  See [docs/modding/UPSTREAM_CATCHUP_MOD_SCOPE.md](docs/modding/UPSTREAM_CATCHUP_MOD_SCOPE.md).
+
 ## [0.31.1] - 2026-08-24
 
 ### Fixed
