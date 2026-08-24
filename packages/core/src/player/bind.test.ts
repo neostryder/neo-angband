@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { colorCharToAttr } from "../color.js";
 import { OF, PF, STAT } from "../generated/index.js";
+import { PROVENANCE_KEY } from "../mod/extension.js";
 import { bindPlayer } from "./bind.js";
 import type { PlayerPackRecords, PRaceRecordJson, ClassRecordJson } from "./bind.js";
 import { SKILL } from "./types.js";
@@ -308,5 +309,49 @@ describe("moddability: extra records bind cleanly", () => {
     expect(cls?.skills[SKILL.DEVICE]).toBe(30);
     expect(cls?.extraSkills[SKILL.DEVICE]).toBe(13);
     expect(cls?.pflags.has(PF.CHOOSE_SPELLS)).toBe(true);
+  });
+
+  it("refuses later mod races and classes whose names collide", () => {
+    const pack = loadPack();
+    const human = pack.races.find((r) => r.name === "Human");
+    const warrior = pack.classes.find((c) => c.name === "Warrior");
+    if (!human || !warrior) throw new Error("fixture: missing Human or Warrior");
+    const duplicateHuman = {
+      ...human,
+      name: "human",
+      [PROVENANCE_KEY]: { owner: "duplicate-pack" },
+    } as PRaceRecordJson;
+    const duplicateWarrior = {
+      ...warrior,
+      name: "warrior",
+      [PROVENANCE_KEY]: { owner: "duplicate-pack" },
+    } as ClassRecordJson;
+
+    const modded = bindPlayer({
+      ...pack,
+      races: [...pack.races, duplicateHuman],
+      classes: [...pack.classes, duplicateWarrior],
+    });
+
+    expect(modded.races).toHaveLength(pack.races.length);
+    expect(modded.classes).toHaveLength(pack.classes.length);
+    expect(modded.raceByName("human")?.ridx).toBe(0);
+    expect(modded.classByName("warrior")?.cidx).toBe(0);
+    expect(modded.refused).toEqual([
+      expect.objectContaining({
+        file: "p_race",
+        record: "human",
+        field: "name",
+        id: "duplicate-pack",
+        why: expect.stringContaining("duplicate name human"),
+      }),
+      expect.objectContaining({
+        file: "class",
+        record: "warrior",
+        field: "name",
+        id: "duplicate-pack",
+        why: expect.stringContaining("duplicate name warrior"),
+      }),
+    ]);
   });
 });
