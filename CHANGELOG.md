@@ -36,8 +36,13 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-08-24
+
 ### Added
 
+- A mod's declared screenshots, previously validated but never shown
+  anywhere, now appear in the mod-detail view during install/browse
+  alongside its other metadata.
 - **`upstream-catchup`** added to the recommended first-party mods
   ([mods/registry.json](mods/registry.json)): changes upstream Angband accepted
   after the `4.2.6` tag core is pinned to, each cited to the commit that made it,
@@ -651,7 +656,7 @@ instead of a curated subset that had drifted from it.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.31.1` - a features release for mod
+Current state of the project at version `0.32.0` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again
