@@ -1260,7 +1260,7 @@ async function recoverStrandedOrigins(
        * game is serving itself on it, which is exactly the case the port ladder
        * creates. The characters are still there and still readable once that copy is
        * closed, so the only correct thing to do is leave the job outstanding. */
-      mainLog("error", "recovery", `could not read storage on port ${String(port)}`, err);
+      mainLog("warn", "recovery", `could not read storage on port ${String(port)}`, err);
     } finally {
       server.close();
     }
