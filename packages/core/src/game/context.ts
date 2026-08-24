@@ -24,6 +24,8 @@ import { los } from "../world/view.js";
 import type { Connector } from "../gen/util.js";
 import type { Rng } from "../rng.js";
 import type { Chunk } from "../world/chunk.js";
+import type { WorldTopology } from "../world/topology.js";
+import type { ChestTrapEntry } from "../obj/chest.js";
 import type { Player } from "../player/player.js";
 import type { Monster } from "../mon/monster.js";
 import type { MeleeAttack, PlayerCombatState } from "../combat/melee.js";
@@ -553,6 +555,13 @@ export interface GameState {
    * descent; consumed by the session's changeLevel.
    */
   targetDepth?: number;
+  /**
+   * The composed world.json level graph. This is content topology, deliberately
+   * separate from `world`, the per-game hook bag below.
+   */
+  levelTopology?: WorldTopology;
+  /** The composed chest_trap.json table for live object descriptions. */
+  chestTraps?: readonly ChestTrapEntry[];
   /**
    * choose_profile's NOSCORE_JUMPING request (generate.c L824-836): the answer
    * to the wizard jump command's "Profile name (eg classic): ". The NEXT
