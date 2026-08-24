@@ -203,7 +203,7 @@ player sees is the class flag in the table.
 
 ## Fixes this mod carries
 
-### 1. Player note truncation (`SPECIFIED`) - the requested first fix
+### 1. Player note truncation (`READY`) - the requested first fix
 
 - References: upstream PR **#6665** ("Delay expanding user-supplied history
   notes", open/unmerged as of 2026-07-08); original report PR **#6656** ("Fix
@@ -257,7 +257,7 @@ player sees is the class flag in the table.
   its eventual merge commit" note is obsolete - there is now an exact oracle
   diff to mirror.
 
-### 2. Store-charge save-scum exploit (`SPECIFIED`)
+### 2. Store-charge save-scum exploit (`NOT APPLICABLE`)
 
 - References: issue **#6537** ("Save, exit, reload perturbs RNG state"); fix
   PR **#6539** ("Plug exploit for charges in store"), merge commit
@@ -293,7 +293,7 @@ player sees is the class flag in the table.
   load path to re-roll, so the save-scum this fix targets cannot occur. If a
   persisted-stock loader is ever added, it must call `storeCarry(... false)`.
 
-### 3. Stack-charge scramble on drop/pickup (`SPECIFIED`)
+### 3. Stack-charge scramble on drop/pickup (`READY`)
 
 - References: residual edge case documented in the thread of issue **#6355**
   ("Can generate infinite charges on staves/wands", closed COMPLETED via PR
