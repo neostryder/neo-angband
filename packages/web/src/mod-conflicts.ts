@@ -274,6 +274,7 @@ function hookDescription(hook: keyof ModHooks): string {
     levelGenerated: "whether a freshly generated level is accepted",
     artifactCommit: "whether an artifact is allowed to be created",
     historyAdd: "which events reach your character history",
+    historyDisplay: "how entries in your character history are shown",
     saveNoiseScent: "whether noise and scent maps go into the save",
     messageText: "the wording of game messages",
     optionsChanged: "being told when you change your options",

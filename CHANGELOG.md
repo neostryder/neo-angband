@@ -36,10 +36,12 @@ version it still calls itself.
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
-- Long capability descriptions and other scrollable table text now wrap instead
-  of being silently cut off at the edge of the terminal. Reported by neostryder.
+- Character history now exposes a write-time mod seam that can retain raw input
+  with a display-expansion marker, plus a display-time formatter shared by the
+  history screen and character dump. Unused seams preserve the faithful 4.2.6
+  stored text and rendering.
 
 ## [0.32.0] - 2026-08-24
 
