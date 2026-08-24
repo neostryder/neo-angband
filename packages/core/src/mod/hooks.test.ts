@@ -48,6 +48,7 @@ describe("composeModHooks: nothing in, nothing out", () => {
     expect(composed?.saveNoiseScent).toBeUndefined();
     expect(composed?.walkBlockedByDiggable).toBeUndefined();
     expect(composed?.objectListTiebreak).toBeUndefined();
+    expect(composed?.projectionRadius).toBeUndefined();
   });
 });
 
@@ -199,6 +200,26 @@ describe("transform hooks chain in load order", () => {
     ]);
     expect(f?.messageText?.("hi")).toBe("hi?");
     expect(g?.messageText?.("hi")).toBe("hi!");
+  });
+
+  it("projectionRadius: each sees the previous one's radius", () => {
+    const composed = composeModHooks([
+      { projectionRadius: (rad) => rad + 5 },
+      { projectionRadius: (rad, maxRange) => Math.min(rad, maxRange) },
+    ]);
+    /* 3 widened to 8, then held at the maximum: both contributions survive,
+     * which is the whole difference between a chain and a last-answer fold. */
+    expect(composed?.projectionRadius?.(3, 6)).toBe(6);
+  });
+
+  it("projectionRadius: every contributor is handed the same maxRange", () => {
+    const seen: number[] = [];
+    const composed = composeModHooks([
+      { projectionRadius: (rad, maxRange) => (seen.push(maxRange), rad) },
+      { projectionRadius: (rad, maxRange) => (seen.push(maxRange), rad) },
+    ]);
+    composed?.projectionRadius?.(25, 20);
+    expect(seen).toEqual([20, 20]);
   });
 });
 
@@ -402,6 +423,25 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       }),
       run: (h) => h.objectListTiebreak?.({ dy: 0, dx: 0 }, { dy: 0, dx: 0 }),
     },
+    projectionRadius: {
+      /* Deliberately NOT commutative. A contributor that added `nth` would give
+       * the same total in both orders, and the observer would read an
+       * order-independent answer and call a chained fold a conjunctive one -
+       * the probe would be wrong in exactly the direction the table is. */
+      yes: (log, tag, nth) => ({
+        projectionRadius: (rad) => {
+          log.push(tag);
+          return rad * 10 + nth;
+        },
+      }),
+      no: (log, tag) => ({
+        projectionRadius: (rad) => {
+          log.push(tag);
+          return rad;
+        },
+      }),
+      run: (h) => h.projectionRadius?.(3, 20),
+    },
     levelGenerated: {
       yes: (log, tag) => ({
         levelGenerated: () => {
@@ -604,6 +644,15 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
      * that a message had gone missing. */
     const { hooks } = guarded({ messageText: THROWS });
     expect(hooks.messageText?.("You feel a sudden chill.")).toBe("You feel a sudden chill.");
+  });
+
+  it("projectionRadius returns the radius it was given, not the maximum", () => {
+    /* Same rule as messageText, and the alternative is worse than it looks: a
+     * throwing hook that answered `maxRange` would silently narrow every blast
+     * in the game, which is a rule change nobody asked for wearing the clothes
+     * of a fault. The input radius is what core would have used alone. */
+    const { hooks } = guarded({ projectionRadius: THROWS });
+    expect(hooks.projectionRadius?.(25, 20)).toBe(25);
   });
 });
 

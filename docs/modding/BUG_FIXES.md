@@ -775,16 +775,24 @@ player sees is the class flag in the table.
   so faithful core's text still reaches the screen byte-for-byte.
 - Not gameplay: no message changes meaning; nothing about play changes.
 
-### 15. Blast radius larger than `dam_at_dist` can hold - MOVED to the upstream-catchup mod
+### 15. Blast radius larger than `dam_at_dist` can hold - SHIPPED in the upstream-catchup mod
 
 Fixed upstream by commit `f0f6bd223b6b9faf0072b0ae7ffb34a812b97349`
 ("Projections: coerce blast radius to fit what dam_at_dist can handle",
 2026-07-28), not in the 4.2.6 baseline - an accepted upstream commit belongs
-in `upstream-catchup`, not here. The port carries the same gap
-(`packages/core/src/world/project.ts:522-538`, no clamp on `rad`) and it reads
-worse than upstream's: a radius past `maxRange` yields `NaN` damage rather
-than a C-style out-of-bounds read. Tracked as neostryder/neo-angband#117
-(relabeled `repo:mod-upstream-catchup`). Not yet built.
+in `upstream-catchup`, not here. The port carried the same gap
+(`packages/core/src/world/project.ts`, `computeProjection`, no clamp on `rad`)
+and it read worse than upstream's: a radius past `maxRange` collects grids the
+damage table has no entry for, so the damage handed to every per-grid handler is
+`undefined` and the first arithmetic done with it is `NaN`, where the C reads
+stale memory instead.
+
+Carried by `upstream-catchup` under `catchup.projections`, on the
+`projectionRadius` hook (`MOD_SEAMS.md`), which core reads in `computeProjection`
+before any geometry is built. Faithful default: with no mod contributing one the
+field is absent and the radius is used exactly as given, which is 4.2.6's own
+behaviour. Tracked as neostryder/neo-angband#117 (relabeled
+`repo:mod-upstream-catchup`).
 
 ### 16. Shape flags learned only when equipment already carries them - MOVED to the upstream-catchup mod
 
