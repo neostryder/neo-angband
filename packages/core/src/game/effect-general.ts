@@ -778,13 +778,7 @@ const handleDEEP_DESCENT: EffectHandler = (ctx) => {
    * dungeon_get_next_level, so the quest scan and the max_depth clamp both
    * apply rather than a bare arithmetic min. */
   const increment = Math.trunc(4 / state.z.stairSkip) + 1;
-  const targetDepth = dungeonGetNextLevel(
-    p,
-    p.maxDepth,
-    increment,
-    state.z,
-    state.levelTopology,
-  );
+  const targetDepth = dungeonGetNextLevel(p, p.maxDepth, increment, state.z);
 
   /* Both arms are msgt(MSG_TPLEVEL, ...) (effect-handler-general.c:1171,
    * :1178) - the message carries the type, and msgt's other half is the

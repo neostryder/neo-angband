@@ -27,7 +27,6 @@ import type { MonsterRace } from "../mon/types.js";
 import type { Monster } from "../mon/monster.js";
 import type { Player } from "../player/player.js";
 import { scatter } from "../world/scatter.js";
-import type { WorldTopology } from "../world/topology.js";
 import type { GameState } from "./context.js";
 import { pushObject } from "./project-feat.js";
 import { floorPile } from "./floor.js";
@@ -129,29 +128,7 @@ export function dungeonGetNextLevel(
   dlev: number,
   added: number,
   z: { readonly stairSkip: number; readonly maxDepth: number },
-  topology?: WorldTopology,
 ): number {
-  if (topology) {
-    const direction: 1 | -1 = added < 0 ? -1 : 1;
-    const steps = Math.abs(added) * z.stairSkip;
-    let target = dlev;
-
-    /* world.txt describes the connected levels by name.  Walk every requested
-     * stair-sized step rather than doing depth arithmetic, so a mod can join
-     * Town directly to (for example) Angband 2.  Keep the quest stop at each
-     * level just as the linear loop below did. */
-    for (let step = 0; step < steps; step++) {
-      /* The upstream scan is only descending (`dlev <= target`), so an up
-       * staircase remains usable from a quest level. */
-      if (direction > 0 && isQuest(p, target)) return target;
-      const next = topology.nextDepth(target, direction);
-      if (next === target) break;
-      target = next;
-    }
-    if (direction > 0 && isQuest(p, target)) return target;
-    return target;
-  }
-
   /* Get target level. */
   let target = dlev + added * z.stairSkip;
 
@@ -190,7 +167,6 @@ export function playerSetRecallDepth(
   p: Player,
   forceDescend: boolean,
   z: { readonly stairSkip: number; readonly maxDepth: number },
-  topology?: WorldTopology,
 ): void {
   /* Account for forced descent. */
   if (forceDescend) {
@@ -208,16 +184,12 @@ export function playerSetRecallDepth(
      * a contract test on the exported function (quest.test.ts) that constructs
      * the differing recall_depth play cannot produce. */
     if (p.maxDepth < z.maxDepth - 1 && !isQuest(p, p.maxDepth)) {
-      p.recallDepth = dungeonGetNextLevel(p, p.maxDepth, 1, z, topology);
+      p.recallDepth = dungeonGetNextLevel(p, p.maxDepth, 1, z);
     }
   }
 
-  /* Players who haven't left town before recall to Town's declared downward
-   * neighbour.  The fallback retains the upstream level-1 rule for callers
-   * without a composed world topology. */
-  if (p.recallDepth < 1) {
-    p.recallDepth = topology?.nextDepth(0, 1) ?? 1;
-  }
+  /* Players who haven't left town before go to level 1. */
+  p.recallDepth = Math.max(p.recallDepth, 1);
 }
 
 /**

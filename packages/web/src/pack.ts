@@ -1070,11 +1070,6 @@ export function loadGamePack(): GamePack {
     roomTemplates: records("room_template"),
     vaults: records("vault"),
     dungeonProfiles: records("dungeon_profile"),
-    /* Both files are content topology, not passive composer output: bindCore
-     * turns chest_trap into the live chest table and world into the named level
-     * graph used by transitions. */
-    chestTraps: records("chest_trap"),
-    world: records("world"),
     projection: records("projection"),
     trap: records("trap"),
     /* #266: message types a pack coins, composed like any other record file so
