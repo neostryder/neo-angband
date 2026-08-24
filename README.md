@@ -58,6 +58,14 @@ management](docs/img/screenshots/neo-angband-mods.jpg) shows what a mod is
 before you decide whether to trust it: what it changes, what it asks for, and
 who wrote it.
 
+![The same town with all six official mods installed: neo-linoleum's Shockbolt Light, the ModForge tab bottom right](docs/img/screenshots/neo-angband-town-modded.jpg)
+
+Nothing above is a mockup - the mod family stays real content running in a real
+session. That same session is where [the Borg](https://github.com/neostryder/neo-angband-mod-borg)
+takes the keyboard and plays on its own, and where
+[ModForge](https://github.com/neostryder/neo-angband-mod-forge) opens a workshop
+for building a new mod without leaving the game.
+
 ## Play it
 
 **[Download a build](https://github.com/neostryder/neo-angband/releases)** for
