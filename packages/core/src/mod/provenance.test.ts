@@ -3,12 +3,9 @@
  * binding and out into the id a savefile stores.
  *
  * THE CONTROL IS THE POINT OF THIS FILE. Every assertion about a namespaced id
- * is paired with the SAME pack bound without the stamp, because the id scheme
- * has always been able to produce a unique string for a mod's record - it just
- * produced the wrong one (`core:kobold-2`, a number decided by load order). A
- * test that only asserted the new id would pass against an engine that had
- * simply renamed something, and would say nothing about whether provenance was
- * what did the work.
+ * is paired with the SAME pack bound without the stamp, so a test that only
+ * asserted the new id cannot pass against an engine that simply ignores
+ * provenance.
  */
 
 import { readFileSync } from "node:fs";
@@ -32,20 +29,20 @@ function loadRecords<T>(name: string): T[] {
 type Rec = Record<string, unknown>;
 
 /**
- * Core's monsters with one more on the end: a copy of core's own "kobold",
- * optionally carrying a mod's stamp.
+ * Core's monsters with one more on the end: a renamed copy of core's own
+ * "kobold", optionally carrying a mod's stamp.
  *
  * A COPY OF A REAL RECORD rather than a hand-written one, because a monster
  * that does not bind proves nothing, and a fixture written to satisfy the
- * binder is an assertion about the binder that nobody checked. The NAME is
- * deliberately one core already uses: the collision is the interesting case,
- * and it is the case the old scheme resolved with an order-dependent suffix.
+ * binder is an assertion about the binder that nobody checked. The name is
+ * deliberately unique: binders now refuse duplicate names before the id layer
+ * runs, which is the invariant the id layer needs to make names stable.
  */
 function monstersWithModKobold(stamped: boolean): Rec[] {
   const records = loadRecords<Rec>("monster");
   const kobold = records.find((r) => r["name"] === "kobold");
   if (kobold === undefined) throw new Error("fixture: core ships no monster named kobold");
-  const added: Rec = { ...kobold };
+  const added: Rec = { ...kobold, name: "Frost Kobold" };
   if (stamped) added[PROVENANCE_KEY] = { owner: "frost" };
   return [...records, added];
 }
@@ -88,16 +85,15 @@ const unstamped = bindCore(packWith(monstersWithModKobold(false)));
 const moddedIds = new ContentIdResolver(modded);
 const unstampedIds = new ContentIdResolver(unstamped);
 
-/** The LAST race named Kobold - the appended one - and core's own first. */
+/** The appended Frost Kobold and core's own Kobold. */
 function koboldIndices(reg: typeof modded): { core: number; added: number } {
   const at = reg.monsters.races
     .map((r, i) => ({ r, i }))
-    .filter(({ r }) => r.name === "kobold")
-    .map(({ i }) => i);
-  const core = at[0];
-  const added = at[at.length - 1];
-  if (core === undefined || added === undefined || core === added) {
-    throw new Error(`fixture: expected two races named kobold, found ${at.length}`);
+    .filter(({ r }) => r.name === "kobold" || r.name === "Frost Kobold");
+  const core = at.find(({ r }) => r.name === "kobold")?.i;
+  const added = at.find(({ r }) => r.name === "Frost Kobold")?.i;
+  if (core === undefined || added === undefined) {
+    throw new Error(`fixture: expected Kobold and Frost Kobold, found ${at.length} records`);
   }
   return { core, added };
 }
@@ -129,7 +125,7 @@ describe("provenance reaches the bound record", () => {
 describe("the id a savefile stores", () => {
   it("namespaces a mod's record to the mod", () => {
     const { added } = koboldIndices(modded);
-    expect(moddedIds.raceId(added)).toBe("frost:kobold");
+    expect(moddedIds.raceId(added)).toBe("frost:frost-kobold");
   });
 
   it("leaves core's record's id exactly as it was", () => {
@@ -141,20 +137,17 @@ describe("the id a savefile stores", () => {
     expect(moddedIds.raceId(core)).toBe(unstampedIds.raceId(koboldIndices(unstamped).core));
   });
 
-  it("THE CONTROL: without the stamp the same pack still collides", () => {
-    /* This is what shipped. The mod's monster took a suffix off core's name,
-     * and which suffix depended on how many other mods had got there first. */
+  it("THE CONTROL: without the stamp the added record is in the core namespace", () => {
     const { added } = koboldIndices(unstamped);
-    expect(unstampedIds.raceId(added)).toBe("core:kobold-2");
+    expect(unstampedIds.raceId(added)).toBe("core:frost-kobold");
   });
 
   it("still resolves the id an older engine wrote for it", () => {
-    /* The compatibility half. A character saved before 0.19.0 has
-     * `core:kobold-2` written into it; that string must still find the mod's
-     * monster, or the save loses content because the engine improved. */
+    /* The compatibility half. Before namespacing, a character saved this mod's
+     * monster under core:frost-kobold; that spelling must still find it. */
     const { added } = koboldIndices(modded);
-    expect(moddedIds.raceIndex("core:kobold-2")).toBe(added);
-    expect(moddedIds.raceIndex("frost:kobold")).toBe(added);
+    expect(moddedIds.raceIndex("core:frost-kobold")).toBe(added);
+    expect(moddedIds.raceIndex("frost:frost-kobold")).toBe(added);
   });
 
   it("never lets a legacy id shadow a live one", () => {
@@ -166,7 +159,7 @@ describe("the id a savefile stores", () => {
   });
 
   it("returns undefined for an id no pack supplies", () => {
-    expect(moddedIds.raceIndex("frost:kobold-2")).toBeUndefined();
+    expect(moddedIds.raceIndex("frost:frost-kobold-2")).toBeUndefined();
     expect(moddedIds.raceIndex("nobody:kobold")).toBeUndefined();
   });
 });
