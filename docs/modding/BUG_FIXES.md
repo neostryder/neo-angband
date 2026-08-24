@@ -187,9 +187,10 @@ minus one.
 **Plus one section**, `text-corrections`, which is data rather than a hook: four
 item descriptions that still describe a two-handed weapon rule Angband 4.2
 dropped (the Two-Handed Great Flail, the Pike, the Trident 'of Wrath' and
-Mundwine). Text only; no damage, weight or slot changes. Since mod 0.19.0 the
-Trident 'of Wrath' replacement also carries the spelling "Ossë", which Angband
-corrected after the 4.2.6 tag (entry 14).
+Mundwine). Text only; no damage, weight or slot changes. (0.19.0 briefly also
+folded the post-tag "Ossë" spelling correction into the Trident 'of Wrath'
+replacement; retracted in 0.19.1 - that correction cites an accepted upstream
+commit and now ships from the `upstream-catchup` mod instead. See entry 14.)
 
 Six per-bug flags preceded the three: `bugfix.uniqueKillHistory`,
 `bugfix.miscStrings`, `bugfix.noiseScentSave`, `bugfix.objectListOrder`,
@@ -203,59 +204,17 @@ player sees is the class flag in the table.
 
 ## Fixes this mod carries
 
-### 1. Player note truncation (`READY`) - the requested first fix
+### 1. Player note truncation - MOVED to the upstream-catchup mod
 
-- References: upstream PR **#6665** ("Delay expanding user-supplied history
-  notes", open/unmerged as of 2026-07-08); original report PR **#6656** ("Fix
-  message truncation", commit `03e559c9c4358c4863368a8d30e17c6588d6967d`,
-  closed unmerged in favor of #6665).
-- Problem: a `/say` or `/me` note is truncated in the message log, the log
-  sub-windows, and the permanent player-history / character dump whenever the
-  expanded text (player name prepended, plus formatting) overflows the buffer.
-  It silently corrupts persisted history data.
-- Root cause: `do_cmd_note()` (`src/cmd-misc.c`) formats the note into a fixed
-  `note[90]` buffer BEFORE storing it via `history_add()`, so the raw text
-  plus the variable-length player name can overflow the buffer that the live
-  message and the saved history entry share.
-- Upstream fix approach (#6665): store the user's RAW text verbatim in the
-  history entry, and expand ("Frodo says: ...") only at display time via a new
-  shared helper `history_expand_user_input(note, p, buf, len, use_prefix)` in
-  `src/player-history.c`. `history_display()` and `dump_history()`
-  (`src/ui-history.c`) call the same helper with buffers widened to
-  `PLAYER_NAME_LEN + 106`.
-- Port fix approach: when the notes / player-history subsystem is ported, core
-  reproduces the 4.2.6 truncation faithfully; this mod patches the history
-  store to keep the raw note and moves expansion to the display layer, mirror-
-  ing the helper above.
-- Port status (2026-07-26, re-verified): **READY**. The previous "DEFERRED /
-  not ported" note is WRONG and is retracted. `do_cmd_note` IS ported - the
-  take-notes command is `packages/web/src/main.ts`, and it calls
-  `historyAdd(...)` with the fully-prefixed note at `main.ts`, which is
-  exactly the live truncation site. Display is
-  `packages/web/src/screens.ts`. The gated fix stores the raw text and
-  moves expansion to those display paths.
-- Truncation site, pinned 2026-08-24. The command builds the expanded string
-  before storing it - `note = \`-- ${playerName} says: "${tmp.slice(5)}"\`` in
-  `noteCmd` - and `historyAddFull` (`packages/core/src/player/history.ts:70`)
-  stores `text.slice(0, 79)`, a faithful port of `my_strcpy` into
-  `char event[80]`. A 15-character name with a full-length `/say` builds 91
-  characters and loses 12 of them plus the closing quote. The damage lands in
-  the permanent character history and the character dump, so this is persisted
-  data rather than a display glitch.
-- Seam status: two seams are missing, not one, which is why this is the largest
-  of the READY entries. The existing `historyAdd` hook returns a boolean and can
-  only SUPPRESS an entry - it cannot rewrite the text and cannot carry the extra
-  field a later expansion would need - and the display paths have no seam at
-  all. That hook also serves exactly one call site today (entry 5), so widening
-  it touches an already-shipped fix in the same mod.
-  Tracked as neostryder/neo-angband#114.
-- Upstream status (2026-07-26, re-verified): PR #6665 is **MERGED**, as
-  `72aec1103ab8153911b503a10da5a1834c1e2b0a` ("Delay expanding user-supplied
-  history notes", 2026-07-14), touching `src/cmd-misc.c`,
-  `src/player-history.c`, `src/player-history.h`, `src/ui-history.c`. Verified
-  reachable from `upstream/master`. The earlier "open/unmerged, track the PR for
-  its eventual merge commit" note is obsolete - there is now an exact oracle
-  diff to mirror.
+Upstream PR #6665 merged as `72aec1103ab8153911b503a10da5a1834c1e2b0a`
+("Delay expanding user-supplied history notes", 2026-07-14) before this entry
+was re-verified. An accepted upstream commit puts the fix in the
+`upstream-catchup` mod's scope, not this mod's - see
+[UPSTREAM_CATCHUP_MOD_SCOPE.md](UPSTREAM_CATCHUP_MOD_SCOPE.md). Tracked as
+neostryder/neo-angband#114 (relabeled `repo:mod-upstream-catchup`). Not yet
+built; the missing seam this entry originally described (the `historyAdd`
+hook can suppress an entry but not rewrite its text, and the display paths
+have none at all) is still the real blocker regardless of which mod ships it.
 
 ### 2. Store-charge save-scum exploit (`NOT APPLICABLE`)
 
@@ -782,9 +741,11 @@ player sees is the class flag in the table.
     post-4.2.6 commits touching `lib/gamedata`; commit `f1b1626f6` ("Correct
     spelling of Ossë", `lib/gamedata/artifact.txt`) is exactly that, and it
     reached upstream on the same day the sweep ran, which is how a correct
-    census became a wrong sentence within a day of being written. The
-    correction ships in the mod as of 0.19.0, inside the Trident 'of Wrath'
-    replacement this section already writes. The lesson is the one entry 13
+    census became a wrong sentence within a day of being written. It shipped
+    here briefly as 0.19.0, then retracted in 0.19.1: an accepted upstream
+    commit is `upstream-catchup`'s scope, not this mod's, the same rule this
+    entry's own census exists to apply consistently. The correction now ships
+    from the `upstream-catchup` mod instead. The lesson is the one entry 13
     already records about measurement: a census is true on the day it runs, so
     it has to name the commit range it swept, and be re-run rather than quoted.
 - The `!` rows are the judgement call: pooled across terminators they are 3
@@ -810,90 +771,42 @@ player sees is the class flag in the table.
   so faithful core's text still reaches the screen byte-for-byte.
 - Not gameplay: no message changes meaning; nothing about play changes.
 
-### 15. Blast radius larger than `dam_at_dist` can hold (`SPECIFIED`)
+### 15. Blast radius larger than `dam_at_dist` can hold - MOVED to the upstream-catchup mod
 
-- References: issue **#6671**, fixed by commit
-  `f0f6bd223b6b9faf0072b0ae7ffb34a812b97349` ("Projections: coerce blast radius
-  to fit what dam_at_dist can handle", 2026-07-28, `src/project.c`). NOT in the
-  4.2.6 baseline. Catalogued 2026-08-24 by the re-sweep.
-- Problem: `project()` sizes `dam_at_dist` by `z_info->max_range` but does not
-  clamp `rad` to it, so a radius above the maximum range indexes past the end of
-  the array. Upstream's own note is that no effect in `lib/gamedata` exceeds the
-  limit, "so this would only affect modded games or effects run from the 'E'
-  debugging command".
-- Upstream fix: clamp, `if (rad > z_info->max_range) rad = z_info->max_range;`,
-  before the explosion centre is saved.
-- Port status (2026-08-24): the same gap is present and reads differently. The
-  port builds `damAtDist` as `new Array(maxRange + 1)` and fills `i <= maxRange`
-  (`packages/core/src/world/project.ts:522-538`), with no clamp on `rad`
-  anywhere in the file; `rad` is documented as "1..20 = ball radius" at
-  `:293-294` and nothing enforces it. Where the C reads past the end of an array
-  and gets whatever is in memory, the port reads `undefined` and carries it into
-  the damage arithmetic as `NaN`. Neither is a crash, and both are wrong.
-- **Why this one matters MORE here than upstream.** Upstream discounts it
-  because only a modded game can reach it. This port is a modding platform with
-  a `registry:projection` seam, so "only modded games" describes the intended
-  audience rather than an edge case. That is an argument for the clamp, not
-  against it.
-- Needed before a patch: a port-specific repro that drives a projection with
-  `rad > maxRange` through the live seam and shows the `NaN`. Then the fix is
-  the one-line clamp, on a new hook, RNG-free.
-  Tracked as neostryder/neo-angband#117.
+Fixed upstream by commit `f0f6bd223b6b9faf0072b0ae7ffb34a812b97349`
+("Projections: coerce blast radius to fit what dam_at_dist can handle",
+2026-07-28), not in the 4.2.6 baseline - an accepted upstream commit belongs
+in `upstream-catchup`, not here. The port carries the same gap
+(`packages/core/src/world/project.ts:522-538`, no clamp on `rad`) and it reads
+worse than upstream's: a radius past `maxRange` yields `NaN` damage rather
+than a C-style out-of-bounds read. Tracked as neostryder/neo-angband#117
+(relabeled `repo:mod-upstream-catchup`). Not yet built.
 
-### 16. Shape flags learned only when equipment already carries them (`SPECIFIED`)
+### 16. Shape flags learned only when equipment already carries them - MOVED to the upstream-catchup mod
 
-- References: commit `c8036c51537942a560e3d7f81749c431bbb4701f` ("On shape
-  change, learn shape's obvious flags", 2026-07-28, `src/obj-knowledge.c`),
-  raised in the comments on FAangband issue #465. No Angband issue number. NOT
-  in the 4.2.6 baseline. Catalogued 2026-08-24 by the re-sweep.
-- Problem: `shape_learn_on_assume()` learns a shape's obvious flags through
-  `equip_learn_flag`, which only marks a flag known when a WIELDED item carries
-  it. A flag the shape grants and no equipment has is therefore never learned,
-  and the same blind spot applies to the learn-on-event paths while
-  shapechanged.
-- Upstream fix: intersect the shape's flags with what is not yet known and learn
-  each as a rune directly (`player_learn_rune(p, rune_index(RUNE_VAR_FLAG,
-  flag), true)`), and teach the learn-on-event helpers to consult the shape's
-  properties as well as worn gear.
-- Port status (2026-08-24): `shapeLearnOnAssume` is ported
-  (`packages/core/src/obj/knowledge.ts:802`, called from
-  `packages/core/src/game/effect-general.ts:957`). Whether it reproduces the
-  4.2.6 shape of the defect or the port's rune model already sidesteps it has
-  NOT been checked, and this entry must not claim either until it has been.
-  That check is the next step, not the patch.
-  Tracked as neostryder/neo-angband#118.
-- Note the knowledge-model caution from the "port's own code" section below: the
-  rune convention has been reverted to faithful once already because a shortcut
-  that granted unearned knowledge is not a fix a player would want. A change
-  here alters what the player knows and when, so it needs the same scrutiny.
+Fixed upstream by commit `c8036c51537942a560e3d7f81749c431bbb4701f` ("On
+shape change, learn shape's obvious flags", 2026-07-28), not in the 4.2.6
+baseline - belongs in `upstream-catchup`, not here. Whether the port
+(`packages/core/src/obj/knowledge.ts:802`) reproduces the defect or its rune
+model already sidesteps it has NOT been checked; that verification is the
+next step regardless of which mod eventually ships the fix. Tracked as
+neostryder/neo-angband#118 (relabeled `repo:mod-upstream-catchup`). Not yet
+built.
 
-### 17. Noise not restored on reload, and stale flow on level revisit (`SPECIFIED`)
+### 17. Noise not restored on reload, and stale flow on level revisit - MOVED to the upstream-catchup mod
 
-- References: commit `5c45eb9588b8227d4f1b1998e0a627ad7ee11a75` ("Remember
-  source location for last noise calculation in save file", 2026-08-18,
-  touching `game-world.c`, `game-world.h`, `generate.c`, `load.c`, `player.h`,
-  `save.c`, `ui-game.c`), which states it "Resolves the noise portion of"
-  issue **#4605**, with discussion in #6677. NOT in the 4.2.6 baseline.
-  Catalogued 2026-08-24 by the re-sweep.
-- **This changes entry 8's standing, and entry 8 has been amended to match.**
-  Entry 8 was written when #4605 had no upstream fix at all. Half of it now
-  does.
-- Upstream's approach is NOT the mod's. Upstream persists the SOURCE LOCATION of
-  the last noise calculation and recomputes the heatmap from it on load; the mod
-  persists the heatmap itself. Both restore monster tracking across a reload,
-  and the mod's is the cheaper one to have already shipped, but they are not the
-  same fix and a future re-sync should not assume they converge.
-- The genuinely NEW behaviour in upstream's commit, which the mod does not have
-  and entry 8 never covered, is level REVISIT: on returning to a level (whether
-  through persistent levels or a paladin coming back from single combat),
-  upstream now clears the noise and AGES the scent by how long the character was
-  away, rather than leaving whatever was there. The port freezes out-of-play
-  levels in `levelCache` and rebuilds flow on re-entry (entry 8), so the two
-  differ in what a returning player finds.
-- Port status (2026-08-24): unstarted, and deliberately so. Deciding whether the
-  revisit behaviour belongs in the mod needs the port's re-entry path measured
-  against upstream's new one first. It is a determinism entry, like entry 8, not
-  a crash. Tracked as neostryder/neo-angband#119.
+Fixed upstream by commit `5c45eb9588b8227d4f1b1998e0a627ad7ee11a75`
+("Remember source location for last noise calculation in save file",
+2026-08-18), not in the 4.2.6 baseline - belongs in `upstream-catchup`, not
+here. This only resolves the noise half of #4605; entry 8's own
+`bugfix.stateIntegrity` toggle still legitimately covers a different (cheaper,
+heatmap-persisting rather than source-location-persisting) fix for the same
+defect, and the two are not equivalent - a future re-sync should not assume
+they converge. The genuinely new piece upstream's commit adds, which entry 8
+never covered, is level-revisit noise-clear/scent-aging behavior; whether that
+belongs in a mod at all is still undecided. Tracked as
+neostryder/neo-angband#119 (relabeled `repo:mod-upstream-catchup`). Not yet
+built.
 
 ---
 
