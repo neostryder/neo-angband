@@ -370,3 +370,42 @@ describe("applyFieldPatch through array indices", () => {
     ).toThrow(PatchError);
   });
 });
+
+/**
+ * NA-CORE-002: a dot-path segment of "__proto__", "prototype", or
+ * "constructor" resolves through the prototype chain instead of an own
+ * property. An unguarded `set` reaching the far end of one of these pollutes
+ * the shared Object.prototype for every ordinary object in the realm, not
+ * just the record being patched.
+ */
+describe("applyFieldPatch cannot reach the prototype chain", () => {
+  for (const segment of ["__proto__", "prototype", "constructor"]) {
+    it(`refuses a "set" op whose path is "${segment}.polluted"`, () => {
+      expect(() =>
+        applyFieldPatch(kobold(), [{ op: "set", path: `${segment}.polluted`, value: 1 }]),
+      ).toThrow(PatchError);
+      expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+    });
+
+    it(`refuses a "set" op whose path ends in ".${segment}"`, () => {
+      expect(() =>
+        applyFieldPatch(kobold(), [{ op: "set", path: `attack.${segment}`, value: 1 }]),
+      ).toThrow(PatchError);
+      expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+    });
+
+    it(`refuses a "merge" op that reads through "${segment}"`, () => {
+      expect(() =>
+        applyFieldPatch(kobold(), [{ op: "merge", path: segment, value: { polluted: 1 } }]),
+      ).toThrow(PatchError);
+      expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+    });
+  }
+
+  it("does not resolve an inherited property that was never set as an own key", () => {
+    // toString is inherited from Object.prototype; reading through it must
+    // behave as absent, not as the inherited function.
+    const out = applyFieldPatch({}, [{ op: "add", path: "toString", value: 1 }]);
+    expect(out["toString"]).toBe(1);
+  });
+});

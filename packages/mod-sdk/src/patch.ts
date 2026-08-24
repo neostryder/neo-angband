@@ -86,20 +86,40 @@ function arrayIndex(part: string): number | null {
   return /^(?:0|[1-9][0-9]*)$/.test(part) ? Number(part) : null;
 }
 
+/**
+ * A path segment naming an inherited Object.prototype property. `cur[part]`
+ * for one of these resolves through the prototype chain instead of an own
+ * property, so an unguarded read exposes `Object.prototype` itself, and an
+ * unguarded write on the far end of a `set`/`merge` path pollutes it -
+ * see NA-CORE-002. Rejected outright, at every path-walking entry point,
+ * rather than merely skipped, so a mod-authored path cannot silently target
+ * the wrong thing.
+ */
+const UNSAFE_PATH_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
+
+function checkPathSegment(part: string, path: string): void {
+  if (UNSAFE_PATH_SEGMENTS.has(part)) {
+    throw new PatchError(`patch: "${part}" is not an allowed path segment in "${path}"`);
+  }
+}
+
 /** One step down a path, through either an object key or an array index. */
-function childOf(cur: JsonValue | undefined, part: string): JsonValue | undefined {
+function childOf(cur: JsonValue | undefined, part: string, path: string): JsonValue | undefined {
+  checkPathSegment(part, path);
   if (Array.isArray(cur)) {
     const at = arrayIndex(part);
     return at === null ? undefined : cur[at];
   }
-  if (typeof cur === "object" && cur !== null) return (cur as JsonRecord)[part];
+  if (typeof cur === "object" && cur !== null) {
+    return Object.hasOwn(cur, part) ? (cur as JsonRecord)[part] : undefined;
+  }
   return undefined;
 }
 
 function getPath(record: JsonRecord, path: string): JsonValue | undefined {
   let cur: JsonValue | undefined = record;
   for (const part of path.split(".")) {
-    cur = childOf(cur, part);
+    cur = childOf(cur, part, path);
     if (cur === undefined) return undefined;
   }
   return cur;
@@ -110,7 +130,9 @@ function assignAt(
   container: JsonRecord | JsonValue[],
   part: string,
   value: JsonValue,
+  path: string,
 ): void {
+  checkPathSegment(part, path);
   if (Array.isArray(container)) {
     const at = arrayIndex(part);
     if (at === null) {
@@ -134,17 +156,17 @@ function setPath(record: JsonRecord, path: string, value: JsonValue): void {
   let cur: JsonRecord | JsonValue[] = record;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i] as string;
-    const next = childOf(cur as JsonValue, part);
+    const next = childOf(cur as JsonValue, part, path);
     if (typeof next !== "object" || next === null) {
       const fresh: JsonValue =
         arrayIndex(parts[i + 1] as string) === null ? {} : [];
-      assignAt(cur, part, fresh);
+      assignAt(cur, part, fresh, path);
       cur = fresh as JsonRecord | JsonValue[];
     } else {
       cur = next as JsonRecord | JsonValue[];
     }
   }
-  assignAt(cur, parts[parts.length - 1] as string, value);
+  assignAt(cur, parts[parts.length - 1] as string, value, path);
 }
 
 /* ------------------------------------------------------------------ *
