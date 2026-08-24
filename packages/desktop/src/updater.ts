@@ -149,26 +149,6 @@ export function isHttpUrl(url: string): boolean {
   return u.protocol === "https:" || u.protocol === "http:";
 }
 
-/**
- * True only for the game's own loopback origin on its own port.
- *
- * The guard for `setWindowOpenHandler` and `will-navigate`, both of which
- * decide whether to keep a window's preload bridge attached to what loads
- * next. A string-prefix check (`url.startsWith("http://127.0.0.1")`) accepts
- * `http://127.0.0.1.attacker.example` too, because that string also starts
- * with the same characters. Parsing the URL and comparing protocol,
- * hostname, and port separately closes that gap.
- */
-export function isOwnLoopbackUrl(url: string, port: number): boolean {
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return false;
-  }
-  return u.protocol === "http:" && u.hostname === "127.0.0.1" && u.port === String(port);
-}
-
 /** The SHA-256 of a file, lowercase hex. */
 export async function sha256File(file: string): Promise<string> {
   const hash = createHash("sha256");

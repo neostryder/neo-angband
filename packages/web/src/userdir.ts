@@ -194,10 +194,15 @@ export function textLinesToFile(name: string, text: string): number {
  * on `change` (a file was picked) or on the window regaining focus with nothing
  * picked, which is the cancel every browser does produce.
  */
-export function pickTextFile(accept: string): Promise<{ name: string; text: string } | null> {
+export function pickTextFile(
+  accept: string,
+  maxBytes?: number,
+): Promise<{ name: string; text: string } | { name: string; tooLarge: true } | null> {
   return new Promise((resolve) => {
     let settled = false;
-    const done = (v: { name: string; text: string } | null): void => {
+    const done = (
+      v: { name: string; text: string } | { name: string; tooLarge: true } | null,
+    ): void => {
       if (settled) return;
       settled = true;
       window.removeEventListener("focus", onFocus);
@@ -212,6 +217,12 @@ export function pickTextFile(accept: string): Promise<{ name: string; text: stri
       const file = input.files?.[0];
       if (!file) {
         done(null);
+        return;
+      }
+      /* File.size is available before File.text(), so a hostile transfer is
+       * rejected without first copying its whole contents into renderer memory. */
+      if (maxBytes !== undefined && file.size > maxBytes) {
+        done({ name: file.name, tooLarge: true });
         return;
       }
       file
