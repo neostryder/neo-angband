@@ -578,13 +578,8 @@ export class GlyphTerm
     this.canvas.style.width = `${w}px`;
     this.canvas.style.height = `${h}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // Baseline for the whole context: nearest-neighbour, so bitmap glyphs stay
-    // crisp (smoothing would blur the classic font into mush) and an upscaled
-    // tile keeps its pixel-art edges. A tile blit that is DOWNSCALED overrides
-    // this for its own drawImage call and restores it immediately after
-    // (withTileSmoothing in tiles.ts, used by TileSet.drawTile and
-    // LinoleumPack.drawTile - #100), so the override never survives to the next
-    // cell's glyph paint.
+    // Bitmap glyphs (and pixel tiles) scale by nearest-neighbour so they stay
+    // crisp; smoothing would blur the classic font into mush.
     this.ctx.imageSmoothingEnabled = false;
 
     if (this.options.reflow) {
