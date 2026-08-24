@@ -408,7 +408,6 @@ import {
   type TileModeEntry,
 } from "./tiles";
 import { LinoleumPack, loadLinoleumPack } from "./linoleum-pack";
-import { ensureLinoleumTilesheetPack } from "./linoleum-cache";
 import { urlBaseResolver, type PackFileResolver } from "./pack-files";
 import {
   showTextScreen,
@@ -1760,17 +1759,8 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
     tileset = null;
     tileMap = null;
     repaintEverything();
-    const sourceResolver = tileResolverFor(entry);
-    const resolve =
-      entry.tilesheet === undefined || entry.modId === undefined
-        ? sourceResolver
-        : await ensureLinoleumTilesheetPack({
-            modId: entry.modId,
-            source: entry.tilesheet,
-            resolve: sourceResolver,
-          });
     const pack = await loadLinoleumPack({
-      resolve,
+      resolve: tileResolverFor(entry),
       menuname: entry.menuname,
       deps: { ...tileDeps, vars: playerPrefVars() },
       modPrefTexts: modTilePrefTexts,

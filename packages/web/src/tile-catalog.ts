@@ -34,7 +34,6 @@
 
 import { GRAPHICS_MODE_CATALOG, GRAPHICS_NONE } from "@rpgm-tools/neo-angband-core";
 import type { GraphicsMode } from "@rpgm-tools/neo-angband-core";
-import type { LinoleumTilesheetSource } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { PackFileResolver } from "./pack-files";
 import type { TileModePack } from "./tile-mods";
 
@@ -98,8 +97,6 @@ export interface TileModeEntry {
    * take it, so the field means one thing whichever renderer reads it.
    */
   resolve?: PackFileResolver;
-  /** Compact tilesheet source which the host converts and caches before loading. */
-  tilesheet?: LinoleumTilesheetSource;
   /** The contributing mod's id, when a mod supplied this mode. */
   modId?: string;
   /**
@@ -167,7 +164,6 @@ export function composeTileModes(input: {
       ...(pack.engine === undefined ? {} : { engine: pack.engine }),
       ...(pack.path === undefined ? {} : { path: pack.path }),
       ...(pack.resolve === undefined ? {} : { resolve: pack.resolve }),
-      ...(pack.tilesheet === undefined ? {} : { tilesheet: pack.tilesheet }),
       modId: pack.modId,
       modName: pack.modName,
     };

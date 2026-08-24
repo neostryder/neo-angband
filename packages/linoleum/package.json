@@ -24,10 +24,6 @@
     "./md5": {
       "types": "./dist/md5.d.ts",
       "default": "./dist/md5.js"
-    },
-    "./conversion-plan": {
-      "types": "./dist/conversion-plan.d.ts",
-      "default": "./dist/conversion-plan.js"
     }
   },
   "bin": {

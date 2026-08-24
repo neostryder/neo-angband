@@ -277,6 +277,7 @@ function hookDescription(hook: keyof ModHooks): string {
     historyAdd: "which events reach your character history",
     historyDisplay: "how entries in your character history are shown",
     saveNoiseScent: "whether noise and scent maps go into the save",
+    shapeLearnObviousFlagsDirectly: "whether a shapechange's obvious flags are learned right away",
     messageText: "the wording of game messages",
     optionsChanged: "being told when you change your options",
   };

@@ -798,11 +798,26 @@ export function equipLearnElement(p: Player, env: RuneEnv, element: number): voi
  * shape_learn_on_assume (L1892): on taking a shape, learn its obvious
  * (OFID_WIELD) flags and its resists, through the same equipment learn
  * calls upstream uses.
+ *
+ * `learnObviousFlagsDirectly` is the ModHooks.shapeLearnObviousFlagsDirectly
+ * seam's resolved answer, threaded in by the caller (effect-general.ts'
+ * EF_SHAPECHANGE handler, the only one with a GameState to read a mod hook
+ * from - this module stays state-free, like the rest of obj/knowledge.ts).
+ * Faithful core passes `false`: a shape's obvious flag is then learned only
+ * through `equipLearnFlag`, which requires a WORN item to also carry the
+ * flag, so a flag the shape alone grants is never learned - the 4.2.6-era
+ * gap upstream's own `c8036c51537942a560e3d7f81749c431bbb4701f` fixed by
+ * learning the same already-computed set directly as runes instead. When
+ * true, this does exactly that IN ADDITION to the existing equipment call
+ * per flag: `playerLearnFlagRune` is a no-op for a flag already learned by
+ * the equipment path, so a flag the shape and a worn item both carry still
+ * fires the worn-item's own message and nothing here duplicates it.
  */
 export function shapeLearnOnAssume(
   p: Player,
   env: RuneEnv,
   shape: import("../player/types.js").Shape,
+  learnObviousFlagsDirectly = false,
 ): void {
   /* Get the shape's obvious flags. */
   const f = shape.flags.clone();
@@ -811,6 +826,7 @@ export function shapeLearnOnAssume(
   /* Learn flags. */
   for (let flag = f.next(FLAG_START); flag !== NO_FLAG; flag = f.next(flag + 1)) {
     equipLearnFlag(p, env, flag);
+    if (learnObviousFlagsDirectly) playerLearnFlagRune(p, env, flag);
   }
 
   /* Learn elements. */
