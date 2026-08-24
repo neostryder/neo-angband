@@ -29,7 +29,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { WORK_DIRNAME, installRoot, swapPlan, swapScript, updatability } from "./update-plan.js";
 import type { Updatability } from "./update-plan.js";
-import { UPDATE_ARCHIVE_LIMITS, unpackArchive, validateArchive } from "./unpack.js";
+import { unpackArchive } from "./unpack.js";
 
 /**
  * Path arithmetic for the TARGET platform, not the host's.
@@ -84,7 +84,7 @@ export function isWritable(dir: string): boolean {
 }
 
 /**
- * Only an https release asset URL from the project's own repository.
+ * Only an https release asset from the project's own repository.
  *
  * The catalogue this URL comes from is fetched over the network, so it is input,
  * not configuration. Everything else about the update is verified by digest -
@@ -98,125 +98,12 @@ export function isAllowedAssetUrl(url: string, repo: string): boolean {
   } catch {
     return false;
   }
-  return u.protocol === "https:" && u.hostname === "github.com" &&
-    u.pathname.startsWith(`/${repo}/releases/download/`);
-}
-
-/**
- * A GitHub release download redirects to a short-lived object URL. That URL is
- * not a general allow-list entry: it is acceptable only as the immediate next
- * hop after this process asked github.com for this repository's release asset.
- */
-export function isAllowedAssetRedirect(url: string, repo: string, fromReleaseAsset: boolean): boolean {
-  if (isAllowedAssetUrl(url, repo)) return true;
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
+  if (u.protocol !== "https:") return false;
+  if (u.hostname !== "github.com" && u.hostname !== "objects.githubusercontent.com") return false;
+  if (u.hostname === "github.com" && !u.pathname.startsWith(`/${repo}/releases/download/`)) {
     return false;
   }
-  return fromReleaseAsset && u.protocol === "https:" && u.hostname === "objects.githubusercontent.com";
-}
-
-/** One archive selected by the main process from GitHub's release response. */
-export interface ReleaseAsset {
-  readonly url: string;
-  readonly sha256: string;
-  readonly size: number;
-}
-
-interface ApiReleaseAsset {
-  readonly name?: unknown;
-  readonly browser_download_url?: unknown;
-  readonly digest?: unknown;
-  readonly size?: unknown;
-}
-
-interface ApiRelease {
-  readonly tag_name?: unknown;
-  readonly assets?: unknown;
-}
-
-/** The only update download argument the renderer may supply. */
-export function releaseTagFromRenderer(arg: unknown): string {
-  if (typeof arg !== "string" || arg === "" || arg.length > 255) {
-    throw new Error("the update did not name a release");
-  }
-  return arg;
-}
-
-/**
- * Whether this is the update archive for this machine, independently of the
- * renderer's picker. Keep this answer in the process that has authority to
- * install the result: the renderer's copy is presentation, this one is policy.
- */
-function isExpectedAssetName(name: string, platform: string, arch: string): boolean {
-  const lower = name.toLowerCase();
-  if (!lower.startsWith("neo.angband-")) return false;
-  const machineArch = arch === "arm64" ? "arm64" : "x64";
-  if (platform === "win32") return lower.endsWith("-win.zip");
-  if (platform === "linux") return lower.endsWith(`-${machineArch}.tar.gz`);
-  if (platform !== "darwin") return false;
-  if (lower.endsWith(`-${machineArch}-mac.zip`)) return true;
-  return machineArch === "x64" && lower.endsWith("-mac.zip") &&
-    !/-(?:arm64|x64)-mac\.zip$/u.test(lower);
-}
-
-/**
- * Re-read one release from GitHub and derive the only archive this machine may
- * install. The renderer supplies the tag because it is displaying the update;
- * its URL, size, and digest never cross this function's boundary.
- */
-export async function resolveReleaseAsset(args: {
-  readonly tag: string;
-  readonly repo: string;
-  readonly platform: string;
-  readonly arch: string;
-  readonly fetch?: typeof globalThis.fetch;
-}): Promise<ReleaseAsset> {
-  releaseTagFromRenderer(args.tag);
-  const get = args.fetch ?? globalThis.fetch;
-  const url = `https://api.github.com/repos/${args.repo}/releases/tags/${encodeURIComponent(args.tag)}`;
-  let res: Response;
-  try {
-    res = await get(url, { headers: { Accept: "application/vnd.github+json" } });
-  } catch {
-    throw new Error("GitHub could not be reached to verify this update");
-  }
-  if (!res.ok) {
-    throw new Error(`GitHub could not verify this update: HTTP ${String(res.status)}`);
-  }
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    throw new Error("GitHub's release metadata could not be read");
-  }
-  if (body === null || typeof body !== "object") {
-    throw new Error("GitHub's release metadata was not a release");
-  }
-  const release = body as ApiRelease;
-  if (release.tag_name !== args.tag || !Array.isArray(release.assets)) {
-    throw new Error("GitHub's release metadata did not match the requested release");
-  }
-  for (const raw of release.assets as ApiReleaseAsset[]) {
-    const name = typeof raw.name === "string" ? raw.name : "";
-    const assetUrl = typeof raw.browser_download_url === "string" ? raw.browser_download_url : "";
-    const digest = typeof raw.digest === "string" ? raw.digest : "";
-    const size = typeof raw.size === "number" ? raw.size : 0;
-    if (!isExpectedAssetName(name, args.platform, args.arch)) continue;
-    if (!isAllowedAssetUrl(assetUrl, args.repo)) {
-      throw new Error("GitHub named an archive outside this project's release downloads");
-    }
-    if (!/^sha256:[0-9a-f]{64}$/u.test(digest)) {
-      throw new Error("GitHub did not publish a SHA-256 digest for this archive");
-    }
-    if (!Number.isSafeInteger(size) || size < 1 || size > UPDATE_ARCHIVE_LIMITS.maxArchiveBytes) {
-      throw new Error("GitHub reported an archive outside the updater's size limit");
-    }
-    return { url: assetUrl, sha256: digest.slice("sha256:".length), size };
-  }
-  throw new Error("GitHub did not publish an update archive for this machine");
+  return true;
 }
 
 /**
@@ -365,43 +252,6 @@ export interface DownloadArgs {
   readonly root: string;
   readonly platform: string;
   readonly onProgress?: (received: number, total: number) => void;
-  /** Test seam; production uses the main process's fetch implementation. */
-  readonly fetch?: typeof globalThis.fetch;
-}
-
-const MAX_REDIRECT_HOPS = 5;
-
-/**
- * Fetch a release archive without ever asking fetch to follow a redirect for
- * us. Every location is checked before this process talks to it. In particular,
- * objects.githubusercontent.com is accepted only as the direct response to a
- * github.com/<repo>/releases/download/... request we made ourselves.
- */
-async function fetchReleaseArchive(
-  url: string,
-  repo: string,
-  get: typeof globalThis.fetch,
-): Promise<Response> {
-  let current = url;
-  for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
-    const res = await get(current, { redirect: "manual" });
-    if (res.status < 300 || res.status >= 400) return res;
-    if (hop === MAX_REDIRECT_HOPS) throw new Error("the release download redirected too many times");
-    const location = res.headers.get("location");
-    if (location === null) throw new Error("the release download redirected without a destination");
-    let next: string;
-    try {
-      next = new URL(location, current).toString();
-    } catch {
-      throw new Error("the release download redirected to an invalid destination");
-    }
-    const fromReleaseAsset = isAllowedAssetUrl(current, repo);
-    if (!isAllowedAssetRedirect(next, repo, fromReleaseAsset)) {
-      throw new Error("the release download redirected to an unexpected host");
-    }
-    current = next;
-  }
-  throw new Error("the release download redirected too many times");
 }
 
 /**
@@ -418,58 +268,39 @@ export async function downloadArchive(args: DownloadArgs): Promise<string> {
   if (!/^[0-9a-f]{64}$/u.test(args.sha256)) {
     throw new Error("refusing to install an archive with no digest to check");
   }
-  if (!Number.isSafeInteger(args.size) || args.size < 1 || args.size > UPDATE_ARCHIVE_LIMITS.maxArchiveBytes) {
-    throw new Error("refusing to install an archive outside the size limit");
-  }
   const work = workDir(args.root, args.platform);
   fs.mkdirSync(work, { recursive: true });
   const file = paths(args.platform).join(work, path.posix.basename(new URL(args.url).pathname));
-  try {
-    const res = await fetchReleaseArchive(args.url, args.repo, args.fetch ?? globalThis.fetch);
-    if (!res.ok || !res.body) throw new Error(`download failed: HTTP ${String(res.status)}`);
-    const advertised = Number(res.headers.get("content-length") ?? args.size);
-    if (!Number.isFinite(advertised) || advertised < 1 || advertised > UPDATE_ARCHIVE_LIMITS.maxArchiveBytes) {
-      throw new Error("the release archive is outside the size limit");
+  const res = await fetch(args.url, { redirect: "follow" });
+  if (!res.ok || !res.body) throw new Error(`download failed: HTTP ${String(res.status)}`);
+  const total = Number(res.headers.get("content-length") ?? args.size);
+  let received = 0;
+  const out = fs.createWriteStream(file);
+  /* Streamed rather than buffered: these archives are 120-165 MB, and holding
+   * one in memory in the main process while the renderer is drawing is how a
+   * progress bar ends up stuttering on the machine it is reassuring. */
+  const reader = res.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    received += value.byteLength;
+    args.onProgress?.(received, total);
+    if (!out.write(value)) {
+      await new Promise<void>((r) => out.once("drain", r));
     }
-    const total = advertised;
-    let received = 0;
-    const out = fs.createWriteStream(file);
-    /* Streamed rather than buffered: these archives are 120-165 MB, and holding
-     * one in memory in the main process while the renderer is drawing is how a
-     * progress bar ends up stuttering on the machine it is reassuring. */
-    const reader = res.body.getReader();
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        received += value.byteLength;
-        if (received > UPDATE_ARCHIVE_LIMITS.maxArchiveBytes) {
-          throw new Error("the release archive exceeded the size limit");
-        }
-        args.onProgress?.(received, total);
-        if (!out.write(value)) {
-          await new Promise<void>((r) => out.once("drain", r));
-        }
-      }
-      await new Promise<void>((resolve, reject) => {
-        out.end(() => {
-          resolve();
-        });
-        out.on("error", reject);
-      });
-    } catch (err) {
-      out.destroy();
-      throw err;
-    }
-    const got = await sha256File(file);
-    if (got !== args.sha256) {
-      throw new Error("the download did not match its published checksum");
-    }
-    return file;
-  } catch (err) {
-    fs.rmSync(file, { force: true });
-    throw err;
   }
+  await new Promise<void>((resolve, reject) => {
+    out.end(() => {
+      resolve();
+    });
+    out.on("error", reject);
+  });
+  const got = await sha256File(file);
+  if (got !== args.sha256) {
+    fs.rmSync(file, { force: true });
+    throw new Error("the download did not match its published checksum");
+  }
+  return file;
 }
 
 /**
@@ -491,10 +322,6 @@ export async function stageArchive(
   fs.mkdirSync(staging, { recursive: true });
   const external = extractCommand(archive, staging, platform);
   if (external) {
-    /* macOS deliberately uses ditto, so its zip must be inspected before that
-     * external extractor sees it; otherwise the resource limits below would be
-     * Linux- and Windows-only. */
-    validateArchive(archive);
     await run(external.cmd, external.args);
   } else {
     /*
