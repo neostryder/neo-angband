@@ -24,7 +24,9 @@ import {
   type GridSurface,
   type RenderAssetRef,
 } from "./term";
-import type { Overview, OverviewGlyph } from "./mapview";
+import { isGraphicsOverview } from "./mapview";
+import type { LevelOverview, OverviewGlyph } from "./mapview";
+import type { GridGeometry } from "./regions";
 import type { MenuSemantics, MenuTransformRow } from "@rpgm-tools/neo-angband-core";
 import { menuRegistry } from "./menu-registry";
 import { buildMenuQuestion, type MenuAnswer, type MenuQuestion } from "./menu-view";
@@ -361,6 +363,160 @@ function flat(ref: RenderAssetRef): RenderAssetRef {
   return rest;
 }
 
+/** SDL2's REASONABLE_MAP_TILE_{WIDTH,HEIGHT}. */
+const GRAPHICS_OVERVIEW_TILE = 16;
+
+/** A `RenderAssetRef`'s browser-only tile payload (term.ts owns the same seam). */
+interface CanvasTileData {
+  blitter?: {
+    drawTile(
+      ctx: CanvasRenderingContext2D,
+      px: number,
+      py: number,
+      w: number,
+      h: number,
+      code: { row: number; col: number },
+      grid?: { x: number; y: number },
+      tall?: boolean,
+    ): boolean;
+  };
+  code?: { row: number; col: number };
+  grid?: { x: number; y: number };
+  dimScale?: number;
+}
+
+/** The offscreen equivalent of GlyphTerm's two-pass tile blit. */
+function drawGraphicsTile(
+  ctx: CanvasRenderingContext2D,
+  asset: RenderAssetRef,
+  px: number,
+  py: number,
+  w: number,
+  h: number,
+): boolean {
+  if (asset.kind !== "canvas-tile" || !asset.data || typeof asset.data !== "object") return false;
+  const data = asset.data as CanvasTileData;
+  if (!data.blitter || !data.code) return false;
+  const alpha = ctx.globalAlpha;
+  ctx.globalAlpha = alpha * (data.dimScale ?? 1);
+  try {
+    return data.blitter.drawTile(ctx, px, py, w, h, data.code, data.grid, asset.tall);
+  } finally {
+    ctx.globalAlpha = alpha;
+  }
+}
+
+/** Draw a full-grid graphics cell; foreground failures fall back to its glyph. */
+function drawGraphicsOverviewCell(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  glyph: OverviewGlyph,
+): void {
+  if (glyph.bgTile) {
+    drawGraphicsTile(ctx, glyph.bgTile, x, y, GRAPHICS_OVERVIEW_TILE, GRAPHICS_OVERVIEW_TILE);
+  }
+  if (glyph.tile && drawGraphicsTile(ctx, glyph.tile, x, y, GRAPHICS_OVERVIEW_TILE, GRAPHICS_OVERVIEW_TILE)) {
+    return;
+  }
+  ctx.fillStyle = glyph.css;
+  ctx.font = `${String(GRAPHICS_OVERVIEW_TILE)}px monospace`;
+  ctx.textBaseline = "top";
+  ctx.fillText(glyph.ch, x, y);
+}
+
+function mapModalSize(
+  term: GridSurface,
+  overview: LevelOverview,
+): { mapW: number; mapH: number } {
+  if (!isGraphicsOverview(overview)) return { mapW: overview.mapW, mapH: overview.mapH };
+  const { cols, rows } = term.size();
+  return {
+    mapW: Math.min(cols - 2, overview.width),
+    mapH: Math.min(rows - 2, overview.height),
+  };
+}
+
+function hasGridGeometry(surface: GridSurface): surface is GridSurface & GridGeometry {
+  return typeof (surface as Partial<GridGeometry>).metrics === "function";
+}
+
+/**
+ * Build SDL2's full-level texture offscreen, then put one scaled bitmap over
+ * the terminal's existing map-box interior.  The terminal still owns the box
+ * and footer; this layer owns only the graphical miniature itself.
+ */
+function mountGraphicsOverview(
+  host: GridSurface,
+  overview: Extract<LevelOverview, { kind: "graphics" }>,
+): HTMLCanvasElement | null {
+  if (typeof document === "undefined" || !document.body || !hasGridGeometry(host)) return null;
+  const { mapW, mapH } = mapModalSize(host, overview);
+  if (mapW < 1 || mapH < 1 || overview.width < 1 || overview.height < 1) return null;
+  const source = document.createElement("canvas");
+  source.width = overview.width * GRAPHICS_OVERVIEW_TILE;
+  source.height = overview.height * GRAPHICS_OVERVIEW_TILE;
+  const sourceCtx = source.getContext("2d");
+  if (!sourceCtx) return null;
+  sourceCtx.imageSmoothingEnabled = false;
+  for (let y = 0; y < overview.height; y++) {
+    const row = overview.cells[y];
+    if (!row) continue;
+    for (let x = 0; x < overview.width; x++) {
+      const glyph = row[x];
+      if (!glyph) continue;
+      drawGraphicsOverviewCell(
+        sourceCtx,
+        x * GRAPHICS_OVERVIEW_TILE,
+        y * GRAPHICS_OVERVIEW_TILE,
+        glyph,
+      );
+    }
+  }
+  const player = overview.playerGlyph ?? { ch: "@", css: TITLE };
+  drawGraphicsOverviewCell(
+    sourceCtx,
+    overview.playerGrid.x * GRAPHICS_OVERVIEW_TILE,
+    overview.playerGrid.y * GRAPHICS_OVERVIEW_TILE,
+    player,
+  );
+
+  const metrics = host.metrics();
+  const availableW = mapW * metrics.cellWidth;
+  const availableH = mapH * metrics.cellHeight;
+  const scale = Math.min(availableW / source.width, availableH / source.height);
+  const width = source.width * scale;
+  const height = source.height * scale;
+  const left = metrics.originX + metrics.cellWidth + (availableW - width) / 2;
+  const top = metrics.originY + metrics.cellHeight + (availableH - height) / 2;
+  const canvas = document.createElement("canvas");
+  const dpr = (typeof window === "undefined" ? 1 : window.devicePixelRatio) || 1;
+  canvas.width = Math.max(1, Math.round(width * dpr));
+  canvas.height = Math.max(1, Math.round(height * dpr));
+  Object.assign(canvas.style, {
+    position: "fixed",
+    left: `${String(left)}px`,
+    top: `${String(top)}px`,
+    width: `${String(width)}px`,
+    height: `${String(height)}px`,
+    imageRendering: "pixelated",
+    pointerEvents: "none",
+    zIndex: "1",
+  });
+  canvas.setAttribute("aria-hidden", "true");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(source, 0, 0, width, height);
+  try {
+    document.body.appendChild(canvas);
+    return canvas;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * do_cmd_view_map ('M'): the whole level in miniature.
  *
@@ -383,23 +539,25 @@ function flat(ref: RenderAssetRef): RenderAssetRef {
  */
 export function showLevelMap(
   host: GridSurface & GridPointerInput,
-  overview: Overview,
+  overview: LevelOverview,
 ): Promise<void> {
   const handle = pushRegion(screenRegionSpec(), host.size());
+  const graphics = isGraphicsOverview(overview) ? mountGraphicsOverview(host, overview) : null;
   return paintLevelMapOnTerminal(regionSurface(host, handle.cells), overview).finally(() => {
+    graphics?.remove();
     popRegion(handle);
   });
 }
 
 function paintLevelMapOnTerminal(
   term: GridSurface & GridPointerInput,
-  overview: Overview,
+  overview: LevelOverview,
 ): Promise<void> {
   return new Promise<void>((resolve) => {
     const paint = (): void => {
       const { cols, rows } = term.size();
       term.clear();
-      const { mapW, mapH, cells, playerRow, playerCol } = overview;
+      const { mapW, mapH } = mapModalSize(term, overview);
       if (mapW >= 1 && mapH >= 1) {
         // window_make (ui-output.c): a '+' cornered box in COLOUR_WHITE
         // around the interior, offsetting every interior cell by (+1,+1).
@@ -409,16 +567,23 @@ function paintLevelMapOnTerminal(
           term.print(0, r + 1, "|", TITLE);
           term.print(mapW + 1, r + 1, "|", TITLE);
         }
-        for (let r = 0; r < mapH; r++) {
-          const row = cells[r];
-          if (!row) continue;
-          for (let c = 0; c < mapW; c++) {
-            const g = row[c];
-            if (g) drawOverviewCell(term, c + 1, r + 1, g);
+        if (!isGraphicsOverview(overview)) {
+          for (let r = 0; r < mapH; r++) {
+            const row = overview.cells[r];
+            if (!row) continue;
+            for (let c = 0; c < mapW; c++) {
+              const g = row[c];
+              if (g) drawOverviewCell(term, c + 1, r + 1, g);
+            }
           }
+          // The player is always drawn last, on top of whatever occupies its cell.
+          drawOverviewCell(
+            term,
+            overview.playerCol + 1,
+            overview.playerRow + 1,
+            overview.playerGlyph ?? { ch: "@", css: TITLE },
+          );
         }
-        // The player is always drawn last, on top of whatever occupies its cell.
-        drawOverviewCell(term, playerCol + 1, playerRow + 1, overview.playerGlyph ?? { ch: "@", css: TITLE });
       }
       const footer = "Hit any key to continue";
       const fx = Math.max(0, Math.floor((cols - footer.length) / 2));

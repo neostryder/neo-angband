@@ -449,8 +449,8 @@ import { downloadUserFile, pickTextFile } from "./userdir";
 import { userPath, userWrite, exportUserFile, FileType } from "./user-io";
 import { loadLoreFile, saveLoreFile } from "./lore-file";
 import { LORE_FILE } from "@rpgm-tools/neo-angband-core";
-import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
-import type { Overview, OverviewGlyph } from "./mapview";
+import { buildGraphicsOverview, buildOverview, panLocate, locateSectorBanner } from "./mapview";
+import type { BuildOverviewParams, LevelOverview, OverviewGlyph } from "./mapview";
 import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
 import { startLoading } from "./loading";
@@ -7704,16 +7704,16 @@ function hallucinationResolver():
 }
 
 /**
- * do_cmd_view_map's data ('M', ui-map.c display_map): the priority-resolved
- * whole-level miniature, scaled to fit the current terminal (minus the
- * 1-cell box border on each side). Reuses exactly the map-knowledge helpers
- * render() itself reads (knownFeat/knownObject/features/monsterIndex/
- * trapIndex) - buildOverview (mapview.ts) only does the scan/scale/priority
- * arithmetic; no parallel glyph pipeline is built here. No state mutation, and
- * no GAME RNG: while the player is hallucinating this does draw, but from the
- * display-only stream (see hallucinationRng), never from state.rng.
+ * do_cmd_view_map's data.  ASCII keeps ui-map.c display_map's compressed,
+ * priority-resolved miniature.  An active tileset instead keeps one resolved
+ * cell per known cave grid for overlay.ts to paint into one offscreen canvas
+ * and scale, as the graphical upstream front ends do.  Both paths reuse the
+ * map-knowledge helpers render() itself reads (knownFeat/knownObject/features/
+ * monsterIndex/trapIndex); no parallel glyph pipeline is built here. No state
+ * mutation, and no GAME RNG: while the player is hallucinating this does draw,
+ * but from the display-only stream (see hallucinationRng), never from state.rng.
  */
-function buildOverviewForShell(): Overview {
+function buildOverviewForShell(): LevelOverview {
   const { cols, rows } = term.size();
   const mapW = Math.min(cols - 2, state.chunk.width);
   const mapH = Math.min(rows - 2, state.chunk.height);
@@ -7725,13 +7725,13 @@ function buildOverviewForShell(): Overview {
   const playerCell = hallucinate?.({ ...state.actor.grid }, {
     object: false, sensed: false, monster: false,
   })?.monster;
-  return buildOverview({
+  const overviewParams: BuildOverviewParams = {
     width: state.chunk.width,
     height: state.chunk.height,
     mapW,
     mapH,
     knownFeatAt: (x, y) => knownFeat(state, loc(x, y)),
-    featureGlyph: (fidx) => {
+    featureGlyph: (fidx, x = 0, y = 0) => {
       const f = features.get(fidx);
       const disp = f.mimic !== null ? features.get(f.mimic) : f;
       const slot = glyphs.featGlyph(LIGHTING.LIT, disp.fidx);
@@ -7739,10 +7739,11 @@ function buildOverviewForShell(): Overview {
       /* display_map's "Hack - make every grid on the map lit" (ui-map.c:846)
        * sets g.lighting = LIGHTING_LIT before re-resolving, so the miniature's
        * TILE is the lit variant too - the same lighting this glyph already
-       * asks for. The x/y are the CAVE grid, not the scaled cell: tileDrawFor
-       * uses them only to pick a per-grid variant. */
+       * asks for. The graphics overview supplies CAVE-grid x/y so tileDrawFor
+       * can pick a per-grid variant; the unchanged compressed ASCII path uses
+       * its established (0,0) tile identity. */
       const tile = tileMap
-        ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), 0, 0)
+        ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), x, y)
         : undefined;
       return {
         ch: slot?.char ?? disp.dChar,
@@ -7803,7 +7804,11 @@ function buildOverviewForShell(): Overview {
           sensedObjectAt: (x, y) => knownObjectShown(x, y)?.seen === false,
         }
       : {}),
-  });
+  };
+  /* Selecting a graphics renderer is the mode gate, not whether one specific
+   * asset has finished loading.  tileDrawFor still falls back to its ASCII
+   * glyph while a pack is warming, just as the live map does. */
+  return tileset ? buildGraphicsOverview(overviewParams) : buildOverview(overviewParams);
 }
 
 const SIDEBAR_W = 13; // classic Angband status column width.
