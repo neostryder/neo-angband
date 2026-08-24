@@ -1509,7 +1509,7 @@ export function messageHistoryScreen(log: MessageLog, title = "Message history")
         kind: "table",
         key: "log",
         tagged: false,
-        columns: [{ key: "message", pad: false }],
+        columns: [{ key: "message", wrap: true }],
         rows: log.all().map((m) => ({
           ...(m.color === undefined ? {} : { color: m.color }),
           values: { count: m.count },
@@ -1546,7 +1546,7 @@ const HIST_KNOWN_GOLD = UI_GOLD;
 const PLAYER_HISTORY_COLUMNS: readonly ScreenColumn[] = [
   { key: "turn", label: "Turn", width: 10, align: "right" },
   { key: "depth", label: "Depth", width: 8, align: "right", gap: 0 },
-  { key: "note", label: "Note", gap: 2, pad: false },
+  { key: "note", label: "Note", gap: 2, wrap: true },
 ];
 
 export function playerHistoryScreen(state: GameState, title = "Player history"): ScreenView {

@@ -948,6 +948,28 @@ describe("the four listings that gave up their models in step 5b", () => {
     expect(block.rows[0]!.values).toEqual({ count: 2 });
     expect(block.rows[0]!.cells.message!.text).toBe("You hit it. <2x>");
   });
+
+  it("wraps long message history and history notes instead of losing their ending", () => {
+    const long = "A long record must remain readable after it passes the width of an 80-column terminal, including its final punctuation.";
+    const log = new MessageLog();
+    log.push(long);
+    const messageRows = screenBodyLines(messageHistoryScreen(log), 80).map((line) => line.text);
+    expect(messageRows.every((line) => line.length <= 79)).toBe(true);
+    expect(messageRows.join(" ")).toBe(long);
+
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    state.actor.player.hist.push({
+      type: 1 << HIST.PLAYER_BIRTH,
+      dlev: 0,
+      clev: 1,
+      aIdx: 0,
+      turn: 0,
+      event: long,
+    });
+    const historyRows = screenBodyLines(playerHistoryScreen(state), 80).slice(1).map((line) => line.text);
+    expect(historyRows.every((line) => line.length <= 79)).toBe(true);
+    expect(historyRows.map((line) => line.slice(20).trim()).join(" ")).toBe(long);
+  });
 });
 
 describe("inventoryLines weight column (14.20)", () => {
