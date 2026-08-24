@@ -63,7 +63,6 @@ export type {
   PackSection,
   PackShape,
   PackTilePack,
-  LinoleumTilesheetSource,
   SectionBand,
 } from "./manifest.js";
 export { ResolveError, resolveLoadOrder } from "./resolve.js";

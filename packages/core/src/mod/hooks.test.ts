@@ -49,6 +49,7 @@ describe("composeModHooks: nothing in, nothing out", () => {
     expect(composed?.walkBlockedByDiggable).toBeUndefined();
     expect(composed?.objectListTiebreak).toBeUndefined();
     expect(composed?.projectionRadius).toBeUndefined();
+    expect(composed?.shapeLearnObviousFlagsDirectly).toBeUndefined();
   });
 });
 
@@ -289,6 +290,22 @@ describe("any-hooks are disjunctive", () => {
     ]);
     expect(composed?.saveNoiseScent?.()).toBe(false);
   });
+
+  it("shapeLearnObviousFlagsDirectly: one mod asking is enough", () => {
+    const composed = composeModHooks([
+      { shapeLearnObviousFlagsDirectly: () => false },
+      { shapeLearnObviousFlagsDirectly: () => true },
+    ]);
+    expect(composed?.shapeLearnObviousFlagsDirectly?.()).toBe(true);
+  });
+
+  it("shapeLearnObviousFlagsDirectly: nobody asking means the faithful 4.2.6 gap stands", () => {
+    const composed = composeModHooks([
+      { shapeLearnObviousFlagsDirectly: () => false },
+      { shapeLearnObviousFlagsDirectly: () => false },
+    ]);
+    expect(composed?.shapeLearnObviousFlagsDirectly?.()).toBe(false);
+  });
 });
 
 describe("ordering hooks chain like a lexicographic comparator", () => {
@@ -517,6 +534,21 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       }),
       run: (h) => h.saveNoiseScent?.(),
     },
+    shapeLearnObviousFlagsDirectly: {
+      yes: (log, tag) => ({
+        shapeLearnObviousFlagsDirectly: () => {
+          log.push(tag);
+          return true;
+        },
+      }),
+      no: (log, tag) => ({
+        shapeLearnObviousFlagsDirectly: () => {
+          log.push(tag);
+          return false;
+        },
+      }),
+      run: (h) => h.shapeLearnObviousFlagsDirectly?.(),
+    },
     messageText: {
       yes: (log, tag) => ({
         messageText: (raw) => {
@@ -638,6 +670,11 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
     expect(hooks.saveNoiseScent?.()).toBe(false);
   });
 
+  it("shapeLearnObviousFlagsDirectly declines, the faithful 4.2.6 gap", () => {
+    const { hooks } = guarded({ shapeLearnObviousFlagsDirectly: THROWS });
+    expect(hooks.shapeLearnObviousFlagsDirectly?.()).toBe(false);
+  });
+
   it("messageText returns the RAW message, never an empty one", () => {
     /* The neutral value for a transform is its input. Falling back to "" would
      * delete a line the player needed to read, and nothing downstream could tell
@@ -725,6 +762,7 @@ describe("guardModHooks: it wraps, and does not invent", () => {
     expect(hooks.saveNoiseScent).toBeUndefined();
     expect(hooks.walkBlockedByDiggable).toBeUndefined();
     expect(hooks.objectListTiebreak).toBeUndefined();
+    expect(hooks.shapeLearnObviousFlagsDirectly).toBeUndefined();
   });
 
   it("an empty contribution stays empty, so the fold still returns undefined", () => {

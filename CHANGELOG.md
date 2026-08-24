@@ -36,6 +36,21 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- **A mod can now decide whether a shapechange's obvious flags are learned
+  directly**, through a new `shapeLearnObviousFlagsDirectly` hook on the
+  behaviour seam (`ModHooks`). Core reads it in `shapeLearnOnAssume` after
+  computing the shape's obvious (OFID_WIELD) flags, on top of the existing
+  equipment-based learning rather than instead of it. With no mod contributing
+  one the hook is absent and a shape's obvious flag is learned only when a worn
+  item also carries it, which is Angband 4.2.6's own behaviour: a flag the
+  shape alone grants is never learned. Upstream corrected that after the tag
+  ([`c8036c515`](https://github.com/angband/angband/commit/c8036c51537942a560e3d7f81749c431bbb4701f)),
+  and the correction ships as the `upstream-catchup` mod's rule; core stays
+  pinned to the tag and holds only the point at which the direct-learn
+  decision is made.
+
 ## [0.33.0] - 2026-08-24
 
 ### Added

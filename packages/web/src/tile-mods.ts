@@ -45,7 +45,6 @@
  */
 
 import { getGraphicsMode, GRAPHICS_NONE } from "@rpgm-tools/neo-angband-core";
-import type { LinoleumTilesheetSource } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   diskPacks,
   sessionPacks,
@@ -88,8 +87,6 @@ export interface TileModePack {
    * source each mod came from.
    */
   resolve?: PackFileResolver;
-  /** Compact source data to turn into this loose pack on its first selection. */
-  tilesheet?: LinoleumTilesheetSource;
   /** The mod id that contributed this pack. */
   modId: string;
   /**
@@ -106,27 +103,6 @@ interface RawTilePack {
   path?: unknown;
   engine?: unknown;
   menuname?: unknown;
-  tilesheet?: unknown;
-}
-
-/** Read the validated, compact source declaration without trusting arbitrary JSON. */
-function readLinoleumTilesheet(value: unknown): LinoleumTilesheetSource | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-  const source = value as Record<string, unknown>;
-  if (
-    typeof source["key"] !== "string" ||
-    typeof source["packId"] !== "string" ||
-    typeof source["cacheKey"] !== "string" ||
-    typeof source["image"] !== "string" ||
-    !Array.isArray(source["prefFiles"]) ||
-    source["prefFiles"].some((file) => typeof file !== "string") ||
-    typeof source["resolution"] !== "number"
-  ) {
-    return undefined;
-  }
-  const optional = ["tileWidth", "tileHeight", "overdrawRow", "overdrawMax"] as const;
-  if (optional.some((key) => source[key] !== undefined && typeof source[key] !== "number")) return undefined;
-  return source as unknown as LinoleumTilesheetSource;
 }
 
 /** Read a tiles mod manifest's tilePacks array, tolerating any shape. */
@@ -271,13 +247,11 @@ export function enabledTileModeClaims(input: {
         if (path === null) continue;
         const menuname = declared || catalogued?.menuname || "";
         if (menuname === "") continue;
-        const tilesheet = readLinoleumTilesheet(entry.tilesheet);
         out.push({
           grafID,
           menuname,
           engine: "linoleum",
           path,
-          ...(tilesheet === undefined ? {} : { tilesheet }),
           modId: id,
           modName,
         });

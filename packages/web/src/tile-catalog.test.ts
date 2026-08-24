@@ -407,11 +407,9 @@ describe("the game does not know or expect any particular mod", () => {
     expect(main).toMatch(/const resolve = tileResolverFor\(entry\)/);
     expect(main).toMatch(/createTileRenderer\(\{ resolve, grafID \}\)/);
     expect(main).toMatch(/loadTilePrefs\(resolve, mode, \{\s*\.\.\.tileDeps,/);
-    // The loose engine starts from that same resolver. A compact Linoleum
-    // tilesheet may wrap it with its generated-pack cache, but source bytes
-    // still come from the mode's own resolver rather than a global base.
-    expect(main).toMatch(/const sourceResolver = tileResolverFor\(entry\)/);
-    expect(main).toMatch(/resolve: sourceResolver/);
+    // And the loose engine takes the same resolver, so `path` cannot come to
+    // mean one thing per engine.
+    expect(main).toMatch(/resolve: tileResolverFor\(entry\)/);
   });
 
   // main.ts boots a real game at module scope, so it cannot be imported here;

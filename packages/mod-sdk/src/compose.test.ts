@@ -118,33 +118,6 @@ describe("manifest", () => {
     ).toThrow(/menuname must be a string/);
   });
 
-  it("validates an on-demand Linoleum tilesheet declaration", () => {
-    const source = {
-      key: "old",
-      packId: "linoleum-old",
-      displayName: "Old tiles",
-      cacheKey: "v1",
-      image: "source/8x8.png",
-      prefFiles: ["source/graf-xxx.prf"],
-      resolution: 8,
-    };
-    const withSource = (tilePacks: unknown): unknown => ({
-      ...manifest("art"),
-      shape: "tiles",
-      tilePacks,
-    });
-    const value = validateManifest(
-      withSource([{ grafID: 101, engine: "linoleum", path: "old", tilesheet: source }]),
-    );
-    expect(value.tilePacks?.[0]?.tilesheet).toEqual(source);
-    expect(() =>
-      validateManifest(withSource([{ grafID: 101, tilesheet: { ...source, image: "../8x8.png" } }])),
-    ).toThrow(/tilesheet files/);
-    expect(() =>
-      validateManifest(withSource([{ grafID: 101, tilesheet: { ...source, prefFiles: [] } }])),
-    ).toThrow(/prefFiles/);
-  });
-
   /*
    * The old form of `path` was a site-root-relative URL base, which only a mod
    * compiled into the app could know. Refused at the edge now, because unconverted
