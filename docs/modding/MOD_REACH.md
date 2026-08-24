@@ -100,6 +100,7 @@ a line number in a document has no test behind it and rots on the next commit.
 | --- | --- | --- | --- |
 | `walkBlockedByDiggable` | `game/cave-cmd.ts`, `movementAutoDig`, installed as `state.autoDigStep` and read in `game/player-turn.ts` | Take over a walk into an impassable grid and set its energy cost, INCLUDING a cost of zero: the call site tests `dug !== null`, so a handled-for-free walk is honoured | Anything about a walk that is not blocked |
 | `objectListTiebreak` | `game/obj-list.ts` | The order of two floor-list entries that compared equal on every upstream key | Any earlier comparator key; monster list ordering |
+| `projectionRadius` | `world/project.ts`, `computeProjection`, threaded in as `ProjectParams.resolveRadius` by `game/project-cast.ts` | Decide the radius a blast is built from, before any grid is collected - including holding it inside `max_range`, which is what the damage table is sized for | The rest of the blast: the path, the arc test, the line-of-sight rule, the falloff formula; and it may draw no RNG |
 | `levelGenerated` | `gen/generate.ts` | Inspect / repair / reject a finished level | The generation ALGORITHM (no builder, room, or profile is reachable from here); and it may draw no RNG |
 | `artifactCommit` | `obj/make.ts` | Refuse an artifact commit on an object already carrying one | Artifact selection, allocation, or properties |
 | `historyAdd` | `session/game.ts` | Suppress one `HIST.SLAY_UNIQUE` entry | Any other history write - the `Reached level N` write in the same file does not consult the hook |
@@ -107,9 +108,9 @@ a line number in a document has no test behind it and rots on the next commit.
 | `messageText` | `packages/web/src/main.ts` (host, not core) | Restate message text | What a message MEANS - restating only, by contract |
 | `optionsChanged` | the options pages, through `GameState.modHooks` | Observe the option state after a change. Folded `all-observe`: every mod's handler runs, none can veto | The option values themselves; it is notification, not interception |
 
-Honest reading of that table: the eight hooks were each carved for one concrete
+Honest reading of that table: the nine hooks were each carved for one concrete
 patch. They are correct and they are generic in shape, but their union is not a
-system anyone could "make over the whole game" with. They are eight points, not a
+system anyone could "make over the whole game" with. They are nine points, not a
 seam layer.
 
 ### Dispatch tables: the census

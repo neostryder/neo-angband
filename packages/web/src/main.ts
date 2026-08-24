@@ -202,7 +202,6 @@ import type {
   MonsterRace,
   MonsterLore,
   LoreDeps,
-  HistoryAddEntry,
 } from "@rpgm-tools/neo-angband-core";
 import { GameEvents, useFlavorGlyph, makeShapeLoreEnv } from "@rpgm-tools/neo-angband-core";
 import type { BoltEventData, ExplosionEventData } from "@rpgm-tools/neo-angband-core";
@@ -5051,9 +5050,8 @@ async function stealCmd(): Promise<void> {
 // --- Take notes (: , do_cmd_note, cmd-misc.c:88) --------------------------
 // Records a note into the character history log (HIST_USER_INPUT) and echoes
 // it. Two "cute" forms are honoured exactly: "/say X" -> '<name> says: "X"',
-// "/me X" -> '<name> X'. Everything else becomes 'Note: X'. Faithful core
-// stores that expanded text with the "-- " prefix; a mod may instead retain the
-// raw input and mark it for the historyDisplay seam to expand when shown.
+// "/me X" -> '<name> X'. Everything else becomes 'Note: X'. The stored entry
+// keeps the "-- " prefix; the echoed line drops it (msg("%s", &note[3])).
 async function noteCmd(): Promise<void> {
   const tmp = await promptText(
     term,
@@ -5075,47 +5073,13 @@ async function noteCmd(): Promise<void> {
     note = `-- Note: ${tmp}`;
   }
 
-  /* The write seam sees the exact faithful entry plus the raw user input.  With
-   * no hook it remains a normal 4.2.6 write; a hook can replace `what` with the
-   * raw text and set expandUserInput without core learning a mod rule or an
-   * expansion format. */
-  const entry: HistoryAddEntry = {
-    what: note,
-    type: HIST.USER_INPUT,
-    duplicate: false,
-    rawUserInput: tmp,
-  };
-  const wanted = state.modHooks?.historyAdd?.(entry) ?? true;
+  // Display the note without the "-- " prefix (cmd-misc.c:111).
+  say(note.slice(3));
 
-  // Display the note without the "-- " prefix (cmd-misc.c:111).  The display
-  // seam is also how a raw stored note gets the same feedback it will receive
-  // in the history screen and character dump.
-  const shown =
-    state.modHooks?.historyDisplay?.(
-      {
-        what: entry.what,
-        type: entry.type,
-        ...(entry.expandUserInput === true ? { expandUserInput: true } : {}),
-      },
-      playerName,
-    ) ?? entry.what;
-  say(shown.slice(3));
-
-  // historyStamp supplies history_add_with_flags's dlev/clev/turn off live
-  // state (game/history.ts).  A refusing hook suppresses only the ledger write,
-  // not the feedback for a note the player just entered.
+  // Add a history entry (the full note, with prefix). historyStamp supplies
+  // history_add_with_flags's dlev/clev/turn off live state (game/history.ts).
   const stamp = historyStamp(state);
-  if (wanted) {
-    historyAdd(
-      state.actor.player,
-      entry.what,
-      HIST.USER_INPUT,
-      stamp.dlev,
-      stamp.clev,
-      stamp.turn,
-      entry.expandUserInput,
-    );
-  }
+  historyAdd(state.actor.player, note, HIST.USER_INPUT, stamp.dlev, stamp.clev, stamp.turn);
   render();
 }
 
