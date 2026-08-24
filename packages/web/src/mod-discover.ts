@@ -114,11 +114,6 @@ export interface DiscoveredMod {
   /** The engine range the MOD claims. */
   readonly engine: string | null;
   /**
-   * Paths to screenshot assets the manifest declares (marketplace preview),
-   * relative to the pack. Empty when the manifest names none.
-   */
-  readonly screenshots: readonly string[];
-  /**
    * Whether the mod would LOAD in this build, and what to say about the range if
    * there is anything to say - both straight from the loader's own verdict
    * (mod-engine.ts), so a row cannot promise what load time then refuses. Note
@@ -336,8 +331,6 @@ export interface ManifestFacts {
   readonly description: string | null;
   readonly engine: string | null;
   readonly gateable: GateableManifest;
-  /** Paths to screenshot assets the manifest declares, in the order it lists them. */
-  readonly screenshots: readonly string[];
 }
 
 type ManifestRead =
@@ -379,10 +372,6 @@ async function readManifestFacts(
     return { ok: false, problem: `manifest.json at ${tag} declares no id` };
   }
   const engine = typeof manifest["engine"] === "string" ? manifest["engine"] : null;
-  const screenshotsField = manifest["screenshots"];
-  const screenshots = Array.isArray(screenshotsField)
-    ? screenshotsField.filter((s): s is string => typeof s === "string")
-    : [];
   return {
     ok: true,
     facts: {
@@ -398,7 +387,6 @@ async function readManifestFacts(
       description:
         typeof manifest["description"] === "string" ? manifest["description"] : null,
       engine,
-      screenshots,
       gateable: {
         id,
         ...(engine === null ? {} : { engine }),
@@ -585,8 +573,7 @@ export async function discoverMod(
       return { ok: false, problem: `${ref.repo} has no version whose manifest could be read.` };
     }
     if (chosen === null) engineHeld = null;
-    const { tag, manifest, id, name, author, version, description, engine, screenshots, gateable } =
-      facts;
+    const { tag, manifest, id, name, author, version, description, engine, gateable } = facts;
 
     /* Read off the same tags-call response the picked tag came from - a second
      * request would be a second chance for the tag to have moved BETWEEN the two
@@ -656,7 +643,6 @@ export async function discoverMod(
         version,
         description,
         engine,
-        screenshots,
         /* The MOD's claim, evaluated against THIS build by the SAME code that
          * decides at load time. Two copies of a compatibility rule is one copy
          * that learns, so this calls the loader's rather than re-deriving it. */

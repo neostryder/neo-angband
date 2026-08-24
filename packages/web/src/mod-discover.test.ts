@@ -125,35 +125,6 @@ describe("discoverMod: everything the row says comes from the MOD", () => {
     expect(r.mod.tags).toEqual(["v1.2.0", "v1.0.0"]);
   });
 
-  it("reads screenshots off the manifest, or an empty list when it declares none", async () => {
-    const { env } = fakeNet({
-      [TAGS]: tagList("v1.2.0"),
-      [RAW("v1.2.0", "manifest.json")]: JSON.stringify({
-        ...MANIFEST,
-        screenshots: ["shots/a.png", "shots/b.png"],
-      }),
-      [TREE("v1.2.0")]: tree([["manifest.json", 400]]),
-    });
-
-    const r = await discoverMod({ repo: "a/b" }, env);
-
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.mod.screenshots).toEqual(["shots/a.png", "shots/b.png"]);
-  });
-
-  it("defaults screenshots to an empty list when the manifest names none", async () => {
-    const { env } = fakeNet({
-      [TAGS]: tagList("v1.2.0"),
-      [RAW("v1.2.0", "manifest.json")]: JSON.stringify(MANIFEST),
-      [TREE("v1.2.0")]: tree([["manifest.json", 400]]),
-    });
-
-    const r = await discoverMod({ repo: "a/b" }, env);
-
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.mod.screenshots).toEqual([]);
-  });
-
   it("installs a PINNED tag rather than the newest, when one was named", async () => {
     const { env } = fakeNet({
       [TAGS]: tagList("v1.0.0", "v2.0.0"),
