@@ -38,10 +38,22 @@ version it still calls itself.
 
 ### Added
 
-- Character history now exposes a write-time mod seam that can retain raw input
-  with a display-expansion marker, plus a display-time formatter shared by the
-  history screen and character dump. Unused seams preserve the faithful 4.2.6
-  stored text and rendering.
+- **A mod can now decide the radius a blast is built from**, through a new
+  `projectionRadius` hook on the behaviour seam (`ModHooks`). Core reads it in
+  `computeProjection` before any grid is collected, and it is folded `chained`,
+  so two mods narrowing one blast for two unrelated reasons both get their
+  narrowing. With no mod contributing one the member is absent and the radius is
+  used exactly as it was given, which is Angband 4.2.6's own behaviour: 4.2.6
+  sizes its damage-at-distance table by `max_range` and never checks the radius
+  against it, so a radius above the maximum reaches distances the table has no
+  entry for. Upstream corrected that after the tag
+  ([`f0f6bd223`](https://github.com/angband/angband/commit/f0f6bd223b6b9faf0072b0ae7ffb34a812b97349),
+  upstream issue [#6671](https://github.com/angband/angband/issues/6671)); core
+  stays pinned to the tag and holds only the point at which the radius is
+  decided, and the correction ships as the `upstream-catchup` mod's
+  `catchup.projections` rule. The hook is RNG-free by contract - the radius
+  decides how many grids the blast collects, so a draw there would move the
+  stream by an amount that depends on the terrain.
 
 ## [0.32.0] - 2026-08-24
 
