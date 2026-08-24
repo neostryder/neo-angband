@@ -474,6 +474,133 @@ describe("LinoleumPack", () => {
   });
 });
 
+/**
+ * Which sampler a downscaled vs upscaled vs equal-size blit gets (#100). One
+ * rule maps slot 0 to an 8x8 asset (the fixture's `resolution`), the same
+ * shape the earlier fixtures use, so `{ row: 0, col: 0 }` always addresses it.
+ */
+describe("LinoleumPack.drawTile smoothing (#100)", () => {
+  const imageGlobal = globalThis as typeof globalThis & { Image?: typeof Image };
+
+  class LoadedImage {
+    naturalWidth = 8;
+    naturalHeight = 8;
+    private readonly listeners = new Map<string, (() => void)[]>();
+
+    addEventListener(type: string, listener: () => void): void {
+      const group = this.listeners.get(type) ?? [];
+      group.push(listener);
+      this.listeners.set(type, group);
+    }
+
+    set src(_url: string) {
+      for (const listener of this.listeners.get("load") ?? []) listener();
+    }
+  }
+
+  function pack(): LinoleumPack {
+    return new LinoleumPack({
+      menuname: "Smoothing fixture",
+      resolve: urlBaseResolver("mods/smoothing-fixture"),
+      manifest: {
+        packId: "smoothing-fixture",
+        displayName: "Smoothing fixture",
+        format: "png",
+        resolution: 8,
+        maps: new Map([["targets", "maps/targets.txt"]]),
+      },
+      index: buildLinoleumIndex({
+        rules: [rule("feat", "FLOOR:lit", "asset", "floor")],
+        deps,
+      }),
+    });
+  }
+
+  /** A context that records the smoothing state ACTIVE at each drawImage call. */
+  function recordingCtx(): {
+    ctx: CanvasRenderingContext2D;
+    smoothingAtDraw: { enabled: boolean; quality: ImageSmoothingQuality }[];
+  } {
+    const state = {
+      imageSmoothingEnabled: false,
+      imageSmoothingQuality: "low" as ImageSmoothingQuality,
+    };
+    const smoothingAtDraw: { enabled: boolean; quality: ImageSmoothingQuality }[] = [];
+    const ctx = {
+      get imageSmoothingEnabled(): boolean {
+        return state.imageSmoothingEnabled;
+      },
+      set imageSmoothingEnabled(v: boolean) {
+        state.imageSmoothingEnabled = v;
+      },
+      get imageSmoothingQuality(): ImageSmoothingQuality {
+        return state.imageSmoothingQuality;
+      },
+      set imageSmoothingQuality(v: ImageSmoothingQuality) {
+        state.imageSmoothingQuality = v;
+      },
+      drawImage: () => {
+        smoothingAtDraw.push({
+          enabled: state.imageSmoothingEnabled,
+          quality: state.imageSmoothingQuality,
+        });
+      },
+    } as unknown as CanvasRenderingContext2D;
+    return { ctx, smoothingAtDraw };
+  }
+
+  /** Warm the pack's one asset (drawTile's own request() side effect), like
+   * the glow fixture above: the first call is always a miss (nothing loaded
+   * yet) and only starts the load; two microtask turns later it is ready. */
+  async function loadedPack(): Promise<LinoleumPack> {
+    const originalImage = imageGlobal.Image;
+    imageGlobal.Image = LoadedImage as unknown as typeof Image;
+    try {
+      const p = pack();
+      expect(p.drawTile({} as CanvasRenderingContext2D, 0, 0, 8, 8, { row: 0, col: 0 })).toBe(
+        false,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      return p;
+    } finally {
+      if (originalImage === undefined) delete imageGlobal.Image;
+      else imageGlobal.Image = originalImage;
+    }
+  }
+
+  it("enables high-quality smoothing when the destination cell is SMALLER than the source asset", async () => {
+    const p = await loadedPack();
+    const { ctx, smoothingAtDraw } = recordingCtx();
+    expect(p.drawTile(ctx, 0, 0, 4, 4, { row: 0, col: 0 })).toBe(true);
+    expect(smoothingAtDraw).toEqual([{ enabled: true, quality: "high" }]);
+    // Restored, so it cannot leak into the next cell's nearest-neighbour glyph.
+    expect(ctx.imageSmoothingEnabled).toBe(false);
+  });
+
+  it("treats a downscale on EITHER axis as a downscale", async () => {
+    const p = await loadedPack();
+    const { ctx, smoothingAtDraw } = recordingCtx();
+    // 8x8 source into 4x16: narrower but taller - still smaller on one axis.
+    expect(p.drawTile(ctx, 0, 0, 4, 16, { row: 0, col: 0 })).toBe(true);
+    expect(smoothingAtDraw).toEqual([{ enabled: true, quality: "high" }]);
+  });
+
+  it("keeps nearest-neighbour for an upscale and for an equal-size blit", async () => {
+    const p = await loadedPack();
+    {
+      const { ctx, smoothingAtDraw } = recordingCtx();
+      expect(p.drawTile(ctx, 0, 0, 16, 16, { row: 0, col: 0 })).toBe(true);
+      expect(smoothingAtDraw).toEqual([{ enabled: false, quality: "low" }]);
+    }
+    {
+      const { ctx, smoothingAtDraw } = recordingCtx();
+      expect(p.drawTile(ctx, 0, 0, 8, 8, { row: 0, col: 0 })).toBe(true);
+      expect(smoothingAtDraw).toEqual([{ enabled: false, quality: "low" }]);
+    }
+  });
+});
+
 describe("loadLinoleumPack", () => {
   /** A pack served out of a plain map of URL -> text, no network. */
   function serve(files: Record<string, string>): typeof fetch {
