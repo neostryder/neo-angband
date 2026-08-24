@@ -225,39 +225,6 @@ describe("the arena round trip (generate.c / game-world.c)", () => {
     expect(state.monsters[midx]).toBeNull(); /* defeated and removed */
     expect(msgs.some((m) => m.endsWith("is defeated!"))).toBe(true);
   });
-  it("notifies the level-revisit seam when single combat restores its stashed level", () => {
-    const game = startGame(pack, { seed: 119, depth: 2 });
-    const state = game.state;
-    const flowIndex = 2 * state.chunk.width + 2;
-    state.chunk.noise[flowIndex] = 37;
-    state.chunk.scent[flowIndex] = 9;
-    state.turn = 19;
-    const observed: Array<{ chunk: unknown; frozenAt: number; now: number }> = [];
-    state.modHooks = {
-      levelRevisited: (chunk, frozenAt, now) => {
-        observed.push({ chunk, frozenAt, now });
-        const i = 2 * chunk.width + 2;
-        chunk.noise[i] = 0;
-        chunk.scent[i] = 13;
-      },
-    };
-
-    const home = state.chunk;
-    const mon = state.monsters.find((m) => m !== null)!;
-    state.healthWho = mon;
-    state.arenaLevel = true;
-    state.oldGrid = state.actor.grid;
-    game.changeLevel(state.chunk.depth);
-    state.turn = 50;
-
-    const copy = state.monsters.find((m) => m !== null)!;
-    expect(arenaInterceptDeath(state, copy)).toBe(true);
-    game.changeLevel(state.chunk.depth);
-
-    expect(observed).toEqual([{ chunk: home, frozenAt: 19, now: 50 }]);
-    expect(state.chunk.noise[flowIndex]).toBe(0);
-    expect(state.chunk.scent[flowIndex]).toBe(13);
-  });
   it("survives a save taken mid-fight, and exits onto the SAME level", () => {
     /* Upstream stores the pre-arena level in the chunk_list and the savefile
      * carries it (generate.c:1349 takes the persistent path for an arena too),

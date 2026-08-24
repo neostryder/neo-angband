@@ -61,29 +61,6 @@ describe("historyAddFull / historyAdd (player-history.c history_add_full/history
     expect(p.hist[0]!.event.length).toBe(79);
   });
 
-  it("persists an explicit display-expansion marker without changing ordinary entries", () => {
-    const p = human();
-    historyAdd(p, "/say A raw note", HIST.USER_INPUT, 0, 1, 0, true);
-    historyAdd(p, "Reached level 2", HIST.GAIN_LEVEL, 0, 2, 1);
-    expect(p.hist[0]).toEqual({
-      type: 1 << HIST.USER_INPUT,
-      dlev: 0,
-      clev: 1,
-      aIdx: 0,
-      turn: 0,
-      event: "/say A raw note",
-      expandUserInput: true,
-    });
-    expect(p.hist[1]).toEqual({
-      type: 1 << HIST.GAIN_LEVEL,
-      dlev: 0,
-      clev: 2,
-      aIdx: 0,
-      turn: 1,
-      event: "Reached level 2",
-    });
-  });
-
   it("historyAdd sets exactly one bit and defaults aIdx to 0", () => {
     const p = human();
     historyAdd(p, "Reached level 2", HIST.GAIN_LEVEL, 1, 2, 50);

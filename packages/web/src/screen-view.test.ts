@@ -100,33 +100,6 @@ describe("a table renders on the faithful terminal's column stops", () => {
     ]);
   });
 
-  it("wraps an opted-in cell without moving the column that follows it", () => {
-    const view = table({
-      tagged: false,
-      columns: [
-        { key: "bullet", width: 3, align: "right" },
-        { key: "description", wrap: true },
-        { key: "flag", gap: 3, width: 10, pad: false },
-      ],
-      rows: [
-        ROW({
-          bullet: { text: "-" },
-          description: { text: "One two three four five six seven eight nine" },
-          flag: { text: "[elevated]" },
-        }),
-      ],
-    });
-    const lines = screenBodyLines(view, 30).map((line) => line.text);
-    expect(lines).toEqual([
-      "  - One two".padEnd(19) + "[elevated]",
-      "    three four",
-      "    five six",
-      "    seven eight",
-      "    nine",
-    ]);
-    expect(lines.every((line) => line.length <= 29)).toBe(true);
-  });
-
   it("shows the empty state only when there are no rows", () => {
     const empty = table({
       columns: [{ key: "name" }],

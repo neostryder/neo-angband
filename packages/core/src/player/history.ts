@@ -39,11 +39,6 @@ export interface HistoryInfo {
   turn: number;
   /** char event[80]: the text of the item (truncated to 79 chars + NUL). */
   event: string;
-  /**
-   * A mod stored `event` as raw user input, so its historyDisplay hook expands
-   * it when shown.  Absent is the faithful 4.2.6 representation.
-   */
-  expandUserInput?: true;
 }
 
 /** hist_has(f, flag): whether bit `flagBit` is set in the type bitmask. */
@@ -78,19 +73,10 @@ export function historyAddFull(
   aIdx: number,
   dlev: number,
   clev: number,
- turn: number,
- text: string,
-  expandUserInput?: true,
+  turn: number,
+  text: string,
 ): boolean {
-  p.hist.push({
-    type,
-    dlev,
-    clev,
-    aIdx,
-    turn,
-    event: text.slice(0, 79),
-    ...(expandUserInput === true ? { expandUserInput: true } : {}),
-  });
+  p.hist.push({ type, dlev, clev, aIdx, turn, event: text.slice(0, 79) });
   return true;
 }
 
@@ -105,11 +91,10 @@ export function historyAdd(
   text: string,
   typeBit: number,
   dlev: number,
- clev: number,
- turn: number,
-  expandUserInput?: true,
+  clev: number,
+  turn: number,
 ): boolean {
-  return historyAddFull(p, 1 << typeBit, 0, dlev, clev, turn, text, expandUserInput);
+  return historyAddFull(p, 1 << typeBit, 0, dlev, clev, turn, text);
 }
 
 /**
