@@ -209,7 +209,6 @@ import { registerLocale, setLocale } from "@rpgm-tools/neo-angband-core";
 import type { LocaleBundle } from "@rpgm-tools/neo-angband-core";
 import { describeLoadFailure, describeMigration, describePackMismatch } from "./save-recovery.js";
 import { installCrashScreen } from "./crash-screen.js";
-import { showSafeModeScreen } from "./safe-mode.js";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, effectInfoRegistry, randartRegistry, runeRegistry, tvalRegistry, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
 import type { AgentController, AgentSession } from "@rpgm-tools/neo-angband-core";
 import {
@@ -284,7 +283,7 @@ import {
   loadInstalledMods,
   uninstallMod,
 } from "./mod-install";
-import { dropSessionMods, loadSessionMods } from "./mod-session";
+import { loadSessionMods } from "./mod-session";
 import type { ModUpgradeDeps } from "./mod-browse";
 import { pendingUpgrades, refreshInstalledMods, type ModUpgrade } from "./mod-refresh";
 import { zipImportDeps } from "./mod-zip-source";
@@ -876,64 +875,7 @@ const seed =
 const depthParam = params.get("depth");
 const depth = depthParam !== null && depthParam !== "" ? Number(depthParam) : 0;
 
-/**
- * The recovery action has to disable the EFFECTIVE set, not merely empty
- * neo:enabledMods. A deployed folder's load-order.json is unioned back in on
- * the next boot unless every enabled id also has an explicit off choice; staged
- * session mods are forced on, so they must be dropped too. A URL ?mods= override
- * has the same precedence and is removed before reloading.
- */
-function disableAllModsAndRestart(): void {
-  let enabled: string[] = [];
-  try {
-    enabled = enabledModIds();
-  } catch {
-    /* Still clear the persisted set below. Recovery must make its best effort
-     * even when the broken combination also made the enabled-set reader fail. */
-  }
-  try {
-    const store = defaultModStore();
-    store.setEnabled([]);
-    for (const id of enabled) store.setModChoice(id, false);
-  } catch {
-    /* ModStore is storage-tolerant; this protects the recovery UI against a
-     * host implementation that is not. */
-  }
-  try {
-    dropSessionMods();
-  } catch {
-    /* A staged mod is session-only. If its storage is unavailable there is no
-     * durable selection to clear, so continue to the reload. */
-  }
-  try {
-    const next = new URL(location.href);
-    next.searchParams.delete("mods");
-    history.replaceState(null, "", next.toString());
-  } catch {
-    /* The persisted off choices still cover ordinary browser launches. */
-  }
-  location.reload();
-}
-
-/**
- * `loadGamePack` is the last synchronous content-composition boundary before
- * the engine, menus, and crash handler exist. Do not let an unforeseen
- * combination leave an uncaught module-evaluation error and a blank page.
- *
- * The safe-mode screen owns the only next step. Keeping this promise pending
- * stops the rest of main.ts from attempting to bind an absent GamePack while
- * the player chooses it; the button persists safe mode and reloads this page.
- */
-async function loadPackForBoot(): Promise<GamePack> {
-  try {
-    return loadGamePack();
-  } catch (error) {
-    showSafeModeScreen(error, { disableModsAndRestart: disableAllModsAndRestart });
-    return await new Promise<never>(() => {});
-  }
-}
-
-const pack: GamePack = await loadPackForBoot();
+const pack: GamePack = loadGamePack();
 
 // Saves live in localStorage as stamped bytes (decision 16b tamper
 // deterrent), base64-wrapped. A genuine load shows the title + character select
