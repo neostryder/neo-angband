@@ -44,9 +44,6 @@
  * neither is worth engineering against.
  */
 
-import { decodeSavedGame } from "@rpgm-tools/neo-angband-core";
-import { SAVE_CODECS } from "./save-codec";
-
 /** The current file format. Bumped only when an older file would be MISREAD. */
 export const TRANSFER_VERSION = 1;
 
@@ -55,16 +52,6 @@ export const TRANSFER_MAGIC = "neo-angband-character";
 
 /** The extension the exporter suggests. */
 export const TRANSFER_EXT = ".neochar";
-
-/**
- * Import limits. Current exports are about 22 KiB compressed at DL50 and
- * 391 KiB before compression, so the 5 MiB envelope and 3 MiB encoded-save
- * limits leave more than 100x compressed headroom, and the 16 MiB expanded
- * limit leaves about 40x, while keeping a hostile file out of renderer memory.
- */
-export const MAX_TRANSFER_TEXT_BYTES = 5 * 1024 * 1024;
-export const MAX_TRANSFER_SAVE_BYTES = 3 * 1024 * 1024;
-export const MAX_TRANSFER_DECOMPRESSED_BYTES = 16 * 1024 * 1024;
 
 /** The roster fields that travel with the bytes. */
 export interface TransferMeta {
@@ -137,15 +124,6 @@ export type TransferResult =
  * between the wrong file, a truncated download and a version they cannot use.
  */
 export function decodeTransfer(text: string): TransferResult {
-  /* The file picker checks the same byte ceiling before it ever calls
-   * File.text(). Keep this second check here too: callers other than the DOM
-   * picker can hand this decoder a string directly. */
-  if (utf8LengthExceeds(text, MAX_TRANSFER_TEXT_BYTES)) {
-    return {
-      ok: false,
-      why: `that character file is larger than the ${formatBytes(MAX_TRANSFER_TEXT_BYTES)} import limit`,
-    };
-  }
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -183,44 +161,6 @@ export function decodeTransfer(text: string): TransferResult {
   if (typeof save !== "string" || save.length === 0) {
     return { ok: false, why: "that character file carries no save data" };
   }
-  if (maxBase64Bytes(save.length) > MAX_TRANSFER_SAVE_BYTES) {
-    return {
-      ok: false,
-      why: `that character file's save data is larger than the ${formatBytes(MAX_TRANSFER_SAVE_BYTES)} import limit`,
-    };
-  }
-  let bytes: Uint8Array;
-  try {
-    bytes = base64ToBytes(save);
-  } catch {
-    return { ok: false, why: "that character file's save data is not valid base64" };
-  }
-  if (bytes.length > MAX_TRANSFER_SAVE_BYTES) {
-    return {
-      ok: false,
-      why: `that character file's save data is larger than the ${formatBytes(MAX_TRANSFER_SAVE_BYTES)} import limit`,
-    };
-  }
-  const decoded = decodeSavedGame(
-    bytes,
-    undefined,
-    SAVE_CODECS,
-    MAX_TRANSFER_DECOMPRESSED_BYTES,
-  );
-  if (decoded.unknownCodec) {
-    return {
-      ok: false,
-      why: `that character file uses the unsupported ${decoded.unknownCodec} save codec`,
-    };
-  }
-  if (!decoded.save) {
-    return {
-      ok: false,
-      why:
-        `that character file's save data is damaged, malformed, or expands beyond ` +
-        `the ${formatBytes(MAX_TRANSFER_DECOMPRESSED_BYTES)} import limit`,
-    };
-  }
   const meta = readMeta(o["meta"]);
   if (!meta) {
     return { ok: false, why: "that character file's details are missing or malformed" };
@@ -242,41 +182,6 @@ export function decodeTransfer(text: string): TransferResult {
       save,
     },
   };
-}
-
-/** Upper bound without allocating a decoded base64 string. */
-function maxBase64Bytes(length: number): number {
-  return Math.ceil(length / 4) * 3;
-}
-
-/** Count UTF-8 bytes without allocating another copy of the envelope. */
-function utf8LengthExceeds(text: string, maxBytes: number): boolean {
-  let bytes = 0;
-  for (let i = 0; i < text.length; i++) {
-    const code = text.charCodeAt(i);
-    if (code <= 0x7f) bytes += 1;
-    else if (code <= 0x7ff) bytes += 2;
-    else if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
-      const next = text.charCodeAt(i + 1);
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        bytes += 4;
-        i++;
-      } else bytes += 3;
-    } else bytes += 3;
-    if (bytes > maxBytes) return true;
-  }
-  return false;
-}
-
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-function formatBytes(bytes: number): string {
-  return `${String(bytes / (1024 * 1024))} MiB`;
 }
 
 /**
