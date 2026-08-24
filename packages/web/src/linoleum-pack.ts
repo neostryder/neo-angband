@@ -59,13 +59,12 @@
  *   nested bracket, and a number parser strict enough to drop every pref line
  *   with a trailing comment.
  *
- * FAMILY EFFECTS. A family can add a glow, tint and pulse to its base asset.
- * The slot keeps that descriptor all the way to `drawTile`, which draws the
- * base picture first and then its effect. They are deliberately a loose-pack
- * feature: a tilesheet has no `family` rule or matching metadata to interpret.
+ * KNOWN LIMITS, all shared with the tilesheet engine so the two agree:
+ * - `family` effect metadata (glow/tint/pulse) is parsed but not applied; a
+ *   family draws its base asset, which is what the tilesheet shows.
  *
- * Double-height tiles USED TO be unsupported, in two steps that are worth
- * keeping apart. #241 taught both engines to draw one;
+ * Double-height tiles USED TO be on that list and are not any more, in two
+ * steps that are worth keeping apart. #241 taught both engines to draw one;
  * #243 found this one was still never told it had any, because the flag was
  * computed from the core graphics catalog and a pack contributed by a mod holds
  * a grafID the catalog has never heard of. The answer now comes from the pack
@@ -138,7 +137,7 @@ export function parseTallFile(text: string): Set<string> {
  * see `derivedSlots`.
  */
 export type LinoleumSlot =
-  | { kind: "asset"; asset: string; effect?: LinoleumFamilyEffect }
+  | { kind: "asset"; asset: string }
   | { kind: "pool"; pool: PoolDefinition }
   | { kind: "derived"; from: number; hue: number }
   | { kind: "transformed"; from: number; spec: TileTransform };
@@ -243,159 +242,24 @@ export function parseLinoleumManifest(text: string): LinoleumManifest | null {
   return { packId, displayName, format, resolution, maps };
 }
 
-/** One RGBA tint, with every channel in the familiar 0-255 byte range. */
-export interface LinoleumTint {
-  red: number;
-  green: number;
-  blue: number;
-  alpha: number;
-}
-
-/** A brightness pulse: minimum/maximum byte alpha and a cycle in milliseconds. */
-export interface LinoleumPulse {
-  min: number;
-  max: number;
-  period: number;
-}
-
-/** Optional presentation effects a `family` adds to its base asset. */
-export interface LinoleumFamilyEffect {
-  /** A second, additive base-image blit at this 0-255 alpha. */
-  glowAlpha?: number;
-  /** A source-alpha-shaped colour layer over the base asset. */
-  tint?: LinoleumTint;
-  /** Scales the tint and glow between min and max over the given period. */
-  pulse?: LinoleumPulse;
-}
-
-/** A family declaration: the base asset plus any presentation effect metadata. */
-export interface LinoleumFamily {
-  asset: string;
-  effect?: LinoleumFamilyEffect;
-}
-
-type LinoleumFamilies = ReadonlyMap<string, LinoleumFamily | string>;
-
-interface UnfinishedFamily {
-  asset?: string;
-  glowAlpha?: number;
-  tint?: LinoleumTint;
-  pulse?: LinoleumPulse;
-}
-
-/** Parse one alpha byte, accepting the 0-1 spelling older hand-authored packs use. */
-function parseAlpha(value: string): number | null {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 0) return null;
-  const byte = n <= 1 ? n * 255 : n;
-  return byte <= 255 ? byte : null;
-}
-
-function parseTint(value: string): LinoleumTint | null {
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu.exec(value);
-  if (hex?.[1] !== undefined) {
-    const digits = hex[1];
-    const short = digits.length === 3 || digits.length === 4;
-    const part = (offset: number): number => {
-      const digit = digits.slice(offset, offset + (short ? 1 : 2));
-      return Number.parseInt(short ? `${digit}${digit}` : digit, 16);
-    };
-    return {
-      red: part(0),
-      green: part(short ? 1 : 2),
-      blue: part(short ? 2 : 4),
-      alpha: digits.length === 4 || digits.length === 8 ? part(short ? 3 : 6) : 255,
-    };
-  }
-  const parts = value.split(",").map((part) => Number(part.trim()));
-  if (parts.length < 3 || parts.length > 4 || parts.some((part) => !Number.isFinite(part))) return null;
-  const [red, green, blue] = parts;
-  const alpha = parts[3] ?? 255;
-  if (
-    red === undefined ||
-    green === undefined ||
-    blue === undefined ||
-    red < 0 ||
-    red > 255 ||
-    green < 0 ||
-    green > 255 ||
-    blue < 0 ||
-    blue > 255
-  ) {
-    return null;
-  }
-  const parsedAlpha = parseAlpha(String(alpha));
-  return parsedAlpha === null ? null : { red, green, blue, alpha: parsedAlpha };
-}
-
-function parsePulse(value: string): LinoleumPulse | null {
-  const parts = value.split(",").map((part) => part.trim());
-  if (parts.length !== 3) return null;
-  const min = parseAlpha(parts[0] ?? "");
-  const max = parseAlpha(parts[1] ?? "");
-  const period = Number(parts[2]);
-  if (min === null || max === null || min > max || !Number.isFinite(period) || period <= 0) return null;
-  return { min, max, period };
-}
-
 /**
- * Parse maps/families.txt into each family's base asset and presentation
- * metadata. Metadata may precede the asset declaration; incomplete families
- * are ignored, just as the old base-asset-only parser ignored them.
+ * Parse maps/families.txt down to what this renderer uses: the family's base
+ * asset. The effect metadata (glow-alpha/tint/pulse) is deliberately read and
+ * dropped - see the header's known limits.
  */
-export function parseFamiliesFile(text: string): Map<string, LinoleumFamily> {
-  const unfinished = new Map<string, UnfinishedFamily>();
+export function parseFamiliesFile(text: string): Map<string, string> {
+  const out = new Map<string, string>();
   for (const line of text.split(/\r\n|\n|\r/)) {
     const trimmed = line.trim();
     if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
     const parts = trimmed.split(":");
-    if (parts.length < 4 || parts[0] !== "family") continue;
+    if (parts.length < 4 || parts[0] !== "family" || parts[2] !== "asset") continue;
     const id = parts[1] ?? "";
-    const field = parts[2] ?? "";
-    const value = parts.slice(3).join(":");
-    if (id.length === 0 || value.length === 0) continue;
-    const family = unfinished.get(id) ?? {};
-    if (field === "asset") {
-      family.asset = value;
-    } else if (field === "glow-alpha") {
-      const glowAlpha = parseAlpha(value);
-      if (glowAlpha !== null) family.glowAlpha = glowAlpha;
-    } else if (field === "tint") {
-      const tint = parseTint(value);
-      if (tint !== null) family.tint = tint;
-    } else if (field === "pulse") {
-      const pulse = parsePulse(value);
-      if (pulse !== null) family.pulse = pulse;
-    }
-    unfinished.set(id, family);
-  }
-  const out = new Map<string, LinoleumFamily>();
-  for (const [id, family] of unfinished) {
-    if (family.asset === undefined || family.asset.length === 0) continue;
-    const effect: LinoleumFamilyEffect = {};
-    if (family.glowAlpha !== undefined) effect.glowAlpha = family.glowAlpha;
-    if (family.tint !== undefined) effect.tint = family.tint;
-    if (family.pulse !== undefined) effect.pulse = family.pulse;
-    out.set(id, {
-      asset: family.asset,
-      ...(Object.keys(effect).length === 0 ? {} : { effect }),
-    });
+    const asset = parts.slice(3).join(":");
+    if (id.length === 0 || asset.length === 0) continue;
+    out.set(id, asset);
   }
   return out;
-}
-
-/** A stable slot key for effect-bearing families that share one base asset. */
-function familyEffectKey(effect: LinoleumFamilyEffect | undefined): string {
-  if (effect === undefined) return "";
-  const tint =
-    effect.tint === undefined
-      ? ""
-      : `${effect.tint.red},${effect.tint.green},${effect.tint.blue},${effect.tint.alpha}`;
-  const pulse =
-    effect.pulse === undefined
-      ? ""
-      : `${effect.pulse.min},${effect.pulse.max},${effect.pulse.period}`;
-  return `${effect.glowAlpha ?? ""}|${tint}|${pulse}`;
 }
 
 /**
@@ -426,7 +290,7 @@ function hexByte(value: number): string {
 export function linoleumPrefLines(input: {
   rules: readonly TargetRule[];
   pools?: readonly PoolDefinition[] | undefined;
-  families?: LinoleumFamilies | undefined;
+  families?: ReadonlyMap<string, string> | undefined;
 }): {
   lines: string[];
   slots: LinoleumSlot[];
@@ -435,7 +299,7 @@ export function linoleumPrefLines(input: {
 } {
   const poolById = new Map<string, PoolDefinition>();
   for (const pool of input.pools ?? []) poolById.set(pool.poolId, pool);
-  const families = input.families ?? new Map<string, LinoleumFamily>();
+  const families = input.families ?? new Map<string, string>();
 
   const lines: string[] = [];
   const slots: LinoleumSlot[] = [];
@@ -456,15 +320,8 @@ export function linoleumPrefLines(input: {
     if (rule.kind === "asset") {
       slot = { kind: "asset", asset: rule.value };
     } else if (rule.kind === "family") {
-      const declared = families.get(rule.value);
-      const family = typeof declared === "string" ? { asset: declared } : declared;
-      if (family !== undefined) {
-        slot = {
-          kind: "asset",
-          asset: family.asset,
-          ...(family.effect === undefined ? {} : { effect: family.effect }),
-        };
-      }
+      const asset = families.get(rule.value);
+      if (asset !== undefined) slot = { kind: "asset", asset };
     } else {
       const pool = poolById.get(rule.value);
       if (pool && pool.members.length > 0) slot = { kind: "pool", pool };
@@ -474,10 +331,7 @@ export function linoleumPrefLines(input: {
       continue;
     }
 
-    const key =
-      slot.kind === "asset"
-        ? `a:${slot.asset}:${familyEffectKey(slot.effect)}`
-        : `p:${slot.pool.poolId}`;
+    const key = slot.kind === "asset" ? `a:${slot.asset}` : `p:${slot.pool.poolId}`;
     let index = slotOf.get(key);
     if (index === undefined) {
       if (slots.length >= LINOLEUM_MAX_SLOTS) {
@@ -508,7 +362,7 @@ export function linoleumPrefLines(input: {
 export function buildLinoleumIndex(input: {
   rules: readonly TargetRule[];
   pools?: readonly PoolDefinition[] | undefined;
-  families?: LinoleumFamilies | undefined;
+  families?: ReadonlyMap<string, string> | undefined;
   tall?: ReadonlySet<string> | undefined;
   deps: TilePrefsDeps;
 }): LinoleumIndex {
@@ -535,7 +389,7 @@ export class LinoleumPack implements TileBlitter {
   readonly menuname: string;
   readonly manifest: LinoleumManifest;
   readonly index: LinoleumIndex;
-  /** Called after assets finish loading or a visible family pulse advances. */
+  /** Called after assets finish loading, coalesced to one call per frame. */
   onReady: (() => void) | null = null;
 
   private readonly imageDir: string;
@@ -548,7 +402,6 @@ export class LinoleumPack implements TileBlitter {
    */
   private readonly variants = new Map<string, CanvasImageSource | null>();
   private notifyScheduled = false;
-  private pulseScheduled = false;
 
   constructor(input: {
     menuname: string;
@@ -602,20 +455,13 @@ export class LinoleumPack implements TileBlitter {
   private slotDraw(
     slot: number,
     grid?: { x: number; y: number },
-  ): {
-    asset: string;
-    hue: number;
-    spec: TileTransform | null;
-    effect: LinoleumFamilyEffect | null;
-  } | null {
+  ): { asset: string; hue: number; spec: TileTransform | null } | null {
     const entry = this.index.slots[slot];
     if (!entry) return null;
-    if (entry.kind === "asset") {
-      return { asset: entry.asset, hue: 0, spec: null, effect: entry.effect ?? null };
-    }
+    if (entry.kind === "asset") return { asset: entry.asset, hue: 0, spec: null };
     if (entry.kind === "pool") {
       const member = selectPoolMember(entry.pool, { x: grid?.x ?? 0, y: grid?.y ?? 0 });
-      return member === null ? null : { asset: member, hue: 0, spec: null, effect: null };
+      return member === null ? null : { asset: member, hue: 0, spec: null };
     }
     /* One level, deliberately. A derived or transformed slot is always allocated
      * over a slot the PACK declared (the allocator reads the pack's own table,
@@ -625,9 +471,9 @@ export class LinoleumPack implements TileBlitter {
     const base = this.slotDraw(entry.from, grid);
     if (base === null || base.hue !== 0 || base.spec !== null) return null;
     if (entry.kind === "transformed") {
-      return { asset: base.asset, hue: 0, spec: entry.spec, effect: base.effect };
+      return { asset: base.asset, hue: 0, spec: entry.spec };
     }
-    return { asset: base.asset, hue: entry.hue, spec: null, effect: base.effect };
+    return { asset: base.asset, hue: entry.hue, spec: null };
   }
 
   /**
@@ -684,37 +530,23 @@ export class LinoleumPack implements TileBlitter {
      * variant and kept. Falling back to the donor's own image when the copy
      * cannot be made is deliberate: the tile is then merely indistinguishable,
      * which is what it was before this existed, rather than absent. */
-    let source: CanvasImageSource = cached.image;
-    let signature = "";
-    if (draw.spec !== null) {
-      signature = transformKey(draw.spec);
-      source =
-        this.variant(draw.asset, signature, source, (img) =>
-          renderTransformed(img as HTMLImageElement, draw.spec as TileTransform),
-        ) ?? source;
-    } else if (draw.hue !== 0) {
-      signature = `#${String(draw.hue)}`;
-      source =
-        this.variant(draw.asset, signature, source, (img) =>
-          renderRecoloured(img as HTMLImageElement, draw.hue),
-        ) ?? source;
-    }
-    const drawY = tall ? dy - dh : dy;
-    const drawH = tall ? dh * 2 : dh;
+    const source =
+      draw.spec !== null
+        ? (this.variant(draw.asset, transformKey(draw.spec), cached.image, (img) =>
+            renderTransformed(img, draw.spec as TileTransform),
+          ) ?? cached.image)
+        : draw.hue === 0
+          ? cached.image
+          : (this.variant(draw.asset, `#${String(draw.hue)}`, cached.image, (img) =>
+              renderRecoloured(img, draw.hue),
+            ) ?? cached.image);
     try {
-      ctx.drawImage(source, dx, drawY, dw, drawH);
-      this.drawFamilyEffect(
-        ctx,
-        draw.asset,
+      ctx.drawImage(
         source,
-        signature,
-        draw.effect,
-        cached.image.naturalWidth,
-        cached.image.naturalHeight,
         dx,
-        drawY,
+        tall ? dy - dh : dy,
         dw,
-        drawH,
+        tall ? dh * 2 : dh,
       );
       return true;
     } catch {
@@ -722,52 +554,12 @@ export class LinoleumPack implements TileBlitter {
     }
   }
 
-  /** Draw a family's tint and pulse-scaled glow over its already-painted asset. */
-  private drawFamilyEffect(
-    ctx: CanvasRenderingContext2D,
-    asset: string,
-    source: CanvasImageSource,
-    sourceSignature: string,
-    effect: LinoleumFamilyEffect | null,
-    sourceWidth: number,
-    sourceHeight: number,
-    dx: number,
-    dy: number,
-    dw: number,
-    dh: number,
-  ): void {
-    if (effect === null) return;
-    const pulse = familyPulseStrength(effect.pulse);
-    if (effect.pulse !== undefined) this.schedulePulse();
-    let effectSource = source;
-    if (effect.tint !== undefined) {
-      const tintSignature = `${sourceSignature}@t${familyTintKey(effect.tint)}`;
-      const tinted = this.variant(asset, tintSignature, source, (image) =>
-        renderTinted(image, sourceWidth, sourceHeight, effect.tint as LinoleumTint),
-      );
-      if (tinted !== null) {
-        effectSource = tinted;
-        ctx.save();
-        ctx.globalAlpha *= pulse;
-        ctx.drawImage(tinted, dx, dy, dw, dh);
-        ctx.restore();
-      }
-    }
-    if (effect.glowAlpha !== undefined && effect.glowAlpha > 0) {
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      ctx.globalAlpha *= (effect.glowAlpha / 255) * pulse;
-      ctx.drawImage(effectSource, dx, dy, dw, dh);
-      ctx.restore();
-    }
-  }
-
   /** One asset's variant, built on first use and cached (null once it failed). */
   private variant(
     asset: string,
     signature: string,
-    image: CanvasImageSource,
-    build: (image: CanvasImageSource) => CanvasImageSource | null,
+    image: HTMLImageElement,
+    build: (image: HTMLImageElement) => CanvasImageSource | null,
   ): CanvasImageSource | null {
     const key = `${asset}${signature}`;
     const have = this.variants.get(key);
@@ -857,68 +649,6 @@ export class LinoleumPack implements TileBlitter {
       this.notifyScheduled = false;
       this.onReady?.();
     }, 0);
-  }
-
-  /**
-   * Ask for the next pulse frame only after a pulse has actually been drawn.
-   * That keeps an off-screen family from waking the renderer, while an on-screen
-   * one advances at a modest 30fps until its cell leaves the repaint.
-   */
-  private schedulePulse(): void {
-    if (this.pulseScheduled) return;
-    this.pulseScheduled = true;
-    setTimeout(() => {
-      this.pulseScheduled = false;
-      this.onReady?.();
-    }, 1000 / 30);
-  }
-}
-
-/** The fraction of a family's effect to paint at this instant. */
-function familyPulseStrength(pulse: LinoleumPulse | undefined): number {
-  if (pulse === undefined) return 1;
-  const now =
-    typeof performance === "undefined" || typeof performance.now !== "function"
-      ? Date.now()
-      : performance.now();
-  /* Start at maximum so a first render never makes a declared effect disappear.
-   * A cosine rather than a sawtooth keeps the change continuous at the period
-   * boundary, which is what makes a pulse read as a glow rather than a blink. */
-  const phase = ((now % pulse.period) / pulse.period) * 2 * Math.PI;
-  const wave = (Math.cos(phase) + 1) / 2;
-  return (pulse.min + (pulse.max - pulse.min) * wave) / 255;
-}
-
-function familyTintKey(tint: LinoleumTint): string {
-  return `${tint.red},${tint.green},${tint.blue},${tint.alpha}`;
-}
-
-/**
- * Redraw an asset with a colour layer constrained to its own alpha. The
- * temporary canvas begins transparent, so `source-atop` follows the image's
- * silhouette rather than tinting the whole game cell behind a sparse tile.
- */
-function renderTinted(
-  image: CanvasImageSource,
-  width: number,
-  height: number,
-  tint: LinoleumTint,
-): CanvasImageSource | null {
-  if (typeof document === "undefined" || width === 0 || height === 0) return null;
-  try {
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const g = canvas.getContext("2d");
-    if (g === null) return null;
-    g.drawImage(image, 0, 0);
-    g.globalCompositeOperation = "source-atop";
-    g.globalAlpha = tint.alpha / 255;
-    g.fillStyle = `rgb(${tint.red} ${tint.green} ${tint.blue})`;
-    g.fillRect(0, 0, width, height);
-    return canvas;
-  } catch {
-    return null;
   }
 }
 
@@ -1256,8 +986,7 @@ export async function loadLinoleumPack(input: {
   const familiesPath = manifest.maps.get("families");
   const familiesText =
     familiesPath === undefined ? null : await readPackText(input.resolve, familiesPath);
-  const families =
-    familiesText === null ? new Map<string, LinoleumFamily>() : parseFamiliesFile(familiesText);
+  const families = familiesText === null ? new Map<string, string>() : parseFamiliesFile(familiesText);
 
   /* Absent in every pack converted before 2026-08-13 and in every pack whose
    * source mode has no overdraw band, so a missing file is ordinary rather than

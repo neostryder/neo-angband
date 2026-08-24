@@ -15,7 +15,8 @@
 import type { GridSurface, GridPointerInput } from "./term";
 import { setActiveCellTap } from "./term";
 import { inputEvents } from "./input-door";
-import { menuNav, screenFault } from "./overlay";
+import { menuNav, screenFault, screenRegionSpec } from "./overlay";
+import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import { ScreenAbandoned, showThroughPresenter } from "./screen-runtime";
 import type { ScreenHost, ScreenView } from "./screen-view";
 import {
@@ -69,10 +70,12 @@ export function showMonsterList(
 
 /** The faithful terminal's own visible-monster list; see `showMonsterList`. */
 function showMonsterListOnTerminal(
-  term: GridSurface & GridPointerInput,
+  host: GridSurface & GridPointerInput,
   state: GameState,
   initialSortExp: boolean,
 ): Promise<void> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
   return new Promise<void>((resolve) => {
     let sortExp = initialSortExp;
     let top = 0;
@@ -138,5 +141,7 @@ function showMonsterListOnTerminal(
     inputEvents.addEventListener("keydown", onKey, true);
     setActiveCellTap(term, () => finish());
     paint();
+  }).finally(() => {
+    popRegion(handle);
   });
 }

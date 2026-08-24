@@ -1092,13 +1092,15 @@ export async function getFile(
 }
 
 export function promptText(
-  term: GridSurface & GridPointerInput,
+  host: GridSurface & GridPointerInput,
   title: string,
   initial = "",
   maxLen = 15,
   footer = "[ type a name, Enter to accept, ESC to cancel ]",
   randomize?: () => string,
 ): Promise<string | null> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
   return new Promise<string | null>((resolve) => {
     const st: LineEdit = { buf: initial, curs: 0 };
     let firsttime = true;
@@ -1169,6 +1171,8 @@ export function promptText(
     inputEvents.addEventListener("compositionstart", onCompositionStart, true);
     inputEvents.addEventListener("compositionend", onCompositionEnd, true);
     paint();
+  }).finally(() => {
+    popRegion(handle);
   });
 }
 
@@ -1187,7 +1191,7 @@ export function promptText(
  * the returned number.
  */
 export function promptNumber(
-  term: GridSurface & GridPointerInput,
+  host: GridSurface & GridPointerInput,
   title: string,
   current: number,
   min: number,
@@ -1195,6 +1199,8 @@ export function promptNumber(
   subtitle?: string,
   maxLen = 3,
 ): Promise<number | null> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
   return new Promise<number | null>((resolve) => {
     const st: LineEdit = { buf: String(current), curs: 0 };
     let firsttime = true;
@@ -1253,6 +1259,8 @@ export function promptNumber(
     inputEvents.addEventListener("compositionstart", onCompositionStart, true);
     inputEvents.addEventListener("compositionend", onCompositionEnd, true);
     paint();
+  }).finally(() => {
+    popRegion(handle);
   });
 }
 
@@ -1468,7 +1476,7 @@ export const MENU_CLOSE = -3;
 export const MENU_REFRESH = -4;
 
 export function selectFromMenu(
-  term: GridSurface & GridPointerInput,
+  host: GridSurface & GridPointerInput,
   id: string,
   title: string,
   items: readonly MenuItem[],
@@ -1484,7 +1492,7 @@ export function selectFromMenu(
   extra?: SelectMenuOptions,
 ): Promise<number | null>;
 export function selectFromMenu(
-  term: GridSurface & GridPointerInput,
+  host: GridSurface & GridPointerInput,
   idOrTitle: string,
   titleOrItems: string | readonly MenuItem[],
   itemsOrFooter?: readonly MenuItem[] | string,
@@ -1510,6 +1518,12 @@ export function selectFromMenu(
    * (menu-runtime.ts). Everything below is exactly what used to follow a bare
    * `return new Promise(...)` here. */
   const askTerminal = (): Promise<number | null> => {
+    const handle = pushRegion(screenRegionSpec(), host.size());
+    return askTerminalOnTerminal(regionSurface(host, handle.cells)).finally(() => {
+      popRegion(handle);
+    });
+  };
+  const askTerminalOnTerminal = (term: GridSurface & GridPointerInput): Promise<number | null> => {
     if (extra?.terminalPicker) {
       return (async (): Promise<number | null> => {
         /* A transformer may add a row, but the faithful shell has no action for
@@ -2187,7 +2201,7 @@ function itemMenuHeader(
  * carries across a source switch.
  */
 export function itemSelect(
-  term: GridSurface & GridPointerInput,
+  host: GridSurface & GridPointerInput,
   prompt: string,
   sources: readonly ItemMenuSource[],
   initialSource = 0,
@@ -2200,7 +2214,9 @@ export function itemSelect(
    */
   bell?: () => void,
 ): Promise<{ source: number; index: number } | null> {
-  return new Promise((resolve) => {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
+  return new Promise<{ source: number; index: number } | null>((resolve) => {
     const firstNonEmpty = (): number => sources.findIndex((s) => s.items.length > 0);
     let cur =
       sources[initialSource]?.items.length ? initialSource : firstNonEmpty();
@@ -2362,5 +2378,7 @@ export function itemSelect(
       paint();
     });
     paint();
+  }).finally(() => {
+    popRegion(handle);
   });
 }

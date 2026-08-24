@@ -82,8 +82,10 @@ import {
   promptText,
   showTextScreen,
   menuNav,
+  screenRegionSpec,
   type MenuNav,
 } from "./overlay";
+import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import { freezeView, SCREEN_FOOTER, type ScreenView } from "./screen-view";
 import { proseBlock, textParagraphs } from "./screens";
 import { UI_TEXT, UI_DIM, UI_CURSOR } from "./ui-colors";
@@ -273,12 +275,15 @@ const BROWSER_TOP = 6;
  * so ESC is "back one level" here without any port-specific rule for it.
  */
 export async function runGroupedBrowser<T>(
-  term: GridSurface & GridPointerInput,
+  host: GridSurface & GridPointerInput,
   title: string,
   groups: readonly KnowledgeGroup<T>[],
   recall: (member: T, groupName: string) => Promise<void>,
   hooks: GroupedBrowserHooks<T> = {},
 ): Promise<void> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
+  try {
   /* Upstream builds g_list from the sorted object list, so a group with no
    * members cannot appear; these are built per group, so drop the empties here. */
   const live = groups.filter((g) => g.rows.length > 0);
@@ -504,6 +509,9 @@ export async function runGroupedBrowser<T>(
       });
       paint();
     });
+  }
+  } finally {
+    popRegion(handle);
   }
 }
 
