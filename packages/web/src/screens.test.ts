@@ -564,6 +564,39 @@ describe("historyLines (history_display, ui-history.c)", () => {
       `${"1234".padStart(10)}${"150".padStart(7)}'  Missed the Amulet of Testing (LOST)`,
     );
   });
+
+  it("uses historyDisplay for a marked raw user note and leaves unmarked history faithful", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    state.actor.player.fullName = "CelebrimborLong";
+    state.actor.player.hist.push(
+      {
+        type: 1 << HIST.USER_INPUT,
+        dlev: 1,
+        clev: 1,
+        aIdx: 0,
+        turn: 7,
+        event: "/say a complete note",
+        expandUserInput: true,
+      },
+      {
+        type: 1 << HIST.USER_INPUT,
+        dlev: 1,
+        clev: 1,
+        aIdx: 0,
+        turn: 8,
+        event: '-- CelebrimborLong says: "old truncated note',
+      },
+    );
+    state.modHooks = {
+      historyDisplay: (entry, playerName) =>
+        entry.expandUserInput === true
+          ? `-- ${playerName} says: "${entry.what.slice(5)}"`
+          : entry.what,
+    };
+    const lines = historyLines(state);
+    expect(lines[1]!.text).toContain('-- CelebrimborLong says: "a complete note"');
+    expect(lines[2]!.text).toContain('-- CelebrimborLong says: "old truncated note');
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -914,6 +947,28 @@ describe("the four listings that gave up their models in step 5b", () => {
     const block = messageHistoryScreen(log).blocks[0] as ScreenTableBlock;
     expect(block.rows[0]!.values).toEqual({ count: 2 });
     expect(block.rows[0]!.cells.message!.text).toBe("You hit it. <2x>");
+  });
+
+  it("wraps long message history and history notes instead of losing their ending", () => {
+    const long = "A long record must remain readable after it passes the width of an 80-column terminal, including its final punctuation.";
+    const log = new MessageLog();
+    log.push(long);
+    const messageRows = screenBodyLines(messageHistoryScreen(log), 80).map((line) => line.text);
+    expect(messageRows.every((line) => line.length <= 79)).toBe(true);
+    expect(messageRows.join(" ")).toBe(long);
+
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    state.actor.player.hist.push({
+      type: 1 << HIST.PLAYER_BIRTH,
+      dlev: 0,
+      clev: 1,
+      aIdx: 0,
+      turn: 0,
+      event: long,
+    });
+    const historyRows = screenBodyLines(playerHistoryScreen(state), 80).slice(1).map((line) => line.text);
+    expect(historyRows.every((line) => line.length <= 79)).toBe(true);
+    expect(historyRows.map((line) => line.slice(20).trim()).join(" ")).toBe(long);
   });
 });
 

@@ -165,6 +165,7 @@ document has no test behind it and rots on the next commit.
 | --- | --- | --- | --- |
 | `walkBlockedByDiggable(state, grid, deps)` | `last-answer` | `game/cave-cmd.ts` (`movementAutoDig`), reached from `walkAction` in `game/player-turn.ts` | `?? null` - bump the wall, spend nothing, draw no RNG |
 | `objectListTiebreak(a, b)` | `last-answer` | `game/obj-list.ts` | `?? 0`, i.e. leave the entries equal (stable sort keeps collect order) |
+| `projectionRadius(rad, maxRange)` | `chained` | `world/project.ts` (`computeProjection`, reached through `ProjectParams.resolveRadius`, which `game/project-cast.ts` fills from `state.modHooks`) | the radius as given, unchecked against `max_range` |
 | `levelGenerated(gen, quest)` | `all-must-agree` | `gen/generate.ts` | accept the level as generated |
 | `artifactCommit(aidx, alreadyCreated)` | `all-must-agree` | `obj/make.ts` | commit it unconditionally |
 | `historyAdd(entry)` | `all-must-agree` | `session/game.ts` (the `HIST.SLAY_UNIQUE` path) | `?? true` - write every entry, duplicates included |
@@ -225,8 +226,10 @@ discarded and there is nothing for load order to decide. Per fold:
   the level, because a second mod's invariant is not satisfied by the first mod's
   repair; only a refusal short-circuits, since the level is being thrown away
   anyway.
-- **`chained`** (`messageText`) chains in load order, each contributor seeing the
-  previous one's output: a `reduce` over the contributors.
+- **`chained`** (`messageText`, `projectionRadius`) chains in load order, each
+  contributor seeing the previous one's output: a `reduce` over the
+  contributors. Two mods narrowing one blast for two unrelated reasons both get
+  their narrowing, and the last one still speaks last.
 - **`last-answer`** (`walkBlockedByDiggable`) asks the contributors in **REVERSE**
   load order and stops at the first non-`null`, so the LAST mod's handling wins
   and two mods cannot double-spend one turn's energy. The reversal is the whole
@@ -257,7 +260,7 @@ A throw becomes that hook's **neutral answer**, which is per-hook and is the sam
 value core would have used with no mod loaded at all: `null` for
 `walkBlockedByDiggable`, `0` for `objectListTiebreak`, `true` for the three vetoes
 (`levelGenerated`, `artifactCommit`, `historyAdd`), `false` for `saveNoiseScent`,
-and the raw string for `messageText`. So to the fold, a broken mod reads exactly
+the raw string for `messageText`, and the radius as given for `projectionRadius`. So to the fold, a broken mod reads exactly
 like a mod with no opinion at that point, and the other mods' answers stand.
 `levelGenerated` accepting is the one worth naming: rejecting on a throw would
 re-roll the level, throw again, and re-roll until `cave_generate` gave up - one

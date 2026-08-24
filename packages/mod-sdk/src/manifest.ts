@@ -370,6 +370,34 @@ export interface PackTilePack {
    * catalogued mode may omit it and borrow that row's name.
    */
   menuname?: string;
+  /**
+   * Source material for a Linoleum pack generated locally the first time the
+   * player selects it. `path` is the compact source directory; the generated
+   * loose files live in the host's cache, never alongside the downloaded art.
+   */
+  tilesheet?: LinoleumTilesheetSource;
+}
+
+/** The compact input to Linoleum's on-demand tilesheet converter. */
+export interface LinoleumTilesheetSource {
+  /** Stable pack key, used to partition generated cache entries. */
+  key: string;
+  /** The id written into the generated loose pack's manifest.txt. */
+  packId: string;
+  /** The display name written into the generated loose pack's manifest.txt. */
+  displayName: string;
+  /** Bump whenever any compact source input changes, invalidating its cache. */
+  cacheKey: string;
+  /** PNG path relative to this tile pack's `path`. */
+  image: string;
+  /** The legacy .prf files, relative to this tile pack's `path`. */
+  prefFiles: string[];
+  /** Nominal output resolution and images/<resolution>/ directory name. */
+  resolution: number;
+  tileWidth?: number;
+  tileHeight?: number;
+  overdrawRow?: number;
+  overdrawMax?: number;
 }
 
 export interface PackManifest {
@@ -1034,20 +1062,53 @@ function validateTilePacks(value: unknown, id: string): void {
     if (p["menuname"] !== undefined && typeof p["menuname"] !== "string") {
       throw new ManifestError(`manifest ${id}: tilePacks menuname must be a string`);
     }
-    if (p["path"] === undefined) continue;
-    const path = p["path"];
-    if (typeof path !== "string") {
-      throw new ManifestError(`manifest ${id}: tilePacks path must be a string`);
+    if (p["path"] !== undefined) {
+      const path = p["path"];
+      if (typeof path !== "string") {
+        throw new ManifestError(`manifest ${id}: tilePacks path must be a string`);
+      }
+      if (/^([a-z][a-z0-9+.-]*:)?\//iu.test(path) || path.startsWith("\\")) {
+        throw new ManifestError(
+          `manifest ${id}: tilePacks path "${path}" must be relative to the mod folder, not a site or absolute path`,
+        );
+      }
+      if (path.split(/[/\\]/u).includes("..")) {
+        throw new ManifestError(
+          `manifest ${id}: tilePacks path "${path}" must stay inside the mod folder`,
+        );
+      }
     }
-    if (/^([a-z][a-z0-9+.-]*:)?\//iu.test(path) || path.startsWith("\\")) {
-      throw new ManifestError(
-        `manifest ${id}: tilePacks path "${path}" must be relative to the mod folder, not a site or absolute path`,
-      );
+    validateLinoleumTilesheet(p["tilesheet"], id);
+  }
+}
+
+/** Validate one optional on-demand Linoleum source declaration. */
+function validateLinoleumTilesheet(value: unknown, id: string): void {
+  if (value === undefined) return;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ManifestError(`manifest ${id}: tilePacks tilesheet must be an object`);
+  }
+  const source = value as Record<string, unknown>;
+  for (const key of ["key", "packId", "displayName", "cacheKey", "image"] as const) {
+    if (typeof source[key] !== "string" || source[key] === "") {
+      throw new ManifestError(`manifest ${id}: tilePacks tilesheet.${key} must be a non-empty string`);
     }
-    if (path.split(/[/\\]/u).includes("..")) {
-      throw new ManifestError(
-        `manifest ${id}: tilePacks path "${path}" must stay inside the mod folder`,
-      );
+  }
+  if (!Array.isArray(source["prefFiles"]) || source["prefFiles"].length === 0 || source["prefFiles"].some((file) => typeof file !== "string" || file === "")) {
+    throw new ManifestError(`manifest ${id}: tilePacks tilesheet.prefFiles must be an array of non-empty strings`);
+  }
+  if (typeof source["resolution"] !== "number" || !Number.isInteger(source["resolution"]) || source["resolution"] <= 0) {
+    throw new ManifestError(`manifest ${id}: tilePacks tilesheet.resolution must be a positive integer`);
+  }
+  for (const key of ["tileWidth", "tileHeight", "overdrawRow", "overdrawMax"] as const) {
+    const number = source[key];
+    if (number !== undefined && (typeof number !== "number" || !Number.isInteger(number) || number < 0)) {
+      throw new ManifestError(`manifest ${id}: tilePacks tilesheet.${key} must be a non-negative integer`);
+    }
+  }
+  for (const path of [source["image"], ...(source["prefFiles"] as unknown[])]) {
+    if (typeof path !== "string" || /^([a-z][a-z0-9+.-]*:)?\//iu.test(path) || path.startsWith("\\") || path.split(/[/\\]/u).includes("..")) {
+      throw new ManifestError(`manifest ${id}: tilePacks tilesheet files must stay inside the tile pack`);
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "neo-angband",
-  "version": "0.32.0",
+  "version": "0.33.0",
   "private": true,
   "description": "Modern TypeScript port of Angband: web-first, moddable, replayability-focused",
   "author": "neostryder (RPGM Tools)",

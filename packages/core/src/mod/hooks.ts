@@ -74,6 +74,45 @@ import type { GameState } from "../game/context.js";
 import type { OptionStateData } from "../player/options.js";
 
 /**
+ * A history entry offered to the write seam.
+ *
+ * `what` and `expandUserInput` are deliberately writable.  `historyAdd` is a
+ * conjunctive veto: every contributor gets one shared request, so a rewrite by
+ * one contributor remains visible to the contributors after it without turning
+ * their existing boolean vote into a last-wins decision.  The engine owns the
+ * type and duplicate facts; a mod may change neither.
+ */
+export interface HistoryAddEntry {
+  /** Text core would faithfully persist when no mod changes this request. */
+  what: string;
+  /** The HIST_* bit for this entry, supplied by the writer. */
+  readonly type: number;
+  /** Whether core identified this as a duplicate of an earlier entry. */
+  readonly duplicate: boolean;
+  /**
+   * The unexpanded text typed for a user note, when this writer has one.
+   * Context only: it is never persisted unless a hook copies it into `what`.
+   */
+  readonly rawUserInput?: string;
+  /**
+   * Persisted beside `what` when true.  It says `what` is a raw user note that
+   * must be expanded by `historyDisplay`, rather than ordinary display-ready
+   * history text.
+   */
+  expandUserInput?: true;
+}
+
+/** The persisted facts a history-display hook needs to turn an entry into text. */
+export interface HistoryDisplayEntry {
+  /** Text saved in the history entry. */
+  readonly what: string;
+  /** The HIST_* bitmask saved in the history entry. */
+  readonly type: number;
+  /** True only for a write hook's raw user-note representation. */
+  readonly expandUserInput?: true;
+}
+
+/**
  * A mod's behaviour contributions. Every member is optional; an absent member
  * means "this mod does not touch that point" and core takes its faithful path.
  *
@@ -121,6 +160,31 @@ export interface ModHooks {
   ) => number;
 
   /**
+   * The blast radius of a projection, before any geometry is built from it
+   * (world/project.ts, computeProjection's first statement, reached through
+   * ProjectParams.resolveRadius).
+   *
+   * Return the radius to use. Faithful core uses the radius it was handed,
+   * unchanged: 4.2.6 sizes its damage-at-distance table by max_range and does
+   * not check the radius against it, so a radius above max_range reads past the
+   * end of that table. The C reads whatever is next in memory; this port reads
+   * nothing at all and carries it into the damage arithmetic.
+   *
+   * `maxRange` is the same z_info->max_range the table is sized by, passed in
+   * so a contributor can decide against it without a second source of truth.
+   *
+   * RNG-FREE, and for a sharper reason than the generation hooks: the radius
+   * decides which grids the blast collects and therefore how many times every
+   * per-grid handler runs, so a draw here would move the stream by a variable
+   * amount. Returning a value that is not a non-negative integer is undefined
+   * behaviour, not a supported way to disable a blast.
+   *
+   * Serves: the upstream-catchup mod's blast-radius clamp (upstream
+   * f0f6bd223b6b9faf0072b0ae7ffb34a812b97349, upstream issue #6671).
+   */
+  projectionRadius?: (rad: number, maxRange: number) => number;
+
+  /**
    * A finished, otherwise-accepted level, before cave_generate returns it
    * (generate.ts, the accept branch).
    *
@@ -150,15 +214,31 @@ export interface ModHooks {
   artifactCommit?: (aidx: number, alreadyCreated: boolean) => boolean;
 
   /**
-   * A character-history entry about to be written (session/game.ts and any
-   * other historyAdd call site that passes its context).
+   * A character-history entry about to be written (session/game.ts and the
+   * host's note command).
    *
-   * Return false to suppress the entry. Faithful core writes every entry it
-   * reaches, duplicates included.
+   * Return false to suppress the entry.  Faithful core writes every entry it
+   * reaches, duplicates included.  A contributor may also rewrite the shared
+   * `entry.what` and set `entry.expandUserInput`; the latter preserves a raw
+   * user note for display-time expansion.  A contribution that only returns
+   * true has exactly the old veto-only behaviour.
    *
-   * Serves: the bug-fixes mod's no-duplicate-unique-kill fix (#4245).
+   * Serves: the bug-fixes mod's no-duplicate-unique-kill fix (#4245), and raw
+   * user-note storage for post-4.2.6 history-note behaviour.
    */
-  historyAdd?: (entry: { readonly what: string; readonly type: number; readonly duplicate: boolean }) => boolean;
+  historyAdd?: (entry: HistoryAddEntry) => boolean;
+
+  /**
+   * A persisted history entry immediately before the web history screen or
+   * character dump shows it (screens.ts' shared history rows).
+   *
+   * Return the text to show.  Faithful core shows `entry.what` unchanged.  The
+   * hook must only restate an entry's display text: it does not alter history or
+   * save data, and it is chained in load order like messageText.
+   *
+   * Serves: expanding a raw user note saved by historyAdd.
+   */
+  historyDisplay?: (entry: HistoryDisplayEntry, playerName: string) => string;
 
   /**
    * Whether the noise and scent heatmaps belong in the save (session/save.ts,
@@ -170,34 +250,6 @@ export interface ModHooks {
    * Serves: the bug-fixes mod's noise/scent persistence (#4605).
    */
   saveNoiseScent?: () => boolean;
-
-  /**
-   * Whether a shapechange's obvious flags should be learned directly as
-   * runes (obj/knowledge.ts, shapeLearnOnAssume's per-flag loop, reached from
-   * the EF_SHAPECHANGE handler).
-   *
-   * Return true to learn them directly, ON TOP OF the existing equipment-based
-   * `equipLearnFlag` call rather than instead of it - a flag both the shape and
-   * a worn item carry still fires the worn-item message unchanged. Faithful
-   * core never does this: `shapeLearnOnAssume` only ever learns a shape's
-   * obvious flag through `equipLearnFlag`, which requires a WORN item to carry
-   * the flag too, so a flag the shape alone grants is never learned. That is
-   * the 4.2.6-era gap this mod exists to catalogue, not a bug this port
-   * introduced.
-   *
-   * Core still computes and restricts to the exact SAME obvious-flag set it
-   * always has - `shape.flags` intersected with the OFID_WIELD mask,
-   * `shapeLearnOnAssume`'s existing first two lines. This hook decides only
-   * WHETHER that already-computed set is learned directly, never WHICH flags
-   * are in it, so a mod cannot widen this seam into "learn everything the
-   * shape has" - the same shortcut this project already reverted once for
-   * runes broadly (commit 7970af462, docs/modding/BUG_FIXES.md's "port's own
-   * code" section).
-   *
-   * Serves: the upstream-catchup mod's shape-obvious-flag learning (upstream
-   * c8036c51537942a560e3d7f81749c431bbb4701f).
-   */
-  shapeLearnObviousFlagsDirectly?: () => boolean;
 
   /**
    * Player-visible message text, on its way to the message line (the host's
@@ -255,14 +307,14 @@ export interface ModHooks {
  *  - ORDERING hooks (objectListTiebreak) chain the same way round: the last
  *    mod's comparator is the primary key and earlier ones break the ties it
  *    leaves, which is a valid total order and is "later wins" for a comparator.
- *  - TRANSFORM hooks (messageText) compose in load order, each seeing the
- *    previous one's output - so the last mod still speaks last and has the final
- *    say over the text that reaches the player.
+ *  - TRANSFORM hooks (messageText, historyDisplay, projectionRadius) compose in
+ *    load order, each seeing the previous one's output - so the last mod still
+ *    speaks last and has the final say over the text that reaches the player,
+ *    or over the radius the blast is built from.
  *  - VETO hooks (levelGenerated, artifactCommit, historyAdd) are conjunctive:
  *    every contributor runs and any refusal decides.
- *  - ANY hooks (saveNoiseScent, shapeLearnObviousFlagsDirectly) are disjunctive:
- *    one mod asking for the data is enough, because the data is additive and a
- *    second mod cannot object.
+ *  - ANY hooks (saveNoiseScent) are disjunctive: one mod asking for the data is
+ *    enough, because the data is additive and a second mod cannot object.
  *
  * WHY THE LAST TWO ARE NOT EXCEPTIONS. "Later wins" answers the question "two
  * mods disagree about one thing - whose answer is used?", and a veto hook is not
@@ -312,11 +364,12 @@ export type ModHookFold =
 export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   walkBlockedByDiggable: "last-answer",
   objectListTiebreak: "last-answer",
+  projectionRadius: "chained",
   levelGenerated: "all-must-agree",
   artifactCommit: "all-must-agree",
   historyAdd: "all-must-agree",
+  historyDisplay: "chained",
   saveNoiseScent: "any-yes",
-  shapeLearnObviousFlagsDirectly: "any-yes",
   messageText: "chained",
   optionsChanged: "all-observe",
 };
@@ -400,6 +453,15 @@ export function guardModHooks(
       guard("objectListTiebreak", () => tiebreak(a, b), 0);
   }
 
+  const radius = hooks.projectionRadius;
+  if (radius) {
+    /* The radius AS GIVEN, which is faithful core's own answer. Substituting
+     * anything else - max_range, or zero - would make a throwing hook change
+     * the blast rather than step out of the way of it. */
+    out.projectionRadius = (rad, maxRange): number =>
+      guard("projectionRadius", () => radius(rad, maxRange), rad);
+  }
+
   const level = hooks.levelGenerated;
   if (level) {
     /* ACCEPT. Rejecting on a throw would re-roll the level, and cave_generate
@@ -424,17 +486,18 @@ export function guardModHooks(
       guard("historyAdd", () => history(entry), true);
   }
 
+  const historyDisplay = hooks.historyDisplay;
+  if (historyDisplay) {
+    /* Show the stored text unchanged if a display formatter throws.  A broken
+     * formatter must not make the character history or its dump disappear. */
+    out.historyDisplay = (entry, playerName): string =>
+      guard("historyDisplay", () => historyDisplay(entry, playerName), entry.what);
+  }
+
   const noise = hooks.saveNoiseScent;
   if (noise) {
     /* OMIT them, the upstream behaviour. */
     out.saveNoiseScent = (): boolean => guard("saveNoiseScent", () => noise(), false);
-  }
-
-  const shapeFlags = hooks.shapeLearnObviousFlagsDirectly;
-  if (shapeFlags) {
-    /* DECLINE, the upstream 4.2.6-era gap this seam exists to let a mod close. */
-    out.shapeLearnObviousFlagsDirectly = (): boolean =>
-      guard("shapeLearnObviousFlagsDirectly", () => shapeFlags(), false);
   }
 
   const text = hooks.messageText;
@@ -498,6 +561,15 @@ export function composeModHooks(
     };
   }
 
+  const radius = list.map((c) => c.projectionRadius).filter(isFn);
+  if (radius.length > 0) {
+    /* LOAD order, each seeing the previous one's radius - a transform, like
+     * messageText. Two mods narrowing the same blast for two different reasons
+     * both get their narrowing; the last one still speaks last. */
+    out.projectionRadius = (rad, maxRange): number =>
+      radius.reduce((r, fn) => fn(r, maxRange), rad);
+  }
+
   const level = list.map((c) => c.levelGenerated).filter(isFn);
   if (level.length > 0) {
     out.levelGenerated = (gen, quest): boolean => {
@@ -525,16 +597,18 @@ export function composeModHooks(
     };
   }
 
+  const historyDisplay = list.map((c) => c.historyDisplay).filter(isFn);
+  if (historyDisplay.length > 0) {
+    out.historyDisplay = (entry, playerName): string => {
+      let what = entry.what;
+      for (const fn of historyDisplay) what = fn({ ...entry, what }, playerName);
+      return what;
+    };
+  }
+
   const noise = list.map((c) => c.saveNoiseScent).filter(isFn);
   if (noise.length > 0) {
     out.saveNoiseScent = (): boolean => noise.some((fn) => fn());
-  }
-
-  const shapeFlags = list.map((c) => c.shapeLearnObviousFlagsDirectly).filter(isFn);
-  if (shapeFlags.length > 0) {
-    /* One mod asking for direct learning is enough - two mods both wanting the
-     * 4.2.6-era gap closed are not in conflict, they are two mods agreeing. */
-    out.shapeLearnObviousFlagsDirectly = (): boolean => shapeFlags.some((fn) => fn());
   }
 
   const text = list.map((c) => c.messageText).filter(isFn);

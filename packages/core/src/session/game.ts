@@ -1132,22 +1132,22 @@ function wireGame(
        * per lethal blow, duplicates included, so with no hook installed the
        * `?? true` below IS the faithful answer. `duplicate` tells a mod what it
        * needs to decide without core deciding anything. */
-      const what = `Killed ${mon.race.name}`;
-      const wanted =
-        state.modHooks?.historyAdd?.({
-          what,
-          type: HIST.SLAY_UNIQUE,
-          duplicate: alreadyDead,
-        }) ?? true;
+      const entry: import("../mod/hooks.js").HistoryAddEntry = {
+        what: `Killed ${mon.race.name}`,
+        type: HIST.SLAY_UNIQUE,
+        duplicate: alreadyDead,
+      };
+      const wanted = state.modHooks?.historyAdd?.(entry) ?? true;
       if (wanted) {
         const stamp = historyStamp(state);
         historyAdd(
           state.actor.player,
-          what,
+          entry.what,
           HIST.SLAY_UNIQUE,
           stamp.dlev,
           stamp.clev,
           stamp.turn,
+          entry.expandUserInput,
         );
       }
     }
