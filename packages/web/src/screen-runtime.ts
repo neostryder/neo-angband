@@ -31,7 +31,6 @@ import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sd
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 import type { PromptRequest } from "./prompt-view";
 import type { ScreenHost, ScreenPresenter, ScreenShown, ScreenView } from "./screen-view";
-import { pushRegion, type RegionHandle, type RegionSpec } from "./ui-stack";
 
 /** What a mod must hold in its manifest before it may show the game's screens. */
 export const SCREEN_CAPABILITY = "ui:screen.replace";
@@ -50,18 +49,6 @@ export interface InstalledScreen {
 }
 
 type ReportFault = (id: string, message: string, error: unknown) => void;
-
-/** A presenter's full-screen overlay, named in the same namespace as its own regions. */
-function presenterRegionSpec(modId: string): RegionSpec {
-  return {
-    id: `${modId}:screen`,
-    layer: "modal",
-    place: (grid) => ({ col: 0, row: 0, cols: grid.cols, rows: grid.rows }),
-  };
-}
-
-/** Regions belong only to presenters constructed by `installScreen()`. */
-const presenterRegions = new WeakMap<ScreenPresenter, RegionSpec>();
 
 /**
  * Whether this candidate may show screens at all: it declares `screen()` AND its
@@ -132,9 +119,7 @@ export function installScreen(
   /* `host` is forwarded, not dropped: it is the only way a presenter reaches a
    * screen's `actions`, and an adapter that silently ate it would leave the
    * character sheet's rename and dump unreachable with no error anywhere. */
-  const installedPresenter: ScreenPresenter = { show: (view, host) => presenter.show(view, host) };
-  presenterRegions.set(installedPresenter, presenterRegionSpec(winner.id));
-  return { id: winner.id, presenter: installedPresenter };
+  return { id: winner.id, presenter: { show: (view, host) => presenter.show(view, host) } };
 }
 
 /* ------------------------------------------------------------------ */
@@ -146,7 +131,6 @@ let broken = false;
 
 /** Install (or clear, with null) the session's screen presenter. */
 export function setScreenPresenter(next: InstalledScreen | null): void {
-  for (const open of openScreens) open.region?.release();
   installed = next;
   broken = false;
   /* Whatever the outgoing presenter was holding is not open any more, and a
@@ -230,7 +214,6 @@ export function showThroughPresenter(
     );
     return null;
   }
-  const region = presenterRegions.get(owner.presenter);
   const open: OpenScreen = {
     presenter: owner.presenter,
     modId: owner.id,
@@ -239,13 +222,11 @@ export function showThroughPresenter(
     yielded: false,
     surrendered: false,
     reported: false,
-    ...(region === undefined ? {} : { region: pushRegion(region) }),
   };
   openScreens.push(open);
   const close = (): void => {
     const at = openScreens.indexOf(open);
     if (at >= 0) openScreens.splice(at, 1);
-    open.region?.release();
   };
   return shown.dismissed.then(
     () => {
@@ -278,8 +259,6 @@ interface OpenScreen {
   readonly modId: string;
   readonly screenId: string;
   readonly shown: ScreenShown;
-  /** The presenter's full-screen overlay, when it came from `installScreen()`. */
-  readonly region?: RegionHandle;
   /** Announced, and not yet released. */
   yielded: boolean;
   /** It could not be told, so the game took the terminal anyway. Permanent. */
