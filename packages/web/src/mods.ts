@@ -784,8 +784,8 @@ const CONSENT_FOOTER = "[ Press ESC to review, then choose ]";
  * write `a) ` - a lettered row the player cannot choose, three columns wide by
  * coincidence. As a cell it is the marker, and a presenter replaces it with an icon.
  *
- * The sentences around the list are prose and stay `lines`; the closing warnings are
- * deliberately unwrapped single rows, and a `text` block would wrap them.
+ * The sentences around the list are prose and stay `lines`; the warnings use prose
+ * blocks so a warning itself cannot be cut off on the terminal.
  */
 export function capabilityConsentScreen(m: CatalogMod): ScreenView {
   return freezeView({
@@ -806,10 +806,9 @@ export function capabilityConsentScreen(m: CatalogMod): ScreenView {
         tagged: false,
         columns: [
           { key: "bullet", width: 3, align: "right" },
-          /* Unpadded and unclamped: a capability blurb runs to 200 characters
-           * (registry:*) and padding the column to the longest would push the
-           * elevated flag off an 80-column terminal for every other row. */
-          { key: "text", pad: false },
+          /* A capability blurb runs to 200 characters (registry:*). It consumes
+           * the room left by the bullet and flag, then continues below them. */
+          { key: "text", wrap: true },
           /* Three columns of space before the flag, as the column's own gap rather
            * than as three spaces on the front of the cell - a row with no flag then
            * ends where it always did, because the renderer cuts the trailing run. */
@@ -826,40 +825,39 @@ export function capabilityConsentScreen(m: CatalogMod): ScreenView {
           },
         })),
       },
+      { kind: "lines", lines: [{ text: "", color: C_FG }] },
+      /* THE IN-PROCESS LINE IS ABOUT THE CODE, NOT ABOUT THE LIST above it.
+       * A plugin receives `ctx.core`, `ctx.state` and `ctx.registries` without a
+       * capability check, so declared capabilities say what it intends to
+       * override, not what its code can reach. Any mod that ships code gets this
+       * warning; a validated content pack does not. */
+      ...(m.kind !== "content" || hasElevatedCapability(m.capabilities)
+        ? [
+            {
+              kind: "text" as const,
+              paragraphs: [
+                [
+                  {
+                    text: "This mod runs its own code inside the game and can change how the game behaves. Only enable mods you trust.",
+                  },
+                ],
+              ],
+              color: C_DANGER,
+            },
+          ]
+        : []),
+      ...(m.nondeterministic
+        ? [
+            {
+              kind: "text" as const,
+              paragraphs: [[{ text: "It also marks your save permanently non-reproducible." }]],
+              color: C_WARN,
+            },
+          ]
+        : []),
       {
         kind: "lines",
         lines: [
-          { text: "", color: C_FG },
-          /* THE IN-PROCESS LINE IS ABOUT THE CODE, NOT ABOUT THE LIST above it.
-           *
-           * It used to appear only when some requested capability was elevated,
-           * which made it read as a consequence of the list - so a code mod
-           * asking for nothing but `registry:vocab`, `registry:tiles` or
-           * `backup:folder` got a consent screen with no such line, and the
-           * player was left to infer that a modest list meant modest access. It
-           * does not. A plugin receives `ctx.core` (the whole live engine
-           * namespace, including its module-level registry singletons),
-           * `ctx.state` and `ctx.registries` with no capability check, so what
-           * the declared domains bound is what the mod SAID it would override,
-           * not what its code can reach. See docs/modding/PLUGINS.md, "What a
-           * capability gates". Any mod that ships code gets the line; a content
-           * pack, which is validated data and executes nothing, still does not. */
-          ...(m.kind !== "content" || hasElevatedCapability(m.capabilities)
-            ? [
-                {
-                  text: "This mod runs its own code inside the game and can change how the game behaves. Only enable mods you trust.",
-                  color: C_DANGER,
-                },
-              ]
-            : []),
-          ...(m.nondeterministic
-            ? [
-                {
-                  text: "It also marks your save permanently non-reproducible.",
-                  color: C_WARN,
-                },
-              ]
-            : []),
           { text: "", color: C_FG },
         ],
       },
