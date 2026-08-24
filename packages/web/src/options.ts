@@ -105,7 +105,8 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import type { GameState, OptionOpts } from "@rpgm-tools/neo-angband-core";
 import type { GridPointerInput, GridSurface } from "./term";
-import { getKeyInline, selectFromMenu, promptNumber, menuNav } from "./overlay";
+import { getKeyInline, selectFromMenu, promptNumber, menuNav, screenRegionSpec } from "./overlay";
+import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import type { MenuItem } from "./overlay";
 import { UI_TEXT, UI_DIM, UI_CURSOR } from "./ui-colors";
 import { runColorsEditor, saveColorPrefs } from "./colors";
@@ -314,13 +315,15 @@ export interface OptionCustomDefaults {
  * here, including CHEAT, where upstream has no such key.
  */
 export function optionToggleScreen(
-  term: GridSurface & GridPointerInput,
+  host: GridSurface & GridPointerInput,
   title: string,
   rows: OptionRow[],
   onToggle: (name: string, value: boolean) => void,
   readOnly: boolean,
   custom?: OptionCustomDefaults,
 ): Promise<void> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
   return new Promise<void>((resolve) => {
     let cursor = 0;
     let top = 0;
@@ -496,6 +499,8 @@ export function optionToggleScreen(
     };
     inputEvents.addEventListener("keydown", onKey, true);
     paint();
+  }).finally(() => {
+    popRegion(handle);
   });
 }
 
@@ -707,9 +712,11 @@ export interface SidebarModeMenu {
  * SIDEBAR_MODE live on each cycle; set() does the same (persist + repaint).
  */
 async function runSidebarModePage(
-  term: GridSurface & GridPointerInput,
+  host: GridSurface & GridPointerInput,
   sidebar: SidebarModeMenu,
 ): Promise<void> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
   return new Promise<void>((resolve) => {
     const paint = (): void => {
       const { cols } = term.size();
@@ -741,6 +748,8 @@ async function runSidebarModePage(
     };
     inputEvents.addEventListener("keydown", onKey, true);
     paint();
+  }).finally(() => {
+    popRegion(handle);
   });
 }
 

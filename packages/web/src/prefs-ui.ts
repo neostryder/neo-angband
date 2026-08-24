@@ -35,7 +35,8 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import { HostDir, host } from "@rpgm-tools/neo-angband-core";
 import type { DumpDeps, GlyphTable, PrefDeps, PrefSink } from "@rpgm-tools/neo-angband-core";
-import { getCheck, getString, selectFromMenu } from "./overlay";
+import { getCheck, getString, selectFromMenu, screenRegionSpec } from "./overlay";
+import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import { argForceName } from "./launch";
 import type { MenuItem } from "./overlay";
 import type { GridPointerInput, GridSurface } from "./term";
@@ -87,7 +88,10 @@ const IO = {
  * end with a command line - the web build has no argv and always asks.
  */
 async function getPrefPath(ctx: PrefsUiCtx, what: string, row: number): Promise<string | null> {
-  const { term } = ctx;
+  const { term: host } = ctx;
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
+  try {
   term.clear();
   /* prt("", row - 1, 0) (ui-options.c:53) is an ERASE of that row; print("") drew
    * nothing at all, so the call was a no-op. */
@@ -101,6 +105,9 @@ async function getPrefPath(ctx: PrefsUiCtx, what: string, row: number): Promise<
   /* prt("File: ", row + 2, 0) then askfor_aux(ftmp, sizeof ftmp) - which draws
    * where that prt left the cursor, so the answer echoes on row + 2. */
   return getString(term, "File: ", ftmp, 80, row + 2);
+  } finally {
+    popRegion(handle);
+  }
 }
 
 /**
@@ -332,7 +339,10 @@ export async function applyPrefText(
  * for the same reason: the host chose the name.
  */
 export async function loadPrefFileHack(ctx: PrefsUiCtx, row: number): Promise<void> {
-  const { term } = ctx;
+  const { term: host } = ctx;
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
+  try {
   term.clear();
   /* prt("", row - 1, 0) (ui-options.c:1211) - an erase, not a no-op print(""). */
   if (row > 0) term.prt(0, row - 1, "", UI_TEXT);
@@ -348,6 +358,9 @@ export async function loadPrefFileHack(ctx: PrefsUiCtx, row: number): Promise<vo
     ctx.say(`Failed to load '${name}'!`);
   } else {
     ctx.say(`Loaded '${name}'.`);
+  }
+  } finally {
+    popRegion(handle);
   }
 }
 
