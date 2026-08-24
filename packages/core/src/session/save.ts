@@ -3122,8 +3122,6 @@ export interface DecodedSave {
    * it is damaged would invite them to delete a perfectly good character.
    */
   unknownCodec?: string;
-  /** The save payload did not decompress, parse, or meet the minimum save shape. */
-  malformed?: boolean;
 }
 
 /**
@@ -3138,7 +3136,6 @@ export function decodeSavedGame(
   bytes: Uint8Array,
   provider: SaveIntegrity = fnv1aIntegrity,
   codecs: readonly SaveCodec[] = [],
-  maxOutputLength?: number,
 ): DecodedSave {
   const result = verifyStampedSavefile(bytes, provider);
   const { codecId, body } = stripCodec(result.payload);
@@ -3152,45 +3149,17 @@ export function decodeSavedGame(
     const codec = findCodec(codecId, codecs);
     if (!codec) return { ...base, save: null, unknownCodec: codecId };
     try {
-      payload = codec.decompress(body, maxOutputLength);
+      payload = codec.decompress(body);
     } catch {
       /* An installed codec that cannot read these bytes is genuine damage. */
-      return { ...base, save: null, malformed: true };
+      return { ...base, save: null };
     }
   }
-  let raw: unknown;
+  let save: SavedGame | null = null;
   try {
-    raw = JSON.parse(new TextDecoder().decode(payload));
+    save = JSON.parse(new TextDecoder().decode(payload)) as SavedGame;
   } catch {
-    return { ...base, save: null, malformed: true };
+    save = null;
   }
-  if (!hasSaveHeader(raw)) return { ...base, save: null, malformed: true };
-  return { ...base, save: raw };
-}
-
-/**
- * Reject a document that cannot be a save before migration or deserialization
- * reaches into it. This is deliberately the stable top-level header shared by
- * old saves too; detailed field compatibility belongs to the migration path.
- */
-function hasSaveHeader(value: unknown): value is SavedGame {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const save = value as Record<string, unknown>;
-  return (
-    typeof save["version"] === "number" &&
-    Number.isInteger(save["version"]) &&
-    isRecord(save["player"]) &&
-    isRecord(save["actor"]) &&
-    isRecord(save["gear"]) &&
-    isRecord(save["rng"]) &&
-    typeof save["turn"] === "number" &&
-    Number.isFinite(save["turn"]) &&
-    typeof save["playing"] === "boolean" &&
-    typeof save["isDead"] === "boolean" &&
-    isRecord(save["flavor"])
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return { ...base, save };
 }

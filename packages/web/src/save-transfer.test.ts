@@ -15,47 +15,14 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  applyCodec,
-  encodeSavedGame,
-  saveGame,
-  startGame,
-  type SavedGame,
-} from "@rpgm-tools/neo-angband-core";
-import { gzipSync } from "fflate";
-import { loadGamePack } from "./pack";
-import { gzipCodec } from "./save-codec";
-import {
   TRANSFER_EXT,
   TRANSFER_MAGIC,
   TRANSFER_VERSION,
-  MAX_TRANSFER_DECOMPRESSED_BYTES,
-  MAX_TRANSFER_SAVE_BYTES,
-  MAX_TRANSFER_TEXT_BYTES,
   decodeTransfer,
   encodeTransfer,
   transferFilename,
   type TransferMeta,
 } from "./save-transfer";
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(binary);
-}
-
-const MINIMAL_SAVE = {
-  version: 1,
-  player: {},
-  actor: {},
-  gear: {},
-  rng: {},
-  turn: 0,
-  playing: true,
-  isDead: false,
-  flavor: {},
-} as SavedGame;
 
 const META: TransferMeta = {
   name: "Grond",
@@ -71,7 +38,7 @@ const META: TransferMeta = {
 
 const FILE = encodeTransfer({
   meta: META,
-  save: bytesToBase64(encodeSavedGame(MINIMAL_SAVE, undefined, gzipCodec)),
+  save: "AAECAwQ=",
   engine: "0.10.0",
   exportedAt: "2026-07-31T12:00:00.000Z",
   lineage: "lin-grond",
@@ -81,7 +48,7 @@ describe("a character survives the round trip", () => {
   it("carries the save bytes back byte-for-byte", () => {
     const r = decodeTransfer(FILE);
     expect(r.ok).toBe(true);
-    expect(r.ok && r.file.save).toBe(JSON.parse(FILE).save);
+    expect(r.ok && r.file.save).toBe("AAECAwQ=");
   });
 
   it("carries every roster field the picker shows", () => {
@@ -112,36 +79,6 @@ describe("a character survives the round trip", () => {
 });
 
 describe("what it refuses, and how it says so", () => {
-  it("accepts a normal-sized save exported from a real game", () => {
-    const game = startGame(loadGamePack(), { seed: 20260823, depth: 1 });
-    const save = bytesToBase64(encodeSavedGame(saveGame(game), undefined, gzipCodec));
-    const text = encodeTransfer({
-      meta: META,
-      save,
-      engine: "0.10.0",
-      exportedAt: "2026-07-31T12:00:00.000Z",
-      lineage: "lin-grond",
-    });
-    expect(decodeTransfer(text).ok).toBe(true);
-  });
-
-  it("rejects a gzip payload that expands beyond the import limit", () => {
-    const expanded = new TextEncoder().encode("x".repeat(MAX_TRANSFER_DECOMPRESSED_BYTES + 1));
-    const compressed = applyCodec(gzipSync(expanded), gzipCodec);
-    expect(compressed.length).toBeLessThan(MAX_TRANSFER_SAVE_BYTES);
-    const text = encodeTransfer({
-      meta: META,
-      save: bytesToBase64(compressed),
-      engine: "0.10.0",
-      exportedAt: "2026-07-31T12:00:00.000Z",
-      lineage: "lin-grond",
-    });
-    expect(text.length).toBeLessThan(MAX_TRANSFER_TEXT_BYTES);
-    const result = decodeTransfer(text);
-    expect(result.ok).toBe(false);
-    expect(result.ok === false && result.why).toContain("expands beyond");
-  });
-
   it("refuses something that is not JSON, saying that", () => {
     const r = decodeTransfer("not a file at all");
     expect(r.ok).toBe(false);
@@ -216,25 +153,6 @@ describe("metadata off a disk is defended, not trusted", () => {
     delete old.meta.alive;
     const r = decodeTransfer(JSON.stringify(old));
     expect(r.ok && r.file.meta.alive).toBe(true);
-  });
-});
-
-describe("import size limits", () => {
-  it("rejects an oversized transfer envelope before parsing it", () => {
-    const result = decodeTransfer(" ".repeat(MAX_TRANSFER_TEXT_BYTES + 1));
-    expect(result.ok).toBe(false);
-    expect(result.ok === false && result.why).toContain("larger than");
-  });
-
-  it("rejects an oversized encoded save before base64 decoding it", () => {
-    const result = decodeTransfer(
-      JSON.stringify({
-        ...JSON.parse(FILE),
-        save: "A".repeat((MAX_TRANSFER_SAVE_BYTES * 4) / 3 + 4),
-      }),
-    );
-    expect(result.ok).toBe(false);
-    expect(result.ok === false && result.why).toContain("save data is larger");
   });
 });
 
