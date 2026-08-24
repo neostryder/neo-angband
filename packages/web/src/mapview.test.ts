@@ -19,7 +19,13 @@ import {
   squareMemorize,
 } from "@rpgm-tools/neo-angband-core";
 import type { GameState, Loc, TerrainRecordJson, PlayerPackRecords } from "@rpgm-tools/neo-angband-core";
-import { buildOverview, panLocate, locateRelDesc, locateSectorBanner } from "./mapview";
+import {
+  buildGraphicsOverview,
+  buildOverview,
+  panLocate,
+  locateRelDesc,
+  locateSectorBanner,
+} from "./mapview";
 import type { OverviewGlyph } from "./mapview";
 
 // main.ts's own wiring is the ground truth; mapview.ts is imported by it but
@@ -257,6 +263,43 @@ describe("buildOverview (display_map priority scan)", () => {
     });
     expect(overview.cells).toEqual([]);
     expect(overview.mapW).toBe(0);
+  });
+});
+
+describe("buildGraphicsOverview (tileset full-grid map)", () => {
+  it("keeps one miniature tile for every known cave grid instead of priority-compressing them", () => {
+    /* All four cave cells target the single text-map cell below.  The portable
+     * buildOverview path correctly keeps only the priority-12 stairs; the
+     * tileset path is deliberately NOT that path: its offscreen canvas needs a
+     * distinct tile at each known cave coordinate before it is scaled. */
+    const tiles = [
+      { kind: "canvas-tile", key: "floor-a", data: {} },
+      { kind: "canvas-tile", key: "floor-b", data: {} },
+      { kind: "canvas-tile", key: "stairs", data: {} },
+    ];
+    const overview = buildGraphicsOverview({
+      width: 4,
+      height: 1,
+      mapW: 1,
+      mapH: 1,
+      knownFeatAt: (x) => (x === 0 ? 0 : x === 1 ? 1 : x === 3 ? 2 : -1),
+      featureGlyph: (fidx) => ({
+        ch: [".", ",", ">"][fidx]!,
+        css: "#fff",
+        priority: fidx === 2 ? 12 : 5,
+        tile: tiles[fidx]!,
+      }),
+      playerGrid: { x: 0, y: 0 },
+    });
+
+    expect(overview.kind).toBe("graphics");
+    expect(overview.cells[0]).toEqual([
+      { ch: ".", css: "#fff", tile: tiles[0] },
+      { ch: ",", css: "#fff", tile: tiles[1] },
+      null,
+      { ch: ">", css: "#fff", tile: tiles[2] },
+    ]);
+    expect(overview.cells.flat().filter((cell) => cell?.tile !== undefined)).toHaveLength(3);
   });
 });
 
