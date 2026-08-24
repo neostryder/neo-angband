@@ -953,15 +953,8 @@ const handleSHAPECHANGE: EffectHandler = (ctx) => {
     });
   }
 
-  /* Update. Resolve ModHooks.shapeLearnObviousFlagsDirectly here - this is
-   * the one place in the shapechange path with a GameState to read a mod
-   * hook from; shapeLearnOnAssume itself stays state-free. */
-  shapeLearnOnAssume(
-    p,
-    state.runeEnv,
-    shape,
-    state.modHooks?.shapeLearnObviousFlagsDirectly?.() ?? false,
-  );
+  /* Update. */
+  shapeLearnOnAssume(p, state.runeEnv, shape);
   state.updateBonuses?.();
   return true;
 };

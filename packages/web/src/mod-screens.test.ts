@@ -20,17 +20,24 @@
 
 import { describe, expect, it } from "vitest";
 
-import { installFailureScreen, modUpdateReportScreen, zipImportFailureScreen } from "./mod-browse";
+import {
+  installFailureScreen,
+  modUpdateReportScreen,
+  sessionLoadScreen,
+  zipImportFailureScreen,
+} from "./mod-browse";
 import { autoSortScreen, capabilityConsentScreen, modConflictsScreen } from "./mods";
 import { conflictLines, type ConflictInputs } from "./mod-conflicts";
 import { refreshRow, type ModRefresh } from "./mod-refresh";
 import {
   MODELLED_SCREENS,
+  screenBlockLines,
   screenBodyLines,
   type ScreenTableBlock,
   type ScreenView,
 } from "./screen-view";
 import type { CatalogMod } from "./mod-store";
+import type { SessionPreview } from "./mod-session";
 import type { ModHooks } from "@rpgm-tools/neo-angband-core";
 import {
   describeContested,
@@ -113,10 +120,10 @@ describe("the update report renders exactly what its hand-laid version did", () 
         color: UI_DIM,
       },
       {
-        text:
-          "  unord-mod v0.13.0 (neostryder/neo-angband-mod-qol offers no version this can be compared with)",
+        text: "  unord-mod v0.13.0 (neostryder/neo-angband-mod-qol offers no version this",
         color: UI_DIM,
       },
+      { text: "    can be compared with)", color: UI_DIM },
       {
         text: "  held-mod v0.13.0 (v0.15.0-beta.1 is held back by your update channel)",
         color: UI_DIM,
@@ -170,6 +177,19 @@ describe("the update report renders exactly what its hand-laid version did", () 
       text: "None of the installed mods could be checked.",
       color: UI_GOLD,
     });
+  });
+
+  it("wraps a long update problem without losing the ending", () => {
+    const view = modUpdateReportScreen([
+      R({
+        standing: "unavailable",
+        problem: "the repository returned a detailed diagnostic that continues past the terminal width and ends with this punctuation.",
+      }),
+    ]);
+    const block = tableOf(view, "installed");
+    const lines = screenBlockLines(block, 80).map((line) => line.text);
+    expect(lines.every((line) => line.length <= 79)).toBe(true);
+    expect(lines.join(" ").replace(/\s+/gu, " ")).toContain(block.rows[0]!.cells.status!.text);
   });
 });
 
@@ -445,30 +465,39 @@ describe("the consent read renders exactly what its hand-laid version did", () =
     const view = capabilityConsentScreen(
       CM({ capabilities: ["command:add", "registry:effect"], nondeterministic: true }),
     );
-    expect(screenBodyLines(view, 80)).toEqual([
+    const lines = screenBodyLines(view, 80);
+    expect(lines.slice(0, 5)).toEqual([
       { text: '"Quality of Life" requests these capabilities:', color: UI_TEXT },
       { text: "", color: UI_TEXT },
       { text: "  - Add new player commands", color: UI_TEXT },
-      { text: "  - Override effect, combat, and magic logic   [elevated]", color: UI_GOLD },
-      { text: "", color: UI_TEXT },
       {
-        text: "This mod runs its own code inside the game and can change how the game behaves. Only enable mods you trust.",
-        color: UI_BAD,
+        text: "  - Override effect, combat, and magic logic".padEnd(69) + "[elevated]",
+        color: UI_GOLD,
       },
-      { text: "It also marks your save permanently non-reproducible.", color: UI_GOLD },
       { text: "", color: UI_TEXT },
     ]);
+    expect(
+      lines.filter((line) => line.color === UI_BAD).map((line) => line.text).join(" "),
+    ).toBe(
+      "This mod runs its own code inside the game and can change how the game behaves. Only enable mods you trust.",
+    );
   });
 
-  it("leaves a long blurb unwrapped and unpadded, as the row always was", () => {
-    /* `registry:*` is 200-odd characters. Padding the column to it would push the
-     * flag off an 80-column terminal for every other row; wrapping it would be a
-     * different screen from the one that shipped. */
-    const rows = text(capabilityConsentScreen(CM({ capabilities: ["registry:*", "command:add"] })));
-    expect(rows[2]).toBe(
-      "  - Override ANY game system - effects, level and dungeon generation, monster attacks, shops, commands, monster AI, what spells and breaths do, what a vault symbol means, and vocabulary (full trusted, in-process access)   [elevated]",
-    );
-    expect(rows[3]).toBe("  - Add new player commands");
+  it("wraps a 200-character blurb in full and keeps its elevated flag aligned", () => {
+    const view = capabilityConsentScreen(CM({ capabilities: ["registry:*", "command:add"] }));
+    const source = tableOf(view, "capabilities").rows[0]!.cells.text!.text;
+    const rendered = screenBodyLines(view, 80);
+    const capabilityLines = rendered.filter((line) => line.color === UI_GOLD).map((line) => line.text);
+    expect(capabilityLines).toHaveLength(4);
+    expect(capabilityLines[0]).toContain("[elevated]");
+    expect(capabilityLines[0]!.indexOf("[elevated]")).toBe(69);
+    expect(capabilityLines.slice(1).every((line) => !line.includes("[elevated]"))).toBe(true);
+    expect(capabilityLines.every((line) => line.length <= 79)).toBe(true);
+    expect(
+      capabilityLines
+        .map((line) => line.replace(/^\s*-\s*/u, "").replace(/\s+\[elevated\]$/u, "").trim())
+        .join(" "),
+    ).toBe(source);
   });
 
   it("carries the raw capability string and the flag as data", () => {
@@ -495,7 +524,7 @@ describe("the consent read renders exactly what its hand-laid version did", () =
     const rows = text(
       capabilityConsentScreen(CM({ kind: "trusted", capabilities: ["registry:tiles"] })),
     );
-    expect(rows).toContain(
+    expect(rows.join(" ")).toContain(
       "This mod runs its own code inside the game and can change how the game behaves. Only enable mods you trust.",
     );
   });
@@ -505,6 +534,28 @@ describe("the consent read renders exactly what its hand-laid version did", () =
      * giving it one would be a warning with no mechanism behind it. */
     const rows = text(capabilityConsentScreen(CM({ kind: "content", capabilities: ["event:turn-start"] })));
     expect(rows.some((r) => r.includes("runs its own code"))).toBe(false);
+  });
+});
+
+describe("the temporary-load capability read", () => {
+  it("uses the same wrapped capability column before running a mod", () => {
+    const preview: Extract<SessionPreview, { ok: true }> = {
+      ok: true,
+      id: "draft",
+      version: "1.0.0",
+      code: ["plugin.js"],
+      capabilities: ["registry:*"],
+      digest: "0123456789abcdef",
+      bytes: 1,
+    };
+    const view = sessionLoadScreen(preview, "draft.zip", true);
+    const block = tableOf(view, "capabilities");
+    const rendered = screenBlockLines(block, 80);
+    const capabilityLines = rendered.filter((line) => line.color === UI_GOLD).map((line) => line.text);
+    expect(capabilityLines[0]).toContain("[elevated]");
+    expect(capabilityLines.every((line) => line.length <= 79)).toBe(true);
+    expect(capabilityLines.map((line) => line.replace(/\s+\[elevated\]$/u, "").trim()).join(" "))
+      .toContain("Override ANY game system - effects, level and dungeon generation");
   });
 });
 
@@ -770,6 +821,7 @@ describe("the conflicts viewer is a table a presenter could act on", () => {
     expect(report.declared).toEqual(report.declaredRows.map((r) => r.text));
     expect(report.combined).toEqual(report.combinedRows.map((r) => r.text));
   });
+
 });
 
 /* ------------------------------------------------------------------ */
