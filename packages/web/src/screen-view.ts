@@ -998,7 +998,7 @@ function tableBlockLines(block: ScreenTableBlock, cols: number): ScreenLine[] {
      * line that reaches `cols` would still lose its last glyph at paint time. */
     const visibleCols = Math.max(1, cols - 1);
     const reserved = tagWidth + block.columns.reduce(
-      (total, c, i) => total + gapBefore(block, i) + (i === wrapIndex ? 0 : widths[i]!),
+      (total, c, i) => total + gapBefore(block, i).length + (i === wrapIndex ? 0 : widths[i]!),
       0,
     );
     widths[wrapIndex] = Math.max(1, visibleCols - reserved);
@@ -1043,14 +1043,17 @@ function tableBlockLines(block: ScreenTableBlock, cols: number): ScreenLine[] {
     const wrapped =
       wrapIndex === -1
         ? [""]
-        : textblockCalculatedLines(
-            {
-              kind: "text",
-              paragraphs: [[{ text: row.cells[block.columns[wrapIndex]!.key]?.text ?? "" }]],
-              wrap: widths[wrapIndex],
-            },
-            widths[wrapIndex],
-          ).map((line) => line.text);
+        : (() => {
+            const wrapWidth = widths[wrapIndex]!;
+            return textblockCalculatedLines(
+              {
+                kind: "text",
+                paragraphs: [[{ text: row.cells[block.columns[wrapIndex]!.key]?.text ?? "" }]],
+                wrap: wrapWidth,
+              },
+              wrapWidth,
+            ).map((line) => line.text);
+          })();
     if (wrapped.length === 0) wrapped.push("");
     for (const [lineIndex, wrappedText] of wrapped.entries()) {
       const parts = block.columns.map((c, i) =>
