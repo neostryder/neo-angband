@@ -252,6 +252,34 @@ export interface ModHooks {
   saveNoiseScent?: () => boolean;
 
   /**
+   * Whether a shapechange's obvious flags should be learned directly as
+   * runes (obj/knowledge.ts, shapeLearnOnAssume's per-flag loop, reached from
+   * the EF_SHAPECHANGE handler).
+   *
+   * Return true to learn them directly, ON TOP OF the existing equipment-based
+   * `equipLearnFlag` call rather than instead of it - a flag both the shape and
+   * a worn item carry still fires the worn-item message unchanged. Faithful
+   * core never does this: `shapeLearnOnAssume` only ever learns a shape's
+   * obvious flag through `equipLearnFlag`, which requires a WORN item to carry
+   * the flag too, so a flag the shape alone grants is never learned. That is
+   * the 4.2.6-era gap this mod exists to catalogue, not a bug this port
+   * introduced.
+   *
+   * Core still computes and restricts to the exact SAME obvious-flag set it
+   * always has - `shape.flags` intersected with the OFID_WIELD mask,
+   * `shapeLearnOnAssume`'s existing first two lines. This hook decides only
+   * WHETHER that already-computed set is learned directly, never WHICH flags
+   * are in it, so a mod cannot widen this seam into "learn everything the
+   * shape has" - the same shortcut this project already reverted once for
+   * runes broadly (commit 7970af462, docs/modding/BUG_FIXES.md's "port's own
+   * code" section).
+   *
+   * Serves: the upstream-catchup mod's shape-obvious-flag learning (upstream
+   * c8036c51537942a560e3d7f81749c431bbb4701f).
+   */
+  shapeLearnObviousFlagsDirectly?: () => boolean;
+
+  /**
    * Player-visible message text, on its way to the message line (the host's
    * message sink).
    *
@@ -313,8 +341,9 @@ export interface ModHooks {
  *    or over the radius the blast is built from.
  *  - VETO hooks (levelGenerated, artifactCommit, historyAdd) are conjunctive:
  *    every contributor runs and any refusal decides.
- *  - ANY hooks (saveNoiseScent) are disjunctive: one mod asking for the data is
- *    enough, because the data is additive and a second mod cannot object.
+ *  - ANY hooks (saveNoiseScent, shapeLearnObviousFlagsDirectly) are disjunctive:
+ *    one mod asking for the data is enough, because the data is additive and a
+ *    second mod cannot object.
  *
  * WHY THE LAST TWO ARE NOT EXCEPTIONS. "Later wins" answers the question "two
  * mods disagree about one thing - whose answer is used?", and a veto hook is not
@@ -370,6 +399,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   historyAdd: "all-must-agree",
   historyDisplay: "chained",
   saveNoiseScent: "any-yes",
+  shapeLearnObviousFlagsDirectly: "any-yes",
   messageText: "chained",
   optionsChanged: "all-observe",
 };
@@ -500,6 +530,13 @@ export function guardModHooks(
     out.saveNoiseScent = (): boolean => guard("saveNoiseScent", () => noise(), false);
   }
 
+  const shapeFlags = hooks.shapeLearnObviousFlagsDirectly;
+  if (shapeFlags) {
+    /* DECLINE, the upstream 4.2.6-era gap this seam exists to let a mod close. */
+    out.shapeLearnObviousFlagsDirectly = (): boolean =>
+      guard("shapeLearnObviousFlagsDirectly", () => shapeFlags(), false);
+  }
+
   const text = hooks.messageText;
   if (text) {
     /* The raw message, unrestated - never an empty string, which would silently
@@ -609,6 +646,13 @@ export function composeModHooks(
   const noise = list.map((c) => c.saveNoiseScent).filter(isFn);
   if (noise.length > 0) {
     out.saveNoiseScent = (): boolean => noise.some((fn) => fn());
+  }
+
+  const shapeFlags = list.map((c) => c.shapeLearnObviousFlagsDirectly).filter(isFn);
+  if (shapeFlags.length > 0) {
+    /* One mod asking for direct learning is enough - two mods both wanting the
+     * 4.2.6-era gap closed are not in conflict, they are two mods agreeing. */
+    out.shapeLearnObviousFlagsDirectly = (): boolean => shapeFlags.some((fn) => fn());
   }
 
   const text = list.map((c) => c.messageText).filter(isFn);

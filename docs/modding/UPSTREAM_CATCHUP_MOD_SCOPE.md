@@ -98,7 +98,12 @@ how it differs from `bug-fixes`' own noise/scent fix).
 The blast-radius row is built, behind `catchup.projections`, and it is the mod's
 first row that changes ENGINE BEHAVIOUR rather than content: it rides the
 `projectionRadius` hook (`MOD_SEAMS.md`), which core reads in `computeProjection`
-before any grid is collected. The other three are not built yet.
+before any grid is collected. **#118 is also built**, behind the engine's new
+`shapeLearnObviousFlagsDirectly` ModHooks seam (`packages/core/src/mod/hooks.ts`):
+a shape's obvious flags are learned directly as runes when the mod's rule is on,
+matching the same set `shapeLearnOnAssume` already computed rather than a
+broader "learn everything the shape has" shortcut. The other two are not yet
+built.
 
 ### The seam they ride, and the one they do not
 

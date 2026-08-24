@@ -25,7 +25,6 @@ import { selectPacks } from "./packs.js";
 import type { PackConfig } from "./packs.js";
 import { formatPoolLines, formatTargetRule } from "./targets.js";
 import type { PoolDefinition, TargetRule } from "./targets.js";
-import { planTilesheetConversion } from "./conversion-plan.js";
 
 /** Header comment naming this tool; the only allowed textual divergence. */
 /**
@@ -354,8 +353,7 @@ export function buildPackExport(
   const authoredPools = authoring?.pools ?? [];
   const authoredTargets = authoring?.targets ?? [];
 
-  const prefSources = readPrefSources(sourceDir, packConfig.prefFiles);
-  const legacyEntries = readLegacySelectors(prefSources);
+  const legacyEntries = readLegacySelectors(readPrefSources(sourceDir, packConfig.prefFiles));
   const exportableEntries: ExportEntry[] = [];
   const exactRules: ExportEntry[] = [];
   const exactSeen = new Set<string>();
@@ -388,17 +386,6 @@ export function buildPackExport(
       `Tileset image is smaller than the declared resolution for '${packConfig.key}'.`,
     );
   }
-  /* The browser uses this same plan, then crops it through Canvas. The Node
-   * exporter still uses pngjs for the actual pixels, but writes these shared
-   * text files below so selector rules, filenames and metadata have one
-   * authority whichever side performs the conversion. */
-  const conversionPlan = planTilesheetConversion({
-    pack: packConfig,
-    prefSources,
-    sheetWidth: sheet.width,
-    sheetHeight: sheet.height,
-    ...(authoring === undefined ? {} : { authoring }),
-  });
 
   mkdirSync(mapsDir, { recursive: true });
   mkdirSync(imageDir, { recursive: true });
@@ -706,13 +693,6 @@ export function buildPackExport(
     }
   }
   writeTextFile(targetMapPath, targetMapLines);
-
-  /* Replace the Node-local textual assembly with the browser-safe plan. The
-   * crop loop above remains deliberately Node-specific: pngjs preserves exact
-   * source pixels for the offline builder, while the web cache has no node:fs. */
-  for (const [relativePath, text] of conversionPlan.files) {
-    writeFileSync(join(packRoot, relativePath), text, { encoding: "utf8" });
-  }
 
   return {
     key: packConfig.key,
