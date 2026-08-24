@@ -1,13 +1,27 @@
 name: Deploy web build to GitHub Pages
 
-# Pages is enabled in workflow build mode. Deploys run on every push to
-# master and can also be triggered by hand.
+# Pages is enabled in workflow build mode. Deploys run when a release is
+# PUBLISHED, not on every push to master - so the browser build is always a
+# version somebody pressed Publish on, the same gate docs/RELEASING.md
+# already describes for the updater and for the Discord announcement.
+#
+# The `early` channel (edge.yml) publishes a release too, once per commit on
+# master, so its tags are excluded below the same way discord-announce.yml
+# excludes them - otherwise this would redeploy Pages on every push, which is
+# the exact behaviour this change is undoing.
+#
+# `workflow_dispatch` takes an explicit tag rather than defaulting to
+# whatever is on master, so a manual re-run cannot accidentally publish an
+# unreleased commit.
 on:
-  push:
-    branches: [master]
-    paths-ignore:
-      - "reference/**"
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and deploy (e.g. v0.31.0)"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -43,12 +57,19 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    if: github.event_name != 'release' || !contains(github.event.release.tag_name, '-edge.')
     env:
       # This job builds the WEB bundle; it never launches the desktop shell, so
       # skip Electron's ~110 MB binary download (see the same note in ci.yml).
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
+      # Explicit ref, not the default `github.sha` a `release` event provides
+      # (that resolves to the default branch, not the tag). This must build
+      # exactly the tagged commit - anything else quietly reintroduces master
+      # tracking under a different trigger.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.inputs.tag }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
