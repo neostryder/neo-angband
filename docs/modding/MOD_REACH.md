@@ -1412,7 +1412,7 @@ user, now, in this tab) over a mod over the bundled default.
 | Colour table | in-game RGB editor -> localStorage (`packages/web/src/colors.ts:1-35`); also writable by a loaded `.prf` | no (user only) |
 | User files (dumps, `.prf`) | real virtual `ANGBAND_DIR_USER`, `packages/web/src/userdir.ts:1-35` | no |
 | PWA icons | `packages/web/public/icons/` | no |
-| Mod `screenshots` | declared at `packages/mod-sdk/src/manifest.ts:541`, carried through discovery (`packages/web/src/mod-discover.ts`) and listed by path in the mod detail pane (`packages/web/src/mod-browse.ts`, `browseDetail`) - no in-terminal image preview, since the grid this game draws to only ever paints pre-loaded tileset glyphs into cells, not arbitrary fetched images | n/a |
+| Mod `screenshots` | declared at `packages/mod-sdk/src/manifest.ts:117-118` and **dead** - no consumer outside `dist/` and tests | n/a |
 
 ### Localization: CLOSED 2026-08-09 (what follows is the BEFORE picture)
 

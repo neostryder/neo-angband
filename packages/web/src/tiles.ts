@@ -66,6 +66,58 @@ export function isTile(attr: number, char: number): boolean {
   return (attr & 0x80) !== 0 && (char & 0x80) !== 0;
 }
 
+/**
+ * Is a tile blit from (srcW, srcH) into (dstW, dstH) a DOWNSCALE on either
+ * axis (#100)? Nearest-neighbour sampling is correct for pixel-art upscaling
+ * - it is what keeps the bitmap font and integer-upscaled small tiles crisp -
+ * but it is not automatically correct the other direction: downscaling with
+ * nearest samples one source texel per destination pixel and throws the rest
+ * away, which reads harsher than a filtered downscale.
+ *
+ * Equal-size (dst == src on both axes) and any upscale axis is NOT a
+ * downscale, so it keeps nearest - only a strictly smaller destination axis
+ * calls for smoothing.
+ */
+export function isTileDownscale(
+  srcW: number,
+  srcH: number,
+  dstW: number,
+  dstH: number,
+): boolean {
+  return dstW < srcW || dstH < srcH;
+}
+
+/**
+ * Run one tile blit with the canvas smoothing mode `isTileDownscale` picks for
+ * it, then RESTORE whatever smoothing state the context had before.
+ *
+ * The restore is load-bearing, not tidy: GlyphTerm paints one shared 2D
+ * context cell by cell, tiles and bitmap-font glyphs interleaved in the same
+ * flush pass (paintCell in term.ts). A downscaled tile that left smoothing on
+ * would blur the very next cell's nearest-neighbour glyph, which must stay
+ * crisp regardless of the scale direction its neighbour happened to need.
+ */
+export function withTileSmoothing<T>(
+  ctx: CanvasRenderingContext2D,
+  srcW: number,
+  srcH: number,
+  dstW: number,
+  dstH: number,
+  draw: () => T,
+): T {
+  const prevEnabled = ctx.imageSmoothingEnabled;
+  const prevQuality = ctx.imageSmoothingQuality;
+  const downscale = isTileDownscale(srcW, srcH, dstW, dstH);
+  ctx.imageSmoothingEnabled = downscale;
+  if (downscale) ctx.imageSmoothingQuality = "high";
+  try {
+    return draw();
+  } finally {
+    ctx.imageSmoothingEnabled = prevEnabled;
+    ctx.imageSmoothingQuality = prevQuality;
+  }
+}
+
 /** Decode an (attr, char) tile pair into its atlas (row, col). */
 export function tileCode(attr: number, char: number): TileCode {
   return { row: attr & 0x7f, col: char & 0x7f };
@@ -230,20 +282,26 @@ export class TileSet implements TileBlitter {
     _grid?: { x: number; y: number },
     tall = false,
   ): boolean {
-    if (!this.ready || this.image === null) return false;
+    const image = this.image;
+    if (!this.ready || image === null) return false;
     const sx = code.col * this.cellWidth;
     const sy = code.row * this.cellHeight;
+    const sw = this.cellWidth;
+    const sh = tall ? this.cellHeight * 2 : this.cellHeight;
+    const ddh = tall ? dh * 2 : dh;
     try {
-      ctx.drawImage(
-        this.image,
-        sx,
-        tall ? sy - this.cellHeight : sy,
-        this.cellWidth,
-        tall ? this.cellHeight * 2 : this.cellHeight,
-        dx,
-        tall ? dy - dh : dy,
-        dw,
-        tall ? dh * 2 : dh,
+      withTileSmoothing(ctx, sw, sh, dw, ddh, () =>
+        ctx.drawImage(
+          image,
+          sx,
+          tall ? sy - this.cellHeight : sy,
+          sw,
+          sh,
+          dx,
+          tall ? dy - dh : dy,
+          dw,
+          ddh,
+        ),
       );
       return true;
     } catch {
