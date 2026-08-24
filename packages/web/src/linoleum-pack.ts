@@ -91,7 +91,6 @@ import {
 import type { PoolDefinition, TargetRule } from "@rpgm-tools/neo-angband-linoleum/targets";
 import type { PackFileResolver } from "./pack-files";
 import type { ModPrefText, TileBlitter, TileCode } from "./tiles";
-import { withTileSmoothing } from "./tiles";
 
 /** A pack's manifest.txt, parsed. */
 export interface LinoleumManifest {
@@ -702,20 +701,16 @@ export class LinoleumPack implements TileBlitter {
     }
     const drawY = tall ? dy - dh : dy;
     const drawH = tall ? dh * 2 : dh;
-    const srcW = cached.image.naturalWidth;
-    const srcH = cached.image.naturalHeight;
     try {
-      withTileSmoothing(ctx, srcW, srcH, dw, drawH, () =>
-        ctx.drawImage(source, dx, drawY, dw, drawH),
-      );
+      ctx.drawImage(source, dx, drawY, dw, drawH);
       this.drawFamilyEffect(
         ctx,
         draw.asset,
         source,
         signature,
         draw.effect,
-        srcW,
-        srcH,
+        cached.image.naturalWidth,
+        cached.image.naturalHeight,
         dx,
         drawY,
         dw,
@@ -754,9 +749,7 @@ export class LinoleumPack implements TileBlitter {
         effectSource = tinted;
         ctx.save();
         ctx.globalAlpha *= pulse;
-        withTileSmoothing(ctx, sourceWidth, sourceHeight, dw, dh, () =>
-          ctx.drawImage(tinted, dx, dy, dw, dh),
-        );
+        ctx.drawImage(tinted, dx, dy, dw, dh);
         ctx.restore();
       }
     }
@@ -764,9 +757,7 @@ export class LinoleumPack implements TileBlitter {
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.globalAlpha *= (effect.glowAlpha / 255) * pulse;
-      withTileSmoothing(ctx, sourceWidth, sourceHeight, dw, dh, () =>
-        ctx.drawImage(effectSource, dx, dy, dw, dh),
-      );
+      ctx.drawImage(effectSource, dx, dy, dw, dh);
       ctx.restore();
     }
   }
