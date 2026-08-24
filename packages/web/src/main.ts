@@ -460,8 +460,8 @@ import type { BirthDeps } from "./birth";
 import {
   gameMenuEntries,
   deathMenuEntries,
-  GAME_MENU_FOOTER,
-  DEATH_MENU_FOOTER,
+  gameMenuFooter,
+  deathMenuFooter,
 } from "./game-menu";
 import { MessageLog, messageTypeCode, packMessages, pushTypedMessage } from "./messages";
 import {
@@ -6155,7 +6155,7 @@ async function gameMenuOnce(): Promise<boolean> {
     "core:game-menu",
     "Game menu",
     entries.map((e) => e.item),
-    GAME_MENU_FOOTER,
+    gameMenuFooter(),
     {
       initialCursor: gameMenuCursor,
       onHighlight: (i) => {
@@ -6323,7 +6323,7 @@ async function runDeathMenu(): Promise<void> {
       "core:death-menu",
       "You have died.",
       entries.map((e) => e.item),
-      DEATH_MENU_FOOTER,
+      deathMenuFooter(),
       {
         /* death_menu->flags = MN_CASELESS_TAGS (ui-death.c:397). */
         caselessTags: true,

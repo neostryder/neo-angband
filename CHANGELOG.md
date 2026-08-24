@@ -36,19 +36,21 @@ version it still calls itself.
 
 ## [Unreleased]
 
-### Added
+### Fixed
 
-- **`upstream-catchup`** added to the recommended first-party mods
-  ([mods/registry.json](mods/registry.json)): changes upstream Angband accepted
-  after the `4.2.6` tag core is pinned to, each cited to the commit that made it,
-  one toggle per class of change and every toggle off by default. Its first
-  release carries the four post-4.2.6 tile-assignment commits, which give a
-  creature or an item a picture in a tile set that was leaving it as a coloured
-  letter. A change with no accepted upstream commit still belongs to `bug-fixes`;
-  that one question is the whole boundary between the two mods, and a fix
-  upstream later accepts moves across at the next release. The mod expires by
-  design - a rebaseline onto a newer upstream tag makes every row in it redundant.
-  See [docs/modding/UPSTREAM_CATCHUP_MOD_SCOPE.md](docs/modding/UPSTREAM_CATCHUP_MOD_SCOPE.md).
+- The Escape (game) menu and the death menu had every label, hint, and footer
+  written as a hardcoded English literal. A mod-supplied locale could not
+  touch any of them no matter what it declared. Both menus now route through
+  `t()` like the help pages already did, and their footers moved from a
+  module-level constant to a function so a language switched mid-session
+  takes effect instead of freezing whatever was active at boot.
+- The bundled `demo-resources` mod's `en-XA` pseudo-locale, the tool
+  `docs/modding/AUTHORING.md` documents for finding strings the translator
+  never reaches, only covered 6 of the ids already wired through `t()`.
+  Switching to it left several already-translatable help titles showing
+  plain English, which looks identical to a string that bypasses the
+  translator and defeats the pseudo-locale's own purpose. It now covers
+  every message id currently wired up.
 
 ## [0.31.1] - 2026-08-24
 

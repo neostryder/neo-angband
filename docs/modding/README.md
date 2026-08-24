@@ -162,7 +162,7 @@ that has not been settled.
 
 ## The first-party mods
 
-Seven, **none of them bundled**, all OFF until enabled (see
+Six, **none of them bundled**, all OFF until enabled (see
 `DEFAULT_ENABLED_MODS` - an untouched install is the faithful base game with no mod
 loaded). Each lives in its own repository and arrives through the mod manager's
 *Install a mod...* row:
@@ -175,9 +175,8 @@ loaded). Each lives in its own repository and arrives through the mod manager's
 | `borg` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player, driving the game through the same perceive/act API any third-party automation would use. The whole port lives there, with its own release tags and its own suite, including one that drives the BUILT `plugin.js`. Installing and enabling it does not hand it your character; its "Let the Borg play" toggle does. |
 | `feature-restoration` | content + plugin | [own repo](https://github.com/neostryder/neo-angband-mod-feature-restoration) | Beloved Angband features that a later version quietly dropped, brought back one named toggle at a time, every toggle off by default. `Teleport Other` (content: a `fieldPatches` addition to the Priest, Paladin and Ranger's own books, who lost the spell somewhere between an earlier Angband and 4.2.6 while the Mage and the Rogue kept it) and store discounts (plugin: 4.2.6 dropped the discount roll entirely, so this restoration installs a `registry:store` discount-roll handler instead of patching data that no longer exists). |
 | `forge` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-forge) | An in-game workshop for building other mods without leaving the game: pick an existing record, see its neighbours, change what would have to change, and pack the result up to try in-session, install, or hand off as a file. Early - the workshop's own content is a demonstration fixture until the remaining engine seams land. See `docs/ENGINE_SEAMS.md` in its own repository. |
-| `upstream-catchup` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-upstream-catchup) | Changes upstream Angband accepted after the `4.2.6` tag core is pinned to, cited by SHA, one toggle per CLASS of change and every one off by default. Its first slice is the four post-4.2.6 tile-assignment commits, applied through `registry:tiles` rather than as a `prefs` resource because a mod's pref file is replayed into EVERY tile map and the kind forbids a slot, so nothing could scope it to the one sheet upstream wrote it for. The boundary against `bug-fixes` is a single question: an accepted upstream commit exists, or it does not. This mod expires - a rebaseline onto a newer upstream tag makes every row in it redundant. See `UPSTREAM_CATCHUP_MOD_SCOPE.md`. |
 
-**First-party is not a shortcut.** All seven take the same route into the game as anybody else's mod, and that is on purpose: bundling the author's own mods would have hidden every defect in the install path behind mods that never used it. The download route, the folder code loader and the plugin ABI all work because nothing is exempt from them. What first-party buys is that these seven are also the reference examples - read them to learn the seams.
+**First-party is not a shortcut.** All six take the same route into the game as anybody else's mod, and that is on purpose: bundling the author's own mods would have hidden every defect in the install path behind mods that never used it. The download route, the folder code loader and the plugin ABI all work because nothing is exempt from them. What first-party buys is that these six are also the reference examples - read them to learn the seams.
 
 Enable one in the in-app mod manager (game menu -> Mods), or with
 `?mods=qol,bug-fixes,neo-linoleum` for a one-off.

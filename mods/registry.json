@@ -8,7 +8,6 @@
     { "repo": "neostryder/neo-angband-mod-linoleum" },
     { "repo": "neostryder/neo-angband-mod-borg" },
     { "repo": "neostryder/neo-angband-mod-feature-restoration" },
-    { "repo": "neostryder/neo-angband-mod-forge" },
-    { "repo": "neostryder/neo-angband-mod-upstream-catchup" }
+    { "repo": "neostryder/neo-angband-mod-forge" }
   ]
 }
