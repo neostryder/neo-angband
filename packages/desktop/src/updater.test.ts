@@ -23,6 +23,7 @@ import {
   isAllowedAssetUrl,
   isAllowedRevealUrl,
   isHttpUrl,
+  isOwnLoopbackUrl,
   isWritable,
   sha256File,
   shapeOf,
@@ -126,6 +127,39 @@ describe("what setWindowOpenHandler may hand to the real browser", () => {
   it("refuses something that is not a URL at all", () => {
     expect(isHttpUrl("not a url")).toBe(false);
     expect(isHttpUrl("")).toBe(false);
+  });
+});
+
+/* The guard for `setWindowOpenHandler` and `will-navigate` on the game's own
+ * window: only the exact loopback origin the window was loaded on may keep
+ * its preload bridge, everything else is either denied outright or handed
+ * to the real browser by isHttpUrl above. */
+describe("what the game window will keep its own bridge attached to", () => {
+  it("allows its own loopback origin on its own port", () => {
+    expect(isOwnLoopbackUrl("http://127.0.0.1:45871/", 45871)).toBe(true);
+    expect(isOwnLoopbackUrl("http://127.0.0.1:45871/some/path?x=1", 45871)).toBe(true);
+  });
+
+  it("refuses a hostname that merely starts with the loopback address", () => {
+    expect(isOwnLoopbackUrl("http://127.0.0.1.attacker.example/", 45871)).toBe(false);
+  });
+
+  it("refuses a different port", () => {
+    expect(isOwnLoopbackUrl("http://127.0.0.1:9999/", 45871)).toBe(false);
+  });
+
+  it("refuses https on the loopback address", () => {
+    expect(isOwnLoopbackUrl("https://127.0.0.1:45871/", 45871)).toBe(false);
+  });
+
+  it("refuses a scheme that is not http", () => {
+    expect(isOwnLoopbackUrl("javascript:alert(1)", 45871)).toBe(false);
+    expect(isOwnLoopbackUrl("file:///C:/Windows/System32/cmd.exe", 45871)).toBe(false);
+  });
+
+  it("refuses something that is not a URL at all", () => {
+    expect(isOwnLoopbackUrl("not a url", 45871)).toBe(false);
+    expect(isOwnLoopbackUrl("", 45871)).toBe(false);
   });
 });
 
