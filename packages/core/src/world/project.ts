@@ -290,7 +290,13 @@ export interface ProjectParams {
   origin: Loc;
   /** finish: the target grid, or a grid to travel toward. */
   finish: Loc;
-  /** rad: 0 = bolt/beam, 1..20 = ball radius, or max arc length. */
+  /**
+   * rad: 0 = bolt/beam, 1..20 = ball radius, or max arc length.
+   *
+   * The upper end is a convention rather than a rule - nothing in 4.2.6 checks
+   * it, and a radius above `maxRange` produces distances the damage table has
+   * no entry for. `resolveRadius` is where that can be decided.
+   */
   rad: number;
   /** typ: GF_ projection type, opaque to the driver; passed to the hooks. */
   typ: number;
@@ -312,6 +318,15 @@ export interface ProjectParams {
   believedWall?: (grid: Loc) => boolean;
   /** cave->decoy: PROJECT_STOP breaks the path here (project.c:218). */
   decoy?: Loc | null;
+  /**
+   * The mod behaviour seam for `rad` (ModHooks.projectionRadius), threaded in
+   * by the caller because this driver holds no GameState and must not learn
+   * about one. Absent is the faithful path: `rad` is used exactly as given.
+   *
+   * Called once, before any geometry is built, and given the same `maxRange`
+   * the damage table below is sized by.
+   */
+  resolveRadius?: (rad: number, maxRange: number) => number;
 }
 
 /** The computed blast: pure geometry + damage, no side effects. */
@@ -353,6 +368,15 @@ export function computeProjection(c: Chunk, p: ProjectParams): Projection {
   const { finish, maxRange, dam } = p;
   const degreesOfArc = p.degreesOfArc ?? 0;
   const diameterOfSource = p.diameterOfSource ?? 0;
+
+  /* THE RADIUS SEAM (ModHooks.projectionRadius, threaded in as resolveRadius).
+   * Faithful 4.2.6 takes the radius as given and never checks it against
+   * max_range, which is what leaves `damAtDist` below - sized max_range + 1 -
+   * short of the distances a larger radius produces. The upstream fix for that
+   * (issue #6671) is one clamp here, and it is a mod's to install: core carries
+   * the tag's behaviour, warts included, and holds only the point at which the
+   * radius can be decided. */
+  if (p.resolveRadius) rad = p.resolveRadius(rad, maxRange);
 
   /* No projection path - jump to target. */
   let start: Loc;
@@ -518,7 +542,14 @@ export function computeProjection(c: Chunk, p: ProjectParams): Projection {
     }
   }
 
-  /* Calculate and store the actual damage at each distance. */
+  /* Calculate and store the actual damage at each distance.
+   *
+   * SIZED BY max_range, NOT BY rad, exactly as upstream sizes dam_at_dist. A
+   * radius above max_range therefore leaves the far distances with no entry at
+   * all, and every read of one is a hole the caller cannot see: the C reads
+   * stale memory, and this reads `undefined` straight into the damage a handler
+   * is handed. Whether the radius can get there is decided above, by
+   * resolveRadius. */
   const damAtDist: number[] = new Array(maxRange + 1);
   for (let i = 0; i <= maxRange; i++) {
     let damTemp: number;

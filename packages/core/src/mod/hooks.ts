@@ -160,6 +160,31 @@ export interface ModHooks {
   ) => number;
 
   /**
+   * The blast radius of a projection, before any geometry is built from it
+   * (world/project.ts, computeProjection's first statement, reached through
+   * ProjectParams.resolveRadius).
+   *
+   * Return the radius to use. Faithful core uses the radius it was handed,
+   * unchanged: 4.2.6 sizes its damage-at-distance table by max_range and does
+   * not check the radius against it, so a radius above max_range reads past the
+   * end of that table. The C reads whatever is next in memory; this port reads
+   * nothing at all and carries it into the damage arithmetic.
+   *
+   * `maxRange` is the same z_info->max_range the table is sized by, passed in
+   * so a contributor can decide against it without a second source of truth.
+   *
+   * RNG-FREE, and for a sharper reason than the generation hooks: the radius
+   * decides which grids the blast collects and therefore how many times every
+   * per-grid handler runs, so a draw here would move the stream by a variable
+   * amount. Returning a value that is not a non-negative integer is undefined
+   * behaviour, not a supported way to disable a blast.
+   *
+   * Serves: the upstream-catchup mod's blast-radius clamp (upstream
+   * f0f6bd223b6b9faf0072b0ae7ffb34a812b97349, upstream issue #6671).
+   */
+  projectionRadius?: (rad: number, maxRange: number) => number;
+
+  /**
    * A finished, otherwise-accepted level, before cave_generate returns it
    * (generate.ts, the accept branch).
    *
@@ -282,9 +307,10 @@ export interface ModHooks {
  *  - ORDERING hooks (objectListTiebreak) chain the same way round: the last
  *    mod's comparator is the primary key and earlier ones break the ties it
  *    leaves, which is a valid total order and is "later wins" for a comparator.
- *  - TRANSFORM hooks (messageText, historyDisplay) compose in load order, each seeing the
- *    previous one's output - so the last mod still speaks last and has the final
- *    say over the text that reaches the player.
+ *  - TRANSFORM hooks (messageText, historyDisplay, projectionRadius) compose in
+ *    load order, each seeing the previous one's output - so the last mod still
+ *    speaks last and has the final say over the text that reaches the player,
+ *    or over the radius the blast is built from.
  *  - VETO hooks (levelGenerated, artifactCommit, historyAdd) are conjunctive:
  *    every contributor runs and any refusal decides.
  *  - ANY hooks (saveNoiseScent) are disjunctive: one mod asking for the data is
@@ -338,6 +364,7 @@ export type ModHookFold =
 export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   walkBlockedByDiggable: "last-answer",
   objectListTiebreak: "last-answer",
+  projectionRadius: "chained",
   levelGenerated: "all-must-agree",
   artifactCommit: "all-must-agree",
   historyAdd: "all-must-agree",
@@ -424,6 +451,15 @@ export function guardModHooks(
     /* 0 is "still equal", which is exactly faithful core's answer. */
     out.objectListTiebreak = (a, b): number =>
       guard("objectListTiebreak", () => tiebreak(a, b), 0);
+  }
+
+  const radius = hooks.projectionRadius;
+  if (radius) {
+    /* The radius AS GIVEN, which is faithful core's own answer. Substituting
+     * anything else - max_range, or zero - would make a throwing hook change
+     * the blast rather than step out of the way of it. */
+    out.projectionRadius = (rad, maxRange): number =>
+      guard("projectionRadius", () => radius(rad, maxRange), rad);
   }
 
   const level = hooks.levelGenerated;
@@ -523,6 +559,15 @@ export function composeModHooks(
       }
       return 0;
     };
+  }
+
+  const radius = list.map((c) => c.projectionRadius).filter(isFn);
+  if (radius.length > 0) {
+    /* LOAD order, each seeing the previous one's radius - a transform, like
+     * messageText. Two mods narrowing the same blast for two different reasons
+     * both get their narrowing; the last one still speaks last. */
+    out.projectionRadius = (rad, maxRange): number =>
+      radius.reduce((r, fn) => fn(r, maxRange), rad);
   }
 
   const level = list.map((c) => c.levelGenerated).filter(isFn);
