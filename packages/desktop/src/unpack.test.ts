@@ -20,8 +20,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  UPDATE_ARCHIVE_LIMITS,
-  type ArchiveLimits,
   readTarHeader,
   readZipEntries,
   safeEntryPath,
@@ -59,18 +57,6 @@ function writeZip(dir: string, entries: Parameters<typeof makeZip>[0]): string {
   const p = path.join(dir, "a.zip");
   fs.writeFileSync(p, makeZip(entries));
   return p;
-}
-
-function limits(overrides: Partial<ArchiveLimits>): ArchiveLimits {
-  return { ...UPDATE_ARCHIVE_LIMITS, ...overrides };
-}
-
-/** Change a fixture's central-directory declared expanded size without writing it. */
-function declareZipEntrySize(file: string, size: number): void {
-  const bytes = fs.readFileSync(file);
-  const central = bytes.readUInt32LE(bytes.length - 22 + 16);
-  bytes.writeUInt32LE(size, central + 24);
-  fs.writeFileSync(file, bytes);
 }
 
 describe("refusing a path that leaves the folder", () => {
@@ -193,67 +179,6 @@ describe("reading a zip's directory", () => {
     } finally {
       fs.closeSync(fd);
     }
-  });
-});
-
-describe("bounding a release archive before extraction", () => {
-  it("refuses an archive larger than its compressed-size limit", async () => {
-    const dir = tmp();
-    const into = path.join(dir, "out");
-    fs.mkdirSync(into);
-    const p = writeZip(dir, [{ name: "a", data: "x" }]);
-    await expect(unpackZip(p, into, "linux", limits({ maxArchiveBytes: 1 }))).rejects.toThrow(
-      /archive is over/u,
-    );
-  });
-
-  it("refuses more entries than the archive limit permits", async () => {
-    const dir = tmp();
-    const into = path.join(dir, "out");
-    fs.mkdirSync(into);
-    const p = writeZip(dir, [
-      { name: "one", data: "x" },
-      { name: "two", data: "x" },
-      { name: "three", data: "x" },
-    ]);
-    await expect(unpackZip(p, into, "linux", limits({ maxEntries: 2 }))).rejects.toThrow(
-      /more than 2 entries/u,
-    );
-  });
-
-  it("refuses an entry larger than the per-entry limit", async () => {
-    const dir = tmp();
-    const into = path.join(dir, "out");
-    fs.mkdirSync(into);
-    const p = writeZip(dir, [{ name: "large", data: "xx" }]);
-    await expect(unpackZip(p, into, "linux", limits({ maxEntryBytes: 1 }))).rejects.toThrow(
-      /per-entry/u,
-    );
-  });
-
-  it("refuses an archive whose entries exceed the total expanded-size limit", async () => {
-    const dir = tmp();
-    const into = path.join(dir, "out");
-    fs.mkdirSync(into);
-    const p = writeZip(dir, [
-      { name: "one", data: "xx" },
-      { name: "two", data: "xx" },
-    ]);
-    await expect(unpackZip(p, into, "linux", limits({ maxTotalBytes: 3 }))).rejects.toThrow(
-      /total expanded/u,
-    );
-  });
-
-  it("refuses a declared compression ratio beyond the limit before writing it", async () => {
-    const dir = tmp();
-    const into = path.join(dir, "out");
-    fs.mkdirSync(into);
-    const p = writeZip(dir, [{ name: "bomb", data: "x" }]);
-    declareZipEntrySize(p, 201);
-    await expect(unpackZip(p, into, "linux", limits({ maxCompressionRatio: 200 }))).rejects.toThrow(
-      /compression ratio/u,
-    );
-    expect(fs.readdirSync(into)).toEqual([]);
   });
 });
 

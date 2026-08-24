@@ -10881,12 +10881,11 @@ async function showUpdatePage(): Promise<void> {
       view = { ...view, received, total };
       paint();
     });
-    /* The desktop main process re-reads this release from GitHub and derives
-     * the URL, digest, and platform asset itself. The renderer only says which
-     * release the player selected. */
-    const res = (await bridge.update("download", offer.tag)) as
-      | { ok?: boolean; error?: string }
-      | undefined;
+    const res = (await bridge.update("download", {
+      url: offer.asset.url,
+      sha256: offer.asset.sha256,
+      size: offer.asset.size,
+    })) as { ok?: boolean; error?: string } | undefined;
     stop?.();
 
     if (!res?.ok) {

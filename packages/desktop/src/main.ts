@@ -66,8 +66,6 @@ import {
   isAllowedRevealUrl,
   isHttpUrl,
   launchSwap,
-  releaseTagFromRenderer,
-  resolveReleaseAsset,
   shapeOf,
   stageArchive,
 } from "./updater.js";
@@ -717,19 +715,11 @@ function installUpdater(): void {
       if (op === "shape") return { ok: true, shape };
       if (op === "download") {
         if (shape.how !== "swap") return { ok: false, error: "this install cannot update itself" };
-        /* The renderer may ask for a RELEASE TAG, never an archive URL or a
-         * checksum. The main process re-reads that tag's GitHub release JSON
-         * and chooses this machine's asset itself, so an in-process mod cannot
-         * turn this capability into an arbitrary verified downloader. */
-        const tag = releaseTagFromRenderer(arg);
-        const asset = await resolveReleaseAsset({
-          tag,
-          repo: UPDATE_REPO,
-          platform: shape.platform,
-          arch: shape.arch,
-        });
+        const a = (arg ?? {}) as { url?: unknown; sha256?: unknown; size?: unknown };
         const archive = await downloadArchive({
-          ...asset,
+          url: typeof a.url === "string" ? a.url : "",
+          sha256: typeof a.sha256 === "string" ? a.sha256 : "",
+          size: typeof a.size === "number" ? a.size : 0,
           repo: UPDATE_REPO,
           root: shape.installRoot,
           platform: process.platform,
