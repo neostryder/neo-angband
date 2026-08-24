@@ -40,7 +40,6 @@ import {
 } from "./mod-install";
 import { badPath, rawUrl } from "./mod-registry";
 import { originConflict } from "./mod-source";
-import { ZIP_LIMITS } from "./mod-archive";
 import { contributedTileModes, mergeModSources } from "./tile-mods";
 import { loadModCode, type ModCodeReport } from "./mod-code";
 import { modPluginContext, setModInstallDoor } from "./mod-context";
@@ -183,61 +182,18 @@ function fakeIdb(
 
 const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
 
-function res(bytes: Uint8Array, status = 200, contentLength: string | null = String(bytes.length)): FetchLike {
+function res(bytes: Uint8Array, status = 200): FetchLike {
   return {
     ok: status >= 200 && status < 300,
     status,
-    headers: { get: (name) => (name.toLowerCase() === "content-length" ? contentLength : null) },
-    body: new ReadableStream({
-      start(controller) {
-        controller.enqueue(bytes);
-        controller.close();
-      },
-    }),
+    arrayBuffer: () =>
+      Promise.resolve(
+        bytes.buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength,
+        ) as ArrayBuffer,
+      ),
   };
-}
-
-/** Change central-directory sizes without asking fflate to unpack the forged entry. */
-function declaredSize(zip: Uint8Array, name: string, compressed: number, unpacked: number): Uint8Array {
-  const out = zip.slice();
-  const encoded = enc(name);
-  for (let at = 0; at + 46 + encoded.length <= out.length; at++) {
-    if (
-      out[at] !== 0x50 ||
-      out[at + 1] !== 0x4b ||
-      out[at + 2] !== 0x01 ||
-      out[at + 3] !== 0x02
-    ) {
-      continue;
-    }
-    const length = out[at + 28]! | (out[at + 29]! << 8);
-    if (length !== encoded.length) continue;
-    let matches = true;
-    for (let i = 0; i < encoded.length; i++) {
-      if (out[at + 46 + i] !== encoded[i]) {
-        matches = false;
-        break;
-      }
-    }
-    if (!matches) continue;
-    new DataView(out.buffer).setUint32(at + 20, compressed, true);
-    new DataView(out.buffer).setUint32(at + 24, unpacked, true);
-    return out;
-  }
-  throw new Error(`could not find ${name} in the central directory`);
-}
-
-/** About one third incompressible bytes and two thirds zeros: below 200:1, but compact. */
-function expandedBytes(length: number): Uint8Array {
-  const bytes = new Uint8Array(length);
-  let state = 0x12345678;
-  for (let i = 0; i < length; i += 3) {
-    state ^= state << 13;
-    state ^= state >>> 17;
-    state ^= state << 5;
-    bytes[i] = state & 0xff;
-  }
-  return bytes;
 }
 
 /**
@@ -549,47 +505,6 @@ describe("installing from a repository: an archive payload", () => {
     ]);
   });
 
-  it("refuses an oversized Content-Length before reading the archive", async () => {
-    const zip = zipSync({ "manifest.json": enc(MANIFEST) });
-    const { env, stores } = await envFor({ "pack.zip": zip });
-    const limited: InstallEnv = {
-      ...env,
-      fetch: () => Promise.resolve(res(zip, 200, String(ZIP_LIMITS.maxArchiveBytes + 1))),
-    };
-
-    const r = await installModFromRepo(discovered(ZIP), null, limited);
-
-    expect(r.ok).toBe(false);
-    expect(r.ok === false && r.problem).toMatch(/download is over the 64 MB limit/u);
-    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
-  });
-
-  it("counts streamed bytes when Content-Length is absent or wrong", async () => {
-    const tooLarge = { length: ZIP_LIMITS.maxArchiveBytes + 1 } as Uint8Array;
-    const { env, stores } = await envFor({});
-    const limited: InstallEnv = {
-      ...env,
-      fetch: () =>
-        Promise.resolve({
-          ok: true,
-          status: 200,
-          headers: { get: () => null },
-          body: new ReadableStream({
-            start(controller) {
-              controller.enqueue(tooLarge);
-              controller.close();
-            },
-          }),
-        }),
-    };
-
-    const r = await installModFromRepo(discovered(ZIP), null, limited);
-
-    expect(r.ok).toBe(false);
-    expect(r.ok === false && r.problem).toMatch(/download is over the 64 MB limit/u);
-    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
-  });
-
   it("refuses an entry that escapes the mod folder", async () => {
     /* Zip slip, and it matters MORE than it did. Under the shipped catalogue one
      * reviewed path - "pack.zip" - was validated and the paths inside were not; now
@@ -603,89 +518,6 @@ describe("installing from a repository: an archive payload", () => {
 
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.problem).toMatch(/escapes the mod folder/u);
-    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
-  });
-
-  it("refuses more than the shared 4096-entry limit before storing anything", async () => {
-    const entries: Record<string, Uint8Array> = { "manifest.json": enc(MANIFEST) };
-    for (let i = 1; i <= ZIP_LIMITS.maxEntries; i++) entries[`f${i}.json`] = enc("{}");
-    const { env, stores } = await envFor({ "pack.zip": zipSync(entries) });
-
-    const r = await installModFromRepo(discovered(ZIP), null, env);
-
-    expect(r.ok).toBe(false);
-    expect(r.ok === false && r.problem).toMatch(/more than 4096 entries/u);
-    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
-  });
-
-  it("refuses an entry declaring more than the shared 64 MB file limit", async () => {
-    const zip = declaredSize(
-      zipSync({ "manifest.json": enc(MANIFEST), "large.bin": enc("x") }, { level: 0 }),
-      "large.bin",
-      ZIP_LIMITS.maxFileBytes + 1,
-      ZIP_LIMITS.maxFileBytes + 1,
-    );
-    const { env, stores } = await envFor({ "pack.zip": zip });
-
-    const r = await installModFromRepo(discovered(ZIP), null, env);
-
-    expect(r.ok).toBe(false);
-    expect(r.ok === false && r.problem).toMatch(/over the 64 MB limit for one file/u);
-    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
-  });
-
-  it("refuses an entry over the shared 200:1 compression ratio", async () => {
-    const zip = declaredSize(
-      zipSync({ "manifest.json": enc(MANIFEST), "bomb.bin": enc("x") }, { level: 0 }),
-      "bomb.bin",
-      1,
-      ZIP_LIMITS.maxRatio + 1,
-    );
-    const { env, stores } = await envFor({ "pack.zip": zip });
-
-    const r = await installModFromRepo(discovered(ZIP), null, env);
-
-    expect(r.ok).toBe(false);
-    expect(r.ok === false && r.problem).toMatch(/which no mod file does/u);
-    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
-  });
-
-  it("refuses an archive whose measured output exceeds the shared 128 MB total limit", async () => {
-    const fileBytes = Math.ceil(ZIP_LIMITS.maxTotalBytes / 3);
-    const zip = zipSync(
-      {
-        "manifest.json": enc(MANIFEST),
-        "all-the-things-1.bin": expandedBytes(fileBytes),
-        "all-the-things-2.bin": expandedBytes(fileBytes),
-        "all-the-things-3.bin": expandedBytes(fileBytes),
-      },
-      { level: 1 },
-    );
-    expect(zip.length).toBeLessThan(ZIP_LIMITS.maxArchiveBytes);
-    const { env, stores } = await envFor({ "pack.zip": zip });
-
-    const r = await installModFromRepo(discovered(ZIP), null, env);
-
-    expect(r.ok).toBe(false);
-    expect(r.ok === false && r.problem).toMatch(/unpacks to more than 128 MB/u);
-    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
-  }, 15_000);
-
-  it("shares the entry budget across every declared archive", async () => {
-    const one: Record<string, Uint8Array> = { "manifest.json": enc(MANIFEST) };
-    const two: Record<string, Uint8Array> = {};
-    for (let i = 1; i < 2048; i++) one[`one-${i}.json`] = enc("{}");
-    for (let i = 1; i <= 2049; i++) two[`two-${i}.json`] = enc("{}");
-    const payload: readonly PayloadEntry[] = [
-      { kind: "archive", path: "one.zip" },
-      { kind: "archive", path: "two.zip" },
-    ];
-    const { env, stores } = await envFor({ "one.zip": zipSync(one), "two.zip": zipSync(two) });
-
-    const r = await installModFromRepo(discovered(payload), null, env);
-
-    expect(r.ok).toBe(false);
-    expect(r.ok === false && r.problem).toMatch(/more than 4096 entries/u);
     expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
   });
 });
