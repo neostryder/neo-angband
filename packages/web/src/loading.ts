@@ -34,6 +34,8 @@
  */
 
 import type { GridSurface } from "./term";
+import { screenRegionSpec } from "./overlay";
+import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 
 /** The cadence, matching the title screen's shimmer so the two feel like one app. */
 export const LOADING_FRAME_MS = 90;
@@ -524,6 +526,8 @@ export function startLoading(
     readonly clearInterval?: (handle: unknown) => void;
   },
 ): StopLoading {
+  const region = pushRegion(screenRegionSpec(), term.size());
+  const surface = regionSurface(term, region.cells);
   const { cols, rows } = term.size();
   /* Two rows are the caption's; the scene keeps off them. */
   const scene = makeScene(cols, Math.max(6, rows - 2), deps.seed);
@@ -531,14 +535,15 @@ export function startLoading(
   const stopTimer = deps.clearInterval ?? ((h: unknown) => {
     clearInterval(h as ReturnType<typeof setInterval>);
   });
-  paintScene(term, scene);
+  paintScene(surface, scene);
   let handle: unknown = every(() => {
     advance(scene);
-    paintScene(term, scene);
+    paintScene(surface, scene);
   }, LOADING_FRAME_MS);
   return (): void => {
     if (handle === null) return;
     stopTimer(handle);
     handle = null;
+    popRegion(region);
   };
 }

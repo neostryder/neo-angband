@@ -127,7 +127,9 @@ import {
   selectFromMenu,
   showTextScreen,
   screenFault,
+  screenRegionSpec,
 } from "./overlay";
+import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import {
   userWrite,
   userWriteChecked,
@@ -2083,7 +2085,10 @@ function paintWizItemOnTerminal(term: GridSurface & GridPointerInput, view: Scre
  * terminal rather than whatever that leftover frame was.
  */
 function drawWizItem(ctx: WizardUiCtx, obj: GameObject, all: boolean): void {
-  const { term, state, deps } = ctx;
+  const { term: host, state, deps } = ctx;
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
+  try {
   term.clear();
   const disp = wizDisplayItem(obj, deps, { all });
   if (!disp) return;
@@ -2095,6 +2100,9 @@ function drawWizItem(ctx: WizardUiCtx, obj: GameObject, all: boolean): void {
     return;
   }
   paintWizItemOnTerminal(term, view);
+  } finally {
+    popRegion(handle);
+  }
 }
 
 /**
