@@ -513,6 +513,13 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     expect(bad.verified).toBe(false);
   });
 
+  it("rejects a parsed document without the save header before loading it", () => {
+    const bytes = new TextEncoder().encode(JSON.stringify({ version: SAVE_VERSION }));
+    const out = decodeSavedGame(bytes);
+    expect(out.save).toBeNull();
+    expect(out.malformed).toBe(true);
+  });
+
   /* Compression (decision 9's third word). The codec is injected, so these use a
    * reversible stand-in rather than a real compressor: what has to hold is the
    * ENVELOPE contract - a compressed save round trips, an uncompressed one still

@@ -31,8 +31,12 @@
  * format for both front ends is what makes import/export between them a copy.
  */
 
-import { gunzipSync, gzipSync } from "fflate";
+import { Gunzip, gunzipSync, gzipSync } from "fflate";
 import type { SaveCodec } from "@rpgm-tools/neo-angband-core";
+
+/* Feeding fflate's synchronous stream in small pieces bounds the output it can
+ * allocate before our callback rejects an over-limit import. */
+const GUNZIP_INPUT_CHUNK_BYTES = 1024;
 
 /**
  * gzip, not raw deflate: the 18-byte header costs nothing next to a 20x saving
@@ -42,8 +46,36 @@ import type { SaveCodec } from "@rpgm-tools/neo-angband-core";
 export const gzipCodec: SaveCodec = {
   id: "gzip",
   compress: (bytes) => gzipSync(bytes),
-  decompress: (bytes) => gunzipSync(bytes),
+  decompress: (bytes, maxOutputLength) =>
+    maxOutputLength === undefined ? gunzipSync(bytes) : gunzipWithLimit(bytes, maxOutputLength),
 };
+
+function gunzipWithLimit(bytes: Uint8Array, maxOutputLength: number): Uint8Array {
+  if (!Number.isSafeInteger(maxOutputLength) || maxOutputLength < 0) {
+    throw new Error("invalid gzip output limit");
+  }
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  const stream = new Gunzip((chunk) => {
+    if (chunk.length > maxOutputLength - length) {
+      throw new Error(`gzip output exceeds ${String(maxOutputLength)} bytes`);
+    }
+    length += chunk.length;
+    chunks.push(chunk);
+  });
+  for (let offset = 0; offset < bytes.length; offset += GUNZIP_INPUT_CHUNK_BYTES) {
+    const end = Math.min(offset + GUNZIP_INPUT_CHUNK_BYTES, bytes.length);
+    stream.push(bytes.subarray(offset, end), end === bytes.length);
+  }
+  if (bytes.length === 0) stream.push(bytes, true);
+  const out = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return out;
+}
 
 /**
  * The codec used for NEW saves. Kept as its own name so the write side and the

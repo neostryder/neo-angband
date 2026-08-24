@@ -663,6 +663,7 @@ import type {
 import { openExternalUrl } from "./external-link";
 import {
   TRANSFER_EXT,
+  MAX_TRANSFER_TEXT_BYTES,
   decodeTransfer,
   encodeTransfer,
   transferFilename,
@@ -11632,8 +11633,16 @@ async function exportCharacter(id: string): Promise<void> {
  * that would be a restore point.
  */
 async function importCharacter(): Promise<void> {
-  const picked = await pickTextFile(`${TRANSFER_EXT},application/json`);
+  const picked = await pickTextFile(`${TRANSFER_EXT},application/json`, MAX_TRANSFER_TEXT_BYTES);
   if (!picked) return; // cancelled
+  if ("tooLarge" in picked) {
+    await showTextScreen(term, "Import character", [
+      { text: `${picked.name} was not imported.`, color: UI_BAD },
+      { text: "", color: UI_TEXT },
+      { text: "That character file is larger than the 5 MiB import limit.", color: UI_TEXT },
+    ]);
+    return;
+  }
   const read = decodeTransfer(picked.text);
   if (!read.ok) {
     await showTextScreen(term, "Import character", [
