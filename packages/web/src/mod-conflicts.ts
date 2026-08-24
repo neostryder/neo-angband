@@ -271,6 +271,7 @@ function hookDescription(hook: keyof ModHooks): string {
   const words: Record<keyof ModHooks, string> = {
     walkBlockedByDiggable: "what happens when you walk into diggable rock",
     objectListTiebreak: "the order of items on the floor list",
+    projectionRadius: "how wide a spell or breath explodes",
     levelGenerated: "whether a freshly generated level is accepted",
     artifactCommit: "whether an artifact is allowed to be created",
     historyAdd: "which events reach your character history",
