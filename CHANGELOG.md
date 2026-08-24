@@ -36,6 +36,13 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- The install-choice screen ((I)nstall locally) silently cut off its text on a
+  24-row terminal instead of showing all of it. It now scrolls, with the same
+  arrow/page/home/end keys and "(a-b/n)" footer cue `showTextScreen` already
+  uses elsewhere.
+
 ## [0.31.0] - 2026-08-23
 
 ### Security
