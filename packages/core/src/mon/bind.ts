@@ -60,7 +60,9 @@ import type {
 } from "./types.js";
 import { RF } from "../generated/index.js";
 import { messageLookupByName } from "../sound/engine.js";
-import { attachExt } from "../mod/extension.js";
+import { attachExt, provenanceOf } from "../mod/extension.js";
+import { fieldOwner, refusalWhy } from "../mod/refusal.js";
+import type { RecordRefusal } from "../mod/refusal.js";
 import { rsfSize, spellIndexOf } from "./spell-registry.js";
 
 /* re-export for consumers that reach the domain through bind */
@@ -631,12 +633,15 @@ export class MonsterRegistry {
    * react_to_specific_slay's streq on base->name, obj-slays.c:274).
    */
   readonly bases: Map<string, MonsterBase>;
-  /** Record order mirrors monster.txt; ridx is the array index. */
+  /** Record order mirrors monster.txt after any refused mod records; ridx is the array index. */
   readonly races: MonsterRace[];
   readonly summons: SummonType[];
   readonly pits: PitProfile[];
 
   private readonly racesByName: Map<string, MonsterRace>;
+
+  /** Mod-owned records omitted because their name collides with an earlier record. */
+  readonly refused: RecordRefusal[] = [];
 
   constructor(pack: MonsterPackRecords, options: BindMonstersOptions = {}) {
     const maxSight = options.maxSight ?? 20;
@@ -653,6 +658,7 @@ export class MonsterRegistry {
     this.races = [];
     this.racesByName = new Map();
     for (const rec of pack.monsters) {
+      if (this.rejectDuplicateName(rec)) continue;
       const race = this.bindRace(rec, maxSight, innate, breathOrInnate);
       /* Keys core does not read ride along instead of being dropped - the same
        * seam as ObjectKind.ext, for the same reason. */
@@ -707,6 +713,30 @@ export class MonsterRegistry {
       monBan: rec["mon-ban"] ? [...rec["mon-ban"]] : [],
       freqInnate: checkPitInnateFreq(rec.name, rec["innate-freq"]),
     }));
+  }
+
+  /** Keep the first name binding; a mod's later collision is reported and omitted. */
+  private rejectDuplicateName(rec: MonsterRecordJson): boolean {
+    const earlier = this.racesByName.get(rec.name.toLowerCase());
+    if (!earlier) return false;
+    const from = provenanceOf(rec);
+    const owner = fieldOwner(from, "name", rec.name);
+    if (owner === null || from === undefined) {
+      throw new Error(`mon: duplicate race name ${rec.name}`);
+    }
+    this.refused.push({
+      file: "monster",
+      record: rec.name,
+      field: "name",
+      id: owner,
+      why: refusalWhy(
+        rec.name,
+        "race dropped",
+        `duplicate name ${rec.name}; already used by ${earlier.name}`,
+        from,
+      ),
+    });
+    return true;
   }
 
   /**
