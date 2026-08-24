@@ -33,6 +33,8 @@ import {
 } from "./screen-view";
 import { SCREEN_PROMPTS } from "./screens";
 import { showTextScreen, setUiFaultReporter } from "./overlay";
+import { occludersOf, screenRegions } from "./regions";
+import { liveRegionStack, relayoutStack, resetRegionStack } from "./ui-stack";
 import type { GridPointerInput, GridSurface } from "./term";
 
 /* ------------------------------------------------------------------ */
@@ -109,6 +111,7 @@ async function tick(): Promise<void> {
 
 afterEach(() => {
   setScreenPresenter(null);
+  resetRegionStack();
   setUiFaultReporter(() => undefined);
 });
 
@@ -207,6 +210,46 @@ describe("selecting the screen presenter", () => {
 });
 
 describe("showing a screen through the presenter", () => {
+  it("publishes the installed presenter's full-screen region until dismissal or teardown", async () => {
+    const owner = takes("core:inventory");
+    const installed = installScreen(
+      [candidate("sprites", [SCREEN_CAPABILITY], () => owner.presenter)],
+      CONTEXT,
+      () => undefined,
+    );
+    relayoutStack({
+      cols: 40,
+      rows: 12,
+      base: screenRegions({
+        cols: 40,
+        rows: 12,
+        sidebar: "none",
+        sidebarWidth: 0,
+        mapOriginX: 0,
+        mapTop: 1,
+        mapCols: 39,
+        mapRows: 10,
+      }),
+    });
+    setScreenPresenter(installed);
+
+    const done = showThroughPresenter(VIEW);
+    expect(occludersOf(liveRegionStack(), "map")?.map((region) => region.id)).toEqual(["sprites:screen"]);
+
+    owner.dismiss();
+    await expect(done).resolves.toBeUndefined();
+    expect(occludersOf(liveRegionStack(), "map")).toEqual([]);
+
+    setScreenPresenter(installed);
+    const reopened = showThroughPresenter(VIEW);
+    expect(occludersOf(liveRegionStack(), "map")?.map((region) => region.id)).toEqual(["sprites:screen"]);
+
+    setScreenPresenter(null);
+    expect(occludersOf(liveRegionStack(), "map")).toEqual([]);
+    owner.dismiss();
+    await expect(reopened).resolves.toBeUndefined();
+  });
+
   it("hands over the view, and the terminal draws nothing", async () => {
     const owner = takes("core:inventory");
     setScreenPresenter({ id: "sprites", presenter: owner.presenter });
