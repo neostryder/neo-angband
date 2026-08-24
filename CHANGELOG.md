@@ -57,6 +57,19 @@ version it still calls itself.
   below the visible window - arrowing past the edge scrolled correctly but
   looked identical to reaching the end of the list. A small arrow now marks
   the clipped edge, in the column every row already leaves empty.
+- The Escape (game) menu and the death menu had every label, hint, and footer
+  written as a hardcoded English literal. A mod-supplied locale could not
+  touch any of them no matter what it declared. Both menus now route through
+  `t()` like the help pages already did, and their footers moved from a
+  module-level constant to a function so a language switched mid-session
+  takes effect instead of freezing whatever was active at boot.
+- The bundled `demo-resources` mod's `en-XA` pseudo-locale, the tool
+  `docs/modding/AUTHORING.md` documents for finding strings the translator
+  never reaches, only covered 6 of the ids already wired through `t()`.
+  Switching to it left several already-translatable help titles showing
+  plain English, which looks identical to a string that bypasses the
+  translator and defeats the pseudo-locale's own purpose. It now covers
+  every message id currently wired up.
 
 ## [0.31.1] - 2026-08-24
 

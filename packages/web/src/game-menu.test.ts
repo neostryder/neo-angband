@@ -10,8 +10,8 @@ import { describe, expect, it, afterEach } from "vitest";
 import {
   gameMenuEntries,
   deathMenuEntries,
-  GAME_MENU_FOOTER,
-  DEATH_MENU_FOOTER,
+  gameMenuFooter,
+  deathMenuFooter,
 } from "./game-menu";
 import { selectFromMenu, menuLetter, MENU_CLOSE } from "./overlay";
 import { menuRegistry } from "./menu-registry";
@@ -118,7 +118,7 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
         semantic: { kind: "command", ref: e.action },
       });
     }
-    expect(GAME_MENU_FOOTER).toMatch(ASCII);
+    expect(gameMenuFooter()).toMatch(ASCII);
   });
 
   it("promises on the report row itself that nothing is sent", () => {
@@ -137,7 +137,7 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
       const win = makeFakeWindow();
       (globalThis as { window?: unknown }).window = win;
       const term = makeTerm();
-      const done = selectFromMenu(term, "Game menu", entries.map((e) => e.item), GAME_MENU_FOOTER);
+      const done = selectFromMenu(term, "Game menu", entries.map((e) => e.item), gameMenuFooter());
       press(win, menuLetter(i));
       expect(await done).toBe(i);
     }
@@ -149,7 +149,7 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    const done = selectFromMenu(term, "Game menu", entries.map((e) => e.item), GAME_MENU_FOOTER);
+    const done = selectFromMenu(term, "Game menu", entries.map((e) => e.item), gameMenuFooter());
     for (let i = 0; i < target; i++) press(win, "ArrowDown");
     press(win, "Enter");
     expect(await done).toBe(target);
@@ -166,7 +166,7 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
       "core:game-menu",
       "Game menu",
       entries.map((entry) => entry.item),
-      GAME_MENU_FOOTER,
+      gameMenuFooter(),
     );
     press(win, "Enter");
     expect(await done).toBe(entries.length - 1);
@@ -178,7 +178,7 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
       const win = makeFakeWindow();
       (globalThis as { window?: unknown }).window = win;
       const term = makeTerm();
-      const done = selectFromMenu(term, "Game menu", entries.map((e) => e.item), GAME_MENU_FOOTER);
+      const done = selectFromMenu(term, "Game menu", entries.map((e) => e.item), gameMenuFooter());
       const row = 2 + 3; // BODY_TOP + index of "equipment"
       term.fireTap(1, row);
       term.fireTap(1, row);
@@ -188,7 +188,7 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
       const win = makeFakeWindow();
       (globalThis as { window?: unknown }).window = win;
       const term = makeTerm();
-      const done = selectFromMenu(term, "Game menu", entries.map((e) => e.item), GAME_MENU_FOOTER);
+      const done = selectFromMenu(term, "Game menu", entries.map((e) => e.item), gameMenuFooter());
       press(win, "Escape");
       expect(await done).toBeNull();
     }
@@ -199,7 +199,7 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    void selectFromMenu(term, "Game menu", entries.map((e) => e.item), GAME_MENU_FOOTER);
+    void selectFromMenu(term, "Game menu", entries.map((e) => e.item), gameMenuFooter());
     const hintRow = term.size().rows - 2;
     expect(term.snapshot()[hintRow]).toContain("ESC");
     press(win, "ArrowDown"); // Character sheet
@@ -232,7 +232,7 @@ describe("deathMenuEntries (ui-death.c death_actions)", () => {
         semantic: { kind: "command", ref: e.action },
       });
     }
-    expect(DEATH_MENU_FOOTER).toMatch(ASCII);
+    expect(deathMenuFooter()).toMatch(ASCII);
   });
 
   it("selects by tag, caselessly (MN_CASELESS_TAGS)", async () => {
