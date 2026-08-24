@@ -55,7 +55,8 @@ import type {
   UiEntryPackRecords,
 } from "@rpgm-tools/neo-angband-core";
 import type { GridPointerInput, GridSurface } from "./term";
-import { showTextScreen, menuNav, promptTextInline, getFile } from "./overlay";
+import { showTextScreen, menuNav, promptTextInline, getFile, screenRegionSpec } from "./overlay";
+import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import {
   freezeView,
   SCREEN_FOOTER,
@@ -338,7 +339,9 @@ export function equipCmpSelectHelpScreen(): ScreenView {
  * keyboard until ESC. Re-derives the model on every state-changing key
  * (source cycle / reverse / reset) so the grid always reflects live gear.
  */
-export function showEquipCmp(term: GridSurface & GridPointerInput, state: GameState, deps: EquipCmpDeps): Promise<void> {
+export function showEquipCmp(host: GridSurface & GridPointerInput, state: GameState, deps: EquipCmpDeps): Promise<void> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
   return new Promise<void>((resolve) => {
     let source: StoreInclusion = "no-store";
     let reverse = false;
@@ -768,5 +771,7 @@ export function showEquipCmp(term: GridSurface & GridPointerInput, state: GameSt
     };
     inputEvents.addEventListener("keydown", onKey, true);
     paint();
+  }).finally(() => {
+    popRegion(handle);
   });
 }

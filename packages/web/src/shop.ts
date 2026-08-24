@@ -45,7 +45,8 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import type { GameObject, StartedGame, Store, EarlierObjectOpts } from "@rpgm-tools/neo-angband-core";
 import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
-import { getQuantity, itemSelect } from "./overlay";
+import { getQuantity, itemSelect, screenRegionSpec } from "./overlay";
+import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import { objectColor, objectName, packMenu, quiverMenu } from "./screens";
 import { UI_TEXT, UI_DIM, UI_CURSOR, UI_CURSOR_DISABLED, UI_GOOD } from "./ui-colors";
 
@@ -429,13 +430,16 @@ function objCanUse(game: StartedGame, obj: GameObject): boolean {
  * inline buy/sell/quantity/confirm prompts.
  */
 export async function runStore(
-  term: GridSurface & GridPointerInput,
+  host: GridSurface & GridPointerInput,
   game: StartedGame,
   store: Store,
   say: (text: string) => void,
   constants: Parameters<typeof invenCarryNum>[2],
   deps: StoreScreenDeps,
 ): Promise<void> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
+  try {
   const isHome = store.feat === FEAT.HOME;
   const noSelling = game.state.options?.get("birth_no_selling") ?? false;
   const selections = deps.rogueLike ? SEL_ROGUE : SEL_ORIGINAL;
@@ -1013,5 +1017,8 @@ export async function runStore(
       continue;
     }
     moveCursor(k);
+  }
+  } finally {
+    popRegion(handle);
   }
 }

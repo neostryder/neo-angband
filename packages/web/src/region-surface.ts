@@ -126,6 +126,26 @@ export function clipSurface(
      * knew how to start, and every one of them called it.
      */
     clear(): void {
+      /* A full-screen region is the host's whole rectangle. Delegating to its
+       * native clear is equivalent to erasing every row, keeps a host's own
+       * optimized clear path, and lets deliberately minimal test/headless
+       * surfaces support full screens without inventing an erase-to-EOL method
+       * they never needed before regions existed. */
+      const hostSize = surface.size();
+      if (
+        cells.col === 0 &&
+        cells.row === 0 &&
+        cells.cols === hostSize.cols &&
+        cells.rows === hostSize.rows
+      ) {
+        if (witness) {
+          for (let y = 0; y < cells.rows; y++) {
+            for (let x = 0; x < cells.cols; x++) witness(x, y);
+          }
+        }
+        surface.clear.call(surface);
+        return;
+      }
       for (let y = 0; y < cells.rows; y++) eraseRow(0, y);
     },
 
@@ -134,7 +154,7 @@ export function clipSurface(
        * blink there, which is a write by any other name. It does not witness:
        * a cursor changes no cell's contents, so it must not claim pointer input. */
       if (!inside(x, y)) return;
-      surface.setCursor(cells.col + x, cells.row + y);
+      surface.setCursor?.(cells.col + x, cells.row + y);
     },
 
     hideCursor(): void {
