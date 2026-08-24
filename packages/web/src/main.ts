@@ -209,6 +209,7 @@ import { registerLocale, setLocale } from "@rpgm-tools/neo-angband-core";
 import type { LocaleBundle } from "@rpgm-tools/neo-angband-core";
 import { describeLoadFailure, describeMigration, describePackMismatch } from "./save-recovery.js";
 import { installCrashScreen } from "./crash-screen.js";
+import { showSafeModeScreen } from "./safe-mode.js";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, effectInfoRegistry, randartRegistry, runeRegistry, tvalRegistry, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
 import type { AgentController, AgentSession } from "@rpgm-tools/neo-angband-core";
 import {
@@ -283,7 +284,7 @@ import {
   loadInstalledMods,
   uninstallMod,
 } from "./mod-install";
-import { loadSessionMods } from "./mod-session";
+import { dropSessionMods, loadSessionMods } from "./mod-session";
 import type { ModUpgradeDeps } from "./mod-browse";
 import { pendingUpgrades, refreshInstalledMods, type ModUpgrade } from "./mod-refresh";
 import { zipImportDeps } from "./mod-zip-source";
@@ -448,8 +449,8 @@ import { downloadUserFile, pickTextFile } from "./userdir";
 import { userPath, userWrite, exportUserFile, FileType } from "./user-io";
 import { loadLoreFile, saveLoreFile } from "./lore-file";
 import { LORE_FILE } from "@rpgm-tools/neo-angband-core";
-import { buildGraphicsOverview, buildOverview, panLocate, locateSectorBanner } from "./mapview";
-import type { BuildOverviewParams, LevelOverview, OverviewGlyph } from "./mapview";
+import { buildOverview, panLocate, locateSectorBanner } from "./mapview";
+import type { Overview, OverviewGlyph } from "./mapview";
 import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
 import { startLoading } from "./loading";
@@ -875,7 +876,64 @@ const seed =
 const depthParam = params.get("depth");
 const depth = depthParam !== null && depthParam !== "" ? Number(depthParam) : 0;
 
-const pack: GamePack = loadGamePack();
+/**
+ * The recovery action has to disable the EFFECTIVE set, not merely empty
+ * neo:enabledMods. A deployed folder's load-order.json is unioned back in on
+ * the next boot unless every enabled id also has an explicit off choice; staged
+ * session mods are forced on, so they must be dropped too. A URL ?mods= override
+ * has the same precedence and is removed before reloading.
+ */
+function disableAllModsAndRestart(): void {
+  let enabled: string[] = [];
+  try {
+    enabled = enabledModIds();
+  } catch {
+    /* Still clear the persisted set below. Recovery must make its best effort
+     * even when the broken combination also made the enabled-set reader fail. */
+  }
+  try {
+    const store = defaultModStore();
+    store.setEnabled([]);
+    for (const id of enabled) store.setModChoice(id, false);
+  } catch {
+    /* ModStore is storage-tolerant; this protects the recovery UI against a
+     * host implementation that is not. */
+  }
+  try {
+    dropSessionMods();
+  } catch {
+    /* A staged mod is session-only. If its storage is unavailable there is no
+     * durable selection to clear, so continue to the reload. */
+  }
+  try {
+    const next = new URL(location.href);
+    next.searchParams.delete("mods");
+    history.replaceState(null, "", next.toString());
+  } catch {
+    /* The persisted off choices still cover ordinary browser launches. */
+  }
+  location.reload();
+}
+
+/**
+ * `loadGamePack` is the last synchronous content-composition boundary before
+ * the engine, menus, and crash handler exist. Do not let an unforeseen
+ * combination leave an uncaught module-evaluation error and a blank page.
+ *
+ * The safe-mode screen owns the only next step. Keeping this promise pending
+ * stops the rest of main.ts from attempting to bind an absent GamePack while
+ * the player chooses it; the button persists safe mode and reloads this page.
+ */
+async function loadPackForBoot(): Promise<GamePack> {
+  try {
+    return loadGamePack();
+  } catch (error) {
+    showSafeModeScreen(error, { disableModsAndRestart: disableAllModsAndRestart });
+    return await new Promise<never>(() => {});
+  }
+}
+
+const pack: GamePack = await loadPackForBoot();
 
 // Saves live in localStorage as stamped bytes (decision 16b tamper
 // deterrent), base64-wrapped. A genuine load shows the title + character select
@@ -7646,16 +7704,16 @@ function hallucinationResolver():
 }
 
 /**
- * do_cmd_view_map's data.  ASCII keeps ui-map.c display_map's compressed,
- * priority-resolved miniature.  An active tileset instead keeps one resolved
- * cell per known cave grid for overlay.ts to paint into one offscreen canvas
- * and scale, as the graphical upstream front ends do.  Both paths reuse the
- * map-knowledge helpers render() itself reads (knownFeat/knownObject/features/
- * monsterIndex/trapIndex); no parallel glyph pipeline is built here. No state
- * mutation, and no GAME RNG: while the player is hallucinating this does draw,
- * but from the display-only stream (see hallucinationRng), never from state.rng.
+ * do_cmd_view_map's data ('M', ui-map.c display_map): the priority-resolved
+ * whole-level miniature, scaled to fit the current terminal (minus the
+ * 1-cell box border on each side). Reuses exactly the map-knowledge helpers
+ * render() itself reads (knownFeat/knownObject/features/monsterIndex/
+ * trapIndex) - buildOverview (mapview.ts) only does the scan/scale/priority
+ * arithmetic; no parallel glyph pipeline is built here. No state mutation, and
+ * no GAME RNG: while the player is hallucinating this does draw, but from the
+ * display-only stream (see hallucinationRng), never from state.rng.
  */
-function buildOverviewForShell(): LevelOverview {
+function buildOverviewForShell(): Overview {
   const { cols, rows } = term.size();
   const mapW = Math.min(cols - 2, state.chunk.width);
   const mapH = Math.min(rows - 2, state.chunk.height);
@@ -7667,13 +7725,13 @@ function buildOverviewForShell(): LevelOverview {
   const playerCell = hallucinate?.({ ...state.actor.grid }, {
     object: false, sensed: false, monster: false,
   })?.monster;
-  const overviewParams: BuildOverviewParams = {
+  return buildOverview({
     width: state.chunk.width,
     height: state.chunk.height,
     mapW,
     mapH,
     knownFeatAt: (x, y) => knownFeat(state, loc(x, y)),
-    featureGlyph: (fidx, x = 0, y = 0) => {
+    featureGlyph: (fidx) => {
       const f = features.get(fidx);
       const disp = f.mimic !== null ? features.get(f.mimic) : f;
       const slot = glyphs.featGlyph(LIGHTING.LIT, disp.fidx);
@@ -7681,11 +7739,10 @@ function buildOverviewForShell(): LevelOverview {
       /* display_map's "Hack - make every grid on the map lit" (ui-map.c:846)
        * sets g.lighting = LIGHTING_LIT before re-resolving, so the miniature's
        * TILE is the lit variant too - the same lighting this glyph already
-       * asks for. The graphics overview supplies CAVE-grid x/y so tileDrawFor
-       * can pick a per-grid variant; the unchanged compressed ASCII path uses
-       * its established (0,0) tile identity. */
+       * asks for. The x/y are the CAVE grid, not the scaled cell: tileDrawFor
+       * uses them only to pick a per-grid variant. */
       const tile = tileMap
-        ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), x, y)
+        ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), 0, 0)
         : undefined;
       return {
         ch: slot?.char ?? disp.dChar,
@@ -7746,11 +7803,7 @@ function buildOverviewForShell(): LevelOverview {
           sensedObjectAt: (x, y) => knownObjectShown(x, y)?.seen === false,
         }
       : {}),
-  };
-  /* Selecting a graphics renderer is the mode gate, not whether one specific
-   * asset has finished loading.  tileDrawFor still falls back to its ASCII
-   * glyph while a pack is warming, just as the live map does. */
-  return tileset ? buildGraphicsOverview(overviewParams) : buildOverview(overviewParams);
+  });
 }
 
 const SIDEBAR_W = 13; // classic Angband status column width.

@@ -59,14 +59,8 @@ export interface BuildOverviewParams {
   mapH: number;
   /** knownFeat(state, loc(x,y)): remembered feat index, or <0 if never seen. */
   knownFeatAt: (x: number, y: number) => number;
-  /**
-   * The mimic-resolved display glyph + Feature.priority for a known feat index.
-   * `x`/`y` are supplied by the full-grid graphics path so a tile pack with
-   * position-dependent variants can choose the same picture as the live map.
-   * The compressed ASCII path deliberately leaves them omitted: it retains its
-   * established, display_map-style priority reduction unchanged.
-   */
-  featureGlyph: (fidx: number, x?: number, y?: number) => OverviewGlyph & { priority: number };
+  /** The mimic-resolved display glyph + Feature.priority for a known feat index. */
+  featureGlyph: (fidx: number) => OverviewGlyph & { priority: number };
   /** Remembered/sensed floor object glyph (knownObject), if any; priority 20. */
   objectGlyphAt?: (x: number, y: number) => OverviewGlyph | null;
   /** Revealed/visible trap glyph, if any; priority 20. */
@@ -116,86 +110,6 @@ export interface Overview {
 }
 
 /**
- * The graphical-front-end form of the full map.  Unlike `Overview`, its cells
- * are cave-space cells: [y][x] is one known dungeon grid, never a compressed
- * winner.  overlay.ts first paints this into an offscreen canvas and then
- * scales the finished picture into the modal, matching the Windows/SDL2
- * front-end shape.
- */
-export interface GraphicsOverview {
-  readonly kind: "graphics";
-  /** [row][col], size height x width; null = grid has never been seen. */
-  cells: (OverviewGlyph | null)[][];
-  width: number;
-  height: number;
-  playerGrid: { x: number; y: number };
-  /** The player is painted last over their own cave-space cell. */
-  playerGlyph?: OverviewGlyph;
-}
-
-/** Either the portable compressed map or a tileset's full-grid picture. */
-export type LevelOverview = Overview | GraphicsOverview;
-
-export function isGraphicsOverview(overview: LevelOverview): overview is GraphicsOverview {
-  return "kind" in overview && overview.kind === "graphics";
-}
-
-interface ResolvedOverviewGrid {
-  glyph: OverviewGlyph;
-  priority: number;
-}
-
-/** Resolve one known cave grid through display_map's terrain/layer ordering. */
-function resolveOverviewGrid(
-  p: BuildOverviewParams,
-  x: number,
-  y: number,
-  fidx: number,
-  /** Keep buildOverview's established no-coordinate feature call intact. */
-  fullGrid: boolean,
-): ResolvedOverviewGrid {
-  const { priority: terrainPrio, ...terrain } = fullGrid
-    ? p.featureGlyph(fidx, x, y)
-    : p.featureGlyph(fidx);
-  let glyph: OverviewGlyph = terrain;
-  let priority = terrainPrio;
-  /* Term_queue_char's (ta, tc) is ALWAYS the terrain pair, whatever overwrites
-   * (a, c) - the trap, object or monster on top of it (ui-map.c:849, and
-   * grid_data_as_text's L186-189 save). So a foreground layer keeps the terrain
-   * tile beneath it, exactly as the live map does. */
-  const over = (g: OverviewGlyph): OverviewGlyph =>
-    terrain.tile && g.tile && g.tile !== terrain.tile
-      ? { ...g, bgTile: terrain.tile }
-      : g;
-  const trap = p.trapGlyphAt?.(x, y);
-  const obj = p.objectGlyphAt?.(x, y);
-  const mon = p.monsterGlyphAt?.(x, y);
-  const sensed = !!obj && (p.sensedObjectAt?.(x, y) ?? false);
-  const fake =
-    p.hallucinateAt?.(x, y, { object: !!obj && !sensed, sensed, monster: !!mon }) ?? null;
-  /* ui-map.c L193: a trap draws only while the grid is NOT hallucinating. */
-  if (trap && !fake) {
-    glyph = over(trap);
-    priority = 20;
-  }
-  if (fake?.object) {
-    glyph = over(fake.object);
-    priority = 20;
-  } else if (obj) {
-    glyph = over(obj);
-    priority = 20;
-  }
-  if (fake?.monster) {
-    glyph = over(fake.monster);
-    priority = 20;
-  } else if (mon) {
-    glyph = over(mon);
-    priority = 20;
-  }
-  return { glyph, priority };
-}
-
-/**
  * display_map's scan (ui-map.c:820-843), adapted to the web's arbitrary
  * viewport box instead of a fixed 80x24 terminal (the verify-required
  * divergence: tile_width/tile_height are always 1 here, so the C tile-
@@ -237,7 +151,42 @@ export function buildOverview(p: BuildOverviewParams): Overview {
       const fidx = p.knownFeatAt(x, y);
       if (fidx < 0) continue;
       const col = Math.floor((x * mapW) / width);
-      const { glyph, priority: prio } = resolveOverviewGrid(p, x, y, fidx, false);
+      const { priority: terrainPrio, ...terrain } = p.featureGlyph(fidx);
+      let glyph: OverviewGlyph = terrain;
+      let prio = terrainPrio;
+      /* Term_queue_char's (ta, tc) is ALWAYS the terrain pair, whatever
+       * overwrites (a, c) - the trap, object or monster on top of it
+       * (ui-map.c:849, and grid_data_as_text's L186-189 save). So a foreground
+       * layer keeps the terrain tile beneath it, exactly as the live map does. */
+      const over = (g: OverviewGlyph): OverviewGlyph =>
+        terrain.tile && g.tile && g.tile !== terrain.tile
+          ? { ...g, bgTile: terrain.tile }
+          : g;
+      const trap = p.trapGlyphAt?.(x, y);
+      const obj = p.objectGlyphAt?.(x, y);
+      const mon = p.monsterGlyphAt?.(x, y);
+      const sensed = !!obj && (p.sensedObjectAt?.(x, y) ?? false);
+      const fake =
+        p.hallucinateAt?.(x, y, { object: !!obj && !sensed, sensed, monster: !!mon }) ?? null;
+      /* ui-map.c L193: a trap draws only while the grid is NOT hallucinating. */
+      if (trap && !fake) {
+        glyph = over(trap);
+        prio = 20;
+      }
+      if (fake?.object) {
+        glyph = over(fake.object);
+        prio = 20;
+      } else if (obj) {
+        glyph = over(obj);
+        prio = 20;
+      }
+      if (fake?.monster) {
+        glyph = over(fake.monster);
+        prio = 20;
+      } else if (mon) {
+        glyph = over(mon);
+        prio = 20;
+      }
       const rowArr = priority[row]!;
       if (prio > rowArr[col]!) {
         rowArr[col] = prio;
@@ -253,45 +202,6 @@ export function buildOverview(p: BuildOverviewParams): Overview {
     mapH,
     playerRow,
     playerCol,
-    ...(p.playerGlyph ? { playerGlyph: p.playerGlyph } : {}),
-  };
-}
-
-/**
- * Build the graphics-front-end overview: every known cave grid keeps its own
- * cell.  This intentionally has NO scale/priority competition; graphics
- * front ends paint this full offscreen image once and scale the resulting
- * canvas into the available map modal.  main.ts selects it only while a
- * tileset is active; buildOverview above remains the ASCII path.
- */
-export function buildGraphicsOverview(p: BuildOverviewParams): GraphicsOverview {
-  const { width, height } = p;
-  if (width < 1 || height < 1) {
-    return {
-      kind: "graphics",
-      cells: [],
-      width,
-      height,
-      playerGrid: p.playerGrid,
-      ...(p.playerGlyph ? { playerGlyph: p.playerGlyph } : {}),
-    };
-  }
-  const cells: (OverviewGlyph | null)[][] = Array.from({ length: height }, () =>
-    new Array<OverviewGlyph | null>(width).fill(null),
-  );
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const fidx = p.knownFeatAt(x, y);
-      if (fidx < 0) continue;
-      cells[y]![x] = resolveOverviewGrid(p, x, y, fidx, true).glyph;
-    }
-  }
-  return {
-    kind: "graphics",
-    cells,
-    width,
-    height,
-    playerGrid: p.playerGrid,
     ...(p.playerGlyph ? { playerGlyph: p.playerGlyph } : {}),
   };
 }
