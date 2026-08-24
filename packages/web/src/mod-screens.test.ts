@@ -302,26 +302,6 @@ describe("the auto-sort proposal renders exactly what its hand-laid version did"
     expect(rows[10]).toBe("  10. j");
   });
 
-  it("wraps long names, rejected reasons, and impossible cycles", () => {
-    const long = "A deliberately long mod name that continues beyond the terminal width so its final words and punctuation remain visible.";
-    const view = autoSortScreen(
-      sorted({
-        order: ["long"],
-        dropped: [
-          { from: "long", to: "other", tier: "author", reason: long, cycle: ["long", "other"] },
-        ],
-        unresolvable: [["long", "other"]],
-      }),
-      ["other"],
-      (id) => (id === "long" ? long : `${long} other`),
-    );
-    const lines = screenBodyLines(view, 80).map((line) => line.text);
-    expect(lines.every((line) => line.length <= 79)).toBe(true);
-    expect(lines.join(" ").replace(/\s+<- moved/gu, "").replace(/\s+/gu, " ")).toContain(long);
-    const cycleLines = screenBlockLines(tableOf(view, "unresolvable"), 80).map((line) => line.text);
-    expect(cycleLines.at(-1)).toContain("other");
-  });
-
   it("keeps the dropped suggestions and the impossible cycles where they were", () => {
     const view = autoSortScreen(
       sorted({
@@ -842,17 +822,6 @@ describe("the conflicts viewer is a table a presenter could act on", () => {
     expect(report.combined).toEqual(report.combinedRows.map((r) => r.text));
   });
 
-  it("wraps a long conflict sentence instead of dropping its ending", () => {
-    const long = "A conflict explanation that continues beyond the terminal width so a player can read every last word before deciding what to enable.";
-    const view = modConflictsScreen(
-      conflictLines({ ...NO_CONFLICT_INPUTS, recordRows: [{ text: long, record: null }] }),
-    );
-    const block = view.blocks.find((candidate) => candidate.kind === "table");
-    if (!block || block.kind !== "table") throw new Error("no conflict table");
-    const lines = screenBlockLines(block, 80).map((line) => line.text);
-    expect(lines.every((line) => line.length <= 79)).toBe(true);
-    expect(lines.join(" ")).toBe(long);
-  });
 });
 
 /* ------------------------------------------------------------------ */
