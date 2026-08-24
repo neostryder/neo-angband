@@ -11,7 +11,7 @@ anywhere and so you can change it without forking it.
 - **Add mods** when you want something different.
 - **Make your own mods** without maintaining a fork of Angband.
 
-> ## Try it now: [play in your browser](https://neostryder.github.io/neo-angband/)
+> ## Try it now: [play in your browser](https://angband.rpgm.world/)
 >
 > No install, no account, nothing to download. The link opens straight into
 > the game, and it keeps your save in that browser.
