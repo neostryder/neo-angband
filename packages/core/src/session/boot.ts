@@ -23,6 +23,8 @@ import { FeatureRegistry } from "../world/feature.js";
 import type { TerrainRecordJson } from "../world/feature.js";
 import { ObjRegistry } from "../obj/bind.js";
 import type { ObjPackJson } from "../obj/types.js";
+import { bindChestTraps } from "../obj/chest.js";
+import type { ChestTrapEntry, ChestTrapRecordJson } from "../obj/chest.js";
 import { declareModMessageTypes } from "../mod/message-declarations.js";
 import { ArtifactState, ObjAllocState } from "../obj/make.js";
 import type { MakeDeps } from "../obj/make.js";
@@ -59,6 +61,8 @@ import { bindProjections } from "../world/projection.js";
 import type { ProjectionInfo, ProjectionRecordJson } from "../world/projection.js";
 import { bindTraps } from "../world/trap.js";
 import type { TrapKind, TrapRecordJson } from "../world/trap.js";
+import { bindWorld } from "../world/topology.js";
+import type { WorldRecordJson, WorldTopology } from "../world/topology.js";
 import { StoreRegistry } from "../store/bind.js";
 import type { StoreRecordJson } from "../store/types.js";
 import { bindQuests } from "../game/quest.js";
@@ -73,6 +77,10 @@ export interface CorePack {
   roomTemplates: RoomTemplateRecordJson[];
   vaults: VaultRecordJson[];
   dungeonProfiles: DunProfileRecordJson[];
+  /** chest_trap.json, optional for older partial CorePack callers. */
+  chestTraps?: ChestTrapRecordJson[];
+  /** world.json's named town/level graph, optional for older partial callers. */
+  world?: WorldRecordJson[];
   obj: ObjPackJson;
   mon: MonsterPackRecords;
   /**
@@ -153,6 +161,10 @@ export interface CoreRegistries {
   monsters: ReturnType<typeof bindMonsters>;
   rooms: RoomRegistry;
   profiles: DungeonProfiles;
+  /** The composed chest-trap table used for creation, opening and disarming. */
+  chestTraps: readonly ChestTrapEntry[];
+  /** The composed named level graph; distinct from GameState.world hooks. */
+  topology: WorldTopology;
   /** Bound projections (PROJ_-indexed), or null when the pack has none. */
   projections: ProjectionInfo[] | null;
   /** Bound trap kinds (t_idx-indexed), or null when the pack has none. */
@@ -205,6 +217,8 @@ export function bindCore(pack: CorePack): CoreRegistries {
   monSpells.clear();
   declareModMonsterSpells(pack.monsterSpells);
   const constants = bindConstants(pack.constants);
+  const chestTraps = bindChestTraps(pack.chestTraps);
+  const topology = bindWorld(pack.world, constants.maxDepth);
   const features = new FeatureRegistry(pack.terrain);
   const objects = new ObjRegistry(pack.obj);
   const monsters = bindMonsters(pack.mon, { maxSight: constants.maxSight });
@@ -247,6 +261,8 @@ export function bindCore(pack: CorePack): CoreRegistries {
     monsters,
     rooms,
     profiles,
+    chestTraps,
+    topology,
     projections,
     traps,
     nameSections,
@@ -302,6 +318,7 @@ export function genDeps(
       reg: reg.objects,
       alloc: new ObjAllocState(reg.objects, reg.constants),
       constants: reg.constants,
+      chestTraps: reg.chestTraps,
       artifacts: artifacts ?? new ArtifactState(reg.objects.artifacts.length),
       noArtifacts,
       ...(foils === "no-player" ? {} : foils),
@@ -421,6 +438,7 @@ export function bootLevel(pack: CorePack, opts: BootLevelOptions = {}): BootedLe
     ...(opts.modHooks ? { hooks: opts.modHooks } : {}),
   };
   const g = generateLevel(rng, depth, deps, opts.generate ?? {});
+  g.c.name = registries.topology.nameAtDepth(depth);
   return {
     chunk: g.c,
     depth,

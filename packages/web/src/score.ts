@@ -29,9 +29,8 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
 import { hallOfFameFooter, hallOfFameScreen, hallOfFameTitle } from "./screens";
-import { screenFault, screenRegionSpec } from "./overlay";
+import { screenFault } from "./overlay";
 import { ScreenAbandoned, showThroughPresenter } from "./screen-runtime";
-import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import type {
   HighScore,
   ScoreStore,
@@ -308,31 +307,29 @@ export function showScoreScreen(
 
   /** The faithful terminal's own Hall of Fame; see `showScoreScreen`. */
   function showScoresOnTerminal(): Promise<void> {
-    const handle = pushRegion(screenRegionSpec(), term.size());
-    const surface = regionSurface(term, handle.cells);
     return new Promise<void>((resolve) => {
       let k = from;
 
       const paint = (): void => {
-        surface.clear();
+        term.clear();
         /* Title (display_scores_aux L146). Its two forms are `hallOfFameTitle`, the
          * same string the view publishes, so the two cannot disagree about the
          * wording; the COLUMN each is centred at is the C's own literal. */
         if (k > 0) {
-          surface.print(21, 0, hallOfFameTitle(k), UI_TEXT);
+          term.print(21, 0, hallOfFameTitle(k), UI_TEXT);
         } else {
-          surface.print(30, 0, hallOfFameTitle(0), UI_TEXT);
+          term.print(30, 0, hallOfFameTitle(0), UI_TEXT);
         }
 
         const rows: ScoreRow[] = scorePageRows(scores, k, count, highlight, names);
         rows.forEach((row, n) => {
           const css = colorToCss(row.color);
-          surface.print(0, n * 4 + 2, row.line1, css);
-          surface.print(SCORE_DETAIL_INDENT, n * 4 + 3, row.line2, css);
-          surface.print(SCORE_DETAIL_INDENT, n * 4 + 4, row.line3, css);
+          term.print(0, n * 4 + 2, row.line1, css);
+          term.print(SCORE_DETAIL_INDENT, n * 4 + 3, row.line2, css);
+          term.print(SCORE_DETAIL_INDENT, n * 4 + 4, row.line3, css);
         });
 
-        surface.print(allowScrolling ? 6 : 9, 23, hallOfFameFooter(allowScrolling), UI_DIM);
+        term.print(allowScrolling ? 6 : 9, 23, hallOfFameFooter(allowScrolling), UI_DIM);
       };
 
       const onKey = (ev: KeyboardEvent): void => {
@@ -368,8 +365,6 @@ export function showScoreScreen(
 
       inputEvents.addEventListener("keydown", onKey);
       paint();
-    }).finally(() => {
-      popRegion(handle);
     });
   }
 }
