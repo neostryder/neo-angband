@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { EF, FEAT, HIST, RF, TV } from "../generated/index.js";
+import { EF, FEAT, RF, TV } from "../generated/index.js";
 import { invenCarry } from "../game/gear.js";
 import { updatePlayerObjectKnowledge } from "../game/known.js";
 import { GLYPH_DECOY } from "../effects/effect.js";
@@ -18,7 +18,6 @@ import { buildObjectEffectChain } from "../game/obj-cmd.js";
 import type { EffectRecordJson } from "../obj/types.js";
 import { EverseenKnowledge } from "../obj/knowledge.js";
 import { ContentIdResolver } from "../mod/ids.js";
-import { historyAdd } from "../player/history.js";
 import { serializeGame, serializeMessages, deserializeMessages } from "./save.js";
 import { MessageLog } from "../msg.js";
 import type { ObjectKind } from "../obj/types.js";
@@ -385,7 +384,7 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     expect(rs.actor.player.totalWinner).toBe(false);
   });
 
-  it("round-trips the character history log (player.hist), incl. a LOST and raw-note entry", () => {
+  it("round-trips the character history log (player.hist), incl. a LOST entry", () => {
     const game = startGame(pack, { seed: 555, depth: 5 });
     const p = game.state.actor.player;
     /* Birth already logged HIST_PLAYER_BIRTH; add a level-up, an artifact
@@ -409,17 +408,9 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
       turn: 1,
       event: "Missed something",
     });
-    /* A mod may retain raw user input and ask its display hook to expand it.
-     * This is persisted character state, not a display-only transient: losing
-     * the marker would make the next load show the raw command text. */
-    historyAdd(p, "/say A raw note", HIST.USER_INPUT, 1, 1, 2, true);
-    expect(p.hist.length).toBeGreaterThanOrEqual(4);
+    expect(p.hist.length).toBeGreaterThanOrEqual(3);
 
     const saved = JSON.parse(JSON.stringify(saveGame(game)));
-    expect(saved.player.hist.at(-1)).toMatchObject({
-      event: "/say A raw note",
-      expandUserInput: true,
-    });
     const restored = loadGame(pack, saved);
     expect(restored.state.actor.player.hist).toEqual(p.hist);
   });

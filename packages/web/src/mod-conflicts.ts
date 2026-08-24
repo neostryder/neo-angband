@@ -271,13 +271,11 @@ function hookDescription(hook: keyof ModHooks): string {
   const words: Record<keyof ModHooks, string> = {
     walkBlockedByDiggable: "what happens when you walk into diggable rock",
     objectListTiebreak: "the order of items on the floor list",
-    projectionRadius: "how wide a spell or breath explodes",
     levelGenerated: "whether a freshly generated level is accepted",
     artifactCommit: "whether an artifact is allowed to be created",
     historyAdd: "which events reach your character history",
-    historyDisplay: "how entries in your character history are shown",
     saveNoiseScent: "whether noise and scent maps go into the save",
-    levelRevisited: "what happens to transient tracking when a frozen level returns",
+    shapeLearnObviousFlagsDirectly: "whether a shapechange's obvious flags are learned right away",
     messageText: "the wording of game messages",
     optionsChanged: "being told when you change your options",
   };

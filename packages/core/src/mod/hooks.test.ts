@@ -20,11 +20,9 @@ import {
 } from "./hooks.js";
 import type { GameState } from "../game/context.js";
 import type { OptionStateData } from "../player/options.js";
-import type { Chunk } from "../world/chunk.js";
 
 const STATE = {} as GameState;
 const GRID = { y: 1, x: 1 };
-const CHUNK = {} as Chunk;
 /** The live CaveCmdDeps core passes through; opaque to the fold. */
 const DEPS = {};
 
@@ -46,12 +44,10 @@ describe("composeModHooks: nothing in, nothing out", () => {
     expect(composed?.levelGenerated).toBeUndefined();
     expect(composed?.artifactCommit).toBeUndefined();
     expect(composed?.historyAdd).toBeUndefined();
-    expect(composed?.historyDisplay).toBeUndefined();
     expect(composed?.saveNoiseScent).toBeUndefined();
-    expect(composed?.levelRevisited).toBeUndefined();
     expect(composed?.walkBlockedByDiggable).toBeUndefined();
     expect(composed?.objectListTiebreak).toBeUndefined();
-    expect(composed?.projectionRadius).toBeUndefined();
+    expect(composed?.shapeLearnObviousFlagsDirectly).toBeUndefined();
   });
 });
 
@@ -113,48 +109,12 @@ describe("veto hooks are conjunctive", () => {
     expect(composed?.historyAdd?.({ what: "Killed Grip", type: 1, duplicate: true })).toBe(false);
   });
 
-  it("historyAdd: an existing true vote leaves the faithful write unchanged", () => {
+  it("historyAdd: all accepting writes the entry", () => {
     const composed = composeModHooks([
       { historyAdd: () => true },
       { historyAdd: () => true },
     ]);
-    const entry = { what: "Killed Grip", type: 1, duplicate: false };
-    expect(composed?.historyAdd?.(entry)).toBe(true);
-    expect(entry).toEqual({ what: "Killed Grip", type: 1, duplicate: false });
-  });
-
-  it("historyAdd: contributors share a writable text and raw-note marker while votes stay conjunctive", () => {
-    const seen: string[] = [];
-    const composed = composeModHooks([
-      {
-        historyAdd: (entry) => {
-          entry.what = entry.rawUserInput!;
-          entry.expandUserInput = true;
-          return true;
-        },
-      },
-      {
-        historyAdd: (entry) => {
-          seen.push(`${entry.what}:${entry.expandUserInput}`);
-          return true;
-        },
-      },
-    ]);
-    const entry = {
-      what: '-- Elrond says: "A full note"',
-      type: 1,
-      duplicate: false,
-      rawUserInput: "/say A full note",
-    };
-    expect(composed?.historyAdd?.(entry)).toBe(true);
-    expect(entry).toEqual({
-      what: "/say A full note",
-      type: 1,
-      duplicate: false,
-      rawUserInput: "/say A full note",
-      expandUserInput: true,
-    });
-    expect(seen).toEqual(["/say A full note:true"]);
+    expect(composed?.historyAdd?.({ what: "Killed Grip", type: 1, duplicate: false })).toBe(true);
   });
 });
 
@@ -165,19 +125,6 @@ describe("transform hooks chain in load order", () => {
       { messageText: (s) => `${s}-b` },
     ]);
     expect(composed?.messageText?.("x")).toBe("x-a-b");
-  });
-
-  it("historyDisplay: each formatter sees the text produced before it", () => {
-    const composed = composeModHooks([
-      { historyDisplay: (entry) => `${entry.what}-a` },
-      { historyDisplay: (entry, playerName) => `${playerName}:${entry.what}-b` },
-    ]);
-    expect(
-      composed?.historyDisplay?.(
-        { what: "/say a note", type: 1, expandUserInput: true },
-        "Elrond",
-      ),
-    ).toBe("Elrond:/say a note-a-b");
   });
 
   it("messageText: order matters, so the fold is not commutative", () => {
@@ -203,26 +150,6 @@ describe("transform hooks chain in load order", () => {
     ]);
     expect(f?.messageText?.("hi")).toBe("hi?");
     expect(g?.messageText?.("hi")).toBe("hi!");
-  });
-
-  it("projectionRadius: each sees the previous one's radius", () => {
-    const composed = composeModHooks([
-      { projectionRadius: (rad) => rad + 5 },
-      { projectionRadius: (rad, maxRange) => Math.min(rad, maxRange) },
-    ]);
-    /* 3 widened to 8, then held at the maximum: both contributions survive,
-     * which is the whole difference between a chain and a last-answer fold. */
-    expect(composed?.projectionRadius?.(3, 6)).toBe(6);
-  });
-
-  it("projectionRadius: every contributor is handed the same maxRange", () => {
-    const seen: number[] = [];
-    const composed = composeModHooks([
-      { projectionRadius: (rad, maxRange) => (seen.push(maxRange), rad) },
-      { projectionRadius: (rad, maxRange) => (seen.push(maxRange), rad) },
-    ]);
-    composed?.projectionRadius?.(25, 20);
-    expect(seen).toEqual([20, 20]);
   });
 });
 
@@ -292,20 +219,21 @@ describe("any-hooks are disjunctive", () => {
     ]);
     expect(composed?.saveNoiseScent?.()).toBe(false);
   });
-});
 
-describe("notification hooks are observed by every contributor", () => {
-  it("levelRevisited: observes the same live chunk and exact turn endpoints in load order", () => {
-    const seen: unknown[][] = [];
+  it("shapeLearnObviousFlagsDirectly: one mod asking is enough", () => {
     const composed = composeModHooks([
-      { levelRevisited: (...args) => void seen.push(args) },
-      { levelRevisited: (...args) => void seen.push(args) },
+      { shapeLearnObviousFlagsDirectly: () => false },
+      { shapeLearnObviousFlagsDirectly: () => true },
     ]);
-    composed?.levelRevisited?.(CHUNK, 19, 50);
-    expect(seen).toEqual([
-      [CHUNK, 19, 50],
-      [CHUNK, 19, 50],
+    expect(composed?.shapeLearnObviousFlagsDirectly?.()).toBe(true);
+  });
+
+  it("shapeLearnObviousFlagsDirectly: nobody asking means the faithful 4.2.6 gap stands", () => {
+    const composed = composeModHooks([
+      { shapeLearnObviousFlagsDirectly: () => false },
+      { shapeLearnObviousFlagsDirectly: () => false },
     ]);
+    expect(composed?.shapeLearnObviousFlagsDirectly?.()).toBe(false);
   });
 });
 
@@ -441,25 +369,6 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       }),
       run: (h) => h.objectListTiebreak?.({ dy: 0, dx: 0 }, { dy: 0, dx: 0 }),
     },
-    projectionRadius: {
-      /* Deliberately NOT commutative. A contributor that added `nth` would give
-       * the same total in both orders, and the observer would read an
-       * order-independent answer and call a chained fold a conjunctive one -
-       * the probe would be wrong in exactly the direction the table is. */
-      yes: (log, tag, nth) => ({
-        projectionRadius: (rad) => {
-          log.push(tag);
-          return rad * 10 + nth;
-        },
-      }),
-      no: (log, tag) => ({
-        projectionRadius: (rad) => {
-          log.push(tag);
-          return rad;
-        },
-      }),
-      run: (h) => h.projectionRadius?.(3, 20),
-    },
     levelGenerated: {
       yes: (log, tag) => ({
         levelGenerated: () => {
@@ -505,21 +414,6 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       }),
       run: (h) => h.historyAdd?.({ what: "x", type: 0, duplicate: false }),
     },
-    historyDisplay: {
-      yes: (log, tag) => ({
-        historyDisplay: (entry) => {
-          log.push(tag);
-          return entry.what + tag;
-        },
-      }),
-      no: (log, tag) => ({
-        historyDisplay: (entry) => {
-          log.push(tag);
-          return entry.what;
-        },
-      }),
-      run: (h) => h.historyDisplay?.({ what: "x", type: 0 }, "Tester"),
-    },
     saveNoiseScent: {
       yes: (log, tag) => ({
         saveNoiseScent: () => {
@@ -535,14 +429,20 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       }),
       run: (h) => h.saveNoiseScent?.(),
     },
-    levelRevisited: {
+    shapeLearnObviousFlagsDirectly: {
       yes: (log, tag) => ({
-        levelRevisited: () => void log.push(tag),
+        shapeLearnObviousFlagsDirectly: () => {
+          log.push(tag);
+          return true;
+        },
       }),
       no: (log, tag) => ({
-        levelRevisited: () => void log.push(tag),
+        shapeLearnObviousFlagsDirectly: () => {
+          log.push(tag);
+          return false;
+        },
       }),
-      run: (h) => h.levelRevisited?.(CHUNK, 19, 50),
+      run: (h) => h.shapeLearnObviousFlagsDirectly?.(),
     },
     messageText: {
       yes: (log, tag) => ({
@@ -653,21 +553,14 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
     expect(hooks.historyAdd?.({ what: "Killed Grip", type: 1, duplicate: false })).toBe(true);
   });
 
-  it("historyDisplay preserves the stored text rather than blanking history", () => {
-    const { hooks } = guarded({ historyDisplay: THROWS });
-    expect(hooks.historyDisplay?.({ what: "Killed Grip", type: 1 }, "Tester")).toBe(
-      "Killed Grip",
-    );
-  });
-
   it("saveNoiseScent omits them, the upstream behaviour", () => {
     const { hooks } = guarded({ saveNoiseScent: THROWS });
     expect(hooks.saveNoiseScent?.()).toBe(false);
   });
 
-  it("levelRevisited leaves the frozen level untouched when its observer throws", () => {
-    const { hooks } = guarded({ levelRevisited: THROWS });
-    expect(hooks.levelRevisited?.(CHUNK, 19, 50)).toBeUndefined();
+  it("shapeLearnObviousFlagsDirectly declines, the faithful 4.2.6 gap", () => {
+    const { hooks } = guarded({ shapeLearnObviousFlagsDirectly: THROWS });
+    expect(hooks.shapeLearnObviousFlagsDirectly?.()).toBe(false);
   });
 
   it("messageText returns the RAW message, never an empty one", () => {
@@ -676,15 +569,6 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
      * that a message had gone missing. */
     const { hooks } = guarded({ messageText: THROWS });
     expect(hooks.messageText?.("You feel a sudden chill.")).toBe("You feel a sudden chill.");
-  });
-
-  it("projectionRadius returns the radius it was given, not the maximum", () => {
-    /* Same rule as messageText, and the alternative is worse than it looks: a
-     * throwing hook that answered `maxRange` would silently narrow every blast
-     * in the game, which is a rule change nobody asked for wearing the clothes
-     * of a fault. The input radius is what core would have used alone. */
-    const { hooks } = guarded({ projectionRadius: THROWS });
-    expect(hooks.projectionRadius?.(25, 20)).toBe(25);
   });
 });
 
@@ -751,13 +635,12 @@ describe("guardModHooks: it wraps, and does not invent", () => {
     const { hooks } = guarded({ messageText: (s) => s });
     expect(hooks.messageText).toBeTypeOf("function");
     expect(hooks.historyAdd).toBeUndefined();
-    expect(hooks.historyDisplay).toBeUndefined();
     expect(hooks.levelGenerated).toBeUndefined();
     expect(hooks.artifactCommit).toBeUndefined();
     expect(hooks.saveNoiseScent).toBeUndefined();
-    expect(hooks.levelRevisited).toBeUndefined();
     expect(hooks.walkBlockedByDiggable).toBeUndefined();
     expect(hooks.objectListTiebreak).toBeUndefined();
+    expect(hooks.shapeLearnObviousFlagsDirectly).toBeUndefined();
   });
 
   it("an empty contribution stays empty, so the fold still returns undefined", () => {
