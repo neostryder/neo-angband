@@ -32,10 +32,9 @@
  * its own check - do not read this paragraph as "symlinks are handled".
  */
 
-import { readBoundedZip, ZIP_LIMITS, type ZipLimits } from "./mod-archive";
-import { badPath } from "./mod-registry";
+import { unzipSync } from "fflate";
 
-export { ZIP_LIMITS, type ZipLimits } from "./mod-archive";
+import { badPath } from "./mod-registry";
 
 /** The file every mod folder must have at its root, in the one spelling that counts. */
 const MANIFEST = "manifest.json";
@@ -52,6 +51,45 @@ const INVISIBLE = new Set([
   0x200b, 0x200c, 0x200d, 0x200e, 0x200f, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066,
   0x2067, 0x2068, 0x2069, 0xfeff,
 ]);
+
+/**
+ * Ceilings on what an archive may expand to.
+ *
+ * Present because an archive declares its own uncompressed size and a small download
+ * can promise a large one. Two of these are checked twice, before and after: the
+ * declared size decides whether an entry is decompressed at all (fflate's filter runs
+ * on the header, which is the only point where refusing still costs nothing), and the
+ * measured size is checked again afterwards, because the header is written by whoever
+ * made the file and a lying header is the interesting case.
+ *
+ * The numbers are set by what a real mod is rather than by what feels safe. A tile mod
+ * ships PNGs, and the largest tileset the game itself carries is 17.5 MB, so a 64 MB
+ * ceiling on one file is generous without being unbounded.
+ */
+export interface ZipLimits {
+  /** The .zip itself, refused before it is opened. */
+  readonly maxArchiveBytes: number;
+  readonly maxEntries: number;
+  readonly maxFileBytes: number;
+  readonly maxTotalBytes: number;
+  /**
+   * How much bigger than its compressed form one entry may claim to be.
+   *
+   * The ceilings above bound the total; this bounds the SHAPE. A 40 KB archive that
+   * declares a 60 MB file is under every other limit and is still nothing a mod has
+   * ever looked like. Deflate manages about 1000:1 on a file of one repeated byte, so
+   * 200 leaves ordinary text and JSON far below the line.
+   */
+  readonly maxRatio: number;
+}
+
+export const ZIP_LIMITS: ZipLimits = {
+  maxArchiveBytes: 64 * 1024 * 1024,
+  maxEntries: 4096,
+  maxFileBytes: 64 * 1024 * 1024,
+  maxTotalBytes: 128 * 1024 * 1024,
+  maxRatio: 200,
+};
 
 /** What came out of an archive that is a mod, or the reason it is not one. */
 export type ZipRead =
@@ -247,9 +285,71 @@ export function readModZip(bytes: Uint8Array, limits: ZipLimits = ZIP_LIMITS): Z
    * exists - and a zip whose central directory lists a file twice is the classic way to
    * make a reader and a verifier disagree about what is inside. Caught here or not at
    * all. */
-  const bounded = readBoundedZip(bytes, { limits, skip: isNoise });
-  if (!bounded.ok) return bounded;
-  const { unpacked, names: seen } = bounded;
+  if (bytes.length > limits.maxArchiveBytes) {
+    return {
+      ok: false,
+      problem: `this file is ${mb(bytes.length)}, over the ${mb(limits.maxArchiveBytes)} limit for a mod`,
+    };
+  }
+  const seen = new Set<string>();
+  let refusal: string | null = null;
+  let count = 0;
+  const refuse = (why: string): boolean => {
+    refusal ??= why;
+    return false;
+  };
+
+  let unpacked: Record<string, Uint8Array>;
+  try {
+    unpacked = unzipSync(bytes, {
+      filter: (file) => {
+        if (refusal !== null) return false;
+        if (++count > limits.maxEntries) {
+          return refuse(`the archive has more than ${limits.maxEntries} entries`);
+        }
+        if (seen.has(file.name)) {
+          return refuse(`"${file.name}" appears twice in the archive`);
+        }
+        seen.add(file.name);
+        if (file.name.endsWith("/")) return false; // a directory record, not a file
+        if (isNoise(file.name)) return false;
+        if (file.originalSize > Math.max(file.size, 1) * limits.maxRatio) {
+          return refuse(
+            `"${file.name}" is ${mb(file.size)} compressed and claims to unpack to ` +
+              `${mb(file.originalSize)}, which no mod file does`,
+          );
+        }
+        if (file.originalSize > limits.maxFileBytes) {
+          return refuse(
+            `"${file.name}" says it unpacks to ${mb(file.originalSize)}, ` +
+              `over the ${mb(limits.maxFileBytes)} limit for one file`,
+          );
+        }
+        return true;
+      },
+    });
+  } catch (e) {
+    return { ok: false, problem: `this is not a readable zip (${message(e)})` };
+  }
+  if (refusal !== null) return { ok: false, problem: refusal };
+
+  /* The declared sizes are checked again as measured sizes, because the header that
+   * declared them was written by whoever made the file. A bomb with honest headers is
+   * refused above without decompressing anything; a bomb that lies about its headers
+   * has to actually carry the bytes, and is refused here. */
+  let total = 0;
+  for (const [name, body] of Object.entries(unpacked)) {
+    if (body.length > limits.maxFileBytes) {
+      return { ok: false, problem: `"${name}" unpacked to ${mb(body.length)}, over the limit` };
+    }
+    total += body.length;
+    if (total > limits.maxTotalBytes) {
+      return {
+        ok: false,
+        problem: `the archive unpacks to more than ${mb(limits.maxTotalBytes)}`,
+      };
+    }
+  }
 
   const names = Object.keys(unpacked);
   if (names.length === 0) return { ok: false, problem: "the archive has no files in it" };
@@ -326,4 +426,14 @@ export function readModZip(bytes: Uint8Array, limits: ZipLimits = ZIP_LIMITS): Z
 
   const ignored = [...seen].filter((n) => !n.endsWith("/") && isNoise(n)).sort();
   return { ok: true, id, version, repository, root, files, ignored };
+}
+
+/** Sizes as a player reads them, so a refusal names a number they can act on. */
+function mb(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+  return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
+}
+
+function message(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }

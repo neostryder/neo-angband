@@ -40,6 +40,8 @@
  * on every launch - and re-verified on demand by the mod manager's own check.
  */
 
+import { unzipSync } from "fflate";
+
 import {
   type DiskPackReport,
   type ModDirEntry,
@@ -63,7 +65,6 @@ import { buildModuleGraph } from "./mod-modules";
 import type { DiscoveredMod } from "./mod-discover";
 import { badPath, rawUrl } from "./mod-registry";
 import { originConflict } from "./mod-source";
-import { readBoundedZip, ZIP_LIMITS, zipBudget } from "./mod-archive";
 import { readModZip } from "./mod-zip";
 import { assetMime, sortPackFiles } from "./pack-files";
 
@@ -152,8 +153,7 @@ export interface InstallEnv {
 export interface FetchLike {
   readonly ok: boolean;
   readonly status: number;
-  readonly headers: Pick<Headers, "get">;
-  readonly body: ReadableStream<Uint8Array> | null;
+  arrayBuffer(): Promise<ArrayBuffer>;
 }
 
 /** Lower-case hex SHA-256 of these bytes. */
@@ -469,23 +469,15 @@ export async function installModFromRepo(
      * archives writing one path is an authoring mistake that would otherwise
      * resolve by unzip order. Declared files collide the same way. */
     const from = new Map<string, string>();
-    const archives = zipBudget();
     const total = mod.payload.length;
 
     for (let i = 0; i < total; i++) {
       const entry = mod.payload[i] as (typeof mod.payload)[number];
       onProgress?.({ done: i + 1, total, path: entry.path });
-      if (entry.kind === "archive" && archives.archiveBytes >= ZIP_LIMITS.maxArchiveBytes) {
-        return {
-          ok: false,
-          problem: `${entry.path}: the archive payloads total more than ${mb(ZIP_LIMITS.maxArchiveBytes)}`,
-        };
-      }
       const bytes = await fetchBytes(
         rawUrl(mod.repo, mod.tag, entry.path),
         entry.path,
         env,
-        entry.kind === "archive" ? ZIP_LIMITS.maxArchiveBytes - archives.archiveBytes : ZIP_LIMITS.maxFileBytes,
       );
       if (entry.kind === "file") {
         const owner = from.get(entry.path);
@@ -499,9 +491,15 @@ export async function installModFromRepo(
       /* An archive's paths come from the ZIP, so they are attacker-controlled in
        * exactly the way a declared list is not. storeMod re-checks every one of
        * them (badPath) after this, which is the right order for zip-slip. */
-      const bounded = readBoundedZip(bytes, { budget: archives });
-      if (!bounded.ok) return { ok: false, problem: `${entry.path}: ${bounded.problem}` };
-      const { unpacked } = bounded;
+      let unpacked: Record<string, Uint8Array>;
+      try {
+        unpacked = unzipSync(bytes);
+      } catch (e) {
+        return {
+          ok: false,
+          problem: `${entry.path}: is not a readable zip (${message(e)})`,
+        };
+      }
       let kept = 0;
       for (const [name, body] of Object.entries(unpacked)) {
         if (name.endsWith("/")) continue; // directory entry, not a file
@@ -644,7 +642,6 @@ async function fetchBytes(
   url: string,
   path: string,
   env: InstallEnv,
-  maxBytes: number,
 ): Promise<Uint8Array> {
   let res: FetchLike;
   try {
@@ -659,39 +656,7 @@ async function fetchBytes(
         : `${path}: the server refused it (HTTP ${String(res.status)})`,
     );
   }
-  const declared = res.headers.get("content-length");
-  if (declared !== null && /^\d+$/u.test(declared.trim()) && Number(declared) > maxBytes) {
-    throw new Error(`${path}: download is over the ${mb(maxBytes)} limit for a mod`);
-  }
-  if (res.body === null) throw new Error(`${path}: the server sent no readable response body`);
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    for (;;) {
-      const next = await reader.read();
-      if (next.done) break;
-      total += next.value.length;
-      if (total > maxBytes) {
-        try {
-          await reader.cancel();
-        } catch {
-          /* The byte limit is still the useful error when cancellation races the server. */
-        }
-        throw new Error(`${path}: download is over the ${mb(maxBytes)} limit for a mod`);
-      }
-      chunks.push(next.value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return bytes;
+  return new Uint8Array(await res.arrayBuffer());
 }
 
 /** Every installed mod's provenance record. */
@@ -881,9 +846,4 @@ export async function loadInstalledMods(
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
-}
-
-function mb(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
-  return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
 }
