@@ -18,7 +18,6 @@
  */
 
 import type { MenuItem } from "./overlay";
-import { t } from "@rpgm-tools/neo-angband-core";
 
 export type GameMenuAction =
   | "resume"
@@ -47,14 +46,7 @@ export interface GameMenuEntry {
   item: MenuItem;
 }
 
-/**
- * A FUNCTION, not a constant: a locale is chosen at boot and can change while
- * the game runs (see i18n.ts's header), so a `const` computed at import time
- * would freeze whichever language happened to be active first.
- */
-export function gameMenuFooter(): string {
-  return t("menu.game.footer", "[ a-z to choose, tap a row, ESC to resume ]");
-}
+export const GAME_MENU_FOOTER = "[ a-z to choose, tap a row, ESC to resume ]";
 
 /** The Escape menu rows, in order. Every action is also reachable by its own
  * key (named in the hint), by arrows+Enter, and by tap.
@@ -67,92 +59,47 @@ export function gameMenuEntries(opts: { canQuit?: boolean } = {}): GameMenuEntry
   const entries: GameMenuEntry[] = [
     {
       action: "resume",
-      item: {
-        label: t("menu.game.resume.label", "Resume play"),
-        hint: t("menu.game.resume.hint", "Close this menu and return to the dungeon (ESC)."),
-      },
+      item: { label: "Resume play", hint: "Close this menu and return to the dungeon (ESC)." },
     },
     {
       action: "character",
-      item: {
-        label: t("menu.game.character.label", "Character sheet"),
-        hint: t("menu.game.character.hint", "Stats, skills, and history ('C')."),
-      },
+      item: { label: "Character sheet", hint: "Stats, skills, and history ('C')." },
     },
     {
       action: "inventory",
-      item: {
-        label: t("menu.game.inventory.label", "Inventory"),
-        hint: t("menu.game.inventory.hint", "The items you are carrying ('i')."),
-      },
+      item: { label: "Inventory", hint: "The items you are carrying ('i')." },
     },
     {
       action: "equipment",
-      item: {
-        label: t("menu.game.equipment.label", "Equipment"),
-        hint: t("menu.game.equipment.hint", "What you are wearing and wielding ('e')."),
-      },
+      item: { label: "Equipment", hint: "What you are wearing and wielding ('e')." },
     },
     {
       action: "messages",
-      item: {
-        label: t("menu.game.messages.label", "Message history"),
-        hint: t("menu.game.messages.hint", "Every message this session (Ctrl-P)."),
-      },
+      item: { label: "Message history", hint: "Every message this session (Ctrl-P)." },
     },
     {
       action: "knowledge",
-      item: {
-        label: t("menu.game.knowledge.label", "Knowledge"),
-        hint: t(
-          "menu.game.knowledge.hint",
-          "Browse what you have learned - monster recall ('~').",
-        ),
-      },
+      item: { label: "Knowledge", hint: "Browse what you have learned - monster recall ('~')." },
     },
     {
       action: "save",
-      item: {
-        label: t("menu.game.save.label", "Save game"),
-        hint: t("menu.game.save.hint", "Save now; the game also autosaves ('S')."),
-      },
+      item: { label: "Save game", hint: "Save now; the game also autosaves ('S')." },
     },
     {
       action: "options",
-      item: {
-        label: t("menu.game.options.label", "Options"),
-        hint: t(
-          "menu.game.options.hint",
-          "Interface, birth, and item-ignoring options ('=').",
-        ),
-      },
+      item: { label: "Options", hint: "Interface, birth, and item-ignoring options ('=')." },
     },
     {
       action: "graphics",
-      item: {
-        label: t("menu.game.graphics.label", "Graphics"),
-        hint: t(
-          "menu.game.graphics.hint",
-          "Choose a tile set or ASCII (upstream's frontend Graphics menu).",
-        ),
-      },
+      item: { label: "Graphics", hint: "Choose a tile set or ASCII (upstream's frontend Graphics menu)." },
     },
     {
       action: "mods",
-      item: {
-        label: t("menu.game.mods.label", "Mods"),
-        hint: t(
-          "menu.game.mods.hint",
-          "Enable, order, and consent to mods; view conflicts and profiles.",
-        ),
-      },
+      item: { label: "Mods", hint: "Enable, order, and consent to mods; view conflicts and profiles." },
     },
     {
       action: "help",
-      item: {
-        label: t("menu.game.help.label", "Help & keys"),
-        hint: t("menu.game.help.hint", "Commands, symbols, and a short guide ('?')."),
-      },
+      item: { label: "Help & keys", hint: "Commands, symbols, and a short guide ('?')." },
     },
     /* Next to Help because it is the same kind of row: the player is stuck and
      * looking for the way out. It has no keyboard shortcut of its own - every
@@ -163,11 +110,8 @@ export function gameMenuEntries(opts: { canQuit?: boolean } = {}): GameMenuEntry
     {
       action: "report",
       item: {
-        label: t("menu.game.report.label", "Report a problem"),
-        hint: t(
-          "menu.game.report.hint",
-          "Write a file describing what went wrong. Nothing is sent anywhere.",
-        ),
+        label: "Report a problem",
+        hint: "Write a file describing what went wrong. Nothing is sent anywhere.",
       },
     },
     /* Next to it for the same reason, and here rather than only on the character
@@ -177,59 +121,35 @@ export function gameMenuEntries(opts: { canQuit?: boolean } = {}): GameMenuEntry
     {
       action: "storage",
       item: {
-        label: t("menu.game.storage.label", "Where your characters live"),
-        hint: t(
-          "menu.game.storage.hint",
-          "What stores your saves and mods - and what would destroy them.",
-        ),
+        label: "Where your characters live",
+        hint: "What stores your saves and mods - and what would destroy them.",
       },
     },
     {
       action: "abilities",
-      item: {
-        label: t("menu.game.abilities.label", "Abilities"),
-        hint: t("menu.game.abilities.hint", "Your racial and class abilities."),
-      },
+      item: { label: "Abilities", hint: "Your racial and class abilities." },
     },
     {
       action: "equip-cmp",
-      item: {
-        label: t("menu.game.equip-cmp.label", "Compare equipment"),
-        hint: t("menu.game.equip-cmp.hint", "Side-by-side equipment summary."),
-      },
+      item: { label: "Compare equipment", hint: "Side-by-side equipment summary." },
     },
     {
       action: "item-actions",
-      item: {
-        label: t("menu.game.item-actions.label", "Item actions"),
-        hint: t("menu.game.item-actions.hint", "Every action for one chosen item."),
-      },
+      item: { label: "Item actions", hint: "Every action for one chosen item." },
     },
     {
       action: "switch",
-      item: {
-        label: t("menu.game.switch.label", "Switch character"),
-        hint: t(
-          "menu.game.switch.hint",
-          "Save this hero to its slot and pick another.",
-        ),
-      },
+      item: { label: "Switch character", hint: "Save this hero to its slot and pick another." },
     },
     {
       action: "new",
-      item: {
-        label: t("menu.game.new.label", "New character"),
-        hint: t("menu.game.new.hint", "Save this hero to its slot and birth a new one."),
-      },
+      item: { label: "New character", hint: "Save this hero to its slot and birth a new one." },
     },
     {
       action: "exit",
       item: {
-        label: t("menu.game.exit.label", "Save and exit"),
-        hint: t(
-          "menu.game.exit.hint",
-          "Save and leave play for the title screen and character list.",
-        ),
+        label: "Save and exit",
+        hint: "Save and leave play for the title screen and character list.",
       },
     },
     /* Ctrl-X is deliberately NOT named on the row above any more: upstream's ^X
@@ -239,8 +159,8 @@ export function gameMenuEntries(opts: { canQuit?: boolean } = {}): GameMenuEntry
           {
             action: "quit" as const,
             item: {
-              label: t("menu.game.quit.label", "Quit to desktop"),
-              hint: t("menu.game.quit.hint", "Save and close the game entirely (Ctrl-X)."),
+              label: "Quit to desktop",
+              hint: "Save and close the game entirely (Ctrl-X).",
             },
           },
         ]
@@ -272,10 +192,7 @@ export interface DeathMenuEntry {
   item: MenuItem;
 }
 
-/** See `gameMenuFooter`'s comment - the same reason applies here. */
-export function deathMenuFooter(): string {
-  return t("menu.death.footer", "[ letters or tap to choose, ESC to quit ]");
-}
+export const DEATH_MENU_FOOTER = "[ letters or tap to choose, ESC to quit ]";
 
 /** death_actions (ui-death.c L356-367), every row, in upstream's order, with
  * its tag letter (MN_CASELESS_TAGS). Quit is last because death_screen's own
@@ -284,75 +201,39 @@ export function deathMenuEntries(): DeathMenuEntry[] {
   const entries: DeathMenuEntry[] = [
     {
       action: "info",
-      item: {
-        label: t("menu.death.info.label", "Information"),
-        tag: "i",
-        hint: t("menu.death.info.hint", "The final character sheet and gear."),
-      },
+      item: { label: "Information", tag: "i", hint: "The final character sheet and gear." },
     },
     {
       action: "messages",
-      item: {
-        label: t("menu.death.messages.label", "Messages"),
-        tag: "m",
-        hint: t("menu.death.messages.hint", "The last messages of the run."),
-      },
+      item: { label: "Messages", tag: "m", hint: "The last messages of the run." },
     },
     {
       action: "dump",
-      item: {
-        label: t("menu.death.dump.label", "File dump"),
-        tag: "f",
-        hint: t("menu.death.dump.hint", "Download the character dump as text."),
-      },
+      item: { label: "File dump", tag: "f", hint: "Download the character dump as text." },
     },
     {
       action: "scores",
-      item: {
-        label: t("menu.death.scores.label", "View scores"),
-        tag: "v",
-        hint: t("menu.death.scores.hint", "The Hall of Fame."),
-      },
+      item: { label: "View scores", tag: "v", hint: "The Hall of Fame." },
     },
     {
       action: "examine",
-      item: {
-        label: t("menu.death.examine.label", "Examine items"),
-        tag: "x",
-        hint: t("menu.death.examine.hint", "Inspect what the hero was carrying."),
-      },
+      item: { label: "Examine items", tag: "x", hint: "Inspect what the hero was carrying." },
     },
     {
       action: "history",
-      item: {
-        label: t("menu.death.history.label", "History"),
-        tag: "h",
-        hint: t("menu.death.history.hint", "The character's life history."),
-      },
+      item: { label: "History", tag: "h", hint: "The character's life history." },
     },
     {
       action: "spoilers",
-      item: {
-        label: t("menu.death.spoilers.label", "Spoilers"),
-        tag: "s",
-        hint: t("menu.death.spoilers.hint", "Generate the spoiler files."),
-      },
+      item: { label: "Spoilers", tag: "s", hint: "Generate the spoiler files." },
     },
     {
       action: "new",
-      item: {
-        label: t("menu.death.new.label", "New Game"),
-        tag: "n",
-        hint: t("menu.death.new.hint", "Start a new character ('N' or Ctrl-N)."),
-      },
+      item: { label: "New Game", tag: "n", hint: "Start a new character ('N' or Ctrl-N)." },
     },
     {
       action: "quit",
-      item: {
-        label: t("menu.death.quit.label", "Quit"),
-        tag: "q",
-        hint: t("menu.death.quit.hint", "Leave play for the title screen (Ctrl-X)."),
-      },
+      item: { label: "Quit", tag: "q", hint: "Leave play for the title screen (Ctrl-X)." },
     },
   ];
   return entries.map((entry) => ({
