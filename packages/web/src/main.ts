@@ -663,7 +663,6 @@ import type {
 import { openExternalUrl } from "./external-link";
 import {
   TRANSFER_EXT,
-  MAX_TRANSFER_TEXT_BYTES,
   decodeTransfer,
   encodeTransfer,
   transferFilename,
@@ -10882,11 +10881,12 @@ async function showUpdatePage(): Promise<void> {
       view = { ...view, received, total };
       paint();
     });
-    const res = (await bridge.update("download", {
-      url: offer.asset.url,
-      sha256: offer.asset.sha256,
-      size: offer.asset.size,
-    })) as { ok?: boolean; error?: string } | undefined;
+    /* The desktop main process re-reads this release from GitHub and derives
+     * the URL, digest, and platform asset itself. The renderer only says which
+     * release the player selected. */
+    const res = (await bridge.update("download", offer.tag)) as
+      | { ok?: boolean; error?: string }
+      | undefined;
     stop?.();
 
     if (!res?.ok) {
@@ -11633,16 +11633,8 @@ async function exportCharacter(id: string): Promise<void> {
  * that would be a restore point.
  */
 async function importCharacter(): Promise<void> {
-  const picked = await pickTextFile(`${TRANSFER_EXT},application/json`, MAX_TRANSFER_TEXT_BYTES);
+  const picked = await pickTextFile(`${TRANSFER_EXT},application/json`);
   if (!picked) return; // cancelled
-  if ("tooLarge" in picked) {
-    await showTextScreen(term, "Import character", [
-      { text: `${picked.name} was not imported.`, color: UI_BAD },
-      { text: "", color: UI_TEXT },
-      { text: "That character file is larger than the 5 MiB import limit.", color: UI_TEXT },
-    ]);
-    return;
-  }
   const read = decodeTransfer(picked.text);
   if (!read.ok) {
     await showTextScreen(term, "Import character", [

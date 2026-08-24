@@ -45,10 +45,7 @@
  *
  * `decompress` MUST throw on input it cannot decode rather than returning
  * partial output: a truncated save that parses into a plausible-but-wrong game
- * is the one outcome worse than a save that fails to load. When
- * `maxOutputLength` is supplied, it MUST also throw before returning more than
- * that many bytes. Importers use that bound before JSON parsing untrusted files;
- * normal saved-game reads intentionally leave it unset.
+ * is the one outcome worse than a save that fails to load.
  */
 export interface SaveCodec {
   /**
@@ -58,7 +55,7 @@ export interface SaveCodec {
    */
   readonly id: string;
   compress(bytes: Uint8Array): Uint8Array;
-  decompress(bytes: Uint8Array, maxOutputLength?: number): Uint8Array;
+  decompress(bytes: Uint8Array): Uint8Array;
 }
 
 /**
