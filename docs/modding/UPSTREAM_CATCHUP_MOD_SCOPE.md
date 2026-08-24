@@ -61,7 +61,7 @@ So the mod has real content, and it is verdict 2's five rows: master carries
 those tile assignments, which puts them inside "master minus tag" by definition.
 Everything else in the 161 is somebody else's job or nobody's.
 
-## The seven rows
+## The six rows
 
 | SHA | Date | One-line | Class / toggle | Upstream site |
 |---|---|---|---|---|
@@ -71,7 +71,6 @@ Everything else in the 161 is somebody else's job or nobody's.
 | `655812a54` | 2026-03-20 | Post-tag tiles: 8 adam-bolt monster and object assignments | `catchup.tiles` | `adam-bolt/graf-new.prf` |
 | `ab2d65386` | 2026-03-24 | Comment-only: removes a stale note about numeric SVALs | - | none needed |
 | `f1b1626f6` | 2026-07-26 | Corrects the spelling of Ossë in the Trident 'of Wrath' description | `catchup.text` | `lib/gamedata/artifact.txt` |
-| `f0f6bd223` | 2026-07-28 | Holds a blast radius inside `z_info->max_range`, so it cannot reach a distance `dam_at_dist` has no entry for (upstream issue #6671) | `catchup.projections` | `src/project.c` |
 
 Dates read from `git log` against the upstream range; the triage itself did not
 record them per commit.
@@ -93,12 +92,8 @@ citing an accepted upstream commit: player-note truncation
 learned without matching equipment (neostryder/neo-angband#118, commit
 `c8036c515`), and noise-on-reload / level-revisit handling
 (neostryder/neo-angband#119, commit `5c45eb958`, partial - see the issue for
-how it differs from `bug-fixes`' own noise/scent fix).
-
-The blast-radius row is built, behind `catchup.projections`, and it is the mod's
-first row that changes ENGINE BEHAVIOUR rather than content: it rides the
-`projectionRadius` hook (`MOD_SEAMS.md`), which core reads in `computeProjection`
-before any grid is collected. The other three are not built yet.
+how it differs from `bug-fixes`' own noise/scent fix). None of the four is
+built yet.
 
 ### The seam they ride, and the one they do not
 
@@ -226,23 +221,17 @@ assumed from the tile-prf precedent:
   carry a mod's own namespaced fields.
 - **Resource categories**: 7 of 7 are mod-suppliable.
 
-That reads as good news and was conditional on there being no candidate commits
-to test it against. MOD_REACH names its own blind spots - closed TypeScript
-unions, dispatch that was reshaped rather than registered - so a specific commit
-can still land on an unmeasured gap.
-
-The first one did. `f0f6bd223` decides a value inside `computeProjection` before
-any dispatch happens, which is neither a record nor a table entry and so was
-reachable by nothing the measurements above count: core grew the
-`projectionRadius` hook for it (`MOD_SEAMS.md`). That is the shape to expect from
-the rest of the backlog - a one-line decision taken inside a function, needing
-one named point rather than a new registry - and it is why "zero unreachable
-dispatch points today" was never a guarantee for a commit nobody had identified.
+That reads as good news and is conditional on there being no candidate commits to
+test it against. MOD_REACH names its own blind spots - closed TypeScript unions,
+dispatch that was reshaped rather than registered - so a specific future commit
+can still land on an unmeasured gap. Re-check against the commit once one exists.
+"Zero unreachable dispatch points today" is not a guarantee for a commit nobody
+has identified.
 
 ## Size
 
 Small, as estimated, and measured now that it is built: the scaffold plus four
-`.prf` blocks, one filler, one clamp and 42 tests. The tile rows added no size of their own,
+`.prf` blocks, one filler and 31 tests. The tile rows added no size of their own,
 because the lines are already written out above and all four ride the same
 capability rather than needing four separate solutions. The real size question
 reopens only when a future re-triage of `upstream/master`, which has moved past

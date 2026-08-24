@@ -564,6 +564,39 @@ describe("historyLines (history_display, ui-history.c)", () => {
       `${"1234".padStart(10)}${"150".padStart(7)}'  Missed the Amulet of Testing (LOST)`,
     );
   });
+
+  it("uses historyDisplay for a marked raw user note and leaves unmarked history faithful", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    state.actor.player.fullName = "CelebrimborLong";
+    state.actor.player.hist.push(
+      {
+        type: 1 << HIST.USER_INPUT,
+        dlev: 1,
+        clev: 1,
+        aIdx: 0,
+        turn: 7,
+        event: "/say a complete note",
+        expandUserInput: true,
+      },
+      {
+        type: 1 << HIST.USER_INPUT,
+        dlev: 1,
+        clev: 1,
+        aIdx: 0,
+        turn: 8,
+        event: '-- CelebrimborLong says: "old truncated note',
+      },
+    );
+    state.modHooks = {
+      historyDisplay: (entry, playerName) =>
+        entry.expandUserInput === true
+          ? `-- ${playerName} says: "${entry.what.slice(5)}"`
+          : entry.what,
+    };
+    const lines = historyLines(state);
+    expect(lines[1]!.text).toContain('-- CelebrimborLong says: "a complete note"');
+    expect(lines[2]!.text).toContain('-- CelebrimborLong says: "old truncated note');
+  });
 });
 
 /* ------------------------------------------------------------------ */
