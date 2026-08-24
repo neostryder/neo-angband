@@ -65,6 +65,7 @@ import {
   downloadArchive,
   isAllowedRevealUrl,
   isHttpUrl,
+  isOwnLoopbackUrl,
   launchSwap,
   shapeOf,
   stageArchive,
@@ -1594,7 +1595,7 @@ async function createWindow(port: number): Promise<void> {
 
   // External links open in the user's real browser, not inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("http://127.0.0.1")) return { action: "allow" };
+    if (isOwnLoopbackUrl(url, port)) return { action: "allow" };
     /* `url` is whatever the renderer asked to open with `window.open` (or a
      * target="_blank" click) - the renderer's own choice, not this process's,
      * and a mod's plugin.js runs in that same page. A scheme other than http or
@@ -1606,6 +1607,18 @@ async function createWindow(port: number): Promise<void> {
       mainLog("warn", "window-open", "refused to open a non-http url in the real browser", url);
     }
     return { action: "deny" };
+  });
+
+  /* Same-window navigation away from the game's own page would carry the
+   * preload bridge (neoDesktop.*) to whatever loaded in its place. Nothing in
+   * this app currently navigates the main frame after the initial load, so
+   * every one of these is either a renderer injection, a mod misbehaving, or
+   * an unsafe same-window link - none of which should be allowed to replace
+   * the page this window's bridge is scoped to. */
+  win.webContents.on("will-navigate", (event, url) => {
+    if (isOwnLoopbackUrl(url, port)) return;
+    event.preventDefault();
+    mainLog("warn", "navigate", "refused to navigate the game window away from its own origin", url);
   });
 
   /* THE THREE WAYS THIS WINDOW GOES BLANK WITHOUT SAYING ANYTHING.
