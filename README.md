@@ -190,6 +190,82 @@ shape - flat for a die roll, the familiar bell for a sum of several:
 
 ![RNG uniformity: observed frequency across four draw types over 1,000,000 samples each](docs/img/charts/rng-uniformity.png)
 
+## Lineage
+
+Angband did not start from nothing, and neither did this port.
+
+| | | |
+|---|---|---|
+| ![Rogue (1980), a dungeon level](docs/img/lineage/rogue.png) | ![Moria (1983), a character sheet](docs/img/lineage/moria.png) | ![Angband (1990), a town inventory screen](docs/img/lineage/angband-1990.png) |
+| **Rogue**, 1980 | **Moria**, 1983 | **Angband**, 1990 |
+
+**Rogue (1980)**, created by Michael Toy and Glenn Wichman at UC Santa Cruz (with
+Ken Arnold joining later at UC Berkeley), set the pattern this whole family still
+follows: a procedurally generated dungeon, turn-based play, ASCII presentation,
+and permanent death, built over Unix's `curses` library and drawing on *Star
+Trek*, *Colossal Cave Adventure*, and *Dungeons & Dragons*.
+
+**Moria (1983)**, written by Robert Alan Koeneke at the University of Oklahoma
+(with Jimmey Wayne Todd Jr. joining for the character generator and death
+routines), kept Rogue's dungeon and permadeath but added a persistent town with
+shops, a fuller character-creation system, and a Tolkien-themed goal: descend
+the Mines of Moria and defeat the Balrog. James E. Wilson's 1987 Unix port,
+UMoria, is the code Angband actually started from rather than the original VMS
+build directly.
+
+**Angband (1990)**, begun by Alex Cutler and Andy Astrand at the University of
+Warwick from UMoria 5.2.1, moved the setting from Moria to Angband itself -
+Morgoth's fortress, with Morgoth as the final enemy - and added unique monsters,
+artifacts, item activation, level feelings, and special rooms. Sean Marsh,
+Geoff Hill, and others carried it forward after Cutler and Astrand moved on; the
+first release outside Warwick, 2.4.frog_knows, reached the public on 11 April
+1993. This project ports Angband 4.2.6, one release in that continuing line.
+
+Images: Rogue screenshot by Thedarkb, [CC BY-SA
+4.0](https://creativecommons.org/licenses/by-sa/4.0/), via [Wikimedia
+Commons](https://commons.wikimedia.org/wiki/File:Rogue_Screenshot.png). UMoria
+character screen by Ben Asselstine, [CC0 1.0
+Universal](https://creativecommons.org/publicdomain/zero/1.0/), via [Wikimedia
+Commons](https://commons.wikimedia.org/wiki/File:UmoriaPlayerCharacteristics.png)
+- the UMoria screen is shown because no equivalent screenshot of the original
+1983 VMS release is known to survive under a clear license; UMoria is the
+direct Unix descendant of that codebase. Angband screenshot licensed [GPL-2.0-or-later](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html),
+via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Angband.png).
+
+## Variants
+
+Angband itself branched many times. A few of the better-known variants, and
+what each one is actually known for:
+
+- **[FAngband](https://faangband.readthedocs.io/en/latest)** turns Angband into
+  a long-form wilderness campaign rather than a straight dungeon descent: heavy
+  Middle-earth travel, several towns, wilderness regions, mining, and
+  progression through multiple regions before Angband itself.
+- **[ZAngband](https://roguebasin.com/index.php/Zangband)** layers a strong
+  authorial setting on top of the engine - a Zelazny/Amber-inflected world
+  replacing much of the standard Tolkien framing, a broader monster roster, and
+  a more elaborate magic system with strategy-game influences. Less "Angband
+  with additions," more a new setting built on Angband's engine.
+- **[MAngband](https://mangband.org/docs)** makes Angband a persistent,
+  real-time multiplayer game - a shared world with allies and rivals, rather
+  than solo runs. Its distinctive feature is the architecture, not the content.
+- **[ToME](https://www.t-o-m-e.net/history.html)** (Troubles of Middle-Earth)
+  began as PernAngband, themed around Anne McCaffrey's Pern; a legal dispute
+  over that licensed setting forced the Pern material out and the project
+  redirected into a comprehensive, heavily authored Middle-earth RPG - a useful
+  case study in the risk of building a variant's identity on someone else's
+  licensed world.
+- **[FroxComposband](https://github.com/sulkasormi/frogcomposband)** (formerly
+  FrogComposBand) pursues breadth and density: more races, classes, dungeons,
+  objects, monsters, quests, and playstyles than most variants attempt at once,
+  offset by unusually deep in-game help to manage the resulting complexity.
+- **[Sil](https://narsil.readthedocs.io/en/latest/angband-notes.html)**
+  descends from NPPAngband but changes or removes almost every mechanic its own
+  manual lists - no town, no classes or experience levels, a tightly themed
+  First Age campaign built around stealing a Silmaril and escaping rather than
+  killing Morgoth. It reads as its own tactical-roguelike lineage more than
+  another Angband variant.
+
 ## Reporting a difference
 
 The most useful report says **what the original does** and **what this does**. If
