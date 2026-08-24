@@ -36,6 +36,11 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- Long capability descriptions and other scrollable table text now wrap instead
+  of being silently cut off at the edge of the terminal. Reported by neostryder.
+
 ## [0.32.0] - 2026-08-24
 
 ### Added

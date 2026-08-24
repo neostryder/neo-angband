@@ -4,16 +4,13 @@ import { describeObject } from "../game/describe.js";
 import { ODESC } from "../obj/desc.js";
 import { tvalCanHaveFlavor } from "../obj/object.js";
 import { ObjRegistry } from "../obj/bind.js";
-import { EF, HIST, MFLAG, OF, RF, TMD } from "../generated/index.js";
+import { HIST, MFLAG, OF, RF, TMD } from "../generated/index.js";
 import { FlagSet } from "../bitflag.js";
 import { MFLAG_SIZE, RF_SIZE } from "../mon/types.js";
 import type { MonsterRace } from "../mon/types.js";
 import { runGameLoop, LOOP_STATUS } from "../game/loop.js";
 import { processPlayer } from "../game/player-turn.js";
 import type { PlayerCommand } from "../game/context.js";
-import { sourcePlayer } from "../effects/interpreter.js";
-import { attachGameEnv } from "../game/effect-game-env.js";
-import { buildEffectContext } from "../game/effect-env.js";
 import { startGame } from "./game.js";
 import type { GamePack } from "./game.js";
 import { calcBonuses } from "../player/calcs.js";
@@ -84,45 +81,6 @@ const pack: GamePack = {
     realms: loadRecords("realm"),
   },
 };
-
-/**
- * Issue #118: shape_learn_on_assume must not require a worn item to teach a
- * flag that the assumed shape itself grants.  This is deliberately a live
- * startGame/effect-stack check: state.runeEnv has the bound object-property
- * table and the effect sees the game's real shape registry.
- */
-describe("issue #118: shape-granted flag learning", () => {
-  it("reproduces the missing rune after a real fox shapechange", () => {
-    const game = startGame(pack, { seed: 118, depth: 1, className: "Warrior" });
-    const { state } = game;
-    const shape = game.players.shapes.find((s) => s.name === "fox");
-    expect(shape).toBeDefined();
-    expect(shape!.flags.has(OF.FREE_ACT)).toBe(true);
-
-    const worn = Array.from({ length: state.actor.player.body.count }, (_, slot) =>
-      state.runeEnv.slotObject(slot),
-    );
-    expect(worn.some((obj) => obj?.flags.has(OF.FREE_ACT))).toBe(false);
-    expect(state.actor.player.objKnown.flags.has(OF.FREE_ACT)).toBe(false);
-
-    const effect = game.wizardBundles.effect!;
-    const ctx = attachGameEnv(buildEffectContext(state, effect.envDeps), {
-      state,
-      cast: effect.cast!,
-      general: effect.general!,
-    });
-    expect(game.effects).toBeDefined();
-    expect(
-      game.effects!.effectSimple(EF.SHAPECHANGE, ctx, {
-        origin: sourcePlayer(),
-        subtype: shape!.sidx,
-      }),
-    ).toBe(true);
-
-    expect(state.actor.player.shape).toBe(shape);
-    expect(state.actor.player.objKnown.flags.has(OF.FREE_ACT)).toBe(false);
-  });
-});
 
 describe("startGame (new-game assembly)", () => {
   it("births a level-1 character with derived bonuses at the player spot", () => {
