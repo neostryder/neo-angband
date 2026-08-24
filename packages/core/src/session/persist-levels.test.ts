@@ -164,6 +164,51 @@ describe("birth_levels_persist (A1 persistent levels)", () => {
     expect(mon.mTimed[MON_TMD.SLEEP]!).toBeLessThan(500);
   });
 
+  it("faithful core resumes frozen flow unchanged, while the revisit seam sees its exact clock", () => {
+    const faithful = startGame(pack, {
+      seed: 119,
+      depth: 3,
+      optionOverrides: { birth_levels_persist: true },
+    });
+    const fi = 2 * faithful.state.chunk.width + 2;
+    faithful.state.chunk.noise[fi] = 37;
+    faithful.state.chunk.scent[fi] = 9;
+    faithful.state.turn = 19;
+    faithful.changeLevel(4);
+    faithful.state.turn = 50;
+    faithful.changeLevel(3);
+    /* This is the measured 4.2.6-port behaviour: the cache retains its live
+     * heatmaps.  A monster can read these before processWorld's next tick. */
+    expect(faithful.state.chunk.noise[fi]).toBe(37);
+    expect(faithful.state.chunk.scent[fi]).toBe(9);
+
+    const observed: Array<{ frozenAt: number; now: number }> = [];
+    const hooked = startGame(pack, {
+      seed: 119,
+      depth: 3,
+      optionOverrides: { birth_levels_persist: true },
+      modHooks: {
+        levelRevisited: (chunk, frozenAt, now) => {
+          observed.push({ frozenAt, now });
+          const i = 2 * chunk.width + 2;
+          chunk.noise[i] = 0;
+          chunk.scent[i] = 13;
+        },
+      },
+    });
+    const hi = 2 * hooked.state.chunk.width + 2;
+    hooked.state.chunk.noise[hi] = 37;
+    hooked.state.chunk.scent[hi] = 9;
+    hooked.state.turn = 19;
+    hooked.changeLevel(4);
+    hooked.state.turn = 50;
+    hooked.changeLevel(3);
+
+    expect(observed).toEqual([{ frozenAt: 19, now: 50 }]);
+    expect(hooked.state.chunk.noise[hi]).toBe(0);
+    expect(hooked.state.chunk.scent[hi]).toBe(13);
+  });
+
   it("survives a save round-trip with a non-empty level cache", () => {
     const game = startGame(pack, {
       seed: 1234,

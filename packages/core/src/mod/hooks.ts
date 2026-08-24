@@ -72,6 +72,7 @@
 
 import type { GameState } from "../game/context.js";
 import type { OptionStateData } from "../player/options.js";
+import type { Chunk } from "../world/chunk.js";
 
 /**
  * A history entry offered to the write seam.
@@ -252,6 +253,24 @@ export interface ModHooks {
   saveNoiseScent?: () => boolean;
 
   /**
+   * A previously frozen level has been restored as the live level
+   * (session/game.ts' persistent-level and single-combat return paths).
+   *
+   * `frozenAt` is the game turn when the level was put aside and `now` is the
+   * game turn at which it came back.  Both are supplied rather than a rounded
+   * elapsed count: callers that model once-per-world-tick work need the same
+   * boundary calculation as the engine's `turn % 10 === 0` scheduler.
+   *
+   * This is a notification.  Core changes none of the restored level's state
+   * when it is absent, preserving 4.2.6 exactly; a mod may adjust per-level
+   * transient state such as tracking heatmaps.
+   *
+   * Serves: the upstream-catchup mod's post-4.2.6 noise clear and scent aging
+   * (upstream 5c45eb9588b8227d4f1b1998e0a627ad7ee11a75, #4605).
+   */
+  levelRevisited?: (chunk: Chunk, frozenAt: number, now: number) => void;
+
+  /**
    * Player-visible message text, on its way to the message line (the host's
    * message sink).
    *
@@ -267,9 +286,8 @@ export interface ModHooks {
   /**
    * The player finished changing their options (the '=' menu closed).
    *
-   * A NOTIFICATION, and the only one here: every other hook is asked a question
-   * and its answer changes what the engine does, whereas this one is told a
-   * thing that already happened and core does not read the return value. The
+   * A NOTIFICATION: like levelRevisited, it is told a thing that already
+   * happened and core does not read a return value. The
    * fold is "all-observe" for that reason - there is no answer to pick between,
    * so every contributor simply runs.
    *
@@ -315,6 +333,8 @@ export interface ModHooks {
  *    every contributor runs and any refusal decides.
  *  - ANY hooks (saveNoiseScent) are disjunctive: one mod asking for the data is
  *    enough, because the data is additive and a second mod cannot object.
+ *  - NOTIFICATION hooks (optionsChanged, levelRevisited) call every contributor
+ *    in load order.  There is no answer for a later mod to override.
  *
  * WHY THE LAST TWO ARE NOT EXCEPTIONS. "Later wins" answers the question "two
  * mods disagree about one thing - whose answer is used?", and a veto hook is not
@@ -370,6 +390,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   historyAdd: "all-must-agree",
   historyDisplay: "chained",
   saveNoiseScent: "any-yes",
+  levelRevisited: "all-observe",
   messageText: "chained",
   optionsChanged: "all-observe",
 };
@@ -500,6 +521,15 @@ export function guardModHooks(
     out.saveNoiseScent = (): boolean => guard("saveNoiseScent", () => noise(), false);
   }
 
+  const revisited = hooks.levelRevisited;
+  if (revisited) {
+    /* A throwing observer changes nothing: faithful core resumes the frozen
+     * level as-is, and the host receives the fault. */
+    out.levelRevisited = (chunk, frozenAt, now): void => {
+      guard("levelRevisited", () => revisited(chunk, frozenAt, now), undefined);
+    };
+  }
+
   const text = hooks.messageText;
   if (text) {
     /* The raw message, unrestated - never an empty string, which would silently
@@ -609,6 +639,16 @@ export function composeModHooks(
   const noise = list.map((c) => c.saveNoiseScent).filter(isFn);
   if (noise.length > 0) {
     out.saveNoiseScent = (): boolean => noise.some((fn) => fn());
+  }
+
+  const revisited = list.map((c) => c.levelRevisited).filter(isFn);
+  if (revisited.length > 0) {
+    /* Like optionsChanged, every contributor observes the same resume event.
+     * The chunk is intentionally live: this seam exists for a mod to update
+     * transient, level-owned state before monsters receive another turn. */
+    out.levelRevisited = (chunk, frozenAt, now): void => {
+      for (const fn of revisited) fn(chunk, frozenAt, now);
+    };
   }
 
   const text = list.map((c) => c.messageText).filter(isFn);
