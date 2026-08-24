@@ -2659,6 +2659,11 @@ function makeChangeLevel(
         state.traps = stash.traps;
         state.known = stash.known;
         if (stash.decoy) state.decoy = stash.decoy;
+        /* A level restored after single combat is the same kind of revisit as
+         * one recovered from birth_levels_persist.  Faithful core leaves every
+         * field untouched; an opt-in mod can update transient per-level state
+         * before the player and its monsters resume. */
+        state.modHooks?.levelRevisited?.(state.chunk, stash.turn, state.turn);
         const back = state.oldGrid ?? state.actor.grid;
         state.actor.grid = back;
         state.chunk.setMon(back, -1);
@@ -2787,6 +2792,12 @@ function makeChangeLevel(
         /* restore_monsters (mon-move.c L2007): HP regen + timed reduction over
          * the turns the level was frozen (turn - chunk->freeze-turn). */
         restoreMonsters(state, state.turn - stored.turn);
+
+        /* A restored persistent level is live again.  Core deliberately does
+         * nothing here, matching 4.2.6; a mod may observe the exact freeze and
+         * resume turns to update level-owned transient state before any monster
+         * can receive a turn. */
+        state.modHooks?.levelRevisited?.(state.chunk, stored.turn, state.turn);
 
         /* Place the player (prepare_next_level non-arena, L1497-1501): sanitize
          * the retained grid into a legal arrival square, then player_place.

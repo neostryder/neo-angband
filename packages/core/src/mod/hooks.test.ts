@@ -20,9 +20,11 @@ import {
 } from "./hooks.js";
 import type { GameState } from "../game/context.js";
 import type { OptionStateData } from "../player/options.js";
+import type { Chunk } from "../world/chunk.js";
 
 const STATE = {} as GameState;
 const GRID = { y: 1, x: 1 };
+const CHUNK = {} as Chunk;
 /** The live CaveCmdDeps core passes through; opaque to the fold. */
 const DEPS = {};
 
@@ -46,6 +48,7 @@ describe("composeModHooks: nothing in, nothing out", () => {
     expect(composed?.historyAdd).toBeUndefined();
     expect(composed?.historyDisplay).toBeUndefined();
     expect(composed?.saveNoiseScent).toBeUndefined();
+    expect(composed?.levelRevisited).toBeUndefined();
     expect(composed?.walkBlockedByDiggable).toBeUndefined();
     expect(composed?.objectListTiebreak).toBeUndefined();
     expect(composed?.projectionRadius).toBeUndefined();
@@ -308,6 +311,21 @@ describe("any-hooks are disjunctive", () => {
   });
 });
 
+describe("notification hooks are observed by every contributor", () => {
+  it("levelRevisited: observes the same live chunk and exact turn endpoints in load order", () => {
+    const seen: unknown[][] = [];
+    const composed = composeModHooks([
+      { levelRevisited: (...args) => void seen.push(args) },
+      { levelRevisited: (...args) => void seen.push(args) },
+    ]);
+    composed?.levelRevisited?.(CHUNK, 19, 50);
+    expect(seen).toEqual([
+      [CHUNK, 19, 50],
+      [CHUNK, 19, 50],
+    ]);
+  });
+});
+
 describe("ordering hooks chain like a lexicographic comparator", () => {
   it("objectListTiebreak: the first non-zero answer wins", () => {
     const composed = composeModHooks([
@@ -549,6 +567,15 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       }),
       run: (h) => h.shapeLearnObviousFlagsDirectly?.(),
     },
+    levelRevisited: {
+      yes: (log, tag) => ({
+        levelRevisited: () => void log.push(tag),
+      }),
+      no: (log, tag) => ({
+        levelRevisited: () => void log.push(tag),
+      }),
+      run: (h) => h.levelRevisited?.(CHUNK, 19, 50),
+    },
     messageText: {
       yes: (log, tag) => ({
         messageText: (raw) => {
@@ -675,6 +702,11 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
     expect(hooks.shapeLearnObviousFlagsDirectly?.()).toBe(false);
   });
 
+  it("levelRevisited leaves the frozen level untouched when its observer throws", () => {
+    const { hooks } = guarded({ levelRevisited: THROWS });
+    expect(hooks.levelRevisited?.(CHUNK, 19, 50)).toBeUndefined();
+  });
+
   it("messageText returns the RAW message, never an empty one", () => {
     /* The neutral value for a transform is its input. Falling back to "" would
      * delete a line the player needed to read, and nothing downstream could tell
@@ -760,6 +792,7 @@ describe("guardModHooks: it wraps, and does not invent", () => {
     expect(hooks.levelGenerated).toBeUndefined();
     expect(hooks.artifactCommit).toBeUndefined();
     expect(hooks.saveNoiseScent).toBeUndefined();
+    expect(hooks.levelRevisited).toBeUndefined();
     expect(hooks.walkBlockedByDiggable).toBeUndefined();
     expect(hooks.objectListTiebreak).toBeUndefined();
     expect(hooks.shapeLearnObviousFlagsDirectly).toBeUndefined();
