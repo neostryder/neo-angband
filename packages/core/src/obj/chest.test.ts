@@ -8,7 +8,6 @@ import type { ObjPackJson } from "./types.js";
 import { objectPrep } from "./make.js";
 import {
   CHEST_TRAPS,
-  bindChestTraps,
   chestTrapName,
   isLockedChest,
   isTrappedChest,
@@ -94,27 +93,6 @@ describe("pick_one_chest_trap (obj-chest.c L359)", () => {
       "excluded-by-count-but-first-in-the-walk",
     );
     expect(pickLevelGated(new Rng(seedOne), 1, list).tag).toBe("a");
-  });
-});
-
-describe("bindChestTraps", () => {
-  it("keeps file order as the pval-bit assignment while taking text from content", () => {
-    const bound = bindChestTraps([
-      { name: "locked", code: "NO_TRAP", level: 1 },
-      {
-        name: "modded gas",
-        code: "POISON",
-        level: 1,
-        msg: ["A modded cloud surrounds you!"],
-      },
-    ]);
-
-    expect(bound[0]?.pval).toBe(1);
-    expect(bound[1]).toMatchObject({
-      pval: 2,
-      name: "modded gas",
-      msg: "A modded cloud surrounds you!",
-    });
   });
 });
 

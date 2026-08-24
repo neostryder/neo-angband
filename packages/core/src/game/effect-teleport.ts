@@ -117,8 +117,6 @@ export interface TeleportEnv {
   forceDescend?: boolean;
   /** dungeon_get_next_level(from, dir): the connected level. Default from+dir. */
   getNextLevel?: (fromDepth: number, dir: 1 | -1) => number;
-  /** Whether a named world.json link exists in this direction. */
-  canTravelLevel?: (fromDepth: number, dir: 1 | -1) => boolean;
   /** dungeon_change_level(target): commit a level change. */
   changeLevel?: (targetDepth: number) => void;
   /** player->max_depth (deepest reached). Default: the current depth. */
@@ -573,10 +571,6 @@ export function teleportPlayerLevel(
   const maxDepth = tp.maxDepth ?? 128;
   const maxPlayerDepth = tp.maxPlayerDepth ?? depth;
   const getNext = tp.getNextLevel ?? ((from: number, dir: 1 | -1) => from + dir);
-  const canTravel = tp.canTravelLevel ?? ((from: number, dir: 1 | -1) => {
-    const target = getNext(from, dir);
-    return target !== from && target >= 0 && target < maxDepth;
-  });
   const isQuest = tp.isQuest ?? (() => false);
 
   if (state.chunk.sqinfoHas(state.actor.grid, SQUARE.NO_TELEPORT)) {
@@ -609,7 +603,7 @@ export function teleportPlayerLevel(
   /* No forcing the player down to quest levels they cannot leave. */
   if (!up && isQuest(targetDepth)) down = false;
   /* Cannot leave quest levels or descend past the bottom of the dungeon. */
-  if (isQuest(depth) || !canTravel(depth, 1)) down = false;
+  if (isQuest(depth) || depth >= maxDepth - 1) down = false;
 
   /* Determine up/down if not already forced. */
   if (up && down) {
