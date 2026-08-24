@@ -19,10 +19,9 @@ anywhere and so you can change it without forking it.
 > **Why you might like playing this way:** it is the fastest way there is -
 > one click, and you are rolling a character.
 >
-> That copy is whatever GitHub last redeployed from `master`, so it can differ
-> between two sessions in a way no bug report can be pinned to. Every method
-> below plays the identical game, pinned to a version that does not move
-> under you:
+> That copy tracks the latest **published release**, not master's bleeding
+> edge, so it is the same stable build every method below plays, just already
+> running:
 >
 > - **[Download a release](https://github.com/neostryder/neo-angband/releases)**
 >   for Windows, macOS or Linux. A file that sits on your machine and does not
@@ -31,8 +30,9 @@ anywhere and so you can change it without forking it.
 >   with nothing running in a browser tab.
 > - **[Run it from source](#play-it)**, cloned at a commit you chose. About
 >   two minutes with Node and pnpm installed.
->   **Why you might like playing this way:** you are chasing a difference from
->   the original and need to name the exact commit that showed it.
+>   **Why you might like playing this way:** you want a change that has not
+>   reached a release yet, or you are chasing a difference from the original
+>   and need to name the exact commit that showed it.
 > - **[Self-host it as a static site](docs/INSTALL.md#2-self-host-as-a-static-site)**,
 >   the same files the browser build serves, on a host you control.
 >   **Why you might like playing this way:** you want a copy that only
