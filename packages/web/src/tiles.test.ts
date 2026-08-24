@@ -18,8 +18,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { GRAPHICS_MODE_CATALOG, LIGHTING, tileForFeature } from "@rpgm-tools/neo-angband-core";
 import type { GraphicsMode, TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
 import { urlBaseResolver, type PackFileResolver } from "./pack-files";
-import { createTileRenderer, isTile, loadTilePrefs, tileCode } from "./tiles";
-import type { ModPrefText } from "./tiles";
+import {
+  createTileRenderer,
+  isTile,
+  isTileDownscale,
+  loadTilePrefs,
+  tileCode,
+} from "./tiles";
+import type { ModPrefText, TileSet } from "./tiles";
 
 /** grafID 1 (Original Tiles, `old`): a real catalog row, with a real pref file. */
 const OLD = GRAPHICS_MODE_CATALOG.find((m) => m.grafID === 1) as GraphicsMode;
@@ -111,6 +117,138 @@ describe("createTileRenderer", () => {
     expect(ts?.cellWidth).toBe(OLD.cellWidth);
     expect(ts?.cellHeight).toBe(OLD.cellHeight);
     expect(ts?.menuname).toBe(OLD.menuname);
+  });
+});
+
+describe("isTileDownscale", () => {
+  it("is a downscale when either destination axis is smaller than the source", () => {
+    expect(isTileDownscale(8, 8, 4, 4)).toBe(true);
+    expect(isTileDownscale(8, 8, 4, 8)).toBe(true);
+    expect(isTileDownscale(8, 8, 8, 4)).toBe(true);
+  });
+
+  it("is NOT a downscale for an upscale on both axes, or an equal-size blit", () => {
+    expect(isTileDownscale(8, 8, 16, 16)).toBe(false);
+    expect(isTileDownscale(8, 8, 8, 8)).toBe(false);
+  });
+
+  it("is a downscale even when the OTHER axis is upscaled", () => {
+    // Non-uniform stretch: narrower but taller. Still discards detail on the
+    // narrowed axis, so it still wants the filtered sampler.
+    expect(isTileDownscale(8, 8, 4, 16)).toBe(true);
+  });
+});
+
+/**
+ * TileSet.drawTile's sampler choice (#100): a per-blit decision, not the
+ * once-per-resize `imageSmoothingEnabled = false` GlyphTerm.fit sets as the
+ * baseline (which stays correct for the bitmap font and for upscaled tiles).
+ */
+describe("TileSet.drawTile smoothing", () => {
+  const imageGlobal = globalThis as typeof globalThis & { Image?: typeof Image };
+
+  class LoadedImage {
+    private readonly listeners = new Map<string, (() => void)[]>();
+    addEventListener(type: string, listener: () => void): void {
+      const group = this.listeners.get(type) ?? [];
+      group.push(listener);
+      this.listeners.set(type, group);
+    }
+    set src(_url: string) {
+      for (const listener of this.listeners.get("load") ?? []) listener();
+    }
+  }
+
+  /** grafID 1's atlas cell is 8x8 (OLD.cellWidth/cellHeight above). */
+  async function loadedTileSet(): Promise<TileSet> {
+    const originalImage = imageGlobal.Image;
+    imageGlobal.Image = LoadedImage as unknown as typeof Image;
+    try {
+      const ts = createTileRenderer({
+        resolve: () => Promise.resolve("url:8x8.png"),
+        grafID: 1,
+      });
+      if (!ts) throw new Error("expected a TileSet for grafID 1");
+      await Promise.resolve();
+      expect(ts.ready).toBe(true);
+      return ts;
+    } finally {
+      if (originalImage === undefined) delete imageGlobal.Image;
+      else imageGlobal.Image = originalImage;
+    }
+  }
+
+  /** A context that records the smoothing state ACTIVE at each drawImage call. */
+  function recordingCtx(): {
+    ctx: CanvasRenderingContext2D;
+    smoothingAtDraw: { enabled: boolean; quality: ImageSmoothingQuality }[];
+  } {
+    const state = {
+      imageSmoothingEnabled: false,
+      imageSmoothingQuality: "low" as ImageSmoothingQuality,
+    };
+    const smoothingAtDraw: { enabled: boolean; quality: ImageSmoothingQuality }[] = [];
+    const ctx = {
+      get imageSmoothingEnabled(): boolean {
+        return state.imageSmoothingEnabled;
+      },
+      set imageSmoothingEnabled(v: boolean) {
+        state.imageSmoothingEnabled = v;
+      },
+      get imageSmoothingQuality(): ImageSmoothingQuality {
+        return state.imageSmoothingQuality;
+      },
+      set imageSmoothingQuality(v: ImageSmoothingQuality) {
+        state.imageSmoothingQuality = v;
+      },
+      drawImage: () => {
+        smoothingAtDraw.push({
+          enabled: state.imageSmoothingEnabled,
+          quality: state.imageSmoothingQuality,
+        });
+      },
+    } as unknown as CanvasRenderingContext2D;
+    return { ctx, smoothingAtDraw };
+  }
+
+  it("enables high-quality smoothing when the destination cell is SMALLER than the 8x8 source tile", async () => {
+    const ts = await loadedTileSet();
+    const { ctx, smoothingAtDraw } = recordingCtx();
+    expect(ts.drawTile(ctx, 0, 0, 4, 4, { row: 0, col: 0 })).toBe(true);
+    expect(smoothingAtDraw).toEqual([{ enabled: true, quality: "high" }]);
+    // Restored immediately after, so it cannot leak into the next cell's
+    // nearest-neighbour bitmap-glyph paint (GlyphTerm.paintCell interleaves them).
+    expect(ctx.imageSmoothingEnabled).toBe(false);
+  });
+
+  it("keeps nearest-neighbour for an upscale and for an equal-size blit", async () => {
+    const ts = await loadedTileSet();
+    {
+      const { ctx, smoothingAtDraw } = recordingCtx();
+      expect(ts.drawTile(ctx, 0, 0, 16, 16, { row: 0, col: 0 })).toBe(true);
+      expect(smoothingAtDraw).toEqual([{ enabled: false, quality: "low" }]);
+    }
+    {
+      const { ctx, smoothingAtDraw } = recordingCtx();
+      expect(ts.drawTile(ctx, 0, 0, 8, 8, { row: 0, col: 0 })).toBe(true);
+      expect(smoothingAtDraw).toEqual([{ enabled: false, quality: "low" }]);
+    }
+  });
+
+  it("bases a double-height tile's smoothing decision on its doubled source and destination height", async () => {
+    const ts = await loadedTileSet();
+    // tall: source becomes 8x16, destination dh*2. 8x16 into 8x16 is equal-size.
+    const equal = recordingCtx();
+    expect(
+      ts.drawTile(equal.ctx, 0, 8, 8, 8, { row: 1, col: 0 }, undefined, true),
+    ).toBe(true);
+    expect(equal.smoothingAtDraw).toEqual([{ enabled: false, quality: "low" }]);
+    // 8x16 into 4x8 (dw=4, dh=4 -> doubled 4x8) is a downscale on both axes.
+    const shrunk = recordingCtx();
+    expect(
+      ts.drawTile(shrunk.ctx, 0, 8, 4, 4, { row: 1, col: 0 }, undefined, true),
+    ).toBe(true);
+    expect(shrunk.smoothingAtDraw).toEqual([{ enabled: true, quality: "high" }]);
   });
 });
 
