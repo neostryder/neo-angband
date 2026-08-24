@@ -165,19 +165,23 @@ document has no test behind it and rots on the next commit.
 | --- | --- | --- | --- |
 | `walkBlockedByDiggable(state, grid, deps)` | `last-answer` | `game/cave-cmd.ts` (`movementAutoDig`), reached from `walkAction` in `game/player-turn.ts` | `?? null` - bump the wall, spend nothing, draw no RNG |
 | `objectListTiebreak(a, b)` | `last-answer` | `game/obj-list.ts` | `?? 0`, i.e. leave the entries equal (stable sort keeps collect order) |
+| `projectionRadius(rad, maxRange)` | `chained` | `world/project.ts` (`computeProjection`, reached through `ProjectParams.resolveRadius`, which `game/project-cast.ts` fills from `state.modHooks`) | the radius as given, unchecked against `max_range` |
 | `levelGenerated(gen, quest)` | `all-must-agree` | `gen/generate.ts` | accept the level as generated |
 | `artifactCommit(aidx, alreadyCreated)` | `all-must-agree` | `obj/make.ts` | commit it unconditionally |
 | `historyAdd(entry)` | `all-must-agree` | `session/game.ts` (the `HIST.SLAY_UNIQUE` path) | `?? true` - write every entry, duplicates included |
 | `saveNoiseScent()` | `any-yes` | `session/save.ts` | `?? false` - omit the heatmaps, which is upstream's behaviour and upstream's bug |
+| `levelRevisited(chunk, frozenAt, now)` | `all-observe` | `session/game.ts` (persistent-level and single-combat restore paths) | nothing: resume the frozen chunk unchanged |
 | `messageText(raw)` | `chained` | `packages/web/src/main.ts` (the HOST's single message sink, not core) | `?? raw` - show what core was given, warts and all |
 | `optionsChanged(snapshot)` | `all-observe` | `packages/web/src/options.ts` (`notifyOptionsChanged`, at the end of `runOptionsMenu`) | nothing happens; core reads no answer |
 
-`optionsChanged` is the odd one and worth reading twice: it is the only member
-core does not ask a QUESTION. Every other hook's return value changes what the
-engine does next, so the fold has to decide whose answer wins. This one is told
-that the player has finished changing their settings, returns nothing, and folds
-**all-observe** - every listening mod is told, in load order, and none can
-overrule another, because two mods reacting to one fact are not in conflict.
+`optionsChanged` and `levelRevisited` are the notification members: core does
+not ask either a QUESTION. Every other hook's return value changes what the
+engine does next, so the fold has to decide whose answer wins. A notification
+returns nothing and folds **all-observe** - every listening mod is told, in load
+order, and none can overrule another. `levelRevisited` passes the live restored
+chunk plus unrounded turn endpoints, so a tracking mod can reproduce the engine's
+world-tick boundary exactly. `optionsChanged` is the host-owned case: it tells a
+mod that the player has finished changing settings.
 
 Three details that are contract, not implementation:
 
@@ -225,8 +229,10 @@ discarded and there is nothing for load order to decide. Per fold:
   the level, because a second mod's invariant is not satisfied by the first mod's
   repair; only a refusal short-circuits, since the level is being thrown away
   anyway.
-- **`chained`** (`messageText`) chains in load order, each contributor seeing the
-  previous one's output: a `reduce` over the contributors.
+- **`chained`** (`messageText`, `projectionRadius`) chains in load order, each
+  contributor seeing the previous one's output: a `reduce` over the
+  contributors. Two mods narrowing one blast for two unrelated reasons both get
+  their narrowing, and the last one still speaks last.
 - **`last-answer`** (`walkBlockedByDiggable`) asks the contributors in **REVERSE**
   load order and stops at the first non-`null`, so the LAST mod's handling wins
   and two mods cannot double-spend one turn's energy. The reversal is the whole
@@ -238,7 +244,7 @@ discarded and there is nothing for load order to decide. Per fold:
   read as a lexicographic chain: the last mod's ordering is the primary key and
   earlier mods break only the ties it leaves. Still a total order, and still
   later-wins.
-- **`all-observe`** (`optionsChanged`) runs every contributor in load order and
+- **`all-observe`** (`optionsChanged`, `levelRevisited`) runs every contributor in load order and
   reads no answer, so there is nothing to win.
 
 `composeModHooks` returns `undefined` when nothing contributed,
@@ -257,7 +263,7 @@ A throw becomes that hook's **neutral answer**, which is per-hook and is the sam
 value core would have used with no mod loaded at all: `null` for
 `walkBlockedByDiggable`, `0` for `objectListTiebreak`, `true` for the three vetoes
 (`levelGenerated`, `artifactCommit`, `historyAdd`), `false` for `saveNoiseScent`,
-and the raw string for `messageText`. So to the fold, a broken mod reads exactly
+the raw string for `messageText`, and the radius as given for `projectionRadius`. So to the fold, a broken mod reads exactly
 like a mod with no opinion at that point, and the other mods' answers stand.
 `levelGenerated` accepting is the one worth naming: rejecting on a throw would
 re-roll the level, throw again, and re-roll until `cave_generate` gave up - one

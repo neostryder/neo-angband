@@ -42,9 +42,9 @@
 > one. See `docs/modding/MOD_SEAMS.md` for the seam contract, the per-hook fold
 > rules, and the full default policy.
 >
-> **The menu lists three rules, not one per entry below.** Six entries below are
-> marked `IMPLEMENTED`, and on 2026-08-15 their six per-bug flags were
-> consolidated into three per-CLASS flags, which is the standing rule: one toggle
+> **The menu lists three rules, not one per entry below.** Seven entries below are
+> marked `IMPLEMENTED`. The six legacy per-bug flags were consolidated into three
+> per-CLASS flags on 2026-08-15, which is the standing rule: one toggle
 > per class of fix, never one per atomic fix. The mapping is in the mod's own
 > `renamedRuleFlags`, so a player's saved choice survived the rename. The
 > `text-corrections` section is a fourth switch beside them.
@@ -53,12 +53,10 @@
 > `4.2.6..upstream/master` (161
 > post-tag commits, inspected locally) and against the port source. **The
 > previous "blocked-on / not yet ported" notes were largely wrong** and have been
-> corrected per entry. Current state of the five `SPECIFIED` entries:
+> corrected per entry. Current state of the four `SPECIFIED` entries:
 >
-> - **#1, #3, #11 are READY** - the port systems they need all exist. The old
->   claims that the `/say` note command, the partial-absorb path, and the
->   quiver + inscription recompute were unported are each false; see each entry
->   for the live `file:line`.
+> - **#3 and #11 are READY** - the partial-absorb path and the quiver +
+>   inscription recompute are ported; see each entry for the live `file:line`.
 > - **#2 is NOT APPLICABLE** by construction (the port never persists store
 >   stock, so there is no load-path re-roll). Its cited SHA was also simply
 >   wrong - corrected in the entry.
@@ -95,10 +93,9 @@
 >   exists, along with the arithmetic condition that makes the obvious repro a
 >   dud.
 >
-> Open and tracked as issues: #1 (neostryder/neo-angband#114), #3 (#115),
-> #11 (#116). Each needs a new core seam before the mod can carry it, which is
-> the real reason they are still open - not the unported subsystems the old
-> notes blamed.
+> Open and tracked as issues: #3 (#115) and #11 (#116). Each needs a new core
+> seam before the mod can carry it; #1 (neostryder/neo-angband#114) now has its
+> write and display seams and is implemented under Text and history.
 
 ## Why this mod exists
 
@@ -180,7 +177,7 @@ minus one.
 
 | Flag | Covers |
 |---|---|
-| `bugfix.textAndHistory` | the unique-kill history entry (entry 5, upstream #4245) and the misc. string fixes (entry 14) |
+| `bugfix.textAndHistory` | player-note history (entry 1, upstream #6665), the unique-kill history entry (entry 5, upstream #4245), and the misc. string fixes (entry 14) |
 | `bugfix.stateIntegrity` | noise/scent in the save (entry 8, #4605), object-list ordering (entry 4, #4664) and duplicate artifacts (entry 12, #4510) |
 | `bugfix.levelGeneration` | unreachable staircases (entry 13, no upstream issue) |
 
@@ -204,17 +201,24 @@ player sees is the class flag in the table.
 
 ## Fixes this mod carries
 
-### 1. Player note truncation - MOVED to the upstream-catchup mod
+### 1. Player note truncation (`IMPLEMENTED`)
 
-Upstream PR #6665 merged as `72aec1103ab8153911b503a10da5a1834c1e2b0a`
-("Delay expanding user-supplied history notes", 2026-07-14) before this entry
-was re-verified. An accepted upstream commit puts the fix in the
-`upstream-catchup` mod's scope, not this mod's - see
-[UPSTREAM_CATCHUP_MOD_SCOPE.md](UPSTREAM_CATCHUP_MOD_SCOPE.md). Tracked as
-neostryder/neo-angband#114 (relabeled `repo:mod-upstream-catchup`). Not yet
-built; the missing seam this entry originally described (the `historyAdd`
-hook can suppress an entry but not rewrite its text, and the display paths
-have none at all) is still the real blocker regardless of which mod ships it.
+- References: upstream issue and PR **#6665**, merge commit
+  `72aec1103ab8153911b503a10da5a1834c1e2b0a` ("Delay expanding
+  user-supplied history notes", 2026-07-14). Not in the 4.2.6 baseline.
+- Problem: `do_cmd_note` expands `/say` and `/me` before `history_add()` copies
+  into its 80-byte event field. A long player name plus a full `/say` note loses
+  the note tail and its closing quote in persisted history and character dumps.
+- Implementation: under `bugfix.textAndHistory`, the mod's `historyAdd` hook
+  replaces the faithful expanded text with the raw note and marks it for the
+  mod's `historyDisplay` hook. Core persists that marker with the entry, and
+  `screens.ts` uses the display hook through shared history rows for both the
+  history screen and `dump_history` output. No hook preserves the exact 4.2.6
+  expanded-and-truncated entry.
+- Tests: `packages/core/src/mod/hooks.test.ts` covers the conjunctive writable
+  write request and chained display hook; the mod's `plugin.test.ts` saves and
+  reloads a 15-character player name with a 64-character `/say` payload and
+  proves the toggle-on full expansion and toggle-off 79-character truncation.
 
 ### 2. Store-charge save-scum exploit (`NOT APPLICABLE`)
 
@@ -436,8 +440,12 @@ have none at all) is still the real blocker regardless of which mod ships it.
   flag on they ride the save and restore exactly, so a reload preserves the
   scent trail instead of starting it empty. The payload is self-describing:
   a faithful save omits both, so restore leaves them zeroed (rebuilt on the
-  first turn) - back-compatible. The frozen `levelCache` snapshot stays faithful
-  (out-of-play levels carry no live trail; they rebuild flow on re-entry).
+  first turn) - back-compatible. The `levelCache` is an in-memory `Chunk`, so
+  its live heatmaps do in fact freeze with a persistent level and are restored
+  unchanged on re-entry; normal `processWorld` does not rebuild them until its
+  next ten-turn tick. That is distinct from saving an in-play level, and is now
+  handled by entry 17's opt-in upstream-catchup rule rather than by extending
+  this save toggle to a second, incompatible policy.
   Tests in `world/chunk.test.ts` (snapshot/restore round-trip) and
   `session/save.test.ts` (full save round-trip: heatmaps absent + lost with no
   hook, present + restored with the hook installed).
@@ -771,16 +779,24 @@ have none at all) is still the real blocker regardless of which mod ships it.
   so faithful core's text still reaches the screen byte-for-byte.
 - Not gameplay: no message changes meaning; nothing about play changes.
 
-### 15. Blast radius larger than `dam_at_dist` can hold - MOVED to the upstream-catchup mod
+### 15. Blast radius larger than `dam_at_dist` can hold - SHIPPED in the upstream-catchup mod
 
 Fixed upstream by commit `f0f6bd223b6b9faf0072b0ae7ffb34a812b97349`
 ("Projections: coerce blast radius to fit what dam_at_dist can handle",
 2026-07-28), not in the 4.2.6 baseline - an accepted upstream commit belongs
-in `upstream-catchup`, not here. The port carries the same gap
-(`packages/core/src/world/project.ts:522-538`, no clamp on `rad`) and it reads
-worse than upstream's: a radius past `maxRange` yields `NaN` damage rather
-than a C-style out-of-bounds read. Tracked as neostryder/neo-angband#117
-(relabeled `repo:mod-upstream-catchup`). Not yet built.
+in `upstream-catchup`, not here. The port carried the same gap
+(`packages/core/src/world/project.ts`, `computeProjection`, no clamp on `rad`)
+and it read worse than upstream's: a radius past `maxRange` collects grids the
+damage table has no entry for, so the damage handed to every per-grid handler is
+`undefined` and the first arithmetic done with it is `NaN`, where the C reads
+stale memory instead.
+
+Carried by `upstream-catchup` under `catchup.projections`, on the
+`projectionRadius` hook (`MOD_SEAMS.md`), which core reads in `computeProjection`
+before any geometry is built. Faithful default: with no mod contributing one the
+field is absent and the radius is used exactly as given, which is 4.2.6's own
+behaviour. Tracked as neostryder/neo-angband#117 (relabeled
+`repo:mod-upstream-catchup`).
 
 ### 16. Shape flags learned only when equipment already carries them - MOVED to the upstream-catchup mod
 
@@ -793,20 +809,29 @@ next step regardless of which mod eventually ships the fix. Tracked as
 neostryder/neo-angband#118 (relabeled `repo:mod-upstream-catchup`). Not yet
 built.
 
-### 17. Noise not restored on reload, and stale flow on level revisit - MOVED to the upstream-catchup mod
+### 17. Noise not restored on reload, and stale flow on level revisit - IMPLEMENTED in the upstream-catchup mod
 
 Fixed upstream by commit `5c45eb9588b8227d4f1b1998e0a627ad7ee11a75`
 ("Remember source location for last noise calculation in save file",
-2026-08-18), not in the 4.2.6 baseline - belongs in `upstream-catchup`, not
-here. This only resolves the noise half of #4605; entry 8's own
-`bugfix.stateIntegrity` toggle still legitimately covers a different (cheaper,
-heatmap-persisting rather than source-location-persisting) fix for the same
-defect, and the two are not equivalent - a future re-sync should not assume
-they converge. The genuinely new piece upstream's commit adds, which entry 8
-never covered, is level-revisit noise-clear/scent-aging behavior; whether that
-belongs in a mod at all is still undecided. Tracked as
-neostryder/neo-angband#119 (relabeled `repo:mod-upstream-catchup`). Not yet
-built.
+2026-08-18), not in the 4.2.6 baseline, and now carried by the
+`upstream-catchup` mod's off-by-default `catchup.levelRevisitTracking` rule.
+The core `levelRevisited` notification runs for both `levelCache` restoration
+and a return from single combat; without it faithful core resumes the exact
+cached `Chunk` flow arrays. The rule reproduces upstream's `generate.c` order:
+after monster restoration, clear interior noise and age nonzero scent by
+`floor(now / 10) - floor(frozenAt / 10)`, clearing a scent value that would
+overflow `uint16_t`. Thus an out-of-play level can no longer direct a monster
+toward the position the player occupied before leaving, nor retain an
+un-aged scent trail; fresh flow is still made by the next ordinary world tick.
+
+This is a real gameplay difference, not a cosmetic cache detail: monster AI
+reads the heatmaps before `processWorld`'s next tick, which can be up to nine
+turns after entry. It remains deliberately separate from entry 8's
+`bugfix.stateIntegrity` / `bugfix.noiseScentSave` rule. That rule preserves
+heatmaps across a save/reload; this rule deliberately discards/ages them across
+time spent away, matching upstream. Upstream's source-location save/reload
+design is also different from entry 8's heatmap persistence, so a future
+re-sync must not collapse the toggles.
 
 ---
 
