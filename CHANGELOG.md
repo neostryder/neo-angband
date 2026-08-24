@@ -36,12 +36,36 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-08-24
+
 ### Fixed
 
 - The install-choice screen ((I)nstall locally) silently cut off its text on a
   24-row terminal instead of showing all of it. It now scrolls, with the same
   arrow/page/home/end keys and "(a-b/n)" footer cue `showTextScreen` already
   uses elsewhere.
+- A mod-defined player race or class, or a mod-defined monster, whose name
+  collided with an existing one was silently bound over the earlier record.
+  The first-loaded name now wins and the later, colliding record is refused
+  and reported instead.
+- A mod pack's chest traps and its world-topology data (level names by depth)
+  were composed into the pack but never bound into the running game, so a mod
+  supplying either had no effect and the game fell back to the built-in
+  defaults with no indication anything was missing. Both are now wired
+  through to the level the same way other composed content is.
+- A loose (Linoleum-style) tileset's family-level glow, tint, and pulse
+  effects, declared with a `:when:` rule, were never evaluated at render
+  time. They now apply, and `docs/LINOLEUM.md`'s claim that they were is
+  corrected to match.
+- The graphics-mode full dungeon map overview did not render the level
+  correctly; it now draws a miniature tile per grid, matching the ASCII
+  overview's coverage. The ASCII path is unchanged.
+- A mod-composition failure during boot left the game unable to start with no
+  recovery path. It now falls back to a safe mode that disables all mods and
+  reloads, the same way a live in-session mod failure already does.
+- The desktop app's stranded-origin recovery logged its own successful
+  recovery at "error" severity, reading as a crash in the logs when nothing
+  was actually broken. It now logs at "warn".
 
 ## [0.31.0] - 2026-08-23
 
@@ -592,7 +616,7 @@ instead of a curated subset that had drifted from it.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.31.0` - a features release for mod
+Current state of the project at version `0.31.1` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again
