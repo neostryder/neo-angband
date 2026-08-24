@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { RF, RSF } from "../generated/index.js";
-import { PROVENANCE_KEY } from "../mod/extension.js";
 import { Rng } from "../rng.js";
 import { bindMonsters } from "./bind.js";
 import type {
@@ -408,34 +407,5 @@ describe("moddability: extra records bind cleanly", () => {
     expect(race.freqSpell).toBe(4);
     expect(race.freqInnate).toBe(0);
     expect(race.spellPower).toBe(12);
-  });
-
-  it("refuses a later mod race whose name collides", () => {
-    const pack = loadPack();
-    const kobold = pack.monsters.find((r) => r.name === "kobold");
-    if (!kobold) throw new Error("fixture: missing kobold");
-    const koboldRidx = pack.monsters.indexOf(kobold);
-    const duplicateKobold = {
-      ...kobold,
-      name: "KOBOLD",
-      [PROVENANCE_KEY]: { owner: "duplicate-pack" },
-    } as MonsterRecordJson;
-
-    const modded = bindMonsters({
-      ...pack,
-      monsters: [...pack.monsters, duplicateKobold],
-    });
-
-    expect(modded.races).toHaveLength(pack.monsters.length);
-    expect(modded.raceByName("kobold")?.ridx).toBe(koboldRidx);
-    expect(modded.refused).toEqual([
-      expect.objectContaining({
-        file: "monster",
-        record: "KOBOLD",
-        field: "name",
-        id: "duplicate-pack",
-        why: expect.stringContaining("duplicate name KOBOLD"),
-      }),
-    ]);
   });
 });

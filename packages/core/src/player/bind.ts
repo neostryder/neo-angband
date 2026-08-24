@@ -38,9 +38,7 @@ import {
   TMD,
 } from "../generated/index.js";
 import { effectSubtype } from "../effects/effect.js";
-import { attachExt, provenanceOf } from "../mod/extension.js";
-import { fieldOwner, refusalWhy } from "../mod/refusal.js";
-import type { RecordRefusal } from "../mod/refusal.js";
+import { attachExt } from "../mod/extension.js";
 import {
   OF_SIZE,
   PF_SIZE,
@@ -515,9 +513,9 @@ function parseEopts(eopts: string): string[] {
 
 /** Everything the player domain binds from the pack. */
 export class PlayerRegistry {
-  /** Record order mirrors p_race.txt after any refused mod records; ridx is the array index. */
+  /** Record order mirrors p_race.txt; ridx is the array index. */
   readonly races: PlayerRace[];
-  /** Record order mirrors class.txt after any refused mod records; cidx is the array index. */
+  /** Record order mirrors class.txt; cidx is the array index. */
   readonly classes: PlayerClass[];
   readonly properties: PlayerProperty[];
   /** TMD index -> timed effect. */
@@ -532,9 +530,6 @@ export class PlayerRegistry {
   private readonly racesByName: Map<string, PlayerRace>;
   private readonly classesByName: Map<string, PlayerClass>;
 
-  /** Mod-owned records omitted because their name collides with an earlier record. */
-  readonly refused: RecordRefusal[] = [];
-
   constructor(pack: PlayerPackRecords) {
     this.realms = bindRealms(pack.realms);
     this.histories = bindHistories(pack.history);
@@ -543,52 +538,17 @@ export class PlayerRegistry {
     this.timed = bindTimed(pack.timed);
     this.shapes = pack.shapes.map((rec, sidx) => bindShape(rec, sidx));
 
-    this.races = [];
+    this.races = pack.races.map((rec, ridx) =>
+      attachExt("p_race", rec, bindRace(rec, ridx)),
+    );
+    this.classes = pack.classes.map((rec, cidx) =>
+      attachExt("class", rec, bindClass(rec, cidx, this.realms)),
+    );
+
     this.racesByName = new Map();
-    for (const rec of pack.races) {
-      if (this.rejectDuplicateName("p_race", "race dropped", rec, this.racesByName)) continue;
-      const race = attachExt("p_race", rec, bindRace(rec, this.races.length));
-      this.races.push(race);
-      this.racesByName.set(race.name.toLowerCase(), race);
-    }
-
-    this.classes = [];
+    for (const r of this.races) this.racesByName.set(r.name.toLowerCase(), r);
     this.classesByName = new Map();
-    for (const rec of pack.classes) {
-      if (this.rejectDuplicateName("class", "class dropped", rec, this.classesByName)) continue;
-      const cls = attachExt("class", rec, bindClass(rec, this.classes.length, this.realms));
-      this.classes.push(cls);
-      this.classesByName.set(cls.name.toLowerCase(), cls);
-    }
-  }
-
-  /** Keep the first name binding; a mod's later collision is reported and omitted. */
-  private rejectDuplicateName<T extends { name: string }>(
-    file: "p_race" | "class",
-    dropped: string,
-    rec: T,
-    byName: ReadonlyMap<string, { name: string }>,
-  ): boolean {
-    const earlier = byName.get(rec.name.toLowerCase());
-    if (!earlier) return false;
-    const from = provenanceOf(rec);
-    const owner = fieldOwner(from, "name", rec.name);
-    if (owner === null || from === undefined) {
-      throw new Error(`${file}: duplicate name ${rec.name}`);
-    }
-    this.refused.push({
-      file,
-      record: rec.name,
-      field: "name",
-      id: owner,
-      why: refusalWhy(
-        rec.name,
-        dropped,
-        `duplicate name ${rec.name}; already used by ${earlier.name}`,
-        from,
-      ),
-    });
-    return true;
+    for (const c of this.classes) this.classesByName.set(c.name.toLowerCase(), c);
   }
 
   /** player_id2race by name (case-insensitive), or null. */
