@@ -88,5 +88,6 @@ export function describeObject(
     state.runeEnv,
     knownDescOf(state),
     altnum,
+    state.chestTraps,
   );
 }

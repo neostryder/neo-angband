@@ -10318,12 +10318,7 @@ async function maybeTitle(): Promise<TitleChoice | null> {
   /* The loading screen is NOT stopped here. It used to be, one line above this
    * paint, and that put the only stop behind one of this function's four exits -
    * see bootMenus, which now owns it (#251). */
-  const titleHandle = pushRegion(screenRegionSpec(), term.size());
-  try {
-    paintTitleArt(regionSurface(term, titleHandle.cells));
-  } finally {
-    popRegion(titleHandle);
-  }
+  paintTitleArt(term);
   /* Which File-menu rows are live (main-win.c:2957-2990). "Quit" needs a host
    * with something to exit; desktopQuit reports whether there is one. */
   const living = livingRoster().length > 0;
@@ -10723,9 +10718,6 @@ async function announcedAction<T>(
  * - about a hundred times over a download instead of tens of thousands.
  */
 async function showUpdatePage(): Promise<void> {
-  const handle = pushRegion(screenRegionSpec(), term.size());
-  const surface = regionSurface(term, handle.cells);
-  try {
   const bridge = updaterBridge();
   let check = await updateOffer();
   /* ASK AGAIN, HERE, when the boot check got no answer. That check races the
@@ -10783,17 +10775,17 @@ async function showUpdatePage(): Promise<void> {
 
   const paint = (): void => {
     if (owned) return;
-    const { cols, rows } = surface.size();
-    surface.clear();
-    surface.print(0, 1, UPDATE_TITLE.slice(0, cols - 1), UI_GOLD);
+    const { cols, rows } = term.size();
+    term.clear();
+    term.print(0, 1, UPDATE_TITLE.slice(0, cols - 1), UI_GOLD);
     const lines = updateLines(view);
     for (let r = 0; r < lines.length && 3 + r < rows - 1; r++) {
       const line = lines[r];
       if (!line) continue;
-      surface.print(0, 3 + r, line.text.slice(0, cols - 1), UPDATE_TONE[line.tone]);
+      term.print(0, 3 + r, line.text.slice(0, cols - 1), UPDATE_TONE[line.tone]);
     }
     const footer = updateFooter(view, cols);
-    surface.print(0, rows - 1, footer.slice(0, cols - 1), UI_DIM);
+    term.print(0, rows - 1, footer.slice(0, cols - 1), UI_DIM);
   };
 
   const key = (): Promise<string> =>
@@ -10840,7 +10832,7 @@ async function showUpdatePage(): Promise<void> {
      * the whole install; pulling a few KiB of mod is not that, and a player who
      * wanted only the mod should not lose their game to get it. */
     if ((pressed === "m" || pressed === "M") && modPending.length > 0 && view.phase !== "downloading") {
-      const touched = await showModUpgrades(surface, browse);
+      const touched = await showModUpgrades(term, browse);
       await refreshModPending();
       view = viewFor(check);
       /* Mod code is read at boot, so a mod that changed on disk is not the mod
@@ -10919,7 +10911,7 @@ async function showUpdatePage(): Promise<void> {
     updateScreen(
       view,
       updateLines(view).map((line) => ({ text: line.text, color: UPDATE_TONE[line.tone] })),
-      updateFooter(view, surface.size().cols),
+      updateFooter(view, term.size().cols),
       modPending.length,
     );
 
@@ -10955,9 +10947,6 @@ async function showUpdatePage(): Promise<void> {
   for (;;) {
     paint();
     if (!(await act(await key()))) return;
-  }
-  } finally {
-    popRegion(handle);
   }
 }
 
@@ -11121,9 +11110,6 @@ function reportInput(description: readonly string[]): ReportInput {
  * list.
  */
 async function showReportPage(): Promise<void> {
-  const handle = pushRegion(screenRegionSpec(), term.size());
-  const surface = regionSurface(term, handle.cells);
-  try {
   const description: string[] = [];
   /*
    * WHERE A MOD'S ADDRESS COMES FROM: its INSTALL RECORD, not its manifest.
@@ -11169,17 +11155,17 @@ async function showReportPage(): Promise<void> {
 
   const paint = (): void => {
     if (owned) return;
-    const { cols, rows } = surface.size();
-    surface.clear();
-    surface.print(0, 1, REPORT_TITLE.slice(0, cols - 1), UI_GOLD);
+    const { cols, rows } = term.size();
+    term.clear();
+    term.print(0, 1, REPORT_TITLE.slice(0, cols - 1), UI_GOLD);
     const lines = reportLines(view);
     for (let r = 0; r < lines.length && 3 + r < rows - 1; r++) {
       const line = lines[r];
       if (!line) continue;
-      surface.print(0, 3 + r, line.text.slice(0, cols - 1), REPORT_TONE[line.tone]);
+      term.print(0, 3 + r, line.text.slice(0, cols - 1), REPORT_TONE[line.tone]);
     }
     const footer = reportFooter(view);
-    surface.print(0, rows - 1, footer.slice(0, cols - 1), UI_DIM);
+    term.print(0, rows - 1, footer.slice(0, cols - 1), UI_DIM);
   };
 
   const key = (): Promise<string> =>
@@ -11252,7 +11238,7 @@ async function showReportPage(): Promise<void> {
       description.length = 0;
       for (let i = 0; i < REPORT_DESCRIPTION_LINES; i++) {
         const typed = await getString(
-          surface,
+          term,
           `Line ${String(i + 1)} of ${String(REPORT_DESCRIPTION_LINES)} (ENTER to stop): `,
           "",
           78 - 40,
@@ -11349,9 +11335,6 @@ async function showReportPage(): Promise<void> {
   for (;;) {
     paint();
     if (!(await act(await key()))) return;
-  }
-  } finally {
-    popRegion(handle);
   }
 }
 
