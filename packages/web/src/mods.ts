@@ -1360,9 +1360,9 @@ export function autoSortScreen(
       caption: { text: unchanged ? "Already in order:" : "Proposed order:", color: C_TITLE },
       columns: [
         { key: "rank", width: 5, align: "right" },
-        /* Names use the space left by the rank and moved marker, continuing
-         * beneath those fields when an author supplies a longer title. */
-        { key: "name", wrap: true },
+        /* Unpadded: the names were never lined up under each other, and padding
+         * them would move the "<- moved" markers into a column of their own. */
+        { key: "name", pad: false },
         { key: "moved", gap: 3, pad: false },
       ],
       rows: result.order.map((id, i) => {
@@ -1407,7 +1407,7 @@ export function autoSortScreen(
           /* gap:0 for the same reason the unresolvable table's `mods` column is:
            * the indent column already put two spaces in front, and a second gap
            * would put three. */
-          { key: "reason", gap: 0, wrap: true },
+          { key: "reason", gap: 0, pad: false },
         ],
         rows: result.dropped.map((d, i) => ({
           id: `dropped:${String(i)}`,
@@ -1444,7 +1444,7 @@ export function autoSortScreen(
         caption: { text: "These mods cannot all load", color: C_DANGER },
         columns: [
           { key: "indent", width: 2 },
-          { key: "mods", gap: 0, wrap: true },
+          { key: "mods", gap: 0, pad: false },
           /* The verdict is the same sentence on every row, and it is a cell rather
            * than the tail of the names so that the NAMES are addressable on their
            * own - a presenter listing an impossible set wants the mods, not a
@@ -1647,9 +1647,11 @@ export function modConflictsScreen(report: ConflictReportLines): ScreenView {
   const { declaredRows, contestedRows, combinedRows } = report;
   const blocks: ScreenBlock[] = [];
 
-  /* One flowing column: conflict sentences are author- and record-derived, so a
-   * row must continue rather than silently lose its ending at the terminal edge. */
-  const oneColumn = [{ key: "what", wrap: true }] as const;
+  /* One unpadded column: `pad: false` and no declared `width`, so a row renders as
+   * exactly the sentence it always was. A width would line the sentences up under
+   * each other, which is a change to the player's screen and not this pass's to
+   * make. */
+  const oneColumn = [{ key: "what", pad: false }] as const;
 
   if (declaredRows.length > 0) {
     blocks.push(
