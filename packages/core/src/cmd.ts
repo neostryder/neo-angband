@@ -22,8 +22,6 @@
  */
 
 import type { Loc } from "./loc.js";
-import type { ActionRegistry } from "./game/player-turn.js";
-import { registeredCommandInfo } from "./mod/registry-host.js";
 
 /** cmd_code, kebab-cased. "null" is the CMD_NULL no-command sentinel. */
 export type CommandCode =
@@ -450,16 +448,6 @@ export class CommandQueue {
   /** Called when nrepeats changes (upstream: player redraw PR_STATE). */
   onRepeatChange: (() => void) | null = null;
 
-  /**
-   * The per-game ActionRegistry that registry:command facades write. It is
-   * optional because this faithful queue is not wired into live dispatch yet;
-   * a future wiring passes the game registry so registered codes may clear the
-   * processCommand metadata gate without extending COMMAND_INFO.
-   */
-  constructor(
-    private readonly registeredCommands: Pick<ActionRegistry, "has"> | null = null,
-  ) {}
-
   /** Register the handler for a command code (replaces game_cmds[].fn). */
   register(code: CommandCode, fn: CommandHandler): void {
     this.handlers.set(code, fn);
@@ -552,7 +540,7 @@ export class CommandQueue {
 
   /** process_command. */
   private processCommand(ctx: CommandContext, cmd: Command): void {
-    let info = COMMAND_INFO.get(cmd.code) ?? registeredCommandInfo(this.registeredCommands, cmd.code);
+    let info = COMMAND_INFO.get(cmd.code);
     if (!info) return;
 
     let handlerCode = cmd.code;
