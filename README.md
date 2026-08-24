@@ -228,6 +228,9 @@ rpgm.tools**. [SECURITY.md](SECURITY.md) says what is worth reporting.
 | [The working record](docs/WORKING_RECORD.md) | Why some code comments cite documents outside this tree |
 | [Contributing](CONTRIBUTING.md) | Setup, the faithfulness rules, how a fix proves itself |
 | [AI use and accountability](AI_USAGE_POLICY.md) | What AI tooling was used for, what it was not, and how contributions are judged |
+| [Terms of Use](TERMS.md) | The hosted build, release builds, mods, and third-party risk |
+| [Privacy Policy](PRIVACY.md) | What is stored locally, what network requests the game makes, and why |
+| [Code of Conduct](CODE_OF_CONDUCT.md) | Shared across this repository and every first-party mod |
 
 **AI-assisted development:** Neo Angband is built with AI development tools under
 a human-review and evidence-based verification policy. The complete answer,
