@@ -784,8 +784,8 @@ const CONSENT_FOOTER = "[ Press ESC to review, then choose ]";
  * write `a) ` - a lettered row the player cannot choose, three columns wide by
  * coincidence. As a cell it is the marker, and a presenter replaces it with an icon.
  *
- * The sentences around the list are prose and stay `lines`; the closing warnings are
- * deliberately unwrapped single rows, and a `text` block would wrap them.
+ * The sentences around the list are prose and stay `lines`; the warnings use prose
+ * blocks so a warning itself cannot be cut off on the terminal.
  */
 export function capabilityConsentScreen(m: CatalogMod): ScreenView {
   return freezeView({
@@ -806,10 +806,9 @@ export function capabilityConsentScreen(m: CatalogMod): ScreenView {
         tagged: false,
         columns: [
           { key: "bullet", width: 3, align: "right" },
-          /* Unpadded and unclamped: a capability blurb runs to 200 characters
-           * (registry:*) and padding the column to the longest would push the
-           * elevated flag off an 80-column terminal for every other row. */
-          { key: "text", pad: false },
+          /* A capability blurb runs to 200 characters (registry:*). It consumes
+           * the room left by the bullet and flag, then continues below them. */
+          { key: "text", wrap: true },
           /* Three columns of space before the flag, as the column's own gap rather
            * than as three spaces on the front of the cell - a row with no flag then
            * ends where it always did, because the renderer cuts the trailing run. */
@@ -826,40 +825,39 @@ export function capabilityConsentScreen(m: CatalogMod): ScreenView {
           },
         })),
       },
+      { kind: "lines", lines: [{ text: "", color: C_FG }] },
+      /* THE IN-PROCESS LINE IS ABOUT THE CODE, NOT ABOUT THE LIST above it.
+       * A plugin receives `ctx.core`, `ctx.state` and `ctx.registries` without a
+       * capability check, so declared capabilities say what it intends to
+       * override, not what its code can reach. Any mod that ships code gets this
+       * warning; a validated content pack does not. */
+      ...(m.kind !== "content" || hasElevatedCapability(m.capabilities)
+        ? [
+            {
+              kind: "text" as const,
+              paragraphs: [
+                [
+                  {
+                    text: "This mod runs its own code inside the game and can change how the game behaves. Only enable mods you trust.",
+                  },
+                ],
+              ],
+              color: C_DANGER,
+            },
+          ]
+        : []),
+      ...(m.nondeterministic
+        ? [
+            {
+              kind: "text" as const,
+              paragraphs: [[{ text: "It also marks your save permanently non-reproducible." }]],
+              color: C_WARN,
+            },
+          ]
+        : []),
       {
         kind: "lines",
         lines: [
-          { text: "", color: C_FG },
-          /* THE IN-PROCESS LINE IS ABOUT THE CODE, NOT ABOUT THE LIST above it.
-           *
-           * It used to appear only when some requested capability was elevated,
-           * which made it read as a consequence of the list - so a code mod
-           * asking for nothing but `registry:vocab`, `registry:tiles` or
-           * `backup:folder` got a consent screen with no such line, and the
-           * player was left to infer that a modest list meant modest access. It
-           * does not. A plugin receives `ctx.core` (the whole live engine
-           * namespace, including its module-level registry singletons),
-           * `ctx.state` and `ctx.registries` with no capability check, so what
-           * the declared domains bound is what the mod SAID it would override,
-           * not what its code can reach. See docs/modding/PLUGINS.md, "What a
-           * capability gates". Any mod that ships code gets the line; a content
-           * pack, which is validated data and executes nothing, still does not. */
-          ...(m.kind !== "content" || hasElevatedCapability(m.capabilities)
-            ? [
-                {
-                  text: "This mod runs its own code inside the game and can change how the game behaves. Only enable mods you trust.",
-                  color: C_DANGER,
-                },
-              ]
-            : []),
-          ...(m.nondeterministic
-            ? [
-                {
-                  text: "It also marks your save permanently non-reproducible.",
-                  color: C_WARN,
-                },
-              ]
-            : []),
           { text: "", color: C_FG },
         ],
       },
@@ -1362,9 +1360,9 @@ export function autoSortScreen(
       caption: { text: unchanged ? "Already in order:" : "Proposed order:", color: C_TITLE },
       columns: [
         { key: "rank", width: 5, align: "right" },
-        /* Unpadded: the names were never lined up under each other, and padding
-         * them would move the "<- moved" markers into a column of their own. */
-        { key: "name", pad: false },
+        /* Names use the space left by the rank and moved marker, continuing
+         * beneath those fields when an author supplies a longer title. */
+        { key: "name", wrap: true },
         { key: "moved", gap: 3, pad: false },
       ],
       rows: result.order.map((id, i) => {
@@ -1409,7 +1407,7 @@ export function autoSortScreen(
           /* gap:0 for the same reason the unresolvable table's `mods` column is:
            * the indent column already put two spaces in front, and a second gap
            * would put three. */
-          { key: "reason", gap: 0, pad: false },
+          { key: "reason", gap: 0, wrap: true },
         ],
         rows: result.dropped.map((d, i) => ({
           id: `dropped:${String(i)}`,
@@ -1446,7 +1444,7 @@ export function autoSortScreen(
         caption: { text: "These mods cannot all load", color: C_DANGER },
         columns: [
           { key: "indent", width: 2 },
-          { key: "mods", gap: 0, pad: false },
+          { key: "mods", gap: 0, wrap: true },
           /* The verdict is the same sentence on every row, and it is a cell rather
            * than the tail of the names so that the NAMES are addressable on their
            * own - a presenter listing an impossible set wants the mods, not a
@@ -1649,11 +1647,9 @@ export function modConflictsScreen(report: ConflictReportLines): ScreenView {
   const { declaredRows, contestedRows, combinedRows } = report;
   const blocks: ScreenBlock[] = [];
 
-  /* One unpadded column: `pad: false` and no declared `width`, so a row renders as
-   * exactly the sentence it always was. A width would line the sentences up under
-   * each other, which is a change to the player's screen and not this pass's to
-   * make. */
-  const oneColumn = [{ key: "what", pad: false }] as const;
+  /* One flowing column: conflict sentences are author- and record-derived, so a
+   * row must continue rather than silently lose its ending at the terminal edge. */
+  const oneColumn = [{ key: "what", wrap: true }] as const;
 
   if (declaredRows.length > 0) {
     blocks.push(

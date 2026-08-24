@@ -99,6 +99,17 @@ export interface ScreenColumn {
    */
   readonly pad?: boolean;
   /**
+   * Let this column consume the space left by the other columns, then continue a
+   * long cell on following terminal rows. The first row still reserves the
+   * column's full width, so columns after it remain aligned; continuation rows
+   * leave every other cell empty.
+   *
+   * This is deliberately opt-in. A declared width is the game's instruction to
+   * clamp a field, and most unbounded columns are short identifiers or symbols;
+   * making every table cell flow would quietly change those screens.
+   */
+  readonly wrap?: boolean;
+  /**
    * A picture at the head of the column, above `label`.
    *
    * The character sheet's flag grid has one column per equipment slot and draws
@@ -972,18 +983,34 @@ function trimTrailingSpace(runs: { text: string; color: string }[]): void {
  * of "row" where upstream ends the line. Nothing paints differently, but a test
  * that reads the row back sees the difference, and so does anything that measures.
  *
- * `cols` is the terminal's width and is here for one reason: a row's `detail` is
- * prose and prose is wrapped to the terminal. No column consults it - a table's
- * stops come from `columnWidths` and are the same at any width, exactly as they
- * were before this argument existed.
+ * A column that explicitly opts into `wrap` consumes the space not needed by its
+ * siblings. Its first line reserves that space so later columns stay aligned;
+ * continuation lines carry only that cell, with the other columns blank.
  */
 function tableBlockLines(block: ScreenTableBlock, cols: number): ScreenLine[] {
   const out: ScreenLine[] = [];
   if (block.caption !== undefined) out.push(runLine(block.caption));
   const widths = columnWidths(block);
   const tagWidth = block.tagged ? 3 : 0;
+  const wrapIndex = block.columns.findIndex((c) => c.wrap === true);
+  if (wrapIndex !== -1) {
+    /* `paintViewOnTerminal` reserves the rightmost terminal cell, so a table
+     * line that reaches `cols` would still lose its last glyph at paint time. */
+    const visibleCols = Math.max(1, cols - 1);
+    const reserved = tagWidth + block.columns.reduce(
+      (total, c, i) => total + gapBefore(block, i) + (i === wrapIndex ? 0 : widths[i]!),
+      0,
+    );
+    widths[wrapIndex] = Math.max(1, visibleCols - reserved);
+  }
   const cell = (c: ScreenColumn, i: number, text: string): string =>
-    pad(text, widths[i]!, c.align, c.width !== undefined, c.pad !== false);
+    pad(
+      text,
+      widths[i]!,
+      c.align,
+      c.width !== undefined || c.wrap === true,
+      c.wrap || c.pad !== false,
+    );
   /* The header comes BEFORE the empty state, and for the reason `tagged` is a
    * required field: a table's columns are a fact about the table, not about the
    * rows it holds today. The player history of a character who has done nothing
@@ -1013,9 +1040,31 @@ function tableBlockLines(block: ScreenTableBlock, cols: number): ScreenLine[] {
   }
   for (const row of block.rows) {
     const prefix = tagWidth === 0 ? "" : row.tag === undefined ? "   " : `${row.tag}) `;
-    const parts = block.columns.map((c, i) => cell(c, i, row.cells[c.key]?.text ?? ""));
-    const text = (prefix + joinCells(block, parts)).replace(/\s+$/u, "");
-    out.push(rowLine(text, prefix, block, row, parts));
+    const wrapped =
+      wrapIndex === -1
+        ? [""]
+        : textblockCalculatedLines(
+            {
+              kind: "text",
+              paragraphs: [[{ text: row.cells[block.columns[wrapIndex]!.key]?.text ?? "" }]],
+              wrap: widths[wrapIndex],
+            },
+            widths[wrapIndex],
+          ).map((line) => line.text);
+    if (wrapped.length === 0) wrapped.push("");
+    for (const [lineIndex, wrappedText] of wrapped.entries()) {
+      const parts = block.columns.map((c, i) =>
+        cell(
+          c,
+          i,
+          i === wrapIndex ? wrappedText : lineIndex === 0 ? row.cells[c.key]?.text ?? "" : "",
+        ),
+      );
+      const text = (prefix + joinCells(block, parts)).replace(/\s+$/u, "");
+      out.push(
+        rowLine(text, lineIndex === 0 ? prefix : " ".repeat(prefix.length), block, row, parts),
+      );
+    }
     /* The detail follows ITS OWN row, not the table: a paragraph collected under
      * the last row would be a footnote, and the record it explains would be
      * however many rows back the reader can count. */
