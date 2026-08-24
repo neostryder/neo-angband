@@ -14,6 +14,8 @@
 
 import { inputEvents } from "./input-door";
 import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
+import { screenRegionSpec } from "./overlay";
+import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import {
   BASIC_COLORS,
   colorTextToAttr,
@@ -557,10 +559,12 @@ export function paintTitleArt(term: GridSurface & GridPointerInput): void {
 }
 
 export function showTitleScreen(
-  term: GridSurface & GridPointerInput,
+  host: GridSurface & GridPointerInput,
   opts: TitleOptions,
   deps?: TitleDeps,
 ): Promise<TitleChoice> {
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
   return new Promise<TitleChoice>((resolve) => {
     const rows = titleRows(opts);
     let spans: { row: TitleRow; start: number; end: number }[] = [];
@@ -657,5 +661,7 @@ export function showTitleScreen(
       .catch(() => {
         /* A check that threw is not an update. The (U)pdate screen reports it. */
       });
+  }).finally(() => {
+    popRegion(handle);
   });
 }

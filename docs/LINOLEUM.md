@@ -83,15 +83,15 @@ With the mod installed and enabled, the Graphics screen offers its six rows besi
 core's own six, which is the point: the same tiles, the other engine, no visible
 difference. Packs you convert yourself are yours.
 
-Conditional (`?:` / `:when:`) rules are evaluated by core's shared pref
-evaluator, and loose-pack `family` effect metadata (glow/tint/pulse) is applied
-at render time. The one place this
+Known limits, shared by BOTH engines so they agree: conditional (`?:` /
+`:when:`) rules are not evaluated; `family` effect metadata (glow/tint/pulse) is
+parsed but not applied, so a family draws its base asset. The one place this
 engine draws something a pack did not author is a **derived** tile a tileset MOD
 asked for, on behalf of a mod's own content, which the tilesheet engine has no
 room for - see
 [Derived tiles for a mod's content](#derived-tiles-for-a-mods-content).
 
-Double-height (overdraw) tiles were once unsupported. They are drawn over the
+Double-height (overdraw) tiles used to be on that list. They are drawn over the
 cell above now, by both engines - but the two learn about them differently, and
 that difference is the whole of #243. A tilesheet reads the graphics mode's
 overdraw band, which is core data. A loose pack has no rows to test and no mode

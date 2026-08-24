@@ -105,7 +105,7 @@ describe("parseLinoleumManifest", () => {
 });
 
 describe("parseFamiliesFile", () => {
-  it("keeps a family's base asset and its effect metadata", () => {
+  it("keeps the base asset and ignores the effect metadata", () => {
     const families = parseFamiliesFile(
       [
         "# header",
@@ -113,20 +113,13 @@ describe("parseFamiliesFile", () => {
         "family:feat_more_lit_0_fx:asset:feat_more_lit_0",
         "family:feat_more_lit_0_fx:glow-alpha:0.35",
         "family:feat_more_lit_0_fx:tint:#ffcc66",
-        "family:feat_more_lit_0_fx:pulse:168,255,1400",
+        "family:feat_more_lit_0_fx:pulse:slow",
         "family::asset:orphan",
         "not a family line",
       ].join("\n"),
     );
     expect(families.size).toBe(1);
-    expect(families.get("feat_more_lit_0_fx")).toEqual({
-      asset: "feat_more_lit_0",
-      effect: {
-        glowAlpha: 0.35 * 255,
-        tint: { red: 255, green: 204, blue: 102, alpha: 255 },
-        pulse: { min: 168, max: 255, period: 1400 },
-      },
-    });
+    expect(families.get("feat_more_lit_0_fx")).toBe("feat_more_lit_0");
   });
 });
 
@@ -192,22 +185,15 @@ describe("linoleumPrefLines", () => {
     expect(out.lines[4]).toBe("GF:ELEC:0:0x80:0x84");
   });
 
-  it("keeps a family's effect with its base asset and counts an undefined one", () => {
+  it("draws a family as its base asset and counts an undefined one", () => {
     const out = linoleumPrefLines({
       rules: [
         rule("feat", "MORE:lit", "family", "feat_more_lit_0_fx"),
         rule("feat", "LESS:lit", "family", "missing_fx"),
       ],
-      families: new Map([
-        [
-          "feat_more_lit_0_fx",
-          { asset: "feat_more_lit_0", effect: { glowAlpha: 64 } },
-        ],
-      ]),
+      families: new Map([["feat_more_lit_0_fx", "feat_more_lit_0"]]),
     });
-    expect(out.slots).toEqual([
-      { kind: "asset", asset: "feat_more_lit_0", effect: { glowAlpha: 64 } },
-    ]);
+    expect(out.slots).toEqual([{ kind: "asset", asset: "feat_more_lit_0" }]);
     expect(out.lines).toEqual(["feat:MORE:lit:0x80:0x80"]);
     expect(out.skipped.unresolved).toBe(1);
   });
@@ -386,91 +372,6 @@ describe("LinoleumPack", () => {
     expect(p.drawTile(ctx, 0, 0, 8, 8, { row: 0, col: 0 }, { x: 1, y: 1 })).toBe(false);
     expect(p.ready).toBe(true);
     expect(p.loadedAssets).toBe(0);
-  });
-
-  it("renders a fixture family's glow as an additive draw over its plain asset", async () => {
-    /* The fixture goes through the same families parser and synthetic-slot path
-     * as an installed pack. A tiny Image stand-in loads synchronously once the
-     * resolver promise settles, leaving the canvas recorder to prove the effect
-     * changed the actual blit rather than merely living in index metadata. */
-    const imageGlobal = globalThis as typeof globalThis & { Image?: typeof Image };
-    const originalImage = imageGlobal.Image;
-    class LoadedImage {
-      naturalWidth = 8;
-      naturalHeight = 8;
-      private readonly listeners = new Map<string, (() => void)[]>();
-
-      addEventListener(type: string, listener: () => void): void {
-        const group = this.listeners.get(type) ?? [];
-        group.push(listener);
-        this.listeners.set(type, group);
-      }
-
-      set src(_url: string) {
-        for (const listener of this.listeners.get("load") ?? []) listener();
-      }
-    }
-    imageGlobal.Image = LoadedImage as unknown as typeof Image;
-    try {
-      const families = parseFamiliesFile(
-        [
-          "family:glowing_floor:asset:floor",
-          "family:glowing_floor:glow-alpha:128",
-        ].join("\n"),
-      );
-      const effected = new LinoleumPack({
-        menuname: "Effect fixture",
-        resolve: urlBaseResolver("mods/effect-fixture"),
-        manifest: {
-          packId: "effect-fixture",
-          displayName: "Effect fixture",
-          format: "png",
-          resolution: 8,
-          maps: new Map([["targets", "maps/targets.txt"]]),
-        },
-        index: buildLinoleumIndex({
-          rules: [rule("feat", "FLOOR:lit", "family", "glowing_floor")],
-          families,
-          deps,
-        }),
-      });
-      const draws: { alpha: number; composite: string }[] = [];
-      const saved: { alpha: number; composite: string }[] = [];
-      let alpha = 1;
-      let composite = "source-over";
-      const ctx = {
-        get globalAlpha() {
-          return alpha;
-        },
-        set globalAlpha(value: number) {
-          alpha = value;
-        },
-        get globalCompositeOperation() {
-          return composite;
-        },
-        set globalCompositeOperation(value: string) {
-          composite = value;
-        },
-        save: () => saved.push({ alpha, composite }),
-        restore: () => {
-          const previous = saved.pop();
-          if (previous !== undefined) ({ alpha, composite } = previous);
-        },
-        drawImage: () => draws.push({ alpha, composite }),
-      } as unknown as CanvasRenderingContext2D;
-
-      expect(effected.drawTile(ctx, 0, 0, 8, 8, { row: 0, col: 0 })).toBe(false);
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(effected.drawTile(ctx, 0, 0, 8, 8, { row: 0, col: 0 })).toBe(true);
-      expect(draws).toEqual([
-        { alpha: 1, composite: "source-over" },
-        { alpha: 128 / 255, composite: "lighter" },
-      ]);
-    } finally {
-      if (originalImage === undefined) delete imageGlobal.Image;
-      else imageGlobal.Image = originalImage;
-    }
   });
 });
 
