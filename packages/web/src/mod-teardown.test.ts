@@ -223,10 +223,16 @@ describe("the mod-apply funnel actually runs the teardown", () => {
     expect(NO_COMMENTS).toMatch(/reloadAfterModChange\(\{ resume: false \}\)/u);
   });
 
-  it("is the only mod-driven reload, so this funnel is not one of several", () => {
-    /* If a second path started reloading on a mod change, teardown would be wired
-     * into one of two doors and the other would silently skip it. */
+  it("is the only mod-driven reload for a LIVE game, so this funnel is not one of several", () => {
+    /* If a second path started reloading on a mod change during a live session,
+     * teardown would be wired into one of two doors and the other would
+     * silently skip it. `disableAllModsAndRestart` is the one exception, and it
+     * is not a second door into the same room: it runs from the boot-time
+     * safe-mode recovery path, before `loadGamePack()` has succeeded even once,
+     * so there is no live plugin registry to run uninstall() against and no
+     * composed content pack for teardownModPlugins to tear down - the funnel's
+     * own preconditions do not exist yet. */
     const reloads = NO_COMMENTS.match(/location\.reload\(\)/gu) ?? [];
-    expect(reloads.length).toBe(2); // reloadAfterModChange, and the load-failure retry prompt
+    expect(reloads.length).toBe(3); // reloadAfterModChange, the load-failure retry prompt, and disableAllModsAndRestart
   });
 });

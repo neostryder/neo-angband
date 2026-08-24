@@ -222,8 +222,6 @@ const TERM_CLEAR_REGIONS: Readonly<Record<string, readonly string[]>> = {
     "paintViewOnTerminal > paint",
     "paintLevelMapOnTerminal > paint",
     "itemSelect > paint",
-    "promptNumber > paint",
-    "promptText > paint",
     "selectFromMenu > askTerminalOnTerminal > paint",
   ],
   /* #253. `drawBirthSheet` is the odd one: it is a shared painter rather than a
@@ -278,7 +276,16 @@ const TERM_CLEAR_REGIONS: Readonly<Record<string, readonly string[]>> = {
  * pins it so that editing this table without editing that row fails here rather
  * than being noticed by nobody.
  */
-const TERM_CLEAR_PENDING: Readonly<Record<string, readonly string[]>> = {};
+const TERM_CLEAR_PENDING: Readonly<Record<string, readonly string[]>> = {
+  /* #50: converted, then reverted. Both are modal prompts a caller can open
+   * from INSIDE a screen that already holds its own `screenRegionSpec()`
+   * region (charsheet.ts's rename flow is the case that caught it) - pushing
+   * a second region under the same shared id broke keyboard delivery to the
+   * prompt's own listener (packages/web/src/charsheet.test.ts's rename test
+   * regressed). Needs a distinct region id (or another nesting-safe approach)
+   * for these two specifically before they can move back out of this table. */
+  "overlay.ts": ["promptNumber > paint", "promptText > paint"],
+};
 
 /**
  * Every `term.clear()` call the shell is allowed to make, as "file::a > b > c"
@@ -421,8 +428,8 @@ describe("term.clear() is a ratchet: the list of full-screen erases may only shr
      * with no push behind it anywhere in the file, is exactly the accident this
      * catches, and it is the accident a table of claims invites. */
     expect(siteCount(TERM_CLEAR_COMPOSITOR)).toBe(1);
-    expect(siteCount(TERM_CLEAR_REGIONS)).toBe(33);
-    expect(siteCount(TERM_CLEAR_PENDING), "MOD_REACH.md's gap-21 row quotes this").toBe(0);
+    expect(siteCount(TERM_CLEAR_REGIONS)).toBe(31);
+    expect(siteCount(TERM_CLEAR_PENDING), "MOD_REACH.md's gap-21 row quotes this").toBe(2);
     expect(siteCount(TERM_CLEAR_ALLOWED)).toBe(34);
 
     for (const file of Object.keys(TERM_CLEAR_REGIONS)) {

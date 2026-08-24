@@ -1092,15 +1092,13 @@ export async function getFile(
 }
 
 export function promptText(
-  host: GridSurface & GridPointerInput,
+  term: GridSurface & GridPointerInput,
   title: string,
   initial = "",
   maxLen = 15,
   footer = "[ type a name, Enter to accept, ESC to cancel ]",
   randomize?: () => string,
 ): Promise<string | null> {
-  const handle = pushRegion(screenRegionSpec(), host.size());
-  const term = regionSurface(host, handle.cells);
   return new Promise<string | null>((resolve) => {
     const st: LineEdit = { buf: initial, curs: 0 };
     let firsttime = true;
@@ -1171,8 +1169,6 @@ export function promptText(
     inputEvents.addEventListener("compositionstart", onCompositionStart, true);
     inputEvents.addEventListener("compositionend", onCompositionEnd, true);
     paint();
-  }).finally(() => {
-    popRegion(handle);
   });
 }
 
@@ -1191,7 +1187,7 @@ export function promptText(
  * the returned number.
  */
 export function promptNumber(
-  host: GridSurface & GridPointerInput,
+  term: GridSurface & GridPointerInput,
   title: string,
   current: number,
   min: number,
@@ -1199,8 +1195,6 @@ export function promptNumber(
   subtitle?: string,
   maxLen = 3,
 ): Promise<number | null> {
-  const handle = pushRegion(screenRegionSpec(), host.size());
-  const term = regionSurface(host, handle.cells);
   return new Promise<number | null>((resolve) => {
     const st: LineEdit = { buf: String(current), curs: 0 };
     let firsttime = true;
@@ -1259,8 +1253,6 @@ export function promptNumber(
     inputEvents.addEventListener("compositionstart", onCompositionStart, true);
     inputEvents.addEventListener("compositionend", onCompositionEnd, true);
     paint();
-  }).finally(() => {
-    popRegion(handle);
   });
 }
 
