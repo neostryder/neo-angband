@@ -7,9 +7,37 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { encodeSavedGame, type SavedGame } from "@rpgm-tools/neo-angband-core";
 import { decideImport } from "./transfer-gate";
 import type { CharMeta, DeathRecord } from "./roster";
 import { encodeTransfer, decodeTransfer, type TransferMeta } from "./save-transfer";
+import { gzipCodec } from "./save-codec";
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+const SAVE = bytesToBase64(
+  encodeSavedGame(
+    {
+      version: 1,
+      player: {},
+      actor: {},
+      gear: {},
+      rng: {},
+      turn: 0,
+      playing: true,
+      isDead: false,
+      flavor: {},
+    } as SavedGame,
+    undefined,
+    gzipCodec,
+  ),
+);
 
 const META: TransferMeta = {
   name: "Grond",
@@ -38,7 +66,7 @@ function file(over: { turn?: number; lineage?: string; name?: string } = {}) {
       ...(over.turn !== undefined ? { turn: over.turn } : {}),
       ...(over.name !== undefined ? { name: over.name } : {}),
     },
-    save: "AAECAwQ=",
+    save: SAVE,
     engine: "0.17.0",
     exportedAt: "2026-08-03T12:00:00.000Z",
     lineage: over.lineage ?? "lin-grond",
@@ -91,7 +119,7 @@ describe("a roster that has never met this character", () => {
         engine: "0.15.0",
         exportedAt: "",
         meta: META,
-        save: "AAECAwQ=",
+        save: SAVE,
       }),
     );
     if (!old.ok) throw new Error(old.why);
