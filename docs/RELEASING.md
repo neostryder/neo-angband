@@ -33,7 +33,7 @@ never be reused even inside that window.
 So the push is automated off a git tag, and nothing else does it:
 
 ```bash
-git tag v0.33.0 && git push origin master v0.33.0
+git tag v0.34.0 && git push origin master v0.34.0
 ```
 
 > ### `git push origin master` is NOT how this repository publishes
@@ -112,7 +112,7 @@ A release is a tag on the public tip, and it is a separate step from publishing:
 ```bash
 node tools/publish.mjs --push
 git fetch origin
-git tag v0.33.0 origin/master && git push origin v0.33.0
+git tag v0.34.0 origin/master && git push origin v0.34.0
 ```
 
 Tag `origin/master` after the push rather than a local commit: the local commit
@@ -232,7 +232,7 @@ Push the one tag you just made, by name, and only the tag, since
 `master` is published by `tools/publish.mjs` and not by this branch:
 
 ```bash
-git push origin v0.33.0
+git push origin v0.34.0
 ```
 
 This repository's history **descends from Angband's own**, so every upstream tag

@@ -36,8 +36,23 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-08-24
+
 ### Added
 
+- **A Linoleum-engine tile pack can now ship as a single source tilesheet
+  atlas instead of a pre-converted loose-file tree.** A `tilesheet` source
+  descriptor on a manifest's `tilePacks` entry (`packages/mod-sdk/src/manifest.ts`)
+  names the atlas image and its `graf-*.prf` mapping files; the new
+  `@rpgm-tools/neo-angband-linoleum` package's shared conversion plan (also used
+  by the mod's own build tooling) runs the first time a player actually selects
+  that pack, and the generated loose files are cached in IndexedDB
+  (`packages/web/src/linoleum-cache.ts`) so later enables reuse them without
+  reconverting. This exists because a fully pre-converted multi-pack tileset mod
+  can exceed the installer's archive entry-count guard before any content is
+  examined (neostryder/neo-angband#120); shipping the small source atlas instead
+  keeps a legitimate mod's archive far under that limit without weakening the
+  guard for anything else.
 - **A mod can now decide whether a shapechange's obvious flags are learned
   directly**, through a new `shapeLearnObviousFlagsDirectly` hook on the
   behaviour seam (`ModHooks`). Core reads it in `shapeLearnOnAssume` after
@@ -706,7 +721,7 @@ instead of a curated subset that had drifted from it.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.33.0` - a features release for mod
+Current state of the project at version `0.34.0` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again
