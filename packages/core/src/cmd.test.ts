@@ -9,10 +9,7 @@ import {
   cmdVerb,
   makeCommand,
 } from "./cmd.js";
-import type { Command, CommandCode, CommandContext } from "./cmd.js";
-import { ActionRegistry } from "./game/player-turn.js";
 import { loc } from "./loc.js";
-import { createModRegistryHost } from "./mod/registry-host.js";
 
 describe("command metadata", () => {
   it("mirrors the upstream game_cmds table", () => {
@@ -80,27 +77,6 @@ describe("CommandQueue", () => {
     const q = new CommandQueue();
     expect(q.push("browse-spell")).toBe(false);
     expect(q.push("ignore")).toBe(false);
-  });
-
-  it("dispatches a registry:command mod code through processCommand", () => {
-    const code = "issue-92:dance";
-    const commands = new ActionRegistry();
-    const host = createModRegistryHost(
-      { commands },
-      { has: (capability: string) => capability === "registry:command" },
-    );
-    host.commands.register(code, () => 0);
-    expect(commands.has(code)).toBe(true);
-
-    const q = new CommandQueue(commands);
-    let dispatched = 0;
-    q.register(code as CommandCode, () => dispatched++);
-
-    (q as unknown as {
-      processCommand(context: CommandContext, cmd: Command): void;
-    }).processCommand("game", makeCommand(code as CommandCode));
-
-    expect(dispatched).toBe(1);
   });
 
   it("enforces the upstream capacity (CMD_QUEUE_SIZE - 1 pending)", () => {

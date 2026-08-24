@@ -126,7 +126,7 @@ import type { RoomBuilder, RoomRegistry } from "../gen/room.js";
 import type { GlyphHandler, GlyphKind, GlyphRegistry } from "../gen/glyph.js";
 import type { CaveBuilder, DunProfile, DungeonProfiles } from "../gen/cave.js";
 import type { ActionRegistry, PlayerAction } from "../game/player-turn.js";
-import type { CommandInfo, CommandVerbTable } from "../cmd.js";
+import type { CommandVerbTable } from "../cmd.js";
 import type { TileAtlas } from "../visuals/tile-prefs.js";
 import type { GameState } from "../game/context.js";
 import type { Monster } from "../mon/monster.js";
@@ -621,32 +621,6 @@ export interface StoreFacade {
   setDiscountRoll(handler: DiscountRollHandler): void;
   /** The discount roll currently installed, or null. */
   discountRollHandler(): DiscountRollHandler | null;
-}
-
-/**
- * Metadata for a command that exists only in the live action registry, not in
- * upstream's closed game_cmds[] table. CommandQueue needs this only to admit
- * the command to its dispatch path; the action itself still lives in
- * ActionRegistry and decides its own energy use.
- */
-const REGISTERED_COMMAND_INFO: CommandInfo = {
-  verb: "perform a registered command",
-  repeatAllowed: false,
-  canUseEnergy: true,
-  autoRepeatN: 0,
-};
-
-/**
- * The CommandQueue fallback for a code that is absent from COMMAND_INFO.
- * ActionRegistry is the per-game registration table that every
- * registry:command facade writes, so this includes commands contributed by
- * every enabled mod without making the upstream metadata table mutable.
- */
-export function registeredCommandInfo(
-  commands: Pick<ActionRegistry, "has"> | null | undefined,
-  code: string,
-): CommandInfo | undefined {
-  return commands?.has(code) ? REGISTERED_COMMAND_INFO : undefined;
 }
 
 /** The player-command facade (gated by registry:command). */
