@@ -45,6 +45,19 @@ people's, and keep working when the game updates.
 That runs from *"I miss this one feature"* all the way to *"I want to build the
 next ZAngband"*, using the same system for both.
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Title screen](docs/img/screenshots/neo-angband-title.jpg) | ![Game menu](docs/img/screenshots/neo-angband-menu.jpg) |
+| ![The town, default tiles](docs/img/screenshots/neo-angband-town.jpg) | ![The same town, Shockbolt tiles](docs/img/screenshots/neo-angband-town-shockbolt.jpg) |
+
+Same character, same town, two tile choices - the classic look never goes away,
+and a different one is a menu selection away. [Mod
+management](docs/img/screenshots/neo-angband-mods.jpg) shows what a mod is
+before you decide whether to trust it: what it changes, what it asks for, and
+who wrote it.
+
 ## Play it
 
 **[Download a build](https://github.com/neostryder/neo-angband/releases)** for
@@ -154,6 +167,20 @@ Close enough that a difference is treated as a bug.
 It is **not** bit-exactness, and it is not a claim that the port is perfect. The
 full methodology (what is measured, what deliberately is not, and where the port
 sits against the original) is in **[docs/PARITY.md](docs/PARITY.md)**.
+
+**The randomness itself was measured, not assumed.** A player reported that the
+dungeon "felt" streaky - the RNG's own design still allows exactly that at any
+sample size, so the claim was tested rather than dismissed:
+[issue #39](https://github.com/neostryder/neo-angband/issues/39) ran
+1,000,000-sample batteries across seven draw types and a streak/serial-correlation
+test, comparing this repository's actual RNG code against a from-source compile
+of upstream's own generator. Every goodness-of-fit test passed with room to
+spare, and a 10,000,000-draw hash comparison confirmed the two are bit-for-bit
+identical on the same seed. The chart below is a fresh, independently generated
+sample (not the issue's own numbers) shown against each draw type's expected
+shape - flat for a die roll, the familiar bell for a sum of several:
+
+![RNG uniformity: observed frequency across four draw types over 1,000,000 samples each](docs/img/charts/rng-uniformity.png)
 
 ## Reporting a difference
 
