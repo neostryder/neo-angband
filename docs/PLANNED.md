@@ -185,10 +185,8 @@ waiting on:
 - **Gap 21, UI moddability.** The world is a separate seam (gap 9) and is done;
   everything else a mod might want to change about the interface is this.
   Tracked as issue #12.
-- **Mod content coverage**, so the first-party mods exercise what the gate
-  assumed they exercise. Tracked as issue #13. Unrelated to the
-  `upstream-catchup` mod, which is a different sense of catching up and shipped
-  on 2026-08-24.
+- **Catch-up mod content**, so the first-party mods cover what the gate assumed
+  they cover. Tracked as issue #13.
 
 ### The Borg's PF_COMBAT_REGEN rest check is still not wired
 

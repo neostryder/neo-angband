@@ -68,37 +68,6 @@
 > Post-tag sweep: 161 commits classified, 2 already catalogued, 4 newly
 > identified (none warranting a toggle without a port-specific repro), 155
 > excluded as frontend/platform/build/docs/data/refactor/balance.
->
-> RE-SWEPT 2026-08-24. `4.2.6..upstream/master` now holds **174** commits, 12 of
-> them landed after the 2026-07-26 sweep. The four the 2026-07-26 line counts as
-> "newly identified" were never written down, so the count could not be audited
-> and is not recoverable from this page; the twelve since then are classified
-> here instead, and any future sweep NAMES what it finds. Nine are borg, macOS
-> packaging, cmake or compiler-warning commits and are excluded on the same
-> frontend/platform/build grounds as before. The other three are entries 15, 16
-> and 17 below.
->
-> The same pass re-checked every entry that carried a "blocked-on" note against
-> the port as it stands, and **all four of those notes were stale**. The
-> subsystems they named are ported:
->
-> - **#6 and #7 are `NOT APPLICABLE`** by construction. The port's piles are
->   arrays rather than a pointer-linked list, and its message line is derived
->   from the recall buffer rather than kept beside it, so neither upstream defect
->   can be expressed. Each entry names what would reopen it.
-> - **#9 is `INVARIANT`, and is already TESTED** - two tests in
->   `packages/core/src/session/save.test.ts`, not merely a design intention. The
->   2026-07-26 line above calling it "an invariant to test" is satisfied.
-> - **#10 already has the hardening it asks for**: `effectDo` validates every
->   link of the chain and degrades safely, with two tests.
-> - **#11 is REPRODUCED**, so the repro that entry demanded before any gate now
->   exists, along with the arithmetic condition that makes the obvious repro a
->   dud.
->
-> Open and tracked as issues: #1 (neostryder/neo-angband#114), #3 (#115),
-> #11 (#116). Each needs a new core seam before the mod can carry it, which is
-> the real reason they are still open - not the unported subsystems the old
-> notes blamed.
 
 ## Why this mod exists
 
@@ -157,16 +126,6 @@ this mod.
 - `READY` - the core system exists; the patch can be implemented now.
 - `NO UPSTREAM FIX` - a genuine, still-open upstream bug with no accepted fix;
   carried as a known issue, with an optional mitigation of the mod's own.
-- `NOT APPLICABLE` - the upstream bug cannot occur in the port, because of how
-  the port is built rather than because anything was patched. Nothing to gate
-  and no toggle to offer. Kept on this page anyway: an upstream bug the port
-  cannot express is a fact about the port, and a later change that reintroduced
-  the mechanism would need to know the guarantee used to hold. Each such entry
-  names what would reopen it.
-- `INVARIANT` - a property the port promises and TESTS, where upstream carries
-  an open bug instead. Not a player toggle: switching it off would remove the
-  guarantee rather than restore faithful behaviour. The entry names the tests
-  that defend it, so deleting them has a visible cost.
 
 The mod's switches (declared in `neo-angband-mod-bug-fixes/manifest.json`). Each
 declares `default: true`, which means one thing only: ON once this mod is
@@ -187,9 +146,7 @@ minus one.
 **Plus one section**, `text-corrections`, which is data rather than a hook: four
 item descriptions that still describe a two-handed weapon rule Angband 4.2
 dropped (the Two-Handed Great Flail, the Pike, the Trident 'of Wrath' and
-Mundwine). Text only; no damage, weight or slot changes. Since mod 0.19.0 the
-Trident 'of Wrath' replacement also carries the spelling "Ossë", which Angband
-corrected after the 4.2.6 tag (entry 14).
+Mundwine). Text only; no damage, weight or slot changes.
 
 Six per-bug flags preceded the three: `bugfix.uniqueKillHistory`,
 `bugfix.miscStrings`, `bugfix.noiseScentSave`, `bugfix.objectListOrder`,
@@ -203,7 +160,7 @@ player sees is the class flag in the table.
 
 ## Fixes this mod carries
 
-### 1. Player note truncation (`READY`) - the requested first fix
+### 1. Player note truncation (`SPECIFIED`) - the requested first fix
 
 - References: upstream PR **#6665** ("Delay expanding user-supplied history
   notes", open/unmerged as of 2026-07-08); original report PR **#6656** ("Fix
@@ -234,21 +191,6 @@ player sees is the class flag in the table.
   exactly the live truncation site. Display is
   `packages/web/src/screens.ts`. The gated fix stores the raw text and
   moves expansion to those display paths.
-- Truncation site, pinned 2026-08-24. The command builds the expanded string
-  before storing it - `note = \`-- ${playerName} says: "${tmp.slice(5)}"\`` in
-  `noteCmd` - and `historyAddFull` (`packages/core/src/player/history.ts:70`)
-  stores `text.slice(0, 79)`, a faithful port of `my_strcpy` into
-  `char event[80]`. A 15-character name with a full-length `/say` builds 91
-  characters and loses 12 of them plus the closing quote. The damage lands in
-  the permanent character history and the character dump, so this is persisted
-  data rather than a display glitch.
-- Seam status: two seams are missing, not one, which is why this is the largest
-  of the READY entries. The existing `historyAdd` hook returns a boolean and can
-  only SUPPRESS an entry - it cannot rewrite the text and cannot carry the extra
-  field a later expansion would need - and the display paths have no seam at
-  all. That hook also serves exactly one call site today (entry 5), so widening
-  it touches an already-shipped fix in the same mod.
-  Tracked as neostryder/neo-angband#114.
 - Upstream status (2026-07-26, re-verified): PR #6665 is **MERGED**, as
   `72aec1103ab8153911b503a10da5a1834c1e2b0a` ("Delay expanding user-supplied
   history notes", 2026-07-14), touching `src/cmd-misc.c`,
@@ -257,7 +199,7 @@ player sees is the class flag in the table.
   its eventual merge commit" note is obsolete - there is now an exact oracle
   diff to mirror.
 
-### 2. Store-charge save-scum exploit (`NOT APPLICABLE`)
+### 2. Store-charge save-scum exploit (`SPECIFIED`)
 
 - References: issue **#6537** ("Save, exit, reload perturbs RNG state"); fix
   PR **#6539** ("Plug exploit for charges in store"), merge commit
@@ -293,7 +235,7 @@ player sees is the class flag in the table.
   load path to re-roll, so the save-scum this fix targets cannot occur. If a
   persisted-stock loader is ever added, it must call `storeCarry(... false)`.
 
-### 3. Stack-charge scramble on drop/pickup (`READY`)
+### 3. Stack-charge scramble on drop/pickup (`SPECIFIED`)
 
 - References: residual edge case documented in the thread of issue **#6355**
   ("Can generate infinite charges on staves/wands", closed COMPLETED via PR
@@ -305,38 +247,16 @@ player sees is the class flag in the table.
 - Proposed fix (contributor draconisPW, 2025-10-08, never PR'd): in
   `inven_can_stack_partial()`, add
   `else if (obj2->number == obj2->kind->base->max_stack) return false;`.
-- Port fix approach: apply the equivalent guard so a partial merge is refused
-  when the SOURCE stack is already full.
+- Port fix approach: when object-pile stacking is ported, apply the equivalent
+  guard so a full destination stack refuses a partial merge.
 - Port status (2026-07-26, re-verified): **READY**. The previous "DEFERRED /
   `objectAbsorbPartial` exists but is unused" note is WRONG and is retracted.
   The partial path IS live: `packages/core/src/game/gear.ts` tests
   `invenCanStackPartial(...)` and `:852` calls
   `objectAbsorbPartial(obj2, obj1, mode2, mode1, limits, ORIGIN.MIXED)` inside
   `combinePack`'s merge loop. That is the one live caller, and it is exactly the
-  precondition the upstream draft guards.
-- **WHICH STACK THE GUARD IS ON, corrected 2026-08-24.** This entry used to say
-  the gated fix "adds the destination-at-`max_stack` refusal", which is wrong
-  twice over. The destination guard is not missing: `inven_can_stack_partial`
-  (`obj-gear.c:1227`) already refuses when the leading stack `obj1` is at
-  `max_stack`, and the port reproduces it line for line at
-  `packages/core/src/game/gear.ts:938`. And it is not what the upstream draft
-  proposes: draconisPW's line tests `obj2`, the SOURCE, so the new refusal is
-  "the stack being drained is itself already full", which the C does not check
-  and the port therefore does not either. Describing it as the destination guard
-  would have sent an implementer to write a line that is already there.
-- Mechanism, traced 2026-08-24 and deterministic rather than random. With the
-  destination holding 5 and the source holding a full 40, `objectAbsorbPartial`
-  (`packages/core/src/obj/object.ts:1265-1269`) computes
-  `difference = maxStack - largest`, which is zero, so `newsz1` and `newsz2`
-  simply SWAP the two counts. `distributeCharges`
-  (`packages/core/src/obj/object.ts:1289`) then moves charges by
-  `trunc(source.pval * amt / source.number)`, and the truncation loses a
-  fraction on every swap. Repeated drop-and-pickup re-runs `combinePack` and so
-  re-runs the swap, which is what the reporter sees as charges wandering between
-  the two stacks. No RNG is drawn on this path, so a gate here is RNG-free.
-- Seam status: core has no `ModHooks` member a mod could refuse this on
-  (`packages/core/src/mod/hooks.ts`), so the fix needs a new seam before the mod
-  can carry it. Tracked as neostryder/neo-angband#115.
+  precondition the upstream draft guards. The gated fix adds the
+  destination-at-`max_stack` refusal before `gear.ts`.
 
 ### 4. Object list ordering is not a strict total order (`IMPLEMENTED`)
 
@@ -395,7 +315,7 @@ player sees is the class flag in the table.
   core's other `historyAdd` writes are not routed through it, which matches the
   fix's scope but is worth knowing before reusing the hook.
 
-### 6. Pile integrity failure crash (`NOT APPLICABLE`)
+### 6. Pile integrity failure crash (`NO UPSTREAM FIX`)
 
 - References: issue **#4225** ("Pile integrity failure crash", open). No fix
   exists upstream; maintainer notes diagnostics need improving. Likely tied to
@@ -404,62 +324,21 @@ player sees is the class flag in the table.
   linked-list corruption structurally impossible (typed stores/handles rather
   than raw pile pointers). Track as a "cannot reproduce by construction" goal
   and add an integrity assertion in the object store.
-- Port status (2026-08-24, re-verified): **NOT APPLICABLE** by construction, and
-  the old "Blocked-on: full object-pile / drop system (not yet ported)" note is
-  retracted. The pile and drop system IS ported -
-  `packages/core/src/game/floor.ts` carries `floorPile`, `floorExcise`,
-  `floorCarry`, `dropFindGrid` and `dropNear` - and the goal above turns out to
-  have been met by the shape of the port rather than by any patch.
-  Upstream's defect is a LINKED LIST losing its shape: `obj->next` and
-  `obj->prev` walked by `pile_check_integrity`, which is where a cycle, an
-  orphan or a dangling pointer can appear. The port has no such list. A grid's
-  pile is a plain array (`floor: Map<number, GameObject[]>`,
-  `packages/core/src/game/context.ts:205`), carried gear is a handle table
-  (`store: Map<number, GameObject>` with index arrays,
-  `packages/core/src/game/gear.ts:81`), and `GameObject`
-  (`packages/core/src/obj/types.ts`) has no `next` or `prev` field at all. There
-  are no pile pointers to corrupt, so there is nothing for an integrity
-  assertion to assert and no toggle to offer a player.
-- Kept on this page rather than deleted, for the same reason entry 2 is: an
-  upstream bug that the port cannot express is a fact about the port worth
-  recording, and a future change that reintroduced a pointer-linked pile would
-  need to know this guarantee used to hold.
+- Blocked-on: full object-pile / drop system (not yet ported).
 
-### 7. Missing messages in the main window (`NOT APPLICABLE`)
+### 7. Missing messages in the main window (`NO UPSTREAM FIX`)
 
 - References: issue **#3987** ("Missing messages", open, intermittent). A
   message (e.g. "You have found a trap.") is dropped from the main window
   while still present in message recall and the sub-window.
 - Port fix approach: when the message-log display is wired, ensure the main
   window and the recall buffer draw from one source so they cannot diverge.
-- Port status (2026-08-24, re-verified): **NOT APPLICABLE** by construction, and
-  the old "Blocked-on: the message-log display layer" note is retracted. That
-  layer is wired, and the fix approach above describes what it already does.
-  `state.msg` (`packages/web/src/main.ts:2058`) is the single sink every
-  `msg()` and `msgt()` in core and the shell passes through - the same one entry
-  14's `messageText` hook hangs off, which is only sound because there is
-  exactly one. It appends to one `MessageLog`, and the top status line is then
-  DERIVED from that log rather than written beside it (`message =
-  msglog.latest()`, in `say`). The scrollable recall (Ctrl-P,
-  `messageHistoryScreen(msglog)`) reads the same object.
-  So the main window cannot hold a different set of messages from the recall
-  buffer: it holds the last element of it. Upstream's defect needs two stores
-  that can disagree, and the port has one.
-- What would reopen this: any change that gives the status line its own buffer,
-  or a second sink that bypasses `state.msg`. The single-sink property is
-  load-bearing for entry 14 as well, so it is worth stating rather than assuming.
+- Blocked-on: the message-log display layer (currently on-screen ledgered).
 
 ### 8. Noise and scent not saved (`IMPLEMENTED`)
 
 - References: issue **#4605** ("Noise and scent not saved", open). Low
-  severity, genuine determinism gap.
-- **"No upstream fix" expired 2026-08-18.** This entry used to say there was
-  none. Commit `5c45eb9588b8227d4f1b1998e0a627ad7ee11a75` resolves the NOISE
-  half of #4605 upstream, by a different route than this mod takes, and adds
-  level-revisit behaviour the mod has no equivalent for. Entry 17 carries the
-  detail; what matters here is that this fix is no longer ahead of upstream by
-  default and the two designs now have to be compared rather than assumed
-  identical. The scent half of #4605 is still unfixed upstream.
+  severity, genuine determinism gap; no upstream fix.
 - Problem: player noise/scent fields are not persisted, so save/reload can
   change monster tracking behavior versus uninterrupted play.
 - Port fix approach: persist the noise/scent fields in the save block.
@@ -484,7 +363,7 @@ player sees is the class flag in the table.
   hook, present + restored with the hook installed).
 - Note: complements the port's local-determinism guarantee (decision 22).
 
-### 9. RNG perturbed by loading, general case (`INVARIANT`)
+### 9. RNG perturbed by loading, general case (`SPECIFIED`)
 
 - References: issue **#6537** (open beyond the store-charge exploit of entry 2).
   Upstream keeps this open as a low-priority robustness item: "loading should
@@ -492,26 +371,9 @@ player sees is the class flag in the table.
 - Port relevance: the port persists full RNG state (decision 22) and must
   guarantee load touches no RNG stream. This is a design invariant for the save
   system rather than a discrete patch, but is tracked here for provenance.
-- Port status (2026-08-24, re-verified): **SATISFIED AND PINNED**, and the old
-  "Blocked-on: the save system (not yet ported)" note is retracted twice over.
-  The save system is ported (`packages/core/src/session/save.ts`, which entry 8
-  already patches), and the invariant is not merely designed - it is asserted by
-  two tests in `packages/core/src/session/save.test.ts`:
-  - "resumes the exact RNG stream (the anti-save-scum posture)" draws 20 values
-    after a save point, loads the same save twice, and requires both loads to
-    produce that identical sequence. A load that perturbed the stream would move
-    the first draw and fail.
-  - "preserves the RNG stream across a reordered-registry reload" compares
-    `rng.getState()` before the save against the restored game's, on the nose,
-    and additionally proves the guarantee does not depend on content ordering.
-  Upstream keeps #6537 open because it cannot make this promise. The port can,
-  and the tests are what make the claim checkable rather than aspirational.
-- This entry stays as a NAMED INVARIANT, not a toggle. There is nothing for a
-  player to switch: a mod that made loading perturb the RNG would be removing
-  the guarantee, not fixing a bug. Its value is that the two tests above are now
-  known to be the thing defending it, so deleting them has a visible cost.
+- Blocked-on: the save system (not yet ported).
 
-### 10. "Bad effect passed to effect_do()" (`NO UPSTREAM FIX`, hardening present)
+### 10. "Bad effect passed to effect_do()" (`NO UPSTREAM FIX`)
 
 - References: issue **#6533** (open, opened 2026-03-07). Triggered by meleeing
   a vampire with an ego weapon; maintainer could not root-cause it and the save
@@ -519,28 +381,10 @@ player sees is the class flag in the table.
 - Port fix approach: the port's effect interpreter should validate effect
   identifiers at dispatch and fail loudly with context in dev, degrade safely
   in release. Add a regression pin if a reproducer is ever found.
-- Port status (2026-08-24, re-verified): **the hardening asked for is already
-  present**, so this needs no patch and no toggle. `effectDo`
-  (`packages/core/src/effects/interpreter.ts:461`) tests
-  `isValidEffect(effect)` at the top of EVERY iteration of the chain, not once
-  on entry, and an invalid identifier makes it report
-  "Bad effect passed to effect_do(). Please report this bug." and return false
-  rather than dispatching. That degrades safely by construction: an unhandled
-  index cannot reach a handler. Two tests in
-  `packages/core/src/effects/interpreter.test.ts` pin it - one on an invalid
-  chain, and one on the separate case of a valid upstream code with no
-  registered handler, which is skipped rather than treated as invalid.
-- Deliberately NOT added: extra context in the message. The text is upstream's
-  own, and this mod's standing rule for the `messageText` seam is that a hook
-  may only restate a message, never change what one means (entry 14). Naming the
-  offending effect index on screen would put text in front of a player that
-  upstream never wrote. If a reproducer ever appears, the place for the detail
-  is a dev-mode log or a test, not the message line.
-- What is genuinely still open is upstream's own root cause, which upstream
-  never found and whose save did not reproduce. There is nothing here to port
-  until somebody can trigger it.
+- Blocked-on: none structurally (the effect interpreter exists); but with no
+  reproducer this is a hardening entry, not a targeted patch.
 
-### 11. Quiver inscription change triggers pack overflow (`READY`, reproduced)
+### 11. Quiver inscription change triggers pack overflow (`SPECIFIED`)
 
 - References: issue **#4666** (open). Related design proposal #6512 (separate
   tval for throwing items) is unimplemented.
@@ -556,37 +400,6 @@ player sees is the class flag in the table.
   Sequence before gating: reproduce the mis-fire against those three, THEN add
   the gate - this one is a suspected mis-fire rather than a proven one, so
   ordering matters.
-- **REPRODUCED 2026-08-24.** It is no longer suspected. Driven through a real
-  booted game and the real `processPlayer` and `state.overflowPack`, one
-  zero-energy `inscribe` command sheds an item onto the floor:
-  `energyUsed=0`, `totalEnergy` delta 0, and the messages
-  "You re-arrange your quiver." / "Your pack overflows!" / "You drop a Dagger".
-  A real `drop` costs `moveEnergy / 2`, 50 energy
-  (`packages/core/src/game/obj-cmd.ts:1928`), so the exploit turns a 50-energy
-  action into a free one, and `processPlayerCleanup` skips the terrain damage
-  and monster tick as well because the energy is zero.
-- **The arithmetic condition, which is why a naive repro reads as "cannot
-  reproduce".** `packSlotsUsed` (`packages/core/src/game/gear.ts:552-576`)
-  charges the quiver `ceil(quiverAmmo / quiverSlotSize)` pack slots, a throwing
-  item counting `number * thrownQuiverMult`. Live constants are `packSize` 23,
-  `quiverSlotSize` 40, `thrownQuiverMult` 5. Removing a throwing item of
-  weighted cost 5 from a quiver of weighted total `Q` changes pack slots by
-  `1 - (ceil(Q/40) - ceil((Q-5)/40))`. A lone throwing weapon in an otherwise
-  empty quiver frees a whole quiver slot and nets ZERO, so it does not
-  reproduce; it fires only when `ceil(Q/40) == ceil((Q-5)/40)`, for instance
-  `Q = 50` (40 arrows, 5 bolts, one dagger at mult 5). Written down because the
-  obvious repro is a dud.
-- **The mis-fire is worse than the exploit, and is the half to fix first.**
-  `packOverflow(state, 0, ...)` drops `state.gear.inven[length-1]`
-  (`packages/core/src/game/obj-cmd.ts:295-298`), which need not be the item that
-  moved. With a Small wooden chest in the pack - last under `earlierObject`
-  (`packages/core/src/player/calcs.ts:1441-1507`, decreasing tval) - re-inscribing
-  the dagger drops the CHEST and keeps the dagger. For a player that is an item
-  vanishing for no stated reason.
-- Seam status: no existing `ModHooks` member covers the free-command overflow
-  trigger or `packOverflow`'s victim selection, so a seam is needed before a
-  patch. Fits the existing `bugfix.stateIntegrity` class.
-  Tracked as neostryder/neo-angband#116.
 
 ### 12. Duplicate artifacts (`IMPLEMENTED`, no upstream fix)
 
@@ -772,21 +585,11 @@ player sees is the class flag in the table.
     none. And the **gamedata descriptions**, which the message census structurally
     cannot see, swept three ways: the same known-misspelling list (0 hits), doubled
     words (1 hit, the room *named* "Dot dot dot"), and every post-4.2.6 upstream
-    commit touching `lib/gamedata` (upstream's four description misspellings,
-    `obiterate` / `can can` / `untramelled` / `threshhold`, were fixed by commit
-    `736e4ad0e` in June 2020 and are already correct in the 4.2.6 baseline).
-    The compiled `packages/content/pack/*.json`
+    commit touching `lib/gamedata` (no spelling fixes at all - upstream's four
+    description misspellings, `obiterate` / `can can` / `untramelled` /
+    `threshhold`, were fixed by commit `736e4ad0e` in June 2020 and are already
+    correct in the 4.2.6 baseline). The compiled `packages/content/pack/*.json`
     is the same corpus by construction, and the data-exactness gate keeps it so.
-  - **The third sweep found ONE, and this entry used to say it found none.**
-    Corrected 2026-08-24. The claim was "no spelling fixes at all" among
-    post-4.2.6 commits touching `lib/gamedata`; commit `f1b1626f6` ("Correct
-    spelling of Ossë", `lib/gamedata/artifact.txt`) is exactly that, and it
-    reached upstream on the same day the sweep ran, which is how a correct
-    census became a wrong sentence within a day of being written. The
-    correction ships in the mod as of 0.19.0, inside the Trident 'of Wrath'
-    replacement this section already writes. The lesson is the one entry 13
-    already records about measurement: a census is true on the day it runs, so
-    it has to name the commit range it swept, and be re-run rather than quoted.
 - The `!` rows are the judgement call: pooled across terminators they are 3
   minority spellings of one convention, split by terminator they are 3 of 3 and
   the local majority. Pooled here, because the convention is "two spaces after a
@@ -810,91 +613,6 @@ player sees is the class flag in the table.
   so faithful core's text still reaches the screen byte-for-byte.
 - Not gameplay: no message changes meaning; nothing about play changes.
 
-### 15. Blast radius larger than `dam_at_dist` can hold (`SPECIFIED`)
-
-- References: issue **#6671**, fixed by commit
-  `f0f6bd223b6b9faf0072b0ae7ffb34a812b97349` ("Projections: coerce blast radius
-  to fit what dam_at_dist can handle", 2026-07-28, `src/project.c`). NOT in the
-  4.2.6 baseline. Catalogued 2026-08-24 by the re-sweep.
-- Problem: `project()` sizes `dam_at_dist` by `z_info->max_range` but does not
-  clamp `rad` to it, so a radius above the maximum range indexes past the end of
-  the array. Upstream's own note is that no effect in `lib/gamedata` exceeds the
-  limit, "so this would only affect modded games or effects run from the 'E'
-  debugging command".
-- Upstream fix: clamp, `if (rad > z_info->max_range) rad = z_info->max_range;`,
-  before the explosion centre is saved.
-- Port status (2026-08-24): the same gap is present and reads differently. The
-  port builds `damAtDist` as `new Array(maxRange + 1)` and fills `i <= maxRange`
-  (`packages/core/src/world/project.ts:522-538`), with no clamp on `rad`
-  anywhere in the file; `rad` is documented as "1..20 = ball radius" at
-  `:293-294` and nothing enforces it. Where the C reads past the end of an array
-  and gets whatever is in memory, the port reads `undefined` and carries it into
-  the damage arithmetic as `NaN`. Neither is a crash, and both are wrong.
-- **Why this one matters MORE here than upstream.** Upstream discounts it
-  because only a modded game can reach it. This port is a modding platform with
-  a `registry:projection` seam, so "only modded games" describes the intended
-  audience rather than an edge case. That is an argument for the clamp, not
-  against it.
-- Needed before a patch: a port-specific repro that drives a projection with
-  `rad > maxRange` through the live seam and shows the `NaN`. Then the fix is
-  the one-line clamp, on a new hook, RNG-free.
-  Tracked as neostryder/neo-angband#117.
-
-### 16. Shape flags learned only when equipment already carries them (`SPECIFIED`)
-
-- References: commit `c8036c51537942a560e3d7f81749c431bbb4701f` ("On shape
-  change, learn shape's obvious flags", 2026-07-28, `src/obj-knowledge.c`),
-  raised in the comments on FAangband issue #465. No Angband issue number. NOT
-  in the 4.2.6 baseline. Catalogued 2026-08-24 by the re-sweep.
-- Problem: `shape_learn_on_assume()` learns a shape's obvious flags through
-  `equip_learn_flag`, which only marks a flag known when a WIELDED item carries
-  it. A flag the shape grants and no equipment has is therefore never learned,
-  and the same blind spot applies to the learn-on-event paths while
-  shapechanged.
-- Upstream fix: intersect the shape's flags with what is not yet known and learn
-  each as a rune directly (`player_learn_rune(p, rune_index(RUNE_VAR_FLAG,
-  flag), true)`), and teach the learn-on-event helpers to consult the shape's
-  properties as well as worn gear.
-- Port status (2026-08-24): `shapeLearnOnAssume` is ported
-  (`packages/core/src/obj/knowledge.ts:802`, called from
-  `packages/core/src/game/effect-general.ts:957`). Whether it reproduces the
-  4.2.6 shape of the defect or the port's rune model already sidesteps it has
-  NOT been checked, and this entry must not claim either until it has been.
-  That check is the next step, not the patch.
-  Tracked as neostryder/neo-angband#118.
-- Note the knowledge-model caution from the "port's own code" section below: the
-  rune convention has been reverted to faithful once already because a shortcut
-  that granted unearned knowledge is not a fix a player would want. A change
-  here alters what the player knows and when, so it needs the same scrutiny.
-
-### 17. Noise not restored on reload, and stale flow on level revisit (`SPECIFIED`)
-
-- References: commit `5c45eb9588b8227d4f1b1998e0a627ad7ee11a75` ("Remember
-  source location for last noise calculation in save file", 2026-08-18,
-  touching `game-world.c`, `game-world.h`, `generate.c`, `load.c`, `player.h`,
-  `save.c`, `ui-game.c`), which states it "Resolves the noise portion of"
-  issue **#4605**, with discussion in #6677. NOT in the 4.2.6 baseline.
-  Catalogued 2026-08-24 by the re-sweep.
-- **This changes entry 8's standing, and entry 8 has been amended to match.**
-  Entry 8 was written when #4605 had no upstream fix at all. Half of it now
-  does.
-- Upstream's approach is NOT the mod's. Upstream persists the SOURCE LOCATION of
-  the last noise calculation and recomputes the heatmap from it on load; the mod
-  persists the heatmap itself. Both restore monster tracking across a reload,
-  and the mod's is the cheaper one to have already shipped, but they are not the
-  same fix and a future re-sync should not assume they converge.
-- The genuinely NEW behaviour in upstream's commit, which the mod does not have
-  and entry 8 never covered, is level REVISIT: on returning to a level (whether
-  through persistent levels or a paladin coming back from single combat),
-  upstream now clears the noise and AGES the scent by how long the character was
-  away, rather than leaving whatever was there. The port freezes out-of-play
-  levels in `levelCache` and rebuilds flow on re-entry (entry 8), so the two
-  differ in what a returning player finds.
-- Port status (2026-08-24): unstarted, and deliberately so. Deciding whether the
-  revisit behaviour belongs in the mod needs the port's re-entry path measured
-  against upstream's new one first. It is a determinism entry, like entry 8, not
-  a crash. Tracked as neostryder/neo-angband#119.
-
 ---
 
 ## Front-end-only, likely out of scope for a core TS port
@@ -903,24 +621,6 @@ player sees is the class flag in the table.
   path in the C client; the port's renderer is a separate implementation, so
   this specific crash likely does not carry over. Re-evaluate when the web
   renderer's map path is stress-tested.
-  - Re-evaluated 2026-08-24, and "likely does not carry over" can be stated
-    more firmly than that. `EXC_BAD_ACCESS` is a bad pointer dereference, and
-    the port has no pointers to get wrong: `map_info`'s object loop is
-    `floorDisplay` (`packages/core/src/game/floor.ts:110`), reading a
-    `GameObject[]` off `state.floor`. An index that would be out of bounds
-    yields `undefined` rather than a fault. So THIS crash cannot occur, and the
-    entry stays only because the surrounding map path is worth watching.
-  - What the map path can still get wrong is agreement between its two halves,
-    and it has: the live path off `state.floor` and the remembered path off
-    `state.known` once disagreed about `multiple_objects`, so a pile in sight
-    drew its top item and turned into the pile glyph the moment it dimmed out
-    of view. `floorDisplay` exists because both halves now call it. That is a
-    divergence bug, not a memory bug, and it is the shape to look for here.
-  - The stress test the entry asks for has still NOT been run. The map path has
-    unit coverage (`packages/web/src/mapview.test.ts`,
-    `world-render-data.test.ts`, `render-background.test.ts`,
-    `level-map-region.node.test.ts`), which is not the same thing. Leaving this
-    open, with the crash ruled out and the real risk named.
 
 ---
 

@@ -164,7 +164,6 @@ involved:
 
 | Mod | Read it for |
 | --- | --- |
-| [upstream-catchup](https://github.com/neostryder/neo-angband-mod-upstream-catchup) | About the smallest useful mod there is: one flag, one registry filler, and a README that cites every line of it |
 | [feature-restoration](https://github.com/neostryder/neo-angband-mod-feature-restoration) | A small mod that is both data and code, with every feature behind its own switch |
 | [qol](https://github.com/neostryder/neo-angband-mod-qol) | Behaviour hooks in a shipped mod |
 | [bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes) | Many small, independent, individually-switchable changes |

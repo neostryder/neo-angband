@@ -39,6 +39,7 @@ const mod = (over: Partial<DiscoveredMod> = {}): DiscoveredMod => ({
   version: "0.13.0",
   description: "Conveniences Angband does not have.\nA second line.",
   engine: ">=0.18.0",
+  screenshots: [],
   compatible: true,
   engineNote: null,
   channelHeld: null,
@@ -191,6 +192,20 @@ describe("browseDetail", () => {
     const t = text({ ok: false, ref: { repo: "a/gone" }, problem: "not there (HTTP 404)" });
     expect(t).toContain("could not be read");
     expect(t).toContain("404");
+  });
+
+  it("lists a mod's declared screenshots by path", () => {
+    const t = text(found({ screenshots: ["shots/a.png", "shots/b.png"] }));
+    expect(t).toContain("Screenshots  2 declared");
+    expect(t).toContain("shots/a.png");
+    expect(t).toContain("shots/b.png");
+  });
+
+  it("says nothing about screenshots when the manifest declares none", () => {
+    /* A manifest that predates the field, or never used it, must render exactly
+     * as it always has - no empty "Screenshots" line, nothing new to explain. */
+    const t = text(found({ screenshots: [] }));
+    expect(t).not.toMatch(/screenshots/iu);
   });
 });
 
