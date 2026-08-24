@@ -170,15 +170,18 @@ document has no test behind it and rots on the next commit.
 | `artifactCommit(aidx, alreadyCreated)` | `all-must-agree` | `obj/make.ts` | commit it unconditionally |
 | `historyAdd(entry)` | `all-must-agree` | `session/game.ts` (the `HIST.SLAY_UNIQUE` path) | `?? true` - write every entry, duplicates included |
 | `saveNoiseScent()` | `any-yes` | `session/save.ts` | `?? false` - omit the heatmaps, which is upstream's behaviour and upstream's bug |
+| `levelRevisited(chunk, frozenAt, now)` | `all-observe` | `session/game.ts` (persistent-level and single-combat restore paths) | nothing: resume the frozen chunk unchanged |
 | `messageText(raw)` | `chained` | `packages/web/src/main.ts` (the HOST's single message sink, not core) | `?? raw` - show what core was given, warts and all |
 | `optionsChanged(snapshot)` | `all-observe` | `packages/web/src/options.ts` (`notifyOptionsChanged`, at the end of `runOptionsMenu`) | nothing happens; core reads no answer |
 
-`optionsChanged` is the odd one and worth reading twice: it is the only member
-core does not ask a QUESTION. Every other hook's return value changes what the
-engine does next, so the fold has to decide whose answer wins. This one is told
-that the player has finished changing their settings, returns nothing, and folds
-**all-observe** - every listening mod is told, in load order, and none can
-overrule another, because two mods reacting to one fact are not in conflict.
+`optionsChanged` and `levelRevisited` are the notification members: core does
+not ask either a QUESTION. Every other hook's return value changes what the
+engine does next, so the fold has to decide whose answer wins. A notification
+returns nothing and folds **all-observe** - every listening mod is told, in load
+order, and none can overrule another. `levelRevisited` passes the live restored
+chunk plus unrounded turn endpoints, so a tracking mod can reproduce the engine's
+world-tick boundary exactly. `optionsChanged` is the host-owned case: it tells a
+mod that the player has finished changing settings.
 
 Three details that are contract, not implementation:
 
@@ -241,7 +244,7 @@ discarded and there is nothing for load order to decide. Per fold:
   read as a lexicographic chain: the last mod's ordering is the primary key and
   earlier mods break only the ties it leaves. Still a total order, and still
   later-wins.
-- **`all-observe`** (`optionsChanged`) runs every contributor in load order and
+- **`all-observe`** (`optionsChanged`, `levelRevisited`) runs every contributor in load order and
   reads no answer, so there is nothing to win.
 
 `composeModHooks` returns `undefined` when nothing contributed,

@@ -440,8 +440,12 @@ player sees is the class flag in the table.
   flag on they ride the save and restore exactly, so a reload preserves the
   scent trail instead of starting it empty. The payload is self-describing:
   a faithful save omits both, so restore leaves them zeroed (rebuilt on the
-  first turn) - back-compatible. The frozen `levelCache` snapshot stays faithful
-  (out-of-play levels carry no live trail; they rebuild flow on re-entry).
+  first turn) - back-compatible. The `levelCache` is an in-memory `Chunk`, so
+  its live heatmaps do in fact freeze with a persistent level and are restored
+  unchanged on re-entry; normal `processWorld` does not rebuild them until its
+  next ten-turn tick. That is distinct from saving an in-play level, and is now
+  handled by entry 17's opt-in upstream-catchup rule rather than by extending
+  this save toggle to a second, incompatible policy.
   Tests in `world/chunk.test.ts` (snapshot/restore round-trip) and
   `session/save.test.ts` (full save round-trip: heatmaps absent + lost with no
   hook, present + restored with the hook installed).
@@ -805,20 +809,29 @@ next step regardless of which mod eventually ships the fix. Tracked as
 neostryder/neo-angband#118 (relabeled `repo:mod-upstream-catchup`). Not yet
 built.
 
-### 17. Noise not restored on reload, and stale flow on level revisit - MOVED to the upstream-catchup mod
+### 17. Noise not restored on reload, and stale flow on level revisit - IMPLEMENTED in the upstream-catchup mod
 
 Fixed upstream by commit `5c45eb9588b8227d4f1b1998e0a627ad7ee11a75`
 ("Remember source location for last noise calculation in save file",
-2026-08-18), not in the 4.2.6 baseline - belongs in `upstream-catchup`, not
-here. This only resolves the noise half of #4605; entry 8's own
-`bugfix.stateIntegrity` toggle still legitimately covers a different (cheaper,
-heatmap-persisting rather than source-location-persisting) fix for the same
-defect, and the two are not equivalent - a future re-sync should not assume
-they converge. The genuinely new piece upstream's commit adds, which entry 8
-never covered, is level-revisit noise-clear/scent-aging behavior; whether that
-belongs in a mod at all is still undecided. Tracked as
-neostryder/neo-angband#119 (relabeled `repo:mod-upstream-catchup`). Not yet
-built.
+2026-08-18), not in the 4.2.6 baseline, and now carried by the
+`upstream-catchup` mod's off-by-default `catchup.levelRevisitTracking` rule.
+The core `levelRevisited` notification runs for both `levelCache` restoration
+and a return from single combat; without it faithful core resumes the exact
+cached `Chunk` flow arrays. The rule reproduces upstream's `generate.c` order:
+after monster restoration, clear interior noise and age nonzero scent by
+`floor(now / 10) - floor(frozenAt / 10)`, clearing a scent value that would
+overflow `uint16_t`. Thus an out-of-play level can no longer direct a monster
+toward the position the player occupied before leaving, nor retain an
+un-aged scent trail; fresh flow is still made by the next ordinary world tick.
+
+This is a real gameplay difference, not a cosmetic cache detail: monster AI
+reads the heatmaps before `processWorld`'s next tick, which can be up to nine
+turns after entry. It remains deliberately separate from entry 8's
+`bugfix.stateIntegrity` / `bugfix.noiseScentSave` rule. That rule preserves
+heatmaps across a save/reload; this rule deliberately discards/ages them across
+time spent away, matching upstream. Upstream's source-location save/reload
+design is also different from entry 8's heatmap persistence, so a future
+re-sync must not collapse the toggles.
 
 ---
 
