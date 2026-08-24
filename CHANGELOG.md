@@ -50,6 +50,14 @@ version it still calls itself.
   design - a rebaseline onto a newer upstream tag makes every row in it redundant.
   See [docs/modding/UPSTREAM_CATCHUP_MOD_SCOPE.md](docs/modding/UPSTREAM_CATCHUP_MOD_SCOPE.md).
 
+### Fixed
+
+- A menu list squeezed by a detail pane (the mod manager's "Recommended mods"
+  screen among others) gave no on-screen sign that more rows existed above or
+  below the visible window - arrowing past the edge scrolled correctly but
+  looked identical to reaching the end of the list. A small arrow now marks
+  the clipped edge, in the column every row already leaves empty.
+
 ## [0.31.1] - 2026-08-24
 
 ### Fixed

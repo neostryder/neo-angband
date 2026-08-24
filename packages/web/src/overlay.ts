@@ -1822,6 +1822,22 @@ export function selectFromMenu(
           );
         }
       }
+      /* Port-only addition: upstream never scrolls a menu taller than the
+       * screen (its region's page_rows is fixed for the menu's whole life), so
+       * ui-menu.c has no cue for "there is more above/below" to port. Off
+       * screen a detail pane can squeeze the list to a handful of rows at any
+       * time, and nothing said so - arrowing down through the mod manager's
+       * "Recommended mods" list past the edge of what fit gave no sign there
+       * was anything left to find. The row content itself is untouched (the
+       * scrolling arithmetic above already gets `top` and `bodyRows` right);
+       * this only marks the one column every row already leaves empty - a
+       * label is sliced to `cols - 1 - boxCol` and a suffix to `cols - 1 -
+       * sfx.col`, so column `cols - 1` never carries real content. */
+      const marginCol = cols - 1;
+      if (marginCol > boxCol && bodyRows > 0) {
+        if (top > 0) term.print(marginCol, listTop, "^", DIM);
+        if (top + bodyRows < items.length) term.print(marginCol, listTop + bodyRows - 1, "v", DIM);
+      }
       // Term_gotoxy on the selected row (display_scrolling, ui-menu.c:212-213):
       // the yellow frame the Windows front end draws for the cursor.
       if (cursor >= top && cursor < top + bodyRows) {
