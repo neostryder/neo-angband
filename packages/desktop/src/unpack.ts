@@ -41,33 +41,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as zlib from "node:zlib";
-import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-
-/**
- * Resource ceilings for a downloaded desktop release archive.
- *
- * Current update archives are 120-165 MiB compressed (see RELEASING.md), so
- * 256 MiB leaves useful release headroom while still making a maliciously large
- * archive fail before it occupies the install volume. Electron's app.asar is a
- * large single member, hence the matching per-entry ceiling; the total permits
- * a complete extracted application without admitting an unbounded bomb.
- */
-export interface ArchiveLimits {
-  readonly maxArchiveBytes: number;
-  readonly maxEntries: number;
-  readonly maxEntryBytes: number;
-  readonly maxTotalBytes: number;
-  readonly maxCompressionRatio: number;
-}
-
-export const UPDATE_ARCHIVE_LIMITS: ArchiveLimits = {
-  maxArchiveBytes: 256 * 1024 * 1024,
-  maxEntries: 4096,
-  maxEntryBytes: 256 * 1024 * 1024,
-  maxTotalBytes: 512 * 1024 * 1024,
-  maxCompressionRatio: 200,
-};
 
 /** What one archive member is. */
 export type EntryKind = "file" | "dir" | "symlink";
@@ -235,54 +209,6 @@ export function readZipEntries(fd: number, fileSize: number): ArchiveEntry[] {
   return out;
 }
 
-function archiveSize(archive: string): number {
-  const size = fs.statSync(archive).size;
-  if (!Number.isSafeInteger(size) || size < 0) throw new Error("the archive has an invalid size");
-  return size;
-}
-
-function assertCompressedArchiveLimit(archive: string, limits: ArchiveLimits): number {
-  const size = archiveSize(archive);
-  if (size > limits.maxArchiveBytes) {
-    throw new Error(`the archive is over the ${String(limits.maxArchiveBytes)} byte size limit`);
-  }
-  return size;
-}
-
-function assertZipLimits(entries: readonly ArchiveEntry[], limits: ArchiveLimits): void {
-  if (entries.length > limits.maxEntries) {
-    throw new Error(`the archive has more than ${String(limits.maxEntries)} entries`);
-  }
-  let total = 0;
-  for (const e of entries) {
-    if (e.size > limits.maxEntryBytes) {
-      throw new Error(`the archive entry ${e.name} is over the per-entry size limit`);
-    }
-    if (e.size > Math.max(e.compressedSize, 1) * limits.maxCompressionRatio) {
-      throw new Error(`the archive entry ${e.name} exceeds the compression ratio limit`);
-    }
-    total += e.size;
-    if (total > limits.maxTotalBytes) {
-      throw new Error("the archive is over the total expanded size limit");
-    }
-  }
-}
-
-/**
- * Inspect an archive before an external extractor sees it. macOS uses ditto
- * deliberately, so this preserves the same resource limits on every platform.
- */
-export function validateArchive(archive: string, limits: ArchiveLimits = UPDATE_ARCHIVE_LIMITS): void {
-  const size = assertCompressedArchiveLimit(archive, limits);
-  if (!archive.endsWith(".zip")) return;
-  const fd = fs.openSync(archive, "r");
-  try {
-    assertZipLimits(readZipEntries(fd, size), limits);
-  } finally {
-    fs.closeSync(fd);
-  }
-}
-
 /** Where an entry's compressed bytes actually start, past its local header. */
 function dataStart(fd: number, localOffset: number): number {
   const head = Buffer.alloc(30);
@@ -366,18 +292,11 @@ function isMetadataEntry(name: string): boolean {
  * point at a file that has not been written yet - on a filesystem that checks,
  * creating it early fails.
  */
-export async function unpackZip(
-  archive: string,
-  into: string,
-  platform: string,
-  limits: ArchiveLimits = UPDATE_ARCHIVE_LIMITS,
-): Promise<number> {
+export async function unpackZip(archive: string, into: string, platform: string): Promise<number> {
   const fd = fs.openSync(archive, "r");
   try {
-    const size = assertCompressedArchiveLimit(archive, limits);
-    const allEntries = readZipEntries(fd, size);
-    assertZipLimits(allEntries, limits);
-    const entries = allEntries.filter((e) => !isMetadataEntry(e.name));
+    const size = fs.statSync(archive).size;
+    const entries = readZipEntries(fd, size).filter((e) => !isMetadataEntry(e.name));
     if (entries.length === 0) throw new Error("the archive was empty");
 
     const resolve = (e: ArchiveEntry): string => {
@@ -417,26 +336,6 @@ export async function unpackZip(
 /* ------------------------------------------------------------------ tar --- */
 
 const TAR_BLOCK = 512;
-
-/** The largest plain tar that can describe a permitted expanded archive. */
-function maxPlainTarBytes(limits: ArchiveLimits): number {
-  return limits.maxTotalBytes + (limits.maxEntries + 2) * TAR_BLOCK;
-}
-
-/** Stop gzip before its temporary plain-tar file can become an unbounded bomb. */
-function byteLimit(max: number, label: string): Transform {
-  let seen = 0;
-  return new Transform({
-    transform(chunk: Buffer, _encoding, done) {
-      seen += chunk.length;
-      if (seen > max) {
-        done(new Error(`${label} exceeded the size limit`));
-        return;
-      }
-      done(null, chunk);
-    },
-  });
-}
 
 /** An octal field, space- and NUL-padded as tar writes them. */
 function octal(buf: Buffer, at: number, len: number): number {
@@ -486,49 +385,30 @@ export async function unpackTarGz(
   archive: string,
   into: string,
   platform: string,
-  limits: ArchiveLimits = UPDATE_ARCHIVE_LIMITS,
 ): Promise<number> {
-  const compressedSize = assertCompressedArchiveLimit(archive, limits);
-  /* The gzip stream has no per-entry compressed sizes, so apply the same ratio
-   * to its complete decompressed tar while still enforcing the total ceiling. */
-  const maxPlain = Math.min(
-    maxPlainTarBytes(limits),
-    Math.max(TAR_BLOCK * 2, compressedSize * limits.maxCompressionRatio),
-  );
   const plain = `${archive}.plain`;
   try {
     await pipeline(
       fs.createReadStream(archive),
       zlib.createGunzip(),
-      byteLimit(maxPlain, "the archive's expanded tar"),
       fs.createWriteStream(plain),
     );
-    return unpackTar(plain, into, platform, limits);
+    return unpackTar(plain, into, platform);
   } finally {
     fs.rmSync(plain, { force: true });
   }
 }
 
 /** Unpack an uncompressed tar. Also the second half of unpackTarGz. */
-export function unpackTar(
-  archive: string,
-  into: string,
-  platform: string,
-  limits: ArchiveLimits = UPDATE_ARCHIVE_LIMITS,
-): number {
+export function unpackTar(archive: string, into: string, platform: string): number {
   const fd = fs.openSync(archive, "r");
   try {
-    const total = archiveSize(archive);
-    if (total > maxPlainTarBytes(limits)) {
-      throw new Error("the archive's expanded tar is over the size limit");
-    }
+    const total = fs.statSync(archive).size;
     const header = Buffer.alloc(TAR_BLOCK);
     const copy = Buffer.alloc(64 * 1024);
     const links: { dest: string; target: string; name: string }[] = [];
     let at = 0;
     let count = 0;
-    let seen = 0;
-    let expanded = 0;
     /* GNU tar writes a name longer than 100 bytes as an 'L' entry whose CONTENT
      * is the name, immediately before the entry it belongs to. */
     let pendingName: string | null = null;
@@ -539,21 +419,7 @@ export function unpackTar(
       at += TAR_BLOCK;
       if (!h) break;
       const dataAt = at;
-      const padded = Math.ceil(h.size / TAR_BLOCK) * TAR_BLOCK;
-      if (!Number.isSafeInteger(padded) || dataAt + padded > total) {
-        throw new Error("the archive ended inside an entry");
-      }
-      at += padded;
-      if (++seen > limits.maxEntries) {
-        throw new Error(`the archive has more than ${String(limits.maxEntries)} entries`);
-      }
-      if (h.size > limits.maxEntryBytes) {
-        throw new Error("the archive contains an entry over the per-entry size limit");
-      }
-      expanded += h.size;
-      if (expanded > limits.maxTotalBytes) {
-        throw new Error("the archive is over the total expanded size limit");
-      }
+      at += Math.ceil(h.size / TAR_BLOCK) * TAR_BLOCK;
 
       if (h.type === "L" || h.type === "K") {
         const buf = Buffer.alloc(h.size);
@@ -637,11 +503,10 @@ export async function unpackArchive(
   archive: string,
   into: string,
   platform: string,
-  limits: ArchiveLimits = UPDATE_ARCHIVE_LIMITS,
 ): Promise<number> {
   if (archive.endsWith(".tar.gz") || archive.endsWith(".tgz")) {
-    return unpackTarGz(archive, into, platform, limits);
+    return unpackTarGz(archive, into, platform);
   }
-  if (archive.endsWith(".zip")) return unpackZip(archive, into, platform, limits);
+  if (archive.endsWith(".zip")) return unpackZip(archive, into, platform);
   throw new Error(`there is no way to unpack ${path.basename(archive)}`);
 }
