@@ -1401,6 +1401,8 @@ export interface SavedHistoryInfo {
   artifactName: string;
   turn: number;
   event: string;
+  /** A mod saved `event` as raw user input for display-time expansion. */
+  expandUserInput?: true;
   /** Legacy JSON saves used a numeric aIdx; never written by this version. */
   aIdx?: number;
 }
@@ -1455,6 +1457,7 @@ export function serializePlayer(
       artifactName: ids.artifactName(e.aIdx) ?? "",
       turn: e.turn,
       event: e.event,
+      ...(e.expandUserInput === true ? { expandUserInput: true } : {}),
     })),
     equipment: [...p.equipment],
     objKnown: {
@@ -1581,6 +1584,7 @@ export function deserializePlayer(
       aIdx,
       turn: e.turn,
       event: e.event,
+      ...(e.expandUserInput === true ? { expandUserInput: true } : {}),
     });
   }
   p.equipment = [...data.equipment];

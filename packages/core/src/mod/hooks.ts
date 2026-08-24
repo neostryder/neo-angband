@@ -74,6 +74,45 @@ import type { GameState } from "../game/context.js";
 import type { OptionStateData } from "../player/options.js";
 
 /**
+ * A history entry offered to the write seam.
+ *
+ * `what` and `expandUserInput` are deliberately writable.  `historyAdd` is a
+ * conjunctive veto: every contributor gets one shared request, so a rewrite by
+ * one contributor remains visible to the contributors after it without turning
+ * their existing boolean vote into a last-wins decision.  The engine owns the
+ * type and duplicate facts; a mod may change neither.
+ */
+export interface HistoryAddEntry {
+  /** Text core would faithfully persist when no mod changes this request. */
+  what: string;
+  /** The HIST_* bit for this entry, supplied by the writer. */
+  readonly type: number;
+  /** Whether core identified this as a duplicate of an earlier entry. */
+  readonly duplicate: boolean;
+  /**
+   * The unexpanded text typed for a user note, when this writer has one.
+   * Context only: it is never persisted unless a hook copies it into `what`.
+   */
+  readonly rawUserInput?: string;
+  /**
+   * Persisted beside `what` when true.  It says `what` is a raw user note that
+   * must be expanded by `historyDisplay`, rather than ordinary display-ready
+   * history text.
+   */
+  expandUserInput?: true;
+}
+
+/** The persisted facts a history-display hook needs to turn an entry into text. */
+export interface HistoryDisplayEntry {
+  /** Text saved in the history entry. */
+  readonly what: string;
+  /** The HIST_* bitmask saved in the history entry. */
+  readonly type: number;
+  /** True only for a write hook's raw user-note representation. */
+  readonly expandUserInput?: true;
+}
+
+/**
  * A mod's behaviour contributions. Every member is optional; an absent member
  * means "this mod does not touch that point" and core takes its faithful path.
  *
@@ -150,15 +189,31 @@ export interface ModHooks {
   artifactCommit?: (aidx: number, alreadyCreated: boolean) => boolean;
 
   /**
-   * A character-history entry about to be written (session/game.ts and any
-   * other historyAdd call site that passes its context).
+   * A character-history entry about to be written (session/game.ts and the
+   * host's note command).
    *
-   * Return false to suppress the entry. Faithful core writes every entry it
-   * reaches, duplicates included.
+   * Return false to suppress the entry.  Faithful core writes every entry it
+   * reaches, duplicates included.  A contributor may also rewrite the shared
+   * `entry.what` and set `entry.expandUserInput`; the latter preserves a raw
+   * user note for display-time expansion.  A contribution that only returns
+   * true has exactly the old veto-only behaviour.
    *
-   * Serves: the bug-fixes mod's no-duplicate-unique-kill fix (#4245).
+   * Serves: the bug-fixes mod's no-duplicate-unique-kill fix (#4245), and raw
+   * user-note storage for post-4.2.6 history-note behaviour.
    */
-  historyAdd?: (entry: { readonly what: string; readonly type: number; readonly duplicate: boolean }) => boolean;
+  historyAdd?: (entry: HistoryAddEntry) => boolean;
+
+  /**
+   * A persisted history entry immediately before the web history screen or
+   * character dump shows it (screens.ts' shared history rows).
+   *
+   * Return the text to show.  Faithful core shows `entry.what` unchanged.  The
+   * hook must only restate an entry's display text: it does not alter history or
+   * save data, and it is chained in load order like messageText.
+   *
+   * Serves: expanding a raw user note saved by historyAdd.
+   */
+  historyDisplay?: (entry: HistoryDisplayEntry, playerName: string) => string;
 
   /**
    * Whether the noise and scent heatmaps belong in the save (session/save.ts,
@@ -227,7 +282,7 @@ export interface ModHooks {
  *  - ORDERING hooks (objectListTiebreak) chain the same way round: the last
  *    mod's comparator is the primary key and earlier ones break the ties it
  *    leaves, which is a valid total order and is "later wins" for a comparator.
- *  - TRANSFORM hooks (messageText) compose in load order, each seeing the
+ *  - TRANSFORM hooks (messageText, historyDisplay) compose in load order, each seeing the
  *    previous one's output - so the last mod still speaks last and has the final
  *    say over the text that reaches the player.
  *  - VETO hooks (levelGenerated, artifactCommit, historyAdd) are conjunctive:
@@ -286,6 +341,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   levelGenerated: "all-must-agree",
   artifactCommit: "all-must-agree",
   historyAdd: "all-must-agree",
+  historyDisplay: "chained",
   saveNoiseScent: "any-yes",
   messageText: "chained",
   optionsChanged: "all-observe",
@@ -394,6 +450,14 @@ export function guardModHooks(
       guard("historyAdd", () => history(entry), true);
   }
 
+  const historyDisplay = hooks.historyDisplay;
+  if (historyDisplay) {
+    /* Show the stored text unchanged if a display formatter throws.  A broken
+     * formatter must not make the character history or its dump disappear. */
+    out.historyDisplay = (entry, playerName): string =>
+      guard("historyDisplay", () => historyDisplay(entry, playerName), entry.what);
+  }
+
   const noise = hooks.saveNoiseScent;
   if (noise) {
     /* OMIT them, the upstream behaviour. */
@@ -485,6 +549,15 @@ export function composeModHooks(
     out.historyAdd = (entry): boolean => {
       for (const fn of history) if (!fn(entry)) return false;
       return true;
+    };
+  }
+
+  const historyDisplay = list.map((c) => c.historyDisplay).filter(isFn);
+  if (historyDisplay.length > 0) {
+    out.historyDisplay = (entry, playerName): string => {
+      let what = entry.what;
+      for (const fn of historyDisplay) what = fn({ ...entry, what }, playerName);
+      return what;
     };
   }
 

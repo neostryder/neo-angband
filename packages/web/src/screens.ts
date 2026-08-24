@@ -1509,7 +1509,7 @@ export function messageHistoryScreen(log: MessageLog, title = "Message history")
         kind: "table",
         key: "log",
         tagged: false,
-        columns: [{ key: "message", wrap: true }],
+        columns: [{ key: "message", pad: false }],
         rows: log.all().map((m) => ({
           ...(m.color === undefined ? {} : { color: m.color }),
           values: { count: m.count },
@@ -1546,7 +1546,7 @@ const HIST_KNOWN_GOLD = UI_GOLD;
 const PLAYER_HISTORY_COLUMNS: readonly ScreenColumn[] = [
   { key: "turn", label: "Turn", width: 10, align: "right" },
   { key: "depth", label: "Depth", width: 8, align: "right", gap: 0 },
-  { key: "note", label: "Note", gap: 2, wrap: true },
+  { key: "note", label: "Note", gap: 2, pad: false },
 ];
 
 export function playerHistoryScreen(state: GameState, title = "Player history"): ScreenView {
@@ -1564,6 +1564,19 @@ export function playerHistoryScreen(state: GameState, title = "Player history"):
         rows: list.map((e) => {
           const lost = histHas(e.type, HIST.ARTIFACT_LOST);
           const known = histHas(e.type, HIST.ARTIFACT_KNOWN);
+          /* This one row model feeds both history_display and dump_history via
+           * historyLines(), so a display hook reaches the terminal and the
+           * character dump alike.  Faithful entries have no marker or hook and
+           * keep their event text byte-for-byte. */
+          const note =
+            state.modHooks?.historyDisplay?.(
+              {
+                what: e.event,
+                type: e.type,
+                ...(e.expandUserInput === true ? { expandUserInput: true } : {}),
+              },
+              state.actor.player.fullName,
+            ) ?? e.event;
           return {
             color: lost ? DIM : known ? HIST_KNOWN_GOLD : FG,
             /* clev never reaches the terminal's three fields, and is exactly the
@@ -1572,7 +1585,7 @@ export function playerHistoryScreen(state: GameState, title = "Player history"):
             cells: {
               turn: { text: String(e.turn) },
               depth: { text: `${e.dlev * 50}'` },
-              note: { text: `${e.event}${lost ? " (LOST)" : ""}` },
+              note: { text: `${note}${lost ? " (LOST)" : ""}` },
             },
           };
         }),

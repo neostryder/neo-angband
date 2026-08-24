@@ -44,6 +44,7 @@ describe("composeModHooks: nothing in, nothing out", () => {
     expect(composed?.levelGenerated).toBeUndefined();
     expect(composed?.artifactCommit).toBeUndefined();
     expect(composed?.historyAdd).toBeUndefined();
+    expect(composed?.historyDisplay).toBeUndefined();
     expect(composed?.saveNoiseScent).toBeUndefined();
     expect(composed?.walkBlockedByDiggable).toBeUndefined();
     expect(composed?.objectListTiebreak).toBeUndefined();
@@ -108,12 +109,48 @@ describe("veto hooks are conjunctive", () => {
     expect(composed?.historyAdd?.({ what: "Killed Grip", type: 1, duplicate: true })).toBe(false);
   });
 
-  it("historyAdd: all accepting writes the entry", () => {
+  it("historyAdd: an existing true vote leaves the faithful write unchanged", () => {
     const composed = composeModHooks([
       { historyAdd: () => true },
       { historyAdd: () => true },
     ]);
-    expect(composed?.historyAdd?.({ what: "Killed Grip", type: 1, duplicate: false })).toBe(true);
+    const entry = { what: "Killed Grip", type: 1, duplicate: false };
+    expect(composed?.historyAdd?.(entry)).toBe(true);
+    expect(entry).toEqual({ what: "Killed Grip", type: 1, duplicate: false });
+  });
+
+  it("historyAdd: contributors share a writable text and raw-note marker while votes stay conjunctive", () => {
+    const seen: string[] = [];
+    const composed = composeModHooks([
+      {
+        historyAdd: (entry) => {
+          entry.what = entry.rawUserInput!;
+          entry.expandUserInput = true;
+          return true;
+        },
+      },
+      {
+        historyAdd: (entry) => {
+          seen.push(`${entry.what}:${entry.expandUserInput}`);
+          return true;
+        },
+      },
+    ]);
+    const entry = {
+      what: '-- Elrond says: "A full note"',
+      type: 1,
+      duplicate: false,
+      rawUserInput: "/say A full note",
+    };
+    expect(composed?.historyAdd?.(entry)).toBe(true);
+    expect(entry).toEqual({
+      what: "/say A full note",
+      type: 1,
+      duplicate: false,
+      rawUserInput: "/say A full note",
+      expandUserInput: true,
+    });
+    expect(seen).toEqual(["/say A full note:true"]);
   });
 });
 
@@ -124,6 +161,19 @@ describe("transform hooks chain in load order", () => {
       { messageText: (s) => `${s}-b` },
     ]);
     expect(composed?.messageText?.("x")).toBe("x-a-b");
+  });
+
+  it("historyDisplay: each formatter sees the text produced before it", () => {
+    const composed = composeModHooks([
+      { historyDisplay: (entry) => `${entry.what}-a` },
+      { historyDisplay: (entry, playerName) => `${playerName}:${entry.what}-b` },
+    ]);
+    expect(
+      composed?.historyDisplay?.(
+        { what: "/say a note", type: 1, expandUserInput: true },
+        "Elrond",
+      ),
+    ).toBe("Elrond:/say a note-a-b");
   });
 
   it("messageText: order matters, so the fold is not commutative", () => {
@@ -397,6 +447,21 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       }),
       run: (h) => h.historyAdd?.({ what: "x", type: 0, duplicate: false }),
     },
+    historyDisplay: {
+      yes: (log, tag) => ({
+        historyDisplay: (entry) => {
+          log.push(tag);
+          return entry.what + tag;
+        },
+      }),
+      no: (log, tag) => ({
+        historyDisplay: (entry) => {
+          log.push(tag);
+          return entry.what;
+        },
+      }),
+      run: (h) => h.historyDisplay?.({ what: "x", type: 0 }, "Tester"),
+    },
     saveNoiseScent: {
       yes: (log, tag) => ({
         saveNoiseScent: () => {
@@ -521,6 +586,13 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
     expect(hooks.historyAdd?.({ what: "Killed Grip", type: 1, duplicate: false })).toBe(true);
   });
 
+  it("historyDisplay preserves the stored text rather than blanking history", () => {
+    const { hooks } = guarded({ historyDisplay: THROWS });
+    expect(hooks.historyDisplay?.({ what: "Killed Grip", type: 1 }, "Tester")).toBe(
+      "Killed Grip",
+    );
+  });
+
   it("saveNoiseScent omits them, the upstream behaviour", () => {
     const { hooks } = guarded({ saveNoiseScent: THROWS });
     expect(hooks.saveNoiseScent?.()).toBe(false);
@@ -598,6 +670,7 @@ describe("guardModHooks: it wraps, and does not invent", () => {
     const { hooks } = guarded({ messageText: (s) => s });
     expect(hooks.messageText).toBeTypeOf("function");
     expect(hooks.historyAdd).toBeUndefined();
+    expect(hooks.historyDisplay).toBeUndefined();
     expect(hooks.levelGenerated).toBeUndefined();
     expect(hooks.artifactCommit).toBeUndefined();
     expect(hooks.saveNoiseScent).toBeUndefined();
