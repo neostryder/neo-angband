@@ -492,7 +492,6 @@ export function processWorld(state: GameState): void {
           p,
           state.options?.get("birth_force_descend") ?? false,
           state.z,
-          state.levelTopology,
         );
         state.targetDepth = p.recallDepth;
       }
@@ -507,13 +506,7 @@ export function processWorld(state: GameState): void {
       /* game-world.c:817-819: the same dungeon_get_next_level the effect used
        * when it armed the descent. */
       const increment = Math.trunc(4 / state.z.stairSkip) + 1;
-      const targetDepth = dungeonGetNextLevel(
-        p,
-        p.maxDepth,
-        increment,
-        state.z,
-        state.levelTopology,
-      );
+      const targetDepth = dungeonGetNextLevel(p, p.maxDepth, increment, state.z);
       /* disturb(player) (game-world.c:820), before either outcome - the floor
        * opening beneath you interrupts whatever you were doing even when the
        * descent has nowhere to go and throws you back instead. */

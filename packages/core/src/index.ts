@@ -31,7 +31,6 @@ export * from "./world/flow.js";
 export * from "./world/project.js";
 export * from "./world/projection.js";
 export * from "./world/trap.js";
-export * from "./world/topology.js";
 export * from "./effects/effect.js";
 export * from "./effects/effect-info.js";
 export * from "./effects/effect-info-registry.js";

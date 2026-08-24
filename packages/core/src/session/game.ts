@@ -1227,7 +1227,6 @@ function wireGame(
     reg: reg.objects,
     alloc: new ObjAllocState(reg.objects, reg.constants),
     constants: reg.constants,
-    chestTraps: reg.chestTraps,
     artifacts: state.artifacts ?? new ArtifactState(reg.objects.artifacts.length),
     noArtifacts: state.options?.get("birth_no_artifacts") ?? false,
     /* The mod behaviour seam: read state.modHooks LIVE, not captured, so a mod
@@ -1358,16 +1357,7 @@ function wireGame(
        * bare `depth + dir` - no stair_skip, no max_depth clamp and, worst,
        * no quest scan. */
       getNextLevel: (from: number, dir: 1 | -1): number =>
-        dungeonGetNextLevel(
-          state.actor.player,
-          from,
-          dir,
-          state.z,
-          state.levelTopology,
-        ),
-      canTravelLevel: (from: number, dir: 1 | -1): boolean =>
-        state.levelTopology?.canTravel(from, dir) ??
-        (from + dir >= 0 && from + dir < state.z.maxDepth),
+        dungeonGetNextLevel(state.actor.player, from, dir, state.z),
       changeLevel: (targetDepth: number): void => {
         state.targetDepth = targetDepth;
         state.generateLevel = true;
@@ -2081,9 +2071,8 @@ function wireGame(
               s.chunk.depth,
               1,
               s.z,
-              s.levelTopology,
             );
-            if (s.targetDepth !== s.chunk.depth) s.generateLevel = true;
+            s.generateLevel = true;
           },
           /* disturb(player) before trap effects (trap.c:525-526). */
           disturb: (): void => disturb(state),
@@ -2122,7 +2111,6 @@ function wireGame(
     chestDeps = {
       makeDeps,
       floorEnv,
-      traps: reg.chestTraps,
       effects: {
         registry: effects,
         cast,
@@ -2847,18 +2835,10 @@ function makeChangeLevel(
     let joinInfo: ReturnType<typeof getJoinInfo> | undefined;
     let minSize: { height: number; width: number } | undefined;
     if (persist && persistCache) {
-      const aboveDepth = reg.topology.nextDepth(depth, -1);
-      const belowDepth = reg.topology.nextDepth(depth, 1);
-      const twoAboveDepth = reg.topology.nextDepth(aboveDepth, -1);
-      const twoBelowDepth = reg.topology.nextDepth(belowDepth, 1);
-      const above =
-        aboveDepth === depth ? undefined : persistCache.get(aboveDepth)?.join;
-      const twoAbove =
-        twoAboveDepth === aboveDepth ? undefined : persistCache.get(twoAboveDepth)?.join;
-      const below =
-        belowDepth === depth ? undefined : persistCache.get(belowDepth)?.join;
-      const twoBelow =
-        twoBelowDepth === belowDepth ? undefined : persistCache.get(twoBelowDepth)?.join;
+      const above = persistCache.get(depth - 1)?.join;
+      const twoAbove = persistCache.get(depth - 2)?.join;
+      const below = persistCache.get(depth + 1)?.join;
+      const twoBelow = persistCache.get(depth + 2)?.join;
       joinInfo = getJoinInfo({
         ...(above ? { above } : {}),
         ...(twoAbove ? { twoAbove } : {}),
@@ -2923,12 +2903,8 @@ function makeChangeLevel(
          * already exist in the frozen-level cache, so handle_level_stairs skips
          * the alloc_stairs for a direction the neighbour already seeded. Passed
          * unconditionally; only read under persist. */
-        hasAdjacentAbove:
-          reg.topology.canTravel(depth, -1) &&
-          (persistCache?.has(reg.topology.nextDepth(depth, -1)) ?? false),
-        hasAdjacentBelow:
-          reg.topology.canTravel(depth, 1) &&
-          (persistCache?.has(reg.topology.nextDepth(depth, 1)) ?? false),
+        hasAdjacentAbove: persistCache?.has(depth - 1) ?? false,
+        hasAdjacentBelow: persistCache?.has(depth + 1) ?? false,
         /* get_min_level_size's answer (prepare_next_level L1531-1546), the
          * only producer these two builder inputs have. Omitted entirely when
          * not persisting, so generateLevel keeps its own defaults. */
@@ -2945,7 +2921,6 @@ function makeChangeLevel(
         ...(jumpProfileName ? { profileName: jumpProfileName } : {}),
       },
     );
-    g.c.name = reg.topology.nameAtDepth(depth);
     /* chunk->join (generate.c L1203-1214): remember this level's stair
      * connectors for freezing and adjacent-level alignment. Gated on persist so
      * that with birth_levels_persist off the field stays unset and the savefile
@@ -3630,8 +3605,6 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   const state: GameState = {
     rng: booted.rng,
     chunk: booted.chunk,
-    levelTopology: reg.topology,
-    chestTraps: reg.chestTraps,
     actor,
     gear,
     monsters: [null],
@@ -4487,8 +4460,6 @@ export function loadGame(
   const state: GameState = {
     rng,
     chunk,
-    levelTopology: reg.topology,
-    chestTraps: reg.chestTraps,
     actor,
     gear,
     decoy,

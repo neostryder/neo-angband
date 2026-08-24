@@ -1126,33 +1126,17 @@ export function installCaveCommands(
       return 0;
     }
     /* Paranoia, no descent from max_depth - 1 (cmd-cave.c:115-119). */
-    if (
-      state.levelTopology
-        ? !state.levelTopology.canTravel(state.chunk.depth, 1)
-        : state.chunk.depth === state.z.maxDepth - 1
-    ) {
+    if (state.chunk.depth === state.z.maxDepth - 1) {
       env.msg?.("The dungeon does not appear to extend deeper");
       return 0;
     }
     /* dungeon_get_next_level (cmd-cave.c:103): the quest scan is what keeps a
      * player on 99 while Sauron lives instead of landing them on Morgoth. */
-    let descendTo = dungeonGetNextLevel(
-      p,
-      state.chunk.depth,
-      1,
-      state.z,
-      state.levelTopology,
-    );
+    let descendTo = dungeonGetNextLevel(p, state.chunk.depth, 1, state.z);
     /* Warn a force_descend player about a quest level (cmd-cave.c:121-128).
      * force_descend measures from max_depth, not from here. */
     if (state.options?.get("birth_force_descend")) {
-      descendTo = dungeonGetNextLevel(
-        p,
-        p.maxDepth,
-        1,
-        state.z,
-        state.levelTopology,
-      );
+      descendTo = dungeonGetNextLevel(p, p.maxDepth, 1, state.z);
       if (
         isQuest(p, descendTo) &&
         !(env.confirm ?? ((): boolean => true))("Are you sure you want to descend? ")
@@ -1189,7 +1173,6 @@ export function installCaveCommands(
       state.chunk.depth,
       -1,
       state.z,
-      state.levelTopology,
     );
     if (ascendTo === state.chunk.depth) {
       /* do_cmd_go_up (cmd-cave.c:78-81): can't ascend past the top level. */

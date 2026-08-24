@@ -47,7 +47,6 @@ import type { Aspect, Rng } from "../rng.js";
 import type { ObjRegistry } from "./bind.js";
 import type { CurseTimedFoil, GameObject } from "./object.js";
 import { pickChestTraps } from "./chest.js";
-import type { ChestTrapEntry } from "./chest.js";
 import { seedTval, tvalRegistry } from "./tval-registry.js";
 import type { TvalGoodHandler } from "./tval-registry.js";
 import { objectValueReal } from "./value.js";
@@ -1122,8 +1121,6 @@ export interface MakeDeps {
   reg: ObjRegistry;
   alloc: ObjAllocState;
   constants: Constants;
-  /** The composed chest_trap.json table; absent only for worldless callers. */
-  chestTraps?: readonly ChestTrapEntry[];
   /**
    * aup_info[]: the shared per-artifact created flags. MUST be the single
    * instance owned by the game so every generation path (dungeon levels,
@@ -1223,7 +1220,7 @@ export function applyMagic(
       }
     }
   } else if (tvalIsChest(obj.tval)) {
-    obj.pval = pickChestTraps(rng, obj, deps.chestTraps);
+    obj.pval = pickChestTraps(rng, obj);
   }
 
   /* Apply minima from ego items if necessary */

@@ -62,7 +62,6 @@ import {
   tvalIsWeapon,
 } from "./object.js";
 import { chestTrapName } from "./chest.js";
-import type { ChestTrapEntry } from "./chest.js";
 import type { RuneEnv } from "./knowledge.js";
 import { OBJ_NOTICE, objectHasStandardToH } from "./knowledge.js";
 import type { KnownDesc } from "./known-object.js";
@@ -416,14 +415,10 @@ function objDescShowArmor(shadow: GameObject, gates: CombatGates): boolean {
  * pval (obj->known->pval), which chests never populate under the current
  * knowledge simplification (#24), so this only ever fires for pval 0.
  */
-function objDescChest(
-  obj: GameObject,
-  shadow: GameObject,
-  chestTraps?: readonly ChestTrapEntry[],
-): string {
+function objDescChest(obj: GameObject, shadow: GameObject): string {
   if (!tvalIsChest(obj.tval)) return "";
   if (obj.pval && !shadow.pval) return "";
-  return ` (${chestTrapName(obj, chestTraps)})`;
+  return ` (${chestTrapName(obj)})`;
 }
 
 /**
@@ -626,7 +621,6 @@ export function objectDesc(
   env: RuneEnv,
   deps: KnownDesc,
   altnum?: number,
-  chestTraps?: readonly ChestTrapEntry[],
 ): string {
   const prefix = (mode & ODESC.PREFIX) !== 0;
   const spoil = (mode & ODESC.SPOIL) !== 0;
@@ -698,7 +692,7 @@ export function objectDesc(
 
   /* Combat properties (L645-652). */
   if (mode & ODESC.COMBAT) {
-    if (tvalIsChest(obj.tval)) out += objDescChest(obj, shadow, chestTraps);
+    if (tvalIsChest(obj.tval)) out += objDescChest(obj, shadow);
     else if (tvalIsLight(obj.tval)) out += objDescLight(obj);
 
     out += objDescCombat(shadow, mode, gates, env);

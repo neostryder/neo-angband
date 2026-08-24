@@ -18,9 +18,9 @@
  * game/chest.ts alongside its sibling trap.ts, since it needs floor piles,
  * the effect interpreter and player state.
  *
- * `CHEST_TRAPS` remains the safe table for worldless callers.  A full game
- * binds chest_trap.json through `bindChestTraps()` and passes that composed
- * table through its generation and command paths.
+ * The 7 chest_trap.txt entries are hardcoded here (fixed, small, and
+ * unlikely to change); a future data-driven parser is a moddability
+ * follow-up, not required for this port.
  */
 
 import type { Rng } from "../rng.js";
@@ -48,18 +48,6 @@ export interface ChestTrapEntry {
   msg: string | null;
   msgDeath: string | null;
   effect: readonly EffectRecordJson[];
-}
-
-/** The compiled chest_trap.json shape before it is made runtime-ready. */
-export interface ChestTrapRecordJson {
-  name: string;
-  code: string;
-  level: number;
-  magic?: number | boolean;
-  destroy?: number | boolean;
-  msg?: string[];
-  "msg-death"?: string[];
-  effect?: EffectRecordJson[];
 }
 
 /**
@@ -146,36 +134,8 @@ export const CHEST_TRAPS: readonly ChestTrapEntry[] = [
   },
 ];
 
-/**
- * Bind the composed chest_trap.json records.  The file's order assigns pval
- * bits upstream, so a patch keeps the original bit and an appended record gets
- * the next one without inventing a second identity field.
- */
-export function bindChestTraps(
-  records: readonly ChestTrapRecordJson[] | undefined,
-): readonly ChestTrapEntry[] {
-  if (!records) return CHEST_TRAPS;
-  return records.map((record, index) => {
-    if (!record || typeof record.name !== "string" || !Number.isInteger(record.level)) {
-      throw new Error(`chest_trap: record ${index}: invalid name or level`);
-    }
-    if (index > 30) throw new Error("chest_trap: too many traps for the pval bitmask");
-    return {
-      name: record.name,
-      pval: 2 ** index,
-      level: record.level,
-      magic: record.magic === true || record.magic === 1,
-      destroy: record.destroy === true || record.destroy === 1,
-      msg: firstMessage(record.msg),
-      msgDeath: firstMessage(record["msg-death"]),
-      effect: record.effect ?? [],
-    };
-  });
-}
-
-function firstMessage(messages: readonly string[] | undefined): string | null {
-  return typeof messages?.[0] === "string" ? messages[0] : null;
-}
+/** The traps after the "locked" sentinel (chest_traps->next in the C list). */
+const PICKABLE_TRAPS: readonly ChestTrapEntry[] = CHEST_TRAPS.slice(1);
 
 /**
  * pick_one_chest_trap (obj-chest.c L359): count traps after the "locked"
@@ -211,12 +171,8 @@ export function pickLevelGated<T extends { level: number }>(
   return result;
 }
 
-export function pickOneChestTrap(
-  rng: Rng,
-  level: number,
-  traps: readonly ChestTrapEntry[] = CHEST_TRAPS,
-): number {
-  return pickLevelGated(rng, level, traps.slice(1)).pval;
+export function pickOneChestTrap(rng: Rng, level: number): number {
+  return pickLevelGated(rng, level, PICKABLE_TRAPS).pval;
 }
 
 /**
@@ -225,11 +181,7 @@ export function pickOneChestTrap(
  * order (see the parity notes on this gap): a one_in_(10) short-circuit,
  * then the first pick, then level-gated second/third/fourth picks.
  */
-export function pickChestTraps(
-  rng: Rng,
-  obj: GameObject,
-  traps: readonly ChestTrapEntry[] = CHEST_TRAPS,
-): number {
+export function pickChestTraps(rng: Rng, obj: GameObject): number {
   const level = obj.kind.level;
   let trap = 0;
 
@@ -237,19 +189,19 @@ export function pickChestTraps(
   if (rng.oneIn(10)) return 1;
 
   /* Pick a trap, add it. */
-  trap |= pickOneChestTrap(rng, level, traps);
+  trap |= pickOneChestTrap(rng, level);
 
   /* Level dependent chance of a second trap (may overlap the first one). */
   if (level > 5 && rng.oneIn(1 + Math.trunc((65 - level) / 10))) {
-    trap |= pickOneChestTrap(rng, level, traps);
+    trap |= pickOneChestTrap(rng, level);
   }
 
   /* Chance of a third trap for deep chests (may overlap existing traps). */
   if (level > 45 && rng.oneIn(65 - level)) {
-    trap |= pickOneChestTrap(rng, level, traps);
+    trap |= pickOneChestTrap(rng, level);
     /* Small chance of a fourth trap (may overlap existing traps). */
     if (rng.oneIn(40)) {
-      trap |= pickOneChestTrap(rng, level, traps);
+      trap |= pickOneChestTrap(rng, level);
     }
   }
 
@@ -280,15 +232,12 @@ export function isLockedChest(obj: GameObject): boolean {
  * matching trap's name, "multiple traps" for an overlapping pval, or
  * "empty".
  */
-export function chestTrapName(
-  obj: GameObject,
-  traps: readonly ChestTrapEntry[] = CHEST_TRAPS,
-): string {
+export function chestTrapName(obj: GameObject): string {
   const value = obj.pval;
   if (value < 0) return value === -1 ? "unlocked" : "disarmed";
   if (value > 0) {
     let found: ChestTrapEntry | null = null;
-    for (const trap of traps) {
+    for (const trap of CHEST_TRAPS) {
       if (value & trap.pval) {
         if (found) return "multiple traps";
         found = trap;
