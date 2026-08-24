@@ -12,7 +12,7 @@
  * unpack.ts.
  */
 
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -20,11 +20,14 @@ import { createHash } from "node:crypto";
 import {
   downloadArchive,
   extractCommand,
+  isAllowedAssetRedirect,
   isAllowedAssetUrl,
   isAllowedRevealUrl,
   isHttpUrl,
   isOwnLoopbackUrl,
   isWritable,
+  releaseTagFromRenderer,
+  resolveReleaseAsset,
   sha256File,
   shapeOf,
   stageArchive,
@@ -47,8 +50,11 @@ describe("where a download may come from", () => {
         REPO,
       ),
     ).toBe(true);
-    /* GitHub redirects asset downloads to this host. */
-    expect(isAllowedAssetUrl("https://objects.githubusercontent.com/x/y", REPO)).toBe(true);
+    /* GitHub redirects asset downloads to this host, but object URLs are never
+     * accepted as standalone inputs. */
+    expect(isAllowedAssetUrl("https://objects.githubusercontent.com/x/y", REPO)).toBe(false);
+    expect(isAllowedAssetRedirect("https://objects.githubusercontent.com/x/y", REPO, false)).toBe(false);
+    expect(isAllowedAssetRedirect("https://objects.githubusercontent.com/x/y", REPO, true)).toBe(true);
   });
 
   it("refuses another repository's assets", () => {
@@ -73,6 +79,54 @@ describe("where a download may come from", () => {
   it("refuses something that is not a URL at all", () => {
     expect(isAllowedAssetUrl("not a url", REPO)).toBe(false);
     expect(isAllowedAssetUrl("", REPO)).toBe(false);
+  });
+});
+
+describe("choosing the release archive in the main process", () => {
+  const tag = "v0.17.0";
+  const trustedUrl = `https://github.com/${REPO}/releases/download/${tag}/Neo.Angband-0.17.0-win.zip`;
+  const trustedDigest = "a".repeat(64);
+
+  it("rejects a renderer URL and digest, then derives them from GitHub's release metadata", async () => {
+    /* This is the old IPC shape. Rejecting it makes URL and digest incapable of
+     * crossing the renderer/main boundary even if a mod calls the bridge itself. */
+    expect(() =>
+      releaseTagFromRenderer({
+        tag,
+        url: "https://evil.invalid/update.zip",
+        sha256: "b".repeat(64),
+      }),
+    ).toThrow(/did not name a release/u);
+
+    const get = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          tag_name: tag,
+          assets: [
+            {
+              name: "Neo.Angband-0.17.0-win.zip",
+              browser_download_url: trustedUrl,
+              digest: `sha256:${trustedDigest}`,
+              size: 123,
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    await expect(
+      resolveReleaseAsset({
+        tag: releaseTagFromRenderer(tag),
+        repo: REPO,
+        platform: "win32",
+        arch: "x64",
+        fetch: get as unknown as typeof globalThis.fetch,
+      }),
+    ).resolves.toEqual({ url: trustedUrl, sha256: trustedDigest, size: 123 });
+    expect(get).toHaveBeenCalledWith(
+      `https://api.github.com/repos/${REPO}/releases/tags/${tag}`,
+      expect.objectContaining({ headers: { Accept: "application/vnd.github+json" } }),
+    );
   });
 });
 
@@ -206,6 +260,27 @@ describe("refusing to install what cannot be checked", () => {
         platform: "linux",
       }),
     ).rejects.toThrow(/unexpected host/u);
+  });
+
+  it("refuses a release redirect to a disallowed host before downloading it", async () => {
+    const get = vi.fn(async () =>
+      new Response(null, {
+        status: 302,
+        headers: { Location: "https://evil.invalid/update.zip" },
+      }),
+    );
+    await expect(
+      downloadArchive({
+        url: `https://github.com/${REPO}/releases/download/v1/x.zip`,
+        sha256: "a".repeat(64),
+        size: 1,
+        repo: REPO,
+        root,
+        platform: "linux",
+        fetch: get as unknown as typeof globalThis.fetch,
+      }),
+    ).rejects.toThrow(/redirected to an unexpected host/u);
+    expect(get).toHaveBeenCalledTimes(1);
   });
 });
 
