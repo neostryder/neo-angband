@@ -922,7 +922,12 @@ export function helpIndexLabels(roguelike = false): string[] {
  * rows to find it. `selectFromMenu` publishes one subtitle row, so the sentence
  * is upstream's two joined into one rather than its four lines transcribed.
  */
-const INDEX_SUBTITLE = "A short in-game reference. Full manual: angband.readthedocs.io/en/latest/";
+function indexSubtitle(): string {
+  return t(
+    "help.index.subtitle",
+    "A short in-game reference. Full manual: angband.readthedocs.io/en/latest/",
+  );
+}
 
 /**
  * `id` is the name a mod's `help` resource names in its `slot` to REPLACE a
@@ -999,10 +1004,10 @@ export async function runHelp(
     const pick = await selectFromMenu(
       term,
       "core:help-index",
-      "Angband Help",
+      t("help.index.title", "Angband Help"),
       index.map((entry) => ({ label: entry.label })),
-      "[ a-z to choose, ESC to exit ]",
-      { subtitle: INDEX_SUBTITLE },
+      t("help.index.footer", "[ a-z to choose, ESC to exit ]"),
+      { subtitle: indexSubtitle() },
     );
     if (pick === null) return;
     const entry = index[pick];
