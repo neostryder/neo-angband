@@ -88,7 +88,7 @@ management](docs/img/screenshots/neo-angband-mods.jpg) shows what a mod is
 before you decide whether to trust it: what it changes, what it asks for, and
 who wrote it.
 
-![The same town with all six official mods installed: neo-linoleum's Shockbolt Light, the ModForge tab bottom right](docs/img/screenshots/neo-angband-town-modded.jpg)
+![The same town with six official mods installed: neo-linoleum's Shockbolt Light, the ModForge tab bottom right](docs/img/screenshots/neo-angband-town-modded.jpg)
 
 Nothing above is a mockup - the mod family stays real content running in a real
 session. That same session is where [the Borg](https://github.com/neostryder/neo-angband-mod-borg)
@@ -163,6 +163,7 @@ the only way to know that route actually works.
 | [neo-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) | A second tile engine, and all of Angband's tile sets converted to it |
 | [borg](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player |
 | [forge](https://github.com/neostryder/neo-angband-mod-forge) | An in-game workshop for building a mod from something that already exists |
+| [upstream-catchup](https://github.com/neostryder/neo-angband-mod-upstream-catchup) | Changes Angband accepted after the 4.2.6 tag this port is pinned to, each cited to its commit |
 
 **What a mod can do:** change any value in any of the game's data files; add
 items, monsters, artifacts and whole new kinds of item; add or retune spells;

@@ -100,6 +100,7 @@ tests - file a bug about what a mod *does* there, and a bug about the mod
 | `borg` | [neo-angband-mod-borg](https://github.com/neostryder/neo-angband-mod-borg) | Angband's automatic player, ported onto the agent API ([docs](BORG_AS_MOD.md)). |
 | `feature-restoration` | [neo-angband-mod-feature-restoration](https://github.com/neostryder/neo-angband-mod-feature-restoration) | Mechanics later versions of Angband dropped, brought back one switch at a time, every switch off by default ([docs](modding/FEATURE_RESTORATION.md)). |
 | `forge` | [neo-angband-mod-forge](https://github.com/neostryder/neo-angband-mod-forge) | An in-game workshop for building a mod from something that already exists - a monster, an item, a shop, a spell - without ever having to know it is JSON ([docs](https://github.com/neostryder/neo-angband-mod-forge#readme)). |
+| `upstream-catchup` | [neo-angband-mod-upstream-catchup](https://github.com/neostryder/neo-angband-mod-upstream-catchup) | Changes upstream Angband accepted after the `4.2.6` tag core is pinned to, each cited by commit, every class of them off by default. It expires by design: a rebaseline onto a newer upstream tag makes every row in it redundant ([scope](modding/UPSTREAM_CATCHUP_MOD_SCOPE.md)). |
 
 ### Writing one
 
