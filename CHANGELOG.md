@@ -36,6 +36,14 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- Mods can observe a frozen level returning through the `levelRevisited` behaviour
+  hook. With no contributor, the port still resumes its cached level exactly as
+  4.2.6 did. The `upstream-catchup` mod uses the notification for upstream
+  `5c45eb958`'s noise-clear/scent-aging behaviour on persistent-level and
+  single-combat returns (neostryder/neo-angband#119).
+
 ## [0.33.0] - 2026-08-24
 
 ### Added

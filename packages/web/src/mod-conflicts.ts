@@ -277,6 +277,7 @@ function hookDescription(hook: keyof ModHooks): string {
     historyAdd: "which events reach your character history",
     historyDisplay: "how entries in your character history are shown",
     saveNoiseScent: "whether noise and scent maps go into the save",
+    levelRevisited: "what happens to transient tracking when a frozen level returns",
     messageText: "the wording of game messages",
     optionsChanged: "being told when you change your options",
   };
