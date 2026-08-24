@@ -1564,6 +1564,19 @@ export function playerHistoryScreen(state: GameState, title = "Player history"):
         rows: list.map((e) => {
           const lost = histHas(e.type, HIST.ARTIFACT_LOST);
           const known = histHas(e.type, HIST.ARTIFACT_KNOWN);
+          /* This one row model feeds both history_display and dump_history via
+           * historyLines(), so a display hook reaches the terminal and the
+           * character dump alike.  Faithful entries have no marker or hook and
+           * keep their event text byte-for-byte. */
+          const note =
+            state.modHooks?.historyDisplay?.(
+              {
+                what: e.event,
+                type: e.type,
+                ...(e.expandUserInput === true ? { expandUserInput: true } : {}),
+              },
+              state.actor.player.fullName,
+            ) ?? e.event;
           return {
             color: lost ? DIM : known ? HIST_KNOWN_GOLD : FG,
             /* clev never reaches the terminal's three fields, and is exactly the
@@ -1572,7 +1585,7 @@ export function playerHistoryScreen(state: GameState, title = "Player history"):
             cells: {
               turn: { text: String(e.turn) },
               depth: { text: `${e.dlev * 50}'` },
-              note: { text: `${e.event}${lost ? " (LOST)" : ""}` },
+              note: { text: `${note}${lost ? " (LOST)" : ""}` },
             },
           };
         }),
