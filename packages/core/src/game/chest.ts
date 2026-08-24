@@ -22,7 +22,7 @@ import { PN, SKILL } from "../player/types.js";
 import type { GameObject } from "../obj/object.js";
 import { tvalIsChest } from "../obj/object.js";
 import { CHEST_QUERY, CHEST_TRAPS, isTrappedChest } from "../obj/chest.js";
-import type { ChestQuery } from "../obj/chest.js";
+import type { ChestQuery, ChestTrapEntry } from "../obj/chest.js";
 import type { MakeDeps } from "../obj/make.js";
 import { makeObject } from "../obj/make.js";
 import type { FloorEnv } from "./floor.js";
@@ -68,6 +68,8 @@ export type ChestEffectsBundle = Pick<
 export interface ChestEffectDeps {
   effects?: ChestEffectsBundle;
   env?: ChestEnv;
+  /** The composed chest_trap.json table; worldless callers use CHEST_TRAPS. */
+  traps?: readonly ChestTrapEntry[];
 }
 
 /** Everything chest_death needs beyond the state. */
@@ -80,6 +82,8 @@ export interface ChestLootDeps {
 export interface ChestCmdDeps {
   effects?: ChestEffectsBundle;
   env?: ChestEnv;
+  /** The composed chest_trap.json table; worldless callers use CHEST_TRAPS. */
+  traps?: readonly ChestTrapEntry[];
   makeDeps: MakeDeps;
   floorEnv?: FloorEnv;
 }
@@ -149,7 +153,7 @@ export function chestTrap(
   if (traps <= 0) return;
   const env = deps.env ?? {};
 
-  for (const trap of CHEST_TRAPS) {
+  for (const trap of deps.traps ?? CHEST_TRAPS) {
     if (!(trap.pval & traps)) continue;
     if (trap.msg) env.msg?.(trap.msg);
     if (trap.effect.length && deps.effects) {
@@ -301,7 +305,7 @@ export function doCmdDisarmChest(
   const env = deps.env ?? {};
   let physical = false;
   let magic = false;
-  for (const trap of CHEST_TRAPS) {
+  for (const trap of deps.traps ?? CHEST_TRAPS) {
     if (!(trap.pval & obj.pval)) continue;
     if (trap.magic) magic = true;
     else physical = true;
