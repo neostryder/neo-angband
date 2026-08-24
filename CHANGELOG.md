@@ -36,6 +36,27 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-08-23
+
+### Security
+- The desktop updater no longer accepts a download URL or checksum from the
+  renderer. The main process re-reads the named release from GitHub and
+  resolves the platform asset's URL, digest, and size itself; redirects are
+  followed manually with a host check on every hop, and extraction now
+  enforces archive size, entry count, and expansion-ratio limits.
+- A content patch path such as `__proto__.x` no longer reaches
+  `Object.prototype`. Every path-walking entry point in the patch and compose
+  modules now rejects `__proto__`, `prototype`, and `constructor` and reads
+  only a container's own properties.
+- Repository mod downloads and imported `.neochar` saves now decompress
+  within the same resource limits the local mod importer already enforced,
+  instead of expanding an untrusted archive or save with no ceiling.
+- The game window no longer navigates away from its own origin on a
+  same-window navigation. The check that decides what counts as the game's
+  own address now parses the URL instead of matching a string prefix.
+- Three dependencies pinned to versions with published advisories
+  (`fast-uri`, `js-yaml`, `nanoid`) are updated.
+
 ## [0.30.0] - 2026-08-23
 
 ### Added
@@ -564,7 +585,7 @@ instead of a curated subset that had drifted from it.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.30.0` - a features release for mod
+Current state of the project at version `0.31.0` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again
