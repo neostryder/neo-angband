@@ -61,7 +61,7 @@ So the mod has real content, and it is verdict 2's five rows: master carries
 those tile assignments, which puts them inside "master minus tag" by definition.
 Everything else in the 161 is somebody else's job or nobody's.
 
-## The five rows
+## The six rows
 
 | SHA | Date | One-line | Class / toggle | Upstream site |
 |---|---|---|---|---|
@@ -70,6 +70,7 @@ Everything else in the 161 is somebody else's job or nobody's.
 | `9b04b692d` | 2026-03-18 | Post-tag tiles: Sip of Miruvor, Draught of the Ents (nomad set) | `catchup.tiles` | `nomad/graf-nmd.prf` |
 | `655812a54` | 2026-03-20 | Post-tag tiles: 8 adam-bolt monster and object assignments | `catchup.tiles` | `adam-bolt/graf-new.prf` |
 | `ab2d65386` | 2026-03-24 | Comment-only: removes a stale note about numeric SVALs | - | none needed |
+| `f1b1626f6` | 2026-07-26 | Corrects the spelling of Ossë in the Trident 'of Wrath' description | `catchup.text` | `lib/gamedata/artifact.txt` |
 
 Dates read from `git log` against the upstream range; the triage itself did not
 record them per commit.
@@ -77,7 +78,22 @@ record them per commit.
 The first four shipped in the mod's `v0.1.0`, all four behind the single
 `catchup.tiles` flag. `ab2d65386` deletes two comment lines and changes no
 assignment, so it is named in the mod's README table rather than stubbed: a stub
-would be a row claiming work that does not exist.
+would be a row claiming work that does not exist. `f1b1626f6` shipped in `v0.1.1`
+behind a new `catchup.text` flag - the mod's first non-tile content, added after
+it surfaced briefly in the wrong place (`bug-fixes` 0.19.0, retracted in 0.19.1)
+and is the reason a fix's mod membership needs checking against the accepted-
+upstream-commit question every time, not just at the original triage.
+
+Four more candidates surfaced by a 2026-08-24 re-verification and re-sweep of
+`docs/modding/BUG_FIXES.md` also belong here rather than in `bug-fixes`, each
+citing an accepted upstream commit: player-note truncation
+(neostryder/neo-angband#114, PR #6665), a blast-radius array overrun
+(neostryder/neo-angband#117, commit `f0f6bd223`), shape-granted flags not
+learned without matching equipment (neostryder/neo-angband#118, commit
+`c8036c515`), and noise-on-reload / level-revisit handling
+(neostryder/neo-angband#119, commit `5c45eb958`, partial - see the issue for
+how it differs from `bug-fixes`' own noise/scent fix). None of the four is
+built yet.
 
 ### The seam they ride, and the one they do not
 
