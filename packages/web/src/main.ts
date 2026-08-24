@@ -430,6 +430,7 @@ import {
   setUiFaultReporter,
   screenFault,
   screenRegionSpec,
+  menuNav,
 } from "./overlay";
 import type { MenuItem, ItemMenuSource, ObjListRow, ScreenLine } from "./overlay";
 import { installMenu, setMenuPresenter } from "./menu-runtime";
@@ -11469,34 +11470,60 @@ async function paintInstallChoiceOnTerminal(
 ): Promise<void> {
   const lines = installChoiceLines({ canPromptInstall: canPromptInstall() });
   const footer = "[ D: desktop app   W: install as an app   ESC: back ]";
+  /* Content runs longer than the 20 body rows a 24-row terminal leaves after
+   * the title and footer - up to 26 lines, worst case. Scrolling reuses the
+   * same top/maxTop and "(a-b/n)" footer cue as paintViewOnTerminal's
+   * showTextScreen, rather than inventing a second convention for it; this
+   * screen is hand-painted only because it needs the D/W keys that helper
+   * does not offer, not because its body is exempt from that pattern. */
+  let top = 0;
 
   const paint = (): void => {
     const { cols, rows } = surface.size();
     surface.clear();
     surface.print(0, 1, "Install Neo Angband locally".slice(0, cols - 1), UI_GOLD);
-    for (let r = 0; r < lines.length && 3 + r < rows - 1; r++) {
-      const line = lines[r];
-      if (!line) continue;
+    const bodyRows = rows - 4;
+    const maxTop = Math.max(0, lines.length - bodyRows);
+    if (top > maxTop) top = maxTop;
+    for (let r = 0; r < bodyRows; r++) {
+      const line = lines[top + r];
+      if (!line) break;
       surface.print(0, 3 + r, line.text.slice(0, cols - 1), INSTALL_CHOICE_TONE[line.tone]);
     }
-    surface.print(0, rows - 1, footer.slice(0, cols - 1), UI_DIM);
+    const more =
+      maxTop > 0 ? `  (${top + 1}-${Math.min(top + bodyRows, lines.length)}/${lines.length})` : "";
+    surface.print(0, rows - 1, (footer + more).slice(0, cols - 1), UI_DIM);
   };
 
-  const key = (): Promise<string> =>
-    new Promise<string>((resolve) => {
+  const key = (): Promise<KeyboardEvent> =>
+    new Promise<KeyboardEvent>((resolve) => {
       const onKey = (ev: KeyboardEvent): void => {
-        if (ev.key.length !== 1 && ev.key !== "Escape") return;
+        if (ev.key.length !== 1 && ev.key !== "Escape" && !menuNav(ev)) return;
         ev.preventDefault();
         ev.stopImmediatePropagation();
         inputEvents.removeEventListener("keydown", onKey, true);
-        resolve(ev.key);
+        resolve(ev);
       };
       inputEvents.addEventListener("keydown", onKey, true);
     });
 
   for (;;) {
     paint();
-    const pressed = await key();
+    const ev = await key();
+    const { rows } = surface.size();
+    const bodyRows = rows - 4;
+    const maxTop = Math.max(0, lines.length - bodyRows);
+    const nav = menuNav(ev);
+    if (nav) {
+      if (nav === "up") top = Math.max(0, top - 1);
+      else if (nav === "down") top = Math.min(maxTop, top + 1);
+      else if (nav === "pageup") top = Math.max(0, top - Math.max(1, bodyRows - 1));
+      else if (nav === "pagedown") top = Math.min(maxTop, top + Math.max(1, bodyRows - 1));
+      else if (nav === "home") top = 0;
+      else if (nav === "end") top = maxTop;
+      continue;
+    }
+    const pressed = ev.key;
     if (pressed === "Escape") return;
     if (pressed === "d" || pressed === "D") {
       /* Synchronous, and before anything else: a browser only honours
