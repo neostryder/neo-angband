@@ -36,6 +36,8 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-08-24
+
 ### Added
 
 - Character history now exposes a write-time mod seam that can retain raw input
@@ -684,7 +686,7 @@ instead of a curated subset that had drifted from it.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.32.0` - a features release for mod
+Current state of the project at version `0.33.0` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again
