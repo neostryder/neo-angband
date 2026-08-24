@@ -11,10 +11,40 @@ anywhere and so you can change it without forking it.
 - **Add mods** when you want something different.
 - **Make your own mods** without maintaining a fork of Angband.
 
-> ## Want to make a mod? [Start here.](docs/modding/tutorials/README.md)
+> ## Try it now: [play in your browser](https://neostryder.github.io/neo-angband/)
 >
-> Never made one before? That is fine. The first tutorial takes about five
-> minutes, needs nothing but a text editor, and changes the game.
+> No install, no account, nothing to download. The link opens straight into
+> the game, and it keeps your save in that browser.
+>
+> **Why you might like playing this way:** it is the fastest way there is -
+> one click, and you are rolling a character.
+>
+> That copy is whatever GitHub last redeployed from `master`, so it can differ
+> between two sessions in a way no bug report can be pinned to. Every method
+> below plays the identical game, pinned to a version that does not move
+> under you:
+>
+> - **[Download a release](https://github.com/neostryder/neo-angband/releases)**
+>   for Windows, macOS or Linux. A file that sits on your machine and does not
+>   change until you replace it.
+>   **Why you might like playing this way:** you want a copy that stays put,
+>   with nothing running in a browser tab.
+> - **[Run it from source](#play-it)**, cloned at a commit you chose. About
+>   two minutes with Node and pnpm installed.
+>   **Why you might like playing this way:** you are chasing a difference from
+>   the original and need to name the exact commit that showed it.
+> - **[Self-host it as a static site](docs/INSTALL.md#2-self-host-as-a-static-site)**,
+>   the same files the browser build serves, on a host you control.
+>   **Why you might like playing this way:** you want a copy that only
+>   changes when you decide to update it, for yourself or a group.
+> - **[Install it as a PWA](docs/INSTALL.md#3-install-as-a-pwa-offline-any-platform)**,
+>   which pins the browser build to your device and works with no connection.
+>   **Why you might like playing this way:** you want it on a phone or
+>   tablet, offline, without an app store.
+> - **[Desktop app](docs/INSTALL.md#4-desktop-app-electron)** - the same game
+>   in a native window instead of a browser tab.
+>   **Why you might like playing this way:** you want it to feel like an
+>   installed application rather than a website.
 
 ---
 
@@ -150,9 +180,12 @@ tell whether they were playing the same thing.
 
 ### Making one
 
-**[Start with the tutorials.](docs/modding/tutorials/README.md)** Seven of them,
-each teaching one idea and ending with something you can see on screen. The first
-is two files and about twenty lines.
+> **Want to make a mod? [Start here.](docs/modding/tutorials/README.md)**
+>
+> Never made one before? That is fine. The first tutorial takes about five
+> minutes, needs nothing but a text editor, and changes the game. Seven
+> tutorials in all, each teaching one idea and ending with something you can
+> see on screen.
 
 You do not need TypeScript, a compiler, a build step, or a copy of Angband's
 source. A mod is a folder.
