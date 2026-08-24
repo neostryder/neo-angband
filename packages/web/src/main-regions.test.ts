@@ -218,14 +218,7 @@ const TERM_CLEAR_REGIONS: Readonly<Record<string, readonly string[]>> = {
    * `showLevelMap` rather than going through `showTextScreen`, and
    * `renderBackground()` refuses to run `render()` while a modal is up, so that
    * erase was the one a mod could neither survive nor be told about. */
-  "overlay.ts": [
-    "paintViewOnTerminal > paint",
-    "paintLevelMapOnTerminal > paint",
-    "itemSelect > paint",
-    "promptNumber > paint",
-    "promptText > paint",
-    "selectFromMenu > askTerminalOnTerminal > paint",
-  ],
+  "overlay.ts": ["paintViewOnTerminal > paint", "paintLevelMapOnTerminal > paint"],
   /* #253. `drawBirthSheet` is the odd one: it is a shared painter rather than a
    * screen, with four callers (quickstart, name, history, final confirm), so it
    * is converted only because ALL FOUR now hand it a region's surface. One
@@ -254,10 +247,22 @@ const TERM_CLEAR_REGIONS: Readonly<Record<string, readonly string[]>> = {
    * (D and W) `showTextScreen` does not offer, so it paints itself - and is a
    * region from the start rather than a conversion, copying `showLevelMap`'s
    * show/paint split verbatim. */
-  "main.ts": [
-    "paintInstallChoiceOnTerminal > paint",
-    "showReportPage > paint",
-    "showUpdatePage > paint",
+  "main.ts": ["paintInstallChoiceOnTerminal > paint"],
+};
+
+/**
+ * Sites that still erase the whole terminal without saying so. THIS IS THE
+ * NUMBER: `docs/modding/MOD_REACH.md`'s gap-21 row quotes it, and the test below
+ * pins it so that editing this table without editing that row fails here rather
+ * than being noticed by nobody.
+ */
+const TERM_CLEAR_PENDING: Readonly<Record<string, readonly string[]>> = {
+  "main.ts": ["showReportPage > paint", "showUpdatePage > paint"],
+  "overlay.ts": [
+    "itemSelect > paint",
+    "promptNumber > paint",
+    "promptText > paint",
+    "selectFromMenu > askTerminal > paint",
   ],
   "colors.ts": ["runColorsEditor > paint"],
   "equip-cmp.ts": ["showEquipCmp > paint"],
@@ -271,14 +276,6 @@ const TERM_CLEAR_REGIONS: Readonly<Record<string, readonly string[]>> = {
   "shop.ts": ["runStore > paint"],
   "wizard.ts": ["drawWizItem", "paintWizItemOnTerminal"],
 };
-
-/**
- * Sites that still erase the whole terminal without saying so. THIS IS THE
- * NUMBER: `docs/modding/MOD_REACH.md`'s gap-21 row quotes it, and the test below
- * pins it so that editing this table without editing that row fails here rather
- * than being noticed by nobody.
- */
-const TERM_CLEAR_PENDING: Readonly<Record<string, readonly string[]>> = {};
 
 /**
  * Every `term.clear()` call the shell is allowed to make, as "file::a > b > c"
@@ -421,8 +418,8 @@ describe("term.clear() is a ratchet: the list of full-screen erases may only shr
      * with no push behind it anywhere in the file, is exactly the accident this
      * catches, and it is the accident a table of claims invites. */
     expect(siteCount(TERM_CLEAR_COMPOSITOR)).toBe(1);
-    expect(siteCount(TERM_CLEAR_REGIONS)).toBe(33);
-    expect(siteCount(TERM_CLEAR_PENDING), "MOD_REACH.md's gap-21 row quotes this").toBe(0);
+    expect(siteCount(TERM_CLEAR_REGIONS)).toBe(13);
+    expect(siteCount(TERM_CLEAR_PENDING), "MOD_REACH.md's gap-21 row quotes this").toBe(20);
     expect(siteCount(TERM_CLEAR_ALLOWED)).toBe(34);
 
     for (const file of Object.keys(TERM_CLEAR_REGIONS)) {
