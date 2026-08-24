@@ -311,6 +311,27 @@ export function browseDetail(
    * folding it mid-path would produce something unusable to copy. Long repository
    * names are the one thing this pane still lets run to the edge, deliberately. */
   out.push({ text: `From       ${repoPageUrl(m.repo, m.tag)}`, color: C_DIM });
+  if (m.screenshots.length > 0) {
+    /* A LISTING, not a preview - and that is a fact about this screen, not a gap
+     * left for later. The grid this game draws to is a fixed-size cell canvas
+     * (term.ts) that only ever draws pre-loaded tileset glyphs into cells; it has
+     * no path for decoding an arbitrary image fetched from a mod's repository, at
+     * a resolution and aspect ratio nobody controls, into that grid. Building one
+     * would mean fetching and decoding the file, then downsampling it to either a
+     * fixed glyph size or some form of block/ASCII art - a real feature, not a
+     * line here. Until it exists, naming what the author declared and where to go
+     * look is the honest middle ground between showing nothing and promising a
+     * picture this pane cannot draw. */
+    out.push({ text: "", color: C_FG });
+    out.push({
+      text:
+        `Screenshots  ${String(m.screenshots.length)} declared - open the repository above to view:`,
+      color: C_DIM,
+    });
+    for (const path of m.screenshots) {
+      out.push({ text: `  ${path}`, color: C_DIM });
+    }
+  }
   /* The standing, in the register's own words, WRAPPED - it is the sentence whose
    * end says nobody reviewed the code, and truncation eats ends. */
   out.push({ text: "", color: C_FG });

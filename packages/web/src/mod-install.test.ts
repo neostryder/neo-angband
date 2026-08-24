@@ -1213,6 +1213,7 @@ function discovered(
     version: "1.0.0",
     description: null,
     engine: null,
+    screenshots: [],
     compatible: true,
     channelHeld: null,
     engineHeld: null,
