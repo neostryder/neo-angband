@@ -409,13 +409,6 @@ export function castProjection(
      * player's decoy, which is the whole point of dropping one in a bolt's
      * way. state.decoy is written by EF_GLYPH's decoy arm and persisted. */
     decoy: state.decoy ?? null,
-    /* The radius seam (mod/hooks.ts projectionRadius). Read LIVE off the state
-     * rather than captured, and omitted entirely when no mod contributed one,
-     * so a game with no mods loaded reaches computeProjection with the field
-     * absent and takes the same path it took before the seam existed. */
-    ...(state.modHooks?.projectionRadius
-      ? { resolveRadius: state.modHooks.projectionRadius }
-      : {}),
   };
 
   return project(state.chunk, params, projectHooks);

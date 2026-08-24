@@ -74,10 +74,8 @@ describe("WP-11 note command (do_cmd_note, cmd-misc.c:88)", () => {
   it("ignores empty / space-first notes (cmd-misc.c:100)", () => {
     expect(MAIN_TS).toMatch(/!tmp\[0\] \|\| tmp\[0\] === " "/);
   });
-  it("offers a HIST_USER_INPUT entry to the write seam before storing it", () => {
-    expect(MAIN_TS).toMatch(/type: HIST\.USER_INPUT/);
-    expect(MAIN_TS).toMatch(/state\.modHooks\?\.historyAdd\?\.\(entry\)/);
-    expect(MAIN_TS).toMatch(/historyAdd\(\s*state\.actor\.player,\s*entry\.what,\s*HIST\.USER_INPUT/s);
+  it("adds a HIST_USER_INPUT history entry (cmd-misc.c:114)", () => {
+    expect(MAIN_TS).toMatch(/historyAdd\(state\.actor\.player, note, HIST\.USER_INPUT/);
   });
 });
 

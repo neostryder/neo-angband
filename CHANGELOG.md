@@ -36,36 +36,6 @@ version it still calls itself.
 
 ## [Unreleased]
 
-## [0.33.0] - 2026-08-24
-
-### Added
-
-- Character history now exposes a write-time mod seam that can retain raw input
-  with a display-expansion marker, plus a display-time formatter shared by the
-  history screen and character dump. Unused seams preserve the faithful 4.2.6
-  stored text and rendering.
-- **A mod can now decide the radius a blast is built from**, through a new
-  `projectionRadius` hook on the behaviour seam (`ModHooks`). Core reads it in
-  `computeProjection` before any grid is collected, and it is folded `chained`,
-  so two mods narrowing one blast for two unrelated reasons both get their
-  narrowing. With no mod contributing one the member is absent and the radius is
-  used exactly as it was given, which is Angband 4.2.6's own behaviour: 4.2.6
-  sizes its damage-at-distance table by `max_range` and never checks the radius
-  against it, so a radius above the maximum reaches distances the table has no
-  entry for. Upstream corrected that after the tag
-  ([`f0f6bd223`](https://github.com/angband/angband/commit/f0f6bd223b6b9faf0072b0ae7ffb34a812b97349),
-  upstream issue [#6671](https://github.com/angband/angband/issues/6671)); core
-  stays pinned to the tag and holds only the point at which the radius is
-  decided, and the correction ships as the `upstream-catchup` mod's
-  `catchup.projections` rule. The hook is RNG-free by contract - the radius
-  decides how many grids the blast collects, so a draw there would move the
-  stream by an amount that depends on the terrain.
-
-### Fixed
-
-- Long capability descriptions and other scrollable table text now wrap instead
-  of being silently cut off at the edge of the terminal. Reported by neostryder.
-
 ## [0.32.0] - 2026-08-24
 
 ### Added
@@ -686,7 +656,7 @@ instead of a curated subset that had drifted from it.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.33.0` - a features release for mod
+Current state of the project at version `0.32.0` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again
