@@ -21,7 +21,7 @@ is not a capability - it is called out as such.
 
 | | measured |
 | --- | --- |
-| `ModHooks` behaviour hooks | **8** (`packages/core/src/mod/hooks.ts:84`) |
+| `ModHooks` behaviour hooks | **11** (`packages/core/src/mod/hooks.ts`) |
 | Switches of >= 8 cases in the tree, counted by a script | **34** (`tools/switch-census.json`, re-derived 2026-08-09 after gap 16; was 47 that morning and 50 before the three glyph decoders became one registry) |
 | ...still `CANDIDATE`, a dispatch point a mod cannot reach | **0** (was 18 on the morning of 2026-08-09). See the caution below: zero candidates is the end of what this TOOL can see, not the end of closed dispatch |
 | ...of those, a mod's CODE can add to or override | **all of them** (`profile`, `blow`, `store` 2026-08-08; `projection`, `glyph`, `effect-info`, `randart`, `tval`, `rune` 2026-08-09) |
@@ -88,7 +88,7 @@ never grew to eight cases was never in its field of view.
 
 ## (a) Code
 
-### The 8 behaviour hooks, and what each can change
+### The 11 behaviour hooks, and what each can change
 
 `ModHooks` (`packages/core/src/mod/hooks.ts`, the `ModHooks` interface) is a typed
 interface of optional functions on `GameState.modHooks`
@@ -104,11 +104,13 @@ a line number in a document has no test behind it and rots on the next commit.
 | `levelGenerated` | `gen/generate.ts` | Inspect / repair / reject a finished level | The generation ALGORITHM (no builder, room, or profile is reachable from here); and it may draw no RNG |
 | `artifactCommit` | `obj/make.ts` | Refuse an artifact commit on an object already carrying one | Artifact selection, allocation, or properties |
 | `historyAdd` | `session/game.ts` | Suppress one `HIST.SLAY_UNIQUE` entry | Any other history write - the `Reached level N` write in the same file does not consult the hook |
+| `historyDisplay` | the web history screen and character dump | Restate a persisted history entry for display | The saved entry or any non-history text |
 | `saveNoiseScent` | `session/save.ts` | Ask for the noise/scent heatmaps in the save | Anything else in the save payload |
+| `levelRevisited` | `session/game.ts`, on persistent-level and single-combat restoration | Update live, level-owned transient state from the exact frozen and resumed turns | Save/load of an in-play level, level generation, or a player/monster turn directly |
 | `messageText` | `packages/web/src/main.ts` (host, not core) | Restate message text | What a message MEANS - restating only, by contract |
 | `optionsChanged` | the options pages, through `GameState.modHooks` | Observe the option state after a change. Folded `all-observe`: every mod's handler runs, none can veto | The option values themselves; it is notification, not interception |
 
-Honest reading of that table: the nine hooks were each carved for one concrete
+Honest reading of that table: the eleven hooks were each carved for one concrete
 patch. They are correct and they are generic in shape, but their union is not a
 system anyone could "make over the whole game" with. They are nine points, not a
 seam layer.

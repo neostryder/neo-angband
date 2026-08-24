@@ -61,7 +61,7 @@ So the mod has real content, and it is verdict 2's five rows: master carries
 those tile assignments, which puts them inside "master minus tag" by definition.
 Everything else in the 161 is somebody else's job or nobody's.
 
-## The seven rows
+## The eight rows
 
 | SHA | Date | One-line | Class / toggle | Upstream site |
 |---|---|---|---|---|
@@ -72,6 +72,7 @@ Everything else in the 161 is somebody else's job or nobody's.
 | `ab2d65386` | 2026-03-24 | Comment-only: removes a stale note about numeric SVALs | - | none needed |
 | `f1b1626f6` | 2026-07-26 | Corrects the spelling of Ossë in the Trident 'of Wrath' description | `catchup.text` | `lib/gamedata/artifact.txt` |
 | `f0f6bd223` | 2026-07-28 | Holds a blast radius inside `z_info->max_range`, so it cannot reach a distance `dam_at_dist` has no entry for (upstream issue #6671) | `catchup.projections` | `src/project.c` |
+| `5c45eb958` | 2026-08-18 | Restores saved noise from its source, and on a level revisit clears noise and ages scent by time away (upstream issue #4605, noise half) | `catchup.levelRevisitTracking` | `src/game-world.c`, `src/generate.c`, `src/load.c`, `src/save.c`, `src/ui-game.c` |
 
 Dates read from `git log` against the upstream range; the triage itself did not
 record them per commit.
@@ -95,15 +96,21 @@ learned without matching equipment (neostryder/neo-angband#118, commit
 (neostryder/neo-angband#119, commit `5c45eb958`, partial - see the issue for
 how it differs from `bug-fixes`' own noise/scent fix).
 
-The blast-radius row is built, behind `catchup.projections`, and it is the mod's
-first row that changes ENGINE BEHAVIOUR rather than content: it rides the
+The blast-radius row is built, behind `catchup.projections`, and the
+level-revisit half of `5c45eb958` is built behind
+`catchup.levelRevisitTracking`. They are engine-behaviour rows: the radius rides
+the
 `projectionRadius` hook (`MOD_SEAMS.md`), which core reads in `computeProjection`
-before any grid is collected. **#118 is also built**, behind the engine's new
+before any grid is collected; the tracking rule rides `levelRevisited` after a
+frozen persistent or single-combat level returns. Its save/reload source-location
+half remains deliberately separate from `bug-fixes`' heatmap persistence, which
+already covers the port's same-level save/reload defect by a different design.
+**#118 is also built**, behind the engine's new
 `shapeLearnObviousFlagsDirectly` ModHooks seam (`packages/core/src/mod/hooks.ts`):
 a shape's obvious flags are learned directly as runes when the mod's rule is on,
 matching the same set `shapeLearnOnAssume` already computed rather than a
-broader "learn everything the shape has" shortcut. The other two are not yet
-built.
+broader "learn everything the shape has" shortcut. The remaining candidate,
+#114, is not built here (it shipped in `bug-fixes` instead).
 
 ### The seam they ride, and the one they do not
 
