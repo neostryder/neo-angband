@@ -1296,15 +1296,18 @@ export function sessionLoadScreen(
       ],
     });
     /* THE SAME TABLE THE INSTALL CONSENT SCREEN DRAWS (mods.ts's
-     * capabilityConsentScreen), column for column. A long blurb wraps in the
-     * room left by the elevated flag, just as it does before installation. */
+     * capabilityConsentScreen), column for column and unclamped for the same
+     * reason: a capability blurb runs to 200 characters, and padding to the
+     * longest would push the elevated flag off an 80-column terminal for every
+     * other row. Shown identically on purpose - a shorter list for a "temporary"
+     * load is exactly the shortening a temporary framing invites. */
     blocks.push({
       kind: "table",
       key: "capabilities",
       tagged: false,
       columns: [
         { key: "bullet", width: 3, align: "right" },
-        { key: "text", wrap: true },
+        { key: "text", pad: false },
         { key: "elevated", gap: 3, pad: false },
       ],
       rows: caps.map((d): ScreenRow => ({
@@ -1777,11 +1780,12 @@ export function modUpdateReportScreen(refreshed: readonly ModRefresh[]): ScreenV
            * alternative was to bake them into the mod cell, which would put the
            * terminal's indent back inside the one field a mod is addressed by. */
           { key: "indent", width: 2 },
-          /* The identifying fields stay unpadded; status uses their remaining
-           * space and continues below them when a repository returns a long reason. */
+          /* Nothing is padded to a stop. This listing never had column stops, and a
+           * declared width would line the tags up under each other on the player's
+           * screen - a change to the rendering, which this pass is not. */
           { key: "mod", gap: 0, pad: false },
           { key: "installed", pad: false },
-          { key: "status", wrap: true },
+          { key: "status", pad: false },
         ],
         rows: refreshed.map((r) => ({
           id: r.id,
