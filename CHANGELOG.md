@@ -36,6 +36,19 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.34.1] - 2026-08-24
+
+### Fixed
+
+- The desktop in-place updater refused to download any release after GitHub
+  renamed the CDN host release downloads redirect to, failing every update
+  attempt with "the release download redirected to an unexpected host." The
+  trusted-host check now matches any `*.githubusercontent.com` subdomain
+  instead of one specific hostname, so a future rename does not repeat this.
+  A copy already stuck on the old check has to be reinstalled by hand once
+  (see the README) since the broken check runs in the copy that is already
+  installed, not in whatever is published next.
+
 ## [0.34.0] - 2026-08-24
 
 ### Added
@@ -721,7 +734,7 @@ instead of a curated subset that had drifted from it.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.34.0` - a features release for mod
+Current state of the project at version `0.34.1` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again
