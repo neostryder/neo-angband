@@ -50,11 +50,36 @@ describe("where a download may come from", () => {
         REPO,
       ),
     ).toBe(true);
-    /* GitHub redirects asset downloads to this host, but object URLs are never
+    /* GitHub redirects asset downloads to these hosts, but object URLs are never
      * accepted as standalone inputs. */
+    expect(isAllowedAssetUrl("https://release-assets.githubusercontent.com/x/y", REPO)).toBe(false);
+    expect(isAllowedAssetRedirect("https://release-assets.githubusercontent.com/x/y", REPO, false)).toBe(
+      false,
+    );
+    expect(isAllowedAssetRedirect("https://release-assets.githubusercontent.com/x/y", REPO, true)).toBe(
+      true,
+    );
     expect(isAllowedAssetUrl("https://objects.githubusercontent.com/x/y", REPO)).toBe(false);
     expect(isAllowedAssetRedirect("https://objects.githubusercontent.com/x/y", REPO, false)).toBe(false);
     expect(isAllowedAssetRedirect("https://objects.githubusercontent.com/x/y", REPO, true)).toBe(true);
+  });
+
+  it("allows any *.githubusercontent.com redirect target, not just names seen before", () => {
+    /* GitHub has already renamed this host once; the check is a suffix match so
+     * the next rename does not require another code change to absorb. */
+    expect(isAllowedAssetRedirect("https://some-future-name.githubusercontent.com/x/y", REPO, true)).toBe(
+      true,
+    );
+    expect(isAllowedAssetRedirect("https://githubusercontent.com/x/y", REPO, true)).toBe(true);
+  });
+
+  it("refuses a host that merely ends with the same letters", () => {
+    /* A suffix match is only safe because it is anchored on the dot: without it,
+     * "evilgithubusercontent.com" would pass as if it were a subdomain. */
+    expect(isAllowedAssetRedirect("https://evilgithubusercontent.com/x/y", REPO, true)).toBe(false);
+    expect(isAllowedAssetRedirect("https://githubusercontent.com.evil.example/x/y", REPO, true)).toBe(
+      false,
+    );
   });
 
   it("refuses another repository's assets", () => {
