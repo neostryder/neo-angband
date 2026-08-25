@@ -48,6 +48,22 @@ anywhere and so you can change it without forking it.
 
 ---
 
+> ## A note on the desktop auto-updater
+>
+> GitHub recently changed the servers it uses to deliver release downloads, and
+> the in-app updater in older desktop builds does not recognize the new address
+> yet. If your desktop copy fails to update with a "redirected to an unexpected
+> host" error, this is why - it is not specific to your machine or install.
+>
+> **The quick fix:** download the latest release from
+> [the releases page](https://github.com/neostryder/neo-angband/releases) and
+> extract it over your existing install folder, the same way you installed it
+> the first time. Your save data lives in its own folder next to the game and
+> is not touched by this. A permanent fix to the updater itself is on the way;
+> this one manual step is all that is needed in the meantime.
+
+---
+
 > ## Status: ALPHA, and I would like you to break it
 >
 > The whole game is playable start to finish: roll a character, shop the town,
