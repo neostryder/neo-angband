@@ -2,13 +2,21 @@ name: Deploy web build to GitHub Pages
 
 # Pages is enabled in workflow build mode. Deploys run when a release is
 # PUBLISHED, not on every push to master - so the browser build is always a
-# version somebody pressed Publish on, the same gate docs/RELEASING.md
-# already describes for the updater and for the Discord announcement.
+# real numbered release, never an in-progress commit.
+#
+# `release.yml` publishes the release itself now, and does so as GITHUB_TOKEN,
+# which means the `release: published` event it produces does not cascade to
+# this workflow (GitHub's documented anti-recursion rule - workflow_dispatch
+# is exempt from it, which is what makes the line below work at all).
+# `release.yml`'s publish job therefore dispatches this workflow directly with
+# the tag once the release exists; the `release` trigger stays only for a
+# manual publish through the GitHub UI, recovering from the rare
+# mid-build-failure draft state described in docs/RELEASING.md.
 #
 # The `early` channel (edge.yml) publishes a release too, once per commit on
-# master, so its tags are excluded below the same way discord-announce.yml
-# excludes them - otherwise this would redeploy Pages on every push, which is
-# the exact behaviour this change is undoing.
+# master, so its tags are excluded below - otherwise this would redeploy
+# Pages on every push. `release.yml` never dispatches this workflow for an
+# edge tag either, since it never runs its publish job for one.
 #
 # `workflow_dispatch` takes an explicit tag rather than defaulting to
 # whatever is on master, so a manual re-run cannot accidentally publish an

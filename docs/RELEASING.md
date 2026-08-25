@@ -405,6 +405,18 @@ the same tag: it recreates the release in place. This is the one point a
 release still passes through a draft-shaped state, briefly, mid-recovery - not
 as a normal step.
 
+**The `publish` job's last step dispatches `pages.yml` and
+`discord-announce.yml` directly - it does not rely on the `release: published`
+event reaching them.** GitHub does not cascade a `release` event into new
+workflow runs when the release was created or edited by `GITHUB_TOKEN` itself
+(documented anti-recursion behaviour; `workflow_dispatch` and
+`repository_dispatch` are the only events exempted from it). That never
+mattered while publishing was a human clicking Publish in the UI - a real
+account, not `GITHUB_TOKEN` - but this job now publishes directly, so without
+the explicit dispatch, Pages and the Discord announcement would both go quiet
+with no error anywhere. Found this way once, on `v0.34.2`: the release
+published correctly and neither downstream workflow ran.
+
 ### Every tag push turns on the in-game updater, immediately
 
 There is no window between "the build exists" and "installed copies can see

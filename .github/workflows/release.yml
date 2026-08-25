@@ -140,12 +140,17 @@ jobs:
           path: neo-angband-web-*.zip
 
   publish:
-    name: Draft the release
+    name: Publish the release
     needs: [desktop, web]
-    # `always()` so a single platform failing still produces a draft holding the
-    # platforms that worked - see fail-fast above. The draft says which ones.
+    # `always()` so a single platform failing still produces a release holding
+    # the platforms that worked - see fail-fast above.
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # Needed for the "trigger downstream workflows" step below, which calls
+      # the Actions API rather than relying on the `release: published` event.
+      actions: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -265,3 +270,17 @@ jobs:
               --notes-file release-notes.md
           fi
           echo "::notice::$TAG is published. Every existing install now sees it on its next launch."
+
+      - name: Trigger Pages and Discord (release events from GITHUB_TOKEN don't cascade)
+        # GitHub does not fire follow-on workflow runs for a `release` event
+        # that GITHUB_TOKEN itself caused - documented anti-recursion behaviour,
+        # exempting only workflow_dispatch and repository_dispatch. That never
+        # mattered while publishing was a human clicking Publish in the UI; now
+        # that this job publishes directly, pages.yml and discord-announce.yml
+        # would otherwise never hear about it. Dispatch both explicitly instead.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          gh workflow run pages.yml -f tag="$TAG"
+          gh workflow run discord-announce.yml -f tag="$TAG"
