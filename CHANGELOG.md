@@ -36,6 +36,16 @@ version it still calls itself.
 
 ## [Unreleased]
 
+## [0.34.2] - 2026-08-25
+
+### Fixed
+
+- The desktop build's injected mod-origin-merge script carried its own copy of
+  the save database's schema, out of sync with a store added earlier: it still
+  expected schema version 2 and did not know about the linoleum tile-cache
+  store, so an install landing on that path could fail to open a save
+  (neostryder/neo-angband#122).
+
 ## [0.34.1] - 2026-08-24
 
 ### Fixed
@@ -734,7 +744,7 @@ instead of a curated subset that had drifted from it.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.34.1` - a features release for mod
+Current state of the project at version `0.34.2` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again
