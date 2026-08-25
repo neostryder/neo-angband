@@ -18,9 +18,10 @@
 # Developer identity and a Windows certificate; until those exist, an honest
 # "here is what your OS will say and here is why" beats a silent scary dialog.
 #
-# The release is created as a DRAFT when the build finishes. Publishing it is a
-# human decision - the artifacts are downloadable from the draft, so the last
-# gate before a release goes public is somebody actually running one.
+# The release is PUBLISHED as soon as the build finishes - every 0.x tag as a
+# pre-release, so it never claims to be the stable build. The play-smoke gate in
+# ci.yml runs before a tag is ever pushed, which is what makes auto-publish safe:
+# a crash cannot reach a tag in the first place.
 name: release
 
 on:
@@ -244,26 +245,23 @@ jobs:
             exit 1
           fi
           echo "attaching ${#files[@]} files"
-          # DRAFT and PRE-RELEASE are two different statements and this makes
-          # both. Draft means nobody has pressed publish yet; it is invisible to
-          # the public and says nothing about the software. Pre-release is the
-          # claim, and it survives publication - without it, pressing publish on
-          # an 0.x tag marks it "Latest release", which is how a 0.16.0 alpha
-          # ends up presented as the stable build. Every 0.x is a pre-release by
+          # PRE-RELEASE is the one claim left to make. Without it, publishing an
+          # 0.x tag marks it "Latest release", which is how a 0.16.0 alpha would
+          # end up presented as the stable build. Every 0.x is a pre-release by
           # definition; at 1.0.0 this stops applying and the flag goes away on
           # its own.
           prerelease=()
           case "${TAG#v}" in
             0.*) prerelease=(--prerelease) ;;
           esac
-          # A re-run must not fail on "already exists": update the draft in place.
+          # A re-run must not fail on "already exists": update the release in place.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --draft "${prerelease[@]}" --notes-file release-notes.md
+            gh release edit "$TAG" "${prerelease[@]}" --notes-file release-notes.md
             gh release upload "$TAG" "${files[@]}" --clobber
           else
             gh release create "$TAG" "${files[@]}" \
-              --draft "${prerelease[@]}" \
+              "${prerelease[@]}" \
               --title "Neo Angband ${TAG#v}" \
               --notes-file release-notes.md
           fi
-          echo "::notice::Draft release $TAG is ready. Download one, play it, then publish."
+          echo "::notice::$TAG is published. Every existing install now sees it on its next launch."
