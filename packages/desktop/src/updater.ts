@@ -106,7 +106,23 @@ export function isAllowedAssetUrl(url: string, repo: string): boolean {
  * A GitHub release download redirects to a short-lived object URL. That URL is
  * not a general allow-list entry: it is acceptable only as the immediate next
  * hop after this process asked github.com for this repository's release asset.
+ *
+ * GitHub has renamed this host at least once already - from
+ * `objects.githubusercontent.com` to `release-assets.githubusercontent.com` -
+ * which is exactly what broke every already-installed copy: the updater refused
+ * the new (legitimate) redirect target and called it an unexpected host, the
+ * correct answer for a host that is actually unexpected but the wrong one for
+ * GitHub simply renaming its own infrastructure. A finite list of past names is
+ * only ever a record of renames that already happened, so the check is a
+ * *.githubusercontent.com suffix match instead: still narrowly GitHub's own
+ * asset domain (verified by TLS, so an unrelated attacker's host cannot end
+ * with it), but no longer a list that goes stale the next time GitHub does
+ * this again.
  */
+function isGithubAssetHost(hostname: string): boolean {
+  return hostname === "githubusercontent.com" || hostname.endsWith(".githubusercontent.com");
+}
+
 export function isAllowedAssetRedirect(url: string, repo: string, fromReleaseAsset: boolean): boolean {
   if (isAllowedAssetUrl(url, repo)) return true;
   let u: URL;
@@ -115,7 +131,7 @@ export function isAllowedAssetRedirect(url: string, repo: string, fromReleaseAss
   } catch {
     return false;
   }
-  return fromReleaseAsset && u.protocol === "https:" && u.hostname === "objects.githubusercontent.com";
+  return fromReleaseAsset && u.protocol === "https:" && isGithubAssetHost(u.hostname);
 }
 
 /** One archive selected by the main process from GitHub's release response. */
@@ -394,8 +410,9 @@ const MAX_REDIRECT_HOPS = 5;
 /**
  * Fetch a release archive without ever asking fetch to follow a redirect for
  * us. Every location is checked before this process talks to it. In particular,
- * objects.githubusercontent.com is accepted only as the direct response to a
- * github.com/<repo>/releases/download/... request we made ourselves.
+ * an object-storage host in ALLOWED_ASSET_REDIRECT_HOSTS is accepted only as
+ * the direct response to a github.com/<repo>/releases/download/... request we
+ * made ourselves.
  */
 async function fetchReleaseArchive(
   url: string,
