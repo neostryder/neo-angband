@@ -382,21 +382,16 @@ and the desktop build. Frames land in `smoke-shots/`; the CI job uploads them as
 an artifact on success and failure alike, so a failing hash says which step
 stopped and the PNG says what was on screen when it did.
 
-## The GitHub Release is always a draft, and that never changes
+## The GitHub Release publishes itself, and the play-smoke gate is why that's safe
 
 Pushing the tag also starts `.github/workflows/release.yml`, which builds the
-desktop apps and the web bundle and attaches them to a **draft** release. The
-draft is not a pre-1.0 precaution and it does not go away at `1.0.0`: publishing
-is deliberately the one step no workflow performs, because the artifacts are
-downloadable from the draft, so the last gate before a release reaches anyone is
-somebody actually running one. Download a build, play it, then press publish.
+desktop apps and the web bundle and attaches them to a release, published the
+moment the build finishes. There is no separate manual step: `ci.yml`'s
+play-smoke check already ran, on the commit, before the tag was ever pushed
+(see above), so a crash cannot reach a tag in the first place. That is what
+moved the last gate earlier instead of removing it.
 
-**Draft and pre-release are different claims and the workflow makes both.**
-
-| | means | who sees it | ends at |
-|---|---|---|---|
-| Draft | nobody has pressed publish | maintainers only | when you publish |
-| Pre-release | this is not the stable build | everybody | `1.0.0` |
+**Pre-release is the one claim the workflow still makes.**
 
 `--prerelease` is passed for any tag matching `0.*`. Without it, publishing marks
 the release *Latest*, which is what the repository sidebar, the releases API and
@@ -404,18 +399,18 @@ every "download the latest" link follow, so an alpha would present itself as the
 stable build. The condition is on the version, so the flag stops applying by
 itself at `1.0.0`; there is nothing to remember.
 
-If the build is wrong, delete the draft and its assets, fix, and re-run the
-workflow against the same tag: it updates a draft in place rather than failing
-on "already exists". Once published, that stops being true: a published release
-is a URL other people have.
+If the build is wrong, delete the release and its assets (`gh release delete
+<tag> --cleanup-tag=false`, tag stays put), fix, and re-run the workflow against
+the same tag: it recreates the release in place. This is the one point a
+release still passes through a draft-shaped state, briefly, mid-recovery - not
+as a normal step.
 
-### Publishing is what turns the in-game updater on
+### Every tag push turns on the in-game updater, immediately
 
-**The game's (U)pdate row cannot see a draft**, and that is the intended
-behaviour rather than a limitation: a draft is a release nobody has approved, and
-`packages/web/src/update.ts` filters `draft: true` even when an authenticated
-token would have shown it. So a build sits inert until you press publish, and
-then every existing install learns about it on its next launch.
+There is no window between "the build exists" and "installed copies can see
+it": `packages/web/src/update.ts` only filters `draft: true`, and nothing here
+creates one any more, so a tag finishing its build **is** every existing
+install learning about it on its next launch.
 
 Three properties of a release the updater depends on. All three are produced by
 the normal path, so this is a list of things not to "tidy up":
@@ -430,22 +425,22 @@ the normal path, so this is a list of things not to "tidy up":
 hiding them would mean the feature never worked before 1.0; the version
 comparison is what decides, not the label.
 
-### Publishing also announces it on Discord
+### The release also announces itself on Discord
 
 `.github/workflows/discord-announce.yml` listens for the same `published`
 event and posts to the RPGM Tools Discord's Neo Angband announcements forum,
 via `.github/scripts/discord-announce.mjs`. It skips `early` channel tags the
-same way `release.yml` excludes them from drafting, but every real release
+same way `release.yml` excludes them from the build, but every real release
 gets announced regardless of version-bump size - patch, minor and major all
-post. The post body is the matching `CHANGELOG.md` heading, so there is one account of
-what changed rather than a second one written for Discord. The post
-@-mentions the Neo Angband News role, a self-assigned, opt-in role members
-pick up via the server's Channels & Roles page - members who have not added it
-see the post like anyone else in the forum, they just are not pinged. Each
-first-party mod repository carries the same script and workflow, triggered on
-its own tag push instead, since a mod's tag has no separate draft/publish step.
+post, automatically, the moment the tag's build finishes. The post body is the
+matching `CHANGELOG.md` heading, so there is one account of what changed
+rather than a second one written for Discord. The post @-mentions the Neo
+Angband News role, a self-assigned, opt-in role members pick up via the
+server's Channels & Roles page - members who have not added it see the post
+like anyone else in the forum, they just are not pinged. Each first-party mod
+repository carries the same script and workflow, triggered on its own tag push.
 
-### The three channels, and why `draft` is not one of them
+### The three channels, and how they're produced
 
 The update screen offers `stable`, `beta` and `early`, and they are **inclusive
 downward**: `beta` sees stable releases too, `early` sees everything. A player
@@ -453,15 +448,13 @@ on beta must still be offered `1.0.0` when it ships.
 
 | channel | what it selects | produced by |
 |---|---|---|
-| `stable` | published, not flagged pre-release | you, pressing publish on a `1.x` tag |
-| `beta` | the above, plus pre-releases, every `0.x` | you, pressing publish |
+| `stable` | published, not flagged pre-release | `release.yml`, automatically, on a `1.x` tag |
+| `beta` | the above, plus pre-releases, every `0.x` | `release.yml`, automatically, on any tag |
 | `early` | the above, plus per-commit builds | `edge.yml`, automatically |
 
-**A draft cannot be a channel.** GitHub hides drafts from unauthenticated
-callers, so a player's game cannot see one at all; the only way to change that
-would be to ship a credential inside the game. `beta` is the visible
-"published but not final" state GitHub actually provides, and drafts stay what
-they are: a staging area nobody else can reach.
+All three channels are now unattended once a tag is pushed - the play-smoke
+gate in `ci.yml` is what stands between a bad commit and a channel seeing it,
+not a manual publish click.
 
 While the engine is `0.x` **`stable` selects nothing**, because every release is
 flagged pre-release. `defaultChannel()` therefore starts new installs on `beta`
