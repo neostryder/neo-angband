@@ -129,7 +129,7 @@ function catalogue(): CatalogMod[] {
       affectsGameplay: true,
       nondeterministic: true,
     }),
-    mk({ id: "neo-linoleum", name: "Neo Linoleum", version: "0.11.0", shape: "tiles" }),
+    mk({ id: "neo-linoleum", name: "Linoleum", version: "0.11.0", shape: "tiles" }),
     mk({
       id: "borg",
       name: "The Borg",
@@ -315,7 +315,7 @@ describe("every row label and hint fits, measured directly", () => {
         problems,
       ).label;
 
-    expect(m("Neo Linoleum", "neostryder")).toBe("[ ] Neo Linoleum (neostryder)  v1.0.0  (content)");
+    expect(m("Linoleum", "neostryder")).toBe("[ ] Linoleum (neostryder)  v1.0.0  (content)");
 
     /* No room for both, with every badge lit: the author goes entirely rather than
      * becoming "(neost...", which would name somebody who does not exist. */

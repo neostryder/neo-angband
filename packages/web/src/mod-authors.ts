@@ -53,7 +53,7 @@ export function shortAuthor(author: string): string {
 }
 
 /**
- * A mod as it is NAMED on screen: `Neo Linoleum (neostryder)`.
+ * A mod as it is NAMED on screen: `Linoleum (neostryder)`.
  *
  * WHOSE MOD IT IS BELONGS NEXT TO WHAT IT IS CALLED. A list of a dozen mods from
  * half a dozen strangers, with the author only in a detail pane, makes "who wrote

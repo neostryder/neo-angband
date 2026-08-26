@@ -198,7 +198,7 @@ export function browseRow(entry: BrowseEntry, installedTag: string | null): Menu
   const size = m.bytes === null ? "" : `  ${formatBytes(m.bytes)}`;
 
   /* THE MANIFEST'S AUTHOR IS ON THE ROW; THE REGISTER'S STANDING IS NOT, and the two
-   * are not interchangeable. `Neo Linoleum (neostryder)` is attribution - the author's
+   * are not interchangeable. `Linoleum (neostryder)` is attribution - the author's
    * own claim, which is the most useful single fact about a stranger's mod and belongs
    * where the player is already looking. A REGISTER marker beside a name would be read
    * as "checked", which no listing means (see standingNote); that stays in the detail

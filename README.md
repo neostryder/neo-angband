@@ -68,14 +68,14 @@ into the dungeon - with real screenshots at every step.**
 
 ---
 
-> ## Status: ALPHA, and I would like you to break it
+> ## Status: playable start to finish, and still worth a bug report
 >
-> The whole game is playable start to finish: roll a character, shop the town,
-> descend, die permanently. It is not finished. Play sessions still turn up
-> things the automated checks cannot see: a message the original prints that
-> this one does not, a screen laid out a column off, a prompt that never appears.
+> Roll a character, shop the town, descend, die permanently - the whole game is
+> there. Play sessions still turn up things the automated checks cannot see: a
+> message the original prints that this one does not, a screen laid out a
+> column off, a prompt that never appears.
 >
-> **That is exactly what testers are for.** Play it, and when something feels
+> **That is exactly what a bug report is for.** Play it, and when something feels
 > unlike Angband, [open an issue](https://github.com/neostryder/neo-angband/issues).
 > See [reporting a difference](#reporting-a-difference) for the one detail that
 > makes a report immediately actionable.

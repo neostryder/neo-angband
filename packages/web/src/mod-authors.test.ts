@@ -31,7 +31,7 @@ const parsed = (body: string): AuthorRegister => {
 
 describe("displayName: the author beside the name", () => {
   it("reads the way a player would write it", () => {
-    expect(displayName("Neo Linoleum", "neostryder")).toBe("Neo Linoleum (neostryder)");
+    expect(displayName("Linoleum", "neostryder")).toBe("Linoleum (neostryder)");
   });
 
   it("drops an organisation in parentheses instead of nesting brackets", () => {
@@ -52,9 +52,9 @@ describe("displayName: the author beside the name", () => {
 
   it("says just the name when the manifest has no author", () => {
     /* Every manifest is required to declare one, but a mod installed before that
-     * rule still has to be listed - as itself, not as "Neo Linoleum ()". */
+     * rule still has to be listed - as itself, not as "Linoleum ()". */
     for (const missing of [null, undefined, ""]) {
-      expect(displayName("Neo Linoleum", missing)).toBe("Neo Linoleum");
+      expect(displayName("Linoleum", missing)).toBe("Linoleum");
     }
   });
 

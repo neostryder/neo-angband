@@ -1,9 +1,9 @@
 # Playing and installing Neo Angband
 
-Neo Angband is **alpha software** and the point of this page is to get you onto a
-build **you control**, because that is the only kind of build a bug report can be
-pinned to. Deliberately, no hosted demo URL appears here: a hosted copy can
-change under you between sessions, so "it did X" stops being reproducible.
+The point of this page is to get you onto a build **you control**, because that
+is the only kind of build a bug report can be pinned to. Deliberately, no hosted
+demo URL appears here: a hosted copy can change under you between sessions, so
+"it did X" stops being reproducible.
 
 ## The short answer
 
