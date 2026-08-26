@@ -4,7 +4,7 @@ Effective date: 2026-08-23.
 
 ## Scope
 
-This Code is intended for adoption in the `neo-angband` repository and the six `neo-angband-mod-*` repositories. It applies to issues, pull requests, discussions, review comments, documentation contributions, and other project interactions. It also applies to Neo Angband discussions in the RPGM Tools Discord.
+This Code is intended for adoption in the `neo-angband` repository and the seven `neo-angband-mod-*` repositories. It applies to issues, pull requests, discussions, review comments, documentation contributions, and other project interactions. It also applies to Neo Angband discussions in the RPGM Tools Discord.
 
 GitHub and Discord maintain their own platform rules. This Code supplements, and does not replace, those rules.
 

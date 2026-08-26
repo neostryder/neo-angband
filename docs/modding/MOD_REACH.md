@@ -1013,7 +1013,7 @@ Three declarations bound it in practice:
 | upstream `.txt` gamedata files | **45** | `reference/lib/gamedata/` |
 | the port compiles / ships | **44** | `packages/content/src/specs/index.ts:58-103` (`old_class.txt` deliberately not compiled, `:4-5`) |
 | the WEB host actually binds | **44** | `packages/web/src/pack.ts` hands every compiled record file to its core binder, including `chest_trap` and `world` |
-| contributable to the composer but **bound by nothing** (silently inert) | **0** | — |
+| contributable to the composer but **bound by nothing** (silently inert) | **0** | n/a |
 
 ### Add / override / patch / remove: tested against the code, not the docs
 
