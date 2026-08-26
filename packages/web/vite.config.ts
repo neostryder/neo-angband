@@ -56,6 +56,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       injectRegister: "auto",
       includeAssets: [
+        "icons/favicon-16.png",
+        "icons/favicon-32.png",
         "icons/icon-192.png",
         "icons/icon-512.png",
         "icons/icon-512-maskable.png",

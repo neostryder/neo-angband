@@ -1,163 +1,118 @@
-// Dependency-free PWA icon generator for Neo Angband.
+// Generates the web app's favicon and PWA icon set from the real app-icon
+// artwork (packages/desktop/build/icon.png) - the same mascot the desktop
+// build ships, rather than a drawn placeholder.
 //
-// Rasterizes a classic roguelike mark: a green "@" glyph on a near-black
-// background, scaled up with nearest-neighbor and centered inside a safe zone.
-// PNG encoding uses only Node built-ins (zlib for the IDAT deflate, a hand
-// rolled CRC32 per chunk). No image libraries.
+// Uses pngjs (already a dependency, used elsewhere for tile PNGs) to decode
+// and re-encode. Resizing is a hand-rolled box-filter downsample rather than
+// pulling in an image-processing dependency for five call sites.
 //
 // Run: node scripts/gen-icons.mjs  (or: pnpm gen-icons)
 
-import { deflateSync } from "node:zlib";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { PNG } from "pngjs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const SOURCE = join(__dirname, "..", "..", "desktop", "build", "icon.png");
 const OUT_DIR = join(__dirname, "..", "public", "icons");
 
-// Colors.
-const BG = [0x0b, 0x0b, 0x0b, 0xff]; // near-black #0b0b0b
-const FG = [0x33, 0xff, 0x66, 0xff]; // green #33ff66
+// Matches the manifest's background_color/theme_color. Used only behind the
+// maskable and Apple touch variants - the two platforms that do not honor
+// transparency and would otherwise show whatever the OS defaults to.
+const BG = [0x10, 0x10, 0x14, 0xff];
 
-// 8x8 "@" bitmap (1 = green pixel, 0 = background).
-const GLYPH = [
-  [0, 1, 1, 1, 1, 1, 0, 0],
-  [1, 0, 0, 0, 0, 0, 1, 0],
-  [1, 0, 1, 1, 1, 0, 1, 0],
-  [1, 0, 1, 0, 1, 0, 1, 0],
-  [1, 0, 1, 1, 1, 1, 1, 0],
-  [1, 0, 0, 0, 0, 0, 0, 0],
-  [0, 1, 1, 1, 1, 1, 1, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0],
-];
-const GLYPH_SIZE = 8;
-
-// CRC32 table + helper (per PNG spec).
-const CRC_TABLE = (() => {
-  const table = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) {
-      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    }
-    table[n] = c >>> 0;
-  }
-  return table;
-})();
-
-function crc32(buf) {
-  let c = 0xffffffff;
-  for (let i = 0; i < buf.length; i++) {
-    c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
-  }
-  return (c ^ 0xffffffff) >>> 0;
-}
-
-function chunk(type, data) {
-  const typeBuf = Buffer.from(type, "latin1");
-  const lenBuf = Buffer.alloc(4);
-  lenBuf.writeUInt32BE(data.length, 0);
-  const crcBuf = Buffer.alloc(4);
-  crcBuf.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
-  return Buffer.concat([lenBuf, typeBuf, data, crcBuf]);
-}
-
-// Build an RGBA raster and encode it as a PNG buffer.
-function encodePng(size, raster) {
-  // IHDR: width, height, bit depth 8, color type 6 (RGBA), no interlace.
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(size, 0);
-  ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 6; // color type RGBA
-  ihdr[10] = 0; // compression
-  ihdr[11] = 0; // filter
-  ihdr[12] = 0; // interlace
-
-  // Filtered scanlines: each row prefixed with filter byte 0 (None).
-  const stride = size * 4;
-  const raw = Buffer.alloc((stride + 1) * size);
+// Box-filter downsample with alpha-premultiplied averaging, so a
+// partially-transparent edge pixel does not pull in black from the fully
+// transparent pixels beside it - the usual dark-halo downscale artifact.
+function resize(src, size) {
+  const out = new PNG({ width: size, height: size });
+  const sx = src.width / size;
+  const sy = src.height / size;
   for (let y = 0; y < size; y++) {
-    const rowStart = y * (stride + 1);
-    raw[rowStart] = 0; // filter type None
-    raster.copy(raw, rowStart + 1, y * stride, y * stride + stride);
-  }
-  const idat = deflateSync(raw, { level: 9 });
-
-  const magic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  return Buffer.concat([
-    magic,
-    chunk("IHDR", ihdr),
-    chunk("IDAT", idat),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
-}
-
-// Render the "@" glyph onto a size x size RGBA raster.
-// padFraction is the fraction of the canvas reserved as empty safe-zone
-// margin on each side (e.g. 0.15 => glyph occupies the middle 70%).
-function renderIcon(size, padFraction) {
-  const raster = Buffer.alloc(size * size * 4);
-  // Fill background.
-  for (let i = 0; i < size * size; i++) {
-    raster[i * 4] = BG[0];
-    raster[i * 4 + 1] = BG[1];
-    raster[i * 4 + 2] = BG[2];
-    raster[i * 4 + 3] = BG[3];
-  }
-
-  // Glyph draw area (square, centered).
-  const draw = Math.max(1, Math.round(size * (1 - 2 * padFraction)));
-  const scale = Math.max(1, Math.floor(draw / GLYPH_SIZE));
-  const glyphPx = scale * GLYPH_SIZE;
-  const offset = Math.floor((size - glyphPx) / 2);
-
-  for (let gy = 0; gy < GLYPH_SIZE; gy++) {
-    for (let gx = 0; gx < GLYPH_SIZE; gx++) {
-      if (!GLYPH[gy][gx]) continue;
-      // Nearest-neighbor upscale of this glyph cell.
-      for (let sy = 0; sy < scale; sy++) {
-        for (let sx = 0; sx < scale; sx++) {
-          const px = offset + gx * scale + sx;
-          const py = offset + gy * scale + sy;
-          if (px < 0 || py < 0 || px >= size || py >= size) continue;
-          const idx = (py * size + px) * 4;
-          raster[idx] = FG[0];
-          raster[idx + 1] = FG[1];
-          raster[idx + 2] = FG[2];
-          raster[idx + 3] = FG[3];
+    const y0 = Math.floor(y * sy);
+    const y1 = Math.max(y0 + 1, Math.floor((y + 1) * sy));
+    for (let x = 0; x < size; x++) {
+      const x0 = Math.floor(x * sx);
+      const x1 = Math.max(x0 + 1, Math.floor((x + 1) * sx));
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let a = 0;
+      let n = 0;
+      for (let sy2 = y0; sy2 < y1; sy2++) {
+        for (let sx2 = x0; sx2 < x1; sx2++) {
+          const i = (src.width * sy2 + sx2) << 2;
+          const alpha = src.data[i + 3];
+          r += (src.data[i] * alpha) / 255;
+          g += (src.data[i + 1] * alpha) / 255;
+          b += (src.data[i + 2] * alpha) / 255;
+          a += alpha;
+          n++;
         }
       }
+      const outA = a / n;
+      const o = (size * y + x) << 2;
+      out.data[o] = outA > 0 ? Math.round((r / n / outA) * 255) : 0;
+      out.data[o + 1] = outA > 0 ? Math.round((g / n / outA) * 255) : 0;
+      out.data[o + 2] = outA > 0 ? Math.round((b / n / outA) * 255) : 0;
+      out.data[o + 3] = Math.round(outA);
     }
   }
-  return raster;
+  return out;
 }
 
-function writeIcon(name, size, padFraction) {
-  const raster = renderIcon(size, padFraction);
-  const png = encodePng(size, raster);
-  const path = join(OUT_DIR, name);
-  writeFileSync(path, png);
-  // Sanity check: PNG magic header + non-empty.
-  const okMagic =
-    png.length > 8 &&
-    png[0] === 0x89 &&
-    png[1] === 0x50 &&
-    png[2] === 0x4e &&
-    png[3] === 0x47;
-  if (!okMagic) {
-    throw new Error(`Generated ${name} is not a valid PNG`);
+// Resizes the source down to a smaller content size, then centers it on an
+// opaque size x size canvas filled with `fill`. marginFraction is the empty
+// border reserved on each side - 0 for a full-bleed flatten (Apple touch
+// icon), 0.25 for the maskable icon's OS-mask safe zone.
+function flatten(src, size, marginFraction, fill) {
+  const contentSize = Math.round(size * (1 - 2 * marginFraction));
+  const content = resize(src, contentSize);
+  const out = new PNG({ width: size, height: size });
+  for (let i = 0; i < size * size; i++) {
+    out.data[i * 4] = fill[0];
+    out.data[i * 4 + 1] = fill[1];
+    out.data[i * 4 + 2] = fill[2];
+    out.data[i * 4 + 3] = fill[3];
   }
-  console.log(`wrote ${name} (${size}x${size}, ${png.length} bytes)`);
+  const offset = Math.floor((size - contentSize) / 2);
+  for (let y = 0; y < contentSize; y++) {
+    for (let x = 0; x < contentSize; x++) {
+      const si = (contentSize * y + x) << 2;
+      const alpha = content.data[si + 3] / 255;
+      const di = (size * (y + offset) + (x + offset)) << 2;
+      out.data[di] = Math.round(content.data[si] * alpha + out.data[di] * (1 - alpha));
+      out.data[di + 1] = Math.round(content.data[si + 1] * alpha + out.data[di + 1] * (1 - alpha));
+      out.data[di + 2] = Math.round(content.data[si + 2] * alpha + out.data[di + 2] * (1 - alpha));
+      out.data[di + 3] = 255;
+    }
+  }
+  return out;
+}
+
+function write(name, png) {
+  const buf = PNG.sync.write(png);
+  writeFileSync(join(OUT_DIR, name), buf);
+  console.log(`wrote ${name} (${png.width}x${png.height}, ${buf.length} bytes)`);
 }
 
 mkdirSync(OUT_DIR, { recursive: true });
+const src = PNG.sync.read(readFileSync(SOURCE));
 
-// Standard icons use a ~15% safe-zone. Maskable uses ~25% so the glyph
-// survives aggressive platform masking (circles, squircles, etc.).
-writeIcon("icon-192.png", 192, 0.15);
-writeIcon("icon-512.png", 512, 0.15);
-writeIcon("icon-512-maskable.png", 512, 0.25);
-writeIcon("apple-touch-icon-180.png", 180, 0.15);
+// Full-bleed variants: same framing as the desktop app icon they are copied
+// or resized from.
+write("favicon-16.png", resize(src, 16));
+write("favicon-32.png", resize(src, 32));
+write("icon-192.png", resize(src, 192));
+copyFileSync(SOURCE, join(OUT_DIR, "icon-512.png"));
+console.log(`wrote icon-512.png (copied from ${SOURCE})`);
 
-console.log("icons generated in " + OUT_DIR);
+// Maskable: OS masks (circle, squircle, ...) can crop up to the inner 80%,
+// so the art is padded well inside that safe zone.
+write("icon-512-maskable.png", flatten(src, 512, 0.25, BG));
+
+// Apple does not honor transparency on home-screen icons.
+write("apple-touch-icon-180.png", flatten(src, 180, 0, BG));
+
+console.log(`icons generated in ${OUT_DIR} from ${SOURCE}`);
