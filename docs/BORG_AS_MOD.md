@@ -1,6 +1,6 @@
-# The Borg as a Mod - Scope and Plan
+# Borg as a Mod - Scope and Plan
 
-> STATUS: SHIPPED, and no longer in this repository. The Borg left the monorepo
+> STATUS: SHIPPED, and no longer in this repository. Borg left the monorepo
 > at engine v0.13.0 and lives in
 > [neostryder/neo-angband-mod-borg](https://github.com/neostryder/neo-angband-mod-borg),
 > where it carries its own release tags and its own test suite. It installs from
@@ -22,7 +22,7 @@ build, this one included. Every mod, mine or anyone else's, is obtained the same
 
 1. **It behaves exactly as the original.** This is a faithful port of the
    upstream `borg/` autoplayer (Angband 4.2.6), not a reimplementation.
-2. **It is the reference implementation of the agent API.** The Borg is the
+2. **It is the reference implementation of the agent API.** Borg is the
    most demanding possible consumer of a "read the whole game, drive every
    command" interface. Building it as a mod forces the mod framework to expose
    a complete perceive/act surface - and a faithful Borg that plays correctly
@@ -33,7 +33,7 @@ build, this one included. Every mod, mine or anyone else's, is obtained the same
 
 ## 2. What the Borg is, in one paragraph
 
-The Borg is a perceive -> think -> act agent. Upstream it hooks the game at
+Borg is a perceive -> think -> act agent. Upstream it hooks the game at
 `inkey_hack` (`borg.c`): when the game asks for a keypress, the Borg perceives
 the current world, decides, and returns queued keystrokes. Its perception is a
 **hybrid**: about 90% direct reads of the game's own structures (inventory,
@@ -144,7 +144,7 @@ route. What was true then, each of it checked rather than recalled:
 | | |
 | --- | --- |
 | The substrate | Built. Plugin runtime, sandbox, capability enforcement, read-only `GameState` facade, `installController`. |
-| The Borg itself | Ported and passing, as `packages/borg`: 72 source files, 135 tests green across nine files. |
+| Borg itself | Ported and passing, as `packages/borg`: 72 source files, 135 tests green across nine files. |
 | Who imported `packages/borg` | Nobody. Zero references outside the package. |
 | Who called `installController` | Core's own tests, and `packages/mcp`. Not the web shell, not desktop. |
 | `neostryder/neo-angband-mod-borg` | `.github`, `LICENSE.md`, `README.md`. No tags, no manifest, no plugin. |
@@ -215,7 +215,7 @@ The rest of the contract, which is what every future agent mod inherits:
   character are taken with `state.nextCommand` already back in the player's
   hands.
 
-## 7. The Borg port plan
+## 7. Borg port plan
 
 The upstream `borg/` is 59 `.c` files, ~64,000 lines. Grouped and tiered by
 porting difficulty:

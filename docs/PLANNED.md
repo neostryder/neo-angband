@@ -171,7 +171,7 @@ waiting on:
   `upstream-catchup` mod, which is a different sense of catching up and shipped
   on 2026-08-24.
 
-### The Borg's PF_COMBAT_REGEN rest check is still not wired
+### Borg's PF_COMBAT_REGEN rest check is still not wired
 
 One arm of the Borg's `borg_check_rest` asks a player-class flag, PF_COMBAT_REGEN,
 and `PlayerView` had object flags and derived skills but no way to answer "does

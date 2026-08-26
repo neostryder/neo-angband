@@ -10251,7 +10251,7 @@ async function maybeBirth(): Promise<BootStep> {
   // birth screen and let it drive the default (or last-birthed) character, so it
   // never stalls waiting for a human to click through character creation.
   if (params.get("agent")) {
-    say("The Borg awakens.");
+    say("Borg awakens.");
     return "done";
   }
   let justBirthed = false;

@@ -54,7 +54,7 @@ jobs:
       # under `pnpm test` below - including the failure paths, which the old step over
       # two correct mods could not exercise. So there is no separate build step here any
       # more; each mod repository runs the builder over its own source in its own CI.
-      # The Borg's tests are not here any more: it left for its own mod repository
+      # Borg's tests are not here any more: it left for its own mod repository
       # (neostryder/neo-angband-mod-borg), which runs all 171 of them plus a suite
       # that drives the BUILT plugin.js. What this repository still owes it is
       # Rng.reseed and the ModPlugin.controller seam, both covered below.

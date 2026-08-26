@@ -265,7 +265,7 @@ export const NOSCORE = {
  * branch when SCORE_BORGS is defined), so the port records the configuration it
  * builds under as named constants instead of leaving the choice implicit.
  *
- * ALLOW_BORG: true. The Borg ships as a bundled mod (decision 31), so the bit
+ * ALLOW_BORG: true. Borg ships as a bundled mod (decision 31), so the bit
  * exists and can be set.
  * SCORE_BORGS: false, matching upstream's default - a borg-played character is
  * not eligible for the high-score table.

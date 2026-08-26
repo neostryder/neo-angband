@@ -382,7 +382,7 @@ rpgm.tools**. [SECURITY.md](SECURITY.md) says what is worth reporting.
 | [How modding works](docs/MODS.md) | The design, and what a mod can reach |
 | [Modding reference](docs/modding/README.md) | Pack anatomy, records, plugins, the measured capability table |
 | [Feature restoration](docs/modding/FEATURE_RESTORATION.md) | Bringing back what Angband dropped, without changing vanilla |
-| [The Borg as a mod](docs/BORG_AS_MOD.md) | Why the autoplayer ships outside core, and its build order |
+| [Borg as a mod](docs/BORG_AS_MOD.md) | Why the autoplayer ships outside core, and its build order |
 | [Linoleum tile packs](docs/LINOLEUM.md) | The loose-pack tile format, the converter, and tileset licensing |
 | [How faithful is the port?](docs/PARITY.md) | The methodology, in full |
 | [Installing and playing](docs/INSTALL.md) | Every platform, every install method |

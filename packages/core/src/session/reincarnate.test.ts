@@ -172,7 +172,7 @@ describe("reincarnate: the character is new", () => {
 
   it("recomputes the derived state for the NEW race and class", () => {
     /* The failure this catches: a reincarnation that rolled a new player and left
-     * state.actor.combat / .speed / .weapon describing the dead one. The Borg
+     * state.actor.combat / .speed / .weapon describing the dead one. Borg
      * reads exactly those, so it would have been playing a character it could not
      * see. */
     const game = townGame(9090);

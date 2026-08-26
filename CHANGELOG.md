@@ -1388,7 +1388,7 @@ The initial public alpha release.
   Linoleum-style tile packs, and sandboxed scripted plugins for the exotic -
   all installing through the same verified route as any third-party mod. See
   [docs/MODS.md](docs/MODS.md).
-- **The Borg**, a faithful port of Angband's automatic player, riding the mod
+- **Borg**, a faithful port of Angband's automatic player, riding the mod
   API as its own completeness proof.
 - **Deterministic and seeded** generation throughout, with a save format built
   to survive modular content.
