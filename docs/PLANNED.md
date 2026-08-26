@@ -125,6 +125,25 @@ message reads differently.
 
 Tracked as issue #7.
 
+## Mod resilience
+
+The contract is in `docs/modding/MOD_COMPATIBILITY.md`, and its four gates are
+what any of this has to satisfy. One area is known to be short of it.
+
+### Bind-time resilience: the rest of the binders
+
+Three are done. Store records are complete: every field a patch can reach
+refuses a mod's unresolvable entry and attributes it; the ego `item:` list does
+the same; and an artifact's `base-object` drops the whole record rather than
+the field. The shared decision lives in `packages/core/src/mod/refusal.ts`, so
+a further binder is a small job rather than a repeat of the reasoning.
+
+**What is missing is the denominator.** No systematic pass has been made over
+the remaining binders to find every field that resolves a NAME from a list a
+mod can append to, which is the shape that makes this reachable.
+
+Tracked as issue #8.
+
 ## Attribution
 
 When a mod causes something, the game should say so; otherwise the reader blames

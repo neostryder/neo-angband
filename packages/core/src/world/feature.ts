@@ -10,9 +10,7 @@
 import { FlagSet } from "../bitflag.js";
 import { FEAT, RF, TERRAIN_ENTRIES, TERRAIN_FLAG_ENTRIES, TF } from "../generated/index.js";
 import type { ModExtensible } from "../mod/extension.js";
-import { attachExt, provenanceOf } from "../mod/extension.js";
-import { fieldOwner, refusalWhy } from "../mod/refusal.js";
-import type { RecordRefusal } from "../mod/refusal.js";
+import { attachExt } from "../mod/extension.js";
 
 /** Byte size of a terrain FlagSet (upstream TF_SIZE). */
 export const TF_SIZE = Math.ceil(TERRAIN_FLAG_ENTRIES.length / 8);
@@ -157,12 +155,6 @@ export class FeatureRegistry {
   /** fidx of each shop entrance, indexed by store number (shopnum - 1). */
   private shopFeatIdx: number[] = [];
 
-  /**
-   * Mod-owned terrain records whose `mimic:` named a feature that does not
-   * resolve. Empty for the shipped pack with no mods loaded.
-   */
-  readonly refused: RecordRefusal[] = [];
-
   constructor(records: TerrainRecordJson[]) {
     const featMap = FEAT as Record<string, number>;
     for (const rec of records) {
@@ -196,44 +188,14 @@ export class FeatureRegistry {
       this.byCode.set(rec.code, feature);
       this.byName.set(rec.name, feature);
     }
-    /*
-     * Second pass: resolve mimic references by code.
-     *
-     * `mimic:` NAMES ANOTHER TERRAIN RECORD, and a mod's terrain.json entries
-     * are exactly the mod-appendable list `code:` and every other lookup here
-     * cannot be: FEAT codes are the fixed table list-terrain.h compiles, so a
-     * mod cannot invent a new one, but it CAN patch an existing feature's
-     * `mimic:` to point at a feature a sibling mod supplies - the same
-     * "mod A depends on mod B, player disables mod B" shape the store and ego
-     * binders already answer. This used to throw `terrain: mimic not found`
-     * out of `bindCore` for the whole game over one feature's display alias.
-     *
-     * LOSING THE MIMIC IS THE SIZE OF THE DROP, matching the store binder's
-     * entrance-feature case: `mimic` is a scalar (one feature, or none), so
-     * there is no smaller unit to drop than the field itself, and the record
-     * survives exactly as it would if `mimic:` had never been written -
-     * displayed with its own glyph rather than the target's.
-     */
+    // Second pass: resolve mimic references by code.
     for (const rec of records) {
-      if (rec.mimic === undefined) continue;
-      const f = this.byCode.get(rec.code) as Feature;
-      const target = this.byCode.get(rec.mimic);
-      if (target) {
+      if (rec.mimic !== undefined) {
+        const f = this.byCode.get(rec.code) as Feature;
+        const target = this.byCode.get(rec.mimic);
+        if (!target) throw new Error(`terrain: mimic not found: ${rec.mimic}`);
         f.mimic = target.fidx;
-        continue;
       }
-      const from = provenanceOf(rec);
-      const owner = fieldOwner(from, "mimic", rec.mimic);
-      if (owner === null || from === undefined) {
-        throw new Error(`terrain: mimic not found: ${rec.mimic}`);
-      }
-      this.refused.push({
-        file: "terrain",
-        record: rec.code,
-        field: "mimic",
-        id: owner,
-        why: refusalWhy(rec.code, "mimic dropped", `mimic not found: ${rec.mimic}`, from),
-      });
     }
     /*
      * finish_parse_feat (init.c L2249-2257, L2275): "Assign shop index based
