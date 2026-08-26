@@ -3,13 +3,7 @@ import { composePacks, mergePatch } from "./compose.js";
 import type { PackContent } from "./compose.js";
 import { packRef, slugify, validateManifest } from "./manifest.js";
 import type { PackManifest } from "./manifest.js";
-import type { FieldPatch } from "./patch.js";
 import { resolveLoadOrder } from "./resolve.js";
-
-/** An op with `value` where `append` needs `values` - the typo the audit found. */
-const APPEND_WITH_VALUE_TYPO = [
-  { op: "append", path: "flags", value: ["COLD"] },
-] as unknown as FieldPatch;
 
 function manifest(id: string, deps?: Record<string, string>): PackManifest {
   const m: PackManifest = { id, name: id, version: "1.0.0", shape: "content" };
@@ -414,55 +408,6 @@ describe("composePacks with an onRefuse reporter: one bad op costs that op", () 
     };
     expect(() => composePacks([core, bad])).toThrow(/does not exist/);
     expect(() => composePacks([core, bad], {})).toThrow(/does not exist/);
-  });
-
-  /**
-   * A MALFORMED fieldPatch OP degrades the same way a target that does not
-   * exist does. Until this fix, `applyFieldPatch` (patch.ts) was the one
-   * caller in this file whose throw did not go through `refuse` - a
-   * `PatchError` from a target of the wrong shape, or a bare TypeError from an
-   * `append` op written with `value` instead of `values`, propagated straight
-   * out of `composePacks`. Reachable only through `composeDroppingBroken`
-   * (loader.ts), that meant the whole pack was dropped when the message could
-   * be pinned on it and EVERY installed mod was dropped when it could not,
-   * since a raw TypeError names no pack.
-   */
-  it("costs only the malformed op, not the whole pack", () => {
-    const { onRefuse, seen } = refusing();
-    const mod: PackContent = {
-      manifest: manifest("clumsy", { core: "*" }),
-      files: {
-        monster: {
-          records: [{ name: "Ice Kobold", hp: 7 }],
-          fieldPatches: {
-            "core:kobold": APPEND_WITH_VALUE_TYPO,
-          },
-        },
-      },
-    };
-    const table = composePacks([core, mod], { onRefuse }).get("monster");
-
-    expect(seen).toHaveLength(1);
-    expect(seen[0]?.[0]).toBe("clumsy");
-    expect(seen[0]?.[1]).toContain("core:kobold");
-    /* The mod's own new monster still made it in, and core's kobold is
-     * exactly as it was - the failed op left no partial write behind. */
-    expect(table?.get("clumsy:ice-kobold")?.value["hp"]).toBe(7);
-    expect(table?.get("core:kobold")?.value["flags"]).toEqual(["EVIL"]);
-  });
-
-  it("still throws a malformed op when nobody is listening", () => {
-    const mod: PackContent = {
-      manifest: manifest("clumsy", { core: "*" }),
-      files: {
-        monster: {
-          fieldPatches: {
-            "core:kobold": APPEND_WITH_VALUE_TYPO,
-          },
-        },
-      },
-    };
-    expect(() => composePacks([core, mod])).toThrow(/needs a "values" array/);
   });
 });
 

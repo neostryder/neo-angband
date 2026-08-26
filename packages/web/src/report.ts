@@ -33,6 +33,7 @@
 import { elideHome } from "@rpgm-tools/neo-angband-core/log";
 import { githubRepo } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { LogLevel } from "@rpgm-tools/neo-angband-core/log";
+import { t } from "@rpgm-tools/neo-angband-core";
 
 /** How many log lines the report carries, newest last. */
 export const REPORT_LOG_LINES = 500;
@@ -43,11 +44,20 @@ export const REPORT_DESCRIPTION_LINES = 3;
 /** Which front end this is, in the player's words rather than the code's. */
 export type ReportShell = "desktop" | "installed" | "browser";
 
-export const SHELL_BLURB: Record<ReportShell, string> = {
-  desktop: "the desktop app",
-  installed: "installed from the browser (PWA)",
-  browser: "a browser tab",
-};
+/**
+ * A FUNCTION, not a constant: see gameMenuFooter's comment in game-menu.ts -
+ * the locale can change mid-session, so this may not be frozen at import time.
+ */
+export function shellBlurb(shell: ReportShell): string {
+  switch (shell) {
+    case "desktop":
+      return t("report.shell.desktop", "the desktop app");
+    case "installed":
+      return t("report.shell.installed", "installed from the browser (PWA)");
+    case "browser":
+      return t("report.shell.browser", "a browser tab");
+  }
+}
 
 export interface ReportCharacter {
   readonly name: string;
@@ -102,14 +112,26 @@ function stamp(at: number): string {
   try {
     return new Date(at).toISOString();
   } catch {
-    return "(unknown time)";
+    return t("report.time.unknown", "(unknown time)");
   }
 }
 
 /** `level 12 Half-Troll Warrior, 550 feet down` - or where they are standing. */
 export function describeCharacter(c: ReportCharacter): string {
-  const where = c.depthFt === 0 ? "in town" : `${String(c.depthFt)} feet down`;
-  return `${c.name}, level ${String(c.level)} ${c.race} ${c.cls}, ${where}`;
+  const where =
+    c.depthFt === 0
+      ? t("report.character.inTown", "in town")
+      : t("report.character.depthFt", "{depth} feet down", { depth: c.depthFt });
+  /* name, race and cls are the character's own data (the player's chosen name
+   * and the race/class the game assigned), not UI chrome - only the words
+   * around them are translated. */
+  return t("report.character.line", "{name}, level {level} {race} {cls}, {where}", {
+    name: c.name,
+    level: c.level,
+    race: c.race,
+    cls: c.cls,
+    where,
+  });
 }
 
 /**
@@ -126,48 +148,87 @@ export function reportText(input: ReportInput): string {
     out.push(`${name.padEnd(15)}${value}`);
   };
 
-  out.push("Neo Angband problem report", "==========================", "");
-  field("written", stamp(input.at));
-  field("version", `${input.version} (parity baseline ${input.parityBaseline})`);
-  if (input.buildId !== undefined && input.buildId !== "") field("build", input.buildId);
-  field("update channel", input.channel);
-  field("shell", SHELL_BLURB[input.shell]);
-  field("platform", `${input.platform} ${input.arch}`);
+  const title = t("report.file.title", "Neo Angband problem report");
+  out.push(title, "=".repeat(title.length), "");
+  field(t("report.file.field.written", "written"), stamp(input.at));
   field(
-    "display",
-    `${String(input.cols)}x${String(input.rows)} cells, ` +
-      `${String(input.cssWidth)}x${String(input.cssHeight)} css px, dpr ${String(input.dpr)}`,
+    t("report.file.field.version", "version"),
+    t("report.file.versionValue", "{version} (parity baseline {baseline})", {
+      version: input.version,
+      baseline: input.parityBaseline,
+    }),
   );
-  field("logging", `${input.level}, ring holds ${String(input.ringSize)}`);
+  if (input.buildId !== undefined && input.buildId !== "") {
+    field(t("report.file.field.build", "build"), input.buildId);
+  }
+  field(t("report.file.field.updateChannel", "update channel"), input.channel);
+  field(t("report.file.field.shell", "shell"), shellBlurb(input.shell));
+  field(t("report.file.field.platform", "platform"), `${input.platform} ${input.arch}`);
+  field(
+    t("report.file.field.display", "display"),
+    t(
+      "report.file.displayValue",
+      "{cols}x{rows} cells, {cssWidth}x{cssHeight} css px, dpr {dpr}",
+      {
+        cols: input.cols,
+        rows: input.rows,
+        cssWidth: input.cssWidth,
+        cssHeight: input.cssHeight,
+        dpr: input.dpr,
+      },
+    ),
+  );
+  field(
+    t("report.file.field.logging", "logging"),
+    t("report.file.loggingValue", "{level}, ring holds {ringSize}", {
+      level: input.level,
+      ringSize: input.ringSize,
+    }),
+  );
   /* Only when it happened, because "0 dropped" on every report trains the eye to
    * skip the line that matters on the one report where it is not zero. */
   if (input.dropped > 0) {
-    field("dropped", `${String(input.dropped)} earlier lines fell off the top`);
+    field(
+      t("report.file.field.dropped", "dropped"),
+      t("report.file.droppedValue", "{count} earlier lines fell off the top", {
+        count: input.dropped,
+      }),
+    );
   }
-  field("user agent", input.userAgent);
+  field(t("report.file.field.userAgent", "user agent"), input.userAgent);
 
-  out.push(...heading("What the player said"));
+  out.push(...heading(t("report.file.heading.said", "What the player said")));
   const said = input.description.map((l) => l.trim()).filter((l) => l !== "");
-  out.push(...(said.length > 0 ? said : ["(nothing written)"]));
+  out.push(...(said.length > 0 ? said : [t("report.file.said.empty", "(nothing written)")]));
 
-  out.push(...heading("Character"));
-  out.push(input.character ? describeCharacter(input.character) : "(no character in play)");
+  out.push(...heading(t("report.file.heading.character", "Character")));
+  out.push(
+    input.character
+      ? describeCharacter(input.character)
+      : t("report.file.character.none", "(no character in play)"),
+  );
 
-  out.push(...heading("Mods enabled"));
+  out.push(...heading(t("report.file.heading.mods", "Mods enabled")));
   out.push(
     ...(input.mods.length > 0
       ? input.mods.map((m) => `${m.id} ${m.version}`)
-      : ["(none - this is the unmodified game)"]),
+      : [t("report.file.mods.none", "(none - this is the unmodified game)")]),
   );
 
   const lines = input.lines.slice(-REPORT_LOG_LINES);
+  const heldSuffix =
+    input.lines.length > lines.length
+      ? t("report.file.log.heldSuffix", ", of {total} held", { total: input.lines.length })
+      : "";
   out.push(
     ...heading(
-      `Log (${String(lines.length)} lines, oldest first` +
-        `${input.lines.length > lines.length ? `, of ${String(input.lines.length)} held` : ""})`,
+      t("report.file.log.heading", "Log ({count} lines, oldest first{heldSuffix})", {
+        count: lines.length,
+        heldSuffix,
+      }),
     ),
   );
-  out.push(...(lines.length > 0 ? lines : ["(the log is empty)"]));
+  out.push(...(lines.length > 0 ? lines : [t("report.file.log.empty", "(the log is empty)")]));
   out.push("");
 
   /* Elided once, over the whole document, rather than per field. A home path
@@ -294,7 +355,12 @@ export function reportDestinations(
   mods: readonly ReportModOrigin[],
 ): ReportDestination[] {
   const out: ReportDestination[] = [
-    { id: "tracker-game", key: "G", label: "Neo Angband itself", url: NEO_ANGBAND_TRACKER },
+    {
+      id: "tracker-game",
+      key: "G",
+      label: t("report.dest.game", "Neo Angband itself"),
+      url: NEO_ANGBAND_TRACKER,
+    },
   ];
   let opened = 0;
   for (const mod of mods.slice(0, REPORT_MAX_MOD_TRACKERS)) {
@@ -314,7 +380,7 @@ export function reportDestinations(
   out.push({
     id: "tracker-chat",
     key: "C",
-    label: "Ask in the RPGM Tools Discord",
+    label: t("report.dest.chat", "Ask in the RPGM Tools Discord"),
     url: RPGM_TOOLS_DISCORD,
   });
   return out;
@@ -378,7 +444,7 @@ export function reportLines(v: ReportView): ReportLine[] {
   };
 
   if (v.phase === "saved") {
-    say("The report is written.", "good");
+    say(t("report.screen.written", "The report is written."), "good");
     say("  " + (v.savedAs ?? ""), "dim");
     say("");
     if (v.notice !== undefined && v.notice !== "") {
@@ -387,8 +453,8 @@ export function reportLines(v: ReportView): ReportLine[] {
     }
     say(
       v.shell === "desktop"
-        ? "Nothing has been uploaded; attach that file where you report it."
-        : "Your browser has downloaded it; attach it where you report it.",
+        ? t("report.screen.notUploadedDesktop", "Nothing has been uploaded; attach that file where you report it.")
+        : t("report.screen.notUploadedBrowser", "Your browser has downloaded it; attach it where you report it."),
       "body",
     );
     say("");
@@ -405,32 +471,55 @@ export function reportLines(v: ReportView): ReportLine[] {
      * the last destination's address fell off the bottom, because this block and
      * the list share one fixed budget. Anything added here is taken from the list
      * below it. */
-    say("Before you post", "head");
-    say("  One problem per report, and search the tracker first.", "body");
-    say("  Say what you did, what you expected, and what happened instead.", "body");
-    say("  Something broken is a bug. Something that merely differs from", "body");
-    say("  Angband 4.2.6 is a parity difference. The form asks which.", "body");
+    say(t("report.screen.beforePost.head", "Before you post"), "head");
+    say(
+      t("report.screen.beforePost.one", "  One problem per report, and search the tracker first."),
+      "body",
+    );
+    say(
+      t(
+        "report.screen.beforePost.two",
+        "  Say what you did, what you expected, and what happened instead.",
+      ),
+      "body",
+    );
+    say(
+      t("report.screen.beforePost.three", "  Something broken is a bug. Something that merely differs from"),
+      "body",
+    );
+    say(
+      t("report.screen.beforePost.four", "  Angband 4.2.6 is a parity difference. The form asks which."),
+      "body",
+    );
     say("");
 
     const origins = v.modOrigins ?? [];
     const dests = reportDestinations(origins);
-    say("Where to report it", "head");
+    say(t("report.screen.whereToReport.head", "Where to report it"), "head");
     if (origins.length > 0) {
       /* Said ONCE, above the rows, and said plainly. An address here was recorded
        * from the mod's own manifest or from the place the player typed, and the
        * game has never checked that the project behind it is the project that
        * wrote the mod. Opening a stranger's repository because an archive claimed
        * it is the failure this line exists to make impossible to walk into. */
-      say("  A mod's address comes from the mod itself and has not been", "dim");
-      say("  checked. Read it before you open it.", "dim");
+      say(
+        t("report.screen.modWarning.one", "  A mod's address comes from the mod itself and has not been"),
+        "dim",
+      );
+      say(t("report.screen.modWarning.two", "  checked. Read it before you open it."), "dim");
     }
     for (const d of dests) {
       say(`  ${(d.key === "" ? "-" : d.key).padEnd(3)}${d.label}`, "body");
-      say(`     ${d.url ?? "no repository recorded - report it to Neo Angband"}`, "dim");
+      say(
+        `     ${d.url ?? t("report.screen.dest.noRepo", "no repository recorded - report it to Neo Angband")}`,
+        "dim",
+      );
     }
     if (origins.length > REPORT_MAX_MOD_TRACKERS) {
       say(
-        `  ...and ${String(origins.length - REPORT_MAX_MOD_TRACKERS)} more enabled mods not listed here.`,
+        t("report.screen.dest.moreNotListed", "  ...and {count} more enabled mods not listed here.", {
+          count: origins.length - REPORT_MAX_MOD_TRACKERS,
+        }),
         "dim",
       );
     }
@@ -438,57 +527,99 @@ export function reportLines(v: ReportView): ReportLine[] {
   }
 
   if (v.phase === "failed") {
-    say("The report could not be written.", "warn");
+    say(t("report.screen.failed.title", "The report could not be written."), "warn");
     say("");
-    say(v.error ?? "Something went wrong.", "body");
+    say(v.error ?? t("report.screen.failed.genericError", "Something went wrong."), "body");
     say("");
-    say("Nothing else has changed, and your character is untouched.", "body");
+    say(
+      t("report.screen.failed.untouched", "Nothing else has changed, and your character is untouched."),
+      "body",
+    );
     return out;
   }
 
-  say("Report a problem", "head");
+  say(t("report.screen.compose.head", "Report a problem"), "head");
   say("");
-  say("This writes a file describing what the game was doing. It is NOT", "body");
-  say("sent anywhere - it lands on your computer and you decide who sees it.", "body");
+  say(
+    t("report.screen.compose.intro1", "This writes a file describing what the game was doing. It is NOT"),
+    "body",
+  );
+  say(
+    t(
+      "report.screen.compose.intro2",
+      "sent anywhere - it lands on your computer and you decide who sees it.",
+    ),
+    "body",
+  );
   say("");
 
   const said = v.description.map((l) => l.trim()).filter((l) => l !== "");
-  say("What went wrong:", "body");
+  say(t("report.screen.compose.whatWentWrong", "What went wrong:"), "body");
   if (said.length === 0) {
-    say("  (nothing written yet - press D to describe it)", "dim");
+    say(
+      t("report.screen.compose.nothingWrittenYet", "  (nothing written yet - press D to describe it)"),
+      "dim",
+    );
     /* The one sentence that decides whether the description is worth reading, put
      * where it is read: on the page holding the key that asks for it, not on the
      * page shown afterwards when the words are already typed. The rest of what
      * makes a report actionable is on that later page, because the rest is about
      * choosing a tracker and posting rather than about what to write. */
-    say("  Say what you did, what you expected, and what happened.", "dim");
+    say(
+      t("report.screen.compose.sayWhatHappened", "  Say what you did, what you expected, and what happened."),
+      "dim",
+    );
   } else {
     for (const l of said) say(`  ${l}`, "good");
   }
   say("");
-  say("The file will also contain:", "body");
-  say("  the version, your platform, and the size of the window", "dim");
-  say(`  the last ${String(Math.min(v.lineCount, REPORT_LOG_LINES))} lines of the log`, "dim");
+  say(t("report.screen.compose.contains.head", "The file will also contain:"), "body");
   say(
-    v.modCount > 0
-      ? `  the ${String(v.modCount)} mod${v.modCount === 1 ? "" : "s"} you have enabled`
-      : "  that you have no mods enabled",
+    t("report.screen.compose.contains.platform", "  the version, your platform, and the size of the window"),
     "dim",
   );
-  say("  your character's name, race, class, level and depth", "dim");
+  say(
+    t("report.screen.compose.contains.logLines", "  the last {count} lines of the log", {
+      count: Math.min(v.lineCount, REPORT_LOG_LINES),
+    }),
+    "dim",
+  );
+  say(
+    v.modCount > 0
+      ? t(
+          "report.screen.compose.contains.mods",
+          "  the {count} {count, plural, one {mod} other {mods}} you have enabled",
+          { count: v.modCount },
+        )
+      : t("report.screen.compose.contains.noMods", "  that you have no mods enabled"),
+    "dim",
+  );
+  say(
+    t("report.screen.compose.contains.character", "  your character's name, race, class, level and depth"),
+    "dim",
+  );
   say("");
-  say(`Logging is set to ${v.level}.`, "dim");
+  /* v.level is the LogLevel identifier ("info"/"warn"/"error"/...), reused
+   * verbatim here as the port's log-level vocabulary rather than translated
+   * as prose. */
+  say(t("report.screen.compose.loggingLevel", "Logging is set to {level}.", { level: v.level }), "dim");
   if (v.level === "warn" || v.level === "error") {
     /* The one piece of advice on this screen, and it is the one that changes
      * whether the NEXT report is any use. A released build logs warnings only,
      * which is right for a machine that is working and useless on one that is
      * not. */
-    say("Turning it up to info and making the problem happen again produces a", "body");
-    say("much more useful report. Press L to change it.", "body");
+    say(
+      t(
+        "report.screen.compose.turnUpLogging1",
+        "Turning it up to info and making the problem happen again produces a",
+      ),
+      "body",
+    );
+    say(t("report.screen.compose.turnUpLogging2", "much more useful report. Press L to change it."), "body");
   }
   if (v.logsDir !== undefined && v.logsDir !== "") {
     say("");
-    say("Reports and logs are kept in:", "body");
+    say(t("report.screen.compose.logsDirHead", "Reports and logs are kept in:"), "body");
     say(`  ${v.logsDir}`, "dim");
   }
   return out;
@@ -502,8 +633,15 @@ export function reportFooter(v: ReportView): string {
     const keys = reportDestinations(v.modOrigins ?? [])
       .map((d) => d.key)
       .filter((k) => k !== "");
-    return `[ ${keys.join("/")} to open a tracker - ESC to go back ]`;
+    return t("report.footer.saved", "[ {keys} to open a tracker - ESC to go back ]", {
+      keys: keys.join("/"),
+    });
   }
-  if (v.phase === "failed") return "[ ENTER to try again - ESC to go back ]";
-  return "[ D to describe - L logging level - ENTER to write it - ESC to go back ]";
+  if (v.phase === "failed") {
+    return t("report.footer.failed", "[ ENTER to try again - ESC to go back ]");
+  }
+  return t(
+    "report.footer.compose",
+    "[ D to describe - L logging level - ENTER to write it - ESC to go back ]",
+  );
 }

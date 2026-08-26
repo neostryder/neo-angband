@@ -22,6 +22,7 @@ import {
   colorToCss,
   COLOUR_WHITE,
   ENGINE_VERSION,
+  t,
 } from "@rpgm-tools/neo-angband-core";
 import { UI_DIM } from "./ui-colors";
 
@@ -147,7 +148,12 @@ const SPACER_ROW = 20;
  *
  * No version number here - it is already beside the title, two rows up.
  */
-const PORT_CREDIT = "{light slate}A port by neostryder / RPGM Tools{/}";
+function portCredit(): string {
+  return `{light slate}${t("news.credit.port", "A port by {author} / {org}", {
+    author: "neostryder",
+    org: "RPGM Tools",
+  })}{/}`;
+}
 
 /**
  * Angband's own credit, in the grey block at the foot of the screen beside the
@@ -161,7 +167,13 @@ const PORT_CREDIT = "{light slate}A port by neostryder / RPGM Tools{/}";
  * licence files, and a three-name notice trimmed to fit 80 columns would be worse
  * than a line that points at the real one.
  */
-const ANGBAND_CREDIT = `{slate}Based on Angband ${BASELINE_VERSION} by the Angband developers{/}`;
+function angbandCredit(): string {
+  return `{slate}${t(
+    "news.credit.angband",
+    "Based on Angband {version} by the Angband developers",
+    { version: BASELINE_VERSION },
+  )}{/}`;
+}
 
 /** One painted title row. */
 export interface TitleLine {
@@ -240,17 +252,17 @@ export function titleLines(): readonly TitleLine[] {
     for (const raw of splashOverride.slice(0, MOD_SPLASH_ROWS)) {
       out.push({ markup: raw.replace("$VERSION", ENGINE_VERSION), centred: false });
     }
-    out.push({ markup: PORT_CREDIT, centred: true });
-    out.push({ markup: ANGBAND_CREDIT, centred: true });
+    out.push({ markup: portCredit(), centred: true });
+    out.push({ markup: angbandCredit(), centred: true });
     return out;
   }
   for (let i = 0; i < NEWS.length; i++) {
     const raw = NEWS[i] ?? "";
     out.push({
-      markup: i === SPACER_ROW ? ANGBAND_CREDIT : raw.replace("$VERSION", ENGINE_VERSION),
+      markup: i === SPACER_ROW ? angbandCredit() : raw.replace("$VERSION", ENGINE_VERSION),
       centred: i === SPACER_ROW,
     });
-    if (i === GROUND_ROW) out.push({ markup: PORT_CREDIT, centred: true });
+    if (i === GROUND_ROW) out.push({ markup: portCredit(), centred: true });
   }
   return out;
 }
@@ -331,20 +343,35 @@ interface TitleRow {
  */
 export function titleRows(opts: TitleOptions): TitleRow[] {
   const rows: TitleRow[] = [
-    { choice: "new", key: "n", label: "(N)ew game", enabled: true },
-    { choice: "open", key: "o", label: "(O)pen a save", enabled: opts.canOpen },
-    { choice: "load", key: "l", label: "(L)oad last save", enabled: opts.canLoad },
+    { choice: "new", key: "n", label: t("news.title.new", "(N)ew game"), enabled: true },
+    {
+      choice: "open",
+      key: "o",
+      label: t("news.title.open", "(O)pen a save"),
+      enabled: opts.canOpen,
+    },
+    {
+      choice: "load",
+      key: "l",
+      label: t("news.title.load", "(L)oad last save"),
+      enabled: opts.canLoad,
+    },
   ];
   /* Before Quit, because Quit is last in the File menu and this is not a File
    * menu item at all - putting it after Quit would read as though upstream had
    * one there. */
   if (opts.canInstall) {
-    rows.push({ choice: "install", key: "i", label: "(I)nstall locally", enabled: true });
+    rows.push({
+      choice: "install",
+      key: "i",
+      label: t("news.title.install", "(I)nstall locally"),
+      enabled: true,
+    });
   }
   if (opts.canUpdate) {
-    rows.push({ choice: "update", key: "u", label: "(U)pdate", enabled: true });
+    rows.push({ choice: "update", key: "u", label: t("news.title.update", "(U)pdate"), enabled: true });
   }
-  rows.push({ choice: "quit", key: "q", label: "(Q)uit", enabled: opts.canQuit });
+  rows.push({ choice: "quit", key: "q", label: t("news.title.quit", "(Q)uit"), enabled: opts.canQuit });
   return rows;
 }
 

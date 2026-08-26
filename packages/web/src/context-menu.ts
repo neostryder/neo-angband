@@ -21,6 +21,8 @@
  * below offers all four directly instead.
  */
 
+import { t } from "@rpgm-tools/neo-angband-core";
+
 export interface MenuEntry<A extends string> {
   label: string;
   action: A;
@@ -60,24 +62,33 @@ export interface PlayerMenuCtx {
 /** context_menu_player (L248-424), minus the mouse-specific labels/keys. */
 export function buildPlayerMenu(ctx: PlayerMenuCtx): MenuEntry<PlayerMenuAction>[] {
   const out: MenuEntry<PlayerMenuAction>[] = [];
-  out.push({ label: "Cast", action: "cast", disabled: !ctx.canCast });
-  out.push({ label: "Go Up", action: "go-up", disabled: !ctx.onUpStairs });
-  out.push({ label: "Go Down", action: "go-down", disabled: !ctx.onDownStairs });
-  out.push({ label: "Explore", action: "explore" }); // installRunning's exploreAction (session/game.ts)
+  out.push({ label: t("contextMenu.player.cast.label", "Cast"), action: "cast", disabled: !ctx.canCast });
+  out.push({ label: t("contextMenu.player.goUp.label", "Go Up"), action: "go-up", disabled: !ctx.onUpStairs });
+  out.push({
+    label: t("contextMenu.player.goDown.label", "Go Down"),
+    action: "go-down",
+    disabled: !ctx.onDownStairs,
+  });
+  out.push({ label: t("contextMenu.player.explore.label", "Explore"), action: "explore" }); // installRunning's exploreAction (session/game.ts)
   // "Look" precedes "Rest" (ui-context.c L289 before L292) - the entry order
   // sets the auto-assigned quick-select letters, so the order must match.
-  out.push({ label: "Look", action: "look" });
+  out.push({ label: t("contextMenu.player.look.label", "Look"), action: "look" });
   // "Rest" opens the full do_cmd_rest prompt (main.ts restCmd): N turns, '&' as
   // needed, '*' HP+SP, '!' HP or SP - matching textui_cmd_rest.
-  out.push({ label: "Rest", action: "rest" });
-  out.push({ label: "Inventory", action: "inventory" });
+  out.push({ label: t("contextMenu.player.rest.label", "Rest"), action: "rest" });
+  out.push({ label: t("contextMenu.player.inventory.label", "Inventory"), action: "inventory" });
   if (ctx.hasFloorObject) {
-    out.push({ label: "Floor", action: "floor" });
-    out.push({ label: "Pick up", action: "pickup", disabled: !ctx.canPickup });
+    out.push({ label: t("contextMenu.player.floor.label", "Floor"), action: "floor" });
+    out.push({
+      label: t("contextMenu.player.pickup.label", "Pick up"),
+      action: "pickup",
+      disabled: !ctx.canPickup,
+    });
   }
-  out.push({ label: "Character", action: "character" });
-  if (!ctx.centerPlayerOption) out.push({ label: "Center Map", action: "center-map" });
-  out.push({ label: "Other", action: "other" });
+  out.push({ label: t("contextMenu.player.character.label", "Character"), action: "character" });
+  if (!ctx.centerPlayerOption)
+    out.push({ label: t("contextMenu.player.centerMap.label", "Center Map"), action: "center-map" });
+  out.push({ label: t("contextMenu.player.other.label", "Other"), action: "other" });
   return out;
 }
 
@@ -105,17 +116,17 @@ export type PlayerOtherAction =
  */
 export function buildPlayerOtherMenu(): MenuEntry<PlayerOtherAction>[] {
   return [
-    { label: "Knowledge", action: "knowledge" },
-    { label: "Show Map", action: "map" },
-    { label: "Show Messages", action: "messages" },
-    { label: "Show Monster List", action: "monsters" },
-    { label: "Show Object List", action: "objects" },
-    { label: "Toggle Ignored", action: "toggle-ignore" },
-    { label: "Ignore setup", action: "ignore-setup" },
-    { label: "Options", action: "options" },
-    { label: "Commands", action: "help" },
-    { label: "Abilities", action: "abilities" },
-    { label: "Compare equipment", action: "equip-cmp" },
+    { label: t("contextMenu.playerOther.knowledge.label", "Knowledge"), action: "knowledge" },
+    { label: t("contextMenu.playerOther.map.label", "Show Map"), action: "map" },
+    { label: t("contextMenu.playerOther.messages.label", "Show Messages"), action: "messages" },
+    { label: t("contextMenu.playerOther.monsters.label", "Show Monster List"), action: "monsters" },
+    { label: t("contextMenu.playerOther.objects.label", "Show Object List"), action: "objects" },
+    { label: t("contextMenu.playerOther.toggleIgnore.label", "Toggle Ignored"), action: "toggle-ignore" },
+    { label: t("contextMenu.playerOther.ignoreSetup.label", "Ignore setup"), action: "ignore-setup" },
+    { label: t("contextMenu.playerOther.options.label", "Options"), action: "options" },
+    { label: t("contextMenu.playerOther.help.label", "Commands"), action: "help" },
+    { label: t("contextMenu.playerOther.abilities.label", "Abilities"), action: "abilities" },
+    { label: t("contextMenu.playerOther.equipCmp.label", "Compare equipment"), action: "equip-cmp" },
   ];
 }
 
@@ -169,45 +180,57 @@ export interface CaveMenuCtx {
  * (CMD_JUMP, main.ts jumpCmd) is now wired, so it is enabled.
  */
 export function buildCaveMenu(ctx: CaveMenuCtx): MenuEntry<CaveMenuAction>[] {
-  const out: MenuEntry<CaveMenuAction>[] = [{ label: "Look At", action: "look" }];
+  const out: MenuEntry<CaveMenuAction>[] = [
+    { label: t("contextMenu.cave.look.label", "Look At"), action: "look" },
+  ];
   // Recall Info sits right after Look At when a monster is present (L450-453).
-  if (ctx.hasMonster) out.push({ label: "Recall Info", action: "recall" });
-  out.push({ label: "Use Item On", action: "use-on" });
-  if (ctx.canCast) out.push({ label: "Cast On", action: "cast-on" });
+  if (ctx.hasMonster)
+    out.push({ label: t("contextMenu.cave.recall.label", "Recall Info"), action: "recall" });
+  out.push({ label: t("contextMenu.cave.useOn.label", "Use Item On"), action: "use-on" });
+  if (ctx.canCast) out.push({ label: t("contextMenu.cave.castOn.label", "Cast On"), action: "cast-on" });
 
   if (ctx.adjacent) {
-    out.push({ label: ctx.hasMonster ? "Attack" : "Alter", action: "alter" });
+    out.push({
+      label: ctx.hasMonster
+        ? t("contextMenu.cave.attack.label", "Attack")
+        : t("contextMenu.cave.alter.label", "Alter"),
+      action: "alter",
+    });
     if (ctx.chest) {
       if (ctx.chest.locked) {
-        out.push({ label: "Disarm Chest", action: "disarm-chest" });
-        out.push({ label: "Open Chest", action: "open-chest" });
+        out.push({ label: t("contextMenu.cave.disarmChest.label", "Disarm Chest"), action: "disarm-chest" });
+        out.push({ label: t("contextMenu.cave.openChest.label", "Open Chest"), action: "open-chest" });
       } else {
-        out.push({ label: "Open Disarmed Chest", action: "open-chest" });
+        out.push({
+          label: t("contextMenu.cave.openDisarmedChest.label", "Open Disarmed Chest"),
+          action: "open-chest",
+        });
       }
     }
     // Steal follows the chest block, before trap disarm (L478-480).
-    if (ctx.hasMonster && ctx.canSteal) out.push({ label: "Steal", action: "steal" });
+    if (ctx.hasMonster && ctx.canSteal)
+      out.push({ label: t("contextMenu.cave.steal.label", "Steal"), action: "steal" });
     if (ctx.isDisarmableTrap) {
-      out.push({ label: "Disarm", action: "disarm-trap" });
-      out.push({ label: "Jump Onto", action: "jump-trap" }); // CMD_JUMP -> jumpCmd
+      out.push({ label: t("contextMenu.cave.disarm.label", "Disarm"), action: "disarm-trap" });
+      out.push({ label: t("contextMenu.cave.jumpOnto.label", "Jump Onto"), action: "jump-trap" }); // CMD_JUMP -> jumpCmd
     }
     if (ctx.isOpenDoor) {
-      out.push({ label: "Close", action: "close" });
+      out.push({ label: t("contextMenu.cave.close.label", "Close"), action: "close" });
     } else if (ctx.isClosedDoor) {
-      out.push({ label: "Open", action: "open-door" });
-      out.push({ label: "Lock", action: "lock" });
+      out.push({ label: t("contextMenu.cave.open.label", "Open"), action: "open-door" });
+      out.push({ label: t("contextMenu.cave.lock.label", "Lock"), action: "lock" });
     } else if (ctx.isDiggable) {
-      out.push({ label: "Tunnel", action: "tunnel" });
+      out.push({ label: t("contextMenu.cave.tunnel.label", "Tunnel"), action: "tunnel" });
     }
-    out.push({ label: "Walk Towards", action: "walk" });
+    out.push({ label: t("contextMenu.cave.walkTowards.label", "Walk Towards"), action: "walk" });
   } else {
-    out.push({ label: "Pathfind To", action: "pathfind" });
-    out.push({ label: "Walk Towards", action: "walk" });
-    out.push({ label: "Run Towards", action: "run" });
+    out.push({ label: t("contextMenu.cave.pathfindTo.label", "Pathfind To"), action: "pathfind" });
+    out.push({ label: t("contextMenu.cave.walkTowards.label", "Walk Towards"), action: "walk" });
+    out.push({ label: t("contextMenu.cave.runTowards.label", "Run Towards"), action: "run" });
   }
 
-  if (ctx.canFire) out.push({ label: "Fire On", action: "fire" });
-  out.push({ label: "Throw To", action: "throw" });
+  if (ctx.canFire) out.push({ label: t("contextMenu.cave.fireOn.label", "Fire On"), action: "fire" });
+  out.push({ label: t("contextMenu.cave.throwTo.label", "Throw To"), action: "throw" });
   return out;
 }
 
@@ -272,52 +295,64 @@ export interface ObjectMenuCtx {
  * it, and a spellbook in this menu offered Cast and Study with no way to read it.
  */
 export function buildObjectMenu(ctx: ObjectMenuCtx): MenuEntry<ObjectMenuAction>[] {
-  const out: MenuEntry<ObjectMenuAction>[] = [{ label: "Inspect", action: "inspect" }];
+  const out: MenuEntry<ObjectMenuAction>[] = [
+    { label: t("contextMenu.object.inspect.label", "Inspect"), action: "inspect" },
+  ];
 
   if (ctx.isBook) {
     /* L683-690, in this order: Cast, Study, Browse. */
-    if (ctx.canCast) out.push({ label: "Cast", action: "cast" });
-    if (ctx.canStudy) out.push({ label: "Study", action: "study" });
-    if (ctx.canBrowse) out.push({ label: "Browse", action: "browse" });
+    if (ctx.canCast) out.push({ label: t("contextMenu.object.cast.label", "Cast"), action: "cast" });
+    if (ctx.canStudy) out.push({ label: t("contextMenu.object.study.label", "Study"), action: "study" });
+    if (ctx.canBrowse) out.push({ label: t("contextMenu.object.browse.label", "Browse"), action: "browse" });
   } else {
     switch (ctx.useKind) {
       case "wand":
-        out.push({ label: "Aim", action: "aim" });
+        out.push({ label: t("contextMenu.object.aim.label", "Aim"), action: "aim" });
         break;
       case "rod":
-        out.push({ label: "Zap", action: "zap" });
+        out.push({ label: t("contextMenu.object.zap.label", "Zap"), action: "zap" });
         break;
       case "staff":
-        out.push({ label: "Use", action: "use-staff" });
+        out.push({ label: t("contextMenu.object.useStaff.label", "Use"), action: "use-staff" });
         break;
       case "scroll":
-        out.push({ label: "Read", action: "read" });
+        out.push({ label: t("contextMenu.object.read.label", "Read"), action: "read" });
         break;
       case "potion":
-        out.push({ label: "Quaff", action: "quaff" });
+        out.push({ label: t("contextMenu.object.quaff.label", "Quaff"), action: "quaff" });
         break;
       case "food":
-        out.push({ label: "Eat", action: "eat" });
+        out.push({ label: t("contextMenu.object.eat.label", "Eat"), action: "eat" });
         break;
       case "activatable":
-        out.push({ label: "Activate", action: "activate", disabled: !ctx.isEquipped });
+        out.push({
+          label: t("contextMenu.object.activate.label", "Activate"),
+          action: "activate",
+          disabled: !ctx.isEquipped,
+        });
         break;
       default:
-        if (ctx.canFire) out.push({ label: "Fire", action: "fire" });
+        if (ctx.canFire) out.push({ label: t("contextMenu.object.fire.label", "Fire"), action: "fire" });
         break;
     }
   }
 
-  if (ctx.canRefill) out.push({ label: "Refill", action: "refill" });
+  if (ctx.canRefill) out.push({ label: t("contextMenu.object.refill.label", "Refill"), action: "refill" });
 
-  if (ctx.isEquipped) out.push({ label: "Take off", action: "takeoff" });
-  else if (ctx.canWear) out.push({ label: "Equip", action: "equip" });
+  if (ctx.isEquipped) out.push({ label: t("contextMenu.object.takeoff.label", "Take off"), action: "takeoff" });
+  else if (ctx.canWear) out.push({ label: t("contextMenu.object.equip.label", "Equip"), action: "equip" });
 
-  out.push({ label: "Drop", action: "drop" });
-  if (ctx.canThrow) out.push({ label: "Throw", action: "throw" });
-  out.push({ label: "Inscribe", action: "inscribe" });
-  if (ctx.hasInscription) out.push({ label: "Uninscribe", action: "uninscribe" });
-  out.push({ label: ctx.isIgnored ? "Unignore" : "Ignore", action: "ignore" });
+  out.push({ label: t("contextMenu.object.drop.label", "Drop"), action: "drop" });
+  if (ctx.canThrow) out.push({ label: t("contextMenu.object.throw.label", "Throw"), action: "throw" });
+  out.push({ label: t("contextMenu.object.inscribe.label", "Inscribe"), action: "inscribe" });
+  if (ctx.hasInscription)
+    out.push({ label: t("contextMenu.object.uninscribe.label", "Uninscribe"), action: "uninscribe" });
+  out.push({
+    label: ctx.isIgnored
+      ? t("contextMenu.object.unignore.label", "Unignore")
+      : t("contextMenu.object.ignore.label", "Ignore"),
+    action: "ignore",
+  });
 
   return out;
 }

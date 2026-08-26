@@ -43,6 +43,7 @@ import {
   equipCmpSummary,
   matchEquipCmpFilter,
   objectInfoTextblock,
+  t,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   EquipCmpEasyFilter,
@@ -84,12 +85,25 @@ const NAME_WIDTH = 20;
 /**
  * The two menu_display_state prompts equip_cmp_display draws on the last row
  * (ui-equip-cmp.c:313-324), one per input state.
+ *
+ * FUNCTIONS, not constants: a locale is chosen at boot and can change while
+ * the game runs (see i18n.ts's header), so a `const` computed at import time
+ * would freeze whichever language happened to be active first.
  */
-const PROMPT_GENERAL = "[k/up, j/down, p/PgUp, n/PgDn to move; ? for help; ESC to exit]";
-const PROMPT_SELECT = "[k/up, j/down, p/PgUp, n/PgDn to move; return to accept]";
+function promptGeneral(): string {
+  return t(
+    "equipCmp.prompt.general",
+    "[k/up, j/down, p/PgUp, n/PgDn to move; ? for help; ESC to exit]",
+  );
+}
+function promptSelect(): string {
+  return t("equipCmp.prompt.select", "[k/up, j/down, p/PgUp, n/PgDn to move; return to accept]");
+}
 
 /** Row 0 when the filter left nothing to show (equip_cmp_display L358). */
-const EMPTY_FILTER_MSG = "No items; use q, !, c, or R to change filter";
+function emptyFilterMsg(): string {
+  return t("equipCmp.emptyFilter", "No items; use q, !, c, or R to change filter");
+}
 
 /**
  * The four source-cycle messages (trans_msg_onlystore / _withstore / _carried),
@@ -97,19 +111,37 @@ const EMPTY_FILTER_MSG = "No items; use q, !, c, or R to change filter";
  * on row 0 for one paint, not pinned to the footer: EQUIPPABLE_NO_STORE has no
  * message at all, which only reads correctly if the others are transient too.
  */
-const SOURCE_MSG: Record<StoreInclusion, string> = {
-  "no-store": "",
-  "only-store": "Only showing goods from stores; press c to change",
-  "yes-store": "Showing possessions and goods from stores; press c to change",
-  "only-carried": "Only showing carried items; press c to change",
-};
+function sourceMsg(source: StoreInclusion): string {
+  switch (source) {
+    case "no-store":
+      /* EQUIPPABLE_NO_STORE has no message at all (see the block comment above). */
+      return "";
+    case "only-store":
+      return t(
+        "equipCmp.sourceMsg.onlyStore",
+        "Only showing goods from stores; press c to change",
+      );
+    case "yes-store":
+      return t(
+        "equipCmp.sourceMsg.yesStore",
+        "Showing possessions and goods from stores; press c to change",
+      );
+    case "only-carried":
+      return t(
+        "equipCmp.sourceMsg.onlyCarried",
+        "Only showing carried items; press c to change",
+      );
+  }
+}
 
 /**
  * trans_msg_unknown_key, shared by both input handlers (ui-equip-cmp.c:469 and
  * :983). It is the screen's own discoverability: press anything it does not know
  * and it tells you where the key list is.
  */
-const UNKNOWN_KEY = "Unknown key pressed; ? will list available keys";
+function unknownKeyMsg(): string {
+  return t("equipCmp.unknownKey", "Unknown key pressed; ? will list available keys");
+}
 
 /** Keys that are a modifier being held, not a keystroke the C would ever see. */
 const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "NumLock"]);
@@ -252,19 +284,31 @@ function helpTable(
 export function equipCmpHelpScreen(): ScreenView {
   return freezeView({
     id: "core:equip-cmp-help",
-    title: "Equipment comparison - help",
+    title: t("equipCmp.help.title", "Equipment comparison - help"),
     footer: SCREEN_FOOTER,
     blocks: [
       helpTable(
         "movement-pairs",
         HELP_PAIR_COLUMNS,
         [
-          helpRow("j, down", "one line down", "k, up", "one line up"),
-          helpRow("n, PgDn", "one page down", "p, PgUp", "one page up"),
+          helpRow(
+            t("equipCmp.help.lineDownKey", "j, down"),
+            t("equipCmp.help.lineDownDesc", "one line down"),
+            t("equipCmp.help.lineUpKey", "k, up"),
+            t("equipCmp.help.lineUpDesc", "one line up"),
+          ),
+          helpRow(
+            t("equipCmp.help.pageDownKey", "n, PgDn"),
+            t("equipCmp.help.pageDownDesc", "one page down"),
+            t("equipCmp.help.pageUpKey", "p, PgUp"),
+            t("equipCmp.help.pageUpDesc", "one page up"),
+          ),
         ],
-        "Movement/scrolling ---------------------------------",
+        t("equipCmp.help.movementCaption", "Movement/scrolling ---------------------------------"),
       ),
-      helpTable("movement-space", HELP_SINGLE_COLUMNS, [helpRow("space", "one page down")]),
+      helpTable("movement-space", HELP_SINGLE_COLUMNS, [
+        helpRow(t("equipCmp.help.spaceKey", "space"), t("equipCmp.help.pageDownDesc", "one page down")),
+      ]),
       /*
        * The port's own addition (see this file's header note on what is
        * unported): the simplified paging scrolls the property columns where
@@ -277,34 +321,59 @@ export function equipCmpHelpScreen(): ScreenView {
        * never needed.
        */
       helpTable("movement-scroll", [{ key: "key1" }, { key: "desc1", gap: 2 }], [
-        helpRow("left, right", "scroll the property columns"),
+        helpRow(
+          t("equipCmp.help.scrollKey", "left, right"),
+          t("equipCmp.help.scrollDesc", "scroll the property columns"),
+        ),
       ]),
       helpTable(
         "filter-pairs",
         HELP_PAIR_COLUMNS,
-        [helpRow("q", "quick filter", "!", "use opposite quick")],
-        "Filtering/searching/sorting ------------------------",
+        [
+          helpRow(
+            t("equipCmp.help.filterKey", "q"),
+            t("equipCmp.help.filterDesc", "quick filter"),
+            t("equipCmp.help.filterOppositeKey", "!"),
+            t("equipCmp.help.filterOppositeDesc", "use opposite quick"),
+          ),
+        ],
+        t(
+          "equipCmp.help.filterCaption",
+          "Filtering/searching/sorting ------------------------",
+        ),
       ),
       helpTable("filter-singles", HELP_SINGLE_COLUMNS, [
-        helpRow("c", "cycle through sources of items"),
-        helpRow("r", "reverse"),
+        helpRow(t("equipCmp.help.cycleSourceKey", "c"), t("equipCmp.help.cycleSourceDesc", "cycle through sources of items")),
+        helpRow(t("equipCmp.help.reverseKey", "r"), t("equipCmp.help.reverseDesc", "reverse")),
       ]),
       helpTable(
         "info",
         HELP_SINGLE_COLUMNS,
         [
-          helpRow("v", "cycle through attribute views"),
-          helpRow("I, x", "select one or two items for details"),
+          helpRow(t("equipCmp.help.cycleViewKey", "v"), t("equipCmp.help.cycleViewDesc", "cycle through attribute views")),
+          helpRow(
+            t("equipCmp.help.selectKey", "I, x"),
+            t("equipCmp.help.selectDesc", "select one or two items for details"),
+          ),
         ],
-        "Information ----------------------------------------",
+        t("equipCmp.help.infoCaption", "Information ----------------------------------------"),
       ),
       helpTable(
         "other-pairs",
         HELP_PAIR_COLUMNS,
-        [helpRow("d", "dump to file", "R", "reset display")],
-        "Other ----------------------------------------------",
+        [
+          helpRow(
+            t("equipCmp.help.dumpKey", "d"),
+            t("equipCmp.help.dumpDesc", "dump to file"),
+            t("equipCmp.help.resetKey", "R"),
+            t("equipCmp.help.resetDesc", "reset display"),
+          ),
+        ],
+        t("equipCmp.help.otherCaption", "Other ----------------------------------------------"),
       ),
-      helpTable("other-esc", HELP_SINGLE_COLUMNS, [helpRow("ESC", "exit")]),
+      helpTable("other-esc", HELP_SINGLE_COLUMNS, [
+        helpRow(t("equipCmp.help.escKey", "ESC"), t("equipCmp.help.escDesc", "exit")),
+      ]),
     ],
   });
 }
@@ -318,17 +387,17 @@ export function equipCmpHelpScreen(): ScreenView {
 export function equipCmpSelectHelpScreen(): ScreenView {
   return freezeView({
     id: "core:equip-cmp-select-help",
-    title: "Equipment comparison - help",
+    title: t("equipCmp.selectHelp.title", "Equipment comparison - help"),
     footer: SCREEN_FOOTER,
     blocks: [
       helpTable("keys", [{ key: "key1", width: 10 }, { key: "desc1", gap: 0 }], [
-        helpRow("j, down", "move selection one line down"),
-        helpRow("k, up", "move selection one line up"),
-        helpRow("n, PgDn", "move selection one page up"),
-        helpRow("p, PgUp", "move selection one page up"),
-        helpRow("x", "stop selection; if first item, escapes"),
-        helpRow("return", "select current item"),
-        helpRow("ESC", "leave selection process"),
+        helpRow(t("equipCmp.selectHelp.downKey", "j, down"), t("equipCmp.selectHelp.downDesc", "move selection one line down")),
+        helpRow(t("equipCmp.selectHelp.upKey", "k, up"), t("equipCmp.selectHelp.upDesc", "move selection one line up")),
+        helpRow(t("equipCmp.selectHelp.pageDownKey", "n, PgDn"), t("equipCmp.selectHelp.pageDownDesc", "move selection one page up")),
+        helpRow(t("equipCmp.selectHelp.pageUpKey", "p, PgUp"), t("equipCmp.selectHelp.pageUpDesc", "move selection one page up")),
+        helpRow(t("equipCmp.selectHelp.stopKey", "x"), t("equipCmp.selectHelp.stopDesc", "stop selection; if first item, escapes")),
+        helpRow(t("equipCmp.selectHelp.returnKey", "return"), t("equipCmp.selectHelp.returnDesc", "select current item")),
+        helpRow(t("equipCmp.selectHelp.escKey", "ESC"), t("equipCmp.selectHelp.escDesc", "leave selection process")),
       ]),
     ],
   });
@@ -381,7 +450,7 @@ export function showEquipCmp(host: GridSurface & GridPointerInput, state: GameSt
        * nothing passed the filter, and is otherwise blank. The port had put a
        * "Equipment comparison" title here that upstream never draws, which is
        * also why the empty-list case had nothing to say. */
-      const row0 = dlgMsg || (model.items.length === 0 ? EMPTY_FILTER_MSG : "");
+      const row0 = dlgMsg || (model.items.length === 0 ? emptyFilterMsg() : "");
       if (row0) term.print(0, HEADER_ROW, row0.slice(0, cols - 1), dlgMsg ? UI_GOLD : TITLE);
       dlgMsg = "";
 
@@ -438,7 +507,7 @@ export function showEquipCmp(host: GridSurface & GridPointerInput, state: GameSt
        * prompts, chosen by the input state. Both were invented before - a
        * hand-written key list downstairs and the source message pinned there
        * permanently, where upstream shows it once on row 0 and clears it. */
-      term.print(0, rows - 1, (selState !== null ? PROMPT_SELECT : PROMPT_GENERAL).slice(0, cols - 1), DIM);
+      term.print(0, rows - 1, (selState !== null ? promptSelect() : promptGeneral()).slice(0, cols - 1), DIM);
     };
 
     /** display_equip_cmp_help, modelled below as `equipCmpHelpScreen`. */
@@ -499,10 +568,11 @@ export function showEquipCmp(host: GridSurface & GridPointerInput, state: GameSt
       /* One render, not three: dumpText() walks the whole model, and calling it
        * again for the export could hand out bytes that differ from the file. */
       const text = dumpText();
-      dlgMsg = userTextLinesToFile(file, text)
-        ? "Failed to save to file!"
-        : "Successfully saved to file";
-      if (!dlgMsg.startsWith("Failed")) exportUserFile(file, text);
+      const failed = userTextLinesToFile(file, text) !== 0;
+      dlgMsg = failed
+        ? t("equipCmp.dump.failed", "Failed to save to file!")
+        : t("equipCmp.dump.success", "Successfully saved to file");
+      if (!failed) exportUserFile(file, text);
     };
 
     const compare = async (i0: number, i1: number | null): Promise<void> => {
@@ -522,7 +592,10 @@ export function showEquipCmp(host: GridSurface & GridPointerInput, state: GameSt
             ...tb1.runs,
           ],
         };
-        await showTextScreen(term, objectComparisonScreen("Object comparison", combined));
+        await showTextScreen(
+          term,
+          objectComparisonScreen(t("equipCmp.compareTitle", "Object comparison"), combined),
+        );
       } else {
         await showTextScreen(term, objectRecallScreen(a.shortName, tb0));
       }
@@ -642,7 +715,7 @@ export function showEquipCmp(host: GridSurface & GridPointerInput, state: GameSt
             if (selState === 0) {
               isel0 = workSel;
               selState = 1;
-              dlgMsg = "Select second item; x to skip";
+              dlgMsg = t("equipCmp.select.secondPrompt", "Select second item; x to skip");
               break;
             } else {
               const a = isel0;
@@ -658,7 +731,7 @@ export function showEquipCmp(host: GridSurface & GridPointerInput, state: GameSt
             leaveSelect();
             break;
           default:
-            dlgMsg = UNKNOWN_KEY;
+            dlgMsg = unknownKeyMsg();
             break;
         }
         paint();
@@ -708,12 +781,12 @@ export function showEquipCmp(host: GridSurface & GridPointerInput, state: GameSt
                 : source === "yes-store"
                   ? "only-carried"
                   : "no-store";
-          dlgMsg = SOURCE_MSG[source];
+          dlgMsg = sourceMsg(source);
           rebuild();
           break;
         case "v":
           view = view === 0 ? 1 : 0;
-          dlgMsg = "Showing alternate attributes; press v to cycle";
+          dlgMsg = t("equipCmp.viewMsg", "Showing alternate attributes; press v to cycle");
           break;
         case "r":
           reverse = !reverse;
@@ -747,7 +820,7 @@ export function showEquipCmp(host: GridSurface & GridPointerInput, state: GameSt
           workSel = top;
           isel0 = -1;
           selState = 0;
-          dlgMsg = "Select first item to examine";
+          dlgMsg = t("equipCmp.select.firstPrompt", "Select first item to examine");
           break;
         case "d":
           void (async () => {
@@ -764,7 +837,7 @@ export function showEquipCmp(host: GridSurface & GridPointerInput, state: GameSt
         default:
           /* ACT_CTX_EQUIPCMP_UNKNOWN (L885-887). Saying nothing was its own bug:
            * this message is the only thing that tells a player '?' exists. */
-          dlgMsg = UNKNOWN_KEY;
+          dlgMsg = unknownKeyMsg();
           break;
       }
       paint();

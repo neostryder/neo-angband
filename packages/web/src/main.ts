@@ -206,7 +206,7 @@ import type {
 } from "@rpgm-tools/neo-angband-core";
 import { GameEvents, useFlavorGlyph, makeShapeLoreEnv } from "@rpgm-tools/neo-angband-core";
 import type { BoltEventData, ExplosionEventData } from "@rpgm-tools/neo-angband-core";
-import { registerLocale, setLocale } from "@rpgm-tools/neo-angband-core";
+import { registerLocale, setLocale, t } from "@rpgm-tools/neo-angband-core";
 import type { LocaleBundle } from "@rpgm-tools/neo-angband-core";
 import { describeLoadFailure, describeMigration, describePackMismatch } from "./save-recovery.js";
 import { installCrashScreen } from "./crash-screen.js";
@@ -2308,7 +2308,7 @@ function buildItemSources(
       ? deviceMenu(state, tester, isKindAware)
       : packMenu(state, tester);
     if (items.length > 0) {
-      sources.push({ label: "Inven", items, kind: "inven" });
+      sources.push({ label: t("main.item-source.inven", "Inven"), items, kind: "inven" });
       refs.push(handles.map((h) => ({ handle: h })));
     }
   }
@@ -2328,14 +2328,14 @@ function buildItemSources(
       eRefs.push({ handle });
     }
     if (items.length > 0) {
-      sources.push({ label: "Equip", items, kind: "equip" });
+      sources.push({ label: t("main.item-source.equip", "Equip"), items, kind: "equip" });
       refs.push(eRefs);
     }
   }
   if (mode.quiver) {
     const { items, handles } = quiverMenu(state, tester);
     if (items.length > 0) {
-      sources.push({ label: "Quiver", items, kind: "quiver" });
+      sources.push({ label: t("main.item-source.quiver", "Quiver"), items, kind: "quiver" });
       refs.push(handles.map((h) => ({ handle: h })));
     }
   }
@@ -2350,7 +2350,7 @@ function buildItemSources(
       fRefs.push({ floor: i });
     });
     if (items.length > 0) {
-      sources.push({ label: "Floor", items, kind: "floor" });
+      sources.push({ label: t("main.item-source.floor", "Floor"), items, kind: "floor" });
       refs.push(fRefs);
     }
   }
@@ -3289,7 +3289,12 @@ async function selectCurse(removable: number[], obj: GameObject, diceString: str
   const items: MenuItem[] = removable.map((i) => {
     const power = obj.curses?.[i]?.power ?? 0;
     const name = curseTable[i]?.name ?? `curse ${i}`;
-    return { label: `${name} (curse strength ${power})` };
+    return {
+      label: t("main.curse-removal.item-label", "{name} (curse strength {power})", {
+        name,
+        power,
+      }),
+    };
   });
   const header = diceString
     ? `Remove which curse (spell strength ${diceString})?`
@@ -3920,11 +3925,16 @@ async function openIgnoreSetup(): Promise<void> {
   for (;;) {
     const { items: catItems, tvals } = svalCategoryItems(booted.registries.objects);
     const items: MenuItem[] = [
-      { label: "Quality ignoring options" },
-      { label: "Ego ignoring options" },
+      { label: t("main.ignore-setup.quality", "Quality ignoring options") },
+      { label: t("main.ignore-setup.ego", "Ego ignoring options") },
       ...catItems,
     ];
-    const idx = await selectFromMenu(term, "core:ignore-setup", "Item ignoring setup", items);
+    const idx = await selectFromMenu(
+      term,
+      "core:ignore-setup",
+      t("main.ignore-setup.title", "Item ignoring setup"),
+      items,
+    );
     if (idx === null) break;
     if (idx === 0) {
       await openQualityMenu();
@@ -5223,10 +5233,15 @@ async function querySymbolCmd(): Promise<void> {
 
   // Prompt sort order: y = by level, k = by kills, anything else aborts
   // (L4538-4557). ESC on the menu = the "nope" branch.
-  const sortIdx = await selectFromMenu(term, "core:monster-recall-sort", "Recall details?", [
-    { label: "Sort by level" },
-    { label: "Sort by kills" },
-  ]);
+  const sortIdx = await selectFromMenu(
+    term,
+    "core:monster-recall-sort",
+    t("main.monster-recall.sort-title", "Recall details?"),
+    [
+      { label: t("main.monster-recall.sort-level", "Sort by level") },
+      { label: t("main.monster-recall.sort-kills", "Sort by kills") },
+    ],
+  );
   if (sortIdx === null) return;
   if (sortIdx === 1) {
     matches.sort((a, b) => a.lore.pkills - b.lore.pkills || a.race.level - b.race.level);
@@ -5239,9 +5254,20 @@ async function querySymbolCmd(): Promise<void> {
   // race's recall (monster_race_track + lore_show).
   for (;;) {
     const items = matches.map(({ race, lore }) => ({
-      label: `${capRaceName(race)}${lore.pkills > 0 ? `  (${lore.pkills} killed)` : ""}`,
+      label: `${capRaceName(race)}${
+        lore.pkills > 0
+          ? t("main.monster-recall.kill-count", "  ({count} killed)", {
+              count: lore.pkills,
+            })
+          : ""
+      }`,
     }));
-    const idx = await selectFromMenu(term, "core:monster-recall", "Recall which monster?", items);
+    const idx = await selectFromMenu(
+      term,
+      "core:monster-recall",
+      t("main.monster-recall.pick-title", "Recall which monster?"),
+      items,
+    );
     if (idx === null) return;
     const row = matches[idx];
     if (!row) return;
@@ -6642,6 +6668,9 @@ async function showFloorPileScreen(pile: GameObject[]): Promise<void> {
       ? "feel something on the floor"
       : "see";
   const rows: ObjListRow[] = pile.map((o, i) => ({
+    // The row's selection-tag letter ("a) ", "b) ", ...), not language-bearing
+    // text - the same convention as the shared item-list letter/paren tags
+    // elsewhere in this file.
     label: `${objLetter(i)}) `,
     name: objectName(state, o),
     color: objectColor(o, state),

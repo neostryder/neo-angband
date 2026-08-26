@@ -36,6 +36,7 @@ import {
   IGNORE_TYPE_ENTRIES,
   OBJ_NOTICE,
   tvalIsJewelry,
+  t,
 } from "@rpgm-tools/neo-angband-core";
 import type { GameState, GameObject } from "@rpgm-tools/neo-angband-core";
 import { SVAL_DEPENDENT } from "./screens";
@@ -110,18 +111,26 @@ export function buildIgnoreItemMenu(ctx: IgnoreItemMenuCtx): IgnoreMenuEntry[] {
 
   /* Basic ignore option (ui-object.c:1727-1732). */
   if (!ctx.itemIgnored) {
-    entries.push({ label: "This item only", action: IGNORE_ACTION.ITEM });
+    entries.push({ label: t("ignoreMenu.item.label", "This item only"), action: IGNORE_ACTION.ITEM });
   } else {
-    entries.push({ label: "Unignore this item", action: IGNORE_ACTION.UNIGNORE_ITEM });
+    entries.push({
+      label: t("ignoreMenu.unignoreItem.label", "Unignore this item"),
+      action: IGNORE_ACTION.UNIGNORE_ITEM,
+    });
   }
 
   /* Flavour-aware ignore (ui-object.c:1734-1750). */
   if (ctx.flavor) {
     if (!ctx.flavor.ignored) {
-      entries.push({ label: `All ${ctx.flavor.label}`, action: IGNORE_ACTION.FLAVOR });
+      entries.push({
+        label: t("ignoreMenu.flavor.label", "All {flavor}", { flavor: ctx.flavor.label }),
+        action: IGNORE_ACTION.FLAVOR,
+      });
     } else {
       entries.push({
-        label: `Unignore all ${ctx.flavor.label}`,
+        label: t("ignoreMenu.unignoreFlavor.label", "Unignore all {flavor}", {
+          flavor: ctx.flavor.label,
+        }),
         action: IGNORE_ACTION.UNIGNORE_FLAVOR,
       });
     }
@@ -130,10 +139,13 @@ export function buildIgnoreItemMenu(ctx: IgnoreItemMenuCtx): IgnoreMenuEntry[] {
   /* Ego ignoring (ui-object.c:1754-1771). */
   if (ctx.ego) {
     if (!ctx.ego.ignored) {
-      entries.push({ label: `All ${ctx.ego.name}`, action: IGNORE_ACTION.EGO });
+      entries.push({
+        label: t("ignoreMenu.ego.label", "All {ego}", { ego: ctx.ego.name }),
+        action: IGNORE_ACTION.EGO,
+      });
     } else {
       entries.push({
-        label: `Unignore all ${ctx.ego.name}`,
+        label: t("ignoreMenu.unignoreEgo.label", "Unignore all {ego}", { ego: ctx.ego.name }),
         action: IGNORE_ACTION.UNIGNORE_EGO,
       });
     }
@@ -142,7 +154,10 @@ export function buildIgnoreItemMenu(ctx: IgnoreItemMenuCtx): IgnoreMenuEntry[] {
   /* Quality ignoring (ui-object.c:1773-1784). */
   if (ctx.quality) {
     entries.push({
-      label: `All ${ctx.quality.tierName} ${ctx.quality.typeName}`,
+      label: t("ignoreMenu.quality.label", "All {tier} {type}", {
+        tier: ctx.quality.tierName,
+        type: ctx.quality.typeName,
+      }),
       action: IGNORE_ACTION.QUALITY,
     });
   }
@@ -278,12 +293,24 @@ export function applyIgnoreItemChoice(
   }
 }
 
-/** The nothing-to-ignore text (ui-object.c:1831). */
-const IGNORE_REJECT = "You have nothing to ignore.";
+/**
+ * The nothing-to-ignore text (ui-object.c:1831).
+ *
+ * A FUNCTION, not a constant: a locale is chosen at boot and can change while
+ * the game runs (see i18n.ts's header), so a `const` computed at import time
+ * would freeze whichever language happened to be active first.
+ */
+function ignoreRejectMsg(): string {
+  return t("ignoreMenu.reject", "You have nothing to ignore.");
+}
 /** The item-pick prompt (ui-object.c:1830). */
-const IGNORE_PROMPT = "Ignore which item?";
+function ignorePromptMsg(): string {
+  return t("ignoreMenu.prompt", "Ignore which item?");
+}
 /** The menu's top line (ui-object.c:1796). */
-const IGNORE_TITLE = "(Enter to select, ESC) Ignore:";
+function ignoreTitleMsg(): string {
+  return t("ignoreMenu.title", "(Enter to select, ESC) Ignore:");
+}
 
 /**
  * showIgnoreItemMenu (ui-object.c:1825-1837 textui_cmd_ignore +
@@ -311,7 +338,7 @@ export async function showIgnoreItemMenu(
   applyIgnoreDrop: () => Promise<void>,
   pick: (prompt: string, reject: string) => Promise<GameObject | null>,
 ): Promise<void> {
-  const obj = await pick(IGNORE_PROMPT, IGNORE_REJECT);
+  const obj = await pick(ignorePromptMsg(), ignoreRejectMsg());
   if (!obj) return;
 
   const entries = buildIgnoreItemMenu(ignoreItemMenuCtx(obj, state, game));
@@ -320,7 +347,7 @@ export async function showIgnoreItemMenu(
     id: `core:ignore:${e.action}`,
     semantic: { kind: "command", ref: e.action },
   }));
-  const idx = await selectFromMenu(term, "core:ignore", IGNORE_TITLE, items);
+  const idx = await selectFromMenu(term, "core:ignore", ignoreTitleMsg(), items);
   if (idx === null) return;
 
   const entry = entries[idx];

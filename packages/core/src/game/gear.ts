@@ -742,12 +742,6 @@ export interface CalcInventoryOpts extends EarlierObjectOpts {
   isEquipped?: (handle: number) => boolean;
   /** msg(): the re-arrange / combine notices. */
   msg?: (text: string) => void;
-  /**
-   * The mod behaviour seam (mod/hooks.ts), threaded so combinePack can offer
-   * its partialStackMerge extension point. Absent => combinePack is faithful
-   * 4.2.6.
-   */
-  hooks?: import("../mod/hooks.js").ModHooks | undefined;
 }
 
 /** Build EarlierObjectOpts (ammo tiebreak) from the calc-inventory opts. */
@@ -990,22 +984,9 @@ export function combinePack(
 
       const mode1 = objectIsInQuiver(gear, h1) ? OSTACK_QUIVER : OSTACK_PACK;
       if (invenCanStackPartial(gear, obj2, obj1, mode2, mode1, constants)) {
-        /* The partialStackMerge seam (mod/hooks.ts): obj1 (h1) is the stack
-         * object_absorb_partial drains (its own obj2 parameter - see that
-         * function's L1258 call below) to top up obj2 (h2), the leading stack.
-         * Entry 3 / #115's residual bug lives ONLY in the non-quiver branch of
-         * object_absorb_partial, so the hook is consulted only there - the
-         * quiver's own limits and split-on-overflow arithmetic are untouched.
-         * Faithful core (no hook, or a permissive one) proceeds unconditionally,
-         * matching upstream's inven_can_stack_partial, which has no such check. */
-        const nonQuiver = !(mode1 & OSTACK_QUIVER) && !(mode2 & OSTACK_QUIVER);
-        const refused =
-          nonQuiver && opts.hooks?.partialStackMerge?.(obj1, obj2) === false;
-        if (!refused) {
-          /* Shuffling items between stacks - no message (L1282-1287). */
-          objectAbsorbPartial(obj2, obj1, mode2, mode1, limits, ORIGIN.MIXED);
-          break;
-        }
+        /* Shuffling items between stacks - no message (L1282-1287). */
+        objectAbsorbPartial(obj2, obj1, mode2, mode1, limits, ORIGIN.MIXED);
+        break;
       }
     }
   }

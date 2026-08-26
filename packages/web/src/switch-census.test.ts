@@ -160,9 +160,9 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 42 into a CLOSED vocabulary", () => {
+  it("classifies all 43 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 42 dispatch points, ZERO are content dispatch a
+     * than written in prose: of 43 dispatch points, ZERO are content dispatch a
      * mod would want. That is the finish line MOD_REACH gap list set - every
      * one of the eighteen candidates the 2026-08-09 census opened with is now
      * a registry, obj/knowledge.ts (gap 16) last. What is left is UI routing,
@@ -190,7 +190,11 @@ describe("the switch census", () => {
        * A field op is the mod system's own vocabulary, like a capability kind:
        * what a mod varies is the PATH it addresses, never the verb. */
       INTERNAL: 6,
-      LOCALIZATION: 3,
+      /* 3 until the i18n sweep (neostryder/neo-angband#95) added shop.ts's
+       * commentWelcome, the greeting-tier-to-translated-line switch that keeps
+       * COMMENT_WELCOME's English array intact for its RNG-parity-relevant
+       * .length while routing the display text through the translator. */
+      LOCALIZATION: 4,
       PARSER: 3,
       REACHABLE: 6,
       /* 15 until #283. ui-entry.ts's COMBINERS row left when the array became a

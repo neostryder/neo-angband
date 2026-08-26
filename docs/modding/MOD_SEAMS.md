@@ -168,12 +168,8 @@ document has no test behind it and rots on the next commit.
 | `projectionRadius(rad, maxRange)` | `chained` | `world/project.ts` (`computeProjection`, reached through `ProjectParams.resolveRadius`, which `game/project-cast.ts` fills from `state.modHooks`) | the radius as given, unchecked against `max_range` |
 | `levelGenerated(gen, quest)` | `all-must-agree` | `gen/generate.ts` | accept the level as generated |
 | `artifactCommit(aidx, alreadyCreated)` | `all-must-agree` | `obj/make.ts` | commit it unconditionally |
-| `partialStackMerge(drained, receiving)` | `all-must-agree` | `game/gear.ts` (`combinePack`'s call to `objectAbsorbPartial`, non-quiver branch only) | proceed with the merge unconditionally |
-| `packOverflowVictim(state, departedQuiver)` | `last-answer` | `game/obj-cmd.ts` (`packOverflow`'s `handle === 0` path, reached from `session/game.ts`'s `overflowPack`) | `?? null` - shed `state.gear.inven[length-1]`, the trailing entry |
 | `historyAdd(entry)` | `all-must-agree` | `session/game.ts` (the `HIST.SLAY_UNIQUE` path) | `?? true` - write every entry, duplicates included |
-| `historyDisplay(entry, playerName)` | `chained` | `packages/web/src/screens.ts` (the HOST's shared history rows, not core) | `?? entry.what` - show the stored text unchanged |
 | `saveNoiseScent()` | `any-yes` | `session/save.ts` | `?? false` - omit the heatmaps, which is upstream's behaviour and upstream's bug |
-| `shapeLearnObviousFlagsDirectly()` | `any-yes` | `obj/knowledge.ts` (`shapeLearnOnAssume`) | `?? false` - never learn a shape's obvious flag directly, the 4.2.6-era gap this hook exists to let a mod close |
 | `levelRevisited(chunk, frozenAt, now)` | `all-observe` | `session/game.ts` (persistent-level and single-combat restore paths) | nothing: resume the frozen chunk unchanged |
 | `messageText(raw)` | `chained` | `packages/web/src/main.ts` (the HOST's single message sink, not core) | `?? raw` - show what core was given, warts and all |
 | `optionsChanged(snapshot)` | `all-observe` | `packages/web/src/options.ts` (`notifyOptionsChanged`, at the end of `runOptionsMenu`) | nothing happens; core reads no answer |
@@ -207,11 +203,6 @@ reproducing its dungeon. Core hands them no `rng`. A mod can still break the
 contract by reaching for a global, so the suite pins it by running generation
 with a hook installed and asserting the level is bit-identical.
 
-`partialStackMerge` and `packOverflowVictim` are RNG-free for the same reason as
-the pair above: `partialStackMerge` runs on the main object stream inside
-`combinePack`, and `packOverflowVictim` is asked nothing but two already-computed
-facts (`state`, `departedQuiver`) with no path back into the RNG at all.
-
 `walkBlockedByDiggable` is RNG-free only on its DECLINE path, which is a stronger
 and more easily broken requirement: faithful core bumps the wall without drawing,
 so a hook that rolls a dig check and then declines has already moved the stream.
@@ -230,27 +221,25 @@ load order supplies it, which is what the mod manager's own "Move later (loads
 last, wins conflicts)" row promises. Where a fold combines answers, nothing is
 discarded and there is nothing for load order to decide. Per fold:
 
-- **`all-must-agree`** (`levelGenerated`, `artifactCommit`, `partialStackMerge`,
-  `historyAdd`) is **conjunctive**: every contributor runs and the **first
-  refusal decides**. This is the only safe fold - a mod that vetoes a duplicate
-  artifact must not be overruled by a later mod that merely has no opinion. Note
-  for `levelGenerated` specifically: every contributor still runs after an
-  earlier one has REPAIRED the level, because a second mod's invariant is not
-  satisfied by the first mod's repair; only a refusal short-circuits, since the
-  level is being thrown away anyway.
-- **`chained`** (`messageText`, `projectionRadius`, `historyDisplay`) chains in
-  load order, each contributor seeing the previous one's output: a `reduce`
-  over the contributors. Two mods narrowing one blast for two unrelated reasons
-  both get their narrowing, and the last one still speaks last.
-- **`last-answer`** (`walkBlockedByDiggable`, `packOverflowVictim`) asks the
-  contributors in **REVERSE** load order and stops at the first non-`null`, so
-  the LAST mod's handling wins and two mods cannot double-spend one turn's
-  energy (or, for `packOverflowVictim`, second-guess a redirect an earlier mod
-  already chose). The reversal is the whole mechanism, and reading the loop as
-  forward inverts the rule.
-- **`any-yes`** (`saveNoiseScent`, `shapeLearnObviousFlagsDirectly`) is
-  **disjunctive**, a `some()`. One mod asking for the data is enough, because
-  the data is additive and a second mod has nothing to object to.
+- **`all-must-agree`** (`levelGenerated`, `artifactCommit`, `historyAdd`) is
+  **conjunctive**: every contributor runs and the **first refusal decides**. This
+  is the only safe fold - a mod that vetoes a duplicate artifact must not be
+  overruled by a later mod that merely has no opinion. Note for `levelGenerated`
+  specifically: every contributor still runs after an earlier one has REPAIRED
+  the level, because a second mod's invariant is not satisfied by the first mod's
+  repair; only a refusal short-circuits, since the level is being thrown away
+  anyway.
+- **`chained`** (`messageText`, `projectionRadius`) chains in load order, each
+  contributor seeing the previous one's output: a `reduce` over the
+  contributors. Two mods narrowing one blast for two unrelated reasons both get
+  their narrowing, and the last one still speaks last.
+- **`last-answer`** (`walkBlockedByDiggable`) asks the contributors in **REVERSE**
+  load order and stops at the first non-`null`, so the LAST mod's handling wins
+  and two mods cannot double-spend one turn's energy. The reversal is the whole
+  mechanism, and reading the loop as forward inverts the rule.
+- **`any-yes`** (`saveNoiseScent`) is **disjunctive**, a `some()`. One mod asking
+  for the data is enough, because the data is additive and a second mod has
+  nothing to object to.
 - **`last-answer` for a comparator** (`objectListTiebreak`) is the same reversal
   read as a lexicographic chain: the last mod's ordering is the primary key and
   earlier mods break only the ties it leaves. Still a total order, and still
@@ -272,12 +261,9 @@ what lets the fault be attributed, since the host holds the id and core does not
 
 A throw becomes that hook's **neutral answer**, which is per-hook and is the same
 value core would have used with no mod loaded at all: `null` for
-`walkBlockedByDiggable` and `packOverflowVictim`, `0` for `objectListTiebreak`,
-`true` for the four vetoes (`levelGenerated`, `artifactCommit`,
-`partialStackMerge`, `historyAdd`), `false` for `saveNoiseScent` and
-`shapeLearnObviousFlagsDirectly`, the raw string for `messageText`,
-the entry's stored text unchanged for `historyDisplay`, and the radius as given
-for `projectionRadius`. So to the fold, a broken mod reads exactly
+`walkBlockedByDiggable`, `0` for `objectListTiebreak`, `true` for the three vetoes
+(`levelGenerated`, `artifactCommit`, `historyAdd`), `false` for `saveNoiseScent`,
+the raw string for `messageText`, and the radius as given for `projectionRadius`. So to the fold, a broken mod reads exactly
 like a mod with no opinion at that point, and the other mods' answers stand.
 `levelGenerated` accepting is the one worth naming: rejecting on a throw would
 re-roll the level, throw again, and re-roll until `cave_generate` gave up - one

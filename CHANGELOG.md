@@ -36,31 +36,20 @@ version it still calls itself.
 
 ## [Unreleased]
 
-### Added
-
-- Two new `ModHooks` extension points for the bug-fixes mod: `partialStackMerge`,
-  a veto on combinePack's uneven-stack merge (the point a mod can refuse to
-  drain an already-full source stack into a smaller one, neostryder/neo-angband#115),
-  and `packOverflowVictim`, a decision hook that lets a mod redirect
-  pack_overflow's NULL-victim shed to the item that actually displaced out of
-  the quiver rather than the last inventory slot (neostryder/neo-angband#116).
-  With no hook installed, both call sites are byte-identical to 4.2.6.
-
 ### Fixed
 
-- A mod's unresolvable reference or malformed patch could take the whole game
-  down at boot in six places the mod-resilience audit had not yet reached: an
-  artifact's `flags:`/`values:` tokens, a curse's `type:` entries, a monster's
-  `base:`/`friends-base:`/`friends:`/`shape:`, a terrain feature's `mimic:`,
-  and a store record whose `owner:` list a `replaces` body dropped entirely.
-  Each now drops only the mod's own bad entry (or, where the field is the
-  whole record's foundation, the one record) and reports it, the same way an
-  ego's unresolvable `item:` line already did; core's own data still fails
-  loudly. A malformed `fieldPatch` operation - an `append` written with
-  `value` instead of `values`, for instance - used to abort composition
-  entirely with no partial result and could drop every installed mod at once
-  when the resulting error named none of them; it is now refused the same way
-  a missing patch target already was (neostryder/neo-angband#8).
+- Nearly every screen in the web front end still wrote its UI text as a
+  hardcoded English literal, so a mod-supplied locale could not reach it no
+  matter what it declared: context menus, the mods and mod-browse screens,
+  options, keymap editing, pref-file screens, the wizard/debug console, the
+  shop, the character sheet, the knowledge browser, the title screen's
+  credits, and birth and character-select. All of it now routes through
+  `t()` - over a thousand message ids added in this pass - and the bundled
+  `demo-resources` mod's `en-XA` pseudo-locale catalog grew to match, so
+  switching to it no longer shows plain English for anything that is in fact
+  translatable. main.ts's combat messages and its `confirmYesNo`/`getCheck`
+  prompts were outside this pass's scope and remain untranslated
+  (neostryder/neo-angband#95).
 - An autoplayer mod (the Borg) took over the keyboard with no way to hand it
   back short of force-quitting: its own answer to a blocking prompt reached
   the game the same way a real keypress did, so opening the game menu to

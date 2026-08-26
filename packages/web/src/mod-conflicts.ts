@@ -274,8 +274,6 @@ function hookDescription(hook: keyof ModHooks): string {
     projectionRadius: "how wide a spell or breath explodes",
     levelGenerated: "whether a freshly generated level is accepted",
     artifactCommit: "whether an artifact is allowed to be created",
-    partialStackMerge: "whether a lopsided stack of wands or staves is allowed to merge",
-    packOverflowVictim: "which item gets dropped when your pack overflows",
     historyAdd: "which events reach your character history",
     historyDisplay: "how entries in your character history are shown",
     saveNoiseScent: "whether noise and scent maps go into the save",
