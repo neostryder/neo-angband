@@ -4,10 +4,11 @@ All notable changes to Neo Angband are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims
 to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-The project is pre-1.0: the API, save format, and mod interfaces may still
-change between minor versions. This file is maintained going forward - each
-notable change lands in the Unreleased section and moves under a version
-heading when that version is cut.
+As of 1.0.0, Neo Angband follows standard Semantic Versioning: a breaking
+change to the API, save format, or mod interfaces is a MAJOR bump, a
+backward-compatible feature is MINOR, and a fix is PATCH. This file is
+maintained going forward - each notable change lands in the Unreleased
+section and moves under a version heading when that version is cut.
 
 **Only work that has SHIPPED appears here.** An entry is written when the code is
 in the tree, never in advance of it: to a reader who did not write it, a
@@ -25,16 +26,19 @@ they gave it in public (a GitHub issue author, a named commenter in a public
 thread) - never a real name learned any other way, and never for a private
 conversation. A fix nobody outside reported carries no such line.
 
-`0.x` is the pre-release line and `1.0.0` is reserved for the public release.
-Semver on `0.x` means a feature release bumps the MINOR number, so `0.9.0` is
-followed by `0.10.0` rather than by `1.0.0`. The first-party mods follow the same
-scheme and reach `1.0.0` with the game rather than ahead of it - and a mod whose
-released tag is iterated takes a MINOR bump, because a published tag must never be
-moved: the game records the commit a tag resolved to when the mod was installed,
-and a tag that has since been retargeted is reported as moved rather than as the
-version it still calls itself.
+`0.x` was the pre-release line, where every feature release bumped the MINOR
+number instead (`0.9.0` was followed by `0.10.0` rather than `1.0.0`) and
+`1.0.0` was reserved for this, the public release. The first-party mods
+followed the same scheme, reaching `1.0.0` with the game - and a mod whose
+released tag needs to be superseded takes whatever bump its actual change
+warrants, because a published tag must never be moved: the game records the
+commit a tag resolved to when the mod was installed, and a tag that has
+since been retargeted is reported as moved rather than as the version it
+still calls itself.
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-08-26
 
 ### Added
 
@@ -850,7 +854,7 @@ instead of a curated subset that had drifted from it.
 
 ## [0.25.0] - 2026-08-21
 
-Current state of the project at version `0.34.2` - a features release for mod
+Current state of the project at version `1.0.0` - a features release for mod
 authors. A tileset mod can now say what the player's own cell draws and ask for
 a palette-swapped or mirrored copy of any tile; a hypothetical loadout can be
 scored without wearing it; and an autoplayer mod's character now starts again

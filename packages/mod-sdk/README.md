@@ -65,8 +65,10 @@ reads them.
 
 ## Versioning
 
-`0.9.x` is the pre-release line and the API can change inside it; `1.0.0` is
-reserved for the game's public release.
+Standard Semantic Versioning as of `1.0.0`, the game's public release: a
+breaking API change is a MAJOR bump, a backward-compatible feature is MINOR,
+and a fix is PATCH. `0.x` was the pre-release line, where the API could
+change inside a MINOR bump.
 
 ## Licence
 

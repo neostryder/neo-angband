@@ -32,7 +32,7 @@ import { Rng, ENGINE_VERSION, PARITY_BASELINE } from "@rpgm-tools/neo-angband-co
 const rng = new Rng(1234);
 console.log(rng.damroll(3, 6), rng.damroll(3, 6), rng.damroll(3, 6)); // 9 13 8
 
-console.log(ENGINE_VERSION, PARITY_BASELINE); // 0.34.2 4.2.6
+console.log(ENGINE_VERSION, PARITY_BASELINE); // 1.0.0 4.2.6
 ```
 
 Two entry points:
@@ -64,9 +64,11 @@ without content handed to it.
 
 ## Versioning
 
-`0.x` is the pre-release line and the API can change inside it; `1.0.0` is
-reserved for the game's public release. `PARITY_BASELINE` is the upstream release
-the port is verified against and moves independently of `ENGINE_VERSION`.
+Standard Semantic Versioning as of `1.0.0`, the game's public release: a
+breaking API change is a MAJOR bump, a backward-compatible feature is MINOR,
+and a fix is PATCH. `0.x` was the pre-release line, where the API could
+change inside a MINOR bump. `PARITY_BASELINE` is the upstream release the
+port is verified against and moves independently of `ENGINE_VERSION`.
 
 ## Licence
 

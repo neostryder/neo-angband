@@ -13,14 +13,15 @@ export const PARITY_BASELINE = "4.2.6";
 /**
  * Port version, tracked independently of the baseline.
  *
- * Semver, and 0.x is the pre-release line: a feature release bumps the MINOR
- * number, so 0.9.0 is followed by 0.10.0 rather than by 1.0.0. That is worth
- * stating because the first reading of "0.9.0" is "nearly 1.0", and it is not -
- * 1.0.0 is reserved for the public release and the line can run as far as it needs
- * to before then.
+ * Standard Semantic Versioning as of 1.0.0, the public release: a breaking
+ * change to the API, save format, or mod interfaces is a MAJOR bump, a
+ * backward-compatible feature is MINOR, and a fix is PATCH. Before this,
+ * `0.x` was the pre-release line, where every feature release bumped the
+ * MINOR number instead (0.9.0 was followed by 0.10.0 rather than 1.0.0).
  *
  * Each mod carries its own version and moves on its own schedule; a mod whose
- * released tag is iterated takes a MINOR bump, because a published tag is pinned
- * by digest in a catalogue and must never be moved.
+ * released tag needs to be superseded takes whatever bump its actual change
+ * warrants, because a published tag is pinned by digest in a catalogue and
+ * must never be moved.
  */
-export const ENGINE_VERSION = "0.34.2";
+export const ENGINE_VERSION = "1.0.0";
