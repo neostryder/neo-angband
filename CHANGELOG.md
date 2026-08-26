@@ -65,6 +65,10 @@ version it still calls itself.
 
 ### Changed
 
+- The browser tab icon, PWA install icon, and iOS home-screen icon are now
+  the actual app icon (the same mascot artwork the desktop build ships)
+  instead of a placeholder green "@" glyph. The web app's `index.html` also
+  gained explicit favicon `<link>` tags, which it never had before.
 - The portable data folder beside the executable is named `data` instead
   of `neo-angband-data`. Only a fresh install or a fresh portable data
   folder gets the new name; an existing `neo-angband-data` folder is found
