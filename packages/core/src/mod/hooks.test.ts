@@ -19,6 +19,7 @@ import {
   type ModHooks,
 } from "./hooks.js";
 import type { GameState } from "../game/context.js";
+import type { GameObject } from "../obj/object.js";
 import type { OptionStateData } from "../player/options.js";
 import type { Chunk } from "../world/chunk.js";
 
@@ -27,6 +28,9 @@ const GRID = { y: 1, x: 1 };
 const CHUNK = {} as Chunk;
 /** The live CaveCmdDeps core passes through; opaque to the fold. */
 const DEPS = {};
+/** Stand-ins for the two stacks a partial merge would combine. */
+const DRAINED = {} as GameObject;
+const RECEIVING = {} as GameObject;
 
 describe("composeModHooks: nothing in, nothing out", () => {
   it("returns undefined for no contributions", () => {
@@ -507,6 +511,37 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       }),
       run: (h) => h.artifactCommit?.(1, false),
     },
+    partialStackMerge: {
+      yes: (log, tag) => ({
+        partialStackMerge: () => {
+          log.push(tag);
+          return true;
+        },
+      }),
+      no: (log, tag) => ({
+        partialStackMerge: () => {
+          log.push(tag);
+          return false;
+        },
+      }),
+      run: (h) => h.partialStackMerge?.(DRAINED, RECEIVING),
+    },
+    packOverflowVictim: {
+      /* Distinct answers, so an order-dependent fold is visible in the value. */
+      yes: (log, tag, nth) => ({
+        packOverflowVictim: () => {
+          log.push(tag);
+          return 100 * nth;
+        },
+      }),
+      no: (log, tag) => ({
+        packOverflowVictim: () => {
+          log.push(tag);
+          return null;
+        },
+      }),
+      run: (h) => h.packOverflowVictim?.(STATE, null),
+    },
     historyAdd: {
       yes: (log, tag) => ({
         historyAdd: () => {
@@ -678,6 +713,16 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
   it("artifactCommit commits, which is what core does with no hook", () => {
     const { hooks } = guarded({ artifactCommit: THROWS });
     expect(hooks.artifactCommit?.(7, true)).toBe(true);
+  });
+
+  it("partialStackMerge proceeds, which is what core does with no hook", () => {
+    const { hooks } = guarded({ partialStackMerge: THROWS });
+    expect(hooks.partialStackMerge?.(DRAINED, RECEIVING)).toBe(true);
+  });
+
+  it("packOverflowVictim declines, so core sheds the trailing inven[] entry", () => {
+    const { hooks } = guarded({ packOverflowVictim: THROWS });
+    expect(hooks.packOverflowVictim?.(STATE, null)).toBeNull();
   });
 
   it("historyAdd writes the entry rather than eating the player's history", () => {

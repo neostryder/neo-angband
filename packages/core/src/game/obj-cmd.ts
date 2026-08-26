@@ -191,6 +191,10 @@ function calcInvOpts(state: GameState, deps: ObjCmdDeps): CalcInventoryOpts {
   const at = deps.ammoTval?.() ?? state.playerState?.ammoTval;
   if (at !== undefined) o.ammoTval = at;
   if (deps.objectValue) o.objectValue = deps.objectValue;
+  /* The mod behaviour seam (mod/hooks.ts), so combinePack's partialStackMerge
+   * extension point is reachable from every wield/takeoff/drop call site that
+   * routes its tail through this options bag. */
+  if (state.modHooks) o.hooks = state.modHooks;
   return o;
 }
 
@@ -203,6 +207,12 @@ function packOpts(state: GameState, deps: ObjCmdDeps): PackOverflowOpts {
   const o: PackOverflowOpts = { calcInv: calcInvOpts(state, deps) };
   if (deps.env?.msg) o.msg = deps.env.msg;
   if (deps.floorEnv) o.floorEnv = deps.floorEnv;
+  /* The mod behaviour seam (mod/hooks.ts), so packOverflow's packOverflowVictim
+   * extension point is reachable here too. These call sites always pass an
+   * explicit handle, so the hook is never actually consulted from them (see
+   * packOverflow's handle === 0 gate) - carried through anyway so a caller that
+   * starts passing 0 does not silently lose the seam. */
+  if (state.modHooks) o.hooks = state.modHooks;
   return o;
 }
 
@@ -245,6 +255,20 @@ export interface PackOverflowOpts {
   calcInv?: CalcInventoryOpts;
   /** drop_near seams (isTrap / onDrop / onBreak) for the overflowed item. */
   floorEnv?: FloorEnv;
+  /**
+   * The mod behaviour seam (mod/hooks.ts), threaded so packOverflow can offer
+   * its packOverflowVictim extension point. Absent => packOverflow is faithful
+   * 4.2.6.
+   */
+  hooks?: import("../mod/hooks.js").ModHooks | undefined;
+  /**
+   * GameState.gear.quiver as it stood immediately before the calc_inventory
+   * recompute that precedes this call - only meaningful (and only read) on the
+   * `handle === 0` / upstream-NULL path, where packOverflowVictim uses it to
+   * name the item that just left the quiver. Absent on every call that passes
+   * an explicit handle, and on any handle===0 caller that has not captured one.
+   */
+  previousQuiver?: readonly number[] | undefined;
 }
 
 /** The subset of z_info pack_overflow and its calc_inventory refresh read. */
@@ -274,6 +298,11 @@ function overflowCalcInv(opts: PackOverflowOpts): CalcInventoryOpts {
  * For the NULL case, upkeep->inven[] is represented by the derived,
  * earlier_object-sorted gear.inven view (player-calcs.c:1191-1222); gear.pack
  * remains the raw master-gear order and must not select the victim.
+ *
+ * The NULL case also consults the packOverflowVictim seam (mod/hooks.ts) via
+ * `opts.hooks` / `opts.previousQuiver`; see that member's doc for the fact it
+ * hands over and what a mod may do with it. Faithful core (no hook) sheds the
+ * trailing inven[] entry exactly as upstream does.
  */
 export function packOverflow(
   state: GameState,
@@ -291,11 +320,27 @@ export function packOverflow(
   /* Warning (L1356). */
   opts.msg?.("Your pack overflows!");
 
-  /* Drop the last inventory item unless requested otherwise (L1359-1366). */
+  /* Drop the last inventory item unless requested otherwise (L1359-1366).
+   * The packOverflowVictim seam (mod/hooks.ts) only applies to the NULL
+   * case - a caller that already knows its victim (wield/takeoff) is never
+   * second-guessed. `departedQuiver` is core's own computed fact: the one
+   * handle `opts.previousQuiver` held that GameState.gear.quiver no longer
+   * does, i.e. whatever the calc_inventory recompute just before this call
+   * displaced out of the quiver. A mod may redirect to it, or to any other
+   * handle it prefers; declining (null, or no hook at all) falls back to the
+   * faithful trailing-inven[]-entry selection. */
+  const departedQuiver: number | null =
+    handle === 0 && opts.previousQuiver
+      ? (opts.previousQuiver.find(
+          (h) => h !== 0 && !(state.gear.quiver ?? []).includes(h),
+        ) ?? null)
+      : null;
   const victim =
     handle !== 0
       ? handle
-      : (state.gear.inven?.[state.gear.inven.length - 1] ?? 0);
+      : (opts.hooks?.packOverflowVictim?.(state, departedQuiver) ??
+        state.gear.inven?.[state.gear.inven.length - 1] ??
+        0);
   const obj = gearGet(state.gear, victim);
   /* Upstream asserts obj != NULL here (L1369). The port can reach a stale
    * handle where upstream reads freed memory: combine_pack (which runs just
