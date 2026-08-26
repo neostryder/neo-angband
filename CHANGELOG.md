@@ -36,6 +36,17 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- An autoplayer mod (the Borg) took over the keyboard with no way to hand it
+  back short of force-quitting: its own answer to a blocking prompt reached
+  the game the same way a real keypress did, so opening the game menu to
+  disable it just closed again on the mod's next tick. Any real keypress now
+  interrupts an autoplayer immediately. Ctrl-Z also now offers to start one,
+  through upstream's own warn-and-confirm prompt, rather than a silent
+  mod-manager toggle that took effect on the next reload
+  (neostryder/neo-angband#125).
+
 ## [0.34.2] - 2026-08-25
 
 ### Fixed

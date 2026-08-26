@@ -190,7 +190,7 @@ describe("keypress command table registry adapter", () => {
     expect(ran).toEqual(["inscribe", "take-off", "center", "debug"]);
   });
 
-  it("keeps all 63 unmodded keypress commands in main.ts in their upstream table order", () => {
+  it("keeps all 64 unmodded keypress commands in main.ts in their upstream table order", () => {
     const actual = transformKeypressCommandTable(buildActualKeypressTable(), (_id, rows) => rows);
 
     /* This is the live builder's output through the same transformation main.ts
@@ -260,6 +260,7 @@ describe("keypress command table registry adapter", () => {
       "Repeat previous command",
       "Center map",
       "Debug mode commands",
+      "Borg commands",
     ]);
   });
 
