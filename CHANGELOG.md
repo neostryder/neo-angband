@@ -81,6 +81,13 @@ version it still calls itself.
 - A message longer than the display line took up a whole page of its own;
   upstream splits it at the rightmost space and recurses on the rest
   instead. The pager now does the same (neostryder/neo-angband#7).
+- Selecting a Linoleum tile pack that had never been converted before blocked
+  the whole game until the entire source atlas finished slicing into loose
+  files - long enough on a large pack (Shockbolt) to look identical to a
+  hang. The game now hands control back immediately and shows a banner
+  naming what is converting; the tileset applies once it finishes. Streaming
+  individual tiles in as they convert, instead of applying the whole pack at
+  once at the end, remains open (neostryder/neo-angband#124).
 - The birth point-buy stat allocation screen never showed the gold-rectangle
   cursor upstream draws just after the current stat's cost (ui-birth.c:1135),
   because that screen is hand-rolled rather than built on the shared menu
