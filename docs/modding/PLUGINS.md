@@ -5,10 +5,11 @@ A mod that only changes records needs no code: drop `manifest.json` plus one
 [../MODS.md](../MODS.md)). This document is for the other kind: a mod that changes
 *behaviour*.
 
-> **The mod API is UNSTABLE until 1.0.** It will change and your plugin will stop
-> loading when it does. That is deliberate: the alternative is a mod that
-> half-works and a player who reports it as a game bug. See
-> [Version contract](#version-contract).
+> **A breaking mod API change is now a MAJOR version bump.** Before 1.0, the
+> API could change on any minor release; from 1.0.0 on, a plugin written
+> against the current API keeps loading across patch and minor releases, and
+> the deprecation window described below still gives an author a release's
+> warning before a real break lands. See [Version contract](#version-contract).
 
 ## The shape
 

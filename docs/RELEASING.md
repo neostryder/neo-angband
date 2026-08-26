@@ -33,7 +33,7 @@ never be reused even inside that window.
 So the push is automated off a git tag, and nothing else does it:
 
 ```bash
-git tag v0.34.2 && git push origin master v0.34.2
+git tag v1.0.0 && git push origin master v1.0.0
 ```
 
 > ### `git push origin master` is NOT how this repository publishes
@@ -112,7 +112,7 @@ A release is a tag on the public tip, and it is a separate step from publishing:
 ```bash
 node tools/publish.mjs --push
 git fetch origin
-git tag v0.34.2 origin/master && git push origin v0.34.2
+git tag v1.0.0 origin/master && git push origin v1.0.0
 ```
 
 Tag `origin/master` after the push rather than a local commit: the local commit
@@ -232,7 +232,7 @@ Push the one tag you just made, by name, and only the tag, since
 `master` is published by `tools/publish.mjs` and not by this branch:
 
 ```bash
-git push origin v0.34.2
+git push origin v1.0.0
 ```
 
 This repository's history **descends from Angband's own**, so every upstream tag
@@ -433,9 +433,9 @@ the normal path, so this is a list of things not to "tidy up":
 | the architecture in every macOS name | `pickAsset` matches `-arm64-mac.zip` / `-x64-mac.zip`; an unlabelled file is read as pre-0.17.0 Intel |
 | GitHub's own `digest` field | the download is refused unless its SHA-256 matches. Nothing extra is published: the API reports this per asset, but an asset re-uploaded by hand gets a new digest, so re-run the workflow rather than dragging a file in |
 
-`--prerelease` does **not** hide a release from the updater. Every 0.x is one, so
-hiding them would mean the feature never worked before 1.0; the version
-comparison is what decides, not the label.
+`--prerelease` does **not** hide a release from the updater. Every 0.x release
+was one, and hiding them would have meant the feature never worked before
+1.0; the version comparison is what decides, not the label.
 
 ### The release also announces itself on Discord
 

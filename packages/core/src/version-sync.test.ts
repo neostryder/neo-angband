@@ -97,12 +97,6 @@ describe("a version is derived, not picked", () => {
     expect(() => successors("v0.11.0")).toThrow(/not a semver version/u);
   });
 
-  it("keeps 0.x as the pre-release line", () => {
-    /* 1.0.0 is reserved for the game's public release, so it is never reached by
-     * routine bumping. The CLI refuses `major` without --release; here this just
-     * pin that the project has not accidentally already crossed it. */
-    expect(projectVersion()).toMatch(/^0\./u);
-  });
 });
 
 describe("the release runbook quotes the version this repository is at", () => {

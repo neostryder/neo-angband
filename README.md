@@ -364,9 +364,10 @@ An honest list, so nobody wastes a report on something already written down:
   repository at a pinned tag, pins the mod to that repository so nothing from
   anywhere else can replace it, and records a digest of every byte that arrived so
   you can ask later whether your copy has changed.
-- **The save format is pre-1.0 and still changes**, but your character comes with
-  it. Every format change ships the conversion that reads the one before it, and a
-  save the game cannot open is never overwritten.
+- **The save format can only break on a major version bump**, and even then
+  your character comes with it: every format change ships the conversion
+  that reads the one before it, and a save the game cannot open is never
+  overwritten.
 
 ## Come and say hello
 
