@@ -57,8 +57,10 @@ and emits. Every entry corresponds to concrete upstream code.
 - **Player**: stats and sustains, cur/max HP and SP, cur/max level, cur/max
   depth, gold, food, speed, AC, to-hit/to-dam, blows, shots, light radius, all
   status afflictions (blind/confused/afraid/poisoned/cut/stun/paralyzed/etc.),
-  infravision, resting flag, dead flag and cause-of-death, shapechange, winner
-  state, class/race identity.
+  buff timers (fast/hero/berserk/protection from evil/blessed/shield/
+  stoneskin/fastcast/temporary elemental resists), infravision, resting flag,
+  dead flag and cause-of-death, shapechange, winner state, class/race
+  identity.
 - **Race/class tables**: skills, attack multiplier, min weapon weight, max
   attacks, infravision; spellbook layout and per-spell level/mana/fail/status
   (learned/worked/forgotten).
