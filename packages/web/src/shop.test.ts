@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { newGear, gearAdd, objectNew, TV, FEAT } from "@rpgm-tools/neo-angband-core";
 import type { GameObject, ObjectKind, StartedGame, Store } from "@rpgm-tools/neo-angband-core";
-import { findInven, sortStoreStock, wrapCssRuns, SEL_ORIGINAL, SEL_ROGUE } from "./shop";
+import {
+  findInven,
+  sortStoreStock,
+  wrapCssRuns,
+  SEL_ORIGINAL,
+  SEL_ROGUE,
+  contextMenuPosition,
+  paintContextMenu,
+} from "./shop";
 
 /**
  * find_inven (store.c L1515-1644): the count of a stackable equivalent already
@@ -207,5 +215,89 @@ describe("wrapCssRuns (newlines end lines instead of painting as blocks)", () =>
       40,
     );
     expect(lines).toEqual([[{ text: "green", color: "#0f0" }], [{ text: "white", color: "#fff" }]]);
+  });
+});
+
+/**
+ * menu_dynamic_calc_location (ui-menu.c:1123-1148): context_menu_store_item's
+ * own call (ui-store.c L1041) always passes mx=1, my=the selected stock row's
+ * own screen row, so the popup opens beside the item it is for.
+ */
+describe("contextMenuPosition (menu_dynamic_calc_location, ui-menu.c:1123-1148)", () => {
+  it("opens one column right and one row below (mx, my) when there is room", () => {
+    expect(contextMenuPosition(1, 10, 80, 24, 10, 3)).toEqual({ col: 2, row: 11 });
+  });
+
+  it("pins to the bottom of the screen instead of running off it", () => {
+    expect(contextMenuPosition(1, 21, 80, 24, 10, 3)).toEqual({ col: 2, row: 20 });
+  });
+
+  it("moves to the top-right corner when there is no room above either", () => {
+    expect(contextMenuPosition(1, 2, 80, 5, 10, 3)).toEqual({ col: 69, row: 1 });
+  });
+
+  it("pulls the box left of the right edge instead of running past it", () => {
+    expect(contextMenuPosition(15, 5, 20, 24, 10, 3)).toEqual({ col: 9, row: 6 });
+  });
+
+  it("never returns a negative column or row, even for a box wider than the screen", () => {
+    expect(contextMenuPosition(1, 5, 5, 24, 10, 3)).toEqual({ col: 0, row: 6 });
+  });
+});
+
+/**
+ * #128: itemContext used to print its labels with bare term.print() calls and
+ * no backdrop, so whatever the stock list had already painted on those same
+ * rows - an item's name, weight, price - kept showing through past the
+ * label's own length, making the popup unreadable. paintContextMenu's
+ * blank-then-print must leave nothing of that behind within the popup's own
+ * footprint.
+ */
+describe("paintContextMenu (context_menu_store_item's backdrop, #128)", () => {
+  function fakeGrid(cols: number, rows: number): {
+    cells: string[][];
+    print: (x: number, y: number, text: string, fg?: string, bg?: string) => void;
+  } {
+    const cells: string[][] = Array.from({ length: rows }, () => Array(cols).fill(" "));
+    return {
+      cells,
+      print(x, y, text) {
+        for (let i = 0; i < text.length; i++) {
+          const cx = x + i;
+          if (cx >= 0 && cx < cols && y >= 0 && y < rows) cells[y]![cx] = text[i]!;
+        }
+      },
+    };
+  }
+
+  it("erases the stock row's leftover text behind and around each label", () => {
+    const grid = fakeGrid(40, 10);
+    // Simulate paint() having already drawn stock rows across the rows the
+    // popup is about to occupy - a name, then weight and price further right,
+    // exactly what store_display_entry / paint() draws on those rows.
+    grid.print(0, 4, "c) A Longsword (+0,+0)      3.2 lb   45 gold");
+    grid.print(0, 5, "d) A Potion of Cure Light Wounds     1 gold");
+
+    const entries = [
+      { key: "l", label: "Examine" },
+      { key: "p", label: "Buy" },
+    ];
+    const boxCol = 2;
+    const boxRow = 4;
+    const boxWidth = Math.max(...entries.map((e) => e.label.length)) + 3 + 2;
+    paintContextMenu(grid, entries, boxCol, boxRow, boxWidth, 0);
+
+    for (let e = 0; e < entries.length; e++) {
+      const row = grid.cells[boxRow + e]!.join("");
+      const label = `${entries[e]!.key}) ${entries[e]!.label}`;
+      // The label itself prints exactly as expected...
+      expect(row.slice(boxCol, boxCol + label.length)).toBe(label);
+      // ...and nothing of the old stock row survives behind or past it,
+      // anywhere within the popup's own width - the bug this regresses.
+      const afterLabel = row.slice(boxCol + label.length, boxCol + boxWidth);
+      expect(afterLabel.trim()).toBe("");
+      const leftMargin = row.slice(Math.max(0, boxCol - 1), boxCol);
+      expect(leftMargin.trim()).toBe("");
+    }
   });
 });

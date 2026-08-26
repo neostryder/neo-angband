@@ -488,6 +488,72 @@ function objCanUse(game: StartedGame, obj: GameObject): boolean {
 }
 
 /**
+ * menu_dynamic_calc_location (ui-menu.c:1123-1148): where a dynamic popup
+ * lands for a menu asked to open at (mx, my) - one column right and one row
+ * below by default, moved to the top-right corner when it would run off the
+ * bottom of the screen. context_menu_store_item's own call (ui-store.c
+ * L1041) always passes mx=1, my=the selected stock row's own screen row, so
+ * the popup opens beside the item it is for rather than at a fixed spot.
+ */
+export function contextMenuPosition(
+  mx: number,
+  my: number,
+  cols: number,
+  rows: number,
+  boxWidth: number,
+  boxHeight: number,
+): { col: number; row: number } {
+  let col: number;
+  let row: number;
+  if (my > rows - boxHeight - 1) {
+    if (my - boxHeight - 1 <= 0) {
+      row = 1;
+      col = cols - boxWidth - 1;
+    } else {
+      row = rows - boxHeight - 1;
+      col = mx > cols - boxWidth - 1 ? cols - boxWidth - 1 : mx + 1;
+    }
+  } else {
+    row = my + 1;
+    col = mx > cols - boxWidth - 1 ? cols - boxWidth - 1 : mx + 1;
+  }
+  return { col: Math.max(0, col), row: Math.max(0, row) };
+}
+
+/**
+ * region_erase_bordered (ui-output.c:52-64) plus the row draw: blank the
+ * popup's own cells and a one-cell margin around them, THEN print each
+ * entry's "key) label" into it (#128). Upstream restores the real screen
+ * underneath on close via screen_load; the port keeps none to restore, so
+ * this margin is the backdrop that stops whatever paint() drew underneath
+ * from bleeding through around and behind the popup's own short labels.
+ *
+ * A blank space is the bounded erase here rather than eraseSpan/eraseToEol:
+ * the store's region-clipped term has no eraseSpan (region-surface.ts's
+ * GridSurface return omits it), and paintCell fills a space glyph's cell
+ * with the same UI_BG an erased (null) cell gets (term.ts L1171), so
+ * printing spaces reaches byte-identical pixels without needing the
+ * bounded-erase capability.
+ */
+export function paintContextMenu(
+  term: Pick<GridSurface, "print">,
+  entries: readonly { key: string; label: string }[],
+  boxCol: number,
+  boxRow: number,
+  boxWidth: number,
+  cursor: number,
+): void {
+  const blank = " ".repeat(boxWidth + 2);
+  for (let r = -1; r <= entries.length; r++) {
+    term.print(boxCol - 1, boxRow + r, blank, UI_TEXT);
+  }
+  for (let e = 0; e < entries.length; e++) {
+    const ent = entries[e]!;
+    term.print(boxCol, boxRow + e, `${ent.key}) ${ent.label}`, e === cursor ? UI_CURSOR : UI_TEXT);
+  }
+}
+
+/**
  * Run the store screen for `store` until the player leaves (ESC). Faithful to
  * ui-store.c: full-screen frame, lettered stock, the store command keys, and the
  * inline buy/sell/quantity/confirm prompts.
@@ -1050,10 +1116,29 @@ export async function runStore(
         act: () => purchase(i, true),
       });
     }
+    /* menu_dynamic_longest_entry + menu_dynamic_calc_location's own width term
+     * (ui-menu.c:1107-1128): the tag column ("x) ") is always 3 wide, plus 2
+     * columns of padding, plus the longest label. */
+    const boxWidth = Math.max(...entries.map((e) => e.label.length)) + 3 + 2;
+    const boxHeight = entries.length;
     let mc = 0;
     for (;;) {
       paint();
-      const { cols } = term.size();
+      const { cols, rows } = term.size();
+      const gm = geom();
+      /* context_menu_store_item's own call (ui-store.c L1041):
+       * menu_dynamic_calc_location(m, 1, m->active.row + oid) - mx=1, my=the
+       * selected stock row's own screen row, matching upstream's placement
+       * instead of a fixed (2, 2). */
+      const { col: boxCol, row: boxRow } = contextMenuPosition(
+        1,
+        gm.listTop + (i - top),
+        cols,
+        rows,
+        boxWidth,
+        boxHeight,
+      );
+      paintContextMenu(term, entries, boxCol, boxRow, boxWidth, mc);
       // prt (ui-output.c:385-391): paint() has just put statusMsg on row 0, so a
       // longer status would show its tail past this prompt.
       term.prt(
@@ -1065,13 +1150,9 @@ export async function runStore(
         ),
         UI_TEXT,
       );
-      for (let e = 0; e < entries.length; e++) {
-        const ent = entries[e]!;
-        term.print(2, 2 + e, `${ent.key}) ${ent.label}`, e === mc ? UI_CURSOR : UI_TEXT);
-      }
       const ev = await readStoreInput(term);
       if (ev.type === "tap") {
-        const r = ev.row - 2;
+        const r = ev.row - boxRow;
         if (r >= 0 && r < entries.length) {
           await entries[r]!.act();
           return;
