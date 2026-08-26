@@ -5,6 +5,7 @@ import {
   dispatchUiInput,
   inputEvents,
   onKeydown,
+  setAutoplayerInterruptOwner,
   setDomKeyboardOwner,
   setKeymapResolver,
 } from "./input-door";
@@ -288,5 +289,87 @@ describe("an autoplayer's own keypress", () => {
     await macrotask();
 
     expect(seen).toEqual(["Escape"]);
+  });
+});
+
+describe("the autoplayer interrupt hatch", () => {
+  function browserDoor(): {
+    press: (key: string) => KeyboardEvent;
+    seen: string[];
+  } {
+    const seen: string[] = [];
+    const listeners: Array<(event: Event) => void> = [];
+    const fakeWindow = {
+      addEventListener(_type: string, fn: (event: Event) => void): void {
+        listeners.push(fn);
+      },
+      removeEventListener(_type: string, fn: (event: Event) => void): void {
+        const at = listeners.indexOf(fn);
+        if (at >= 0) listeners.splice(at, 1);
+      },
+    } as Pick<Window, "addEventListener" | "removeEventListener">;
+    (globalThis as { window?: unknown }).window = fakeWindow;
+    inputEvents.addEventListener("keydown", (event) => seen.push(event.key));
+    return {
+      seen,
+      press: (key: string): KeyboardEvent => {
+        const event = new Event("keydown", { cancelable: true }) as KeyboardEvent;
+        Object.assign(event as object, {
+          key, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, repeat: false,
+        });
+        for (const fn of [...listeners]) fn(event);
+        return event;
+      },
+    };
+  }
+
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+    delete (globalThis as { document?: unknown }).document;
+  });
+
+  it("hands the keyboard back to a real keypress instead of reaching the game", () => {
+    const door = browserDoor();
+    let interrupted = false;
+    setAutoplayerInterruptOwner({ active: () => true, interrupt: () => { interrupted = true; } });
+    const event = door.press("q");
+    expect(interrupted).toBe(true);
+    expect(door.seen).toEqual([]);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("leaves an inactive autoplayer alone", () => {
+    const door = browserDoor();
+    let interrupted = false;
+    setAutoplayerInterruptOwner({ active: () => false, interrupt: () => { interrupted = true; } });
+    door.press("q");
+    expect(interrupted).toBe(false);
+    expect(door.seen).toEqual(["q"]);
+  });
+
+  it("does not interrupt a keystroke meant for another window", () => {
+    /* A player working elsewhere while the autoplayer runs in the background
+     * should not hand the keyboard back just because this window's listener
+     * happened to see a stray event - so the hatch only fires while the page
+     * itself has focus. */
+    const door = browserDoor();
+    (globalThis as { document?: unknown }).document = { hasFocus: () => false };
+    let interrupted = false;
+    setAutoplayerInterruptOwner({ active: () => true, interrupt: () => { interrupted = true; } });
+    door.press("q");
+    expect(interrupted).toBe(false);
+  });
+
+  it("interrupts again once the page regains focus", () => {
+    const door = browserDoor();
+    const fakeDocument = { hasFocus: () => false };
+    (globalThis as { document?: unknown }).document = fakeDocument;
+    let interrupted = false;
+    setAutoplayerInterruptOwner({ active: () => true, interrupt: () => { interrupted = true; } });
+    door.press("q");
+    expect(interrupted).toBe(false);
+    fakeDocument.hasFocus = () => true;
+    door.press("q");
+    expect(interrupted).toBe(true);
   });
 });

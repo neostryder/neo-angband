@@ -71,6 +71,14 @@ export interface KeymapResolverOptions {
  * A host-owned piece of REAL DOM that a keystroke may belong to instead of the
  * game.
  *
+ * Checked only while the page actually has focus (`document.hasFocus()`): a
+ * player who leaves the autoplayer running in a background window should be
+ * able to work in another one without a stray keystroke there handing the
+ * keyboard back. A key that never reaches this window's listener already
+ * cannot interrupt anything; the check exists for the same reason the escape
+ * hatch below does - defending the intent explicitly rather than trusting an
+ * accident of how focus happens to route events today.
+ *
  * WHY THIS HOOK IS HERE AND NOT ANYWHERE ELSE. `browserKeydown` below is the
  * only DOM keyboard registration in the package: one listener, on `window`, in
  * the capture phase, installed when this module is imported. Every screen in the
@@ -298,7 +306,10 @@ function installBrowserAdapter(target: KeyTarget): void {
 
 function browserKeydown(event: Event): void {
   const key = event as KeyboardEvent;
-  if (autoplayerInterruptOwner?.active()) {
+  if (
+    autoplayerInterruptOwner?.active() &&
+    (typeof document === "undefined" || document.hasFocus())
+  ) {
     key.preventDefault();
     autoplayerInterruptOwner.interrupt();
     return;
