@@ -20,7 +20,7 @@ The software is provided as available. It can be changed, unavailable, incompati
 
 ## Mods and third-party material
 
-Mods are separate folders that a player chooses to install into Neo Angband. The six first-party mods addressed by the companion Terms documents are not bundled into the base game. A repository installation retrieves the selected mod from its public GitHub repository at a tag and stores the retrieved copy locally. The manager records the mod's origin and file hashes so it can report whether a local copy has changed since installation. This is not a guarantee that a first download is safe or that a tag cannot be changed by its repository owner.
+Mods are separate folders that a player chooses to install into Neo Angband. The seven first-party mods addressed by the companion Terms documents are not bundled into the base game. A repository installation retrieves the selected mod from its public GitHub repository at a tag and stores the retrieved copy locally. The manager records the mod's origin and file hashes so it can report whether a local copy has changed since installation. This is not a guarantee that a first download is safe or that a tag cannot be changed by its repository owner.
 
 Mods can change game content, behavior, graphics, sounds, fonts, or other game features. A mod can also include executable plugin code. The project does not review, endorse, warrant, or take responsibility for third-party mods, their accuracy, security, licences, content, or compatibility. A player should inspect a mod, its repository, its declared capabilities, and its applicable licence before installation.
 

@@ -54,17 +54,19 @@ into the dungeon - with real screenshots at every step.**
 
 > ## A note on the desktop auto-updater
 >
-> GitHub recently changed the servers it uses to deliver release downloads, and
-> the in-app updater in older desktop builds does not recognize the new address
-> yet. If your desktop copy fails to update with a "redirected to an unexpected
-> host" error, this is why - it is not specific to your machine or install.
+> GitHub changed the servers it uses to deliver release downloads, and the
+> in-app updater in desktop builds older than 0.34.1 does not recognize the
+> new address. If your desktop copy fails to update with a "redirected to an
+> unexpected host" error, this is why - it is not specific to your machine or
+> install. The updater itself has been fixed since 0.34.1; a copy still
+> stuck on an older build needs the one-time manual step below to reach that
+> fix, since it runs in the build you install, not the one you already have.
 >
 > **The quick fix:** download the latest release from
 > [the releases page](https://github.com/neostryder/neo-angband/releases) and
 > extract it over your existing install folder, the same way you installed it
 > the first time. Your save data lives in its own folder next to the game and
-> is not touched by this. A permanent fix to the updater itself is on the way;
-> this one manual step is all that is needed in the meantime.
+> is not touched by this.
 
 ---
 
