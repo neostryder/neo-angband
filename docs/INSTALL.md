@@ -11,6 +11,8 @@ demo URL appears here: a hosted copy can change under you between sessions, so
 Windows, macOS and Linux, plus the static site as a zip. The Windows
 **portable** `.exe` and the Linux **AppImage** need no installer: download, run,
 and the game keeps its saves in a folder beside itself.
+The AppImage also requires the `fuse2`/`libfuse2` runtime, which is already
+present on most Linux distributions; on Arch, install it with `pacman -S fuse2`.
 
 Those builds are **not code-signed**. There is no Apple Developer identity or
 Windows certificate behind this project yet, so the first launch is blocked.
