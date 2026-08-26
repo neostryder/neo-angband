@@ -95,6 +95,7 @@ import {
   rollStats,
   sellStat,
   statTable,
+  t,
   toCombatState,
 } from "@rpgm-tools/neo-angband-core";
 import type {
@@ -217,13 +218,34 @@ export interface BirthOpts {
   randomName?: () => string;
 }
 
-/* setup_menus' stage hints (ui-birth.c L565/578/586), verbatim. */
-const RACE_HINT =
-  "Race affects stats and skills, and may confer resistances and abilities.";
-const CLASS_HINT = "Class affects stats, skills, and other character traits.";
-const ROLLER_HINT =
-  "Choose how to generate your intrinsic stats. Point-based is recommended.";
+/* setup_menus' stage hints (ui-birth.c L565/578/586), verbatim. Functions, not
+ * constants: a locale can change mid-session (see gameMenuFooter's comment in
+ * game-menu.ts), so a `const` computed at import time would freeze whichever
+ * language happened to be active first. */
+function raceHint(): string {
+  return t(
+    "birth.hint.race",
+    "Race affects stats and skills, and may confer resistances and abilities.",
+  );
+}
+function classHint(): string {
+  return t(
+    "birth.hint.class",
+    "Class affects stats, skills, and other character traits.",
+  );
+}
+function rollerHint(): string {
+  return t(
+    "birth.hint.roller",
+    "Choose how to generate your intrinsic stats. Point-based is recommended.",
+  );
+}
 
+/* The stat-table column abbreviations (STR/INT/WIS/DEX/CON), on the same
+ * column stops as the shared statHeaderLine/statRowLine renderers (screens.ts)
+ * this file's stat rows are built from - those headers are fixed-width game
+ * abbreviations, not sentence prose, and stay untranslated for the same
+ * reason. */
 const STAT_ABBR = ["STR", "INT", "WIS", "DEX", "CON"] as const;
 
 /**
@@ -260,26 +282,53 @@ const CSS_WHITE = colorToCss(COLOUR_WHITE);
  * colour runs so the listed keys draw Light Green and the rest White. The
  * word-wrapper (wrapColored) keeps each run's colour as it packs words.
  */
-const HELP_TITLE = "Please select your character traits from the menus below:";
-const HELP_PARTS: readonly { text: string; green: boolean }[] = [
-  { text: "Use the ", green: false },
-  { text: "movement keys", green: true },
-  { text: " to scroll the menu, ", green: false },
-  { text: "Enter", green: true },
-  { text: " to select the current menu item, '", green: false },
-  { text: "*", green: true },
-  { text: "' for a random menu item, '", green: false },
-  { text: "@", green: true },
-  { text: "' to finish the character with random selections, '", green: false },
-  { text: "ESC", green: true },
-  { text: "' to step back through the birth process, '", green: false },
-  { text: "=", green: true },
-  { text: "' for the birth options, '", green: false },
-  { text: "?", green: true },
-  { text: "' for help, or '", green: false },
-  { text: "Ctrl-X", green: true },
-  { text: "' to quit.", green: false },
-];
+function helpTitle(): string {
+  return t(
+    "birth.legend.title",
+    "Please select your character traits from the menus below:",
+  );
+}
+/**
+ * BIRTH_MENU_HELPTEXT's key legend, split into colour runs so the listed keys
+ * draw Light Green and the rest White (see the header comment above). A
+ * function, for the same reason `helpTitle` is: the runs feed `wrapColored` at
+ * paint time, never cached across a locale change. The green runs name literal
+ * keys (Enter, ESC, Ctrl-X, and the punctuation keys) rather than prose, so
+ * they stay as-is; only the connecting white text is routed through t().
+ */
+function helpParts(): readonly { text: string; green: boolean }[] {
+  return [
+    { text: t("birth.legend.use-the", "Use the "), green: false },
+    { text: "movement keys", green: true },
+    { text: t("birth.legend.scroll", " to scroll the menu, "), green: false },
+    { text: "Enter", green: true },
+    {
+      text: t("birth.legend.select", " to select the current menu item, '"),
+      green: false,
+    },
+    { text: "*", green: true },
+    { text: t("birth.legend.random", "' for a random menu item, '"), green: false },
+    { text: "@", green: true },
+    {
+      text: t(
+        "birth.legend.finish",
+        "' to finish the character with random selections, '",
+      ),
+      green: false,
+    },
+    { text: "ESC", green: true },
+    {
+      text: t("birth.legend.back", "' to step back through the birth process, '"),
+      green: false,
+    },
+    { text: "=", green: true },
+    { text: t("birth.legend.options", "' for the birth options, '"), green: false },
+    { text: "?", green: true },
+    { text: t("birth.legend.help", "' for help, or '"), green: false },
+    { text: "Ctrl-X", green: true },
+    { text: t("birth.legend.quit", "' to quit."), green: false },
+  ];
+}
 
 /**
  * Word-wrap a run-coloured sentence to `width`, preserving each run's colour.
@@ -354,12 +403,20 @@ function signed(n: number): string {
   return `${n >= 0 ? "+" : ""}${n}`;
 }
 
+/** The placeholder character name shown wherever the player has not typed one
+ * yet - the sheet preview, the final confirm, and the accepted BirthChoice. */
+function defaultAdventurerName(): string {
+  return t("birth.name.default", "Adventurer");
+}
+
 /** "%+3d": signed, right-justified to at least three columns (skill_help). */
 function pf3(n: number): string {
   return signed(n).padStart(3);
 }
 
-/** stat_names_reduced[STAT_MAX] (ui-display.c L107), used by race/class help. */
+/** stat_names_reduced[STAT_MAX] (ui-display.c L107), used by race/class help.
+ * Same fixed-width abbreviation convention as STAT_ABBR above; untranslated
+ * for the same reason. */
 const STAT_NAMES_REDUCED = ["Str: ", "Int: ", "Wis: ", "Dex: ", "Con: "] as const;
 
 /**
@@ -398,14 +455,40 @@ function skillHelpLines(
   const cs = cSkills ?? null;
   const s = (i: number): number => (rs[i] ?? 0) + (cs ? cs[i] ?? 0 : 0);
   const out = [
-    `Hit/Shoot/Throw: ${signed(s(SKILL.TO_HIT_MELEE))}/${signed(s(SKILL.TO_HIT_BOW))}/${signed(s(SKILL.TO_HIT_THROW))}`,
-    `Hit die: ${String(mhp).padStart(2)}   XP mod: ${exp}%`,
-    `Disarm: ${pf3(s(SKILL.DISARM_PHYS))}/${pf3(s(SKILL.DISARM_MAGIC))}   Devices: ${pf3(s(SKILL.DEVICE))}`,
-    `Save:   ${pf3(s(SKILL.SAVE))}   Stealth: ${pf3(s(SKILL.STEALTH))}`,
+    t("birth.skill.hit-shoot-throw", "Hit/Shoot/Throw: {melee}/{bow}/{throw}", {
+      melee: signed(s(SKILL.TO_HIT_MELEE)),
+      bow: signed(s(SKILL.TO_HIT_BOW)),
+      throw: signed(s(SKILL.TO_HIT_THROW)),
+    }),
+    t("birth.skill.hit-die", "Hit die: {hitdie}   XP mod: {exp}%", {
+      hitdie: String(mhp).padStart(2),
+      exp,
+    }),
+    t("birth.skill.disarm", "Disarm: {phys}/{magic}   Devices: {devices}", {
+      phys: pf3(s(SKILL.DISARM_PHYS)),
+      magic: pf3(s(SKILL.DISARM_MAGIC)),
+      devices: pf3(s(SKILL.DEVICE)),
+    }),
+    t("birth.skill.save", "Save:   {save}   Stealth: {stealth}", {
+      save: pf3(s(SKILL.SAVE)),
+      stealth: pf3(s(SKILL.STEALTH)),
+    }),
   ];
-  if (infra >= 0) out.push(`Infravision:  ${infra * 10} ft`);
-  out.push(`Digging:      ${signed(s(SKILL.DIGGING))}`);
-  out.push(`Search:       ${signed(s(SKILL.SEARCH))}`);
+  if (infra >= 0) {
+    out.push(
+      t("birth.skill.infravision", "Infravision:  {feet} ft", { feet: infra * 10 }),
+    );
+  }
+  out.push(
+    t("birth.skill.digging", "Digging:      {digging}", {
+      digging: signed(s(SKILL.DIGGING)),
+    }),
+  );
+  out.push(
+    t("birth.skill.search", "Search:       {search}", {
+      search: signed(s(SKILL.SEARCH)),
+    }),
+  );
   return out;
 }
 
@@ -638,12 +721,18 @@ async function paintQuickstartOnTerminal(
   term: GridSurface & GridPointerInput,
   sheet: () => PreviewSheet | null,
 ): Promise<QuickstartAction> {
-  const PROMPT =
-    "['Y': use as is; 'N': redo; 'C': change name/history; '=': set birth options]";
+  const PROMPT = t(
+    "birth.quickstart.prompt",
+    "['Y': use as is; 'N': redo; 'C': change name/history; '=': set birth options]",
+  );
   drawBirthSheet(term, sheet());
   const { cols, rows } = term.size();
   /* prt("New character based on previous one:", 0, 0) - row 0, the prompt row. */
-  term.prt(0, 0, "New character based on previous one:".slice(0, cols - 1), UI_TEXT);
+  const quickstartTitle = t(
+    "birth.quickstart.title",
+    "New character based on previous one:",
+  );
+  term.prt(0, 0, quickstartTitle.slice(0, cols - 1), UI_TEXT);
   /* prt(prompt, Term->hgt - 1, Term->wid / 2 - strlen(prompt) / 2): centred on
    * the bottom row, by C integer division on both halves. */
   const col = Math.max(0, Math.trunc(cols / 2) - Math.trunc(PROMPT.length / 2));
@@ -794,7 +883,12 @@ function paintPointBuyOnTerminal(
       // via the shared renderer, then the birth Cost column at COSTS_COL. EB is
       // +0 at birth (no equipment) but is a real column, not omitted.
       drawScreenLine(term, tableCol, STAT_HEADER_ROW, statHeaderLine());
-      term.print(tableCol + COST_OFFSET, STAT_HEADER_ROW, "Cost", CSS_WHITE);
+      term.print(
+        tableCol + COST_OFFSET,
+        STAT_HEADER_ROW,
+        t("birth.points.cost-header", "Cost"),
+        CSS_WHITE,
+      );
       for (let i = 0; i < STAT_MAX; i++) {
         const self = buy.stats[i] ?? BIRTH_STAT_BASE;
         const rb = raceAdj[i] ?? 0;
@@ -815,7 +909,10 @@ function paintPointBuyOnTerminal(
       term.print(
         tableCol + TOTAL_OFFSET,
         STAT_ROW0 + STAT_MAX,
-        `Total Cost: ${String(spent).padStart(2)}/${String(MAX_BIRTH_POINTS).padStart(2)}`,
+        t("birth.points.total-cost", "Total Cost: {spent}/{total}", {
+          spent: String(spent).padStart(2),
+          total: String(MAX_BIRTH_POINTS).padStart(2),
+        }),
         CSS_WHITE,
       );
       // Starting gold: shown in the left panels when they render
@@ -825,13 +922,17 @@ function paintPointBuyOnTerminal(
         term.print(
           tableCol + TOTAL_OFFSET,
           STAT_ROW0 + STAT_MAX + 1,
-          `Starting gold: ${birthGold(buy.pointsLeft)}`.slice(0, cols - 1),
+          t("birth.points.starting-gold", "Starting gold: {gold}", {
+            gold: birthGold(buy.pointsLeft),
+          }).slice(0, cols - 1),
           PB_FG,
         );
       }
       // point_based_start prompt (ui-birth.c:1076), centered horizontally.
-      const prompt =
-        "[up/down to move, left/right to modify, 'r' to reset, 'Enter' to accept]";
+      const prompt = t(
+        "birth.points.prompt",
+        "[up/down to move, left/right to modify, 'r' to reset, 'Enter' to accept]",
+      );
       term.print(
         Math.max(0, Math.floor(cols / 2 - prompt.length / 2)),
         rows - 1,
@@ -981,8 +1082,11 @@ function paintStandardRollerOnTerminal(
       // roller_command's assembled prompt (ui-birth.c:900-903): the previous-roll
       // clause only appears once a reroll has happened. Centered horizontally.
       const prompt = prevRoll
-        ? "['r' to reroll, 'p' for previous roll or 'Enter' to accept]"
-        : "['r' to reroll or 'Enter' to accept]";
+        ? t(
+            "birth.roller.prompt-with-previous",
+            "['r' to reroll, 'p' for previous roll or 'Enter' to accept]",
+          )
+        : t("birth.roller.prompt", "['r' to reroll or 'Enter' to accept]");
       term.print(
         Math.max(0, Math.floor(cols / 2 - prompt.length / 2)),
         rows - 1,
@@ -1210,11 +1314,11 @@ function paintBirthMenuOnTerminal(
       term.print(
         QUESTION_COL,
         HEADER_ROW,
-        HELP_TITLE.slice(0, cols - 1 - QUESTION_COL),
+        helpTitle().slice(0, cols - 1 - QUESTION_COL),
         CSS_L_BLUE,
       );
       const wrapped = wrapColored(
-        HELP_PARTS,
+        helpParts(),
         Math.max(10, cols - QUESTION_COL - 1),
         QUESTION_ROW - (HEADER_ROW + 2),
       );
@@ -1332,7 +1436,9 @@ function wrapHistory(text: string, width = 60): ScreenLine[] {
     }
   }
   if (line) lines.push({ text: line, color: PB_FG });
-  if (lines.length === 0) lines.push({ text: "(no background)", color: PB_DIM });
+  if (lines.length === 0) {
+    lines.push({ text: t("birth.history.none", "(no background)"), color: PB_DIM });
+  }
   return lines;
 }
 
@@ -1361,7 +1467,10 @@ async function nameStage(
     drawBirthSheet(term, sheet);
     return await promptTextInline(
       term,
-      "Enter a name for your character (* for a random name): ",
+      t(
+        "birth.name.prompt",
+        "Enter a name for your character (* for a random name): ",
+      ),
       name,
       // PLAYER_NAME_LEN (option.h:23 = 32) allows 31 usable characters.
       31,
@@ -1419,17 +1528,20 @@ async function runHistoryStage(
         drawScreenLine(term, 1, y++, line);
       }
     }
-    const key = await getKeyInline(term, "Accept character history? [y/n]");
+    const key = await getKeyInline(
+      term,
+      t("birth.history.accept-prompt", "Accept character history? [y/n]"),
+    );
     if (key === "Escape") return null;
     if (key !== "n" && key !== "N") return current;
     // 'n' -> edit_text (ui-birth.c:1523): edit the history in place. A cancelled
     // edit leaves it unchanged and re-asks, exactly as edit_text returning 1.
     const edited = await promptText(
       term,
-      "Edit your character's background",
+      t("birth.history.edit-title", "Edit your character's background"),
       current,
       240,
-      "[ edit text, Enter to accept, ESC to cancel ]",
+      t("birth.history.edit-hint", "[ edit text, Enter to accept, ESC to cancel ]"),
     );
     if (edited !== null) current = edited;
   }
@@ -1467,12 +1579,24 @@ function confirmCharacter(
       "core:birth-confirm",
       fallbackTitle,
       [
-        { label: "Begin the adventure", hint: "Accept this character and play." },
-        { label: "Go back", hint: "Step back and change something." },
-        { label: "Start over", hint: "Discard everything and create a new character." },
+        {
+          label: t("birth.confirm.begin.label", "Begin the adventure"),
+          hint: t("birth.confirm.begin.hint", "Accept this character and play."),
+        },
+        {
+          label: t("birth.confirm.back.label", "Go back"),
+          hint: t("birth.confirm.back.hint", "Step back and change something."),
+        },
+        {
+          label: t("birth.confirm.restart.label", "Start over"),
+          hint: t(
+            "birth.confirm.restart.hint",
+            "Discard everything and create a new character.",
+          ),
+        },
       ],
       "[ a-z to choose, tap a row, ESC to go back ]",
-      { subtitle: "Please confirm your character." },
+      { subtitle: t("birth.confirm.subtitle", "Please confirm your character.") },
     ).then((pick) => (pick === 0 ? "begin" : pick === 2 ? "restart" : "back"));
   }
   /* A REGION for as long as it is up (#253); see `runQuickstart` for the split. */
@@ -1492,8 +1616,10 @@ function paintConfirmOnTerminal(
     // get_confirm_command (ui-birth.c:1548-1555): this exact prompt, centred on
     // the last row. No scrolling and no menu - the whole sheet is already on
     // screen, and any key that is not ESC or 'S' begins the game.
-    const prompt =
-      "['ESC' to step back, 'S' to start over, or any other key to continue]";
+    const prompt = t(
+      "birth.confirm.prompt",
+      "['ESC' to step back, 'S' to start over, or any other key to continue]",
+    );
     term.print(
       Math.max(0, Math.floor(cols / 2 - prompt.length / 2)),
       rows - 1,
@@ -1719,7 +1845,12 @@ export async function runBirth(
     );
     const realms = cls.magic ? classMagicRealms(cls) : [];
     if (realms.length > 0) {
-      lines.push("", `Learns ${joinRealms(realms.map((r) => r.name))} magic`);
+      lines.push(
+        "",
+        t("birth.class.learns-magic", "Learns {realms} magic", {
+          realms: joinRealms(realms.map((r) => r.name)),
+        }),
+      );
     }
     const abils = classAbilityNames(cls).slice(0, 5);
     if (abils.length > 0) lines.push("", ...abils);
@@ -1813,6 +1944,9 @@ export async function runBirth(
   const finishRandom = (fromStage: "race" | "class"): void => {
     if (fromStage === "race") {
       raceIdx = rollRng.randint0(races.length);
+      // "Human" is a fallback data-table race name for the case races[] is
+      // somehow empty, not UI prose; every other ?? "Human" / ?? "Warrior" in
+      // this file (and the class equivalent below) is the same fallback.
       raceName = races[raceIdx]?.name ?? "Human";
     }
     classIdx = rollRng.randint0(classes.length);
@@ -1888,7 +2022,7 @@ export async function runBirth(
             return {
               raceName,
               className,
-              name: name || "Adventurer",
+              name: name || defaultAdventurerName(),
               roller: rollerIdx === 0 ? "point" : "roller",
               ...(rollerIdx === 0 && pointStats ? { stats: pointStats } : {}),
               ...(Object.keys(birthOptions).length > 0 ? { birthOptions } : {}),
@@ -1913,7 +2047,7 @@ export async function runBirth(
 
       case "race": {
         // The race menu: active column at RACE_COL, race_help aux at RACE_AUX_COL.
-        const res = await askMenu(RACE_HINT, [], {
+        const res = await askMenu(raceHint(), [], {
           col: RACE_COL,
           auxCol: RACE_AUX_COL,
           rows: raceRows,
@@ -1950,7 +2084,7 @@ export async function runBirth(
         // The class menu: the chosen race column stays at RACE_COL, the class
         // column is active at CLASS_COL, class_help aux at CLASS_AUX_COL.
         const res = await askMenu(
-          CLASS_HINT,
+          classHint(),
           [{ col: RACE_COL, rows: raceRows, selected: raceIdx }],
           {
             col: CLASS_COL,
@@ -1988,11 +2122,17 @@ export async function runBirth(
         // The roller menu: race and class columns stay visible, the roller
         // choice is active at ROLLER_COL. No '@' finish at this stage.
         const rollerRows: BirthRow[] = [
-          { tag: ALL_LETTERS_NOHJKL[0] ?? "a", name: "Point-based" },
-          { tag: ALL_LETTERS_NOHJKL[1] ?? "b", name: "Standard roller" },
+          {
+            tag: ALL_LETTERS_NOHJKL[0] ?? "a",
+            name: t("birth.roller.point-based", "Point-based"),
+          },
+          {
+            tag: ALL_LETTERS_NOHJKL[1] ?? "b",
+            name: t("birth.roller.standard", "Standard roller"),
+          },
         ];
         const res = await askMenu(
-          ROLLER_HINT,
+          rollerHint(),
           [
             { col: RACE_COL, rows: raceRows, selected: raceIdx },
             { col: CLASS_COL, rows: classRows, selected: classIdx },
@@ -2160,7 +2300,7 @@ export async function runBirth(
                       ? { rolledStats }
                       : {}),
                   historyOverride: history,
-                  sheetName: name || "Adventurer",
+                  sheetName: name || defaultAdventurerName(),
               },
               surface.size().cols,
             );
@@ -2178,7 +2318,7 @@ export async function runBirth(
       }
 
       case "confirm": {
-        const finalName = name || "Adventurer";
+        const finalName = name || defaultAdventurerName();
         const point = rollerIdx === 0;
         // BIRTH_FINAL_CONFIRM (ui-birth.c:1730-1741): display_player(0) for the
         // completed character - the accepted stats and any edited background -
@@ -2202,7 +2342,11 @@ export async function runBirth(
         const result = await confirmCharacter(
           term,
           sheet,
-          `${finalName} the ${raceName} ${className}`,
+          t("birth.confirm.fallback-title", "{name} the {race} {cls}", {
+            name: finalName,
+            race: raceName,
+            cls: className,
+          }),
         );
         if (result === "restart") {
           /* BIRTH_RESET (ui-birth.c L1560-1561): discard every choice and start

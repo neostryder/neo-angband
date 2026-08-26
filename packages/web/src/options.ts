@@ -102,6 +102,7 @@ import {
   optionsRestoreCustom,
   optionsRestoreMaintainer,
   optionsSaveCustom,
+  t,
 } from "@rpgm-tools/neo-angband-core";
 import type { GameState, OptionOpts } from "@rpgm-tools/neo-angband-core";
 import type { GridPointerInput, GridSurface } from "./term";
@@ -205,7 +206,10 @@ function customDefaultsFor(
      *   "Restore failed.  Press any key to continue."
      * Two spaces after the period, as the C has. */
     acknowledge: async (message) => {
-      await getKeyInline(term, `${message}  Press any key to continue.`);
+      await getKeyInline(
+        term,
+        t("options.acknowledge", "{message}  Press any key to continue.", { message }),
+      );
     },
   };
 }
@@ -329,15 +333,18 @@ export function optionToggleScreen(
     let top = 0;
     /* m->prompt, all three of upstream's (ui-options.c L331, L337, L342). */
     const prompt = readOnly
-      ? "You can only modify these options at character birth."
+      ? t("options.toggle.promptReadOnly", "You can only modify these options at character birth.")
       : custom
-        ? "Set option (y/n/t), 's' to save, 'r' to restore, 'x' to reset"
-        : "Set option (y/n/t), select with movement keys or index";
+        ? t("options.toggle.promptCustom", "Set option (y/n/t), 's' to save, 'r' to restore, 'x' to reset")
+        : t("options.toggle.prompt", "Set option (y/n/t), select with movement keys or index");
     const footer = readOnly
-      ? "[ ESC to return ]"
+      ? t("options.toggle.footerReadOnly", "[ ESC to return ]")
       : custom
-        ? "[ y/n/t to set, s save, r restore, x reset, a-z jump, ESC to return ]"
-        : "[ y/n/t to set, a-z index to jump, ESC to return ]";
+        ? t(
+            "options.toggle.footerCustom",
+            "[ y/n/t to set, s save, r restore, x reset, a-z jump, ESC to return ]",
+          )
+        : t("options.toggle.footer", "[ y/n/t to set, a-z index to jump, ESC to return ]");
     const bodyTop = 3;
 
     const paint = (): void => {
@@ -463,7 +470,9 @@ export function optionToggleScreen(
         if (ev.key === "s" || ev.key === "S") {
           void runAction(async () => {
             await custom.acknowledge(
-              custom.save() ? "Successfully saved." : "Save failed.",
+              custom.save()
+                ? t("options.toggle.saved", "Successfully saved.")
+                : t("options.toggle.saveFailed", "Save failed."),
             );
           });
           return;
@@ -475,7 +484,7 @@ export function optionToggleScreen(
             if (custom.restore()) {
               custom.reload();
             } else {
-              await custom.acknowledge("Restore failed.");
+              await custom.acknowledge(t("options.toggle.restoreFailed", "Restore failed."));
             }
           });
           return;
@@ -513,7 +522,7 @@ async function runInterfacePage(term: GridSurface & GridPointerInput, state: Gam
   const rows = pageRows(state, "INTERFACE");
   await optionToggleScreen(
     term,
-    "User interface options",
+    t("options.page.interface.title", "User interface options"),
     rows,
     (name, value) => {
       state.options?.set(name, value);
@@ -538,7 +547,7 @@ async function runInterfacePage(term: GridSurface & GridPointerInput, state: Gam
 async function runBirthPage(term: GridSurface & GridPointerInput, state: GameState): Promise<void> {
   await optionToggleScreen(
     term,
-    "Birth options",
+    t("options.page.birth.title", "Birth options"),
     pageRows(state, "BIRTH"),
     () => {
       /* read-only: optionToggleScreen never calls onToggle while readOnly. */
@@ -571,7 +580,7 @@ export async function runBirthOptionsEditor(
   );
   await optionToggleScreen(
     term,
-    "Birth options",
+    t("options.page.birth.title", "Birth options"),
     rows,
     (name, value) => {
       store[name] = value;
@@ -612,7 +621,7 @@ export async function runBirthOptionsEditor(
 async function runCheatPage(term: GridSurface & GridPointerInput, state: GameState): Promise<void> {
   await optionToggleScreen(
     term,
-    "Cheat options",
+    t("options.page.cheat.title", "Cheat options"),
     pageRows(state, "CHEAT"),
     (name, value) => {
       state.options?.set(name, value);
@@ -630,11 +639,11 @@ async function runDelayFactorPrompt(term: GridSurface & GridPointerInput, state:
   const current = state.options?.delayFactor ?? DEFAULT_DELAY_FACTOR;
   const val = await promptNumber(
     term,
-    "Command: Base Delay Factor",
+    t("options.delayFactor.prompt", "Command: Base Delay Factor"),
     current,
     0,
     255,
-    `Current base delay factor: ${current} msec`,
+    t("options.delayFactor.current", "Current base delay factor: {current} msec", { current }),
   );
   if (val === null || !state.options) return;
   state.options.delayFactor = val;
@@ -651,11 +660,14 @@ async function runHitpointWarnPrompt(term: GridSurface & GridPointerInput, state
   const current = state.options?.hitpointWarn ?? DEFAULT_HITPOINT_WARN;
   const val = await promptNumber(
     term,
-    "Command: Hitpoint Warning",
+    t("options.hitpointWarn.prompt", "Command: Hitpoint Warning"),
     current,
     0,
     99,
-    `Current hitpoint warning: ${current} (${current * 10}%)`,
+    t("options.hitpointWarn.current", "Current hitpoint warning: {current} ({percent}%)", {
+      current,
+      percent: current * 10,
+    }),
   );
   if (val === null || !state.options) return;
   state.options.hitpointWarn = val > 9 ? 0 : val;
@@ -680,11 +692,14 @@ async function runLazymoveDelayPrompt(term: GridSurface & GridPointerInput, stat
   const current = state.options?.lazymoveDelay ?? DEFAULT_LAZYMOVE_DELAY;
   const val = await promptNumber(
     term,
-    "Command: Movement Delay Factor",
+    t("options.lazymoveDelay.prompt", "Command: Movement Delay Factor"),
     current,
     0,
     255,
-    `Current movement delay: ${current} (${current * 10} msec)`,
+    t("options.lazymoveDelay.current", "Current movement delay: {current} ({msec} msec)", {
+      current,
+      msec: current * 10,
+    }),
   );
   if (val === null || !state.options) return;
   state.options.lazymoveDelay = val;
@@ -721,13 +736,21 @@ async function runSidebarModePage(
     const paint = (): void => {
       const { cols } = term.size();
       term.clear();
-      term.print(0, 0, "Command: Sidebar Mode".slice(0, cols - 1), TITLE);
+      term.print(0, 0, t("options.sidebarMode.title", "Command: Sidebar Mode").slice(0, cols - 1), TITLE);
       const name = sidebar.modes[sidebar.current()] ?? "?";
-      term.print(0, 2, `Current mode: ${name}`.slice(0, cols - 1), FG);
+      term.print(
+        0,
+        2,
+        t("options.sidebarMode.current", "Current mode: {name}", { name }).slice(0, cols - 1),
+        FG,
+      );
       term.print(
         0,
         4,
-        "[ any key: cycle Left/Top/None, ESC to return ]".slice(0, cols - 1),
+        t("options.sidebarMode.footer", "[ any key: cycle Left/Top/None, ESC to return ]").slice(
+          0,
+          cols - 1,
+        ),
         DIM,
       );
     };
@@ -806,19 +829,23 @@ export async function runTileModePage(
   const items: MenuItem[] = tiles.modes.map((m) => ({
     label:
       (m.modName ? `${m.menuname}  [${m.modName}]` : m.menuname) +
-      (m.grafID === cur ? "  (current)" : ""),
+      (m.grafID === cur ? `  ${t("options.tileMode.current", "(current)")}` : ""),
     hint: m.modName
-      ? `Graphics tiles from the ${m.modName} mod - disable it to remove this set.`
+      ? t(
+          "options.tileMode.hintMod",
+          "Graphics tiles from the {modName} mod - disable it to remove this set.",
+          { modName: m.modName },
+        )
       : m.grafID === GRAPHICS_NONE
-        ? "The faithful ASCII glyphs - the default, always available."
-        : "A tile set that ships with the game.",
+        ? t("options.tileMode.hintAscii", "The faithful ASCII glyphs - the default, always available.")
+        : t("options.tileMode.hintShipped", "A tile set that ships with the game."),
   }));
   const idx = await selectFromMenu(
     term,
     "core:graphics-mode",
-    "Graphics (tiles) mode",
+    t("options.tileMode.title", "Graphics (tiles) mode"),
     items,
-    "[ choose a tile set, ESC to keep current ]",
+    t("options.tileMode.footer", "[ choose a tile set, ESC to keep current ]"),
   );
   if (idx === null) return;
   const chosen = tiles.modes[idx];
@@ -851,28 +878,28 @@ export async function runOptionsMenu(
   // frontend menu bar, not in do_cmd_options; the web shell mirrors that by
   // placing tile selection in the in-game menu.
   const items: MenuItem[] = [
-    { label: "User interface options", tag: "a" },
-    { label: "Birth (difficulty) options", tag: "b" },
-    { label: "Cheat options", tag: "x" },
-    { label: "Item ignoring setup", tag: "i" },
-    { label: "Set base delay factor", tag: "d" },
-    { label: "Set hitpoint warning", tag: "h" },
-    { label: "Set movement delay", tag: "m" },
+    { label: t("options.menu.interface", "User interface options"), tag: "a" },
+    { label: t("options.menu.birth", "Birth (difficulty) options"), tag: "b" },
+    { label: t("options.menu.cheat", "Cheat options"), tag: "x" },
+    { label: t("options.menu.ignore", "Item ignoring setup"), tag: "i" },
+    { label: t("options.menu.delayFactor", "Set base delay factor"), tag: "d" },
+    { label: t("options.menu.hitpointWarn", "Set hitpoint warning"), tag: "h" },
+    { label: t("options.menu.movementDelay", "Set movement delay"), tag: "m" },
   ];
-  if (sidebar) items.push({ label: "Set sidebar mode", tag: "o" });
+  if (sidebar) items.push({ label: t("options.menu.sidebarMode", "Set sidebar mode"), tag: "o" });
   if (prefs) {
     items.push(
-      { label: "Save subwindow setup to pref file", tag: "s" },
-      { label: "Save autoinscriptions to pref file", tag: "t" },
-      { label: "Save char screen options to pref file", tag: "u" },
-      { label: "Load a user pref file", tag: "p" },
+      { label: t("options.menu.dumpSubwindow", "Save subwindow setup to pref file"), tag: "s" },
+      { label: t("options.menu.dumpAutoinsc", "Save autoinscriptions to pref file"), tag: "t" },
+      { label: t("options.menu.dumpCharScreen", "Save char screen options to pref file"), tag: "u" },
+      { label: t("options.menu.loadPrefFile", "Load a user pref file"), tag: "p" },
     );
   }
   items.push(
-    { label: "Edit keymaps (advanced)", tag: "e" },
-    { label: "Edit colours (advanced)", tag: "c" },
+    { label: t("options.menu.keymaps", "Edit keymaps (advanced)"), tag: "e" },
+    { label: t("options.menu.colours", "Edit colours (advanced)"), tag: "c" },
   );
-  if (prefs) items.push({ label: "Save visuals (advanced)", tag: "v" });
+  if (prefs) items.push({ label: t("options.menu.visuals", "Save visuals (advanced)"), tag: "v" });
   // Derive the hint from the live rows so it can never drift out of sync.
   const tagHint = items.map((i) => i.tag).join("/");
   /* Every row below can change an option, including the pref-file loader, so the
@@ -882,9 +909,9 @@ export async function runOptionsMenu(
     const idx = await selectFromMenu(
       term,
       "core:options",
-      "Options Menu",
+      t("options.menu.title", "Options Menu"),
       items,
-      `[ ${tagHint} to choose, ESC to return ]`,
+      t("options.menu.footer", "[ {tagHint} to choose, ESC to return ]", { tagHint }),
       /* option_menu->flags = MN_CASELESS_TAGS (ui-options.c:2074). */
       { caselessTags: true },
     );

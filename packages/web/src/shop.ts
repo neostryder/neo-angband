@@ -24,6 +24,7 @@
 
 import { inputEvents } from "./input-door";
 import {
+  t,
   describeObject,
   ODESC,
   gearGet,
@@ -148,6 +149,64 @@ const COMMENT_WELCOME = [
 ];
 
 /**
+ * The translated form of COMMENT_WELCOME's rows, keyed by the same index. The
+ * array above is kept for its LENGTH - `Math.min(i, COMMENT_WELCOME.length - 1)`
+ * is an RNG-parity-relevant bound, not just a display fact - while the actual
+ * text a player reads comes from here so it can route through the translator.
+ * Index 0 is unreachable (see the comment_welcome doc comment above).
+ */
+function commentWelcome(i: number, owner: string, ident: string): string {
+  switch (i) {
+    case 1:
+      return t("shop.welcome.nod", "{owner} nods to you.", { owner });
+    case 2:
+      return t("shop.welcome.hello", "{owner} says hello.", { owner });
+    case 3:
+      return t(
+        "shop.welcome.anythingYouLike",
+        '{owner}: "See anything you like, adventurer?"',
+        { owner },
+      );
+    case 4:
+      return t("shop.welcome.howMayIHelp", '{owner}: "How may I help you, {ident}?"', {
+        owner,
+        ident,
+      });
+    case 5:
+      return t("shop.welcome.welcomeBack", '{owner}: "Welcome back, {ident}."', {
+        owner,
+        ident,
+      });
+    case 6:
+      return t(
+        "shop.welcome.pleasure",
+        '{owner}: "A pleasure to see you again, {ident}."',
+        { owner, ident },
+      );
+    case 7:
+      return t(
+        "shop.welcome.assistance",
+        '{owner}: "How may I be of assistance, good {ident}?"',
+        { owner, ident },
+      );
+    case 8:
+      return t(
+        "shop.welcome.honour",
+        '{owner}: "You do honour to my humble store, noble {ident}."',
+        { owner, ident },
+      );
+    case 9:
+      return t(
+        "shop.welcome.service",
+        '{owner}: "I and my family are entirely at your service, {ident}."',
+        { owner, ident },
+      );
+    default:
+      return "";
+  }
+}
+
+/**
  * comment_hint (ui-store.c L74-80): only one active format string; each has
  * exactly one %s for the tip text (random_hint).
  */
@@ -193,26 +252,28 @@ function prtWelcome(
   const shortName = store.owner.name.split(" ")[0] ?? store.owner.name;
 
   if (hints.length > 0 && rng.oneIn(3)) {
-    const i = rng.randint0(COMMENT_HINT.length);
-    const fmt = COMMENT_HINT[i] ?? COMMENT_HINT[0]!;
-    return fmt.replace("%s", randomHint(rng, hints));
+    // COMMENT_HINT has exactly one entry; the draw below still consumes the
+    // RNG exactly as upstream's randint0(N_ELEMENTS(comment_hint)) does.
+    void rng.randint0(COMMENT_HINT.length);
+    return t("shop.hint.format", '"{tip}"', { tip: randomHint(rng, hints) });
   }
 
   if (player.lev <= 5) return null;
 
+  const defaultTitle = t("shop.welcome.defaultTitle", "valued customer");
   let i = Math.floor((player.lev - 1) / 5);
   i = Math.min(i, COMMENT_WELCOME.length - 1);
   let ident: string;
   if (i % 2 && rng.randint0(2)) {
-    ident = player.cls.titles[Math.floor((player.lev - 1) / 5)] ?? "valued customer";
+    ident = player.cls.titles[Math.floor((player.lev - 1) / 5)] ?? defaultTitle;
   } else if (rng.randint0(2)) {
-    ident = player.fullName || "valued customer";
+    ident = player.fullName || defaultTitle;
   } else {
-    ident = "valued customer";
+    ident = defaultTitle;
   }
-  /* format(comment_welcome[i], short_name, player_name): first %s owner, second
-   * (if any) the identifier. */
-  return (COMMENT_WELCOME[i] as string).replace("%s", shortName).replace("%s", ident);
+  /* commentWelcome(i, short_name, player_name): first slot is the owner,
+   * second (if any) is the identifier - see the doc comment above it. */
+  return commentWelcome(i, shortName, ident);
 }
 
 /** Callbacks the store screen needs from the shell (kept out of core, decision 21). */
@@ -320,7 +381,9 @@ function storeConfirm(
      * both of these are drawn OVER the store frame - row 0 over the message line,
      * row 1 over the shopkeeper line. Without the erase the shopkeeper's name ran
      * on straight after the price ("Price: 450the Great (Gnome)"). */
-    if (price !== undefined) term.prt(0, 1, `Price: ${price}`.slice(0, cols - 1), UI_TEXT);
+    if (price !== undefined) {
+      term.prt(0, 1, t("shop.priceLabel", "Price: {price}", { price }).slice(0, cols - 1), UI_TEXT);
+    }
     term.prt(0, 0, prompt.slice(0, cols - 1), UI_TEXT);
     const finish = (value: boolean): void => {
       inputEvents.removeEventListener("keydown", onKey, true);
@@ -510,40 +573,61 @@ export async function runStore(
     if (cursor >= displayStock.length) cursor = Math.max(0, displayStock.length - 1);
   };
 
-  /** store_display_help (ui-store.c L376): the coloured command legend. */
+  /**
+   * store_display_help (ui-store.c L376): the coloured command legend.
+   *
+   * The GREEN runs below are command-key letters (x/l, p, g, d, s, I, ESC) -
+   * upstream's own fixed keybindings, not prose, so they stay as literal key
+   * names rather than routing through the translator. The surrounding WHITE
+   * runs are the descriptive text around them and are translated.
+   */
   const helpRuns = (): { text: string; color: string }[] => {
     const g = UI_GOOD;
     const w = UI_TEXT;
     const runs: { text: string; color: string }[] = [];
     runs.push({ text: deps.rogueLike ? "x" : "l", color: g });
-    runs.push({ text: " examines and ", color: w });
+    runs.push({ text: t("shop.help.examinesAnd", " examines and "), color: w });
     runs.push({ text: "p", color: g });
-    runs.push({ text: " (or ", color: w });
+    runs.push({ text: t("shop.help.or", " (or "), color: w });
     runs.push({ text: "g", color: g });
     runs.push({ text: ")", color: w });
-    runs.push({ text: isHome ? " picks up" : " purchases", color: w });
-    runs.push({ text: " an item. ", color: w });
+    runs.push({
+      text: isHome
+        ? t("shop.help.picksUp", " picks up")
+        : t("shop.help.purchases", " purchases"),
+      color: w,
+    });
+    runs.push({ text: t("shop.help.anItem", " an item. "), color: w });
     if (noSelling && !isHome) {
       runs.push({ text: "d", color: g });
-      runs.push({ text: " (or ", color: w });
+      runs.push({ text: t("shop.help.or", " (or "), color: w });
       runs.push({ text: "s", color: g });
       runs.push({ text: ")", color: w });
       runs.push({
-        text: " gives an item to the store in return for its identification. Some wands and staves will also be recharged. ",
+        text: t(
+          "shop.help.givesForId",
+          " gives an item to the store in return for its identification. Some wands and staves will also be recharged. ",
+        ),
         color: w,
       });
     } else {
       runs.push({ text: "d", color: g });
-      runs.push({ text: " (or ", color: w });
+      runs.push({ text: t("shop.help.or", " (or "), color: w });
       runs.push({ text: "s", color: g });
       runs.push({ text: ")", color: w });
-      runs.push({ text: isHome ? " drops" : " sells", color: w });
-      runs.push({ text: " an item from your inventory. ", color: w });
+      runs.push({
+        text: isHome ? t("shop.help.drops", " drops") : t("shop.help.sells", " sells"),
+        color: w,
+      });
+      runs.push({ text: t("shop.help.fromInventory", " an item from your inventory. "), color: w });
     }
     runs.push({ text: "I", color: g });
-    runs.push({ text: " inspects an item from your inventory. ", color: w });
+    runs.push({
+      text: t("shop.help.inspects", " inspects an item from your inventory. "),
+      color: w,
+    });
     runs.push({ text: "ESC", color: g });
-    runs.push({ text: " exits the building.", color: w });
+    runs.push({ text: t("shop.help.exits", " exits the building."), color: w });
     return runs;
   };
 
@@ -555,7 +639,7 @@ export async function runStore(
 
     // Row 1: owner / store name (store_display_frame).
     if (isHome) {
-      term.print(1, 1, "Your Home", UI_TEXT);
+      term.print(1, 1, t("shop.yourHome", "Your Home"), UI_TEXT);
     } else {
       term.print(1, 1, store.owner.name.slice(0, gm.ownerX - 1), UI_TEXT);
       const buf = `${deps.featureName} (${store.owner.maxCost})`;
@@ -563,9 +647,16 @@ export async function runStore(
     }
 
     // Row 3: column headers.
-    term.print(1, 3, isHome ? "Home Inventory" : "Store Inventory", UI_TEXT);
-    term.print(gm.weightX + 2, 3, "Weight", UI_TEXT);
-    if (!isHome) term.print(gm.priceX + 4, 3, "Price", UI_TEXT);
+    term.print(
+      1,
+      3,
+      isHome
+        ? t("shop.column.homeInventory", "Home Inventory")
+        : t("shop.column.storeInventory", "Store Inventory"),
+      UI_TEXT,
+    );
+    term.print(gm.weightX + 2, 3, t("shop.column.weight", "Weight"), UI_TEXT);
+    if (!isHome) term.print(gm.priceX + 4, 3, t("shop.column.price", "Price"), UI_TEXT);
 
     // Rows 4+: the lettered stock (store_display_entry). Keep the cursor visible.
     if (cursor < top) top = cursor;
@@ -606,9 +697,16 @@ export async function runStore(
         }
       }
     } else {
-      term.print(1, gm.helpPromptY, "Press '?' for help.", UI_TEXT);
+      term.print(1, gm.helpPromptY, t("shop.pressHelp", "Press '?' for help."), UI_TEXT);
     }
-    term.print(gm.auX, gm.auY, `Gold Remaining: ${String(game.state.actor.player.au).padStart(9)}`, UI_TEXT);
+    term.print(
+      gm.auX,
+      gm.auY,
+      t("shop.goldRemaining", "Gold Remaining: {au}", {
+        au: String(game.state.actor.player.au).padStart(9),
+      }),
+      UI_TEXT,
+    );
 
     if (prompt !== undefined) term.print(0, 0, prompt.slice(0, cols - 1), UI_TEXT);
     else if (statusMsg) term.print(0, 0, statusMsg.slice(0, cols - 1), UI_TEXT);
@@ -669,7 +767,7 @@ export async function runStore(
     let amt = 1;
     if (single) {
       if (!isHome && player.au < game.price(store, obj, false, 1)) {
-        storeSay("You do not have enough gold for this item.");
+        storeSay(t("shop.notEnoughGold", "You do not have enough gold for this item."));
         return;
       }
     } else if (isHome) {
@@ -677,7 +775,7 @@ export async function runStore(
     } else {
       const priceOne = game.price(store, obj, false, 1);
       if (player.au < priceOne) {
-        storeSay("You do not have enough gold for this item.");
+        storeSay(t("shop.notEnoughGold", "You do not have enough gold for this item."));
         return;
       }
       amt = priceOne === 0 ? obj.number : Math.trunc(player.au / priceOne);
@@ -698,16 +796,19 @@ export async function runStore(
         amt <= 0 ||
         (!aware && !isHome && packIsFull(game.state.gear, constants))
       ) {
-        storeSay("You cannot carry that many items.");
+        storeSay(t("shop.cannotCarry", "You cannot carry that many items."));
         return;
       }
       // find_inven owned count; suppressed for an unaware flavour outside the
       // Home for the same reason (ui-store.c L667).
       const owned = !aware && !isHome ? 0 : findInven(game, obj);
-      const have = owned ? ` (you have ${owned})` : "";
+      const have = owned
+        ? t("shop.quantity.haveCount", " (you have {owned})", { owned })
+        : "";
+      const verb = isHome ? t("shop.verb.take", "Take") : t("shop.verb.buy", "Buy");
       const q = await getQuantity(
         term,
-        `${isHome ? "Take" : "Buy"} how many${have}? (max ${amt}) `,
+        t("shop.quantity.prompt", "{verb} how many{have}? (max {amt}) ", { verb, have, amt }),
         amt,
       );
       if (q <= 0) return;
@@ -719,9 +820,13 @@ export async function runStore(
       const oName = describeObject(game.state, copy, ODESC.PREFIX | ODESC.FULL | ODESC.STORE);
       const price = game.price(store, copy, false, amt);
       const canUse = objCanUse(game, obj);
+      const cantUse = canUse ? "" : t("shop.buy.cantUse", " (Can't use!)");
       const ok = await storeConfirm(
         term,
-        `Buy ${oName}?${canUse ? "" : " (Can't use!)"} [ESC, any other key to accept]`,
+        t("shop.buy.confirm", "Buy {name}?{cantUse} [ESC, any other key to accept]", {
+          name: oName,
+          cantUse,
+        }),
         price,
       );
       if (!ok) return;
@@ -742,30 +847,43 @@ export async function runStore(
       // the Home has its OWN wording for the missing-item case.
       const why: Record<string, string> = {
         "not-in-stock": isHome
-          ? "You cannot retrieve that item because it's not in the home."
-          : "You cannot buy that item because it's not in the store.",
-        "no-room": "You cannot carry that many items.",
-        "cannot-afford": "You cannot afford that purchase.",
+          ? t(
+              "shop.buy.notInHome",
+              "You cannot retrieve that item because it's not in the home.",
+            )
+          : t(
+              "shop.buy.notInStock",
+              "You cannot buy that item because it's not in the store.",
+            ),
+        "no-room": t("shop.cannotCarry", "You cannot carry that many items."),
+        "cannot-afford": t("shop.buy.cannotAfford", "You cannot afford that purchase."),
       };
-      storeSay(why[result.failure ?? ""] ?? "The purchase failed.");
+      storeSay(why[result.failure ?? ""] ?? t("shop.buy.failed", "The purchase failed."));
       return;
     }
     const bought = result.bought
       ? describeObject(game.state, result.bought, ODESC.PREFIX | ODESC.FULL)
-      : "the item";
+      : t("shop.theItem", "the item");
     /* comment_accept was drawn inside storeBuy (do_cmd_buy L1717) before any
      * empty-store shuffle; print it first so the "You bought ..." line remains
      * the status shown on row 0. Home retrieves via do_cmd_retrieve (no comment). */
     if (result.acceptComment) say(result.acceptComment);
     /* do_cmd_retrieve is free and silent about gold; real shops report the sale. */
-    if (isHome) storeSay(`You have ${bought}.`);
-    else storeSay(`You bought ${bought} for ${result.price} gold.`);
+    if (isHome) storeSay(t("shop.buy.retrieved", "You have {bought}.", { bought }));
+    else {
+      storeSay(
+        t("shop.buy.bought", "You bought {bought} for {price} gold.", {
+          bought,
+          price: result.price ?? 0,
+        }),
+      );
+    }
     /* store.c:1757-1763: buying the last item empties the shop, and the
      * shopkeeper says which way it went. Printed after the sale line, as
      * upstream prints it after "You bought ...". */
-    if (result.emptied === "retired") say("The shopkeeper retires.");
+    if (result.emptied === "retired") say(t("shop.shopkeeperRetires", "The shopkeeper retires."));
     else if (result.emptied === "restocked") {
-      say("The shopkeeper brings out some new stock.");
+      say(t("shop.shopkeeperRestocks", "The shopkeeper brings out some new stock."));
     }
     refreshStock();
   };
@@ -783,11 +901,15 @@ export async function runStore(
      * its own source in that pick, so ammo sells out of the quiver as upstream's
      * USE_QUIVER list does (deps.sellPick). */
     // store_sell prompt (ui-store.c L500/L509): Home drops, no_selling gives.
-    const sellPrompt = isHome ? "Drop which item? " : noSelling ? "Give which item? " : "Sell which item? ";
+    const sellPrompt = isHome
+      ? t("shop.sell.dropPrompt", "Drop which item? ")
+      : noSelling
+        ? t("shop.sell.givePrompt", "Give which item? ")
+        : t("shop.sell.sellPrompt", "Sell which item? ");
     const picked = await deps.sellPick(sellPrompt, (obj) => game.willBuy(store, obj));
     if (picked.kind === "empty") {
       // store_sell reject (ui-store.c L499), shared by shops and the Home.
-      storeSay("You have nothing that I want. ");
+      storeSay(t("shop.sell.nothingWanted", "You have nothing that I want. "));
       return;
     }
     if (picked.kind === "cancel") return;
@@ -805,9 +927,13 @@ export async function runStore(
       // "Price:" line and confirm prompt, so the sale price is shown clearly
       // over the shop rather than over the (now-closed) item-picker backdrop.
       paint();
+      const sellVerb = noSelling ? t("shop.verb.give", "Give") : t("shop.verb.sell", "Sell");
       const ok = await storeConfirm(
         term,
-        `${noSelling ? "Give" : "Sell"} ${oName}? [ESC, any other key to accept]`,
+        t("shop.sell.confirm", "{verb} {name}? [ESC, any other key to accept]", {
+          verb: sellVerb,
+          name: oName,
+        }),
         noSelling ? undefined : price,
       );
       if (!ok) return;
@@ -835,23 +961,25 @@ export async function runStore(
       // fails there and returns silently, so the port keeps its own line for a
       // seam the C cannot reach.
       const why: Record<string, string> = {
-        "no-item": "You do not have that item.",
-        stuck: "Hmmm, it seems to be stuck.",
-        refused: "I do not wish to purchase this item.",
+        "no-item": t("shop.sell.noItem", "You do not have that item."),
+        stuck: t("shop.sell.stuck", "Hmmm, it seems to be stuck."),
+        refused: t("shop.sell.refused", "I do not wish to purchase this item."),
         "no-room": isHome
-          ? "Your home is full."
-          : "I have not the room in my store to keep it.",
+          ? t("shop.sell.homeFull", "Your home is full.")
+          : t("shop.sell.storeFull", "I have not the room in my store to keep it."),
       };
-      storeSay(why[result.failure ?? ""] ?? "The sale failed.");
+      storeSay(why[result.failure ?? ""] ?? t("shop.sell.failed", "The sale failed."));
       return;
     }
-    if (isHome) storeSay(`You drop ${name}.`);
+    if (isHome) storeSay(t("shop.sell.dropped", "You drop {name}.", { name }));
     // do_cmd_sell (store.c L1966-1969): under birth_no_selling the shop pays
     // nothing and only identifies the item, so it reports "You had ..." rather
     // than a zero-gold sale.
-    else if (noSelling) storeSay(`You had ${name}.`);
+    else if (noSelling) storeSay(t("shop.sell.had", "You had {name}.", { name }));
     else {
-      storeSay(`You sold ${name} for ${result.price} gold.`);
+      storeSay(
+        t("shop.sell.sold", "You sold {name} for {price} gold.", { name, price: result.price ?? 0 }),
+      );
       /* purchase_analyze (do_cmd_sell L1972): core already drew ONE_OF from
        * state.rng; print the selected reaction comment after the sale line. */
       if (result.reactionComment) storeSay(result.reactionComment);
@@ -871,15 +999,19 @@ export async function runStore(
     const inven = packMenu(game.state);
     const quiver = quiverMenu(game.state);
     const sources = [
-      { label: "Inven", items: inven.items },
-      { label: "Quiver", items: quiver.items },
+      { label: t("shop.inspect.inven", "Inven"), items: inven.items },
+      { label: t("shop.inspect.quiver", "Quiver"), items: quiver.items },
     ].filter((s) => s.items.length > 0);
     const handleLists = [inven.handles, quiver.handles].filter((h) => h.length > 0);
     if (sources.length === 0) {
-      storeSay("You have nothing to inspect. ");
+      storeSay(t("shop.inspect.nothing", "You have nothing to inspect. "));
       return;
     }
-    const chosen = await itemSelect(term, "Examine which item?", sources);
+    const chosen = await itemSelect(
+      term,
+      t("shop.inspect.prompt", "Examine which item?"),
+      sources,
+    );
     if (chosen === null) return;
     const handle = handleLists[chosen.source]?.[chosen.index];
     if (handle === undefined) return;
@@ -899,14 +1031,24 @@ export async function runStore(
     const name = describeObject(game.state, obj, desc);
     const entries: { label: string; key: string; act: () => Promise<void> }[] = [
       {
-        label: "Examine",
+        label: t("shop.context.examine", "Examine"),
         key: deps.rogueLike ? "x" : "l",
         act: () => deps.examine(obj),
       },
-      { label: isHome ? "Take" : "Buy", key: "p", act: () => purchase(i, false) },
+      {
+        label: isHome ? t("shop.verb.take", "Take") : t("shop.verb.buy", "Buy"),
+        key: "p",
+        act: () => purchase(i, false),
+      },
     ];
     if (obj.number > 1) {
-      entries.push({ label: isHome ? "Take one" : "Buy one", key: "o", act: () => purchase(i, true) });
+      entries.push({
+        label: isHome
+          ? t("shop.context.takeOne", "Take one")
+          : t("shop.context.buyOne", "Buy one"),
+        key: "o",
+        act: () => purchase(i, true),
+      });
     }
     let mc = 0;
     for (;;) {
@@ -914,7 +1056,15 @@ export async function runStore(
       const { cols } = term.size();
       // prt (ui-output.c:385-391): paint() has just put statusMsg on row 0, so a
       // longer status would show its tail past this prompt.
-      term.prt(0, 0, `(Enter to select, ESC) Command for ${name}:`.slice(0, cols - 1), UI_TEXT);
+      term.prt(
+        0,
+        0,
+        t("shop.context.prompt", "(Enter to select, ESC) Command for {name}:", { name }).slice(
+          0,
+          cols - 1,
+        ),
+        UI_TEXT,
+      );
       for (let e = 0; e < entries.length; e++) {
         const ent = entries[e]!;
         term.print(2, 2 + e, `${ent.key}) ${ent.label}`, e === mc ? UI_CURSOR : UI_TEXT);
@@ -971,14 +1121,16 @@ export async function runStore(
     if (k === "p" || k === "g") {
       const idx = await pickStock(
         isHome
-          ? "Get which item? (Esc to cancel, Enter to select)"
-          : "Purchase which item? (ESC to cancel, Enter to select)",
+          ? t("shop.pick.get", "Get which item? (Esc to cancel, Enter to select)")
+          : t("shop.pick.purchase", "Purchase which item? (ESC to cancel, Enter to select)"),
       );
       if (idx >= 0) await purchase(idx, false);
       continue;
     }
     if (k === "l" || k === "x") {
-      const idx = await pickStock("Examine which item? (ESC to cancel, Enter to select)");
+      const idx = await pickStock(
+        t("shop.pick.examine", "Examine which item? (ESC to cancel, Enter to select)"),
+      );
       if (idx >= 0 && displayStock[idx]) await deps.examine(displayStock[idx]!);
       continue;
     }

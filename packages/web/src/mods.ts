@@ -81,6 +81,7 @@ import {
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { wrapCssRuns } from "./shop";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD } from "./ui-colors";
+import { t } from "@rpgm-tools/neo-angband-core";
 
 const C_ENABLED = UI_GOOD;
 const C_DISABLED = UI_DIM;
@@ -268,11 +269,23 @@ export function modFolderRow(
   attached: boolean,
 ): { label: string; color: string; lapsed: boolean } {
   if (savedName === null) {
-    return { label: "Choose a mods folder...", color: C_FG, lapsed: false };
+    return {
+      label: t("modsScreen.folder.choose", "Choose a mods folder..."),
+      color: C_FG,
+      lapsed: false,
+    };
   }
-  if (attached) return { label: `Mods folder: ${savedName}`, color: C_FG, lapsed: false };
+  if (attached) {
+    return {
+      label: t("modsScreen.folder.row.attached", "Mods folder: {name}", { name: savedName }),
+      color: C_FG,
+      lapsed: false,
+    };
+  }
   return {
-    label: `Mods folder: ${savedName} - NEEDS RECONNECTING`,
+    label: t("modsScreen.folder.row.lapsed", "Mods folder: {name} - NEEDS RECONNECTING", {
+      name: savedName,
+    }),
     color: C_WARN,
     lapsed: true,
   };
@@ -292,9 +305,12 @@ export function modFolderRow(
  * that tells a player the FOLDER is the empty part rather than the game.
  */
 export function modSourceLine(bundledCount: number, count: number, theirs: string): string {
-  const own = `${String(count)} ${theirs}.`;
+  const own = t("modsScreen.folder.source.own", "{count} {theirs}.", { count, theirs });
   if (bundledCount === 0) return own[0]!.toUpperCase() + own.slice(1);
-  return `${String(bundledCount)} bundled with the game, ${own}`;
+  return t("modsScreen.folder.source.bundled", "{bundled} bundled with the game, {own}", {
+    bundled: bundledCount,
+    own,
+  });
 }
 
 /**
@@ -313,19 +329,73 @@ export function modSourceLine(bundledCount: number, count: number, theirs: strin
  */
 export function noFolderPickerLines(): ScreenLine[] {
   return [
-    { text: "This browser cannot be given a mods FOLDER.", color: C_FG },
+    {
+      text: t("modsScreen.noPicker.title", "This browser cannot be given a mods FOLDER."),
+      color: C_FG,
+    },
     { text: "", color: C_FG },
-    { text: "It has no way to hand a directory to a web page, so that one", color: C_FG },
-    { text: "route is closed here. Downloading is not: Install a mod... needs", color: C_FG },
-    { text: "only a network request and this browser's own storage, and every", color: C_FG },
-    { text: "mod on offer arrives that way - checked against a digest that", color: C_FG },
-    { text: "ships inside the game, so a tampered download never runs.", color: C_FG },
+    {
+      text: t(
+        "modsScreen.noPicker.body1",
+        "It has no way to hand a directory to a web page, so that one",
+      ),
+      color: C_FG,
+    },
+    {
+      text: t(
+        "modsScreen.noPicker.body2",
+        "route is closed here. Downloading is not: Install a mod... needs",
+      ),
+      color: C_FG,
+    },
+    {
+      text: t(
+        "modsScreen.noPicker.body3",
+        "only a network request and this browser's own storage, and every",
+      ),
+      color: C_FG,
+    },
+    {
+      text: t(
+        "modsScreen.noPicker.body4",
+        "mod on offer arrives that way - checked against a digest that",
+      ),
+      color: C_FG,
+    },
+    {
+      text: t(
+        "modsScreen.noPicker.body5",
+        "ships inside the game, so a tampered download never runs.",
+      ),
+      color: C_FG,
+    },
     { text: "", color: C_FG },
-    { text: "Nothing is missing from your mod list because of your browser.", color: C_GOLD_TEXT },
+    {
+      text: t(
+        "modsScreen.noPicker.reassure",
+        "Nothing is missing from your mod list because of your browser.",
+      ),
+      color: C_GOLD_TEXT,
+    },
     { text: "", color: C_FG },
-    { text: "Chrome and Edge can ALSO be given a folder, which is useful for", color: C_WARN },
-    { text: "a mod you are writing; the desktop build keeps its own, which an", color: C_WARN },
-    { text: "external mod manager can deploy into.", color: C_WARN },
+    {
+      text: t(
+        "modsScreen.noPicker.alt1",
+        "Chrome and Edge can ALSO be given a folder, which is useful for",
+      ),
+      color: C_WARN,
+    },
+    {
+      text: t(
+        "modsScreen.noPicker.alt2",
+        "a mod you are writing; the desktop build keeps its own, which an",
+      ),
+      color: C_WARN,
+    },
+    {
+      text: t("modsScreen.noPicker.alt3", "external mod manager can deploy into."),
+      color: C_WARN,
+    },
   ];
 }
 
@@ -348,9 +418,14 @@ export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuI
    * beside a mod that does not exist reads as a mod that does. */
   if (m.missing) {
     return {
-      label: `[x] ${m.name}  - NOT INSTALLED`,
+      label: t("modsScreen.row.notInstalled.label", "[x] {name}  - NOT INSTALLED", {
+        name: m.name,
+      }),
       color: C_DANGER,
-      hint: "Switched on, but the mod itself is gone. Enter to remove it.",
+      hint: t(
+        "modsScreen.row.notInstalled.hint",
+        "Switched on, but the mod itself is gone. Enter to remove it.",
+      ),
     };
   }
   const box = m.enabled ? "[x]" : "[ ]";
@@ -372,16 +447,16 @@ export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuI
    * pane below spells out in a sentence anyway. */
   const flags: string[] = [];
   if (broken) {
-    flags.push("NOT WORKING");
+    flags.push(t("modsScreen.row.flag.notWorking", "NOT WORKING"));
   } else {
     /* FIRST AMONG THE NON-EXCLUSIVE FLAGS, because it changes what every other
      * word on the row means: a version, a kind and a permission list all read as
      * facts about something the player has, and this one does not persist. Short
      * for the reason the others are - it shares a line with a name. */
-    if (m.session) flags.push("SESSION ONLY");
-    if (m.nondeterministic) flags.push("unseeded");
-    if (m.affectsGameplay) flags.push("noscore");
-    if (needsConsent) flags.push("NEEDS OK");
+    if (m.session) flags.push(t("modsScreen.row.flag.sessionOnly", "SESSION ONLY"));
+    if (m.nondeterministic) flags.push(t("modsScreen.row.flag.unseeded", "unseeded"));
+    if (m.affectsGameplay) flags.push(t("modsScreen.row.flag.noscore", "noscore"));
+    if (needsConsent) flags.push(t("modsScreen.row.flag.needsOk", "NEEDS OK"));
   }
   const suffix = flags.length ? `  ! ${flags.join(", ")}` : "";
   // Kind distinguishes the two PLUGIN load paths (sandbox vs trusted); for a
@@ -413,10 +488,10 @@ export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuI
    * act on - the detail pane below already lists what each one is for. */
   const capNote =
     m.capabilities.length === 0
-      ? "Asks for nothing beyond the game."
-      : m.capabilities.length === 1
-        ? "Asks for one permission."
-        : `Asks for ${m.capabilities.length} permissions.`;
+      ? t("modsScreen.row.cap.none", "Asks for nothing beyond the game.")
+      : t("modsScreen.row.cap.count", "Asks for {count, plural, one {one permission} other {# permissions}}.", {
+          count: m.capabilities.length,
+        });
   /* No "Enter to manage it." on the end. The footer of this very screen already
    * says so for every row, and repeating it cost four columns off the end of
    * the longest hint - which is the part that describes the mod. */
@@ -424,12 +499,19 @@ export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuI
     label,
     color,
     hint: broken
-      ? `${problems.length === 1 ? "Something" : `${problems.length} things`} stopped this working. Enter to see what.`
+      ? t(
+          "modsScreen.row.hint.broken",
+          "{count, plural, one {Something} other {# things}} stopped this working. Enter to see what.",
+          { count: problems.length },
+        )
       : m.session
         ? /* The hint says what is different about this row rather than what the
            * mod does, because the shape and the permissions are on the detail
            * screen and "it goes away when you close the game" is not. */
-          "Loaded for this session, not installed. Gone when you close the game."
+          t(
+            "modsScreen.row.hint.sessionOnly",
+            "Loaded for this session, not installed. Gone when you close the game.",
+          )
         : `${describeShape(m.shape)} ${capNote}`,
   };
 }
@@ -447,13 +529,16 @@ const MIN_NAME_COLS = 14;
 function describeShape(shape: string): string {
   switch (shape) {
     case "content":
-      return "Changes the game's contents.";
+      return t("modsScreen.shape.content", "Changes the game's contents.");
     case "tiles":
-      return "A set of graphics.";
+      return t("modsScreen.shape.tiles", "A set of graphics.");
     case "plugin":
-      return "Runs its own code.";
+      return t("modsScreen.shape.plugin", "Runs its own code.");
     default:
-      return `A ${shape} mod.`;
+      /* `shape` here is whatever a manifest declares, so it is not a fixed set of
+       * literals this file can enumerate - a stray custom shape falls through to
+       * this line rather than to one of the three named cases above. */
+      return t("modsScreen.shape.other", "A {shape} mod.", { shape });
   }
 }
 
@@ -495,18 +580,24 @@ export function rowDetail(
   if (m.missing) {
     return [
       ...wrapped(m.name, w, C_TITLE),
-      ...wrapped("Switched on, but not installed.", w, C_DANGER),
+      ...wrapped(t("modsScreen.detail.missing.title", "Switched on, but not installed."), w, C_DANGER),
       { text: "", color: C_FG },
       ...wrapped(
-        "This mod is in your enabled list and the game cannot find it, so " +
-          "every launch tries to load it and gives up. It was probably " +
-          "uninstalled, or this is a fresh copy of the game over an old profile.",
+        t(
+          "modsScreen.detail.missing.why",
+          "This mod is in your enabled list and the game cannot find it, so " +
+            "every launch tries to load it and gives up. It was probably " +
+            "uninstalled, or this is a fresh copy of the game over an old profile.",
+        ),
         w,
       ),
       { text: "", color: C_FG },
       ...wrapped(
-        "Open it to take it off the list. If you want it back instead, " +
-          "Install a mod... will fetch it again.",
+        t(
+          "modsScreen.detail.missing.action",
+          "Open it to take it off the list. If you want it back instead, " +
+            "Install a mod... will fetch it again.",
+        ),
         w,
         C_WARN,
       ),
@@ -519,11 +610,25 @@ export function rowDetail(
    * blurb can be longer - the pane sliced them mid-word at cols-1 while the
    * paragraph above wrapped cleanly. */
   const head: ScreenLine[] = [
-    ...wrapped(`${displayName(m.name, m.manifest.author)}  (id: ${m.id})`, w, C_TITLE),
+    ...wrapped(
+      t("modsScreen.detail.head.nameId", "{name}  (id: {id})", {
+        name: displayName(m.name, m.manifest.author),
+        id: m.id,
+      }),
+      w,
+      C_TITLE,
+    ),
     ...wrapped(
       m.kind === "content"
-        ? `version ${m.version}  -  ${m.shape} pack`
-        : `version ${m.version}  -  ${m.shape} pack, ${m.kind} plugin`,
+        ? t("modsScreen.detail.head.versionContent", "version {version}  -  {shape} pack", {
+            version: m.version,
+            shape: m.shape,
+          })
+        : t(
+            "modsScreen.detail.head.versionPlugin",
+            "version {version}  -  {shape} pack, {kind} plugin",
+            { version: m.version, shape: m.shape, kind: m.kind },
+          ),
       w,
     ),
   ];
@@ -549,7 +654,11 @@ export function rowDetail(
     trouble.push({ text: "", color: C_FG });
     trouble.push(
       ...wrapped(
-        problems.length === 1 ? "NOT WORKING:" : `NOT WORKING - ${problems.length} problems:`,
+        t(
+          "modsScreen.detail.trouble.heading",
+          "{count, plural, one {NOT WORKING:} other {NOT WORKING - # problems:}}",
+          { count: problems.length },
+        ),
         w,
         C_DANGER,
       ),
@@ -567,7 +676,10 @@ export function rowDetail(
    * is not broken, but it is also not running, and "enabled" alone does not
    * distinguish those two for a player looking at a mod that does nothing. */
   for (const s of skipped) {
-    trouble.push({ text: "", color: C_FG }, ...wrapped(`Not loaded: ${s}`, w, C_WARN));
+    trouble.push(
+      { text: "", color: C_FG },
+      ...wrapped(t("modsScreen.detail.trouble.notLoaded", "Not loaded: {reason}", { reason: s }), w, C_WARN),
+    );
   }
 
   const below: ScreenLine[] = [];
@@ -577,8 +689,16 @@ export function rowDetail(
     below.push(
       ...wrapped(
         m.enabled
-          ? `Makes ${ruleCount} separate ${ruleCount === 1 ? "change" : "changes"}, all on. Open the mod to switch any one off.`
-          : `Makes ${ruleCount} separate ${ruleCount === 1 ? "change" : "changes"}. None of them happen while it is off; turning it on turns all of them on.`,
+          ? t(
+              "modsScreen.detail.rules.enabled",
+              "Makes {count, plural, one {# separate change} other {# separate changes}}, all on. Open the mod to switch any one off.",
+              { count: ruleCount },
+            )
+          : t(
+              "modsScreen.detail.rules.disabled",
+              "Makes {count, plural, one {# separate change} other {# separate changes}}. None of them happen while it is off; turning it on turns all of them on.",
+              { count: ruleCount },
+            ),
         w,
         m.enabled ? C_ENABLED : C_DIM,
       ),
@@ -587,7 +707,11 @@ export function rowDetail(
   const deps = m.manifest.dependencies
     ? Object.entries(m.manifest.dependencies).map(([d, v]) => `${d} ${v}`)
     : [];
-  if (deps.length) below.push(...wrapped(`Needs: ${deps.join(", ")}`, w));
+  if (deps.length) {
+    below.push(
+      ...wrapped(t("modsScreen.detail.needs", "Needs: {deps}", { deps: deps.join(", ") }), w),
+    );
+  }
   /* WHO ASKED FOR THIS, not where it came from - that is `browseDetail`'s "From"
    * line, on a different screen entirely, and this pane has never shown it. A
    * mod-building tool can install a mod it generated through `ctx.installMod`,
@@ -595,7 +719,13 @@ export function rowDetail(
    * themselves - the same reason `session` gets its own row rather than being
    * folded into "enabled". */
   if (m.installedByModId !== undefined) {
-    below.push(...wrapped(`Installed by: ${m.installedByModId}`, w, C_DIM));
+    below.push(
+      ...wrapped(
+        t("modsScreen.detail.installedBy", "Installed by: {id}", { id: m.installedByModId }),
+        w,
+        C_DIM,
+      ),
+    );
   }
   /* THE TWO ONE-WAY DOORS, said as one-way doors.
    *
@@ -610,12 +740,26 @@ export function rowDetail(
    * lose its last one - which is where the consequence lives. */
   if (m.nondeterministic) {
     below.push(
-      ...wrapped("Permanent once on: the same seed stops giving the same game.", w, C_WARN),
+      ...wrapped(
+        t(
+          "modsScreen.detail.nondeterministicWarning",
+          "Permanent once on: the same seed stops giving the same game.",
+        ),
+        w,
+        C_WARN,
+      ),
     );
   }
   if (m.affectsGameplay) {
     below.push(
-      ...wrapped("Permanent once on: changes play, so this character cannot score.", w, C_WARN),
+      ...wrapped(
+        t(
+          "modsScreen.detail.affectsGameplayWarning",
+          "Permanent once on: changes play, so this character cannot score.",
+        ),
+        w,
+        C_WARN,
+      ),
     );
   }
   if (m.capabilities.length === 0) {
@@ -637,26 +781,36 @@ export function rowDetail(
     below.push(
       ...wrapped(
         m.kind === "content"
-          ? "Asks for no permissions - it only adds and changes game contents."
-          : "Asks for no permissions, but it still runs its own code in the game.",
+          ? t(
+              "modsScreen.detail.noPermissions.content",
+              "Asks for no permissions - it only adds and changes game contents.",
+            )
+          : t(
+              "modsScreen.detail.noPermissions.code",
+              "Asks for no permissions, but it still runs its own code in the game.",
+            ),
         w,
         m.kind === "content" ? C_DIM : C_WARN,
       ),
     );
   } else {
-    below.push(...wrapped("It asks to be allowed to:", w));
+    below.push(...wrapped(t("modsScreen.detail.capabilitiesIntro", "It asks to be allowed to:"), w));
     for (const d of describeCapabilities(m.capabilities)) {
       /* Hanging indent so a wrapped bullet stays visibly one bullet. */
+      const elevatedTag = d.elevated ? `  ${t("modsScreen.detail.elevatedTag", "[powerful]")}` : "";
       below.push(
-        ...wrapped(`  - ${d.text}${d.elevated ? "  [powerful]" : ""}`, w, d.elevated ? C_WARN : C_FG)
+        ...wrapped(`  - ${d.text}${elevatedTag}`, w, d.elevated ? C_WARN : C_FG)
           .map((l, i) => (i === 0 ? l : { ...l, text: `    ${l.text}` })),
       );
     }
     below.push(
       ...wrapped(
         m.consented
-          ? "You have allowed this."
-          : "You have not allowed this yet - you will be asked when you turn it on.",
+          ? t("modsScreen.detail.consented", "You have allowed this.")
+          : t(
+              "modsScreen.detail.notConsented",
+              "You have not allowed this yet - you will be asked when you turn it on.",
+            ),
         w,
         m.consented ? C_ENABLED : C_WARN,
       ),
@@ -669,7 +823,10 @@ export function rowDetail(
    * single line - and once they wrap, the guess under-reserves and the pane
    * overflows. Measuring the built lines cannot drift from what is drawn. */
   const lines = [...head, ...trouble];
-  const MORE = { text: "...  (open the mod to read the rest)", color: C_DIM };
+  const MORE = {
+    text: t("modsScreen.detail.more", "...  (open the mod to read the rest)"),
+    color: C_DIM,
+  };
   if (m.manifest.description) {
     const room = maxLines - head.length - trouble.length - below.length - 1;
     const desc = wrapped(m.manifest.description, w);
@@ -715,8 +872,22 @@ export function rowDetail(
 export function fullDescription(m: CatalogMod, width = 80): ScreenLine[] {
   const w = width - 1;
   const out: ScreenLine[] = [
-    ...wrapped(`${displayName(m.name, m.manifest.author)}  (id: ${m.id})`, w, C_TITLE),
-    ...wrapped(`version ${m.version}  -  ${m.shape} pack`, w, C_DIM),
+    ...wrapped(
+      t("modsScreen.fullDesc.nameId", "{name}  (id: {id})", {
+        name: displayName(m.name, m.manifest.author),
+        id: m.id,
+      }),
+      w,
+      C_TITLE,
+    ),
+    ...wrapped(
+      t("modsScreen.fullDesc.version", "version {version}  -  {shape} pack", {
+        version: m.version,
+        shape: m.shape,
+      }),
+      w,
+      C_DIM,
+    ),
   ];
   const by = [m.manifest.author, m.manifest.license].filter(Boolean).join("  -  ");
   if (by) out.push(...wrapped(by, w, C_DIM));
@@ -729,8 +900,20 @@ export function fullDescription(m: CatalogMod, width = 80): ScreenLine[] {
   const deps = m.manifest.dependencies
     ? Object.entries(m.manifest.dependencies).map(([d, v]) => `${d} ${v}`)
     : [];
-  if (deps.length) out.push(...wrapped(`Needs: ${deps.join(", ")}`, w, C_DIM));
-  if (m.manifest.engine) out.push(...wrapped(`Written for game ${m.manifest.engine}`, w, C_DIM));
+  if (deps.length) {
+    out.push(
+      ...wrapped(t("modsScreen.fullDesc.needs", "Needs: {deps}", { deps: deps.join(", ") }), w, C_DIM),
+    );
+  }
+  if (m.manifest.engine) {
+    out.push(
+      ...wrapped(
+        t("modsScreen.fullDesc.engine", "Written for game {engine}", { engine: m.manifest.engine }),
+        w,
+        C_DIM,
+      ),
+    );
+  }
   return out;
 }
 
@@ -749,25 +932,50 @@ export async function confirmGameplayNoscore(
 }
 
 async function gameplayNoscorePrompt(term: GridSurface & GridPointerInput, m: CatalogMod): Promise<boolean> {
-  await showTextScreen(term, `Non-scoring save - ${m.name}`, [
-    { text: "This mod changes core gameplay behavior.", color: C_WARN },
-    { text: "Your save will be permanently marked as non-scoring.", color: C_WARN },
-  ], "[ Press ESC to review, then choose ]");
+  await showTextScreen(
+    term,
+    t("modsScreen.noscore.title", "Non-scoring save - {name}", { name: m.name }),
+    [
+      {
+        text: t("modsScreen.noscore.body1", "This mod changes core gameplay behavior."),
+        color: C_WARN,
+      },
+      {
+        text: t(
+          "modsScreen.noscore.body2",
+          "Your save will be permanently marked as non-scoring.",
+        ),
+        color: C_WARN,
+      },
+    ],
+    consentFooter(),
+  );
   const pick = await selectFromMenu(
     term,
     "core:mod-enable-gameplay",
-    `Enable gameplay-changing mod "${m.name}"?`,
+    t("modsScreen.noscore.confirm", 'Enable gameplay-changing mod "{name}"?', { name: m.name }),
     [
-      { label: "Yes, enable and mark save non-scoring", color: C_WARN },
-      { label: "No, cancel", color: C_FG },
+      {
+        label: t("modsScreen.noscore.yes", "Yes, enable and mark save non-scoring"),
+        color: C_WARN,
+      },
+      { label: t("modsScreen.common.no.cancel", "No, cancel"), color: C_FG },
     ],
-    "[ a/b or tap; ESC cancels ]",
+    t("modsScreen.common.footer.abTapEsc", "[ a/b or tap; ESC cancels ]"),
   );
   return pick === 0;
 }
 
-/** The footer under the consent read, before the Yes/No pick that follows it. */
-const CONSENT_FOOTER = "[ Press ESC to review, then choose ]";
+/**
+ * The footer under the consent read, before the Yes/No pick that follows it.
+ *
+ * A FUNCTION, not a constant: see gameMenuFooter's comment in game-menu.ts - a
+ * locale can change mid-session, so nothing translatable may be frozen at
+ * import time.
+ */
+function consentFooter(): string {
+  return t("modsScreen.consent.footer", "[ Press ESC to review, then choose ]");
+}
 
 /**
  * The capability consent gate as a document: what is being asked for, as a LIST.
@@ -790,13 +998,18 @@ const CONSENT_FOOTER = "[ Press ESC to review, then choose ]";
 export function capabilityConsentScreen(m: CatalogMod): ScreenView {
   return freezeView({
     id: "core:mod-capabilities",
-    title: `Consent - ${m.name}`,
-    footer: CONSENT_FOOTER,
+    title: t("modsScreen.consent.title", "Consent - {name}", { name: m.name }),
+    footer: consentFooter(),
     blocks: [
       {
         kind: "lines",
         lines: [
-          { text: `"${m.name}" requests these capabilities:`, color: C_TITLE },
+          {
+            text: t("modsScreen.consent.requests", '"{name}" requests these capabilities:', {
+              name: m.name,
+            }),
+            color: C_TITLE,
+          },
           { text: "", color: C_FG },
         ],
       },
@@ -821,7 +1034,7 @@ export function capabilityConsentScreen(m: CatalogMod): ScreenView {
           cells: {
             bullet: { text: "-" },
             text: { text: d.text },
-            elevated: { text: d.elevated ? "[elevated]" : "" },
+            elevated: { text: d.elevated ? t("modsScreen.consent.elevatedTag", "[elevated]") : "" },
           },
         })),
       },
@@ -838,7 +1051,10 @@ export function capabilityConsentScreen(m: CatalogMod): ScreenView {
               paragraphs: [
                 [
                   {
-                    text: "This mod runs its own code inside the game and can change how the game behaves. Only enable mods you trust.",
+                    text: t(
+                      "modsScreen.consent.runsCode",
+                      "This mod runs its own code inside the game and can change how the game behaves. Only enable mods you trust.",
+                    ),
                   },
                 ],
               ],
@@ -850,7 +1066,16 @@ export function capabilityConsentScreen(m: CatalogMod): ScreenView {
         ? [
             {
               kind: "text" as const,
-              paragraphs: [[{ text: "It also marks your save permanently non-reproducible." }]],
+              paragraphs: [
+                [
+                  {
+                    text: t(
+                      "modsScreen.consent.nonReproducible",
+                      "It also marks your save permanently non-reproducible.",
+                    ),
+                  },
+                ],
+              ],
               color: C_WARN,
             },
           ]
@@ -875,12 +1100,12 @@ async function consentPrompt(term: GridSurface & GridPointerInput, m: CatalogMod
   const pick = await selectFromMenu(
     term,
     "core:mod-capability-consent",
-    `Grant these capabilities to "${m.name}"?`,
+    t("modsScreen.consent.grantConfirm", 'Grant these capabilities to "{name}"?', { name: m.name }),
     [
-      { label: "Yes, enable and grant", color: C_ENABLED },
-      { label: "No, cancel", color: C_FG },
+      { label: t("modsScreen.consent.yes", "Yes, enable and grant"), color: C_ENABLED },
+      { label: t("modsScreen.common.no.cancel", "No, cancel"), color: C_FG },
     ],
-    "[ a/b or tap; ESC cancels ]",
+    t("modsScreen.common.footer.abTapEsc", "[ a/b or tap; ESC cancels ]"),
   );
   return pick === 0;
 }
@@ -911,20 +1136,26 @@ async function enableAfterInstall(
   const pick = await selectFromMenu(
     term,
     "core:mod-enable",
-    `Turn ${m.name} on now?`,
+    t("modsScreen.enableAfterInstall.title", "Turn {name} on now?", { name: m.name }),
     [
       {
-        label: "Yes, turn it on",
+        label: t("modsScreen.enableAfterInstall.yes", "Yes, turn it on"),
         color: C_ENABLED,
-        hint: "Takes effect when the game reloads, which you are offered on the way out.",
+        hint: t(
+          "modsScreen.enableAfterInstall.yesHint",
+          "Takes effect when the game reloads, which you are offered on the way out.",
+        ),
       },
       {
-        label: "No, leave it off",
+        label: t("modsScreen.enableAfterInstall.no", "No, leave it off"),
         color: C_DIM,
-        hint: "It stays installed. You can switch it on in the list at any time.",
+        hint: t(
+          "modsScreen.enableAfterInstall.noHint",
+          "It stays installed. You can switch it on in the list at any time.",
+        ),
       },
     ],
-    "[ Enter to choose; ESC leaves it off ]",
+    t("modsScreen.enableAfterInstall.footer", "[ Enter to choose; ESC leaves it off ]"),
     { minListRows: 2, detail: () => rowDetail(m, term.size().cols, 99) },
   );
   if (pick !== 0) return false;
@@ -978,20 +1209,27 @@ async function confirmDeclaredConflicts(
   const enabled = catalog.filter((c) => c.enabled && c.id !== m.id);
   const claims: { text: string; because: string }[] = [];
 
+  const claimText = (a: string, b: string, scope: readonly string[] | undefined): string =>
+    scope?.length
+      ? t("modsScreen.conflicts.claimScoped", "{a} says it conflicts with {b} over {scope}.", {
+          a,
+          b,
+          scope: scope.join(", "),
+        })
+      : t("modsScreen.conflicts.claim", "{a} says it conflicts with {b}.", { a, b });
+
   for (const c of m.manifest.compat ?? []) {
     if (c.claim !== "conflicts" || !enabled.some((e) => e.id === c.with)) continue;
-    const where = c.scope?.length ? ` over ${c.scope.join(", ")}` : "";
     claims.push({
-      text: `${m.name} says it conflicts with ${nameOf(c.with)}${where}.`,
+      text: claimText(m.name, nameOf(c.with), c.scope),
       because: c.because,
     });
   }
   for (const other of enabled) {
     for (const c of other.manifest.compat ?? []) {
       if (c.claim !== "conflicts" || c.with !== m.id) continue;
-      const where = c.scope?.length ? ` over ${c.scope.join(", ")}` : "";
       claims.push({
-        text: `${other.name} says it conflicts with ${m.name}${where}.`,
+        text: claimText(other.name, m.name, c.scope),
         because: c.because,
       });
     }
@@ -1005,7 +1243,10 @@ async function confirmDeclaredConflicts(
     body.push({ text: "", color: C_DIM });
   }
   body.push({
-    text: "This is the author's own warning. Nothing stops you running both.",
+    text: t(
+      "modsScreen.conflicts.authorWarning",
+      "This is the author's own warning. Nothing stops you running both.",
+    ),
     color: C_DIM,
   });
   /* LEFT AT `lines`, DELIBERATELY (see screen-view.ts's header for the rule).
@@ -1018,17 +1259,17 @@ async function confirmDeclaredConflicts(
    * stranger typed into their manifest, and a table row is one row. Both halves
    * are also prose: the headline is a sentence this file generates and `because`
    * is free author text, which is the case the model calls finished at `lines`. */
-  await showTextScreen(term, `Enable ${m.name}?`, body);
+  await showTextScreen(term, t("modsScreen.conflicts.enableTitle", "Enable {name}?", { name: m.name }), body);
 
   const pick = await selectFromMenu(
     term,
     "core:mod-enable-anyway",
-    `Enable ${m.name} anyway?`,
+    t("modsScreen.conflicts.enableAnyway", "Enable {name} anyway?", { name: m.name }),
     [
-      { label: "Enable it anyway", color: C_WARN },
-      { label: "Leave it off", color: C_DIM },
+      { label: t("modsScreen.conflicts.enableItAnyway", "Enable it anyway"), color: C_WARN },
+      { label: t("modsScreen.common.leaveItOff", "Leave it off"), color: C_DIM },
     ],
-    "[ Enter to choose; ESC to leave it off ]",
+    t("modsScreen.common.footer.enterEscLeaveOff", "[ Enter to choose; ESC to leave it off ]"),
   );
   return pick === 0;
 }
@@ -1063,13 +1304,20 @@ async function manageMod(
         m.name,
         [
           {
-            label: "Take it off the list",
+            label: t("modsScreen.missing.takeOff", "Take it off the list"),
             color: C_ENABLED,
-            hint: "The game stops trying to load it. Nothing else changes.",
+            hint: t(
+              "modsScreen.missing.takeOffHint",
+              "The game stops trying to load it. Nothing else changes.",
+            ),
           },
-          { label: "Leave it", color: C_DIM, hint: "In case you mean to reinstall it." },
+          {
+            label: t("modsScreen.missing.leaveIt", "Leave it"),
+            color: C_DIM,
+            hint: t("modsScreen.missing.leaveItHint", "In case you mean to reinstall it."),
+          },
         ],
-        "[ Enter to choose; ESC to leave it ]",
+        t("modsScreen.missing.footer", "[ Enter to choose; ESC to leave it ]"),
         {
           minListRows: 2,
           detail: () => rowDetail(m, term.size().cols, 99),
@@ -1090,11 +1338,18 @@ async function manageMod(
     const autoplayerActive = deps.autoplayer?.activeId() === m.id;
     const showRulesRow = ruleCount > 0 || autoplayerActive;
     const rulesLabel =
-      ruleCount > 0 ? `Fixes & tweaks (${ruleCount})...` : "Autoplayer speed...";
+      ruleCount > 0
+        ? t("modsScreen.manageMod.rulesLabel", "Fixes & tweaks ({count})...", { count: ruleCount })
+        : t("modsScreen.manageMod.autoplayerLabel", "Autoplayer speed...");
     const rulesHint =
       ruleCount > 0
-        ? `All ${ruleCount} are on; switch any one off here.`
-        : "How fast this mod plays out its turns while it holds the keyboard.";
+        ? t("modsScreen.manageMod.rulesHint", "All {count} are on; switch any one off here.", {
+            count: ruleCount,
+          })
+        : t(
+            "modsScreen.manageMod.autoplayerHint",
+            "How fast this mod plays out its turns while it holds the keyboard.",
+          );
     /* A mod's named parts (PackSection): the general form of a rule, since a
      * section can carry content and a load-order band as well as behaviour. */
     const sectionCount = m.manifest.sections?.length ?? 0;
@@ -1106,9 +1361,9 @@ async function manageMod(
        * control that means something, and it is the only honest way to stop a
        * staged plugin's code from running on the next reload. */
       items.push({
-        label: "Drop it (this is how you stop it)",
+        label: t("modsScreen.manageMod.dropIt", "Drop it (this is how you stop it)"),
         color: C_DANGER,
-        hint: "Forgets the archive. Takes effect on the next reload.",
+        hint: t("modsScreen.manageMod.dropItHint", "Forgets the archive. Takes effect on the next reload."),
       });
       acts.push("drop");
       if (showRulesRow) {
@@ -1116,7 +1371,7 @@ async function manageMod(
         acts.push("rules");
       }
     } else if (m.enabled) {
-      items.push({ label: "Disable", color: C_WARN });
+      items.push({ label: t("modsScreen.manageMod.disable", "Disable"), color: C_WARN });
       acts.push("disable");
       if (showRulesRow) {
         items.push({ label: rulesLabel, color: C_ENABLED, hint: rulesHint });
@@ -1124,36 +1379,55 @@ async function manageMod(
       }
       if (sectionCount > 0) {
         items.push({
-          label: `Parts of this mod (${sectionCount})...`,
+          label: t("modsScreen.manageMod.partsLabel", "Parts of this mod ({count})...", {
+            count: sectionCount,
+          }),
           color: C_ENABLED,
-          hint: "Take some of this mod without the rest.",
+          hint: t("modsScreen.manageMod.partsHint", "Take some of this mod without the rest."),
         });
         acts.push("sections");
       }
-      items.push({ label: "Move earlier (loads first)", color: C_FG });
+      items.push({ label: t("modsScreen.manageMod.moveEarlier", "Move earlier (loads first)"), color: C_FG });
       acts.push("up");
-      items.push({ label: "Move later (loads last, wins conflicts)", color: C_FG });
+      items.push({
+        label: t("modsScreen.manageMod.moveLater", "Move later (loads last, wins conflicts)"),
+        color: C_FG,
+      });
       acts.push("down");
     } else {
-      items.push({ label: "Enable", color: C_ENABLED });
+      items.push({ label: t("modsScreen.manageMod.enable", "Enable"), color: C_ENABLED });
       acts.push("enable");
       if (ruleCount > 0) {
         // Deliberately present and deliberately dead: it is the clearest way to
         // show that this mod HAS patches and that they do not exist yet.
         items.push({
-          label: `Fixes & tweaks (${ruleCount} once enabled)`,
+          label: t(
+            "modsScreen.manageMod.rulesLabelDisabled",
+            "Fixes & tweaks ({count} once enabled)",
+            { count: ruleCount },
+          ),
           color: C_DISABLED,
           disabled: true,
-          hint: "Enable this mod first - its patches do not exist until then.",
+          hint: t(
+            "modsScreen.manageMod.rulesHintDisabled",
+            "Enable this mod first - its patches do not exist until then.",
+          ),
         });
         acts.push("rules");
       }
       if (sectionCount > 0) {
         items.push({
-          label: `Parts of this mod (${sectionCount} once enabled)`,
+          label: t(
+            "modsScreen.manageMod.partsLabelDisabled",
+            "Parts of this mod ({count} once enabled)",
+            { count: sectionCount },
+          ),
           color: C_DISABLED,
           disabled: true,
-          hint: "Enable this mod first - its parts do not exist until then.",
+          hint: t(
+            "modsScreen.manageMod.partsHintDisabled",
+            "Enable this mod first - its parts do not exist until then.",
+          ),
         });
         acts.push("sections");
       }
@@ -1167,21 +1441,24 @@ async function manageMod(
      * only when there IS a description, so it is never a row that opens nothing. */
     if (m.manifest.description) {
       items.push({
-        label: "Read the full description",
+        label: t("modsScreen.manageMod.readFull", "Read the full description"),
         color: C_DIM,
-        hint: "The whole thing, scrollable, with what it depends on.",
+        hint: t(
+          "modsScreen.manageMod.readFullHint",
+          "The whole thing, scrollable, with what it depends on.",
+        ),
       });
       acts.push("read");
     }
-    items.push({ label: "Back", color: C_DIM });
+    items.push({ label: t("modsScreen.common.back", "Back"), color: C_DIM });
     acts.push("back");
 
     const pick = await selectFromMenu(
       term,
       "core:mod-details",
-      `${m.name}  v${m.version}`,
+      t("modsScreen.manageMod.title", "{name}  v{version}", { name: m.name, version: m.version }),
       items,
-      "[ choose an action; ESC to go back ]",
+      t("modsScreen.manageMod.footer", "[ choose an action; ESC to go back ]"),
       {
         /* Every action row stays visible. This screen's list is short and fixed,
          * so there is no reason for the description to win any of it - and it is
@@ -1195,7 +1472,11 @@ async function manageMod(
     const act = pick === null ? "back" : acts[pick];
     if (act === "back") return changed;
     if (act === "read") {
-      await showTextScreen(term, `${m.name}  v${m.version}`, fullDescription(m, term.size().cols));
+      await showTextScreen(
+        term,
+        t("modsScreen.manageMod.title", "{name}  v{version}", { name: m.name, version: m.version }),
+        fullDescription(m, term.size().cols),
+      );
       continue;
     }
     if (act === "enable") {
@@ -1237,28 +1518,41 @@ async function dropSession(
   const pick = await selectFromMenu(
     term,
     "core:mod-session-drop",
-    `Drop ${m.name}?`,
+    t("modsScreen.dropSession.confirm", "Drop {name}?", { name: m.name }),
     [
       {
-        label: "Yes, forget it",
+        label: t("modsScreen.dropSession.yes", "Yes, forget it"),
         color: C_DANGER,
-        hint: "It stops loading from the next reload. Nothing it already did is undone.",
+        hint: t(
+          "modsScreen.dropSession.yesHint",
+          "It stops loading from the next reload. Nothing it already did is undone.",
+        ),
       },
-      { label: "Keep it for now", color: C_DIM, hint: "No change." },
+      {
+        label: t("modsScreen.dropSession.keep", "Keep it for now"),
+        color: C_DIM,
+        hint: t("modsScreen.common.noChange", "No change."),
+      },
     ],
-    "[ Enter to choose; ESC to keep it ]",
+    t("modsScreen.dropSession.footer", "[ Enter to choose; ESC to keep it ]"),
   );
   if (pick !== 0) return false;
   dropSessionMods(globalThis, m.id);
   await showTextScreen(term, m.name, [
-    { text: `${m.name} is dropped.`, color: C_FG },
+    { text: t("modsScreen.dropSession.dropped", "{name} is dropped.", { name: m.name }), color: C_FG },
     { text: "", color: C_FG },
-    { text: "It stops loading on the next reload.", color: C_FG },
+    { text: t("modsScreen.dropSession.stops", "It stops loading on the next reload."), color: C_FG },
     {
-      text: "What it did while it was loaded stands: a character it changed is",
+      text: t(
+        "modsScreen.dropSession.stands1",
+        "What it did while it was loaded stands: a character it changed is",
+      ),
       color: C_DIM,
     },
-    { text: "still changed, and anything it stored is still stored.", color: C_DIM },
+    {
+      text: t("modsScreen.dropSession.stands2", "still changed, and anything it stored is still stored."),
+      color: C_DIM,
+    },
   ]);
   void deps;
   return true;
@@ -1292,8 +1586,14 @@ async function autoSortLoadOrder(term: GridSurface & GridPointerInput, deps: Mod
     .filter((m): m is PackManifest => m !== undefined);
 
   if (manifests.length < 2) {
-    await showTextScreen(term, "Auto-sort", [
-      { text: "There is nothing to sort - enable at least two mods first.", color: C_DIM },
+    await showTextScreen(term, t("modsScreen.autoSort.title", "Auto-sort"), [
+      {
+        text: t(
+          "modsScreen.autoSort.nothingToSort",
+          "There is nothing to sort - enable at least two mods first.",
+        ),
+        color: C_DIM,
+      },
     ]);
     return false;
   }
@@ -1308,12 +1608,12 @@ async function autoSortLoadOrder(term: GridSurface & GridPointerInput, deps: Mod
   const pick = await selectFromMenu(
     term,
     "core:mod-apply-order",
-    "Apply this order?",
+    t("modsScreen.autoSort.applyConfirm", "Apply this order?"),
     [
-      { label: "Apply it", color: C_ENABLED },
-      { label: "Leave my order alone", color: C_DIM },
+      { label: t("modsScreen.autoSort.applyIt", "Apply it"), color: C_ENABLED },
+      { label: t("modsScreen.autoSort.leaveAlone", "Leave my order alone"), color: C_DIM },
     ],
-    "[ Enter to choose; ESC to leave it alone ]",
+    t("modsScreen.autoSort.applyFooter", "[ Enter to choose; ESC to leave it alone ]"),
   );
   if (pick !== 0) return false;
   deps.store.setEnabled(result.order);
@@ -1357,7 +1657,12 @@ export function autoSortScreen(
       kind: "table",
       key: "order",
       tagged: false,
-      caption: { text: unchanged ? "Already in order:" : "Proposed order:", color: C_TITLE },
+      caption: {
+        text: unchanged
+          ? t("modsScreen.autoSort.alreadyInOrder", "Already in order:")
+          : t("modsScreen.autoSort.proposedOrder", "Proposed order:"),
+        color: C_TITLE,
+      },
       columns: [
         { key: "rank", width: 5, align: "right" },
         /* Unpadded: the names were never lined up under each other, and padding
@@ -1375,7 +1680,7 @@ export function autoSortScreen(
           cells: {
             rank: { text: `${String(i + 1)}.` },
             name: { text: nameOf(id) },
-            moved: { text: moved ? "<- moved" : "" },
+            moved: { text: moved ? t("modsScreen.autoSort.movedMarker", "<- moved") : "" },
           },
         };
       }),
@@ -1384,7 +1689,7 @@ export function autoSortScreen(
       kind: "lines",
       lines: [
         { text: "", color: C_DIM },
-        { text: "Later mods win conflicts.", color: C_DIM },
+        { text: t("modsScreen.autoSort.laterWins", "Later mods win conflicts."), color: C_DIM },
       ],
     },
   ];
@@ -1395,7 +1700,10 @@ export function autoSortScreen(
         kind: "lines",
         lines: [
           { text: "", color: C_DIM },
-          { text: "Suggestions it could not honour", color: C_WARN },
+          {
+            text: t("modsScreen.autoSort.suggestionsDropped", "Suggestions it could not honour"),
+            color: C_WARN,
+          },
         ],
       },
       {
@@ -1423,7 +1731,14 @@ export function autoSortScreen(
             paragraphs: [
               [
                 {
-                  text: `dropped - it would need ${d.cycle.map(nameOf).join(" -> ")} -> ${nameOf(d.cycle[0] ?? "")}`,
+                  text: t(
+                    "modsScreen.autoSort.droppedReason",
+                    "dropped - it would need {chain} -> {first}",
+                    {
+                      chain: d.cycle.map(nameOf).join(" -> "),
+                      first: nameOf(d.cycle[0] ?? ""),
+                    },
+                  ),
                 },
               ],
             ],
@@ -1441,7 +1756,10 @@ export function autoSortScreen(
         kind: "table",
         key: "unresolvable",
         tagged: false,
-        caption: { text: "These mods cannot all load", color: C_DANGER },
+        caption: {
+          text: t("modsScreen.autoSort.cannotAllLoad", "These mods cannot all load"),
+          color: C_DANGER,
+        },
         columns: [
           { key: "indent", width: 2 },
           { key: "mods", gap: 0, pad: false },
@@ -1457,20 +1775,28 @@ export function autoSortScreen(
           color: C_FG,
           cells: {
             mods: { text: cycle.map(nameOf).join(" and ") },
-            note: { text: "each require the other." },
+            note: { text: t("modsScreen.autoSort.eachRequireOther", "each require the other.") },
           },
         })),
       },
       {
         kind: "lines",
-        lines: [{ text: "  Turn one of them off; no order can satisfy both.", color: C_DIM }],
+        lines: [
+          {
+            text: t(
+              "modsScreen.autoSort.turnOneOff",
+              "  Turn one of them off; no order can satisfy both.",
+            ),
+            color: C_DIM,
+          },
+        ],
       },
     );
   }
 
   return freezeView({
     id: "core:mod-auto-sort",
-    title: "Auto-sort",
+    title: t("modsScreen.autoSort.title", "Auto-sort"),
     footer: SCREEN_FOOTER,
     blocks,
   });
@@ -1495,7 +1821,7 @@ async function manageSections(
   const sections = m.manifest.sections ?? [];
   if (sections.length === 0) return false;
   let changed = false;
-  const title = `Parts of ${m.name}`;
+  const title = t("modsScreen.sections.title", "Parts of {name}", { name: m.name });
   /* Kept across passes for the same reason the mod list keeps its own: toggling
    * rebuilds the screen, and a rebuild that re-opens at row 0 makes switching two
    * parts off in a row harder than it needs to be. */
@@ -1524,60 +1850,81 @@ async function manageSections(
     const items: MenuItem[] = sections.map((s) => {
       const on = resolved?.get(s.id) ?? true;
       const locked = forcedOff.has(s.id);
+      const needsTag = locked
+        ? `   ${t("modsScreen.sections.needsTag", "(needs {other})", { other: forcedOff.get(s.id) ?? "" })}`
+        : "";
       return {
-        label: `${on ? "[x]" : "[ ]"} ${s.title}${locked ? "   (needs " + forcedOff.get(s.id) + ")" : ""}`,
+        label: `${on ? "[x]" : "[ ]"} ${s.title}${needsTag}`,
         color: locked ? C_DISABLED : on ? C_ENABLED : C_DISABLED,
         ...(locked ? { disabled: true } : {}),
       };
     });
-    items.push({ label: "Back", color: C_DIM });
+    items.push({ label: t("modsScreen.common.back", "Back"), color: C_DIM });
 
-    const pick = await selectFromMenu(term, "core:mod-parts", title, items, "[ Space or Enter toggles a part; ESC to go back ]", {
-      initialCursor: cursor,
-      onHighlight: (i) => {
-        cursor = i;
+    const pick = await selectFromMenu(
+      term,
+      "core:mod-parts",
+      title,
+      items,
+      t("modsScreen.sections.footer", "[ Space or Enter toggles a part; ESC to go back ]"),
+      {
+        initialCursor: cursor,
+        onHighlight: (i) => {
+          cursor = i;
+        },
+        /* Space is an alias for Enter here - both toggle - so it resolves the menu
+         * on the cursor row rather than needing the MENU_REFRESH round trip the mod
+         * list uses. Null on the Back row: space should not close the screen. */
+        commands: { " ": (cur) => (cur < sections.length ? cur : null) },
+        detail: (i) => {
+          const s = sections[i];
+          if (!s) return [];
+          const cols = term.size().cols;
+          const on = resolved?.get(s.id) ?? true;
+          const lines: ScreenLine[] = [
+            { text: s.title, color: C_TITLE },
+            {
+              text: on ? t("modsScreen.common.on", "ON") : t("modsScreen.common.off", "OFF"),
+              color: on ? C_ENABLED : C_DIM,
+            },
+            { text: "", color: C_FG },
+            ...wrapped(s.description ?? "", cols - 1),
+          ];
+          if (s.priority && s.priority !== "normal") {
+            lines.push({ text: "", color: C_FG });
+            lines.push(
+              ...wrapped(
+                t(
+                  "modsScreen.sections.priorityNote",
+                  "This part is set to load {priority}, so it wins or loses conflicts independently of where {name} sits in the list.",
+                  { priority: s.priority, name: m.name },
+                ),
+                cols - 1,
+                C_DIM,
+              ),
+            );
+          }
+          const needs = forcedOff.get(s.id);
+          if (needs) {
+            lines.push({ text: "", color: C_FG });
+            lines.push(
+              ...wrapped(
+                t(
+                  "modsScreen.sections.patchNote",
+                  "A compatibility patch for {other}, which is not enabled - so it does nothing and cannot be turned on.",
+                  { other: needs },
+                ),
+                cols - 1,
+                C_DIM,
+              ),
+            );
+          }
+          return lines;
+        },
+        detailToggleKey: "?",
+        detailInitiallyShown: true,
       },
-      /* Space is an alias for Enter here - both toggle - so it resolves the menu
-       * on the cursor row rather than needing the MENU_REFRESH round trip the mod
-       * list uses. Null on the Back row: space should not close the screen. */
-      commands: { " ": (cur) => (cur < sections.length ? cur : null) },
-      detail: (i) => {
-        const s = sections[i];
-        if (!s) return [];
-        const cols = term.size().cols;
-        const on = resolved?.get(s.id) ?? true;
-        const lines: ScreenLine[] = [
-          { text: s.title, color: C_TITLE },
-          { text: on ? "ON" : "OFF", color: on ? C_ENABLED : C_DIM },
-          { text: "", color: C_FG },
-          ...wrapped(s.description ?? "", cols - 1),
-        ];
-        if (s.priority && s.priority !== "normal") {
-          lines.push({ text: "", color: C_FG });
-          lines.push(
-            ...wrapped(
-              `This part is set to load ${s.priority}, so it wins or loses conflicts independently of where ${m.name} sits in the list.`,
-              cols - 1,
-              C_DIM,
-            ),
-          );
-        }
-        const needs = forcedOff.get(s.id);
-        if (needs) {
-          lines.push({ text: "", color: C_FG });
-          lines.push(
-            ...wrapped(
-              `A compatibility patch for ${needs}, which is not enabled - so it does nothing and cannot be turned on.`,
-              cols - 1,
-              C_DIM,
-            ),
-          );
-        }
-        return lines;
-      },
-      detailToggleKey: "?",
-      detailInitiallyShown: true,
-    });
+    );
 
     if (pick === null || pick >= sections.length) return changed;
     const s = sections[pick];
@@ -1659,7 +2006,10 @@ export function modConflictsScreen(report: ConflictReportLines): ScreenView {
         kind: "table",
         key: "declared",
         tagged: false,
-        caption: { text: "The authors said so themselves", color: C_WARN },
+        caption: {
+          text: t("modsScreen.conflictsScreen.declaredCaption", "The authors said so themselves"),
+          color: C_WARN,
+        },
         columns: [...oneColumn],
         rows: declaredRows.map(({ text, record }) => ({
           id: `${record.packId}->${record.with}`,
@@ -1683,7 +2033,10 @@ export function modConflictsScreen(report: ConflictReportLines): ScreenView {
         lines: [
           { text: "", color: C_DIM },
           {
-            text: "Nothing here is blocked - you can play any combination you like.",
+            text: t(
+              "modsScreen.conflictsScreen.nothingBlocked",
+              "Nothing here is blocked - you can play any combination you like.",
+            ),
             color: C_DIM,
           },
           { text: "", color: C_DIM },
@@ -1698,7 +2051,10 @@ export function modConflictsScreen(report: ConflictReportLines): ScreenView {
         kind: "table",
         key: "contested",
         tagged: false,
-        caption: { text: "One of these wins, the rest are ignored", color: C_WARN },
+        caption: {
+          text: t("modsScreen.conflictsScreen.contestedCaption", "One of these wins, the rest are ignored"),
+          color: C_WARN,
+        },
         columns: [...oneColumn],
         rows: contestedRows.map(({ text, record }) => slotRow(text, record, C_FG)),
       },
@@ -1712,7 +2068,10 @@ export function modConflictsScreen(report: ConflictReportLines): ScreenView {
         kind: "table",
         key: "combined",
         tagged: false,
-        caption: { text: "These stack, and need nothing from you", color: C_ENABLED },
+        caption: {
+          text: t("modsScreen.conflictsScreen.combinedCaption", "These stack, and need nothing from you"),
+          color: C_ENABLED,
+        },
         columns: [...oneColumn],
         rows: combinedRows.map(({ text, record }) => slotRow(text, record, C_DIM)),
       },
@@ -1725,7 +2084,10 @@ export function modConflictsScreen(report: ConflictReportLines): ScreenView {
       kind: "lines",
       lines: [
         {
-          text: "Nothing among your enabled mods contests anything else.",
+          text: t(
+            "modsScreen.conflictsScreen.nothingContests",
+            "Nothing among your enabled mods contests anything else.",
+          ),
           color: C_ENABLED,
         },
       ],
@@ -1734,7 +2096,7 @@ export function modConflictsScreen(report: ConflictReportLines): ScreenView {
 
   return freezeView({
     id: "core:mod-conflicts",
-    title: "Mod conflicts",
+    title: t("modsScreen.conflictsScreen.title", "Mod conflicts"),
     footer: SCREEN_FOOTER,
     blocks,
   });
@@ -1827,29 +2189,32 @@ async function manageProfiles(
   for (;;) {
     const profiles = Object.keys(deps.store.getProfiles()).sort();
     const items: MenuItem[] = [
-      { label: "Save current setup as a profile...", color: C_FG },
+      {
+        label: t("modsScreen.profiles.saveCurrent", "Save current setup as a profile..."),
+        color: C_FG,
+      },
     ];
     const acts: string[] = ["save"];
     for (const name of profiles) {
-      items.push({ label: `Apply "${name}"`, color: C_ENABLED });
+      items.push({ label: t("modsScreen.profiles.apply", 'Apply "{name}"', { name }), color: C_ENABLED });
       acts.push(`apply:${name}`);
-      items.push({ label: `Delete "${name}"`, color: C_WARN });
+      items.push({ label: t("modsScreen.profiles.delete", 'Delete "{name}"', { name }), color: C_WARN });
       acts.push(`delete:${name}`);
     }
-    items.push({ label: "Back", color: C_DIM });
+    items.push({ label: t("modsScreen.common.back", "Back"), color: C_DIM });
     acts.push("back");
 
     const pick = await selectFromMenu(
       term,
       "core:mod-profiles",
-      "Mod profiles",
+      t("modsScreen.profiles.title", "Mod profiles"),
       items,
-      "[ save / apply / delete; ESC to go back ]",
+      t("modsScreen.profiles.footer", "[ save / apply / delete; ESC to go back ]"),
     );
     const act = pick === null ? "back" : acts[pick];
     if (act === "back") return changed;
     if (act === "save") {
-      const name = await promptText(term, "Profile name", "", 40);
+      const name = await promptText(term, t("modsScreen.profiles.nameField", "Profile name"), "", 40);
       if (name && name.trim()) deps.store.saveProfile(name.trim());
     } else if (act?.startsWith("apply:")) {
       deps.store.applyProfile(act.slice("apply:".length));
@@ -1860,13 +2225,26 @@ async function manageProfiles(
   }
 }
 
-/** Display name and pump rate for each autoplayer speed tier (mod-store.ts). */
-const AUTOPLAYER_SPEED_LABEL: Record<AutoplayerSpeed, string> = {
-  turbo: "Turbo",
-  fast: "Fast",
-  normal: "Normal",
-  slow: "Slow",
-};
+/**
+ * Display name for each autoplayer speed tier (mod-store.ts).
+ *
+ * A FUNCTION, not a constant: see gameMenuFooter's comment in game-menu.ts - a
+ * locale can change mid-session, so nothing translatable may be frozen at
+ * import time.
+ */
+function autoplayerSpeedLabel(speed: AutoplayerSpeed): string {
+  switch (speed) {
+    case "turbo":
+      return t("modsScreen.autoplayer.speed.turbo", "Turbo");
+    case "fast":
+      return t("modsScreen.autoplayer.speed.fast", "Fast");
+    case "normal":
+      return t("modsScreen.autoplayer.speed.normal", "Normal");
+    case "slow":
+      return t("modsScreen.autoplayer.speed.slow", "Slow");
+  }
+}
+/** Pump rate for each autoplayer speed tier (mod-store.ts). Not player-facing text. */
 const AUTOPLAYER_SPEED_MS: Record<AutoplayerSpeed, number> = {
   turbo: 10,
   fast: 40,
@@ -1887,27 +2265,37 @@ async function pickAutoplayerSpeed(
 ): Promise<void> {
   const tiers: AutoplayerSpeed[] = ["turbo", "fast", "normal", "slow"];
   const current = autoplayer.getSpeed();
-  const items: MenuItem[] = tiers.map((t) => ({
-    label: `${t === current ? "[x]" : "[ ]"} ${AUTOPLAYER_SPEED_LABEL[t]}`,
-    color: t === current ? C_ENABLED : C_FG,
+  const items: MenuItem[] = tiers.map((tier) => ({
+    label: `${tier === current ? "[x]" : "[ ]"} ${autoplayerSpeedLabel(tier)}`,
+    color: tier === current ? C_ENABLED : C_FG,
   }));
   const pick = await selectFromMenu(
     term,
     "core:mod-autoplayer-speed",
-    `Autoplayer speed - ${m.name}`,
+    t("modsScreen.autoplayer.title", "Autoplayer speed - {name}", { name: m.name }),
     items,
-    "[ Enter to choose; ESC to leave it as it is ]",
+    t("modsScreen.autoplayer.footer", "[ Enter to choose; ESC to leave it as it is ]"),
     {
       initialCursor: tiers.indexOf(current),
       detail: (i) => {
-        const t = tiers[i];
-        if (!t) return [];
+        const tier = tiers[i];
+        if (!tier) return [];
         return [
-          { text: AUTOPLAYER_SPEED_LABEL[t], color: C_TITLE },
-          { text: `A turn every ${AUTOPLAYER_SPEED_MS[t]}ms while ${m.name} holds the keyboard.`, color: C_DIM },
+          { text: autoplayerSpeedLabel(tier), color: C_TITLE },
+          {
+            text: t(
+              "modsScreen.autoplayer.turnRate",
+              "A turn every {ms}ms while {name} holds the keyboard.",
+              { ms: AUTOPLAYER_SPEED_MS[tier], name: m.name },
+            ),
+            color: C_DIM,
+          },
           { text: "", color: C_FG },
           {
-            text: "The same three tiers the debug agent seam's ?speed= URL parameter offers - takes effect at once, no reload.",
+            text: t(
+              "modsScreen.autoplayer.urlNote",
+              "The same three tiers the debug agent seam's ?speed= URL parameter offers - takes effect at once, no reload.",
+            ),
             color: C_DIM,
           },
         ];
@@ -1950,7 +2338,7 @@ async function managePatches(
   m: CatalogMod,
 ): Promise<void> {
   const getDecls = deps.ruleDecls ?? ((): ModRuleDecl[] => []);
-  const title = `Fixes & tweaks - ${m.name}`;
+  const title = t("modsScreen.patches.title", "Fixes & tweaks - {name}", { name: m.name });
   /* Survives the rebuild a toggle causes - see manageSections. */
   let cursor = 0;
   for (;;) {
@@ -1960,9 +2348,22 @@ async function managePatches(
       // Only reachable if discovery and the catalog disagree (the mod declares
       // rules but the host does not surface them) - say so plainly.
       await showTextScreen(term, title, [
-        { text: `${m.name} is not contributing any toggleable patch right now.`, color: C_DIM },
+        {
+          text: t(
+            "modsScreen.patches.noneRightNow",
+            "{name} is not contributing any toggleable patch right now.",
+            { name: m.name },
+          ),
+          color: C_DIM,
+        },
         { text: "", color: C_FG },
-        { text: "A patch exists only while the mod providing it is enabled.", color: C_FG },
+        {
+          text: t(
+            "modsScreen.patches.existsWhileEnabled",
+            "A patch exists only while the mod providing it is enabled.",
+          ),
+          color: C_FG,
+        },
       ]);
       return;
     }
@@ -1978,7 +2379,9 @@ async function managePatches(
     });
     if (autoplayer) {
       items.push({
-        label: `Autoplayer speed: ${AUTOPLAYER_SPEED_LABEL[autoplayer.getSpeed()]}`,
+        label: t("modsScreen.patches.autoplayerRow", "Autoplayer speed: {speed}", {
+          speed: autoplayerSpeedLabel(autoplayer.getSpeed()),
+        }),
         color: C_FG,
       });
     }
@@ -1987,7 +2390,7 @@ async function managePatches(
       "core:mod-rule-flags",
       title,
       items,
-      "[ On with the mod; Space or Enter opts one out; ESC to go back ]",
+      t("modsScreen.patches.footer", "[ On with the mod; Space or Enter opts one out; ESC to go back ]"),
       {
         initialCursor: cursor,
         onHighlight: (i) => {
@@ -1998,14 +2401,21 @@ async function managePatches(
         detail: (i) => {
           if (autoplayer && i === decls.length) {
             return [
-              { text: "Autoplayer speed", color: C_TITLE },
+              { text: t("modsScreen.patches.autoplayerHeading", "Autoplayer speed"), color: C_TITLE },
               {
-                text: `${AUTOPLAYER_SPEED_LABEL[autoplayer.getSpeed()]} - how often ${m.name} takes a turn while it holds the keyboard`,
+                text: t(
+                  "modsScreen.patches.autoplayerDetail",
+                  "{speed} - how often {name} takes a turn while it holds the keyboard",
+                  { speed: autoplayerSpeedLabel(autoplayer.getSpeed()), name: m.name },
+                ),
                 color: C_DIM,
               },
               { text: "", color: C_FG },
               ...wrapped(
-                "Faster is more to watch happen at once; slower is easier to follow. Changes at once, no reload.",
+                t(
+                  "modsScreen.patches.autoplayerExplain",
+                  "Faster is more to watch happen at once; slower is easier to follow. Changes at once, no reload.",
+                ),
                 term.size().cols - 1,
                 C_DIM,
               ),
@@ -2017,14 +2427,29 @@ async function managePatches(
           const on = choices[d.rule.flag] ?? d.rule.default;
           return [
             { text: d.rule.title, color: C_TITLE },
-            { text: `${on ? "ON" : "OFF"}  -  flag ${d.rule.flag}`, color: on ? C_ENABLED : C_DIM },
+            {
+              text: t(
+                "modsScreen.patches.onOffFlag",
+                "{state}  -  flag {flag}",
+                { state: on ? t("modsScreen.common.on", "ON") : t("modsScreen.common.off", "OFF"), flag: d.rule.flag },
+              ),
+              color: on ? C_ENABLED : C_DIM,
+            },
             { text: "", color: C_FG },
             ...wrapped(d.rule.description, cols - 1),
             { text: "", color: C_FG },
             ...wrapped(
               d.rule.default
-                ? `Comes on with ${m.name}; turn it off here to take the rest of the set without it. It does not exist at all while ${m.name} is disabled.`
-                : `Off until you turn it on here. It does not exist at all while ${m.name} is disabled.`,
+                ? t(
+                    "modsScreen.patches.comesOn",
+                    "Comes on with {name}; turn it off here to take the rest of the set without it. It does not exist at all while {name} is disabled.",
+                    { name: m.name },
+                  )
+                : t(
+                    "modsScreen.patches.offUntil",
+                    "Off until you turn it on here. It does not exist at all while {name} is disabled.",
+                    { name: m.name },
+                  ),
               cols - 1,
               C_DIM,
             ),
@@ -2071,14 +2496,41 @@ async function showModSources(
        * "this build has no mods folder" here would be a false statement about the
        * program, which is the exact failure mode PLATFORM.md was written about. */
       lines.push(
-        { text: "No mods folder chosen yet.", color: C_FG },
+        { text: t("modsScreen.sources.notChosen.title", "No mods folder chosen yet."), color: C_FG },
         { text: "", color: C_FG },
-        { text: "This build can read one: choose a folder on your computer and it", color: C_FG },
-        { text: "is remembered for every later visit. The mods in it are read the", color: C_FG },
-        { text: "same way the desktop build reads its own folder, by the same", color: C_FG },
-        { text: "validator, so a mod behaves identically on both.", color: C_FG },
+        {
+          text: t(
+            "modsScreen.sources.notChosen.body1",
+            "This build can read one: choose a folder on your computer and it",
+          ),
+          color: C_FG,
+        },
+        {
+          text: t(
+            "modsScreen.sources.notChosen.body2",
+            "is remembered for every later visit. The mods in it are read the",
+          ),
+          color: C_FG,
+        },
+        {
+          text: t(
+            "modsScreen.sources.notChosen.body3",
+            "same way the desktop build reads its own folder, by the same",
+          ),
+          color: C_FG,
+        },
+        {
+          text: t("modsScreen.sources.notChosen.body4", "validator, so a mod behaves identically on both."),
+          color: C_FG,
+        },
         { text: "", color: C_FG },
-        { text: "Pick either a folder of mods, or a single mod's folder.", color: C_GOLD_TEXT },
+        {
+          text: t(
+            "modsScreen.sources.notChosen.pick",
+            "Pick either a folder of mods, or a single mod's folder.",
+          ),
+          color: C_GOLD_TEXT,
+        },
       );
     } else {
       lines.push(...noFolderPickerLines());
@@ -2088,46 +2540,128 @@ async function showModSources(
      * directory to name - nobody put these anywhere - so saying "Mods folder:
      * (unknown)" would be a sentence about a folder that does not exist. */
     lines.push(
-      { text: "Mods installed from their own repositories.", color: C_FG },
+      {
+        text: t("modsScreen.sources.installed.title", "Mods installed from their own repositories."),
+        color: C_FG,
+      },
       { text: "", color: C_FG },
-      { text: modSourceLine(status.bundledCount, status.count, "installed"), color: C_FG },
+      {
+        text: modSourceLine(
+          status.bundledCount,
+          status.count,
+          t("modsScreen.folder.source.installed", "installed"),
+        ),
+        color: C_FG,
+      },
       { text: "", color: C_FG },
-      { text: "An installed mod's files are kept in this browser's storage, not in", color: C_FG },
-      { text: "a folder, so there is no path to show. Each was checked against a", color: C_FG },
-      { text: "digest before a byte of it was unpacked, and the mod manager names", color: C_FG },
-      { text: "the repository and tag it came from.", color: C_FG },
+      {
+        text: t(
+          "modsScreen.sources.installed.body1",
+          "An installed mod's files are kept in this browser's storage, not in",
+        ),
+        color: C_FG,
+      },
+      {
+        text: t(
+          "modsScreen.sources.installed.body2",
+          "a folder, so there is no path to show. Each was checked against a",
+        ),
+        color: C_FG,
+      },
+      {
+        text: t(
+          "modsScreen.sources.installed.body3",
+          "digest before a byte of it was unpacked, and the mod manager names",
+        ),
+        color: C_FG,
+      },
+      {
+        text: t("modsScreen.sources.installed.body4", "the repository and tag it came from."),
+        color: C_FG,
+      },
       { text: "", color: C_FG },
-      { text: "You can also give this browser a mods FOLDER, and use both.", color: C_DIM },
+      {
+        text: t(
+          "modsScreen.sources.installed.alsoFolder",
+          "You can also give this browser a mods FOLDER, and use both.",
+        ),
+        color: C_DIM,
+      },
     );
   } else {
     lines.push(
       {
-        text: status.kind === "picked" ? "Mods folder you chose:" : "Mods folder:",
+        text:
+          status.kind === "picked"
+            ? t("modsScreen.sources.folder.headingPicked", "Mods folder you chose:")
+            : t("modsScreen.sources.folder.heading", "Mods folder:"),
         color: C_FG,
       },
-      { text: `  ${status.dir ?? "(unknown)"}`, color: C_GOLD_TEXT },
+      { text: `  ${status.dir ?? t("modsScreen.sources.folder.unknown", "(unknown)")}`, color: C_GOLD_TEXT },
       { text: "", color: C_FG },
       /* The folder count is always given, even at zero: "0 mods found in it." is TRUE
        * and reads as "this game has no mods" while others are listed one screen away.
        * A player with an empty folder needs to see that the FOLDER is the empty part. */
-      { text: modSourceLine(status.bundledCount, status.count, "from this folder"), color: C_FG },
+      {
+        text: modSourceLine(
+          status.bundledCount,
+          status.count,
+          t("modsScreen.folder.source.fromFolder", "from this folder"),
+        ),
+        color: C_FG,
+      },
       ...(status.count === 0
-        ? [{ text: "Nothing has been copied into it yet.", color: C_DIM }]
+        ? [
+            {
+              text: t("modsScreen.sources.folder.empty", "Nothing has been copied into it yet."),
+              color: C_DIM,
+            },
+          ]
         : []),
       { text: "", color: C_FG },
-      { text: "To add one, copy its folder in and restart. A mod folder holds", color: C_FG },
-      { text: "manifest.json plus one .json per kind of record it changes -", color: C_FG },
-      { text: "exactly the layout a bundled mod has.", color: C_FG },
+      {
+        text: t("modsScreen.sources.folder.addBody1", "To add one, copy its folder in and restart. A mod folder holds"),
+        color: C_FG,
+      },
+      {
+        text: t(
+          "modsScreen.sources.folder.addBody2",
+          "manifest.json plus one .json per kind of record it changes -",
+        ),
+        color: C_FG,
+      },
+      { text: t("modsScreen.sources.folder.addBody3", "exactly the layout a bundled mod has."), color: C_FG },
       { text: "", color: C_FG },
-      { text: "load-order.json in that folder is owned by an external mod", color: C_FG },
-      { text: "manager: the ids it lists are loaded, in that order. Turning a", color: C_FG },
-      { text: "mod on or off here overrides it for that mod.", color: C_FG },
+      {
+        text: t("modsScreen.sources.folder.loadOrderBody1", "load-order.json in that folder is owned by an external mod"),
+        color: C_FG,
+      },
+      {
+        text: t(
+          "modsScreen.sources.folder.loadOrderBody2",
+          "manager: the ids it lists are loaded, in that order. Turning a",
+        ),
+        color: C_FG,
+      },
+      {
+        text: t("modsScreen.sources.folder.loadOrderBody3", "mod on or off here overrides it for that mod."),
+        color: C_FG,
+      },
     );
     if (status.kind === "picked") {
       lines.push(
         { text: "", color: C_FG },
-        { text: "Your browser is not told where that folder is on disk, only its", color: C_DIM },
-        { text: "name, so only the name can be shown here.", color: C_DIM },
+        {
+          text: t(
+            "modsScreen.sources.folder.pickedPrivacy1",
+            "Your browser is not told where that folder is on disk, only its",
+          ),
+          color: C_DIM,
+        },
+        {
+          text: t("modsScreen.sources.folder.pickedPrivacy2", "name, so only the name can be shown here."),
+          color: C_DIM,
+        },
       );
     }
     /* Mods can arrive from more than one source at once - a folder AND repositories
@@ -2140,18 +2674,34 @@ async function showModSources(
         {
           text:
             origin.kind === "installed"
-              ? `${origin.count} installed from ${origin.count === 1 ? "its own repository" : "their own repositories"}.`
-              : `${origin.count} from ${origin.dir ?? "another source"}.`,
+              ? t(
+                  "modsScreen.sources.extraOrigin.installed",
+                  "{count} installed from {count, plural, one {its own repository} other {their own repositories}}.",
+                  { count: origin.count },
+                )
+              : t("modsScreen.sources.extraOrigin.folder", "{count} from {dir}.", {
+                  count: origin.count,
+                  dir: origin.dir ?? t("modsScreen.sources.extraOrigin.anotherSource", "another source"),
+                }),
           color: C_FG,
         },
         ...(origin.kind === "installed"
           ? [
               {
                 /* Where they physically are, honestly: nobody put them anywhere. */
-                text: "  Kept in this browser's storage, not in a folder - the mod",
+                text: t(
+                  "modsScreen.sources.extraOrigin.storageBody1",
+                  "  Kept in this browser's storage, not in a folder - the mod",
+                ),
                 color: C_DIM,
               },
-              { text: "  manager names the repository and tag each came from.", color: C_DIM },
+              {
+                text: t(
+                  "modsScreen.sources.extraOrigin.storageBody2",
+                  "  manager names the repository and tag each came from.",
+                ),
+                color: C_DIM,
+              },
             ]
           : []),
       );
@@ -2176,7 +2726,7 @@ async function showModSources(
    * only byte-identical table puts `"id: "` - colon, trailing space and all - inside
    * the id cell, which is the rendering back in the data. It stays `lines` until the
    * separator can be a fact about the column instead of a fact about the row. */
-  await showTextScreen(term, "Where mods come from", lines);
+  await showTextScreen(term, t("modsScreen.sources.title", "Where mods come from"), lines);
 }
 
 /**
@@ -2201,7 +2751,7 @@ export function problemBlock(problems: readonly ModProblem[]): ScreenLine[] {
   const CAP = 8;
   const out: ScreenLine[] = [
     { text: "", color: C_FG },
-    { text: "Could not be used:", color: C_DANGER },
+    { text: t("modsScreen.problemBlock.heading", "Could not be used:"), color: C_DANGER },
   ];
   for (const p of problems.slice(0, CAP)) {
     out.push({ text: `  ${p.id === null ? p.why : `${p.id}: ${p.why}`}`, color: C_DANGER });
@@ -2209,7 +2759,11 @@ export function problemBlock(problems: readonly ModProblem[]): ScreenLine[] {
   if (problems.length > CAP) {
     const rest = problems.length - CAP;
     out.push({
-      text: `  ...and ${rest} more (each mod's own are on its row in the Mods list)`,
+      text: t(
+        "modsScreen.problemBlock.more",
+        "  ...and {rest} more (each mod's own are on its row in the Mods list)",
+        { rest },
+      ),
       color: C_DANGER,
     });
   }
@@ -2245,30 +2799,46 @@ async function manageModFolder(
 
   if (lapsed) {
     add(
-      `Reconnect "${savedName}"`,
+      t("modsScreen.manageFolder.reconnect", 'Reconnect "{name}"', { name: savedName }),
       "reconnect",
       C_WARN,
-      "Your browser needs permission again before it will read that folder.",
+      t(
+        "modsScreen.manageFolder.reconnectHint",
+        "Your browser needs permission again before it will read that folder.",
+      ),
     );
   }
   add(
-    savedName === null ? "Choose a mods folder..." : "Choose a different folder...",
+    savedName === null
+      ? t("modsScreen.folder.choose", "Choose a mods folder...")
+      : t("modsScreen.manageFolder.chooseDifferent", "Choose a different folder..."),
     "pick",
     C_FG,
-    "A folder of mods, or one mod's own folder.",
+    t("modsScreen.manageFolder.pickHint", "A folder of mods, or one mod's own folder."),
   );
   if (savedName !== null) {
     add(
-      `Stop using "${savedName}"`,
+      t("modsScreen.manageFolder.stopUsing", 'Stop using "{name}"', { name: savedName }),
       "forget",
       C_DIM,
-      "The bundled mods stay; nothing on your disk is touched.",
+      t("modsScreen.manageFolder.stopUsingHint", "The bundled mods stay; nothing on your disk is touched."),
     );
   }
-  add("What is this?", "about", C_DIM, "Where mods come from, and the folder layout.");
+  add(
+    t("modsScreen.common.whatIsThis", "What is this?"),
+    "about",
+    C_DIM,
+    t("modsScreen.manageFolder.aboutHint", "Where mods come from, and the folder layout."),
+  );
 
   for (;;) {
-    const pick = await selectFromMenu(term, "core:mods-folder", "Mods folder", items, "[ ESC to go back ]");
+    const pick = await selectFromMenu(
+      term,
+      "core:mods-folder",
+      t("modsScreen.manageFolder.title", "Mods folder"),
+      items,
+      t("modsScreen.common.footer.escBack", "[ ESC to go back ]"),
+    );
     if (pick === null) return false;
     const row = rows[pick];
     if (row === "about") {
@@ -2278,34 +2848,71 @@ async function manageModFolder(
     if (row === "pick") {
       const name = await picker.pick();
       if (name === null) return false; /* cancelled: not a failure, no message */
-      await showTextScreen(term, "Mods folder", [
-        { text: `Using "${name}".`, color: C_ENABLED },
+      await showTextScreen(term, t("modsScreen.manageFolder.title", "Mods folder"), [
+        { text: t("modsScreen.manageFolder.using", 'Using "{name}".', { name }), color: C_ENABLED },
         { text: "", color: C_FG },
-        { text: "Reload to read it. Any mod in it appears in this list, off until", color: C_FG },
-        { text: "you turn it on - the same as a bundled one.", color: C_FG },
+        {
+          text: t(
+            "modsScreen.manageFolder.usingBody1",
+            "Reload to read it. Any mod in it appears in this list, off until",
+          ),
+          color: C_FG,
+        },
+        {
+          text: t("modsScreen.manageFolder.usingBody2", "you turn it on - the same as a bundled one."),
+          color: C_FG,
+        },
       ]);
       return true;
     }
     if (row === "reconnect") {
       const ok = await picker.reconnect();
-      await showTextScreen(term, "Mods folder", [
+      await showTextScreen(term, t("modsScreen.manageFolder.title", "Mods folder"), [
         ok
-          ? { text: `Reconnected to "${savedName}".`, color: C_ENABLED }
-          : { text: "Permission was not granted, so that folder stays unread.", color: C_DANGER },
+          ? {
+              text: t("modsScreen.manageFolder.reconnected", 'Reconnected to "{name}".', {
+                name: savedName ?? "",
+              }),
+              color: C_ENABLED,
+            }
+          : {
+              text: t(
+                "modsScreen.manageFolder.reconnectFailed",
+                "Permission was not granted, so that folder stays unread.",
+              ),
+              color: C_DANGER,
+            },
         { text: "", color: C_FG },
         ok
-          ? { text: "Reload to read it.", color: C_FG }
-          : { text: "You can try again, or choose a different folder.", color: C_FG },
+          ? { text: t("modsScreen.manageFolder.reloadToRead", "Reload to read it."), color: C_FG }
+          : {
+              text: t(
+                "modsScreen.manageFolder.tryAgain",
+                "You can try again, or choose a different folder.",
+              ),
+              color: C_FG,
+            },
       ]);
       if (ok) return true;
       continue;
     }
     /* forget */
     await picker.forget();
-    await showTextScreen(term, "Mods folder", [
-      { text: `No longer using "${savedName}".`, color: C_FG },
+    await showTextScreen(term, t("modsScreen.manageFolder.title", "Mods folder"), [
+      {
+        text: t("modsScreen.manageFolder.noLongerUsing", 'No longer using "{name}".', {
+          name: savedName ?? "",
+        }),
+        color: C_FG,
+      },
       { text: "", color: C_FG },
-      { text: "Nothing on your disk was changed. Reload to drop its mods.", color: C_FG },
+      {
+        text: t(
+          "modsScreen.manageFolder.noLongerUsingBody",
+          "Nothing on your disk was changed. Reload to drop its mods.",
+        ),
+        color: C_FG,
+      },
     ]);
     return true;
   }
@@ -2419,10 +3026,12 @@ export async function runModManager(
      * to get a mod. */
     if (deps.modBrowse) {
       addAction(
-        catalog.length === 0 ? "Install a mod...  (start here)" : "Install a mod...",
+        catalog.length === 0
+          ? t("modsScreen.run.installStart", "Install a mod...  (start here)")
+          : t("modsScreen.run.install", "Install a mod..."),
         "download",
         C_ENABLED,
-        "Pick one from the list; the game downloads and checks it for you.",
+        t("modsScreen.run.installHint", "Pick one from the list; the game downloads and checks it for you."),
       );
       /* KEEPING A MOD IS A SEPARATE JOB FROM GETTING ONE, and it had no row.
        *
@@ -2446,7 +3055,10 @@ export async function runModManager(
         modUpgradeRowLabel(null, catalog.length),
         "modupdates",
         C_FG,
-        "Asks each installed mod's own repository whether there is a newer version.",
+        t(
+          "modsScreen.run.updatesHint",
+          "Asks each installed mod's own repository whether there is a newer version.",
+        ),
       );
     }
     /* The saved folder's name is read fresh each pass, because picking or
@@ -2459,32 +3071,35 @@ export async function runModManager(
         "folder",
         row.color,
         savedFolder === null
-          ? "Already have a mod on disk? Point the game at its folder."
+          ? t("modsScreen.run.folderHintNone", "Already have a mod on disk? Point the game at its folder.")
           : row.lapsed
-            ? "Your browser needs permission again before it will read it."
-            : "Choose another, reconnect, or stop using it.",
+            ? t("modsScreen.run.folderHintLapsed", "Your browser needs permission again before it will read it.")
+            : t("modsScreen.run.folderHintNormal", "Choose another, reconnect, or stop using it."),
       );
     }
     // No pooled "Fixes & tweaks" row: a mod's patches live under that mod
     // (manageMod -> managePatches), because they arrive with it and cannot exist
     // without it.
     addAction(
-      "View conflicts",
+      t("modsScreen.run.viewConflicts", "View conflicts"),
       "conflicts",
       C_FG,
-      "Where two mods change the same thing, and which one wins.",
+      t("modsScreen.run.viewConflictsHint", "Where two mods change the same thing, and which one wins."),
     );
     addAction(
-      "Auto-sort load order...",
+      t("modsScreen.run.autoSort", "Auto-sort load order..."),
       "autosort",
       C_FG,
-      "Work out an order from what the mods ask for. Your own moves are kept.",
+      t(
+        "modsScreen.run.autoSortHint",
+        "Work out an order from what the mods ask for. Your own moves are kept.",
+      ),
     );
     addAction(
-      "Profiles...",
+      t("modsScreen.run.profiles", "Profiles..."),
       "profiles",
       C_FG,
-      "Save this set of mods under a name, and switch between sets.",
+      t("modsScreen.run.profilesHint", "Save this set of mods under a name, and switch between sets."),
     );
     /* The problems belonging to no ROW - a folder whose manifest would not validate
      * never becomes a catalogue entry, so there is nowhere else in this screen they
@@ -2495,27 +3110,36 @@ export async function runModManager(
     const orphans = unattributedProblems(problems, new Set(catalog.map((m) => m.id)));
     addAction(
       orphans.length > 0
-        ? `Where mods come from...  ! ${orphans.length} ${orphans.length === 1 ? "problem" : "problems"}`
-        : "Where mods come from...",
+        ? t(
+            "modsScreen.run.sourcesRowProblems",
+            "Where mods come from...  ! {count, plural, one {# problem} other {# problems}}",
+            { count: orphans.length },
+          )
+        : t("modsScreen.run.sourcesRow", "Where mods come from..."),
       "install",
       orphans.length > 0 ? C_DANGER : C_DIM,
       orphans.length > 0
-        ? "A mod could not be read at all, so it has no row above."
+        ? t("modsScreen.run.sourcesHintOrphans", "A mod could not be read at all, so it has no row above.")
         : diskStatus?.available === true
-          ? "Your mods folder: path, contents, and anything unreadable."
+          ? t("modsScreen.run.sourcesHintAvailable", "Your mods folder: path, contents, and anything unreadable.")
           : deps.modFolder
-            ? "The folder layout, and how one is read."
-            : "Why this build has no mods folder.",
+            ? t("modsScreen.run.sourcesHintFolder", "The folder layout, and how one is read.")
+            : t("modsScreen.run.sourcesHintNoFolder", "Why this build has no mods folder."),
     );
     if (dirty) {
       addAction(
-        "Apply changes and reload",
+        t("modsScreen.run.applyReload", "Apply changes and reload"),
         "reload",
         C_WARN,
-        "Nothing you changed is in effect until the game restarts.",
+        t("modsScreen.run.applyReloadHint", "Nothing you changed is in effect until the game restarts."),
       );
     }
-    addAction("Done", "done", C_DIM, "Close this and go back to the game.");
+    addAction(
+      t("modsScreen.common.done", "Done"),
+      "done",
+      C_DIM,
+      t("modsScreen.run.doneHint", "Close this and go back to the game."),
+    );
 
     // A live ?mods= override outranks the store for this session, so the boxes
     // below describe what is SAVED, not what is loaded. Say so; the row list is
@@ -2523,16 +3147,22 @@ export async function runModManager(
     const override = deps.urlModsOverride?.() ?? null;
     const footer = override
       ? dirty
-        ? "[ ?mods= live; changes pending - Apply to reload; ESC ]"
-        : "[ ?mods= override is live; boxes show the SAVED set; ESC ]"
+        ? t("modsScreen.run.footer.overrideDirty", "[ ?mods= live; changes pending - Apply to reload; ESC ]")
+        : t(
+            "modsScreen.run.footer.override",
+            "[ ?mods= override is live; boxes show the SAVED set; ESC ]",
+          )
       : dirty
-        ? "[ Space on/off, Enter opens; Apply to reload; ESC = back ]"
+        ? t("modsScreen.run.footer.dirty", "[ Space on/off, Enter opens; Apply to reload; ESC = back ]")
         : catalog.length === 0
           ? /* An empty list with "Enter a mod to manage it" underneath is the
              * screen telling a player to do something there is nothing to do. */
-            "[ No mods installed - Install a mod... to get one; ESC to go back ]"
-          : "[ Space turns one on or off, Enter opens it; ESC to go back ]";
-    const pick = await selectFromMenu(term, "core:mods", "Mods", items, footer, {
+            t(
+              "modsScreen.run.footer.empty",
+              "[ No mods installed - Install a mod... to get one; ESC to go back ]",
+            )
+          : t("modsScreen.run.footer.normal", "[ Space turns one on or off, Enter opens it; ESC to go back ]");
+    const pick = await selectFromMenu(term, "core:mods", t("modsScreen.run.title", "Mods"), items, footer, {
       initialCursor: cursorId === null ? cursor : (() => {
         const at = rowKinds.findIndex((r) => r.kind === "mod" && "id" in r && r.id === cursorId);
         return at >= 0 ? at : Math.min(cursor, items.length - 1);
@@ -2575,12 +3205,15 @@ export async function runModManager(
         if (rk?.kind === "download" && catalog.length === 0) {
           const w = term.size().cols - 1;
           return [
-            { text: "You have no mods installed.", color: C_TITLE },
+            { text: t("modsScreen.run.emptyTitle", "You have no mods installed."), color: C_TITLE },
             { text: "", color: C_FG },
             ...wrapped(
-              "That is the normal starting state - Neo Angband ships as " +
-                "Angband 4.2.6 and nothing else, and every mod, including the " +
-                "ones written here, is something you choose to add.",
+              t(
+                "modsScreen.run.emptyBody1",
+                "That is the normal starting state - Neo Angband ships as " +
+                  "Angband 4.2.6 and nothing else, and every mod, including the " +
+                  "ones written here, is something you choose to add.",
+              ),
               w,
             ),
             { text: "", color: C_FG },
@@ -2593,16 +3226,22 @@ export async function runModManager(
              * deleted mechanism is worse than no prose, because a player trusts
              * it. */
             ...wrapped(
-              "Open this row for the list. The game holds no list of what a mod " +
-                "contains - it asks each mod's own repository, so a mod can " +
-                "release an update without waiting for a new version of the game.",
+              t(
+                "modsScreen.run.emptyBody2",
+                "Open this row for the list. The game holds no list of what a mod " +
+                  "contains - it asks each mod's own repository, so a mod can " +
+                  "release an update without waiting for a new version of the game.",
+              ),
               w,
             ),
             { text: "", color: C_FG },
             ...wrapped(
-              "On first install a mod is pinned to the repository it came from " +
-                "and can only be updated from that same place. Nothing here " +
-                "reviews a mod's code, including the recommended ones.",
+              t(
+                "modsScreen.run.emptyBody3",
+                "On first install a mod is pinned to the repository it came from " +
+                  "and can only be updated from that same place. Nothing here " +
+                  "reviews a mod's code, including the recommended ones.",
+              ),
               w,
             ),
           ];
@@ -2638,7 +3277,16 @@ export async function runModManager(
          * than as new chrome on a faithful menu. Only when it is worth saying. */
         const total = catalog.length;
         return total > 1 && detail.length < budget
-          ? [{ text: `Mod ${i + 1} of ${total}`, color: C_DIM }, ...detail]
+          ? [
+              {
+                text: t("modsScreen.run.modOfTotal", "Mod {index} of {total}", {
+                  index: i + 1,
+                  total,
+                }),
+                color: C_DIM,
+              },
+              ...detail,
+            ]
           : detail;
       },
       detailToggleKey: "?",
@@ -2726,15 +3374,22 @@ export async function runModManager(
     const pick = await selectFromMenu(
       term,
       "core:mod-apply",
-      newTiles ? "Apply mod changes? (adds tile sets to Graphics)" : "Apply mod changes?",
+      newTiles
+        ? t("modsScreen.applyPrompt.titleTiles", "Apply mod changes? (adds tile sets to Graphics)")
+        : t("modsScreen.applyPrompt.title", "Apply mod changes?"),
       [
         {
-          label: newTiles ? "Reload now, then pick a tile set" : "Reload now to apply",
+          label: newTiles
+            ? t("modsScreen.applyPrompt.reloadTiles", "Reload now, then pick a tile set")
+            : t("modsScreen.applyPrompt.reload", "Reload now to apply"),
           color: C_ENABLED,
         },
-        { label: "Later (changes are saved; apply on next reload)", color: C_FG },
+        {
+          label: t("modsScreen.applyPrompt.later", "Later (changes are saved; apply on next reload)"),
+          color: C_FG,
+        },
       ],
-      "[ a/b or tap ]",
+      t("modsScreen.applyPrompt.footer", "[ a/b or tap ]"),
     );
     if (pick === 0) deps.requestReload(newTiles ? { showGraphics: true } : undefined);
   }

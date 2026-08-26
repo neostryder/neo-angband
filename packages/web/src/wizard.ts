@@ -97,6 +97,7 @@ import {
   attachGameEnv,
   OBJ_MOD_NAMES,
   STAT_MAX,
+  t,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   GamePack,
@@ -368,6 +369,14 @@ export const SPOIL_ACTIONS: readonly { label: string; file: string; kind: SpoilK
 
 export type SpoilKind = "obj" | "artifact" | "mon-desc" | "mon-info";
 
+/** Translator ids for each SPOIL_ACTIONS row's label, keyed by kind. */
+const SPOIL_ACTION_IDS: Record<SpoilKind, string> = {
+  obj: "wizard.spoilers.obj",
+  artifact: "wizard.spoilers.artifact",
+  "mon-desc": "wizard.spoilers.monDesc",
+  "mon-info": "wizard.spoilers.monInfo",
+};
+
 /**
  * do_cmd_spoilers (ui-spoil.c:59-73): the four-row "Create spoilers" menu, each
  * row writing one spoiler file into the user directory.
@@ -385,8 +394,8 @@ export async function runSpoilers(
   const idx = await selectFromMenu(
     term,
     "core:wizard-spoilers",
-    "Create spoilers",
-    SPOIL_ACTIONS.map((a) => ({ label: a.label })),
+    t("wizard.spoilers.title", "Create spoilers"),
+    SPOIL_ACTIONS.map((a) => ({ label: t(SPOIL_ACTION_IDS[a.kind], a.label) })),
   );
   if (idx === null || idx < 0) return;
   const action = SPOIL_ACTIONS[idx];
@@ -403,15 +412,15 @@ export async function runSpoilers(
 
   const outcome = userWriteChecked(action.file, text);
   if (outcome === "create-failed") {
-    say("Cannot create spoiler file."); /* wiz-spoil.c:220 */
+    say(t("wizard.spoilers.createFailed", "Cannot create spoiler file.")); /* wiz-spoil.c:220 */
     return;
   }
   if (outcome === "close-failed") {
-    say("Cannot close spoiler file."); /* wiz-spoil.c:330 */
+    say(t("wizard.spoilers.closeFailed", "Cannot close spoiler file.")); /* wiz-spoil.c:330 */
     return;
   }
   exportUserFile(action.file, text);
-  say("Successfully created a spoiler file."); /* wiz-spoil.c:335 */
+  say(t("wizard.spoilers.success", "Successfully created a spoiler file.")); /* wiz-spoil.c:335 */
 }
 
 /** get_check (textui_get_check): inline row-0 "<prompt>[y/n] ", y/Y only. */
@@ -445,10 +454,10 @@ export async function runWizardToggle(
 ): Promise<boolean> {
   const p = ctx.state.actor.player;
   if (!(p.noscore & NOSCORE.WIZARD)) {
-    ctx.say(WIZARD_ENTRY_MSG_1);
-    ctx.say(WIZARD_ENTRY_MSG_2);
+    ctx.say(t("wizard.entry.msg1", WIZARD_ENTRY_MSG_1));
+    ctx.say(t("wizard.entry.msg2", WIZARD_ENTRY_MSG_2));
     ctx.refresh();
-    if (!(await confirmYesNo(ctx.term, WIZARD_ENTRY_CONFIRM))) {
+    if (!(await confirmYesNo(ctx.term, t("wizard.entry.confirm", WIZARD_ENTRY_CONFIRM)))) {
       ctx.refresh();
       return currentMode;
     }
@@ -456,7 +465,9 @@ export async function runWizardToggle(
     ctx.deps.markNoscore?.(NOSCORE.WIZARD);
   }
   const next = !currentMode;
-  ctx.say(next ? WIZARD_ON_MSG : WIZARD_OFF_MSG);
+  ctx.say(
+    next ? t("wizard.mode.on", WIZARD_ON_MSG) : t("wizard.mode.off", WIZARD_OFF_MSG),
+  );
   ctx.refresh();
   return next;
 }
@@ -518,6 +529,15 @@ function deepFreezeMenu(cats: readonly DebugCategory[]): readonly DebugCategory[
  *
  * A mod wanting its own debug or developer commands should register a command,
  * not edit upstream's table.
+ *
+ * Not routed through the translator. Every title and label here is read
+ * structurally by main.ts (the ENTER command browser walks this table by
+ * `.title` / `.commands` / `.label`) and asserted verbatim by this file's own
+ * tests, both outside this module's translation seam; wrapping the strings
+ * here would turn every reader into a caller of `t()` at once rather than one
+ * file at a time. The debug menu is reachable only after the debug-command
+ * gate above, which keeps it out of the ordinary play surface a translation
+ * pass is covering first.
  */
 export const DEBUG_MENU: readonly DebugCategory[] = deepFreezeMenu([
   {
@@ -625,10 +645,10 @@ export const DEBUG_MENU: readonly DebugCategory[] = deepFreezeMenu([
 export async function confirmDebugGate(ctx: WizardUiCtx): Promise<boolean> {
   const p = ctx.state.actor.player;
   if (p.noscore & NOSCORE.DEBUG) return true;
-  ctx.say(DEBUG_CONFIRM_MSG_1);
-  ctx.say(DEBUG_CONFIRM_MSG_2);
+  ctx.say(t("wizard.debug.gate.msg1", DEBUG_CONFIRM_MSG_1));
+  ctx.say(t("wizard.debug.gate.msg2", DEBUG_CONFIRM_MSG_2));
   ctx.refresh();
-  if (!(await confirmYesNo(ctx.term, DEBUG_CONFIRM))) {
+  if (!(await confirmYesNo(ctx.term, t("wizard.debug.gate.confirm", DEBUG_CONFIRM)))) {
     ctx.refresh();
     return false;
   }
@@ -686,7 +706,7 @@ const DEBUG_BY_KEY: ReadonlyMap<string, DebugCommand> = (() => {
  * debug command per ^A and returns to the main input loop.
  */
 export async function runWizardDebugMenu(ctx: WizardUiCtx): Promise<void> {
-  const key = await getKeyInline(ctx.term, DEBUG_PROMPT);
+  const key = await getKeyInline(ctx.term, t("wizard.debug.prompt", DEBUG_PROMPT));
   /* get_com_ex returns false on ESCAPE (ui-input.c L1439), and the caller then
    * abandons the nested lookup entirely (ui-game.c L586-588). */
   if (key === "Escape") {
@@ -695,7 +715,7 @@ export async function runWizardDebugMenu(ctx: WizardUiCtx): Promise<void> {
   }
   const cmd = DEBUG_BY_KEY.get(key);
   if (!cmd) {
-    ctx.say(DEBUG_NESTED_ERROR);
+    ctx.say(t("wizard.debug.nestedError", DEBUG_NESTED_ERROR));
     ctx.refresh();
     return;
   }
@@ -726,7 +746,7 @@ export async function runWizardDebugCommand(ctx: WizardUiCtx, action: string): P
 
 /** Short "engine bundle not surfaced to the web shell yet" note. */
 function unavailable(ctx: WizardUiCtx): void {
-  ctx.say("That debug command is not available in this build.");
+  ctx.say(t("wizard.debug.unavailable", "That debug command is not available in this build."));
 }
 
 /**
@@ -823,7 +843,11 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
       wizAdvance(state, deps);
       break;
     case "increase-exp": {
-      const n = await getQuantity(term, "Gain how much experience? ", 9999);
+      const n = await getQuantity(
+        term,
+        t("wizard.increaseExp.prompt", "Gain how much experience? "),
+        9999,
+      );
       if (!deps.expDeps) return unavailable(ctx);
       wizIncreaseExp(state, { quantity: n }, deps);
       break;
@@ -894,7 +918,11 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
       break;
     case "summon-random": {
       /* do_cmd_wiz_summon_random (cmd-wizard.c:2681). */
-      const n = await getQuantity(term, "How many monsters? ", 40);
+      const n = await getQuantity(
+        term,
+        t("wizard.summon.randomCount.prompt", "How many monsters? "),
+        40,
+      );
       if (!deps.effect) return unavailable(ctx);
       wizSummonRandom(state, { quantity: n < 1 ? 1 : n }, deps);
       break;
@@ -946,7 +974,11 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
     case "banish": {
       /* do_cmd_wiz_banish (cmd-wizard.c:450): default z_info->max_sight, and
        * no message afterwards. */
-      const range = await getQuantity(term, "Zap within what distance? ", state.z.maxSight);
+      const range = await getQuantity(
+        term,
+        t("wizard.banish.prompt", "Zap within what distance? "),
+        state.z.maxSight,
+      );
       wizBanish(state, { range }, deps);
       break;
     }
@@ -968,18 +1000,20 @@ export async function dispatchDebug(ctx: WizardUiCtx, action: string): Promise<v
        * on desktop it exits the process, in a tab it abandons the session and
        * lands on the title without persisting. Both leave whatever was last
        * written on disk untouched, which is exactly what upstream's quit does. */
-      if (await confirmYesNo(term, "Really quit without saving? ")) {
+      if (
+        await confirmYesNo(term, t("wizard.quitNoSave.confirm", "Really quit without saving? "))
+      ) {
         if (ctx.quitNoSave) {
           await ctx.quitNoSave();
         } else {
           /* No seam wired (headless / test harness): say so rather than claim a
            * quit that did not happen. */
-          say("That debug command is not available in this build.");
+          say(t("wizard.debug.unavailable", "That debug command is not available in this build."));
         }
       }
       break;
     default:
-      say("Unknown debug command.");
+      say(t("wizard.debug.unknown", "Unknown debug command."));
   }
   ctx.refresh();
 }
@@ -1068,13 +1102,19 @@ async function runCreateItem(ctx: WizardUiCtx, art: boolean): Promise<void> {
     const rows: MenuItem[] = tvals.map((tval) => ({
       label: objectBaseName(reg.bases[tval], true),
     }));
-    rows.push({ label: art ? "All artifacts" : "All objects" });
+    rows.push({
+      label: art
+        ? t("wizard.createItem.allArtifacts", "All artifacts")
+        : t("wizard.createItem.allObjects", "All objects"),
+    });
     const pick = await selectFromMenu(
       term,
       "core:wizard-object-kind",
-      art ? "What kind of artifact?" : "What kind of object?",
+      art
+        ? t("wizard.createItem.artifactTitle", "What kind of artifact?")
+        : t("wizard.createItem.objectTitle", "What kind of object?"),
       rows,
-      "[ a-z to choose, ESC to cancel ]",
+      t("wizard.hint.letterCancel", "[ a-z to choose, ESC to cancel ]"),
     );
     if (pick === null) return;
     if (pick === tvals.length) {
@@ -1108,14 +1148,20 @@ async function runCreateItem(ctx: WizardUiCtx, art: boolean): Promise<void> {
       const a = artifacts[idx];
       return { label: a ? getArtName(a) : "" };
     });
-    subRows.push({ label: art ? `All artifact ${baseName}` : `All ${baseName}` });
+    subRows.push({
+      label: art
+        ? t("wizard.createItem.allArtifactOfBase", "All artifact {baseName}", { baseName })
+        : t("wizard.createItem.allOfBase", "All {baseName}", { baseName }),
+    });
 
     const sub = await selectFromMenu(
       term,
       "core:wizard-object-subtype",
-      art ? `Which artifact ${baseName}? ` : `What kind of ${baseName}?`,
+      art
+        ? t("wizard.createItem.whichArtifact", "Which artifact {baseName}? ", { baseName })
+        : t("wizard.createItem.whichKind", "What kind of {baseName}?", { baseName }),
       subRows,
-      "[ a-z to choose, ESC to go back ]",
+      t("wizard.hint.letterBack", "[ a-z to choose, ESC to go back ]"),
     );
     if (sub === null) continue; // ESC: back to the tval menu
     if (sub === choices.length) {
@@ -1176,11 +1222,17 @@ export function wizKeylogScreen(log: readonly (WizKeypress | undefined)[]): Scre
   }
   return freezeView({
     id: "core:wizard-keylog",
-    title: "Previous keypresses (top most recent):",
+    title: t("wizard.keylog.title", "Previous keypresses (top most recent):"),
     footer: SCREEN_FOOTER,
     blocks: [
+      /* `key`/`code`/`mods` cells below bake their own C-format punctuation
+       * (see the doc comment above); those fragments are exempt for the same
+       * reason wizItemScreen's field-dump rows are. */
       { kind: "table", key: "keylog", tagged: false, columns, rows },
-      { kind: "lines", lines: [{ text: "Press any key to continue." }] },
+      {
+        kind: "lines",
+        lines: [{ text: t("wizard.keylog.pressAnyKey", "Press any key to continue.") }],
+      },
     ],
   });
 }
@@ -1205,6 +1257,9 @@ async function runDisplayKeylog(ctx: WizardUiCtx): Promise<void> {
  * one cell, documented at mapview.ts:70 - so the branch is unreachable here.
  * Transcribed rather than omitted so both censuses can see it and so the reason
  * it never fires is recorded next to the string instead of nowhere.
+ *
+ * Not routed through the translator: no code path in this build ever prints
+ * it, so there is no player-facing occurrence for a catalogue entry to cover.
  */
 export const PROJ_DEMO_TILE_HEIGHT_MSG = "Change tile_height to 1 to see graphics.";
 
@@ -1229,7 +1284,13 @@ async function runProjDemo(ctx: WizardUiCtx): Promise<void> {
       ],
     };
   });
-  await selectFromMenu(ctx.term, "core:wizard-projection", "PROJ_ types display", rows, "[ ESC to close ]");
+  await selectFromMenu(
+    ctx.term,
+    "core:wizard-projection",
+    t("wizard.projDemo.title", "PROJ_ types display"),
+    rows,
+    t("wizard.hint.escClose", "[ ESC to close ]"),
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -1248,7 +1309,12 @@ async function runCreateObj(ctx: WizardUiCtx, index?: number): Promise<void> {
   let ind = index;
   if (ind === undefined) {
     const kMax = deps.makeDeps.reg.kinds.length;
-    const s = await getString(term, `Create which object (0-${kMax - 1})? `, "", 80);
+    const s = await getString(
+      term,
+      t("wizard.createObj.prompt", "Create which object (0-{max})? ", { max: kMax - 1 }),
+      "",
+      80,
+    );
     if (s === null) return;
     const parsed = intFromString(s);
     if (parsed === null) return;
@@ -1265,7 +1331,12 @@ async function runCreateArtifact(ctx: WizardUiCtx, index?: number): Promise<void
   let ind = index;
   if (ind === undefined) {
     const aMax = deps.artifacts.length;
-    const s = await getString(term, `Create which artifact (1-${aMax - 1})? `, "", 80);
+    const s = await getString(
+      term,
+      t("wizard.createArtifact.prompt", "Create which artifact (1-{max})? ", { max: aMax - 1 }),
+      "",
+      80,
+    );
     if (s === null) return;
     const parsed = intFromString(s);
     if (parsed === null) return;
@@ -1280,11 +1351,13 @@ async function runAcquire(ctx: WizardUiCtx, great?: boolean): Promise<void> {
   const { term, state, deps } = ctx;
   let isGreat = great;
   if (isGreat === undefined) {
-    isGreat = await confirmYesNo(term, "Acquire great objects? ");
+    isGreat = await confirmYesNo(term, t("wizard.acquire.confirmGreat", "Acquire great objects? "));
   }
   const n = await getQuantity(
     term,
-    isGreat ? "How many great objects? " : "How many good objects? ",
+    isGreat
+      ? t("wizard.acquire.howManyGreat", "How many great objects? ")
+      : t("wizard.acquire.howManyGood", "How many good objects? "),
     40,
   );
   if (n < 1) return;
@@ -1305,7 +1378,9 @@ async function runCreateAllObjFromTval(
   if (tval === null) {
     const s = await getString(
       term,
-      `Create all items of which tval (1-${tvalMax - 1})? `,
+      t("wizard.createAllTval.prompt", "Create all items of which tval (1-{max})? ", {
+        max: tvalMax - 1,
+      }),
       "",
       80,
     );
@@ -1315,7 +1390,7 @@ async function runCreateAllObjFromTval(
   if (tval === null || tval < 1 || tval >= tvalMax) return;
   let withArt = art;
   if (withArt === undefined) {
-    withArt = await confirmYesNo(term, "Create instant artifacts? ");
+    withArt = await confirmYesNo(term, t("wizard.createAllTval.confirmArt", "Create instant artifacts? "));
   }
   wizCreateAllObjFromTval(state, { tval, art: withArt }, deps);
 }
@@ -1325,7 +1400,12 @@ async function runLearnObjectKinds(ctx: WizardUiCtx, level?: number): Promise<vo
   const { term, state, deps } = ctx;
   let lvl = level;
   if (lvl === undefined) {
-    const s = await getString(term, "Learn object kinds up to level (0-100)? ", "100", 80);
+    const s = await getString(
+      term,
+      t("wizard.learnKinds.prompt", "Learn object kinds up to level (0-100)? "),
+      "100",
+      80,
+    );
     if (s === null) return;
     const parsed = intFromString(s);
     if (parsed === null) return;
@@ -1340,7 +1420,7 @@ async function runTeleportRandom(ctx: WizardUiCtx, range?: number): Promise<void
   const { term, state, deps } = ctx;
   let r = range;
   if (r === undefined) {
-    const s = await getString(term, "Teleport range? ", "100", 80);
+    const s = await getString(term, t("wizard.teleport.rangePrompt", "Teleport range? "), "100", 80);
     if (s === null) return;
     const parsed = intFromString(s);
     if (parsed === null || parsed < 1) return;
@@ -1359,7 +1439,7 @@ async function runTeleportRandom(ctx: WizardUiCtx, range?: number): Promise<void
 async function runCreateTrap(ctx: WizardUiCtx): Promise<void> {
   const { term, state, deps } = ctx;
   if (!deps.trapDeps) return unavailable(ctx);
-  const s = await getString(term, "Create which trap? ", "", 80);
+  const s = await getString(term, t("wizard.createTrap.prompt", "Create which trap? "), "", 80);
   if (s === null) return;
   let tidx = intFromString(s);
   if (tidx === null) {
@@ -1379,7 +1459,7 @@ async function runJumpLevel(ctx: WizardUiCtx): Promise<void> {
   const maxDepth = state.z.maxDepth;
   const s = await getString(
     term,
-    `Jump to level (0-${maxDepth - 1}): `,
+    t("wizard.jumpLevel.prompt", "Jump to level (0-{max}): ", { max: maxDepth - 1 }),
     String(state.chunk.depth),
     80,
   );
@@ -1387,7 +1467,7 @@ async function runJumpLevel(ctx: WizardUiCtx): Promise<void> {
   const level = intFromString(s);
   if (level === null) return;
   if (level < 0 || level >= maxDepth) return; // L1358 paranoia
-  const chooseGen = await confirmYesNo(term, "Choose cave profile? ");
+  const chooseGen = await confirmYesNo(term, t("wizard.jumpLevel.chooseProfile", "Choose cave profile? "));
   if (chooseGen) {
     /* choose_profile (generate.c:824-836) asks this at GENERATION time, off the
      * NOSCORE_JUMPING bit the answer above just set. Nothing else can consume
@@ -1395,7 +1475,12 @@ async function runJumpLevel(ctx: WizardUiCtx): Promise<void> {
      * port's generator is synchronous, so the answer is collected here and
      * carried on state.jumpProfileName for the generation to consume once.
      * `char name[30]` is the C's buffer (L825). */
-    const name = await getString(term, "Profile name (eg classic): ", "", 30);
+    const name = await getString(
+      term,
+      t("wizard.jumpLevel.profileNamePrompt", "Profile name (eg classic): "),
+      "",
+      30,
+    );
     state.jumpProfileName = name ?? undefined;
   }
   if (wizJumpLevel(state, { level, chooseGen }, deps) && ctx.changeLevel && state.generateLevel) {
@@ -1435,25 +1520,30 @@ async function runPerformEffect(ctx: WizardUiCtx): Promise<void> {
   if (!deps.effect) return unavailable(ctx);
 
   let index = -1;
-  const nameEntry = await getString(term, "Do which effect: ", "", 80);
+  const nameEntry = await getString(term, t("wizard.performEffect.namePrompt", "Do which effect: "), "", 80);
   if (nameEntry !== null) {
     const parsed = intFromString(nameEntry);
     index = parsed ?? effectLookup(nameEntry);
     if (index <= EF.NONE || index >= EF_MAX) {
-      say("No effect found.");
+      say(t("wizard.performEffect.notFound", "No effect found."));
       return;
     }
   }
 
   /* "Enter damage dice (eg 1+2d6M2): "; ESCAPE leaves the default "0". */
-  const diceEntry = await getString(term, "Enter damage dice (eg 1+2d6M2): ", "0", 80);
+  const diceEntry = await getString(
+    term,
+    t("wizard.performEffect.dicePrompt", "Enter damage dice (eg 1+2d6M2): "),
+    "0",
+    80,
+  );
   const diceString = diceEntry ?? "0";
 
   /* "Enter name or number for effect subtype: " -> effect_subtype (L1557). */
   let subtype = 0;
   const subEntry = await getString(
     term,
-    "Enter name or number for effect subtype: ",
+    t("wizard.performEffect.subtypePrompt", "Enter name or number for effect subtype: "),
     "0",
     80,
   );
@@ -1463,10 +1553,18 @@ async function runPerformEffect(ctx: WizardUiCtx): Promise<void> {
   }
 
   /* The four get_quantity prompts, max 100 (L1567-1570). */
-  const radius = await getQuantity(term, "Enter second parameter (radius): ", 100);
-  const other = await getQuantity(term, "Enter third parameter (other): ", 100);
-  const y = await getQuantity(term, "Enter y parameter: ", 100);
-  const x = await getQuantity(term, "Enter x parameter: ", 100);
+  const radius = await getQuantity(
+    term,
+    t("wizard.performEffect.radiusPrompt", "Enter second parameter (radius): "),
+    100,
+  );
+  const other = await getQuantity(
+    term,
+    t("wizard.performEffect.otherPrompt", "Enter third parameter (other): "),
+    100,
+  );
+  const y = await getQuantity(term, t("wizard.performEffect.yPrompt", "Enter y parameter: "), 100);
+  const x = await getQuantity(term, t("wizard.performEffect.xPrompt", "Enter x parameter: "), 100);
 
   const ident = runWizEffect(state, deps.effect, index, {
     diceString,
@@ -1476,7 +1574,7 @@ async function runPerformEffect(ctx: WizardUiCtx): Promise<void> {
     y,
     x,
   });
-  if (ident) say("Identified!");
+  if (ident) say(t("wizard.performEffect.identified", "Identified!"));
 }
 
 /**
@@ -1498,13 +1596,18 @@ async function runEditPlayer(ctx: WizardUiCtx): Promise<void> {
     if (!(await runEditPlayerStat(ctx, stat))) return; // EDIT_PLAYER_BREAK
   }
 
-  const gs = await getString(term, "Gold: ", String(p.au), 80);
+  const gs = await getString(term, t("wizard.editPlayer.goldPrompt", "Gold: "), String(p.au), 80);
   if (gs === null) return;
   const gv = longFromString(gs);
   if (gv === null) return;
   wizEditPlayerGold(state, { value: gv }, deps);
 
-  const es = await getString(term, "Experience: ", String(p.exp), 80);
+  const es = await getString(
+    term,
+    t("wizard.editPlayer.expPrompt", "Experience: "),
+    String(p.exp),
+    80,
+  );
   if (es === null) return;
   const ev = longFromString(es);
   if (ev === null) return;
@@ -1525,7 +1628,9 @@ async function runEditPlayerStat(ctx: WizardUiCtx, stat?: number): Promise<boole
   if (idx === undefined) {
     const pick = await getString(
       term,
-      `Edit which stat (name or 0-${STAT_MAX - 1}): `,
+      t("wizard.editPlayerStat.pickPrompt", "Edit which stat (name or 0-{max}): ", {
+        max: STAT_MAX - 1,
+      }),
       STAT_NAMES[0] ?? "STR",
       80,
     );
@@ -1542,7 +1647,7 @@ async function runEditPlayerStat(ctx: WizardUiCtx, stat?: number): Promise<boole
   if (idx < 0 || idx >= STAT_MAX) return true; // L1272 paranoia
   const s = await getString(
     term,
-    `${STAT_NAMES[idx] ?? ""} (3-118): `,
+    t("wizard.editPlayerStat.valuePrompt", "{stat} (3-118): ", { stat: STAT_NAMES[idx] ?? "" }),
     String(p.statMax[idx] ?? 10),
     80,
   );
@@ -1566,8 +1671,14 @@ async function runRecall(ctx: WizardUiCtx, wipe: boolean): Promise<void> {
   const c = await getCom(
     term,
     wipe
-      ? "Wipe recall for [a]ll monsters or [s]pecific monster? "
-      : "Full recall for [a]ll monsters or [s]pecific monster? ",
+      ? t(
+          "wizard.recall.wipePrompt",
+          "Wipe recall for [a]ll monsters or [s]pecific monster? ",
+        )
+      : t(
+          "wizard.recall.fullPrompt",
+          "Full recall for [a]ll monsters or [s]pecific monster? ",
+        ),
   );
   if (c === null) return;
 
@@ -1575,7 +1686,7 @@ async function runRecall(ctx: WizardUiCtx, wipe: boolean): Promise<void> {
   if (c === "a" || c === "A") {
     ridx = -1;
   } else if (c === "s" || c === "S") {
-    const s = await getString(term, "Which monster? ", "", 80);
+    const s = await getString(term, t("wizard.recall.whichMonster", "Which monster? "), "", 80);
     if (s === null) return;
     const parsed = intFromString(s);
     if (parsed !== null) {
@@ -1595,7 +1706,7 @@ async function runRecall(ctx: WizardUiCtx, wipe: boolean): Promise<void> {
   }
   const race = ridx >= 0 && ridx < deps.races.length ? deps.races[ridx] : undefined;
   if (!race) {
-    say("No monster found.");
+    say(t("wizard.monster.notFound", "No monster found."));
     return;
   }
   if (wipe) wizWipeRecall(state, { race }, deps);
@@ -1610,7 +1721,7 @@ async function runRecall(ctx: WizardUiCtx, wipe: boolean): Promise<void> {
 async function runSummonNamed(ctx: WizardUiCtx): Promise<void> {
   const { term, state, deps, say } = ctx;
   if (!deps.monPlace || !deps.races) return unavailable(ctx);
-  const s = await getString(term, "Summon which monster? ", "", 80);
+  const s = await getString(term, t("wizard.summon.namedPrompt", "Summon which monster? "), "", 80);
   if (s === null) return;
   let race: MonsterRace | undefined;
   const parsed = intFromString(s);
@@ -1620,7 +1731,7 @@ async function runSummonNamed(ctx: WizardUiCtx): Promise<void> {
     race = ctx.raceByName?.(s) ?? undefined;
   }
   if (!race) {
-    say("No monster found.");
+    say(t("wizard.monster.notFound", "No monster found."));
     return;
   }
   wizSummonNamed(state, { race }, deps);
@@ -1638,12 +1749,14 @@ async function runSummonNamed(ctx: WizardUiCtx): Promise<void> {
  */
 async function runWriteMap(ctx: WizardUiCtx): Promise<void> {
   const { term, state } = ctx;
+  // "level.html" is a default FILENAME (get_file's own suggested name), not
+  // prose - not translatable.
   const file = await getFile(term, "level.html");
   if (file === null) return;
   const title = await getString(
     term,
-    "Title for map: ",
-    `Map of level ${state.chunk.depth}`,
+    t("wizard.writeMap.titlePrompt", "Title for map: "),
+    t("wizard.writeMap.defaultTitle", "Map of level {depth}", { depth: state.chunk.depth }),
     80,
   );
   if (title === null) return;
@@ -1651,7 +1764,7 @@ async function runWriteMap(ctx: WizardUiCtx): Promise<void> {
   /* file_open failing is silent upstream; only the close reports (L1124-1128). */
   if (!userWrite(file, html, FileType.HTML)) return;
   exportUserFile(file, html, "text/html");
-  ctx.say(`Level dumped to ${userPath(file)}.`);
+  ctx.say(t("wizard.writeMap.saved", "Level dumped to {path}.", { path: userPath(file) }));
 }
 
 /* ------------------------------------------------------------------ *
@@ -1669,7 +1782,7 @@ async function highlightAndWait(
   marks: readonly WizHackMark[],
 ): Promise<void> {
   ctx.hackMap?.(marks);
-  ctx.say("Press any key.");
+  ctx.say(t("wizard.hackMap.pressAnyKey", "Press any key."));
   await getKeyInline(ctx.term, "");
   ctx.refresh(); // prt("", 0, 0) + prt_map()
 }
@@ -1690,11 +1803,16 @@ function featColor(ctx: WizardUiCtx, grid: Loc): number {
  */
 async function runQueryFeature(ctx: WizardUiCtx): Promise<void> {
   const { term, state, deps, say } = ctx;
-  const choice = await getCom(term, "Debug Command Feature Query: ");
+  const choice = await getCom(term, t("wizard.queryFeature.prompt", "Debug Command Feature Query: "));
   if (choice === null) return;
   const features = FEATURE_QUERY_CHOICES[choice];
   if (!features) {
-    say("That was an invalid selection.  Use one of fobuztcdhmqgpra .");
+    say(
+      t(
+        "wizard.queryFeature.invalid",
+        "That was an invalid selection.  Use one of fobuztcdhmqgpra .",
+      ),
+    );
     return;
   }
   const grids = wizQueryFeature(state, { features }, deps);
@@ -1708,7 +1826,10 @@ async function runQueryFeature(ctx: WizardUiCtx): Promise<void> {
  */
 async function runQuerySquareFlag(ctx: WizardUiCtx): Promise<void> {
   const { term, state, deps } = ctx;
-  const c = await getCom(term, "Debug Command Query [grasvwdftniolx]: ");
+  const c = await getCom(
+    term,
+    t("wizard.querySquareFlag.prompt", "Debug Command Query [grasvwdftniolx]: "),
+  );
   if (c === null) return;
   const flag = SQUARE_FLAG_CHOICES[c] ?? 0;
   const grids = wizQuerySquareFlag(state, { flag }, deps);
@@ -1726,14 +1847,14 @@ async function runPeekNoiseScent(ctx: WizardUiCtx): Promise<void> {
   for (let i = 0; i < 100; i++) {
     const grids = wizPeekFlow(state, { depth: i, which: "noise" }, deps);
     ctx.hackMap?.(grids.map((grid) => ({ grid, color: COLOUR_RED })));
-    const k = await getCom(term, `Depth ${i}: `);
+    const k = await getCom(term, t("wizard.peekFlow.depthPrompt", "Depth {depth}: ", { depth: i }));
     if (k === null) break;
     ctx.refresh(); // prt_map()
   }
   for (let i = 0; i < 50; i++) {
     const grids = wizPeekFlow(state, { depth: i, which: "scent" }, deps);
     ctx.hackMap?.(grids.map((grid) => ({ grid, color: COLOUR_YELLOW })));
-    const k = await getCom(term, `Depth ${i}: `);
+    const k = await getCom(term, t("wizard.peekFlow.depthPrompt", "Depth {depth}: ", { depth: i }));
     if (k === null) break;
     ctx.refresh();
   }
@@ -1750,7 +1871,7 @@ async function runPeekNoiseScent(ctx: WizardUiCtx): Promise<void> {
 /** stats_are_enabled (wiz-stats.c:1652 / :3162). */
 function statsAreEnabled(ctx: WizardUiCtx): WizStatsCollectors | null {
   if (ctx.stats) return ctx.stats;
-  ctx.say(STATS_DISABLED_MSG);
+  ctx.say(t("wizard.stats.disabled", STATS_DISABLED_MSG));
   return null;
 }
 
@@ -1765,12 +1886,20 @@ async function runCollectDisconnectStats(ctx: WizardUiCtx): Promise<void> {
   const { term } = ctx;
   const stats = statsAreEnabled(ctx);
   if (!stats) return;
-  const s = await getString(term, "Number of simulations: ", String(defaultDisconnectNsim), 80);
+  const s = await getString(
+    term,
+    t("wizard.stats.numSimulations", "Number of simulations: "),
+    String(defaultDisconnectNsim),
+    80,
+  );
   if (s === null) return;
   const nsim = intFromString(s);
   if (nsim === null || nsim < 1) return;
   defaultDisconnectNsim = nsim;
-  const stop = await confirmYesNo(term, "Stop if disconnected level found? ");
+  const stop = await confirmYesNo(
+    term,
+    t("wizard.stats.stopIfDisconnected", "Stop if disconnected level found? "),
+  );
   stats.disconnectStats(nsim, stop);
 }
 
@@ -1779,22 +1908,30 @@ async function runCollectObjMonStats(ctx: WizardUiCtx): Promise<void> {
   const { term } = ctx;
   const stats = statsAreEnabled(ctx);
   if (!stats) return;
-  const s = await getString(term, "Number of simulations: ", String(defaultObjMonNsim), 80);
+  const s = await getString(
+    term,
+    t("wizard.stats.numSimulations", "Number of simulations: "),
+    String(defaultObjMonNsim),
+    80,
+  );
   if (s === null) return;
   const nsim = intFromString(s);
   if (nsim === null || nsim < 1) return;
   defaultObjMonNsim = nsim;
 
-  const t = await getString(
+  const simTypeAnswer = await getString(
     term,
-    "Type of Sim: Diving (1) or Clearing (2) ",
+    t("wizard.stats.simType", "Type of Sim: Diving (1) or Clearing (2) "),
     String(defaultObjMonSimtype),
     80,
   );
-  if (t === null) return;
-  let simtype = intFromString(t);
+  if (simTypeAnswer === null) return;
+  let simtype = intFromString(simTypeAnswer);
   if (simtype === null || simtype < 1 || simtype > 2) return;
-  if (simtype === 2 && (await confirmYesNo(term, "Regen randarts (warning SLOW)? "))) {
+  if (
+    simtype === 2 &&
+    (await confirmYesNo(term, t("wizard.stats.regenRandarts", "Regen randarts (warning SLOW)? ")))
+  ) {
     simtype = 3;
   }
   defaultObjMonSimtype = simtype === 1 ? 1 : 2;
@@ -1806,22 +1943,32 @@ async function runCollectPitStats(ctx: WizardUiCtx): Promise<void> {
   const { term, state } = ctx;
   const stats = statsAreEnabled(ctx);
   if (!stats) return;
-  const s = await getString(term, "Number of simulations per depth: ", "1000", 80);
+  const s = await getString(
+    term,
+    t("wizard.stats.numSimulationsPerDepth", "Number of simulations per depth: "),
+    "1000",
+    80,
+  );
   if (s === null) return;
   const nsim = intFromString(s);
   if (nsim === null || nsim < 1) return;
 
-  const p = await getString(term, "Pit type (1-3): ", "1", 80);
+  const p = await getString(term, t("wizard.stats.pitType", "Pit type (1-3): "), "1", 80);
   if (p === null) return;
   const pittype = intFromString(p);
   if (pittype === null || pittype < 1 || pittype > 3) return;
 
-  const lo = await getString(term, "Minimum depth: ", String(state.chunk.depth), 80);
+  const lo = await getString(
+    term,
+    t("wizard.stats.minDepth", "Minimum depth: "),
+    String(state.chunk.depth),
+    80,
+  );
   if (lo === null) return;
   const depthMin = intFromString(lo);
   if (depthMin === null || depthMin < 1) return;
 
-  const hi = await getString(term, "Maximum depth: ", String(depthMin), 80);
+  const hi = await getString(term, t("wizard.stats.maxDepth", "Maximum depth: "), String(depthMin), 80);
   if (hi === null) return;
   const depthMax = intFromString(hi);
   if (depthMax === null || depthMax < depthMin) return;
@@ -1856,6 +2003,8 @@ function pad(value: number, width: number): string {
  * real name, e.g. `SUST_STR`) - reskinning the frame is open, reimagining the
  * banner just is not.
  */
+// The "FLAGS" ruled header below is ASCII art built one glyph per column
+// (see the doc comment above), not a sentence - not translatable.
 function wizFlagBannerLines(labels: readonly string[]): ScreenLine[] {
   const nflg = labels.length;
   const head: string[] = new Array<string>(nflg).fill(" ");
@@ -1943,6 +2092,14 @@ function wizFlagBitsTable(
 export function wizItemScreen(disp: WizItemDisplay, description: string): ScreenView {
   const plus = (n: number): string => (n >= 0 ? `+${n}` : String(n));
 
+  // combatRow / kindRow / numberRow below are not routed through the
+  // translator. Their cell text is not prose - it is upstream's own C struct
+  // field names (kind, tval, sval, pval, egoidx, cost, wgt, timeout) baked
+  // together with printf-style punctuation one fragment at a time, exactly as
+  // the doc comment above explains for the un-padded columns. A field name is
+  // an identifier, not a sentence a translation catalogue would carry, and
+  // splitting these fragments to make them ICU patterns would undo the
+  // baked-punctuation layout this function exists to preserve.
   const combatCols: ScreenColumn[] = [
     { key: "dd", pad: false },
     { key: "ds", pad: false, gap: 0 },
@@ -2003,7 +2160,7 @@ export function wizItemScreen(disp: WizItemDisplay, description: string): Screen
 
   return freezeView({
     id: "core:wizard-item",
-    title: "Item properties",
+    title: t("wizard.itemScreen.title", "Item properties"),
     footer: SCREEN_FOOTER,
     blocks: [
       { kind: "lines", lines: [{ text: description }, { text: "" }] },
@@ -2119,15 +2276,15 @@ async function runPlayItem(ctx: WizardUiCtx): Promise<void> {
    * with.", ... USE_EQUIP | USE_INVEN | USE_QUIVER | USE_FLOOR) - L1631. */
   const { items, handles } = packMenu(state, () => true);
   if (items.length === 0) {
-    say("You have nothing to play with.");
+    say(t("wizard.playItem.nothingToPlayWith", "You have nothing to play with."));
     return;
   }
   const pick = await selectFromMenu(
     term,
     "core:wizard-play-object",
-    "Play with which object? ",
+    t("wizard.playItem.pickPrompt", "Play with which object? "),
     items,
-    "[ a-z to choose, ESC to cancel ]",
+    t("wizard.hint.letterCancel", "[ a-z to choose, ESC to cancel ]"),
   );
   if (pick === null) return;
   const handle = handles[pick];
@@ -2144,13 +2301,16 @@ async function runPlayItem(ctx: WizardUiCtx): Promise<void> {
     drawWizItem(ctx, obj, displayAllProp);
     const ch = await getCom(
       term,
-      "[a]ccept [s]tatistics [r]eroll [t]weak [c]urse [q]uantity [k]nown? ",
+      t(
+        "wizard.playItem.menuPrompt",
+        "[a]ccept [s]tatistics [r]eroll [t]weak [c]urse [q]uantity [k]nown? ",
+      ),
     );
 
     if (ch === null) {
       /* get_com false: done, rejected (L1806-1811). */
       wizPlayItemReject(obj, snapshot, deps);
-      if (changed) say("Changes ignored.");
+      if (changed) say(t("wizard.playItem.changesIgnored", "Changes ignored."));
       ctx.refresh();
       return;
     }
@@ -2200,7 +2360,10 @@ async function runPlayItem(ctx: WizardUiCtx): Promise<void> {
  */
 async function runRerollItem(ctx: WizardUiCtx, obj: GameObject): Promise<boolean> {
   const { term, state, deps } = ctx;
-  const ch = await getCom(term, "Roll as [n]ormal, [g]ood, or [e]xcellent? ");
+  const ch = await getCom(
+    term,
+    t("wizard.reroll.prompt", "Roll as [n]ormal, [g]ood, or [e]xcellent? "),
+  );
   if (ch === null) return false;
   const roll = rollChoice(ch);
   if (roll === null) return false;
@@ -2227,16 +2390,24 @@ function rollChoice(ch: string): number | null {
 async function runStatItem(ctx: WizardUiCtx, obj: GameObject): Promise<void> {
   const { term, state, deps, say } = ctx;
   drawWizItem(ctx, obj, true);
-  const ch = await getCom(term, "Roll for [n]ormal, [g]ood, or [e]xcellent treasure? ");
+  const ch = await getCom(
+    term,
+    t("wizard.statItem.rollPrompt", "Roll for [n]ormal, [g]ood, or [e]xcellent treasure? "),
+  );
   if (ch === null) return;
   const roll = rollChoice(ch);
   if (roll === null) return;
-  const quality = roll === 0 ? "normal" : roll === 1 ? "good" : "excellent";
+  const quality =
+    roll === 0
+      ? t("wizard.quality.normal", "normal")
+      : roll === 1
+        ? t("wizard.quality.good", "good")
+        : t("wizard.quality.excellent", "excellent");
 
   const maxDepth = state.z.maxDepth;
   const s = await getString(
     term,
-    `Depth for treasure (0-${maxDepth - 1}): `,
+    t("wizard.statItem.depthPrompt", "Depth for treasure (0-{max}): ", { max: maxDepth - 1 }),
     String(state.chunk.depth),
     80,
   );
@@ -2244,12 +2415,20 @@ async function runStatItem(ctx: WizardUiCtx, obj: GameObject): Promise<void> {
   const level = intFromString(s);
   if (level === null || level < 0 || level >= maxDepth) return;
 
-  say(`Creating a lot of ${quality} items.  Base level = ${level}.`);
+  say(
+    t("wizard.statItem.creating", "Creating a lot of {quality} items.  Base level = {level}.", {
+      quality,
+      level,
+    }),
+  );
   const r = wizStatItem(state, { obj, roll, level }, deps);
   if (!r) return;
   say(
-    `Rolls: ${r.rolls}, Matches: ${r.matches}, Better: ${r.better}, ` +
-      `Worse: ${r.worse}, Other: ${r.other}`,
+    t(
+      "wizard.statItem.result",
+      "Rolls: {rolls}, Matches: {matches}, Better: {better}, Worse: {worse}, Other: {other}",
+      { rolls: r.rolls, matches: r.matches, better: r.better, worse: r.worse, other: r.other },
+    ),
   );
 }
 
@@ -2260,13 +2439,13 @@ async function runStatItem(ctx: WizardUiCtx, obj: GameObject): Promise<void> {
 async function runCurseItem(ctx: WizardUiCtx, obj: GameObject): Promise<boolean> {
   const { term, state, deps } = ctx;
   if (!deps.makeDeps || !deps.curses) return false;
-  const s = await getString(term, "Enter curse name or index: ", "0", 80);
+  const s = await getString(term, t("wizard.curse.namePrompt", "Enter curse name or index: "), "0", 80);
   if (s === null) return false;
   let index = intFromString(s);
   if (index === null) index = deps.makeDeps.reg.lookupCurse(s);
   if (index <= 0 || index >= deps.curses.length) return false; // L1031
 
-  const ps = await getString(term, "Enter curse power (0 removes): ", "0", 80);
+  const ps = await getString(term, t("wizard.curse.powerPrompt", "Enter curse power (0 removes): "), "0", 80);
   if (ps === null) return false;
   const power = intFromString(ps);
   if (power === null || power < 0) return false; // L1039-1046
@@ -2286,7 +2465,12 @@ async function runChangeQuantity(
 ): Promise<boolean> {
   const { term, state, deps } = ctx;
   const nmax = obj.kind.base.maxStack;
-  const s = await getString(term, `Quantity (1-${nmax}): `, String(obj.number), 80);
+  const s = await getString(
+    term,
+    t("wizard.quantity.prompt", "Quantity (1-{max}): ", { max: nmax }),
+    String(obj.number),
+    80,
+  );
   if (s === null) return false;
   const n = intFromString(s);
   /* L530-534: reject outside [1, base->max_stack] before the command's own
@@ -2312,7 +2496,7 @@ async function runTweakItem(ctx: WizardUiCtx, obj: GameObject): Promise<boolean>
 
   /* Ego: the default is the ego's NAME when it has one, else "-1" (L2737). */
   const egoDefault = obj.ego ? obj.ego.name : "-1";
-  const es = await getString(term, "Enter ego item: ", egoDefault, 80);
+  const es = await getString(term, t("wizard.tweak.egoPrompt", "Enter ego item: "), egoDefault, 80);
   if (es === null) return false;
   const egoNum = intFromString(es);
   /* Accept an index or a name (L2745-2753); an out-of-range index clears it. */
@@ -2325,7 +2509,7 @@ async function runTweakItem(ctx: WizardUiCtx, obj: GameObject): Promise<boolean>
 
   /* Artifact: the default is the artifact's name, else "0" (L2776). An
    * artifact never gets here (the L2726 guard above), so the default is "0". */
-  const as = await getString(term, "Enter new artifact: ", "0", 80);
+  const as = await getString(term, t("wizard.tweak.artifactPrompt", "Enter new artifact: "), "0", 80);
   let artifact: Artifact | null = null;
   let stopped = as === null;
   if (as !== null) {
@@ -2342,10 +2526,12 @@ async function runTweakItem(ctx: WizardUiCtx, obj: GameObject): Promise<boolean>
   const modifiers = [...obj.modifiers];
   if (!stopped) {
     for (let i = 0; i < modifiers.length; i++) {
+      // OBJ_MOD_NAMES entries are the game's own object-modifier names
+      // (list-object-modifiers.h), core registry data rather than UI prose.
       const name = OBJ_MOD_NAMES[i] ?? String(i);
       const v = await getString(
         term,
-        `Enter new ${name} setting: `,
+        t("wizard.tweak.settingPrompt", "Enter new {name} setting: ", { name }),
         String(modifiers[i] ?? 0),
         80,
       );
@@ -2361,13 +2547,18 @@ async function runTweakItem(ctx: WizardUiCtx, obj: GameObject): Promise<boolean>
   let toH = obj.toH;
   let toD = obj.toD;
   const scalars: [string, (n: number) => void, number][] = [
-    ["AC bonus", (n) => (toA = n), obj.toA],
-    ["to-hit", (n) => (toH = n), obj.toH],
-    ["to-dam", (n) => (toD = n), obj.toD],
+    [t("wizard.tweak.acBonus", "AC bonus"), (n) => (toA = n), obj.toA],
+    [t("wizard.tweak.toHit", "to-hit"), (n) => (toH = n), obj.toH],
+    [t("wizard.tweak.toDam", "to-dam"), (n) => (toD = n), obj.toD],
   ];
   for (const [name, set, current] of scalars) {
     if (stopped) break;
-    const v = await getString(term, `Enter new ${name} setting: `, String(current), 80);
+    const v = await getString(
+      term,
+      t("wizard.tweak.settingPrompt", "Enter new {name} setting: ", { name }),
+      String(current),
+      80,
+    );
     if (v === null) break; // WIZ_TWEAK's early return keeps what was applied
     const n = intFromString(v);
     if (n !== null) set(n);

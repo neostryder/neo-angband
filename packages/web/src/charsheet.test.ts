@@ -42,7 +42,7 @@ import type {
 import {
   showCharacterSheet,
   characterFlagsScreen,
-  CHARSHEET_PROMPT_LABELS,
+  charsheetPromptLabels,
   MODE_VIEW_IDS,
   buildCharacterDump,
 } from "./charsheet";
@@ -699,7 +699,7 @@ describe("a prompt inside invoke is announced before it lands (#258)", () => {
       fact.promptId,
       "rename",
       fact.extent,
-      CHARSHEET_PROMPT_LABELS[fact.promptId]!,
+      charsheetPromptLabels()[fact.promptId]!,
       term.size(),
     );
     expect(rec.received[0]).toEqual(expected);
@@ -709,7 +709,7 @@ describe("a prompt inside invoke is announced before it lands (#258)", () => {
     /* `screen` extent means the whole grid, and the game took the whole grid:
      * `promptText` clears and draws its own title where the sheet's used to be. */
     expect(rec.received[0]!.extent).toBe("screen");
-    expect(term.snapshot()[0]).toContain(CHARSHEET_PROMPT_LABELS["charsheet:rename"]);
+    expect(term.snapshot()[0]).toContain(charsheetPromptLabels()["charsheet:rename"]);
 
     press(win, "Escape");
     await running;
@@ -732,7 +732,7 @@ describe("a prompt inside invoke is announced before it lands (#258)", () => {
     /* The label is a SECOND SPELLING of `getFile`'s own un-exported prompt, so
      * it is checked against the row `getFile` actually drew on - the rectangle
      * the request promised - and not against another constant. */
-    expect(term.snapshot()[0]!.startsWith(CHARSHEET_PROMPT_LABELS["charsheet:file"]!)).toBe(true);
+    expect(term.snapshot()[0]!.startsWith(charsheetPromptLabels()["charsheet:file"]!)).toBe(true);
 
     press(win, "Escape"); // cancel the dump
     await running;
@@ -815,7 +815,7 @@ describe("a prompt inside invoke is announced before it lands (#258)", () => {
       expect(faults).toHaveLength(1);
       expect(faults[0]).toContain("no-yield-mod");
       expect(faults[0]).toContain("yieldTerminal");
-      expect(faults[0]).toContain(CHARSHEET_PROMPT_LABELS["charsheet:rename"]);
+      expect(faults[0]).toContain(charsheetPromptLabels()["charsheet:rename"]);
 
       done();
       await open;
@@ -844,7 +844,7 @@ describe("a prompt inside invoke is announced before it lands (#258)", () => {
       const row = SCREEN_PROMPTS[viewId];
       expect(row).toBeDefined();
       for (const fact of Object.values(row!)) {
-        expect(CHARSHEET_PROMPT_LABELS[fact.promptId]).toBeTypeOf("string");
+        expect(charsheetPromptLabels()[fact.promptId]).toBeTypeOf("string");
       }
     }
     /* And no label for a prompt this screen does not open, which is what would
@@ -852,7 +852,7 @@ describe("a prompt inside invoke is announced before it lands (#258)", () => {
     const known = new Set(
       MODE_VIEW_IDS.flatMap((v) => Object.values(SCREEN_PROMPTS[v] ?? {}).map((f) => f.promptId)),
     );
-    expect(Object.keys(CHARSHEET_PROMPT_LABELS).sort()).toEqual([...known].sort());
+    expect(Object.keys(charsheetPromptLabels()).sort()).toEqual([...known].sort());
   });
 });
 

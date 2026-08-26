@@ -81,6 +81,7 @@ import {
   EQUIP_SLOT_ENTRIES,
   monsterKnowledgeGroups,
   weightRemaining,
+  t,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   CharSheetDeps,
@@ -386,7 +387,7 @@ export function quiverMenu(
  */
 export function objectWeightColumn(obj: GameObject): string {
   const weight = obj.number * obj.weight;
-  return `${String(Math.trunc(weight / 10)).padStart(4)}.${weight % 10} lb`;
+  return `${String(Math.trunc(weight / 10)).padStart(4)}.${weight % 10} ${t("screens.weight.lb", "lb")}`;
 }
 
 /**
@@ -424,9 +425,9 @@ export function deviceFailColumn(
   isAware: (k: ObjectKind) => boolean,
 ): string {
   if (!objCanFail(obj)) return "";
-  if (!deviceEffectKnown(obj, isAware)) return "    ? fail";
+  if (!deviceEffectKnown(obj, isAware)) return `    ? ${t("screens.deviceMenu.fail", "fail")}`;
   const fail = Math.trunc((9 + getUseDeviceChance(state, obj)) / 10);
-  return `${String(fail).padStart(4)}% fail`;
+  return `${String(fail).padStart(4)}% ${t("screens.deviceMenu.fail", "fail")}`;
 }
 
 /**
@@ -507,7 +508,10 @@ function weightCell(obj: GameObject): ScreenCell {
  * inventory picker are the same objects seen twice, and a mod drawing sprites for
  * one should not need a second vocabulary for the other.
  */
-export function inventoryScreen(state: GameState, title = "Inventory"): ScreenView {
+export function inventoryScreen(
+  state: GameState,
+  title = t("screens.inventory.title", "Inventory"),
+): ScreenView {
   const rows: ScreenRow[] = [];
   invenHandles(state).forEach((handle, slot) => {
     const obj = gearGet(state.gear, handle);
@@ -532,7 +536,7 @@ export function inventoryScreen(state: GameState, title = "Inventory"): ScreenVi
         tagged: true,
         columns: INVENTORY_COLUMNS,
         rows,
-        empty: { text: "(nothing carried)", color: DIM },
+        empty: { text: t("screens.inventory.empty", "(nothing carried)"), color: DIM },
       },
     ],
   });
@@ -546,14 +550,19 @@ export function inventoryScreen(state: GameState, title = "Inventory"): ScreenVi
  * marked `disabled` and carries no item semantic, so a presenter can draw the
  * silhouette without mistaking it for gear.
  */
-export function equipmentScreen(state: GameState, title = "Equipment"): ScreenView {
+export function equipmentScreen(
+  state: GameState,
+  title = t("screens.equipment.title", "Equipment"),
+): ScreenView {
   const player = state.actor.player;
   const rows: ScreenRow[] = [];
   for (let i = 0; i < player.body.count; i++) {
     const slot = player.body.slots[i];
     const handle = player.equipment[i] ?? 0;
     const obj = handle ? gearGet(state.gear, handle) : null;
-    const mention = slot ? equipMention(slot) : `slot ${i}`;
+    const mention = slot
+      ? equipMention(slot)
+      : t("screens.equipment.slotFallback", "slot {index}", { index: i });
     if (obj) {
       rows.push({
         id: `core:gear:${handle}`,
@@ -573,7 +582,7 @@ export function equipmentScreen(state: GameState, title = "Equipment"): ScreenVi
         semantic: { kind: "slot", ref: i, data: { mention } },
         color: DIM,
         disabled: true,
-        cells: { slot: { text: mention }, name: { text: "(nothing)" } },
+        cells: { slot: { text: mention }, name: { text: t("screens.equipment.emptySlot", "(nothing)") } },
       });
     }
   }
@@ -621,7 +630,10 @@ export function equipmentLines(state: GameState): ScreenLine[] {
 /** The quiver's one field. Exported so a mod's fixture derives from it, not a copy. */
 export const QUIVER_COLUMNS: readonly ScreenColumn[] = [{ key: "name" }];
 
-export function quiverScreen(state: GameState, title = "Quiver"): ScreenView {
+export function quiverScreen(
+  state: GameState,
+  title = t("screens.quiver.title", "Quiver"),
+): ScreenView {
   const rows: ScreenRow[] = [];
   (state.gear.quiver ?? []).forEach((handle, slot) => {
     if (!handle) return;
@@ -647,7 +659,7 @@ export function quiverScreen(state: GameState, title = "Quiver"): ScreenView {
         tagged: true,
         columns: QUIVER_COLUMNS,
         rows,
-        empty: { text: "(quiver empty)", color: DIM },
+        empty: { text: t("screens.quiver.empty", "(quiver empty)"), color: DIM },
       },
     ],
   });
@@ -804,15 +816,22 @@ export function statHeaderLine(): ScreenLine {
  * nothing at all on a stat that is not drained - the table's trailing-space cut,
  * not a special case here.
  */
-const STAT_COLUMNS: readonly ScreenColumn[] = [
-  { key: "stat", label: "", width: 5 },
-  { key: "self", label: "Self", width: 6, align: "right", gap: 0 },
-  { key: "rb", label: "RB", width: 3, align: "right" },
-  { key: "cb", label: "CB", width: 3, align: "right" },
-  { key: "eb", label: "EB", width: 3, align: "right" },
-  { key: "best", label: "Best", width: 6, align: "right" },
-  { key: "cur", label: "", width: 6, align: "right" },
-];
+/**
+ * A FUNCTION, not a constant: the column labels are player-visible text and a
+ * locale can change mid-session, so a `const` computed at import time would
+ * freeze whichever language happened to be active first.
+ */
+function statColumns(): readonly ScreenColumn[] {
+  return [
+    { key: "stat", label: "", width: 5 },
+    { key: "self", label: t("screens.charSheet.stat.self", "Self"), width: 6, align: "right", gap: 0 },
+    { key: "rb", label: t("screens.charSheet.stat.rb", "RB"), width: 3, align: "right" },
+    { key: "cb", label: t("screens.charSheet.stat.cb", "CB"), width: 3, align: "right" },
+    { key: "eb", label: t("screens.charSheet.stat.eb", "EB"), width: 3, align: "right" },
+    { key: "best", label: t("screens.charSheet.stat.best", "Best"), width: 6, align: "right" },
+    { key: "cur", label: "", width: 6, align: "right" },
+  ];
+}
 
 /** A bonus field ("+1", "-1", "+0") with the number it was formatted from. */
 function bonusCell(text: string): ScreenCell {
@@ -853,7 +872,7 @@ function statTableBlock(rows: readonly StatSheetRow[], gapAfter = 0): ScreenTabl
     kind: "table",
     key: "stats",
     tagged: false,
-    columns: STAT_COLUMNS,
+    columns: statColumns(),
     headerColor: LABEL,
     rows: rows.map(statScreenRow),
     ...(gapAfter === 0 ? {} : { gapAfter }),
@@ -925,6 +944,14 @@ function panelBlock(panel: { key: string; lines: readonly PanelLine[] }): Screen
  * Both page keys are published even though the footer names only 'h': 'l' cycles
  * BACKWARD (L1285-1288) and is as real a command as the other three.
  */
+/*
+ * Not routed through t(): this table is consumed by charsheet.ts as a plain
+ * value (`actions: CHARACTER_ACTIONS`), not through a function call, so
+ * turning its labels into t() calls would require the const to become a
+ * function - a signature change that reaches past this file's own scope into
+ * every module that imports it. Left as a follow-up once that ripple is
+ * planned with the modules that consume it.
+ */
 export const CHARACTER_ACTIONS: readonly ScreenAction[] = [
   { id: "page-next", key: "h", label: "change mode" },
   { id: "page-prev", key: "l", label: "change mode" },
@@ -932,14 +959,30 @@ export const CHARACTER_ACTIONS: readonly ScreenAction[] = [
   { id: "file", key: "f", label: "to file" },
 ];
 
-/** do_cmd_change_name's prompt (ui-player.c:1229), verbatim. */
+/**
+ * do_cmd_change_name's prompt (ui-player.c:1229), verbatim.
+ *
+ * Not routed through t(): charsheet.ts reads this as a plain string constant
+ * (`footer: CHARACTER_FOOTER`, string interpolation elsewhere), so making it a
+ * function would change the exported shape for a module outside this file.
+ * Same follow-up as CHARACTER_ACTIONS above.
+ */
 export const CHARACTER_FOOTER =
   "['c' to change name, 'f' to file, 'h' to change mode, or ESC]";
 
 /** display_player's own heading: who this is, at what level. */
 export function characterTitle(state: GameState, name?: string): string {
   const p = state.actor.player;
-  return `Character  -  ${name || "(unnamed)"} the ${p.race.name} ${p.cls.name}, Level ${p.lev}`;
+  return t(
+    "screens.character.title",
+    "Character  -  {name} the {race} {cls}, Level {level}",
+    {
+      name: name || t("screens.character.unnamedFallback", "(unnamed)"),
+      race: p.race.name,
+      cls: p.cls.name,
+      level: p.lev,
+    },
+  );
 }
 
 /**
@@ -1035,15 +1078,27 @@ function spellStateDisplay(
   const flags = player.spellFlags[idx] ?? 0;
   if (spell.level >= 99) return { comment: "", attr: COLOUR_L_DARK, illegible: true };
   if ((flags & PY_SPELL.FORGOTTEN) !== 0)
-    return { comment: " forgotten", attr: COLOUR_YELLOW, illegible: false };
+    return {
+      comment: t("screens.spell.state.forgotten", " forgotten"),
+      attr: COLOUR_YELLOW,
+      illegible: false,
+    };
   if ((flags & PY_SPELL.LEARNED) !== 0) {
     if ((flags & PY_SPELL.WORKED) !== 0)
       return { comment: info, attr: COLOUR_WHITE, illegible: false };
-    return { comment: " untried", attr: COLOUR_L_GREEN, illegible: false };
+    return {
+      comment: t("screens.spell.state.untried", " untried"),
+      attr: COLOUR_L_GREEN,
+      illegible: false,
+    };
   }
   if (spell.level <= player.lev)
-    return { comment: " unknown", attr: COLOUR_L_BLUE, illegible: false };
-  return { comment: " difficult", attr: COLOUR_RED, illegible: false };
+    return {
+      comment: t("screens.spell.state.unknown", " unknown"),
+      attr: COLOUR_L_BLUE,
+      illegible: false,
+    };
+  return { comment: t("screens.spell.state.difficult", " difficult"), attr: COLOUR_RED, illegible: false };
 }
 
 /**
@@ -1094,7 +1149,7 @@ export function bookSpellMenu(
       mode === "cast" ? !spellOkayToCast(player, idx) : !spellOkayToStudy(player, idx);
     let label: string;
     if (illegible) {
-      label = "(illegible)";
+      label = t("screens.spell.illegible", "(illegible)");
     } else {
       const name = spell.name.padEnd(30).slice(0, 30);
       const lv = String(spell.level).padStart(2);
@@ -1386,7 +1441,8 @@ export function targetMenu(state: GameState): { items: MenuItem[]; mons: Monster
 /** The look screen lines ('l'): every visible monster and its condition. */
 export function lookLines(state: GameState): ScreenLine[] {
   const { items } = targetMenu(state);
-  if (items.length === 0) return [{ text: "You see no monsters.", color: DIM }];
+  if (items.length === 0)
+    return [{ text: t("screens.look.noMonsters", "You see no monsters."), color: DIM }];
   return items.map((it) => ({ text: it.label, color: FG }));
 }
 
@@ -1414,7 +1470,10 @@ const OBJECT_LIST_COLUMNS: readonly ScreenColumn[] = [
   { key: "location", pad: false, gap: 3 },
 ];
 
-export function objectListScreen(state: GameState, title = "Objects in view"): ScreenView {
+export function objectListScreen(
+  state: GameState,
+  title = t("screens.objectsInView.title", "Objects in view"),
+): ScreenView {
   const list = objectListCollect(state);
   objectListSort(list, objectListStandardCompare(state));
 
@@ -1455,13 +1514,22 @@ export function objectListScreen(state: GameState, title = "Objects in view"): S
     tagged: false,
     ...(losTotal === 0
       ? {}
-      : { caption: { text: `You can see ${losTotal} object${losTotal === 1 ? "" : "s"}:`, color: LABEL } }),
+      : {
+          caption: {
+            text: t(
+              "screens.objectsInView.inViewCaption",
+              "You can see {count, plural, one {# object} other {# objects}}:",
+              { count: losTotal },
+            ),
+            color: LABEL,
+          },
+        }),
     columns: OBJECT_LIST_COLUMNS,
     rows:
       losTotal === 0
         ? []
         : list.entries.filter((e) => e.count[OBJECT_LIST_SECTION_LOS]! > 0).map(entryRow),
-    empty: { text: "You can see no objects.", color: DIM },
+    empty: { text: t("screens.objectsInView.inViewEmpty", "You can see no objects."), color: DIM },
   });
 
   /* "You are aware of" section: printed whenever any out-of-view entries
@@ -1469,14 +1537,20 @@ export function objectListScreen(state: GameState, title = "Objects in view"): S
    * object_list_format_textblock's unconditional second call). "other " is
    * inserted only when LOS objects also exist (show_others). */
   if (noLosTotal > 0) {
-    const others = list.totalObjects[OBJECT_LIST_SECTION_LOS]! > 0 ? "other " : "";
+    const othersLabel = list.totalObjects[OBJECT_LIST_SECTION_LOS]! > 0
+      ? `${t("screens.objectsInView.other", "other")} `
+      : "";
     blocks.push({ kind: "lines", lines: [{ text: "", color: FG }] });
     blocks.push({
       kind: "table",
       key: "remembered",
       tagged: false,
       caption: {
-        text: `You are aware of ${noLosTotal} ${others}object${noLosTotal === 1 ? "" : "s"}:`,
+        text: t(
+          "screens.objectsInView.awareOfCaption",
+          "You are aware of {count, plural, one {# {othersLabel}object} other {# {othersLabel}objects}}:",
+          { count: noLosTotal, othersLabel },
+        ),
         color: LABEL,
       },
       columns: OBJECT_LIST_COLUMNS,
@@ -1499,7 +1573,10 @@ export function objectListLines(state: GameState): ScreenLine[] {
  * row's `values`, because a presenter that wants to draw the count as a badge
  * should not have to parse it back out of a sentence.
  */
-export function messageHistoryScreen(log: MessageLog, title = "Message history"): ScreenView {
+export function messageHistoryScreen(
+  log: MessageLog,
+  title = t("screens.messageHistory.title", "Message history"),
+): ScreenView {
   return freezeView({
     id: "core:messages",
     title,
@@ -1515,7 +1592,7 @@ export function messageHistoryScreen(log: MessageLog, title = "Message history")
           values: { count: m.count },
           cells: { message: { text: formatMessage(m) } },
         })),
-        empty: { text: "(no messages yet)", color: DIM },
+        empty: { text: t("screens.messageHistory.empty", "(no messages yet)"), color: DIM },
       },
     ],
   });
@@ -1543,13 +1620,19 @@ const HIST_KNOWN_GOLD = UI_GOLD;
  * its apostrophe, and the note two columns further on. No gap before the depth and
  * two before the note is exactly the layout `gap` exists to express.
  */
-const PLAYER_HISTORY_COLUMNS: readonly ScreenColumn[] = [
-  { key: "turn", label: "Turn", width: 10, align: "right" },
-  { key: "depth", label: "Depth", width: 8, align: "right", gap: 0 },
-  { key: "note", label: "Note", gap: 2, wrap: true },
-];
+/** A FUNCTION, not a constant: see `statColumns`'s comment on why. */
+function playerHistoryColumns(): readonly ScreenColumn[] {
+  return [
+    { key: "turn", label: t("screens.playerHistory.column.turn", "Turn"), width: 10, align: "right" },
+    { key: "depth", label: t("screens.playerHistory.column.depth", "Depth"), width: 8, align: "right", gap: 0 },
+    { key: "note", label: t("screens.playerHistory.column.note", "Note"), gap: 2, wrap: true },
+  ];
+}
 
-export function playerHistoryScreen(state: GameState, title = "Player history"): ScreenView {
+export function playerHistoryScreen(
+  state: GameState,
+  title = t("screens.playerHistory.title", "Player history"),
+): ScreenView {
   const list = historyGetList(state.actor.player);
   return freezeView({
     id: "core:player-history",
@@ -1560,7 +1643,7 @@ export function playerHistoryScreen(state: GameState, title = "Player history"):
         kind: "table",
         key: "history",
         tagged: false,
-        columns: PLAYER_HISTORY_COLUMNS,
+        columns: playerHistoryColumns(),
         rows: list.map((e) => {
           const lost = histHas(e.type, HIST.ARTIFACT_LOST);
           const known = histHas(e.type, HIST.ARTIFACT_KNOWN);
@@ -1589,7 +1672,7 @@ export function playerHistoryScreen(state: GameState, title = "Player history"):
             },
           };
         }),
-        empty: { text: "(no history yet)", color: DIM },
+        empty: { text: t("screens.playerHistory.empty", "(no history yet)"), color: DIM },
       },
     ],
   });
@@ -1806,6 +1889,11 @@ export function svalKindMenu(
 /**
  * sval_dependent[] (ui-options.c L1674): the ignore-menu tval categories,
  * verbatim labels and order.
+ *
+ * Not routed through t(): main.ts and ignore-menu.ts both read `.desc` off
+ * this table directly (`.find(...)`, `.some(...)`), so turning the table into
+ * a function would change the exported shape for modules outside this file.
+ * Same follow-up as CHARACTER_ACTIONS.
  */
 export const SVAL_DEPENDENT: readonly { tval: number; desc: string }[] = [
   { tval: TV.STAFF, desc: "Staffs" },
@@ -1865,6 +1953,12 @@ const DEAD_TOMB_ART: readonly string[] = [
  * crown.txt (lib/screens): the winner crown drawn by display_winner
  * (ui-death.c L127-152). The first file line ("25") is the width hint and is
  * not embedded here; the remaining art lines follow.
+ *
+ * The two English lines inside the art ("Veni, Vidi, Vici!" and its
+ * translation) are baked into the fixed-width picture at their own upstream
+ * columns, the same way the tombstone's own art is - reflowing or replacing
+ * them would misalign the centred crown, so they stay literal here exactly
+ * as the module doc above already asks for the whole block.
  */
 const CROWN_ART: readonly string[] = [
   "",
@@ -1892,7 +1986,10 @@ const CROWN_ART: readonly string[] = [
  * The footer both death screens carry. Upstream's death screens are
  * press-anything-to-continue rather than the browse keys `SCREEN_FOOTER` names.
  */
-const DEATH_FOOTER = "[ Press ESC to continue ]";
+/** A FUNCTION, not a constant: see `statColumns`'s comment on why. */
+function deathFooter(): string {
+  return t("screens.death.footer", "[ Press ESC to continue ]");
+}
 
 /** The fields display_exit_screen centres over the tombstone. */
 export interface TombstoneDeps {
@@ -1943,40 +2040,63 @@ export function tombstoneScreen(deps: TombstoneDeps): ScreenView {
    * reading columns 8-39 of row 7 back out of ASCII. */
   const fields: ScreenArtField[] = [
     { key: "name", text: deps.fullName, row: 7, x1: 8, x2: 8 + 31 },
-    { key: "the", text: "the", row: 8, x1: 8, x2: 8 + 31 },
+    { key: "the", text: t("screens.tombstone.the", "the"), row: 8, x1: 8, x2: 8 + 31 },
     {
       key: "title",
-      text: deps.totalWinner ? "Magnificent" : deps.title,
+      text: deps.totalWinner ? t("screens.tombstone.magnificent", "Magnificent") : deps.title,
       row: 9,
       x1: 8,
       x2: 8 + 31,
     },
     { key: "class", text: deps.className, row: 11, x1: 8, x2: 8 + 31 },
-    { key: "level", text: `Level: ${deps.level}`, values: { level: deps.level }, row: 12, x1: 8, x2: 8 + 31 },
-    { key: "exp", text: `Exp: ${deps.exp}`, values: { exp: deps.exp }, row: 13, x1: 8, x2: 8 + 31 },
-    { key: "gold", text: `AU: ${deps.gold}`, values: { gold: deps.gold }, row: 14, x1: 8, x2: 8 + 31 },
+    {
+      key: "level",
+      text: t("screens.tombstone.level", "Level: {level}", { level: deps.level }),
+      values: { level: deps.level },
+      row: 12, x1: 8, x2: 8 + 31,
+    },
+    {
+      key: "exp",
+      text: t("screens.tombstone.exp", "Exp: {exp}", { exp: deps.exp }),
+      values: { exp: deps.exp },
+      row: 13, x1: 8, x2: 8 + 31,
+    },
+    {
+      key: "gold",
+      text: t("screens.tombstone.gold", "AU: {gold}", { gold: deps.gold }),
+      values: { gold: deps.gold },
+      row: 14, x1: 8, x2: 8 + 31,
+    },
   ];
   if (deps.retired) {
     fields.push({
       key: "death",
-      text: `Retired on Level ${deps.depth}`,
+      text: t("screens.tombstone.retired", "Retired on Level {depth}", { depth: deps.depth }),
       values: { depth: deps.depth },
       row: 15, x1: 8, x2: 8 + 31,
     });
   } else {
     fields.push({
       key: "death",
-      text: `Killed on Level ${deps.depth}`,
+      text: t("screens.tombstone.killed", "Killed on Level {depth}", { depth: deps.depth }),
       values: { depth: deps.depth },
       row: 15, x1: 8, x2: 8 + 31,
     });
-    fields.push({ key: "killer", text: `by ${deps.diedFrom}.`, row: 16, x1: 8, x2: 8 + 31 });
+    fields.push({
+      key: "killer",
+      text: t("screens.tombstone.killer", "by {diedFrom}.", { diedFrom: deps.diedFrom }),
+      row: 16, x1: 8, x2: 8 + 31,
+    });
   }
-  fields.push({ key: "date", text: `on ${deps.deathTime.slice(0, 24)}`, row: 18, x1: 8, x2: 8 + 31 });
+  fields.push({
+    key: "date",
+    text: t("screens.tombstone.date", "on {deathTime}", { deathTime: deps.deathTime.slice(0, 24) }),
+    row: 18, x1: 8, x2: 8 + 31,
+  });
   return freezeView({
     id: "core:tombstone",
     title: "",
-    footer: DEATH_FOOTER,
+    footer: deathFooter(),
     blocks: [{ kind: "art", key: "core:tomb", lines: DEAD_TOMB_ART, color: FG, fields }],
   });
 }
@@ -1999,7 +2119,7 @@ export function winnerScreen(): ScreenView {
   return freezeView({
     id: "core:winner",
     title: "",
-    footer: DEATH_FOOTER,
+    footer: deathFooter(),
     blocks: [
       {
         kind: "art",
@@ -2009,7 +2129,11 @@ export function winnerScreen(): ScreenView {
         center: true,
         width: 25, // crown.txt's declared width hint (first file line)
         fields: [
-          { key: "hail", text: "All Hail the Mighty Champion!", row: CROWN_ART.length },
+          {
+            key: "hail",
+            text: t("screens.winner.hail", "All Hail the Mighty Champion!"),
+            row: CROWN_ART.length,
+          },
         ],
       },
     ],
@@ -2030,7 +2154,14 @@ function clipTo(s: string, n: number): string {
   return n <= 0 ? "" : s.slice(0, n);
 }
 
-/** The header `showMonsterList` paints, spelled once so the view cannot disagree. */
+/**
+ * The header `showMonsterList` paints, spelled once so the view cannot
+ * disagree.
+ *
+ * Not routed through t(): monster-list.ts reads this as a plain string
+ * constant (`.slice(...)`), so making it a function would change the exported
+ * shape for a module outside this file. Same follow-up as CHARACTER_ACTIONS.
+ */
 export const MONSTER_LIST_TITLE = "Visible monsters";
 
 /**
@@ -2040,17 +2171,20 @@ export const MONSTER_LIST_TITLE = "Visible monsters";
  * Published as an action rather than left in the footer prose for the reason the
  * character sheet's three are: a presenter that took the screen without being
  * able to reach it would quietly take the command away from the player.
+ *
+ * A FUNCTION, not a constant: see `statColumns`'s comment on why.
  */
-export const MONSTER_LIST_ACTIONS: readonly ScreenAction[] = [
-  { id: "sort-exp", key: "x", label: "sort by exp" },
-];
+export function monsterListActions(): readonly ScreenAction[] {
+  return [{ id: "sort-exp", key: "x", label: t("screens.monsterList.sortByExp", "sort by exp") }];
+}
 
 /** The key legend, which names the state the toggle is IN, as upstream's does. */
 export function monsterListFooter(sortExp: boolean): string {
-  const toggle = sortExp
-    ? "Press 'x' to turn OFF 'sort by exp'"
-    : "Press 'x' to turn ON 'sort by exp'";
-  return `[ ${toggle}  ESC: back ]`;
+  return t(
+    "screens.monsterList.footer",
+    "[ Press 'x' to turn {state, select, off {OFF} other {ON}} 'sort by exp'  ESC: back ]",
+    { state: sortExp ? "off" : "on" },
+  );
 }
 
 /** The " dy N/S dx E/W" offset upstream prints for a LONE monster, else "". */
@@ -2144,7 +2278,7 @@ function monsterListSectionBlock(
     };
   };
 
-  const plural = total === 1 ? "" : "s";
+  const othersLabel = others ? `${t("screens.monsterList.other", "other")} ` : "";
   return {
     kind: "table",
     key,
@@ -2153,7 +2287,11 @@ function monsterListSectionBlock(
       ? {}
       : {
           caption: {
-            text: `${prefix} ${total} ${others ? "other " : ""}monster${plural}:`,
+            text: t(
+              "screens.monsterList.sectionCaption",
+              "{prefix} {count, plural, one {# {othersLabel}monster} other {# {othersLabel}monsters}}:",
+              { prefix, count: total, othersLabel },
+            ),
             color: FG,
           },
         }),
@@ -2164,7 +2302,7 @@ function monsterListSectionBlock(
       { key: "location", width: locWidth, align: "right", gap: 0 },
     ],
     rows: total === 0 ? [] : entries.map(row),
-    empty: { text: `${prefix} no monsters.`, color: FG },
+    empty: { text: t("screens.monsterList.sectionEmpty", "{prefix} no monsters.", { prefix }), color: FG },
     ...(gapAfter === 0 ? {} : { gapAfter }),
   };
 }
@@ -2195,7 +2333,7 @@ export function monsterListScreen(
       title: MONSTER_LIST_TITLE,
       footer: monsterListFooter(sortExp),
       blocks,
-      actions: MONSTER_LIST_ACTIONS,
+      actions: monsterListActions(),
     });
 
   if ((p.timed[TMD.IMAGE] ?? 0) > 0) {
@@ -2204,7 +2342,16 @@ export function monsterListScreen(
     return view([
       {
         kind: "text",
-        paragraphs: [[{ text: "Your hallucinations are too wild to see things clearly." }]],
+        paragraphs: [
+          [
+            {
+              text: t(
+                "screens.monsterList.hallucinating",
+                "Your hallucinations are too wild to see things clearly.",
+              ),
+            },
+          ],
+        ],
         color: colorToCss(COLOUR_ORANGE),
       },
     ]);
@@ -2224,7 +2371,7 @@ export function monsterListScreen(
       list,
       MONSTER_LIST_SECTION_LOS,
       "in-view",
-      "You can see",
+      t("screens.monsterList.youCanSee", "You can see"),
       false,
       maxWidth,
       depth,
@@ -2238,7 +2385,7 @@ export function monsterListScreen(
         list,
         MONSTER_LIST_SECTION_ESP,
         "detected",
-        "You are aware of",
+        t("screens.monsterList.youAreAwareOf", "You are aware of"),
         (list.totalMonsters[MONSTER_LIST_SECTION_LOS] ?? 0) > 0,
         maxWidth,
         depth,
@@ -2279,7 +2426,11 @@ export function svalCategoryItems(
 /* The Hall of Fame, and a store's stock in the knowledge menu          */
 /* ------------------------------------------------------------------ */
 
-/** VERSION_NAME (ui-score.c L148), which the Hall of Fame's heading is built on. */
+/**
+ * VERSION_NAME (ui-score.c L148), which the Hall of Fame's heading is built
+ * on. Stays literal: this is the game's own product name, not prose - the
+ * same reason a brand name is not translated.
+ */
 const HALL_OF_FAME_NAME = "Neo Angband";
 
 /**
@@ -2292,15 +2443,24 @@ const HALL_OF_FAME_NAME = "Neo Angband";
  */
 export function hallOfFameTitle(from = 0): string {
   return from > 0
-    ? `${HALL_OF_FAME_NAME} Hall of Fame (from position ${from + 1})`
-    : `${HALL_OF_FAME_NAME} Hall of Fame`;
+    ? t("screens.hallOfFame.titleFrom", "{name} Hall of Fame (from position {position})", {
+        name: HALL_OF_FAME_NAME,
+        position: from + 1,
+      })
+    : t("screens.hallOfFame.title", "{name} Hall of Fame", { name: HALL_OF_FAME_NAME });
 }
 
 /** The prompt display_scores_aux prints at the foot (ui-score.c L155-160). */
 export function hallOfFameFooter(allowScrolling: boolean): string {
   return allowScrolling
-    ? "[Press ESC to exit, up for prior page, any other key for next page.]"
-    : "[Press ESC to exit, any other key to page forward till done.]";
+    ? t(
+        "screens.hallOfFame.footerScroll",
+        "[Press ESC to exit, up for prior page, any other key for next page.]",
+      )
+    : t(
+        "screens.hallOfFame.footerPage",
+        "[Press ESC to exit, any other key to page forward till done.]",
+      );
 }
 
 /**
@@ -2371,7 +2531,7 @@ export function hallOfFameScreen(
         tagged: false,
         columns: HALL_OF_FAME_COLUMNS,
         rows: rows.map(hallOfFameRow),
-        empty: { text: "(no scores yet)", color: DIM },
+        empty: { text: t("screens.hallOfFame.empty", "(no scores yet)"), color: DIM },
       },
     ],
   });
@@ -2540,15 +2700,15 @@ export function storeKnowledgeScreen(
 ): ScreenView {
   const { isHome } = deps;
   const heading: ScreenLine[] = [
-    { text: isHome ? "Your Home" : deps.owner },
+    { text: isHome ? t("screens.storeKnowledge.yourHome", "Your Home") : deps.owner },
     { text: "" },
     {
       // padEnd amounts derived in STORE_NAME_WIDTH / HOME_NAME_WIDTH's own
       // comments above: they put "Weight" and "Price" where store_display_recalc
       // (ui-store.c L208-233) puts them at wid=80, matching the data rows below.
       text: isHome
-        ? `${"Home Inventory".padEnd(68)}Weight`
-        : `${"Store Inventory".padEnd(58)}${"Weight".padEnd(12)}Price`,
+        ? `${t("screens.storeKnowledge.homeInventory", "Home Inventory").padEnd(68)}${t("screens.storeKnowledge.weight", "Weight")}`
+        : `${t("screens.storeKnowledge.storeInventory", "Store Inventory").padEnd(58)}${t("screens.storeKnowledge.weight", "Weight").padEnd(12)}${t("screens.storeKnowledge.price", "Price")}`,
     },
   ];
   /* A blank row between the header and the empty notice, and ONLY when the
@@ -2576,7 +2736,10 @@ export function storeKnowledgeScreen(
         /* "%3d.%d lb" without the leading pad, which the column's width supplies
          * (store_display_entry, ui-store.c L299-301). `each` is one item's
          * weight, as upstream's object_weight_one is. */
-        weight: { text: `${Math.trunc(w / 10)}.${w % 10} lb`, values: { each: w } },
+        weight: {
+          text: `${Math.trunc(w / 10)}.${w % 10} ${t("screens.weight.lb", "lb")}`,
+          values: { each: w },
+        },
         ...(isHome ? {} : { price: { text: String(price), values: { price } } }),
       },
     };
@@ -2594,7 +2757,11 @@ export function storeKnowledgeScreen(
         tagged: true,
         columns: isHome ? HOME_STOCK_COLUMNS : STORE_STOCK_COLUMNS,
         rows,
-        empty: { text: isHome ? "  (Your home is empty.)" : "  (The shelves are bare.)" },
+        empty: {
+          text: isHome
+            ? `  ${t("screens.storeKnowledge.homeEmpty", "(Your home is empty.)")}`
+            : `  ${t("screens.storeKnowledge.storeEmpty", "(The shelves are bare.)")}`,
+        },
       },
     ],
   });
@@ -2632,7 +2799,13 @@ export function storeKnowledgeLines(
  * object literal rather than from a live shell.
  */
 
-/** The heading the update page draws, spelled once so the view cannot disagree. */
+/**
+ * The heading the update page draws, spelled once so the view cannot disagree.
+ *
+ * Not routed through t(): main.ts reads this as a plain string constant
+ * (`.slice(...)`), so making it a function would change the exported shape
+ * for a module outside this file. Same follow-up as CHARACTER_ACTIONS.
+ */
 export const UPDATE_TITLE = "Update";
 
 /**
@@ -2666,10 +2839,10 @@ export function updateScreen(
   const confirm = updateConfirmLabel(view);
   if (confirm !== null) actions.push({ id: "confirm", key: "ENTER", label: confirm });
   if (view.how !== "web" && view.phase !== "downloading") {
-    actions.push({ id: "channel", key: "C", label: "change channel" });
+    actions.push({ id: "channel", key: "C", label: t("screens.update.changeChannel", "change channel") });
   }
   if (modCount > 0 && view.phase !== "downloading") {
-    actions.push({ id: "mods", key: "M", label: "mod updates" });
+    actions.push({ id: "mods", key: "M", label: t("screens.update.modUpdates", "mod updates") });
   }
   return freezeView({
     id: "core:update",
@@ -2692,15 +2865,21 @@ export function updateScreen(
  */
 function updateConfirmLabel(view: Pick<UpdateView, "phase" | "how">): string | null {
   if (view.phase === "downloading" || view.phase === "installing") return null;
-  if (view.phase === "failed") return "try again";
-  if (view.phase === "unchecked") return "check again";
+  if (view.phase === "failed") return t("screens.update.tryAgain", "try again");
+  if (view.phase === "unchecked") return t("screens.update.checkAgain", "check again");
   if (view.phase === "uptodate") return null;
-  if (view.how === "swap") return "update and restart";
-  if (view.how === "web") return "reload onto the new version";
-  return "open the releases page";
+  if (view.how === "swap") return t("screens.update.updateAndRestart", "update and restart");
+  if (view.how === "web") return t("screens.update.reloadOntoNewVersion", "reload onto the new version");
+  return t("screens.update.openReleasesPage", "open the releases page");
 }
 
-/** The heading the report page draws, spelled once so the view cannot disagree. */
+/**
+ * The heading the report page draws, spelled once so the view cannot disagree.
+ *
+ * Not routed through t(): main.ts reads this as a plain string constant
+ * (`.slice(...)`), so making it a function would change the exported shape
+ * for a module outside this file. Same follow-up as CHARACTER_ACTIONS.
+ */
 export const REPORT_TITLE = "Report a problem";
 
 /** Which key each report action is; see `UPDATE_ACTION_KEYS`. */
@@ -2734,11 +2913,11 @@ export function reportScreen(
           .filter((d) => d.url !== null && d.key !== "")
           .map((d) => ({ id: d.id, key: d.key, label: d.label }))
       : view.phase === "failed"
-        ? [{ id: "confirm", key: "ENTER", label: "try again" }]
+        ? [{ id: "confirm", key: "ENTER", label: t("screens.report.tryAgain", "try again") }]
         : [
-            { id: "describe", key: "D", label: "describe" },
-            { id: "log-level", key: "L", label: "logging level" },
-            { id: "confirm", key: "ENTER", label: "write it" },
+            { id: "describe", key: "D", label: t("screens.report.describe", "describe") },
+            { id: "log-level", key: "L", label: t("screens.report.loggingLevel", "logging level") },
+            { id: "confirm", key: "ENTER", label: t("screens.report.writeIt", "write it") },
           ];
   return freezeView({
     id: "core:report",

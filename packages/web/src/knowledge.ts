@@ -53,6 +53,7 @@ import {
   TF,
   TRF,
   TV,
+  t,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   Rune,
@@ -103,6 +104,14 @@ function strcmp(a: string, b: string): number {
   if (a < b) return -1;
   if (a > b) return 1;
   return 0;
+}
+
+/** A stable, readable message id fragment from an upstream group-name literal. */
+function slug(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 /**
@@ -175,7 +184,9 @@ export function buildObjGroupOrder(bases: readonly (ObjectBase | undefined)[]): 
 
 /** kind_name(gid) (ui-knowledge.c L1598): the display name of group `gid`. */
 export function objGroupName(gid: number): string {
-  return OBJECT_TEXT_ORDER[gid]?.name ?? "";
+  const name = OBJECT_TEXT_ORDER[gid]?.name;
+  if (!name) return "";
+  return t(`knowledge.objectGroup.${slug(name)}`, name);
 }
 
 // ---------------------------------------------------------------------------
@@ -318,9 +329,14 @@ export async function runGroupedBrowser<T>(
         const { cols, rows } = term.size();
         const browserRows = Math.max(1, rows - 8);
         term.clear();
-        term.print(0, BROWSER_TITLE_ROW, `Knowledge - ${title}`.slice(0, cols - 1), UI_CURSOR);
-        term.print(0, BROWSER_LABEL_ROW, "Group", UI_DIM);
-        term.print(memberCol, BROWSER_LABEL_ROW, "Name", UI_DIM);
+        term.print(
+          0,
+          BROWSER_TITLE_ROW,
+          t("knowledge.browser.titleRow", "Knowledge - {title}", { title }).slice(0, cols - 1),
+          UI_CURSOR,
+        );
+        term.print(0, BROWSER_LABEL_ROW, t("knowledge.browser.group", "Group"), UI_DIM);
+        term.print(memberCol, BROWSER_LABEL_ROW, t("knowledge.browser.name", "Name"), UI_DIM);
         /* prt(otherfields, 4, 46) (ui-knowledge.c:867-868) - the same row as the
          * Group/Name labels, at a column upstream hard-codes. */
         if (hooks.otherfields && OTHERFIELDS_COL < cols - 1) {
@@ -394,10 +410,18 @@ export async function runGroupedBrowser<T>(
         const xtra = rows_[member]?.hint ?? "";
         const nav =
           panel === 0
-            ? "[ arrows to choose a group, right/Enter for its names, ESC to leave ]"
+            ? t(
+                "knowledge.browser.nav.group",
+                "[ arrows to choose a group, right/Enter for its names, ESC to leave ]",
+              )
             : xtra
-              ? `[ arrows${xtra}, left/ESC back to the groups ]`
-              : "[ arrows, Enter or 'r' to read, left/ESC back to the groups ]";
+              ? t("knowledge.browser.nav.member", "[ arrows{xtra}, left/ESC back to the groups ]", {
+                  xtra,
+                })
+              : t(
+                  "knowledge.browser.nav.memberPlain",
+                  "[ arrows, Enter or 'r' to read, left/ESC back to the groups ]",
+                );
         term.print(0, rows - 1, nav.slice(0, cols - 1), UI_DIM);
       };
 
@@ -599,7 +623,10 @@ export function runeKnowledgeGroups(
   player: Player,
   runeNote?: (index: number) => string | undefined,
 ): { title: string; groups: KnowledgeGroup<Rune>[]; unknown: number } {
-  const groups: KnowledgeGroup<Rune>[] = RUNE_GROUP_TEXT.map((name) => ({ name, rows: [] }));
+  const groups: KnowledgeGroup<Rune>[] = RUNE_GROUP_TEXT.map((name) => ({
+    name: t(`knowledge.runeGroup.${slug(name)}`, name),
+    rows: [],
+  }));
   let known = 0;
   for (let i = 0; i < allRunes.length; i++) {
     const rune = allRunes[i]!;
@@ -621,12 +648,20 @@ export function runeKnowledgeGroups(
         ? { cells: [{ text: note, color: UI_YELLOW, col: 47 }] }
         : {}),
       /* rune_xtra_prompt (ui-knowledge.c:2158-2169): the '}' uninscribe key is
-       * offered only for a rune that already carries a note. */
-      hint: note !== undefined ? ", 'r'ecall, '{', '}'" : ", 'r'ecall, '{'",
+       * offered only for a rune that already carries a note. The '{'/'}' key
+       * glyphs stay literal - they name the actual keys, not prose. */
+      hint:
+        note !== undefined
+          ? `, ${t("knowledge.hint.recall", "'r'ecall")}, '{', '}'`
+          : `, ${t("knowledge.hint.recall", "'r'ecall")}, '{'`,
     });
   }
   const unknown = allRunes.length - known;
-  return { title: `runes (${unknown} unknown)`, groups, unknown };
+  return {
+    title: t("knowledge.runes.title", "runes ({count} unknown)", { count: unknown }),
+    groups,
+    unknown,
+  };
 }
 
 /**
@@ -747,7 +782,12 @@ export async function showRuneKnowledge(
           return true;
         }
         /* askfor_aux(note_text, sizeof(note_text)) with char[80] -> 79 chars. */
-        const text = await promptText(term, "Inscribe with: ", notes.get(i) ?? "", 79);
+        const text = await promptText(
+          term,
+          t("knowledge.rune.promptInscribe", "Inscribe with: "),
+          notes.get(i) ?? "",
+          79,
+        );
         if (text !== null) {
           notes.set(i, null);
           notes.set(i, text);
@@ -803,7 +843,10 @@ export function featOrder(reg: FeatureRegistry, feat: Feature): number {
  * display colour so the terrain's symbol colour is conveyed in the flat list.
  */
 export function featureKnowledgeGroups(reg: FeatureRegistry): KnowledgeGroup<Feature>[] {
-  const groups: KnowledgeGroup<Feature>[] = FEATURE_GROUP_TEXT.map((name) => ({ name, rows: [] }));
+  const groups: KnowledgeGroup<Feature>[] = FEATURE_GROUP_TEXT.map((name) => ({
+    name: t(`knowledge.featureGroup.${slug(name)}`, name),
+    rows: [],
+  }));
   for (const feat of reg.allFeatures()) {
     if (!feat.name || feat.mimic) continue; // L2476: skip nameless + mimics
     const gid = featOrder(reg, feat);
@@ -833,7 +876,7 @@ export function featureRecallScreen(feat: Feature): ScreenView {
 }
 
 export async function showFeatureKnowledge(term: GridSurface & GridPointerInput, reg: FeatureRegistry): Promise<void> {
-  await runGroupedBrowser(term, "features", featureKnowledgeGroups(reg), async (feat) => {
+  await runGroupedBrowser(term, t("knowledge.features.title", "features"), featureKnowledgeGroups(reg), async (feat) => {
     await showTextScreen(term, featureRecallScreen(feat));
   });
 }
@@ -863,7 +906,10 @@ export function trapOrder(trap: TrapKind): number {
  * shown in the trap's colour to convey its symbol colour.
  */
 export function trapKnowledgeGroups(traps: readonly TrapKind[]): KnowledgeGroup<TrapKind>[] {
-  const groups: KnowledgeGroup<TrapKind>[] = TRAP_GROUP_TEXT.map((name) => ({ name, rows: [] }));
+  const groups: KnowledgeGroup<TrapKind>[] = TRAP_GROUP_TEXT.map((name) => ({
+    name: t(`knowledge.trapGroup.${slug(name)}`, name),
+    rows: [],
+  }));
   for (const trap of traps) {
     if (!trap.name) continue; // L2656: skip nameless slots
     const gid = trapOrder(trap);
@@ -893,7 +939,7 @@ export function trapRecallScreen(trap: TrapKind): ScreenView {
 }
 
 export async function showTrapKnowledge(term: GridSurface & GridPointerInput, traps: readonly TrapKind[]): Promise<void> {
-  await runGroupedBrowser(term, "traps", trapKnowledgeGroups(traps), async (trap) => {
+  await runGroupedBrowser(term, t("knowledge.traps.title", "traps"), trapKnowledgeGroups(traps), async (trap) => {
     await showTextScreen(term, trapRecallScreen(trap));
   });
 }
@@ -1116,8 +1162,10 @@ export async function showArtifactKnowledge(
   const seed = deps.seedRandart ?? 0;
   const title =
     deps.state.options?.get("birth_randarts") && deps.seedRandart !== undefined
-      ? `artifacts (seed ${(seed >>> 0).toString(16).padStart(8, "0")})`
-      : "artifacts";
+      ? t("knowledge.artifacts.titleSeeded", "artifacts (seed {seed})", {
+          seed: (seed >>> 0).toString(16).padStart(8, "0"),
+        })
+      : t("knowledge.artifacts.title", "artifacts");
   await runGroupedBrowser(term, title, groups, async (art) => {
     await showTextScreen(term, artifactFakeRecall(deps, art));
   });
@@ -1237,7 +1285,7 @@ export function objectFakeRecall(
         objectInfo(obj, OINFO.FAKE | OINFO.SUBJ, makeObjectInfoDeps(scratchState, obj, inspectExtras)),
         true,
       )
-    : textParagraphs(["You do not know what this is."]);
+    : textParagraphs([t("knowledge.object.unknown", "You do not know what this is.")]);
 
   return freezeView({
     id: "core:object-kind-recall",
@@ -1305,7 +1353,9 @@ export function objectKnowledgeGroups(
     const rows: KnowledgeRow<ObjectKind>[] = members.map((kind) => {
       const aware = !deps.hasFlavor(kind) || deps.isAware(kind);
       let label = deps.kindName(kind, aware);
-      if (deps.wasTried(kind) && !aware) label += " {tried}";
+      /* The braces are decoration, not prose - only "tried" is routed through
+       * the translator, so the marker keeps its shape in every locale. */
+      if (deps.wasTried(kind) && !aware) label += ` {${t("knowledge.object.tried", "tried")}}`;
       return { label, color: FG, member: kind };
     });
     return { name: objGroupName(gid), rows };
@@ -1328,8 +1378,9 @@ export async function showObjectKnowledge(
    * which is exactly the xtra_act hook. Absent when the host does not offer
    * autoinscription, and then the browser runs with no extra keys at all. */
   const inscribe = deps.setAutoinscription;
+  const objectsTitle = t("knowledge.objects.title", "known objects");
   if (!inscribe) {
-    await runGroupedBrowser(term, "known objects", groups, recall);
+    await runGroupedBrowser(term, objectsTitle, groups, recall);
     return;
   }
   /* o_xtra_prompt (ui-knowledge.c:1980-1998) offers 's' to toggle ignore and '}'
@@ -1337,9 +1388,13 @@ export async function showObjectKnowledge(
    * what this build can actually do rather than what the C's string says. */
   const withPrompt = groups.map((g) => ({
     ...g,
-    rows: g.rows.map((r) => ({ ...r, hint: ", 'r'ecall, '{' to inscribe" })),
+    rows: g.rows.map((r) => ({
+      ...r,
+      /* The '{' key glyph stays literal, as in runeKnowledgeGroups' hint above. */
+      hint: `, ${t("knowledge.hint.recall", "'r'ecall")}, '{' to inscribe`,
+    })),
   }));
-  await runGroupedBrowser(term, "known objects", withPrompt, recall, {
+  await runGroupedBrowser(term, objectsTitle, withPrompt, recall, {
     xtraAct: async (key, kind) => {
       if (key !== "{") return false;
       await inscribe(kind); // owns the "Inscribe with: " prompt + registry write
@@ -1411,7 +1466,10 @@ export function egoFakeRecall(
   groupName: string,
 ): ScreenView {
   const { state, reg, player, runeEnv, inspectExtras } = deps;
-  const title = `${groupName} ${ego.name}`;
+  const title = t("knowledge.ego.recallTitle", "{group} {name}", {
+    group: groupName,
+    name: ego.name,
+  });
 
   const scratchPlayer: Player = { ...player, objKnown: blankObjKnowledge() };
   playerLearnAllRunes(scratchPlayer, runeEnv);
@@ -1446,7 +1504,7 @@ export async function showEgoKnowledge(
   /* The header is `format("%s %s", ego_grp_name(default_group_id(oid)),
    * ego->name)` (L1801) - the group the highlighted row sits under, which is
    * why one ego browsed from two groups gets two different headers. */
-  await runGroupedBrowser(term, "ego items", groups, async (ego, groupName) => {
+  await runGroupedBrowser(term, t("knowledge.ego.title", "ego items"), groups, async (ego, groupName) => {
     await showTextScreen(term, egoFakeRecall(recallDeps, ego, groupName));
   });
 }
@@ -1456,7 +1514,9 @@ export async function showEgoKnowledge(
 // ---------------------------------------------------------------------------
 
 /** display_knowledge's `otherfields` for monsters (ui-knowledge.c:1374-1375). */
-export const MONSTER_OTHERFIELDS = "                 Sym  Kills  Full";
+export function monsterOtherfields(): string {
+  return t("knowledge.monster.otherfields", "                 Sym  Kills  Full");
+}
 
 /** The absolute columns display_monster writes (ui-knowledge.c:1130-1143). */
 const MON_SYM_COL = 64;
@@ -1465,8 +1525,12 @@ const MON_FULL_COL = 75;
 
 /** display_monster's kills field (ui-knowledge.c:1136-1143). */
 export function monsterKillsCell(race: MonsterRace, pkills: number): string {
-  if (!race.rarity) return "shape";
-  if (race.flags.has(RF.UNIQUE)) return race.maxNum === 0 ? " dead" : "alive";
+  if (!race.rarity) return t("knowledge.monster.shape", "shape");
+  if (race.flags.has(RF.UNIQUE)) {
+    return race.maxNum === 0
+      ? t("knowledge.monster.dead", " dead")
+      : t("knowledge.monster.alive", "alive");
+  }
   /* "%5d" - right-justified in five columns, which is what keeps this field
    * clear of "Full" at 75 when a player has killed ten thousand of something. */
   return String(pkills).padStart(5);
@@ -1490,9 +1554,15 @@ export function monsterSummaryLine(
   const kills = members.reduce((s, m) => s + m.lore.pkills, 0);
   const first = members[0];
   if (groupIndex === 0 && first && first.race.flags.has(RF.UNIQUE)) {
-    return `${members.length} known uniques, ${kills} slain.`;
+    return t("knowledge.monster.summaryUniques", "{count} known uniques, {slain} slain.", {
+      count: members.length,
+      slain: kills,
+    });
   }
-  return `Creatures slain: ${kills}/${total} (in group/in total)`;
+  return t("knowledge.monster.summaryTotal", "Creatures slain: {kills}/{total} (in group/in total)", {
+    kills,
+    total,
+  });
 }
 
 /**
@@ -1546,14 +1616,20 @@ export async function showMonsterKnowledge(
             col: MON_SYM_COL,
           },
           { text: monsterKillsCell(row.race, row.lore.pkills), color: UI_TEXT, col: MON_KILLS_COL },
-          { text: row.lore.allKnown ? "yes" : "no", color: UI_TEXT, col: MON_FULL_COL },
+          {
+            text: row.lore.allKnown
+              ? t("knowledge.monster.full.yes", "yes")
+              : t("knowledge.monster.full.no", "no"),
+            color: UI_TEXT,
+            col: MON_FULL_COL,
+          },
         ],
       };
     }),
   }));
 
-  await runGroupedBrowser(term, "monsters", groups, (row) => recall(row), {
-    otherfields: MONSTER_OTHERFIELDS,
+  await runGroupedBrowser(term, t("knowledge.monster.title", "monsters"), groups, (row) => recall(row), {
+    otherfields: monsterOtherfields(),
     summary: (gi) => {
       const members = groups[gi]?.rows.map((r) => r.member) ?? [];
       if (members.length === 0) return null;
@@ -1606,9 +1682,12 @@ export async function showShapeKnowledge(
   const rows = shapeKnowledgeRows(shapes);
   if (rows.length === 0) return;
   const groups: KnowledgeGroup<Shape>[] = [
-    { name: "Shapes", rows: rows.map((s) => ({ label: s.name, color: FG, member: s })) },
+    {
+      name: t("knowledge.shapes.groupName", "Shapes"),
+      rows: rows.map((s) => ({ label: s.name, color: FG, member: s })),
+    },
   ];
-  await runGroupedBrowser(term, "shapes", groups, async (shape) => {
+  await runGroupedBrowser(term, t("knowledge.shapes.title", "shapes"), groups, async (shape) => {
     await showTextScreen(term, shapeRecallScreen(shape, env));
   });
 }

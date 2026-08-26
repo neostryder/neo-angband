@@ -125,6 +125,25 @@ message reads differently.
 
 Tracked as issue #7.
 
+## Mod resilience
+
+The contract is in `docs/modding/MOD_COMPATIBILITY.md`, and its four gates are
+what any of this has to satisfy. One area is known to be short of it.
+
+### Bind-time resilience: the rest of the binders
+
+Three are done. Store records are complete: every field a patch can reach
+refuses a mod's unresolvable entry and attributes it; the ego `item:` list does
+the same; and an artifact's `base-object` drops the whole record rather than
+the field. The shared decision lives in `packages/core/src/mod/refusal.ts`, so
+a further binder is a small job rather than a repeat of the reasoning.
+
+**What is missing is the denominator.** No systematic pass has been made over
+the remaining binders to find every field that resolves a NAME from a list a
+mod can append to, which is the shape that makes this reachable.
+
+Tracked as issue #8.
+
 ## Attribution
 
 When a mod causes something, the game should say so; otherwise the reader blames
@@ -310,6 +329,21 @@ tab with the Borg actually playing for several real hours - is what would close
 this the rest of the way.
 
 Tracked as issue #21.
+
+### main.ts's combat text and confirmation prompts still bypass the translator
+
+The `en-XA` pseudo-locale sweep (`docs/modding/AUTHORING.md`'s tool for
+finding strings the translator never reaches) has been run against every
+screen under `packages/web/src` except one. main.ts alone still carries an
+estimated hundred-plus player-facing literals outside its own label/hint/
+title fields - combat messages, `confirmYesNo`/`getCheck` prompts, and
+`say()` status text - none of which route through `t()` yet. Every other
+screen the sweep covers (context menus, the mods and mod-browse screens,
+options, keymap editing, pref-file screens, the wizard/debug console, the
+shop, the character sheet, the knowledge browser, the title screen's
+credits, birth, and character select) is now clean of that class of gap.
+
+Tracked as issue #95.
 
 ## Mod sharing
 

@@ -328,14 +328,11 @@ describe("a macOS download says which Mac it is for", () => {
 
 describe("publishing an 0.x release does not present it as stable", () => {
   /*
-   * The workflow publishes a release as soon as its build finishes - there is
-   * no draft step and no human publish gate any more (CLAUDE.md, "Releases").
-   * Safety instead comes from ci.yml's play-smoke gate on the pre-tag commit,
-   * which is what makes an auto-publish safe: a crash cannot reach a tag in
-   * the first place. What still needs guarding is a different claim: pressing
-   * publish on an 0.x tag without --prerelease marks it "Latest release", and
-   * an alpha would then be the thing GitHub's API, the repository sidebar and
-   * every "download latest" link point at.
+   * Draft and pre-release are different claims. The workflow has always drafted
+   * - publishing is a human decision - but a draft says nothing about the
+   * software, and pressing publish on an 0.x tag without --prerelease marks it
+   * "Latest release". An alpha would then be the thing GitHub's API, the
+   * repository sidebar and every "download latest" link point at.
    */
   const workflow = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".github", "workflows", "release.yml"),
@@ -347,6 +344,10 @@ describe("publishing an 0.x release does not present it as stable", () => {
     /* And it must be CONDITIONAL: hard-coding it would keep flagging releases
      * as pre-release after 1.0, which is the same defect facing the other way. */
     expect(workflow).toMatch(/0\.\*\)/u);
+  });
+
+  it("still drafts, so a human is the last gate", () => {
+    expect(workflow).toContain("--draft");
   });
 });
 

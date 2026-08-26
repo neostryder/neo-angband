@@ -13,6 +13,7 @@ import { inputEvents } from "./input-door";
 import type { GridPointerInput, GridSurface } from "./term";
 import { selectFromMenu } from "./overlay";
 import { UI_TEXT } from "./ui-colors";
+import { t } from "@rpgm-tools/neo-angband-core";
 import {
   encodeActionToken,
   isBindableTriggerKey,
@@ -113,7 +114,12 @@ function ack(term: GridSurface & GridPointerInput, text: string): Promise<void> 
     const { cols } = term.size();
     /* prt(msg, 16, 0) + prt("Press any key to continue.", 17, 0)
      * (ui-options.c:603, :610-613, :710-715) - prt, so the row is erased. */
-    term.prt(0, 0, `${text}  [press any key]`.slice(0, cols - 1), UI_TEXT);
+    term.prt(
+      0,
+      0,
+      t("keymapEdit.ack", "{text}  [press any key]", { text }).slice(0, cols - 1),
+      UI_TEXT,
+    );
     const onKey = (ev: KeyboardEvent): void => {
       if (ev.key.length !== 1 && ev.key !== "Escape" && ev.key !== "Enter") return;
       ev.preventDefault();
@@ -134,7 +140,7 @@ function ack(term: GridSurface & GridPointerInput, text: string): Promise<void> 
 function confirm(term: GridSurface & GridPointerInput, prompt: string): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const { cols } = term.size();
-    const line = `${prompt}[y/n] `;
+    const line = t("keymapEdit.confirmSuffix", "{prompt}[y/n] ", { prompt });
     /* prt(buf, 0, 0) (textui_get_check, ui-input.c:1271). */
     term.prt(0, 0, line.slice(0, cols - 1), UI_TEXT);
     const onKey = (ev: KeyboardEvent): void => {
@@ -160,48 +166,65 @@ export async function runKeymapEditor(term: GridSurface & GridPointerInput, rogu
     const idx = await selectFromMenu(
       term,
       "core:keymap-edit",
-      `Keymaps (${roguelike ? "roguelike" : "original"} keyset, ${count} defined)`,
+      t(
+        "keymapEdit.title",
+        "Keymaps ({keyset, select, roguelike {roguelike} other {original}} keyset, {count} defined)",
+        { keyset: roguelike ? "roguelike" : "original", count },
+      ),
       [
-        { label: "Query a keymap" },
-        { label: "Create a keymap" },
-        { label: "Remove a keymap" },
+        { label: t("keymapEdit.menu.query", "Query a keymap") },
+        { label: t("keymapEdit.menu.create", "Create a keymap") },
+        { label: t("keymapEdit.menu.remove", "Remove a keymap") },
       ],
-      "[ a-c to choose, ESC to return ]",
+      t("keymapEdit.menu.footer", "[ a-c to choose, ESC to return ]"),
     );
     if (idx === null) return;
 
     if (idx === 0) {
       // ui_keymap_query (L586): show the action bound to a trigger.
-      const trigger = await captureKey(term, "Key: ");
+      const trigger = await captureKey(term, t("keymapEdit.keyPrompt", "Key: "));
       if (trigger === null) continue;
       const action = keymapFind(mode, trigger);
-      await ack(term, action ? `Keymap: ${trigger} -> ${action}` : "No keymap with that trigger.");
+      await ack(
+        term,
+        action
+          ? t("keymapEdit.queryResult", "Keymap: {trigger} -> {action}", { trigger, action })
+          : t("keymapEdit.queryNone", "No keymap with that trigger."),
+      );
     } else if (idx === 1) {
       // ui_keymap_create (L618): trigger, then an action sequence, then confirm.
-      const trigger = await captureKey(term, "Key: ");
+      const trigger = await captureKey(term, t("keymapEdit.keyPrompt", "Key: "));
       if (trigger === null) continue;
       if (trigger === "=") {
-        await ack(term, "The '=' key is reserved.");
+        await ack(term, t("keymapEdit.equalsReserved", "The '=' key is reserved."));
         continue;
       }
-      const action = await captureAction(term, "Action ('=' when done, Ctrl-U resets): ");
+      const action = await captureAction(
+        term,
+        t("keymapEdit.actionPrompt", "Action ('=' when done, Ctrl-U resets): "),
+      );
       if (action === null || action.length === 0) continue;
       /* ui-options.c:689 verbatim. The port used to interpolate the trigger and
        * action into this prompt, which reads better but is not what upstream
        * asks - and both are on screen already, having just been entered. */
-      const keep = await confirm(term, "Keep this keymap? ");
+      const keep = await confirm(term, t("keymapEdit.keepPrompt", "Keep this keymap? "));
       if (keep) {
         keymapAdd(mode, trigger, action);
         saveKeymapPrefs();
-        await ack(term, "Keymap added.");
+        await ack(term, t("keymapEdit.added", "Keymap added."));
       }
     } else {
       // ui_keymap_remove (L699).
-      const trigger = await captureKey(term, "Key: ");
+      const trigger = await captureKey(term, t("keymapEdit.keyPrompt", "Key: "));
       if (trigger === null) continue;
       const removed = keymapRemove(mode, trigger);
       if (removed) saveKeymapPrefs();
-      await ack(term, removed ? "Removed." : "No keymap to remove!");
+      await ack(
+        term,
+        removed
+          ? t("keymapEdit.removed", "Removed.")
+          : t("keymapEdit.removeNone", "No keymap to remove!"),
+      );
     }
   }
 }

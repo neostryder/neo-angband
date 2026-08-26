@@ -184,7 +184,7 @@ describe("prt erases to end of line before writing (ui-output.c)", () => {
     const at = shop.indexOf("function storeConfirm(");
     expect(at).toBeGreaterThan(-1);
     const src = shop.slice(at, shop.indexOf("\n}", at));
-    expect(src).toContain("term.prt(0, 1, `Price:");
+    expect(src).toContain('term.prt(0, 1, t("shop.priceLabel",');
     expect(src).toContain("term.prt(0, 0, prompt");
     /* And no prompt row still uses the non-erasing print. */
     expect(src).not.toContain("term.print(0, 0,");
@@ -235,16 +235,18 @@ describe("prt census: every converted prompt site (2026-07-29)", () => {
   });
 
   it("the store per-item command prompt uses prt (it lands on statusMsg)", () => {
-    expect(WEB("shop.ts")).toContain(
-      "term.prt(0, 0, `(Enter to select, ESC) Command for ${name}:`",
+    expect(WEB("shop.ts")).toMatch(
+      /term\.prt\(\s*0,\s*0,\s*t\("shop\.context\.prompt", "\(Enter to select, ESC\) Command for \{name\}:"/u,
     );
   });
 
   it("the keymap editor's four row-0 prompts use prt, not padEnd", () => {
     const src = WEB("keymap-edit.ts");
     /* ui-options.c:594 "Key: ", :647 "Action: %s", :603/:613 the ack lines,
-     * and the get_check confirmation at ui-input.c:1271. */
-    expect(src.match(/term\.prt\(0, 0,/gu)?.length).toBe(4);
+     * and the get_check confirmation at ui-input.c:1271. Whitespace between the
+     * args is tolerant of the multi-line call the "ack" site now wraps its t()
+     * fallback in. */
+    expect(src.match(/term\.prt\(\s*0,\s*0,/gu)?.length).toBe(4);
     expect(src).not.toContain("term.print(0, 0,");
     /* padEnd(cols - 1) was the hand-rolled erase, and it left the last column. */
     expect(src).not.toContain("padEnd(cols - 1)");
@@ -260,7 +262,10 @@ describe("prt census: every converted prompt site (2026-07-29)", () => {
 
   it("the quickstart screen's two prts (ui-birth.c) use prt", () => {
     const src = WEB("birth.ts");
-    expect(src).toContain('term.prt(0, 0, "New character based on previous one:"');
+    expect(src).toMatch(
+      /t\(\s*"birth\.quickstart\.title",\s*"New character based on previous one:"/u,
+    );
+    expect(src).toContain("term.prt(0, 0, quickstartTitle.slice(");
     expect(src).toContain("term.prt(col, rows - 1, PROMPT.slice(");
   });
 });

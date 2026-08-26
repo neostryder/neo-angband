@@ -205,7 +205,7 @@ describe("select mode is an input state over the table (L920-1225)", () => {
     const enter = SRC.slice(at, at + 500);
     expect(enter).toContain("workSel = top");
     expect(enter).toContain("selState = 0");
-    expect(enter).toContain('dlgMsg = "Select first item to examine"');
+    expect(enter).toContain('dlgMsg = t("equipCmp.select.firstPrompt", "Select first item to examine")');
   });
 
   it("takes the C's key set, and Enter accepts", () => {
@@ -215,7 +215,9 @@ describe("select mode is an input state over the table (L920-1225)", () => {
   });
 
   it("chains SEL0 -> SEL1 with upstream's second prompt", () => {
-    expect(block).toMatch(/selState = 1;\s*dlgMsg = "Select second item; x to skip"/);
+    expect(block).toMatch(
+      /selState = 1;\s*dlgMsg = t\("equipCmp\.select\.secondPrompt", "Select second item; x to skip"\)/,
+    );
   });
 
   it("x from SEL1 shows just the first item, and from SEL0 escapes (L1182-1191)", () => {
@@ -225,10 +227,10 @@ describe("select mode is an input state over the table (L920-1225)", () => {
   });
 
   it("reports an unrecognised key instead of swallowing it (L1220-1222)", () => {
-    expect(block).toMatch(/default:\s*dlgMsg = UNKNOWN_KEY;/);
+    expect(block).toMatch(/default:\s*dlgMsg = unknownKeyMsg\(\);/);
     /* And so does general mode - the whole point of the message. */
     const general = SRC.slice(SRC.indexOf("/* ACT_CTX_EQUIPCMP_UNKNOWN"));
-    expect(general.slice(0, 300)).toContain("dlgMsg = UNKNOWN_KEY");
+    expect(general.slice(0, 300)).toContain("dlgMsg = unknownKeyMsg()");
   });
 
   it("lights the already-chosen row while the second is picked (L222-224)", () => {

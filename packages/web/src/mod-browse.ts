@@ -81,6 +81,7 @@ import {
   upToDateHeadline,
   type ModRefresh,
 } from "./mod-refresh";
+import { t } from "@rpgm-tools/neo-angband-core";
 
 const C_FG = UI_TEXT;
 const C_DIM = UI_DIM;
@@ -138,7 +139,7 @@ export interface ModUpgradeDeps extends ModBrowseDeps {
 
 /** How a source is named on screen, and in a message about it. */
 export function sourceLabel(origin: ModOrigin, registryName: string): string {
-  return origin === "curated" ? "Recommended mods" : registryName;
+  return origin === "curated" ? t("modBrowse.sourceLabel.curated", "Recommended mods") : registryName;
 }
 
 /**
@@ -168,19 +169,27 @@ export function engineHeldLines(m: DiscoveredMod): { short: string; full: string
   if (held === null) return null;
   const helps = held.newerGameHelps === true;
   return {
-    short: helps ? `${held.tag} needs a newer game` : `${held.tag} will not run here`,
-    full:
-      `${held.tag} is newer and ${helps ? "needs a newer game" : "will not run here"}: ` +
-      `it ${held.why}. ${m.tag} is the newest version that runs on this build, and is ` +
-      `the one that will be installed.` +
-      (helps ? ` Update the game to get ${held.tag}.` : ""),
+    short: helps
+      ? t("modBrowse.engineHeld.shortNewer", "{tag} needs a newer game", { tag: held.tag })
+      : t("modBrowse.engineHeld.shortNoRun", "{tag} will not run here", { tag: held.tag }),
+    full: helps
+      ? t(
+          "modBrowse.engineHeld.fullNewer",
+          "{tag} is newer and needs a newer game: it {why}. {installTag} is the newest version that runs on this build, and is the one that will be installed. Update the game to get {tag}.",
+          { tag: held.tag, why: held.why, installTag: m.tag },
+        )
+      : t(
+          "modBrowse.engineHeld.fullNoRun",
+          "{tag} is newer and will not run here: it {why}. {installTag} is the newest version that runs on this build, and is the one that will be installed.",
+          { tag: held.tag, why: held.why, installTag: m.tag },
+        ),
   };
 }
 
 export function browseRow(entry: BrowseEntry, installedTag: string | null): MenuItem {
   if (!entry.ok) {
     return {
-      label: `${entry.ref.repo} - unavailable`,
+      label: t("modBrowse.row.unavailable", "{repo} - unavailable", { repo: entry.ref.repo }),
       color: C_BAD,
       hint: entry.problem,
     };
@@ -203,11 +212,21 @@ export function browseRow(entry: BrowseEntry, installedTag: string | null): Menu
      * that checked eight, and "install an older one" is the obvious next idea. */
     const checked = m.versionsChecked ?? 1;
     return {
-      label: `${who} ${m.version} - will not run on this version`,
+      label: t("modBrowse.row.wontRun", "{who} {version} - will not run on this version", {
+        who,
+        version: m.version,
+      }),
       color: C_BAD,
       hint:
-        (m.engineNote ?? `needs engine ${m.engine ?? "(unstated)"}`) +
-        (checked > 1 ? `  (nor its ${String(checked - 1)} previous version(s))` : ""),
+        (m.engineNote ??
+          t("modBrowse.row.needsEngine", "needs engine {engine}", {
+            engine: m.engine ?? t("modBrowse.row.unstatedEngine", "(unstated)"),
+          })) +
+        (checked > 1
+          ? t("modBrowse.row.checkedPrevious", "  (nor its {count} previous version(s))", {
+              count: checked - 1,
+            })
+          : ""),
     };
   }
 
@@ -218,15 +237,19 @@ export function browseRow(entry: BrowseEntry, installedTag: string | null): Menu
     installedTag === null
       ? ""
       : installedTag === m.tag
-        ? "  installed"
-        : `  installed ${installedTag}`;
+        ? `  ${t("modBrowse.row.installed", "installed")}`
+        : `  ${t("modBrowse.row.installedAt", "installed {tag}", { tag: installedTag })}`;
 
   return {
     label: `[${mark}] ${who} ${m.version}${state}${size}`,
     color: installedTag === null ? C_FG : C_GOOD,
     hint:
-      (m.description?.split("\n")[0] ?? "No description.") +
-      (m.channelHeld !== null ? `  (${m.channelHeld} is on a faster channel)` : "") +
+      (m.description?.split("\n")[0] ?? t("modBrowse.row.noDescription", "No description.")) +
+      (m.channelHeld !== null
+        ? t("modBrowse.row.fasterChannel", "  ({channel} is on a faster channel)", {
+            channel: m.channelHeld,
+          })
+        : "") +
       (held === null ? "" : `  (${held.short})`),
   };
 }
@@ -279,7 +302,7 @@ export function browseDetail(
 
   if (!entry.ok) {
     return [
-      ...wrap(`${entry.ref.repo} could not be read.`, C_BAD),
+      ...wrap(t("modBrowse.detail.couldNotRead", "{repo} could not be read.", { repo: entry.ref.repo }), C_BAD),
       { text: "", color: C_FG },
       ...wrap(entry.problem, C_WARN),
       { text: "", color: C_FG },
@@ -290,27 +313,45 @@ export function browseDetail(
   const out: ScreenLine[] = [
     ...wrap(displayName(m.name, m.author), C_FG),
     { text: "", color: C_FG },
-    ...wrap(m.description ?? "No description.", C_FG),
+    ...wrap(m.description ?? t("modBrowse.detail.noDescription", "No description."), C_FG),
   ];
   out.push({ text: "", color: C_FG });
-  out.push({ text: `Version    ${m.version}  (tag ${m.tag})`, color: C_DIM });
+  out.push({
+    text: t("modBrowse.detail.version", "Version    {version}  (tag {tag})", {
+      version: m.version,
+      tag: m.tag,
+    }),
+    color: C_DIM,
+  });
   if (installedTag !== null) {
-    out.push({ text: `Installed  ${installedTag}`, color: C_DIM });
+    out.push({
+      text: t("modBrowse.detail.installed", "Installed  {tag}", { tag: installedTag }),
+      color: C_DIM,
+    });
   }
   out.push({
-    text: `Engine     ${m.engine ?? "not stated"}${m.compatible ? "" : "  - will not run here"}`,
+    text:
+      t("modBrowse.detail.engine", "Engine     {engine}", {
+        engine: m.engine ?? t("modBrowse.detail.engineNotStated", "not stated"),
+      }) + (m.compatible ? "" : `  ${t("modBrowse.detail.engineWontRun", "- will not run here")}`),
     color: m.compatible ? C_DIM : C_BAD,
   });
   if (m.bytes !== null) {
     out.push({
-      text: `Download   ${formatBytes(m.bytes)} in ${String(m.payload.length)} file(s)`,
+      text: t("modBrowse.detail.download", "Download   {bytes} in {count} file(s)", {
+        bytes: formatBytes(m.bytes),
+        count: m.payload.length,
+      }),
       color: C_DIM,
     });
   }
   /* NOT wrapped: a URL has no spaces to break at, so wrapping cannot help it and
    * folding it mid-path would produce something unusable to copy. Long repository
    * names are the one thing this pane still lets run to the edge, deliberately. */
-  out.push({ text: `From       ${repoPageUrl(m.repo, m.tag)}`, color: C_DIM });
+  out.push({
+    text: t("modBrowse.detail.from", "From       {url}", { url: repoPageUrl(m.repo, m.tag) }),
+    color: C_DIM,
+  });
   if (m.screenshots.length > 0) {
     /* A LISTING, not a preview - and that is a fact about this screen, not a gap
      * left for later. The grid this game draws to is a fixed-size cell canvas
@@ -324,8 +365,11 @@ export function browseDetail(
      * picture this pane cannot draw. */
     out.push({ text: "", color: C_FG });
     out.push({
-      text:
-        `Screenshots  ${String(m.screenshots.length)} declared - open the repository above to view:`,
+      text: t(
+        "modBrowse.detail.screenshots",
+        "Screenshots  {count} declared - open the repository above to view:",
+        { count: m.screenshots.length },
+      ),
       color: C_DIM,
     });
     for (const path of m.screenshots) {
@@ -340,7 +384,11 @@ export function browseDetail(
     out.push({ text: "", color: C_FG });
     out.push(
       ...wrap(
-        `A newer version (${m.channelHeld}) exists on a faster update channel.`,
+        t(
+          "modBrowse.detail.fasterChannel",
+          "A newer version ({channel}) exists on a faster update channel.",
+          { channel: m.channelHeld },
+        ),
         C_WARN,
       ),
     );
@@ -357,8 +405,11 @@ export function browseDetail(
     out.push({ text: "", color: C_FG });
     out.push(
       ...wrap(
-        "This mod does not declare which of its files to install, so they were " +
-          "worked out from the repository.",
+        t(
+          "modBrowse.detail.guessedPayload",
+          "This mod does not declare which of its files to install, so they were " +
+            "worked out from the repository.",
+        ),
         C_DIM,
       ),
     );
@@ -496,7 +547,7 @@ export function installFailureScreen(
       {
         kind: "lines",
         lines: [
-          { text: `${name} was not installed.`, color: C_BAD },
+          { text: t("modBrowse.installFailure.notInstalled", "{name} was not installed.", { name }), color: C_BAD },
           { text: "", color: C_FG },
         ],
       },
@@ -505,7 +556,13 @@ export function installFailureScreen(
         kind: "lines",
         lines: [
           { text: "", color: C_FG },
-          { text: "Nothing was stored, so your other mods are untouched.", color: C_DIM },
+          {
+            text: t(
+              "modBrowse.installFailure.untouched",
+              "Nothing was stored, so your other mods are untouched.",
+            ),
+            color: C_DIM,
+          },
         ],
       },
     ],
@@ -539,7 +596,7 @@ export function zipImportFailureScreen(
 ): ScreenView {
   return freezeView({
     id: "core:mod-zip-import-failure",
-    title: "That zip was not imported",
+    title: t("modBrowse.zipFailure.title", "That zip was not imported"),
     footer: SCREEN_FOOTER,
     blocks: [
       ...refusalBlocks(problem, unmet, C_BAD),
@@ -547,39 +604,120 @@ export function zipImportFailureScreen(
         kind: "lines",
         lines: [
           { text: "", color: C_FG },
-          { text: "Nothing has been installed or changed.", color: C_DIM },
+          {
+            text: t("modBrowse.zipFailure.untouched", "Nothing has been installed or changed."),
+            color: C_DIM,
+          },
         ],
       },
     ],
   });
 }
 
-const ABOUT: readonly ScreenLine[] = [
-  { text: "Where mods come from", color: C_FG },
-  { text: "", color: C_FG },
-  { text: "This game ships no mods and holds no list of what a mod contains.", color: C_FG },
-  { text: "Everything you see about a mod - its name, version, description,", color: C_FG },
-  { text: "size and the game versions it supports - is read from that mod's", color: C_FG },
-  { text: "own repository when this screen opens. So a mod can release an", color: C_FG },
-  { text: "update without waiting for a new version of the game.", color: C_FG },
-  { text: "", color: C_FG },
-  { text: "Recommended mods is a list of REPOSITORIES kept in the game's", color: C_FG },
-  { text: "own repository. It says somebody thought a mod was worth", color: C_FG },
-  { text: "offering. It does not say anybody read its code.", color: C_FG },
-  { text: "", color: C_FG },
-  { text: "A registry is the same kind of list, published by somebody else.", color: C_FG },
-  { text: "A repository address installs a single mod. Both need", color: C_FG },
-  { text: '"Allow third-party mods" turned on first.', color: C_FG },
-  { text: "", color: C_FG },
-  { text: "On first install a mod is pinned to the repository it came from,", color: C_FG },
-  { text: "and can only ever be updated from that same place. The files it", color: C_FG },
-  { text: "stored are listed in the mod manager, with a check for whether", color: C_FG },
-  { text: "they have changed since.", color: C_FG },
-  { text: "", color: C_FG },
-  { text: "Your update channel decides which mod versions you are offered:", color: C_DIM },
-  { text: "a stable game is offered a mod's releases, and beta or early", color: C_DIM },
-  { text: "are also offered its pre-releases.", color: C_DIM },
-];
+/**
+ * "What is this?" prose for the door chooser and the browse screens.
+ *
+ * A FUNCTION, not a constant: see gameMenuFooter's comment in game-menu.ts - a
+ * locale can change mid-session, so nothing translatable may be frozen at
+ * import time.
+ */
+function aboutLines(): readonly ScreenLine[] {
+  return [
+    { text: t("modBrowse.about.title", "Where mods come from"), color: C_FG },
+    { text: "", color: C_FG },
+    {
+      text: t(
+        "modBrowse.about.body1",
+        "This game ships no mods and holds no list of what a mod contains.",
+      ),
+      color: C_FG,
+    },
+    {
+      text: t(
+        "modBrowse.about.body2",
+        "Everything you see about a mod - its name, version, description,",
+      ),
+      color: C_FG,
+    },
+    {
+      text: t(
+        "modBrowse.about.body3",
+        "size and the game versions it supports - is read from that mod's",
+      ),
+      color: C_FG,
+    },
+    {
+      text: t(
+        "modBrowse.about.body4",
+        "own repository when this screen opens. So a mod can release an",
+      ),
+      color: C_FG,
+    },
+    {
+      text: t("modBrowse.about.body5", "update without waiting for a new version of the game."),
+      color: C_FG,
+    },
+    { text: "", color: C_FG },
+    {
+      text: t(
+        "modBrowse.about.recommended1",
+        "Recommended mods is a list of REPOSITORIES kept in the game's",
+      ),
+      color: C_FG,
+    },
+    {
+      text: t("modBrowse.about.recommended2", "own repository. It says somebody thought a mod was worth"),
+      color: C_FG,
+    },
+    {
+      text: t("modBrowse.about.recommended3", "offering. It does not say anybody read its code."),
+      color: C_FG,
+    },
+    { text: "", color: C_FG },
+    {
+      text: t("modBrowse.about.registry1", "A registry is the same kind of list, published by somebody else."),
+      color: C_FG,
+    },
+    {
+      text: t("modBrowse.about.registry2", "A repository address installs a single mod. Both need"),
+      color: C_FG,
+    },
+    {
+      text: t("modBrowse.about.registry3", '"Allow third-party mods" turned on first.'),
+      color: C_FG,
+    },
+    { text: "", color: C_FG },
+    {
+      text: t(
+        "modBrowse.about.pinned1",
+        "On first install a mod is pinned to the repository it came from,",
+      ),
+      color: C_FG,
+    },
+    {
+      text: t("modBrowse.about.pinned2", "and can only ever be updated from that same place. The files it"),
+      color: C_FG,
+    },
+    {
+      text: t("modBrowse.about.pinned3", "stored are listed in the mod manager, with a check for whether"),
+      color: C_FG,
+    },
+    { text: t("modBrowse.about.pinned4", "they have changed since."), color: C_FG },
+    { text: "", color: C_FG },
+    {
+      text: t(
+        "modBrowse.about.channel1",
+        "Your update channel decides which mod versions you are offered:",
+      ),
+      color: C_DIM,
+    },
+    {
+      text: t("modBrowse.about.channel2", "a stable game is offered a mod's releases, and beta or early"),
+      color: C_DIM,
+    },
+    { text: t("modBrowse.about.channel3", "are also offered its pre-releases."), color: C_DIM },
+  ];
+}
 
 /** Ask the consent question, showing the disclaimer. Returns the new setting. */
 async function askConsent(term: GridSurface & GridPointerInput, deps: ModBrowseDeps): Promise<boolean> {
@@ -588,29 +726,45 @@ async function askConsent(term: GridSurface & GridPointerInput, deps: ModBrowseD
     const off = await selectFromMenu(
       term,
       "core:mods-third-party-disable",
-      "Third-party mods are allowed",
+      t("modBrowse.consent.currentlyAllowed", "Third-party mods are allowed"),
       [
-        { label: "Leave them allowed", color: C_FG, hint: "No change." },
         {
-          label: "Stop allowing them",
+          label: t("modBrowse.consent.leaveAllowed", "Leave them allowed"),
+          color: C_FG,
+          hint: t("modBrowse.common.noChange", "No change."),
+        },
+        {
+          label: t("modBrowse.consent.stopAllowing", "Stop allowing them"),
           color: C_WARN,
           /* Stated on the row, because the fear that it deletes things is exactly
            * what stops people using a safety control. */
-          hint: "Does not uninstall or delete anything you already added.",
+          hint: t(
+            "modBrowse.consent.stopAllowingHint",
+            "Does not uninstall or delete anything you already added.",
+          ),
         },
       ],
-      "[ ESC to go back ]",
+      t("modBrowse.common.footer.escBack", "[ ESC to go back ]"),
     );
     if (off === 1 && !deps.consent.write(false)) {
-      await showTextScreen(term, "Could not save that", [
-        { text: "This browser would not let the game record the setting.", color: C_BAD },
-        { text: "It is off for now and may be back on next time.", color: C_FG },
+      await showTextScreen(term, t("modBrowse.consent.couldNotSave", "Could not save that"), [
+        {
+          text: t(
+            "modBrowse.consent.couldNotSaveBody1",
+            "This browser would not let the game record the setting.",
+          ),
+          color: C_BAD,
+        },
+        {
+          text: t("modBrowse.consent.couldNotSaveBody2", "It is off for now and may be back on next time."),
+          color: C_FG,
+        },
       ]);
     }
     return deps.consent.read();
   }
 
-  await showTextScreen(term, "Before you allow third-party mods", [
+  await showTextScreen(term, t("modBrowse.consent.beforeAllow", "Before you allow third-party mods"), [
     ...CONSENT_DISCLAIMER.map((text) => ({
       text,
       color: text.trimStart().startsWith("-") ? C_DIM : C_FG,
@@ -619,23 +773,36 @@ async function askConsent(term: GridSurface & GridPointerInput, deps: ModBrowseD
   const yes = await selectFromMenu(
     term,
     "core:mods-third-party-consent",
-    "Allow third-party mods?",
+    t("modBrowse.consent.allowConfirm", "Allow third-party mods?"),
     [
-      { label: "No, not for now", color: C_FG, hint: "Only the recommended list stays available." },
       {
-        label: "Yes, I understand",
+        label: t("modBrowse.consent.notForNow", "No, not for now"),
+        color: C_FG,
+        hint: t("modBrowse.consent.notForNowHint", "Only the recommended list stays available."),
+      },
+      {
+        label: t("modBrowse.consent.iUnderstand", "Yes, I understand"),
         color: C_WARN,
-        hint: "Lets you install from any registry or repository.",
+        hint: t("modBrowse.consent.iUnderstandHint", "Lets you install from any registry or repository."),
       },
     ],
-    "[ ESC to go back - the same as No ]",
+    t("modBrowse.consent.footer", "[ ESC to go back - the same as No ]"),
   );
   if (yes !== 1) return false;
   if (!deps.consent.write(true)) {
-    await showTextScreen(term, "Could not save that", [
-      { text: "This browser would not let the game record the setting.", color: C_BAD },
+    await showTextScreen(term, t("modBrowse.consent.couldNotSave", "Could not save that"), [
+      {
+        text: t(
+          "modBrowse.consent.couldNotSaveBody1",
+          "This browser would not let the game record the setting.",
+        ),
+        color: C_BAD,
+      },
       { text: "", color: C_FG },
-      { text: "You can still install now, but you will be asked again.", color: C_FG },
+      {
+        text: t("modBrowse.consent.stillInstallAsked", "You can still install now, but you will be asked again."),
+        color: C_FG,
+      },
     ]);
     /* Honest: the answer was given, so honour it for this session rather than
      * pretending the player did not answer. It simply will not persist. */
@@ -695,11 +862,28 @@ async function installOne(
       progress.print(
         0,
         1,
-        `${before === null ? "Installing" : "Updating"} ${m.name} ${m.version}`,
+        before === null
+          ? t("modBrowse.progress.installing", "Installing {name} {version}", {
+              name: m.name,
+              version: m.version,
+            })
+          : t("modBrowse.progress.updating", "Updating {name} {version}", {
+              name: m.name,
+              version: m.version,
+            }),
         C_FG,
       );
-      progress.print(0, 3, `${String(p.done)} of ${String(p.total)}: ${p.path}`, C_DIM);
-      progress.print(0, rows - 1, "[ please wait ]", C_DIM);
+      progress.print(
+        0,
+        3,
+        t("modBrowse.progress.fileOf", "{done} of {total}: {path}", {
+          done: p.done,
+          total: p.total,
+          path: p.path,
+        }),
+        C_DIM,
+      );
+      progress.print(0, rows - 1, t("modBrowse.progress.pleaseWait", "[ please wait ]"), C_DIM);
       progress.flush?.();
     })
     /* Released before the outcome screen, which declares its own: a wait screen
@@ -724,7 +908,10 @@ async function installOne(
     ...installOutcomeLines(m.name, m.version, before, m.tag, enabled),
     { text: "", color: C_FG },
     {
-      text: `${String(result.meta.files.length)} file(s) stored, from ${repoPageUrl(m.repo, m.tag)}.`,
+      text: t("modBrowse.installOne.stored", "{count} file(s) stored, from {source}.", {
+        count: result.meta.files.length,
+        source: repoPageUrl(m.repo, m.tag),
+      }),
       color: C_DIM,
     },
   ]);
@@ -747,13 +934,19 @@ export function installOutcomeLines(
 ): ScreenLine[] {
   if (before === null) {
     return [
-      { text: `${name} ${version} installed.`, color: C_GOOD },
+      { text: t("modBrowse.outcome.installed", "{name} {version} installed.", { name, version }), color: C_GOOD },
       { text: "", color: C_FG },
       ...(enabled
-        ? [{ text: "It is enabled. Reload to start using it.", color: C_FG }]
+        ? [{ text: t("modBrowse.outcome.enabled", "It is enabled. Reload to start using it."), color: C_FG }]
         : [
-            { text: "It is OFF until you turn it on in the mod list.", color: C_FG },
-            { text: "Nothing is enabled by installing it.", color: C_DIM },
+            {
+              text: t("modBrowse.outcome.off", "It is OFF until you turn it on in the mod list."),
+              color: C_FG,
+            },
+            {
+              text: t("modBrowse.outcome.nothingEnabled", "Nothing is enabled by installing it."),
+              color: C_DIM,
+            },
           ]),
     ];
   }
@@ -764,10 +957,14 @@ export function installOutcomeLines(
   const standing = classifyModTag(before, after);
   const headline =
     standing === "behind"
-      ? `${name} updated: ${before} -> ${after}.`
+      ? t("modBrowse.outcome.updated", "{name} updated: {before} -> {after}.", { name, before, after })
       : standing === "ahead"
-        ? `${name} rolled back: ${before} -> ${after}.`
-        : `${name} replaced: ${before} -> ${after}.`;
+        ? t("modBrowse.outcome.rolledBack", "{name} rolled back: {before} -> {after}.", {
+            name,
+            before,
+            after,
+          })
+        : t("modBrowse.outcome.replaced", "{name} replaced: {before} -> {after}.", { name, before, after });
 
   return [
     { text: headline, color: C_GOOD },
@@ -776,8 +973,11 @@ export function installOutcomeLines(
      * are true by construction rather than by promise: the enabled set lives in the
      * player's own store keyed on the mod id, and a mod's preferences live in its
      * own bag - the installer replaces files and nothing else. */
-    { text: "Your on/off choice and this mod's settings are unchanged.", color: C_FG },
-    { text: "Reload to start using the new version.", color: C_FG },
+    {
+      text: t("modBrowse.outcome.settingsUnchanged", "Your on/off choice and this mod's settings are unchanged."),
+      color: C_FG,
+    },
+    { text: t("modBrowse.outcome.reloadNewVersion", "Reload to start using the new version."), color: C_FG },
   ];
 }
 
@@ -801,7 +1001,10 @@ async function showSource(
 
   if (refs.length === 0) {
     await showTextScreen(term, title, [
-      { text: "This list names no mods this game can install.", color: C_FG },
+      {
+        text: t("modBrowse.source.empty", "This list names no mods this game can install."),
+        color: C_FG,
+      },
       { text: "", color: C_FG },
       ...problems.map((p) => ({ text: `  ${p}`, color: C_WARN })),
     ]);
@@ -814,7 +1017,14 @@ async function showSource(
   const waiting = regionSurface(term, handle.cells);
   waiting.clear();
   waiting.print(0, 1, title, C_FG);
-  waiting.print(0, 3, `Asking ${String(refs.length)} repositories what they hold...`, C_DIM);
+  waiting.print(
+    0,
+    3,
+    t("modBrowse.source.asking", "Asking {count} repositories what they hold...", {
+      count: refs.length,
+    }),
+    C_DIM,
+  );
   waiting.flush?.();
 
   const entries: BrowseEntry[] = [];
@@ -831,41 +1041,62 @@ async function showSource(
     const items: MenuItem[] = entries.map((e) =>
       browseRow(e, e.ok ? (installed.get(e.mod.id) ?? null) : null),
     );
-    items.push({ label: "What is this?", color: C_DIM, hint: "Where these come from." });
+    items.push({
+      label: t("modBrowse.common.whatIsThis", "What is this?"),
+      color: C_DIM,
+      hint: t("modBrowse.source.whatIsThisHint", "Where these come from."),
+    });
     if (problems.length > 0) {
       items.push({
-        label: `${String(problems.length)} entry(s) in this list could not be read`,
+        label: t(
+          "modBrowse.source.unreadableCount",
+          "{count} entry(s) in this list could not be read",
+          { count: problems.length },
+        ),
         color: C_WARN,
-        hint: "A problem with the list itself, not with your setup.",
+        hint: t(
+          "modBrowse.source.unreadableHint",
+          "A problem with the list itself, not with your setup.",
+        ),
       });
     }
 
-    const pick = await selectFromMenu(term, "core:mod-browse", title, items, "[ ESC to go back ]", {
-      detail: (i) => {
-        const e = entries[i];
-        if (!e) return [];
-        /* The REAL width, asked at paint time. The pane is resizable and the
-         * function's default is only there so the pure tests need no terminal. */
-        const width = Math.max(20, term.size().cols - 2);
-        return browseDetail(
-          e,
-          e.ok ? (installed.get(e.mod.id) ?? null) : null,
-          authors,
-          width,
-        );
+    const pick = await selectFromMenu(
+      term,
+      "core:mod-browse",
+      title,
+      items,
+      t("modBrowse.common.footer.escBack", "[ ESC to go back ]"),
+      {
+        detail: (i) => {
+          const e = entries[i];
+          if (!e) return [];
+          /* The REAL width, asked at paint time. The pane is resizable and the
+           * function's default is only there so the pure tests need no terminal. */
+          const width = Math.max(20, term.size().cols - 2);
+          return browseDetail(
+            e,
+            e.ok ? (installed.get(e.mod.id) ?? null) : null,
+            authors,
+            width,
+          );
+        },
+        detailToggleKey: "?",
+        detailInitiallyShown: true,
       },
-      detailToggleKey: "?",
-      detailInitiallyShown: true,
-    });
+    );
     if (pick === null) return changed;
 
     if (pick === entries.length) {
-      await showTextScreen(term, title, ABOUT);
+      await showTextScreen(term, title, aboutLines());
       continue;
     }
     if (pick === entries.length + 1) {
       await showTextScreen(term, title, [
-        { text: "These entries are in the list and are not offered:", color: C_FG },
+        {
+          text: t("modBrowse.source.unreadableList", "These entries are in the list and are not offered:"),
+          color: C_FG,
+        },
         { text: "", color: C_FG },
         ...problems.map((p) => ({ text: `  ${p}`, color: C_WARN })),
       ]);
@@ -883,9 +1114,21 @@ async function showSource(
        * that cannot run and failing afterwards wastes a download and reads as a bug. */
       const checked = entry.mod.versionsChecked ?? 1;
       await showTextScreen(term, entry.mod.name, [
-        { text: `${entry.mod.name} will not run on this version of the game.`, color: C_BAD },
+        {
+          text: t("modBrowse.incompatible.wontRun", "{name} will not run on this version of the game.", {
+            name: entry.mod.name,
+          }),
+          color: C_BAD,
+        },
         { text: "", color: C_FG },
-        { text: entry.mod.engineNote ?? `It needs engine ${entry.mod.engine ?? "?"}.`, color: C_WARN },
+        {
+          text:
+            entry.mod.engineNote ??
+            t("modBrowse.incompatible.needsEngine", "It needs engine {engine}.", {
+              engine: entry.mod.engine ?? "?",
+            }),
+          color: C_WARN,
+        },
         { text: "", color: C_FG },
         /* Said out loud, because the alternative reads as "the game did not even
          * look". It did: discovery walks back through a mod's versions and offers
@@ -894,12 +1137,19 @@ async function showSource(
         {
           text:
             checked > 1
-              ? `The last ${String(checked)} versions of it were checked, and none of them runs here.`
-              : "No older version of it was available to try.",
+              ? t(
+                  "modBrowse.incompatible.checkedNone",
+                  "The last {count} versions of it were checked, and none of them runs here.",
+                  { count: checked },
+                )
+              : t("modBrowse.incompatible.noOlder", "No older version of it was available to try."),
           color: C_DIM,
         },
         { text: "", color: C_FG },
-        { text: "Updating the game may be all it needs.", color: C_DIM },
+        {
+          text: t("modBrowse.incompatible.updateGame", "Updating the game may be all it needs."),
+          color: C_DIM,
+        },
       ]);
       continue;
     }
@@ -907,32 +1157,61 @@ async function showSource(
     const at = installed.get(entry.mod.id) ?? null;
     const actions: MenuItem[] =
       at === null
-        ? [{ label: `Install ${entry.mod.version}`, color: C_FG, hint: "Download and store it." }]
+        ? [
+            {
+              label: t("modBrowse.actions.install", "Install {version}", { version: entry.mod.version }),
+              color: C_FG,
+              hint: t("modBrowse.actions.installHint", "Download and store it."),
+            },
+          ]
         : at === entry.mod.tag
           ? [
-              { label: "Reinstall", color: C_FG, hint: "Download it again." },
-              { label: "Remove", color: C_BAD, hint: "Delete its files." },
+              {
+                label: t("modBrowse.actions.reinstall", "Reinstall"),
+                color: C_FG,
+                hint: t("modBrowse.actions.reinstallHint", "Download it again."),
+              },
+              {
+                label: t("modBrowse.actions.remove", "Remove"),
+                color: C_BAD,
+                hint: t("modBrowse.actions.removeHint", "Delete its files."),
+              },
             ]
           : [
               {
-                label: `Change to ${entry.mod.version}`,
+                label: t("modBrowse.actions.changeTo", "Change to {version}", { version: entry.mod.version }),
                 color: C_WARN,
-                hint: `You have ${at}.`,
+                hint: t("modBrowse.actions.youHave", "You have {tag}.", { tag: at }),
               },
-              { label: "Remove", color: C_BAD, hint: "Delete its files." },
+              {
+                label: t("modBrowse.actions.remove", "Remove"),
+                color: C_BAD,
+                hint: t("modBrowse.actions.removeHint", "Delete its files."),
+              },
             ];
 
-    const what = await selectFromMenu(term, "core:mod-browse-actions", entry.mod.name, actions, "[ ESC to go back ]");
+    const what = await selectFromMenu(
+      term,
+      "core:mod-browse-actions",
+      entry.mod.name,
+      actions,
+      t("modBrowse.common.footer.escBack", "[ ESC to go back ]"),
+    );
     if (what === null) continue;
     if (at !== null && what === 1) {
       const gone = await deps.uninstall(entry.mod.id);
       changed = changed || gone;
       await showTextScreen(term, entry.mod.name, [
         gone
-          ? { text: `${entry.mod.name} removed.`, color: C_FG }
-          : { text: `${entry.mod.name} could not be removed.`, color: C_BAD },
+          ? { text: t("modBrowse.actions.removed", "{name} removed.", { name: entry.mod.name }), color: C_FG }
+          : {
+              text: t("modBrowse.actions.removeFailed", "{name} could not be removed.", {
+                name: entry.mod.name,
+              }),
+              color: C_BAD,
+            },
         { text: "", color: C_FG },
-        { text: "Reload to stop loading it.", color: C_FG },
+        { text: t("modBrowse.actions.reloadToStop", "Reload to stop loading it."), color: C_FG },
       ]);
       continue;
     }
@@ -951,16 +1230,22 @@ async function openRegistry(
   const handle = pushRegion(screenRegionSpec(), term.size());
   const waiting = regionSurface(term, handle.cells);
   waiting.clear();
-  waiting.print(0, 1, "Reading the list...", C_DIM);
+  waiting.print(0, 1, t("modBrowse.registry.reading", "Reading the list..."), C_DIM);
   waiting.flush?.();
   const { registry, problem } = await read().finally(() => {
     popRegion(handle);
   });
   if (!registry) {
-    await showTextScreen(term, "Could not read that list", [
-      { text: problem ?? "The list could not be read.", color: C_BAD },
+    await showTextScreen(term, t("modBrowse.registry.couldNotRead", "Could not read that list"), [
+      {
+        text: problem ?? t("modBrowse.registry.couldNotReadFallback", "The list could not be read."),
+        color: C_BAD,
+      },
       { text: "", color: C_FG },
-      { text: "Mods you have already installed are unaffected.", color: C_DIM },
+      {
+        text: t("modBrowse.registry.unaffected", "Mods you have already installed are unaffected."),
+        color: C_DIM,
+      },
     ]);
     return false;
   }
@@ -982,7 +1267,7 @@ async function openRegistry(
  * an approximation a player cannot use for precise comparisons.
  */
 export function formatBytes(bytes: number): string {
-  return `${bytes.toLocaleString("en-US")} bytes`;
+  return t("modBrowse.formatBytes", "{bytes, number} bytes", { bytes });
 }
 
 /* ------------------------------------------------------------------ *
@@ -1018,36 +1303,74 @@ export function importedLines(
   const tail: ScreenLine[] =
     archived === null
       ? [
-          { text: `${source} is still where you left it.`, color: C_DIM },
-          { text: "The game has its own copy now; yours is untouched.", color: C_DIM },
+          {
+            text: t("modBrowse.imported.stillThere", "{source} is still where you left it.", { source }),
+            color: C_DIM,
+          },
+          {
+            text: t("modBrowse.imported.untouched", "The game has its own copy now; yours is untouched."),
+            color: C_DIM,
+          },
         ]
       : archived.ok
         ? [
             {
-              text: `${source} has been moved to ${archived.to ?? "imported/"} in the mods folder.`,
+              text: t("modBrowse.imported.moved", "{source} has been moved to {to} in the mods folder.", {
+                source,
+                // "imported/" is the on-disk folder name the archiver writes to, not prose.
+                to: archived.to ?? "imported/",
+              }),
               color: C_DIM,
             },
-            { text: "Kept, not deleted - it is your copy of the download.", color: C_DIM },
+            {
+              text: t("modBrowse.imported.kept", "Kept, not deleted - it is your copy of the download."),
+              color: C_DIM,
+            },
           ]
         : [
-            { text: `${source} is still loose in the mods folder.`, color: C_WARN },
             {
-              text: `It could not be moved aside: ${archived.error ?? "no reason given"}`,
+              text: t("modBrowse.imported.stillLoose", "{source} is still loose in the mods folder.", {
+                source,
+              }),
               color: C_WARN,
             },
-            { text: "The mod is installed. Moving the file yourself is safe.", color: C_DIM },
+            {
+              text: t("modBrowse.imported.moveFailed", "It could not be moved aside: {error}", {
+                error: archived.error ?? t("modBrowse.imported.noReasonGiven", "no reason given"),
+              }),
+              color: C_WARN,
+            },
+            {
+              text: t(
+                "modBrowse.imported.safeToMove",
+                "The mod is installed. Moving the file yourself is safe.",
+              ),
+              color: C_DIM,
+            },
           ];
   return [
-    { text: `${id} installed.`, color: C_GOOD },
+    { text: t("modBrowse.imported.installed", "{id} installed.", { id }), color: C_GOOD },
     { text: "", color: C_FG },
-    { text: `${String(fileCount)} file(s) stored, from ${source}.`, color: C_DIM },
+    {
+      text: t("modBrowse.imported.stored", "{count} file(s) stored, from {source}.", {
+        count: fileCount,
+        source,
+      }),
+      color: C_DIM,
+    },
     ...tail,
     { text: "", color: C_FG },
     ...(enabled
-      ? [{ text: "It is enabled. Reload to start using it.", color: C_FG }]
+      ? [{ text: t("modBrowse.outcome.enabled", "It is enabled. Reload to start using it."), color: C_FG }]
       : [
-          { text: "It is OFF until you turn it on in the mod list.", color: C_FG },
-          { text: "Nothing is enabled by installing it.", color: C_DIM },
+          {
+            text: t("modBrowse.outcome.off", "It is OFF until you turn it on in the mod list."),
+            color: C_FG,
+          },
+          {
+            text: t("modBrowse.outcome.nothingEnabled", "Nothing is enabled by installing it."),
+            color: C_DIM,
+          },
         ]),
   ];
 }
@@ -1062,8 +1385,11 @@ async function importOne(
   deps: ModBrowseDeps,
   zip: ZipImportDeps,
 ): Promise<boolean> {
-  const result = await paintWhile(term, "Importing", `Checking ${source}...`, () =>
-    zip.install(bytes),
+  const result = await paintWhile(
+    term,
+    t("modBrowse.importing.title", "Importing"),
+    t("modBrowse.importing.checking", "Checking {source}...", { source }),
+    () => zip.install(bytes),
   );
   if (!result.ok) {
     await showTextScreen(term, zipImportFailureScreen(result.problem, result.unmet ?? []));
@@ -1102,8 +1428,11 @@ export async function showZipImport(term: GridSurface & GridPointerInput, deps: 
   let changed = false;
 
   for (;;) {
-    const waiting = await paintWhile(term, "Import a mod", "Looking in the mods folder...", () =>
-      zip.waiting(),
+    const waiting = await paintWhile(
+      term,
+      t("modBrowse.zipImport.title", "Import a mod"),
+      t("modBrowse.zipImport.looking", "Looking in the mods folder..."),
+      () => zip.waiting(),
     );
     const folder = zip.folder();
 
@@ -1113,30 +1442,50 @@ export async function showZipImport(term: GridSurface & GridPointerInput, deps: 
         color: C_FG,
         hint:
           zip.archive === null
-            ? "Import this archive."
-            : "Import it, then move the zip into mods/imported.",
+            ? t("modBrowse.zipImport.importThis", "Import this archive.")
+            : t("modBrowse.zipImport.importThenMove", "Import it, then move the zip into mods/imported."),
       })),
       {
-        label: "Choose a .zip file...",
+        label: t("modBrowse.zipImport.chooseFile", "Choose a .zip file..."),
         color: C_FG,
-        hint: "Any zip on your machine. Your copy of it is left alone.",
+        hint: t("modBrowse.zipImport.chooseFileHint", "Any zip on your machine. Your copy of it is left alone."),
       },
       {
-        label: "Try a .zip for this session only...",
+        label: t("modBrowse.zipImport.tryOnce", "Try a .zip for this session only..."),
         color: C_WARN,
         /* The hint says the true thing rather than the reassuring one. "Nothing is
          * installed" is what a player wants to hear here and is only half of it. */
-        hint: "Not installed - loaded until you close the game. Code included, if it has any.",
+        hint: t(
+          "modBrowse.zipImport.tryOnceHint",
+          "Not installed - loaded until you close the game. Code included, if it has any.",
+        ),
       },
-      { label: "What is this?", color: C_DIM, hint: "What a mod zip has to look like." },
+      {
+        label: t("modBrowse.common.whatIsThis", "What is this?"),
+        color: C_DIM,
+        hint: t("modBrowse.zipImport.whatIsThisHint", "What a mod zip has to look like."),
+      },
     ];
 
-    const title = folder === null ? "Import a mod" : `Import a mod  -  ${folder}`;
-    const pick = await selectFromMenu(term, "core:mod-import", title, items, "[ ESC to go back ]");
+    const title =
+      folder === null
+        ? t("modBrowse.zipImport.title", "Import a mod")
+        : t("modBrowse.zipImport.titleWithFolder", "Import a mod  -  {folder}", { folder });
+    const pick = await selectFromMenu(
+      term,
+      "core:mod-import",
+      title,
+      items,
+      t("modBrowse.common.footer.escBack", "[ ESC to go back ]"),
+    );
     if (pick === null) return changed;
 
     if (pick === items.length - 1) {
-      await showTextScreen(term, "Import a mod", aboutImport(folder, zip.archive !== null));
+      await showTextScreen(
+        term,
+        t("modBrowse.zipImport.title", "Import a mod"),
+        aboutImport(folder, zip.archive !== null),
+      );
       continue;
     }
 
@@ -1163,14 +1512,26 @@ export async function showZipImport(term: GridSurface & GridPointerInput, deps: 
 
     const which = waiting[pick];
     if (!which) continue;
-    const bytes = await paintWhile(term, "Import a mod", `Reading ${which.name}...`, () =>
-      zip.read(which.name),
+    const bytes = await paintWhile(
+      term,
+      t("modBrowse.zipImport.title", "Import a mod"),
+      t("modBrowse.zipImport.readingFile", "Reading {name}...", { name: which.name }),
+      () => zip.read(which.name),
     );
     if (bytes === null) {
       await showTextScreen(term, which.name, [
-        { text: `${which.name} could not be read.`, color: C_BAD },
+        {
+          text: t("modBrowse.zipImport.couldNotRead", "{name} could not be read.", { name: which.name }),
+          color: C_BAD,
+        },
         { text: "", color: C_FG },
-        { text: "It may have been moved or deleted since this list was made.", color: C_DIM },
+        {
+          text: t(
+            "modBrowse.zipImport.mayHaveMoved",
+            "It may have been moved or deleted since this list was made.",
+          ),
+          color: C_DIM,
+        },
       ]);
       continue;
     }
@@ -1219,30 +1580,55 @@ export function sessionLoadScreen(
       kind: "lines",
       lines: [
         {
-          text: `${preview.id}${preview.version === null ? "" : ` ${preview.version}`}, from ${source}`,
+          text:
+            preview.version === null
+              ? t("modBrowse.sessionLoad.header", "{id}, from {source}", { id: preview.id, source })
+              : t("modBrowse.sessionLoad.headerVersioned", "{id} {version}, from {source}", {
+                  id: preview.id,
+                  version: preview.version,
+                  source,
+                }),
           color: C_FG,
         },
-        { text: `${formatBytes(preview.bytes)}${preview.digest === "" ? "" : `  -  ${preview.digest.slice(0, 16)}`}`, color: C_DIM },
-        { text: "", color: C_FG },
         {
-          text: 'This loads it for THIS SESSION. It is not added to your mods.',
-          color: C_FG,
-        },
-        {
-          text: "The game reloads to pick it up, and forgets it when you close the game.",
+          text:
+            preview.digest === ""
+              ? formatBytes(preview.bytes)
+              : t("modBrowse.sessionLoad.sizeDigest", "{size}  -  {digest}", {
+                  size: formatBytes(preview.bytes),
+                  digest: preview.digest.slice(0, 16),
+                }),
           color: C_DIM,
         },
         { text: "", color: C_FG },
         {
-          text: "What is temporary is the MOD. What it does is not.",
+          text: t(
+            "modBrowse.sessionLoad.thisSession",
+            "This loads it for THIS SESSION. It is not added to your mods.",
+          ),
+          color: C_FG,
+        },
+        {
+          text: t(
+            "modBrowse.sessionLoad.reloadsToPickUp",
+            "The game reloads to pick it up, and forgets it when you close the game.",
+          ),
+          color: C_DIM,
+        },
+        { text: "", color: C_FG },
+        {
+          text: t("modBrowse.sessionLoad.whatIsTemporary", "What is temporary is the MOD. What it does is not."),
           color: C_WARN,
         },
         {
-          text: "A character it changed stays changed. Settings it wrote stay written.",
+          text: t(
+            "modBrowse.sessionLoad.characterChanged",
+            "A character it changed stays changed. Settings it wrote stay written.",
+          ),
           color: C_DIM,
         },
         {
-          text: "Anything it sent over the network has been sent.",
+          text: t("modBrowse.sessionLoad.networkSent", "Anything it sent over the network has been sent."),
           color: C_DIM,
         },
       ],
@@ -1254,26 +1640,41 @@ export function sessionLoadScreen(
       kind: "lines",
       lines: [
         { text: "", color: C_FG },
-        { text: "THIS MOD RUNS CODE:", color: C_BAD },
+        { text: t("modBrowse.sessionLoad.runsCode", "THIS MOD RUNS CODE:"), color: C_BAD },
         ...preview.code.map((path) => ({ text: `  ${path}`, color: C_WARN })),
         { text: "", color: C_FG },
         {
-          text: "Code in a mod runs inside the game, with everything the game has.",
+          text: t(
+            "modBrowse.sessionLoad.codeRunsInside",
+            "Code in a mod runs inside the game, with everything the game has.",
+          ),
           color: C_FG,
         },
         {
-          text: "It can read and rewrite your characters and talk to the network,",
+          text: t(
+            "modBrowse.sessionLoad.canReadRewrite",
+            "It can read and rewrite your characters and talk to the network,",
+          ),
           color: C_FG,
         },
         {
-          text: "whatever the list below says - that list is what the mod DECLARED.",
+          text: t(
+            "modBrowse.sessionLoad.listDeclared",
+            "whatever the list below says - that list is what the mod DECLARED.",
+          ),
           color: C_FG,
         },
         {
-          text: "Load code you wrote, or code from somebody you would trust with the",
+          text: t(
+            "modBrowse.sessionLoad.loadTrusted1",
+            "Load code you wrote, or code from somebody you would trust with the",
+          ),
           color: C_DIM,
         },
-        { text: "same file if it were permanent. This is the same decision.", color: C_DIM },
+        {
+          text: t("modBrowse.sessionLoad.loadTrusted2", "same file if it were permanent. This is the same decision."),
+          color: C_DIM,
+        },
       ],
     });
   }
@@ -1283,8 +1684,17 @@ export function sessionLoadScreen(
       kind: "lines",
       lines: [
         { text: "", color: C_FG },
-        { text: "Its manifest.json could not be read as JSON.", color: C_BAD },
-        { text: "So there is no list of what it asks for. It will be refused.", color: C_DIM },
+        {
+          text: t("modBrowse.sessionLoad.manifestUnreadable", "Its manifest.json could not be read as JSON."),
+          color: C_BAD,
+        },
+        {
+          text: t(
+            "modBrowse.sessionLoad.manifestRefused",
+            "So there is no list of what it asks for. It will be refused.",
+          ),
+          color: C_DIM,
+        },
       ],
     });
   } else if (caps.length > 0) {
@@ -1292,7 +1702,7 @@ export function sessionLoadScreen(
       kind: "lines",
       lines: [
         { text: "", color: C_FG },
-        { text: "It asks for:", color: C_FG },
+        { text: t("modBrowse.sessionLoad.asksFor", "It asks for:"), color: C_FG },
       ],
     });
     /* THE SAME TABLE THE INSTALL CONSENT SCREEN DRAWS (mods.ts's
@@ -1314,7 +1724,7 @@ export function sessionLoadScreen(
         cells: {
           bullet: { text: "-" },
           text: { text: d.text },
-          elevated: { text: d.elevated ? "[elevated]" : "" },
+          elevated: { text: d.elevated ? t("modBrowse.sessionLoad.elevatedTag", "[elevated]") : "" },
         },
       })),
     });
@@ -1323,9 +1733,15 @@ export function sessionLoadScreen(
       kind: "lines",
       lines: [
         { text: "", color: C_FG },
-        { text: "It asks for no capabilities by name.", color: C_DIM },
         {
-          text: "That bounds nothing: the code is in the game either way.",
+          text: t("modBrowse.sessionLoad.noCapabilitiesNamed", "It asks for no capabilities by name."),
+          color: C_DIM,
+        },
+        {
+          text: t(
+            "modBrowse.sessionLoad.boundsNothing",
+            "That bounds nothing: the code is in the game either way.",
+          ),
           color: C_DIM,
         },
       ],
@@ -1339,17 +1755,26 @@ export function sessionLoadScreen(
       ...(survivesReload
         ? [
             {
-              text: "It will still be here after the reload, and gone the time after.",
+              text: t(
+                "modBrowse.sessionLoad.survives",
+                "It will still be here after the reload, and gone the time after.",
+              ),
               color: C_DIM,
             },
           ]
         : [
             {
-              text: "This browser will not hold it across a reload, so it cannot load.",
+              text: t(
+                "modBrowse.sessionLoad.doesNotSurvive",
+                "This browser will not hold it across a reload, so it cannot load.",
+              ),
               color: C_BAD,
             },
             {
-              text: "Install it instead, or save the file and import it.",
+              text: t(
+                "modBrowse.sessionLoad.installInstead",
+                "Install it instead, or save the file and import it.",
+              ),
               color: C_FG,
             },
           ]),
@@ -1358,7 +1783,9 @@ export function sessionLoadScreen(
 
   return freezeView({
     id: "core:mod-session-load",
-    title: runs ? "Run this mod for one session?" : "Load this mod for one session?",
+    title: runs
+      ? t("modBrowse.sessionLoad.titleRuns", "Run this mod for one session?")
+      : t("modBrowse.sessionLoad.titleLoads", "Load this mod for one session?"),
     footer: SCREEN_FOOTER,
     blocks,
   });
@@ -1371,28 +1798,54 @@ export function sessionLoadedLines(
   runs: boolean,
 ): readonly ScreenLine[] {
   return [
-    { text: `${id} is loaded for this session.`, color: C_GOOD },
+    { text: t("modBrowse.sessionLoaded.loaded", "{id} is loaded for this session.", { id }), color: C_GOOD },
     { text: "", color: C_FG },
-    { text: `From ${source}. Nothing has been added to your mods.`, color: C_DIM },
-    { text: "", color: C_FG },
-    { text: "Reload to start using it - you are offered that on the way out.", color: C_FG },
     {
-      text: "It is listed in the mod list, marked for this session, and can be dropped there.",
+      text: t("modBrowse.sessionLoaded.from", "From {source}. Nothing has been added to your mods.", {
+        source,
+      }),
+      color: C_DIM,
+    },
+    { text: "", color: C_FG },
+    {
+      text: t(
+        "modBrowse.sessionLoaded.reload",
+        "Reload to start using it - you are offered that on the way out.",
+      ),
+      color: C_FG,
+    },
+    {
+      text: t(
+        "modBrowse.sessionLoaded.listedInList",
+        "It is listed in the mod list, marked for this session, and can be dropped there.",
+      ),
       color: C_DIM,
     },
     { text: "", color: C_FG },
     ...(runs
       ? [
-          { text: "Its code will run every reload until you close the game.", color: C_WARN },
-          { text: "Dropping it and reloading is how you stop it.", color: C_DIM },
-        ]
-      : [
           {
-            text: "Do not play a character you care about on session-only content:",
+            text: t("modBrowse.sessionLoaded.codeRuns", "Its code will run every reload until you close the game."),
             color: C_WARN,
           },
           {
-            text: "next time the pack is gone, and what it added goes with it.",
+            text: t("modBrowse.sessionLoaded.dropToStop", "Dropping it and reloading is how you stop it."),
+            color: C_DIM,
+          },
+        ]
+      : [
+          {
+            text: t(
+              "modBrowse.sessionLoaded.doNotCare",
+              "Do not play a character you care about on session-only content:",
+            ),
+            color: C_WARN,
+          },
+          {
+            text: t(
+              "modBrowse.sessionLoaded.goesWithIt",
+              "next time the pack is gone, and what it added goes with it.",
+            ),
             color: C_DIM,
           },
         ]),
@@ -1407,8 +1860,11 @@ async function tryOne(
   deps: ModBrowseDeps,
   zip: ZipImportDeps,
 ): Promise<boolean> {
-  const preview = await paintWhile(term, "For this session", `Reading ${source}...`, () =>
-    previewSessionArchive(bytes),
+  const preview = await paintWhile(
+    term,
+    t("modBrowse.tryOne.title", "For this session"),
+    t("modBrowse.tryOne.reading", "Reading {source}...", { source }),
+    () => previewSessionArchive(bytes),
   );
   if (!preview.ok) {
     await showTextScreen(term, zipImportFailureScreen(preview.problem));
@@ -1424,27 +1880,37 @@ async function tryOne(
     term,
     "core:mod-session-consent",
     preview.code.length > 0
-      ? `Run ${preview.id} for this session?`
-      : `Load ${preview.id} for this session?`,
+      ? t("modBrowse.tryOne.runConfirm", "Run {id} for this session?", { id: preview.id })
+      : t("modBrowse.tryOne.loadConfirm", "Load {id} for this session?", { id: preview.id }),
     [
       {
-        label: survives ? "Yes, load it for this session" : "Cannot: this browser will not hold it",
+        label: survives
+          ? t("modBrowse.tryOne.yesLoad", "Yes, load it for this session")
+          : t("modBrowse.tryOne.cannotHold", "Cannot: this browser will not hold it"),
         color: survives ? C_WARN : C_DIM,
         hint: survives
-          ? "Applies on the next reload. Gone when you close the game."
-          : "Storage is off in this window, so a reload would lose it.",
+          ? t("modBrowse.tryOne.yesLoadHint", "Applies on the next reload. Gone when you close the game.")
+          : t("modBrowse.tryOne.cannotHoldHint", "Storage is off in this window, so a reload would lose it."),
       },
-      { label: "No, leave it alone", color: C_FG, hint: "Nothing is loaded or changed." },
+      {
+        label: t("modBrowse.tryOne.no", "No, leave it alone"),
+        color: C_FG,
+        hint: t("modBrowse.tryOne.noHint", "Nothing is loaded or changed."),
+      },
     ],
-    "[ ESC to go back ]",
+    t("modBrowse.common.footer.escBack", "[ ESC to go back ]"),
   );
   if (pick !== 0 || !survives) return false;
 
-  const staged = await paintWhile(term, "For this session", `Checking ${source}...`, () =>
-    /* The capabilities the archive DECLARED are what is granted, and only for this
-     * session. Granting exactly the declared list is what the install path does
-     * (`setConsent(id, m.capabilities)`); the difference is where it is kept. */
-    zip.loadForSession(bytes, source, preview.capabilities ?? [], preview.digest),
+  const staged = await paintWhile(
+    term,
+    t("modBrowse.tryOne.title", "For this session"),
+    t("modBrowse.tryOne.checking", "Checking {source}...", { source }),
+    () =>
+      /* The capabilities the archive DECLARED are what is granted, and only for this
+       * session. Granting exactly the declared list is what the install path does
+       * (`setConsent(id, m.capabilities)`); the difference is where it is kept. */
+      zip.loadForSession(bytes, source, preview.capabilities ?? [], preview.digest),
   );
   if (!staged.ok) {
     await showTextScreen(
@@ -1467,36 +1933,36 @@ function aboutImport(folder: string | null, canArchive: boolean): readonly Scree
   const dim = (text: string): ScreenLine => ({ text, color: C_DIM });
   const fg = (text: string): ScreenLine => ({ text, color: C_FG });
   return [
-    fg("A mod can be installed from a .zip file instead of from a repository."),
-    dim("This is the same install: the same requirements are checked, and the"),
-    dim("mod is stored the same way. Only where the bytes came from differs."),
+    fg(t("modBrowse.aboutImport.body1", "A mod can be installed from a .zip file instead of from a repository.")),
+    dim(t("modBrowse.aboutImport.body2", "This is the same install: the same requirements are checked, and the")),
+    dim(t("modBrowse.aboutImport.body3", "mod is stored the same way. Only where the bytes came from differs.")),
     { text: "", color: C_FG },
-    fg("The zip has to hold ONE mod, and its manifest.json has to be either:"),
-    dim("  at the top of the zip, or"),
-    dim("  inside a single folder at the top of the zip."),
-    dim("That second shape is what GitHub's \"Download ZIP\" gives you."),
+    fg(t("modBrowse.aboutImport.body4", "The zip has to hold ONE mod, and its manifest.json has to be either:")),
+    dim(t("modBrowse.aboutImport.body5", "  at the top of the zip, or")),
+    dim(t("modBrowse.aboutImport.body6", "  inside a single folder at the top of the zip.")),
+    dim(t("modBrowse.aboutImport.body7", 'That second shape is what GitHub\'s "Download ZIP" gives you.')),
     { text: "", color: C_FG },
-    fg("Nothing deeper is looked at. A zip holding two mods is refused, and"),
-    fg("says which two, rather than guessing which one you meant."),
+    fg(t("modBrowse.aboutImport.body8", "Nothing deeper is looked at. A zip holding two mods is refused, and")),
+    fg(t("modBrowse.aboutImport.body9", "says which two, rather than guessing which one you meant.")),
     { text: "", color: C_FG },
     ...(folder === null
-      ? [dim("This front end has no mods folder, so only the file picker is offered.")]
+      ? [dim(t("modBrowse.aboutImport.noFolder", "This front end has no mods folder, so only the file picker is offered."))]
       : [
-          fg("You can also drop a zip into the mods folder and import it here:"),
+          fg(t("modBrowse.aboutImport.folder1", "You can also drop a zip into the mods folder and import it here:")),
           dim(`  ${folder}`),
           ...(canArchive
             ? [
-                dim("A zip imported from there is moved into imported/ once the mod is"),
-                dim("installed - kept, not deleted, so your download is still yours."),
+                dim(t("modBrowse.aboutImport.folder2", "A zip imported from there is moved into imported/ once the mod is")),
+                dim(t("modBrowse.aboutImport.folder3", "installed - kept, not deleted, so your download is still yours.")),
               ]
             : []),
         ]),
     { text: "", color: C_FG },
-    fg("A zip is never checked at startup and never unpacked on its own."),
-    dim("Importing is something you do, once, from this screen."),
+    fg(t("modBrowse.aboutImport.body10", "A zip is never checked at startup and never unpacked on its own.")),
+    dim(t("modBrowse.aboutImport.body11", "Importing is something you do, once, from this screen.")),
     { text: "", color: C_FG },
-    fg("An imported mod keeps the repository its own manifest declares, so the"),
-    fg("update check has somewhere to ask. You can also import a newer zip."),
+    fg(t("modBrowse.aboutImport.body12", "An imported mod keeps the repository its own manifest declares, so the")),
+    fg(t("modBrowse.aboutImport.body13", "update check has somewhere to ask. You can also import a newer zip.")),
   ];
 }
 
@@ -1513,42 +1979,62 @@ export async function showModBrowse(term: GridSurface & GridPointerInput, deps: 
     const allowed = deps.consent.read();
     const items: MenuItem[] = [
       {
-        label: "Recommended mods",
+        label: t("modBrowse.doorChooser.recommended", "Recommended mods"),
         color: C_FG,
-        hint: "A curated list of repositories, kept with the game.",
+        hint: t("modBrowse.doorChooser.recommendedHint", "A curated list of repositories, kept with the game."),
       },
       {
-        label: "Add from a registry address",
+        label: t("modBrowse.doorChooser.registry", "Add from a registry address"),
         color: allowed ? C_FG : C_DIM,
         hint: allowed
-          ? "Somebody else's list of mods."
-          : 'Needs "Allow third-party mods" below.',
+          ? t("modBrowse.doorChooser.registryHint", "Somebody else's list of mods.")
+          : t("modBrowse.doorChooser.needsConsent", 'Needs "Allow third-party mods" below.'),
       },
       {
-        label: "Add from a repository address",
+        label: t("modBrowse.doorChooser.repository", "Add from a repository address"),
         color: allowed ? C_FG : C_DIM,
-        hint: allowed ? "One mod, by owner/repo." : 'Needs "Allow third-party mods" below.',
+        hint: allowed
+          ? t("modBrowse.doorChooser.repositoryHint", "One mod, by owner/repo.")
+          : t("modBrowse.doorChooser.needsConsent", 'Needs "Allow third-party mods" below.'),
       },
       {
-        label: "Import a mod from a file",
+        label: t("modBrowse.doorChooser.importFile", "Import a mod from a file"),
         color: !deps.importZip ? C_DIM : allowed ? C_FG : C_DIM,
         hint: !deps.importZip
-          ? "This front end cannot read a file."
+          ? t("modBrowse.doorChooser.cannotReadFile", "This front end cannot read a file.")
           : allowed
-            ? "A .zip you have, or one waiting in the mods folder."
-            : 'Needs "Allow third-party mods" below.',
+            ? t("modBrowse.doorChooser.importFileHint", "A .zip you have, or one waiting in the mods folder.")
+            : t("modBrowse.doorChooser.needsConsent", 'Needs "Allow third-party mods" below.'),
       },
       {
-        label: `Allow third-party mods: ${allowed ? "yes" : "no"}`,
+        label: t("modBrowse.doorChooser.allowThirdParty", "Allow third-party mods: {state}", {
+          state: allowed ? t("modBrowse.common.yes", "yes") : t("modBrowse.common.no", "no"),
+        }),
         color: allowed ? C_WARN : C_FG,
         hint: allowed
-          ? "You have accepted the risks of installing other people's code."
-          : "A mod can run code. Read what this means before choosing.",
+          ? t(
+              "modBrowse.doorChooser.acceptedRisks",
+              "You have accepted the risks of installing other people's code.",
+            )
+          : t(
+              "modBrowse.doorChooser.readFirst",
+              "A mod can run code. Read what this means before choosing.",
+            ),
       },
-      { label: "What is this?", color: C_DIM, hint: "Where mods come from." },
+      {
+        label: t("modBrowse.common.whatIsThis", "What is this?"),
+        color: C_DIM,
+        hint: t("modBrowse.doorChooser.whatIsThisHint", "Where mods come from."),
+      },
     ];
 
-    const pick = await selectFromMenu(term, "core:mod-get", "Get mods", items, "[ ESC to go back ]");
+    const pick = await selectFromMenu(
+      term,
+      "core:mod-get",
+      t("modBrowse.doorChooser.title", "Get mods"),
+      items,
+      t("modBrowse.common.footer.escBack", "[ ESC to go back ]"),
+    );
     if (pick === null) return changed;
 
     if (pick === 0) {
@@ -1566,7 +2052,7 @@ export async function showModBrowse(term: GridSurface & GridPointerInput, deps: 
       continue;
     }
     if (pick === 5) {
-      await showTextScreen(term, "Get mods", ABOUT);
+      await showTextScreen(term, t("modBrowse.doorChooser.title", "Get mods"), aboutLines());
       continue;
     }
 
@@ -1581,10 +2067,10 @@ export async function showModBrowse(term: GridSurface & GridPointerInput, deps: 
     if (pick === 1) {
       const url = await promptText(
         term,
-        "Registry address",
+        t("modBrowse.doorChooser.registryPrompt", "Registry address"),
         DEFAULT_REGISTRY_URL,
         200,
-        "[ type or paste an address, Enter to read it, ESC to cancel ]",
+        t("modBrowse.doorChooser.registryPromptFooter", "[ type or paste an address, Enter to read it, ESC to cancel ]"),
       );
       if (url === null || url.trim() === "") continue;
       if (await openRegistry(term, "third-party", () => deps.registryAt(url.trim()), deps)) {
@@ -1595,18 +2081,21 @@ export async function showModBrowse(term: GridSurface & GridPointerInput, deps: 
 
     const typed = await promptText(
       term,
-      "Repository",
+      t("modBrowse.doorChooser.repositoryPrompt", "Repository"),
       "",
       200,
-      "[ owner/repo or a GitHub address, Enter to look it up, ESC to cancel ]",
+      t(
+        "modBrowse.doorChooser.repositoryPromptFooter",
+        "[ owner/repo or a GitHub address, Enter to look it up, ESC to cancel ]",
+      ),
     );
     if (typed === null || typed.trim() === "") continue;
     const ref = parseRepoRef(typed.trim());
     if (!ref.ok) {
-      await showTextScreen(term, "That is not a repository", [
+      await showTextScreen(term, t("modBrowse.notARepo.title", "That is not a repository"), [
         { text: ref.problem, color: C_BAD },
         { text: "", color: C_FG },
-        { text: "Examples:", color: C_DIM },
+        { text: t("modBrowse.notARepo.examples", "Examples:"), color: C_DIM },
         { text: "  neostryder/neo-angband-mod-qol", color: C_DIM },
         { text: "  https://github.com/neostryder/neo-angband-mod-qol", color: C_DIM },
         { text: "  https://github.com/neostryder/neo-angband-mod-qol/tree/v0.13.0", color: C_DIM },
@@ -1650,8 +2139,11 @@ export async function showModUpgrades(term: GridSurface & GridPointerInput, deps
     /* Re-asked each time round, because an install just changed the answer. It is
      * one request per mod, and the alternative is a list that disagrees with what
      * the player just did. */
-    const refreshed = await paintWhile(term, "Update installed mods", "Asking each mod's repository...", () =>
-      deps.refresh(),
+    const refreshed = await paintWhile(
+      term,
+      t("modBrowse.upgrades.title", "Update installed mods"),
+      t("modBrowse.upgrades.asking", "Asking each mod's repository..."),
+      () => deps.refresh(),
     );
     const pending = pendingUpgrades(refreshed);
     const blind = unavailableMods(refreshed);
@@ -1663,26 +2155,38 @@ export async function showModUpgrades(term: GridSurface & GridPointerInput, deps
 
     const items: MenuItem[] = [
       {
-        label: pending.length === 1 ? "Update it" : `Update all ${String(pending.length)}`,
+        label:
+          pending.length === 1
+            ? t("modBrowse.upgrades.updateIt", "Update it")
+            : t("modBrowse.upgrades.updateAll", "Update all {count}", { count: pending.length }),
         color: C_WARN,
-        hint: "Download and store each one in turn. Nothing is enabled or disabled.",
+        hint: t(
+          "modBrowse.upgrades.updateAllHint",
+          "Download and store each one in turn. Nothing is enabled or disabled.",
+        ),
       },
       ...pending.map((u) => ({
         label: `${u.id}  ${u.from} -> ${u.to}`,
         color: C_FG,
-        hint: `Update only this one, from ${u.repo}.`,
+        hint: t("modBrowse.upgrades.updateOneHint", "Update only this one, from {repo}.", { repo: u.repo }),
       })),
       ...blind.map((r) => ({
-        label: `${r.id}  could not be checked`,
+        label: t("modBrowse.upgrades.couldNotCheck", "{id}  could not be checked", { id: r.id }),
         color: C_WARN,
         enabled: false,
         /* The address as well as the reason: a player told "HTTP 404" can do
          * nothing, and a player given the page can look at it themselves. */
-        hint: `${r.problem ?? "no reason given"} - ${repoPage(r)}`,
+        hint: `${r.problem ?? t("modBrowse.upgrades.noReasonGiven", "no reason given")} - ${repoPage(r)}`,
       })),
     ];
 
-    const pick = await selectFromMenu(term, "core:mod-update", "Update installed mods", items, "[ ESC to go back ]");
+    const pick = await selectFromMenu(
+      term,
+      "core:mod-update",
+      t("modBrowse.upgrades.title", "Update installed mods"),
+      items,
+      t("modBrowse.common.footer.escBack", "[ ESC to go back ]"),
+    );
     if (pick === null) return changed;
 
     /* Snapshotted before the first install: `refresh()` is re-read at the top of the
@@ -1752,7 +2256,7 @@ export function modUpdateReportScreen(refreshed: readonly ModRefresh[]): ScreenV
   const blind = unavailableMods(refreshed);
   return freezeView({
     id: "core:mod-updates",
-    title: "Update installed mods",
+    title: t("modBrowse.upgrades.title", "Update installed mods"),
     footer: SCREEN_FOOTER,
     blocks: [
       {
@@ -1820,18 +2324,24 @@ export function modUpdateReportScreen(refreshed: readonly ModRefresh[]): ScreenV
             ? [
                 { text: "", color: C_FG },
                 {
-                  text: "A mod that could not be checked has NOT been removed and has not",
+                  text: t(
+                    "modBrowse.upgrades.blind1",
+                    "A mod that could not be checked has NOT been removed and has not",
+                  ),
                   color: C_DIM,
                 },
                 {
-                  text: "changed. Its repository may be renamed, private, or simply not",
+                  text: t(
+                    "modBrowse.upgrades.blind2",
+                    "changed. Its repository may be renamed, private, or simply not",
+                  ),
                   color: C_DIM,
                 },
-                { text: "reachable from here right now.", color: C_DIM },
+                { text: t("modBrowse.upgrades.blind3", "reachable from here right now."), color: C_DIM },
               ]
             : []),
           { text: "", color: C_FG },
-          ...ABOUT_MOD_UPGRADES,
+          ...aboutModUpgradesLines(),
         ],
       },
     ],
@@ -1858,22 +2368,42 @@ async function curatedRepos(deps: ModUpgradeDeps): Promise<ReadonlySet<string>> 
   return new Set((registry?.mods ?? []).map((r) => r.repo.toLowerCase()));
 }
 
-/** Where a mod update comes from, said once. */
-const ABOUT_MOD_UPGRADES: readonly ScreenLine[] = [
-  {
-    text: "Each mod lives in its own repository and releases on its own schedule,",
-    color: C_DIM,
-  },
-  {
-    text: "so this asks every installed mod where it came from and compares the",
-    color: C_DIM,
-  },
-  {
-    text: "version you have with the newest one your update channel allows.",
-    color: C_DIM,
-  },
-  { text: "Updating the game is not what brings a newer mod.", color: C_DIM },
-];
+/**
+ * Where a mod update comes from, said once.
+ *
+ * A FUNCTION, not a constant: see gameMenuFooter's comment in game-menu.ts - a
+ * locale can change mid-session, so nothing translatable may be frozen at
+ * import time.
+ */
+function aboutModUpgradesLines(): readonly ScreenLine[] {
+  return [
+    {
+      text: t(
+        "modBrowse.aboutUpgrades.body1",
+        "Each mod lives in its own repository and releases on its own schedule,",
+      ),
+      color: C_DIM,
+    },
+    {
+      text: t(
+        "modBrowse.aboutUpgrades.body2",
+        "so this asks every installed mod where it came from and compares the",
+      ),
+      color: C_DIM,
+    },
+    {
+      text: t(
+        "modBrowse.aboutUpgrades.body3",
+        "version you have with the newest one your update channel allows.",
+      ),
+      color: C_DIM,
+    },
+    {
+      text: t("modBrowse.aboutUpgrades.body4", "Updating the game is not what brings a newer mod."),
+      color: C_DIM,
+    },
+  ];
+}
 
 /** Draw one line, let it paint, then run `job`. For a wait a player can read. */
 async function paintWhile<T>(

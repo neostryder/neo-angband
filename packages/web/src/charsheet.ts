@@ -70,6 +70,7 @@ import {
   NOSCORE,
   PARITY_BASELINE,
   playerSafeName,
+  t,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   GameState,
@@ -238,7 +239,9 @@ export const MODE_VIEW_IDS = ["core:character", "core:character-flags"] as const
  * request's `label`, so a presenter captioning its own standing-aside says what
  * the player would have read.
  */
-const RENAME_PROMPT = "Enter your character's name";
+function renamePrompt(): string {
+  return t("charsheet.prompt.rename", "Enter your character's name");
+}
 
 /**
  * `get_file`'s own prompt (get_file_text, ui-input.c:1359 -> get_string(
@@ -250,7 +253,9 @@ const RENAME_PROMPT = "Enter your character's name";
  * it back off the terminal the prompt actually drew on, so the two are tied
  * together by a measurement rather than by this comment.
  */
-const FILE_PROMPT = "File name";
+function filePrompt(): string {
+  return t("charsheet.prompt.file", "File name");
+}
 
 /**
  * The game's own wording for each prompt this screen opens, by the census's
@@ -263,27 +268,43 @@ const FILE_PROMPT = "File name";
  * for both pages: a third prompt added here with no label would otherwise
  * announce itself by its id, which is a mod-facing string nobody wrote.
  */
-export const CHARSHEET_PROMPT_LABELS: Readonly<Record<string, string>> = {
-  "charsheet:rename": RENAME_PROMPT,
-  "charsheet:file": FILE_PROMPT,
-};
+export function charsheetPromptLabels(): Readonly<Record<string, string>> {
+  return {
+    "charsheet:rename": renamePrompt(),
+    "charsheet:file": filePrompt(),
+  };
+}
 
 /** Mode-1 placeholder, only used when no ui_entry packs were supplied. */
 function modeOnePlaceholder(): ScreenLine[] {
   return [
-    { text: "Resistances & Abilities - unavailable (no ui_entry packs)", color: TITLE },
+    {
+      text: t(
+        "charsheet.modeOne.unavailable",
+        "Resistances & Abilities - unavailable (no ui_entry packs)",
+      ),
+      color: TITLE,
+    },
     { text: "", color: FG },
-    { text: "Press 'h' to return to the main page.", color: DIM },
+    { text: t("charsheet.modeOne.returnHint", "Press 'h' to return to the main page."), color: DIM },
   ];
 }
 
 /** Human titles for the four resist regions (configure_char_sheet L187). */
-const PANEL_TITLES: Record<string, string> = {
-  resistances: "Resistances",
-  abilities: "Abilities",
-  hindrances: "Hindrances",
-  modifiers: "Modifiers",
-};
+function panelTitle(key: string): string {
+  switch (key) {
+    case "resistances":
+      return t("charsheet.panel.resistances", "Resistances");
+    case "abilities":
+      return t("charsheet.panel.abilities", "Abilities");
+    case "hindrances":
+      return t("charsheet.panel.hindrances", "Hindrances");
+    case "modifiers":
+      return t("charsheet.panel.modifiers", "Modifiers");
+    default:
+      return key;
+  }
+}
 
 /** res_nlabel: the 6-char label column of a flag region (configure_char_sheet
  * L223, res_nlabel = 6). A region is label(6) + one cell per body slot + the
@@ -405,11 +426,14 @@ export function characterFlagsScreen(
       ...resistPanels.map((panel) =>
         gridPanelBlock(state, panel, {
           labels: true,
-          caption: PANEL_TITLES[panel.key] ?? panel.key,
+          caption: panelTitle(panel.key),
           gapAfter: 1,
         }),
       ),
-      gridPanelBlock(state, statModPanel, { labels: false, caption: "Sustains" }),
+      gridPanelBlock(state, statModPanel, {
+        labels: false,
+        caption: t("charsheet.panel.sustains", "Sustains"),
+      }),
     ],
   });
 }
@@ -565,9 +589,9 @@ function flagGridSection(state: GameState, packs?: UiEntryPackRecords): string[]
   };
 
   const out: string[] = [];
-  out.push(...pair(resistances, abilities, "Resistances", "Abilities"));
+  out.push(...pair(resistances, abilities, panelTitle("resistances"), panelTitle("abilities")));
   out.push(""); // L1022 blank between the two grids
-  out.push(...pair(hindrances, modifiers, "Hindrances", "Modifiers"));
+  out.push(...pair(hindrances, modifiers, panelTitle("hindrances"), panelTitle("modifiers")));
   return out;
 }
 
@@ -590,7 +614,12 @@ export function buildCharacterDump(
   const out: string[] = [];
 
   /* Header (L951). */
-  out.push(`  [Angband ${PARITY_BASELINE} Character Dump]`, "");
+  out.push(
+    t("charsheet.dump.header", "  [Angband {version} Character Dump]", {
+      version: PARITY_BASELINE,
+    }),
+    "",
+  );
 
   /* The character sheet - display_player(0) (L954-980). */
   for (const l of characterSheetLines(state, name, 80)) out.push(l.text);
@@ -605,15 +634,21 @@ export function buildCharacterDump(
 
   /* Last messages, only when dead (L1063-1078). */
   if (extras.messages && extras.messages.length > 0) {
-    out.push("  [Last Messages]", "");
+    out.push(t("charsheet.dump.lastMessages", "  [Last Messages]"), "");
     for (const m of extras.messages.slice(-15)) out.push(`> ${m}`);
     out.push("");
-    if (extras.diedFrom === "Retiring") out.push("Retired.", "");
-    else out.push(`Killed by ${extras.diedFrom ?? "the dungeon"}.`, "");
+    if (extras.diedFrom === "Retiring") out.push(t("charsheet.dump.retired", "Retired."), "");
+    else
+      out.push(
+        t("charsheet.dump.killedBy", "Killed by {cause}.", {
+          cause: extras.diedFrom ?? t("charsheet.dump.unknownCause", "the dungeon"),
+        }),
+        "",
+      );
   }
 
   /* Equipment (L1081-1092). */
-  out.push("  [Character Equipment]", "");
+  out.push(t("charsheet.dump.equipment", "  [Character Equipment]"), "");
   {
     let label = 0;
     for (let i = 0; i < p.body.count; i++) {
@@ -625,7 +660,7 @@ export function buildCharacterDump(
   out.push("", "");
 
   /* Inventory (L1094-1105). */
-  out.push("", "", "  [Character Inventory]", "");
+  out.push("", "", t("charsheet.dump.inventory", "  [Character Inventory]"), "");
   {
     let label = 0;
     /* upkeep->inven[], not the master gear list (L1095): the quiver gets its
@@ -639,7 +674,7 @@ export function buildCharacterDump(
   out.push("", "");
 
   /* Quiver (L1107-1118). */
-  out.push("", "", "  [Character Quiver]", "");
+  out.push("", "", t("charsheet.dump.quiver", "  [Character Quiver]"), "");
   {
     let label = 0;
     for (const handle of state.gear.quiver ?? []) {
@@ -654,7 +689,7 @@ export function buildCharacterDump(
   /* Home inventory (L1120-1139): skipped when no live home store (12.1). */
 
   /* Character history ledger - dump_history (ui-history.c L128). */
-  out.push("[Player history]");
+  out.push(t("charsheet.dump.playerHistory", "[Player history]"));
   for (const l of historyLines(state)) {
     if (l.text === "(no history yet)") continue;
     out.push(l.text);
@@ -662,10 +697,10 @@ export function buildCharacterDump(
   out.push("", "");
 
   /* Options (L1146-1179): the User interface and Birth pages. */
-  out.push("  [Options]", "");
+  out.push(t("charsheet.dump.options", "  [Options]"), "");
   for (const [title, type] of [
-    ["User interface", "INTERFACE"],
-    ["Birth", "BIRTH"],
+    [t("charsheet.dump.optionsUserInterface", "User interface"), "INTERFACE"],
+    [t("charsheet.dump.optionsBirth", "Birth"), "BIRTH"],
   ] as const) {
     out.push(`  [${title}]`, "");
     for (const entry of OPTION_ENTRIES) {
@@ -673,14 +708,17 @@ export function buildCharacterDump(
       const desc = entry.description;
       const padded = desc.length < 45 ? desc + " ".repeat(45 - desc.length) : desc;
       const val = state.options ? state.options.get(entry.name) : entry.normal;
-      out.push(`${padded}: ${val ? "yes" : "no "} (${entry.name})`);
+      const yesNo = val
+        ? t("charsheet.dump.optionYes", "yes")
+        : t("charsheet.dump.optionNo", "no ");
+      out.push(`${padded}: ${yesNo} (${entry.name})`);
     }
     out.push("");
   }
 
   /* Randart seed (L1181-1188). */
   if (state.options?.get("birth_randarts") && extras.seedRandart !== undefined) {
-    out.push("  [Randart seed]", "");
+    out.push(t("charsheet.dump.randartSeed", "  [Randart seed]"), "");
     out.push((extras.seedRandart >>> 0).toString(16).padStart(8, "0"), "");
   }
 
@@ -701,7 +739,7 @@ export function buildCharacterDump(
    * for the same reason: "no mods" is what the absence of the block means.
    */
   if (extras.mods && extras.mods.length > 0) {
-    out.push("  [Mods enabled]", "");
+    out.push(t("charsheet.dump.modsEnabled", "  [Mods enabled]"), "");
     for (const m of extras.mods) out.push(`${m.id} ${m.version}`);
     out.push("");
   }
@@ -722,10 +760,13 @@ export function buildCharacterDump(
    * set, and nothing in a faithful game can set it.
    */
   if ((state.actor.player.noscore & NOSCORE.BORG) !== 0) {
-    out.push("  [Autoplayed]", "");
+    out.push(t("charsheet.dump.autoplayed", "  [Autoplayed]"), "");
     out.push(
-      "This character was played by an autoplayer mod and is not eligible for",
-      "the high-score table.",
+      t(
+        "charsheet.dump.autoplayed.line1",
+        "This character was played by an autoplayer mod and is not eligible for",
+      ),
+      t("charsheet.dump.autoplayed.line2", "the high-score table."),
       "",
     );
   }
@@ -757,7 +798,11 @@ export function dumpCharacterFile(
 ): boolean {
   const text = `${buildCharacterDump(state, name, extras)}\n`;
   if (userTextLinesToFile(file, text)) {
-    msg?.(`Failed to create file ${userPath(file)}.new`);
+    msg?.(
+      t("charsheet.dump.saveFailed", "Failed to create file {path}.new", {
+        path: userPath(file),
+      }),
+    );
     return false;
   }
   exportUserFile(file, text);
@@ -799,10 +844,12 @@ export function showCharacterSheet(
    */
   const doRename = async (): Promise<void> => {
     if (argForceName()) {
-      opts.msg?.("You are not allowed to change your name!");
+      opts.msg?.(
+        t("charsheet.rename.forbidden", "You are not allowed to change your name!"),
+      );
       return;
     }
-    const entered = await promptText(term, RENAME_PROMPT, curName);
+    const entered = await promptText(term, renamePrompt(), curName);
     if (entered !== null && entered.trim()) {
       curName = entered.trim();
       opts.onRename?.(curName);
@@ -825,7 +872,11 @@ export function showCharacterSheet(
       },
       opts.msg,
     );
-    opts.msg?.(ok ? "Character dump successful." : "Character dump failed!");
+    opts.msg?.(
+      ok
+        ? t("charsheet.dump.success", "Character dump successful.")
+        : t("charsheet.dump.failure", "Character dump failed!"),
+    );
   };
 
   /**
@@ -882,7 +933,7 @@ export function showCharacterSheet(
          * reading a slightly worse caption, and `charsheet.test.ts` fails on it
          * long before a player could. Refusing the rename would be worse than
          * anything the census could get wrong. */
-        CHARSHEET_PROMPT_LABELS[fact.promptId] ?? fact.promptId,
+        charsheetPromptLabels()[fact.promptId] ?? fact.promptId,
         term.size(),
       ),
       work,
@@ -1040,7 +1091,7 @@ export function showCharacterSheet(
         const { cols, rows } = term.size();
         const lines = narrowLines();
         term.clear();
-        term.print(0, 0, "Character".slice(0, cols - 1), TITLE);
+        term.print(0, 0, t("charsheet.narrow.title", "Character").slice(0, cols - 1), TITLE);
         const bodyRows = rows - 3;
         const maxTop = Math.max(0, lines.length - bodyRows);
         if (top > maxTop) top = maxTop;

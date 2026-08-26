@@ -32,6 +32,7 @@ import {
   prefErrorMessage,
   prefsSave,
   processPrefText,
+  t,
 } from "@rpgm-tools/neo-angband-core";
 import { HostDir, host } from "@rpgm-tools/neo-angband-core";
 import type { DumpDeps, GlyphTable, PrefDeps, PrefSink } from "@rpgm-tools/neo-angband-core";
@@ -96,15 +97,17 @@ async function getPrefPath(ctx: PrefsUiCtx, what: string, row: number): Promise<
   /* prt("", row - 1, 0) (ui-options.c:53) is an ERASE of that row; print("") drew
    * nothing at all, so the call was a no-op. */
   if (row > 0) term.prt(0, row - 1, "", UI_TEXT);
-  term.prt(0, row, `${what} to a pref file`, UI_TEXT); // prt (ui-options.c:55)
+  term.prt(0, row, t("prefsUi.pathPrompt", "{what} to a pref file", { what }), UI_TEXT); // prt (ui-options.c:55)
   /* player_safe_name(..., true) strips the Roman-numeral suffix (player.c:389). */
   const ftmp = `${playerSafeName(ctx.playerName(), 80, true)}.prf`;
   if (argForceName()) {
-    return (await getCheck(term, `Confirm writing to ${ftmp}? `)) ? ftmp : null;
+    return (await getCheck(term, t("prefsUi.confirmWrite", "Confirm writing to {ftmp}? ", { ftmp })))
+      ? ftmp
+      : null;
   }
   /* prt("File: ", row + 2, 0) then askfor_aux(ftmp, sizeof ftmp) - which draws
    * where that prt left the cursor, so the answer echoes on row + 2. */
-  return getString(term, "File: ", ftmp, 80, row + 2);
+  return getString(term, t("prefsUi.fileLabel", "File: "), ftmp, 80, row + 2);
   } finally {
     popRegion(handle);
   }
@@ -115,6 +118,15 @@ async function getPrefPath(ctx: PrefsUiCtx, what: string, row: number): Promise<
  * The message names the title's text AFTER its first space
  * (`strstr(title, " ") + 1`), so "Save monster attr/chars" reports
  * "Saved monster attr/chars.".
+ *
+ * `title` is expected to keep upstream's "<verb> <noun...>" shape, because
+ * `shortTitle` below still derives by slicing off everything up to the first
+ * space, exactly as upstream's own `strstr` does - a signature this function
+ * cannot change without breaking `launch.test.ts`'s calls, which pin the
+ * current four-parameter shape. A translated title that reorders those words
+ * gets a shortTitle that no longer names the right noun; that is upstream's
+ * own fragility carried over, not a new one, and it stays undocumented risk
+ * rather than a rewrite until this function's shape can move.
  */
 export async function dumpPrefFile(
   ctx: PrefsUiCtx,
@@ -126,9 +138,9 @@ export async function dumpPrefFile(
   if (name === null) return;
   const shortTitle = title.slice(title.indexOf(" ") + 1);
   if (prefsSave(IO, name, dump, title)) {
-    ctx.say(`Saved ${shortTitle}.`);
+    ctx.say(t("prefsUi.saved", "Saved {shortTitle}.", { shortTitle }));
   } else {
-    ctx.say(`Failed to save ${shortTitle}.`);
+    ctx.say(t("prefsUi.saveFailed", "Failed to save {shortTitle}.", { shortTitle }));
   }
 }
 
@@ -155,7 +167,13 @@ export function processPrefFile(
   const io = host();
   const text = io.read(HostDir.USER, name);
   if (text === null) {
-    if (!quiet) ctx.say(`Cannot open '${io.displayPath(HostDir.USER, name)}'.`);
+    if (!quiet) {
+      ctx.say(
+        t("prefsUi.cannotOpen", "Cannot open '{path}'.", {
+          path: io.displayPath(HostDir.USER, name),
+        }),
+      );
+    }
     return false;
   }
   const sink = glyphTableSink(ctx.glyphs, {
@@ -346,18 +364,18 @@ export async function loadPrefFileHack(ctx: PrefsUiCtx, row: number): Promise<vo
   term.clear();
   /* prt("", row - 1, 0) (ui-options.c:1211) - an erase, not a no-op print(""). */
   if (row > 0) term.prt(0, row - 1, "", UI_TEXT);
-  term.prt(0, row, "Command: Load a user pref file", UI_TEXT); // prt (ui-options.c:1213)
+  term.prt(0, row, t("prefsUi.loadTitle", "Command: Load a user pref file"), UI_TEXT); // prt (ui-options.c:1213)
   const ftmp = `${playerSafeName(ctx.playerName(), 80, true)}.prf`;
   const name = argForceName()
-    ? (await getCheck(term, `Confirm loading ${ftmp}? `))
+    ? (await getCheck(term, t("prefsUi.confirmLoad", "Confirm loading {ftmp}? ", { ftmp })))
       ? ftmp
       : null
-    : await getString(term, "File: ", ftmp, 80, row + 2);
+    : await getString(term, t("prefsUi.fileLabel", "File: "), ftmp, 80, row + 2);
   if (name === null) return;
   if (!processPrefFile(ctx, name)) {
-    ctx.say(`Failed to load '${name}'!`);
+    ctx.say(t("prefsUi.loadFailed", "Failed to load '{name}'!", { name }));
   } else {
-    ctx.say(`Loaded '${name}'.`);
+    ctx.say(t("prefsUi.loaded", "Loaded '{name}'.", { name }));
   }
   } finally {
     popRegion(handle);
@@ -369,30 +387,38 @@ export async function loadPrefFileHack(ctx: PrefsUiCtx, row: number): Promise<vo
  * Upstream gives these rows no explicit tags (`selections = lower_case`), so
  * they letter positionally a..f.
  */
-const VISUAL_ROWS: readonly string[] = [
-  "Load a user pref file",
-  "Save monster attr/chars",
-  "Save object attr/chars",
-  "Save feature attr/chars",
-  "Save flavor attr/chars",
-  "Reset visuals",
-];
+/**
+ * A FUNCTION, not a constant: the rows are player-visible text and a locale
+ * can change mid-session, so a `const` computed at import time would freeze
+ * whichever language happened to be active first.
+ */
+function visualRows(): readonly string[] {
+  return [
+    t("prefsUi.visuals.loadPrefFile", "Load a user pref file"),
+    t("prefsUi.visuals.saveMonster", "Save monster attr/chars"),
+    t("prefsUi.visuals.saveObject", "Save object attr/chars"),
+    t("prefsUi.visuals.saveFeature", "Save feature attr/chars"),
+    t("prefsUi.visuals.saveFlavor", "Save flavor attr/chars"),
+    t("prefsUi.visuals.reset", "Reset visuals"),
+  ];
+}
 
 /** do_cmd_visuals (ui-options.c L831-852). */
 export async function runVisualsMenu(ctx: PrefsUiCtx, title: string): Promise<void> {
-  const items: MenuItem[] = VISUAL_ROWS.map((label) => ({ label }));
   for (;;) {
+    const rows = visualRows();
+    const items: MenuItem[] = rows.map((label) => ({ label }));
     const idx = await selectFromMenu(
       ctx.term,
       "core:visuals",
       title,
       items,
-      "[ a-f to choose, ESC to return ]",
+      t("prefsUi.visuals.footer", "[ a-f to choose, ESC to return ]"),
       /* visual_menu->header (L845): the one-line note above the rows. */
-      { subtitle: "To edit visuals, use the knowledge menu" },
+      { subtitle: t("prefsUi.visuals.subtitle", "To edit visuals, use the knowledge menu") },
     );
     if (idx === null) return;
-    const row = VISUAL_ROWS[idx];
+    const row = rows[idx];
     switch (idx) {
       case 0:
         await loadPrefFileHack(ctx, 15);
@@ -415,7 +441,7 @@ export async function runVisualsMenu(ctx: PrefsUiCtx, title: string): Promise<vo
          * the tile pipeline's own job and already survives the reset (the
          * TileMap is a separate table). */
         ctx.glyphs.reset();
-        ctx.say("Visual attr/char tables reset.");
+        ctx.say(t("prefsUi.visuals.resetDone", "Visual attr/char tables reset."));
         ctx.afterLoad?.();
         break;
     }
@@ -432,10 +458,11 @@ export async function runColorsMenu(
   title: string,
   modify: () => Promise<void>,
 ): Promise<void> {
+  const dumpColorsLabel = t("prefsUi.colors.dumpColors", "Dump colors");
   const items: MenuItem[] = [
-    { label: "Load a user pref file" },
-    { label: "Dump colors" },
-    { label: "Modify colors" },
+    { label: t("prefsUi.colors.loadPrefFile", "Load a user pref file") },
+    { label: dumpColorsLabel },
+    { label: t("prefsUi.colors.modify", "Modify colors") },
   ];
   for (;;) {
     const idx = await selectFromMenu(
@@ -443,7 +470,7 @@ export async function runColorsMenu(
       "core:pref-options",
       title,
       items,
-      "[ a-c to choose, ESC to return ]",
+      t("prefsUi.colors.footer", "[ a-c to choose, ESC to return ]"),
     );
     if (idx === null) return;
     if (idx === 0) {
@@ -451,7 +478,7 @@ export async function runColorsMenu(
       await loadPrefFileHack(ctx, 8);
       ctx.afterLoad?.();
     } else if (idx === 1) {
-      await dumpPrefFile(ctx, () => dumpColors(), "Dump colors", 15);
+      await dumpPrefFile(ctx, () => dumpColors(), dumpColorsLabel, 15);
     } else {
       await modify();
     }
@@ -460,7 +487,7 @@ export async function runColorsMenu(
 
 /** do_dump_options (ui-options.c L1247-1251): the subwindow flag dump. */
 export function dumpWindowSettings(ctx: PrefsUiCtx): Promise<void> {
-  return dumpPrefFile(ctx, () => optionDump(), "Dump window settings", 20);
+  return dumpPrefFile(ctx, () => optionDump(), t("prefsUi.dumpWindowSettings", "Dump window settings"), 20);
 }
 
 /** do_dump_autoinsc (ui-options.c L1254-1258). */
@@ -468,7 +495,7 @@ export function dumpAutoinscriptionsRow(ctx: PrefsUiCtx): Promise<void> {
   return dumpPrefFile(
     ctx,
     () => dumpAutoinscriptions(ctx.dumpDeps()),
-    "Dump autoinscriptions",
+    t("prefsUi.dumpAutoinscriptions", "Dump autoinscriptions"),
     20,
   );
 }
@@ -478,7 +505,7 @@ export function dumpCharScreenOptions(ctx: PrefsUiCtx): Promise<void> {
   return dumpPrefFile(
     ctx,
     () => dumpUiEntryRenderers(ctx.dumpDeps()),
-    "Dump char screen options",
+    t("prefsUi.dumpCharScreenOptions", "Dump char screen options"),
     20,
   );
 }

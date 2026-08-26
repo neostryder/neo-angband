@@ -15,6 +15,7 @@ import type { GridPointerInput, GridSurface } from "./term";
 import { selectFromMenu } from "./overlay";
 import type { MenuItem } from "./overlay";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
+import { t } from "@rpgm-tools/neo-angband-core";
 
 const DIM = UI_DIM;
 const FG = UI_TEXT;
@@ -36,33 +37,60 @@ export type SelectResult =
   | { action: "storage" }
   | { action: "back" };
 
+/** The placeholder shown for a character with no name - the roster row, the
+ * hint, and the delete-confirmation title all share it. */
+function unnamedPlaceholder(): string {
+  return t("charselect.unnamed", "(unnamed)");
+}
+
 /** "Town" at the surface, else the classic "<feet>' (L<n>)". */
 function depthLabel(depth: number): string {
-  return depth <= 0 ? "Town" : `${depth * 50}' (L${depth})`;
+  if (depth <= 0) return t("charselect.depth.town", "Town");
+  return t("charselect.depth.dungeon", "{feet}' (L{level})", {
+    feet: depth * 50,
+    level: depth,
+  });
+}
+
+/** "Name the Race Class": race and class are data-table names, so "the" is
+ * the only word here that is actually translatable prose. */
+function charWho(name: string, race: string, cls: string): string {
+  return t("charselect.who", "{name} the {race} {cls}", { name, race, cls });
 }
 
 /** One roster row: "Name the Race Class   Lv N   <depth>" (dead ones tagged). */
 function charLabel(c: CharMeta): string {
-  const who = `${c.name || "(unnamed)"} the ${c.race} ${c.cls}`.padEnd(34).slice(0, 34);
-  const lv = `Lv ${c.level}`.padEnd(6);
-  const where = c.alive ? depthLabel(c.depth) : "(deceased)";
+  const who = charWho(c.name || unnamedPlaceholder(), c.race, c.cls)
+    .padEnd(34)
+    .slice(0, 34);
+  const lv = t("charselect.level-abbr", "Lv {level}", { level: c.level }).padEnd(6);
+  const where = c.alive ? depthLabel(c.depth) : t("charselect.deceased", "(deceased)");
   return `${who} ${lv} ${where}`;
 }
 
 /** "just now" / "Nm ago" / "Nh ago" / "Nd ago" from an epoch-ms save stamp. */
 function lastPlayed(updatedAt: number, now: number): string {
   const mins = Math.floor(Math.max(0, now - updatedAt) / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t("charselect.last-played.now", "just now");
+  if (mins < 60) return t("charselect.last-played.minutes", "{mins}m ago", { mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  if (hours < 24) return t("charselect.last-played.hours", "{hours}h ago", { hours });
+  return t("charselect.last-played.days", "{days}d ago", {
+    days: Math.floor(hours / 24),
+  });
 }
 
 /** Per-row detail shown while the row is highlighted (MenuItem.hint). */
 function charHint(c: CharMeta, now: number): string {
-  if (!c.alive) return "(deceased) - memorial only";
-  return `Level ${c.level} ${c.cls} - ${depthLabel(c.depth)}, last played ${lastPlayed(c.updatedAt, now)}`;
+  if (!c.alive) {
+    return t("charselect.hint.deceased", "(deceased) - memorial only");
+  }
+  return t("charselect.hint.alive", "Level {level} {cls} - {depth}, last played {ago}", {
+    level: c.level,
+    cls: c.cls,
+    depth: depthLabel(c.depth),
+    ago: lastPlayed(c.updatedAt, now),
+  });
 }
 
 /**
@@ -73,13 +101,40 @@ function charHint(c: CharMeta, now: number): string {
  * has a delete at all when upstream, with a savefile directory, does not).
  */
 async function confirmDelete(term: GridSurface & GridPointerInput, c: CharMeta): Promise<boolean> {
-  const who = `${c.name || "(unnamed)"} the ${c.race} ${c.cls}, level ${c.level}`;
-  const title = c.alive ? `Delete ${who}?` : `${c.name || "(unnamed)"} has died.`;
-  const keep = c.alive ? "Keep this character" : "Leave the tombstone";
-  const drop = c.alive ? "Delete this save PERMANENTLY" : "Delete this record";
-  const pick = await selectFromMenu(term, "core:character-delete", title, [{ label: keep }, { label: drop }], "[ ESC to go back ]", {
-    ...(c.alive ? { subtitle: "The save is erased from this browser. There is no undo." } : {}),
+  const who = t("charselect.delete.who", "{name} the {race} {cls}, level {level}", {
+    name: c.name || unnamedPlaceholder(),
+    race: c.race,
+    cls: c.cls,
+    level: c.level,
   });
+  const title = c.alive
+    ? t("charselect.delete.title-alive", "Delete {who}?", { who })
+    : t("charselect.delete.title-dead", "{name} has died.", {
+        name: c.name || unnamedPlaceholder(),
+      });
+  const keep = c.alive
+    ? t("charselect.delete.keep-alive", "Keep this character")
+    : t("charselect.delete.keep-dead", "Leave the tombstone");
+  const drop = c.alive
+    ? t("charselect.delete.drop-alive", "Delete this save PERMANENTLY")
+    : t("charselect.delete.drop-dead", "Delete this record");
+  const pick = await selectFromMenu(
+    term,
+    "core:character-delete",
+    title,
+    [{ label: keep }, { label: drop }],
+    t("charselect.delete.footer", "[ ESC to go back ]"),
+    {
+      ...(c.alive
+        ? {
+            subtitle: t(
+              "charselect.delete.subtitle",
+              "The save is erased from this browser. There is no undo.",
+            ),
+          }
+        : {}),
+    },
+  );
   return pick === 1;
 }
 
@@ -114,9 +169,9 @@ export async function runCharacterSelect(
       hint: charHint(c, now),
     }));
     const newRow: MenuItem = {
-      label: "[ New character ]",
+      label: t("charselect.new.label", "[ New character ]"),
       color: FG,
-      hint: "Birth a brand-new character in a fresh save slot.",
+      hint: t("charselect.new.hint", "Birth a brand-new character in a fresh save slot."),
     };
     /* The delete request, resolved after the menu closes: opening a confirm
      * while this menu's own capturing keydown listener is still attached would
@@ -152,13 +207,19 @@ export async function runCharacterSelect(
     const pick = await selectFromMenu(
       term,
       "core:character-select",
-      "Select a character",
+      t("charselect.title", "Select a character"),
       [...items, newRow],
-      "[ a-z choose, Del delete, Shift-X export, Shift-M import, ESC title ]",
+      t(
+        "charselect.footer",
+        "[ a-z choose, Del delete, Shift-X export, Shift-M import, ESC title ]",
+      ),
       {
         subtitle: notice
           ? notice
-          : "Living characters resume; tombstones are memorials.",
+          : t(
+              "charselect.subtitle",
+              "Living characters resume; tombstones are memorials.",
+            ),
         /* CAPITALS for the port's own keys. The command layer is checked BEFORE
          * positional letters, so registering lower-case "x", "m" and "w" would
          * steal the selection tags of the 24th, 13th and 23rd rows from anyone

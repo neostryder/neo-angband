@@ -227,6 +227,13 @@
       "verdict": "UI - row-action routing in the mod-manager screen, an `if/else if (rk.kind === ...)` chain instead of main.ts's items[idx].action switch pattern. A mod-manager feature added to this menu has no arm to land in (MOD_REACH gap 18/24)."
     },
     {
+      "file": "packages/web/src/shop.ts",
+      "cases": 9,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "LOCALIZATION - commentWelcome indexes the greeting tier to its translated line. COMMENT_WELCOME above stays English-only on purpose: its .length is an RNG-parity bound (see its doc comment), not display text, so the array itself is not routed through the translator. Gap 14 owns the strings."
+    },
+    {
       "file": "packages/core/src/dice.ts",
       "cases": 8,
       "hasDefault": true,
