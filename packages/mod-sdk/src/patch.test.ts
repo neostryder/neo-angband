@@ -118,6 +118,18 @@ describe("applyFieldPatch op semantics", () => {
     ).toThrow(PatchError);
   });
 
+  it("rejects an append op that has 'value' instead of 'values', with a named cause", () => {
+    /* The typo the mod-resilience audit found: `set`/`add`/`mul` all take a
+     * singular `value`, and `append` is the one op that does not - so an
+     * author copying a nearby op keeps the field name and gets a bare
+     * TypeError (spreading `undefined`) instead of a message naming the op. */
+    const bad = { op: "append", path: "normal", value: ["x"] } as unknown as FieldOp;
+    expect(() => applyFieldPatch(store(), [bad])).toThrow(PatchError);
+    expect(() => applyFieldPatch(store(), [bad])).toThrow(
+      /"append" at normal needs a "values" array \(this op has "value" instead\)/,
+    );
+  });
+
   /*
    * The three quiet-destruction cases. Each of these used to succeed and throw
    * data away: an arithmetic op coerced a present non-number to 0 and wrote a
