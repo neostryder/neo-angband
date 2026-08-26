@@ -71,7 +71,6 @@
  */
 
 import type { GameState } from "../game/context.js";
-import type { GameObject } from "../obj/object.js";
 import type { OptionStateData } from "../player/options.js";
 import type { Chunk } from "../world/chunk.js";
 
@@ -216,57 +215,6 @@ export interface ModHooks {
   artifactCommit?: (aidx: number, alreadyCreated: boolean) => boolean;
 
   /**
-   * A partial merge that would combine two uneven stacks, when the SOURCE
-   * stack `drained` is about to be shrunk to top up `receiving` (game/gear.ts,
-   * combinePack's call to objectAbsorbPartial - only the non-quiver branch,
-   * where the residual bug this seam exists for actually lives).
-   *
-   * Return false to refuse the merge; the two stacks are left exactly as they
-   * were, and combinePack moves on to the next candidate exactly as it would
-   * if invenCanStackPartial itself had refused. Faithful core performs the
-   * merge unconditionally - upstream's own inven_can_stack_partial has no such
-   * check, and neither does the port's line-for-line copy.
-   *
-   * READ-ONLY. Nothing about this seam invites a hook to edit `drained` or
-   * `receiving`; it decides only whether the merge proceeds, the same way
-   * artifactCommit decides only whether the commit proceeds.
-   *
-   * RNG-FREE: no rng is passed and none may be reached, matching every other
-   * seam inside the object pipeline.
-   *
-   * Serves: the bug-fixes mod's stack-charge-drift guard (#6355 residual,
-   * neostryder/neo-angband#115).
-   */
-  partialStackMerge?: (drained: GameObject, receiving: GameObject) => boolean;
-
-  /**
-   * Which handle pack_overflow should shed when its caller passed no explicit
-   * victim (game/obj-cmd.ts, packOverflow's `handle === 0` / upstream NULL
-   * branch - the safety net session/game.ts's overflowPack runs before every
-   * command, game-world.c:941-947).
-   *
-   * `departedQuiver` is the one handle GameState.gear.quiver held immediately
-   * before the recompute that just ran and no longer holds now - core's own
-   * computed fact, the same way historyAdd hands over `duplicate`. A note-only
-   * change (an inscription, say) can drop an item's preferred_quiver_slot match
-   * and displace it into the ordinary pack, turning a slot-weighted quiver
-   * stack into a full pack slot of its own and tipping an otherwise-steady pack
-   * into overflow; `departedQuiver` names that item. Null when nothing left the
-   * quiver on this recompute (an ordinary overflow from picking something up,
-   * say), in which case there is nothing to redirect toward.
-   *
-   * Return the handle to shed, or null to decline. Declining MUST be free of
-   * observable effect - core then sheds `state.gear.inven[length-1]` exactly as
-   * it would with no mod loaded, so asking a mod that declines costs nothing.
-   *
-   * RNG-FREE: no rng is passed and none may be reached.
-   *
-   * Serves: the bug-fixes mod's pack-overflow-victim correction
-   * (neostryder/neo-angband#116).
-   */
-  packOverflowVictim?: (state: GameState, departedQuiver: number | null) => number | null;
-
-  /**
    * A character-history entry about to be written (session/game.ts and the
    * host's note command).
    *
@@ -398,11 +346,10 @@ export interface ModHooks {
  * one obeys it too - see the note below for the two folds that look like
  * exceptions and are not.
  *
- *  - LAST-HANDLER hooks (walkBlockedByDiggable, packOverflowVictim) are asked
- *    in REVERSE load order and stop at the first non-null, so the last mod to
- *    have an opinion is the one whose handling takes effect and no earlier mod
- *    can double-spend the energy it already paid out (or, for
- *    packOverflowVictim, second-guess a redirect an earlier mod already chose).
+ *  - LAST-HANDLER hooks (walkBlockedByDiggable) are asked in REVERSE load order
+ *    and stop at the first non-null, so the last mod to have an opinion is the
+ *    one whose handling takes effect and no earlier mod can double-spend the
+ *    energy it already paid out.
  *  - ORDERING hooks (objectListTiebreak) chain the same way round: the last
  *    mod's comparator is the primary key and earlier ones break the ties it
  *    leaves, which is a valid total order and is "later wins" for a comparator.
@@ -410,8 +357,8 @@ export interface ModHooks {
  *    load order, each seeing the previous one's output - so the last mod still
  *    speaks last and has the final say over the text that reaches the player,
  *    or over the radius the blast is built from.
- *  - VETO hooks (levelGenerated, artifactCommit, historyAdd, partialStackMerge)
- *    are conjunctive: every contributor runs and any refusal decides.
+ *  - VETO hooks (levelGenerated, artifactCommit, historyAdd) are conjunctive:
+ *    every contributor runs and any refusal decides.
  *  - ANY hooks (saveNoiseScent, shapeLearnObviousFlagsDirectly) are disjunctive:
  *    one mod asking for the data is enough, because the data is additive and a
  *    second mod cannot object.
@@ -469,8 +416,6 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   projectionRadius: "chained",
   levelGenerated: "all-must-agree",
   artifactCommit: "all-must-agree",
-  partialStackMerge: "all-must-agree",
-  packOverflowVictim: "last-answer",
   historyAdd: "all-must-agree",
   historyDisplay: "chained",
   saveNoiseScent: "any-yes",
@@ -582,26 +527,6 @@ export function guardModHooks(
     /* COMMIT, which is what core does unconditionally without the hook. */
     out.artifactCommit = (aidx, alreadyCreated): boolean =>
       guard("artifactCommit", () => artifact(aidx, alreadyCreated), true);
-  }
-
-  const partialMerge = hooks.partialStackMerge;
-  if (partialMerge) {
-    /* PROCEED with the merge, which is what core does unconditionally without
-     * the hook. */
-    out.partialStackMerge = (drained, receiving): boolean =>
-      guard("partialStackMerge", () => partialMerge(drained, receiving), true);
-  }
-
-  const overflowVictim = hooks.packOverflowVictim;
-  if (overflowVictim) {
-    /* null is DECLINE, so core sheds the trailing inven[] entry as it would
-     * with no mod loaded. */
-    out.packOverflowVictim = (state, departedQuiver): number | null =>
-      guard(
-        "packOverflowVictim",
-        () => overflowVictim(state, departedQuiver),
-        null,
-      );
   }
 
   const history = hooks.historyAdd;
@@ -728,30 +653,6 @@ export function composeModHooks(
     out.artifactCommit = (aidx, alreadyCreated): boolean => {
       for (const fn of artifact) if (!fn(aidx, alreadyCreated)) return false;
       return true;
-    };
-  }
-
-  const partialMerge = list.map((c) => c.partialStackMerge).filter(isFn);
-  if (partialMerge.length > 0) {
-    out.partialStackMerge = (drained, receiving): boolean => {
-      for (const fn of partialMerge) if (!fn(drained, receiving)) return false;
-      return true;
-    };
-  }
-
-  /* REVERSE load order, like walkBlockedByDiggable: the mod moved to the
-   * bottom of the list is asked first, so it is the one whose redirect wins. */
-  const overflowVictim = list
-    .map((c) => c.packOverflowVictim)
-    .filter(isFn)
-    .reverse();
-  if (overflowVictim.length > 0) {
-    out.packOverflowVictim = (state, departedQuiver): number | null => {
-      for (const fn of overflowVictim) {
-        const handle = fn(state, departedQuiver);
-        if (handle !== null) return handle;
-      }
-      return null;
     };
   }
 

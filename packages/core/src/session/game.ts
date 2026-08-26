@@ -987,18 +987,12 @@ function wireGame(
     rogueLike: state.options?.get("rogue_like_commands") ?? false,
     characterDungeon: true,
     ...(state.msg ? { msg: state.msg } : {}),
-    /* The partialStackMerge / packOverflowVictim seams (mod/hooks.ts). */
-    ...(state.modHooks ? { hooks: state.modHooks } : {}),
   });
   /* game-world.c:941-947: the C refreshes upkeep->inven[] before its
    * catch-all pack_overflow(NULL).  This closure has the same live
    * calc_inventory inputs used by pickup and command paths, preserving the
    * earlier_object order of the derived gear.inven view. */
   state.overflowPack = (): void => {
-    /* GameState.gear.quiver as it stood before this recompute, for the
-     * packOverflowVictim seam - the one point that catches an inscription (or
-     * any other note-only change) displacing an item out of the quiver. */
-    const previousQuiver = [...(state.gear.quiver ?? [])];
     const calcInv = liveCalcInv();
     /* notice_stuff()/handle_stuff() precede pack_overflow(NULL) at
      * game-world.c:941-947; materialize the current upkeep->inven[] analogue
@@ -1006,9 +1000,7 @@ function wireGame(
     calcInventory(state.gear, reg.constants, calcInv);
     packOverflow(state, 0, reg.constants, {
       calcInv,
-      previousQuiver,
       ...(state.msg ? { msg: state.msg } : {}),
-      ...(state.modHooks ? { hooks: state.modHooks } : {}),
     });
   };
   /* notice_stuff's PN_COMBINE branch (player-calcs.c L2546-2549). combine_pack

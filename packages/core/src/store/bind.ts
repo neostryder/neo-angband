@@ -58,7 +58,7 @@ import type {
  * list; all three lose a single entry. `store` is the entrance feature, which
  * is a scalar and costs the whole shop.
  */
-export type StoreField = "normal" | "always" | "buy" | "store";
+export type StoreField = "normal" | "always" | "buy" | "store" | "owner";
 
 /**
  * The entrance feature of a store whose `store:` a mod pointed at a feature
@@ -111,6 +111,7 @@ function resolveKind(item: StoreItemJson, reg: ObjRegistry): StockResolution {
 function lostWhat(field: StoreField): string {
   if (field === "store") return "shop cannot be entered";
   if (field === "buy") return "buy list entry dropped";
+  if (field === "owner") return "owner list dropped";
   return `${field} stock line dropped`;
 }
 
@@ -159,12 +160,6 @@ export function bindStore(
   reg: ObjRegistry,
   refused?: RecordRefusal[],
 ): BoundStore {
-  const owners: StoreOwner[] = rec.owner.map((o, index) => ({
-    index,
-    name: o.name,
-    maxCost: o.purse,
-  }));
-
   const from = provenanceOf(rec);
   /** One refusal for this record, so four call sites cannot disagree. */
   const refusal = (
@@ -179,6 +174,43 @@ export function bindStore(
     id,
     why: refusalWhy(rec.store, lostWhat(field), why, prov),
   });
+
+  /*
+   * `owner:` IS A REQUIRED LIST, and unlike every other field this binder
+   * refuses, nothing inside it names another record - MOD_COMPATIBILITY.md
+   * already says as much: "the owner list resolves no names at all and so has
+   * nothing to refuse". What that line did not cover is the field going
+   * missing ENTIRELY. `replaces` on a record a mod owns can legitimately drop
+   * fields the replacing body means to remove - that is how a total
+   * conversion works, and composeContentPacks's own shape guard
+   * (mod-sdk/compose.ts, `unreadableShape`) deliberately does not restore a
+   * field that is simply ABSENT, because "gone" and "total conversion left it
+   * out on purpose" are indistinguishable from the composer's side. So a
+   * `replaces` body that forgets `owner:` on a record a mod owns reaches this
+   * line with `rec.owner` undefined, and `rec.owner.map` was a bare
+   * TypeError with no pack named - the same crash this file exists to close,
+   * one field up from a stock line.
+   *
+   * AN EMPTY OWNER LIST IS THE SIZE OF THE DROP: the store keeps functioning
+   * (turnover, stock, buy) with nobody to haggle against, which is a strictly
+   * smaller loss than the shop vanishing or the boot failing.
+   */
+  const ownerRecords = Array.isArray(rec.owner) ? rec.owner : null;
+  let owners: StoreOwner[];
+  if (ownerRecords) {
+    owners = ownerRecords.map((o, index) => ({
+      index,
+      name: o.name,
+      maxCost: o.purse,
+    }));
+  } else {
+    const owner = fieldOwner(from, "owner", rec.owner);
+    if (owner === null || from === undefined) {
+      throw new Error(`store: ${rec.store}: owner is missing or not a list`);
+    }
+    refused?.push(refusal("owner", "owner list missing or not a list", owner, from));
+    owners = [];
+  }
   /**
    * One stock line, or null when it resolved to nothing and was a mod's to get
    * wrong. A core-owned miss throws here with exactly the message it always
