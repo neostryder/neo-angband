@@ -104,6 +104,9 @@ describe("the plan", () => {
      * folder; and the data directory lives inside it. */
     expect(win.mode).toBe("contents");
     expect(win.target).toBe("C:\\Games\\Neo Angband");
+    expect(win.preserve).toContain("data");
+    /* An install from before the data-dir rename must never have its
+     * neo-angband-data folder swept into the attic and deleted. */
     expect(win.preserve).toContain("neo-angband-data");
   });
 

@@ -10,7 +10,7 @@ question means taking its input too.
 
 ## Try it
 
-Copy this folder into your `neo-angband-data/mods/` folder, enable it in the mod
+Copy this folder into your `data/mods/` folder, enable it in the mod
 manager (it asks for one capability, `ui:menu.replace`), reload, and press `Esc`
 in game.
 

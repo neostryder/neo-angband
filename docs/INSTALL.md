@@ -252,7 +252,7 @@ pnpm --filter @rpgm-tools/neo-angband-desktop install:portable "D:\Games\Neo Ang
 ```
 
 Re-running it over an existing install replaces the program and **keeps
-`neo-angband-data` untouched**, so rebuilding never costs you a character.
+`data` untouched**, so rebuilding never costs you a character.
 
 ### Where your data lives
 
@@ -263,13 +263,13 @@ base directory. Which one depends on how you launched it, in this order:
 1. **`NEO_ANGBAND_DATA` is set** - that path. This is upstream's own
    `ANGBAND_PATH` (`init.c`).
 2. **You ran the single-file portable `.exe`, or an AppImage** - a
-   `neo-angband-data` folder beside the file you double-clicked. (Both of those
+   `data` folder beside the file you double-clicked. (Both of those
    unpack themselves somewhere temporary, so it is the file's own folder that
    counts, not where the program is running from.)
-3. **A `neo-angband-data` folder already exists beside the program** - that
+3. **A `data` folder already exists beside the program** - that
    folder. This is how you make an *installed* copy self-contained: create the
    folder, and the game uses it from then on.
-4. **The program's own folder** - `neo-angband-data` beside the executable. This
+4. **The program's own folder** - `data` beside the executable. This
    is the default, and it is what makes an unzipped copy self-contained without
    being asked.
 5. Otherwise the OS user-data directory:
@@ -290,7 +290,7 @@ Only three things reach step 5, and each of them wants to:
   step 1 or 3.
 
 The path in use, and which rule chose it, is printed at startup:
-`[neo-angband] data (folder): C:\Games\Neo Angband\neo-angband-data`. If the folder
+`[neo-angband] data (folder): C:\Games\Neo Angband\data`. If the folder
 cannot be written to, the game says so and stops rather than starting a character
 it could never save (upstream's `create_needed_dirs` does the same).
 
@@ -354,7 +354,7 @@ running and look at the **Kind** column: it should say *Apple*, not *Intel*.
 **The game updates itself.** When a newer version has been published, the title
 screen grows a shimmering **(U)pdate** row. Pressing `U` downloads the new
 version, checks it against the checksum GitHub published for it, restarts, and
-comes back on the new one. Your `neo-angband-data` folder - characters,
+comes back on the new one. Your `data` folder - characters,
 settings, scores, mods - is not touched, and the old files are kept until the new
 ones are in place, so a failure leaves you on the version you already had.
 
@@ -582,7 +582,7 @@ cleanup that reaches the saves reaches the mods too. Specifically:
 - A cleanup tool - Disk Cleanup, CCleaner, a browser extension, a "free up space"
   setting - or a scheduled task or script that runs one for you
 - Resetting the browser, or deleting its profile
-- On the desktop build: deleting or moving the game's `neo-angband-data` folder,
+- On the desktop build: deleting or moving the game's `data` folder,
   or uninstalling
 
 Because death is permanent, a character lost this way is not recoverable from
@@ -594,7 +594,7 @@ origin, what is stored there now, and whether the browser has marked it
 persistent.
 
 On the **desktop build** there is a second backup that has no browser equivalent:
-close the game and copy the whole `neo-angband-data` folder. It carries the saves,
+close the game and copy the whole `data` folder. It carries the saves,
 the settings and the installed mods together.
 
 ---

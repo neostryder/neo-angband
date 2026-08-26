@@ -58,6 +58,19 @@ version it still calls itself.
   the same read-only, add-only way. Unblocks a mod-side buff cross-check
   against real engine state instead of the mod's own message-based
   bookkeeping (neostryder/neo-angband#121).
+- The desktop build now bundles README.md and the other root policy/legal
+  docs (CHANGELOG, LICENSE, TERMS, PRIVACY, SECURITY, CODE_OF_CONDUCT,
+  CONTRIBUTING, AI_USAGE_POLICY) at the install folder's own root, beside
+  the executable - they were never copied there before.
+
+### Changed
+
+- The portable data folder beside the executable is named `data` instead
+  of `neo-angband-data`. Only a fresh install or a fresh portable data
+  folder gets the new name; an existing `neo-angband-data` folder is found
+  and used in place, exactly as before, both at startup and across an
+  in-place update - nothing migrates and no save is moved, and neither
+  name is ever deleted out from under an install that has it.
 
 ### Fixed
 

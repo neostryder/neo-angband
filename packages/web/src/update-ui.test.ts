@@ -28,7 +28,7 @@ import type { UpdateHow, UpdatePhase, UpdateView } from "./update-ui";
  * copies of a load-bearing string, so the AGREEMENT between them is asserted in
  * packages/desktop/src/packaging.test.ts, which is allowed to read both files.
  */
-const SAVE_DIR = "neo-angband-data";
+const SAVE_DIR = "data";
 
 const base: UpdateView = {
   how: "swap",
@@ -133,7 +133,7 @@ describe("the offer, in a browser", () => {
 
   it("does not talk about folders or channels the browser does not have", () => {
     expect(text(web)).not.toContain("C:\\Games");
-    expect(text(web)).not.toContain("neo-angband-data");
+    expect(text(web)).not.toContain("data");
     expect(text(web)).not.toContain("Channel:");
   });
 });

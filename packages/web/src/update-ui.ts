@@ -360,8 +360,8 @@ export function updateLines(v: UpdateView): UpdateLine[] {
     say("");
     say("What changes:", "body");
     if (v.installRoot) say(`  every file in ${elidePath(v.installRoot)}`, "dim");
-    say("  ...except neo-angband-data, which is where your characters,", "dim");
-    say("  settings, scores and mods live. That folder is not touched.", "dim");
+    say("  ...except data (or neo-angband-data, on an older install), which is", "dim");
+    say("  where your characters, settings, scores and mods live. Not touched.", "dim");
     say("");
     say("The old files are kept until the new ones are in place, so a failure", "body");
     say("here leaves you on the version you have now.", "body");

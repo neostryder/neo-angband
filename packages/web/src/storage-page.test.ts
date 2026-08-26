@@ -23,7 +23,7 @@ const WEB: StoragePageInput = {
 const DESKTOP: StoragePageInput = {
   ...WEB,
   desktop: true,
-  home: "C:\\Games\\Neo Angband\\neo-angband-data",
+  home: "C:\\Games\\Neo Angband\\data",
   origin: "http://127.0.0.1:45871",
 };
 
@@ -82,7 +82,7 @@ describe("what the page has to say", () => {
 describe("the two shells say different true things", () => {
   it("the desktop build names the folder, and that it can be copied", () => {
     const t = text(DESKTOP);
-    expect(t).toContain("C:\\Games\\Neo Angband\\neo-angband-data");
+    expect(t).toContain("C:\\Games\\Neo Angband\\data");
     expect(t).toContain("copy that whole folder");
     /* Not the loopback origin, which is a number a player can do nothing with. */
     expect(t).not.toContain("127.0.0.1");
