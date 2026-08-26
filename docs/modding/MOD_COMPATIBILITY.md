@@ -170,10 +170,19 @@ This now covers every field of a store record a patch can reach. `normal`,
 left of the shop: the record survives with an entrance nothing matches, the shop
 cannot be entered, and the mod is told. It is not removed from the store list,
 because that list is consumed positionally: dropping a record would renumber
-every store after it and move a saved game's stock between shops. The owner list
-resolves no names at all and so has nothing to refuse; a patch that replaces it
-with the wrong *shape* is a different problem, and one the composer now answers
-one level up.
+every store after it and move a saved game's stock between shops.
+
+The owner list resolves no names at all, so there is no per-entry miss to
+refuse the way a stock line has - but the field can still go missing
+*entirely*, which is a different failure than the wrong-shape one the composer
+answers one level up (below). A `replaces` body on a record a mod owns can
+legitimately drop `owner:` as part of a total conversion, and the composer's
+own shape guard deliberately does not restore a field that is simply absent
+(see "A patch cannot make a field unreadable" below) - so `owner: undefined`
+used to reach `rec.owner.map` as a bare `TypeError` naming no pack. The store
+binder now guards the field itself: a missing or malformed owner list is
+dropped to empty and reported against whichever pack is answerable, the same
+way every other field on the record already is (#8).
 
 **A patch cannot make a field unreadable.** The composer already checked shape on
 the load path with `field/type` in the record check, but that check reports and
@@ -194,8 +203,9 @@ Two things it deliberately does not do, both load-bearing:
   conversion works: `replaces` swaps the whole record, and a monster rewritten
   as `{name, hp}` legitimately has no `flags`. Restoring an absent field would
   silently undo a supported feature. An absent required field is reported
-  (`field/required`), and refusing a record the *mod itself owns* belongs in the
-  binders; `docs/PLANNED.md` carries that.
+  (`field/required`), and refusing a record the *mod itself owns* belongs in
+  the binders - the store binder's `owner:` guard above is that case, applied
+  where it is reachable today.
 
 **This is not a store-only rule.** An ego's `item:` list names specific base
 kinds and takes the same `append`, so it had the same defect and now gets the
@@ -204,7 +214,22 @@ mod is told. The core-versus-mod decision lives in `packages/core/src/mod/
 refusal.ts`, one `fieldOwner`, shared, precisely so that two binders cannot
 reach different verdicts about the same provenance. A binder that resolves names
 from a list a mod can append to should be reading from there rather than
-inventing its own rule; `docs/PLANNED.md` tracks which ones still do not.
+inventing its own rule.
+
+A systematic pass over every binder (#8) found six more instances of the same
+shape and closed them the same way: an artifact's `flags:` and `values:`
+tokens, a curse's `type:` entries, a monster's `base:` (the whole race, sized
+like the artifact's `base-object:`), `friends-base:`, `friends:` and `shape:`
+(one entry each), and a terrain feature's `mimic:`. Two fields were audited and
+found not to need it: an artifact's `act:` resolves the same way upstream's own
+`findact` does - silently, to nothing, on core's own data too - so refusing a
+mod's version would make the identical mistake louder than core's; and the trap
+binder resolves no name from an appendable list at all, only fixed compiled
+tables. `composePacks`'s `fieldPatches` loop also reached `applyFieldPatch`
+without going through `refuse()`, so a malformed op (an `append` with `value`
+instead of `values`, say) took down the whole pack, or every installed mod when
+the raw error named none of them; it is now refused the same way a missing
+patch target already was.
 
 ### 4. The handed-in namespaces are not covered by any of the above, and that is the honest gap
 
