@@ -411,6 +411,7 @@ import {
 } from "./tiles";
 import { LinoleumPack, loadLinoleumPack } from "./linoleum-pack";
 import { ensureLinoleumTilesheetPack } from "./linoleum-cache";
+import { hideTileConversionBanner, showTileConversionBanner } from "./tile-conversion-banner";
 import { urlBaseResolver, type PackFileResolver } from "./pack-files";
 import {
   showTextScreen,
@@ -1706,6 +1707,18 @@ const availableTileModes: readonly TileModeEntry[] = composeTileModes({
 let tileset: TileBlitter | null = null;
 let tileMap: TileMap | null = null;
 let currentGrafID = GRAPHICS_NONE;
+/**
+ * Bumped on every linoleum selection that may need a first-time conversion,
+ * so a stale attempt's own banner timer or cleanup never touches a newer
+ * attempt's banner - `currentGrafID` alone is not enough, because switching
+ * away and straight back to the SAME grafID while a conversion is still in
+ * flight would make the stale check pass for the wrong attempt (#124).
+ */
+let linoleumConversionSeq = 0;
+/** How long a conversion may run before the "still working" banner appears -
+ * short enough to catch a real Shockbolt-sized wait, long enough that an
+ * already-cached pack's near-instant resolve never flashes it at all. */
+const LINOLEUM_BANNER_DELAY_MS = 400;
 /* Read once while resources install - the file AND everything its `%:` lines
  * include (#278). Every pack-map rebuild replays this in enabled load order; a
  * graphics-mode switch never needs to resolve mod files. */
@@ -1768,32 +1781,60 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
     tileMap = null;
     repaintEverything();
     const sourceResolver = tileResolverFor(entry);
-    const resolve =
-      entry.tilesheet === undefined || entry.modId === undefined
-        ? sourceResolver
-        : await ensureLinoleumTilesheetPack({
-            modId: entry.modId,
-            source: entry.tilesheet,
-            resolve: sourceResolver,
-          });
-    const pack = await loadLinoleumPack({
-      resolve,
-      menuname: entry.menuname,
-      deps: { ...tileDeps, vars: playerPrefVars() },
-      modPrefTexts: modTilePrefTexts,
-    });
-    // Ignore a stale load if the mode changed during the fetch.
-    if (currentGrafID !== grafID) return;
-    if (pack) {
-      pack.onReady = () => repaintEverything();
-      tileset = pack;
-      tileMap = pack.index.map;
-      // Warm the ground around the player before the first frame draws it -
-      // a fresh load's cache is completely cold, which is exactly when the
-      // flash (#290) is most visible.
-      precacheTilesNear(state.actor.grid.x, state.actor.grid.y, PRECACHE_RADIUS);
+    const menuname = entry.menuname;
+
+    const applyLoaded = async (resolve: PackFileResolver): Promise<void> => {
+      const pack = await loadLinoleumPack({
+        resolve,
+        menuname,
+        deps: { ...tileDeps, vars: playerPrefVars() },
+        modPrefTexts: modTilePrefTexts,
+      });
+      // Ignore a stale load if the mode changed during the fetch.
+      if (currentGrafID !== grafID) return;
+      if (pack) {
+        pack.onReady = () => repaintEverything();
+        tileset = pack;
+        tileMap = pack.index.map;
+        // Warm the ground around the player before the first frame draws it -
+        // a fresh load's cache is completely cold, which is exactly when the
+        // flash (#290) is most visible.
+        precacheTilesNear(state.actor.grid.x, state.actor.grid.y, PRECACHE_RADIUS);
+      }
+      repaintEverything();
+    };
+
+    if (entry.tilesheet === undefined || entry.modId === undefined) {
+      // No conversion possible for this row - the pack is already loose
+      // files, so there is nothing to background.
+      await applyLoaded(sourceResolver);
+      return;
     }
-    repaintEverything();
+
+    // A first-time selection converts the whole source atlas before the pack
+    // is usable, which can run long enough to look like a hang (#124). Rather
+    // than block the menu on it, hand the player back to the game now and let
+    // a banner - shown only if it is still running after a short grace period,
+    // so an already-cached pack never flashes one - name what is happening.
+    const modId = entry.modId;
+    const tilesheet = entry.tilesheet;
+    const seq = ++linoleumConversionSeq;
+    void (async () => {
+      const bannerTimer = setTimeout(() => {
+        if (linoleumConversionSeq === seq) showTileConversionBanner(menuname);
+      }, LINOLEUM_BANNER_DELAY_MS);
+      try {
+        const resolve = await ensureLinoleumTilesheetPack({
+          modId,
+          source: tilesheet,
+          resolve: sourceResolver,
+        });
+        await applyLoaded(resolve);
+      } finally {
+        clearTimeout(bannerTimer);
+        if (linoleumConversionSeq === seq) hideTileConversionBanner();
+      }
+    })();
     return;
   }
 
