@@ -81,6 +81,12 @@ version it still calls itself.
 - A message longer than the display line took up a whole page of its own;
   upstream splits it at the rightmost space and recurses on the rest
   instead. The pager now does the same (neostryder/neo-angband#7).
+- The birth point-buy stat allocation screen never showed the gold-rectangle
+  cursor upstream draws just after the current stat's cost (ui-birth.c:1135),
+  because that screen is hand-rolled rather than built on the shared menu
+  widget every other cursor-driven screen in the game already gets it from.
+  Up/down now moves a real cursor there like everywhere else
+  (neostryder/neo-angband#60).
 - `menuNav`, the one navigation helper every overlay and menu screen shares,
   never recognized h/j/k/l, even with the roguelike keyset selected - a
   game-wide gap, not limited to the birth screen where it was first
