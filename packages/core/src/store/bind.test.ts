@@ -404,3 +404,74 @@ describe("bindStore: the buy list and the entrance feature", () => {
     expect(bound.stores[0]!.feat).toBe(-1);
   });
 });
+
+/**
+ * `owner:` IS REQUIRED, and unlike every other field this binder refuses,
+ * nothing inside it names another record - there is no per-entry miss to
+ * drop the way a stock line or a buy rule has. What IS reachable is the
+ * field going missing ENTIRELY: a `replaces` body on a record a mod owns can
+ * legitimately drop fields the replacing body means to remove (that is how a
+ * total conversion works), and composeContentPacks's own shape guard
+ * deliberately does not restore a field that is simply absent - "gone" and
+ * "left out on purpose" are indistinguishable from the composer's side. So
+ * `rec.owner.map` used to be a bare TypeError with no pack named, the same
+ * crash this file exists to close, one field up from a stock line.
+ */
+describe("bindStore: a replaces body that drops the required owner list", () => {
+  const armour = (): StoreRecordJson =>
+    JSON.parse(
+      JSON.stringify(storeRecords.find((r) => r.store === "STORE_ARMOR")),
+    ) as StoreRecordJson;
+
+  function stamped(
+    rec: StoreRecordJson,
+    from: { owner: string; modifiedBy?: string[]; was?: Record<string, unknown> },
+  ): StoreRecordJson {
+    return { ...rec, $from: from } as StoreRecordJson;
+  }
+
+  function withoutOwner(rec: StoreRecordJson): StoreRecordJson {
+    const next = { ...rec } as { owner?: unknown };
+    delete next.owner;
+    return next as StoreRecordJson;
+  }
+
+  it("throws when nothing touched the record", () => {
+    const rec = withoutOwner(armour());
+    expect(() => new StoreRegistry([rec], reg)).toThrow(
+      /store: STORE_ARMOR: owner is missing or not a list/,
+    );
+  });
+
+  it("drops the owner list and names the mod when a replaces body removed it", () => {
+    const base = armour();
+    const was = { owner: base.owner.map((o) => ({ ...o })) };
+    const rec = withoutOwner(stamped(base, { owner: "core", modifiedBy: ["mod-a"], was }));
+
+    const bound = new StoreRegistry([rec], reg);
+    const bare = stores.byName("STORE_ARMOR")!;
+
+    /* THE SHOP STILL FUNCTIONS: everything but the owner list survives. */
+    expect(bound.byName("STORE_ARMOR")!.owners).toEqual([]);
+    expect(bound.byName("STORE_ARMOR")!.feat).toBe(bare.feat);
+    expect(bound.byName("STORE_ARMOR")!.normalTable.length).toBe(bare.normalTable.length);
+
+    expect(bound.refused.length).toBe(1);
+    expect(bound.refused[0]!.id).toBe("mod-a");
+    expect(bound.refused[0]!.file).toBe("store");
+    expect(bound.refused[0]!.record).toBe("STORE_ARMOR");
+    expect(bound.refused[0]!.field).toBe("owner");
+    expect(bound.refused[0]!.why).toContain("owner list dropped");
+  });
+
+  it("still refuses a mod-defined store whose own owner list is missing", () => {
+    const rec = stamped(withoutOwner(armour()), { owner: "mod-a" });
+    const bound = new StoreRegistry([rec], reg);
+    expect(bound.refused[0]!.id).toBe("mod-a");
+    expect(bound.stores[0]!.owners).toEqual([]);
+  });
+
+  it("refuses nothing at all for the shipped pack", () => {
+    expect(stores.refused).toEqual([]);
+  });
+});
