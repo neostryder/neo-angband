@@ -942,6 +942,11 @@ function paintPointBuyOnTerminal(
         prompt.slice(0, cols - 1),
         PB_DIM,
       );
+      // "Place cursor just after cost of current stat" (ui-birth.c:1134-1135):
+      // the gold rectangle that says which row up/down will move next. Set
+      // LAST, like every other screen's cursor - repainting the cell is what
+      // erases it, so it has to be reasserted after the rest of the frame.
+      term.setCursor(tableCol + COST_OFFSET + 4, STAT_ROW0 + cursor);
     };
     const finish = (value: number[] | null): void => {
       inputEvents.removeEventListener("keydown", onKey, true);

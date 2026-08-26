@@ -63,6 +63,8 @@ interface TestTerm extends GlyphTerm {
   colorAt(x: number, y: number): string;
   /** Deliver a tap to whatever handler is installed, or report that none is. */
   tap(row: number, col?: number): boolean;
+  /** Where setCursor last placed the gold rectangle, or null if hidden/unset. */
+  cursorAt(): { x: number; y: number } | null;
 }
 
 /**
@@ -75,6 +77,7 @@ function makeTerm(cols = 80, rows = 24): TestTerm {
   const grid: string[][] = Array.from({ length: rows }, () => new Array<string>(cols).fill(" "));
   const colors: string[][] = Array.from({ length: rows }, () => new Array<string>(cols).fill(""));
   let onTap: ((cell: { row: number; col: number }) => void) | null = null;
+  let cursor: { x: number; y: number } | null = null;
   return {
     size: () => ({ cols, rows }),
     clear: () => {
@@ -134,10 +137,15 @@ function makeTerm(cols = 80, rows = 24): TestTerm {
      * from the one the game runs. */
     invalidate: () => {},
     flush: () => {},
-    setCursor: () => {},
-    hideCursor: () => {},
+    setCursor: (x: number, y: number) => {
+      cursor = { x, y };
+    },
+    hideCursor: () => {
+      cursor = null;
+    },
     snapshot: () => grid.map((row) => row.join("").replace(/\s+$/u, "")),
     colorAt: (x: number, y: number) => colors[y]?.[x] ?? "",
+    cursorAt: () => cursor,
     /* The touch seam. It used to be absent, so every `term.onCellTap?.(...)`
      * in the birth screens was an optional call on undefined - which means the
      * tap handlers were never registered and never tested, and a screen that
@@ -541,6 +549,28 @@ describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {
     const choice = await done;
     expect(choice!.roller).toBe("point");
     expect(choice!.stats).toEqual([12, 10, 10, 10, 10]);
+  });
+
+  it("places the gold rectangle just after the cursor row's cost, and moves it with up/down (ui-birth.c:1134-1135)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90); // wide layout: tableCol 42, COST_OFFSET 32
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+    await tick();
+    press(win, "a"); await tick(); // Human
+    press(win, "a"); await tick(); // Warrior
+    press(win, "a"); await tick(); // Point-based -> the allocation screen
+    // Row 0 (STR), just after its 4-char cost field: 42 + 32 + 4.
+    expect(term.cursorAt()).toEqual({ x: 78, y: 2 });
+    press(win, "ArrowDown");
+    expect(term.cursorAt()).toEqual({ x: 78, y: 3 }); // row 1 (INT)
+    press(win, "ArrowUp");
+    expect(term.cursorAt()).toEqual({ x: 78, y: 2 }); // back to row 0
+    press(win, "Escape"); await tick(); // -> roller choice
+    press(win, "Escape"); await tick(); // -> class
+    press(win, "Escape"); await tick(); // -> race
+    press(win, "Escape"); // stage 0 -> keep default
+    expect(await done).toBeNull();
   });
 
   it("ESC from the allocation screen steps back to the roller choice", async () => {
