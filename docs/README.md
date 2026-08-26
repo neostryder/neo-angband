@@ -8,7 +8,6 @@ install, and how to mod the game. Start with the top-level
 
 | I want to... | Go to |
 | --- | --- |
-| **Learn to play, step by step** | [QUICKSTART.md](./QUICKSTART.md) - birth, controls, mods, town, and the first dive, with screenshots |
 | **Play it** | [INSTALL.md](./INSTALL.md), or grab a build from [Releases](https://github.com/neostryder/neo-angband/releases) |
 | **Get a mod** | [MODS.md - getting a mod](./MODS.md#getting-a-mod-in-one-paragraph) |
 | **Write a mod** | [modding/README.md](./modding/README.md) |
@@ -39,9 +38,6 @@ install, and how to mod the game. Start with the top-level
 
 ## Playing and installing
 
-- [QUICKSTART.md](./QUICKSTART.md) - the new-player walkthrough: birth settings,
-  controls, mods worth turning on, a tour of town, and the first steps into the
-  dungeon, with screenshots at every stage.
 - [INSTALL.md](./INSTALL.md) - playing in a browser, installing the offline
   PWA, self-hosting the static site, and the desktop app.
 - [LOGGING.md](./LOGGING.md) - where the game writes its log, how much a build
