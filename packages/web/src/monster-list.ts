@@ -127,8 +127,9 @@ function showMonsterListOnTerminal(
         return;
       }
       // Arrows AND numpad digits scroll (menuNav), so the numpad is not dead
-      // in this list when NumLock is on.
-      const nav = menuNav(ev);
+      // in this list when NumLock is on. j/k also scroll under the roguelike
+      // keyset ('x' above already claims the letter, so no collision there).
+      const nav = menuNav(ev, state.options?.get("rogue_like_commands") ?? false);
       if (!nav) return;
       if (nav === "up") top = Math.max(0, top - 1);
       else if (nav === "down") top += 1;

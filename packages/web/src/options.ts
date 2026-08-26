@@ -325,6 +325,8 @@ export function optionToggleScreen(
   onToggle: (name: string, value: boolean) => void,
   readOnly: boolean,
   custom?: OptionCustomDefaults,
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
 ): Promise<void> {
   const handle = pushRegion(screenRegionSpec(), host.size());
   const term = regionSurface(host, handle.cells);
@@ -417,8 +419,9 @@ export function optionToggleScreen(
       ev.stopImmediatePropagation();
       if (ev.key === "Escape") return finish();
       // Arrows AND numpad digits move the cursor (menuNav), so the numpad works
-      // here regardless of NumLock; up/down wrap as before.
-      const nav = menuNav(ev);
+      // here regardless of NumLock; up/down wrap as before. j/k also move it
+      // under the roguelike keyset.
+      const nav = menuNav(ev, roguelike);
       if (nav === "up" || nav === "pageup" || nav === "home") {
         if (rows.length > 0) cursor = (cursor - 1 + rows.length) % rows.length;
         paint();
@@ -520,6 +523,7 @@ export function optionToggleScreen(
  */
 async function runInterfacePage(term: GridSurface & GridPointerInput, state: GameState): Promise<void> {
   const rows = pageRows(state, "INTERFACE");
+  const roguelike = state.options?.get("rogue_like_commands") ?? false;
   await optionToggleScreen(
     term,
     t("options.page.interface.title", "User interface options"),
@@ -540,6 +544,7 @@ async function runInterfacePage(term: GridSurface & GridPointerInput, state: Gam
        * that can put option.c's msg() where upstream puts it. */
       (m) => state.msg?.(m),
     ),
+    roguelike,
   );
 }
 
@@ -553,6 +558,8 @@ async function runBirthPage(term: GridSurface & GridPointerInput, state: GameSta
       /* read-only: optionToggleScreen never calls onToggle while readOnly. */
     },
     true,
+    undefined,
+    state.options?.get("rogue_like_commands") ?? false,
   );
 }
 
@@ -598,6 +605,9 @@ export async function runBirthOptionsEditor(
         store[name] = value;
       },
     ),
+    /* No live GameState this early - store IS the player's in-progress birth
+     * choices, so the option they just set (if any) is the live value. */
+    store["rogue_like_commands"] ?? false,
   );
 }
 
@@ -627,6 +637,8 @@ async function runCheatPage(term: GridSurface & GridPointerInput, state: GameSta
       state.options?.set(name, value);
     },
     false,
+    undefined,
+    state.options?.get("rogue_like_commands") ?? false,
   );
 }
 

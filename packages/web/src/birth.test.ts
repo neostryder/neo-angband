@@ -458,6 +458,56 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
     press(win, "Escape");
     expect(await done).toBeNull();
   });
+
+  /**
+   * #127: h/j/k/l are deliberately reserved as free movement keys on this menu
+   * (all_letters_nohjkl, birth.ts's ALL_LETTERS_NOHJKL) - so upstream's own
+   * roguelike keyset drives the cursor with them here too (target_dir_allow ->
+   * process_dir, ui-target.c:99-108 remaps hjkl onto the same directions
+   * arrows/numpad use, for every menu). Reported on Discord as "hjkl do nothing
+   * on the race selection screen" even with the roguelike keyset on.
+   */
+  it("navigates the race list with j/k under the roguelike keyset (issue #127)", async () => {
+    setHost(memHost(new Map([
+      ["customized_interface_options.txt", optionsSaveCustomText({ rogue_like_commands: true }, "INTERFACE")],
+    ])));
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+    await tick();
+    press(win, "j"); await tick(); // down: Human -> Half-Elf
+    press(win, "j"); await tick(); // down: Half-Elf -> Dwarf
+    press(win, "k"); await tick(); // up: Dwarf -> Half-Elf
+    press(win, "Enter"); await tick(); // pick the highlighted row (Half-Elf)
+    // Same assertion shape as the letter-driven test above: the chosen race
+    // stays visible in its own column, highlighted, once the class menu opens.
+    const snap = term.snapshot();
+    const halfElfRow = rowOf(term, "b) Half-Elf");
+    expect(term.colorAt(2, halfElfRow)).toBe(colorToCss(COLOUR_L_BLUE));
+    expect(snap[9]?.slice(19)).toContain("a) Warrior");
+    press(win, "Escape"); await tick();
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
+
+  it("does not navigate the race list with j/k under the ORIGINAL keyset (default)", async () => {
+    setHost(NULL_HOST);
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(90);
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1) });
+    await tick();
+    press(win, "j"); await tick(); // NOT navigation here - free for movement later
+    press(win, "Enter"); await tick(); // still on row 0 (Human)
+    const snap = term.snapshot();
+    const humanRow = rowOf(term, "a) Human");
+    expect(term.colorAt(2, humanRow)).toBe(colorToCss(COLOUR_L_BLUE));
+    expect(snap[9]?.slice(19)).toContain("a) Warrior");
+    press(win, "Escape"); await tick();
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
 });
 
 describe("runBirth: point-based allocation stage (BIRTH_POINTBASED)", () => {

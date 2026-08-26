@@ -687,7 +687,10 @@ export function showEquipCmp(host: GridSurface & GridPointerInput, state: GameSt
       const last = Math.max(0, model.items.length - 1);
       // Arrows AND numpad digits move the cursor (menuNav), so the numpad is
       // not dead here when NumLock is on; horizontal arrows still column-scroll.
-      const nav = menuNav(ev);
+      // j/k also move it under the roguelike keyset; the literal "j"/"k" cases
+      // below already handle both keysets unconditionally, so this only adds
+      // the numpad-style wraparound path (nav:down/nav:up) for those two keys.
+      const nav = menuNav(ev, state.options?.get("rogue_like_commands") ?? false);
 
       /* Select mode owns every key while it is active (the C dispatches to
        * handle_input_equip_cmp_select instead of ..._general for SEL0/SEL1). */

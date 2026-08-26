@@ -2493,7 +2493,15 @@ async function selectItemFrom(
   /* buildItemSources emits them in this order, and only for the enabled modes,
    * so the index has to be looked up rather than assumed. */
   const initial = startIn ? Math.max(0, sources.findIndex((s) => s.kind === startIn)) : 0;
-  const chosen = await itemSelect(term, prompt.trim(), sources, initial, cmdKey, bell);
+  const chosen = await itemSelect(
+    term,
+    prompt.trim(),
+    sources,
+    initial,
+    cmdKey,
+    bell,
+    state.options?.get("rogue_like_commands") ?? false,
+  );
   if (chosen === null) return null;
   const ref = refs[chosen.source]?.[chosen.index] ?? null;
   if (!(await allowChosenItem(ref, cmdKey, cmdCode, isHarmless))) return null;
@@ -2590,8 +2598,14 @@ async function storeSellPick(
   if (sources.length === 0) return { kind: "empty" };
   // store_sell's get_item runs under CMD_DROP (ui-store.c:518), so the @-tag
   // command letter here is Drop's, not a sell-specific one.
-  const chosen = await itemSelect(term, prompt.trim(), sources, 0, itemCmdKey("drop"), () =>
-    state.sound?.(MSG.BELL),
+  const chosen = await itemSelect(
+    term,
+    prompt.trim(),
+    sources,
+    0,
+    itemCmdKey("drop"),
+    () => state.sound?.(MSG.BELL),
+    state.options?.get("rogue_like_commands") ?? false,
   );
   if (chosen === null) return { kind: "cancel" };
   const ref = refs[chosen.source]?.[chosen.index];
@@ -4496,6 +4510,9 @@ function* allWorldObjects(): Iterable<GameObject> {
 
 async function openKnowledgeMenu(): Promise<void> {
   const p = state.actor.player;
+  // The live rogue_like_commands option; every browser below shares it so j/k
+  // navigate like every other roguelike-keyset menu (menuNav).
+  const roguelike = state.options?.get("rogue_like_commands") ?? false;
   // Entries are built in the exact reference order (ui-knowledge.c:3487-3503):
   // the fixed pre-store block, then one "Display <store>'s contents" entry per
   // store, then the fixed post-store block. Each label/handler is pushed in
@@ -4568,11 +4585,17 @@ async function openKnowledgeMenu(): Promise<void> {
     /* do_cmd_knowledge_runes (ui-knowledge.c:2214) with its xtra_prompt /
      * xtra_act pair: '{' sets rune_list[i].note and runs rune_autoinscribe
      * (:2275), '}' clears it (:2252). */
-    showRuneKnowledge(term, state.runeEnv, p, {
-      get: (i) => state.runeNotes?.get(i),
-      set: (i, note) => state.runeNotes?.set(i, note),
-      autoinscribe: (i) => runeAutoinscribe(state, i),
-    }),
+    showRuneKnowledge(
+      term,
+      state.runeEnv,
+      p,
+      {
+        get: (i) => state.runeNotes?.get(i),
+        set: (i, note) => state.runeNotes?.set(i, note),
+        autoinscribe: (i) => runeAutoinscribe(state, i),
+      },
+      roguelike,
+    ),
   );
   add("Display artifact knowledge", () =>
     // do_cmd_knowledge_artifacts (ui-knowledge.c L1663). The exact
@@ -4611,10 +4634,12 @@ async function openKnowledgeMenu(): Promise<void> {
   );
   add("Display monster knowledge", () => showMonsterKnowledge(), !monKnown);
   add("Display feature knowledge", () =>
-    showFeatureKnowledge(term, booted.registries.features),
+    showFeatureKnowledge(term, booted.registries.features, roguelike),
   );
   add("Display trap knowledge", async () => {
-    if (booted.registries.traps) await showTrapKnowledge(term, booted.registries.traps);
+    if (booted.registries.traps) {
+      await showTrapKnowledge(term, booted.registries.traps, roguelike);
+    }
   });
   add("Display shapechange effects", () => {
     // do_cmd_knowledge_shapechange (ui-knowledge.c L3063).
@@ -4635,7 +4660,7 @@ async function openKnowledgeMenu(): Promise<void> {
         booted.registries.objects.lookupKind(tvalIdx, sval)?.name ?? null,
       inspect: inspectExtras,
     });
-    return showShapeKnowledge(term, players.shapes, shapeEnv);
+    return showShapeKnowledge(term, players.shapes, shapeEnv, roguelike);
   });
 
   // Per-store block (reset_main_knowledge_menu, ui-knowledge.c:3483-3598): "Display <store>'s contents",
@@ -4732,6 +4757,7 @@ async function showMonsterKnowledge(): Promise<void> {
     async (row) => {
       await showRaceRecall(row.race, getLore(state.lore, row.race));
     },
+    state.options?.get("rogue_like_commands") ?? false,
   );
 }
 
@@ -9760,7 +9786,7 @@ inputEvents.addEventListener("keydown", (ev) => {
      * dispatches the returned cmd_info down the same path a keypress takes. */
     if (ev.key === "Enter") {
       ev.preventDefault();
-      void openModal(() => chooseCommand(term, commandCategories(), render)).then((chosen) => {
+      void openModal(() => chooseCommand(term, commandCategories(), render, roguelike)).then((chosen) => {
         if (chosen) runConfirmedCommand(chosen.key, chosen.run);
       });
       return;

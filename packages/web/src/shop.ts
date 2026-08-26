@@ -1077,6 +1077,10 @@ export async function runStore(
       term,
       t("shop.inspect.prompt", "Examine which item?"),
       sources,
+      0,
+      undefined,
+      undefined,
+      game.state.options?.get("rogue_like_commands") ?? false,
     );
     if (chosen === null) return;
     const handle = handleLists[chosen.source]?.[chosen.index];
