@@ -42,7 +42,9 @@ version it still calls itself.
   back short of force-quitting: its own answer to a blocking prompt reached
   the game the same way a real keypress did, so opening the game menu to
   disable it just closed again on the mod's next tick. Any real keypress now
-  interrupts an autoplayer immediately. Ctrl-Z also now offers to start one,
+  interrupts an autoplayer immediately, only while the window actually has
+  focus, so one left running in the background does not hand back control on
+  a keystroke meant for another window. Ctrl-Z also now offers to start one,
   through upstream's own warn-and-confirm prompt, rather than a silent
   mod-manager toggle that took effect on the next reload
   (neostryder/neo-angband#125).
