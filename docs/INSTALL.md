@@ -11,8 +11,9 @@ demo URL appears here: a hosted copy can change under you between sessions, so
 Windows, macOS and Linux, plus the static site as a zip. The Windows
 **portable** `.exe` and the Linux **AppImage** need no installer: download, run,
 and the game keeps its saves in a folder beside itself.
-The AppImage also requires the `fuse2`/`libfuse2` runtime, which is already
-present on most Linux distributions; on Arch, install it with `pacman -S fuse2`.
+**On Arch Linux**, see [the note below](#arch-linux-and-the-appimage) before
+taking the AppImage - one package is missing on a bare install, and there is a
+build that sidesteps it entirely.
 
 Those builds are **not code-signed**. There is no Apple Developer identity or
 Windows certificate behind this project yet, so the first launch is blocked.
@@ -348,6 +349,25 @@ macOS 28 drops it for everything but a named set of old games - so on a current
 Mac the Intel build is likelier to refuse to launch than to run slowly. If you
 are not sure which one you took, open **Activity Monitor** while the game is
 running and look at the **Kind** column: it should say *Apple*, not *Intel*.
+
+### Arch Linux and the AppImage
+
+**A bare Arch install is missing one package the AppImage needs.** AppImages
+run by mounting themselves through FUSE, and Arch's base install does not
+include it. Without it, double-clicking or running the AppImage does nothing
+visible, or fails with a `fuse: device not found` / `dlopen(): error loading
+libfuse.so.2` message on the command line.
+
+1. Install it: `pacman -S fuse2`. This one package is the whole fix; nothing
+   else about the AppImage is Arch-specific.
+2. Or skip it entirely: take the **`.tar.gz`** build instead of the AppImage.
+   It is the same app with no FUSE mount step, so it needs nothing beyond
+   what a bare install already has - extract it and run the binary inside.
+
+The **`.deb`** build will not help here regardless: a bare Arch install has no
+`dpkg`, and installing one is not the idiomatic path on this distribution
+anyway. There is no AUR package yet, so `pacman`/`yay` cannot install Neo
+Angband directly - the AppImage or the `.tar.gz` are the real options today.
 
 ### Updating
 

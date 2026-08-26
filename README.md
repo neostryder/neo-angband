@@ -133,6 +133,9 @@ Those builds are **not code-signed**, so your OS will block the first launch.
   **Security**, and press **Open Anyway** on the line naming the app.
   [The full steps are here.](docs/INSTALL.md#macos-blocks-it-first-time) On
   Apple Silicon, take the **arm64** build, not the Intel one.
+- **Arch Linux:** a bare install is missing the package the AppImage needs to
+  run (`pacman -S fuse2`), or take the **`.tar.gz`** build instead, which
+  does not need it. [Full details here.](docs/INSTALL.md#arch-linux-and-the-appimage)
 
 If you would rather not make that trade at all, play in a browser, which needs
 no trust decision, or build it yourself below.

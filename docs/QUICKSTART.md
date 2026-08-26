@@ -19,9 +19,12 @@ with nothing to install. Both play the same game.
 The Windows portable `.exe` and the Linux AppImage need no installer: download,
 run, done. macOS needs one extra step past the "Apple could not verify this app"
 dialog - see [the macOS steps](INSTALL.md#macos-blocks-it-first-time) if that is
-the build you took. Every other way to get the game running (self-hosting,
-installing it as an offline app, building it from source) is in
-[INSTALL.md](INSTALL.md).
+the build you took. **On Arch Linux**, a bare install is missing the package
+the AppImage needs to run at all - see
+[the Arch note](INSTALL.md#arch-linux-and-the-appimage), or just take the
+`.tar.gz` build instead, which does not need it. Every other way to get the
+game running (self-hosting, installing it as an offline app, building it from
+source) is in [INSTALL.md](INSTALL.md).
 
 The first screen you see is the title screen:
 
