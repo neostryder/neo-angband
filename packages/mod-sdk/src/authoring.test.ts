@@ -248,6 +248,40 @@ describe("checkRecords", () => {
     expect(f?.message).toContain("potion flavours");
   });
 
+  it("hints at a value outside the closed set core's own data uses for a field", () => {
+    const f = check({
+      name: "& Sludge~",
+      type: "swrod",
+      graphics: { glyph: "|", color: "w" },
+    }).find((x) => x.rule === "field/vocabulary");
+    expect(f?.level).toBe("hint");
+    expect(f?.field).toBe("type");
+    expect(f?.message).toContain('"swrod"');
+    expect(f?.message).toContain("a mod may coin a new one");
+  });
+
+  it("says nothing about a value a mod is free to invent, even outside the vocabulary", () => {
+    /* The whole point: this can never be an error or a warn, and a value core
+     * never happened to use is legal, not wrong. */
+    const findings = check({
+      name: "& Sludge~",
+      type: "sword",
+      graphics: { glyph: "|", color: "w" },
+    });
+    expect(findings.every((f) => f.rule !== "field/vocabulary" || f.level === "hint")).toBe(true);
+  });
+
+  it("reaches a value nested inside an object field, not just the top level", () => {
+    const f = check({
+      name: "& Sludge~",
+      type: "sword",
+      graphics: { glyph: "|", color: "w" },
+      armor: { ac: 5, "to-a": "not-a-real-value" },
+    }).find((x) => x.rule === "field/vocabulary" && x.field === "armor.to-a");
+    expect(f?.level).toBe("hint");
+    expect(f?.message).toContain('"not-a-real-value"');
+  });
+
   it("names a record file core does not ship at all", () => {
     const f = checkRecords({ sludge: [{ name: "x" }] }, {}).find((x) => x.rule === "file/unknown");
     expect(f?.message).toContain("nothing will read it");

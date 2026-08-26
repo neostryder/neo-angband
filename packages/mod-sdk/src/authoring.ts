@@ -601,6 +601,69 @@ function flavourPressure(all: Readonly<Record<string, readonly JsonRecord[]>>): 
   return headroom;
 }
 
+/**
+ * Every value in `record`, at any depth the blueprint measured a closed
+ * vocabulary for, that is not one of the values core's own data uses there.
+ *
+ * ADVISORY, ALWAYS - see the header on `FieldShape.values`. A mod coining a
+ * new tval or a new slay code is doing something legal, so this can never be
+ * an `error` or a `warn`; it is a `hint` for the other case, a value that is a
+ * perfectly good string of the right type in a field that exists but is not
+ * one of the handful core ever writes there - a `type` of `swrod`, a colour
+ * that is not a colour. Nothing else in this file can see that, because
+ * nothing else in this file reads `values` for anything but a placeholder.
+ *
+ * Named fields only: an array index contributes to which value is wrong but
+ * is not itself a field, so the path reported is the nearest named key.
+ */
+function vocabularyFindings(
+  file: string,
+  label: string,
+  record: JsonRecord,
+  fields: Readonly<Record<string, FieldShape>>,
+): AuthoringFinding[] {
+  const out: AuthoringFinding[] = [];
+  const descend = (value: JsonValue, shape: FieldShape, path: readonly string[]): void => {
+    if (Array.isArray(value)) {
+      const items = shape.items;
+      for (const entry of value) descend(entry, items ?? shape, path);
+      return;
+    }
+    if (value !== null && typeof value === "object") {
+      if (shape.fields === undefined) return;
+      for (const [key, child] of Object.entries(value)) {
+        const kid = shape.fields[key];
+        if (kid !== undefined) descend(child, kid, [...path, key]);
+      }
+      return;
+    }
+    const allowed = shape.values;
+    if (allowed === undefined || allowed.length === 0) return;
+    if (typeof value !== "string" && typeof value !== "boolean") return;
+    if (allowed.includes(value)) return;
+    const field = path.join(".");
+    const shown = allowed.slice(0, 12).map((v) => String(v)).join(", ");
+    out.push({
+      level: "hint",
+      file,
+      record: label,
+      field,
+      rule: "field/vocabulary",
+      message:
+        `${file} "${label}": \`${field}\` is ${JSON.stringify(value)}, which is not one of the ` +
+        `${String(allowed.length)} values core's ${file} data uses there (${shown}` +
+        `${allowed.length > 12 ? ", and more" : ""}). That is allowed - a mod may coin a new one - ` +
+        `but core will not repeat it, so this is the SDK's word and not the game's.`,
+    });
+  };
+
+  for (const [key, value] of Object.entries(record)) {
+    const shape = fields[key];
+    if (shape !== undefined) descend(value, shape, [key]);
+  }
+  return out;
+}
+
 /** Options for checkRecords. */
 export interface CheckOptions {
   /** Findings at or above this level only. Default: everything. */
@@ -704,6 +767,10 @@ export function checkRecords(
               `${shape.types.join(" or ")}.`,
           });
         }
+      }
+
+      for (const finding of vocabularyFindings(file, label, record, bp.fields)) {
+        add(finding);
       }
 
       for (const rule of COMPANION_RULES) {
