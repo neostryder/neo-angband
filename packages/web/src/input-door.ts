@@ -117,6 +117,36 @@ export function setDomKeyboardOwner(owner: DomKeyboardOwner | undefined): void {
   domKeyboardOwner = owner;
 }
 
+/**
+ * The player's other way out: a mod holding `state.nextCommand` (the Borg, or
+ * any autoplayer) instead of a DOM element.
+ *
+ * SAME REASONING AS `DomKeyboardOwner`, same placement - checked first, at the
+ * one real-keyboard entry point, before a synthetic key or a mod's own handler
+ * can get in the way. An autoplayer answers ITS OWN blocking prompts through
+ * `dispatchUiInput` directly (see main.ts's answerBlockingPrompt), never through
+ * `browserKeydown`, so this hook only ever sees a key the player actually
+ * pressed - which is exactly what "any key gives the keyboard back" needs it to
+ * see. Consuming that key here rather than letting it fall through to the game
+ * as well is deliberate: a player mashing a key to get attention should not
+ * also wield an item or step into a trap the instant control returns.
+ */
+export interface AutoplayerInterruptOwner {
+  /** True while an autoplayer currently holds `state.nextCommand`. */
+  active(): boolean;
+  /** Hand the keyboard back. Called once per real keypress while active. */
+  interrupt(): void;
+}
+
+let autoplayerInterruptOwner: AutoplayerInterruptOwner | undefined;
+
+/** Install (or clear, with `undefined`) the autoplayer-interrupt hatch. */
+export function setAutoplayerInterruptOwner(
+  owner: AutoplayerInterruptOwner | undefined,
+): void {
+  autoplayerInterruptOwner = owner;
+}
+
 const entries: Entry[] = [];
 const auxiliaryEntries: AuxiliaryEntry[] = [];
 let nextSequence = 1;
@@ -268,6 +298,11 @@ function installBrowserAdapter(target: KeyTarget): void {
 
 function browserKeydown(event: Event): void {
   const key = event as KeyboardEvent;
+  if (autoplayerInterruptOwner?.active()) {
+    key.preventDefault();
+    autoplayerInterruptOwner.interrupt();
+    return;
+  }
   const owner = domKeyboardOwner;
   if (owner) {
     /* ESCAPE FIRST, and asked whether or not the mounted DOM would have claimed
@@ -403,6 +438,7 @@ export function clearInputDoor(): void {
   keymapResolver = undefined;
   keymapResolverOptions = undefined;
   domKeyboardOwner = undefined;
+  autoplayerInterruptOwner = undefined;
   nextSequence = 1;
   if (browserWindow) {
     browserWindow.removeEventListener("keydown", browserKeydown, true);

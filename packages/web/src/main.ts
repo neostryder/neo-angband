@@ -613,7 +613,12 @@ import type { CommandCategory } from "./command-menu";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu } from "./options";
 import { loadColorPrefs, saveColorPrefs } from "./colors";
-import { dispatchUiInput, inputEvents, setKeymapResolver } from "./input-door";
+import {
+  dispatchUiInput,
+  inputEvents,
+  setAutoplayerInterruptOwner,
+  setKeymapResolver,
+} from "./input-door";
 import { enqueueKeys } from "./input-queue";
 import {
   decodeActionTokens,
@@ -9297,6 +9302,19 @@ function buildCommandTable(): CommandRow[] {
       act: () => void openModal(() => runWizardDebugMenu(wizardCtx())),
       nested: debugCommandCategories,
     },
+    /* "Borg commands" at KTRL('Z') (cmd_hidden, ui-game.c:227, #ifdef
+     * ALLOW_BORG). No `nested`: upstream opens a menu of borg sub-commands here,
+     * which this port does not have - the mod is a single autoplayer, not a
+     * debug toolbox, so the one thing this key does is the warn-confirm-and-play
+     * gate (#125), or hand the keyboard back if the mod already has it. */
+    {
+      desc: "Borg commands",
+      cat: "Hidden",
+      ctrl: "Z",
+      o: null,
+      r: null,
+      act: () => tryBorgCommand(),
+    },
   ];
   return COMMANDS;
 }
@@ -10647,6 +10665,7 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
   });
   installedController = null;
   installedControllerSpeed = null;
+  stopInstalledController = null;
   /* Back to candidate zero, not to nothing: the page has not re-composed yet
    * and the autosave below can still repaint, so the map needs an owner the
    * whole way down. A departing mod's sink must not be that owner. */
@@ -10659,6 +10678,62 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
     /* best-effort */
   }
   location.reload();
+}
+
+/**
+ * do_cmd_try_borg (cmd-misc.c:125-145), Ctrl-Z: warn once, confirm, then let an
+ * autoplaying mod have the keyboard (#125).
+ *
+ * There is nothing upstream-shaped left to call here: `controller()` runs
+ * synchronously at boot, before this game exists, so there is no live install
+ * to reach into. What upstream's gate marks with one assignment
+ * (`player->noscore |= NOSCORE_BORG`) this instead reaches by turning the mod's
+ * own rule flag on - the same write the mod manager's row already makes - and
+ * reloading through the one door every other mod change already uses
+ * (reloadAfterModChange). The confirmation is what changes: it now always runs
+ * first, whether the player found the flag through this key or through Mods.
+ *
+ * The two messages and the prompt are upstream's own text
+ * (BORG_CONFIRM_MSG_1/2, BORG_CONFIRM in neo-angband-mod-borg's activate.ts) -
+ * copied rather than imported, because core does not and must not depend on a
+ * mod package; a mod is a URL fetched at runtime, not a build-time dependency.
+ */
+async function activateAutoplayerCmd(modId: string): Promise<void> {
+  say("You are about to use the dangerous, unsupported, borg commands!");
+  say("Your machine may crash, and your savefile may become corrupted!");
+  render();
+  if (!(await confirmYesNo("Are you sure you want to use the borg commands? "))) return;
+  defaultModStore().setRuleChoice(`${modId}.autoplay`, true);
+  reloadAfterModChange({ resume: true });
+}
+
+/**
+ * Ctrl-Z (#125). Already running: this IS the interrupt key, same as any other
+ * real keypress (input-door.ts's AutoplayerInterruptOwner) - upstream reaches
+ * the borg's own submenu by pressing it again too, and "give the keyboard
+ * back" is the port's whole answer to that menu. Not running: find a loaded mod
+ * that CAN autoplay (declares `controller`, regardless of whether its own rule
+ * flag is on) and offer to turn it on, through the warn-and-confirm gate above.
+ *
+ * `.controller` is checked for existing rather than the AUTOPLAY_FLAG concept
+ * this file has no way to name - a mod's own rule ids are its business, not
+ * the host's, and `${modId}.autoplay` above is a convention this shares with
+ * neo-angband-mod-borg's plugin.ts, not a contract the host enforces.
+ */
+function tryBorgCommand(): void {
+  if (installedController) {
+    stopInstalledController?.();
+    return;
+  }
+  const candidate = activeModCode().plugins.find(
+    (loaded) => typeof loaded.plugin.controller === "function",
+  );
+  if (!candidate) {
+    say("You do not have an autoplayer mod installed.");
+    render();
+    return;
+  }
+  void openModal(() => activateAutoplayerCmd(candidate.id));
 }
 
 /**
@@ -12315,6 +12390,16 @@ let installedController: { id: string; session: AgentSession } | null = null;
  */
 let installedControllerSpeed: ((speed: AutoplayerSpeed) => void) | null = null;
 
+/**
+ * Hands the keyboard back on demand - a real keypress (input-door.ts's
+ * AutoplayerInterruptOwner) or Ctrl-Z pressed while an autoplayer is already
+ * running (#125). Null on the same schedule as `installedController`: set
+ * alongside it in the controller-install loop below, cleared alongside it here
+ * and in reloadAfterModChange (which tears the whole mod down instead, for a
+ * page reload rather than a live hand-back).
+ */
+let stopInstalledController: (() => void) | null = null;
+
 function installSandbox(pluginId: string): void {
   const found = discoverPlugins().get(pluginId);
   if (!found) {
@@ -12935,6 +13020,23 @@ for (const loaded of activeModCode().plugins) {
       clearInterval(modTimer);
       startModTimer();
     };
+    /* The player's way out (#125): any real keypress, or Ctrl-Z pressed again,
+     * calls this. A live hand-back, not a reload - the character stays exactly
+     * where it is, mid-turn, with the human in the chair. */
+    stopInstalledController = () => {
+      clearInterval(modTimer);
+      const id = installedController?.id ?? loaded.id;
+      try {
+        installedController?.session.uninstall();
+      } catch (err) {
+        reportModFault(id, `could not be released from the keyboard: ${faultMessage(err)}`);
+      }
+      installedController = null;
+      installedControllerSpeed = null;
+      stopInstalledController = null;
+      say(`You take the keyboard back from ${id}.`);
+      render();
+    };
   } catch (err) {
     /* Same containment as register(): a controller that will not install must
      * leave a game the player can still play by hand. The commonest cause is a
@@ -12947,6 +13049,14 @@ for (const loaded of activeModCode().plugins) {
     log.error(`mod:${loaded.id}`, `controller() failed:`, err);
   }
 }
+
+/* The hatch itself (#125): registered once, unconditionally - `active()` reads
+ * `installedController` fresh on every real keypress, so this is correct
+ * whether or not a controller ever installs, and whichever mod's turn it is. */
+setAutoplayerInterruptOwner({
+  active: () => installedController !== null,
+  interrupt: () => stopInstalledController?.(),
+});
 
 // Dev-only diagnostic hook for automated verification; Vite strips this whole
 // block from the production bundle (import.meta.env.DEV is false there).
