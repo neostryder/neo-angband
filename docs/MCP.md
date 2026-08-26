@@ -134,7 +134,7 @@ Three things came out with it, none of which a code reading would have offered:
   `chunk.depth` where `cave-view.c:778` reads `p->lev`. There is now one
   `viewerStateOf` in core and both use it.
 
-Nothing in the repository could have caught the original. The Borg's tests run
+Nothing in the repository could have caught the original. Borg's tests run
 against a hand-built fake `AgentView`: the Borg mod repository's `src/harness.ts` says so in
 its own header, so the live perceive path had never been driven by anything but
 the web shell, which refreshes for its own drawing reasons.

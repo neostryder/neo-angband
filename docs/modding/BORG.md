@@ -1,6 +1,6 @@
-# The Borg (first-party autoplayer mod)
+# Borg (first-party autoplayer mod)
 
-The Borg is Neo Angband's automatic player: a faithful TypeScript port of
+Borg is Neo Angband's automatic player: a faithful TypeScript port of
 Angband 4.2.6's `borg` that plays the game on its own. It is a MOD, not part of
 core, and it is the completeness proof for the whole mod framework - it drives the
 real game through the same frozen perceive/act agent API any third-party or AI
@@ -13,7 +13,7 @@ It lives in its own repository,
 its own release tags and its own test suite, and it installs through the mod
 manager like any other mod. Nothing about it is compiled into the game.
 
-The Borg is the flagship consumer of the agent seam (`AGENT_API_VERSION`, frozen
+Borg is the flagship consumer of the agent seam (`AGENT_API_VERSION`, frozen
 at 1.x and add-only, `packages/core/src/agent/types.ts`):
 
 - **PERCEIVE** - it reads the world only through `AgentView` (the read-only,
@@ -34,8 +34,8 @@ untripped. A Borg run is replayable.
 
 Three steps, and the third is separate from the second on purpose.
 
-1. **Install it.** Escape menu -> **Mods** -> *Install a mod...*, pick **The
-   Borg** from the recommended list, press Enter.
+1. **Install it.** Escape menu -> **Mods** -> *Install a mod...*, pick **Borg**
+   from the recommended list, press Enter.
 2. **Enable it**, then choose *Apply changes and reload*. The mod is now loaded
    and has done nothing to your character.
 3. **Hand it the keyboard.** On the Borg's own screen, switch on **Let the Borg
@@ -51,8 +51,8 @@ why they are different switches. Only one autoplayer can hold the keyboard at a
 time: if a second mod also declares a controller, the host refuses it by name and
 says which one is already playing.
 
-Once the Borg holds the keyboard, its own Fixes & tweaks screen (Mods -> The
-Borg) grows an **Autoplayer speed** row beside `borg.autoplay`: Turbo, Fast,
+Once the Borg holds the keyboard, its own Fixes & tweaks screen (Mods -> Borg)
+grows an **Autoplayer speed** row beside `borg.autoplay`: Turbo, Fast,
 Normal or Slow. Fast, Normal and Slow match the debug agent seam's own tiers
 below; Turbo (10ms) has no named equivalent there. It takes effect at once, no
 reload.
@@ -155,7 +155,7 @@ Three things follow, and an author driving a controller should know all three:
 
 ## For mod authors
 
-The Borg is the reference implementation for building your own agent: an
+Borg is the reference implementation for building your own agent: an
 `AgentController` is just `(view, act) => AgentCommand | null`, and a mod offers
 one from `ModPlugin.controller` (see `PLUGINS.md`). The
 `neo-angband-mod-borg` repository is the large worked example;

@@ -177,7 +177,7 @@ The manifest as shipped in `v0.1.0`:
 ```json
 {
   "id": "upstream-catchup",
-  "name": "Upstream Catch-up (post-4.2.6)",
+  "name": "Upstream Catchup (post-4.2.6)",
   "version": "0.1.0",
   "shape": "plugin",
   "facets": ["plugin"],

@@ -154,7 +154,7 @@ For a new player, two of these are the low-risk, high-value picks:
   all - auto-digging through rubble and mineral veins while walking, and
   remembering a player's option choices from one character to the next instead of
   resetting them for every new life. Nothing here changes difficulty or balance.
-- **Bug Fixes (unofficial patch set, `bug-fixes`)** opts into fixes for a short
+- **Bug Fixes (`bug-fixes`)** opts into fixes for a short
   list of genuine upstream Angband defects that the base game deliberately keeps
   (to stay a faithful reproduction of the original). Things like a player-note
   truncation bug and a staircase that can occasionally generate unreachable.

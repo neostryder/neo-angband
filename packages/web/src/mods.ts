@@ -467,7 +467,7 @@ export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuI
    *
    * selectFromMenu slices a row at the terminal's edge, so an over-long row
    * loses its END - and the end is where "! NOT WORKING, noscore" lives. A mod
-   * called "Bug Fixes (unofficial patch set)" with both save ratchets set built
+   * called "Bug Fixes" with both save ratchets set built
    * an 85-column row, and what a player saw was the name, the version, the kind,
    * and none of the three warnings. Eliding the name instead keeps every badge
    * on screen and costs a few characters of something the row below spells out

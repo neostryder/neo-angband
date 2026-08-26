@@ -395,7 +395,7 @@ export class Rng {
    * for setState() - which is the SAVEFILE path and deliberately forces quick
    * off (see its comment). A quick generator reseeded that way is handed an
    * all-zero WELL table, and an all-zero WELL state is a fixed point: it emits
-   * zero forever. The Borg's per-think reseed did exactly this, and the reason
+   * zero forever. Borg's per-think reseed did exactly this, and the reason
    * it went unnoticed for so long is that its test asserted two generators
    * produced the SAME sequence, which a generator stuck at zero satisfies
    * perfectly.

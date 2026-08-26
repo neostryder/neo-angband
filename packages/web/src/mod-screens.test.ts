@@ -249,9 +249,9 @@ describe("the update report's rows are addressable without reading them", () => 
 
 const NAMES: Record<string, string> = {
   qol: "Quality of Life",
-  bugs: "Bug Fixes (unofficial patch set)",
+  bugs: "Bug Fixes",
   tiles: "Shockbolt Tiles",
-  borg: "The Borg",
+  borg: "Borg",
 };
 const nameOf = (id: string): string => NAMES[id] ?? id;
 
@@ -271,7 +271,7 @@ describe("the auto-sort proposal renders exactly what its hand-laid version did"
     );
     expect(screenBodyLines(view, 80)).toEqual([
       { text: "Proposed order:", color: UI_TEXT },
-      { text: "   1. Bug Fixes (unofficial patch set)   <- moved", color: UI_GOLD },
+      { text: "   1. Bug Fixes   <- moved", color: UI_GOLD },
       { text: "   2. Quality of Life   <- moved", color: UI_GOLD },
       { text: "   3. Shockbolt Tiles", color: UI_TEXT },
       { text: "", color: UI_DIM },
@@ -285,7 +285,7 @@ describe("the auto-sort proposal renders exactly what its hand-laid version did"
     ).toEqual([
       "Already in order:",
       "   1. Quality of Life",
-      "   2. Bug Fixes (unofficial patch set)",
+      "   2. Bug Fixes",
       "",
       "Later mods win conflicts.",
     ]);
@@ -312,7 +312,7 @@ describe("the auto-sort proposal renders exactly what its hand-laid version did"
             to: "bugs",
             tier: "author",
             reason: "Quality of Life asks to load before Bug Fixes",
-            cycle: ["qol", "bugs"],
+            cycle: ["qol", "bugs", "tiles"],
           },
         ],
         unresolvable: [["tiles", "borg"]],
@@ -323,7 +323,7 @@ describe("the auto-sort proposal renders exactly what its hand-laid version did"
     expect(text(view)).toEqual([
       "Proposed order:",
       "   1. Quality of Life   <- moved",
-      "   2. Bug Fixes (unofficial patch set)",
+      "   2. Bug Fixes",
       "   3. Shockbolt Tiles   <- moved",
       "",
       "Later mods win conflicts.",
@@ -333,14 +333,13 @@ describe("the auto-sort proposal renders exactly what its hand-laid version did"
       /* WRAPPED, where the hand-laid `lines` version ran 100 characters off an
        * 80-column terminal unbroken: `detail`'s indent (4) leaves a 76-column
        * wrap, and this cycle sentence is the one real fixture in this file long
-       * enough to hit it. A cycle rarely names two mods this verbose, so this is
-       * the one line in this pass that did not survive byte-identical - see the
-       * task report for the measurement. */
-      "    dropped - it would need Quality of Life -> Bug Fixes (unofficial patch set)",
-      "    -> Quality of Life",
+       * enough to hit it. A three-mod cycle is what reaches that width now that
+       * every mod's name follows the Proper Name convention. */
+      "    dropped - it would need Quality of Life -> Bug Fixes -> Shockbolt Tiles ->",
+      "    Quality of Life",
       "",
       "These mods cannot all load",
-      "  Shockbolt Tiles and The Borg each require the other.",
+      "  Shockbolt Tiles and Borg each require the other.",
       "  Turn one of them off; no order can satisfy both.",
     ]);
   });
@@ -360,7 +359,7 @@ describe("the auto-sort proposal is a list a manager could reorder", () => {
     /* A boolean rather than 0/1 in `values`: `ScreenValues` is a map of NUMBERS,
      * and the HUD convention reads them as quantities. A flag is not a quantity. */
     expect(table.rows[0]!.semantic?.data?.moved).toBe(true);
-    expect(table.rows[0]!.cells.name!.text).toBe("Bug Fixes (unofficial patch set)");
+    expect(table.rows[0]!.cells.name!.text).toBe("Bug Fixes");
   });
 
   it("names an impossible cycle's mods apart from the sentence about them", () => {
@@ -372,7 +371,7 @@ describe("the auto-sort proposal is a list a manager could reorder", () => {
       ),
       "unresolvable",
     );
-    expect(table.rows[0]!.cells.mods!.text).toBe("Shockbolt Tiles and The Borg");
+    expect(table.rows[0]!.cells.mods!.text).toBe("Shockbolt Tiles and Borg");
     expect(table.rows[0]!.semantic).toEqual({ kind: "mod-cycle", data: { ids: "tiles,borg" } });
   });
 

@@ -35,7 +35,7 @@ const LONG_DESC =
 function mod(over: Partial<CatalogMod> = {}): CatalogMod {
   return {
     id: "bug-fixes",
-    name: "Bug Fixes (unofficial patch set)",
+    name: "Bug Fixes",
     version: "1.0.0",
     shape: "content",
     kind: "content",
@@ -46,7 +46,7 @@ function mod(over: Partial<CatalogMod> = {}): CatalogMod {
     consented: true,
     manifest: {
       id: "bug-fixes",
-      name: "Bug Fixes (unofficial patch set)",
+      name: "Bug Fixes",
       version: "1.0.0",
       shape: "content",
       description: LONG_DESC,

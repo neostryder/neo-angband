@@ -89,7 +89,7 @@ const SPEC =
  * - `main-*.c` / `snd-*.c` are per-platform front ends (SDL2, Windows, curses);
  *   the port's front end is packages/web and owes them no text.
  * - `borg/` is the autoplayer's own debug console (borg_commands' grid dumps,
- *   power readouts, "Borg Version: %s"). The Borg ships as a MOD and is out of
+ *   power readouts, "Borg Version: %s"). Borg ships as a MOD and is out of
  *   the parity gate until the port itself is complete, so its ~56 developer
  *   readouts would swamp the signal here. packages/borg has its own tests.
  */

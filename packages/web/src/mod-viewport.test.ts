@@ -123,7 +123,7 @@ function catalogue(): CatalogMod[] {
     mk({ id: "qol", name: "Quality of Life", version: "0.11.0", enabled: true }),
     mk({
       id: "bug-fixes",
-      name: "Bug Fixes (unofficial patch set)",
+      name: "Bug Fixes",
       version: "0.12.0",
       enabled: true,
       affectsGameplay: true,
@@ -132,7 +132,7 @@ function catalogue(): CatalogMod[] {
     mk({ id: "neo-linoleum", name: "Linoleum", version: "0.11.0", shape: "tiles" }),
     mk({
       id: "borg",
-      name: "The Borg",
+      name: "Borg",
       version: "0.1.0",
       shape: "plugin",
       kind: "trusted",
@@ -318,9 +318,12 @@ describe("every row label and hint fits, measured directly", () => {
     expect(m("Linoleum", "neostryder")).toBe("[ ] Linoleum (neostryder)  v1.0.0  (content)");
 
     /* No room for both, with every badge lit: the author goes entirely rather than
-     * becoming "(neost...", which would name somebody who does not exist. */
-    const tight = m("Bug Fixes (unofficial patch set)", "neostryder", ["broken"]);
-    expect(tight).toContain("Bug Fixes (unofficial patch set)");
+     * becoming "(neost...", which would name somebody who does not exist. A
+     * fictional, deliberately long name stands in for a real one here, the same
+     * way "Quality of Life Extras!!" does above - the point is the overflow, not
+     * which mod it is. */
+    const tight = m("Bug Fixes Extended Collection!!", "neostryder", ["broken"]);
+    expect(tight).toContain("Bug Fixes Extended Collection!!");
     expect(tight).not.toContain("neost");
     expect(tight).toContain("! NOT WORKING");
     expect(tight.length).toBeLessThanOrEqual(ROOM);
