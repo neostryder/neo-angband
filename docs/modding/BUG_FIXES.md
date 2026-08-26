@@ -42,7 +42,7 @@
 > one. See `docs/modding/MOD_SEAMS.md` for the seam contract, the per-hook fold
 > rules, and the full default policy.
 >
-> **The menu lists three rules, not one per entry below.** Seven entries below are
+> **The menu lists three rules, not one per entry below.** Nine entries below are
 > marked `IMPLEMENTED`. The six legacy per-bug flags were consolidated into three
 > per-CLASS flags on 2026-08-15, which is the standing rule: one toggle
 > per class of fix, never one per atomic fix. The mapping is in the mod's own
@@ -93,9 +93,11 @@
 >   exists, along with the arithmetic condition that makes the obvious repro a
 >   dud.
 >
-> Open and tracked as issues: #3 (#115) and #11 (#116). Each needs a new core
-> seam before the mod can carry it; #1 (neostryder/neo-angband#114) now has its
-> write and display seams and is implemented under Text and history.
+> #3 (neostryder/neo-angband#115) and #11 (neostryder/neo-angband#116) each
+> needed a new core seam before the mod could carry them - `partialStackMerge`
+> and `packOverflowVictim` (`packages/core/src/mod/hooks.ts`) - and are now
+> `IMPLEMENTED`, alongside #1 (neostryder/neo-angband#114), which already has
+> its write and display seams under Text and history.
 
 ## Why this mod exists
 
@@ -256,7 +258,7 @@ player sees is the class flag in the table.
   load path to re-roll, so the save-scum this fix targets cannot occur. If a
   persisted-stock loader is ever added, it must call `storeCarry(... false)`.
 
-### 3. Stack-charge scramble on drop/pickup (`READY`)
+### 3. Stack-charge scramble on drop/pickup (`IMPLEMENTED`)
 
 - References: residual edge case documented in the thread of issue **#6355**
   ("Can generate infinite charges on staves/wands", closed COMPLETED via PR
@@ -300,6 +302,26 @@ player sees is the class flag in the table.
 - Seam status: core has no `ModHooks` member a mod could refuse this on
   (`packages/core/src/mod/hooks.ts`), so the fix needs a new seam before the mod
   can carry it. Tracked as neostryder/neo-angband#115.
+- Implementation: the new `partialStackMerge` hook
+  (`packages/core/src/mod/hooks.ts`), consulted at `combinePack`'s call to
+  `objectAbsorbPartial` (`packages/core/src/game/gear.ts`) - only in the
+  non-quiver branch, matching where the residual defect and draconisPW's
+  proposed guard both live; the quiver's own limits and split-on-overflow
+  arithmetic are untouched. The mod's hook body
+  (`neo-angband-mod-bug-fixes/plugin.ts`) is
+  `(drained) => drained.number !== drained.kind.base.maxStack` - a direct port
+  of draconisPW's proposed line, refusing when the SOURCE stack is already at
+  its per-stack limit. No hook => faithful 4.2.6 proceeds unconditionally,
+  matching upstream's `inven_can_stack_partial`, which has no such check. Flag
+  `bugfix.stateIntegrity`. Fold kind: a VETO hook - conjunctive, first refusal
+  decides, same shape as `artifactCommit`. RNG-FREE, as the hook requires: a
+  pure read of two counts, drawn on the main object stream.
+- Tests: `packages/core/src/game/gear.test.ts` (core's seam: no hook swaps the
+  two stacks' counts exactly as the bug describes; an installed hook refuses
+  and leaves both stacks untouched, in `(drained, receiving)` order) and
+  `neo-angband-mod-bug-fixes/plugin.test.ts` (the mod's predicate against
+  synthetic counts, and against two genuine WAND stacks driving the real
+  `objectAbsorbPartial`).
 
 ### 4. Object list ordering is not a strict total order (`IMPLEMENTED`)
 
@@ -507,7 +529,7 @@ player sees is the class flag in the table.
   never found and whose save did not reproduce. There is nothing here to port
   until somebody can trigger it.
 
-### 11. Quiver inscription change triggers pack overflow (`READY`, reproduced)
+### 11. Quiver inscription change triggers pack overflow (`IMPLEMENTED`)
 
 - References: issue **#4666** (open). Related design proposal #6512 (separate
   tval for throwing items) is unimplemented.
@@ -554,6 +576,34 @@ player sees is the class flag in the table.
   trigger or `packOverflow`'s victim selection, so a seam is needed before a
   patch. Fits the existing `bugfix.stateIntegrity` class.
   Tracked as neostryder/neo-angband#116.
+- Implementation: the new `packOverflowVictim` hook
+  (`packages/core/src/mod/hooks.ts`), consulted only on `packOverflow`'s
+  `handle === 0` / upstream-NULL path - `state.overflowPack`
+  (`packages/core/src/session/game.ts`), the safety net `process_player` runs
+  before every command. Core computes `departedQuiver` itself: the one handle
+  `GameState.gear.quiver` held immediately before the recompute that just ran
+  and no longer holds, i.e. whichever item a note-only change (an inscription)
+  just displaced out of the quiver - a fact, the same way `historyAdd` hands
+  over `duplicate`. The mod's hook body
+  (`neo-angband-mod-bug-fixes/plugin.ts`) is `(_state, departedQuiver) =>
+  departedQuiver` - accepting core's redirect is the whole fix. No hook =>
+  faithful 4.2.6 sheds `state.gear.inven[length-1]` unconditionally, which is
+  what let the reproduced Small-wooden-chest mis-fire happen. The free-command
+  half of the problem (`inscribe` spending 0 energy) is upstream's own design,
+  matching `do_cmd_inscribe`, and stays faithful in core; this fix addresses
+  the half entry 11 names as "worse and the one to fix first" - which item gets
+  shed - not the energy cost of the command that can trigger it. Flag
+  `bugfix.stateIntegrity`. Fold kind: a DECISION hook - last-answer, same shape
+  as `walkBlockedByDiggable`, because at most one redirect can be honoured and
+  declining (null) must be free of observable effect. RNG-FREE, as the hook
+  requires: no computation at all, let alone a draw.
+- Tests: `packages/core/src/game/obj-cmd.test.ts` (core's seam: no hook, even
+  with `previousQuiver` supplied, still sheds the naive trailing item; an
+  installed hook redirects to whatever `departedQuiver` names; `departedQuiver`
+  is null when nothing in `previousQuiver` actually left the quiver) and
+  `neo-angband-mod-bug-fixes/plugin.test.ts` (the mod's pass-through, and a
+  genuine overfull-pack game state where the redirected handle - not the naive
+  trailing item - is what actually gets shed).
 
 ### 12. Duplicate artifacts (`IMPLEMENTED`, no upstream fix)
 

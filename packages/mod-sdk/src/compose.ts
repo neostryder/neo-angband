@@ -606,35 +606,10 @@ export function composePacks(
         if (at === null) continue;
         const existing = table.get(at) as ComposedRecord;
         const before = existing.value;
-        /*
-         * A MALFORMED OP DEGRADES THE SAME WAY AN UNRESOLVABLE REFERENCE
-         * DOES. `applyFieldPatch` (patch.ts) throws `PatchError` on a target
-         * that is not a list where `append`/`removeValue` need one, and it can
-         * throw a bare TypeError too - an `append` op written with `value`
-         * instead of `values` spreads `undefined` and never reaches patch.ts's
-         * own guard. Until this try/catch, either kind of throw propagated
-         * straight out of `composePacks`, bypassing `onRefuse` entirely (this
-         * loop is the only caller of `applyFieldPatch` in the file that did
-         * not already go through `refuse`), so one bad op did not cost that
-         * op - it cost the mod that wrote it, when `composeDroppingBroken`'s
-         * pack-identifying catch could name one, and cost EVERY installed mod
-         * when it could not, since a raw TypeError's message names no pack.
-         */
-        let patched: JsonRecord;
-        try {
-          patched = applyFieldPatch(existing.value, ops);
-        } catch (e) {
-          const why = e instanceof Error ? e.message : String(e);
-          refuse(
-            `${file} fieldPatches "${at}": ${why}, so that patch was left unapplied`,
-            `${file}: fieldPatch ${at} could not be applied (${why})`,
-          );
-          continue;
-        }
         const ok = vetted(
           at,
           before,
-          patched,
+          applyFieldPatch(existing.value, ops),
           ops.map((op) => op.path.split(".")[0] as string),
         );
         existing.value = ok.value;

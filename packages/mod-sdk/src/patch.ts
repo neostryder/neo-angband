@@ -224,21 +224,6 @@ function applyOp(record: JsonRecord, op: FieldOp): void {
       return;
     }
     case "append": {
-      /*
-       * A TYPO HERE IS NOT A TypeError. `values` is required by the FieldOp
-       * type, but an op arrives as JSON and nothing checks its FIELDS the way
-       * the default arm below checks its op NAME - so `{"op":"append",
-       * "path":..., "value":[...]}` (singular, the field `set`/`add`/`mul`
-       * actually use) reached `list.push(...op.values)` with `op.values`
-       * undefined, and spreading `undefined` is a bare TypeError with no
-       * mention of the op, the path, or the typo that caused it.
-       */
-      if (!Array.isArray(op.values)) {
-        const sawValueInstead = Object.hasOwn(op, "value") ? ` (this op has "value" instead)` : "";
-        throw new PatchError(
-          `patch: "append" at ${op.path} needs a "values" array${sawValueInstead}`,
-        );
-      }
       const list = asList(getPath(record, op.path), op.path, "append");
       list.push(...op.values);
       setPath(record, op.path, list);
