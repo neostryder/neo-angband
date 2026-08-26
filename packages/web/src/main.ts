@@ -297,9 +297,11 @@ import {
   activeModCode,
   folderPluginManifests,
   loadModCode,
+  type LoadedModPlugin,
   mergePluginManifests,
   setModCode,
 } from "./mod-code";
+import { hideAutoplayerBanner, showAutoplayerBanner } from "./autoplayer-banner";
 import {
   modOwnFiles,
   modPluginContext,
@@ -10733,6 +10735,11 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
   installedController = null;
   installedControllerSpeed = null;
   stopInstalledController = null;
+  /* A candidate still waiting on the confirm gate below (#125) does not
+   * survive a reload either - the new boot runs the whole install loop, and
+   * this gate, again from scratch. */
+  pendingAutoplayerInstall = null;
+  hideAutoplayerBanner();
   /* Back to candidate zero, not to nothing: the page has not re-composed yet
    * and the autosave below can still repaint, so the map needs an owner the
    * whole way down. A departing mod's sink must not be that owner. */
@@ -10748,6 +10755,26 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
 }
 
 /**
+ * do_cmd_try_borg's two warnings and its prompt (cmd-misc.c:131-136), shared
+ * by both entrances an autoplayer can take the keyboard through: Ctrl-Z
+ * (activateAutoplayerCmd, right below) and the boot-time gate on a rule flag
+ * flipped from the ordinary Mods screen (confirmPendingAutoplayerInstall,
+ * near the controller-install loop). One copy of the text so the two
+ * entrances cannot drift into saying different things for the same decision.
+ *
+ * The text itself is upstream's own (BORG_CONFIRM_MSG_1/2, BORG_CONFIRM in
+ * neo-angband-mod-borg's activate.ts) - copied rather than imported, because
+ * core does not and must not depend on a mod package; a mod is a URL fetched
+ * at runtime, not a build-time dependency.
+ */
+async function confirmBorgActivation(): Promise<boolean> {
+  say("You are about to use the dangerous, unsupported, borg commands!");
+  say("Your machine may crash, and your savefile may become corrupted!");
+  render();
+  return confirmYesNo("Are you sure you want to use the borg commands? ");
+}
+
+/**
  * do_cmd_try_borg (cmd-misc.c:125-145), Ctrl-Z: warn once, confirm, then let an
  * autoplaying mod have the keyboard (#125).
  *
@@ -10759,18 +10786,18 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
  * reloading through the one door every other mod change already uses
  * (reloadAfterModChange). The confirmation is what changes: it now always runs
  * first, whether the player found the flag through this key or through Mods.
- *
- * The two messages and the prompt are upstream's own text
- * (BORG_CONFIRM_MSG_1/2, BORG_CONFIRM in neo-angband-mod-borg's activate.ts) -
- * copied rather than imported, because core does not and must not depend on a
- * mod package; a mod is a URL fetched at runtime, not a build-time dependency.
  */
 async function activateAutoplayerCmd(modId: string): Promise<void> {
-  say("You are about to use the dangerous, unsupported, borg commands!");
-  say("Your machine may crash, and your savefile may become corrupted!");
-  render();
-  if (!(await confirmYesNo("Are you sure you want to use the borg commands? "))) return;
+  if (!(await confirmBorgActivation())) return;
   defaultModStore().setRuleChoice(`${modId}.autoplay`, true);
+  /* Marked HERE, before the reload, not left for the boot loop that runs after
+   * it (#125). That reload goes through the exact same boot-time install path
+   * as any other launch, and that path now only asks once - a save that
+   * already carries NOSCORE.BORG installs at once, because the gate already
+   * ran. Leaving the mark for the boot loop to set instead would mean the very
+   * next boot asks again for a confirmation the player just gave. */
+  const takenOver = state.actor.player;
+  takenOver.noscore = markNoscore(takenOver.noscore, NOSCORE.BORG);
   reloadAfterModChange({ resume: true });
 }
 
@@ -10801,6 +10828,37 @@ function tryBorgCommand(): void {
     return;
   }
   void openModal(() => activateAutoplayerCmd(candidate.id));
+}
+
+/**
+ * Resolves the candidate the boot-time controller-install loop held back
+ * (#125): a mod whose own rule flag was already on at boot, on a save that
+ * has never granted it the keyboard before (NOSCORE.BORG unset). Runs
+ * upstream's own warning and confirm, then either installs for real
+ * (finishAutoplayerInstall) or leaves the human at the keyboard - never both,
+ * and never neither.
+ *
+ * Chained after maybeShowGraphics in the boot promise below, so this is the
+ * first thing the player sees once the game screen is actually live, not
+ * something that can flash past behind a loading screen or a birth flow that
+ * still owns the terminal.
+ */
+async function confirmPendingAutoplayerInstall(): Promise<void> {
+  const pending = pendingAutoplayerInstall;
+  if (!pending) return;
+  pendingAutoplayerInstall = null;
+  await openModal(async () => {
+    if (!(await confirmBorgActivation())) {
+      say(
+        `${pending.loaded.id} will not take the keyboard this session. Turn its ` +
+          `autoplay rule back off from Mods if you do not want to be asked again.`,
+      );
+      render();
+      return;
+    }
+    finishAutoplayerInstall(pending.loaded, pending.controller);
+    render();
+  });
 }
 
 /**
@@ -12312,7 +12370,8 @@ void applyModResources()
     render();
   })
   .then(resetVisualsForCharacter)
-  .then(maybeShowGraphics);
+  .then(maybeShowGraphics)
+  .then(confirmPendingAutoplayerInstall);
 
 // ---- Agent controller seam (W1.5) ----------------------------------------
 // A bundled in-process agent can drive the real game through the frozen
@@ -12466,6 +12525,20 @@ let installedControllerSpeed: ((speed: AutoplayerSpeed) => void) | null = null;
  * page reload rather than a live hand-back).
  */
 let stopInstalledController: (() => void) | null = null;
+
+/**
+ * A candidate autoplayer the boot-time controller-install loop held back
+ * (#125): its `controller()` returned a real controller, but the save has
+ * never granted it the keyboard before (NOSCORE.BORG unset), so installing it
+ * at once would be the silent activation this bug is about. Resolved by
+ * confirmPendingAutoplayerInstall once the game screen is live - to an
+ * install (finishAutoplayerInstall), or to nothing on a decline - and cleared
+ * without resolving by reloadAfterModChange, on the same reasoning as
+ * installedController: a reload is a fresh boot, and the new one runs this
+ * whole gate again from scratch.
+ */
+let pendingAutoplayerInstall: { loaded: LoadedModPlugin; controller: AgentController } | null =
+  null;
 
 function installSandbox(pluginId: string): void {
   const found = discoverPlugins().get(pluginId);
@@ -12976,13 +13049,152 @@ const AUTOPLAYER_SPEED_MS: Record<AutoplayerSpeed, number> = {
   slow: 400,
 };
 let MOD_AUTOPLAYER_TICK_MS = AUTOPLAYER_SPEED_MS[defaultModStore().getAutoplayerSpeed()] ?? 120;
+
+/**
+ * The mod that already holds the keyboard, or is about to once the confirm
+ * gate below resolves - if either slot is taken. A named function rather than
+ * an inline `installedController?.id ?? pendingAutoplayerInstall?.loaded.id`
+ * in the loop that calls it: TypeScript's loop narrowing otherwise sees
+ * `installedController` written by finishAutoplayerInstall (called later in
+ * the same loop body) and infers a type of `never` for it on the read above
+ * that call, which is a control-flow analysis artifact, not a real
+ * impossibility - installedController is reassigned from inside a nested
+ * function, not the loop's own straight-line flow.
+ */
+function currentOrPendingAutoplayerId(): string | undefined {
+  return installedController?.id ?? pendingAutoplayerInstall?.loaded.id;
+}
+
+/**
+ * Finishes an autoplayer's takeover of the keyboard (#125): installs the
+ * controller, marks the save NOSCORE_BORG, shows the on-screen indicator that
+ * it now holds the keyboard, and starts its pump. The one place that does all
+ * four, so a save that already carries NOSCORE_BORG (the loop below) and a
+ * save that just earned it through the confirm gate
+ * (confirmPendingAutoplayerInstall) both reach the exact same install - the
+ * only difference between them is whether this runs at once or waits on a
+ * "yes" first.
+ */
+function finishAutoplayerInstall(loaded: LoadedModPlugin, controller: AgentController): void {
+  /* installController is installed and then nothing drove it (found
+   * 2026-08-21 while wiring the restart-on-death loop, see docs/PLANNED.md):
+   * a mod's controller took a turn only when a human happened to press a
+   * key, which is not what a mod that plays the game by itself is for. The
+   * debug-only agent and plugin seams both already solve this with a
+   * setInterval pump plus a latch that yields one action per tick - the
+   * latch is not optional, because runGameLoop asks nextCommand() for as
+   * long as the player has energy, and a controller that always answers
+   * would never let advance() return. Same shape here, for real. */
+  let modArmed = false;
+  const modLatched: AgentController = (view, act) => {
+    if (!modArmed) return null;
+    modArmed = false;
+    return controller(view, act);
+  };
+  const session = installController(state, modLatched, {
+    capabilities: CapabilitySet.fromManifest(loaded.manifest),
+  });
+  installedController = { id: loaded.id, session };
+  /* Mark the savefile (do_cmd_try_borg, cmd-misc.c:128-140): a character an
+   * autoplayer took over is not a character that earned its result, and the bit
+   * is what the score gate reads at death (score.c:268, the "Score not
+   * registered for borgs." line below). This is upstream's own activation gate -
+   * the moment the borg is switched on, not the moment it first respawns - so the
+   * character that was already alive when the mod took over is marked too.
+   *
+   * The bit was already defined, already score-invalidating, already persisted
+   * and already read at death. Nothing had ever SET it, so every read answered
+   * false: an inert seam of exactly the shape this project keeps finding. It is
+   * one-way (markNoscore only ORs) and there is no path that clears it, so a save
+   * that has run an autoplayer stays marked for the rest of its life. */
+  const takenOver = state.actor.player;
+  takenOver.noscore = markNoscore(takenOver.noscore, NOSCORE.BORG);
+  log.info(`mod:${loaded.id}`, `installed an autoplayer`);
+  /* The other half of #125: a save can no longer be quietly handed to an
+   * autoplayer, so a player who IS running one must be able to see that from
+   * the screen, and see how to get the keyboard back, without knowing to look
+   * for a one-shot chat line on the way out. */
+  showAutoplayerBanner(loaded.id);
+  /* The pump. No tick cap: the demo/plugin seams cap ticks as a debug
+   * safety valve for a manual test run, and a real "let it play" mod has no
+   * such length limit - it plays until the human takes the keyboard back or
+   * the mod throws.
+   *
+   * startModTimer is a named function rather than an inline setInterval so a
+   * live speed change (installedControllerSpeed, driven by the mod manager's
+   * Autoplayer speed row) can tear the pump down and rebuild it at the new
+   * rate at once - no reload, the same bar the rule toggles above already
+   * clear. */
+  let modTimer: ReturnType<typeof setInterval> | undefined;
+  const startModTimer = (): void => {
+    modTimer = setInterval(() => {
+      if (dead) {
+        clearInterval(modTimer);
+        return;
+      }
+      if (scoresOpen) return;
+      if (modalDepth > 0) {
+        /* THE AUTOPLAYER ANSWERS ITS OWN PROMPTS (answerBlockingPrompt).
+         *
+         * This line used to be `if (scoresOpen || modalDepth > 0) return`, and
+         * that made every blocking prompt a full stop: descending prints "You
+         * enter a maze of down staircases." behind a forced -more-, so a mod
+         * that plays the game by itself could not change level without a human
+         * pressing a key. The floor-pile list and the store screen are the same
+         * shape, and the `auto_more` option reaches neither.
+         *
+         * Before gameScreenLive the birth flow owns the terminal, and a mod's
+         * clock must not answer for the player who is rolling a character. */
+        if (gameScreenLive) answerBlockingPrompt(`mod:${loaded.id}`);
+        return;
+      }
+      modArmed = true;
+      /* A buggy or hostile autoplayer must not crash or hang the host: on a
+       * throw, stop the pump and hand the keyboard back rather than let the
+       * exception escape the timer. The human can still take over by hand;
+       * this only stops the automatic driving. */
+      try {
+        advance();
+      } catch (err) {
+        log.error(`mod:${loaded.id}`, `autoplayer pump failed:`, err);
+        clearInterval(modTimer);
+      }
+    }, MOD_AUTOPLAYER_TICK_MS);
+  };
+  startModTimer();
+  installedControllerSpeed = (speed) => {
+    MOD_AUTOPLAYER_TICK_MS = AUTOPLAYER_SPEED_MS[speed] ?? 120;
+    clearInterval(modTimer);
+    startModTimer();
+  };
+  /* The player's way out (#125): any real keypress, or Ctrl-Z pressed again,
+   * calls this. A live hand-back, not a reload - the character stays exactly
+   * where it is, mid-turn, with the human in the chair. */
+  stopInstalledController = () => {
+    clearInterval(modTimer);
+    const id = installedController?.id ?? loaded.id;
+    try {
+      installedController?.session.uninstall();
+    } catch (err) {
+      reportModFault(id, `could not be released from the keyboard: ${faultMessage(err)}`);
+    }
+    installedController = null;
+    installedControllerSpeed = null;
+    stopInstalledController = null;
+    hideAutoplayerBanner();
+    say(`You take the keyboard back from ${id}.`);
+    render();
+  };
+}
+
 for (const loaded of activeModCode().plugins) {
   const makeController = loaded.plugin.controller;
   if (!makeController) continue;
-  if (installedController) {
+  const holderId = currentOrPendingAutoplayerId();
+  if (holderId) {
     reportModFault(
       loaded.id,
-      `it plays the game automatically, and "${installedController.id}" is already doing that - ` +
+      `it plays the game automatically, and "${holderId}" is already doing that - ` +
         `only one autoplayer can hold the keyboard. Disable one of them.`,
     );
     continue;
@@ -13001,109 +13213,23 @@ for (const loaded of activeModCode().plugins) {
     /* undefined is a decline, not a failure: a mod whose own autoplay toggle is
      * off says so by returning nothing, and the human keeps the keyboard. */
     if (!controller) continue;
-    /* installController is installed and then nothing drove it (found
-     * 2026-08-21 while wiring the restart-on-death loop, see docs/PLANNED.md):
-     * a mod's controller took a turn only when a human happened to press a
-     * key, which is not what a mod that plays the game by itself is for. The
-     * debug-only agent and plugin seams both already solve this with a
-     * setInterval pump plus a latch that yields one action per tick - the
-     * latch is not optional, because runGameLoop asks nextCommand() for as
-     * long as the player has energy, and a controller that always answers
-     * would never let advance() return. Same shape here, for real. */
-    let modArmed = false;
-    const modLatched: AgentController = (view, act) => {
-      if (!modArmed) return null;
-      modArmed = false;
-      return controller(view, act);
-    };
-    const session = installController(state, modLatched, {
-      capabilities: CapabilitySet.fromManifest(loaded.manifest),
-    });
-    installedController = { id: loaded.id, session };
-    /* Mark the savefile (do_cmd_try_borg, cmd-misc.c:128-140): a character an
-     * autoplayer took over is not a character that earned its result, and the bit
-     * is what the score gate reads at death (score.c:268, the "Score not
-     * registered for borgs." line below). This is upstream's own activation gate -
-     * the moment the borg is switched on, not the moment it first respawns - so the
-     * character that was already alive when the mod took over is marked too.
-     *
-     * The bit was already defined, already score-invalidating, already persisted
-     * and already read at death. Nothing had ever SET it, so every read answered
-     * false: an inert seam of exactly the shape this project keeps finding. It is
-     * one-way (markNoscore only ORs) and there is no path that clears it, so a save
-     * that has run an autoplayer stays marked for the rest of its life. */
-    const takenOver = state.actor.player;
-    takenOver.noscore = markNoscore(takenOver.noscore, NOSCORE.BORG);
-    log.info(`mod:${loaded.id}`, `installed an autoplayer`);
-    /* The pump. No tick cap: the demo/plugin seams cap ticks as a debug
-     * safety valve for a manual test run, and a real "let it play" mod has no
-     * such length limit - it plays until the human takes the keyboard back or
-     * the mod throws.
-     *
-     * startModTimer is a named function rather than an inline setInterval so a
-     * live speed change (installedControllerSpeed, driven by the mod manager's
-     * Autoplayer speed row) can tear the pump down and rebuild it at the new
-     * rate at once - no reload, the same bar the rule toggles above already
-     * clear. */
-    let modTimer: ReturnType<typeof setInterval> | undefined;
-    const startModTimer = (): void => {
-      modTimer = setInterval(() => {
-        if (dead) {
-          clearInterval(modTimer);
-          return;
-        }
-        if (scoresOpen) return;
-        if (modalDepth > 0) {
-          /* THE AUTOPLAYER ANSWERS ITS OWN PROMPTS (answerBlockingPrompt).
-           *
-           * This line used to be `if (scoresOpen || modalDepth > 0) return`, and
-           * that made every blocking prompt a full stop: descending prints "You
-           * enter a maze of down staircases." behind a forced -more-, so a mod
-           * that plays the game by itself could not change level without a human
-           * pressing a key. The floor-pile list and the store screen are the same
-           * shape, and the `auto_more` option reaches neither.
-           *
-           * Before gameScreenLive the birth flow owns the terminal, and a mod's
-           * clock must not answer for the player who is rolling a character. */
-          if (gameScreenLive) answerBlockingPrompt(`mod:${loaded.id}`);
-          return;
-        }
-        modArmed = true;
-        /* A buggy or hostile autoplayer must not crash or hang the host: on a
-         * throw, stop the pump and hand the keyboard back rather than let the
-         * exception escape the timer. The human can still take over by hand;
-         * this only stops the automatic driving. */
-        try {
-          advance();
-        } catch (err) {
-          log.error(`mod:${loaded.id}`, `autoplayer pump failed:`, err);
-          clearInterval(modTimer);
-        }
-      }, MOD_AUTOPLAYER_TICK_MS);
-    };
-    startModTimer();
-    installedControllerSpeed = (speed) => {
-      MOD_AUTOPLAYER_TICK_MS = AUTOPLAYER_SPEED_MS[speed] ?? 120;
-      clearInterval(modTimer);
-      startModTimer();
-    };
-    /* The player's way out (#125): any real keypress, or Ctrl-Z pressed again,
-     * calls this. A live hand-back, not a reload - the character stays exactly
-     * where it is, mid-turn, with the human in the chair. */
-    stopInstalledController = () => {
-      clearInterval(modTimer);
-      const id = installedController?.id ?? loaded.id;
-      try {
-        installedController?.session.uninstall();
-      } catch (err) {
-        reportModFault(id, `could not be released from the keyboard: ${faultMessage(err)}`);
-      }
-      installedController = null;
-      installedControllerSpeed = null;
-      stopInstalledController = null;
-      say(`You take the keyboard back from ${id}.`);
-      render();
-    };
+    /* THE GATE (#125). do_cmd_try_borg (cmd-misc.c:127) only ever asks once per
+     * character - "already marked" is upstream's own short-circuit, not a port
+     * addition - and NOSCORE.BORG is one-way (markNoscore only ORs, never
+     * clears; finishAutoplayerInstall above). So a save that already carries it
+     * ran this exact gate on an earlier boot, or through Ctrl-Z
+     * (activateAutoplayerCmd), and installing again here is the SAME character
+     * continuing, not a new activation. A save that does not carry it yet is
+     * the only case upstream's gate ever asks about either: hold the candidate
+     * rather than install it, and let confirmPendingAutoplayerInstall run the
+     * warn-and-confirm once the game screen is live. Turning the rule flag on
+     * from the ordinary Mods screen must not, by itself, be enough - that was
+     * the whole bug. */
+    if ((state.actor.player.noscore & NOSCORE.BORG) !== 0) {
+      finishAutoplayerInstall(loaded, controller);
+    } else {
+      pendingAutoplayerInstall = { loaded, controller };
+    }
   } catch (err) {
     /* Same containment as register(): a controller that will not install must
      * leave a game the player can still play by hand. The commonest cause is a

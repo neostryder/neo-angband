@@ -183,10 +183,16 @@ describe("a mod's controller has a clock of its own", () => {
    * so an autoplayer only took a turn when a human happened to press a key.
    * A screensaver that only advances on a keypress is not a screensaver. */
 
-  /** From the mod-controller install loop to the next top-level statement. */
+  /**
+   * From finishAutoplayerInstall (the extracted install-and-pump helper, #125)
+   * through the mod-controller install loop that calls it, to the next
+   * top-level statement. The two live back to back and the install/pump steps
+   * these tests pin now live in the helper rather than inline in the loop, so
+   * both have to be in view for the same assertions to still find them.
+   */
   function installLoopBody(): string {
-    const at = NO_COMMENTS.indexOf("for (const loaded of activeModCode().plugins)");
-    expect(at, "the mod-controller install loop is still here").toBeGreaterThan(-1);
+    const at = NO_COMMENTS.indexOf("function finishAutoplayerInstall(");
+    expect(at, "the autoplayer install-and-pump helper is still here").toBeGreaterThan(-1);
     const end = NO_COMMENTS.indexOf('window as unknown as { __neo?: unknown }', at);
     expect(end, "the loop still ends before the dev diagnostic hook").toBeGreaterThan(at);
     return NO_COMMENTS.slice(at, end);
