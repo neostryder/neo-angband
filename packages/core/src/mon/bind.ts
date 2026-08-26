@@ -657,36 +657,94 @@ export class MonsterRegistry {
 
     this.races = [];
     this.racesByName = new Map();
+    /* Parallel to `this.races` - the raw record each bound race came from, kept
+     * for the second pass below, which needs `$from` and the ORIGINAL
+     * (unreversed) friends/shape lines to attribute a bad name to the right
+     * pack. Stays in lockstep with `this.races` because both are only pushed
+     * to on the same non-rejected path. */
+    const raceRecs: MonsterRecordJson[] = [];
     for (const rec of pack.monsters) {
       if (this.rejectDuplicateName(rec)) continue;
+      if (this.rejectMissingBase(rec)) continue;
       const race = this.bindRace(rec, maxSight, innate, breathOrInnate);
       /* Keys core does not read ride along instead of being dropped - the same
        * seam as ObjectKind.ext, for the same reason. */
       this.races.push(attachExt("monster", rec, race));
       this.racesByName.set(race.name.toLowerCase(), race);
+      raceRecs.push(rec);
     }
 
-    /* finish_parse_monster: resolve friends and shape names to races. */
-    for (const race of this.races) {
-      for (const f of race.friends) {
+    /*
+     * finish_parse_monster: resolve friends and shape names to races.
+     *
+     * `friends:` and `shape:` NAME OTHER RACES, from monster.json - the same
+     * mod-appendable list `base` (below) and monster_base.json's own entries
+     * come from - so a friend or shape a mod names can go missing exactly the
+     * way an ego's `item:` line does: mod A gives a monster a friend mod B
+     * defines, the player disables mod B. It used to throw `mon: could not
+     * find friend/shape named ...` out of `bindCore` for the whole game.
+     *
+     * ONE ENTRY LOST IS THE RIGHT SIZE, unlike `base` below: a race with one
+     * fewer scripted friend or shape still functions, the same reasoning the
+     * ego binder's `poss_items` uses. Iterated backwards so `splice` during
+     * the walk cannot skip the entry after the one just removed.
+     */
+    this.races.forEach((race, i) => {
+      const rec = raceRecs[i] as MonsterRecordJson;
+      const from = provenanceOf(rec);
+      const rawFriends = [...(rec.friends ?? [])].reverse();
+      for (let fi = race.friends.length - 1; fi >= 0; fi--) {
+        const f = race.friends[fi] as MonsterFriends;
         f.race =
           f.name.toLowerCase() === "same" ? race : this.raceByName(f.name);
-        if (!f.race) {
+        if (f.race) continue;
+        const owner = fieldOwner(from, "friends", rawFriends[fi]);
+        if (owner === null || from === undefined) {
           throw new Error(
             `mon: could not find friend named '${f.name}' for '${race.name}'`,
           );
         }
+        this.refused.push({
+          file: "monster",
+          record: race.name,
+          field: "friends",
+          id: owner,
+          why: refusalWhy(
+            race.name,
+            "friend dropped",
+            `could not find friend named '${f.name}'`,
+            from,
+          ),
+        });
+        race.friends.splice(fi, 1);
       }
-      for (const s of race.shapes) {
+      const rawShapes = [...(rec.shape ?? [])].reverse();
+      for (let si = race.shapes.length - 1; si >= 0; si--) {
+        const s = race.shapes[si] as MonsterShape;
         if (s.base) continue;
         s.race = this.raceByName(s.name);
-        if (!s.race) {
+        if (s.race) continue;
+        const owner = fieldOwner(from, "shape", rawShapes[si]);
+        if (owner === null || from === undefined) {
           throw new Error(
             `mon: could not find shape named '${s.name}' for '${race.name}'`,
           );
         }
+        this.refused.push({
+          file: "monster",
+          record: race.name,
+          field: "shape",
+          id: owner,
+          why: refusalWhy(
+            race.name,
+            "shape dropped",
+            `could not find shape named '${s.name}'`,
+            from,
+          ),
+        });
+        race.shapes.splice(si, 1);
       }
-    }
+    });
 
     this.summons = pack.summons.map((rec) => ({
       name: rec.name,
@@ -740,6 +798,39 @@ export class MonsterRegistry {
   }
 
   /**
+   * `base:` IS THE RACE, the same way an artifact's `base-object:` is the
+   * artifact: every field a race binds - the default glyph, the inherited
+   * flags - starts from the template it names, so a race whose base does not
+   * resolve is not a race at all. `base` names a MonsterBase, from
+   * monster_base.json, and that list is exactly as mod-appendable as
+   * monster.json itself - mod A gives a race a base mod B defines, the
+   * player disables mod B, and this used to throw `mon: race ... invalid
+   * base` out of `bindCore` for the whole game.
+   *
+   * DROPPING THE WHOLE RACE, not one field of it, is the artifact binder's
+   * answer applied here: `ridx` is assigned by push order same as `aidx`, and
+   * core's pack composes before any mod's, so a drop can only shift a mod's
+   * own races relative to each other - the same outcome as that mod being
+   * off.
+   */
+  private rejectMissingBase(rec: MonsterRecordJson): boolean {
+    if (this.bases.has(rec.base)) return false;
+    const from = provenanceOf(rec);
+    const owner = fieldOwner(from, "base", rec.base);
+    if (owner === null || from === undefined) {
+      throw new Error(`mon: race ${rec.name}: invalid base ${rec.base}`);
+    }
+    this.refused.push({
+      file: "monster",
+      record: rec.name,
+      field: "base",
+      id: owner,
+      why: refusalWhy(rec.name, "race dropped", `unknown base ${rec.base}`, from),
+    });
+    return true;
+  }
+
+  /**
    * lookup_monster (mon-util.c): exact case-insensitive match first,
    * else the first race (lowest ridx) whose name contains the query as
    * a case-insensitive substring. The shipped monster.txt relies on the
@@ -764,6 +855,11 @@ export class MonsterRegistry {
     innate: FlagSet,
     breathOrInnate: FlagSet,
   ): MonsterRace {
+    /* SAFETY NET, not a live path: the constructor's `rejectMissingBase` has
+     * already refused or thrown on a race whose base does not resolve, so
+     * `bindRace` is only ever called with one that does. Kept and documented
+     * rather than cast away, so a future caller added without going through
+     * that guard fails loudly instead of reading `base` as `undefined`. */
     const base = this.bases.get(rec.base);
     if (!base) {
       throw new Error(`mon: race ${rec.name}: invalid base ${rec.base}`);
@@ -858,13 +954,36 @@ export class MonsterRegistry {
       });
     }
 
+    /* `friends-base:` names a MonsterBase - the same mod-appendable list
+     * `base:` above resolves against - so a mod's friends-base line can go
+     * missing exactly the way `base:` can, except one lost entry still
+     * leaves a working race (unlike `base:`, which the whole race needs).
+     * The store binder's pattern applies at this granularity: the entry is
+     * the unit of provenance and of loss. */
+    const from = provenanceOf(rec);
     const friendsBase: MonsterFriendsBase[] = [];
     for (const f of [...(rec["friends-base"] ?? [])].reverse()) {
       const fb = this.bases.get(f.name);
       if (!fb) {
-        throw new Error(
-          `mon: race ${rec.name}: invalid friends base ${f.name}`,
-        );
+        const owner = fieldOwner(from, "friends-base", f);
+        if (owner === null || from === undefined) {
+          throw new Error(
+            `mon: race ${rec.name}: invalid friends base ${f.name}`,
+          );
+        }
+        this.refused.push({
+          file: "monster",
+          record: rec.name,
+          field: "friends-base",
+          id: owner,
+          why: refusalWhy(
+            rec.name,
+            "friends-base entry dropped",
+            `unknown base ${f.name}`,
+            from,
+          ),
+        });
+        continue;
       }
       const num = parseNumberPair(f.number);
       friendsBase.push({
