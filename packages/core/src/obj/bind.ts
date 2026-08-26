@@ -824,13 +824,34 @@ export class ObjRegistry {
   private bindCurses(records: CurseRecordJson[]): void {
     for (let r = records.length - 1; r >= 0; r--) {
       const rec = records[r] as CurseRecordJson;
+      const from = provenanceOf(rec);
       const poss: boolean[] = new Array<boolean>(TV_MAX).fill(false);
       for (const tvalName of rec.type ?? []) {
         const tval = tvalFindIdx(tvalName);
-        if (tval < 0 || tval >= TV_MAX) {
+        if (tval >= 0 && tval < TV_MAX) {
+          poss[tval] = true;
+          continue;
+        }
+        /*
+         * `type:` NAMES A TVAL, from the same fixed table `object:`'s own
+         * `type:` line reads - not a record another pack could remove, but a
+         * mod can still misspell it on a curse it authors itself. Same
+         * whole-field granularity as the artifact `flags`/`values` fix above:
+         * one bad entry in the list is dropped, and whether it is core's
+         * mistake or a mod's is decided by whether anything touched `type` at
+         * all.
+         */
+        const owner = fieldOwner(from, "type", rec.type);
+        if (owner === null || from === undefined) {
           throw new Error(`curse: unknown tval ${tvalName}`);
         }
-        poss[tval] = true;
+        this.refused.push({
+          file: "curse",
+          record: rec.name,
+          field: "type",
+          id: owner,
+          why: refusalWhy(rec.name, "type entry dropped", `unknown tval ${tvalName}`, from),
+        });
       }
       const objFlags = newOfFlags();
       const elInfo = newElemInfo();
@@ -1262,11 +1283,21 @@ export class ObjRegistry {
        * situation as that mod not being installed, which is what the player just
        * asked for.
        *
-       * NOTE what is NOT covered: an invalid `flags`, `values` or `act` token on a
-       * mod's artifact still throws. Those are worth doing and are not this change,
-       * because each one needs its loop turned into something that can report
-       * instead of throw, inside a binder that is parity-sensitive. base-object is
-       * the field the tutorial teaches and the one a disabled dependency breaks.
+       * `flags` and `values` get the same treatment below, at the WHOLE-FIELD
+       * granularity `curseWeightConflict` established rather than per store's
+       * per-entry one: a `flags:` line can pack several tokens together
+       * ("SEE_INVIS | IGNORE_ACID"), so there is no single list entry to match
+       * against `was` the way a store's stock line or an ego's `item:` line
+       * has. What IS answerable is whether the field as a whole is core's
+       * untouched data or something a pack touched, and that is what decides
+       * throw-versus-drop; the offending TOKEN is still named in the report.
+       *
+       * `act` is deliberately NOT covered, and that is not an omission: findact
+       * (obj-init.c parse_artifact_act) never null-checks its own result either,
+       * so an artifact whose `act:` names nothing already gets a powerless
+       * activation upstream, silently, on core's own data. Refusing it here
+       * would make a mod's typo LOUDER than the same mistake in core's own
+       * artifact.txt, which is backwards.
        */
       const from = provenanceOf(rec);
       /* Restored on the refusal paths below: resolving an sval can APPEND a dummy
@@ -1305,7 +1336,18 @@ export class ObjRegistry {
       const flags = newOfFlags();
       for (const tok of tokens(rec.flags)) {
         const found = grabFlag(flags, OF, tok) || grabElementFlag(elInfo, tok);
-        if (!found) throw new Error(`artifact: invalid flag ${tok}`);
+        if (found) continue;
+        const owner = fieldOwner(from, "flags", rec.flags);
+        if (owner === null || from === undefined) {
+          throw new Error(`artifact: invalid flag ${tok}`);
+        }
+        this.refused.push({
+          file: "artifact",
+          record: rec.name,
+          field: "flags",
+          id: owner,
+          why: refusalWhy(rec.name, "flag dropped", `invalid flag ${tok}`, from),
+        });
       }
       const modifiers = new Array<number>(OBJ_MOD_MAX).fill(0);
       for (const tok of tokens(rec.values)) {
@@ -1316,7 +1358,19 @@ export class ObjRegistry {
           (elInfo[res.index] as ElementInfo).resLevel = res.value;
           found = true;
         }
-        if (!found) throw new Error(`artifact: invalid value ${tok}`);
+        if (!found) {
+          const owner = fieldOwner(from, "values", rec.values);
+          if (owner === null || from === undefined) {
+            throw new Error(`artifact: invalid value ${tok}`);
+          }
+          this.refused.push({
+            file: "artifact",
+            record: rec.name,
+            field: "values",
+            id: owner,
+            why: refusalWhy(rec.name, "value dropped", `invalid value ${tok}`, from),
+          });
+        }
       }
       const special = kind.kidx >= this.ordinaryKindCount;
       if (rec.graphics) {

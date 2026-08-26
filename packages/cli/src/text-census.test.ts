@@ -50,12 +50,6 @@ const KNOWN_ABSENT: Record<string, readonly string[]> = {
   "divergence (measured 2026-08-07, #143): the port implements this parser in upstream MASTER's shape rather than 4.2.6's, which is what #143 exposed by moving reference/ back to the 4.2.6 tag. datafile.c:67's finish-error belongs to `run_parser`'s error reporting, which the port reaches through the pack COMPILER rather than at runtime: the content pack is parsed at build time, and a finish-error there is a build failure with the compiler's own diagnostic, not a message a player can be shown. Unlike the option files, there is no player-facing path that reads a hand-edited datafile in a shipped build":
     ["Parser finish error in %s: %s"],
 
-  "not-in-this-port (measured 2026-08-01): do_cmd_try_borg's consent gate (cmd-misc.c:125-140). Upstream the borg is compiled into the game and reached by a debug command, so the game itself has to warn you before handing it your character. Here the Borg is a MOD in its own repository, installed through the mod manager and switched on by its own \"Let the Borg play\" toggle, so there is no engine command to gate and no engine-side prompt to port - the consent is the install, and the toggle says what it does. The sibling debug-command gate IS ported, verbatim, in packages/web/src/wizard.ts. These two were counted present until 2026-08-01 only because packages/borg lived in this repository and quoted them":
-    [
-      "You are about to use the dangerous, unsupported, borg commands!",
-      "Are you sure you want to use the borg commands? ",
-    ],
-
   "divergence (derived from the C 2026-07-28): both belong to parts of do_cmd_save_screen the port has no counterpart for. \"Include monster list? \" (ui-command.c:558) is asked only when find_first_subwindow(PW_MONLIST) finds a monster-list SUBWINDOW to dump beside the main terminal, and the port has no subwindows at all - html_screenshot's other_term argument is always NULL here. \"Screen dump failed.\" (ui-command.c:510) reports the failure to write dump.prf, the temporary pref file upstream saves so it can reset_visuals(false) to raw attr/char for the dump and restore the graphics prefs afterwards (L504-528); the port's snapshotColored() already returns attr/char rather than pixels, so there is nothing to switch and nothing to preserve. The dump's OWN write failure is reported, with html_screenshot's own message (\"Cannot write the '%s' file!\", L324)":
     ["Include monster list? ", "Screen dump failed."],
 
