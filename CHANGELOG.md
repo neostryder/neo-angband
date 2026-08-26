@@ -36,6 +36,16 @@ version it still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- Two new `ModHooks` extension points for the bug-fixes mod: `partialStackMerge`,
+  a veto on combinePack's uneven-stack merge (the point a mod can refuse to
+  drain an already-full source stack into a smaller one, neostryder/neo-angband#115),
+  and `packOverflowVictim`, a decision hook that lets a mod redirect
+  pack_overflow's NULL-victim shed to the item that actually displaced out of
+  the quiver rather than the last inventory slot (neostryder/neo-angband#116).
+  With no hook installed, both call sites are byte-identical to 4.2.6.
+
 ### Fixed
 
 - A mod's unresolvable reference or malformed patch could take the whole game
