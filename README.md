@@ -11,6 +11,10 @@ anywhere and so you can change it without forking it.
 - **Add mods** when you want something different.
 - **Make your own mods** without maintaining a fork of Angband.
 
+**New here? [The Quick Start Guide](docs/QUICKSTART.md) walks through birth
+settings, controls, mods worth turning on, a tour of town, and the first steps
+into the dungeon - with real screenshots at every step.**
+
 > ## Try it now: [play in your browser](https://angband.rpgm.world/)
 >
 > No install, no account, nothing to download. The link opens straight into
@@ -372,6 +376,7 @@ rpgm.tools**. [SECURITY.md](SECURITY.md) says what is worth reporting.
 
 | | |
 | --- | --- |
+| [Quick Start Guide](docs/QUICKSTART.md) | New player? Start here - birth, controls, mods, town, and the first dive, with screenshots |
 | [Every doc, indexed](docs/README.md) | The full documentation hub, organized by task |
 | [Make a mod](docs/modding/tutorials/README.md) | Seven short tutorials, start to finish |
 | [How modding works](docs/MODS.md) | The design, and what a mod can reach |

@@ -180,3 +180,45 @@ describe("FeatureRegistry", () => {
     ).toThrow(/not in list-terrain/);
   });
 });
+
+/**
+ * `mimic:` NAMES ANOTHER TERRAIN RECORD, the same mod-appendable list `code:`
+ * cannot be (FEAT codes are the fixed table list-terrain.h compiles). A mod
+ * can still patch an existing feature's `mimic:` to point at a feature a
+ * sibling mod supplies, and the miss used to throw `terrain: mimic not found`
+ * out of `bindCore` for the whole game over one feature's display alias.
+ */
+describe("a terrain mimic reference a mod got wrong", () => {
+  const BROKEN: TerrainRecordJson = {
+    code: "FLOOR",
+    name: "open floor",
+    mimic: "NOT_A_CODE",
+  };
+
+  it("throws when nothing touched the record", () => {
+    expect(() => new FeatureRegistry([BROKEN])).toThrow(
+      /terrain: mimic not found: NOT_A_CODE/,
+    );
+  });
+
+  it("drops the mimic and names the mod when a mod wrote it", () => {
+    const rec = { ...BROKEN, $from: { owner: "mod-a" } };
+    const modded = new FeatureRegistry([rec]);
+
+    expect(modded.refused).toEqual([
+      expect.objectContaining({
+        file: "terrain",
+        record: "FLOOR",
+        field: "mimic",
+        id: "mod-a",
+        why: expect.stringContaining("mimic not found: NOT_A_CODE"),
+      }),
+    ]);
+    /* THE FEATURE SURVIVES, drawn with its own glyph instead of the target's. */
+    expect(modded.byCodeName("FLOOR").mimic).toBeNull();
+  });
+
+  it("refuses nothing at all for the shipped pack", () => {
+    expect(new FeatureRegistry(terrain.records).refused).toEqual([]);
+  });
+});
