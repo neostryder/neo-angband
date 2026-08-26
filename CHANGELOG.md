@@ -38,6 +38,19 @@ version it still calls itself.
 
 ### Fixed
 
+- A mod's unresolvable reference or malformed patch could take the whole game
+  down at boot in six places the mod-resilience audit had not yet reached: an
+  artifact's `flags:`/`values:` tokens, a curse's `type:` entries, a monster's
+  `base:`/`friends-base:`/`friends:`/`shape:`, a terrain feature's `mimic:`,
+  and a store record whose `owner:` list a `replaces` body dropped entirely.
+  Each now drops only the mod's own bad entry (or, where the field is the
+  whole record's foundation, the one record) and reports it, the same way an
+  ego's unresolvable `item:` line already did; core's own data still fails
+  loudly. A malformed `fieldPatch` operation - an `append` written with
+  `value` instead of `values`, for instance - used to abort composition
+  entirely with no partial result and could drop every installed mod at once
+  when the resulting error named none of them; it is now refused the same way
+  a missing patch target already was (neostryder/neo-angband#8).
 - An autoplayer mod (the Borg) took over the keyboard with no way to hand it
   back short of force-quitting: its own answer to a blocking prompt reached
   the game the same way a real keypress did, so opening the game menu to
