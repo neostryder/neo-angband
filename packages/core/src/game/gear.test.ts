@@ -18,6 +18,8 @@ import { startGame } from "../session/game.js";
 import type { GamePack } from "../session/game.js";
 import {
   calcInventory,
+  combinePack,
+  gearAdd,
   gearGet,
   invenCarry,
   newGear,
@@ -26,6 +28,7 @@ import {
   wieldObject,
   wieldSlot,
 } from "./gear.js";
+import type { Gear } from "./gear.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -732,5 +735,66 @@ describe("pile_insert / pile_insert_end ordering (PORT_TODO 2.7)", () => {
     expect(pile.length, "three distinct kinds, three entries").toBe(3);
     expect(pile[0], "the newest drop is the HEAD").toBe(c);
     expect(pile.at(-1), "the oldest drop is last").toBe(a);
+  });
+});
+
+/**
+ * partialStackMerge (mod/hooks.ts seam, docs/modding/BUG_FIXES.md entry 3,
+ * neostryder/neo-angband#115). Two WAND stacks: `dest` (5, added first) and
+ * `source` (40 - already at kind.base.maxStack, added second). objectMergeable
+ * refuses a full combine (45 > 40), so combinePack falls to
+ * invenCanStackPartial's uneven-stack path - object_absorb_partial's non-quiver
+ * branch, where `difference = maxStack - largest` is zero and the two counts
+ * simply swap. `source` is added to gear.pack AFTER `dest` so combinePack's
+ * backwards sweep treats `source` as h1 (the stack it drains) and `dest` as h2
+ * (the leading stack it tops up) - matching the hook's (drained, receiving)
+ * argument order.
+ */
+describe("partialStackMerge (mod/hooks.ts seam, entry 3 / neostryder/neo-angband#115)", () => {
+  function fixture(reg: ObjRegistry): { gear: Gear; dest: GameObject; source: GameObject } {
+    const gear = newGear();
+    const kind = firstOrdinaryKind(reg, TV.WAND);
+    const dest = objectPrep(new Rng(1), reg, constants, kind, 0, "minimise");
+    dest.number = 5;
+    dest.pval = 10;
+    const source = objectPrep(new Rng(1), reg, constants, kind, 0, "minimise");
+    source.number = kind.base.maxStack;
+    source.pval = 80;
+    gear.pack.push(gearAdd(gear, dest));
+    gear.pack.push(gearAdd(gear, source));
+    return { gear, dest, source };
+  }
+
+  it("faithful core (no hook) swaps the two counts when the source stack is already full", () => {
+    const reg = new ObjRegistry(pack.obj);
+    const { gear, dest, source } = fixture(reg);
+    combinePack(gear, constants);
+    expect(dest.number).toBe(40);
+    expect(source.number).toBe(5);
+  });
+
+  it("a permissive hook reproduces the identical faithful swap", () => {
+    const reg = new ObjRegistry(pack.obj);
+    const { gear, dest, source } = fixture(reg);
+    combinePack(gear, constants, { hooks: { partialStackMerge: () => true } });
+    expect(dest.number).toBe(40);
+    expect(source.number).toBe(5);
+  });
+
+  it("a refusing hook leaves both stacks exactly as they were, in (drained, receiving) order", () => {
+    const reg = new ObjRegistry(pack.obj);
+    const { gear, dest, source } = fixture(reg);
+    const seen: GameObject[][] = [];
+    combinePack(gear, constants, {
+      hooks: {
+        partialStackMerge: (drained, receiving) => {
+          seen.push([drained, receiving]);
+          return false;
+        },
+      },
+    });
+    expect(dest.number, "receiving stack untouched").toBe(5);
+    expect(source.number, "drained stack untouched").toBe(40);
+    expect(seen).toEqual([[source, dest]]);
   });
 });
