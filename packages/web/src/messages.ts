@@ -166,45 +166,120 @@ export function format(m: LoggedMessage): string {
  * The threshold reproduces upstream's column arithmetic: message_column tracks
  * the next free column INCLUDING the trailing space after each message (column
  * += n + 1), and the overflow test is `message_column && message_column + n >
- * w - 8`. A single message longer than the line is not split further here (the
- * web top line truncates on render); upstream's intra-message split loop is the
- * only divergence, and it is cosmetic.
+ * w - 8`.
  *
- * `pendingFrom` is the index of the first message on the FINAL page, which is
- * the part `message_column` still holds when the caller stops. A self-continuing
+ * A single message longer than the line is split too, mirroring
+ * display_message's own inner loop (ui-input.c L547-582): while the message
+ * still overflows the line, cut it at the rightmost space that leaves room for
+ * the "-more-" margin (never below the halfway column), push everything up to
+ * the cut as its own page, and carry on with the rest as if it were the start
+ * of a fresh line. A cut with no qualifying space falls back to a hard break at
+ * the margin, exactly as upstream does. Left out of scope: msg_flush_split_existing
+ * (ui-input.c L407-449), which re-splits an already-accumulated multi-message
+ * line when a later, unrelated message pushes it over the "-more-" margin - the
+ * accumulated line there is never truncated or corrupted, it is simply flushed
+ * whole a little earlier than upstream would, which is cosmetic in the same way
+ * upstream's own mid-word hard-cut placement is.
+ *
+ * `pendingFrom` names the first message on the FINAL page - the part
+ * `message_column` still holds when the caller stops - and `pendingOffset` is
+ * how many characters of THAT message's formatted text were already shown on a
+ * page that already got its own "-more-" (0 unless the message itself was
+ * split). Together they are a cursor that can land inside a message rather
+ * than only at a message boundary: a caller resuming from `pendingFrom` passes
+ * `pendingOffset` back in as `resumeOffset` so the still-unread tail is what
+ * gets re-packed, not the whole message from its start again. A self-continuing
  * command (a run, a repeated dig) does not reset that column between its steps,
  * because upstream clears `msg_flag` only when `textui_get_command` reads a key
  * (ui-input.c:1824). So a caller stepping through such a command re-packs from
- * `pendingFrom` on the next step, and the partial line grows until it overflows
- * and takes its "-more-" mid-run instead of all at once at the end.
+ * `pendingFrom`/`pendingOffset` on the next step, and the partial line grows
+ * until it overflows and takes its "-more-" mid-run instead of all at once at
+ * the end.
  */
 export interface PackedMessages {
   /** One string per page; the last one is still pending on the top line. */
   pages: string[];
   /** Index into `msgs` of the first message on that final, unflushed page. */
   pendingFrom: number;
+  /**
+   * Characters of `msgs[pendingFrom]`'s formatted text already shown on an
+   * earlier, already-"-more-"'d page. 0 unless that message was itself split.
+   */
+  pendingOffset: number;
 }
 
-export function packMessages(msgs: readonly LoggedMessage[], width: number): PackedMessages {
-  const wrap = Math.max(1, width - 8); // upstream w - 8
+export function packMessages(
+  msgs: readonly LoggedMessage[],
+  width: number,
+  resumeOffset = 0,
+): PackedMessages {
+  const w8 = Math.max(1, width - 8); // upstream w - 8: room reserved for "-more-"
+  const w1 = Math.max(1, width - 1); // upstream w - 1: the hard limit of a line
+  const half = Math.max(0, Math.floor(width / 2)); // upstream w / 2: never split below here
   const pages: string[] = [];
   let line = "";
   let column = 0; // message_column: includes the trailing space per message
-  let lineFrom = 0; // index of the first message on the line being built
+  let lineFromIndex = 0; // index of the first message on the line being built
+  let lineFromOffset = resumeOffset; // its already-shown prefix, if it is a resumed split
+
   for (let i = 0; i < msgs.length; i++) {
-    const text = format(msgs[i]!);
-    const n = text.length;
-    if (column > 0 && column + n > wrap) {
-      pages.push(line);
+    const full = format(msgs[i]!);
+    // Only msgs[0] can be a resumption: everything after it is unseen so far.
+    const baseOffset = i === 0 ? Math.min(resumeOffset, full.length) : 0;
+    let t = full.slice(baseOffset);
+    if (t === "") continue; // a resume offset that exactly exhausted the message
+    let n = t.length;
+
+    // This message would overflow the line as it stands: flush what is there
+    // first (display_message ui-input.c L518-529, simple-flush branch).
+    if (column > 0 && column + n > w8) {
+      if (line !== "") pages.push(line);
       line = "";
       column = 0;
-      lineFrom = i;
+      lineFromIndex = i;
+      lineFromOffset = baseOffset;
     }
-    line = line === "" ? text : `${line} ${text}`;
+
+    // The message itself is longer than a line: cut it as many times as it
+    // takes, at the rightmost space in reach (ui-input.c L547-582).
+    while (column + n > w1) {
+      let split = Math.max(w8 - column, 0);
+      if (split <= 0) split = 1; // always make progress, even at a tiny width
+      const searchFloor = Math.max(half - column, 0);
+      let check = split;
+      while (check > searchFloor) {
+        check--;
+        if (t[check] === " ") {
+          split = check;
+          break;
+        }
+      }
+      const shown = t.slice(0, split);
+      line = column === 0 ? shown : `${line} ${shown}`;
+      pages.push(line);
+      // Skip the space itself when the cut landed on one (so the continuation
+      // does not start with a stray blank column); a hard cut with no
+      // qualifying space keeps every character - nothing upstream would show
+      // is lost here, unlike the mid-word single-char casualty of upstream's
+      // own pointer trick (see the file header comment for why that is not
+      // reproduced).
+      t = t.slice(t[split] === " " ? split + 1 : split);
+      n = t.length;
+      line = "";
+      column = 0;
+      lineFromIndex = i;
+      lineFromOffset = full.length - t.length;
+    }
+
+    line = column === 0 ? t : `${line} ${t}`;
     column += n + 1;
   }
   if (line !== "") pages.push(line);
-  return { pages, pendingFrom: line === "" ? msgs.length : lineFrom };
+  return {
+    pages,
+    pendingFrom: line === "" ? msgs.length : lineFromIndex,
+    pendingOffset: line === "" ? 0 : lineFromOffset,
+  };
 }
 
 /** `packMessages` when only the page strings are wanted. */

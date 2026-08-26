@@ -2053,6 +2053,14 @@ const msglog = new MessageLog();
  * so the top line fills up over a long run or dig exactly as upstream's does.
  */
 let msgPending = 0;
+/**
+ * How many characters of the message at `msgPending` were already shown on an
+ * earlier, already-"-more-"'d page - 0 unless that message was itself split
+ * across pages (packMessages' `pendingOffset`). Reset alongside `msgPending`
+ * whenever it snaps to a message boundary, so a resumed message's still-unread
+ * tail is what gets re-packed rather than the whole message from its start.
+ */
+let msgPendingOffset = 0;
 function say(text: string, type?: MessageType): void {
   if (!text) return;
   if (state.messages) {
@@ -8531,7 +8539,9 @@ function waitAnyKey(): Promise<void> {
  */
 async function pumpMessages(preLen: number, force = false): Promise<void> {
   const fresh = msglog.rawSince(preLen);
-  const { pages, pendingFrom } = packMessages(fresh, term.size().cols);
+  // `preLen` is always the caller's snapshot of `msgPending`, so `msgPendingOffset`
+  // still names how far into `fresh[0]` (if any) the pending cursor sits.
+  const { pages, pendingFrom, pendingOffset } = packMessages(fresh, term.size().cols, msgPendingOffset);
   const autoMore = state.options?.get("auto_more") ?? false;
   /* `force` is message_flush (ui-input.c L609-635), which the caller signals
    * before replacing the screen: it flushes the PENDING line too, so nothing is
@@ -8544,6 +8554,7 @@ async function pumpMessages(preLen: number, force = false): Promise<void> {
    * message_column, and this cursor is that erasure - only the unflushed tail
    * may be shown again on the next step of a self-continuing command. */
   msgPending = force ? msglog.rawLength() : preLen + pendingFrom;
+  msgPendingOffset = force ? 0 : pendingOffset;
   if (fresh.length > 0) {
     messageColor = fresh[fresh.length - 1]?.color ?? UI_TEXT;
   }
@@ -8835,6 +8846,7 @@ function advance(): void {
   // line the step before it left pending.
   const startsClean = !continuing || repeating;
   if (startsClean) msgPending = msglog.rawLength();
+  if (startsClean) msgPendingOffset = 0;
   const preLen = msgPending;
   const beforeX = state.actor.grid.x;
   const beforeY = state.actor.grid.y;

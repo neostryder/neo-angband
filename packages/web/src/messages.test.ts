@@ -65,6 +65,78 @@ describe("paginateMessages (-more- packing, ui-input.c display_message)", () => 
     const packed = packMessages([m("aaaaaaaa"), m("bbbbbbbb")], 20);
     expect(packed.pages).toEqual(["aaaaaaaa", "bbbbbbbb"]);
     expect(packed.pendingFrom).toBe(1);
+    expect(packed.pendingOffset).toBe(0);
+  });
+
+  /**
+   * The defect issue #7 pins: upstream's inner loop in display_message
+   * (ui-input.c L547-582) splits a message that is longer than the display
+   * line at the rightmost space, prints the first part, prompts with
+   * "-more-", and recurses on the rest - it never becomes one over-wide page
+   * that the renderer would have to truncate.
+   */
+  describe("a single message longer than the display line (display_message's inner loop)", () => {
+    it("splits at the rightmost space instead of becoming one over-wide page", () => {
+      // width 30 -> w8 22, w1 29, half 15. The message alone is 38 chars, so it
+      // must break; the rightmost space at or before column 22 (and no lower
+      // than column 15) is the one before "jumps" (index 19).
+      const text = "the quick brown fox jumps over the dog";
+      const packed = packMessages([m(text)], 30);
+      expect(packed.pages.length).toBeGreaterThan(1);
+      for (const page of packed.pages) expect(page.length).toBeLessThanOrEqual(29);
+      // no word is cut in half, and nothing from the original text is lost.
+      expect(packed.pages.join(" ")).toBe(text);
+    });
+
+    it("falls back to a hard cut when no space qualifies", () => {
+      const text = "a".repeat(40);
+      const packed = packMessages([m(text)], 20);
+      expect(packed.pages.length).toBeGreaterThan(1);
+      expect(packed.pages.join("")).toBe(text);
+      for (const page of packed.pages) expect(page.length).toBeLessThanOrEqual(19);
+    });
+
+    it("still packs a short message onto the same line as a split one that precedes it", () => {
+      const long = "the quick brown fox jumps over the lazy dog again";
+      const packed = packMessages([m(long), m("ok")], 20);
+      expect(packed.pages.at(-1)).toContain("ok");
+      expect(packed.pages.join(" ").replace(/ {2,}/g, " ")).toContain("ok");
+    });
+
+    it("names a cursor INSIDE the split message, not just at a message boundary", () => {
+      const text = "the quick brown fox jumps over the lazy dog";
+      const packed = packMessages([m(text)], 20);
+      // The message was split, so whatever is still pending belongs to msgs[0]
+      // with a nonzero offset into its formatted text - not "the next message".
+      expect(packed.pendingFrom).toBe(0);
+      expect(packed.pendingOffset).toBeGreaterThan(0);
+      expect(packed.pendingOffset).toBeLessThan(text.length);
+    });
+
+    it("resuming from that cursor shows only the unread tail, not the whole message again", () => {
+      const text = "the quick brown fox jumps over the lazy dog";
+      const first = packMessages([m(text)], 20);
+      expect(first.pages.length).toBeGreaterThan(1); // at least one page already flushed
+      // Resume with only the still-pending message and its offset, the way
+      // pumpMessages re-derives from msglog.rawSince(msgPending) next step.
+      const resumed = packMessages([m(text)], 20, first.pendingOffset);
+      // The resumed pages reproduce exactly the tail that was still pending -
+      // none of the already-"-more-"'d pages come back.
+      expect(resumed.pages.join(" ")).toBe(first.pages.at(-1));
+    });
+
+    it("keeps the recall screen's copy of the message intact (only display splits)", () => {
+      // format()/all() are untouched by packMessages - splitting is purely a
+      // display-time concern, matching the issue's "nothing lost from the
+      // recall screen" framing.
+      const log = new MessageLog();
+      const text = "the quick brown fox jumps over the lazy dog and then some more";
+      log.push(text);
+      expect(log.all()).toHaveLength(1);
+      expect(log.all()[0]!.text).toBe(text);
+      const packed = packMessages(log.rawSince(0), 20);
+      expect(packed.pages.length).toBeGreaterThan(1);
+    });
   });
 });
 
