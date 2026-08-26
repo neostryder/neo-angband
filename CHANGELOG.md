@@ -45,8 +45,29 @@ version it still calls itself.
   pack_overflow's NULL-victim shed to the item that actually displaced out of
   the quiver rather than the last inventory slot (neostryder/neo-angband#116).
   With no hook installed, both call sites are byte-identical to 4.2.6.
+- `checkRecords` now emits an advisory `field/vocabulary` hint when a
+  record's value falls outside the closed set `RECORD_BLUEPRINTS` measures
+  for that field - the same measurement the workshop's record-screen
+  dropdown and file editor already read independently of each other. The two
+  consumers now share one answer instead of each deciding on its own
+  (neostryder/neo-angband#48).
 
 ### Fixed
+
+- A message longer than the display line took up a whole page of its own;
+  upstream splits it at the rightmost space and recurses on the rest
+  instead. The pager now does the same (neostryder/neo-angband#7).
+- `menuNav`, the one navigation helper every overlay and menu screen shares,
+  never recognized h/j/k/l, even with the roguelike keyset selected - a
+  game-wide gap, not limited to the birth screen where it was first
+  reported. It now takes a `roguelike` parameter and resolves h/j/k/l
+  through the same direction mapping arrows and numpad already use.
+  Reported by Nate (neostryder/neo-angband#127).
+- The store's item context menu (Examine/Buy/Buy One) printed its labels
+  directly over the live stock list with no backdrop, so the stock row's own
+  text bled through around and behind them. It now draws as a bordered,
+  backed popup near the selected row instead. Reported by Nate
+  (neostryder/neo-angband#128).
 
 - A mod's unresolvable reference or malformed patch could take the whole game
   down at boot in six places the mod-resilience audit had not yet reached: an
