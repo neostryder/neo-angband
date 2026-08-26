@@ -207,8 +207,8 @@ describe("the screen", () => {
   });
 
   it("names the folder, so a player can find what they just wrote", () => {
-    expect(text(view({ logsDir: "C:\\Games\\Neo Angband\\neo-angband-data\\logs" }))).toContain(
-      "C:\\Games\\Neo Angband\\neo-angband-data\\logs",
+    expect(text(view({ logsDir: "C:\\Games\\Neo Angband\\data\\logs" }))).toContain(
+      "C:\\Games\\Neo Angband\\data\\logs",
     );
   });
 

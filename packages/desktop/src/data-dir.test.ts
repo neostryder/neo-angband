@@ -16,6 +16,7 @@ import * as path from "node:path";
 import {
   DATA_ENV_VAR,
   INSTALLED_MARKER,
+  LEGACY_PORTABLE_MARKER,
   PORTABLE_MARKER,
   checkWritable,
   resolveDataBase,
@@ -87,7 +88,7 @@ describe("resolveDataBase", () => {
 
   it("does not treat a development checkout as a folder install", () => {
     /* Unpackaged, the executable is node_modules/electron/dist/electron.exe, and
-     * a `neo-angband-data` beside it would be inside node_modules - deleted by
+     * a `data` beside it would be inside node_modules - deleted by
      * the next install, and shared between every Electron app on the machine. */
     expect(base().kind).toBe("user");
   });
@@ -120,6 +121,26 @@ describe("resolveDataBase", () => {
     expect(base({}, [path.resolve("/somewhere/else", PORTABLE_MARKER)]).kind).toBe(
       "user",
     );
+  });
+
+  it("uses an existing legacy neo-angband-data folder in place, not a fresh data folder", () => {
+    /* An install from before the rename must keep resolving to its own
+     * characters, never to a new, empty `data` folder created beside them. */
+    const legacy = path.join(EXE_DIR, LEGACY_PORTABLE_MARKER);
+    expect(base({}, [legacy])).toEqual({
+      base: legacy,
+      kind: "marker",
+      portable: true,
+    });
+  });
+
+  it("prefers an existing data folder over an existing legacy folder", () => {
+    /* Once a real `data` folder exists, that is the install's data - the
+     * legacy name only matters when nothing has been written under the new
+     * name yet. */
+    const current = path.join(EXE_DIR, PORTABLE_MARKER);
+    const legacy = path.join(EXE_DIR, LEGACY_PORTABLE_MARKER);
+    expect(base({}, [current, legacy]).base).toBe(current);
   });
 
   it("uses PORTABLE_EXECUTABLE_DIR, not the exe directory, for a portable launch", () => {

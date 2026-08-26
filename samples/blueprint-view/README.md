@@ -16,7 +16,7 @@ Copy this folder into your mods folder, keeping the folder name
 the game refuses it otherwise (`manifest says id "..."; rename the folder
 to match`):
 
-- **Desktop:** `neo-angband-data/mods/` beside the game.
+- **Desktop:** `data/mods/` beside the game.
 - **Browser (Chrome/Edge):** the folder picked with *Choose a mods folder...*
   on the Mods screen.
 

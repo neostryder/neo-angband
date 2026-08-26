@@ -245,7 +245,7 @@ A mod is a **folder**. That is the whole format:
 ```
 Neo Angband/                 a self-contained install: the game's own folder
   Neo Angband.exe
-  neo-angband-data/
+  data/
     save/                    your characters
     mods/                    <- mods live here, right beside the program
       load-order.json        optional; owned by an external mod manager

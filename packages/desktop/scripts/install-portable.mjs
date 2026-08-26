@@ -29,7 +29,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PKG = path.join(HERE, "..");
 
 /** Kept byte-for-byte across a reinstall. Must match data-dir.ts. */
-const PRESERVE = new Set(["neo-angband-data"]);
+const PRESERVE = new Set(["data", "neo-angband-data"]);
 
 function defaultTarget() {
   if (process.env["NEO_ANGBAND_INSTALL_DIR"]) {
@@ -96,11 +96,17 @@ if (existed) {
 fs.cpSync(source, target, { recursive: true });
 
 /* No installed.txt is written, which is the whole point: an unmarked folder is a
- * portable one, so the game will keep its data in neo-angband-data right here.
+ * portable one, so the game will keep its data in data right here.
  * Created now rather than at first launch so the folder is self-evidently
- * self-contained when the player looks at it. */
-const data = path.join(target, "neo-angband-data");
-fs.mkdirSync(path.join(data, "mods"), { recursive: true });
+ * self-contained when the player looks at it - but only on a fresh install:
+ * a reinstall that preserved an existing `data` OR the legacy
+ * `neo-angband-data` folder must not create an empty `data` folder next to
+ * it, which would shadow the real one the game actually resolves to. */
+const data = path.join(target, "data");
+const legacyData = path.join(target, "neo-angband-data");
+if (!fs.existsSync(data) && !fs.existsSync(legacyData)) {
+  fs.mkdirSync(path.join(data, "mods"), { recursive: true });
+}
 
 const exe =
   process.platform === "win32"

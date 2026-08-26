@@ -2,7 +2,7 @@
 ;
 ; The installer's only extra job is to identify its own work. Neo Angband keeps
 ; everything it writes - config, savefiles, scores, character dumps and mods - in
-; a `neo-angband-data` folder beside the executable, so that unzipping the game
+; a `data` folder beside the executable, so that unzipping the game
 ; into C:\Games\Neo Angband gives you one self-contained folder you can move,
 ; back up, or carry on a stick.
 ;
@@ -28,7 +28,7 @@
   FileWrite $0 "    %APPDATA%\Neo Angband$\r$\n"
   FileWrite $0 "$\r$\n"
   FileWrite $0 "To make this copy self-contained instead, create a folder named$\r$\n"
-  FileWrite $0 "neo-angband-data next to the executable and the game will use it.$\r$\n"
+  FileWrite $0 "data next to the executable and the game will use it.$\r$\n"
   FileClose $0
 !macroend
 

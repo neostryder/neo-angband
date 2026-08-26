@@ -85,7 +85,7 @@ describe("loadDiskPacks: reading packs", () => {
       "/mods/index.json": {
         packs: [{ id: "my-mod", files: ["manifest.json", "monster.json", "object.json"] }],
         order: [],
-        dir: "D:\\game\\neo-angband-data\\mods",
+        dir: "D:\\game\\data\\mods",
       },
       "/mods/my-mod/manifest.json": MANIFEST("my-mod"),
       "/mods/my-mod/monster.json": { records: [{ name: "Newt" }] },
@@ -93,7 +93,7 @@ describe("loadDiskPacks: reading packs", () => {
     });
     const r = await loadDiskPacks({ scope: DESKTOP, fetchImpl });
     expect(r.available).toBe(true);
-    expect(r.dir).toBe("D:\\game\\neo-angband-data\\mods");
+    expect(r.dir).toBe("D:\\game\\data\\mods");
     expect(r.problems).toEqual([]);
     expect(r.packs).toHaveLength(1);
     /* Keyed WITHOUT .json, which is the shape the composer expects - the same

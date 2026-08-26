@@ -68,6 +68,17 @@
         ]
       }
     ],
+    "extraFiles": [
+      { "from": "../../README.md", "to": "README.md" },
+      { "from": "../../CHANGELOG.md", "to": "CHANGELOG.md" },
+      { "from": "../../LICENSE.md", "to": "LICENSE.md" },
+      { "from": "../../TERMS.md", "to": "TERMS.md" },
+      { "from": "../../PRIVACY.md", "to": "PRIVACY.md" },
+      { "from": "../../SECURITY.md", "to": "SECURITY.md" },
+      { "from": "../../CODE_OF_CONDUCT.md", "to": "CODE_OF_CONDUCT.md" },
+      { "from": "../../CONTRIBUTING.md", "to": "CONTRIBUTING.md" },
+      { "from": "../../AI_USAGE_POLICY.md", "to": "AI_USAGE_POLICY.md" }
+    ],
     "win": {
       "target": [
         "nsis",

@@ -13,7 +13,7 @@
  *
  *   - the new files are in place,
  *   - the old ones are gone,
- *   - `neo-angband-data` is untouched, byte for byte,
+ *   - `data` is untouched, byte for byte,
  *   - the relaunch happened.
  *
  * It runs on whichever platform it finds itself on - PowerShell here, /bin/sh in
@@ -57,7 +57,7 @@ describe("a real swap on real files", () => {
     fs.writeFileSync(path.join(install, "locales", "en-US.pak"), "old pak");
     fs.writeFileSync(path.join(install, "resources.pak"), "old resources");
 
-    const data = path.join(install, PRESERVE[0] ?? "neo-angband-data");
+    const data = path.join(install, PRESERVE[0] ?? "data");
     fs.mkdirSync(path.join(data, "save"), { recursive: true });
     const savefile = path.join(data, "save", "Bilbo");
     fs.writeFileSync(savefile, "a level 31 hobbit");
@@ -136,7 +136,7 @@ describe("a real swap on real files", () => {
     fs.mkdirSync(install, { recursive: true });
     fs.writeFileSync(path.join(install, "Neo Angband.exe"), "OLD BINARY");
     fs.writeFileSync(path.join(install, "resources.pak"), "old resources");
-    const data = path.join(install, PRESERVE[0] ?? "neo-angband-data");
+    const data = path.join(install, PRESERVE[0] ?? "data");
     fs.mkdirSync(data, { recursive: true });
     fs.writeFileSync(path.join(data, "keep-me"), "still here");
 

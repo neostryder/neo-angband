@@ -160,7 +160,7 @@ Saves live in your browser's storage, scoped to the address you play on. **Anyth
 that clears that storage takes every character and every installed mod at once,
 with no undo**: "clear browsing data", a cleanup tool like CCleaner or Disk
 Cleanup, resetting a browser profile, or deleting the desktop build's
-`neo-angband-data` folder. Death is permanent here, so there is nothing to
+`data` folder. Death is permanent here, so there is nothing to
 recover from but a file you exported yourself.
 
 Use the built-in export: **`Shift-X`** on the character list writes a character to

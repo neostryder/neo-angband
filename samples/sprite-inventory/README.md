@@ -14,7 +14,7 @@ of a full screen: the thing none of the other three could reach.
 
 ## Try it
 
-Copy this folder into your `neo-angband-data/mods/` folder, enable it in the mod
+Copy this folder into your `data/mods/` folder, enable it in the mod
 manager (it asks for one capability, `ui:screen.replace`), reload, and press `i`,
 `e`, `|` or `?` in game.
 

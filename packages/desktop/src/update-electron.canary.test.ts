@@ -49,7 +49,7 @@ describe.skipIf(!isWin)("a swap launched from Electron", () => {
     scratch = fs.mkdtempSync(path.join(os.tmpdir(), "neo-canary-"));
     const install = path.join(scratch, "install");
     const staging = path.join(install, ".neo-update", "new");
-    const saves = path.join(install, "neo-angband-data");
+    const saves = path.join(install, "data");
     const relaunched = path.join(scratch, "relaunched.txt");
     const errFile = path.join(scratch, "launch-error.txt");
 

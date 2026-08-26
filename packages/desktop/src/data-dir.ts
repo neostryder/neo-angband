@@ -22,7 +22,7 @@
  *     actually double-clicked lives. The app itself unpacks to a temp directory in
  *     both cases, so `app.getPath("exe")` is NOT that place and must not be used
  *     for it.
- *  3. An opt-in marker: a `neo-angband-data` directory beside the executable.
+ *  3. An opt-in marker: a `data` directory beside the executable.
  *     Makes an INSTALLED copy portable with no setting inside the game - make the
  *     folder, and the game uses it.
  *  4. A folder install (the `dir`/`zip` targets, and `install-portable.mjs`): the
@@ -47,7 +47,16 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 /** The directory name that holds everything the game writes. */
-export const PORTABLE_MARKER = "neo-angband-data";
+export const PORTABLE_MARKER = "data";
+
+/**
+ * The old name, kept as a fallback so an existing install's characters are
+ * never orphaned by the rename to `data`. Checked ONLY for an install that
+ * already has this folder; nothing new is ever created under this name, and
+ * nothing is renamed on disk - an existing `neo-angband-data` folder is used
+ * in place, forever, the same opt-in-marker way `data` is.
+ */
+export const LEGACY_PORTABLE_MARKER = "neo-angband-data";
 
 /** The environment variable that overrides everything. init.c's ANGBAND_PATH. */
 export const DATA_ENV_VAR = "NEO_ANGBAND_DATA";
@@ -77,7 +86,7 @@ export type DataBaseKind =
   | "env"
   /** Launched as a single-file portable executable or an AppImage. */
   | "portable"
-  /** A neo-angband-data directory sits beside the executable. */
+  /** A data directory sits beside the executable. */
   | "marker"
   /** A packaged folder the installer did not create: the default. */
   | "folder"
@@ -149,6 +158,20 @@ function canWrite(p: string): boolean {
   }
 }
 
+/**
+ * The marker directory to use beside `dir`: the current name if it already
+ * exists there, else the legacy name if THAT already exists there (an
+ * existing install's characters, found in place rather than moved), else the
+ * current name, for a directory that does not exist yet either way.
+ */
+function markerBeside(dir: string, isDir: (p: string) => boolean): string {
+  const current = path.join(dir, PORTABLE_MARKER);
+  if (isDir(current)) return current;
+  const legacy = path.join(dir, LEGACY_PORTABLE_MARKER);
+  if (isDir(legacy)) return legacy;
+  return current;
+}
+
 /** The first of the four shapes that applies, else the per-user directory. */
 export function resolveDataBase(inputs: DataBaseInputs): DataBaseChoice {
   const isDir = inputs.isDir ?? dirExists;
@@ -165,7 +188,7 @@ export function resolveDataBase(inputs: DataBaseInputs): DataBaseChoice {
   const portableDir = (inputs.env["PORTABLE_EXECUTABLE_DIR"] ?? "").trim();
   if (portableDir !== "") {
     return {
-      base: path.join(path.resolve(portableDir), PORTABLE_MARKER),
+      base: markerBeside(path.resolve(portableDir), isDir),
       kind: "portable",
       portable: true,
     };
@@ -176,13 +199,13 @@ export function resolveDataBase(inputs: DataBaseInputs): DataBaseChoice {
   const appImage = (inputs.env["APPIMAGE"] ?? "").trim();
   if (appImage !== "") {
     return {
-      base: path.join(path.dirname(path.resolve(appImage)), PORTABLE_MARKER),
+      base: markerBeside(path.dirname(path.resolve(appImage)), isDir),
       kind: "portable",
       portable: true,
     };
   }
 
-  const beside = path.join(inputs.exeDir, PORTABLE_MARKER);
+  const beside = markerBeside(inputs.exeDir, isDir);
   if (isDir(beside)) {
     return { base: beside, kind: "marker", portable: true };
   }
@@ -209,7 +232,7 @@ export function resolveDataBase(inputs: DataBaseInputs): DataBaseChoice {
  * `quit`s with a message if it cannot make them.
  *
  * Deliberately NOT a silent fallback to the per-user directory. Somebody who
- * made a `neo-angband-data` folder wants their data there; moving it elsewhere
+ * made a `data` folder wants their data there; moving it elsewhere
  * without saying so is how a player loses a character and never learns where it
  * went.
  */

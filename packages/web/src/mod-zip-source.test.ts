@@ -24,7 +24,7 @@ function desktopScope(over: Record<string, unknown> = {}): Record<string, unknow
     neoDesktop: {
       modsIndexUrl: "/mods/index.json",
       modsBaseUrl: "/mods",
-      dataDir: "C:/game/neo-angband-data",
+      dataDir: "C:/game/data",
       discardModZip: () => Promise.resolve({ ok: true }),
       ...over,
     },
@@ -86,7 +86,7 @@ describe("the desktop mods folder, read off the index the shell already serves",
 
   it("names the folder a player can drop a zip into", () => {
     expect(zipImportDeps(env, () => true, desktopScope()).folder()).toBe(
-      "C:/game/neo-angband-data/mods",
+      "C:/game/data/mods",
     );
   });
 

@@ -18,13 +18,16 @@
  * than a temp directory: `os.tmpdir()` is frequently on another volume, where a
  * rename becomes a copy, stops being atomic, and can half-finish.
  *
- * `neo-angband-data` is never moved, on any path. There is no save-scumming in
+ * `data` is never moved, on any path. There is no save-scumming in
  * this game, so a deleted savefile is a dead character - the same rule
- * install-portable.mjs keeps, and the same constant.
+ * install-portable.mjs keeps, and the same constant. The legacy
+ * `neo-angband-data` name is preserved too, unconditionally: an install that
+ * still has one from before the rename must never have it swept into the
+ * attic and deleted just because this list only knew the new name.
  */
 
 /** Kept byte-for-byte across an update. Must match data-dir.ts. */
-export const PRESERVE: readonly string[] = ["neo-angband-data"];
+export const PRESERVE: readonly string[] = ["data", "neo-angband-data"];
 
 /** Where an update's downloads and half-extracted files live. */
 export const WORK_DIRNAME = ".neo-update";
@@ -114,7 +117,7 @@ export interface SwapPlan {
  * macOS swaps the whole bundle; Windows and Linux swap the contents.
  *
  * The difference is not stylistic. On Windows the folder is very often the
- * player's own (`C:\Games\Neo Angband`), it holds `neo-angband-data`, and it may
+ * player's own (`C:\Games\Neo Angband`), it holds `data`, and it may
  * be the target of a shortcut or a Start-menu entry - so the folder must keep
  * its identity and only its contents change. A `.app` holds no player data and
  * IS the thing the OS tracks, so it is replaced whole.
