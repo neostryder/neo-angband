@@ -831,6 +831,7 @@ function pointBuyStats(
   cls: Named,
   initial?: readonly number[],
   sheet?: (stats: readonly number[]) => PreviewSheet | null,
+  roguelike = false,
 ): Promise<number[] | null> {
   const handle = pushRegion(screenRegionSpec(), host.size());
   return paintPointBuyOnTerminal(
@@ -839,6 +840,7 @@ function pointBuyStats(
     cls,
     initial,
     sheet,
+    roguelike,
   ).finally(() => {
     popRegion(handle);
   });
@@ -850,6 +852,7 @@ function paintPointBuyOnTerminal(
   cls: Named,
   initial?: readonly number[],
   sheet?: (stats: readonly number[]) => PreviewSheet | null,
+  roguelike = false,
 ): Promise<number[] | null> {
   return new Promise<number[] | null>((resolve) => {
     const buy = resetStats();
@@ -951,7 +954,8 @@ function paintPointBuyOnTerminal(
       // Vertical cursor moves go through the shared menuNav so the numpad
       // (7/8/9 up, 1/2/3 down) drives the list regardless of NumLock, matching
       // every other menu widget; only up/down are meaningful on this column.
-      const nav = menuNav(ev);
+      // j/k also move it under the roguelike keyset.
+      const nav = menuNav(ev, roguelike);
       if (nav === "up" || nav === "pageup" || nav === "home") {
         cursor = (cursor + STAT_MAX - 1) % STAT_MAX;
         paint();
@@ -1364,7 +1368,7 @@ function paintBirthMenuOnTerminal(
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();
-      const nav = menuNav(ev);
+      const nav = menuNav(ev, roguelike);
       if (nav === "up" || nav === "pageup" || nav === "home") {
         cursor = (cursor + count - 1) % count;
         paint();
@@ -2193,7 +2197,7 @@ export async function runBirth(
             seed = undefined; // incomplete records: start at the base pool
           }
         }
-        const result = await pointBuyStats(term, race, cls, seed, sheet);
+        const result = await pointBuyStats(term, race, cls, seed, sheet, roguelikeAtBirth);
         if (result === null) {
           if (!goBack()) return null;
           break;

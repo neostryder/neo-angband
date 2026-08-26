@@ -1192,7 +1192,10 @@ export function showCharacterSheet(
             // Arrows AND numpad digits scroll (menuNav), so the numpad is not
             // dead here when NumLock is on. ArrowLeft/Right (cycle) are handled
             // above; menuNav only reports vertical intent (4/6 stay page cycles).
-            const nav = menuNav(ev);
+            // j/k also scroll under the roguelike keyset; 'h'/'l' keep their own
+            // cycle-mode meaning above, unaffected by menuNav's roguelike gate
+            // since menuNav never claims h/l (they carry no left/right intent).
+            const nav = menuNav(ev, state.options?.get("rogue_like_commands") ?? false);
             if (!nav) return;
             if (nav === "up") top = Math.max(0, top - 1);
             else if (nav === "down") top += 1;

@@ -291,6 +291,8 @@ export async function runGroupedBrowser<T>(
   groups: readonly KnowledgeGroup<T>[],
   recall: (member: T, groupName: string) => Promise<void>,
   hooks: GroupedBrowserHooks<T> = {},
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
 ): Promise<void> {
   const handle = pushRegion(screenRegionSpec(), host.size());
   const term = regionSurface(host, handle.cells);
@@ -485,7 +487,7 @@ export async function runGroupedBrowser<T>(
           }
           return;
         }
-        const nav = menuNav(ev);
+        const nav = menuNav(ev, roguelike);
         if (!nav) return;
         const { rows } = term.size();
         const page = Math.max(1, rows - 8);
@@ -743,6 +745,8 @@ export async function showRuneKnowledge(
   runeEnv: Parameters<typeof buildRuneList>[0],
   player: Player,
   notes?: RuneNoteHooks,
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
 ): Promise<void> {
   const allRunes = buildRuneList(runeEnv);
   const recall = async (rune: Rune): Promise<void> => {
@@ -750,7 +754,7 @@ export async function showRuneKnowledge(
   };
   if (!notes) {
     const { title, groups } = runeKnowledgeGroups(allRunes, player);
-    await runGroupedBrowser(term, title, groups, recall);
+    await runGroupedBrowser(term, title, groups, recall, {}, roguelike);
     return;
   }
   /*
@@ -796,7 +800,7 @@ export async function showRuneKnowledge(
         }
         return true;
       },
-    });
+    }, roguelike);
     /* A note was written, so the rows are stale - rebuild and re-enter. ESC with
      * nothing changed is the player leaving, and leaves. */
     if (!again) return;
@@ -875,10 +879,22 @@ export function featureRecallScreen(feat: Feature): ScreenView {
   });
 }
 
-export async function showFeatureKnowledge(term: GridSurface & GridPointerInput, reg: FeatureRegistry): Promise<void> {
-  await runGroupedBrowser(term, t("knowledge.features.title", "features"), featureKnowledgeGroups(reg), async (feat) => {
-    await showTextScreen(term, featureRecallScreen(feat));
-  });
+export async function showFeatureKnowledge(
+  term: GridSurface & GridPointerInput,
+  reg: FeatureRegistry,
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
+): Promise<void> {
+  await runGroupedBrowser(
+    term,
+    t("knowledge.features.title", "features"),
+    featureKnowledgeGroups(reg),
+    async (feat) => {
+      await showTextScreen(term, featureRecallScreen(feat));
+    },
+    {},
+    roguelike,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -938,10 +954,22 @@ export function trapRecallScreen(trap: TrapKind): ScreenView {
   });
 }
 
-export async function showTrapKnowledge(term: GridSurface & GridPointerInput, traps: readonly TrapKind[]): Promise<void> {
-  await runGroupedBrowser(term, t("knowledge.traps.title", "traps"), trapKnowledgeGroups(traps), async (trap) => {
-    await showTextScreen(term, trapRecallScreen(trap));
-  });
+export async function showTrapKnowledge(
+  term: GridSurface & GridPointerInput,
+  traps: readonly TrapKind[],
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
+): Promise<void> {
+  await runGroupedBrowser(
+    term,
+    t("knowledge.traps.title", "traps"),
+    trapKnowledgeGroups(traps),
+    async (trap) => {
+      await showTextScreen(term, trapRecallScreen(trap));
+    },
+    {},
+    roguelike,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1166,9 +1194,17 @@ export async function showArtifactKnowledge(
           seed: (seed >>> 0).toString(16).padStart(8, "0"),
         })
       : t("knowledge.artifacts.title", "artifacts");
-  await runGroupedBrowser(term, title, groups, async (art) => {
-    await showTextScreen(term, artifactFakeRecall(deps, art));
-  });
+  const roguelike = deps.state.options?.get("rogue_like_commands") ?? false;
+  await runGroupedBrowser(
+    term,
+    title,
+    groups,
+    async (art) => {
+      await showTextScreen(term, artifactFakeRecall(deps, art));
+    },
+    {},
+    roguelike,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1372,6 +1408,7 @@ export async function showObjectKnowledge(
   const recall = async (kind: ObjectKind): Promise<void> => {
     await showTextScreen(term, objectFakeRecall(deps, kind));
   };
+  const roguelike = deps.recall.state.options?.get("rogue_like_commands") ?? false;
 
   /* `{` is o_xtra_act (ui-knowledge.c:1999-2061: "Inscribe with: " sets the
    * highlighted kind's autoinscription) - a key the MEMBER pane handles itself,
@@ -1380,7 +1417,7 @@ export async function showObjectKnowledge(
   const inscribe = deps.setAutoinscription;
   const objectsTitle = t("knowledge.objects.title", "known objects");
   if (!inscribe) {
-    await runGroupedBrowser(term, objectsTitle, groups, recall);
+    await runGroupedBrowser(term, objectsTitle, groups, recall, {}, roguelike);
     return;
   }
   /* o_xtra_prompt (ui-knowledge.c:1980-1998) offers 's' to toggle ignore and '}'
@@ -1394,13 +1431,20 @@ export async function showObjectKnowledge(
       hint: `, ${t("knowledge.hint.recall", "'r'ecall")}, '{' to inscribe`,
     })),
   }));
-  await runGroupedBrowser(term, objectsTitle, withPrompt, recall, {
-    xtraAct: async (key, kind) => {
-      if (key !== "{") return false;
-      await inscribe(kind); // owns the "Inscribe with: " prompt + registry write
-      return true;
+  await runGroupedBrowser(
+    term,
+    objectsTitle,
+    withPrompt,
+    recall,
+    {
+      xtraAct: async (key, kind) => {
+        if (key !== "{") return false;
+        await inscribe(kind); // owns the "Inscribe with: " prompt + registry write
+        return true;
+      },
     },
-  });
+    roguelike,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1504,9 +1548,16 @@ export async function showEgoKnowledge(
   /* The header is `format("%s %s", ego_grp_name(default_group_id(oid)),
    * ego->name)` (L1801) - the group the highlighted row sits under, which is
    * why one ego browsed from two groups gets two different headers. */
-  await runGroupedBrowser(term, t("knowledge.ego.title", "ego items"), groups, async (ego, groupName) => {
-    await showTextScreen(term, egoFakeRecall(recallDeps, ego, groupName));
-  });
+  await runGroupedBrowser(
+    term,
+    t("knowledge.ego.title", "ego items"),
+    groups,
+    async (ego, groupName) => {
+      await showTextScreen(term, egoFakeRecall(recallDeps, ego, groupName));
+    },
+    {},
+    recallDeps.state.options?.get("rogue_like_commands") ?? false,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1588,6 +1639,8 @@ export async function showMonsterKnowledge(
   views: readonly { name: string; rows: readonly { race: MonsterRace; lore: MonsterLore }[] }[],
   purpleUniques: boolean,
   recall: (row: { race: MonsterRace; lore: MonsterLore }) => Promise<void>,
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
 ): Promise<void> {
   const seen = new Set<number>();
   let total = 0;
@@ -1628,14 +1681,21 @@ export async function showMonsterKnowledge(
     }),
   }));
 
-  await runGroupedBrowser(term, t("knowledge.monster.title", "monsters"), groups, (row) => recall(row), {
-    otherfields: monsterOtherfields(),
-    summary: (gi) => {
-      const members = groups[gi]?.rows.map((r) => r.member) ?? [];
-      if (members.length === 0) return null;
-      return { text: monsterSummaryLine(gi, members, total), color: UI_CURSOR };
+  await runGroupedBrowser(
+    term,
+    t("knowledge.monster.title", "monsters"),
+    groups,
+    (row) => recall(row),
+    {
+      otherfields: monsterOtherfields(),
+      summary: (gi) => {
+        const members = groups[gi]?.rows.map((r) => r.member) ?? [];
+        if (members.length === 0) return null;
+        return { text: monsterSummaryLine(gi, members, total), color: UI_CURSOR };
+      },
     },
-  });
+    roguelike,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1678,6 +1738,8 @@ export async function showShapeKnowledge(
   term: GridSurface & GridPointerInput,
   shapes: readonly Shape[],
   env: ShapeLoreEnv,
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
 ): Promise<void> {
   const rows = shapeKnowledgeRows(shapes);
   if (rows.length === 0) return;
@@ -1687,7 +1749,14 @@ export async function showShapeKnowledge(
       rows: rows.map((s) => ({ label: s.name, color: FG, member: s })),
     },
   ];
-  await runGroupedBrowser(term, t("knowledge.shapes.title", "shapes"), groups, async (shape) => {
-    await showTextScreen(term, shapeRecallScreen(shape, env));
-  });
+  await runGroupedBrowser(
+    term,
+    t("knowledge.shapes.title", "shapes"),
+    groups,
+    async (shape) => {
+      await showTextScreen(term, shapeRecallScreen(shape, env));
+    },
+    {},
+    roguelike,
+  );
 }

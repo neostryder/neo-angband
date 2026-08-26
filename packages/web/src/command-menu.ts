@@ -118,6 +118,8 @@ function runMenu(
   row: number,
   pageRows: number,
   redraw: () => void,
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
 ): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
     let cursor = 0;
@@ -177,7 +179,7 @@ function runMenu(
           return;
         }
       }
-      const nav = menuNav(ev);
+      const nav = menuNav(ev, roguelike);
       if (!nav || count === 0) return;
       /* menu_handle_keypress wraps at both ends (its is_valid_row loop turns a
        * cursor past the end into 0), the same rule the knowledge browser follows. */
@@ -211,9 +213,11 @@ function scrollPicker(
   row: number,
   pageRows: number,
   redraw: () => void,
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
 ): (items: readonly MenuItem[]) => Promise<string | null> {
   return async (items): Promise<string | null> => {
-    const pick = await runMenu(term, items, box, col, row, pageRows, redraw);
+    const pick = await runMenu(term, items, box, col, row, pageRows, redraw, roguelike);
     return pick === null ? null : items[pick]?.id ?? null;
   };
 }
@@ -246,6 +250,8 @@ export async function runCommandList(
   category: CommandCategory,
   redraw: () => void,
   level = 0,
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
 ): Promise<MenuCommand | null> {
   const col = CMD_COL + 2 * level;
   const row = CMD_ROW - level;
@@ -258,7 +264,7 @@ export async function runCommandList(
       category.name,
       items,
       undefined,
-      { terminalPicker: scrollPicker(term, box, col, row, CMD_ROWS, redraw) },
+      { terminalPicker: scrollPicker(term, box, col, row, CMD_ROWS, redraw, roguelike) },
     );
     if (pick === null) return null;
     const chosen = category.commands[pick];
@@ -268,7 +274,7 @@ export async function runCommandList(
      * list rather than out (:1196-1213). The parent stays drawn behind, which
      * is what the two-column indent is for. */
     const inner = chosen.nested();
-    const deeper = await runNestedList(term, inner, redraw, box, level + 1);
+    const deeper = await runNestedList(term, inner, redraw, box, level + 1, roguelike);
     if (deeper) return deeper;
   }
 }
@@ -284,6 +290,8 @@ async function runNestedList(
   redraw: () => void,
   parentBox: { x0: number; y0: number; x1: number; y1: number },
   level: number,
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
 ): Promise<MenuCommand | null> {
   const live = categories.filter((c) => c.commands.length > 0);
   if (live.length === 0) return null;
@@ -306,12 +314,12 @@ async function runNestedList(
         semantic: { kind: "keypress-command-category", ref: categoryMenuId(category, index) },
       })),
       undefined,
-      { terminalPicker: scrollPicker(term, box, col, row, CMD_ROWS, under) },
+      { terminalPicker: scrollPicker(term, box, col, row, CMD_ROWS, under, roguelike) },
     );
     if (pick === null) return null;
     const category = live[pick];
     if (!category) return null;
-    const chosen = await runCommandList(term, category, under, level + 1);
+    const chosen = await runCommandList(term, category, under, level + 1, roguelike);
     if (chosen) return chosen;
   }
 }
@@ -329,6 +337,8 @@ export async function chooseCommand(
   term: GridSurface & GridPointerInput,
   categories: readonly CommandCategory[],
   redraw: () => void,
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
 ): Promise<MenuCommand | null> {
   const live = categories.filter((c) => c.commands.length > 0);
   if (live.length === 0) return null;
@@ -351,6 +361,7 @@ export async function chooseCommand(
           CAT_ROW,
           CAT_BOX.y1 - CAT_ROW,
           redraw,
+          roguelike,
         ),
       },
     );
@@ -359,15 +370,21 @@ export async function chooseCommand(
     if (!category) continue;
     /* The category box stays on screen behind the command list, which is why
      * upstream indents a nested menu - the parent is still visible (:1174). */
-    const chosen = await runCommandList(term, category, () => {
-      redraw();
-      windowMake(term, CAT_BOX.x0, CAT_BOX.y0, CAT_BOX.x1, CAT_BOX.y1);
-      const { cols } = term.size();
-      for (let i = 0; i < live.length && CAT_ROW + i < CAT_BOX.y1; i++) {
-        const width = Math.max(0, Math.min(CAT_BOX.x1 - CAT_COL, cols - 1 - CAT_COL));
-        term.print(CAT_COL, CAT_ROW + i, live[i]!.name.slice(0, width), rowColor(i === gi));
-      }
-    });
+    const chosen = await runCommandList(
+      term,
+      category,
+      () => {
+        redraw();
+        windowMake(term, CAT_BOX.x0, CAT_BOX.y0, CAT_BOX.x1, CAT_BOX.y1);
+        const { cols } = term.size();
+        for (let i = 0; i < live.length && CAT_ROW + i < CAT_BOX.y1; i++) {
+          const width = Math.max(0, Math.min(CAT_BOX.x1 - CAT_COL, cols - 1 - CAT_COL));
+          term.print(CAT_COL, CAT_ROW + i, live[i]!.name.slice(0, width), rowColor(i === gi));
+        }
+      },
+      0,
+      roguelike,
+    );
     if (chosen) return chosen;
     /* ESC in the command list returns here rather than to the game (:1215). */
   }

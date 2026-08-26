@@ -27,6 +27,7 @@ import {
 import { isGraphicsOverview } from "./mapview";
 import type { LevelOverview, OverviewGlyph } from "./mapview";
 import type { GridGeometry } from "./regions";
+import { DIRS_ROGUELIKE } from "./keymap";
 import type { MenuSemantics, MenuTransformRow } from "@rpgm-tools/neo-angband-core";
 import { menuRegistry } from "./menu-registry";
 import { buildMenuQuestion, type MenuAnswer, type MenuQuestion } from "./menu-view";
@@ -85,8 +86,18 @@ export type MenuNav = "up" | "down" | "pageup" | "pagedown" | "home" | "end";
  * ON and an Arrow* name when OFF, and event.code is Numpad* in both states (the
  * belt-and-suspenders half). This is the single helper every overlay handler shares
  * so the "numpad is dead in menus" asymmetry cannot creep back in per-screen.
+ *
+ * `roguelike` mirrors the live rogue_like_commands option (see keymap.ts):
+ * when true, h/j/k/l resolve through the SAME DIRS_ROGUELIKE table
+ * resolveKey uses for movement, so a menu's up/down cursor matches whichever
+ * keyset the player has chosen, exactly as process_dir does for every C menu.
+ * Only j (down, dir 2) and k (up, dir 8) produce a MenuNav value here - h and l
+ * (dirs 4/6, pure horizontal) stay inert, mirroring numpad 4/6 above: this
+ * helper is deliberately vertical-only, and a screen with real left/right
+ * semantics (e.g. birth's ArrowLeft "back", or the option list's ArrowLeft/
+ * ArrowRight) already reads those keys itself rather than through menuNav.
  */
-export function menuNav(ev: KeyboardEvent): MenuNav | null {
+export function menuNav(ev: KeyboardEvent, roguelike = false): MenuNav | null {
   switch (ev.key) {
     case "ArrowUp":
       return "up";
@@ -118,8 +129,19 @@ export function menuNav(ev: KeyboardEvent): MenuNav | null {
     case "3":
       return "down";
     default:
-      return null;
+      break;
   }
+  if (roguelike) {
+    switch (DIRS_ROGUELIKE[ev.key]) {
+      case 8:
+        return "up";
+      case 2:
+        return "down";
+      default:
+        return null;
+    }
+  }
+  return null;
 }
 
 /**
@@ -142,21 +164,30 @@ export function menuNav(ev: KeyboardEvent): MenuNav | null {
  * Scrolls with the arrows / PageUp-PageDown when the content is taller than the
  * screen. Any of ESC / Enter / Space closes it; resolves when dismissed.
  */
-export function showTextScreen(term: GridSurface & GridPointerInput, view: ScreenView): Promise<void>;
+export function showTextScreen(
+  term: GridSurface & GridPointerInput,
+  view: ScreenView,
+  roguelike?: boolean,
+): Promise<void>;
 export function showTextScreen(
   term: GridSurface & GridPointerInput,
   title: string,
   lines: readonly ScreenLine[],
   footer?: string,
+  roguelike?: boolean,
 ): Promise<void>;
 export async function showTextScreen(
   term: GridSurface & GridPointerInput,
   titleOrView: string | ScreenView,
-  lines?: readonly ScreenLine[],
+  linesOrRoguelike?: readonly ScreenLine[] | boolean,
   footer = SCREEN_FOOTER,
+  roguelikeArg = false,
 ): Promise<void> {
   const view =
-    typeof titleOrView === "string" ? linesScreen(titleOrView, lines ?? [], footer) : titleOrView;
+    typeof titleOrView === "string"
+      ? linesScreen(titleOrView, (linesOrRoguelike as readonly ScreenLine[] | undefined) ?? [], footer)
+      : titleOrView;
+  const roguelike = typeof titleOrView === "string" ? roguelikeArg : ((linesOrRoguelike as boolean | undefined) ?? false);
   const taken = showThroughPresenter(view, screenFault);
   if (taken) {
     try {
@@ -169,7 +200,13 @@ export async function showTextScreen(
       if (!(error instanceof ScreenAbandoned)) throw error;
     }
   }
-  return showViewOnTerminal(term, view.title, screenBodyLines(view, term.size().cols), view.footer);
+  return showViewOnTerminal(
+    term,
+    view.title,
+    screenBodyLines(view, term.size().cols),
+    view.footer,
+    roguelike,
+  );
 }
 
 /**
@@ -219,6 +256,7 @@ function showViewOnTerminal(
   title: string,
   lines: readonly ScreenLine[],
   footer: string,
+  roguelike = false,
 ): Promise<void> {
   const handle = pushRegion(screenRegionSpec(), host.size());
   return paintViewOnTerminal(
@@ -226,6 +264,7 @@ function showViewOnTerminal(
     title,
     lines,
     footer,
+    roguelike,
   ).finally(() => {
     popRegion(handle);
   });
@@ -236,6 +275,7 @@ function paintViewOnTerminal(
   title: string,
   lines: readonly ScreenLine[],
   footer: string,
+  roguelike = false,
 ): Promise<void> {
   return new Promise<void>((resolve) => {
     let top = 0;
@@ -279,10 +319,11 @@ function paintViewOnTerminal(
         return;
       }
       // Scroll with arrows AND numpad digits (menuNav): the numpad must drive
-      // scrollable lists regardless of NumLock, not just the arrow keys.
+      // scrollable lists regardless of NumLock, not just the arrow keys. j/k
+      // scroll too under the roguelike keyset (menuNav's own roguelike gate).
       const bodyRows = rows - BODY_TOP - 1;
       const maxTop = Math.max(0, lines.length - bodyRows);
-      const nav = menuNav(ev);
+      const nav = menuNav(ev, roguelike);
       if (!nav) return;
       if (nav === "up") top = Math.max(0, top - 1);
       else if (nav === "down") top += 1;
@@ -1580,6 +1621,13 @@ export interface SelectMenuOptions {
    * text somewhere that scrolls.
    */
   minListRows?: number;
+  /**
+   * The live rogue_like_commands option (see keymap.ts / menuNav): when true,
+   * j/k also move the cursor down/up, matching the reference's process_dir
+   * remap for every menu, not just movement. Defaults false (the original
+   * keyset), matching menuNav's own default.
+   */
+  roguelike?: boolean;
 }
 
 /**
@@ -2049,7 +2097,8 @@ export function selectFromMenu(
       }
       // Cursor navigation: arrows AND numpad digits (menuNav), so the numpad
       // drives menus regardless of NumLock (the "controls dead in menus" bug).
-      const nav = menuNav(ev);
+      // j/k also drive it under the roguelike keyset (extra.roguelike).
+      const nav = menuNav(ev, extra?.roguelike ?? false);
       if (nav) {
         if (nav === "up") moveUp();
         else if (nav === "down") moveDown();
@@ -2386,6 +2435,8 @@ export function itemSelect(
    * is what made a faithful refusal read as a dead key.
    */
   bell?: () => void,
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
 ): Promise<{ source: number; index: number } | null> {
   const handle = pushRegion(screenRegionSpec(), host.size());
   const term = regionSurface(host, handle.cells);
@@ -2517,7 +2568,7 @@ export function itemSelect(
           }
         }
       }
-      const nav = menuNav(ev);
+      const nav = menuNav(ev, roguelike);
       if (nav) {
         const n = src().items.length;
         if (n > 0) {

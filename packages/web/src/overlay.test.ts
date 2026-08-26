@@ -583,6 +583,57 @@ describe("selectFromMenu: numpad navigation + command keys", () => {
     expect(await done).toBe(1);
   });
 
+  // #127: menuNav never accepted h/j/k/l, even under the roguelike keyset,
+  // though the reference remaps them onto the same directions arrows/numpad
+  // produce for every menu (target_dir_allow -> process_dir, ui-target.c:99-108).
+  it("j/k move the cursor like ArrowDown/ArrowUp when the caller opts into roguelike", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = selectFromMenu(
+      term,
+      "Menu",
+      [{ label: "A" }, { label: "B" }, { label: "C" }],
+      undefined,
+      { roguelike: true },
+    );
+    press(win, "j"); // down -> B
+    press(win, "j"); // down -> C
+    press(win, "k"); // up -> B
+    press(win, "Enter");
+    expect(await done).toBe(1);
+  });
+
+  it("j/k are inert (not roguelike) unless the caller opts in", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    // Rows tagged a/b/c, so a bare "j"/"k" press with no roguelike flag falls
+    // through as an unmatched letter rather than moving the cursor.
+    const done = selectFromMenu(term, "Menu", [{ label: "A" }, { label: "B" }, { label: "C" }]);
+    press(win, "j");
+    press(win, "k");
+    press(win, "Enter");
+    expect(await done).toBe(0); // cursor never moved off row 0
+  });
+
+  it("h/l stay inert under roguelike too - menuNav is vertical-only, like numpad 4/6", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(40, 12);
+    const done = selectFromMenu(
+      term,
+      "Menu",
+      [{ label: "A" }, { label: "B" }, { label: "C" }],
+      undefined,
+      { roguelike: true },
+    );
+    press(win, "h");
+    press(win, "l");
+    press(win, "Enter");
+    expect(await done).toBe(0); // cursor never moved off row 0
+  });
+
   it("a command key runs its handler and picks the returned row index", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;

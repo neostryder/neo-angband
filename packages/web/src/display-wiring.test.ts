@@ -113,7 +113,7 @@ describe("displayDeps", () => {
 describe("the ENTER command browser", () => {
   it("is reached from the keydown handler, through the key-confirm gate", () => {
     expect(src).toContain('if (ev.key === "Enter")');
-    expect(src).toContain("chooseCommand(term, commandCategories(), render)");
+    expect(src).toContain("chooseCommand(term, commandCategories(), render, roguelike)");
     /* Not a second copy of the inscription veto: the menu row and the keypress
      * go through the one runConfirmedCommand. */
     expect(src.match(/runConfirmedCommand\(/gu)?.length).toBe(3); // 1 definition, 2 callers
