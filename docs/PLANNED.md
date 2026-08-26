@@ -116,15 +116,6 @@ selects, and the banner names it.
 
 Tracked as issue #6.
 
-### A long message split across the top line
-
-Upstream splits a message longer than the display line at the rightmost space
-and recurses on the rest; this port's pager treats one long message as a page
-of its own instead. Nothing is lost from the recall screen, but a very long
-message reads differently.
-
-Tracked as issue #7.
-
 ## Attribution
 
 When a mod causes something, the game should say so; otherwise the reader blames
