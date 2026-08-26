@@ -51,6 +51,13 @@ version it still calls itself.
   dropdown and file editor already read independently of each other. The two
   consumers now share one answer instead of each deciding on its own
   (neostryder/neo-angband#48).
+- Agent API 1.4.0: `PlayerStatusView` now exposes thirteen buff timers
+  (fast, sprint, protection from evil, hero, berserker strength, mystic
+  shield, stoneskin, blessed, fastcast, and the five temporary elemental
+  resists) alongside the eight negative afflictions it already carried,
+  the same read-only, add-only way. Unblocks a mod-side buff cross-check
+  against real engine state instead of the mod's own message-based
+  bookkeeping (neostryder/neo-angband#121).
 
 ### Fixed
 

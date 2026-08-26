@@ -63,8 +63,18 @@ import type { ObjectKind } from "../obj/types.js";
  * skills but no way to answer "does this class have flag X" (issue #34: the
  * Borg's `borg_check_rest` needs PF_COMBAT_REGEN), which is class-definition
  * data rather than anything derivable from gear or level. Purely additive.
+ *
+ * 1.4.0 (2026-08-26): `PlayerStatusView`'s thirteen buff-timer fields (fast,
+ * sprint, protEvil, hero, shero, shield, stoneskin, blessed, fastcast,
+ * resAcid, resElec, resFire, resCold, resPois). Added because the view
+ * exposed the eight negative afflictions upstream's own buff-timer
+ * cross-check (`borg-trait.c:3010`) reads player->timed[] against, but none
+ * of the buffs it also reads - so a mod tracking its own buffs from game
+ * messages (neostryder/neo-angband-mod-borg#32) had no engine state to
+ * cross-check against and could only trust its own bookkeeping. Purely
+ * additive.
  */
-export const AGENT_API_VERSION = "1.3.0";
+export const AGENT_API_VERSION = "1.4.0";
 
 /**
  * A command an agent emits - identical to the engine's PlayerCommand (codes 1:1
@@ -128,6 +138,34 @@ export interface PlayerStatusView {
   paralyzed: number;
   /** food store (p->timed[TMD_FOOD]). */
   food: number;
+  /** Haste (p->timed[TMD_FAST]). */
+  fast: number;
+  /** The Ranger/Rogue sprint effect (p->timed[TMD_SPRINT]); upstream ORs this with `fast`. */
+  sprint: number;
+  /** Protection from evil (p->timed[TMD_PROTEVIL]). */
+  protEvil: number;
+  /** Heroism (p->timed[TMD_HERO]). */
+  hero: number;
+  /** Berserker strength (p->timed[TMD_SHERO]). */
+  shero: number;
+  /** Mystic shield (p->timed[TMD_SHIELD]). */
+  shield: number;
+  /** Stoneskin (p->timed[TMD_STONESKIN]); upstream ORs this with `shield`. */
+  stoneskin: number;
+  /** Blessed (p->timed[TMD_BLESSED]). */
+  blessed: number;
+  /** Fast spellcasting (p->timed[TMD_FASTCAST]). */
+  fastcast: number;
+  /** Temporary acid resistance (p->timed[TMD_OPP_ACID]). */
+  resAcid: number;
+  /** Temporary lightning resistance (p->timed[TMD_OPP_ELEC]). */
+  resElec: number;
+  /** Temporary fire resistance (p->timed[TMD_OPP_FIRE]). */
+  resFire: number;
+  /** Temporary cold resistance (p->timed[TMD_OPP_COLD]). */
+  resCold: number;
+  /** Temporary poison resistance (p->timed[TMD_OPP_POIS]). */
+  resPois: number;
 }
 
 /** A read-only view of the player (BORG_AS_MOD section 3, Player). */
