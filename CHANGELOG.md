@@ -38,6 +38,18 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-08-26
+
+Current state of the project at version `1.0.1` - a documentation release for
+mod authors. No engine or gameplay change.
+
+### Added
+
+- `@rpgm-tools/neo-angband-mod-sdk` now packages the real mod-authoring
+  documentation, including the beginner tutorials and API references, under
+  `docs/`. The package generates that copy from `docs/modding/` when it builds
+  or packs, so the repository documentation remains the single source of truth.
+
 ## [1.0.0] - 2026-08-26
 
 ### Added
