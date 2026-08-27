@@ -10456,7 +10456,10 @@ term.onSizeChanged(() => {
   const { cols, rows } = term.size();
   relayoutStack({ cols, rows, base: currentScreenRegions(viewport()), metrics: term.metrics() });
 });
-term.onSizeChanged(() => renderBackground());
+term.onSizeChanged(() => {
+  if (levelMapActive) levelMapRepaint?.();
+  else renderBackground();
+});
 
 /* TELL A REPLACEMENT FRONT END WHEN SOMETHING OPENS OVER IT (#261).
  *
