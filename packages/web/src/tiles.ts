@@ -107,7 +107,7 @@ export function withTileSmoothing<T>(
 ): T {
   const prevEnabled = ctx.imageSmoothingEnabled;
   const prevQuality = ctx.imageSmoothingQuality;
-  const downscale = isTileDownscale(srcW, srcH, dstW, dstH);
+  const downscale = tileScalingMode === "auto" && isTileDownscale(srcW, srcH, dstW, dstH);
   ctx.imageSmoothingEnabled = downscale;
   if (downscale) ctx.imageSmoothingQuality = "high";
   try {
@@ -116,6 +116,27 @@ export function withTileSmoothing<T>(
     ctx.imageSmoothingEnabled = prevEnabled;
     ctx.imageSmoothingQuality = prevQuality;
   }
+}
+
+/** Browser tile scaling policy. The faithful/default path remains automatic. */
+export type TileScalingMode = "auto" | "crisp";
+
+let tileScalingMode: TileScalingMode = "auto";
+
+/**
+ * Select how scaled graphics tiles are sampled.
+ *
+ * This is a rendering primitive, not a preference: the caller owns the toggle,
+ * persistence, and when it applies. "crisp" disables interpolation even while
+ * shrinking, which trades smoother diagonals for sharper pixel boundaries.
+ */
+export function setTileScalingMode(mode: TileScalingMode): void {
+  tileScalingMode = mode;
+}
+
+/** Current policy, exposed for diagnostics and deterministic tests. */
+export function getTileScalingMode(): TileScalingMode {
+  return tileScalingMode;
 }
 
 /** Decode an (attr, char) tile pair into its atlas (row, col). */

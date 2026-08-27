@@ -57,6 +57,13 @@ export interface BuildOverviewParams {
   /** The box's interior size: min(termCols-2, width), min(termRows-2, height). */
   mapW: number;
   mapH: number;
+  /** Optional cave-space window to project instead of the whole level. */
+  view?: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
   /** knownFeat(state, loc(x,y)): remembered feat index, or <0 if never seen. */
   knownFeatAt: (x: number, y: number) => number;
   /**
@@ -128,6 +135,8 @@ export interface GraphicsOverview {
   cells: (OverviewGlyph | null)[][];
   width: number;
   height: number;
+  /** Cave-space origin represented by cells[0][0]. */
+  origin: { x: number; y: number };
   playerGrid: { x: number; y: number };
   /** The player is painted last over their own cave-space cell. */
   playerGlyph?: OverviewGlyph;
@@ -143,6 +152,20 @@ export function isGraphicsOverview(overview: LevelOverview): overview is Graphic
 interface ResolvedOverviewGrid {
   glyph: OverviewGlyph;
   priority: number;
+}
+
+function overviewBounds(p: BuildOverviewParams): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  if (!p.view) return { x: 0, y: 0, width: p.width, height: p.height };
+  const width = Math.max(0, Math.min(Math.floor(p.view.width), p.width));
+  const height = Math.max(0, Math.min(Math.floor(p.view.height), p.height));
+  const x = Math.max(0, Math.min(Math.floor(p.view.x), Math.max(0, p.width - width)));
+  const y = Math.max(0, Math.min(Math.floor(p.view.y), Math.max(0, p.height - height)));
+  return { x, y, width, height };
 }
 
 /** Resolve one known cave grid through display_map's terrain/layer ordering. */
@@ -214,8 +237,9 @@ function resolveOverviewGrid(
  * terrain feature's priority is >= 5.
  */
 export function buildOverview(p: BuildOverviewParams): Overview {
-  const { width, height, mapW, mapH } = p;
-  if (mapW < 1 || mapH < 1 || width < 1 || height < 1) {
+  const { mapW, mapH } = p;
+  const view = overviewBounds(p);
+  if (mapW < 1 || mapH < 1 || view.width < 1 || view.height < 1) {
     return {
       cells: [],
       mapW,
@@ -231,12 +255,12 @@ export function buildOverview(p: BuildOverviewParams): Overview {
   const priority: number[][] = Array.from({ length: mapH }, () =>
     new Array<number>(mapW).fill(0),
   );
-  for (let y = 0; y < height; y++) {
-    const row = Math.floor((y * mapH) / height);
-    for (let x = 0; x < width; x++) {
+  for (let y = view.y; y < view.y + view.height; y++) {
+    const row = Math.floor(((y - view.y) * mapH) / view.height);
+    for (let x = view.x; x < view.x + view.width; x++) {
       const fidx = p.knownFeatAt(x, y);
       if (fidx < 0) continue;
-      const col = Math.floor((x * mapW) / width);
+      const col = Math.floor(((x - view.x) * mapW) / view.width);
       const { glyph, priority: prio } = resolveOverviewGrid(p, x, y, fidx, false);
       const rowArr = priority[row]!;
       if (prio > rowArr[col]!) {
@@ -245,8 +269,8 @@ export function buildOverview(p: BuildOverviewParams): Overview {
       }
     }
   }
-  const playerRow = Math.floor((p.playerGrid.y * mapH) / height);
-  const playerCol = Math.floor((p.playerGrid.x * mapW) / width);
+  const playerRow = Math.floor(((p.playerGrid.y - view.y) * mapH) / view.height);
+  const playerCol = Math.floor(((p.playerGrid.x - view.x) * mapW) / view.width);
   return {
     cells,
     mapW,
@@ -265,14 +289,16 @@ export function buildOverview(p: BuildOverviewParams): Overview {
  * tileset is active; buildOverview above remains the ASCII path.
  */
 export function buildGraphicsOverview(p: BuildOverviewParams): GraphicsOverview {
-  const { width, height } = p;
+  const view = overviewBounds(p);
+  const { width, height } = view;
   if (width < 1 || height < 1) {
     return {
       kind: "graphics",
       cells: [],
       width,
       height,
-      playerGrid: p.playerGrid,
+      origin: { x: view.x, y: view.y },
+      playerGrid: { x: p.playerGrid.x - view.x, y: p.playerGrid.y - view.y },
       ...(p.playerGlyph ? { playerGlyph: p.playerGlyph } : {}),
     };
   }
@@ -281,9 +307,11 @@ export function buildGraphicsOverview(p: BuildOverviewParams): GraphicsOverview 
   );
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const fidx = p.knownFeatAt(x, y);
+      const caveX = view.x + x;
+      const caveY = view.y + y;
+      const fidx = p.knownFeatAt(caveX, caveY);
       if (fidx < 0) continue;
-      cells[y]![x] = resolveOverviewGrid(p, x, y, fidx, true).glyph;
+      cells[y]![x] = resolveOverviewGrid(p, caveX, caveY, fidx, true).glyph;
     }
   }
   return {
@@ -291,7 +319,8 @@ export function buildGraphicsOverview(p: BuildOverviewParams): GraphicsOverview 
     cells,
     width,
     height,
-    playerGrid: p.playerGrid,
+    origin: { x: view.x, y: view.y },
+    playerGrid: { x: p.playerGrid.x - view.x, y: p.playerGrid.y - view.y },
     ...(p.playerGlyph ? { playerGlyph: p.playerGlyph } : {}),
   };
 }

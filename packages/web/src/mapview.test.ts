@@ -75,6 +75,23 @@ describe("buildOverview (display_map priority scan)", () => {
     expect(overview.cells.flat().filter((c) => c !== null)).toHaveLength(1);
   });
 
+  it("projects an explicit cave-space window for a panned map", () => {
+    const overview = buildOverview({
+      width: 20,
+      height: 10,
+      mapW: 4,
+      mapH: 2,
+      view: { x: 8, y: 4, width: 4, height: 2 },
+      knownFeatAt: (x, y) => y * 20 + x,
+      featureGlyph: (fidx) => glyph(`${String(fidx % 20)},${String(Math.floor(fidx / 20))}`, "#fff", 5),
+      playerGrid: { x: 9, y: 5 },
+    });
+    expect(overview.cells[0]![0]?.ch).toBe("8,4");
+    expect(overview.cells[1]![3]?.ch).toBe("11,5");
+    expect(overview.playerCol).toBe(1);
+    expect(overview.playerRow).toBe(1);
+  });
+
   /**
    * display_map queues (a, c, ta, tc) - Term_queue_char, ui-map.c:849 - so the
    * miniature is a TILE map in graphics mode, and (ta, tc) is always the TERRAIN
@@ -263,6 +280,26 @@ describe("buildOverview (display_map priority scan)", () => {
     });
     expect(overview.cells).toEqual([]);
     expect(overview.mapW).toBe(0);
+  });
+});
+
+describe("buildGraphicsOverview window", () => {
+  it("keeps one tile per cave grid and reports the source origin", () => {
+    const overview = buildGraphicsOverview({
+      width: 30,
+      height: 20,
+      mapW: 6,
+      mapH: 4,
+      view: { x: 10, y: 7, width: 6, height: 4 },
+      knownFeatAt: () => 1,
+      featureGlyph: (_fidx, x, y) => ({ ch: `${String(x)},${String(y)}`, css: "#fff", priority: 5 }),
+      playerGrid: { x: 12, y: 8 },
+    });
+    expect(overview.origin).toEqual({ x: 10, y: 7 });
+    expect(overview.cells).toHaveLength(4);
+    expect(overview.cells[0]).toHaveLength(6);
+    expect(overview.cells[0]![0]?.ch).toBe("10,7");
+    expect(overview.playerGrid).toEqual({ x: 2, y: 1 });
   });
 });
 

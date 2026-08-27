@@ -127,6 +127,8 @@ export interface ScreenLayout {
   readonly sidebar: "left" | "top" | "none";
   /** The Left layout's column width (SIDEBAR_W). Ignored by the other two. */
   readonly sidebarWidth: number;
+  /** The Top layout's reserved height below the message row. Defaults to one. */
+  readonly sidebarTopRows?: number;
   readonly mapOriginX: number;
   readonly mapTop: number;
   readonly mapCols: number;
@@ -208,7 +210,11 @@ export function screenRegions(
           metrics,
         )
       : layout.sidebar === "top"
-        ? region("sidebar", { col: 0, row: 1, cols, rows: 1 }, metrics)
+        ? region(
+            "sidebar",
+            { col: 0, row: 1, cols, rows: Math.max(1, layout.sidebarTopRows ?? 1) },
+            metrics,
+          )
         : /* None: the player turned the vitals furniture off entirely. */
           undefined;
   return { map, messages, status, ...(sidebar ? { sidebar } : {}) };

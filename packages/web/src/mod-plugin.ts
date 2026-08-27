@@ -92,6 +92,7 @@ import type {
   HudOwnership,
   MenuPresenter,
   RegionDeclaration,
+  ScreenRegions,
   ScreenPresenter,
   WorldFrameSink,
 } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -188,6 +189,57 @@ export function modApiVerdict(
   return { ok: true, deprecated: false };
 }
 
+/** Whole-cell responsive geometry requested by a display-oriented mod. */
+export interface ModDisplayGridRequest {
+  readonly cellHeight: number;
+  readonly minCols: number;
+  readonly minRows: number;
+  readonly snapViewportToEven: boolean;
+}
+
+/** A cave-space window for the full-level map modal. */
+export interface ModMapView {
+  readonly origin: { readonly x: number; readonly y: number };
+  readonly size: { readonly width: number; readonly height: number };
+}
+
+/** Current display geometry, copied on every read. */
+export interface ModDisplaySnapshot {
+  readonly mode: "play" | "map";
+  readonly grid: {
+    readonly cols: number;
+    readonly rows: number;
+    readonly cellWidth: number;
+    readonly cellHeight: number;
+  };
+  readonly viewport: {
+    readonly origin: { readonly x: number; readonly y: number };
+    readonly size: { readonly width: number; readonly height: number };
+    readonly screenOrigin: { readonly x: number; readonly y: number };
+  };
+  readonly level: { readonly width: number; readonly height: number };
+  readonly layout: "left" | "top" | "none";
+  readonly regions: ScreenRegions;
+}
+
+/**
+ * Narrow access to the web shell's display geometry.
+ *
+ * It contains no bindings, zoom steps, gesture interpretation, persistence, or
+ * animation. A mod supplies those policies and uses this surface to apply the
+ * resulting whole-cell grid, camera, map window, sidebar reservation, and tile
+ * sampling choice.
+ */
+export interface ModDisplay {
+  snapshot(): ModDisplaySnapshot;
+  setGrid(request: ModDisplayGridRequest | null): void;
+  setCamera(origin: { readonly x: number; readonly y: number } | null): void;
+  setMapView(view: ModMapView | null): void;
+  setSidebarExtent(extent: { readonly columns: number; readonly topRows: number } | null): void;
+  setTileScaling(mode: "auto" | "crisp"): void;
+  repaint(): void;
+}
+
 /** What the host hands a plugin. Frozen before it is passed. */
 export interface ModPluginContext {
   /** The mod's own id, which is also its folder name. */
@@ -275,6 +327,15 @@ export interface ModPluginContext {
    * Scoped to this mod, by the id it was loaded under.
    */
   readonly prefs: ModPrefs;
+  /**
+   * Live display geometry, once the web shell has a game surface.
+   *
+   * Absent during content composition. It is intentionally ungated: this is a
+   * layout/rendering seam, and in-process plugin code already receives the live
+   * game namespace and document. The narrow interface makes ownership explicit
+   * without pretending to add an isolation boundary.
+   */
+  readonly display?: ModDisplay;
   /**
    * Whether this session's character was just CREATED, as opposed to loaded from
    * a save.

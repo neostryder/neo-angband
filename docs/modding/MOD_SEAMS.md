@@ -109,6 +109,39 @@ reference. The Phase-5 disk fixture then loads two real plugin folders, proves
 only the later one receives that production frame, and keeps an unmodded glyph
 control.
 
+## 0c. `ctx.display` is geometry, not a zoom feature
+
+`ModPluginContext.display` is present after the web shell has a live game
+surface and absent during content composition. It is the narrow access point a
+display-oriented mod needs to change geometry without reaching into private
+module variables:
+
+- `snapshot()` reports the real terminal cell metrics, current play or map
+  viewport, cave-space origin and size, level bounds, layout, and named screen
+  regions.
+- `setGrid()` switches `GlyphTerm`'s existing reflow mode at runtime. The
+  supplied target cell height produces a different addressable grid, and the
+  resulting `WorldFrame.viewport.size` comes from that grid on the next paint.
+  Passing `null` restores the faithful fixed 80x24 term.
+- `setCamera()` reads or replaces the normal play camera origin. A non-null
+  value remains pinned until the mod releases it with `null`; level changes and
+  the game's own center-panel command release it too.
+- `setMapView()` selects an explicit cave-space window while the `M` overview is
+  active. The existing overview producer rebuilds that window for ASCII or
+  graphics and the existing modal repaints it.
+- `setSidebarExtent()` reserves whole terminal columns or rows for a mod-owned
+  sidebar, and `setTileScaling()` selects the existing automatic sampler or
+  crisp nearest-neighbour sampling.
+
+The seam contains no key binding, wheel or gesture handler, zoom ladder,
+camera delta, animation, persistence key, or feature flag. Those are the mod's
+behavior. With no call, every default is unchanged: fixed 80x24, the ordinary
+panel camera, the full-level overview, the classic 13-column or one-row
+sidebar, and automatic high-quality filtering only while a tile is downscaled.
+It is ungated for the same reason `ctx.core` and `ctx.state` are ungated: an
+in-process plugin already runs in the page realm, so a permission check here
+would describe isolation the host does not provide.
+
 ## 1. `GameState.modHooks` - the behaviour seam
 
 The one seam behind both first-party behaviour mods. `GameState.modHooks`

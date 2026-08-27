@@ -10,7 +10,13 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { modPluginContext, setModInstallDoor, setModRegistries } from "./mod-context";
+import {
+  modPluginContext,
+  setModDisplayControl,
+  setModInstallDoor,
+  setModRegistries,
+} from "./mod-context";
+import type { ModDisplay } from "./mod-plugin";
 import type { CoreRegistries } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modPrefs, modPrefsKey } from "./mod-prefs";
@@ -49,6 +55,26 @@ describe("modPluginContext session facts", () => {
     const ctx = modPluginContext("qol", {});
     expect(typeof ctx.prefs.get).toBe("function");
     expect(typeof ctx.prefs.set).toBe("function");
+  });
+
+  it("publishes the latched display door after boot and omits it before boot", () => {
+    const display = {
+      snapshot: () => ({ mode: "play" }),
+      setGrid: () => undefined,
+      setCamera: () => undefined,
+      setMapView: () => undefined,
+      setSidebarExtent: () => undefined,
+      setTileScaling: () => undefined,
+      repaint: () => undefined,
+    } as unknown as ModDisplay;
+    setModDisplayControl(undefined);
+    expect(modPluginContext("qol", {}).display).toBeUndefined();
+    setModDisplayControl(display);
+    try {
+      expect(modPluginContext("qol", {}).display).toBe(display);
+    } finally {
+      setModDisplayControl(undefined);
+    }
   });
 });
 

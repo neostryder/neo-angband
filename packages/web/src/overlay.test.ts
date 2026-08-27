@@ -183,6 +183,31 @@ describe("showLevelMap (do_cmd_view_map modal)", () => {
     expect(snap[9]!.slice(expectedStart, expectedStart + footer.length)).toBe(footer);
   });
 
+  it("rebuilds the overview through the connected repaint seam", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    let marker = "a";
+    let repaint: (() => void) | undefined;
+    const done = showLevelMap(
+      term,
+      () => overview({ cells: [[{ ch: marker, css: "#fff" }]], mapW: 1, mapH: 1 }),
+      (next) => {
+        repaint = next;
+        return () => {
+          repaint = undefined;
+        };
+      },
+    );
+    expect(term.snapshot()[1]).toBe("|a|");
+    marker = "b";
+    repaint?.();
+    expect(term.snapshot()[1]).toBe("|b|");
+    press(win, "Escape");
+    await done;
+    expect(repaint).toBeUndefined();
+  });
+
   it("resolves on any key press (anykey)", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;

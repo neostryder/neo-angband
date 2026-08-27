@@ -121,7 +121,7 @@ describe("main.ts and the region table describe the same screen", () => {
       expect(build, `currentScreenRegions no longer reads vp.${field}`).toContain(`vp.${field}`);
     }
     expect(build).toContain("vp.layout");
-    expect(build).toContain("SIDEBAR_W");
+    expect(build).toContain("sidebarWidth: vp.sidebarWidth");
     /* ...and the pixels from the terminal rather than from a guess about it.
      * A hard-coded cell size here would be wrong on every zoom level and every
      * device pixel ratio, and would look right in a test that supplied one. */
@@ -141,7 +141,7 @@ describe("main.ts and the region table describe the same screen", () => {
     expect(hud).toContain("layout: vp.layout");
     expect(hud).toContain("mapOriginX: vp.mapOriginX");
     expect(hud).toContain("mapCols: vp.mapCols");
-    expect(hud).toContain("sidebarWidth: SIDEBAR_W");
+    expect(hud).toContain("sidebarWidth: vp.sidebarWidth");
     /* And the region table itself, which is what makes "core draws inside what
      * it publishes" checkable at all: without the regions reaching the sections,
      * that claim is about two numbers that never meet. */

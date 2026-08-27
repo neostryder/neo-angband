@@ -22,6 +22,7 @@ import {
   createTileRenderer,
   isTile,
   isTileDownscale,
+  setTileScalingMode,
   loadTilePrefs,
   tileCode,
 } from "./tiles";
@@ -59,6 +60,7 @@ function recorder(bodies: Record<string, string> = {}): {
 const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
+  setTileScalingMode("auto");
 });
 
 /** Serve text bodies by URL, no network. */
@@ -219,6 +221,14 @@ describe("TileSet.drawTile smoothing", () => {
     // Restored immediately after, so it cannot leak into the next cell's
     // nearest-neighbour bitmap-glyph paint (GlyphTerm.paintCell interleaves them).
     expect(ctx.imageSmoothingEnabled).toBe(false);
+  });
+
+  it("keeps nearest-neighbour while shrinking when crisp scaling is selected", async () => {
+    const ts = await loadedTileSet();
+    setTileScalingMode("crisp");
+    const { ctx, smoothingAtDraw } = recordingCtx();
+    expect(ts.drawTile(ctx, 0, 0, 4, 4, { row: 0, col: 0 })).toBe(true);
+    expect(smoothingAtDraw).toEqual([{ enabled: false, quality: "low" }]);
   });
 
   it("keeps nearest-neighbour for an upscale and for an equal-size blit", async () => {
