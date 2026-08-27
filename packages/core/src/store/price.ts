@@ -70,10 +70,17 @@ export function priceItem(
     /* Check for no_selling option. */
     if (noSelling) return 0;
   } else {
-    /* Re-evaluate if we're selling. */
+    /* Re-evaluate if we're selling. object_value_real is the true cost
+     * (shop always knows); apply obj.discount afterwards the same way
+     * object_value did in Angband 3.0.6, whose price_item called
+     * object_value. 4.2.6 dropped discounts and this re-price path never
+     * learned them back - without the cut here, massProduce's restored
+     * discount never changes the player-visible listing. */
     price = tvalCanHaveCharges(obj.tval)
       ? objectValueReal(reg, obj, qty)
       : objectValueReal(reg, obj, 1);
+    const discount = obj.discount ?? 0;
+    if (discount > 0) price -= Math.trunc((price * discount) / 100);
 
     /* Black market sucks. */
     if (store.feat === FEAT.STORE_BLACK) price = price * 2;

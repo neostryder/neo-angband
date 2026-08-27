@@ -96,4 +96,23 @@ describe("price_item (store.c)", () => {
     const poor = { maxCost: 10 };
     expect(priceItem(reg, GENERAL, poor, obj, true, 1, true, false)).toBe(10);
   });
+
+  /**
+   * Pre-4.2.6 mass_produce wrote obj->discount; object_value applied it, and
+   * 3.0.6's price_item called object_value for the shop-selling price the
+   * player sees. 4.2.6 dropped discounts and rewrote price_item to re-price
+   * sell-to-player with object_value_real alone. Core restored the field and
+   * objectValue's cut, but the store listing path must still honour discount
+   * or the feature-restoration mod's roll never changes what the player pays.
+   */
+  it("sells a discounted item cheaper (obj.discount, pre-4.2.6 mass_produce)", () => {
+    const full = cleanWeapon();
+    const cut = cleanWeapon();
+    cut.discount = 50;
+    const fullPrice = priceItem(reg, GENERAL, OWNER, full, false, 1, true, false);
+    const cutPrice = priceItem(reg, GENERAL, OWNER, cut, false, 1, true, false);
+    // real 66; 50% off -> 33; (33*100+50)/100 = 33.
+    expect(fullPrice).toBe(66);
+    expect(cutPrice).toBe(33);
+  });
 });
