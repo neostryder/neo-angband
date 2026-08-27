@@ -47,6 +47,8 @@ export type ModStanding = ModTagStanding | "unavailable" | "no-repository";
 
 export interface ModRefresh {
   readonly id: string;
+  /** The installed manifest name, absent only on metadata written before it was kept. */
+  readonly name?: string;
   readonly repo: string;
   /** The tag on disk. */
   readonly installed: string;
@@ -84,6 +86,7 @@ export interface ModRefresh {
 /** One mod the player can move forward, and the two tags involved. */
 export interface ModUpgrade {
   readonly id: string;
+  readonly name?: string;
   readonly repo: string;
   readonly from: string;
   readonly to: string;
@@ -119,6 +122,7 @@ async function refreshOne(meta: InstalledModMeta, env: DiscoverEnv): Promise<Mod
   if (isImported(meta)) {
     return {
       id: meta.id,
+      name: meta.name ?? meta.id,
       repo: meta.repo,
       installed: meta.tag,
       newest: null,
@@ -141,6 +145,7 @@ async function refreshOne(meta: InstalledModMeta, env: DiscoverEnv): Promise<Mod
      */
     return {
       id: meta.id,
+      name: meta.name ?? meta.id,
       repo: meta.repo,
       installed: meta.tag,
       newest: null,
@@ -167,6 +172,7 @@ async function refreshOne(meta: InstalledModMeta, env: DiscoverEnv): Promise<Mod
      */
     return {
       id: meta.id,
+      name: meta.name ?? meta.id,
       repo: meta.repo,
       installed: meta.tag,
       newest: null,
@@ -216,6 +222,7 @@ async function refreshOne(meta: InstalledModMeta, env: DiscoverEnv): Promise<Mod
 
   return {
     id: meta.id,
+    name: meta.name ?? meta.id,
     repo: meta.repo,
     installed: meta.tag,
     newest: offer,
@@ -239,7 +246,13 @@ export function pendingUpgrades(refreshed: readonly ModRefresh[]): readonly ModU
   const out: ModUpgrade[] = [];
   for (const r of refreshed) {
     if (r.standing !== "behind" || r.newest === null) continue;
-    out.push({ id: r.id, repo: r.repo, from: r.installed, to: r.newest });
+    out.push({
+      id: r.id,
+      ...(r.name === undefined ? {} : { name: r.name }),
+      repo: r.repo,
+      from: r.installed,
+      to: r.newest,
+    });
   }
   return out;
 }
@@ -379,13 +392,13 @@ export function upgradeNotice(pending: readonly ModUpgrade[]): string | null {
   if (pending.length === 0) return null;
   const first = pending[0];
   return pending.length === 1 && first
-    ? `1 installed mod has a newer version: ${first.id} ${first.from} -> ${first.to}.`
+    ? `1 installed mod has a newer version: ${first.name ?? first.id} ${first.from} -> ${first.to}.`
     : `${String(pending.length)} installed mods have newer versions.`;
 }
 
 /** How one refreshed mod reads on its own row. */
 export function refreshRow(r: ModRefresh): string {
-  const head = `${r.id} ${r.installed}`;
+  const head = `${r.name ?? r.id} ${r.installed}`;
   switch (r.standing) {
     case "behind":
       return `${head} -> ${r.newest ?? ""}`;

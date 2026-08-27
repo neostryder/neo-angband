@@ -346,7 +346,7 @@ import {
   setPanelGameSurface,
 } from "./panel-runtime";
 import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-taint";
-import { runModManager } from "./mods";
+import { runModManager, runModOptionsBrowser, type ModManagerDeps } from "./mods";
 
 /* A menu rewrite is optional mod decoration. Attribute a refusal to its owner,
  * but never turn a screen the player needs into a failed plugin install. */
@@ -2837,7 +2837,7 @@ async function runContextMenuPlayerOther(): Promise<void> {
       await openIgnoreSetup();
       break;
     case "options":
-      await runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx());
+      await runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx(), openModOptions);
       autosave(true);
       break;
     case "help":
@@ -6149,7 +6149,7 @@ async function exitToTitle(): Promise<void> {
  * (pack.ts) and enabled plugins re-install (boot). Content-mod enablement and
  * plugin consent both persist through defaultModStore.
  */
-async function openModManager(): Promise<void> {
+async function modManagerDeps(): Promise<ModManagerDeps> {
   const store = defaultModStore();
   /* Fetched once for the life of this screen, the same way `store` above is: an
    * install through ctx.installMod only happens while a mod's plugin is running
@@ -6159,7 +6159,7 @@ async function openModManager(): Promise<void> {
   for (const meta of await installedMods(globalThis)) {
     if (meta.installedByModId !== undefined) installedBy[meta.id] = meta.installedByModId;
   }
-  await runModManager(term, {
+  return {
     store,
     listCatalog: () =>
       buildCatalog({
@@ -6268,7 +6268,15 @@ async function openModManager(): Promise<void> {
     requestReload: (opts) => {
       reloadAfterModChange(opts);
     },
-  });
+  };
+}
+
+async function openModManager(): Promise<void> {
+  await runModManager(term, await modManagerDeps());
+}
+
+async function openModOptions(): Promise<void> {
+  await runModOptionsBrowser(term, await modManagerDeps());
 }
 
 /**
@@ -6342,7 +6350,7 @@ async function gameMenuOnce(): Promise<boolean> {
        * over it would hide the confirmation it just produced. */
       return false;
     case "options":
-      await runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx());
+      await runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx(), openModOptions);
       autosave(true); // flush any option change to the per-slot save
       break;
     case "graphics":
@@ -9374,7 +9382,7 @@ function buildCommandTable(): CommandRow[] {
     { desc: "Character description", cat: "Information", o: "C", act: () => void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())) },
     { desc: "Check knowledge", cat: "Information", o: "~", act: () => void openModal(openKnowledgeMenu) },
     // Utility/assorted (cmd_util, ui-game.c:196-203).
-    { desc: "Interact with options", cat: "Utility", o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx())).then(() => autosave(true)); } },
+    { desc: "Interact with options", cat: "Utility", o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx(), openModOptions)).then(() => autosave(true)); } },
     { desc: "Retire character and quit", cat: "Utility", o: "Q", act: () => void openModal(retireCmd) },
     { desc: "Save \"screen dump\"", cat: "Utility", o: ")", act: () => screenDumpCmd() },
     // Hidden commands (cmd_hidden, ui-game.c:211-223).
@@ -10055,7 +10063,7 @@ function installTouchActionBar(): void {
     ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())); }],
     ["Hist", () => { void openModal(() => showTextScreen(term, playerHistoryScreen(state))); }],
     ["Ignore", () => { void openModal(() => openIgnoreSetup()); }],
-    ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx())).then(() => autosave(true)); }],
+    ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx(), openModOptions)).then(() => autosave(true)); }],
     ["Help", () => { void openModal(() => runHelp(term, rogueLikeKeys())); }],
     ["Save", () => { autosave(true); message = "Game saved."; render(); }],
     ["Switch", () => { switchCharacter(); }],

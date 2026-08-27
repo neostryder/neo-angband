@@ -513,6 +513,20 @@ describe("the consent read renders exactly what its hand-laid version did", () =
     expect(table.rows[1]!.semantic?.data?.elevated).toBe(true);
   });
 
+  it("keeps every selected mod's capability in one batch consent view", () => {
+    const view = capabilityConsentScreen([
+      CM({ id: "qol", name: "Quality of Life", capabilities: ["command:add"] }),
+      CM({ id: "forge", name: "ModForge", capabilities: ["registry:effect"] }),
+    ]);
+    const table = tableOf(view, "capabilities");
+    expect(view.title).toBe("Capability approval");
+    expect(table.rows.map((r) => r.cells.text?.text)).toEqual([
+      "Quality of Life: Add new player commands",
+      "ModForge: Override effect, combat, and magic logic",
+    ]);
+    expect(table.rows.map((r) => r.semantic?.data?.modId)).toEqual(["qol", "forge"]);
+  });
+
   it("warns about the code for a plugin whose whole list is modest", () => {
     /* The line is about the CODE, not about the list. `registry:tiles` is
      * deliberately not elevated - a tile filler can only write where nothing is

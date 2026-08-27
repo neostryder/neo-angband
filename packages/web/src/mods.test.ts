@@ -32,7 +32,7 @@
 
 import { describe, expect, it, vi, afterEach } from "vitest";
 
-import { runModManager, type ModManagerDeps } from "./mods";
+import { runModManager, runModOptionsBrowser, type ModManagerDeps } from "./mods";
 import { ModStore, buildCatalog } from "./mod-store";
 import type { GlyphTerm } from "./term";
 
@@ -209,6 +209,25 @@ describe("leaving the mod manager untouched never offers to reload", () => {
       "runModManager did not return after viewing a mod and backing out untouched",
     ).toBe(false);
     expect(requestReload).not.toHaveBeenCalled();
+  });
+});
+
+describe("the top-level Mod options browser", () => {
+  it("starts with All mods and keeps disabled mods reachable by name", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80, 24);
+    const store = new ModStore(fakeStorage());
+    const done = runModOptionsBrowser(
+      term,
+      makeDeps(store, vi.fn(), [manifest("qol", "Quality of Life")]),
+    );
+    await flush();
+    const screen = term.snapshot().join("\n");
+    expect(screen).toContain("All mods");
+    expect(screen).toContain("Quality of Life");
+    press(win, "Escape");
+    await done;
   });
 });
 

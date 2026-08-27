@@ -123,6 +123,11 @@ export interface ModBrowseDeps {
   /** Offer to turn a freshly-installed mod on. See ModCatalogueDeps.offerEnable. */
   readonly offerEnable?: (id: string) => Promise<boolean>;
   /**
+   * The manager-owned bulk enable path. It owns live rules, sections, save
+   * ratchets, and the one combined capability approval for recommended mods.
+   */
+  readonly applyRecommended?: (ids: readonly string[], enableAllOptions: boolean) => Promise<boolean>;
+  /**
    * Importing a mod from an archive. Absent where no file can be read at all.
    *
    * The fourth door, and the only one that does not end in a repository - see
@@ -841,6 +846,7 @@ async function installOne(
   entry: Extract<BrowseEntry, { ok: true }>,
   origin: ModOrigin,
   deps: ModBrowseDeps,
+  opts?: { readonly offerEnable?: boolean },
 ): Promise<boolean> {
   const m = entry.mod;
   /* BEFORE the install, because afterwards there is nothing left to compare - the
@@ -902,7 +908,10 @@ async function installOne(
    * decision they already made, and answering "no" out of habit would switch off a
    * mod that was running - an update that can turn something off is an update nobody
    * should have to think about before accepting. */
-  const enabled = before === null && deps.offerEnable ? await deps.offerEnable(m.id) : false;
+  const enabled =
+    before === null && opts?.offerEnable !== false && deps.offerEnable
+      ? await deps.offerEnable(m.id)
+      : false;
 
   await showTextScreen(term, m.name, [
     ...installOutcomeLines(m.name, m.version, before, m.tag, enabled),
@@ -982,6 +991,111 @@ export function installOutcomeLines(
 }
 
 /**
+ * The bulk shortcuts at the top of Recommended mods.
+ *
+ * Recommendation is a property of the curated registry, not of a manifest, so
+ * this stays on the screen that has already read that registry. The toggles make
+ * the install-all action explicit: replacement is normally wanted, enabling is
+ * deliberately opt-in, and the two other actions remain separate jobs rather
+ * than silently happening as side effects of install.
+ */
+async function showRecommendedActions(
+  term: GridSurface & GridPointerInput,
+  entries: readonly BrowseEntry[],
+  deps: ModBrowseDeps,
+): Promise<boolean> {
+  let updateExisting = true;
+  let enableAfterInstall = false;
+  let changed = false;
+  const usable = (): Extract<BrowseEntry, { ok: true }>[] =>
+    entries.filter((entry): entry is Extract<BrowseEntry, { ok: true }> => entry.ok && entry.mod.compatible);
+
+  for (;;) {
+    const items: MenuItem[] = [
+      {
+        label: t("modBrowse.recommended.bulkInstall", "Install all recommended mods..."),
+        color: C_WARN,
+        hint: t(
+          "modBrowse.recommended.bulkInstallHint",
+          "Install every recommended mod that is missing, with the choices below.",
+        ),
+      },
+      {
+        label: `${updateExisting ? "[x]" : "[ ]"} ${t("modBrowse.recommended.updateExisting", "Update mods already installed")}`,
+        color: updateExisting ? C_GOOD : C_DIM,
+        hint: t("modBrowse.recommended.updateExistingHint", "On by default. Never replaces a newer local copy."),
+      },
+      {
+        label: `${enableAfterInstall ? "[x]" : "[ ]"} ${t("modBrowse.recommended.enableAfterInstall", "Enable after installing")}`,
+        color: enableAfterInstall ? C_GOOD : C_DIM,
+        hint: t(
+          "modBrowse.recommended.enableAfterInstallHint",
+          "Off by default. One approval screen covers every requested capability.",
+        ),
+      },
+      {
+        label: t("modBrowse.recommended.updateAll", "Update all recommended mods..."),
+        color: C_FG,
+        hint: t("modBrowse.recommended.updateAllHint", "Update installed recommended mods, without enabling anything."),
+      },
+      {
+        label: t("modBrowse.recommended.enableAllOptions", "Enable all options from recommended mods..."),
+        color: C_FG,
+        hint: t(
+          "modBrowse.recommended.enableAllOptionsHint",
+          "Turn recommended mods on and select every fix and part. One approval screen covers them.",
+        ),
+      },
+    ];
+    const pick = await selectFromMenu(
+      term,
+      "core:recommended-mod-actions",
+      t("modBrowse.recommended.actionsTitle", "Recommended mod actions"),
+      items,
+      t("modBrowse.common.footer.escBack", "[ ESC to go back ]"),
+    );
+    if (pick === null) return changed;
+    if (pick === 1) {
+      updateExisting = !updateExisting;
+      continue;
+    }
+    if (pick === 2) {
+      enableAfterInstall = !enableAfterInstall;
+      continue;
+    }
+
+    const installed = await deps.installed();
+    const candidates = usable();
+    if (pick === 0) {
+      const todo = candidates.filter((entry) => {
+        const at = installed.get(entry.mod.id) ?? null;
+        return at === null || (updateExisting && classifyModTag(at, entry.mod.tag) === "behind");
+      });
+      for (const entry of todo) {
+        if (await installOne(term, entry, "curated", deps, { offerEnable: false })) changed = true;
+      }
+      if (enableAfterInstall && deps.applyRecommended) {
+        if (await deps.applyRecommended(candidates.map((entry) => entry.mod.id), false)) changed = true;
+      }
+      continue;
+    }
+    if (pick === 3) {
+      const todo = candidates.filter((entry) => {
+        const at = installed.get(entry.mod.id) ?? null;
+        return at !== null && classifyModTag(at, entry.mod.tag) === "behind";
+      });
+      for (const entry of todo) {
+        if (await installOne(term, entry, "curated", deps, { offerEnable: false })) changed = true;
+      }
+      continue;
+    }
+    if (pick === 4 && deps.applyRecommended) {
+      if (await deps.applyRecommended(candidates.map((entry) => entry.mod.id), true)) changed = true;
+    }
+  }
+}
+
+/**
  * Show one source's mods, discovering each as the list is built.
  *
  * Discovery is per repository and the results are kept for the life of this screen:
@@ -1041,11 +1155,24 @@ async function showSource(
     const items: MenuItem[] = entries.map((e) =>
       browseRow(e, e.ok ? (installed.get(e.mod.id) ?? null) : null),
     );
+    const recommendedActionsAt = origin === "curated" ? items.length : -1;
+    if (recommendedActionsAt >= 0) {
+      items.push({
+        label: t("modBrowse.recommended.actionsRow", "Recommended mod actions..."),
+        color: C_WARN,
+        hint: t(
+          "modBrowse.recommended.actionsRowHint",
+          "Install, update, or enable the whole recommended set without repeating each mod's menu.",
+        ),
+      });
+    }
+    const aboutAt = items.length;
     items.push({
       label: t("modBrowse.common.whatIsThis", "What is this?"),
       color: C_DIM,
       hint: t("modBrowse.source.whatIsThisHint", "Where these come from."),
     });
+    const problemsAt = problems.length > 0 ? items.length : -1;
     if (problems.length > 0) {
       items.push({
         label: t(
@@ -1087,11 +1214,15 @@ async function showSource(
     );
     if (pick === null) return changed;
 
-    if (pick === entries.length) {
+    if (pick === recommendedActionsAt) {
+      if (await showRecommendedActions(term, entries, deps)) changed = true;
+      continue;
+    }
+    if (pick === aboutAt) {
       await showTextScreen(term, title, aboutLines());
       continue;
     }
-    if (pick === entries.length + 1) {
+    if (pick === problemsAt) {
       await showTextScreen(term, title, [
         {
           text: t("modBrowse.source.unreadableList", "These entries are in the list and are not offered:"),
@@ -2166,7 +2297,7 @@ export async function showModUpgrades(term: GridSurface & GridPointerInput, deps
         ),
       },
       ...pending.map((u) => ({
-        label: `${u.id}  ${u.from} -> ${u.to}`,
+        label: `${u.name ?? u.id}  ${u.from} -> ${u.to}`,
         color: C_FG,
         hint: t("modBrowse.upgrades.updateOneHint", "Update only this one, from {repo}.", { repo: u.repo }),
       })),
@@ -2223,7 +2354,7 @@ export async function showModUpgrades(term: GridSurface & GridPointerInput, deps
  * is what fails the day it stops being true.
  */
 function refreshStatus(r: ModRefresh): string {
-  const head = `${r.id} ${r.installed}`;
+  const head = `${r.name ?? r.id} ${r.installed}`;
   const row = refreshRow(r);
   return row.startsWith(`${head} `) ? row.slice(head.length + 1) : row;
 }
@@ -2308,7 +2439,7 @@ export function modUpdateReportScreen(refreshed: readonly ModRefresh[]): ScreenV
            * palette reads `semantic.data.standing` and colours what it likes. */
           color: r.standing === "unavailable" ? C_WARN : C_DIM,
           cells: {
-            mod: { text: r.id },
+            mod: { text: r.name ?? r.id },
             installed: { text: r.installed },
             status: { text: refreshStatus(r) },
           },

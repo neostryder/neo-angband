@@ -70,6 +70,14 @@ import { assetMime, sortPackFiles } from "./pack-files";
 /** What is recorded about an installed mod, so the manager can say where it came from. */
 export interface InstalledModMeta {
   readonly id: string;
+  /**
+   * The name from the installed manifest, for player-facing lists.
+   *
+   * Older records did not retain it. Consumers must therefore fall back to `id`
+   * rather than rejecting a working installation merely because it predates this
+   * field.
+   */
+  readonly name?: string;
   readonly repo: string;
   readonly tag: string;
   /**
@@ -314,6 +322,20 @@ function manifestTextOf(files: ReadonlyArray<readonly [string, Uint8Array]>): st
   }
 }
 
+/** The installed manifest's display name, or null when it has no usable one. */
+function manifestDisplayName(files: ReadonlyArray<readonly [string, Uint8Array]>): string | null {
+  const text = manifestTextOf(files);
+  if (text === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed === null || typeof parsed !== "object") return null;
+    const name = (parsed as Record<string, unknown>)["name"];
+    return typeof name === "string" && name.trim() !== "" ? name : null;
+  } catch {
+    return null;
+  }
+}
+
 async function storeMod(
   who: {
     readonly id: string;
@@ -358,6 +380,7 @@ async function storeMod(
 
     const meta: InstalledModMeta = {
       id: mod.id,
+      name: manifestDisplayName(files) ?? mod.id,
       repo: mod.repo,
       tag: mod.tag,
       ...(mod.sha === undefined ? {} : { sha: mod.sha }),
@@ -745,6 +768,7 @@ function asMeta(v: unknown): InstalledModMeta | null {
   if (v === null || typeof v !== "object") return null;
   const m = v as Partial<InstalledModMeta>;
   if (typeof m.id !== "string" || m.id === "") return null;
+  if (m.name !== undefined && (typeof m.name !== "string" || m.name === "")) return null;
   if (typeof m.repo !== "string" || typeof m.tag !== "string") return null;
   if (!Array.isArray(m.files)) return null;
   if (typeof m.installedAt !== "string") return null;

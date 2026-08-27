@@ -354,6 +354,7 @@ describe("installing from a repository: what lands", () => {
     ]);
     expect(stores.get(STORE_MOD_META)?.get("demo")).toMatchObject({
       id: "demo",
+      name: "Demo",
       repo: "neostryder/neo-angband-mod-demo",
       tag: "v1.0.0",
       installedAt: "2026-07-30T00:00:00.000Z",
