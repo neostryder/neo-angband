@@ -89,8 +89,10 @@ describe("background repaints stand down while an overlay owns the terminal", ()
     }
   });
 
-  it("routes the resize/reflow repaint through it", () => {
-    expect(MAIN).toMatch(/term\.onSizeChanged\(\(\) => renderBackground\(\)\)/);
+  it("routes resize/reflow to the active map modal or the guarded background", () => {
+    expect(MAIN).toMatch(
+      /term\.onSizeChanged\(\(\) => \{\s*if \(levelMapActive\) levelMapRepaint\?\.\(\);\s*else renderBackground\(\);\s*\}\)/,
+    );
   });
 
   it("routes the idle animation tick through it", () => {
