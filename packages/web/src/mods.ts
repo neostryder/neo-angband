@@ -213,11 +213,8 @@ export interface ModManagerDeps {
    */
   applyRuleLive?: (flag: string, on: boolean) => void;
   /**
-   * The player-facing speed control for a mod's autoplayer (ModPlugin.controller),
-   * surfaced beside the mod's own rule row that hands back a controller in the
-   * first place (e.g. the Borg's `borg.autoplay`) - this is the row that reads
-   * "does the mod insist on playing" and this control is the one that reads "how
-   * fast is it going while it does". Absent while no game is running; `activeId`
+   * The player-facing speed control for a mod's autoplayer (ModPlugin.controller).
+   * Absent while no game is running; `activeId`
    * lets the mod's own Fixes & tweaks screen show the row only for the mod that
    * actually holds the controller slot right now, since the pump rate means
    * nothing for a mod that is not the one pumping.
@@ -2714,8 +2711,7 @@ async function pickAutoplayerSpeed(
  * can then opt out of individual patches and take the set minus one.
  *
  * When this mod is the one currently holding the autoplayer slot (deps.autoplayer),
- * an extra row appears after its rules: the speed the pump runs at, beside the
- * rule that made it a controller at all (e.g. the Borg's own `borg.autoplay`).
+ * an extra row appears after its rules: the speed the pump runs at.
  * It is a host-level setting rather than a rule choice - it paces whichever mod
  * is playing, not this mod specifically - which is why it lives outside `decls`
  * and is keyed on `deps.autoplayer.activeId()` rather than on a declared flag.
