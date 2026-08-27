@@ -4,17 +4,23 @@
  * WHY THIS READS SOURCE, same reasoning as borg-restart.test.ts: main.ts boots
  * a game on import and cannot be imported by a test, and what is being pinned
  * here is not a function's return value but the ORDER a boot takes - whether
- * the confirm runs before the install, and whether a save that already
- * carries NOSCORE_BORG is spared a second prompt.
+ * the confirm runs before the install, and which one boot, if any, is spared
+ * a second prompt.
  *
- * THE BUG THIS CLOSES: turning on the Borg mod's `borg.autoplay` rule flag -
- * an ordinary toggle on the generic "Fixes & tweaks" rule screen, with no
- * special-casing for this flag - was the only action needed before the next
- * boot's controller-install loop installed the controller and marked the save
- * NOSCORE_BORG, with no warning and no confirmation at all. The fix holds a
- * candidate that wants the keyboard, on a save that has never granted it
- * before, instead of installing it at once - and only finishes the install
- * once the player has seen upstream's own warning and said yes.
+ * THE FIRST BUG THIS CLOSED: turning on the Borg mod's `borg.autoplay` rule
+ * flag - an ordinary toggle on the generic "Fixes & tweaks" rule screen, with
+ * no special-casing for this flag - was the only action needed before the
+ * next boot's controller-install loop installed the controller and marked
+ * the save NOSCORE_BORG, with no warning and no confirmation at all.
+ *
+ * THE SECOND BUG THIS CLOSES (found 2026-08-27): the first fix's own gate
+ * read NOSCORE.BORG as "already asked, skip the prompt" - but that bit is
+ * permanent and one-way, so any character that had EVER used an autoplayer,
+ * even briefly, silently handed the keyboard to it on every later, unrelated
+ * boot with no prompt at all. The gate now skips the prompt only on the one
+ * boot immediately following an explicit "yes" (a one-shot session flag,
+ * AUTOPLAYER_JUST_CONFIRMED_KEY) - every other boot asks, including one for a
+ * save that already carries NOSCORE.BORG from a much earlier session.
  */
 
 import { readFileSync } from "node:fs";
@@ -77,25 +83,40 @@ function installLoop(): string {
 }
 
 describe("the boot-time install loop no longer installs unconditionally", () => {
-  it("gates the install on NOSCORE.BORG already being set", () => {
-    /* Upstream's own gate (do_cmd_try_borg, cmd-misc.c:127) is an
-     * "already asked" short-circuit, not a port addition - a save that
-     * carries the bit ran this exact confirmation on an earlier boot or
-     * through Ctrl-Z, and installing again is the same character
-     * continuing, not a new activation. */
+  it("gates the install on the one-shot just-confirmed flag, not on NOSCORE.BORG", () => {
+    /* NOSCORE.BORG is permanent and one-way (score-invalidating, never
+     * cleared) - reading it as "already asked, skip the prompt" would mean a
+     * character borged once, months ago, silently hands the keyboard to an
+     * autoplayer on every unrelated future boot. Only the reload that
+     * activateAutoplayerCmd itself just triggered may skip the prompt. */
     const body = installLoop();
-    expect(body).toMatch(
+    expect(body).toMatch(/if \(justConfirmedAutoplayerId === loaded\.id\) \{/u);
+    expect(body).not.toMatch(
       /if \(\(state\.actor\.player\.noscore & NOSCORE\.BORG\) !== 0\) \{/u,
     );
   });
 
   it("finishes the install at once only inside that gate", () => {
     const body = installLoop();
-    const gateAt = body.indexOf("(state.actor.player.noscore & NOSCORE.BORG) !== 0");
+    const gateAt = body.indexOf("justConfirmedAutoplayerId === loaded.id");
     expect(gateAt).toBeGreaterThan(-1);
     const finishAt = body.indexOf("finishAutoplayerInstall(loaded, controller);");
     expect(finishAt, "finishAutoplayerInstall is still called from the loop").toBeGreaterThan(-1);
     expect(finishAt).toBeGreaterThan(gateAt);
+  });
+
+  it("reads and clears the one-shot flag once, ahead of the loop", () => {
+    /* Ahead of the loop, not inside it: consuming it per-iteration could skip
+     * a later matching mod, or leave it armed if the matching mod was not the
+     * first one tried. Cleared unconditionally so a stale value can never
+     * outlive the one boot it was written for. */
+    const at = NO_COMMENTS.indexOf("let justConfirmedAutoplayerId");
+    expect(at, "the one-shot flag is read into a local before the loop").toBeGreaterThan(-1);
+    const loopAt = NO_COMMENTS.indexOf("for (const loaded of activeModCode().plugins) {", at);
+    expect(loopAt).toBeGreaterThan(at);
+    const setup = NO_COMMENTS.slice(at, loopAt);
+    expect(setup).toMatch(/sessionStorage\.getItem\(AUTOPLAYER_JUST_CONFIRMED_KEY\)/u);
+    expect(setup).toMatch(/sessionStorage\.removeItem\(AUTOPLAYER_JUST_CONFIRMED_KEY\)/u);
   });
 
   it("holds an unconfirmed candidate instead of installing it", () => {
@@ -208,6 +229,20 @@ describe("activateAutoplayerCmd (Ctrl-Z) marks the save before reloading", () =>
     expect(markAt, "activateAutoplayerCmd still marks the save").toBeGreaterThan(-1);
     expect(reloadAt).toBeGreaterThan(-1);
     expect(markAt).toBeLessThan(reloadAt);
+  });
+
+  it("arms the one-shot just-confirmed flag before reloadAfterModChange too", () => {
+    /* Without this, the reload that follows a fresh "yes" would fall into the
+     * install loop's normal path and ask again for a confirmation the player
+     * gave ten seconds ago on this exact click. */
+    const body = cmdBody();
+    const armAt = body.indexOf(
+      "sessionStorage.setItem(AUTOPLAYER_JUST_CONFIRMED_KEY, modId)",
+    );
+    const reloadAt = body.indexOf("reloadAfterModChange({ resume: true })");
+    expect(armAt, "activateAutoplayerCmd arms the one-shot flag").toBeGreaterThan(-1);
+    expect(reloadAt).toBeGreaterThan(-1);
+    expect(armAt).toBeLessThan(reloadAt);
   });
 
   it("still asks before doing anything at all", () => {

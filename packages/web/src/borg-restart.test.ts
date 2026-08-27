@@ -86,8 +86,8 @@ describe("a human player's death is untouched", () => {
   it("is gated on the autoplayer slot and nothing else", () => {
     /* `installedController` is null whenever a human has the keyboard: a mod fills
      * it only by returning a controller from controller(), and the Borg returns one
-     * only when its own borg.autoplay flag is on. So for a human this is one null
-     * check and the branch below is unchanged. */
+     * only for a character it already holds the keyboard for. So for a human this
+     * is one null check and the branch below is unchanged. */
     const body = reincarnateBody();
     expect(body).toMatch(/const holder = installedController;/u);
     expect(body).toMatch(/if \(!holder\) return false;/u);

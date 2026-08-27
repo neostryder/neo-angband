@@ -981,6 +981,15 @@ const SKIP_TITLE_KEY = "neo-angband-skip-title";
 // looking - and a player who does not go looking concludes the mod is broken.
 // Set by the mod manager's apply-and-reload, consumed once at boot.
 const SHOW_GRAPHICS_KEY = "neo-angband-show-graphics";
+// One-shot: "the reload that just happened is the install reload that follows
+// a Ctrl-Z 'yes' to an autoplayer, so skip the warn-and-confirm on THIS boot
+// only". NOSCORE.BORG is permanent and one-way (score-invalidating, never
+// cleared), so it must never by itself mean "resume without asking" - a
+// character borged once, years ago, must still be asked before an autoplayer
+// takes the keyboard on every later, unrelated boot. Set by
+// activateAutoplayerCmd right before its reload; consumed (read once, cleared
+// unconditionally) by the controller-install loop below.
+const AUTOPLAYER_JUST_CONFIRMED_KEY = "neo-angband-autoplayer-just-confirmed";
 interface StoredBirth {
   raceName: string;
   className: string;
@@ -9171,7 +9180,8 @@ function advance(): void {
  * THE GATE IS THE KEYBOARD, and it is the gate this shell already had.
  * `installedController` is the one autoplayer slot: a mod fills it only by
  * returning a controller from `controller()`, and the Borg returns one only when
- * its own `borg.autoplay` flag is on. So "is an autoplayer playing" needs no second
+ * this character has already been handed to it (NOSCORE.BORG set). So "is an
+ * autoplayer playing" needs no second
  * flag and no mod id written into the engine - which is the same argument that
  * settled `mods/registry.json` carrying no facts about a mod. Upstream's gate is
  * the same sentence: `reincarnate_borg` is called from inside `borg_think`, so the
@@ -9267,9 +9277,10 @@ function continueAdvance(
      * none of it may run for a character that is about to be alive again.
      *
      * A HUMAN'S DEATH CANNOT REACH IT. `installedController` is null unless a mod
-     * returned a controller from `controller()`, which the Borg does only when its
-     * own `borg.autoplay` flag is on. With nobody at the wheel this is a single
-     * null check that falls straight through to the flow that was here before. */
+     * returned a controller from `controller()`, which the Borg does only for a
+     * character it already holds the keyboard for. With nobody at the wheel this
+     * is a single null check that falls straight through to the flow that was
+     * here before. */
     if (reincarnateAutoplayer()) return;
     dead = true;
     // Death is terminal (decision 16): the character's slot becomes a
@@ -11009,15 +11020,25 @@ async function confirmBorgActivation(): Promise<boolean> {
  */
 async function activateAutoplayerCmd(modId: string): Promise<void> {
   if (!(await confirmBorgActivation())) return;
-  defaultModStore().setRuleChoice(`${modId}.autoplay`, true);
   /* Marked HERE, before the reload, not left for the boot loop that runs after
-   * it (#125). That reload goes through the exact same boot-time install path
-   * as any other launch, and that path now only asks once - a save that
-   * already carries NOSCORE.BORG installs at once, because the gate already
-   * ran. Leaving the mark for the boot loop to set instead would mean the very
-   * next boot asks again for a confirmation the player just gave. */
+   * it (#125): NOSCORE.BORG is the permanent, one-way, score-invalidating
+   * mark (upstream's own player->noscore |= NOSCORE_BORG), and it stays that
+   * and nothing more - it is never read as "skip the confirm" any more, see
+   * AUTOPLAYER_JUST_CONFIRMED_KEY below. */
   const takenOver = state.actor.player;
   takenOver.noscore = markNoscore(takenOver.noscore, NOSCORE.BORG);
+  /* The reload that follows goes through the exact same boot-time install
+   * path as any other launch. Without this one-shot flag that path could not
+   * tell "the player said yes ten seconds ago, on the very reload this
+   * triggers" apart from "this character was borged once, unrelated months
+   * ago" - both leave NOSCORE.BORG set - and asking again here, on the one
+   * reload where consent was JUST given, would be a pointless double prompt.
+   * Every other boot still asks; see the install loop below. */
+  try {
+    sessionStorage.setItem(AUTOPLAYER_JUST_CONFIRMED_KEY, modId);
+  } catch {
+    /* best-effort; worst case this one reload asks again, which is safe */
+  }
   reloadAfterModChange({ resume: true });
 }
 
@@ -11026,13 +11047,14 @@ async function activateAutoplayerCmd(modId: string): Promise<void> {
  * real keypress (input-door.ts's AutoplayerInterruptOwner) - upstream reaches
  * the borg's own submenu by pressing it again too, and "give the keyboard
  * back" is the port's whole answer to that menu. Not running: find a loaded mod
- * that CAN autoplay (declares `controller`, regardless of whether its own rule
- * flag is on) and offer to turn it on, through the warn-and-confirm gate above.
+ * that CAN autoplay (declares `controller`) and offer to turn it on, through
+ * the warn-and-confirm gate above.
  *
- * `.controller` is checked for existing rather than the AUTOPLAY_FLAG concept
- * this file has no way to name - a mod's own rule ids are its business, not
- * the host's, and `${modId}.autoplay` above is a convention this shares with
- * neo-angband-mod-borg's plugin.ts, not a contract the host enforces.
+ * `.controller` is the only thing checked - no settings toggle or rule id is
+ * involved any more. Whether a mod's own `controller()` accepts the keyboard
+ * once installed is entirely that mod's business (Borg's own gate is
+ * NOSCORE.BORG, see neo-angband-mod-borg's plugin.ts); the host only needs to
+ * know the mod is capable of playing at all.
  */
 function tryBorgCommand(): void {
   if (installedController) {
@@ -13289,11 +13311,11 @@ function currentOrPendingAutoplayerId(): string | undefined {
  * Finishes an autoplayer's takeover of the keyboard (#125): installs the
  * controller, marks the save NOSCORE_BORG, shows the on-screen indicator that
  * it now holds the keyboard, and starts its pump. The one place that does all
- * four, so a save that already carries NOSCORE_BORG (the loop below) and a
- * save that just earned it through the confirm gate
- * (confirmPendingAutoplayerInstall) both reach the exact same install - the
- * only difference between them is whether this runs at once or waits on a
- * "yes" first.
+ * four, so the reload right after a fresh "yes" (the loop below, gated on
+ * AUTOPLAYER_JUST_CONFIRMED_KEY) and a candidate that just earned its own
+ * "yes" through the confirm gate (confirmPendingAutoplayerInstall) both reach
+ * the exact same install - the only difference between them is whether this
+ * runs at once or waits on that "yes" first.
  */
 function finishAutoplayerInstall(loaded: LoadedModPlugin, controller: AgentController): void {
   /* installController is installed and then nothing drove it (found
@@ -13407,6 +13429,20 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, controller: AgentContr
   };
 }
 
+/* Read-and-clear, once, ahead of the loop - not inside it. This is the ONE
+ * case the install below may skip the warn-and-confirm: the reload that
+ * activateAutoplayerCmd just triggered, seconds after the player said yes.
+ * Cleared unconditionally (not only on a match) so a stale value can never
+ * outlive the one boot it was written for - a mod that got disabled between
+ * the consent and the reload must not leave this armed for whichever mod
+ * happens to be first in the list next time. */
+let justConfirmedAutoplayerId: string | null = null;
+try {
+  justConfirmedAutoplayerId = sessionStorage.getItem(AUTOPLAYER_JUST_CONFIRMED_KEY);
+  sessionStorage.removeItem(AUTOPLAYER_JUST_CONFIRMED_KEY);
+} catch {
+  /* best-effort; worst case this boot asks, which is the safe direction */
+}
 for (const loaded of activeModCode().plugins) {
   const makeController = loaded.plugin.controller;
   if (!makeController) continue;
@@ -13430,22 +13466,23 @@ for (const loaded of activeModCode().plugins) {
         sessionFacts,
       ),
     );
-    /* undefined is a decline, not a failure: a mod whose own autoplay toggle is
-     * off says so by returning nothing, and the human keeps the keyboard. */
+    /* undefined is a decline: a mod that has never been handed the keyboard
+     * for this character (Borg's own gate: NOSCORE.BORG unset) says so by
+     * returning nothing, and the human keeps the keyboard. */
     if (!controller) continue;
-    /* THE GATE (#125). do_cmd_try_borg (cmd-misc.c:127) only ever asks once per
-     * character - "already marked" is upstream's own short-circuit, not a port
-     * addition - and NOSCORE.BORG is one-way (markNoscore only ORs, never
-     * clears; finishAutoplayerInstall above). So a save that already carries it
-     * ran this exact gate on an earlier boot, or through Ctrl-Z
-     * (activateAutoplayerCmd), and installing again here is the SAME character
-     * continuing, not a new activation. A save that does not carry it yet is
-     * the only case upstream's gate ever asks about either: hold the candidate
-     * rather than install it, and let confirmPendingAutoplayerInstall run the
-     * warn-and-confirm once the game screen is live. Turning the rule flag on
-     * from the ordinary Mods screen must not, by itself, be enough - that was
-     * the whole bug. */
-    if ((state.actor.player.noscore & NOSCORE.BORG) !== 0) {
+    /* THE GATE (#125, corrected). NOSCORE.BORG is permanent and one-way - it
+     * marks a character as having used an autoplayer EVER, for scoring, and
+     * must never by itself mean "resume without asking": that would silently
+     * hand the keyboard to an autoplayer on every future, unrelated boot of a
+     * character that happened to try Ctrl-Z once. The only boot allowed to
+     * skip the prompt is the one immediately following an explicit "yes" -
+     * activateAutoplayerCmd's one-shot AUTOPLAYER_JUST_CONFIRMED_KEY, read
+     * above, is that and only that. Every other case, including a save that
+     * already carries NOSCORE.BORG from a much earlier session, holds the
+     * candidate and asks via confirmPendingAutoplayerInstall once the game
+     * screen is live - the same warn-and-confirm a first-time activation
+     * gets, every single boot. */
+    if (justConfirmedAutoplayerId === loaded.id) {
       finishAutoplayerInstall(loaded, controller);
     } else {
       pendingAutoplayerInstall = { loaded, controller };
