@@ -38,24 +38,48 @@ still calls itself.
 
 ## [Unreleased]
 
-### Fixed
+## [1.1.0] - 2026-08-27
 
-- A character that had ever handed the keyboard to an autoplayer mod (even
-  once, even long ago) no longer silently resumes under its control on every
-  later, unrelated boot. The warn-and-confirm prompt now runs every time,
-  except on the one reload that immediately follows an explicit "yes".
-
-## [1.0.1] - 2026-08-26
-
-Current state of the project at version `1.0.1` - a documentation release for
-mod authors. No engine or gameplay change.
+Current state of the project at version `1.1.0` - mods can now reach the
+sidebar and play grid's own display geometry, and mod settings are easier to
+navigate.
 
 ### Added
 
+- A display-geometry seam for mods: `ctx.display.snapshot()` and a runtime
+  grid/camera/map-view/sidebar/tile-scaling control surface
+  (`GlyphTerm.setReflow`, `setGrid`, `setCamera`, `setMapView`,
+  `setSidebarExtent`, `setTileScaling`, `repaint`), plus a capture-phase key
+  subscription mods can use for their own display controls. Deliberately
+  policy-free: no zoom steps, no persistence, no gesture handling, and no UI -
+  a mod builds those on top, the same "necessary in core, nice is a mod" split
+  every other seam in this project follows. Automatic camera re-clamping after
+  a resize is included, so a mod does not have to re-derive it.
+- The standard Options (`=`) menu gained a **Mod options** entry: an "All
+  mods" flat list of every installed mod's settings, plus one entry per mod.
+  The recommended-mods flow gained a single bulk action (enable/update all
+  recommended mods, with an explicit follow-up choice about turning their
+  options on too) instead of working through each mod by hand, and capability
+  approvals for a batch now happen on one screen.
 - `@rpgm-tools/neo-angband-mod-sdk` now packages the real mod-authoring
   documentation, including the beginner tutorials and API references, under
   `docs/`. The package generates that copy from `docs/modding/` when it builds
   or packs, so the repository documentation remains the single source of truth.
+
+### Changed
+
+- The Mods screen's "Fixes & tweaks" and "Parts of this mod" are merged into
+  one "Mod options" entry, matching the new `=` menu entry above.
+
+### Fixed
+
+- The "Update installed mods" screen showed a mod's internal codename instead
+  of its real display name (neo-angband#132).
+- A character that had ever handed the keyboard to an autoplayer mod (even
+  once, even long ago) no longer silently resumes under its control on every
+  later, unrelated boot. The warn-and-confirm prompt now runs every time,
+  except on the one reload that immediately follows an explicit "yes"
+  (neo-angband#138).
 
 ## [1.0.0] - 2026-08-26
 
