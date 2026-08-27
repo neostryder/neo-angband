@@ -10457,6 +10457,11 @@ term.onSizeChanged(() => {
   relayoutStack({ cols, rows, base: currentScreenRegions(viewport()), metrics: term.metrics() });
 });
 term.onSizeChanged(() => {
+  if (!levelMapActive && panelCamPinned && panelCam) {
+    const vp = viewport();
+    const next = clampDisplayOrigin(panelCam, { width: vp.mapCols, height: vp.mapRows });
+    panelCam = loc(next.x, next.y);
+  }
   if (levelMapActive) levelMapRepaint?.();
   else renderBackground();
 });
