@@ -870,6 +870,7 @@ export async function runOptionsMenu(
   openIgnoreSetup: () => Promise<void>,
   sidebar?: SidebarModeMenu,
   prefs?: PrefsUiCtx,
+  openModOptions?: () => Promise<void>,
 ): Promise<void> {
   // Upstream's option_actions[] in ui-options.c:2036-2058, in ITS order:
   //   a b x w i {   d h m o   s t u   p e c v
@@ -899,6 +900,9 @@ export async function runOptionsMenu(
     { label: t("options.menu.movementDelay", "Set movement delay"), tag: "m" },
   ];
   if (sidebar) items.push({ label: t("options.menu.sidebarMode", "Set sidebar mode"), tag: "o" });
+  if (openModOptions) {
+    items.push({ label: t("options.menu.modOptions", "Mod options"), tag: "g" });
+  }
   if (prefs) {
     items.push(
       { label: t("options.menu.dumpSubwindow", "Save subwindow setup to pref file"), tag: "s" },
@@ -986,6 +990,9 @@ export async function runOptionsMenu(
         break;
       case "o":
         if (sidebar) await runSidebarModePage(term, sidebar);
+        break;
+      case "g":
+        if (openModOptions) await openModOptions();
         break;
       default:
         break;

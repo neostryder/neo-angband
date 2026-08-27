@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, afterEach, vi } from "vitest";
 import { HostDir, NULL_HOST, OptionState, Rng, setHost } from "@rpgm-tools/neo-angband-core";
 import type { GameState, HostIo } from "@rpgm-tools/neo-angband-core";
 import { runOptionsMenu, runTileModePage } from "./options";
@@ -143,6 +143,20 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     expect(snap).toContain("i) Item ignoring setup");
     expect(snap).toContain("d) Set base delay factor");
     expect(snap).toContain("h) Set hitpoint warning");
+  });
+
+  it("opens the injected Mod options browser from the options menu", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const openModOptions = vi.fn(async () => {});
+    const done = runOptionsMenu(term, makeState(), async () => {}, undefined, undefined, openModOptions);
+    expect(term.snapshot().join("\n")).toContain("g) Mod options");
+    press(win, "g");
+    await tick();
+    expect(openModOptions).toHaveBeenCalledTimes(1);
+    press(win, "Escape");
+    await done;
   });
 
   it("(a) lists every INTERFACE option (table order) and excludes birth/cheat", async () => {

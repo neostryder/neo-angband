@@ -995,19 +995,30 @@ function consentFooter(): string {
  * The sentences around the list are prose and stay `lines`; the warnings use prose
  * blocks so a warning itself cannot be cut off on the terminal.
  */
-export function capabilityConsentScreen(m: CatalogMod): ScreenView {
+export function capabilityConsentScreen(requested: CatalogMod | readonly CatalogMod[]): ScreenView {
+  const mods = Array.isArray(requested) ? requested : [requested];
+  const one = mods.length === 1;
+  const m = mods[0];
+  if (!m) throw new Error("capability consent needs at least one mod");
+  const capabilities = mods.flatMap((mod) =>
+    describeCapabilities(mod.capabilities).map((detail) => ({ mod, detail })),
+  );
   return freezeView({
     id: "core:mod-capabilities",
-    title: t("modsScreen.consent.title", "Consent - {name}", { name: m.name }),
+    title: one
+      ? t("modsScreen.consent.title", "Consent - {name}", { name: m.name })
+      : t("modsScreen.consent.batchTitle", "Capability approval"),
     footer: consentFooter(),
     blocks: [
       {
         kind: "lines",
         lines: [
           {
-            text: t("modsScreen.consent.requests", '"{name}" requests these capabilities:', {
-              name: m.name,
-            }),
+            text: one
+              ? t("modsScreen.consent.requests", '"{name}" requests these capabilities:', {
+                  name: m.name,
+                })
+              : t("modsScreen.consent.batchRequests", "These mods request these capabilities:"),
             color: C_TITLE,
           },
           { text: "", color: C_FG },
@@ -1027,14 +1038,18 @@ export function capabilityConsentScreen(m: CatalogMod): ScreenView {
            * ends where it always did, because the renderer cuts the trailing run. */
           { key: "elevated", gap: 3, pad: false },
         ],
-        rows: describeCapabilities(m.capabilities).map((d) => ({
-          id: d.cap,
-          semantic: { kind: "capability", ref: d.cap, data: { elevated: d.elevated } },
-          color: d.elevated ? C_WARN : C_FG,
+        rows: capabilities.map(({ mod, detail }) => ({
+          id: `${mod.id}:${detail.cap}`,
+          semantic: {
+            kind: "capability",
+            ref: detail.cap,
+            data: one ? { elevated: detail.elevated } : { modId: mod.id, elevated: detail.elevated },
+          },
+          color: detail.elevated ? C_WARN : C_FG,
           cells: {
             bullet: { text: "-" },
-            text: { text: d.text },
-            elevated: { text: d.elevated ? t("modsScreen.consent.elevatedTag", "[elevated]") : "" },
+            text: { text: one ? detail.text : `${mod.name}: ${detail.text}` },
+            elevated: { text: detail.elevated ? t("modsScreen.consent.elevatedTag", "[elevated]") : "" },
           },
         })),
       },
@@ -1044,7 +1059,7 @@ export function capabilityConsentScreen(m: CatalogMod): ScreenView {
        * capability check, so declared capabilities say what it intends to
        * override, not what its code can reach. Any mod that ships code gets this
        * warning; a validated content pack does not. */
-      ...(m.kind !== "content" || hasElevatedCapability(m.capabilities)
+      ...(mods.some((mod) => mod.kind !== "content" || hasElevatedCapability(mod.capabilities))
         ? [
             {
               kind: "text" as const,
@@ -1062,7 +1077,7 @@ export function capabilityConsentScreen(m: CatalogMod): ScreenView {
             },
           ]
         : []),
-      ...(m.nondeterministic
+      ...(mods.some((mod) => mod.nondeterministic)
         ? [
             {
               kind: "text" as const,
@@ -1071,7 +1086,9 @@ export function capabilityConsentScreen(m: CatalogMod): ScreenView {
                   {
                     text: t(
                       "modsScreen.consent.nonReproducible",
-                      "It also marks your save permanently non-reproducible.",
+                      one
+                        ? "It also marks your save permanently non-reproducible."
+                        : "One or more of these mods mark your save permanently non-reproducible.",
                     ),
                   },
                 ],
@@ -1095,14 +1112,32 @@ export function capabilityConsentScreen(m: CatalogMod): ScreenView {
  * flag elevated ones, and require an explicit Yes. Returns true if consented.
  */
 async function consentPrompt(term: GridSurface & GridPointerInput, m: CatalogMod): Promise<boolean> {
+  return await consentPromptForMods(term, [m]);
+}
+
+/** One explicit choice grants the declared capabilities for a whole bulk action. */
+async function consentPromptForMods(
+  term: GridSurface & GridPointerInput,
+  mods: readonly CatalogMod[],
+): Promise<boolean> {
+  const one = mods.length === 1;
+  const m = mods[0];
+  if (!m) return true;
   // A trailing read of the terms, then a Yes/No pick.
-  await showTextScreen(term, capabilityConsentScreen(m));
+  await showTextScreen(term, capabilityConsentScreen(mods));
   const pick = await selectFromMenu(
     term,
     "core:mod-capability-consent",
-    t("modsScreen.consent.grantConfirm", 'Grant these capabilities to "{name}"?', { name: m.name }),
+    one
+      ? t("modsScreen.consent.grantConfirm", 'Grant these capabilities to "{name}"?', { name: m.name })
+      : t("modsScreen.consent.batchConfirm", "Grant these capabilities to all selected mods?"),
     [
-      { label: t("modsScreen.consent.yes", "Yes, enable and grant"), color: C_ENABLED },
+      {
+        label: one
+          ? t("modsScreen.consent.yes", "Yes, enable and grant")
+          : t("modsScreen.consent.batchYes", "Yes, enable all and grant"),
+        color: C_ENABLED,
+      },
       { label: t("modsScreen.common.no.cancel", "No, cancel"), color: C_FG },
     ],
     t("modsScreen.common.footer.abTapEsc", "[ a/b or tap; ESC cancels ]"),
@@ -1182,6 +1217,57 @@ async function enableMod(
   deps.advanceSaveRatchets?.(m);
   deps.store.setModEnabled(m.id, true);
   return true;
+}
+
+/**
+ * Enable a recommended set after a bulk action, with one capability decision.
+ *
+ * The ordinary per-mod path deliberately remains as it is: its consent screen is
+ * the right amount of ceremony for one mod. A bulk action has already collected a
+ * set, so asking the same question several times would obscure the very capability
+ * list the player needs to compare. Every other enable gate still runs before the
+ * combined consent, then the grants and enables are committed together as a loop.
+ */
+async function enableRecommendedMods(
+  term: GridSurface & GridPointerInput,
+  deps: ModManagerDeps,
+  ids: readonly string[],
+  enableAllOptions: boolean,
+): Promise<boolean> {
+  await deps.rediscover?.();
+  const wanted = new Set(ids);
+  const mods = deps.listCatalog().filter((m) => wanted.has(m.id) && !m.missing);
+  const toEnable = mods.filter((m) => !m.enabled);
+
+  for (const m of toEnable) {
+    if (!(await confirmGameplayNoscore(
+      m,
+      deps.isModNoscore?.() ?? false,
+      () => gameplayNoscorePrompt(term, m),
+    ))) return false;
+    if (!(await confirmDeclaredConflicts(term, deps, m))) return false;
+  }
+
+  const needingConsent = toEnable.filter((m) => m.capabilities.length > 0 && !m.consented);
+  if (needingConsent.length > 0 && !(await consentPromptForMods(term, needingConsent))) return false;
+
+  for (const m of needingConsent) deps.store.setConsent(m.id, m.capabilities);
+  for (const m of toEnable) {
+    deps.advanceSaveRatchets?.(m);
+    deps.store.setModEnabled(m.id, true);
+  }
+
+  if (!enableAllOptions) return toEnable.length > 0;
+  for (const m of mods) {
+    for (const rule of m.manifest.rules ?? []) {
+      deps.store.setRuleChoice(rule.flag, true);
+      deps.applyRuleLive?.(rule.flag, true);
+    }
+    for (const section of m.manifest.sections ?? []) {
+      deps.store.setSectionChoice(m.id, section.id, true);
+    }
+  }
+  return toEnable.length > 0 || mods.some((m) => (m.manifest.rules?.length ?? 0) > 0 || (m.manifest.sections?.length ?? 0) > 0);
 }
 
 /**
@@ -1332,27 +1418,20 @@ async function manageMod(
       return changed;
     }
     const ruleCount = m.manifest.rules?.length ?? 0;
-    /* This mod holds the one autoplayer slot right now: its Fixes & tweaks
-     * screen carries the speed row even on the (unusual) mod that ships a
-     * controller but declares no rule of its own - see managePatches. */
+    /* This mod holds the one autoplayer slot right now: its Mod options screen
+     * carries the speed row even on the unusual mod that ships a controller but
+     * declares no rule of its own. */
     const autoplayerActive = deps.autoplayer?.activeId() === m.id;
-    const showRulesRow = ruleCount > 0 || autoplayerActive;
-    const rulesLabel =
-      ruleCount > 0
-        ? t("modsScreen.manageMod.rulesLabel", "Fixes & tweaks ({count})...", { count: ruleCount })
-        : t("modsScreen.manageMod.autoplayerLabel", "Autoplayer speed...");
-    const rulesHint =
-      ruleCount > 0
-        ? t("modsScreen.manageMod.rulesHint", "All {count} are on; switch any one off here.", {
-            count: ruleCount,
-          })
-        : t(
-            "modsScreen.manageMod.autoplayerHint",
-            "How fast this mod plays out its turns while it holds the keyboard.",
-          );
-    /* A mod's named parts (PackSection): the general form of a rule, since a
-     * section can carry content and a load-order band as well as behaviour. */
     const sectionCount = m.manifest.sections?.length ?? 0;
+    const optionCount = ruleCount + sectionCount + (autoplayerActive ? 1 : 0);
+    const showOptionsRow = optionCount > 0;
+    const optionsLabel = t("modsScreen.manageMod.optionsLabel", "Mod options ({count})...", {
+      count: optionCount,
+    });
+    const optionsHint = t(
+      "modsScreen.manageMod.optionsHint",
+      "Fixes and structural parts together, so every setting for this mod is in one place.",
+    );
     if (m.session) {
       /* NO DISABLE ROW FOR A SESSION MOD, and this is the reason rather than an
        * omission: it is on because it was staged, not because a stored choice says
@@ -1366,26 +1445,16 @@ async function manageMod(
         hint: t("modsScreen.manageMod.dropItHint", "Forgets the archive. Takes effect on the next reload."),
       });
       acts.push("drop");
-      if (showRulesRow) {
-        items.push({ label: rulesLabel, color: C_ENABLED, hint: rulesHint });
-        acts.push("rules");
+      if (showOptionsRow) {
+        items.push({ label: optionsLabel, color: C_ENABLED, hint: optionsHint });
+        acts.push("options");
       }
     } else if (m.enabled) {
       items.push({ label: t("modsScreen.manageMod.disable", "Disable"), color: C_WARN });
       acts.push("disable");
-      if (showRulesRow) {
-        items.push({ label: rulesLabel, color: C_ENABLED, hint: rulesHint });
-        acts.push("rules");
-      }
-      if (sectionCount > 0) {
-        items.push({
-          label: t("modsScreen.manageMod.partsLabel", "Parts of this mod ({count})...", {
-            count: sectionCount,
-          }),
-          color: C_ENABLED,
-          hint: t("modsScreen.manageMod.partsHint", "Take some of this mod without the rest."),
-        });
-        acts.push("sections");
+      if (showOptionsRow) {
+        items.push({ label: optionsLabel, color: C_ENABLED, hint: optionsHint });
+        acts.push("options");
       }
       items.push({ label: t("modsScreen.manageMod.moveEarlier", "Move earlier (loads first)"), color: C_FG });
       acts.push("up");
@@ -1397,39 +1466,23 @@ async function manageMod(
     } else {
       items.push({ label: t("modsScreen.manageMod.enable", "Enable"), color: C_ENABLED });
       acts.push("enable");
-      if (ruleCount > 0) {
+      if (showOptionsRow) {
         // Deliberately present and deliberately dead: it is the clearest way to
-        // show that this mod HAS patches and that they do not exist yet.
+        // show that this mod HAS settings and that they do not exist yet.
         items.push({
           label: t(
-            "modsScreen.manageMod.rulesLabelDisabled",
-            "Fixes & tweaks ({count} once enabled)",
-            { count: ruleCount },
+            "modsScreen.manageMod.optionsLabelDisabled",
+            "Mod options ({count} once enabled)",
+            { count: optionCount },
           ),
           color: C_DISABLED,
           disabled: true,
           hint: t(
-            "modsScreen.manageMod.rulesHintDisabled",
-            "Enable this mod first - its patches do not exist until then.",
+            "modsScreen.manageMod.optionsHintDisabled",
+            "Enable this mod first - its fixes and parts do not exist until then.",
           ),
         });
-        acts.push("rules");
-      }
-      if (sectionCount > 0) {
-        items.push({
-          label: t(
-            "modsScreen.manageMod.partsLabelDisabled",
-            "Parts of this mod ({count} once enabled)",
-            { count: sectionCount },
-          ),
-          color: C_DISABLED,
-          disabled: true,
-          hint: t(
-            "modsScreen.manageMod.partsHintDisabled",
-            "Enable this mod first - its parts do not exist until then.",
-          ),
-        });
-        acts.push("sections");
+        acts.push("options");
       }
     }
     /* THE WAY TO READ A LONG BLURB.
@@ -1486,10 +1539,8 @@ async function manageMod(
       changed = true;
     } else if (act === "drop") {
       if (await dropSession(term, deps, m)) changed = true;
-    } else if (act === "rules") {
-      await managePatches(term, deps, m);
-    } else if (act === "sections") {
-      if (await manageSections(term, deps, m)) changed = true;
+    } else if (act === "options") {
+      if (await manageModOptions(term, deps, [m], m.name)) changed = true;
     } else if (act === "up") {
       deps.store.moveEnabled(m.id, -1);
       changed = true;
@@ -1800,6 +1851,343 @@ export function autoSortScreen(
     footer: SCREEN_FOOTER,
     blocks,
   });
+}
+
+/**
+ * One settings screen for one mod or for every enabled mod.
+ *
+ * Rules and sections remain different kinds of control: rules alter behaviour,
+ * while sections can add records and have their own load order. They deliberately
+ * share this screen because a player looking for a mod's settings should not need
+ * to remember which implementation detail put a control behind which old menu.
+ * Prefixing every row with Fix or Part keeps that distinction visible, and the
+ * all-mods view also prefixes the owning mod so its flat list remains legible.
+ *
+ * Returns true only for section changes, which still need a reload. Rule choices
+ * are applied live by the existing hook path and do not make the manager dirty.
+ */
+async function manageModOptions(
+  term: GridSurface & GridPointerInput,
+  deps: ModManagerDeps,
+  wanted: readonly CatalogMod[],
+  label: string,
+): Promise<boolean> {
+  const title = t("modsScreen.options.title", "Mod options - {name}", { name: label });
+  const candidateIds = new Set(wanted.map((m) => m.id));
+  let changed = false;
+  let cursor = 0;
+
+  for (;;) {
+    const catalog = deps.listCatalog();
+    const selected = catalog.filter((m) => candidateIds.has(m.id) && !m.missing);
+    const enabled = selected.filter((m) => m.enabled);
+    if (enabled.length === 0) {
+      const only = selected[0];
+      const rules = only?.manifest.rules?.length ?? 0;
+      const sections = only?.manifest.sections?.length ?? 0;
+      await selectFromMenu(
+        term,
+        "core:mod-options-disabled",
+        title,
+        [
+          ...(rules > 0
+            ? [
+                {
+                  label: t("modsScreen.options.fixesDisabled", "Fixes & tweaks ({count} once enabled)", {
+                    count: rules,
+                  }),
+                  color: C_DISABLED,
+                  disabled: true,
+                },
+              ]
+            : []),
+          ...(sections > 0
+            ? [
+                {
+                  label: t("modsScreen.options.partsDisabled", "Parts of this mod ({count} once enabled)", {
+                    count: sections,
+                  }),
+                  color: C_DISABLED,
+                  disabled: true,
+                },
+              ]
+            : []),
+          { label: t("modsScreen.common.back", "Back"), color: C_DIM },
+        ],
+        t("modsScreen.options.disabledFooter", "[ Enable this mod first; ESC to go back ]"),
+      );
+      return changed;
+    }
+
+    const enabledManifests = catalog.filter((m) => m.enabled).map((m) => m.manifest);
+    deps.store.migrateSectionChoices(enabledManifests);
+    const sectionState = resolveSectionState(
+      enabledManifests,
+      deps.store.getSectionChoices(),
+      new Set(enabledManifests.map((m) => m.id)),
+    );
+    const forcedOff = new Map<string, string>();
+    for (const m of enabled) {
+      for (const c of m.manifest.compat ?? []) {
+        if (c.claim !== "patches" || enabledManifests.some((other) => other.id === c.with)) continue;
+        for (const sectionId of c.scope ?? []) forcedOff.set(`${m.id}:${sectionId}`, c.with);
+      }
+    }
+
+    type Option =
+      | { readonly kind: "rule"; readonly mod: CatalogMod; readonly decl: ModRuleDecl }
+      | {
+          readonly kind: "section";
+          readonly mod: CatalogMod;
+          readonly section: NonNullable<PackManifest["sections"]>[number];
+          readonly on: boolean;
+          readonly needs: string | null;
+        }
+      | { readonly kind: "speed"; readonly mod: CatalogMod; readonly autoplayer: NonNullable<ModManagerDeps["autoplayer"]> };
+    const options: Option[] = [];
+    const decls = (deps.ruleDecls ?? ((): ModRuleDecl[] => []))();
+    for (const m of enabled) {
+      for (const decl of decls.filter((d) => d.modId === m.id)) {
+        options.push({ kind: "rule", mod: m, decl });
+      }
+    }
+    for (const m of enabled) {
+      for (const section of m.manifest.sections ?? []) {
+        const needs = forcedOff.get(`${m.id}:${section.id}`) ?? null;
+        options.push({
+          kind: "section",
+          mod: m,
+          section,
+          on: sectionState.get(m.id)?.get(section.id) ?? true,
+          needs,
+        });
+      }
+    }
+    const autoplayer = deps.autoplayer;
+    if (autoplayer) {
+      const active = enabled.find((m) => autoplayer.activeId() === m.id);
+      if (active) options.push({ kind: "speed", mod: active, autoplayer });
+    }
+
+    if (options.length === 0) {
+      await showTextScreen(term, title, [
+        {
+          text: t("modsScreen.options.none", "These mods are enabled, but have no configurable fixes or parts."),
+          color: C_DIM,
+        },
+      ]);
+      return changed;
+    }
+
+    const ruleChoices = deps.store.getRuleChoices();
+    const many = enabled.length > 1;
+    const prefix = (m: CatalogMod, kind: string): string =>
+      many ? `${kind}: ${m.name} - ` : `${kind}: `;
+    const items: MenuItem[] = options.map((option) => {
+      if (option.kind === "rule") {
+        const on = ruleChoices[option.decl.rule.flag] ?? option.decl.rule.default;
+        return {
+          label: `${prefix(option.mod, "Fix")}${on ? "[x]" : "[ ]"} ${option.decl.rule.title}`,
+          color: on ? C_ENABLED : C_DISABLED,
+        };
+      }
+      if (option.kind === "section") {
+        const needs = option.needs === null ? "" : `   (${t("modsScreen.options.needs", "needs {name}", { name: option.needs })})`;
+        return {
+          label: `${prefix(option.mod, "Part")}${option.on ? "[x]" : "[ ]"} ${option.section.title}${needs}`,
+          color: option.needs === null ? (option.on ? C_ENABLED : C_DISABLED) : C_DISABLED,
+          ...(option.needs === null ? {} : { disabled: true }),
+        };
+      }
+      return {
+        label: `${prefix(option.mod, "Control")}Autoplayer speed: ${autoplayerSpeedLabel(option.autoplayer.getSpeed())}`,
+        color: C_FG,
+      };
+    });
+
+    const pick = await selectFromMenu(
+      term,
+      "core:mod-options",
+      title,
+      items,
+      t("modsScreen.options.footer", "[ Space or Enter changes a setting; ESC to go back ]"),
+      {
+        initialCursor: cursor,
+        onHighlight: (i) => {
+          cursor = i;
+        },
+        commands: { " ": (cur) => (options[cur]?.kind === "section" && options[cur]?.needs !== null ? null : cur) },
+        detail: (i) => modOptionDetail(options[i], ruleChoices, term.size().cols),
+        detailToggleKey: "?",
+        detailInitiallyShown: true,
+      },
+    );
+    if (pick === null) return changed;
+    const option = options[pick];
+    if (!option) continue;
+    if (option.kind === "rule") {
+      const on = ruleChoices[option.decl.rule.flag] ?? option.decl.rule.default;
+      deps.store.setRuleChoice(option.decl.rule.flag, !on);
+      deps.applyRuleLive?.(option.decl.rule.flag, !on);
+    } else if (option.kind === "section") {
+      if (option.needs !== null) continue;
+      deps.store.setSectionChoice(option.mod.id, option.section.id, !option.on);
+      changed = true;
+    } else {
+      await pickAutoplayerSpeed(term, option.autoplayer, option.mod);
+    }
+  }
+}
+
+function modOptionDetail(
+  option:
+    | {
+        readonly kind: "rule";
+        readonly mod: CatalogMod;
+        readonly decl: ModRuleDecl;
+      }
+    | {
+        readonly kind: "section";
+        readonly mod: CatalogMod;
+        readonly section: NonNullable<PackManifest["sections"]>[number];
+        readonly on: boolean;
+        readonly needs: string | null;
+      }
+    | {
+        readonly kind: "speed";
+        readonly mod: CatalogMod;
+        readonly autoplayer: NonNullable<ModManagerDeps["autoplayer"]>;
+      }
+    | undefined,
+  ruleChoices: Readonly<Record<string, boolean>>,
+  cols: number,
+): readonly ScreenLine[] {
+  if (!option) return [];
+  if (option.kind === "rule") {
+    const on = ruleChoices[option.decl.rule.flag] ?? option.decl.rule.default;
+    return [
+      { text: option.decl.rule.title, color: C_TITLE },
+      { text: `${on ? t("modsScreen.common.on", "ON") : t("modsScreen.common.off", "OFF")}  -  ${option.mod.name}`, color: on ? C_ENABLED : C_DIM },
+      { text: "", color: C_FG },
+      ...wrapped(option.decl.rule.description, cols - 1),
+      { text: "", color: C_FG },
+      ...wrapped(
+        t(
+          "modsScreen.options.ruleNote",
+          "This is a behavioural fix or tweak. It takes effect at once while this mod is enabled.",
+        ),
+        cols - 1,
+        C_DIM,
+      ),
+    ];
+  }
+  if (option.kind === "section") {
+    const lines: ScreenLine[] = [
+      { text: option.section.title, color: C_TITLE },
+      { text: `${option.on ? t("modsScreen.common.on", "ON") : t("modsScreen.common.off", "OFF")}  -  ${option.mod.name}`, color: option.on ? C_ENABLED : C_DIM },
+      { text: "", color: C_FG },
+      ...wrapped(option.section.description ?? "", cols - 1),
+      { text: "", color: C_FG },
+      ...wrapped(
+        t(
+          "modsScreen.options.sectionNote",
+          "This is a structural part of the mod. Changing it takes effect after a reload.",
+        ),
+        cols - 1,
+        C_DIM,
+      ),
+    ];
+    if (option.needs !== null) {
+      lines.push(
+        { text: "", color: C_FG },
+        ...wrapped(
+          t("modsScreen.options.sectionNeeds", "It is a compatibility patch for {name}, which is not enabled.", {
+            name: option.needs,
+          }),
+          cols - 1,
+          C_DIM,
+        ),
+      );
+    }
+    return lines;
+  }
+  return [
+    { text: t("modsScreen.patches.autoplayerHeading", "Autoplayer speed"), color: C_TITLE },
+    {
+      text: t(
+        "modsScreen.patches.autoplayerDetail",
+        "{speed} - how often {name} takes a turn while it holds the keyboard",
+        { speed: autoplayerSpeedLabel(option.autoplayer.getSpeed()), name: option.mod.name },
+      ),
+      color: C_DIM,
+    },
+  ];
+}
+
+/**
+ * The options-menu route into the same per-mod settings screen used by the
+ * manager. The first row pools enabled mods only, because an off mod has no live
+ * rules or active sections; individual rows stay present so the player can see
+ * which mod they need to enable before its settings become available.
+ */
+export async function runModOptionsBrowser(
+  term: GridSurface & GridPointerInput,
+  deps: ModManagerDeps,
+): Promise<void> {
+  let needsReload = false;
+  for (;;) {
+    const catalog = deps.listCatalog().filter((m) => !m.missing);
+    const enabled = catalog.filter((m) => m.enabled);
+    const items: MenuItem[] = [
+      {
+        label: t("modsScreen.options.allMods", "All mods"),
+        color: enabled.length > 0 ? C_ENABLED : C_DISABLED,
+        disabled: enabled.length === 0,
+        hint:
+          enabled.length > 0
+            ? t("modsScreen.options.allModsHint", "Every enabled mod's fixes and parts in one flat list.")
+            : t("modsScreen.options.allModsDisabledHint", "Enable a mod first to configure its options."),
+      },
+      ...catalog.map((m) => ({
+        label: m.name,
+        color: m.enabled ? C_FG : C_DISABLED,
+        hint: m.enabled
+          ? t("modsScreen.options.modHint", "Open this mod's fixes and parts together.")
+          : t("modsScreen.options.modDisabledHint", "Open to see what becomes available when enabled."),
+      })),
+    ];
+    const pick = await selectFromMenu(
+      term,
+      "core:mod-options-browser",
+      t("modsScreen.options.browserTitle", "Mod options"),
+      items,
+      t("modsScreen.options.browserFooter", "[ Choose a mod, ESC to return ]"),
+    );
+    if (pick === null) break;
+    if (pick === 0) {
+      if (await manageModOptions(term, deps, enabled, t("modsScreen.options.allMods", "All mods"))) {
+        needsReload = true;
+      }
+      continue;
+    }
+    const mod = catalog[pick - 1];
+    if (mod && (await manageModOptions(term, deps, [mod], mod.name))) needsReload = true;
+  }
+  if (!needsReload) return;
+  const pick = await selectFromMenu(
+    term,
+    "core:mod-options-apply",
+    t("modsScreen.applyPrompt.title", "Apply mod changes?"),
+    [
+      { label: t("modsScreen.applyPrompt.reload", "Reload now to apply"), color: C_ENABLED },
+      {
+        label: t("modsScreen.applyPrompt.later", "Later (changes are saved; apply on next reload)"),
+        color: C_FG,
+      },
+    ],
+    t("modsScreen.applyPrompt.footer", "[ a/b or tap ]"),
+  );
+  if (pick === 0) deps.requestReload();
 }
 
 /**
@@ -3332,6 +3720,11 @@ export async function runModManager(
               return true;
             }
             return false;
+          },
+          applyRecommended: async (ids, enableAllOptions) => {
+            const applied = await enableRecommendedMods(term, deps, ids, enableAllOptions);
+            if (applied) dirty = true;
+            return applied;
           },
         });
         if (touched) dirty = true;

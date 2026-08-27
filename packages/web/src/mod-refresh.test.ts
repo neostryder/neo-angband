@@ -259,6 +259,10 @@ describe("one mod's own row", () => {
     expect(refreshRow(base)).toBe("qol v1.0.0 -> v2.0.0");
   });
 
+  it("uses the installed manifest name when one was retained", () => {
+    expect(refreshRow({ ...base, name: "Quality of Life" })).toBe("Quality of Life v1.0.0 -> v2.0.0");
+  });
+
   it("says what went wrong, on the row it went wrong on", () => {
     const row = refreshRow({
       ...base,
