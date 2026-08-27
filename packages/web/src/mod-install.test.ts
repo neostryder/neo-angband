@@ -794,6 +794,84 @@ describe("installed mods, read back", () => {
     );
   });
 
+  it("backfills a missing name from the installed manifest and persists it", async () => {
+    /* THE DEFECT THIS CATCHES. storeMod began recording InstalledModMeta.name at
+     * install time, but records already on disk never grew the field. The update
+     * screen fell back to the raw id forever for those mods - including four
+     * first-party ones whose manifests already named themselves correctly - until
+     * the player reinstalled. Healing must work offline from STORE_MODS bytes that
+     * are already there, not from a network fetch or an update. */
+    const made = fakeIdb();
+    const staleManifest = JSON.stringify({
+      id: "bug-fixes",
+      name: "Bug Fixes",
+      version: "1.0.0",
+      shape: "content",
+      facets: ["content"],
+      modApi: 1,
+      engine: ">=1.0.0",
+      author: "neostryder",
+      repository: "https://github.com/neostryder/neo-angband-mod-bug-fixes",
+    });
+    made.stores.set(
+      STORE_MOD_META,
+      new Map([
+        [
+          "bug-fixes",
+          {
+            id: "bug-fixes",
+            repo: "neostryder/neo-angband-mod-bug-fixes",
+            tag: "v1.0.0",
+            files: ["manifest.json"],
+            installedAt: "2025-01-01T00:00:00.000Z",
+            digests: { "manifest.json": "deadbeef" },
+          },
+        ],
+      ]),
+    );
+    made.stores.set(
+      STORE_MODS,
+      new Map([["bug-fixes/manifest.json", enc(staleManifest)]]),
+    );
+
+    const first = await installedMods({ indexedDB: made.factory });
+    expect(first).toHaveLength(1);
+    expect(first[0]?.name).toBe("Bug Fixes");
+
+    /* Persisted: a second read must not depend on re-deriving from file bytes.
+     * Drop the manifest so a non-persisting heal would fall back to undefined. */
+    made.stores.get(STORE_MODS)?.delete("bug-fixes/manifest.json");
+    const second = await installedMods({ indexedDB: made.factory });
+    expect(second[0]?.name).toBe("Bug Fixes");
+    const stored = made.stores.get(STORE_MOD_META)?.get("bug-fixes") as {
+      name?: string;
+    };
+    expect(stored.name).toBe("Bug Fixes");
+  });
+
+  it("leaves a missing name alone when the installed manifest cannot supply one", async () => {
+    const made = fakeIdb();
+    made.stores.set(
+      STORE_MOD_META,
+      new Map([
+        [
+          "orphan",
+          {
+            id: "orphan",
+            repo: "neostryder/orphan",
+            tag: "v1.0.0",
+            files: ["manifest.json"],
+            installedAt: "2025-01-01T00:00:00.000Z",
+            digests: { "manifest.json": "deadbeef" },
+          },
+        ],
+      ]),
+    );
+    /* No STORE_MODS entry - same shape as a half-missing install. */
+    const metas = await installedMods({ indexedDB: made.factory });
+    expect(metas[0]?.name).toBeUndefined();
+  });
+
   it("refuses a record whose sha field is present but not a real string", async () => {
     /* Proves the new guard branch actually does something, rather than being dead
      * code that happens to sit beside a passing suite. */

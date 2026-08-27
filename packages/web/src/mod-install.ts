@@ -55,6 +55,7 @@ import {
   idbDeletePrefix,
   idbGet,
   idbKeys,
+  idbPut,
   openDb,
 } from "./idb";
 import { checkMod, githubRepo, type Finding } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -73,9 +74,11 @@ export interface InstalledModMeta {
   /**
    * The name from the installed manifest, for player-facing lists.
    *
-   * Older records did not retain it. Consumers must therefore fall back to `id`
-   * rather than rejecting a working installation merely because it predates this
-   * field.
+   * Older records did not retain it. `installedMods` backfills a missing value
+   * from the installed manifest.json bytes (offline, once) and persists it.
+   * Consumers must still fall back to `id` when even that cannot recover a name
+   * - a record with no readable manifest on disk - rather than rejecting a
+   * working installation merely because it predates this field.
    */
   readonly name?: string;
   readonly repo: string;
@@ -717,6 +720,51 @@ async function fetchBytes(
   return bytes;
 }
 
+/**
+ * Bytes of one installed mod file, or null. Same acceptance as loadInstalledMods:
+ * a stored Uint8Array, or an ArrayBuffer structuredClone handed back on some engines.
+ */
+async function installedFileBytes(
+  db: IDBDatabase,
+  id: string,
+  path: string,
+): Promise<Uint8Array | null> {
+  const v = await idbGet(db, STORE_MODS, `${id}/${path}`);
+  if (v instanceof Uint8Array) return v;
+  if (v instanceof ArrayBuffer) return new Uint8Array(v);
+  return null;
+}
+
+/**
+ * Fill a missing InstalledModMeta.name from the mod's own installed manifest.json.
+ *
+ * WHY HERE, NOT IN THE SCREEN. The write half (storeMod) already records the name
+ * for every new install; the gap is records written before that field existed.
+ * Healing on read means every caller of installedMods - update screen, manager,
+ * enable list - sees the real name without each one inventing its own fallback,
+ * and without needing a network round-trip or a reinstall. The same STORE_MODS
+ * key loadInstalledMods already reads at boot is the source; nothing new is
+ * invented for storage access.
+ *
+ * Persist when the write succeeds so the next open does not re-parse. A refused
+ * write still returns the healed value for this session - the screen must not
+ * keep showing the raw id merely because the browser would not store a tiny
+ * metadata correction.
+ */
+async function healInstalledName(
+  db: IDBDatabase,
+  meta: InstalledModMeta,
+): Promise<InstalledModMeta> {
+  if (meta.name !== undefined) return meta;
+  const bytes = await installedFileBytes(db, meta.id, "manifest.json");
+  if (!bytes) return meta;
+  const name = manifestDisplayName([["manifest.json", bytes]]);
+  if (name === null) return meta;
+  const healed: InstalledModMeta = { ...meta, name };
+  await idbPut(db, STORE_MOD_META, meta.id, healed);
+  return healed;
+}
+
 /** Every installed mod's provenance record. */
 export async function installedMods(
   scope: unknown = globalThis,
@@ -726,7 +774,7 @@ export async function installedMods(
   const out: InstalledModMeta[] = [];
   for (const id of await idbKeys(db, STORE_MOD_META)) {
     const meta = asMeta(await idbGet(db, STORE_MOD_META, id));
-    if (meta) out.push(meta);
+    if (meta) out.push(await healInstalledName(db, meta));
   }
   /* Sorted by id so the manager's list, and any test of it, is stable: IndexedDB key
    * order is not something to rely on for display. */
@@ -891,15 +939,8 @@ export async function loadInstalledMods(
   if (metas.length === 0) return NO_DISK_PACKS;
   const db = await openDb(scope);
   if (!db) return NO_DISK_PACKS;
-  const read = async (id: string, path: string): Promise<Uint8Array | null> => {
-    const v = await idbGet(db, STORE_MODS, `${id}/${path}`);
-    if (v instanceof Uint8Array) return v;
-    /* structuredClone may hand back an ArrayBuffer where a Uint8Array went in,
-     * depending on the engine. Accepted rather than rejected: refusing here would
-     * report every installed mod as unreadable on those engines. */
-    if (v instanceof ArrayBuffer) return new Uint8Array(v);
-    return null;
-  };
+  const read = async (id: string, path: string): Promise<Uint8Array | null> =>
+    installedFileBytes(db, id, path);
   return await readModDir(installedModSource(metas, read));
 }
 
