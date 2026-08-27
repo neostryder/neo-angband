@@ -132,6 +132,9 @@ module variables:
 - `setSidebarExtent()` reserves whole terminal columns or rows for a mod-owned
   sidebar, and `setTileScaling()` selects the existing automatic sampler or
   crisp nearest-neighbour sampling.
+- `onKey()` subscribes through the one input door at capture priority, before
+  ordinary play and modal owners. It is delivery only; the mod decides which
+  combinations it owns and cancels only those events.
 
 The seam contains no key binding, wheel or gesture handler, zoom ladder,
 camera delta, animation, persistence key, or feature flag. Those are the mod's

@@ -8322,6 +8322,10 @@ const displayControl: ModDisplay = {
       regions: currentScreenRegions(vp),
     };
   },
+  onKey(listener) {
+    inputEvents.addEventListener("keydown", listener, true);
+    return () => inputEvents.removeEventListener("keydown", listener, true);
+  },
   setGrid(request) {
     term.setReflow(request);
     if (levelMapActive) levelMapRepaint?.();

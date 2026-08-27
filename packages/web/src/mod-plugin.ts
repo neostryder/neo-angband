@@ -232,6 +232,8 @@ export interface ModDisplaySnapshot {
  */
 export interface ModDisplay {
   snapshot(): ModDisplaySnapshot;
+  /** Subscribe ahead of the shell's ordinary and modal key owners. */
+  onKey(listener: (event: KeyboardEvent) => void): () => void;
   setGrid(request: ModDisplayGridRequest | null): void;
   setCamera(origin: { readonly x: number; readonly y: number } | null): void;
   setMapView(view: ModMapView | null): void;
