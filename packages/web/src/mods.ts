@@ -1978,26 +1978,31 @@ async function manageModOptions(
 
     const ruleChoices = deps.store.getRuleChoices();
     const many = enabled.length > 1;
-    const prefix = (m: CatalogMod, kind: string): string =>
-      many ? `${kind}: ${m.name} - ` : `${kind}: `;
+    /* No "Fix:"/"Part:"/"Control:" kind label - it named an internal
+     * distinction (rule vs. section vs. speed control) that meant nothing to a
+     * player reading the row. The detail panel below (modOptionDetail) already
+     * explains that distinction in a full sentence when it matters; the row
+     * itself only needs to say which mod, and only when more than one is
+     * shown at once. */
+    const prefix = (m: CatalogMod): string => (many ? `${m.name} - ` : "");
     const items: MenuItem[] = options.map((option) => {
       if (option.kind === "rule") {
         const on = ruleChoices[option.decl.rule.flag] ?? option.decl.rule.default;
         return {
-          label: `${prefix(option.mod, "Fix")}${on ? "[x]" : "[ ]"} ${option.decl.rule.title}`,
+          label: `${prefix(option.mod)}${on ? "[x]" : "[ ]"} ${option.decl.rule.title}`,
           color: on ? C_ENABLED : C_DISABLED,
         };
       }
       if (option.kind === "section") {
         const needs = option.needs === null ? "" : `   (${t("modsScreen.options.needs", "needs {name}", { name: option.needs })})`;
         return {
-          label: `${prefix(option.mod, "Part")}${option.on ? "[x]" : "[ ]"} ${option.section.title}${needs}`,
+          label: `${prefix(option.mod)}${option.on ? "[x]" : "[ ]"} ${option.section.title}${needs}`,
           color: option.needs === null ? (option.on ? C_ENABLED : C_DISABLED) : C_DISABLED,
           ...(option.needs === null ? {} : { disabled: true }),
         };
       }
       return {
-        label: `${prefix(option.mod, "Control")}Autoplayer speed: ${autoplayerSpeedLabel(option.autoplayer.getSpeed())}`,
+        label: `${prefix(option.mod)}Autoplayer speed: ${autoplayerSpeedLabel(option.autoplayer.getSpeed())}`,
         color: C_FG,
       };
     });

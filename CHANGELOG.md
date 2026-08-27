@@ -38,6 +38,13 @@ still calls itself.
 
 ## [Unreleased]
 
+### Changed
+
+- The Mod options screen no longer labels each row "Fix:" or "Part:" - an
+  internal distinction (a behavioural rule versus a content section) that
+  meant nothing to a player reading the row. The detail panel already
+  explains that distinction in a full sentence when it matters.
+
 ## [1.1.0] - 2026-08-27
 
 Current state of the project at version `1.1.0` - mods can now reach the
