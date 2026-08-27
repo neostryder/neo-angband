@@ -13,6 +13,7 @@ import type { GameObject } from "../obj/object.js";
 import type { ObjPackJson } from "../obj/types.js";
 import { Rng } from "../rng.js";
 import { StoreRegistry } from "./bind.js";
+import { priceItem } from "./price.js";
 import {
   ANY_STORE,
   bindStoreRuntime,
@@ -488,6 +489,41 @@ describe("store behaviour registry (store_will_buy / mass_produce)", () => {
     const ring = makeKind(TV.RING);
     massProduce(reg, new Rng(1), ring, b);
     expect(ring.number).toBe(1);
+  });
+
+  /**
+   * A mod-installed discount roll must land on the object AND change the
+   * player-visible store price (priceItem sell-to-player), not only
+   * objectValue. Forced 50% so the observation is deterministic.
+   */
+  it("a discount roll sets obj.discount and lowers the store listing price", () => {
+    const b = seeded();
+    b.registerDiscountRoll(() => 50);
+    const potion = makeKind(TV.POTION);
+    const before = priceItem(
+      reg,
+      { feat: FEAT.STORE_GENERAL },
+      { maxCost: 30000 },
+      potion,
+      false,
+      1,
+      true,
+      false,
+    );
+    massProduce(reg, new Rng(1), potion, b);
+    expect(potion.discount).toBe(50);
+    const after = priceItem(
+      reg,
+      { feat: FEAT.STORE_GENERAL },
+      { maxCost: 30000 },
+      potion,
+      false,
+      1,
+      true,
+      false,
+    );
+    expect(before).toBeGreaterThan(0);
+    expect(after).toBe(before - Math.trunc((before * 50) / 100));
   });
 
   /**
