@@ -23,6 +23,7 @@ import {
   type ModAuthoringApi,
   type ModCoreApi,
   type ModDebug,
+  type ModDisplay,
   type ModInstallOutcome,
   type ModPluginContext,
   type ModSessionOutcome,
@@ -131,6 +132,7 @@ export function modPluginContext(
   const loadModForSession = sessionLoaderFor(session);
   const debug = debugFor(id, session);
   const wizard = wizardFor(id, session);
+  const display = session.display ?? displayControl;
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
   const registries = session.registries ?? boundRegistries;
@@ -152,6 +154,7 @@ export function modPluginContext(
     /* Scoped by the id fixed above, for the same reason assetUrl is: the id a
      * mod gets is the id it was loaded under, so no mod can read another's. */
     prefs: session.prefs ?? modPrefs(id),
+    ...(display ? { display } : {}),
     /* Defaults FALSE, which is the safe way round: a mod that seeds something
      * for a new life must not seed it over a character who already lived one,
      * so a caller that forgets to say gets the answer that changes nothing. */
@@ -171,6 +174,14 @@ export function modPluginContext(
     ...(registries ? { registries } : {}),
     ...(records ? { composedRecords: records } : {}),
   });
+}
+
+/** The live display door, latched after the shell has constructed its surface. */
+let displayControl: ModDisplay | undefined;
+
+/** Install or clear the geometry-only display door (boot path and tests). */
+export function setModDisplayControl(display: ModDisplay | undefined): void {
+  displayControl = display;
 }
 
 /**
@@ -368,6 +379,8 @@ export interface ModSessionFacts {
   readonly newCharacter?: boolean;
   /** Override the preference store (tests, and a front end with its own). */
   readonly prefs?: ModPrefs;
+  /** Override the display door (tests and alternate front ends). */
+  readonly display?: ModDisplay;
   /**
    * THIS mod's resolved capability grants (ticket #133's `ctx.backupFolder`
    * gate). Absent in most call sites today - see MOD_REACH.md's own note that

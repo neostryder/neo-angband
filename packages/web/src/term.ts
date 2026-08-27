@@ -131,6 +131,17 @@ export interface TermSize {
   rows: number;
 }
 
+/** Runtime configuration for the responsive character grid. */
+export interface GridReflowOptions {
+  /** Target cell height in CSS pixels before small-viewport fitting. */
+  readonly cellHeight: number;
+  /** Smallest useful terminal dimensions. The target shrinks before these clip. */
+  readonly minCols: number;
+  readonly minRows: number;
+  /** Ask the shell to expose even-sized map viewports. */
+  readonly snapViewportToEven: boolean;
+}
+
 /** One serialized grid cell for appearance-parity snapshots (snapshotColored). */
 export interface ColoredCell {
   ch: string;
@@ -460,6 +471,7 @@ export class GlyphTerm
        * default) the grid is the fixed 80x24 main term, letterboxed.
        */
       reflow: boolean;
+      snapViewportToEven?: boolean;
       /**
        * The bitmap font to blit (FONT-1). Omit for the faithful default
        * (FONT_16X24); pass null to disable bitmap blitting and use FONT_STACK.
@@ -471,6 +483,7 @@ export class GlyphTerm
       minRows: 18,
       fontPx: 18,
       reflow: false,
+      snapViewportToEven: false,
     },
   ) {
     /* alpha: false. The terminal paints its own opaque background over every
@@ -526,6 +539,43 @@ export class GlyphTerm
 
   size(): TermSize {
     return { cols: this.cols, rows: this.rows };
+  }
+
+  /**
+   * Enable or disable the dormant responsive grid at runtime.
+   *
+   * This is deliberately geometry only. The caller chooses zoom steps,
+   * persistence, input bindings, and camera behavior; GlyphTerm only applies a
+   * requested cell size and publishes the resulting whole-cell dimensions.
+   */
+  setReflow(options: GridReflowOptions | null): void {
+    if (options === null) {
+      this.options.reflow = false;
+      this.options.snapViewportToEven = false;
+    } else {
+      if (!Number.isFinite(options.cellHeight) || options.cellHeight <= 0) {
+        throw new RangeError("cellHeight must be a positive finite number");
+      }
+      if (!Number.isInteger(options.minCols) || options.minCols < 1) {
+        throw new RangeError("minCols must be a positive integer");
+      }
+      if (!Number.isInteger(options.minRows) || options.minRows < 1) {
+        throw new RangeError("minRows must be a positive integer");
+      }
+      this.options.reflow = true;
+      this.options.fontPx = options.cellHeight;
+      this.options.minCols = options.minCols;
+      this.options.minRows = options.minRows;
+      this.options.snapViewportToEven = options.snapViewportToEven;
+    }
+    this.fit();
+    const size = this.size();
+    for (const listener of this.sizeListeners) listener(size);
+  }
+
+  /** Whether the active reflow owner asked the shell for even map dimensions. */
+  snapsViewportToEven(): boolean {
+    return this.options.reflow && (this.options.snapViewportToEven ?? false);
   }
 
   /**
@@ -802,16 +852,21 @@ export class GlyphTerm
 
   /** Responsive grid (reflow opt-in): the pre-REND-1 behavior. */
   private fitReflow(w: number, h: number): void {
-    // Bitmap font: integer-scale the native cell, then derive the grid from the
-    // window (honouring the minCols/minRows floor).
+    // Bitmap font: scale the native cell to the requested CSS height, then
+    // derive the grid from the window. Fractional source scaling is safe here:
+    // destination cells are still integer CSS pixels and bitmap blits stay
+    // nearest-neighbour. Shrink the target when necessary so the declared
+    // minimum grid fits instead of producing a clipped phone viewport.
     if (this.font) {
-      const scale = Math.max(1, Math.round(this.options.fontPx / this.font.h));
-      const cellW = this.font.w * scale;
-      const cellH = this.font.h * scale;
+      const requested = Math.max(8, this.options.fontPx);
+      const widthLimit = (w / this.options.minCols) * (this.font.h / this.font.w);
+      const heightLimit = h / this.options.minRows;
+      const cellH = Math.max(8, Math.floor(Math.min(requested, widthLimit, heightLimit)));
+      const cellW = Math.max(4, Math.round((this.font.w / this.font.h) * cellH));
       this.cellW = cellW;
       this.cellH = cellH;
-      this.cols = Math.max(this.options.minCols, Math.floor(w / cellW));
-      this.rows = Math.max(this.options.minRows, Math.floor(h / cellH));
+      this.cols = Math.max(1, Math.floor(w / cellW));
+      this.rows = Math.max(1, Math.floor(h / cellH));
       this.offsetX = 0;
       this.offsetY = 0;
       return;

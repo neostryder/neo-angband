@@ -306,12 +306,13 @@ import {
   modOwnFiles,
   modPluginContext,
   setModComposedRecords,
+  setModDisplayControl,
   setModInstallDoor,
   setModRegistries,
   setModDebugDoor,
   type ModSessionFacts,
 } from "./mod-context";
-import type { ModPluginContext } from "./mod-plugin";
+import type { ModDisplay, ModPluginContext } from "./mod-plugin";
 import { migrateModBags } from "./mod-bags";
 import {
   folderPickingSupported,
@@ -404,6 +405,7 @@ import {
   discoverEnabledTileModes,
   isTile,
   loadTilePrefs,
+  setTileScalingMode,
   tileCode,
   type ModPrefText,
   type TileBlitter,
@@ -2816,7 +2818,7 @@ async function runContextMenuPlayerOther(): Promise<void> {
       await openKnowledgeMenu();
       break;
     case "map":
-      await showLevelMap(term, buildOverviewForShell());
+      await showLevelMapForShell();
       break;
     case "messages":
       await showTextScreen(term, messageHistoryScreen(msglog));
@@ -5756,6 +5758,7 @@ function wizardCtx(): WizardUiCtx {
       game.changeLevel(depth);
       state.generateLevel = false;
       panelCam = null; // new level: recentre the camera on the player
+      panelCamPinned = false;
     },
     /* quit("user choice") (cmd-wizard.c L2203). Deliberately NOT exitToTitle:
      * that one saves first, and the whole point of this command is that nothing
@@ -7073,6 +7076,7 @@ function exploreCmd(): void {
 function centerMapCmd(): void {
   locateCam = null;
   panelCam = null; // center_panel: force the next verify to recentre on player
+  panelCamPinned = false;
   render();
 }
 
@@ -7879,6 +7883,10 @@ function hallucinationResolver():
  * mutation, and no GAME RNG: while the player is hallucinating this does draw,
  * but from the display-only stream (see hallucinationRng), never from state.rng.
  */
+let levelMapActive = false;
+let levelMapView: { x: number; y: number; width: number; height: number } | null = null;
+let levelMapRepaint: (() => void) | null = null;
+
 function buildOverviewForShell(): LevelOverview {
   const { cols, rows } = term.size();
   const mapW = Math.min(cols - 2, state.chunk.width);
@@ -7896,6 +7904,7 @@ function buildOverviewForShell(): LevelOverview {
     height: state.chunk.height,
     mapW,
     mapH,
+    ...(levelMapView ? { view: levelMapView } : {}),
     knownFeatAt: (x, y) => knownFeat(state, loc(x, y)),
     featureGlyph: (fidx, x = 0, y = 0) => {
       const f = features.get(fidx);
@@ -7977,7 +7986,24 @@ function buildOverviewForShell(): LevelOverview {
   return tileset ? buildGraphicsOverview(overviewParams) : buildOverview(overviewParams);
 }
 
+/** The faithful map modal, with only a repaint/window access point added. */
+async function showLevelMapForShell(): Promise<void> {
+  levelMapActive = true;
+  try {
+    await showLevelMap(term, buildOverviewForShell, (repaint) => {
+      levelMapRepaint = repaint;
+      return () => {
+        if (levelMapRepaint === repaint) levelMapRepaint = null;
+      };
+    });
+  } finally {
+    levelMapActive = false;
+    levelMapView = null;
+  }
+}
+
 const SIDEBAR_W = 13; // classic Angband status column width.
+let displaySidebarExtent: { columns: number; topRows: number } | null = null;
 
 /** Display seams the engine model needs beyond GameState (timed-effect names,
  * so the status line can label Poisoned/Afraid/Fed etc). Options the web does
@@ -8078,7 +8104,7 @@ function currentHudFrame(
     layout: vp.layout,
     cols,
     rows,
-    sidebarWidth: SIDEBAR_W,
+    sidebarWidth: vp.sidebarWidth,
     mapOriginX: vp.mapOriginX,
     mapCols: vp.mapCols,
     vitals: sidebarModel(state, deps).map(hudModel),
@@ -8135,6 +8161,7 @@ let locateActive = false;
 // before the first verifyPanel() and after a level change / center-map command,
 // so the next verify centres on the player. verifyPanel() is the only writer.
 let panelCam: Loc | null = null;
+let panelCamPinned = false;
 
 function viewport(focus?: Loc): {
   layout: SidebarLayout;
@@ -8143,6 +8170,7 @@ function viewport(focus?: Loc): {
   mapTop: number;
   mapCols: number;
   mapRows: number;
+  sidebarWidth: number;
   camX: number;
   camY: number;
 } {
@@ -8157,12 +8185,18 @@ function viewport(focus?: Loc): {
   const layout: SidebarLayout =
     mode === "None" ? "none" : mode === "Top" ? "top" : tiny ? "top" : "left";
   const compact = layout !== "left";
-  const mapOriginX = layout === "left" ? SIDEBAR_W : 0;
-  const mapTop = layout === "top" ? 2 : 1; // Top adds a vitals row under the msg row
+  const sidebarWidth = displaySidebarExtent?.columns ?? SIDEBAR_W;
+  const sidebarTopRows = displaySidebarExtent?.topRows ?? 1;
+  const mapOriginX = layout === "left" ? sidebarWidth : 0;
+  const mapTop = layout === "top" ? 1 + sidebarTopRows : 1;
   // SCREEN_WID reserves the rightmost column (ui-term.h: (wid - COL_MAP - 1)),
   // so the visible map is 66 cols in Left mode / 79 in Top/None, matching C.
-  const mapCols = cols - mapOriginX - 1;
-  const mapRows = rows - mapTop - 1; // the last row is the status line
+  let mapCols = cols - mapOriginX - 1;
+  let mapRows = rows - mapTop - 1; // the last row is the status line
+  if (term.snapsViewportToEven()) {
+    if (mapCols > 2 && mapCols % 2 !== 0) mapCols -= 1;
+    if (mapRows > 2 && mapRows % 2 !== 0) mapRows -= 1;
+  }
   let camX: number, camY: number;
   if (locateCam) {
     // 'L' locate: report the panned sector top-left (change_panel).
@@ -8181,7 +8215,17 @@ function viewport(focus?: Loc): {
     camX = state.actor.grid.x - Math.floor(mapCols / 2);
     camY = state.actor.grid.y - Math.floor(mapRows / 2);
   }
-  return { layout, compact, mapOriginX, mapTop, mapCols, mapRows, camX, camY };
+  return {
+    layout,
+    compact,
+    mapOriginX,
+    mapTop,
+    mapCols,
+    mapRows,
+    sidebarWidth,
+    camX,
+    camY,
+  };
 }
 
 /**
@@ -8205,7 +8249,8 @@ function currentScreenRegions(vp: ReturnType<typeof viewport>): ScreenRegions {
       cols,
       rows,
       sidebar: vp.layout,
-      sidebarWidth: SIDEBAR_W,
+      sidebarWidth: vp.sidebarWidth,
+      sidebarTopRows: displaySidebarExtent?.topRows ?? 1,
       mapOriginX: vp.mapOriginX,
       mapTop: vp.mapTop,
       mapCols: vp.mapCols,
@@ -8214,6 +8259,119 @@ function currentScreenRegions(vp: ReturnType<typeof viewport>): ScreenRegions {
     term.metrics(),
   );
 }
+
+function clampDisplayOrigin(
+  origin: { readonly x: number; readonly y: number },
+  size: { readonly width: number; readonly height: number },
+): { x: number; y: number } {
+  return {
+    x: Math.max(0, Math.min(Math.floor(origin.x), Math.max(0, state.chunk.width - size.width))),
+    y: Math.max(0, Math.min(Math.floor(origin.y), Math.max(0, state.chunk.height - size.height))),
+  };
+}
+
+const displayControl: ModDisplay = {
+  snapshot() {
+    const { cols, rows } = term.size();
+    const metrics = term.metrics();
+    if (levelMapActive) {
+      let width = Math.max(1, cols - 2);
+      let height = Math.max(1, rows - 2);
+      if (term.snapsViewportToEven()) {
+        if (width > 2 && width % 2 !== 0) width -= 1;
+        if (height > 2 && height % 2 !== 0) height -= 1;
+      }
+      const view = levelMapView ?? { x: 0, y: 0, width: state.chunk.width, height: state.chunk.height };
+      const regions = screenRegions(
+        {
+          cols,
+          rows,
+          sidebar: "none",
+          sidebarWidth: 0,
+          mapOriginX: 1,
+          mapTop: 1,
+          mapCols: width,
+          mapRows: height,
+        },
+        metrics,
+      );
+      return {
+        mode: "map" as const,
+        grid: { cols, rows, cellWidth: metrics.cellWidth, cellHeight: metrics.cellHeight },
+        viewport: {
+          origin: { x: view.x, y: view.y },
+          size: { width: view.width, height: view.height },
+          screenOrigin: { x: 1, y: 1 },
+        },
+        level: { width: state.chunk.width, height: state.chunk.height },
+        layout: "none" as const,
+        regions,
+      };
+    }
+    const vp = viewport();
+    return {
+      mode: "play" as const,
+      grid: { cols, rows, cellWidth: metrics.cellWidth, cellHeight: metrics.cellHeight },
+      viewport: {
+        origin: { x: vp.camX, y: vp.camY },
+        size: { width: vp.mapCols, height: vp.mapRows },
+        screenOrigin: { x: vp.mapOriginX, y: vp.mapTop },
+      },
+      level: { width: state.chunk.width, height: state.chunk.height },
+      layout: vp.layout,
+      regions: currentScreenRegions(vp),
+    };
+  },
+  setGrid(request) {
+    term.setReflow(request);
+    if (levelMapActive) levelMapRepaint?.();
+  },
+  setCamera(origin) {
+    if (levelMapActive) return;
+    if (origin === null) {
+      panelCam = null;
+      panelCamPinned = false;
+    } else {
+      const vp = viewport();
+      const next = clampDisplayOrigin(origin, { width: vp.mapCols, height: vp.mapRows });
+      panelCam = loc(next.x, next.y);
+      panelCamPinned = true;
+    }
+    renderBackground();
+  },
+  setMapView(view) {
+    if (!levelMapActive) return;
+    if (view === null) {
+      levelMapView = null;
+    } else {
+      const width = Math.max(1, Math.min(Math.floor(view.size.width), state.chunk.width));
+      const height = Math.max(1, Math.min(Math.floor(view.size.height), state.chunk.height));
+      const origin = clampDisplayOrigin(view.origin, { width, height });
+      levelMapView = { ...origin, width, height };
+    }
+    levelMapRepaint?.();
+  },
+  setSidebarExtent(extent) {
+    displaySidebarExtent = extent
+      ? {
+          columns: Math.max(6, Math.min(32, Math.floor(extent.columns))),
+          topRows: Math.max(1, Math.min(4, Math.floor(extent.topRows))),
+        }
+      : null;
+    renderBackground();
+  },
+  setTileScaling(mode) {
+    setTileScalingMode(mode);
+    term.invalidate();
+    if (levelMapActive) levelMapRepaint?.();
+  },
+  repaint() {
+    if (levelMapActive) levelMapRepaint?.();
+    else renderBackground();
+  },
+};
+
+setModDisplayControl(displayControl);
 
 /**
  * verify_panel (ui-output.c L563-670): keep the map offset (panelCam) so the
@@ -8224,6 +8382,7 @@ function currentScreenRegions(vp: ReturnType<typeof viewport>): ScreenRegions {
  * per render() so every viewport() reader in a frame sees the same offset.
  */
 function verifyPanel(): void {
+  if (panelCamPinned && panelCam) return;
   const vp = viewport(); // for mapCols / mapRows / layout; camX/camY ignored
   const { mapCols, mapRows } = vp;
   const py = state.actor.grid.y;
@@ -9373,7 +9532,7 @@ function buildCommandTable(): CommandRow[] {
     { desc: "Gain new spells", cat: "Information", o: "G", act: () => void openModal(studySpell) },
     { desc: "View abilities", cat: "Information", o: "S", act: () => void openModal(showAbilitiesScreen) },
     { desc: "Cast a spell", cat: "Information", o: "m", act: () => void openModal(castSpell) },
-    { desc: "Full dungeon map", cat: "Information", o: "M", act: () => void openModal(() => showLevelMap(term, buildOverviewForShell())) },
+    { desc: "Full dungeon map", cat: "Information", o: "M", act: () => void openModal(showLevelMapForShell) },
     { desc: "Toggle ignoring of items", cat: "Information", o: "K", r: "O", act: () => { state.ignore.unignoring = !state.ignore.unignoring; void openModal(() => applyIgnoreDrop()); } },
     { desc: "Display visible item list", cat: "Information", o: "]", act: () => void openModal(() => showTextScreen(term, objectListScreen(state))) },
     { desc: "Display visible monster list", cat: "Information", o: "[", act: () => void openModal(() => showMonsterList(term, state)) },
@@ -10055,7 +10214,7 @@ function installTouchActionBar(): void {
     }],
     ["Inv", () => { void openModal(() => showTextScreen(term, inventoryScreen(state))); }],
     ["Objs", () => { void openModal(() => showTextScreen(term, objectListScreen(state))); }],
-    ["Map", () => { void openModal(() => showLevelMap(term, buildOverviewForShell())); }],
+    ["Map", () => { void openModal(showLevelMapForShell); }],
     ["Locate", () => { void openModal(() => runLocate()); }],
     ["Insp", () => { void openModal(() => inspectItem()); }],
     ["Insc", () => { void openModal(() => inscribeItem()); }],

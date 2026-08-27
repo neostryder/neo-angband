@@ -580,22 +580,32 @@ function mountGraphicsOverview(
  */
 export function showLevelMap(
   host: GridSurface & GridPointerInput,
-  overview: LevelOverview,
+  overview: LevelOverview | (() => LevelOverview),
+  connectRepaint?: (repaint: () => void) => () => void,
 ): Promise<void> {
   const handle = pushRegion(screenRegionSpec(), host.size());
-  const graphics = isGraphicsOverview(overview) ? mountGraphicsOverview(host, overview) : null;
-  return paintLevelMapOnTerminal(regionSurface(host, handle.cells), overview).finally(() => {
-    graphics?.remove();
+  return paintLevelMapOnTerminal(
+    regionSurface(host, handle.cells),
+    host,
+    typeof overview === "function" ? overview : () => overview,
+    connectRepaint,
+  ).finally(() => {
     popRegion(handle);
   });
 }
 
 function paintLevelMapOnTerminal(
   term: GridSurface & GridPointerInput,
-  overview: LevelOverview,
+  host: GridSurface & GridPointerInput,
+  overviewForPaint: () => LevelOverview,
+  connectRepaint?: (repaint: () => void) => () => void,
 ): Promise<void> {
   return new Promise<void>((resolve) => {
+    let graphics: HTMLCanvasElement | null = null;
     const paint = (): void => {
+      graphics?.remove();
+      graphics = null;
+      const overview = overviewForPaint();
       const { cols, rows } = term.size();
       term.clear();
       const { mapW, mapH } = mapModalSize(term, overview);
@@ -629,10 +639,14 @@ function paintLevelMapOnTerminal(
       const footer = "Hit any key to continue";
       const fx = Math.max(0, Math.floor((cols - footer.length) / 2));
       term.print(fx, rows - 1, footer.slice(0, cols - 1), DIM);
+      graphics = isGraphicsOverview(overview) ? mountGraphicsOverview(host, overview) : null;
     };
+    const disconnectRepaint = connectRepaint?.(paint) ?? (() => undefined);
     const finish = (): void => {
       inputEvents.removeEventListener("keydown", onKey, true);
       window.removeEventListener("pointerdown", onTap, true);
+      disconnectRepaint();
+      graphics?.remove();
       resolve();
     };
     const onKey = (ev: KeyboardEvent): void => {

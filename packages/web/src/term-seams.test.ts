@@ -233,3 +233,58 @@ describe("cell edges land on device pixels", () => {
     expect(term.paintStats().cells - before).toBe(1);
   });
 });
+
+describe("runtime responsive grid", () => {
+  it("changes the real addressable grid and returns to fixed mode", () => {
+    const term = new GlyphTerm(stubCanvas(), {
+      minCols: 32,
+      minRows: 18,
+      fontPx: 18,
+      reflow: false,
+    });
+    expect(term.size()).toEqual({ cols: 80, rows: 24 });
+
+    term.setReflow({
+      cellHeight: 24,
+      minCols: 20,
+      minRows: 12,
+      snapViewportToEven: true,
+    });
+    expect(term.size()).toEqual({ cols: 80, rows: 33 });
+    expect(term.metrics()).toMatchObject({ cellWidth: 16, cellHeight: 24, originX: 0, originY: 0 });
+    expect(term.snapsViewportToEven()).toBe(true);
+
+    term.setReflow({
+      cellHeight: 36,
+      minCols: 20,
+      minRows: 12,
+      snapViewportToEven: true,
+    });
+    expect(term.size()).toEqual({ cols: 53, rows: 22 });
+
+    term.setReflow(null);
+    expect(term.size()).toEqual({ cols: 80, rows: 24 });
+    expect(term.snapsViewportToEven()).toBe(false);
+  });
+
+  it("shrinks the requested cell before clipping the declared phone floor", () => {
+    (globalThis as Record<string, unknown>).window = {
+      innerWidth: 390,
+      innerHeight: 844,
+      devicePixelRatio: 1,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    };
+    const term = makeTerm();
+    term.setReflow({
+      cellHeight: 48,
+      minCols: 20,
+      minRows: 12,
+      snapViewportToEven: true,
+    });
+    expect(term.size().cols).toBeGreaterThanOrEqual(20);
+    expect(term.size().rows).toBeGreaterThanOrEqual(12);
+    expect(term.metrics().originX).toBe(0);
+    expect(term.metrics().originY).toBe(0);
+  });
+});
