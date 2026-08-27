@@ -38,6 +38,13 @@ still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- A character that had ever handed the keyboard to an autoplayer mod (even
+  once, even long ago) no longer silently resumes under its control on every
+  later, unrelated boot. The warn-and-confirm prompt now runs every time,
+  except on the one reload that immediately follows an explicit "yes".
+
 ## [1.0.1] - 2026-08-26
 
 Current state of the project at version `1.0.1` - a documentation release for
