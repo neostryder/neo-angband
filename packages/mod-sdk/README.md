@@ -8,6 +8,9 @@ record-composition engine that merges packs.
 npm install @rpgm-tools/neo-angband-mod-sdk
 ```
 
+Full authoring docs ship in `docs/`, starting with
+[`docs/tutorials/README.md`](docs/tutorials/README.md).
+
 ## Why it is a separate package
 
 The base game loads its own content **through this pipeline, as pack zero**. That
