@@ -91,7 +91,7 @@ describe("background repaints stand down while an overlay owns the terminal", ()
 
   it("routes resize/reflow to the active map modal or the guarded background", () => {
     expect(MAIN).toMatch(
-      /term\.onSizeChanged\(\(\) => \{\s*if \(levelMapActive\) levelMapRepaint\?\.\(\);\s*else renderBackground\(\);\s*\}\)/,
+      /term\.onSizeChanged\(\(\) => \{[\s\S]{0,300}?clampDisplayOrigin\(panelCam,[\s\S]{0,300}?if \(levelMapActive\) levelMapRepaint\?\.\(\);\s*else renderBackground\(\);\s*\}\)/,
     );
   });
 
