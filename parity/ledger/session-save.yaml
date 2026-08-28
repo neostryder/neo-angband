@@ -73,7 +73,7 @@ notes-mod-lifecycle: >-
   (pack.presentNamespaces(), derived from the same activePackSet the pack is
   composed from); it previously hardcoded core-only at the load call site, which
   would have quarantined a still-enabled content mod's live world entities on the
-  first reload after enabling it. Bundled mods (qol / bug-fixes / neo-linoleum /
+  first reload after enabling it. Bundled mods (qol / bug-fixes / linoleum /
   Borg) add no save-serialized content ids, so the bug was latent, but it is the
   exact add-a-content-mod-mid-game hazard.
 deferred:

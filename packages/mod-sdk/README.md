@@ -63,7 +63,7 @@ reads them.
 - [docs/MODS.md](https://github.com/neostryder/neo-angband/blob/master/docs/MODS.md): the full modding guide
 - First-party mods: [qol](https://github.com/neostryder/neo-angband-mod-qol),
   [bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes),
-  [neo-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum),
+  [linoleum](https://github.com/neostryder/neo-angband-mod-linoleum),
   [borg](https://github.com/neostryder/neo-angband-mod-borg)
 
 ## Versioning

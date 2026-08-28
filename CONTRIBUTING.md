@@ -115,7 +115,7 @@ game stays faithful; anything that adds or changes behavior ships as a **mod**.
 - The first-party mods are the worked examples of this boundary: `qol`
   (conveniences), `bug-fixes` (opt-in fixes for 4.2.6's own defects),
   `feature-restoration` (features later Angband versions dropped, brought back
-  as toggles), `neo-linoleum` (an alternative tile engine and six converted tile
+  as toggles), `linoleum` (an alternative tile engine and six converted tile
   packs), `borg` (the autoplayer), and `forge` (an in-game workshop for building
   other mods).
 - **No mod is bundled into the build.** `mods/registry.json` names mod

@@ -5,7 +5,7 @@
  * game data - lib/tiles/list.txt parsed by grafmode.c, walked straight into each
  * frontend's Graphics menu (main-win.c:2897-2905) - and 4.2.6 has no mod system,
  * so a stock install MUST offer them. The port once made the bundled
- * neo-linoleum mod the "registry of record" for the four bundled packs, which
+ * linoleum mod the "registry of record" for the four bundled packs, which
  * left a faithful (all mods off) install with ASCII and nothing else. That was a
  * port-vs-C disparity; these tests pin the fix.
  */
@@ -157,7 +157,7 @@ describe("BUNDLED_TILE_DIRECTORIES", () => {
   it("credits the TILESHEET here, and says where the converted tiles are credited", () => {
     /* This file's scope is public/tiles/, which is tilesheets - the form the game
      * itself draws. Cutting a sheet into one PNG per tile is a second, different
-     * use of the same art and it belongs to the neo-linoleum mod, so it is
+     * use of the same art and it belongs to the linoleum mod, so it is
      * credited beside those files (see the generator's own test below).
      *
      * Both halves are asserted, because a split credit fails in two directions: a
@@ -537,7 +537,7 @@ describe("bundled mods", () => {
 
   /**
    * How many bundled manifests declare tilePacks. **Zero today**, and saying so out
-   * loud is the point: neo-linoleum was the only one, and its departure turned every
+   * loud is the point: linoleum was the only one, and its departure turned every
    * `for (const id of readdirSync(MODS_DIR))` loop below into a loop over nothing.
    * They still pass. They prove nothing about the mod that used to be here.
    *
@@ -560,7 +560,7 @@ describe("bundled mods", () => {
   it("never re-skins a row upstream's own catalog assigns", () => {
     /* This began as a licence guard - "nothing WE ship may declare Shockbolt" -
      * while the art was withheld. That reason is gone: the art ships with the
-     * author's permission and neo-linoleum declares converted Shockbolt packs at
+     * author's permission and linoleum declares converted Shockbolt packs at
      * 101-106, its own ids. What remains is the real rule, and it is broader: a
      * bundled mod claims grafIDs of its own and leaves upstream's numbering alone.
      *

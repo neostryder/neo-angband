@@ -13,7 +13,7 @@ body:
         repository, where the person who can fix it will see it -
         [qol](https://github.com/neostryder/neo-angband-mod-qol),
         [bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes),
-        [neo-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum),
+        [linoleum](https://github.com/neostryder/neo-angband-mod-linoleum),
         [borg](https://github.com/neostryder/neo-angband-mod-borg). If you
         cannot tell which it is, file it here.
 
@@ -48,7 +48,7 @@ body:
         list, or as much of it as is relevant.
       placeholder: |
         qol 0.11.0 (on)
-        neo-linoleum 0.11.0 (on)
+        linoleum 0.11.0 (on)
     validations:
       required: true
 

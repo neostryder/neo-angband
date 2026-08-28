@@ -122,7 +122,7 @@ it. Each fix is then an individual toggle in this mod's Fixes & tweaks submenu, 
 a player who wants the patch set minus one specific fix can opt that one out
 (2026-07-26). Disable the mod again, or switch one
 fix off, and that behaviour is faithful 4.2.6 again. It is authored and maintained by neostryder
-as its own standalone pack, separate from the neo-linoleum tile mod
+as its own standalone pack, separate from the linoleum tile mod
 (decision 26).
 
 Balance and subjective changes are NOT bug fixes and do not belong here; they

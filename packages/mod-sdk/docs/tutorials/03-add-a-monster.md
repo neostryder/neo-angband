@@ -132,13 +132,13 @@ thinking your mod is broken and a player knowing what they are looking at:
 or
 
 > No tiles of its own: in tile mode the carpenter ant draws as a letter. Install
-> [neo-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) and it is
+> [linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) and it is
 > drawn from its family instead.
 
-That second one is a real fallback rather than a shrug. neo-linoleum, the loose-pack
+That second one is a real fallback rather than a shrug. Linoleum, the loose-pack
 tile mod, fills content nothing drew: an added monster is drawn from a relative
 sharing its `base` with the colour turned, so your carpenter ant reads as an ant
-without being pixel-identical to the base game's. It applies to neo-linoleum's own
+without being pixel-identical to the base game's. It applies to Linoleum's own
 packs only - under Angband's own tile sheets there is no spare cell for a variant,
 so a letter is what an added creature gets - and your players turn it on
 themselves. **It is not a dependency:** your mod is complete and correct in ASCII

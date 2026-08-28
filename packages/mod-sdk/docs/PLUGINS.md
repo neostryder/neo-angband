@@ -331,7 +331,7 @@ register(host, ctx) {
 - **The game has no opinion about who deserves a tile.** It used to: 0.22.0
   shipped a rule in core that drew a mod-added monster from a race sharing its
   `base`, and 0.23.0 removed it, because Angband 4.2.6 has no concept of a record
-  a mod added and the port adds nothing. That rule now lives in `neo-linoleum`,
+  a mod added and the port adds nothing. That rule now lives in `linoleum`,
   which is the worked example. Note what it does NOT fill: rings, amulets,
   mushrooms and food are drawn by FLAVOUR and their kind slots are blank on
   purpose, and an older pack has no art for content added since it was drawn -

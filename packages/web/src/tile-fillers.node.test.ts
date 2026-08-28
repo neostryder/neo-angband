@@ -19,7 +19,7 @@
  *     is a pack's silence, and whether to break it is the tileset mod's call -
  *     rings and mushrooms are drawn by flavour, and adam-bolt predates content
  *     the game now ships, so a mod that fills those is wrong and it is wrong in
- *     its own repository. neo-linoleum keeps the provenance restriction (only
+ *     its own repository. linoleum keeps the provenance restriction (only
  *     records a mod ADDED) and its own tests hold it to that.
  *
  * The seam-adequacy test is the one that would have caught a door too narrow to
@@ -332,7 +332,7 @@ describe("the fill door cannot repaint a pack", () => {
  * rule, written against the door and nothing else, over real packs and the real
  * tutorial mods.
  *
- * It is NOT neo-linoleum's code and must not be mistaken for a test of it. The
+ * It is NOT linoleum's code and must not be mistaken for a test of it. The
  * mod's own repository tests the mod. What fails here is a door too narrow to
  * hold the policy it was built to hand over.
  */
@@ -468,7 +468,7 @@ describe("the door is wide enough for the rule that left core", () => {
  * `derivedSlots` - the loose-pack engine's derive capability.
  *
  * A hand-made slot table rather than a real pack, and that is the honest way
- * round: the packs are neo-linoleum's art, they are gitignored here, and they are
+ * round: the packs are linoleum's art, they are gitignored here, and they are
  * built by that repository. The whole input to a derivation is a slot table and a
  * request, so a two-entry table exercises it exactly.
  */
