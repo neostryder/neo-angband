@@ -88,7 +88,7 @@ const tilesRoot = join(webRoot, "public", "tiles");
  * mkdtempSync's random suffix means concurrent processes never collide, and
  * os.tmpdir() keeps it off the checkout entirely so nothing here needs
  * gitignoring. See #67. */
-const outputRoot = mkdtempSync(join(tmpdir(), "neo-linoleum-equiv-"));
+const outputRoot = mkdtempSync(join(tmpdir(), "linoleum-equiv-"));
 
 const registries = bindCore(loadGamePack());
 const deps: TilePrefsDeps = {

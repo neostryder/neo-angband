@@ -105,7 +105,7 @@ describe.skipIf(!ON)("the curated registry, live", () => {
          * repository whose files include zips and whose manifest declares no
          * payload would install those zips unopened, and the mod would be there
          * and not work. This is the assertion that found exactly that on
-         * neo-linoleum: 11 files, 25.8 MB, every archive stored shut. */
+         * linoleum: 11 files, 25.8 MB, every archive stored shut. */
         const zips = m.payload.filter((p) => p.path.toLowerCase().endsWith(".zip"));
         if (m.guessedPayload && zips.length > 0) {
           broken.push(

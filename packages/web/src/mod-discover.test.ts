@@ -338,7 +338,7 @@ describe("discoverMod: everything the row says comes from the MOD", () => {
     /* The manifest.json check can only run on a payload of plain files: an
      * archive's manifest is inside a zip nothing has opened yet. Requiring it
      * anyway refused a perfectly good tiles mod, which is what the live canary
-     * against neo-linoleum found - its entire payload is seven archives. The
+     * against linoleum found - its entire payload is seven archives. The
      * installer makes this check on the UNPACKED result, where it can be answered.
      */
     const { env } = fakeNet({

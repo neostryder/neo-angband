@@ -218,7 +218,7 @@ describe("a 30-row menu under a detail pane (display_scrolling, ui-menu.c:190-20
   });
 
   it("by default a pane cannot take the list below three rows", () => {
-    /* THE DEFECT, from play: neo-linoleum's description is a paragraph, and its
+    /* THE DEFECT, from play: linoleum's description is a paragraph, and its
      * own manager screen rendered as a title, one action row, and thirty lines of
      * prose - with no way to reach Move earlier, Move later or Back, and no way to
      * scroll the prose either. The pane is what has somewhere else to be read. */

@@ -151,10 +151,10 @@ So if you ship content, ship tiles for it, and if you do not, say so in your mod
 description and point players at a tile mod that fills blanks:
 
 > No tiles of its own: in tile mode the Padded Jerkin draws as a letter. Install
-> [neo-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) and it is
+> [linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) and it is
 > drawn from another item of its type instead.
 
-neo-linoleum draws an added item from a kind sharing its `tval`, with the colour
+Linoleum draws an added item from a kind sharing its `tval`, with the colour
 turned, under its own tile packs. Under Angband's own tile sheets an added item
 keeps its letter, because those sheets are a fixed grid with no spare cell for a
 variant. **Do not make it a dependency:** your mod is complete in ASCII with no

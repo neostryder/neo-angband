@@ -74,7 +74,7 @@ Graphics, or the `?tiles=<url>&graf=<id>` URL override).
   This file covers `public/tiles/` - the tilesheets, which is what the game itself
   draws, and which is all of this art that this repository holds. Cutting a sheet
   into one PNG per tile is a separate use of the same art and it belongs to the
-  neo-linoleum mod, so the converted packs and their credit live with the mod, in
+  linoleum mod, so the converted packs and their credit live with the mod, in
   [neo-angband-mod-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum),
   and reach a player through the installer rather than from here. The author's
   permission covers both forms.

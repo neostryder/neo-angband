@@ -144,7 +144,7 @@ documentation lives here under `docs/`.
     visual - including beyond-parity systems (decision 14) and the v1 QoL
     budget (decision 4) - ships as a mod, never baked into the port.
     Official mods are BUNDLED with the port and enabled by default, each a
-    separate standalone pack and fully removable on its own: **neo-linoleum**
+    separate standalone pack and fully removable on its own: **linoleum**
     (the tile packs; formerly treated as an in-core feature - see decision 26)
     and a **QoL mod** (UI-level quality-of-life); the `bug-fixes` mod (decision
     24) is a third. They are never combined into one pack. Cheaty mods are

@@ -168,7 +168,7 @@ involved:
 | [feature-restoration](https://github.com/neostryder/neo-angband-mod-feature-restoration) | A small mod that is both data and code, with every feature behind its own switch |
 | [qol](https://github.com/neostryder/neo-angband-mod-qol) | Behaviour hooks in a shipped mod |
 | [bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes) | Many small, independent, individually-switchable changes |
-| [neo-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) | A whole alternative tile engine, and a mod that ships art |
+| [linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) | A whole alternative tile engine, and a mod that ships art |
 | [borg](https://github.com/neostryder/neo-angband-mod-borg) | A mod that plays the game |
 
 None of them is bundled with the game and none takes a private path in. They

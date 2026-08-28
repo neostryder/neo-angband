@@ -146,7 +146,7 @@ describe("required rules, each shown failing", () => {
   });
 
   it("archives-declared: the defect that shipped on a real mod", () => {
-    /* neo-linoleum committed seven .zip packs and declared none of them, so an
+    /* linoleum committed seven .zip packs and declared none of them, so an
      * install stored the zips unopened: the mod was present, listed, enabled, and
      * did nothing. Found by a live canary AFTER it shipped that way. */
     const r = checkMod(

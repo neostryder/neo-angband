@@ -21,7 +21,7 @@ contact_links:
   - name: Something about a specific mod
     url: https://github.com/neostryder/neo-angband/blob/master/docs/MODS.md#where-each-mod-lives
     about: >-
-      qol, bug-fixes, neo-linoleum and borg each have their own repository, and
+      qol, bug-fixes, linoleum and borg each have their own repository, and
       an issue filed there reaches the person who can fix it. Not sure whether
       it is the mod or the game? File it here and it can be moved.
 

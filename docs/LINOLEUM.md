@@ -26,7 +26,7 @@ BUILD and express a tile set: a pack you can edit one PNG at a time, targets
 named after game entities instead of grid coordinates, and variant pools -
 several tiles for one symbol, creature or item, chosen by map position so a
 seed always looks the same. A pack it contributes joins the Graphics screen
-as an extra row tagged `[neo-linoleum]`; core's own rows stay untagged.
+as an extra row tagged `[Linoleum]`; core's own rows stay untagged.
 
 ## Status: both engines work
 
@@ -97,7 +97,7 @@ that difference is the whole of #243. A tilesheet reads the graphics mode's
 overdraw band, which is core data. A loose pack has no rows to test and no mode
 in the core catalog to read a band from: its grafID is its own. So the pack says
 so itself, in `maps/tall.txt`, and until it did, every Shockbolt monster in a
-neo-linoleum pack was squashed into one cell.
+Linoleum pack was squashed into one cell.
 
 Everything below describes the pack format itself.
 
@@ -305,7 +305,7 @@ What the ENGINE guarantees, each of which is otherwise re-derived from the code:
   and cannot invent colour in a fully grey one. The alternative, compositing a
   mark onto somebody else's art, is a bigger lie than a similar colour.
 
-Hues themselves are the MOD's choice - it passes a number. neo-linoleum cycles
+Hues themselves are the MOD's choice - it passes a number. Linoleum cycles
 eight spread around the wheel, per donor, so the first eight added creatures
 sharing one base differ from each other as well as from the base game's art.
 
@@ -445,7 +445,7 @@ Independently of Shockbolt: rather than shipping some converted packs and not
 others, **this repository ships no converted packs at all.** The converter runs
 locally against the `reference/` data, so every user derives their own packs from
 the original files under the original licenses, and the six pre-converted packs a
-player can install come from the `neo-linoleum` mod's own repository rather than
+player can install come from the `linoleum` mod's own repository rather than
 from here. The CLI prints the relevant license notes, including a prominent
 warning for the Shockbolt packs, on every run.
 

@@ -485,7 +485,7 @@ The same game everywhere. This table is the honest, per-surface difference list
 Notes:
 1. **The game ships with no mods at all**, and that is the parity mandate in
    mechanical form: a fresh install is Angband 4.2.6 and nothing else. The
-   first-party mods - `qol`, `bug-fixes`, `feature-restoration`, `neo-linoleum`
+   first-party mods - `qol`, `bug-fixes`, `feature-restoration`, `linoleum`
    and `borg` - each live in their own repository and arrive through the same
    route, and the same verification, as anybody else's. Nothing is
    second-class, including mine.

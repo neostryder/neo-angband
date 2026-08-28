@@ -80,7 +80,7 @@ describe("ModStore - enabled set", () => {
 describe("the shipped mod set (isShippedMod)", () => {
   it("bundles NO mods at all", () => {
     /* The de-bundling, stated where the list is. qol and bug-fixes were here;
-     * neo-linoleum left before them when its six converted packs - 9161 files, 42 MiB of
+     * linoleum left before them when its six converted packs - 9161 files, 42 MiB of
      * art that belongs to the mod - moved to their own repository. All three are equally
      * first-party and all three now arrive from their own repositories, which is the point:
      * a fresh install is Angband 4.2.6 and nothing else, and the author's own mods take
