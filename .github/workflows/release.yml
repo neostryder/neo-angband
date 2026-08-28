@@ -13,6 +13,10 @@
 #   Linux     AppImage, .deb, tar.gz
 #   Any       neo-angband-web-<version>.zip - the static site, for self-hosting
 #
+# The same static site is also pushed to the itch.io "html" channel (the itch
+# job below) - not a separate build, the self-hosting zip unpacked and handed
+# to butler. Requires a BUTLER_CREDENTIALS repo secret; see docs/RELEASING.md.
+#
 # NOTHING HERE IS SIGNED, and that is stated on the Release page rather than
 # left for a player to discover from an OS warning. Signing needs a paid Apple
 # Developer identity and a Windows certificate; until those exist, an honest
@@ -138,6 +142,36 @@ jobs:
           name: web-site
           if-no-files-found: error
           path: neo-angband-web-*.zip
+
+  itch:
+    name: Push to itch.io
+    needs: [web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: web-site
+          path: artifacts
+      # The same zip self-hosters get, unpacked. Its paths are already relative
+      # (packages/web/vite.config.ts sets base: "./"), which is what itch's
+      # sandboxed HTML5 iframe needs - there is no separate itch-only build.
+      - name: Unzip the static site
+        run: |
+          mkdir -p itch-web
+          unzip -q artifacts/neo-angband-web-*.zip -d itch-web
+      - name: Strip the v prefix for itch's build list
+        id: version
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: echo "value=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - uses: yeslayla/butler-publish-itchio-action@v1.2.0
+        env:
+          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
+          CHANNEL: html
+          ITCH_GAME: neo-angband
+          ITCH_USER: neostryder
+          PACKAGE: itch-web
+          VERSION: ${{ steps.version.outputs.value }}
 
   publish:
     name: Publish the release
