@@ -112,4 +112,8 @@ for (const sourceRelative of documents) {
 
 for (const sourceRelative of documents) verifyLinks(resolve(outputDir, sourceRelative));
 
-console.log(`synced ${String(documents.length)} SDK authoring documents to docs/`);
+/* stderr, not stdout: this runs as `prepack`, and `npm pack --json` (the check
+ * this repository's own tooling and CI run) expects clean JSON on stdout - a
+ * lifecycle script's own stdout output lands in the same stream and breaks
+ * that parse. */
+console.error(`synced ${String(documents.length)} SDK authoring documents to docs/`);

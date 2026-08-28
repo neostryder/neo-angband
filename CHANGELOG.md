@@ -36,6 +36,18 @@ commit a tag resolved to when the mod was installed, and a tag that has
 since been retargeted is reported as moved rather than as the version it
 still calls itself.
 
+## [Unreleased]
+
+### Fixed
+
+- `@rpgm-tools/neo-angband-mod-sdk` stopped regenerating its packaged docs from
+  `docs/modding/` before every publish - a version-bump revert dropped the
+  `prepack` wiring along with the version number it meant to undo, so the
+  1.0.1 and 1.1.1 packages both shipped whatever was sitting in `docs/` at
+  commit time rather than the current source. The gap was real: `MOD_SEAMS.md`
+  had gone stale since, missing the 1.1.0 `ctx.display` seam entirely. Wiring
+  restored; `docs/` is generated fresh on every `npm pack`/`publish` again.
+
 ## [1.1.1] - 2026-08-27
 
 Current state of the project at version `1.1.1` - a fixes release. Nothing
