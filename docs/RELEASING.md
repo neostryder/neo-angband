@@ -473,6 +473,35 @@ flagged pre-release. `defaultChannel()` therefore starts new installs on `beta`
 and switches to `stable` on its own at `1.0.0`. A default of `stable` today
 would mean a fresh install never offers an update and never explains why.
 
+## Pushing to itch.io
+
+The `itch` job in `release.yml` pushes the same static site the self-hosting
+zip contains to itch.io's `html` channel, on every tag, right alongside the
+GitHub Release. It is not a separate build - it downloads the `web-site`
+artifact the `web` job already produced, unzips it, and hands that directory
+to `butler` (itch's own upload tool) via the `yeslayla/butler-publish-itchio-action`
+action.
+
+**One-time setup, by hand, on itch.io and in this repository's secrets - not
+something a workflow file can do for you:**
+
+1. Generate a butler API key: itch.io -> account settings -> API keys, or run
+   `butler login` locally and copy the key it prints.
+2. Add it to this repository as a secret named `BUTLER_CREDENTIALS`
+   (Settings -> Secrets and variables -> Actions -> New repository secret).
+   This key is a credential exactly like an npm token: never paste it into a
+   file this repository tracks, and never let anything print it in a log.
+3. On the itch.io project page (`neostryder.itch.io/neo-angband`), "Kind of
+   project" must already be set to **HTML** before the first push - the
+   action pushes a directory, and itch only turns an HTML-kind upload into
+   the embedded, playable page.
+
+If the secret is missing, the `itch` job fails on that one step. The GitHub
+Release, Pages, and the Discord announcement all still publish normally,
+because `itch` sits outside the `publish` job's dependency chain - a failed
+itch push does not block a release. Re-running the job once the secret exists
+pushes the same build again.
+
 ### A check that FAILED is not a check that found nothing
 
 The game asks GitHub once at boot and again whenever the player opens the update
