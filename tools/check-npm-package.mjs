@@ -194,7 +194,11 @@ for (const pkg of packages) {
      * `bin` counts as reachable: npm installs a shim for it, and a bin target is
      * NOT supposed to be in the exports map. src/ is the standing exception - it
      * ships because the .js.map files point into it, and a debugger reads it by
-     * path rather than by specifier. */
+     * path rather than by specifier. docs/ (mod-sdk only) is the same shape: a
+     * consumer reads its markdown by path (e.g. ModForge's doc embedder), and
+     * plain Node has no loader for a bare `.md` specifier - putting it in
+     * `exports` would just move the failure into the import-by-specifier check
+     * below instead of fixing anything. */
     const reachable = [
       ...Object.values(manifest.exports ?? {}).flatMap((entry) =>
         typeof entry === "string" ? [entry] : Object.values(entry),
@@ -204,6 +208,7 @@ for (const pkg of packages) {
     const shippedDirs = [...new Set(files.filter((f) => f.includes("/")).map((f) => f.split("/")[0]))];
     for (const dir of shippedDirs) {
       if (dir === "src") continue;
+      if (dir === "docs" && pkg === "mod-sdk") continue;
       if (reachable.some((t) => t.startsWith(`./${dir}/`))) continue;
       const bytes = files.filter((f) => f.startsWith(`${dir}/`)).length;
       fail(
