@@ -13282,7 +13282,7 @@ installRegions(
 /* Same three tiers and millisecond values as the debug agent seam's
  * ?speed=fast|normal|slow (AGENT_TICK_MS above), so the two pumps read the
  * same way to a player who has met either. Player-set via Mods -> the
- * autoplaying mod's own screen -> Autoplayer speed (mods.ts managePatches),
+ * autoplaying mod's own screen -> Autoplayer speed (mods.ts manageModOptions),
  * beside the rule that hands the mod its controller in the first place. */
 const AUTOPLAYER_SPEED_MS: Record<AutoplayerSpeed, number> = {
   turbo: 10,
