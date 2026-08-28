@@ -231,7 +231,7 @@ describe.each(PUBLISHED)("@rpgm-tools/neo-angband-%s is publishable", (pkg) => {
      * `compileGamedata` export and no pack/ would satisfy every other assertion
      * in this file while being useless to the consumer who installed it. */
     const files = manifest["files"] as string[];
-    const payload: Record<string, string> = { content: "pack" };
+    const payload: Record<string, string> = { content: "pack", "mod-sdk": "docs" };
     const required = payload[pkg];
     if (required === undefined) return;
     expect(files, `${pkg} must ship ${required}/`).toContain(required);
@@ -239,6 +239,22 @@ describe.each(PUBLISHED)("@rpgm-tools/neo-angband-%s is publishable", (pkg) => {
       readdirSync(join(root, required)).length,
       `${required}/ is listed but empty`,
     ).toBeGreaterThan(0);
+  });
+
+  it("regenerates a payload directory it does not hand-maintain, before every pack", () => {
+    /* mod-sdk/docs/ is generated FROM docs/modding/, not edited in place (see
+     * scripts/sync-docs.mjs's own header). The files entry alone is not enough:
+     * it ships whatever happens to be sitting in docs/ at commit time, which
+     * silently went stale for a real, shipped feature (ctx.display, MOD_SEAMS.md)
+     * once a version-bump revert also dropped this wiring - undetected until a
+     * consumer's own build broke on a missing tutorial. `prepack` is what npm runs
+     * on every `pack`/`publish`, with or without a prior manual `build`. */
+    const generated: Record<string, string> = { "mod-sdk": "sync-docs" };
+    const script = generated[pkg];
+    if (script === undefined) return;
+    const scripts = manifest["scripts"] as Record<string, string>;
+    expect(scripts["prepack"]).toBe(`pnpm run ${script}`);
+    expect(scripts[script]).toMatch(/^node scripts\//);
   });
 
   it("resolves its own entry points to files the build actually emits", () => {
