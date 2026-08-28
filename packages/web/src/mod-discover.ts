@@ -631,7 +631,7 @@ export async function discoverMod(
      * ONLY WHEN EVERY ENTRY IS A FILE. An archive's manifest.json is INSIDE the
      * zip, which nothing has opened yet, so this check cannot see it and said so
      * by refusing a perfectly good tiles mod - caught by the live canary against
-     * neo-linoleum, whose whole payload is seven archives. The installer performs
+     * Linoleum, whose whole payload is seven archives. The installer performs
      * exactly this check on the unpacked result (storeMod), which is the only
      * place it can be answered for an archive. */
     const allFiles = payload.every((p) => p.kind === "file");

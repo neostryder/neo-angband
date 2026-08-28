@@ -37,7 +37,7 @@ import type { RegistryEnv } from "./mod-curated";
  *
  * Measured against the real manifests: the first-party mods declare
  * `neostryder (RPGM Tools)`, which beside a name produces
- * `neo-linoleum (neostryder (RPGM Tools))` - nested brackets, and twenty-two columns
+ * `Linoleum (neostryder (RPGM Tools))` - nested brackets, and twenty-two columns
  * of a row that has warnings to fit at the end of it. So the organisation in
  * parentheses is dropped here and the handle is kept.
  *

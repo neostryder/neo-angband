@@ -770,7 +770,7 @@ initLaunchArgsFromHost();
  * A FUNCTION RATHER THAN A BOOT BLOCK because it has a second caller: the mod
  * manager, right after it downloads one. Until it did, an installed mod was
  * stored, verified and then invisible - the manager's list is built from
- * diskPacks(), which was latched once at boot, so a player installed neo-linoleum,
+ * diskPacks(), which was latched once at boot, so a player installed Linoleum,
  * pressed ESC back to the list, and found the mod they had just downloaded was
  * not in it. The only way to see it was to reload, which the screen had not asked
  * them to do yet.

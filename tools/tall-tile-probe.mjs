@@ -26,7 +26,7 @@
  * entrances are tall in Shockbolt DARK only: the LIGHT pack maps them at 0x99,
  * outside the band, and its 247 tall tiles are all monsters. So `--shot` on
  * grafID 5 proves the dark pack and nothing else, and it proves the TILESHEET
- * engine and nothing else - a neo-linoleum pack is grafID 105+, drawn by the
+ * engine and nothing else - a Linoleum pack is grafID 105+, drawn by the
  * loose engine, and has never been photographed at all.
  *
  * THE MEASUREMENT IS A DIFFERENCE, NOT A LOOK. A screenshot of the fixed build

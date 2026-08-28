@@ -5,7 +5,7 @@
  * part that was ever right. The check compared the tags on disk against a catalogue
  * compiled into the game build, so it could not offer anything newer than the build:
  * its silence meant "nothing newer shipped HERE" while it said "all up to date". That
- * was caught in the act - an install carrying neo-linoleum v0.12.0 read "all up to
+ * was caught in the act - an install carrying Linoleum v0.12.0 read "all up to
  * date" on the same screen where "Install a mod" correctly offered v0.12.1, because
  * the mod had released and the game had not.
  *
