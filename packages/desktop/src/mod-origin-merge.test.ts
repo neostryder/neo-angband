@@ -56,8 +56,8 @@ describe("planModMerge: the loss this closes", () => {
     /* THE DEFECT, stated as a test: before this module existed the roster crossed and
      * the mods did not, so a port move kept every character and lost every mod with
      * nothing said. */
-    const plan = planModMerge([], [from(45871, mod("neo-linoleum"), mod("qol"))]);
-    expect(plan.install.map((m) => m.id)).toEqual(["neo-linoleum", "qol"]);
+    const plan = planModMerge([], [from(45871, mod("linoleum"), mod("qol"))]);
+    expect(plan.install.map((m) => m.id)).toEqual(["linoleum", "qol"]);
     expect(plan.skipped).toEqual([]);
   });
 

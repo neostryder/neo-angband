@@ -270,7 +270,7 @@ describe("composeTileModes", () => {
     /* This used to use Shockbolt's mode 5 as the example of "a mode core does not
      * offer". Core offers all six catalog modes now, so the only way a mod can
      * APPEND rather than replace is with a grafID upstream never assigned - which
-     * is what neo-linoleum actually does (101). Using a real out-of-catalog id
+     * is what Linoleum actually does (101). Using a real out-of-catalog id
      * keeps the test about the append path instead of about a licence. */
     const out = composeTileModes({
       core,
@@ -278,13 +278,13 @@ describe("composeTileModes", () => {
         pack({
           grafID: 101,
           menuname: "Original Tiles (Linoleum)",
-          modName: "neo-linoleum",
+          modName: "linoleum",
           path: "original-tiles",
         }),
       ],
     });
     expect(out.map((m) => m.grafID)).toEqual([1, 2, 3, 4, 5, 6, 101]);
-    expect(out[6]?.modName).toBe("neo-linoleum");
+    expect(out[6]?.modName).toBe("linoleum");
   });
 
   it("does not mutate the core list it was given", () => {
@@ -655,15 +655,15 @@ describe("bundled mods", () => {
     for (const path of keys) {
       const resolve = tilePackResolver({
         source: { kind: "bundle", base: BUNDLED_MODS_BASE },
-        modId: "neo-linoleum",
+        modId: "linoleum",
         path,
       });
       const url = await resolve?.("manifest.txt");
-      expect(url).toBe(`mods/neo-linoleum/${path}/manifest.txt`);
+      expect(url).toBe(`mods/linoleum/${path}/manifest.txt`);
     }
   });
 
-  it("the curated list still points at neo-linoleum, since it is not in the bundle", () => {
+  it("the curated list still points at linoleum, since it is not in the bundle", () => {
     /* The half of the chain that replaced the generator: the game reaches these packs
      * by installing them, so the curated entry IS the wiring, and a broken one is a
      * Graphics screen with no Linoleum rows and nothing to say why.

@@ -47,14 +47,14 @@ describe("ensureLinoleumTilesheetPack", () => {
     const original = async (): Promise<string | null> => null;
 
     await ensureLinoleumTilesheetPack({
-      modId: "neo-linoleum",
+      modId: "linoleum",
       source,
       resolve: original,
       cache,
       converter,
     });
     await ensureLinoleumTilesheetPack({
-      modId: "neo-linoleum",
+      modId: "linoleum",
       source,
       resolve: original,
       cache,
@@ -64,9 +64,9 @@ describe("ensureLinoleumTilesheetPack", () => {
     expect(conversions).toBe(1);
     expect(cache.writes).toBe(1);
     expect(cache.keys()).toEqual([
-      "neo-linoleum/gervais/source-v1/images/32/floor.png",
-      "neo-linoleum/gervais/source-v1/manifest.txt",
-      "neo-linoleum/gervais/source-v1/maps/targets.txt",
+      "linoleum/gervais/source-v1/images/32/floor.png",
+      "linoleum/gervais/source-v1/manifest.txt",
+      "linoleum/gervais/source-v1/maps/targets.txt",
     ]);
   });
 

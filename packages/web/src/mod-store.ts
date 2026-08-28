@@ -162,15 +162,25 @@ export function isShippedMod(id: string, dev = import.meta.env.DEV): boolean {
  * on, and the symptom - "the tile sets stopped appearing in Graphics" - points at
  * the tile code, not at a rename three commits back.
  *
- * `linoleum` -> `neo-linoleum` (2026-07-31): the mod always DISPLAYED as
- * neo-linoleum; the id, its folder and the docs had not caught up.
- *
  * `builder` -> `forge` (2026-08-22): the mod-builder repository was renamed to
  * neo-angband-mod-forge and its display name to ModForge; the manifest id
  * follows so it no longer names a discarded display name.
+ *
+ * `neo-linoleum` -> `linoleum` (2026-08-28): reverses the 2026-07-31 entry
+ * above, now retired rather than kept alongside this one. That rename
+ * existed because the id used to leak into what a player saw; the display
+ * name is backfilled independently of the id now (installedMods, issue
+ * #132), so the "neo-" prefix serves nothing and the plain id is what the
+ * mod was always meant to be called. Retiring the old entry rather than
+ * keeping both matters: every id this mod has ever shipped under already
+ * maps to the same final id either way - `neo-linoleum` through this entry,
+ * or `linoleum` itself, unchanged, for a record from before the first
+ * rename that was never actually migrated. Keeping the old entry too would
+ * have mapped that second, rarer case forward to `neo-linoleum` again -
+ * one entry per id's whole history, not a chain.
  */
 export const RENAMED_MOD_IDS: Readonly<Record<string, string>> = {
-  linoleum: "neo-linoleum",
+  "neo-linoleum": "linoleum",
   builder: "forge",
 };
 

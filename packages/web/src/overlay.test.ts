@@ -1845,7 +1845,7 @@ describe("selectFromMenu: a detail pane cannot squeeze the list away", () => {
     ];
     /* A description longer than the terminal, which is what a real mod blurb is. */
     const pane: ScreenLine[] = Array.from({ length: 40 }, (_, i) => ({ text: `line ${String(i)}` }));
-    const done = selectFromMenu(term, "neo-linoleum", items, "[ ESC ]", {
+    const done = selectFromMenu(term, "linoleum", items, "[ ESC ]", {
       minListRows: items.length,
       detail: () => pane,
     });

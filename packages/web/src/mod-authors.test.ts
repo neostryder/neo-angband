@@ -37,11 +37,11 @@ describe("displayName: the author beside the name", () => {
   it("drops an organisation in parentheses instead of nesting brackets", () => {
     /* Measured against the real first-party manifests, which declare
      * "neostryder (RPGM Tools)" - so the naive version produced
-     * "neo-linoleum (neostryder (RPGM Tools))" on a row with warnings to fit after
+     * "Linoleum (neostryder (RPGM Tools))" on a row with warnings to fit after
      * it, and dropped the author entirely from the longest-named mod. The full
      * string is still printed in the detail pane. */
-    expect(displayName("neo-linoleum", "neostryder (RPGM Tools)")).toBe(
-      "neo-linoleum (neostryder)",
+    expect(displayName("linoleum", "neostryder (RPGM Tools)")).toBe(
+      "linoleum (neostryder)",
     );
     expect(shortAuthor("neostryder (RPGM Tools)")).toBe("neostryder");
     /* Only a SPACED bracket, and only after something: a handle that IS a bracketed
