@@ -38,6 +38,12 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-08-27
+
+Current state of the project at version `1.1.2` - a fixes release. No player
+action is needed for the Linoleum id change below; an existing install
+carries its enabled choice and rule choices across automatically.
+
 ### Changed
 
 - The Linoleum mod's id is `linoleum`, not `neo-linoleum` - it moves back the
