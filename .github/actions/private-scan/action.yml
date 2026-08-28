@@ -21,7 +21,7 @@
 #
 # Usage in a mod repository's workflow:
 #
-#   - uses: actions/checkout@v4
+#   - uses: actions/checkout@v7
 #   - uses: neostryder/neo-angband/.github/actions/private-scan@master
 #
 name: private-scan
