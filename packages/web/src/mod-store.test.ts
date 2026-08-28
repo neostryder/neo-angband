@@ -213,7 +213,7 @@ describe("resolveEnabledIds + hasStoredEnabled", () => {
     // fresh install boots pure Angband 4.2.6 with zero mods on, regardless of
     // which bundled mods were discovered.
     expect(DEFAULT_ENABLED_MODS).toEqual([]);
-    const discovered = ["bug-fixes", "qol", "neo-linoleum", "demo-x"];
+    const discovered = ["bug-fixes", "qol", "linoleum", "demo-x"];
     expect(resolveEnabledIds({ url: null, stored: null, discovered })).toEqual(
       [],
     );
@@ -231,7 +231,7 @@ describe("resolveEnabledIds + hasStoredEnabled", () => {
   });
 
   it("honors a stored set verbatim, including an empty one (all off)", () => {
-    const discovered = ["bug-fixes", "qol", "neo-linoleum"];
+    const discovered = ["bug-fixes", "qol", "linoleum"];
     expect(resolveEnabledIds({ url: null, stored: [], discovered })).toEqual([]);
     expect(
       resolveEnabledIds({ url: null, stored: ["qol"], discovered }),
@@ -243,7 +243,7 @@ describe("resolveEnabledIds + hasStoredEnabled", () => {
       resolveEnabledIds({
         url: ["demo-modtest"],
         stored: ["qol"],
-        discovered: ["bug-fixes", "qol", "neo-linoleum", "demo-modtest"],
+        discovered: ["bug-fixes", "qol", "linoleum", "demo-modtest"],
       }),
     ).toEqual(["demo-modtest"]);
   });
@@ -728,28 +728,28 @@ describe("readEnabledModIds (the one live reader)", () => {
  */
 describe("renamed mod ids keep working", () => {
   it("maps the old id to the new one in a saved enabled set", () => {
-    expect(RENAMED_MOD_IDS["linoleum"]).toBe("neo-linoleum");
+    expect(RENAMED_MOD_IDS["neo-linoleum"]).toBe("linoleum");
     expect(
       resolveEnabledIds({
         url: null,
-        stored: ["qol", "linoleum"],
-        discovered: ["qol", "neo-linoleum"],
+        stored: ["qol", "neo-linoleum"],
+        discovered: ["qol", "linoleum"],
       }),
-    ).toEqual(["qol", "neo-linoleum"]);
+    ).toEqual(["qol", "linoleum"]);
   });
 
   it("maps it in the ?mods= override and in an external load order too", () => {
     expect(
-      resolveEnabledIds({ url: ["linoleum"], stored: null, discovered: ["neo-linoleum"] }),
-    ).toEqual(["neo-linoleum"]);
+      resolveEnabledIds({ url: ["neo-linoleum"], stored: null, discovered: ["linoleum"] }),
+    ).toEqual(["linoleum"]);
     expect(
       resolveEnabledIds({
         url: null,
         stored: [],
-        discovered: ["neo-linoleum"],
-        diskOrder: ["linoleum"],
+        discovered: ["linoleum"],
+        diskOrder: ["neo-linoleum"],
       }),
-    ).toEqual(["neo-linoleum"]);
+    ).toEqual(["linoleum"]);
   });
 
   it("honours an OFF choice recorded against the old id", () => {
@@ -758,21 +758,21 @@ describe("renamed mod ids keep working", () => {
     expect(
       resolveEnabledIds({
         url: null,
-        stored: ["neo-linoleum"],
-        discovered: ["neo-linoleum"],
-        choices: { linoleum: false },
+        stored: ["linoleum"],
+        discovered: ["linoleum"],
+        choices: { "neo-linoleum": false },
       }),
     ).toEqual([]);
   });
 
   it("does not list the mod twice when a store straddles the rename", () => {
-    expect(migrateModIds(["linoleum", "neo-linoleum", "qol"])).toEqual([
-      "neo-linoleum",
+    expect(migrateModIds(["neo-linoleum", "linoleum", "qol"])).toEqual([
+      "linoleum",
       "qol",
     ]);
     /* And the NEW key wins when both are in the choice map: it was set later. */
-    expect(migrateModIdKeys({ linoleum: false, "neo-linoleum": true })).toEqual({
-      "neo-linoleum": true,
+    expect(migrateModIdKeys({ "neo-linoleum": false, linoleum: true })).toEqual({
+      linoleum: true,
     });
   });
 

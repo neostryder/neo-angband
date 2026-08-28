@@ -29,11 +29,11 @@ describe("discoverModHookEntries", () => {
   });
 
   it("does NOT find the tiles mod, which contributes no behaviour", () => {
-    /* neo-linoleum is a tile engine plus a loose pack: it declares no rules and
+    /* Linoleum is a tile engine plus a loose pack: it declares no rules and
      * ships no plugin.ts, so it must never appear here. An empty contribution would
      * be indistinguishable in effect but wrong in kind - "a disabled mod's patches do
      * not exist" applies just as much to a mod that has none. */
-    expect(entries.has("neo-linoleum")).toBe(false);
+    expect(entries.has("linoleum")).toBe(false);
   });
 
   it("every entry point is a function of flags returning contributions", () => {

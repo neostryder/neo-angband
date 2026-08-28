@@ -8,8 +8,8 @@ The format originated as a feature of neostryder's own Angband fork (see
 `docs/hacking/linoleum.rst` there, and the converter
 `scripts/build-linoleum-packs.ps1`). It is NOT part of the official Angband
 4.2.6 parity tag, so it exists ONLY as a mod - never in core (PORT_PLAN.md
-decisions 18 and 26). It ships as **neo-linoleum**, a STANDALONE
-`tiles`-shape pack (id `linoleum`) loaded through the ordinary mod pipeline,
+decisions 18 and 26). It ships as **Linoleum** (id `linoleum`), a STANDALONE
+`tiles`-shape pack loaded through the ordinary mod pipeline,
 off on a fresh install like every mod, independent of and never combined with
 the QoL or `bug-fixes` mods, and - like any mod - fully removable.
 `packages/linoleum` is the build-time converter (a behaviorally faithful

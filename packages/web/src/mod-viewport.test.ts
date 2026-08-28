@@ -129,7 +129,7 @@ function catalogue(): CatalogMod[] {
       affectsGameplay: true,
       nondeterministic: true,
     }),
-    mk({ id: "neo-linoleum", name: "Linoleum", version: "0.11.0", shape: "tiles" }),
+    mk({ id: "linoleum", name: "Linoleum", version: "0.11.0", shape: "tiles" }),
     mk({
       id: "borg",
       name: "Borg",

@@ -38,6 +38,13 @@ still calls itself.
 
 ## [Unreleased]
 
+### Changed
+
+- The Linoleum mod's id is `linoleum`, not `neo-linoleum` - it moves back the
+  other way from the 2026-07-31 rename now that the id no longer leaks into
+  what a player sees. An existing install carries its enabled choice and
+  rule choices across automatically.
+
 ### Fixed
 
 - `@rpgm-tools/neo-angband-mod-sdk` stopped regenerating its packaged docs from
