@@ -24,7 +24,7 @@
  *     enforced it, because validateManifest never sees whether plugin.js is there.
  *   - a mod whose payload is committed .zip archives must DECLARE them, or the
  *     installer stores the zips unopened and the mod is present and dead. Found on
- *     neo-linoleum by a live canary, after it had shipped that way.
+ *     Linoleum by a live canary, after it had shipped that way.
  *
  * A rule is either `required` - the mod cannot work, and an install is refused - or
  * `recommended`, which is advice and never blocks anything. Nothing in between: a

@@ -615,7 +615,7 @@ export function buildPackExport(
    * from does not survive conversion - and the runtime's synthetic slot number
    * is not a row either. Nothing but this file can tell the loose-pack engine
    * which pictures overdraw, which is why its absence made every Shockbolt
-   * monster squat under neo-linoleum (#243).
+   * monster squat under Linoleum (#243).
    */
   if (tallAssets.size > 0) {
     const tallLines: string[] = [

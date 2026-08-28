@@ -1630,7 +1630,7 @@ export interface SelectMenuOptions {
    * The pane is sized from its own content, and `bodyRows` was whatever was left
    * over with a floor of ONE. A mod whose description ran to thirty wrapped lines
    * therefore produced a menu showing its first action row and nothing else -
-   * which is what neo-linoleum's manager screen looked like. The pane is the part
+   * which is what Linoleum's manager screen looked like. The pane is the part
    * that can afford to be cut here: it says so, and the caller offers the full
    * text somewhere that scrolls.
    */

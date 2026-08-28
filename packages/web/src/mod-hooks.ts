@@ -12,7 +12,7 @@
  * (mod-plugin.ts) - `{ api, hooks?, register? }` - and its `hooks` is called ONCE
  * per ENABLED mod, in enabled/load order, with a ModPluginContext carrying THAT
  * mod's resolved rule choices (`choices[flag] ?? rule.default` for every rule its
- * manifest declares). A mod with no behaviour - the neo-linoleum tile pack, and
+ * manifest declares). A mod with no behaviour - the Linoleum tile pack, and
  * every pure content mod - simply ships no plugin.ts and is never called.
  *
  * ONE SHAPE, NOT TWO. This used to glob `hooks.ts` for a bundled mod, whose entry
