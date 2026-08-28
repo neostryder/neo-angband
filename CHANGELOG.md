@@ -36,10 +36,20 @@ commit a tag resolved to when the mod was installed, and a tag that has
 since been retargeted is reported as moved rather than as the version it
 still calls itself.
 
-## [Unreleased]
+## [1.1.1] - 2026-08-27
 
-### Changed
+Current state of the project at version `1.1.1` - a fixes release. Nothing
+new for a player; two corrections for anyone reading the Mod options screen
+or writing a mod against the SDK.
 
+### Fixed
+
+- `@rpgm-tools/neo-angband-mod-sdk`'s published package never actually shipped
+  its `docs/` directory - the manifest's `files` list named `dist`, `src` and
+  `bin` but not `docs`, so every consumer of the real published package (as
+  opposed to a local, unbuilt checkout) was missing the mod-authoring
+  documentation the 1.1.0 changelog entry below describes. `files` now
+  includes `docs`.
 - The Mod options screen no longer labels each row "Fix:" or "Part:" - an
   internal distinction (a behavioural rule versus a content section) that
   meant nothing to a player reading the row. The detail panel already
