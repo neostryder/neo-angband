@@ -1,7 +1,7 @@
 {
   "id": "demo-resources",
   "name": "Resources Demo (art, help, prefs, translation)",
-  "version": "0.18.2",
+  "version": "0.18.3",
   "shape": "content",
   "engine": ">=0.1.0",
   "author": "neostryder",

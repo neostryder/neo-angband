@@ -105,6 +105,8 @@ describe("a run can be interrupted", () => {
     const body = functionBody(MAIN, "driveRest");
     // Only the keypress arm: the monster-in-view and damage disturbs are silent
     // in the C (ui-game.c:663 is the only "Cancelled." site).
-    expect(body).toMatch(/if \(interrupted && !dead\) say\("Cancelled\."\);/);
+    expect(body).toMatch(
+      /if \(interrupted && !dead\) say\(t\("main\.command\.cancelled", "Cancelled\."\)\);/,
+    );
   });
 });

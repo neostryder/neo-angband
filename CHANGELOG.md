@@ -38,6 +38,21 @@ still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- The game's combat text, status messages and yes/no prompts were still
+  written as hardcoded English in the web front end's main module, so a
+  mod-supplied locale could not reach any of them: every melee hit, miss,
+  crit and kill line, the targeting and item-picker status messages, the
+  spell, study and browse refusals, the save, retire, quit and death
+  confirmations, the screen-dump and pref-command reports, and the borg and
+  autoplayer notices. All of it now routes through `t()`, with variable text
+  carried as named placeholders so a translation can put the count, the
+  monster or the verb where its own grammar needs it. The bundled
+  `demo-resources` mod's `en-XA` pseudo-locale catalog grew to match, and
+  also picked up the entries the mods, mod-browse and options screens had
+  been missing since they were routed (neostryder/neo-angband#95).
+
 ## [1.1.2] - 2026-08-27
 
 Current state of the project at version `1.1.2` - a fixes release. No player
