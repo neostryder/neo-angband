@@ -38,6 +38,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-08-29
+
 ### Fixed
 
 - A menu's cursor reset to the first row whenever a submenu closed, instead of
@@ -105,7 +107,7 @@ still calls itself.
 
 ## [1.1.2] - 2026-08-27
 
-Current state of the project at version `1.2.0` - a fixes release. No player
+Current state of the project at version `1.2.1` - a fixes release. No player
 action is needed for the Linoleum id change below; an existing install
 carries its enabled choice and rule choices across automatically.
 
