@@ -55,6 +55,20 @@ export interface ModPrefs {
 /** The storage a ModPrefs reads and writes. `localStorage`, in both front ends. */
 export type PrefsStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
+let backing: PrefsStorage | null | undefined;
+
+/**
+ * Point defaultPrefsStorage() at another storage - a profile-scoped view in
+ * the real app (profiles.ts, neo-angband#163), a fake in tests. Every mod's
+ * ctx.prefs is built fresh at boot (modPrefs is called once per plugin
+ * instantiation, never cached across a reload), and a profile switch is
+ * always a reload, so setting this once before any mod is instantiated is
+ * enough - no already-built ModPrefs needs to notice a later change.
+ */
+export function setPrefsStorage(s: PrefsStorage | null): void {
+  backing = s;
+}
+
 /**
  * The default backing store, or null where there is none.
  *
@@ -64,12 +78,14 @@ export type PrefsStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
  * throwing - would take down a mod for a facility it may only use at shutdown.
  */
 export function defaultPrefsStorage(): PrefsStorage | null {
+  if (backing !== undefined) return backing;
   try {
-    return typeof localStorage === "undefined" ? null : localStorage;
+    backing = typeof localStorage === "undefined" ? null : localStorage;
   } catch {
     /* Access itself throws in some embedded contexts, before any get/set. */
-    return null;
+    backing = null;
   }
+  return backing;
 }
 
 /**

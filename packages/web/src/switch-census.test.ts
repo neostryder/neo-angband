@@ -348,7 +348,10 @@ describe("the switch census", () => {
     expect(keys.has("ARRAY_LOOKUP|packages/core/src/host/args.ts|13")).toBe(true);
     expect(keys.has("ARRAY_LOOKUP|packages/mcp/src/tools.ts|19")).toBe(true);
     expect(keys.has("IF_CHAIN|packages/core/src/game/target-loop.ts|9")).toBe(true);
-    expect(keys.has("IF_CHAIN|packages/web/src/mods.ts|9")).toBe(true);
+    /* Was 9 arms; neo-angband#163 removed the "profiles" branch (the old
+     * mod-loadout-snapshot mechanism, superseded by player/testing profiles),
+     * dropping this chain to 8 - still the same row, one arm fewer. */
+    expect(keys.has("IF_CHAIN|packages/web/src/mods.ts|8")).toBe(true);
   });
 
   it("has no CANDIDATE left, which is what the alpha gate asked for", () => {

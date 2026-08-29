@@ -21,31 +21,20 @@ and separately describe your birth choices and options in words if you want
 someone to match them. There is no artifact that captures "this, exactly" and
 hands it to another install or another person.
 
-**A narrower version of this already exists, and is not enough.**
-`ModStore.saveProfile` / `applyProfile` (`packages/web/src/mod-store.ts:832-854`),
-surfaced as **Profiles...** in the Mods menu (`packages/web/src/mods.ts:1823-1863`,
-action tag `5`), lets a player save the *current enabled set plus capability
-consents* under a name and switch back to it later. Three things it does not
-do, and this feature is exactly the three:
-
-- It never leaves the browser. `ModProfile` (`mod-store.ts:412-416`) is
-  `{name, enabledMods, consents}` written to the same `localStorage` the rest
-  of the store lives in - there is no export, no file, nothing to hand to
-  another person or another install.
-- It does not carry a mod's **version**, so switching to a profile reapplies
-  today's installed copy of each mod, not the copy that was enabled when the
-  profile was saved.
-- It does not carry **rule/section flag choices** or **options**. Applying a
-  profile turns mods on and off; it does not touch `RULE_CHOICES_KEY`
-  (`mod-store.ts:760-774`) or `OptionState`.
-
-This feature is a superset, built to leave the browser: a real file (or a
-block of text short enough to paste into a Discord message), versioned, that
-can carry a mod's version and origin, its flag choices, and - separately,
-opt-in - the birth and general game options a character was using. `Profiles...`
-keeps its name and its job (a quick local bookmark); nothing here renames or
-folds it in, because the two answer different questions and a reader who
-searched for "profile" in this codebase already has a meaning for it.
+**A narrower version of this used to exist, and was not enough.**
+`ModStore.saveProfile` / `applyProfile` let a player save the *current enabled
+set plus capability consents* under a name and switch back to it later,
+surfaced as **Profiles...** in the Mods menu. It never left the browser, did
+not carry a mod's version, and did not carry rule/section flag choices or
+options. It was removed (neo-angband#163) once player/testing profiles made
+it redundant - every player/testing profile now carries its own independent
+enabled set and consents, so switching between mod loadouts is switching
+profiles. This feature (still unbuilt) is not a superset of that removed
+mechanism's *local* job - #163's profiles cover that now - it is a superset in
+a different direction: a real file (or a block of text short enough to paste
+into a Discord message), versioned, that can carry a mod's version and
+origin, its flag choices, and - separately, opt-in - the birth and general
+game options a character was using, and that can leave the browser entirely.
 
 ## What the manager can actually capture, read from the real code
 
@@ -99,21 +88,23 @@ already leaves it alone.
 
 ## Naming
 
-"Profile" is ruled out twice over: it is exactly the generic, catch-all kind
-of name this feature needs to avoid, and this codebase's `ModProfile` already
-names a narrower, different thing (see above) - reusing the word here would
-make two unrelated features answer to the same name in the same menu.
+"Profile" is ruled out: player/testing profiles (neo-angband#163) already name
+a *local* multi-configuration feature (separate settings, mod loadout, and
+saves within one install) - reusing the word here for a *portable, shareable*
+file would make two unrelated features answer to the same name in the same
+menu, exactly the collision the removed `ModProfile` mechanism used to avoid
+by being the only claimant.
 
 Five candidates, judged on: does it read as *this project's own* term rather
 than a claim about upstream Angband or the wider roguelike genre; does it make
 a good verb/noun pair ("save a X", "load a X", "share your X"); does it avoid
 every name already spoken for in this codebase (`pack`/`PackManifest` for one
 mod, `bag` for a mod's private save data, `manifest` for the per-mod JSON
-file, `profile` for the existing local feature, `Grimoire` and `rune` for real
-upstream content - Kelek's Grimoire of Power is an actual artifact spellbook,
-and runes are a real 4.2 mechanic - and `Vault`/`Tome`/`Scroll`/`Quill`/`Atlas`/
-`Herald`/`Sceptre`/`Forge`, which are RPGM Tools' own other product and mod
-names):
+file, `profile` for the player/testing-profile feature, `Grimoire` and `rune`
+for real upstream content - Kelek's Grimoire of Power is an actual artifact
+spellbook, and runes are a real 4.2 mechanic - and
+`Vault`/`Tome`/`Scroll`/`Quill`/`Atlas`/`Herald`/`Sceptre`/`Forge`, which are
+RPGM Tools' own other product and mod names):
 
 | Candidate | Why it could work | Why it might not |
 |---|---|---|
@@ -211,9 +202,7 @@ Field notes:
   mirrors gate 1 of `MOD_COMPATIBILITY.md` ("the engine labels, it does not
   forbid") applied to the Delve's own version number instead of a mod's.
 - **`name`** and **`description`** are the human label, shown on the import
-  preview screen and nowhere else authoritative. `name` reuses the field name
-  `ModProfile.name` already uses, for a reader moving between the two
-  features.
+  preview screen and nowhere else authoritative.
 - **`createdWithEngine`** is informational only, exactly like a mod's own
   `engine` range (decision 18: a label, never a gate). It never blocks an
   import; it lets the preview screen say "made on 0.20.0" the way a mod's row
@@ -275,11 +264,10 @@ if it happens later, has nothing to fight against.
 
 ## The UI: two new Mods-menu rows
 
-Both live beside the existing action rows (`packages/web/src/mods.ts:2360-2500`,
-the `addAction` calls that build `download`, `modupdates`, `folder`,
-`conflicts`, `autosort`, `profiles`, `install`, `reload`), get their own
-`ActionKind` entries and fixed `MenuItem.tag`s the same way every row there
-already has one, and sit next to **Profiles...** rather than replacing it:
+Both live beside the existing action rows (`packages/web/src/mods.ts`, the
+`addAction` calls that build `download`, `modupdates`, `folder`, `conflicts`,
+`autosort`, `install`, `reload`), and get their own `ActionKind` entries and
+fixed `MenuItem.tag`s the same way every row there already has one:
 
 ```
 Save a Delve...      "Write your current mod set, flags, and (optionally) your
@@ -290,11 +278,10 @@ Load a Delve...       "Read someone else's mod set, flags, and options from a
 
 ### Save a Delve...
 
-A single screen, in the same overlay style `manageProfiles`
-(`mods.ts:1823-1863`) already uses:
+A single screen, in the same overlay style the rest of the Mods manager's
+own sub-screens already use:
 
-1. A name field (`promptText`, the same helper `manageProfiles` uses for a
-   profile's name) and an optional description field.
+1. A name field (`promptText`) and an optional description field.
 2. A checklist of the player's currently **enabled** mods, pre-checked, each
    row showing name + version; unchecking one drops it from the export
    entirely (it will not appear in `mods` at all, not merely marked disabled -
@@ -437,10 +424,9 @@ Consistent with the rest of the manager: nothing here belongs in
 `packages/web/src/mod-delve.ts` (encode/decode, the merge-or-replace
 resolution, the version-mismatch walk reusing `mod-discover.ts`'s existing
 search rather than a second copy of it) is the natural home, with the two menu
-rows and their screens added to `mods.ts` beside `manageProfiles`, and the
-save/load file plumbing reusing the same per-platform pattern
-`CLOUD_BACKUP_DESIGN.md` already worked out for writing outside the browser
-sandbox on desktop.
+rows and their screens added to `mods.ts`, and the save/load file plumbing
+reusing the same per-platform pattern `CLOUD_BACKUP_DESIGN.md` already worked
+out for writing outside the browser sandbox on desktop.
 
 ## Open questions this document deliberately leaves open
 
@@ -449,7 +435,8 @@ sandbox on desktop.
   per-mod granularity. Left for whoever builds this to decide against real
   usage, since a per-flag checklist multiplies the screen's length by every
   mod's rule count.
-- Whether a later revision should let `Profiles...` import a Delve (taking
-  only the mod/flag portion, silently dropping any `options` block) so the
-  two features are not entirely separate paths. Not needed for a first cut,
-  and deliberately not decided here.
+- Whether a later revision should let a player/testing profile (neo-angband#163)
+  be created directly from an imported Delve (taking only the mod/flag portion,
+  silently dropping any `options` block) so the two features are not entirely
+  separate paths. Not needed for a first cut, and deliberately not decided
+  here.

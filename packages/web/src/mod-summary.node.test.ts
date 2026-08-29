@@ -31,6 +31,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readModDir, resetDiskPacks, setDiskPacks } from "./disk-packs";
 import type { ModDirEntry, ModDirSource } from "./disk-packs";
 import { enabledModSummary, NOT_INSTALLED } from "./mod-summary";
+import { setModStorage, type StorageLike } from "./mod-store";
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));
 const TUTORIALS = join(REPO, "samples", "tutorials");
@@ -94,21 +95,28 @@ function manifestVersion(id: string): string {
  */
 function withEnabled<T>(ids: readonly string[], fn: () => T): T {
   const map = new Map<string, string>([["neo:enabledMods", JSON.stringify(ids)]]);
-  vi.stubGlobal("localStorage", {
+  const fake: StorageLike = {
     getItem: (k: string) => map.get(k) ?? null,
     setItem: (k: string, v: string) => void map.set(k, v),
     removeItem: (k: string) => void map.delete(k),
-  });
+  };
+  // mod-store.ts now caches its backing storage rather than re-reading
+  // globalThis.localStorage every call (neo-angband#163's profile-scoping
+  // seam), so the stub and setModStorage both have to point at the same fake.
+  vi.stubGlobal("localStorage", fake);
+  setModStorage(fake);
   try {
     return fn();
   } finally {
     vi.unstubAllGlobals();
+    setModStorage(null);
   }
 }
 
 afterEach(() => {
   resetDiskPacks();
   vi.unstubAllGlobals();
+  setModStorage(null);
 });
 
 describe("enabledModSummary - the dump's [Mods enabled] list", () => {
@@ -165,13 +173,15 @@ describe("enabledModSummary - the dump's [Mods enabled] list", () => {
   });
 
   it("survives a storage that throws, because a report is often filed BECAUSE it does", () => {
-    vi.stubGlobal("localStorage", {
+    const throwing: StorageLike = {
       getItem: () => {
         throw new Error("private mode");
       },
       setItem: () => undefined,
       removeItem: () => undefined,
-    });
+    };
+    vi.stubGlobal("localStorage", throwing);
+    setModStorage(throwing);
     expect(enabledModSummary()).toEqual([]);
   });
 });

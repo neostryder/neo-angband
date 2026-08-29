@@ -220,13 +220,6 @@
       "verdict": "UI - menu action routing, entries[pick].action (MOD_REACH gap 18/24)."
     },
     {
-      "file": "packages/web/src/mods.ts",
-      "cases": 9,
-      "hasDefault": false,
-      "kind": "IF_CHAIN",
-      "verdict": "UI - row-action routing in the mod-manager screen, an `if/else if (rk.kind === ...)` chain instead of main.ts's items[idx].action switch pattern. A mod-manager feature added to this menu has no arm to land in (MOD_REACH gap 18/24)."
-    },
-    {
       "file": "packages/web/src/shop.ts",
       "cases": 9,
       "hasDefault": true,
@@ -295,6 +288,13 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "UI - keypress routing in a birth screen (MOD_REACH gap 23). Two screens, same finding."
+    },
+    {
+      "file": "packages/web/src/mods.ts",
+      "cases": 8,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "UI - row-action routing in the mod-manager screen, an `if/else if (rk.kind === ...)` chain instead of main.ts's items[idx].action switch pattern. A mod-manager feature added to this menu has no arm to land in (MOD_REACH gap 18/24). Was 9 arms; neo-angband#163 removed the profiles branch."
     }
   ]
 }

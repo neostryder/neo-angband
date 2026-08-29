@@ -6,6 +6,7 @@ import {
   listDeaths,
   listRoster,
   markDead,
+  setRosterStorage,
   upsertMeta,
   writeSlot,
 } from "./roster";
@@ -53,23 +54,17 @@ function meta(id: string, over: Partial<CharMeta> = {}): CharMeta {
 }
 
 let storage: FakeStorage;
-const realStorage = globalThis.localStorage;
 
 beforeEach(() => {
   storage = new FakeStorage();
-  Object.defineProperty(globalThis, "localStorage", {
-    value: storage,
-    configurable: true,
-    writable: true,
-  });
+  // roster.ts caches its backing storage (setRosterStorage, neo-angband#163's
+  // profile-scoping seam) rather than re-reading globalThis.localStorage on
+  // every call, so a fresh fake has to be pushed in explicitly each test.
+  setRosterStorage(storage);
 });
 
 afterEach(() => {
-  Object.defineProperty(globalThis, "localStorage", {
-    value: realStorage,
-    configurable: true,
-    writable: true,
-  });
+  setRosterStorage(null);
 });
 
 describe("the roster reports a failed write (ui-game.c:1152-1166)", () => {

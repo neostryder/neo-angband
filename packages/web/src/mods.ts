@@ -44,7 +44,6 @@
 import {
   selectFromMenu,
   showTextScreen,
-  promptText,
   MENU_REFRESH,
   type MenuItem,
   type ScreenLine,
@@ -2459,51 +2458,6 @@ function slotRow(
   };
 }
 
-/** The profiles submenu: save current, apply, or delete a named config. */
-async function manageProfiles(
-  term: GridSurface & GridPointerInput,
-  deps: ModManagerDeps,
-): Promise<boolean> {
-  let changed = false;
-  for (;;) {
-    const profiles = Object.keys(deps.store.getProfiles()).sort();
-    const items: MenuItem[] = [
-      {
-        label: t("modsScreen.profiles.saveCurrent", "Save current setup as a profile..."),
-        color: C_FG,
-      },
-    ];
-    const acts: string[] = ["save"];
-    for (const name of profiles) {
-      items.push({ label: t("modsScreen.profiles.apply", 'Apply "{name}"', { name }), color: C_ENABLED });
-      acts.push(`apply:${name}`);
-      items.push({ label: t("modsScreen.profiles.delete", 'Delete "{name}"', { name }), color: C_WARN });
-      acts.push(`delete:${name}`);
-    }
-    items.push({ label: t("modsScreen.common.back", "Back"), color: C_DIM });
-    acts.push("back");
-
-    const pick = await selectFromMenu(
-      term,
-      "core:mod-profiles",
-      t("modsScreen.profiles.title", "Mod profiles"),
-      items,
-      t("modsScreen.profiles.footer", "[ save / apply / delete; ESC to go back ]"),
-    );
-    const act = pick === null ? "back" : acts[pick];
-    if (act === "back") return changed;
-    if (act === "save") {
-      const name = await promptText(term, t("modsScreen.profiles.nameField", "Profile name"), "", 40);
-      if (name && name.trim()) deps.store.saveProfile(name.trim());
-    } else if (act?.startsWith("apply:")) {
-      deps.store.applyProfile(act.slice("apply:".length));
-      changed = true;
-    } else if (act?.startsWith("delete:")) {
-      deps.store.deleteProfile(act.slice("delete:".length));
-    }
-  }
-}
-
 /**
  * Display name for each autoplayer speed tier (mod-store.ts).
  *
@@ -3085,7 +3039,6 @@ export async function runModManager(
     type ActionKind =
       | "conflicts"
       | "autosort"
-      | "profiles"
       | "install"
       | "download"
       | "modupdates"
@@ -3113,7 +3066,6 @@ export async function runModManager(
       folder: "2",
       conflicts: "3",
       autosort: "4",
-      profiles: "5",
       install: "6",
       reload: "9",
       done: "0",
@@ -3210,12 +3162,6 @@ export async function runModManager(
         "modsScreen.run.autoSortHint",
         "Work out an order from what the mods ask for. Your own moves are kept.",
       ),
-    );
-    addAction(
-      t("modsScreen.run.profiles", "Profiles..."),
-      "profiles",
-      C_FG,
-      t("modsScreen.run.profilesHint", "Save this set of mods under a name, and switch between sets."),
     );
     /* The problems belonging to no ROW - a folder whose manifest would not validate
      * never becomes a catalogue entry, so there is nowhere else in this screen they
@@ -3436,8 +3382,6 @@ export async function runModManager(
       await viewConflicts(term, deps);
     } else if (rk.kind === "autosort") {
       if (await autoSortLoadOrder(term, deps)) dirty = true;
-    } else if (rk.kind === "profiles") {
-      if (await manageProfiles(term, deps)) dirty = true;
     } else if (rk.kind === "download") {
       if (deps.modBrowse) {
         const touched = await showModBrowse(term, {

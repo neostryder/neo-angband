@@ -6,7 +6,14 @@
  *   localStorage key + JSON string[] schema pack.ts reads at composition time,
  *   so writing it here and reloading is what actually turns a content mod on.
  * - per-mod CONSENT (which capabilities the user approved), "neo:modConsents".
- * - named PROFILES (a saved enabled-set + consents), "neo:modProfiles".
+ *
+ * There used to also be named PROFILES here (a saved enabled-set + consents,
+ * "neo:modProfiles") - a player could snapshot and reapply a mod loadout by
+ * name. Player/testing profiles (profiles.ts, neo-angband#163) fully supersede
+ * that: every profile already carries its own independent enabled-set and
+ * consents, so switching profiles is switching mod loadouts, and keeping two
+ * same-named "profile" features side by side would only have confused
+ * whichever one somebody reached for. Removed rather than kept alongside.
  *
  * It is a thin, storage-error-tolerant wrapper (the roster.ts idiom: every
  * access swallows failures so private-mode / no-storage hosts degrade to "no
@@ -27,7 +34,6 @@ const ENABLED_KEY = "neo:enabledMods";
  * here means the player said so, and outranks an external manager's deployment. */
 const CHOICE_KEY = "neo:modChoices";
 const CONSENT_KEY = "neo:modConsents";
-const PROFILES_KEY = "neo:modProfiles";
 const RULE_CHOICES_KEY = "neo:modRuleChoices";
 /* The player's own placements, which outrank every author's ordering suggestion
  * and survive an auto-sort (see ModStore.getPins). */
@@ -314,7 +320,7 @@ export function readEnabledModIds(input: {
   }
   let stored: string[] | null = null;
   try {
-    const raw = localStorage.getItem(ENABLED_KEY);
+    const raw = modStorage()?.getItem(ENABLED_KEY) ?? null;
     if (raw !== null) {
       const arr = JSON.parse(raw) as unknown;
       if (Array.isArray(arr)) {
@@ -326,7 +332,7 @@ export function readEnabledModIds(input: {
   }
   const choices: Record<string, boolean> = {};
   try {
-    const raw = localStorage.getItem(CHOICE_KEY);
+    const raw = modStorage()?.getItem(CHOICE_KEY) ?? null;
     if (raw !== null) {
       const obj = JSON.parse(raw) as unknown;
       if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
@@ -416,13 +422,6 @@ export interface CatalogMod {
    * `CatalogInput.installedBy` is where a caller supplies it.
    */
   installedByModId?: string;
-}
-
-/** A named, restorable mod configuration. */
-export interface ModProfile {
-  name: string;
-  enabledMods: string[];
-  consents: Record<string, string[]>;
 }
 
 function readJson<T>(storage: StorageLike | null, key: string, fallback: T): T {
@@ -816,53 +815,6 @@ export class ModStore {
     if (changed) writeJson(this.storage, RULE_CHOICES_KEY, choices);
   }
 
-  /* --- Profiles ------------------------------------------------------ */
-
-  getProfiles(): Record<string, ModProfile> {
-    const obj = readJson<Record<string, unknown>>(this.storage, PROFILES_KEY, {});
-    const out: Record<string, ModProfile> = {};
-    for (const [name, p] of Object.entries(obj)) {
-      const prof = p as Partial<ModProfile>;
-      if (prof && Array.isArray(prof.enabledMods)) {
-        out[name] = {
-          name,
-          enabledMods: prof.enabledMods.filter(
-            (s): s is string => typeof s === "string",
-          ),
-          consents:
-            prof.consents && typeof prof.consents === "object"
-              ? (prof.consents as Record<string, string[]>)
-              : {},
-        };
-      }
-    }
-    return out;
-  }
-
-  /** Save the CURRENT enabled-set + consents under a name (snapshot). */
-  saveProfile(name: string): void {
-    const all = this.getProfiles();
-    all[name] = { name, enabledMods: this.getEnabled(), consents: this.getConsents() };
-    writeJson(this.storage, PROFILES_KEY, all);
-  }
-
-  deleteProfile(name: string): void {
-    const all = this.getProfiles();
-    if (name in all) {
-      delete all[name];
-      writeJson(this.storage, PROFILES_KEY, all);
-    }
-  }
-
-  /** Make a saved profile the live config (writes enabled + consents). Returns false if unknown. */
-  applyProfile(name: string): boolean {
-    const prof = this.getProfiles()[name];
-    if (!prof) return false;
-    this.setEnabled(prof.enabledMods);
-    writeJson(this.storage, CONSENT_KEY, prof.consents);
-    return true;
-  }
-
   /* --- Autoplayer speed ----------------------------------------------- */
 
   /**
@@ -1036,13 +988,30 @@ export function buildCatalog(input: CatalogInput): CatalogMod[] {
   });
 }
 
+let backing: StorageLike | null | undefined;
+
+/**
+ * Point defaultModStore() and readEnabledModIds() at another storage - a
+ * profile-scoped view in the real app (profiles.ts), a fake in tests. Both
+ * read through this one settable reference rather than each reaching for
+ * `localStorage` on its own, so a profile switch (which rebuilds this) is
+ * seen by both without either hardcoding the global.
+ */
+export function setModStorage(s: StorageLike | null): void {
+  backing = s;
+}
+
+function modStorage(): StorageLike | null {
+  if (backing !== undefined) return backing;
+  try {
+    backing = globalThis.localStorage ?? null;
+  } catch {
+    backing = null;
+  }
+  return backing;
+}
+
 /** A ModStore backed by the browser's localStorage (null-safe if unavailable). */
 export function defaultModStore(): ModStore {
-  let storage: StorageLike | null = null;
-  try {
-    storage = globalThis.localStorage ?? null;
-  } catch {
-    storage = null;
-  }
-  return new ModStore(storage);
+  return new ModStore(modStorage());
 }

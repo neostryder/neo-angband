@@ -68,9 +68,39 @@ const DEATHS_KEY = "neo-angband-deaths";
  */
 const DEATHS_CAP = 1000;
 
+/** The Storage subset the roster needs (localStorage, or a profile-scoped view of it, satisfies it). */
+export interface RosterStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+let backing: RosterStorage | null | undefined;
+
+/**
+ * Point the roster at another storage - a profile-scoped view in the real
+ * app (profiles.ts, neo-angband#163), a fake in tests. Mirrors userdir.ts's
+ * setUserStorage: every character/save-slot key the roster reads or writes
+ * goes through this one settable reference rather than the raw global, so a
+ * profile switch (which rebuilds this) is seen everywhere at once.
+ */
+export function setRosterStorage(s: RosterStorage | null): void {
+  backing = s;
+}
+
+function store(): RosterStorage | null {
+  if (backing !== undefined) return backing;
+  try {
+    backing = localStorage;
+  } catch {
+    backing = null;
+  }
+  return backing;
+}
+
 function getItem(key: string): string | null {
   try {
-    return localStorage.getItem(key);
+    return store()?.getItem(key) ?? null;
   } catch {
     return null;
   }
@@ -85,8 +115,10 @@ function getItem(key: string): string | null {
  * could not exist however carefully it was written higher up.
  */
 function setItem(key: string, value: string): boolean {
+  const s = store();
+  if (!s) return false;
   try {
-    localStorage.setItem(key, value);
+    s.setItem(key, value);
     return true;
   } catch {
     /* quota exceeded / storage disabled. */
@@ -96,7 +128,7 @@ function setItem(key: string, value: string): boolean {
 
 function removeItem(key: string): void {
   try {
-    localStorage.removeItem(key);
+    store()?.removeItem(key);
   } catch {
     /* ignore */
   }

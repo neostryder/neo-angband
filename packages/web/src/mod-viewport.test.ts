@@ -387,7 +387,7 @@ describe("the action rows never move", () => {
     const few = await walk(80, catalogue().slice(0, 1));
     const many = await walk(80, catalogue());
 
-    for (const label of ["Install a mod...", "View conflicts", "Profiles...", "Done"]) {
+    for (const label of ["Install a mod...", "View conflicts", "Done"]) {
       const a = tagOf(few.rows, label);
       const b = tagOf(many.rows, label);
       expect(a, `${label} was not painted`).toBeDefined();

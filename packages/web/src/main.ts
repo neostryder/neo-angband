@@ -334,9 +334,13 @@ import {
   consentSatisfied,
   resolveEnabledIds,
   resolveModRules,
+  setModStorage,
   FIRST_PARTY_MOD_IDS,
   type AutoplayerSpeed,
 } from "./mod-store";
+import { defaultProfileStore } from "./profiles";
+import { scopedStorage, type ScopedStorage } from "./profile-scope";
+import { setPrefsStorage } from "./mod-prefs";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, reportModFault } from "./mod-problems";
 import { teardownModPlugins } from "./mod-teardown";
@@ -453,7 +457,7 @@ import { installRegions } from "./region-runtime";
 import type { ScreenHost, ScreenView } from "./screen-view";
 import { showMonsterList } from "./monster-list";
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
-import { downloadUserFile, pickTextFile } from "./userdir";
+import { downloadUserFile, pickTextFile, setUserStorage } from "./userdir";
 import { userPath, userWrite, exportUserFile, FileType } from "./user-io";
 import { loadLoreFile, saveLoreFile } from "./lore-file";
 import { LORE_FILE } from "@rpgm-tools/neo-angband-core";
@@ -544,6 +548,7 @@ import {
   newCharId,
   lineageOf,
   listDeaths,
+  setRosterStorage,
 } from "./roster";
 import type { CharMeta } from "./roster";
 /* WHERE A SAVE GOES, which is this page's own answer and not the roster's.
@@ -729,6 +734,24 @@ captureInstallPrompt();
 // is what stops a platform limit editing the game (parity/PLATFORM.md).
 const desktopBridge = detectDesktopBridge();
 setHost(desktopBridge ? makeDesktopHost(desktopBridge) : new BrowserHost());
+
+// Player/testing profiles (neo-angband#163): decide which profile is active
+// and scope every per-profile storage consumer to it, before anything reads
+// or writes game data. The default profile (no active id recorded) scopes to
+// nothing at all - scopedStorage returns the real storage unwrapped - so an
+// existing install needs no migration: its data already lives at the plain
+// keys these consumers have always used.
+const profileStore = defaultProfileStore();
+let scopedGameStorage: ScopedStorage | null = null;
+try {
+  scopedGameStorage = scopedStorage(localStorage, profileStore.activeId());
+} catch {
+  scopedGameStorage = null; // no localStorage at all (private mode / no DOM)
+}
+setModStorage(scopedGameStorage);
+setRosterStorage(scopedGameStorage);
+setUserStorage(scopedGameStorage);
+setPrefsStorage(scopedGameStorage);
 
 // main()'s option loop (main.c:380-491), which is where every arg_* global comes
 // from. Run BEFORE anything is drawn, as upstream does. The usage/quit paths are

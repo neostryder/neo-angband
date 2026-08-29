@@ -1,12 +1,12 @@
 /**
  * W2.4 mod-manager persistence + catalog. Uses an in-memory StorageLike so the
- * enabled-set / consent / profile round-trips and the pure catalog builder are
- * tested without a browser. The enabled key + JSON schema match pack.ts's
- * reader (that agreement is what makes enable-then-reload actually work).
+ * enabled-set / consent round-trips and the pure catalog builder are tested
+ * without a browser. The enabled key + JSON schema match pack.ts's reader
+ * (that agreement is what makes enable-then-reload actually work).
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveSectionState, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   ModStore,
@@ -17,6 +17,7 @@ import {
   readEnabledModIds,
   resolveEnabledIds,
   resolveModRules,
+  setModStorage,
   DEFAULT_ENABLED_MODS,
   FIRST_PARTY_MOD_IDS,
   RENAMED_MOD_IDS,
@@ -273,26 +274,6 @@ describe("consentSatisfied", () => {
     expect(consentSatisfied(["a", "b"], ["a", "b", "c"])).toBe(true);
     expect(consentSatisfied(["a", "b"], ["a"])).toBe(false);
     expect(consentSatisfied([], [])).toBe(true);
-  });
-});
-
-describe("ModStore - profiles", () => {
-  it("snapshots and restores enabled-set + consents", () => {
-    const store = new ModStore(fakeStorage());
-    store.setEnabled(["a", "b"]);
-    store.setConsent("b", ["registry:vocab"]);
-    store.saveProfile("mine");
-
-    store.setEnabled(["c"]);
-    store.setConsent("c", ["network:*"]);
-    expect(store.applyProfile("mine")).toBe(true);
-    expect(store.getEnabled()).toEqual(["a", "b"]);
-    expect(store.getConsent("b")).toEqual(["registry:vocab"]);
-    expect(store.getConsent("c")).toEqual([]); // profile replaced the consent map
-
-    expect(store.applyProfile("missing")).toBe(false);
-    store.deleteProfile("mine");
-    expect(Object.keys(store.getProfiles())).toEqual([]);
   });
 });
 
@@ -558,15 +539,24 @@ describe("a mod's patches exist only while its mod is enabled", () => {
    */
   function withEnabled<T>(ids: readonly string[], fn: () => T): T {
     const map = new Map<string, string>([["neo:enabledMods", JSON.stringify(ids)]]);
-    vi.stubGlobal("localStorage", {
+    const fake: StorageLike = {
       getItem: (k: string) => map.get(k) ?? null,
       setItem: (k: string, v: string) => void map.set(k, v),
       removeItem: (k: string) => void map.delete(k),
-    });
+    };
+    // Both the global stub (readEnabledModIds used to read straight off it)
+    // and setModStorage (mod-store.ts now caches its backing storage rather
+    // than re-reading globalThis.localStorage every call, neo-angband#163's
+    // profile-scoping seam) need to point at the SAME fake, or a direct
+    // `localStorage.setItem(...)` in a test body and defaultModStore()'s own
+    // reads would silently land on two different stores.
+    vi.stubGlobal("localStorage", fake);
+    setModStorage(fake);
     try {
       return fn();
     } finally {
       vi.unstubAllGlobals();
+      setModStorage(null);
     }
   }
 
