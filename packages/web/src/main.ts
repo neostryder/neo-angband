@@ -11171,7 +11171,7 @@ async function confirmPendingAutoplayerInstall(): Promise<void> {
       say(
         t(
           "main.autoplayer.declined",
-          "{id} will not take the keyboard this session. Turn its autoplay rule back off from Mods if you do not want to be asked again.",
+          "{id} will not take the keyboard this session. You will be asked again the next time it tries to activate.",
           { id: pending.loaded.id },
         ),
       );

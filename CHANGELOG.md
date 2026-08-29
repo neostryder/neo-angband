@@ -40,6 +40,12 @@ still calls itself.
 
 ### Fixed
 
+- The autoplayer decline message (Ctrl-Z, "not now") still told the player to
+  turn its autoplay rule back off from Mods - a setting that no longer exists
+  now that activation is Ctrl-Z-only. It now describes what actually happens:
+  the player is asked again next time (#133).
+- The README glossed ToME as "Troubles of Middle-Earth" instead of its real
+  name, Tales of Middle-earth.
 - The game's combat text, status messages and yes/no prompts were still
   written as hardcoded English in the web front end's main module, so a
   mod-supplied locale could not reach any of them: every melee hit, miss,
