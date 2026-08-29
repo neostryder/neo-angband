@@ -6,7 +6,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { resolveSectionState, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   ModStore,
