@@ -794,6 +794,64 @@ describe("installed mods, read back", () => {
     );
   });
 
+  it("scrubs an old renamed id's install once its successor is also installed", async () => {
+    const made = fakeIdb();
+    const seed = (id: string): void => {
+      made.stores.set(
+        STORE_MOD_META,
+        new Map([
+          ...(made.stores.get(STORE_MOD_META) ?? new Map()),
+          [
+            id,
+            {
+              id,
+              repo: `neostryder/${id}`,
+              tag: "v1.0.0",
+              files: ["manifest.json"],
+              installedAt: "2026-08-28T00:00:00.000Z",
+              digests: { "manifest.json": "deadbeef" },
+            },
+          ],
+        ]),
+      );
+      made.stores.set(
+        STORE_MODS,
+        new Map([...(made.stores.get(STORE_MODS) ?? new Map()), [`${id}/manifest.json`, enc("{}")]]),
+      );
+    };
+    seed("neo-linoleum");
+    seed("linoleum");
+
+    const metas = await installedMods({ indexedDB: made.factory });
+    expect(metas.map((m) => m.id)).toEqual(["linoleum"]);
+    /* The ghost's own record and files are gone, not just hidden from this read. */
+    expect(made.stores.get(STORE_MOD_META)?.has("neo-linoleum")).toBe(false);
+    expect(made.stores.get(STORE_MODS)?.has("neo-linoleum/manifest.json")).toBe(false);
+  });
+
+  it("leaves an old renamed id's install alone when its successor is not installed", async () => {
+    const made = fakeIdb();
+    made.stores.set(
+      STORE_MOD_META,
+      new Map([
+        [
+          "neo-linoleum",
+          {
+            id: "neo-linoleum",
+            repo: "neostryder/neo-linoleum",
+            tag: "v1.0.0",
+            files: ["manifest.json"],
+            installedAt: "2026-08-28T00:00:00.000Z",
+            digests: { "manifest.json": "deadbeef" },
+          },
+        ],
+      ]),
+    );
+
+    const metas = await installedMods({ indexedDB: made.factory });
+    expect(metas.map((m) => m.id)).toEqual(["neo-linoleum"]);
+  });
+
   it("backfills a missing name from the installed manifest and persists it", async () => {
     /* THE DEFECT THIS CATCHES. storeMod began recording InstalledModMeta.name at
      * install time, but records already on disk never grew the field. The update

@@ -63,6 +63,7 @@ import { installBlocked, type ModOrigin } from "./mod-consent";
 import { buildModuleGraph } from "./mod-modules";
 import type { DiscoveredMod } from "./mod-discover";
 import { badPath, rawUrl } from "./mod-registry";
+import { RENAMED_MOD_IDS } from "./mod-store";
 import { originConflict } from "./mod-source";
 import { readBoundedZip, ZIP_LIMITS, zipBudget } from "./mod-archive";
 import { readModZip } from "./mod-zip";
@@ -776,9 +777,37 @@ export async function installedMods(
     const meta = asMeta(await idbGet(db, STORE_MOD_META, id));
     if (meta) out.push(await healInstalledName(db, meta));
   }
+  const scrubbed = await scrubRenamedGhosts(out, scope);
   /* Sorted by id so the manager's list, and any test of it, is stable: IndexedDB key
    * order is not something to rely on for display. */
-  return out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return [...scrubbed].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/**
+ * An old id from RENAMED_MOD_IDS, still installed alongside its own successor,
+ * is a ghost rather than a second mod: the player's settings already moved to
+ * the new id (migrateModIds/migrateModIdKeys, mod-store.ts), so the old id's
+ * install can never be enabled again - it can only sit in Mod options forever,
+ * greyed out and useless, which is exactly the row this removes.
+ *
+ * Deliberately narrow: an old id installed WITHOUT its successor is left alone.
+ * That is a real, working copy of the mod under a legacy id, not a ghost - the
+ * settings migration already carries the player's choices to the new id the
+ * moment it does get installed, same as for any other rename.
+ */
+async function scrubRenamedGhosts(
+  metas: readonly InstalledModMeta[],
+  scope: unknown,
+): Promise<readonly InstalledModMeta[]> {
+  const ids = new Set(metas.map((m) => m.id));
+  const ghosts = metas.filter((m) => {
+    const to = RENAMED_MOD_IDS[m.id];
+    return to !== undefined && ids.has(to);
+  });
+  if (ghosts.length === 0) return metas;
+  for (const ghost of ghosts) await uninstallMod(ghost.id, scope);
+  const ghostIds = new Set(ghosts.map((g) => g.id));
+  return metas.filter((m) => !ghostIds.has(m.id));
 }
 
 /**

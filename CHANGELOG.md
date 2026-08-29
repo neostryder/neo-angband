@@ -40,6 +40,12 @@ still calls itself.
 
 ### Fixed
 
+- A mod id retired by `RENAMED_MOD_IDS` (mod-store.ts) stayed installed forever
+  once its successor was also installed: the settings migration already moved
+  the player's enabled choice and rule choices to the new id, but nothing
+  removed the old id's own installed files, so Mod options kept a permanent,
+  greyed-out, unusable row for it. `installedMods()` now removes an old id's
+  install the moment its successor is also found installed (#153).
 - The autoplayer decline message (Ctrl-Z, "not now") still told the player to
   turn its autoplay rule back off from Mods - a setting that no longer exists
   now that activation is Ctrl-Z-only. It now describes what actually happens:
