@@ -1035,6 +1035,16 @@ export function loadEnabledModRuleDecls(): ModRuleDecl[] {
  * change behaviour. Merged with the rule flags by mod-hooks; the manifest
  * validator refuses a section whose flag a rule already declares, so the merge
  * cannot silently give one name two meanings.
+ *
+ * A PATCHES-SCOPED SECTION'S FLAG ALSO REACHES THE MOD IT PATCHES, not only its
+ * own mod (neo-angband#32). A `compat: [{claim: "patches", with: X, scope}]`
+ * claim already means "this section only makes sense when X is present" -
+ * resolveSectionState already forces it off when X is absent - so handing its
+ * resolved value to X's own ctx.flags is the same declaration read one step
+ * further, not a new one. This is the one deliberate crack in "a mod is only
+ * ever handed the flags its own manifest declares" (see PackRule's doc comment
+ * in mod-sdk), and it stays narrow: only a flag a `patches` claim already names,
+ * never a whole mod's flags wholesale.
  */
 export function loadEnabledModSectionFlags(): Map<string, Record<string, boolean>> {
   const mods = discoverMods();
@@ -1049,7 +1059,17 @@ export function loadEnabledModSectionFlags(): Map<string, Record<string, boolean
     choices,
     new Set(manifests.map((m) => m.id)),
   );
+  return sectionFlagsByMod(manifests, resolved);
+}
+
+/** The pure fold `loadEnabledModSectionFlags` wraps, split out so the cross-mod
+ * propagation is testable without discoverMods()/enabledModIds() singletons. */
+export function sectionFlagsByMod(
+  manifests: readonly PackManifest[],
+  resolved: ReadonlyMap<string, ReadonlyMap<string, boolean>>,
+): Map<string, Record<string, boolean>> {
   const out = new Map<string, Record<string, boolean>>();
+  const crossMod: { to: string; flag: string; value: boolean }[] = [];
   for (const m of manifests) {
     const table = resolved.get(m.id);
     if (!table || table.size === 0) continue;
@@ -1057,7 +1077,17 @@ export function loadEnabledModSectionFlags(): Map<string, Record<string, boolean
     for (const s of m.sections ?? []) {
       flags[sectionFlag(s)] = table.get(s.id) ?? true;
     }
+    for (const c of m.compat ?? []) {
+      if (c.claim !== "patches") continue;
+      for (const sid of c.scope ?? []) {
+        const s = (m.sections ?? []).find((sec) => sec.id === sid);
+        if (s) crossMod.push({ to: c.with, flag: sectionFlag(s), value: flags[sectionFlag(s)]! });
+      }
+    }
     out.set(m.id, flags);
+  }
+  for (const { to, flag, value } of crossMod) {
+    out.set(to, { ...(out.get(to) ?? {}), [flag]: value });
   }
   return out;
 }

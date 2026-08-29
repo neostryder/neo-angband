@@ -38,6 +38,18 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- A `patches`-scoped section's resolved flag now also reaches the mod it
+  patches, not only its own mod (neo-angband#32). A `compat: [{claim:
+  "patches", with: X, scope}]` claim already meant "this section only makes
+  sense when X is present" - handing its resolved value to X's own ctx.flags
+  is the same declaration read one step further, not a new one, and it stays
+  narrow: only a flag a `patches` claim already names, never a whole mod's
+  flags wholesale. The Bug Fixes mod's new "Borg Fixes" section is the first
+  user of this - a toggle that lives in Bug Fixes' own menu but gates code in
+  the Borg mod.
+
 ### Fixed
 
 - A mod id retired by `RENAMED_MOD_IDS` (mod-store.ts) stayed installed forever

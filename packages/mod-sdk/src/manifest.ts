@@ -82,7 +82,12 @@ export function hasFacet(
  * `(flags: Readonly<Record<string, boolean>>) => ModHooks`. The host discovers it
  * (packages/web/src/mod-hooks.ts), calls it once per ENABLED mod in load order
  * with only THAT mod's resolved flags (`choices[flag] ?? rule.default` for the
- * rules its own manifest declares, so one mod cannot read another's toggles), and
+ * rules its own manifest declares, so one mod cannot read another's toggles -
+ * with one deliberate exception: a SECTION named by a `patches` compat claim
+ * also hands its resolved flag to the mod the claim names, since the claim
+ * already means "this section only makes sense when that mod is present"
+ * (neo-angband#32, packages/web/src/pack.ts's sectionFlagsByMod). A rule
+ * cannot do this - only a section reached through a `patches` claim), and
  * folds the results into the single ModHooks core holds via `composeModHooks`
  * (packages/core/src/mod/hooks.ts). Each fix body lives in its mod's folder; what
  * core contains is the generic seam, not any mod's name.

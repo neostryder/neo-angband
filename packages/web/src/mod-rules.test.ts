@@ -22,7 +22,9 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
-import { loadEnabledModRuleDecls } from "./pack";
+import { loadEnabledModRuleDecls, sectionFlagsByMod } from "./pack";
+import { resolveSectionState } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { resolveModRules, DEFAULT_ENABLED_MODS, FIRST_PARTY_MOD_IDS } from "./mod-store";
 
 const MODS_DIR = join(import.meta.dirname, "..", "mods");
@@ -113,5 +115,70 @@ describe("resolveModRules", () => {
     expect(resolveModRules(decls, { "demo-hooks.shout": true })).toEqual({
       "demo-hooks.shout": true,
     });
+  });
+});
+
+describe("sectionFlagsByMod's cross-mod propagation (neo-angband#32)", () => {
+  const patcher = (): PackManifest =>
+    ({
+      id: "bug-fixes",
+      name: "Bug Fixes",
+      version: "1.0.0",
+      shape: "content",
+      engine: ">=0.1.0",
+      author: "neostryder",
+      sections: [
+        {
+          id: "bugfix-borg-fixes",
+          flag: "bugfix.borgFixes",
+          title: "Borg Fixes",
+          default: true,
+        },
+      ],
+      compat: [
+        { with: "borg", claim: "patches", scope: ["bugfix-borg-fixes"], because: "test" },
+      ],
+    }) as unknown as PackManifest;
+
+  const borgStub = (): PackManifest =>
+    ({
+      id: "borg",
+      name: "Borg",
+      version: "1.0.0",
+      shape: "trusted",
+      engine: ">=0.1.0",
+      author: "neostryder",
+    }) as unknown as PackManifest;
+
+  it("hands a patches-scoped section's flag to the mod it patches", () => {
+    const manifests = [patcher(), borgStub()];
+    const resolved = resolveSectionState(manifests, {}, new Set(["bug-fixes", "borg"]));
+    const byMod = sectionFlagsByMod(manifests, resolved);
+    expect(byMod.get("bug-fixes")).toEqual({ "bugfix.borgFixes": true });
+    expect(byMod.get("borg")).toEqual({ "bugfix.borgFixes": true });
+  });
+
+  it("propagates false the same way once the patched mod is absent", () => {
+    /* resolveSectionState already forces a patches-scoped section off when its
+     * target is not among enabledPackIds - this only carries that same value one
+     * step further, it does not invent a second opinion about it. */
+    const manifests = [patcher()];
+    const resolved = resolveSectionState(manifests, {}, new Set(["bug-fixes"]));
+    const byMod = sectionFlagsByMod(manifests, resolved);
+    expect(byMod.get("bug-fixes")).toEqual({ "bugfix.borgFixes": false });
+    expect(byMod.get("borg")).toEqual({ "bugfix.borgFixes": false });
+  });
+
+  it("does not propagate a section id a patches claim names but the mod never declared", () => {
+    const manifest = patcher();
+    const broken: PackManifest = {
+      ...manifest,
+      compat: [
+        { with: "borg", claim: "patches", scope: ["no-such-section"], because: "test" },
+      ],
+    } as unknown as PackManifest;
+    const resolved = resolveSectionState([broken], {}, new Set(["bug-fixes", "borg"]));
+    const byMod = sectionFlagsByMod([broken], resolved);
+    expect(byMod.get("borg")).toBeUndefined();
   });
 });
