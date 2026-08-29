@@ -106,7 +106,7 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import type { GameState, OptionOpts } from "@rpgm-tools/neo-angband-core";
 import type { GridPointerInput, GridSurface } from "./term";
-import { getKeyInline, selectFromMenu, promptNumber, menuNav, screenRegionSpec } from "./overlay";
+import { getCheck, getKeyInline, selectFromMenu, promptNumber, menuNav, screenRegionSpec } from "./overlay";
 import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import type { MenuItem } from "./overlay";
 import { UI_TEXT, UI_DIM, UI_CURSOR } from "./ui-colors";
@@ -299,9 +299,12 @@ export interface OptionCustomDefaults {
  * upstream's own column layout; the cursor row takes the light-blue cursor
  * colour and the terminal cursor (curs_attrs, ui-menu.c:29-33) - no '>' marker,
  * which upstream does not have. Keys: y/Y sets true and advances the cursor (wrapping), n/N sets false
- * and advances, t/T/Enter toggles in place (no advance), ArrowUp/ArrowDown
- * move the cursor, a TOGGLE_TAGS letter jumps directly to that row, Escape
- * resolves. When `readOnly` (the in-game birth-options view: upstream's
+ * and advances, t/T/Enter/ArrowLeft/ArrowRight all toggle in place (no
+ * advance - deliberately NOT upstream's asymmetric left-exits/right-toggles
+ * scroll-skin), ArrowUp/ArrowDown move the cursor, a TOGGLE_TAGS letter jumps
+ * directly to that row, Escape resolves - prompting to save first, via
+ * `custom`, if anything changed since the last save. When `readOnly` (the
+ * in-game birth-options view: upstream's
  * page===OPT_PAGE_BIRTH with MN_NO_TAGS/empty cmd_keys) no command or jump
  * key does anything at all - only navigation and ESC - and every row renders
  * dimmed, faithfully reproducing "You can only modify these options at
@@ -333,6 +336,10 @@ export function optionToggleScreen(
   return new Promise<void>((resolve) => {
     let cursor = 0;
     let top = 0;
+    /* Whether any row has changed since the screen opened or was last saved -
+     * only ever meaningful when `custom` is present, since that is the only
+     * context with a save action to prompt about. */
+    let dirty = false;
     /* m->prompt, all three of upstream's (ui-options.c L331, L337, L342). */
     const prompt = readOnly
       ? t("options.toggle.promptReadOnly", "You can only modify these options at character birth.")
@@ -392,6 +399,7 @@ export function optionToggleScreen(
       if (!row || row.locked || readOnly) return false;
       onToggle(row.name, value);
       row.value = value;
+      dirty = true;
       return true;
     };
     const advance = (): void => {
@@ -417,7 +425,27 @@ export function optionToggleScreen(
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();
       ev.stopImmediatePropagation();
-      if (ev.key === "Escape") return finish();
+      if (ev.key === "Escape") {
+        /* Prompt only when there is a save action to prompt about and something
+         * has actually changed since it was last used - a read-only page or one
+         * without `custom` (the CHEAT page) has nothing to lose on the way out. */
+        if (custom && dirty) {
+          inputEvents.removeEventListener("keydown", onKey, true);
+          void (async () => {
+            if (
+              await getCheck(
+                term,
+                t("options.toggle.saveBeforeLeaving", "Save changes before leaving? "),
+              )
+            ) {
+              custom.save();
+            }
+            finish();
+          })();
+          return;
+        }
+        return finish();
+      }
       // Arrows AND numpad digits move the cursor (menuNav), so the numpad works
       // here regardless of NumLock; up/down wrap as before. j/k also move it
       // under the roguelike keyset.
@@ -432,14 +460,19 @@ export function optionToggleScreen(
         paint();
         return;
       }
-      // Horizontal arrows mirror the C scroll-skin (ui-menu.c:224-243): LEFT
-      // (ddx<0 -> EVT_ESCAPE) steps back out of the menu, RIGHT (ddx>0 ->
-      // EVT_SELECT) toggles the current option. Numpad 4/6 are identical
-      // (target_dir), matched via ev.code so NumLock state is irrelevant. Left
-      // (escape) is unconditional; right (toggle) is refused on read-only rows
-      // by setAt, so the in-game locked birth page stays read-only.
-      if (ev.key === "ArrowLeft" || ev.code === "Numpad4") return finish();
-      if (ev.key === "ArrowRight" || ev.code === "Numpad6") {
+      // Both horizontal arrows toggle the current option in place, same as
+      // t/T/Enter - deliberately NOT upstream's asymmetric scroll-skin
+      // (ui-menu.c:224-243, where LEFT steps back out and only RIGHT toggles):
+      // a menu with a value on every row reads better when either arrow can
+      // change it, and Escape is already the one way out. Numpad 4/6 match via
+      // ev.code so NumLock state is irrelevant. Refused on read-only rows by
+      // setAt, so the in-game locked birth page stays read-only.
+      if (
+        ev.key === "ArrowLeft" ||
+        ev.code === "Numpad4" ||
+        ev.key === "ArrowRight" ||
+        ev.code === "Numpad6"
+      ) {
         const row = rows[cursor];
         if (row) setAt(cursor, !row.value);
         paint();
@@ -472,8 +505,10 @@ export function optionToggleScreen(
          * you save from any page whose cmd_keys carries S. */
         if (ev.key === "s" || ev.key === "S") {
           void runAction(async () => {
+            const ok = custom.save();
+            if (ok) dirty = false;
             await custom.acknowledge(
-              custom.save()
+              ok
                 ? t("options.toggle.saved", "Successfully saved.")
                 : t("options.toggle.saveFailed", "Save failed."),
             );
@@ -486,6 +521,7 @@ export function optionToggleScreen(
           void runAction(async () => {
             if (custom.restore()) {
               custom.reload();
+              dirty = false;
             } else {
               await custom.acknowledge(t("options.toggle.restoreFailed", "Restore failed."));
             }
@@ -497,6 +533,7 @@ export function optionToggleScreen(
         if (ev.key === "x" || ev.key === "X") {
           custom.reset();
           custom.reload();
+          dirty = false;
           paint();
           return;
         }
@@ -921,6 +958,7 @@ export async function runOptionsMenu(
   /* Every row below can change an option, including the pref-file loader, so the
    * baseline is taken once around the WHOLE menu rather than per row. */
   const before = optionsFingerprint(state);
+  let cursor = 0;
   for (;;) {
     const idx = await selectFromMenu(
       term,
@@ -928,8 +966,14 @@ export async function runOptionsMenu(
       t("options.menu.title", "Options Menu"),
       items,
       t("options.menu.footer", "[ {tagHint} to choose, ESC to return ]", { tagHint }),
-      /* option_menu->flags = MN_CASELESS_TAGS (ui-options.c:2074). */
-      { caselessTags: true },
+      {
+        /* option_menu->flags = MN_CASELESS_TAGS (ui-options.c:2074). */
+        caselessTags: true,
+        initialCursor: cursor,
+        onHighlight: (i) => {
+          cursor = i;
+        },
+      },
     );
     if (idx === null) break;
     switch (items[idx]?.tag) {

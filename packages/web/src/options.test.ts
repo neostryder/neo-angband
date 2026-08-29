@@ -145,6 +145,29 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     expect(snap).toContain("h) Set hitpoint warning");
   });
 
+  it("returns the cursor to the row you opened, not row 0 (neo-angband#159)", async () => {
+    /* If the cursor had reset to row 0 ("User interface options") instead of
+     * staying on "x) Cheat options", a bare Enter (which selects whatever row
+     * the cursor is on, not a tag) would reopen the interface page instead -
+     * distinguishable by content neither page shares with the other. */
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runOptionsMenu(term, makeState(), async () => {});
+    press(win, "x"); // Cheat options - not row 0
+    await tick();
+    expect(term.snapshot().join("\n")).toContain("cheat_hear");
+    press(win, "Escape"); // back to the top menu
+    await tick();
+    press(win, "Enter"); // if the cursor stayed on "x", this reopens Cheat options
+    await tick();
+    expect(term.snapshot().join("\n")).toContain("cheat_hear");
+    press(win, "Escape");
+    await tick();
+    press(win, "Escape");
+    await done;
+  });
+
   it("opens the injected Mod options browser from the options menu", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
@@ -196,9 +219,61 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     expect(state.options!.get("autoexplore_commands")).toBe(false);
     press(win, "t"); // toggle in place (no advance): use_sound false -> true
     expect(state.options!.get("use_sound")).toBe(true);
+    press(win, "Escape"); // prompts to save, since something changed
+    await tick();
+    press(win, "n"); // decline; onToggle already applied everything live
+    await tick();
     press(win, "Escape"); // back to top menu
     await tick();
     press(win, "Escape"); // exit
+    await done;
+  });
+
+  it("ArrowLeft and ArrowRight both toggle in place; only Escape leaves (neo-angband#161)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(100, 40);
+    const state = makeState();
+    const done = runOptionsMenu(term, state, async () => {});
+    press(win, "a"); // User interface options
+    await tick();
+    expect(state.options!.get("rogue_like_commands")).toBe(false);
+    press(win, "ArrowRight"); // toggle in place, no advance
+    expect(state.options!.get("rogue_like_commands")).toBe(true);
+    press(win, "ArrowLeft"); // toggle back, same row - NOT upstream's "exit"
+    expect(state.options!.get("rogue_like_commands")).toBe(false);
+    expect(term.snapshot().join("\n")).toContain("User interface options"); // still here
+    press(win, "Escape"); // a row was touched, even back to its start value -> prompts
+    await tick();
+    press(win, "n"); // decline; onToggle already applied everything live
+    await tick();
+    press(win, "Escape"); // back to top menu
+    await tick();
+    press(win, "Escape"); // exit
+    await done;
+  });
+
+  it("Escape prompts to save when dirty, and 'y' actually writes the file (neo-angband#161)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const files = new Map<string, string>();
+    setHost(memHost(files));
+    const term = makeTerm(100, 40);
+    const done = runOptionsMenu(term, makeState(), async () => {});
+    press(win, "a"); // User interface options
+    await tick();
+    press(win, "y"); // rogue_like_commands -> true
+    press(win, "Escape"); // dirty -> prompts
+    await tick();
+    expect(term.snapshot().join("\n")).toContain("Save changes before leaving?");
+    press(win, "y"); // save
+    await tick();
+    expect(files.get("customized_interface_options.txt")).toContain(
+      "option:rogue_like_commands:yes",
+    );
+    press(win, "Escape"); // back at the top menu now; exit
+    await tick();
+    press(win, "Escape");
     await done;
   });
 
@@ -771,6 +846,10 @@ describe("the '=' menu tells the mods (ModHooks.optionsChanged)", () => {
     await tick();
     press(win, "y"); // rogue_like_commands -> true
     expect(seen).toHaveLength(0); // not yet: the menu is still open
+    press(win, "Escape"); // prompts to save, since something changed
+    await tick();
+    press(win, "n"); // decline; onToggle already applied everything live
+    await tick();
     press(win, "Escape");
     await tick();
     press(win, "Escape");
@@ -830,6 +909,10 @@ describe("the '=' menu tells the mods (ModHooks.optionsChanged)", () => {
     press(win, "a");
     await tick();
     press(win, "y");
+    press(win, "Escape"); // prompts to save, since something changed
+    await tick();
+    press(win, "n"); // decline; onToggle already applied everything live
+    await tick();
     press(win, "Escape");
     await tick();
     press(win, "Escape");

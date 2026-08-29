@@ -210,6 +210,42 @@ describe("leaving the mod manager untouched never offers to reload", () => {
     ).toBe(false);
     expect(requestReload).not.toHaveBeenCalled();
   });
+
+  it("manageMod returns the cursor to the row you left from, not row 0 (neo-angband#159)", async () => {
+    /* A description-only round trip is the easiest submenu manageMod offers
+     * that has an observable side effect if the cursor resets: "Read the full
+     * description" sits below "Enable" when the mod is off. If the cursor had
+     * reset to row 0 instead of staying on "Read the full description",
+     * pressing Enter a second time would ENABLE the mod instead of reopening
+     * the description screen - a state change this test can see directly. */
+    const withDescription = {
+      id: "qol",
+      name: "Quality of Life",
+      version: "1.0.0",
+      shape: "content",
+      description: "Conveniences that faithful Angband does not have.",
+    } as CatalogManifest;
+    const { win, store, done } = open([withDescription]);
+    await flush();
+    press(win, "Enter"); // open the (only) mod row -> manageMod's own menu
+    await flush();
+    press(win, "ArrowDown"); // off "Enable", onto "Read the full description"
+    press(win, "Enter"); // open it
+    await flush();
+    press(win, "Escape"); // back out of the description screen
+    await flush();
+    press(win, "Enter"); // if the cursor stayed put, this reopens the description
+    await flush();
+    expect(store.isEnabled("qol"), "the cursor reset to row 0 and enabled the mod instead").toBe(
+      false,
+    );
+    press(win, "Escape"); // out of the description screen (if that's where we are)
+    await flush();
+    press(win, "Escape"); // "Back" from manageMod
+    await flush();
+    press(win, "Escape"); // Done
+    await done;
+  });
 });
 
 describe("the top-level Mod options browser", () => {
@@ -227,6 +263,44 @@ describe("the top-level Mod options browser", () => {
     expect(screen).toContain("All mods");
     expect(screen).toContain("Quality of Life");
     press(win, "Escape");
+    await done;
+  });
+
+  it("returns the cursor to the mod you opened, not row 0 (neo-angband#159)", async () => {
+    /* Both mods are content-only with no rules/sections, so opening either one's
+     * options lands on manageModOptions's own "0 configurable options" dismiss
+     * menu - whose title is still "Mod options - {name}", which is what this
+     * checks. If the parent's cursor had reset to row 0 ("All mods") instead of
+     * staying on "Borg", pressing Enter a second time would reopen "All mods"'s
+     * options instead, and the title would say so.
+     *
+     * qol is enabled so "All mods" is itself a selectable row (not skipped as
+     * disabled) - otherwise a reset-to-0 cursor would land somewhere else by
+     * accident and this test would not actually distinguish the two. */
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80, 24);
+    const store = new ModStore(fakeStorage());
+    store.setModEnabled("qol", true);
+    const done = runModOptionsBrowser(
+      term,
+      makeDeps(store, vi.fn(), [manifest("qol", "Quality of Life"), manifest("borg", "Borg")]),
+    );
+    await flush();
+    press(win, "ArrowDown"); // off "All mods"
+    press(win, "ArrowDown"); // onto the second mod row (Borg)
+    await flush();
+    press(win, "Enter"); // open Borg's options
+    await flush();
+    expect(term.snapshot().join("\n")).toContain("Mod options - Borg");
+    press(win, "Escape"); // back out to the mod list
+    await flush();
+    press(win, "Enter"); // if the cursor stayed on Borg, this reopens Borg again
+    await flush();
+    expect(term.snapshot().join("\n")).toContain("Mod options - Borg");
+    press(win, "Escape"); // dismiss
+    await flush();
+    press(win, "Escape"); // Done
     await done;
   });
 });

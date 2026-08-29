@@ -36,6 +36,32 @@ commit a tag resolved to when the mod was installed, and a tag that has
 since been retargeted is reported as moved rather than as the version it
 still calls itself.
 
+## [Unreleased]
+
+### Fixed
+
+- A menu's cursor reset to the first row whenever a submenu closed, instead of
+  staying on the row you opened it from - `manageMod` (a mod's own Disable /
+  Move / Read description actions), the top-level Mod options browser, and the
+  Options Menu (`=`) all rebuilt their menu on every pass without threading a
+  cursor through it, unlike `manageModOptions`, which already did (#159). Fixed
+  the same way that screen already was, and while doing so found the pattern
+  itself was incomplete: `selectFromMenu`'s cursor tracking only followed
+  arrow-key navigation, not a tag letter, a jump key or a tap - so a caller
+  that reported its cursor to reopen a menu in the right place could still be
+  wrong if the row was reached any other way. Every caller using this pattern
+  benefits, not just the three fixed here.
+- The birth-options-style yes/no toggle screens (Birth options, Interface
+  options, Cheat options) treated their two horizontal arrows asymmetrically:
+  ArrowRight toggled the highlighted row, ArrowLeft exited the whole screen
+  outright. Both now toggle in place, matching t/T/Enter; only Escape leaves
+  (#161).
+- Escape on those same screens left silently even when a setting had changed
+  and "(s)ave" was never pressed. Where the screen has a save action at all
+  (Interface options and the at-birth Birth options editor - the only two
+  upstream ever gives one), Escape now asks "Save changes before leaving?"
+  first if anything changed since the screen opened or was last saved (#161).
+
 ## [1.2.0] - 2026-08-29
 
 ### Added

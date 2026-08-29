@@ -1369,6 +1369,7 @@ async function manageMod(
   id: string,
 ): Promise<boolean> {
   let changed = false;
+  let cursor = 0;
   for (;;) {
     const m = deps.listCatalog().find((x) => x.id === id);
     if (!m) return changed;
@@ -1514,6 +1515,10 @@ async function manageMod(
          * so there is no reason for the description to win any of it - and it is
          * the description that has somewhere else to be read in full. */
         minListRows: items.length,
+        initialCursor: cursor,
+        onHighlight: (i) => {
+          cursor = i;
+        },
         detail: () => rowDetail(m, term.size().cols, 99, myProblems, mySkipped),
         detailToggleKey: "?",
         detailInitiallyShown: true,
@@ -1931,6 +1936,15 @@ async function manageModOptions(
       }
     }
 
+    /* Space and Enter both resolve through the same selectFromMenu pick() (see
+     * overlay.ts), so a row with a checkbox has no way today to tell "toggle"
+     * from "open a submenu" apart by KEY - only by what its own `kind` does with
+     * the returned index below. That is fine as long as no row is BOTH a
+     * checkbox AND a submenu at once (neo-angband#162): "rule"/"section" toggle
+     * in place, "speed" opens pickAutoplayerSpeed, and neither kind does both.
+     * The day a row needs to, Enter must open the submenu and Space alone must
+     * toggle - which needs the picker to say which key resolved it, not just
+     * which row. */
     type Option =
       | { readonly kind: "rule"; readonly mod: CatalogMod; readonly decl: ModRuleDecl }
       | {
@@ -2137,6 +2151,7 @@ export async function runModOptionsBrowser(
   deps: ModManagerDeps,
 ): Promise<void> {
   let needsReload = false;
+  let cursor = 0;
   for (;;) {
     const catalog = deps.listCatalog().filter((m) => !m.missing);
     const enabled = catalog.filter((m) => m.enabled);
@@ -2164,6 +2179,12 @@ export async function runModOptionsBrowser(
       t("modsScreen.options.browserTitle", "Mod options"),
       items,
       t("modsScreen.options.browserFooter", "[ Choose a mod, ESC to return ]"),
+      {
+        initialCursor: cursor,
+        onHighlight: (i) => {
+          cursor = i;
+        },
+      },
     );
     if (pick === null) break;
     if (pick === 0) {

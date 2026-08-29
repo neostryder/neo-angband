@@ -1949,6 +1949,17 @@ export function selectFromMenu(
         paint();
         return;
       }
+      /* A tag letter, a jump key or a tap can select a row the cursor never
+       * navigated onto - setCursor is never called for those, so onHighlight
+       * never learns the row that is actually about to be picked. Report it
+       * here too, same early-out as setCursor (skip if nothing would change),
+       * so a caller reopening this same menu with the reported cursor lands on
+       * the row just picked - not wherever the last NAVIGATION, as opposed to
+       * selection, happened to leave it. */
+      if (i !== cursor) {
+        cursor = i;
+        extra?.onHighlight?.(cursor);
+      }
       /* A transformer may reorder rows. Callers intentionally still receive an
        * index into their own source list, so map the chosen stable row id back
        * rather than treating its visual position as an action. A genuinely new
