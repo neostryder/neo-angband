@@ -1,6 +1,6 @@
 {
   "name": "@rpgm-tools/neo-angband-cli",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
   "description": "Terminal front-end and developer harness (headless runs, stats, golden scenarios)",
   "license": "GPL-2.0-only",
