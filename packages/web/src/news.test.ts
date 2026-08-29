@@ -70,13 +70,19 @@ describe("title screen keys (main-win.c File menu)", () => {
    * own below. */
   const ALL = { canLoad: true, canOpen: true, canQuit: true, canInstall: false, canUpdate: false, updateReady: false };
 
-  it("offers New / Open / Load / Quit in the File menu's order", () => {
-    expect(titleRows(ALL).map((r) => r.choice)).toEqual(["new", "open", "load", "quit"]);
-    expect(titleRows(ALL).map((r) => r.key)).toEqual(["n", "o", "l", "q"]);
+  it("offers Profile / New / Open / Load / Quit, Profile first", () => {
+    expect(titleRows(ALL).map((r) => r.choice)).toEqual(["profile", "new", "open", "load", "quit"]);
+    expect(titleRows(ALL).map((r) => r.key)).toEqual(["p", "n", "o", "l", "q"]);
   });
 
   it("maps each row's letter, in either case", () => {
-    for (const [key, want] of [["n", "new"], ["o", "open"], ["l", "load"], ["q", "quit"]] as const) {
+    for (const [key, want] of [
+      ["p", "profile"],
+      ["n", "new"],
+      ["o", "open"],
+      ["l", "load"],
+      ["q", "quit"],
+    ] as const) {
       expect(titleKeyChoice(key, titleRows(ALL), false)).toBe(want);
       expect(titleKeyChoice(key.toUpperCase(), titleRows(ALL), false)).toBe(want);
     }
@@ -117,19 +123,21 @@ describe("title screen keys (main-win.c File menu)", () => {
       canInstall: false,
       canUpdate: false, updateReady: false,
     });
-    expect(none.filter((r) => r.enabled).map((r) => r.choice)).toEqual(["new"]);
+    expect(none.filter((r) => r.enabled).map((r) => r.choice)).toEqual(["profile", "new"]);
     expect(titleKeyChoice("l", none, false)).toBeNull();
     expect(titleKeyChoice("o", none, false)).toBeNull();
     expect(titleKeyChoice("q", none, false)).toBeNull();
     expect(titleKeyChoice("o", none, true)).toBeNull();
     expect(titleKeyChoice("x", none, true)).toBeNull();
-    /* New is always live at the splash (main-win.c:2973). */
+    /* New is always live at the splash (main-win.c:2973), and so is Profile -
+     * it is not a File-menu row at all, so EnableMenuItem never greys it. */
     expect(titleKeyChoice("n", none, false)).toBe("new");
+    expect(titleKeyChoice("p", none, false)).toBe("profile");
   });
 
   it("lays the rows out centred, in order, without overlapping", () => {
     const spans = titleRowSpans(titleRows(ALL), 80);
-    expect(spans.map((s) => s.row.choice)).toEqual(["new", "open", "load", "quit"]);
+    expect(spans.map((s) => s.row.choice)).toEqual(["profile", "new", "open", "load", "quit"]);
     for (let i = 1; i < spans.length; i++) {
       expect(spans[i]!.start).toBeGreaterThan(spans[i - 1]!.end);
     }
@@ -439,7 +447,7 @@ describe("title screen credits (whose version, and where)", () => {
     expect(lines.length).toBe(23);
     const grid = renderTitle();
     expect(rowText(grid, 22)).toContain("For help press");
-    expect(rowText(grid, 23)).toContain("(N)ew game");
+    expect(rowText(grid, 23)).toContain("(N)ew");
   });
 
   it("moves the quote down a row rather than painting over it", () => {
@@ -471,11 +479,12 @@ describe("title screen credits (whose version, and where)", () => {
  * counterpart at all, so it is ABSENT under the desktop shell rather than greyed:
  * a permanent dead row there would be advertising something that is not coming.
  */
-describe("the (I)nstall locally row", () => {
+describe("the (I)nstall row", () => {
   const WEB = { canLoad: true, canOpen: true, canQuit: true, canInstall: true, canUpdate: false, updateReady: false };
 
   it("appears with its own key when installing is possible", () => {
     expect(titleRows(WEB).map((r) => r.choice)).toEqual([
+      "profile",
       "new",
       "open",
       "load",
@@ -506,7 +515,14 @@ describe("the (I)nstall locally row", () => {
 
   it("does not disturb the layout of the rows around it", () => {
     const spans = titleRowSpans(titleRows(WEB), 80);
-    expect(spans.map((s) => s.row.choice)).toEqual(["new", "open", "load", "install", "quit"]);
+    expect(spans.map((s) => s.row.choice)).toEqual([
+      "profile",
+      "new",
+      "open",
+      "load",
+      "install",
+      "quit",
+    ]);
     for (let i = 1; i < spans.length; i++) {
       expect(spans[i]!.start).toBeGreaterThan(spans[i - 1]!.end);
     }
@@ -522,7 +538,14 @@ describe("the (U)pdate row", () => {
   const READY = { canLoad: true, canOpen: true, canQuit: true, canInstall: false, canUpdate: true, updateReady: true };
 
   it("appears with its own key only when an update exists", () => {
-    expect(titleRows(READY).map((r) => r.choice)).toEqual(["new", "open", "load", "update", "quit"]);
+    expect(titleRows(READY).map((r) => r.choice)).toEqual([
+      "profile",
+      "new",
+      "open",
+      "load",
+      "update",
+      "quit",
+    ]);
     expect(titleKeyChoice("u", titleRows(READY), false)).toBe("update");
     expect(titleKeyChoice("U", titleRows(READY), false)).toBe("update");
   });
@@ -538,13 +561,14 @@ describe("the (U)pdate row", () => {
     expect(titleRows(READY).at(-1)?.choice).toBe("quit");
   });
 
-  it("EVERY row still fits 80 columns with all six present", () => {
+  it("EVERY row still fits 80 columns with all seven present", () => {
     /* THE DEFECT THIS PREVENTS: the prompt is one line printed left to right and
      * clipped at `cols`, so an overflow eats the LAST row - (Q)uit. Nothing
-     * would look broken; the screen would just stop offering a way out. Six rows
-     * need 85 columns at the old fixed three-space gap. */
+     * would look broken; the screen would just stop offering a way out. Seven
+     * rows (Profile always present, plus Install and Update) need more columns
+     * than the old fixed three-space gap allows. */
     const all = titleRows({ ...READY, canInstall: true });
-    expect(all).toHaveLength(6);
+    expect(all).toHaveLength(7);
     const spans = titleRowSpans(all, 80);
     expect(spans.at(-1)!.row.choice).toBe("quit");
     expect(spans.at(-1)!.end).toBeLessThan(80);

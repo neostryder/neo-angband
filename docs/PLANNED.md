@@ -326,12 +326,12 @@ Tracked as issue #95.
 
 ### Shareable mod-set snapshots
 
-A player can save the currently enabled set plus capability consents under a
-local name (`Profiles...` in the Mods menu) but cannot export it: nothing
-about a saved profile ever leaves the browser, carries a mod's version, or
-carries flag choices or options. A full design for a portable, versioned
-snapshot - mod ids, versions, origins, per-mod flag choices, and an optional
-birth/game-options section, plus the two Mods-menu actions to make one and
-load one - is at docs/MOD_PROFILES.md.
+Player/testing profiles (neo-angband#163) each carry their own independent
+enabled set and capability consents, so switching mod loadouts locally is
+switching profiles - but nothing about a profile ever leaves the browser,
+carries a mod's version, or carries flag choices or options. A full design
+for a portable, versioned snapshot - mod ids, versions, origins, per-mod flag
+choices, and an optional birth/game-options section, plus the two Mods-menu
+actions to make one and load one - is at docs/MOD_PROFILES.md.
 
 Tracked as issue #87.

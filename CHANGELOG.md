@@ -38,6 +38,25 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- Player/testing profiles: a new `(P)rofile` row, first on the title screen,
+  opens a screen to create, rename, delete, and switch between named
+  profiles. Each profile keeps its own options, mod loadout, and save
+  roster within the one install; only the Hall of Fame scores are shared
+  across all of them. The starting profile needs no setup - it is the
+  default until a second one is created, at which point creating it offers
+  to name the original and to start the new one from the current profile's
+  settings or from a full reset. Switching profiles reloads the game
+  (#163).
+
+### Removed
+
+- The Mods menu's `Profiles...` row, which let a player save the currently
+  enabled mod set and capability consents under a name and switch back to
+  it - superseded by player/testing profiles above, which carry an
+  independent mod loadout per profile (#163).
+
 ## [1.2.1] - 2026-08-29
 
 ### Fixed

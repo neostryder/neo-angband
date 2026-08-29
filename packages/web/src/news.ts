@@ -279,8 +279,13 @@ export function titleLines(): readonly TitleLine[] {
  * shortcut to port. It exists because the port's own previous behaviour - any key
  * resumes the most recent character - was worth keeping as a named row rather
  * than as the meaning of every key on the keyboard.
+ *
+ * "profile" is the other addition (neo-angband#163): player/testing profiles,
+ * each its own options, mod loadout and save roster within one install. It goes
+ * FIRST rather than in File-menu order, because with more than one profile it is
+ * the row that decides which profile's roster every other row below it acts on.
  */
-export type TitleChoice = "new" | "open" | "load" | "quit" | "install" | "update";
+export type TitleChoice = "profile" | "new" | "open" | "load" | "quit" | "install" | "update";
 
 /** Which title rows are live, mirroring main-win.c's EnableMenuItem calls. */
 export interface TitleOptions {
@@ -336,18 +341,20 @@ interface TitleRow {
 }
 
 /**
- * The rows in main-win.c's File menu order: New, Open, [Save], Exit. "Load last
- * save" takes the Save slot, which is greyed at the splash upstream
- * (main-win.c:2962 disables IDM_FILE_SAVE and only :2982 re-enables it in a
- * running game).
+ * The rows: (P)rofile first (neo-angband#163), then main-win.c's File menu
+ * order - New, Open, [Save], Exit. "Load last save" takes the Save slot, which
+ * is greyed at the splash upstream (main-win.c:2962 disables IDM_FILE_SAVE and
+ * only :2982 re-enables it in a running game). Labels are short: an 80-column
+ * prompt line already has to fit up to seven rows (see ROW_GAPS below).
  */
 export function titleRows(opts: TitleOptions): TitleRow[] {
   const rows: TitleRow[] = [
-    { choice: "new", key: "n", label: t("news.title.new", "(N)ew game"), enabled: true },
+    { choice: "profile", key: "p", label: t("news.title.profile", "(P)rofile"), enabled: true },
+    { choice: "new", key: "n", label: t("news.title.new", "(N)ew"), enabled: true },
     {
       choice: "open",
       key: "o",
-      label: t("news.title.open", "(O)pen a save"),
+      label: t("news.title.open", "(O)pen"),
       enabled: opts.canOpen,
     },
     {
@@ -364,7 +371,7 @@ export function titleRows(opts: TitleOptions): TitleRow[] {
     rows.push({
       choice: "install",
       key: "i",
-      label: t("news.title.install", "(I)nstall locally"),
+      label: t("news.title.install", "(I)nstall"),
       enabled: true,
     });
   }
@@ -459,10 +466,11 @@ export function parseNewsLine(line: string): Run[] {
 /**
  * The gap between rows on the single prompt line, widest first.
  *
- * It has to be able to shrink. The prompt is ONE line (main-win.c:5476) and the
- * row set is not fixed: a browser that can install offers (I)nstall locally, and
- * any shell can offer (U)pdate, so the worst case is six rows totalling 70
- * columns - which needs 85 at three spaces and does not fit an 80-column term.
+ * It has to be able to shrink. The prompt is ONE line (main-win.c:5476), (P)rofile
+ * is always present, and the rest of the row set is not fixed: a browser that can
+ * install offers (I)nstall, and any shell can offer (U)pdate, so the worst case is
+ * seven rows - which needs more columns than three-space gaps leave in an
+ * 80-column term.
  *
  * The failure mode if it did not shrink is the one worth naming: the line is
  * printed left to right and clipped at `cols`, so the row that disappears is the

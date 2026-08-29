@@ -340,6 +340,7 @@ import {
 } from "./mod-store";
 import { defaultProfileStore } from "./profiles";
 import { scopedStorage, type ScopedStorage } from "./profile-scope";
+import { runProfileScreen } from "./profile-ui";
 import { setPrefsStorage } from "./mod-prefs";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, reportModFault } from "./mod-problems";
@@ -742,10 +743,17 @@ setHost(desktopBridge ? makeDesktopHost(desktopBridge) : new BrowserHost());
 // existing install needs no migration: its data already lives at the plain
 // keys these consumers have always used.
 const profileStore = defaultProfileStore();
+// The RAW storage, unscoped - what the (P)rofile screen copies from/clears
+// through when creating or removing a profile. Kept apart from
+// scopedGameStorage below on purpose: scopedStorage(scopedGameStorage, x)
+// would prefix an ALREADY-prefixed view a second time.
+let realGameStorage: ScopedStorage | null = null;
 let scopedGameStorage: ScopedStorage | null = null;
 try {
+  realGameStorage = localStorage;
   scopedGameStorage = scopedStorage(localStorage, profileStore.activeId());
 } catch {
+  realGameStorage = null;
   scopedGameStorage = null; // no localStorage at all (private mode / no DOM)
 }
 setModStorage(scopedGameStorage);
@@ -12482,7 +12490,22 @@ async function bootMenus(): Promise<void> {
       return;
     }
     /* Not a File-menu item and not a way into the game: read it, then back to the
-     * title, the same as ESC out of any other pre-game screen. */
+     * title, the same as ESC out of any other pre-game screen. A profile switch
+     * is the one path out of here that does NOT come back to this same loop
+     * iteration - it reloads, same as reloadAfterModChange, because the storage
+     * every per-profile module reads from is wired once at boot. `resume: false`
+     * is what makes the reboot land back on the title rather than skip it, and
+     * autosave(true) inside it flushes any live character into the OLD (still
+     * active at this point) profile before the switch takes effect. */
+    if (choice === "profile") {
+      await openModal(() =>
+        runProfileScreen(term, profileStore, {
+          realStorage: realGameStorage,
+          reload: () => reloadAfterModChange({ resume: false }),
+        }),
+      );
+      continue;
+    }
     if (choice === "install") {
       await openModal(() => showInstallChoicePage());
       continue;
