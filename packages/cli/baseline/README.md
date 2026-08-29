@@ -34,9 +34,13 @@ importer:
 
 Per-level squares are absent by construction: the C schema stores per-depth
 aggregates, not per-run samples, so any mean test estimates the shared variance
-from the port side. That is also what blocks a valid monster-species test, which
-needs the LEVEL as the unit of observation - see
-`parity/phase3-2026-07-25/findings/NOISE-FLOOR.md`.
+from the port side. The monster-species gate does the same thing one dimension
+up. It needs the LEVEL as the unit of observation, because pits and nests place
+monsters in correlated batches, and only the port can report per-level species
+vectors - so the clustering is measured there and applied to the whole
+statistic, valid under the null that both sides are the same generator. See
+`clusteredDistributionTest` in `../src/stat-test.ts` and the species section of
+`docs/PARITY.md`.
 
 ### Open divergences this harness has surfaced
 
@@ -83,6 +87,16 @@ near 46, so the "10% low" reading sat inside the port's own seed-to-seed spread 
 and the monster species G-test (S-3) was withdrawn as invalid, because pit and
 nest clustering overdisperses it to the point that the port reaches p = 2e-97
 against ITSELF.
+
+Species is measured again, and it PASSES. The withdrawal above was a verdict on
+the instrument, not on the metric: a plain G-test counts every monster as an
+independent observation, which a pit of 20-60 monsters makes false. The gate now
+runs a design-effect-corrected G-test over monster BASES, with the clustering
+measured from the port's per-level vectors, and it is checked against a known
+null before it decides anything (`../src/stat-test.test.ts`). The measured
+design effect is 1.4 at depths 1-2 and 5-7.4 from depth 5 down, which is the
+overdispersion the withdrawal described, now subtracted rather than argued
+about.
 
 ## `stats-baseline.json` - self-regression guard (NOT parity)
 

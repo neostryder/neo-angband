@@ -31,6 +31,12 @@
  * What this probe IS sound for is the species result, which does not depend on the
  * calibration: port-vs-itself G came out LARGER than port-vs-C G (ratio 0.99), and
  * a metric that cannot distinguish a sample from itself is void under any null.
+ * That is a verdict on the INSTRUMENT rather than on the metric, and the
+ * instrument has since been replaced: the species gate now runs through
+ * `clusteredDistributionTest`, which measures the pit/nest overdispersion off the
+ * per-level vectors and divides it out. The last block below re-runs this same
+ * self-null through it, because a correction that cannot pass a sample against
+ * itself has not fixed anything.
  *
  * This is a diagnostic, not a gate -- it asserts only that it ran -- so it is
  * OPT-IN and excluded from the default `cli` glob. Its two `runStatsBatch` calls
@@ -45,7 +51,7 @@ import { describe, expect, it } from "vitest";
 import { loadGamePack } from "./pack.js";
 import { runStatsBatch, type StatsReport } from "./stats.js";
 import { loadCBaseline } from "./baseline.js";
-import { distributionTest } from "./stat-test.js";
+import { clusteredDistributionTest, distributionTest } from "./stat-test.js";
 
 const cbase = loadCBaseline();
 
@@ -140,6 +146,44 @@ describe.skipIf(!cbase || !ENABLED)("noise floor of the generation distribution 
           `\n--- mean G_null=${(nullSum / n).toFixed(1)}  max G_null=${nullMax.toFixed(1)}` +
           `  mean G_real=${(realSum / n).toFixed(1)}` +
           `  mean real/null=${(realSum / nullSum).toFixed(2)}`,
+      );
+    }
+
+    /*
+     * The same self-null through the CORRECTED species instrument, which is what
+     * the gate in parity-c-stat.test.ts now uses. This is the one reading that
+     * settled whether species is measurable at all: identical code at two seeds
+     * must NOT look different, and the plain row above shows it does. If a
+     * corrected p here is extreme, the gate is not calibrated on real data
+     * whatever the synthetic check in stat-test.test.ts says, and the right
+     * response is to un-gate species again rather than to widen anything.
+     */
+    {
+      const lines: string[] = [];
+      for (const d of depths) {
+        const pr = portRef.depths[String(d)];
+        const po = portObs.depths[String(d)];
+        if (!pr || !po) continue;
+        const t = clusteredDistributionTest(
+          {
+            levels: po.levels,
+            counts: po.speciesGroups,
+            countsSq: po.speciesGroupsSq,
+            countsXn: po.speciesGroupsXn,
+            totalSq: po.monsterTotalSq,
+          },
+          pr.speciesGroups,
+        );
+        lines.push(
+          `depth ${String(d).padStart(2)} species G=${t.g.toFixed(1)}` +
+            ` deff=${t.deff.toFixed(2)} G/deff=${t.gAdj.toFixed(1)}/${t.df}` +
+            ` p=${t.p.toExponential(2)} nEff=${t.effectiveN.toFixed(0)}`,
+        );
+      }
+      console.log(
+        `\n=== species, CORRECTED, identical code at two seeds ` +
+          `(this is the gate's own instrument on a known null) ===\n` +
+          lines.join("\n"),
       );
     }
 

@@ -302,23 +302,18 @@ this the rest of the way.
 
 Tracked as issue #21.
 
-### main.ts's menu and picker arguments still bypass the translator
+### main.ts's combat text and confirmation prompts still bypass the translator
 
 The `en-XA` pseudo-locale sweep (`docs/modding/AUTHORING.md`'s tool for
-finding strings the translator never reaches) now covers every screen under
-`packages/web/src`, main.ts included: its combat text, `say()` status
-messages and `confirmYesNo`/`getCheck` prompts all route through `t()`.
-
-What is left in main.ts is a different shape, and a field-name grep does not
-see it: the title, footer, prompt and empty-list strings handed positionally
-to `selectFromMenu`, `selectItemFrom`, `itemSelect` and `showTextScreen` -
-"Quality ignore menu", "Drop which item?", "You have nothing to drop.",
-"[ a-z to choose, ESC to cancel ]" and their neighbours. Roughly forty of
-them, all in the same two argument positions, so the pass is mechanical
-except for one case that is not: `chooseBook` builds its prompt by splicing
-a verb into "\<Verb\> which book?", and a language that inflects the verb or
-orders the sentence differently cannot express that with a verb slot. That
-one needs an id per command rather than a wrapper.
+finding strings the translator never reaches) has been run against every
+screen under `packages/web/src` except one. main.ts alone still carries an
+estimated hundred-plus player-facing literals outside its own label/hint/
+title fields - combat messages, `confirmYesNo`/`getCheck` prompts, and
+`say()` status text - none of which route through `t()` yet. Every other
+screen the sweep covers (context menus, the mods and mod-browse screens,
+options, keymap editing, pref-file screens, the wizard/debug console, the
+shop, the character sheet, the knowledge browser, the title screen's
+credits, birth, and character select) is now clean of that class of gap.
 
 Tracked as issue #95.
 

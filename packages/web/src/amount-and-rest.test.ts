@@ -132,7 +132,7 @@ describe("resting is announced by prt_state, not by a message", () => {
     /* "Cancelled." is real (check_for_player_interrupt, ui-game.c:663); the
      * monster and damage disturbs are silent. Dropping the invented line must
      * not take this one with it. */
-    expect(body).toContain('say(t("main.command.cancelled", "Cancelled."))');
+    expect(body).toContain('say("Cancelled.")');
   });
 
   it("clears state.resting when the rest ends, so the field goes away", () => {

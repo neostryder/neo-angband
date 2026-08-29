@@ -83,7 +83,7 @@ reason. The rule is: **a draw that a repaint can trigger must not touch
 
 ### What that is worth today, measured
 
-Last run 2026-08-01, engine `0.14.0`, at full power:
+Last run 2026-08-28, engine `1.1.2`, at full power:
 
 ```bash
 NEO_PARITY_RUNS=1000 npx vitest run packages/cli/src/parity-c-stat.test.ts
@@ -95,32 +95,140 @@ Bonferroni-corrected across the family:
 
 | Metric | Shape | Result |
 | --- | --- | --- |
-| Monster density | mean test per depth (20) | pass; pooled Stouffer Z = 0.59, p = 0.55 |
-| Object count | mean test per depth (20) | pass; no depth over \|z\| = 1.6 |
+| Monster density | mean test per depth (20) | pass; no depth over \|z\| = 2.5, pooled Stouffer Z = -1.62, p = 0.11 |
+| Object count | mean test per depth (20) | pass; no depth over \|z\| = 1.2 |
 | Ego count | mean test per depth (20) | pass |
 | Artifact count | mean test per depth (20) | pass |
-| Object level feeling | pooled G, vs a measured C-vs-C null | G/df = **1.29** against a null of mean 1.94, max 2.49 |
-| Monster level feeling | pooled G, vs a measured C-vs-C null | G/df = **1.21** against a null of mean 1.82, max 2.21 |
+| Object level feeling | pooled G, vs a measured C-vs-C null | G/df = **1.13** against a null of mean 1.79, max 2.60 |
+| Monster level feeling | pooled G, vs a measured C-vs-C null | G/df = **1.19** against a null of mean 1.93, max 2.54 |
 | Gold per level | mean test per depth | pass |
-| **Monster species mix** | **printed, never gated** | see below |
+| Monster species mix | design-effect-corrected G per depth (20), by monster base | pass; lowest depth p = 4.1e-3 against a threshold of 9.8e-5 |
 
 The two feeling rows are the ones worth reading twice. The null is not a
-chi-square tail - it is fifteen pairs of six independent 1000-run C databases
+chi-square tail - it is 153 pairs of eighteen independent 1000-run C databases
 run through this same instrument, so it says what the statistic does when the
-answer is known to be "no difference". The port's 1.29 and 1.21 are **below the
+answer is known to be "no difference". The port's 1.13 and 1.19 are **below the
 null's mean**: on these metrics the port is closer to the C than two runs of the
 C are to each other.
 
-**Species is measured and deliberately not gated**, and that is the honest part
-of this table. Pits and nests drop 20-60 monsters of one theme into a level, so
-the per-monster counts are 2.5-5x overdispersed and the effective sample size is
-the number of levels, not of monsters. Run against ITSELF at a second base seed
-the port reaches p = 2e-97, and at depth 13 it is further from itself than from
-the C. No threshold on that number means anything. Answering the species
-question properly needs a different instrument (one vector per level, a
-permutation test over levels) and is open work.
+#### The monster species mix
 
-Two more caveats, both structural rather than provisional:
+This row was printed without a threshold for a long time, and the reason is
+worth keeping because it is the general lesson of this whole document: the
+metric was fine and the **instrument** was wrong.
+
+Pits and nests drop 20-60 monsters of one theme onto a single level, so monsters
+do not arrive one at a time and independently - they arrive in correlated
+batches. A plain G-test counts every monster as its own observation, which
+inflates the statistic by roughly the batch size. Run through it, the port
+reached p = 2e-97 against **ITSELF** at a second base seed, and at depth 13 it
+came out further from itself than from the C. A number like that decides
+nothing, so nothing was decided on it.
+
+What replaced it takes the **level** as the unit of observation, which is what
+the effective sample size was all along.
+
+- **Sampling.** Depths 1 to 20, one generated level per (run, depth), so a
+  batch of `n` runs is `n` sampled levels at every depth. The C oracle
+  contributes 1000 levels per depth (the committed `main-stats` baseline) and
+  the port contributes 400 by default, 1000 at full power. At full power that is
+  90 269 port monsters over 1000 levels at depth 20, against the C's own 1000
+  levels there.
+- **Categories.** The mix is compared by monster **base** - 56 bases over
+  4.2.6's 624 races. The base is the unit the game itself themes by (`pit.txt`
+  names bases and flags, and the pit and nest fill draws from a base-themed
+  table), so a difference a player could describe is a difference between
+  bases. It is also the only resolution the sample can carry: 624 categories
+  against a few hundred levels is more categories than levels. Testing per race
+  would mostly measure which orc the RNG picked, and under D1 = B the streams
+  differ by design. After the usual pooling of near-absent categories the test
+  runs on 25 groups at depth 1 and 50 at depth 20.
+- **The test.** A two-sample G-test of homogeneity with a **Rao-Scott
+  first-order design-effect correction** (Rao and Scott, 1981/1984 - the
+  standard treatment of cluster-sampled categorical data). For each group the
+  real, between-level variance of its share is computed from the port's
+  per-level vectors, divided by the variance a one-monster-one-observation model
+  would have claimed, and the average of those design effects divides `G` before
+  it is referred to chi-square. `clusteredDistributionTest`
+  (`packages/cli/src/stat-test.ts`) is the implementation; the per-level sums it
+  needs are accumulated in `collectLevel` (`packages/cli/src/stats.ts`) as
+  `speciesGroups`, `speciesGroupsSq` and `speciesGroupsXn`.
+- **The measured clustering.** The design effect is not assumed, it is reported
+  per depth: about **1.4** at depths 1-2, where the level is too shallow for a
+  pit, rising to **5-8.5** from depth 5 down. So the depth-20 sample of 90 269
+  monsters is worth about 16 600 independent ones - a fifth of what a naive
+  count would claim, which is the entire size of the old mistake. The single
+  most clustered group is whichever one has the pit: ogres, ants and minor
+  demons run design effects above 20, and above 50 at the depths where an ogre
+  pit is the dominant one.
+- **The threshold, and why it is that.** Alpha 0.01, Bonferroni-corrected across
+  the whole gated family (five per-depth metrics over 20 depths plus the two
+  pooled feeling tests = 102 tests), so **9.8e-5** per test. That is the same
+  threshold everything else in the family answers to, and species can use it
+  because the corrected statistic is chi-square under the null *by
+  construction*: it needs no empirically measured null the way the pooled
+  feeling gates do, and for the same reason it does not need the port's sample
+  size to match the C's. That is why this row gates at the default 400 runs
+  while the two feeling rows go dark below 1000.
+
+**The correction is checked before it is trusted.** A gate that cannot fail is
+not a gate, so `packages/cli/src/stat-test.test.ts` runs the instrument on
+synthetic data built with the same pit shape, where the answer is known by
+construction. Two samples from the *same* generator, 60 replicates, alpha 0.01:
+
+| Instrument | False rejections | Median p |
+| --- | --- | --- |
+| plain G-test | **55 of 60** | 2.4e-9 |
+| design-effect corrected | 2 of 60 | 0.48 |
+
+and against generators that genuinely differ (4 points of probability mass moved
+between two groups) the corrected test still rejects **55 of 60** times. Those
+three numbers are the gate's warrant: the failure it fixes, the error rate it
+holds, and the fact that it can still fire. The probe in
+`noise-floor.probe.test.ts` runs the same self-null on real generated levels
+rather than synthetic ones.
+
+**Reading the `worst=` column without panicking.** Each row names its largest
+single contributor, and at full power the loudest ones are ogres: depth 6 shows
+`obs=0 exp=165`, depth 9 `obs=9 exp=187`, and depth 7 goes the other way at
+`obs=112 exp=55`. That looks like a missing monster and is not one. The
+shallowest ogre race in 4.2.6 is the ogre itself at native level 13, so above
+that depth an ogre is out of depth and arrives essentially only as a **pit** -
+and `build_pit` (`gen-room.c:2773`) lays a fixed arrangement of exactly 55
+monsters, so a pit is all or nothing. Reading the two sides down the depths says
+so outright: both are quantised in multiples of 55.
+
+| Depth | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| C ogres / 1000 levels | 55 | 165 | 55 | 55 | 187 | 74 | 115 | 230 | 999 |
+| port ogres / 1000 levels | 55 | 0 | 112 | 57 | 9 | 27 | 62 | 218 | 1155 |
+
+Depth 6 is the C growing three ogre pits in a thousand levels where the port
+grew none, which is ordinary Poisson noise on a count of three, and depth 7 is
+the same coin landing the other way. From depth 13 down, where ogres are in
+depth and arrive one at a time, the two columns track each other. This is
+exactly what the design effect exists to price - ogre's own runs above 50 at
+these depths - and exactly why a raw count comparison on this metric was never
+going to say anything.
+
+Two honest limits on it:
+
+- **Only the port side supplies per-level data.** The C `main-stats` schema
+  stores per-depth aggregates (`monsters(level, count, k_idx)` summed across
+  runs), so the design effect is measured on the port and applied to the whole
+  statistic. That is sound under the null being tested - the null *is* that both
+  sides are the same generator, and the same generator clusters the same way -
+  and it is the identical assumption the per-depth mean tests already make when
+  they estimate the shared per-level standard deviation from the port side. It
+  cannot manufacture agreement: if the port clustered more than upstream, the
+  larger design effect would be the one measured and the test would be
+  conservative.
+- **2 false rejections in 60 is above the nominal 1%.** A first-order Rao-Scott
+  correction is an approximation, and 60 replicates resolve an error rate to
+  about two points. What is established is that the hundred-fold miscalibration
+  is gone, not that the rate is exactly 0.01.
+
+Two more caveats on the other rows, both structural rather than provisional:
 
 - **The pooled feeling gates only decide at matched sample size.** G grows with
   n for a fixed distributional difference, so the ratio computed at the default

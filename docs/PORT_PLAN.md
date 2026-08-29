@@ -29,9 +29,11 @@ documentation lives here under `docs/`.
 2. **Parity bar**: feature parity with 4.2.6, statistically verified via
    distribution diffs against the C stats harness plus scripted golden
    scenarios. Not bit-exact; old savefiles do not import (an importer may come
-   later). **The verification holds with no mods enabled, and one metric -
-   monster species mix - is measured but not gated because the instrument
-   cannot decide it.** See [PARITY.md](PARITY.md#what-that-is-worth-today-measured)
+   later). **The verification holds with no mods enabled**, and every metric in
+   the generation table is gated, the monster species mix included - it is
+   tested by monster base with the pit and nest clustering measured off the
+   sampled levels and divided out, which is what it needed to become decidable.
+   See [PARITY.md](PARITY.md#what-that-is-worth-today-measured)
    for the numbers and the exclusions; this line is the target, that section is
    the result.
 3. **V1 target**: web + PWA. The classic multi-terminal-window interface is

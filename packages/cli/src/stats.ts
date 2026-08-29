@@ -89,6 +89,35 @@ export interface DepthMetrics {
   /** Monster count keyed by race index (ridx); mirrors L543. */
   monsters: Record<string, number>;
   /**
+   * Monster count keyed by monster BASE name - the species GROUP, the unit the
+   * species-mix parity gate tests on. Upstream has 56 bases against 624 races,
+   * and a base is what a pit or a nest is themed by (`pit.txt` names bases and
+   * flags, not races), so it is the level at which the mix is both meaningful
+   * and testable: 624 categories against a few hundred sampled levels is more
+   * categories than the effective sample can carry.
+   *
+   * A C-imported report leaves this EMPTY - the C `main-stats` database records
+   * `monsters(level, count, k_idx)` by race index only - so the comparison maps
+   * the C's per-race counts through the pack's race -> base table instead. Same
+   * grouping, applied on the far side of the import.
+   */
+  speciesGroups: Record<string, number>;
+  /**
+   * Sum over contributing levels of the SQUARED per-level count of each species
+   * group, and of that count times the level's monster total. With
+   * `monsterTotalSq` these are the sufficient statistics for the cluster
+   * (level-level) variance of each group's share, which is what the species gate
+   * needs and what a per-monster count cannot supply: monsters arrive in
+   * correlated batches, so the number of independent observations is the number
+   * of LEVELS. See `clusteredDistributionTest` in stat-test.ts.
+   *
+   * Absent from a C-imported report for the same reason `monsterTotalSq` is:
+   * the C schema stores per-depth aggregates, not per-run samples.
+   */
+  speciesGroupsSq: Record<string, number>;
+  /** Sum over levels of (this group's count) x (the level's monster total). */
+  speciesGroupsXn: Record<string, number>;
+  /**
    * Sum of squared per-level monster counts, so a consumer can recover the
    * per-level standard deviation and test a mean difference for significance
    * rather than against an invented tolerance (see stat-test.ts). Only a report
@@ -214,12 +243,20 @@ function bump(rec: Record<string, number>, key: number, by = 1): void {
   rec[k] = (rec[k] ?? 0) + by;
 }
 
+/** `bump` for a record already keyed by a string (species-group names). */
+function bumpKey(rec: Record<string, number>, key: string, by = 1): void {
+  rec[key] = (rec[key] ?? 0) + by;
+}
+
 /** Fresh, all-zero per-depth aggregate. */
 export function emptyDepth(): DepthMetrics {
   return {
     levels: 0,
     monsterTotal: 0,
     monsters: {},
+    speciesGroups: {},
+    speciesGroupsSq: {},
+    speciesGroupsXn: {},
     monsterTotalSq: 0,
     goldSq: 0,
     objectTotalSq: 0,
@@ -280,8 +317,16 @@ export function collectLevel(
   const objectsBefore = m.objectTotal;
   const egosBefore = m.egos;
   const artifactsBefore = m.artifacts;
+  /* This level's per-species-group tally, kept locally so the per-level squares
+   * below can be accumulated. It is the LEVEL that is the independent
+   * observation here, not the monster: a pit or a nest drops 20-60 monsters of
+   * one theme onto one level all at once. */
+  const groupsHere = new Map<string, number>();
   for (const pm of g.monsters) {
     bump(m.monsters, pm.mon.race.ridx);
+    /* The same race the count above uses, so the groups sum to monsterTotal. */
+    const group = pm.mon.race.base.name;
+    groupsHere.set(group, (groupsHere.get(group) ?? 0) + 1);
     m.monsterTotal += 1;
   }
 
@@ -312,6 +357,17 @@ export function collectLevel(
   const egosHere = m.egos - egosBefore;
   const artifactsHere = m.artifacts - artifactsBefore;
   m.monsterTotalSq += monstersHere * monstersHere;
+
+  /* Per-level species-group sufficient statistics. `Sq` and `Xn` are exactly
+   * what the linearized cluster variance of a group's SHARE needs:
+   *   var(share_k) = L / ((L-1) N^2) * SUM_i (y_ik - share_k * n_i)^2
+   * expands to Sq_k - 2*share_k*Xn_k + share_k^2 * monsterTotalSq, so nothing
+   * per-level has to be retained. */
+  for (const [group, count] of groupsHere) {
+    bumpKey(m.speciesGroups, group, count);
+    bumpKey(m.speciesGroupsSq, group, count * count);
+    bumpKey(m.speciesGroupsXn, group, count * monstersHere);
+  }
   m.goldSq += goldHere * goldHere;
   m.objectTotalSq += objectsHere * objectsHere;
   m.egosSq += egosHere * egosHere;

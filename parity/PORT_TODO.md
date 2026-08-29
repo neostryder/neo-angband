@@ -534,11 +534,14 @@ nowhere in this file whether it is faithful or not.
 its limits rather than its greens. It compares 1000 generated levels per
 depth against 1000 from the compiled C at α = 0.01 across depths 1-20, and
 it measures generation. Formulas, messages, screens and keys are checked by
-other lanes. One metric in that table, the monster species mix, is printed
-and deliberately not gated, because the instrument is not good enough to
-gate it: run against itself at a second seed the port reaches p = 2e-97.
-Answering the species question properly is a measurement problem, not a
-missing port, and is not on this list.
+other lanes. Every metric in that table is now gated, including the monster
+species mix - the last one to get there, and the clearest case of a
+measurement problem rather than a missing port. It was printed without a
+threshold for as long as it ran through a plain G-test, which counts every
+monster as an independent observation and so reported p = 2e-97 for the port
+against itself; pits and nests place monsters in batches of 20-60. Tested by
+monster base with that clustering measured off the sampled levels and divided
+out, it passes.
 
 ### 4. The frontend is a reimplementation, not a transliteration
 

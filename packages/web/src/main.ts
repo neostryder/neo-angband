@@ -2192,12 +2192,12 @@ if (bootedNew && !birthPending && !needsSelect) {
 // py_attack text (player-attack.c): the combat code returns HitType keys only,
 // leaving the wording to the UI. Render the classic "You hit the kobold." plus
 // the crit flavour and the kill line, faithful to melee_hit_types + mon_take_hit.
-const CRIT_FLAVOR: Record<string, () => string> = {
-  HIT_GOOD: () => t("main.melee.crit-good", "It was a good hit!"),
-  HIT_GREAT: () => t("main.melee.crit-great", "It was a great hit!"),
-  HIT_SUPERB: () => t("main.melee.crit-superb", "It was a superb hit!"),
-  HIT_HI_GREAT: () => t("main.melee.crit-hi-great", "It was a *GREAT* hit!"),
-  HIT_HI_SUPERB: () => t("main.melee.crit-hi-superb", "It was a *SUPERB* hit!"),
+const CRIT_FLAVOR: Record<string, string> = {
+  HIT_GOOD: "It was a good hit!",
+  HIT_GREAT: "It was a great hit!",
+  HIT_SUPERB: "It was a superb hit!",
+  HIT_HI_GREAT: "It was a *GREAT* hit!",
+  HIT_HI_SUPERB: "It was a *SUPERB* hit!",
 };
 function monName(mon: { race: { name: string; flags: { has: (f: number) => boolean } } }): string {
   // monster_desc 0x00: "the kobold" for a visible non-unique, the proper name
@@ -2215,18 +2215,18 @@ state.onMelee = (mon, result): void => {
       if (blow.verb === "afraid") {
         /* msgt(MSG_AFRAID, ...) (player-attack.c L754): the type carries the
          * message.prf colour, so pass it through say() and not only to sound. */
-        say(t("main.melee.afraid", "You are too afraid to attack {name}!", { name }), "AFRAID");
+        say(`You are too afraid to attack ${name}!`, "AFRAID");
         state.sound?.(MSG.AFRAID);
         continue;
       }
       /* msgt(MSG_MISS, ...) (player-attack.c L766). */
-      say(t("main.melee.miss", "You miss {name}.", { name }), "MISS");
+      say(`You miss ${name}.`, "MISS");
       state.sound?.(MSG.MISS);
       continue;
     }
-    say(t("main.melee.hit", "You {verb} {name}.", { verb: blow.verb, name }));
+    say(`You ${blow.verb} ${name}.`);
     const flavor = CRIT_FLAVOR[blow.msg];
-    if (flavor) say(flavor());
+    if (flavor) say(flavor);
     state.sound?.((MSG as Record<string, number>)[blow.msg] ?? MSG.HIT);
   }
   if (result.monsterDied) {
@@ -2243,10 +2243,10 @@ state.onMelee = (mon, result): void => {
      * When the Borg left for its own repository the census noticed immediately.
      * The same splitting also defeats translation, which needs the sentence. */
     const line = !monsterIsVisible(mon)
-      ? t("main.melee.killed", "You have killed {name}.", { name })
+      ? `You have killed ${name}.`
       : monsterIsDestroyed(mon)
-        ? t("main.melee.destroyed", "You have destroyed {name}.", { name })
-        : t("main.melee.slain", "You have slain {name}.", { name });
+        ? `You have destroyed ${name}.`
+        : `You have slain ${name}.`;
     /* msgt(MSG_KILL, ...) (mon-util.c kill message): carry the type so the
      * message.prf colour applies, not just the sound. */
     say(line, "KILL");
@@ -2901,7 +2901,7 @@ async function runContextMenuPlayer(): Promise<void> {
        * "stay put"), so cycling never engaged and a floor object standing
        * right here was never offered (#290). */
       if (await runTargetLoop(TARGET.LOOK, false)) {
-        say(t("main.target.selected", "Target Selected."));
+        say("Target Selected.");
       }
       break;
     case "inventory":
@@ -2969,7 +2969,7 @@ async function runContextMenuCave(grid: Loc, adjacent: boolean): Promise<void> {
       /* Same as the player context menu's "look" (#290): do_cmd_look always
        * starts interactive-cycling mode regardless of entry point, so this
        * must not pin the cursor to the clicked grid either. */
-      if (await runTargetLoop(TARGET.LOOK, false)) say(t("main.target.selected", "Target Selected."));
+      if (await runTargetLoop(TARGET.LOOK, false)) say("Target Selected.");
       break;
     case "recall": {
       // lore_show_interactive on the grid's monster (ui-context.c L607-615).
@@ -2987,7 +2987,7 @@ async function runContextMenuCave(grid: Loc, adjacent: boolean): Promise<void> {
         (o) => tvalIsWand(o.tval) || tvalIsRod(o.tval) || tvalIsStaff(o.tval),
       );
       if (items.length === 0) {
-        say(t("main.item.no-usable", "You have no usable items."));
+        say("You have no usable items.");
         break;
       }
       const useIdx = await selectFromMenu(term, "core:context-use-item", "Use which item? ", items);
@@ -3241,18 +3241,9 @@ async function runContextMenuObject(handle: number): Promise<ContextMenuResult> 
 async function doCmdItemListing(mode: "inven" | "equip" | "quiver"): Promise<void> {
   /* Each opens with its own emptiness guard and message (L4030-4033). */
   const empty = {
-    inven: [
-      (state.gear.inven ?? []).filter(Boolean).length === 0,
-      t("main.item-listing.empty-inven", "You have nothing in your inventory."),
-    ],
-    equip: [
-      state.actor.player.equipment.every((h) => !h),
-      t("main.item-listing.empty-equip", "You are not wielding or wearing anything."),
-    ],
-    quiver: [
-      (state.gear.quiver ?? []).filter(Boolean).length === 0,
-      t("main.item-listing.empty-quiver", "You have nothing in your quiver."),
-    ],
+    inven: [(state.gear.inven ?? []).filter(Boolean).length === 0, "You have nothing in your inventory."],
+    equip: [state.actor.player.equipment.every((h) => !h), "You are not wielding or wearing anything."],
+    quiver: [(state.gear.quiver ?? []).filter(Boolean).length === 0, "You have nothing in your quiver."],
   }[mode] as [boolean, string];
   if (empty[0]) {
     say(empty[1]);
@@ -3681,7 +3672,7 @@ async function activateItem(): Promise<void> {
     handles.push(handle);
   }
   if (items.length === 0) {
-    say(t("main.activate.none", "You have no items to activate."));
+    say("You have no items to activate.");
     return;
   }
   const idx = await selectFromMenu(term, "core:activate-item", "Activate which item? ", items, undefined, {
@@ -3835,7 +3826,7 @@ function playerCanRefuelPrereq(): boolean {
   const light =
     lightSlot >= 0 ? gearGet(state.gear, player.equipment[lightSlot] ?? 0) : null;
   if (light && light.flags.has(OF.TAKES_FUEL)) return true;
-  say(t("main.refuel.cannot-refuel", "Your light cannot be refuelled."));
+  say("Your light cannot be refuelled.");
   return false;
 }
 
@@ -3851,11 +3842,11 @@ async function refuelItem(): Promise<void> {
   const light =
     lightSlot >= 0 ? gearGet(state.gear, player.equipment[lightSlot] ?? 0) : null;
   if (!light || !tvalIsLight(light.tval)) {
-    say(t("main.refuel.no-light", "You are not wielding a light."));
+    say("You are not wielding a light.");
     return;
   }
   if (light.flags.has(OF.NO_FUEL) || !light.flags.has(OF.TAKES_FUEL)) {
-    say(t("main.refuel.cannot-refill", "Your light cannot be refilled."));
+    say("Your light cannot be refilled.");
     return;
   }
   const ref = await selectTargetItem({
@@ -3910,9 +3901,7 @@ async function applyIgnoreDrop(): Promise<void> {
     const obj = gearGet(state.gear, target.handle);
     if (!obj) continue;
     const name = objectName(state, obj);
-    const yes = await confirmYesNo(
-      t("main.takeoff.confirm-drop", "Really take off and drop {name}? ", { name }),
-    );
+    const yes = await confirmYesNo(`Really take off and drop ${name}? `);
     if (!yes) {
       /* The upstream Hack: inscribe "!d" so the same question stops being
        * asked. Only ever written after a real refusal - which is why core
@@ -3962,7 +3951,7 @@ async function openEgoMenu(): Promise<void> {
       (ego) => state.everseen?.egoSeen(ego) ?? true,
     );
     if (items.length === 0) {
-      say(t("main.ignore-setup.no-egos", "No known ego items to configure."));
+      say("No known ego items to configure.");
       return;
     }
     const idx = await selectFromMenu(term, "core:ignore-ego", "Ego item ignore menu", items);
@@ -4110,7 +4099,7 @@ async function castSpell(): Promise<void> {
   if (!bookObj) return;
   const { items, sidx } = bookSpellMenu(state, bookObj, "cast");
   if (items.every((it) => it.disabled)) {
-    say(t("main.spell.none-castable", "That book has no spells that you can cast."));
+    say("That book has no spells that you can cast.");
     return;
   }
   const realm = playerObjectToBook(player, bookObj)?.realm;
@@ -4141,10 +4130,8 @@ async function castSpell(): Promise<void> {
   /* Verify "dangerous" spells (cmd-obj.c:1139-1152): if the spell costs more
    * mana than the player has, warn and confirm; ESC/no aborts with no turn. */
   if (spellData && spellData.mana > player.csp) {
-    say(
-      t("main.spell.low-mana", "You do not have enough mana to {verb} this {noun}.", { verb, noun }),
-    );
-    if (!(await confirmYesNo(t("main.spell.attempt-anyway", "Attempt it anyway? ")))) return;
+    say(`You do not have enough mana to ${verb} this ${noun}.`);
+    if (!(await confirmYesNo("Attempt it anyway? "))) return;
   }
   const args: Record<string, unknown> = { spell };
   if (spellNeedsAim(player, spell)) {
@@ -4191,7 +4178,7 @@ async function studySpell(): Promise<void> {
    * failure message instead. */
   if (!playerCanCast(state, { msg: say })) return;
   if (player.upkeep.newSpells <= 0) {
-    say(t("main.study.none-learnable", "You cannot learn any new spells!"));
+    say("You cannot learn any new spells!");
     return;
   }
   /* do_cmd_study_spell / do_cmd_study_book filter by obj_can_study (cmd-obj.c
@@ -4210,7 +4197,7 @@ async function studySpell(): Promise<void> {
     if (!bookObj) return;
     const { items, sidx } = bookSpellMenu(state, bookObj, "study");
     if (items.every((it) => it.disabled)) {
-      say(t("main.study.book-empty", "That book has no spells that you can learn."));
+      say("That book has no spells that you can learn.");
       return;
     }
     const noun = playerObjectToBook(player, bookObj)?.realm.spellNoun ?? "spell";
@@ -4286,7 +4273,7 @@ async function browseBookObject(handle: number): Promise<void> {
    * (W2-014 / W2-015). No RNG.
    */
   if (spellBookCountSpells(player, bookObj, spellOkayToBrowse) === 0) {
-    say(t("main.browse.cannot", "You cannot browse that."));
+    say("You cannot browse that.");
     return;
   }
   const { items, sidx } = bookSpellMenu(state, bookObj, "cast");
@@ -4328,7 +4315,7 @@ async function browseBookObject(handle: number): Promise<void> {
 async function fireCmd(): Promise<void> {
   const tval = state.actor.combat.ammoTval;
   if (!tval) {
-    say(t("main.fire.no-launcher", "You have nothing to fire with."));
+    say("You have nothing to fire with.");
     return;
   }
   const ref = await selectItemFrom(
@@ -4814,7 +4801,7 @@ async function showMonsterKnowledge(): Promise<void> {
   const races = booted.registries.monsters.races;
   const views = monsterKnowledgeGroupViews(races, state.lore, booted.registries.monsterCategories);
   if (views.length === 0) {
-    say(t("main.monster-recall.none-seen", "You have not encountered any monsters yet."));
+    say("You have not encountered any monsters yet.");
     return;
   }
   await showMonsterKnowledgeBrowser(
@@ -4997,7 +4984,7 @@ function runTargetLoop(
 async function chooseTarget(): Promise<boolean> {
   const { items, mons } = targetMenu(state);
   if (items.length === 0) {
-    say(t("main.target.none-available", "No Available Target."));
+    say("No Available Target.");
     return false;
   }
   const idx = await selectFromMenu(
@@ -5013,11 +5000,7 @@ async function chooseTarget(): Promise<boolean> {
   targetSetMonster(state, mon);
   state.healthWho = mon;
   const n = mon.race.name;
-  say(
-    t("main.target.is-targeted", "{name} is targeted.", {
-      name: `${n.charAt(0).toUpperCase()}${n.slice(1)}`,
-    }),
-  );
+  say(`${n.charAt(0).toUpperCase()}${n.slice(1)} is targeted.`);
   return true;
 }
 
@@ -5416,10 +5399,9 @@ function showPrevMessageCmd(): void {
 async function retireCmd(): Promise<void> {
   const player = state.actor.player;
   if (player.totalWinner) {
-    if (!(await confirmYesNo(t("main.retire.confirm", "Do you want to retire? ")))) return;
+    if (!(await confirmYesNo("Do you want to retire? "))) return;
   } else {
-    if (!(await confirmYesNo(t("main.retire.confirm-again", "Do you really want to retire?"))))
-      return;
+    if (!(await confirmYesNo("Do you really want to retire?"))) return;
     // Special verification: one inline keypress at row 0, proceed only on '@'
     // (ui-command.c:178-182 prt/inkey, NOT a full-screen line editor).
     const verify = await getKeyInline(
@@ -5615,7 +5597,7 @@ async function driveRest(nArg: number): Promise<void> {
         // check_for_player_interrupt (ui-game.c:663), and the monster /
         // damage disturbs are silent. Said here rather than through the engine
         // hook because this loop, not the engine, drives the rest (WP-11).
-        if (interrupted && !dead) say(t("main.command.cancelled", "Cancelled."));
+        if (interrupted && !dead) say("Cancelled.");
         break;
       }
 
@@ -5987,12 +5969,8 @@ function persistSave(deliberate = false): boolean {
       /* BOTH messages, as upstream prints them: lore_save's own report of the
        * staged file it could not create (mon-lore.c:1908) and then the caller's
        * (ui-game.c:1091). */
-      say(
-        t("main.lore-save.create-failed", "Failed to create file {path}.new", {
-          path: userPath(LORE_FILE),
-        }),
-      );
-      say(t("main.lore-save.failed", "lore save failed!"));
+      say(`Failed to create file ${userPath(LORE_FILE)}.new`);
+      say("lore save failed!");
     }
     return ok;
   } catch {
@@ -6014,8 +5992,8 @@ function persistSave(deliberate = false): boolean {
 async function closeGameSave(prompt: boolean): Promise<void> {
   const prompting = prompt;
   while (!persistSave(true)) {
-    if (!prompting || !(await confirmYesNo(t("main.save.retry", "Saving failed.  Try again? ")))) {
-      if (dead) say(t("main.save.death-failed", "death save failed!"));
+    if (!prompting || !(await confirmYesNo("Saving failed.  Try again? "))) {
+      if (dead) say("death save failed!");
       return;
     }
   }
@@ -6045,7 +6023,7 @@ function autosave(force = false): void {
   }
   if (!autosaveFailed) {
     autosaveFailed = true;
-    say(t("main.save.failed", "Saving failed."));
+    say("Saving failed.");
   }
 }
 
@@ -6426,24 +6404,13 @@ async function gameMenuOnce(): Promise<boolean> {
     case "switch":
       // get_check-style confirmation (parallels ui-death.c's "Start a new
       // game?") so a stray tap never yanks the player out of a live run.
-      if (
-        await confirmYesNo(
-          t("main.title-exit.switch-character", "Switch character? (this hero is saved to its slot)"),
-        )
-      ) {
+      if (await confirmYesNo("Switch character? (this hero is saved to its slot)")) {
         switchCharacter();
         return false;
       }
       break;
     case "new":
-      if (
-        await confirmYesNo(
-          t(
-            "main.title-exit.new-character",
-            "Start a new character? (this hero is saved to its slot)",
-          ),
-        )
-      ) {
+      if (await confirmYesNo("Start a new character? (this hero is saved to its slot)")) {
         persistSave(); // keep the current character in its slot, then birth anew
         newGame();
         return false;
@@ -6452,7 +6419,7 @@ async function gameMenuOnce(): Promise<boolean> {
     case "exit":
       // Confirmed like Switch/New: the save is written first, so this loses
       // nothing, but a stray tap should not throw the player out of a live run.
-      if (await confirmYesNo(t("main.title-exit.save-and-exit", "Save and exit to the title screen?"))) {
+      if (await confirmYesNo("Save and exit to the title screen?")) {
         await exitToTitle();
         return false;
       }
@@ -6466,7 +6433,7 @@ async function gameMenuOnce(): Promise<boolean> {
        * would be an invention. This row is port UI with no counterpart in the C - a
        * browse surface where Quit sits one arrow key from its neighbours - so a
        * guard rail here diverges from nothing. */
-      if (await confirmYesNo(t("main.quit.save-and-quit", "Save and quit?"))) {
+      if (await confirmYesNo("Save and quit?")) {
         await saveQuitNow();
         return false;
       }
@@ -6558,8 +6525,7 @@ async function runDeathMenu(): Promise<void> {
       /* EVT_ESCAPE (L413-417). terms_disconnecting - the front end tearing
        * down, which breaks out unasked - has no browser counterpart: a closing
        * tab runs the pagehide save, not this menu. */
-      if (await confirmYesNo(t("main.death.quit-confirm", "Do you want to quit? ")))
-        return quitAfterDeath();
+      if (await confirmYesNo("Do you want to quit? ")) return quitAfterDeath();
       continue;
     }
     switch (entries[pick]?.action) {
@@ -6597,11 +6563,7 @@ async function runDeathMenu(): Promise<void> {
           },
           say,
         );
-        say(
-          ok
-            ? t("main.dump.ok", "Character dump successful.")
-            : t("main.dump.failed", "Character dump failed!"),
-        );
+        say(ok ? "Character dump successful." : "Character dump failed!");
         break;
       }
       case "scores":
@@ -6636,7 +6598,7 @@ async function runDeathMenu(): Promise<void> {
       case "new":
         // death_new_game (ui-death.c L349): get_check("Start a new game? "),
         // trailing space included - get_check appends "[y/n] " verbatim.
-        if (await confirmYesNo(t("main.death.new-game-confirm", "Start a new game? "))) {
+        if (await confirmYesNo("Start a new game? ")) {
           newGame();
           return;
         }
@@ -6644,8 +6606,7 @@ async function runDeathMenu(): Promise<void> {
       case "quit":
         // The Quit row's NULL action is what lets EVT_SELECT escape menu_select
         // and reach L409-412's get_check.
-        if (await confirmYesNo(t("main.death.quit-confirm", "Do you want to quit? ")))
-          return quitAfterDeath();
+        if (await confirmYesNo("Do you want to quit? ")) return quitAfterDeath();
         break;
       default:
         break;
@@ -6699,12 +6660,7 @@ installPickup(state, registry, {
       return answer ?? max;
     },
     onGold: (total, name, single): void => {
-      say(
-        t("main.pickup.gold", "You have found {total} gold pieces worth of {what}.", {
-          total,
-          what: single ? name : t("main.pickup.gold-treasures", "treasures"),
-        }),
-      );
+      say(`You have found ${total} gold pieces worth of ${single ? name : "treasures"}.`);
     },
     onPickup: (msg): void => {
       // The core builds the full inven_carry line from the merged pack stack
@@ -6772,12 +6728,7 @@ function seeFloorItems(): void {
     // p = "see" (or "feel" when blind, "have no room for" when the pack is full),
     // ui-display.c L2589/L2612-L2615. describeObject is ODESC_PREFIX | ODESC_FULL.
     const verb = !canPickup ? "have no room for" : blind ? "feel" : "see";
-    say(
-      t("main.item.verb-object", "You {verb} {object}.", {
-        verb,
-        object: describeObject(state, obj),
-      }),
-    );
+    say(`You ${verb} ${describeObject(state, obj)}.`);
   } else {
     // Multiple objects: upstream shows the show_floor screen; defer it.
     pendingFloorPile = pile;
@@ -6942,13 +6893,8 @@ async function repeatLastCommand(): Promise<void> {
     if (spellData && spellData.mana > player.csp) {
       const verb = spellData.realm.verb ?? "cast";
       const noun = spellData.realm.spellNoun ?? "spell";
-      say(
-        t("main.spell.low-mana", "You do not have enough mana to {verb} this {noun}.", {
-          verb,
-          noun,
-        }),
-      );
-      if (!(await confirmYesNo(t("main.spell.attempt-anyway", "Attempt it anyway? ")))) return;
+      say(`You do not have enough mana to ${verb} this ${noun}.`);
+      if (!(await confirmYesNo("Attempt it anyway? "))) return;
     }
   }
   /* Same reasoning as the cast case above: a repeated "walk" re-dispatches
@@ -7022,7 +6968,7 @@ async function useGenericCmd(): Promise<void> {
     picks.push({ code: "activate", handle });
   }
   if (rows.length === 0) {
-    say(t("main.use.none", "You have no items to use."));
+    say("You have no items to use.");
     return;
   }
   const idx = await selectFromMenu(term, "core:use-item", "Use which item? ", rows, undefined, {
@@ -7033,11 +6979,11 @@ async function useGenericCmd(): Promise<void> {
   if (!pick) return;
   if (pick.code === "unequipped-activatable") {
     /* cmd-obj.c:993 - the item is usable, just not where it needs to be. */
-    say(t("main.use.equip-first", "Equip the item to use it."));
+    say("Equip the item to use it.");
     return;
   }
   if (pick.code === "unusable-now") {
-    say(t("main.use.not-now", "The item cannot be used at the moment"));
+    say("The item cannot be used at the moment");
     return;
   }
   await dispatchItemVerb(pick.code, pick.handle, gearGet(state.gear, pick.handle));
@@ -7252,19 +7198,11 @@ function screenDumpCmd(): void {
      * passes it to file_open); a host that acts on the type then sees the truth. */
     if (!userWrite(file, text, mode === DUMP_HTML ? FileType.HTML : FileType.TEXT)) {
       /* html_screenshot's only failure: it could not open the file (L322-325). */
-      say(
-        t("main.screendump.write-failed", "Cannot write the '{path}' file!", {
-          path: userPath(file),
-        }),
-      );
+      say(`Cannot write the '${userPath(file)}' file!`);
       return;
     }
     exportUserFile(file, text, mode === DUMP_HTML ? "text/html" : "text/plain");
-    say(
-      mode
-        ? t("main.screendump.saved-forum", "Forum text screen dump saved.")
-        : t("main.screendump.saved-html", "HTML screen dump saved."),
-    );
+    say(`${mode ? "Forum text" : "HTML"} screen dump saved.`);
   });
 }
 
@@ -7312,7 +7250,7 @@ async function ignoreItemCmd(): Promise<void> {
 async function prefLineCmd(): Promise<void> {
   const line = await promptText(term, "Pref:", "", 80, "[ enter a pref command, ESC to cancel ]");
   if (line === null || line.trim() === "") return;
-  say(t("main.prefs.unrecognized", "Pref command not recognized."));
+  say("Pref command not recognized.");
 }
 
 /** Version info (V, do_cmd_version, cmd_hidden:212). Pure display. */
@@ -9296,12 +9234,7 @@ function reincarnateAutoplayer(): boolean {
     `mod:${holder.id}`,
     `died to ${diedFrom} at level ${diedAtLevel} on depth ${diedAt}; respawning as a ${reborn.raceName} ${reborn.className}`,
   );
-  say(
-    t("main.reincarnate.awaken", "You awaken as a {race} {cls}.", {
-      race: reborn.raceName,
-      cls: reborn.className,
-    }),
-  );
+  say(`You awaken as a ${reborn.raceName} ${reborn.className}.`);
   message = "";
   /* The turn's tail, the parts of it that still apply: the reborn character is on
    * a fresh town level, so there is no floor pile to announce and no shop to walk
@@ -9327,7 +9260,7 @@ function continueAdvance(
     void openModal(async () => {
       const pending = state.pendingDeath;
       if (!pending) return;
-      const die = await getCheck(term, t("main.death.die-confirm", "Die? "));
+      const die = await getCheck(term, "Die? ");
       pending.resolve(die);
       advance();
     });
@@ -9364,7 +9297,7 @@ function continueAdvance(
     // close_game's dead branch (ui-game.c:1152-1158): the tombstone IS the
     // port's dead-player save (decision 16 drops the resumable bytes), so a
     // failed metadata write loses the memorial and gets upstream's message.
-    if (activeId && !markDead(activeId)) say(t("main.save.death-failed", "death save failed!"));
+    if (activeId && !markDead(activeId)) say("death save failed!");
     detachSlot();
     setActiveId(null);
     // death_knowledge (player-util.c L278-317), in full: retire a winner in a
@@ -9419,17 +9352,14 @@ function continueAdvance(
     if (!outcome.entered) {
       say(
         outcome.reason === "cheater"
-          ? t("main.score.not-registered-cheater", "Score not registered for cheaters.")
+          ? "Score not registered for cheaters."
           : outcome.reason === "wizard"
-            ? t("main.score.not-registered-wizard", "Score not registered for wizards.")
+            ? "Score not registered for wizards."
             : outcome.reason === "borg"
-              ? t("main.score.not-registered-borg", "Score not registered for borgs.")
+              ? "Score not registered for borgs."
               : outcome.reason === "interrupted"
-                ? t(
-                    "main.score.not-registered-interrupted",
-                    "Score not registered due to interruption.",
-                  )
-                : t("main.score.not-registered-retired", "Score not registered due to retiring."),
+                ? "Score not registered due to interruption."
+                : "Score not registered due to retiring.",
       );
     }
     // death_screen (ui-death.c L374): the winner crown + tombstone first, then
@@ -9478,7 +9408,7 @@ function continueAdvance(
   let enterShop = shopHere;
   if (shopHere && playerIsShapechanged(state)) {
     if (shopHere.feat !== FEAT.HOME) {
-      say(t("main.death.door-slams", "There is a scream and the door slams shut!"));
+      say("There is a scream and the door slams shut!");
     }
     enterShop = null;
   }
@@ -9582,12 +9512,12 @@ function buildCommandTable(): CommandRow[] {
     // General actions (cmd_action, ui-game.c:141-153).
     { desc: "Disarm a trap or chest", cat: "Action commands", o: "D", act: () => void openModal(disarmCmd) },
     { desc: "Rest for a while", cat: "Action commands", o: "R", act: () => void openModal(restCmd) },
-    { desc: "Look around", cat: "Action commands", o: "l", r: "x", act: () => void openModal(async () => { if (await runTargetLoop(TARGET.LOOK, true)) say(t("main.target.selected", "Target Selected.")); }) },
+    { desc: "Look around", cat: "Action commands", o: "l", r: "x", act: () => void openModal(async () => { if (await runTargetLoop(TARGET.LOOK, true)) say("Target Selected."); }) },
     // Swap weapon: the original keyset maps 'x' to the pref.prf "w0" macro
     // (wield the item inscribed @0). The roguelike keyset uses 'x' for Look
     // (the look row above), so this binds 'x' only in the original keyset.
     { desc: "Swap weapon", cat: null, o: "x", r: null, act: () => void openModal(swapWeaponCmd) },
-    { desc: "Target monster or location", cat: "Action commands", o: "*", act: () => void openModal(async () => { if (await runTargetLoop(TARGET.KILL, true)) say(t("main.target.selected", "Target Selected.")); else say(t("main.target.aborted", "Target Aborted.")); }) },
+    { desc: "Target monster or location", cat: "Action commands", o: "*", act: () => void openModal(async () => { if (await runTargetLoop(TARGET.KILL, true)) say("Target Selected."); else say("Target Aborted."); }) },
     { desc: "Target closest monster", cat: "Action commands", o: "'", act: () => { targetSetClosest(state, TARGET.KILL); render(); } },
     // Tunnel: 'T' in the original keyset; the roguelike keyset uses ^T (handled
     // above) since roguelike 'T' is Take off.
@@ -10366,7 +10296,7 @@ document.addEventListener("visibilitychange", () => {
  * turn is still unwinding, and the tail render would paint the map back over it.
  * A macrotask lands after advance() has finished, which is the same trick
  * pumpStep uses to let the turn's own tail complete. */
-onSessionTaint((taint) => {
+onSessionTaint((t) => {
   setTimeout(() => {
     void openModal(async () => {
       await showTextScreen(
@@ -10374,14 +10304,13 @@ onSessionTaint((taint) => {
         /* Never blame a mod for the game's own bug: `id === null` is a core
          * fault, and a title saying "a mod stopped the game" would send the
          * player to the mod manager to hunt for a culprit that is not there. */
-        taint.id === null
+        t.id === null
           ? "The game stopped mid-turn"
           : "A mod stopped the game mid-turn",
-        taintNotice(taint).map((text) => ({ text })),
+        taintNotice(t).map((text) => ({ text })),
         "[ Press ESC for the reload prompt ]",
       );
-      if (await confirmYesNo(t("main.crash.reload-confirm", "Reload from the last save now? ")))
-        location.reload();
+      if (await confirmYesNo("Reload from the last save now? ")) location.reload();
     });
   }, 0);
 });
@@ -10593,7 +10522,7 @@ async function maybeBirth(): Promise<BootStep> {
   // birth screen and let it drive the default (or last-birthed) character, so it
   // never stalls waiting for a human to click through character creation.
   if (params.get("agent")) {
-    say(t("main.borg.awakens", "Borg awakens."));
+    say("Borg awakens.");
     return "done";
   }
   let justBirthed = false;
@@ -11070,16 +10999,10 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
  * at runtime, not a build-time dependency.
  */
 async function confirmBorgActivation(): Promise<boolean> {
-  say(
-    t("main.borg.gate-warning", "You are about to use the dangerous, unsupported, borg commands!"),
-  );
-  say(
-    t("main.borg.gate-corrupt", "Your machine may crash, and your savefile may become corrupted!"),
-  );
+  say("You are about to use the dangerous, unsupported, borg commands!");
+  say("Your machine may crash, and your savefile may become corrupted!");
   render();
-  return confirmYesNo(
-    t("main.borg.gate-confirm", "Are you sure you want to use the borg commands? "),
-  );
+  return confirmYesNo("Are you sure you want to use the borg commands? ");
 }
 
 /**
@@ -11142,7 +11065,7 @@ function tryBorgCommand(): void {
     (loaded) => typeof loaded.plugin.controller === "function",
   );
   if (!candidate) {
-    say(t("main.borg.no-autoplayer", "You do not have an autoplayer mod installed."));
+    say("You do not have an autoplayer mod installed.");
     render();
     return;
   }
@@ -11169,11 +11092,8 @@ async function confirmPendingAutoplayerInstall(): Promise<void> {
   await openModal(async () => {
     if (!(await confirmBorgActivation())) {
       say(
-        t(
-          "main.autoplayer.declined",
-          "{id} will not take the keyboard this session. You will be asked again the next time it tries to activate.",
-          { id: pending.loaded.id },
-        ),
+        `${pending.loaded.id} will not take the keyboard this session. Turn its ` +
+          `autoplay rule back off from Mods if you do not want to be asked again.`,
       );
       render();
       return;
@@ -13504,7 +13424,7 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, controller: AgentContr
     installedControllerSpeed = null;
     stopInstalledController = null;
     hideAutoplayerBanner();
-    say(t("main.autoplayer.keyboard-back", "You take the keyboard back from {id}.", { id }));
+    say(`You take the keyboard back from ${id}.`);
     render();
   };
 }

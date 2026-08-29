@@ -22,13 +22,15 @@
  *   - object and monster level feelings, POOLED across depths (summed G-tests);
  *   - gold per level, per depth (two-sample z).
  *
- * And what is measured but deliberately NOT gated: the monster species mix. It
- * is 2.5-5.0x overdispersed by pit/nest clustering, to the point that the port
- * reaches p = 2e-97 against ITSELF, so no threshold on it means anything. Its
- * rows are printed as a diagnostic. Answering the species question properly needs
- * a different instrument (one vector per level, permutation test over levels) and
- * is open work, not a settled matter. See the family note on the main test and
- * `parity/phase3-2026-07-25/findings/NOISE-FLOOR.md`.
+ *   - the monster SPECIES MIX, per depth, grouped by monster base and tested
+ *     with the clustering divided back out (Rao-Scott). This one used to print
+ *     without a threshold, because the plain G-test it was run through counts
+ *     every monster as an independent observation and pit/nest batching makes
+ *     that false - so badly that the port reached p = 2e-97 against ITSELF. The
+ *     instrument, not the metric, was the problem: `clusteredDistributionTest`
+ *     measures the overdispersion from the sampled LEVELS and corrects for it,
+ *     and `stat-test.test.ts` checks that correction against a synthetic null
+ *     with the same pit shape before anything here trusts it.
  *
  * A failure here is a real finding about generation. The response is to fix the
  * generator -- never to widen a threshold, and never to re-record the C baseline
@@ -37,14 +39,22 @@
 
 import { describe, expect, it } from "vitest";
 import { loadGamePack } from "./pack.js";
-import { perLevelSd, runStatsBatch, type StatsReport } from "./stats.js";
+import {
+  bindForGeneration,
+  perLevelSd,
+  runStatsBatch,
+  type DepthMetrics,
+  type StatsReport,
+} from "./stats.js";
 import { loadCBaseline } from "./baseline.js";
 import {
   bonferroni,
+  clusteredDistributionTest,
   distributionTest,
   meanTest,
   normalTwoTailedP,
   poolDistributionTests,
+  type ClusterSample,
   type DistributionTest,
 } from "./stat-test.js";
 
@@ -148,6 +158,55 @@ const OBJCOUNT_NULL_HI = 1.399;
 const DEPTH_MAX = 20;
 const ALPHA = 0.01;
 
+/**
+ * The species mix is compared at the level of the monster BASE, not the
+ * individual race, and that choice is part of the gate rather than a
+ * convenience.
+ *
+ * 4.2.6 has 624 races over 56 bases. Testing 624 categories against a few
+ * hundred sampled LEVELS asks for more resolution than the sample can carry:
+ * most races are individually so rare at any one depth that they would be pooled
+ * into a residual bucket anyway, and the ones that are not are dominated by
+ * whichever pit happened to grow. The base is also the unit the game itself
+ * themes by - `pit.txt` names bases and flags, and `mon-make.c`'s pit and nest
+ * fill picks from a base-themed table - so a difference in the species MIX that
+ * a player could describe ("this dungeon is all orcs") is a difference between
+ * bases. Testing per race would mostly measure which race inside a base the RNG
+ * picked, which the port is not claiming to reproduce (D1 = B: the streams
+ * differ by design).
+ *
+ * The port collects group counts directly (`DepthMetrics.speciesGroups`,
+ * accumulated from `race.base.name`). The C baseline records races by index
+ * only, so its counts are mapped through the same table on this side.
+ */
+function raceGroups(): string[] {
+  const races = bindForGeneration(loadGamePack()).reg.monsters.races;
+  const groups: string[] = [];
+  for (const race of races) groups[race.ridx] = race.base.name;
+  return groups;
+}
+
+/** Fold a per-race-index histogram into per-base-name group counts. */
+function toGroups(byRidx: Readonly<Record<string, number>>, groups: readonly string[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [ridx, n] of Object.entries(byRidx)) {
+    const g = groups[Number(ridx)] ?? `<ridx ${ridx}>`;
+    out[g] = (out[g] ?? 0) + n;
+  }
+  return out;
+}
+
+/** The port's per-depth species-group sample, in the shape the test wants. */
+function speciesSample(m: DepthMetrics): ClusterSample {
+  return {
+    levels: m.levels,
+    counts: m.speciesGroups,
+    countsSq: m.speciesGroupsSq,
+    countsXn: m.speciesGroupsXn,
+    totalSq: m.monsterTotalSq,
+  };
+}
+
 interface Row {
   depth: number;
   metric: string;
@@ -169,24 +228,47 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
     baseSeed: BASE_SEED,
     randarts: false,
   });
+  const groups = raceGroups();
 
   it("is generated from real C output, not the port itself", () => {
     expect(base.meta.generatedBy).toBe("c-main-stats");
   });
 
+  it("maps race indices to species groups the same way on both sides", () => {
+    /*
+     * The species gate compares the port's DIRECTLY collected group counts
+     * against the C's per-race counts folded through `groups`. Those two paths
+     * must agree, or the gate is measuring the fold rather than the generator -
+     * so fold the PORT's own per-race counts through the same table and require
+     * the result to reproduce what collectLevel accumulated, integer for
+     * integer. This is also the only check that the C's `k_idx` really is the
+     * port's `ridx`: a shifted index would land a race in the wrong base and
+     * show up here as a mismatch on the port side first.
+     */
+    for (const d of depths) {
+      const p = port.depths[String(d)];
+      if (!p) continue;
+      expect(toGroups(p.monsters, groups), `depth ${d}`).toEqual(p.speciesGroups);
+      /* And the groups must account for every monster placed. */
+      const summed = Object.values(p.speciesGroups).reduce((a, b) => a + b, 0);
+      expect(summed, `depth ${d} group total`).toBe(p.monsterTotal);
+    }
+  });
+
   it("matches upstream generation distributions at alpha=0.01 (Bonferroni)", () => {
     /*
-     * The gated family. Decided in two steps: species was ungated on 2026-07-25
-     * (a848f310e), and the two feeling metrics were switched from per-depth to
-     * POOLED on 2026-07-26 after the noise floor was measured.
+     * The gated family. Decided in three steps: species was ungated on
+     * 2026-07-25 (a848f310e), the two feeling metrics were switched from
+     * per-depth to POOLED on 2026-07-26 after the noise floor was measured, and
+     * species was RE-gated once it had an instrument that survives clustering.
      *
      *   - density, per depth        -> `depths.length` tests, corrected
      *   - object count, per depth   -> `depths.length` tests, corrected
      *   - ego count, per depth      -> `depths.length` tests, corrected
      *   - artifact count, per depth -> `depths.length` tests, corrected
+     *   - species mix, per depth    -> `depths.length` tests, corrected
      *   - objFeel, POOLED           -> 1 test, corrected
      *   - monFeel, POOLED           -> 1 test, corrected
-     *   - species                   -> 0 tests. Printed only, never asserted.
      *   - pooled density (Stouffer) -> 0 tests. Printed only; null not measured.
      *   - pooled object count       -> 0 tests. Printed only; null not measured.
      *
@@ -213,24 +295,54 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      * heavy-tailed variable's mean is not a usable parity instrument, which is
      * exactly why upstream bins the rating into a feeling in the first place.
      *
-     * Why species is not gated, and I had this wrong originally. Comparing the
-     * port against ITSELF at a second base seed gives G = 350-860 over df =
-     * 133-281 at depths 5-20 -- the same magnitude as port-vs-C (389-929), and at
-     * depth 13 the port is further from itself (590) than from the C (452).
-     * The cause is clustering: a pit or nest drops 20-60 monsters of one theme
-     * into a single level, so the effective sample size per depth is the number
-     * of LEVELS (400), not of monsters (~20 000), and a G-test assuming one
-     * independent observation per monster inflates by roughly the cluster size --
-     * exactly the 3-5x observed. It is the same overdispersion that makes the
-     * density standard deviation 21.6 where Poisson would say 6.6: correctly
-     * accounted for in the mean test above, and wrongly ignored here.
+     * Why species was not gated, and what changed. Comparing the port against
+     * ITSELF at a second base seed gave G = 350-860 over df = 133-281 at depths
+     * 5-20 -- the same magnitude as port-vs-C (389-929), and at depth 13 the port
+     * was further from itself (590) than from the C (452). The cause is
+     * clustering: a pit or nest drops 20-60 monsters of one theme into a single
+     * level, so the effective sample size per depth is the number of LEVELS
+     * (400), not of monsters (~20 000), and a G-test assuming one independent
+     * observation per monster inflates by roughly the cluster size -- exactly the
+     * 3-5x observed. It is the same overdispersion that makes the density
+     * standard deviation 21.6 where Poisson would say 6.6: correctly accounted
+     * for in the mean test above, and wrongly ignored there.
      *
-     * A valid species test needs the LEVEL as the unit of observation, e.g. a
-     * permutation null over per-level species vectors. That is BLOCKED on the C
-     * side: main-stats' SQLite schema stores per-depth aggregates only
-     * (`monsters(level, count, k_idx)` summed across runs), so per-run C samples
-     * do not exist yet. Emitting them needs a change to the DB writer in the
-     * oracle BUILD COPY. So this is an open question, not a settled one.
+     * The conclusion drawn at the time was that a valid species test needs a
+     * permutation null over per-level species vectors from BOTH sides, and that
+     * this is blocked because main-stats' SQLite schema stores per-depth
+     * aggregates only (`monsters(level, count, k_idx)` summed across runs). The
+     * first half of that is right and the second half was too strong. A
+     * permutation null is not the only instrument that takes the level as the
+     * unit of observation: the clustering can be MEASURED from the port's
+     * per-level vectors and divided out of the G statistic, which is the
+     * standard Rao-Scott treatment of cluster-sampled categorical data. Only one
+     * side has to supply per-level data for that, because the null being tested
+     * is that both sides are the same generator -- and the same generator has the
+     * same clustering. That is the identical assumption the per-depth mean tests
+     * above already make when they estimate the shared per-level standard
+     * deviation from the port side, for the identical reason.
+     *
+     * So the gate is a per-depth `clusteredDistributionTest` over species GROUPS
+     * (monster bases; see `raceGroups` for why the base and not the race), at
+     * the same corrected alpha as the rest of the family. Two properties make it
+     * gateable where the plain G-test was not:
+     *
+     *   - it needs no measured null. The correction returns a statistic that is
+     *     chi-square under H0 by construction, so the threshold is the family's
+     *     own alpha rather than an empirical maximum over C-vs-C pairs. That
+     *     also means it does NOT need the port's sample size to match the C's,
+     *     which is the constraint that keeps the two feeling gates dark at the
+     *     default run count.
+     *   - the correction is checked against a known null before it is trusted.
+     *     `stat-test.test.ts` runs it on synthetic data with the same pit shape
+     *     and confirms three things: the plain G-test rejects a sample against
+     *     ITSELF over 90% of the time (the failure being fixed), the corrected
+     *     one holds its nominal error rate, and it still rejects a mix that
+     *     really is different. A gate that cannot fail is not a gate; a gate
+     *     that always fails is not one either.
+     *
+     * What it does NOT do is test WITHIN a base. Which specific orc the RNG drew
+     * is a stream question, and under D1 = B the streams differ by design.
      *
      * Why the FEELINGS are pooled rather than per-depth. Density stays per-depth
      * because it is a test on a MEAN, so a per-depth result is directly
@@ -252,7 +364,7 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
      *
      * Gold is asserted separately -- its per-origin classification is a known
      * open divergence and would otherwise mask the rest. */
-    const alpha = bonferroni(ALPHA, 4 * depths.length + 2);
+    const alpha = bonferroni(ALPHA, 5 * depths.length + 2);
     const rows: Row[] = [];
     const report: string[] = [];
     const densityZ: number[] = [];
@@ -330,8 +442,43 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
         );
       }
 
+      /* Species mix, by monster base, with the pit/nest clustering measured off
+       * the port's per-level vectors and divided back out. The row prints both
+       * `G` and `G/deff` on purpose: the gap between them is the size of the
+       * mistake this gate exists to stop making, and `nEff` says how many
+       * independent observations the sample was really worth. */
+      const species = clusteredDistributionTest(
+        speciesSample(p),
+        toGroups(b.monsters, groups),
+      );
+      rows.push({
+        depth: d,
+        metric: "species",
+        detail:
+          `G=${species.g.toFixed(1)} deff=${species.deff.toFixed(2)} ` +
+          `G/deff=${species.gAdj.toFixed(1)} df=${species.df}` +
+          (species.worst
+            ? ` worst=${species.worst.category} obs=${species.worst.observed} ` +
+              `exp=${species.worst.expected.toFixed(0)}`
+            : ""),
+        p: species.p,
+      });
+      report.push(
+        `depth ${String(d).padStart(2)} species  G=${species.g.toFixed(1)} ` +
+          `deff=${species.deff.toFixed(2)} G/deff=${species.gAdj.toFixed(1)} ` +
+          `df=${species.df} p=${species.p.toExponential(2)} ` +
+          `groups=${species.categories} pooled=${species.pooled} ` +
+          `n=${p.monsterTotal} nEff=${species.effectiveN.toFixed(0)} ` +
+          `levels=${p.levels}` +
+          (species.worstDeff
+            ? ` mostClustered=${species.worstDeff.category}(${species.worstDeff.deff.toFixed(1)})`
+            : "") +
+          (species.worst
+            ? ` worst=${species.worst.category} obs=${species.worst.observed} exp=${species.worst.expected.toFixed(0)}`
+            : ""),
+      );
+
       for (const [metric, key] of [
-        ["species", "monsters"],
         ["objFeel", "objFeeling"],
         ["monFeel", "monFeeling"],
       ] as const) {
@@ -340,11 +487,10 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
           b[key] as Record<string, number>,
         );
         /* Held for the pooled assertion; the per-depth row printed below is a
-         * diagnostic only. `species` is held nowhere -- `pooling` has no key for
-         * it, so it is neither pooled nor gated (see the family note above). */
+         * diagnostic only. */
         pooling[metric]?.push(t);
         report.push(
-          `depth ${String(d).padStart(2)} ${metric.padEnd(8)}${metric === "species" ? " [ungated]" : ""} G=${t.g.toFixed(1)} ` +
+          `depth ${String(d).padStart(2)} ${metric.padEnd(8)} G=${t.g.toFixed(1)} ` +
             `df=${t.df} p=${t.p.toFixed(4)} cats=${t.categories} pooled=${t.pooled}` +
             (t.worst
               ? ` worst=${t.worst.category} obs=${t.worst.observed} exp=${t.worst.expected.toFixed(1)}`
@@ -391,11 +537,6 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
               `and G/df is not sample-size invariant]`),
       );
     }
-    report.push(
-      `species: printed, NOT gated -- the G-test is invalid on clustered ` +
-        `per-monster counts (the port reaches p=2e-97 against ITSELF). A valid ` +
-        `per-level test is blocked on the C oracle emitting per-run samples.`,
-    );
 
     /*
      * Pooled density (Stouffer). A per-depth test is blind to a small SYSTEMATIC
@@ -523,8 +664,8 @@ describe.skipIf(!cbase)("C-vs-TS generation parity (upstream 4.2.6 main-stats)",
     const summary =
       `C-vs-TS generation parity, alpha=${alpha.toExponential(2)} ` +
       `(${ALPHA} Bonferroni-corrected over ${depths.length} per-depth tests each ` +
-      `of density, object count, ego count and artifact count + 2 pooled ` +
-      `feeling tests = ${4 * depths.length + 2}; species not gated), ` +
+      `of density, object count, ego count, artifact count and species mix ` +
+      `+ 2 pooled feeling tests = ${5 * depths.length + 2}), ` +
       `port runs=${PORT_RUNS}\n` +
       report.join("\n") +
       (failures.length

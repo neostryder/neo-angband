@@ -17,7 +17,7 @@
  * so the honest answer to a small sample is "no evidence of divergence yet, and
  * here is the effect size that could have been detected".
  *
- * Two tests, matched to the two shapes of metric:
+ * Three tests, matched to the three shapes of metric:
  *   - a two-sample z-test on per-level MEANS (density, gold), with the variance
  *     estimated from the port side. Under the null hypothesis the two
  *     implementations are the same generator, so they share a variance, and only
@@ -28,6 +28,12 @@
  *     the right instrument; 100 independent per-category tolerance checks are
  *     not, because at any sane per-test error rate a few of them fail by
  *     construction.
+ *   - a Rao-Scott design-effect-corrected G-test on a distribution whose items
+ *     arrive in CORRELATED BATCHES -- the monster species mix, where a pit or a
+ *     nest drops 20-60 monsters of one theme onto a single level. The plain
+ *     G-test above is void on that data because it treats each monster as an
+ *     independent observation; this one measures the clustering from the sampled
+ *     levels and divides it back out. See `clusteredDistributionTest`.
  *
  * Multiplicity is handled by the caller via `bonferroni`: with dozens of
  * (depth x metric) tests, an uncorrected 5% threshold produces a failure per
@@ -277,6 +283,196 @@ export function distributionTest(
   return { g, df, p: chiSquareUpperTail(g, df), categories: cells.length, pooled, worst };
 }
 
+/**
+ * The per-level (cluster) statistics one sample contributes to a clustered
+ * distribution test. Every field is a sum over the sampled LEVELS.
+ */
+export interface ClusterSample {
+  /** Number of levels sampled (the number of clusters). */
+  levels: number;
+  /** Per-category totals summed over those levels. */
+  counts: Readonly<Record<string, number>>;
+  /** Per-category sum of the SQUARED per-level count. */
+  countsSq: Readonly<Record<string, number>>;
+  /** Per-category sum of (per-level count) x (that level's grand total). */
+  countsXn: Readonly<Record<string, number>>;
+  /** Sum of the squared per-level grand totals. */
+  totalSq: number;
+}
+
+/** One clustered distribution comparison. */
+export interface ClusteredDistributionTest {
+  /** The uncorrected two-sample G, identical to `distributionTest`'s. */
+  g: number;
+  df: number;
+  /**
+   * Rao-Scott mean generalized design effect: how many times larger the real
+   * variance of a category share is than a multinomial (one-independent-item)
+   * model claims. 1.0 would mean the items really are independent; anything
+   * above that is the clustering, measured rather than assumed.
+   */
+  deff: number;
+  /** `g / deff` - the statistic actually referred to chi-square. */
+  gAdj: number;
+  /** Upper-tail p of `gAdj` on `df` degrees of freedom. */
+  p: number;
+  /** Categories compared after pooling rare ones. */
+  categories: number;
+  /** Categories folded into one bucket because their combined count was small. */
+  pooled: number;
+  /**
+   * Effective number of independent items behind the observed sample, i.e.
+   * `total / deff`. Printed so a pass is read as "no divergence THIS BIG could
+   * hide", never as "identical".
+   */
+  effectiveN: number;
+  /** The single largest contributor to G, for diagnosis. */
+  worst: { category: string; observed: number; expected: number } | null;
+  /** The most clustered category, i.e. the one driving `deff`. */
+  worstDeff: { category: string; deff: number } | null;
+}
+
+/**
+ * Two-sample G-test of homogeneity with a Rao-Scott first-order design-effect
+ * correction, for count distributions whose items arrive in CORRELATED BATCHES.
+ *
+ * Why the uncorrected G is void here, measured rather than argued. Monster
+ * placement is clustered: `pit.txt` themes a pit or a nest by monster BASE and
+ * `mon-make.c`'s pit/nest fill drops 20-60 monsters of that theme onto a single
+ * level in one go. So the number of independent observations behind a species
+ * histogram is the number of LEVELS, not the number of monsters, and a G-test
+ * that counts every monster as its own observation inflates by roughly the
+ * cluster size. That is not a small effect and it is not hypothetical: the port
+ * compared against ITSELF at a second base seed reached p = 2e-97. An instrument
+ * that cannot tell a sample from itself decides nothing.
+ *
+ * The remedy is the standard one for cluster-sampled categorical data (Rao and
+ * Scott 1981, 1984): estimate each category's TRUE variance from the clusters,
+ * divide it by the variance a multinomial model would have claimed to get that
+ * category's design effect, average those, and refer `G / deff` to the same
+ * chi-square. Concretely, for category k with per-level counts y_ik, per-level
+ * grand totals n_i, share s_k = Y_k / N over L levels:
+ *
+ *     cluster:     v_k  = L / ((L-1) N^2) * SUM_i (y_ik - s_k n_i)^2
+ *     multinomial: v0_k = s_k (1 - s_k) / N
+ *     deff_k       = v_k / v0_k
+ *     deff         = SUM_k (1 - s_k) deff_k / (K - 1)
+ *
+ * and `G / deff ~ chi2(K - 1)` under the null. The linearization is the usual
+ * one for a ratio estimator, so nothing per-level has to be retained - the sums
+ * `countsSq`, `countsXn` and `totalSq` are sufficient.
+ *
+ * WHERE THE REFERENCE'S OWN CLUSTERING COMES FROM. Only `observed` carries
+ * per-level statistics: the C `main-stats` database stores per-depth aggregates,
+ * so no per-run C sample exists to measure the C's clustering from. The single
+ * design effect measured on the observed side is therefore applied to the whole
+ * statistic. That is sound under the null being tested - the null IS that the
+ * two are the same generator, and the same generator has the same clustering -
+ * and it is the same assumption `meanTest` already makes when it estimates the
+ * shared per-level standard deviation from the port side. It is an assumption
+ * about the null, not about the data, so it cannot manufacture agreement: if the
+ * port clustered far MORE than upstream, the port's own deff would be the larger
+ * one and the test would be conservative rather than permissive.
+ *
+ * A category whose combined count is below `minExpected * 2` is pooled into one
+ * bucket, exactly as `distributionTest` does, and the pooled bucket is given the
+ * mass-weighted mean design effect of the categories that were testable. Its own
+ * cannot be computed from these sums (the square of a sum needs cross terms the
+ * sums do not carry), and it does not matter: a category is only in there
+ * because it is nearly absent at this depth, so it is one term of K carrying a
+ * fraction of a percent of the mass.
+ */
+export function clusteredDistributionTest(
+  observed: ClusterSample,
+  reference: Readonly<Record<string, number>>,
+  opts: { minExpected?: number } = {},
+): ClusteredDistributionTest {
+  const minExpected = opts.minExpected ?? 5;
+  const empty: ClusteredDistributionTest = {
+    g: 0,
+    df: 0,
+    deff: 1,
+    gAdj: 0,
+    p: 1,
+    categories: 0,
+    pooled: 0,
+    effectiveN: 0,
+    worst: null,
+    worstDeff: null,
+  };
+
+  const obsTotal = Object.values(observed.counts).reduce((a, b) => a + b, 0);
+  const refTotal = Object.values(reference).reduce((a, b) => a + b, 0);
+  if (obsTotal <= 0 || refTotal <= 0 || observed.levels < 2) return empty;
+
+  /* The G statistic itself is the existing instrument, unchanged - only the
+   * reference distribution it is judged against moves. */
+  const gt = distributionTest(observed.counts, reference, { minExpected });
+  if (gt.df <= 0) return { ...empty, categories: gt.categories, pooled: gt.pooled };
+
+  const L = observed.levels;
+  const N = obsTotal;
+  const nSq = observed.totalSq;
+  const deffs: { key: string; deff: number; share: number }[] = [];
+  for (const key of Object.keys(observed.counts)) {
+    const y = observed.counts[key] ?? 0;
+    /* A category that was pooled away is not a cell of the test, so it must not
+     * contribute a design effect to the average either. */
+    if (y + (reference[key] ?? 0) < minExpected * 2) continue;
+    const share = y / N;
+    if (share <= 0 || share >= 1) continue;
+    const sq = observed.countsSq[key] ?? 0;
+    const xn = observed.countsXn[key] ?? 0;
+    /* SUM_i (y_ik - share*n_i)^2, expanded over the retained sums. */
+    const ss = sq - 2 * share * xn + share * share * nSq;
+    const vCluster = (L / ((L - 1) * N * N)) * Math.max(ss, 0);
+    const vMultinomial = (share * (1 - share)) / N;
+    if (vMultinomial <= 0) continue;
+    deffs.push({ key, deff: vCluster / vMultinomial, share });
+  }
+  if (deffs.length === 0) {
+    return {
+      ...empty,
+      g: gt.g,
+      df: gt.df,
+      gAdj: gt.g,
+      p: gt.p,
+      categories: gt.categories,
+      pooled: gt.pooled,
+      effectiveN: N,
+      worst: gt.worst,
+    };
+  }
+
+  /* Rao-Scott first-order: the (1 - share)-weighted mean over the K cells,
+   * divided by K - 1. The pooled bucket (when there is one) is a cell of the
+   * test but has no measurable design effect of its own, so it is imputed at the
+   * mean of the rest -- see the note above on why that is harmless. */
+  const meanDeff = deffs.reduce((a, d) => a + d.deff, 0) / deffs.length;
+  let weighted = 0;
+  for (const d of deffs) weighted += (1 - d.share) * d.deff;
+  const pooledCells = gt.categories - deffs.length;
+  if (pooledCells > 0) weighted += pooledCells * meanDeff;
+  const deff = Math.max(weighted / Math.max(gt.categories - 1, 1), 1e-9);
+
+  const gAdj = gt.g / deff;
+  let worstDeff = deffs[0]!;
+  for (const d of deffs) if (d.deff > worstDeff.deff) worstDeff = d;
+
+  return {
+    g: gt.g,
+    df: gt.df,
+    deff,
+    gAdj,
+    p: chiSquareUpperTail(gAdj, gt.df),
+    categories: gt.categories,
+    pooled: gt.pooled,
+    effectiveN: N / deff,
+    worst: gt.worst,
+    worstDeff: { category: worstDeff.key, deff: worstDeff.deff },
+  };
+}
+
 /** Bonferroni-corrected significance level for `k` simultaneous tests. */
 export function bonferroni(alpha: number, k: number): number {
   return k > 0 ? alpha / k : alpha;
@@ -346,11 +542,14 @@ export interface PooledTest {
  * `parity/phase3-2026-07-25/findings/NOISE-FLOOR.md` ("The null was mismeasured")
  * and `OBJFEEL.md` sections 7-9.
  *
- * The same measurement is why `species` is NOT pooled and NOT gated: it runs
+ * The same measurement is why `species` is NOT pooled through here: it runs
  * 2.5-5.0x overdispersed per depth because a single pit or nest drops 20-60
  * monsters of one theme onto one level, so its effective sample size is levels
  * rather than monsters. Pooling inherits that inflation exactly; it would turn a
- * void metric into a confidently void metric.
+ * void metric into a confidently void metric. Species is gated instead by
+ * `clusteredDistributionTest`, per depth, which removes the inflation at source
+ * by measuring it - so it needs no pooling to gain power and no measured null to
+ * be legible.
  */
 export function poolDistributionTests(
   tests: readonly DistributionTest[],
