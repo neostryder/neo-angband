@@ -308,7 +308,7 @@ what each one is actually known for:
 - **[MAngband](https://mangband.org/docs)** makes Angband a persistent,
   real-time multiplayer game - a shared world with allies and rivals, rather
   than solo runs. Its distinctive feature is the architecture, not the content.
-- **[ToME](https://www.t-o-m-e.net/history.html)** (Troubles of Middle-Earth)
+- **[ToME](https://www.t-o-m-e.net/history.html)** (Tales of Middle-earth)
   began as PernAngband, themed around Anne McCaffrey's Pern; a legal dispute
   over that licensed setting forced the Pern material out and the project
   redirected into a comprehensive, heavily authored Middle-earth RPG - a useful
