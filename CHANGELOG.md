@@ -38,6 +38,19 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- Deleting a profile now asks whether to keep its living characters first;
+  kept ones go into a small holding pool and can be reclaimed into any
+  profile afterward from a new `Reclaim saves...` row on the Profile screen
+  (#163).
+
+### Fixed
+
+- The title screen's `(P)rofile` rollout (#163) renamed New/Open/Install but
+  missed the fourth row: `(L)oad last save` is now `(R)esume` (key `r`), as
+  the issue originally scoped.
+
 ## [1.3.0] - 2026-08-29
 
 ### Added

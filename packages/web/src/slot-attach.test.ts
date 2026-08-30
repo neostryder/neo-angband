@@ -521,8 +521,8 @@ describe("main.ts writes to the attachment and not to the shared key", () => {
   });
 
   it("every character the picker opens is checked against the other windows", () => {
-    /* Both doors: the picker's own row, and "Load last save", which is the same
-     * act with the list skipped and is the one that gets forgotten. */
+    /* Both doors: the picker's own row, and "Resume", which is the same act
+     * with the list skipped and is the one that gets forgotten. */
     const src = stripComments(MAIN);
     const checks = src.match(/refusedAsPlayedElsewhere\(/gu) ?? [];
     expect(checks.length, "both resume doors still ask").toBeGreaterThanOrEqual(3);

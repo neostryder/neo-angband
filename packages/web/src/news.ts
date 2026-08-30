@@ -342,8 +342,8 @@ interface TitleRow {
 
 /**
  * The rows: (P)rofile first (neo-angband#163), then main-win.c's File menu
- * order - New, Open, [Save], Exit. "Load last save" takes the Save slot, which
- * is greyed at the splash upstream (main-win.c:2962 disables IDM_FILE_SAVE and
+ * order - New, Open, [Save], Exit. "(R)esume" takes the Save slot, which is
+ * greyed at the splash upstream (main-win.c:2962 disables IDM_FILE_SAVE and
  * only :2982 re-enables it in a running game). Labels are short: an 80-column
  * prompt line already has to fit up to seven rows (see ROW_GAPS below).
  */
@@ -359,8 +359,8 @@ export function titleRows(opts: TitleOptions): TitleRow[] {
     },
     {
       choice: "load",
-      key: "l",
-      label: t("news.title.load", "(L)oad last save"),
+      key: "r",
+      label: t("news.title.resume", "(R)esume"),
       enabled: opts.canLoad,
     },
   ];

@@ -70,9 +70,9 @@ describe("title screen keys (main-win.c File menu)", () => {
    * own below. */
   const ALL = { canLoad: true, canOpen: true, canQuit: true, canInstall: false, canUpdate: false, updateReady: false };
 
-  it("offers Profile / New / Open / Load / Quit, Profile first", () => {
+  it("offers Profile / New / Open / Resume / Quit, Profile first", () => {
     expect(titleRows(ALL).map((r) => r.choice)).toEqual(["profile", "new", "open", "load", "quit"]);
-    expect(titleRows(ALL).map((r) => r.key)).toEqual(["p", "n", "o", "l", "q"]);
+    expect(titleRows(ALL).map((r) => r.key)).toEqual(["p", "n", "o", "r", "q"]);
   });
 
   it("maps each row's letter, in either case", () => {
@@ -80,7 +80,7 @@ describe("title screen keys (main-win.c File menu)", () => {
       ["p", "profile"],
       ["n", "new"],
       ["o", "open"],
-      ["l", "load"],
+      ["r", "load"],
       ["q", "quit"],
     ] as const) {
       expect(titleKeyChoice(key, titleRows(ALL), false)).toBe(want);
@@ -95,8 +95,8 @@ describe("title screen keys (main-win.c File menu)", () => {
     expect(titleKeyChoice("x", titleRows(ALL), true)).toBe("quit");
     /* Bare 'x' is not a row. */
     expect(titleKeyChoice("x", titleRows(ALL), false)).toBeNull();
-    /* Ctrl-L is not an upstream accelerator, so it is not one here. */
-    expect(titleKeyChoice("l", titleRows(ALL), true)).toBeNull();
+    /* Ctrl-R is not an upstream accelerator, so it is not one here. */
+    expect(titleKeyChoice("r", titleRows(ALL), true)).toBeNull();
   });
 
   // The reported bug: "Even pressing a modifier key on the title screen advances
@@ -124,7 +124,7 @@ describe("title screen keys (main-win.c File menu)", () => {
       canUpdate: false, updateReady: false,
     });
     expect(none.filter((r) => r.enabled).map((r) => r.choice)).toEqual(["profile", "new"]);
-    expect(titleKeyChoice("l", none, false)).toBeNull();
+    expect(titleKeyChoice("r", none, false)).toBeNull();
     expect(titleKeyChoice("o", none, false)).toBeNull();
     expect(titleKeyChoice("q", none, false)).toBeNull();
     expect(titleKeyChoice("o", none, true)).toBeNull();

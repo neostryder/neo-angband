@@ -8,8 +8,10 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { runProfileScreen, type ProfileScreenDeps } from "./profile-ui";
 import { ProfileStore } from "./profiles";
-import type { ScopedStorage } from "./profile-scope";
+import { scopedStorage, type ScopedStorage } from "./profile-scope";
 import type { GlyphTerm } from "./term";
+import { listRoster, setRosterStorage } from "./roster";
+import { addOrphanedSaves, listOrphanedSaves } from "./orphan-saves";
 
 interface FakeWindow {
   addEventListener(t: string, fn: (ev: Event) => void, capture?: boolean): void;
@@ -239,7 +241,9 @@ describe("deleting a profile", () => {
     // Delete is next
     press(win, "Enter");
     await flush();
-    press(win, "y"); // confirm the erase warning
+    press(win, "y"); // confirm the deletion
+    await flush();
+    press(win, "n"); // discard its saves too
     await flush();
     expect(store.list().some((p) => p.id === id)).toBe(false);
     expect(reload).not.toHaveBeenCalled();
@@ -261,7 +265,9 @@ describe("deleting a profile", () => {
     press(win, "ArrowDown"); // off Rename, onto Delete
     press(win, "Enter");
     await flush();
-    press(win, "y");
+    press(win, "y"); // confirm the deletion
+    await flush();
+    press(win, "n"); // discard its saves too
     await flush();
     expect(store.activeId()).toBeNull();
     expect(reload).toHaveBeenCalledTimes(1);
@@ -279,6 +285,85 @@ describe("deleting a profile", () => {
     expect(rows).not.toContain("Delete");
     press(win, "Escape");
     await flush();
+    press(win, "Escape");
+    await done;
+  });
+});
+
+describe("keeping and reclaiming a deleted profile's saves", () => {
+  afterEach(() => {
+    setRosterStorage(null);
+  });
+
+  const bilbo = {
+    id: "char-1",
+    name: "Bilbo",
+    race: "Hobbit",
+    cls: "Rogue",
+    sex: "male",
+    level: 5,
+    depth: 3,
+    maxDepth: 3,
+    turn: 100,
+    alive: true,
+    updatedAt: 1,
+  };
+
+  it("lifts a living character into the orphan pool when its saves are kept", async () => {
+    const store = new ProfileStore(fakeStorage());
+    const real = fakeStorage();
+    const id = store.create("Testing", { realStorage: real });
+    const scoped = scopedStorage(real, id);
+    scoped.setItem("neo-angband-roster", JSON.stringify([bilbo]));
+    scoped.setItem("neo-angband-save:char-1", "c2F2ZQ==");
+    const { win, done } = open(store, real);
+    await flush();
+    press(win, "ArrowDown");
+    press(win, "Enter"); // Testing's row actions
+    await flush();
+    press(win, "ArrowDown"); // off Switch
+    press(win, "ArrowDown"); // off Rename, onto Delete
+    press(win, "Enter");
+    await flush();
+    press(win, "y"); // confirm the deletion
+    await flush();
+    press(win, "y"); // keep its saves
+    await flush();
+    const orphans = listOrphanedSaves(real);
+    expect(orphans).toHaveLength(1);
+    expect(orphans[0]?.meta.name).toBe("Bilbo");
+    expect(orphans[0]?.fromProfileName).toBe("Testing");
+    expect(orphans[0]?.save).toBe("c2F2ZQ==");
+    press(win, "Escape");
+    await done;
+  });
+
+  it("reclaiming an orphaned save adds it to the currently active roster", async () => {
+    const store = new ProfileStore(fakeStorage());
+    const real = fakeStorage();
+    addOrphanedSaves(real, [
+      {
+        id: "orphan-1",
+        fromProfileName: "Testing",
+        removedAt: 1,
+        lineage: "char-1",
+        meta: bilbo,
+        save: "c2F2ZQ==",
+      },
+    ]);
+    setRosterStorage(real); // the default profile is active, unprefixed on `real`
+    const { win, done } = open(store, real);
+    await flush();
+    press(win, "ArrowDown"); // off Default, onto "New profile..."
+    press(win, "ArrowDown"); // onto "Reclaim saves... (1)"
+    press(win, "Enter");
+    await flush();
+    press(win, "Enter"); // the one orphaned entry
+    await flush();
+    press(win, "Enter"); // dismiss the "now in your roster" screen
+    await flush();
+    expect(listRoster().some((c) => c.name === "Bilbo")).toBe(true);
+    expect(listOrphanedSaves(real)).toHaveLength(0);
     press(win, "Escape");
     await done;
   });

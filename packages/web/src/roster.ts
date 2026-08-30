@@ -332,6 +332,38 @@ export function deleteSlot(id: string): void {
   if (getActiveId() === id) setActiveId(null);
 }
 
+/**
+ * The living characters in an arbitrary roster storage, rather than the
+ * bound one - for lifting them out before their scope is wiped (profile
+ * deletion's "keep saves" choice, orphan-saves.ts). Tombstones are excluded
+ * the same way livingRoster() excludes them: a dead slot's bytes are already
+ * gone, so there is nothing for a caller of this to carry.
+ */
+export function readLivingRosterFrom(s: RosterStorage): CharMeta[] {
+  let raw: string | null;
+  try {
+    raw = s.getItem(ROSTER_KEY);
+  } catch {
+    return [];
+  }
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw) as CharMeta[];
+    return Array.isArray(list) ? list.filter((c) => c.alive) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** readSlotSave, but against an arbitrary storage - see readLivingRosterFrom. */
+export function readSlotSaveFrom(s: RosterStorage, id: string): string | null {
+  try {
+    return s.getItem(SLOT_PREFIX + id);
+  } catch {
+    return null;
+  }
+}
+
 /** A fresh unique slot id (crypto.randomUUID where available). */
 export function newCharId(): string {
   try {
