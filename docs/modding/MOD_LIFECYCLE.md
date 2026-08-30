@@ -270,17 +270,20 @@ documented, not hidden. The desktop build could clone directly, since it has a
 real filesystem and a real process to run git in. Either way the installer
 consumes the same pack format.
 
-### From a marketplace (future release)
+### From a marketplace - DECLINED
 
-The marketplace is a delivery layer over the same pipeline, not a
-separate system. It serves pre-validated, pre-packaged `.ngpack` bundles
-(the pack directory, zipped, with the manifest and a signed content
-hash) from its own host, and adds browse / search / screenshots /
-ratings in-app. Building it later is cheap because the bundle
-format and the installer are built now, with "git" and "marketplace" as two
-sources feeding one installer. [PROPOSED] The in-app browser is a view
-onto that source; actually building the marketplace backend is a future
-release, as noted.
+This section previously proposed a from-scratch, self-hosted marketplace
+serving pre-validated, pre-packaged `.ngpack` bundles (the pack directory,
+zipped, with the manifest and a signed content hash), with browse / search /
+screenshots / ratings in-app. It was never built past this design. Nexus
+Mods integration (tracked separately - see the mod-distribution issues)
+supersedes it: Nexus already provides hosting, browse/search, screenshots
+and ratings at a scale a self-hosted marketplace would take years to reach,
+and building a second, competing one afterward would be duplicate
+infrastructure with a much smaller audience. The manifest fields this
+proposal anticipated (`description`, `screenshots`, `changelog`, `author`,
+`license`, and a hash-based integrity record) were not wasted - they are
+exactly what a Nexus-origin install preview reuses.
 
 ### Updating and uninstalling
 
@@ -743,9 +746,10 @@ UI next, marketplace last:
    capability consent, profiles), plus the one auto-sort button the
    2026-08-01 amendment above adds. Bulk reordering, staging, collections
    and update watching stay the external manager's job.
-3. Future release: the marketplace backend and in-app browser, plus the
-   externally-authored enabled-set/order file and a Vortex/MO2 extension
-   over the shared on-disk format.
+3. Future release: Nexus Mods integration (a real second pinned origin,
+   not the from-scratch marketplace this item once named - see "From a
+   marketplace" above), the externally-authored enabled-set/order file, and
+   a Vortex/MO2 extension over the shared on-disk format.
 
 A `neo-pack` CLI (validate + bundle, a sibling of `neo-linoleum`) ships
 alongside so authors can check a pack in CI before publishing, and the
