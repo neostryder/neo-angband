@@ -6,7 +6,7 @@ core, and it is the completeness proof for the whole mod framework - it drives t
 real game through the same frozen perceive/act agent API any third-party or AI
 agent uses, with no privileged engine access.
 
-## What it is
+## Borg's role
 
 It lives in its own repository,
 [neo-angband-mod-borg](https://github.com/neostryder/neo-angband-mod-borg), with
@@ -30,7 +30,7 @@ It is **deterministic**: its dry-run combat simulations draw from a private RNG,
 so it never perturbs the game's RNG and the save's determinism ratchet stays
 untripped. A Borg run is replayable.
 
-## How to run it
+## Running Borg
 
 Three steps, and the third is separate from the second on purpose.
 
@@ -38,24 +38,24 @@ Three steps, and the third is separate from the second on purpose.
    from the recommended list, press Enter.
 2. **Enable it**, then choose *Apply changes and reload*. The mod is now loaded
    and has done nothing to your character.
-3. **Hand it the keyboard.** On the Borg's own screen, switch on **Let the Borg
-   play** (`borg.autoplay`, off by default). It takes over from the next turn.
+3. **Hand it the keyboard.** Press **Ctrl-Z** in play. The host warns twice,
+   asks for confirmation, and the Borg takes over from the next turn.
 
-Beyond that one switch, the same screen carries nine further toggles mapped to
-upstream's `borg_cfg[]` settings, covering risk tolerance and the five
-gear-weighting priorities among others, each defaulting to upstream's own
-value. The mod's own README lists all nine and what each one changes.
-
-Installing a mod and giving away the keyboard are different decisions, which is
-why they are different switches. Only one autoplayer can hold the keyboard at a
-time: if a second mod also declares a controller, the host refuses it by name and
-says which one is already playing.
+There is deliberately no settings-screen switch for this. Installing a mod and
+giving it the keyboard are different decisions, and the second one is a
+one-shot player action (Ctrl-Z), never a standing toggle a save can carry
+into an unrelated later session. The Borg's own Fixes & tweaks screen carries
+nine other toggles mapped to upstream's `borg_cfg[]` settings, covering risk
+tolerance and the five gear-weighting priorities among others, each defaulting
+to upstream's own value; the mod's own README lists all nine and what each one
+changes. Only one autoplayer can hold the keyboard at a time: if a second mod
+also declares a controller, the host refuses it by name and says which one is
+already playing.
 
 Once the Borg holds the keyboard, its own Fixes & tweaks screen (Mods -> Borg)
-grows an **Autoplayer speed** row beside `borg.autoplay`: Turbo, Fast,
-Normal or Slow. Fast, Normal and Slow match the debug agent seam's own tiers
-below; Turbo (10ms) has no named equivalent there. It takes effect at once, no
-reload.
+carries an **Autoplayer speed** row: Turbo, Fast, Normal or Slow. Fast, Normal
+and Slow match the debug agent seam's own tiers below; Turbo (10ms) has no
+named equivalent there. It takes effect at once, no reload.
 
 It plays the same on every surface - browser, PWA, static self-host, desktop -
 because it arrives by the same route on all of them.
