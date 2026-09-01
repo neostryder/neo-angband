@@ -57,6 +57,8 @@ still calls itself.
   missed the fourth row: `(L)oad last save` is now `(R)esume` (key `r`), as
   the issue originally scoped.
 
+- [Internal] [Docs] **The modding docs still described Borg activation through a "Let the Borg play" settings-screen toggle.** The Borg mod dropped that toggle in favor of Ctrl-Z-only activation some time ago; the host-side code already reflected it, but `docs/modding/BORG.md` and a few code comments did not (#133).
+
 ## [1.3.0] - 2026-08-29
 
 ### Added
