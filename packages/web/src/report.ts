@@ -427,6 +427,14 @@ export type ReportTone = "head" | "body" | "dim" | "good" | "warn";
 export interface ReportLine {
   readonly text: string;
   readonly tone: ReportTone;
+  /**
+   * Makes this line a link: an `http(s):` address a tap or a key already opens
+   * (the `G`/`1`.../`C` keys in `showReportPage`, main.ts). The row still shows
+   * every tracker's address as plain text - this only marks the ones that ARE
+   * real addresses, so the terminal can colour and tap them, rather than the
+   * "no repository recorded" line beside a mod with none.
+   */
+  readonly href?: string;
 }
 
 /**
@@ -439,8 +447,8 @@ export interface ReportLine {
  */
 export function reportLines(v: ReportView): ReportLine[] {
   const out: ReportLine[] = [];
-  const say = (text: string, tone: ReportTone = "body"): void => {
-    out.push({ text, tone });
+  const say = (text: string, tone: ReportTone = "body", href?: string): void => {
+    out.push({ text, tone, ...(href === undefined ? {} : { href }) });
   };
 
   if (v.phase === "saved") {
@@ -510,9 +518,12 @@ export function reportLines(v: ReportView): ReportLine[] {
     }
     for (const d of dests) {
       say(`  ${(d.key === "" ? "-" : d.key).padEnd(3)}${d.label}`, "body");
+      /* `href` only where there IS an address to open - the "no repository
+       * recorded" line beside an addressless mod is not a link. */
       say(
         `     ${d.url ?? t("report.screen.dest.noRepo", "no repository recorded - report it to Neo Angband")}`,
         "dim",
+        d.url ?? undefined,
       );
     }
     if (origins.length > REPORT_MAX_MOD_TRACKERS) {

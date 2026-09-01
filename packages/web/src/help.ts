@@ -73,10 +73,11 @@ import {
   type ScreenTableBlock,
   type ScreenView,
 } from "./screen-view";
-import { UI_TEXT, UI_DIM, UI_GOLD } from "./ui-colors";
+import { UI_TEXT, UI_DIM, UI_GOLD, UI_LINK } from "./ui-colors";
 import { ENGINE_VERSION, t } from "@rpgm-tools/neo-angband-core";
 
 const FG = UI_TEXT;
+const LINK = UI_LINK;
 const DIM = UI_DIM;
 const LABEL = UI_TEXT;
 const GOLD = UI_GOLD;
@@ -664,6 +665,14 @@ export function helpGuideLines(cols = 80): ScreenLine[] {
  * cell and indents it four columns, which is what this page has always printed.
  * `what` is empty on two of the three, so its column collapses and the trailing
  * gap is cut - the same rule an empty weight cell already relies on.
+ *
+ * `href` makes the address cell itself a link (`ScreenCell.href`): the faithful
+ * terminal draws it as its own run, in the colour this shell already uses for
+ * "something responds to a key or a tap" (`UI_LINK`, the "-more-" prompt's
+ * cyan), and a tap or click on it opens the real address - `openScreenLink`,
+ * reached through `paintViewOnTerminal`'s tap handling in overlay.ts. The
+ * DISPLAYED text is unchanged either way: the email route's `address` stays the
+ * obfuscated "(at)" form even though `href` is a working `mailto:`.
  */
 const ROUTE_COLUMNS: readonly ScreenColumn[] = [
   { key: "indent", width: 4 },
@@ -676,6 +685,7 @@ function routeTable(
   caption: string,
   address: string,
   what?: string,
+  href?: string,
 ): ScreenTableBlock {
   return {
     kind: "table",
@@ -687,7 +697,8 @@ function routeTable(
       {
         id: key,
         cells: {
-          address: { text: address },
+          address:
+            href === undefined ? { text: address } : { text: address, color: LINK, href },
           ...(what === undefined ? {} : { what: { text: what } }),
         },
       },
@@ -744,11 +755,14 @@ export function helpCommunityScreen(
         "Ask anyone, about anything:",
         "discord.gg/YegtwbHTBQ",
         "the RPGM Tools Discord",
+        "https://discord.gg/YegtwbHTBQ",
       ),
       routeTable(
         "issues",
         "Report something wrong:",
         "github.com/neostryder/neo-angband/issues",
+        undefined,
+        "https://github.com/neostryder/neo-angband/issues",
       ),
       {
         kind: "text",
@@ -771,6 +785,8 @@ export function helpCommunityScreen(
         "private",
         "Anything that should not be public, security included:",
         "strider-angband (at) rpgm.tools",
+        undefined,
+        "mailto:strider-angband@rpgm.tools",
       ),
       {
         kind: "text",

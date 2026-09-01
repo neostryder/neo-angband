@@ -20,6 +20,7 @@ import { argForceName } from "./launch";
 import { localTimestampSuffix } from "./timestamp";
 import {
   setActiveCellTap,
+  type GridCell,
   type GridPointerInput,
   type GridSurface,
   type RenderAssetRef,
@@ -50,11 +51,24 @@ export interface ScreenLine {
    * inspection viewer, whose lines carry multiple colours (obj-info's
    * L_GREEN / L_RED segments). `text` should still hold the concatenated
    * characters so width / scroll bookkeeping stays correct.
+   *
+   * A run's own `href` makes just that span a link (see `ScreenLine.href`);
+   * absent on every run this project drew before links existed.
    */
-  runs?: readonly { text: string; color: string }[];
+  runs?: readonly { text: string; color: string; href?: string }[];
+  /**
+   * Makes the WHOLE line a tap/key target that opens `href` (an `http(s):`
+   * address, or a `mailto:` one) rather than only scrolling or dismissing the
+   * screen it sits on. Ignored when `runs` is present - a line split into runs
+   * says which of its OWN spans are links, and a whole-line href would only
+   * disagree with that. See `help.ts`'s community page and `report.ts`'s
+   * "where to report it" rows for the two shapes in use.
+   */
+  href?: string;
 }
 
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_BG, UI_CURSOR } from "./ui-colors";
+import { openExternalUrl, openMailtoLink } from "./external-link";
 
 const FG = UI_TEXT;
 /** curs_attrs[CURS_KNOWN][1] (ui-menu.c:32): the selected menu row's colour. */
@@ -270,6 +284,31 @@ function showViewOnTerminal(
   });
 }
 
+/** One clickable span this paint left on the grid; see `linkSpanAt`. */
+interface LinkSpan {
+  readonly row: number;
+  readonly startCol: number;
+  readonly endCol: number;
+  readonly href: string;
+}
+
+/** The span under `cell`, if any - the tap handler's "did they hit a link" check. */
+function linkSpanAt(spans: readonly LinkSpan[], cell: GridCell): LinkSpan | undefined {
+  return spans.find(
+    (s) => s.row === cell.row && cell.col >= s.startCol && cell.col < s.endCol,
+  );
+}
+
+/**
+ * Hand a line's `href` to the player's real browser (or mail client), the same
+ * click-driven contract `openExternalUrl` and `openMailtoLink` both keep: called
+ * straight from the key press or tap and never awaited first.
+ */
+function openScreenLink(href: string): void {
+  if (href.startsWith("mailto:")) openMailtoLink(href.slice("mailto:".length));
+  else openExternalUrl(href);
+}
+
 function paintViewOnTerminal(
   term: GridSurface & GridPointerInput,
   title: string,
@@ -279,6 +318,7 @@ function paintViewOnTerminal(
 ): Promise<void> {
   return new Promise<void>((resolve) => {
     let top = 0;
+    let linkSpans: LinkSpan[] = [];
     const paint = (): void => {
       const { cols, rows } = term.size();
       term.clear();
@@ -286,6 +326,7 @@ function paintViewOnTerminal(
       const bodyRows = rows - BODY_TOP - 1; // last row is the footer
       const maxTop = Math.max(0, lines.length - bodyRows);
       if (top > maxTop) top = maxTop;
+      const spans: LinkSpan[] = [];
       for (let r = 0; r < bodyRows; r++) {
         const line = lines[top + r];
         if (!line) break;
@@ -295,12 +336,20 @@ function paintViewOnTerminal(
             if (x >= cols - 1) break;
             const chunk = run.text.slice(0, cols - 1 - x);
             term.print(x, BODY_TOP + r, chunk, run.color);
+            if (run.href !== undefined && chunk !== "") {
+              spans.push({ row: BODY_TOP + r, startCol: x, endCol: x + chunk.length, href: run.href });
+            }
             x += chunk.length;
           }
         } else {
-          term.print(0, BODY_TOP + r, line.text.slice(0, cols - 1), line.color ?? FG);
+          const shown = line.text.slice(0, cols - 1);
+          term.print(0, BODY_TOP + r, shown, line.color ?? FG);
+          if (line.href !== undefined && shown !== "") {
+            spans.push({ row: BODY_TOP + r, startCol: 0, endCol: shown.length, href: line.href });
+          }
         }
       }
+      linkSpans = spans;
       const more = maxTop > 0 ? `  (${top + 1}-${Math.min(top + bodyRows, lines.length)}/${lines.length})` : "";
       term.print(0, rows - 1, (footer + more).slice(0, cols - 1), DIM);
     };
@@ -338,6 +387,11 @@ function paintViewOnTerminal(
     // half pages up and in the lower half pages down; a non-scrolling screen
     // closes on any tap (the touch analogue of "any of ESC/Enter/Space").
     setActiveCellTap(term, (cell) => {
+      const hit = linkSpanAt(linkSpans, cell);
+      if (hit) {
+        openScreenLink(hit.href);
+        return;
+      }
       const { rows } = term.size();
       const bodyRows = rows - BODY_TOP - 1;
       const maxTop = Math.max(0, lines.length - bodyRows);

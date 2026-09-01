@@ -306,7 +306,12 @@ describe("the save refusal is wired into the one function every save goes throug
      * window fails loudly, which is the right way round. */
     const handler = src.slice(at, at + 900);
     expect(handler).toMatch(/setTimeout/u);
-    expect(handler).toMatch(/taintNotice/u);
+    /* `taintScreenLines` wraps `taintNotice` (issue #59: it also turns the
+     * core-fault branch's one URL-bearing line into clickable runs), so the
+     * handler now calls that wrapper rather than `taintNotice` directly - the
+     * wording itself is still exactly what `taintNotice` returns, which is what
+     * mod-taint.test.ts's OWN "taintNotice" tests pin. */
+    expect(handler).toMatch(/taintScreenLines/u);
     expect(handler).toMatch(/location\.reload\(\)/u);
   });
 

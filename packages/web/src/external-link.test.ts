@@ -5,7 +5,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isOpenableUrl, openExternalUrl } from "./external-link";
+import { isOpenableUrl, openExternalUrl, openMailtoLink } from "./external-link";
 
 /* The suite runs in node, so the window this module reaches for is supplied here
  * and taken away again. That is also the shape of the real degradation: no DOM
@@ -83,5 +83,86 @@ describe("opening one", () => {
   it("opens nothing, and says so, where there is no browser at all", () => {
     delete (globalThis as { window?: unknown }).window;
     expect(openExternalUrl("https://github.com/a/b/issues")).toBe(false);
+  });
+});
+
+/* This suite runs in node too (see the file header), so a fake `document` is
+ * supplied the same way `withWindow` supplies a fake `window` - a plain object
+ * with just the surface openMailtoLink touches, torn down afterwards. */
+interface FakeAnchor {
+  href: string;
+  rel: string;
+  style: Record<string, string>;
+  clicked: boolean;
+  click(): void;
+  remove(): void;
+}
+
+function withDocument(): { anchors: FakeAnchor[]; appended: FakeAnchor[] } {
+  const anchors: FakeAnchor[] = [];
+  const appended: FakeAnchor[] = [];
+  (globalThis as { document?: unknown }).document = {
+    createElement: (tag: string): FakeAnchor => {
+      if (tag !== "a") throw new Error(`unexpected tag ${tag}`);
+      const a: FakeAnchor = {
+        href: "",
+        rel: "",
+        style: {},
+        clicked: false,
+        click(): void {
+          this.clicked = true;
+        },
+        remove(): void {
+          /* no-op: real removal is a DOM concern this fake has no tree for */
+        },
+      };
+      anchors.push(a);
+      return a;
+    },
+    body: {
+      appendChild: (a: FakeAnchor): void => {
+        appended.push(a);
+      },
+    },
+  };
+  return { anchors, appended };
+}
+
+describe("opening a mailto link", () => {
+  afterEach(() => {
+    delete (globalThis as { document?: unknown }).document;
+  });
+
+  it("clicks a hidden anchor pointed at the real address", () => {
+    const { anchors } = withDocument();
+    expect(openMailtoLink("strider-angband@rpgm.tools")).toBe(true);
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0]?.href).toBe("mailto:strider-angband@rpgm.tools");
+    expect(anchors[0]?.clicked).toBe(true);
+  });
+
+  it("removes the anchor from the document once clicked", () => {
+    const { anchors } = withDocument();
+    const removed: FakeAnchor[] = [];
+    const doc = (globalThis as { document: { createElement: (t: string) => FakeAnchor } })
+      .document;
+    const realCreate = doc.createElement;
+    doc.createElement = (tag: string): FakeAnchor => {
+      const a = realCreate(tag);
+      const remove = a.remove.bind(a);
+      a.remove = (): void => {
+        removed.push(a);
+        remove();
+      };
+      return a;
+    };
+    openMailtoLink("a@b.test");
+    expect(removed).toEqual(anchors);
+    expect(removed).toHaveLength(1);
+  });
+
+  it("says so rather than throwing where there is no document", () => {
+    delete (globalThis as { document?: unknown }).document;
+    expect(openMailtoLink("a@b.test")).toBe(false);
   });
 });

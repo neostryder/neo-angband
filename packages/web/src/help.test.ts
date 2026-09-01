@@ -408,6 +408,30 @@ describe("the two port-addition pages give up their wrap instead", () => {
     ]);
     expect(routes[0]?.rows[0]?.cells.what?.text).toBe("the RPGM Tools Discord");
   });
+
+  it("gives each route's address cell a real link target, issue #59", () => {
+    /* Every one of the three addresses opens something; the email's DISPLAYED
+     * text stays the obfuscated "(at)" form even though its href is a working
+     * mailto: - the scraper-avoidance the community page's own comment names. */
+    const routes = helpCommunityScreen().blocks.filter(
+      (b): b is ScreenTableBlock => b.kind === "table",
+    );
+    expect(routes.map((b) => b.rows[0]?.cells.address?.href)).toEqual([
+      "https://discord.gg/YegtwbHTBQ",
+      "https://github.com/neostryder/neo-angband/issues",
+      "mailto:strider-angband@rpgm.tools",
+    ]);
+    expect(routes[0]?.rows[0]?.cells.address?.text).toBe("discord.gg/YegtwbHTBQ");
+    /* The faithful terminal's rendering of the row carries the same href on its
+     * own run, which is what a tap or click on the printed row actually reads. */
+    const lines = screenBodyLines(helpCommunityScreen(), 80);
+    const linked = lines.filter((l) => l.runs?.some((r) => r.href !== undefined));
+    expect(linked.map((l) => l.runs?.find((r) => r.href !== undefined)?.href)).toEqual([
+      "https://discord.gg/YegtwbHTBQ",
+      "https://github.com/neostryder/neo-angband/issues",
+      "mailto:strider-angband@rpgm.tools",
+    ]);
+  });
 });
 
 describe("the help pages have given up their models, and say so", () => {

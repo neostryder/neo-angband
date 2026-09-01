@@ -122,10 +122,20 @@ export function showCrashScreen(err: unknown, context: string, version: string):
     safe.style.cssText = "margin:0 0 1em";
 
     const what = document.createElement("p");
-    what.textContent =
-      `This is an alpha, and this is exactly the kind of thing worth reporting ` +
-      `about. Copy the text below into an issue at ${ISSUES}, or paste it in ` +
-      `the Discord at ${DISCORD}, with a line about what you were doing.`;
+    /* `<span>`s rather than bare text nodes: `what.append()` needs to interleave
+     * plain wording with the two anchors below, and every sibling an element can
+     * hold here is itself an element - see `crashLink`'s own comment. A span
+     * draws no differently from a text node inline. */
+    what.append(
+      textSpan(
+        "This is an alpha, and this is exactly the kind of thing worth reporting " +
+          "about. Copy the text below into an issue at ",
+      ),
+      crashLink(ISSUES),
+      textSpan(", or paste it in the Discord at "),
+      crashLink(DISCORD),
+      textSpan(", with a line about what you were doing."),
+    );
     what.style.cssText = "margin:0 0 1em";
 
     const pre = document.createElement("pre");
@@ -173,6 +183,34 @@ export function showCrashScreen(err: unknown, context: string, version: string):
     /* The crash handler crashed. There is nothing above this to catch it, and a
      * throw here would replace a bad situation with a silent one. */
   }
+}
+
+/** A plain run of wording, as its own element - see `what`'s own comment. */
+function textSpan(text: string): HTMLSpanElement {
+  const s = document.createElement("span");
+  s.textContent = text;
+  return s;
+}
+
+/**
+ * A real anchor for one of the two addresses above, issue #59: a player used to
+ * have to select and retype `ISSUES`/`DISCORD` by hand out of plain text. The
+ * link colour is the same hex the faithful terminal's `UI_LINK` computes
+ * (`COLOUR_L_BLUE`, the "-more-" prompt's cyan) rather than a literal chosen for
+ * this file - this dialog is DOM and palette-exempt, but a link drawn here
+ * should still read as the same kind of thing a link on the terminal grid does.
+ */
+function crashLink(href: string): HTMLAnchorElement {
+  const a = document.createElement("a");
+  a.href = href;
+  a.textContent = href;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.style.cssText = [
+    "color:#00ffff", // palette-exempt: matches UI_LINK/UI_MORE (COLOUR_L_BLUE)
+    "text-decoration:underline",
+  ].join(";");
+  return a;
 }
 
 function button(label: string, onClick: () => void): HTMLButtonElement {

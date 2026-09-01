@@ -352,6 +352,7 @@ import {
   setPanelGameSurface,
 } from "./panel-runtime";
 import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-taint";
+import type { SessionTaint } from "./mod-taint";
 import { runModManager, runModOptionsBrowser, type ModManagerDeps } from "./mods";
 
 /* A menu rewrite is optional mod decoration. Attribute a refusal to its owner,
@@ -363,7 +364,7 @@ setMenuTransformProblemReporter((owner, problem) => reportModFault(owner ?? "mod
  * silently drew nothing is the bug this reporter exists to make visible. */
 setTileFillProblemReporter((owner, problem) => reportModFault(owner ?? "mods", problem));
 import { showModUpgrades } from "./mod-browse";
-import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD, UI_BG, UI_MORE } from "./ui-colors";
+import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD, UI_BG, UI_MORE, UI_LINK } from "./ui-colors";
 import { initA11y } from "./a11y";
 import { DEMO_AGENTS } from "./agents/demo";
 import { discoverPlugins } from "./agents/sandbox/discover";
@@ -380,7 +381,7 @@ import {
   routeContextClick,
 } from "./context-menu";
 import type { CaveMenuCtx, MenuEntry, ObjectMenuCtx, PlayerMenuCtx } from "./context-menu";
-import { GlyphTerm } from "./term";
+import { GlyphTerm, setActiveCellTap } from "./term";
 import type { GridPointerInput, GridSurface, RenderAssetRef } from "./term";
 import { screenRegions, type ScreenRegions } from "./regions";
 import {
@@ -10397,6 +10398,36 @@ document.addEventListener("visibilitychange", () => {
  * turn is still unwinding, and the tail render would paint the map back over it.
  * A macrotask lands after advance() has finished, which is the same trick
  * pumpStep uses to let the turn's own tail complete. */
+/**
+ * `taintNotice`'s wording, with its one combined-URL line (the core-fault
+ * branch only - a mod fault names no address) split into two clickable runs.
+ *
+ * A SEPARATE STEP FROM `taintNotice` ON PURPOSE. That function's strings are
+ * pinned by mod-taint.test.ts because they are what a player reads; splitting
+ * them here, in the presenter, means the wording a test asserts and the runs a
+ * tap reads can never disagree about what the line SAYS - only about how it is
+ * drawn, which is this function's whole job.
+ */
+function taintScreenLines(taint: SessionTaint): ScreenLine[] {
+  const GITHUB = "https://github.com/neostryder/neo-angband/issues";
+  const DISCORD = "https://discord.gg/YegtwbHTBQ";
+  const SEP = "  -  ";
+  return taintNotice(taint).map((text) => {
+    const cut = text.indexOf(SEP);
+    if (cut < 0 || !text.includes("github.com") || !text.includes("discord.gg")) {
+      return { text };
+    }
+    return {
+      text,
+      runs: [
+        { text: text.slice(0, cut), color: UI_LINK, href: GITHUB },
+        { text: text.slice(cut, cut + SEP.length), color: UI_TEXT },
+        { text: text.slice(cut + SEP.length), color: UI_LINK, href: DISCORD },
+      ],
+    };
+  });
+}
+
 onSessionTaint((taint) => {
   setTimeout(() => {
     void openModal(async () => {
@@ -10408,7 +10439,7 @@ onSessionTaint((taint) => {
         taint.id === null
           ? "The game stopped mid-turn"
           : "A mod stopped the game mid-turn",
-        taintNotice(taint).map((text) => ({ text })),
+        taintScreenLines(taint),
         "[ Press ESC for the reload prompt ]",
       );
       if (await confirmYesNo(t("main.crash.reload-confirm", "Reload from the last save now? ")))
@@ -11090,10 +11121,12 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
 /**
  * do_cmd_try_borg's two warnings and its prompt (cmd-misc.c:131-136), shared
  * by both entrances an autoplayer can take the keyboard through: Ctrl-Z
- * (activateAutoplayerCmd, right below) and the boot-time gate on a rule flag
- * flipped from the ordinary Mods screen (confirmPendingAutoplayerInstall,
- * near the controller-install loop). One copy of the text so the two
- * entrances cannot drift into saying different things for the same decision.
+ * (activateAutoplayerCmd, right below) and the boot-time gate for a mod that
+ * offered a controller on this boot but has never been confirmed before
+ * (confirmPendingAutoplayerInstall, near the controller-install loop). One
+ * copy of the text so the two entrances cannot drift into saying different
+ * things for the same decision. There is no settings-screen toggle that hands
+ * over the keyboard on its own - Ctrl-Z is the only door in.
  *
  * The text itself is upstream's own (BORG_CONFIRM_MSG_1/2, BORG_CONFIRM in
  * neo-angband-mod-borg's activate.ts) - copied rather than imported, because
@@ -11833,20 +11866,40 @@ async function showReportPage(): Promise<void> {
   /* True while a presenter holds the page; see the update page's own `owned`. */
   let owned = false;
 
+  /* Which terminal row (if any) is a destination's address and what it opens -
+   * rebuilt every paint, read by the tap handler below. The G/1/C keys already
+   * open these rows (see `act`'s "OPENING A TRACKER" branch); this is the same
+   * action reached by a tap or a click instead of a key. */
+  const linkRows = new Map<number, string>();
+
   const paint = (): void => {
     if (owned) return;
     const { cols, rows } = surface.size();
     surface.clear();
     surface.print(0, 1, REPORT_TITLE.slice(0, cols - 1), UI_GOLD);
     const lines = reportLines(view);
+    linkRows.clear();
     for (let r = 0; r < lines.length && 3 + r < rows - 1; r++) {
       const line = lines[r];
       if (!line) continue;
-      surface.print(0, 3 + r, line.text.slice(0, cols - 1), REPORT_TONE[line.tone]);
+      const row = 3 + r;
+      const shown = line.text.slice(0, cols - 1);
+      surface.print(0, row, shown, line.href !== undefined ? UI_LINK : REPORT_TONE[line.tone]);
+      if (line.href !== undefined) linkRows.set(row, line.href);
     }
     const footer = reportFooter(view);
     surface.print(0, rows - 1, footer.slice(0, cols - 1), UI_DIM);
   };
+
+  setActiveCellTap(surface, (cell) => {
+    const href = linkRows.get(cell.row);
+    if (href === undefined) return;
+    const opened = openExternalUrl(href);
+    log.info(
+      "report",
+      opened ? `opened a tracker by tap: ${href}` : `could not open a tapped tracker: ${href}`,
+    );
+  });
 
   const key = (): Promise<string> =>
     new Promise<string>((resolve) => {
@@ -12017,6 +12070,7 @@ async function showReportPage(): Promise<void> {
     if (!(await act(await key()))) return;
   }
   } finally {
+    setActiveCellTap(surface, null);
     popRegion(handle);
   }
 }

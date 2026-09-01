@@ -64,3 +64,35 @@ export function openExternalUrl(url: string): boolean {
     return false;
   }
 }
+
+/**
+ * Hand `mailto:<email>` to the OS's own mail handler, without spending the page
+ * on a navigation. `window.open("mailto:...")` is unreliable across browsers -
+ * some open a blank tab and leave it open - so this is the same trick a real
+ * `<a href="mailto:...">` uses: an anchor the player never sees, clicked once
+ * and discarded. The click is synthetic but the browser treats it exactly like
+ * a real one, including honouring the scheme handler the OS has registered.
+ *
+ * Synchronous for the same reason `openExternalUrl` is: called straight from a
+ * key press or a tap, with nothing awaited first.
+ */
+export function openMailtoLink(email: string): boolean {
+  const doc = (globalThis as { document?: Document }).document;
+  if (!doc?.createElement || !doc.body) return false;
+  try {
+    const a = doc.createElement("a");
+    a.href = `mailto:${email}`;
+    a.rel = "noopener noreferrer";
+    a.style.position = "fixed";
+    a.style.left = "-9999px";
+    doc.body.appendChild(a);
+    a.click();
+    a.remove();
+    return true;
+  } catch {
+    /* Nothing rules out a browser refusing this the way it can refuse
+     * `window.open`; the caller is owed the same "nothing happened" rather
+     * than a thrown error over a link. */
+    return false;
+  }
+}

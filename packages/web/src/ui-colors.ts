@@ -45,3 +45,14 @@ export const UI_BG = colorToCss(COLOUR_DARK);
 export const UI_GOOD = colorToCss(COLOUR_L_GREEN);
 /** Negative / dangerous status; C uses COLOUR_L_RED for warning values (ui-display.c:389). */
 export const UI_BAD = colorToCss(COLOUR_L_RED);
+/**
+ * A clickable URL or email address drawn on the terminal grid.
+ *
+ * The SAME colour as `UI_MORE` rather than a colour of its own: this palette has
+ * no underline or bold attribute for the faithful terminal to draw, so "this
+ * responds to a key or a tap" already has one cue in it - the "-more-" pager
+ * prompt - and a link is exactly that claim again. Inventing a second blue for
+ * it would be the generic-hyperlink colour this file's own lint exists to keep
+ * out, wearing this project's palette instead of its own.
+ */
+export const UI_LINK = UI_MORE;

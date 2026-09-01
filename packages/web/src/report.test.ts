@@ -426,6 +426,24 @@ describe("the saved page", () => {
     expect(advice).toBeLessThan(list);
   });
 
+  it("marks a destination's address line as a link, issue #59", () => {
+    /* The G/1/C keys already open these; `href` is what lets the SAME row be
+     * opened with a tap or click too - see showReportPage's cell-tap handling
+     * in main.ts, which reads this field to decide what a row's tap does. */
+    const lines = reportLines(view({ phase: "saved", savedAs: "X" }));
+    const gameRow = lines.find((l) => l.text.includes(NEO_ANGBAND_TRACKER));
+    expect(gameRow?.href).toBe(NEO_ANGBAND_TRACKER);
+    /* A row with nothing to open (no mod repository recorded) is not a link. */
+    const noRepo = reportLines(
+      view({
+        phase: "saved",
+        savedAs: "X",
+        modOrigins: [{ id: "unresolvable", repo: "file:import" }],
+      }),
+    ).find((l) => l.text.includes("no repository recorded"));
+    expect(noRepo?.href).toBeUndefined();
+  });
+
   it("tells a first-time reporter the three things that make a report readable", () => {
     const t = saved();
     expect(t).toContain("One problem per report");

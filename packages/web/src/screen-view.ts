@@ -126,6 +126,15 @@ export interface ScreenCell {
   readonly text: string;
   readonly color?: string;
   readonly values?: ScreenValues;
+  /**
+   * Makes this cell a link: an `http(s):` address or a `mailto:` one that a tap
+   * or a key opens rather than merely displaying. The faithful terminal draws
+   * the cell as its own run so the link does not bleed into its neighbours (see
+   * `rowLine`); a presenter reads the same field to hang a real anchor on it,
+   * which is the reason this table model exists rather than three lines of
+   * prose - see `help.ts`'s community page.
+   */
+  readonly href?: string;
 }
 
 /**
@@ -643,6 +652,7 @@ function freezeRow(row: ScreenRow): ScreenRow {
     cells[key] = Object.freeze({
       text: cell.text,
       ...(cell.color === undefined ? {} : { color: cell.color }),
+      ...(cell.href === undefined ? {} : { href: cell.href }),
       ...(cell.values === undefined ? {} : { values: Object.freeze({ ...cell.values }) }),
     });
   }
@@ -663,6 +673,7 @@ function freezeLine(line: ScreenLine): ScreenLine {
     text: line.text,
     ...(line.color === undefined ? {} : { color: line.color }),
     ...(line.runs === undefined ? {} : { runs: Object.freeze(line.runs.map((r) => Object.freeze({ ...r }))) }),
+    ...(line.href === undefined ? {} : { href: line.href }),
   });
 }
 
@@ -927,7 +938,7 @@ function textOutRowLine(
 ): ScreenLine {
   const cells = Array.from(row, (c) => c ?? { ch: " ", color: base ?? "" });
   while (cells.length > 0 && cells[cells.length - 1]!.ch === " ") cells.pop();
-  const runs: { text: string; color: string }[] = [];
+  const runs: TermRun[] = [];
   for (const c of cells) appendRun(runs, c.ch, c.color);
   return {
     text: cells.map((c) => c.ch).join(""),
@@ -942,17 +953,26 @@ function proseLine(
   indent: string,
   base: string | undefined,
 ): ScreenLine {
-  const runs: { text: string; color: string }[] = [];
+  const runs: TermRun[] = [];
   if (indent !== "") runs.push({ text: indent, color: base ?? chars[0]?.color ?? "" });
   for (const c of chars) appendRun(runs, c.ch, c.color);
   const text = indent + chars.map((c) => c.ch).join("");
   return { text, ...(base === undefined ? {} : { color: base }), runs };
 }
 
-function appendRun(runs: { text: string; color: string }[], text: string, color: string): void {
+/** A run in the faithful terminal's own rendering - a fragment of one styled row. */
+type TermRun = { text: string; color: string; href?: string };
+
+/**
+ * Merges `text` into the last run when it shares that run's colour AND link
+ * target, so an unlinked stretch and a linked one never coalesce into one span
+ * a tap could not tell apart - see `rowLine`, the one caller that ever passes
+ * `href`.
+ */
+function appendRun(runs: TermRun[], text: string, color: string, href?: string): void {
   const last = runs[runs.length - 1];
-  if (last && last.color === color) last.text += text;
-  else runs.push({ text, color });
+  if (last && last.color === color && last.href === href) last.text += text;
+  else runs.push({ text, color, ...(href === undefined ? {} : { href }) });
 }
 
 /**
@@ -965,7 +985,7 @@ function appendRun(runs: { text: string; color: string }[], text: string, color:
  * which is the kind of disagreement nothing paints but everything that measures
  * trips over.
  */
-function trimTrailingSpace(runs: { text: string; color: string }[]): void {
+function trimTrailingSpace(runs: TermRun[]): void {
   while (runs.length > 0) {
     const last = runs[runs.length - 1]!;
     last.text = last.text.replace(/\s+$/u, "");
@@ -1018,7 +1038,7 @@ function tableBlockLines(block: ScreenTableBlock, cols: number): ScreenLine[] {
   /* The glyph row sits ABOVE the labels, which is the order upstream draws the
    * flag grid in: the equippy row, then the slot letters (ui-player.c L399-401). */
   if (block.columns.some((c) => c.glyph !== undefined)) {
-    const runs: { text: string; color: string }[] = [];
+    const runs: TermRun[] = [];
     if (tagWidth !== 0) runs.push({ text: " ".repeat(tagWidth), color: "" });
     block.columns.forEach((c, i) => {
       const gap = gapBefore(block, i);
@@ -1114,15 +1134,17 @@ function rowLine(
   row: ScreenRow,
   parts: readonly string[],
 ): ScreenLine {
-  const coloured = block.columns.some((c) => row.cells[c.key]?.color !== undefined);
+  const coloured = block.columns.some(
+    (c) => row.cells[c.key]?.color !== undefined || row.cells[c.key]?.href !== undefined,
+  );
   if (!coloured) return row.color === undefined ? { text } : { text, color: row.color };
-  const runs: { text: string; color: string }[] = [];
+  const runs: TermRun[] = [];
   const base = row.color ?? "";
   if (prefix !== "") runs.push({ text: prefix, color: base });
   block.columns.forEach((c, i) => {
     const gap = gapBefore(block, i);
     if (gap !== "") appendRun(runs, gap, base);
-    appendRun(runs, parts[i]!, row.cells[c.key]?.color ?? base);
+    appendRun(runs, parts[i]!, row.cells[c.key]?.color ?? base, row.cells[c.key]?.href);
   });
   trimTrailingSpace(runs);
   return { text, ...(row.color === undefined ? {} : { color: row.color }), runs };
