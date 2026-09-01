@@ -1,5 +1,5 @@
 /**
- * The seven tutorial mods in `samples/tutorials/`, exercised as mods.
+ * The eight tutorial mods in `samples/tutorials/`, exercised as mods.
  *
  * WHY THIS EXISTS. A tutorial is a promise that if the reader types what is on
  * the page, the thing on the page happens. Documentation cannot keep that
@@ -14,8 +14,8 @@
  * folders on disk, they are the SAME BYTES the tutorials tell the reader to
  * write, and here they are loaded by their real path, validated by the real
  * manifest validator, composed by the real loader against the REAL core content
- * pack, and - for the two that ship code - imported for real and folded through
- * the real `composeModHooks`. Nothing is mocked and no fixture stands in for
+ * pack, and - for code mods - imported for real and run through their real hook
+ * or registry path. Nothing is mocked and no fixture stands in for
  * core, which is the point: `core:sword--dagger` has to be a ref that resolves
  * against the shipped game, not one that resolved when the tutorial was written.
  *
@@ -29,15 +29,25 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { validateManifest, composeContentPacks } from "@rpgm-tools/neo-angband-mod-sdk";
+import {
+  CapabilitySet,
+  validateManifest,
+  composeContentPacks,
+} from "@rpgm-tools/neo-angband-mod-sdk";
 import type { LoadedPack, PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
+  bindConstants,
   composeModHooks,
+  createModRegistryHost,
   ObjRegistry,
+  objectPrep,
+  registerCoreStoreBehaviour,
+  Rng,
+  StoreBehaviourRegistry,
   StoreRegistry,
   TV,
 } from "@rpgm-tools/neo-angband-core";
-import type { ModHooks } from "@rpgm-tools/neo-angband-core";
+import type { ModHooks, StoreWillBuyContext } from "@rpgm-tools/neo-angband-core";
 import { readModDir, type ModDirEntry, type ModDirSource } from "./disk-packs";
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));
@@ -599,7 +609,155 @@ describe("samples/tutorials - the mods the tutorials tell you to write", () => {
     });
   });
 
-  describe("all seven", () => {
+  describe("08 - add a store", () => {
+    it("renames and redescribes core's Black Market entrance, leaving every other field alone", () => {
+      const core = corePack(["terrain"]);
+      const before = (core.files["terrain"] as { records: Record<string, unknown>[] }).records.find(
+        (r) => r["name"] === "Black Market",
+      );
+      expect(before, "core no longer has a Black Market entrance").toBeDefined();
+
+      const composed = composeContentPacks([
+        core,
+        loadTutorial("tutorial-08-add-a-store", ["terrain"]),
+      ]);
+      expectNoProblems(composed);
+      const exchange = (composed.records["terrain"] as Record<string, unknown>[]).find(
+        (r) => r["name"] === "Adventurer's Exchange",
+      );
+      expect(exchange, "the tutorial did not rename the Black Market").toBeDefined();
+      expect(exchange!["desc"]).toEqual([
+        "A practical shop for people who expect to come back from the dungeon.",
+      ]);
+
+      /* This is a field patch, not a new terrain record: restoring its two
+       * written fields yields the exact core entrance, glyph, flags and all. */
+      const { $from: _provenance, ...fields } = exchange!;
+      expect({ ...fields, name: before!["name"], desc: before!["desc"] }).toEqual(before);
+    });
+
+    it("replaces the Black Market's table with real, bound store data", () => {
+      const core = corePack(["store"]);
+      const composed = composeContentPacks([
+        core,
+        loadTutorial("tutorial-08-add-a-store", ["store"]),
+      ]);
+      expectNoProblems(composed);
+
+      const reg = new ObjRegistry({
+        ...(objPackFiles() as object),
+        object: readJson(join(CORE_PACK, "object.json")),
+      } as never);
+      const stores = new StoreRegistry(composed.records["store"] as never[], reg);
+      expect(stores.refused).toEqual([]);
+      const exchange = stores.byName("STORE_BLACK");
+      expect(exchange, "the composed pack lost the Black Market").toBeDefined();
+
+      const kind = (tval: number, sval: string) => {
+        const sidx = reg.lookupSval(tval, sval);
+        expect(sidx, `core has no ${sval}`).toBeGreaterThan(-1);
+        const result = reg.lookupKind(tval, sidx);
+        expect(result, `core did not bind ${sval}`).toBeDefined();
+        return result!;
+      };
+
+      /* This invokes StoreRegistry's real item binding: these are the actual
+       * ObjectKind identities a running Exchange will stock, not JSON text. */
+      expect(exchange!.owners).toEqual([
+        { index: 0, maxCost: 12000, name: "Rilla the Well-Prepared (Dwarf)" },
+        { index: 1, maxCost: 18000, name: "Nori the Far-Walker (Human)" },
+      ]);
+      expect(exchange!.normalStockMin).toBe(5);
+      expect(exchange!.normalStockMax).toBe(10);
+      expect(exchange!.turnover).toBe(6);
+      expect(exchange!.normalTable).toEqual([
+        kind(TV.DIGGING, "Shovel"),
+        kind(TV.DIGGING, "Pick"),
+        kind(TV.LIGHT, "Wooden Torch"),
+        kind(TV.FLASK, "Flask of Oil"),
+        kind(TV.CLOAK, "Cloak"),
+      ]);
+      expect(exchange!.alwaysTable).toEqual([
+        kind(TV.FOOD, "Ration of Food"),
+        kind(TV.DIGGING, "Shovel"),
+      ]);
+      expect(exchange!.buy).toEqual([
+        { tval: TV.DIGGING, flag: 0 },
+        { tval: TV.LIGHT, flag: 0 },
+        { tval: TV.FLASK, flag: 0 },
+        { tval: TV.CLOAK, flag: 0 },
+      ]);
+    });
+
+    it("imports its plugin and buys enchanted swords while retaining core's ordinary rule", async () => {
+      const composed = composeContentPacks([
+        corePack(["store"]),
+        loadTutorial("tutorial-08-add-a-store", ["store"]),
+      ]);
+      expectNoProblems(composed);
+      const reg = new ObjRegistry({
+        ...(objPackFiles() as object),
+        object: readJson(join(CORE_PACK, "object.json")),
+      } as never);
+      const storeReg = new StoreRegistry(composed.records["store"] as never[], reg);
+      expect(storeReg.refused).toEqual([]);
+      const exchange = storeReg.byName("STORE_BLACK");
+      expect(exchange).toBeDefined();
+
+      const mod = (await import(
+        pathToFileURL(join(TUTORIALS, "tutorial-08-add-a-store", "plugin.js")).href
+      )) as {
+        default: {
+          api: number;
+          register(
+            host: ReturnType<typeof createModRegistryHost>,
+            ctx: { registries: { stores: StoreRegistry }; core: { TV: typeof TV } },
+          ): void;
+        };
+      };
+      expect(mod.default.api).toBe(1);
+
+      const behaviour = new StoreBehaviourRegistry();
+      registerCoreStoreBehaviour(behaviour);
+      const host = createModRegistryHost(
+        { stores: behaviour },
+        CapabilitySet.fromManifest(
+          validateManifest(readJson(join(TUTORIALS, "tutorial-08-add-a-store", "manifest.json"))),
+        ),
+      );
+      mod.default.register(host, { registries: { stores: storeReg }, core: { TV } });
+
+      const daggerSval = reg.lookupSval(TV.SWORD, "Dagger");
+      expect(daggerSval, "core has no Dagger").toBeGreaterThan(-1);
+      const daggerKind = reg.lookupKind(TV.SWORD, daggerSval);
+      expect(daggerKind).toBeDefined();
+      const constants = bindConstants(readJson(join(CORE_PACK, "constants.json")) as never);
+      const plainDagger = objectPrep(new Rng(7), reg, constants, daggerKind!, 0, "minimise");
+      const enchantedDagger = objectPrep(new Rng(8), reg, constants, daggerKind!, 0, "minimise");
+      enchantedDagger.toH = 1;
+      const willBuyContext = (obj: typeof plainDagger): StoreWillBuyContext => ({
+        reg,
+        store: exchange!,
+        obj,
+        aware: true,
+        noSelling: false,
+        runesKnown: true,
+        flagKnown: () => false,
+      });
+
+      const coreWillBuy = behaviour.willBuyFor("*");
+      const exchangeWillBuy = behaviour.willBuyFor(exchange!.feat);
+      expect(coreWillBuy).not.toBeNull();
+      expect(exchangeWillBuy).not.toBeNull();
+      expect(coreWillBuy!(willBuyContext(plainDagger))).toBe(false);
+      expect(exchangeWillBuy!(willBuyContext(plainDagger))).toBe(
+        coreWillBuy!(willBuyContext(plainDagger)),
+      );
+      expect(exchangeWillBuy!(willBuyContext(enchantedDagger))).toBe(true);
+    });
+  });
+
+  describe("all eight", () => {
     const ALL = [
       "tutorial-01-tweak-a-value",
       "tutorial-02-add-an-item",
@@ -608,6 +766,7 @@ describe("samples/tutorials - the mods the tutorials tell you to write", () => {
       "tutorial-05-hook-behaviour",
       "tutorial-06-add-an-option",
       "tutorial-07-add-an-artifact",
+      "tutorial-08-add-a-store",
     ] as const;
 
     it("pass the real manifest validator, and each has a tutorial page", () => {
@@ -646,9 +805,13 @@ describe("samples/tutorials - the mods the tutorials tell you to write", () => {
       expect(report.problems).toEqual([]);
       expect(report.packs.map((p) => p.manifest.id).sort()).toEqual([...ALL].sort());
 
-      /* And the two code mods arrive WITH their code: a plugin the reader is
+      /* And the three code mods arrive WITH their code: a plugin the reader is
        * told to write, listed by the reader that has to find it. */
-      for (const id of ["tutorial-05-hook-behaviour", "tutorial-06-add-an-option"]) {
+      for (const id of [
+        "tutorial-05-hook-behaviour",
+        "tutorial-06-add-an-option",
+        "tutorial-08-add-a-store",
+      ]) {
         const pack = report.packs.find((p) => p.manifest.id === id);
         expect(pack?.code, `${id} lost its plugin.js`).toContain("plugin.js");
       }

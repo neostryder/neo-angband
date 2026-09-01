@@ -1,0 +1,40 @@
+{
+  "fieldPatches": {
+    "core:store-black": [
+      {
+        "op": "set",
+        "path": "owner",
+        "value": [
+          { "purse": 12000, "name": "Rilla the Well-Prepared (Dwarf)" },
+          { "purse": 18000, "name": "Nori the Far-Walker (Human)" }
+        ]
+      },
+      { "op": "set", "path": "slots", "value": { "min": 5, "max": 10 } },
+      { "op": "set", "path": "turnover", "value": 6 },
+      {
+        "op": "set",
+        "path": "normal",
+        "value": [
+          { "tval": "digger", "sval": "Shovel" },
+          { "tval": "digger", "sval": "Pick" },
+          { "tval": "light", "sval": "Wooden Torch" },
+          { "tval": "flask", "sval": "Flask of Oil" },
+          { "tval": "cloak", "sval": "Cloak" }
+        ]
+      },
+      {
+        "op": "set",
+        "path": "always",
+        "value": [
+          { "tval": "food", "sval": "Ration of Food" },
+          { "tval": "digger", "sval": "Shovel" }
+        ]
+      },
+      {
+        "op": "set",
+        "path": "buy",
+        "value": ["digger", "light", "flask", "cloak"]
+      }
+    ]
+  }
+}

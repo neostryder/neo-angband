@@ -1,0 +1,14 @@
+{
+  "fieldPatches": {
+    "core:black-market": [
+      { "op": "set", "path": "name", "value": "Adventurer's Exchange" },
+      {
+        "op": "set",
+        "path": "desc",
+        "value": [
+          "A practical shop for people who expect to come back from the dungeon."
+        ]
+      }
+    ]
+  }
+}

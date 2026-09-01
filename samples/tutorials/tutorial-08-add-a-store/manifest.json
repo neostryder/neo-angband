@@ -1,0 +1,15 @@
+{
+  "id": "tutorial-08-add-a-store",
+  "name": "My Store Mod",
+  "version": "1.0.0",
+  "shape": "content",
+  "facets": ["content", "plugin"],
+  "modApi": 1,
+  "engine": ">=0.20.0",
+  "author": "your name",
+  "license": "GPL-2.0-only",
+  "repository": "https://github.com/you/my-store-mod",
+  "dependencies": { "core": "*" },
+  "capabilities": ["registry:store"],
+  "description": "Turns the Black Market into the Adventurer's Exchange."
+}

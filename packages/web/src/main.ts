@@ -11120,11 +11120,13 @@ async function confirmBorgActivation(): Promise<boolean> {
  * There is nothing upstream-shaped left to call here: `controller()` runs
  * synchronously at boot, before this game exists, so there is no live install
  * to reach into. What upstream's gate marks with one assignment
- * (`player->noscore |= NOSCORE_BORG`) this instead reaches by turning the mod's
- * own rule flag on - the same write the mod manager's row already makes - and
- * reloading through the one door every other mod change already uses
- * (reloadAfterModChange). The confirmation is what changes: it now always runs
- * first, whether the player found the flag through this key or through Mods.
+ * (`player->noscore |= NOSCORE_BORG`) this instead reaches by marking
+ * NOSCORE.BORG directly and reloading through the one door every other mod
+ * change already uses (reloadAfterModChange) - no manifest rule flag is
+ * involved any more, since a controller mod need not declare one. The
+ * confirmation is what changes: it now always runs first, whether the player
+ * found the activation through this key or through a mod whose rule was
+ * already on at boot.
  */
 async function activateAutoplayerCmd(modId: string): Promise<void> {
   if (!(await confirmBorgActivation())) return;
@@ -11182,8 +11184,9 @@ function tryBorgCommand(): void {
 
 /**
  * Resolves the candidate the boot-time controller-install loop held back
- * (#125): a mod whose own rule flag was already on at boot, on a save that
- * has never granted it the keyboard before (NOSCORE.BORG unset). Runs
+ * (#125): a mod whose `controller()` offered to play on this boot, on a save
+ * that has never granted it the keyboard before (NOSCORE.BORG unset) or that
+ * did not just get an explicit Ctrl-Z "yes" this reload. Runs
  * upstream's own warning and confirm, then either installs for real
  * (finishAutoplayerInstall) or leaves the human at the keyboard - never both,
  * and never neither.
@@ -12896,9 +12899,11 @@ let stopInstalledController: (() => void) | null = null;
 
 /**
  * A candidate autoplayer the boot-time controller-install loop held back
- * (#125): its `controller()` returned a real controller, but the save has
- * never granted it the keyboard before (NOSCORE.BORG unset), so installing it
- * at once would be the silent activation this bug is about. Resolved by
+ * (#125): its `controller()` returned a real controller on this boot with no
+ * settings toggle involved - the mod decides for itself whether to offer one,
+ * on whatever gate it likes - but the save has never granted it the keyboard
+ * before (NOSCORE.BORG unset), so installing it at once would be the silent
+ * activation this bug is about. Resolved by
  * confirmPendingAutoplayerInstall once the game screen is live - to an
  * install (finishAutoplayerInstall), or to nothing on a decline - and cleared
  * without resolving by reloadAfterModChange, on the same reasoning as
@@ -13408,8 +13413,8 @@ installRegions(
 /* Same three tiers and millisecond values as the debug agent seam's
  * ?speed=fast|normal|slow (AGENT_TICK_MS above), so the two pumps read the
  * same way to a player who has met either. Player-set via Mods -> the
- * autoplaying mod's own screen -> Autoplayer speed (mods.ts manageModOptions),
- * beside the rule that hands the mod its controller in the first place. */
+ * autoplaying mod's own screen -> Autoplayer speed (mods.ts manageModOptions);
+ * the mod hands over the keyboard through Ctrl-Z, not a settings row. */
 const AUTOPLAYER_SPEED_MS: Record<AutoplayerSpeed, number> = {
   turbo: 10,
   fast: 40,

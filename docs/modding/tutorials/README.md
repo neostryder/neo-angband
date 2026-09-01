@@ -1,6 +1,6 @@
 # Make a mod
 
-**Never made a mod before? That is fine.** These seven tutorials assume you can
+**Never made a mod before? That is fine.** These eight tutorials assume you can
 edit a text file and nothing else. The first one takes about five minutes and
 changes the game.
 
@@ -10,7 +10,7 @@ in it.
 
 ---
 
-## The seven tutorials
+## The eight tutorials
 
 Each one teaches exactly one idea and ends with something you can see on screen.
 
@@ -23,19 +23,22 @@ Each one teaches exactly one idea and ends with something you can see on screen.
 | 5 | [Hook behaviour](05-hook-behaviour.md) | Your mod running code, in ten lines | 2 |
 | 6 | [Add an option](06-add-an-option.md) | Letting the player switch your change on and off | 2 |
 | 7 | [Add an artifact](07-add-an-artifact.md) | Building on top of an item the game already has | 2 |
+| 8 | [Add a store](08-add-a-store.md) | Turning a town storefront into your own shop, and adding one shop rule | 4 |
 
 Do them in order if you are new. They build on each other, and each one is short
 enough to read in full before you type anything. Tutorial 7 is the one exception:
 it needs tutorial 2 and nothing else, so you can jump to it if an artifact is
-what brought you here.
+what brought you here. Tutorial 8 needs tutorials 2 and 5, and is the one to
+jump to if a shop is what brought you here.
 
-**These are not snippets.** Every tutorial's finished mod is a real folder in
+**These are not snippets.** Tutorials 1 through 7 each have a finished mod in
 this repository under `samples/tutorials/`, loaded and checked against the actual
 game data on every test run, including a check that each one would be accepted
-by the same folder reader the game itself uses. If a tutorial ever stops working,
-the build fails before you find out the hard way.
+by the same folder reader the game itself uses. Tutorial 8's four complete files
+are on its page. If a sampled tutorial ever stops working, the build fails before
+you find out the hard way.
 
-**You can run them without typing anything.** Copy any of the seven folders out of
+**You can run them without typing anything.** Copy any of the first seven folders out of
 `samples/tutorials/` into the `mods/` folder beside the desktop build (or point a
 browser at `samples/tutorials/` with **Choose a mods folder...**), and they turn
 on from the Mods screen like any other mod. They are named `tutorial-01-...` to
@@ -54,17 +57,17 @@ it.
 Neo Angband is for when you would rather your change be a **portable thing** than
 an edit:
 
-- **The base game stays untouched.** Your change is a layer over it, not a
+- The base game stays untouched. Your change is a layer over it, not a
   modification of it.
-- **It has an off switch**, and turning it off gives back the unmodified game
+- It has an off switch, and turning it off gives back the unmodified game
   exactly.
-- **You share a folder or a repository link**, not a fork and not a patch file.
-- **Several mods combine**, from several people, without any of them having to
+- You share a folder or a repository link, not a fork and not a patch file.
+- Several mods combine, from several people, without any of them having to
   know about each other.
-- **You can expose settings** so the people using it can tune it without editing
+- You can expose settings so the people using it can tune it without editing
   it.
-- **The game can update underneath it** without you re-applying anything.
-- **It scales all the way up.** The same system that changes one number can carry
+- The game can update underneath it without you re-applying anything.
+- It scales all the way up. The same system that changes one number can carry
   an entire variant.
 
 That last point is the real one. The spectrum runs from:
@@ -89,12 +92,12 @@ personal versions of the game and no shared ground.
 
 That is not what this is for, and the design says so:
 
-- **The base game ships as the shared vanilla target**, the latest official
+- The base game ships as the shared vanilla target, the latest official
   Angband release, faithfully, with no mods enabled. That is what an untouched
   install gives you and what the project measures itself against.
-- **This project bundles no mods at all.** Not even the author's. Every one of
+- This project bundles no mods at all. Not even the author's. Every one of
   them installs the same way yours would.
-- **Every mod is a layer you can name, list, and remove.** A game's enabled mods
+- Every mod is a layer you can name, list, and remove. A game's enabled mods
   and versions are recorded in its diagnostics and written into the character
   dump, so any two people can tell whether they were playing the same thing.
 
@@ -103,7 +106,7 @@ having one.
 
 ---
 
-## What would I even mod?
+## Ideas for a first mod
 
 If you want a starting point rather than a blank folder:
 
