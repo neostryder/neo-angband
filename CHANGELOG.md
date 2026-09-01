@@ -40,10 +40,16 @@ still calls itself.
 
 ### Added
 
+- [Visible] [Docs] **Added a beginner walkthrough and tested finished mod for making a custom town shop.** It uses Neo Angband's content and store-behaviour seams instead of upstream source-file edits (#148).
+
 - Deleting a profile now asks whether to keep its living characters first;
   kept ones go into a small holding pool and can be reclaimed into any
   profile afterward from a new `Reclaim saves...` row on the Profile screen
   (#163).
+
+### Changed
+
+- [Visible] [UI] **The Discord invite, the GitHub issues address, and the support email printed on the Help, Report-a-problem, mid-turn-fault, and crash screens are now real links.** A tap, click, or the existing key (`G`/`1`/`C` on the report screen, or a click on the community page) opens the address in a browser tab or, for the support address, a `mailto:` compose window; the email's displayed text stays the obfuscated "strider-angband (at) rpgm.tools" form. Link text is coloured with the terminal's own "-more-" cyan rather than an invented hyperlink blue, and the crash screen (a DOM overlay, not the terminal) draws real `<a>` anchors in the same colour (#59).
 
 ### Fixed
 
