@@ -19,7 +19,7 @@ itself does not have one. This package is that pipeline, with no engine attached
 so a mod's build script or test can validate a manifest, resolve a load order or
 compose records without pulling in a game.
 
-## What is in it
+## Exports
 
 | Area | Exports |
 | --- | --- |

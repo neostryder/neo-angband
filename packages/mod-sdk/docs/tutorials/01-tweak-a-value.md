@@ -9,7 +9,7 @@ toolchain, no account, and no copy of the game's source code.
 
 ---
 
-## The whole mod
+## Mod files
 
 A mod is a folder. Make one anywhere you like, call it `my-first-mod`, and put
 two files in it:
@@ -98,7 +98,7 @@ folder...**, and point it at the folder *containing* `my-first-mod`. Then turn i
 on and reload as above. The game remembers the folder, so editing a file and
 reloading the page is your whole edit-and-test loop.
 
-## What you should see
+## Check the result
 
 Buy a dagger in the **Weapon Smiths** (the `3` on the town map) - that is the
 shop that stocks daggers, not the General Store. It now costs around 300 gold
@@ -110,7 +110,7 @@ ordinary again. That is the part worth pausing on: your change is a layer over
 the base game, not an edit to it. Nothing on your machine was modified, and the
 game underneath is still the vanilla one.
 
-## Try changing this
+## Variations to try
 
 - Make the dagger **lighter**: add `{ "op": "set", "path": "weight", "value": 4 }`.
 - Change a **monster** instead. Add a `monster.json` with
@@ -120,7 +120,7 @@ game underneath is still the vanilla one.
   reload. Read the error: that message is your main debugging tool, and it is
   worth seeing once while you already know what is wrong.
 
-## The finished version
+## Sample mod
 
 `samples/tutorials/tutorial-01-tweak-a-value/` in this repository is exactly this mod.
 It is not a copy of the tutorial. It is a mod that gets loaded and checked

@@ -9,7 +9,7 @@ and off, from the game, without editing anything.
 
 ---
 
-## The whole mod
+## Mod files
 
 Same two files. `manifest.json` gains a `rules` block:
 
@@ -55,7 +55,7 @@ export default {
 That is the entire feature. There is no settings API to learn, no storage to
 manage, and no screen to build.
 
-## How it works
+## The manifest flag controls hook registration
 
 You **declare** the switch in the manifest. The game builds the screen, shows
 your `title` and `description`, remembers what the player chose, and puts the
@@ -79,9 +79,9 @@ hook at all**, not inside `messageText`, returning `raw` unchanged.
 
 Both look identical to the player. They are not the same thing:
 
-- **Checking inside the hook** means the game calls your function for every
+- Checking inside the hook means the game calls your function for every
   message it ever prints, forever, and your function decides to do nothing.
-- **Checking around the hook** means that when the option is off, you supplied no
+- Checking around the hook means that when the option is off, you supplied no
   hook, so the game runs its own untouched path and your mod is not in it at all.
 
 The second is the shape to reach for. A disabled option should cost nothing and
@@ -102,7 +102,7 @@ let them choose.
 The first-party `feature-restoration` mod works exactly this way: enabling it
 changes nothing at all until you pick a feature.
 
-## What you should see
+## Check the result
 
 Enable the mod and reload. Nothing changes yet, and that is correct.
 
@@ -110,7 +110,7 @@ Press `Escape`, choose **Mods**, choose your mod, and you will find *Congratulat
 me on gaining a level* on its own screen, off. Turn it on, choose **Apply changes
 and reload**, and gain a level.
 
-## Try changing this
+## Variations to try
 
 - Add a **second** option, controlling something else, and see both appear.
 - Make one **default on** and notice how differently the mod feels to install.
@@ -119,7 +119,7 @@ and reload**, and gain a level.
   `renamedSectionFlags` in [AUTHORING.md](../AUTHORING.md), since there is a
   supported way to do either without losing everyone's saved choice.
 
-## The finished version
+## Sample mod
 
 `samples/tutorials/tutorial-06-add-an-option/`. Its test asserts the interesting half:
 that with the option off, the mod supplies **no hook at all**.

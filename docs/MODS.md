@@ -385,8 +385,8 @@ AI agent), and any mid-game add/remove/update of mods breaks
 reproducibility-from-seed. When that happens core does not just shrug: every
 save carries a core-owned DETERMINISM MODE (decision 22). A save starts
 DETERMINISTIC; the first time a determinism-affecting mod is enabled on it,
-core flips it to NONDETERMINISTIC seamlessly and IRREVERSIBLY - removing the
-mod later never restores the deterministic mode, so a save cannot be tainted
+core flips it to NONDETERMINISTIC. The change is IRREVERSIBLE. Removing the mod
+later never restores the deterministic mode, so a save cannot be tainted
 and then cleansed. This is core integrity metadata that mods can trigger but
 never reverse; it is distinct from the save-scum gameplay policy (which a mod
 may relax). Anti-scum itself holds in both modes for core mechanics, which

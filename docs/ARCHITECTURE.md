@@ -35,7 +35,7 @@ Upstream's two seams get data OUT of the engine. They say nothing about how it
 is arranged, and for most of the port's life the arrangement was private: the
 map, the vitals, the message line and the status line were drawn by closures in
 `main.ts`, so "where is the map" and "what are the player's hit points" had no
-answer anything outside could ask. Three modules now answer, in the same shape:
+answer that anything outside could ask. Three modules now answer, in the same shape:
 
 - `regions.ts` names the parts of the screen - `messages`, `sidebar`, `map`,
   `status` - and publishes each one's rectangle in grid cells AND CSS pixels.
@@ -131,15 +131,15 @@ untouched by all of this; only *background* repaints go through the gate.
 
 ## Engine principles
 
-- **No globals.** Upstream's `player`/`cave`/`world` singletons become an
+- No globals. Upstream's `player`/`cave`/`world` singletons become an
   instantiable game context. Multi-instance by construction.
-- **Deterministic, named RNG streams.** Upstream uses one global stream with
+- Deterministic, named RNG streams. Upstream uses one global stream with
   a seed-swap trick for flavors and randarts. The port gives each system a
   named seeded stream (generation, gameplay, flavors, randarts, ...) so
   content is reproducible and saves can serialize exact RNG state.
-- **Registries everywhere.** All content - monsters, items, effects,
+- Registries everywhere. All content - monsters, items, effects,
   generators, objectives - lives in namespaced registries populated by
   packs. The engine ships empty; `@rpgm-tools/neo-angband-content` fills it.
-- **Determinism first, AI optional.** The generator seam has a deterministic
+- Determinism first, AI optional. The generator seam has a deterministic
   default. Plugins may replace or augment generation; the engine never
   requires them.

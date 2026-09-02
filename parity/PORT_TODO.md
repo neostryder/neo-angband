@@ -25,7 +25,7 @@ A citation is a `file:line` from `parity/reports/deferral-census.tsv` or
 | Tier | Test for membership |
 |---|---|
 | **0** | The list cannot be trusted until this is done |
-| **1** | Unlocks other tiers; doing it later means doing downstream items twice |
+| **1** | Makes later tiers possible; doing it later means doing downstream items twice |
 | **2** | Changes what *happens*: mechanics, and in one case RNG draw order |
 | **3** | Changes what the player is *told*: the numbers and text on screen |
 | **4** | A whole mode nobody had begun |
@@ -47,13 +47,13 @@ case that used to be wrong, not merely that the function exists.
   `parity/tools/deferral-crosscheck.mjs` are marked read; 8 overturned a
   stale verdict.
 
-## Tier 1: Foundations that unlocked other rows
+## Tier 1: Foundations for later rows
 
 - [x] **1.1 `notice_stuff` / `PN_*` notice pipeline.** Ported.
   `PlayerUpkeep.notice` is a real bitfield (`packages/core/src/player/player.ts:33`)
   and `noticeStuff` (`packages/core/src/game/notice.ts`) drains `PN.COMBINE`,
   `PN.IGNORE` and `PN.MON_MESSAGE` at all fifteen upstream call sites.
-  Unlocked **2.5** and **3.1**.
+  Made **2.5** and **3.1** possible.
   Sites: `packages/core/src/game/context.ts:297`, `packages/core/src/game/notice.ts`
 
 - [x] **1.2 Nothing summed the player's carried weight.** Ported.
@@ -119,7 +119,7 @@ case that used to be wrong, not merely that the function exists.
   Ported. The player's memory of a grid's floor is a per-object pile
   (`KnownObject = { obj, sensed }`), fixing a knowledge leak in the `[`
   object list, a missing `<pile>` glyph, and ignore hiding an entire pile
-  instead of just the ignored entries. Save format moved `SAVE_VERSION` 3→4
+  instead of just the ignored entries. Save format moved `SAVE_VERSION` from 3 to 4
   with a migration for older saves.
   Sites: `packages/core/src/game/known.ts:131`, `packages/core/src/session/save.ts:1187`
 

@@ -11,7 +11,7 @@ dependencies, just one `.js` file beside the manifest.
 
 ---
 
-## The whole mod
+## Mod files
 
 ```
 my-code-mod/
@@ -109,24 +109,24 @@ Exactly as before: the `mods/` folder on the desktop build, or **Choose a mods
 folder...** in a browser. A code mod is loaded from a folder the same way a data
 mod is.
 
-## What you should see
+## Check the result
 
 Gain a level. The message reads *"Congratulations! Welcome to level 2."*
 
 Turn the mod off, reload, and it reads *"Welcome to level 2."* again.
 
-## Try changing this
+## Variations to try
 
-- Congratulate **loudly**: `` `*** ${raw.toUpperCase()} ***` ``.
+- Congratulate loudly: `` `*** ${raw.toUpperCase()} ***` ``.
 - React to a **different** message. Find one you like in the game and match on
   it.
-- Add a **second** hook. `saveNoiseScent` and `objectListTiebreak` are two of the
-  other seven; see [MOD_SEAMS.md](../MOD_SEAMS.md) for what each one is asked and
-  when.
+- Add a second hook. `saveNoiseScent` and `objectListTiebreak` are two of the
+  other seven; see [MOD_SEAMS.md](../MOD_SEAMS.md) for what each one is asked to do
+  and when.
 - Print something to the console from inside the hook and watch how often it is
   called. It is a good way to get a feel for the game's message volume.
 
-## The finished version
+## Sample mod
 
 `samples/tutorials/tutorial-05-hook-behaviour/`, which really is imported and really is
 folded through the game's own hook composition on every test run. The test would

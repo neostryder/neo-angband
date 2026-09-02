@@ -1318,7 +1318,7 @@ pack was already surfaced in the mod manager by `discoverContentModManifests`
 (`pack.ts`). The bytes were reachable; only the registration was not.
 
 The non-mod escape hatch is `?tiles=<base-url>` + `?graf=<id>`
-(`tiles.ts:178-187`, `packages/web/src/main.ts:1005-1006`), which also unlocks the full catalog
+(`tiles.ts:178-187`, `packages/web/src/main.ts:1005-1006`), which also exposes the full catalog
 (`tile-catalog.ts:109`). That is a user/URL affordance, not a mod path, and it
 cannot add a grafID.
 
@@ -1453,7 +1453,7 @@ used, and what a failed check costs.
 
 ## (d) The gap list
 
-Ranked by how much of "the whole game can be made over" each one unlocks.
+Ranked by how much of "the whole game can be made over" each one makes moddable.
 
 | # | Capability | Today | What would have to exist |
 | --- | --- | --- | --- |

@@ -476,7 +476,7 @@ player sees is the class flag in the table.
 ### 9. RNG perturbed by loading, general case (`INVARIANT`)
 
 - References: issue **#6537** (open beyond the store-charge exploit of entry 2).
-  Upstream keeps this open as a low-priority robustness item: "loading should
+  Upstream keeps this open as a low-priority loading issue: "loading should
   not have unexpected side effects on the RNG state".
 - Port relevance: the port persists full RNG state (decision 22) and must
   guarantee load touches no RNG stream. This is a design invariant for the save

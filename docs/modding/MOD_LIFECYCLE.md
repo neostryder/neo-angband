@@ -642,8 +642,8 @@ pointing at the fix, not a silent divergence.
 Save determinism mode (core-governed ratchet). The label is not just cosmetic:
 every save carries a determinism mode that CORE owns and enforces regardless
 of which mods are loaded. A save starts DETERMINISTIC; the first time a
-determinism-affecting mod is enabled on it, core flips it to NONDETERMINISTIC
-seamlessly and IRREVERSIBLY. Removing the mod later does not restore
+determinism-affecting mod is enabled on it, core flips it to NONDETERMINISTIC.
+The change is IRREVERSIBLE. Removing the mod later does not restore
 deterministic mode - it is a one-way ratchet, so a deterministic (unmodded)
 save cannot be tainted by a mod and then "cleansed" to reclaim its
 reproducibility/anti-scum guarantees. Mods can trigger the flip but can never

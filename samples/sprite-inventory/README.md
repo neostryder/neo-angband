@@ -18,65 +18,65 @@ Copy this folder into your `data/mods/` folder, enable it in the mod
 manager (it asks for one capability, `ui:screen.replace`), reload, and press `i`,
 `e`, `|` or `?` in game.
 
-## What it demonstrates
+## Screen data exposed to mods
 
-- **A list is a table, not text.** The card reads `row.cells.name.text`, addressed
+- A list is a table, not text. The card reads `row.cells.name.text`, addressed
   by column key. Before this seam existed the inventory arrived as
   `"a) a Potion of Cure Light Wounds       4.0 lb"` and a mod would have had to
   parse a name and a weight back out of a padded field, and break the day a pref
   file changed a colour or a translation changed a width.
-- **The numbers are published beside the text.** `cells.weight.values.total` is
+- The numbers are published beside the text. `cells.weight.values.total` is
   the stack weight in tenths of a pound, the figure the column was formatted
   from, so the card prints `0.4 lb` its own way and could sort by it. Check
   `row.values` too: the quiver has no weight *column* (upstream's listing shows
   none) and publishes the number on the row instead, so a presenter that only
   read cells would lose the weight on the one screen a card grid most improves.
-- **A row means something.** An empty equipment slot is `{kind: "slot"}` rather
+- A row means something. An empty equipment slot is `{kind: "slot"}` rather
   than an item, so it is drawn as an outline instead of as gear. Filled rows
   carry `{kind: "item", ref: <handle>}`, the *same* identity a pack picker's
   choices carry, so an item is one thing to you whether the game is listing it or
   asking you to pick one.
-- **Prose is a paragraph, not a row.** The recall pages arrive as a `text` block
+- Prose is a paragraph, not a row. The recall pages arrive as a `text` block
   whose paragraphs are unwrapped, so the card panel wraps them by **measuring**
   them at 360px, a width the game never chose and could not have pre-wrapped
   for. A `lines` block is already broken at the terminal's width; re-flowing that
   means undoing the game's wrap and guessing which breaks were the game's.
-- **Art and the writing on it are separate.** The tombstone arrives as an `art`
+- Art and the writing on it are separate. The tombstone arrives as an `art`
   block whose `lines` are the picture and whose `fields` are the epitaph: name,
   class, `level.values.level`, `gold.values.gold`, the killing blow. Upstream
   burns those into columns 8-39 of the ASCII stone; this sample draws its own
   stone, writes the character onto it, and never reads `lines` at all.
-- **A number can be drawn as a shape.** The character sheet's stat rows publish
+- A number can be drawn as a shape. The character sheet's stat rows publish
   `cells.eb.values.bonus` as an integer, so the card panel draws the equipment
   bonus as a **bar as long as the bonus**. There is no way to get that from
   `"STR!  18/100  +1  +0  +2"`, which is the whole argument for `values` in one
   picture. On the flag page the *columns* are the equipment slots and each
   carries the worn item's glyph in `column.glyph`, so the header of that grid is
   gear.
-- **A screen can be acted on, and the game still does the acting.** The sheet
+- A screen can be acted on, and the game still does the acting. The sheet
   publishes `view.actions`: rename, dump, page forward, page back, and `show`
   is handed a `host`. Pressing one of their keys calls `host.invoke(id)`, so the
   rename opens the *game's* prompt and the dump writes the *game's* file, and
   the promise hands back the view the player should see next. A presenter that
   took the sheet without this would have quietly taken three commands away.
-- **A model with a small vocabulary pays off later.** The knowledge browser's
+- A model with a small vocabulary pays off later. The knowledge browser's
   seven recall pages (rune, feature, trap, shape, artifact, ego, object-kind)
   reach the same prose panel as the inspect pages, and *nothing in the panel
   changed to take them*. Adding them was seven strings in a list, because a
   `text` block is a `text` block whatever screen produced it.
-- **A vector is not a compass string.** The visible-monster list publishes
+- A vector is not a compass string. The visible-monster list publishes
   `values.dy`/`values.dx`, so the card panel draws an **arrow** pointing at the
   monster and prints its range. There is no way to get an arrow out of
   `" 3 N 2 W"` without parsing a compass back into the numbers it was made from,
   and `values.asleep` is a count where the terminal has the sentence
   `"(2 asleep)"`. `semantic.data.name` carries the game's own pluralisation, so
   the card says "3 kobolds" without this mod reimplementing English.
-- **A screen with one command is still a screen with a command.** The monster
+- A screen with one command is still a screen with a command. The monster
   list publishes `sort-exp` (`x`) as an action; pressing it calls
   `host.invoke("sort-exp")` and the **game** re-sorts and hands back the new
   view. A presenter that drew this list without it would silently take the
   sort toggle away.
-- **A glyph is a sprite key, not a letter.** The symbol legend publishes
+- A glyph is a sprite key, not a letter. The symbol legend publishes
   `cells.glyph.text` as a *single character*, the same key a tileset mod already
   indexes its atlas by to draw that symbol on the map. So the legend can show the
   player the art they will actually meet in the dungeon instead of a page of
@@ -84,27 +84,27 @@ manager (it asks for one capability, `ui:screen.replace`), reload, and press `i`
   `k`); a mod with a tileset changes one line and draws the kobold. The commands
   page is the same shape with `cells.key`, which is a keycap where the terminal
   has a field padded eleven wide.
-- **The same page can be modelled in one half and finished in the other.** The
+- The same page can be modelled in one half and finished in the other. The
   symbols page's four glyph tables gave up their model; its opening paragraphs
   did not, and stayed on `lines`: upstream hand-wrapped `symbols.txt` and the
   port prints it verbatim, so unwrapping that prose would move every line break
   on a page parity pins byte for byte. This sample skips those rows, which is
   exactly what a `lines` block means: there is nothing there to reimagine.
-- **It takes twenty-one screens and declines the rest.** The message history is
+- It takes twenty-one screens and declines the rest. The message history is
   still the game's own, and still works.
-- **Colour survives the seam.** `row.color` is the object's own attr as CSS, so a
+- Colour survives the seam. `row.color` is the object's own attr as CSS, so a
   card keeps whatever the player's pref file chose.
 
 ## Two things about this seam that surprise people
 
-**A screen is dismissed, not answered.** `command-dial` declines a question by
+A screen is dismissed, not answered. `command-dial` declines a question by
 resolving with `undefined`; here the promise means "the player closed it", so
 there is no value left to decline with. `show` returns `undefined`
 **synchronously** to decline and `{ dismissed }` to take it. Resolving
 `dismissed` is the whole contract: a presenter that forgets is a game the player
 cannot get back to.
 
-**Throwing while a screen is open is survivable, but only just.** The host
+Throwing while a screen is open is survivable, but only just. The host
 catches it, reports your mod by name, drops the seam for the session, and shows
 the screen itself, because a player left staring at a dead overlay has no way
 out. That recovery exists so a bug is not a lost character; it is not a place to
@@ -112,9 +112,9 @@ be relaxed about.
 
 ## What this seam cannot do yet
 
-**The listings, the recall pages, the death screens, the character sheet, the
+The listings, the recall pages, the death screens, the character sheet, the
 knowledge browser's recalls and the help pages have given up their models; the
-rest have not.** `MODELLED_SCREENS` in `packages/web/src/screen-view.ts` names
+rest have not. `MODELLED_SCREENS` in `packages/web/src/screen-view.ts` names
 the thirty-seven, and everything else arrives under the shared id `core:text`
 with a single `lines` block of pre-wrapped rows, enough to reskin a frame, not
 enough to reimagine a listing. The spell lists are the same gap's biggest
@@ -128,7 +128,7 @@ then hand it pre-wrapped prose, and a mod drawing sprites would render an empty
 page with no way to tell why. A mod that wants its own page reimagined has the
 better route already: its own `screen` presenter, which sees every view.
 
-**A screen has no published region.** It covers the window, because
+A screen has no published region. It covers the window, because
 overlapping, ordered, mod-created regions are still ahead in `MOD_REACH.md` gap
 21. An inventory drawn as a panel beside a still-visible dungeon needs them.
 
@@ -200,17 +200,17 @@ agree to, and the two are separate consents on purpose.
 
 Three things in the declaration are worth copying rather than reading past:
 
-- **`place(grid)` does arithmetic and nothing else.** It runs on every layout
+- `place(grid)` does arithmetic and nothing else. It runs on every layout
   change, which in this shell is once per frame. It is also total: every branch
   clamps, including the terminal too short to have both a message line and a
   status line, because an off-grid rectangle is refused with a named fault.
-- **It is anchored to the right edge.** A region whose right edge is not the
+- It is anchored to the right edge. A region whose right edge is not the
   terminal's needs a host that can bound an erase, and a host without one refuses
   it rather than erasing with spaces: a space is a glyph that occludes, so it
   would punch a white hole in the map the panel is meant to float over. Upstream's
   own `show_obj_list` right-anchors an item list for its own version of this
   reason.
-- **`paint` calls `clear()` first, and that is what makes the panel opaque.**
+- `paint` calls `clear()` first, and that is what makes the panel opaque.
   Transparency here is not a flag and not an alpha: it is a cell that was not
   written. `clear()` erases *this rectangle* and nothing else, so the map either
   side of the strip is untouched and still being drawn by the game underneath.

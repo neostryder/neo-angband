@@ -10,7 +10,7 @@ folder is and how to load one.
 
 ---
 
-## The whole mod
+## Mod files
 
 ```
 my-item-mod/
@@ -71,21 +71,21 @@ invented, which means the base game's own data is your reference manual. If you
 want to know what a field does, find an item that already does it and copy how
 it says so.
 
-- **`name`**: the trailing `~` is where the plural goes. "Padded Jerkin~"
+- `name`: the trailing `~` is where the plural goes. "Padded Jerkin~"
   displays as *a Padded Jerkin* and *2 Padded Jerkins*. An item whose name starts
   with `&` (`"& Dagger~"`) takes an article. These marks are the original game's
   convention, and they are why you should copy an existing name's punctuation
   rather than invent it.
-- **`type`**: which kind of item this is. `soft armor` puts it in the body
+- `type`: which kind of item this is. `soft armor` puts it in the body
   armour slot and in the armoury's stock. Use one the game already has;
   [Tutorial 4](04-change-a-spell.md)'s follow-on reading covers inventing a
   wholly new item class.
-- **`level`**: the depth at which it starts appearing.
-- **`alloc`**: how often, and between which depths. `common: 20` is roughly the
+- `level`: the depth at which it starts appearing.
+- `alloc`: how often, and between which depths. `common: 20` is roughly the
   frequency of ordinary early gear; `"1 to 40"` is the depth window.
-- **`armor.ac`**: the armour it gives. Soft Leather Armour has 8 and costs 20,
+- `armor.ac`: the armour it gives. Soft Leather Armour has 8 and costs 20,
   so 5 for 12 gold is a deliberately worse, cheaper option.
-- **`desc`**: an array of lines, shown when the player inspects it.
+- `desc`: an array of lines, shown when the player inspects it.
 
 **Where to get the numbers.** Open `packages/content/pack/object.json` in this
 repository and find an item like the one you want. That file is the base game's
@@ -94,7 +94,7 @@ always a working template. There is also a helper that does this for you:
 `draftRecord` fills in a new record from the game's comparable records, including
 a sensible price. See [AUTHORING.md](../AUTHORING.md).
 
-## What you should see
+## Check the result
 
 Your item exists in the game as soon as the mod is on: it generates in the
 dungeon inside its own depth window, monsters can be carrying one, and wearing it
@@ -112,13 +112,13 @@ made tutorial 1's dagger `core:sword--dagger`. The `my-item-mod:` half is your
 own namespace, so your item can never collide with the base game's or with
 another mod's, even if you both add a Padded Jerkin.
 
-## Try changing this
+## Variations to try
 
-- Make it **cursed-cheap and heavy**: `weight` 200, `cost` 2.
-- Make it **rare and deep**: `level` 30, `alloc` `{ "common": 3, "minmax": "30 to 100" }`.
-- Add a **second item** in the same `records` array. A mod can add as many as it
+- Make it cursed-cheap and heavy: `weight` 200, `cost` 2.
+- Make it rare and deep: `level` 30, `alloc` `{ "common": 3, "minmax": "30 to 100" }`.
+- Add a second item in the same `records` array. A mod can add as many as it
   likes; the array is a list.
-- Give it an **ego** possibility, or a flag. Find an item in the base game's
+- Give it an ego possibility, or a flag. Find an item in the base game's
   `object.json` that has the property you want and copy the field across.
 
 ## What your item joins automatically
@@ -126,15 +126,15 @@ another mod's, even if you both add a Padded Jerkin.
 This is the part worth knowing, because it is the part you do not have to build.
 Your Padded Jerkin is a soft armour, and the game treats it as one everywhere:
 
-- **Egos, runes and brands apply to it.** An ego declares the *kinds* of item it
+- Egos, runes and brands apply to it. An ego declares the *kinds* of item it
   can land on, not a list of named ones: "of Resist Acid" says `soft armor`, so
   it says your jerkin too. A **Padded Jerkin of Resist Fire** is a thing a player
   can find, and nobody had to add it to a list.
-- **Quality enchantment applies.** It can turn up as `[5,+6]`, and its price is
+- Quality enchantment applies. It can turn up as `[5,+6]`, and its price is
   recomputed from what it ended up being rather than from the `cost` you wrote.
-- **It is generated in the dungeon** at the depths your `alloc` names, and it is
+- It is generated in the dungeon at the depths your `alloc` names, and it is
   in the drop tables from the moment the mod is on.
-- **Shops will buy it,** because a shop's buy list is by item kind too.
+- Shops will buy it, because a shop's buy list is by item kind too.
 
 ## One thing that does NOT happen: a picture
 
@@ -191,18 +191,18 @@ offer it at any depth; `alloc` governs where it generates in the dungeon.
 
 Three things worth knowing about that patch:
 
-- **`core:store-armor`** is the store's record id: its code, `STORE_ARMOR`,
+- `core:store-armor` is the store's record id: its code, `STORE_ARMOR`,
   lowercased with `_` turned into `-`. That rule is the STORE file's, not a
   universal one - each data file declares what identifies its records, and the
   table of them is `packages/mod-sdk/src/record-key.ts`. Most files use `name`;
   `object` uses `type` plus `name`; `brand`, `slay` and `projection` use `code`;
   `constants` and `visuals` have one record each and are named by the file.
-- **`normal` is the "may stock" table; `always` is the staples.** Appending to
+- `normal` is the "may stock" table; `always` is the staples. Appending to
   `always` means a shop keeps one on the shelf at all times, which for most
   items is not what you want - and note the Armoury ships no `always` list at
   all, so appending to one there has nothing to append to and is reported rather
   than working quietly.
-- **`sval` is the item's name without the `~`.** If it does not match an item
+- `sval` is the item's name without the `~`. If it does not match an item
   that exists, the game drops that one line from the shop's table and reports it
   against your mod in the mod manager, so a typo costs you a line and tells you
   which one, rather than being silent or taking the game down with it.
@@ -223,7 +223,7 @@ manager says so on your mod's row, and everything else in the Armoury is exactly
 as it was. Declare the other mod in your `dependencies` so the player is told
 before they get there.
 
-## The finished version
+## Sample mod
 
 `samples/tutorials/tutorial-02-add-an-item/`, which is loaded and composed against the
 real game data on every test run.

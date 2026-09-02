@@ -222,20 +222,20 @@ documentation lives here under `docs/`.
       forced. A mod that uses wall-clock, its own randomness, a network, or an
       external agent - and ANY add/remove/update of mods mid-game - breaks
       reproducibility-from-seed. When that happens the game does not simply
-      shrug; a core-governed save determinism mode (below) records it,
-      seamlessly and irreversibly.
+      shrug; a core-governed save determinism mode (below) records it and cannot
+      reverse the change.
     - Save determinism mode (a CORE mechanism, not a mod concern; amended
       2026-07-08). Every save carries a mode that core owns and
       enforces regardless of which mods are loaded:
         * DETERMINISTIC - the default. A character born unmodded (or with only
           deterministic mods) is deterministic in the faithful sense, and its
           start seed is exposed as a reproducible/shareable bonus.
-        * NONDETERMINISTIC - the seamless alternative. The first time a
+        * NONDETERMINISTIC - the alternative. The first time a
           determinism-affecting mod is enabled on a save, core flips it to
           this mode IRREVERSIBLY. Removing the mod later never restores
           deterministic mode (a one-way ratchet), so a save cannot be tainted
-          and then "cleansed" to reclaim guarantees it lost. The transition is
-          seamless: a one-time notice, then normal play.
+          and then "cleansed" to reclaim guarantees it lost. The transition
+          shows a one-time notice, then normal play.
       This lives in core so it governs save behavior no matter what mods do:
       mods can TRIGGER the flip but can never reverse or prevent it. It is
       distinct from the save-scum GAMEPLAY policy (decision 16), which a mod

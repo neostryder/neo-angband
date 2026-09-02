@@ -9,7 +9,7 @@ and almost never fails.
 
 ---
 
-## The whole mod
+## Mod files
 
 ```
 my-spell-mod/
@@ -48,7 +48,7 @@ To find the spell you want, open `packages/content/pack/class.json`, find your
 class, and count. Books and spells are in the order they appear in the game's own
 spell menu, so you can count them on screen instead if that is easier.
 
-## The catch worth knowing now
+## Positional paths can target the wrong spell
 
 **A number in that path is a position, not a name.**
 
@@ -101,12 +101,12 @@ The `effect` block is the game's own effect vocabulary: `BOLT_STATUS`,
 game ships, but inventing a new one is a code job rather than a data job; that
 is [Tutorial 5](05-hook-behaviour.md) and the pages beyond it.
 
-## What you should see
+## Check the result
 
 Roll a Priest, learn Minor Healing, and open the spell menu. Its mana cost reads
 1 and its failure rate is far lower than an unmodded Priest's at the same level.
 
-## Try changing this
+## Variations to try
 
 - Retune a **different class**: `core:mage`, `core:ranger`, `core:paladin`.
 - Move a spell **earlier**: set its `level` to 1 and get it at character
@@ -114,7 +114,7 @@ Roll a Priest, learn Minor Healing, and open the spell menu. Its mana cost reads
 - Make a class **worse** at something, which is often what makes a variant
   interesting rather than a cheat.
 
-## The finished version
+## Sample mod
 
 `samples/tutorials/tutorial-04-change-a-spell/`.
 

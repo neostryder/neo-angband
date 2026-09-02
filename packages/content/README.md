@@ -20,7 +20,7 @@ through**, and come out as the same JSON records with the same schema. That is
 what makes a total conversion possible by construction rather than by permission:
 a mod that replaces every record is doing what the base game already does.
 
-## What is in the tarball
+## Package contents
 
 | Path | What it holds |
 | --- | --- |

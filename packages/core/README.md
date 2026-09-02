@@ -10,15 +10,15 @@ generation and the save format, as plain modules. Runs in Node and in a browser.
 npm install @rpgm-tools/neo-angband-core
 ```
 
-## What it is for
+## Use cases
 
-Two audiences, and it is worth knowing which one you are:
+There are two main audiences:
 
-- **Writing a Neo Angband mod.** A mod's plugin receives the running engine as
+- Writing a Neo Angband mod. A mod's plugin receives the running engine as
   `ctx.core`, so it never imports this package at runtime, but it wants the
   **types**, and its tests want a real engine to run against. That is what this
   package is for.
-- **Building something else on Angband's rules.** A bot, a solver, a simulator, a
+- Building something else on Angband's rules. A bot, a solver, a simulator, a
   different front end. The engine is headless on purpose and this is a supported
   use.
 
@@ -48,10 +48,10 @@ Neo Angband is an **exact-parity** port: the engine reproduces Angband 4.2.6's
 behaviour, including its warts, and it is verified against the C rather than
 against taste. Two consequences for anyone importing this package:
 
-- **Names follow the C.** `damroll`, `mBonus`, `caveKnown`, `takeHit`,
+- Names follow the C. `damroll`, `mBonus`, `caveKnown`, `takeHit`,
   `objectDesc`. If you know `angband/src`, you already know your way around; if
   you expect a designed-from-scratch API, this is not one.
-- **Bugs are reproduced, not fixed.** Upstream's faults are in here on purpose,
+- Bugs are reproduced, not fixed. Upstream's faults are in here on purpose,
   with tests pinning them. Fixes live in a separate mod
   ([neo-angband-mod-bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes)),
   never in the engine.

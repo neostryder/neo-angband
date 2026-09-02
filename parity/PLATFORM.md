@@ -16,14 +16,14 @@ static site playable alongside it is a bonus, not a competing requirement.
 
 So:
 
-- **Parity is measured against the desktop build.** "Done" means the desktop
+- Parity is measured against the desktop build. "Done" means the desktop
   build expresses everything the reference C does. A thing the browser cannot do
   is no longer a reason for the game not to do it.
-- **The web build stays**, and stays playable on a static site. It is a *reduced
+- The web build stays, and stays playable on a static site. It is a *reduced
   front end* - which is exactly `main-gcu.c`'s position upstream, not a
   second-class one - and every reduction is declared through `capabilities` and
   listed in the parity matrix (`docs/INSTALL.md`), never silently.
-- **Mod support in full is a desktop requirement**, including the on-disk pack
+- Mod support in full is a desktop requirement, including the on-disk pack
   layout an external manager can deploy into (Phase 4). The browser keeps what it
   can host - which turned out to be more than this line first claimed: the bundled
   mods, the in-app manager, *and* a real mods folder the player points it at (see
@@ -73,7 +73,7 @@ either expresses them or is *recorded* as reduced.
 
 ## What it cost (each item verified 2026-07-28, not recalled)
 
-**1. 18 of the 35 remaining text-census absences - 51% - are host-shaped.**
+1. 18 of the 35 remaining text-census absences (51%) are host-shaped.
 Not hard to read, not subtle C. They need a file, a command line, or a process
 that can be signalled:
 
@@ -101,10 +101,10 @@ The other 17 are unaffected by platform: ten defensive "Please report this bug"
 messages, `mon-spell`'s three, `player-util`'s two shape lookups, one
 `cmd-wizard` prompt, and the glyph picker.
 
-**2. One canvas silently hollowed out four features.** `ANGBAND_TERM_MAX` is 8
+2. One canvas silently hollowed out four features. `ANGBAND_TERM_MAX` is 8
 (`ui-term.h:244`). Because the port has one:
 
-- the `=` → `w` "Subwindow setup" row is excused (`packages/web/src/options.ts:607`);
+- the `=` -> `w` "Subwindow setup" row is excused (`packages/web/src/options.ts:607`);
 - core's `optionDump()` returns **only** `"# Options\n\n"`, where upstream's
   `option_dump` (`ui-prefs.c:352`) writes a `window:i:j:1` line per set flag per
   term;
@@ -114,7 +114,7 @@ messages, `mon-spell`'s three, `player-util`'s two shape lookups, one
 
 One platform limit, four features, and only the first was written down.
 
-**3. The external-mod-manager decision is architecturally impossible.** The
+3. The external-mod-manager decision is architecturally impossible. The
 recorded division of labour is that Vortex/MO2 own load-order and bulk mod work
 over the shared **on-disk** pack format. A browser origin cannot read a directory
 a mod manager writes. The current desktop wrapper serves a `userData/mods`
@@ -162,7 +162,7 @@ nothing can install *into*.
 > warning, and the "Where mods come from" screen names the real path. Format
 > documented at `docs/MODS.md#where-a-pack-lives-on-disk`.
 
-**4. Everything shares one evictable bucket.** Saves, scores, colours, keymaps,
+4. Everything shares one evictable bucket. Saves, scores, colours, keymaps,
 tile mode, sidebar mode, birth records and the entire virtual user directory are
 all in `localStorage` on one origin. Under the no-save-scum, death-is-permanent
 policy, a "Clear browsing data" or a quota eviction is unrecoverable character
@@ -209,14 +209,14 @@ filesystem.
 > data" erases everything regardless; the grant is never guaranteed on any engine;
 > and only real files on disk answer it completely, which remains Phase 5.
 
-**5. The split forced a second front end for anything host-shaped, and it bred
-stand-ins.** `wiz-stats` lives in the CLI, so the in-game wizard command cannot
+5. The split forced a second front end for anything host-shaped, and it bred
+stand-ins. `wiz-stats` lives in the CLI, so the in-game wizard command cannot
 reach it. The same pressure produced the "use the CLI" spoiler line,
 `wizDumpLevelMap`, and the PNG screen dump - each an *invented* function rather
 than a port of one. A stand-in is worse than a gap: it fills the slot, so
 neither census can see it.
 
-**6. No `argv`, no signals.** `main.c`'s whole switch surface and the
+6. No `argv`, no signals. `main.c`'s whole switch surface and the
 panic-save signal handler have no way to be reached.
 
 ## What the browser genuinely buys - and keeps

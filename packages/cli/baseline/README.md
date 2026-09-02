@@ -25,7 +25,7 @@ importer:
   (`main-stats.c:633-657`) sends it to the `wearables_*` family if
   `tval_has_variable_power`, and otherwise to `consumables`; the total is
   `wearables_count + consumables`, counted exactly once each.
-- **Money is subtracted, and getting that wrong is a ~40% error.** The C's gold
+- Money is subtracted, and getting that wrong is a ~40% error. The C's gold
   capture at `:624-626` is additive and does not `continue`, so a money object
   is accumulated into `gold[origin]` AND falls through into `consumables` - it
   is in both tables. The port's `collectLevel` deliberately skips `TV_GOLD`
@@ -62,20 +62,20 @@ statistic, valid under the null that both sides are the same generator. See
   and all pass. **This is not a widened threshold**: nothing about the per-depth
   family changed, and re-recording the C baseline is still forbidden.
 
-- **Pooled object count strengthened under the 4.2.6 gamedata and wants a look.**
+- Pooled object count strengthened under the 4.2.6 gamedata and wants a look.
   Same diagnostic, never gated: it read Z=-1.78 at 1000 runs against the old
   (post-tag) gamedata and reads **Z=-4.29 at 1000 runs** against 4.2.6's. The
   per-depth object-count tests, which ARE gated, all pass, so whatever this is
   does not show up one depth at a time. It may be the same pooling artefact; it
   may not. Measuring its null is the prerequisite for saying either.
 
-- **Object level feelings: the port's levels rate RICHER than upstream's.**
+- Object level feelings: the port's levels rate RICHER than upstream's.
   Pooled across depths, G/df = 2.70 at 1000 levels per depth (p = 8.4e-25), and
   it STRENGTHENS with sample size, which is what makes it real. Object *count*
   matches within about 1% at every depth, so the bias is in the value of what is
   generated rather than the quantity. See
   `parity/phase3-2026-07-25/findings/OBJFEEL.md`.
-- **Gold-by-origin classification differs.** Gold totals are close, but the port
+- Gold-by-origin classification differs. Gold totals are close, but the port
   assigns some gold to different `ORIGIN_*` buckets than upstream (e.g. origin 12
   at several depths). The gold TOTAL is asserted separately so a gross gold
   regression cannot hide behind this; the per-origin split is a tracked finding.

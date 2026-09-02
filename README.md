@@ -13,15 +13,14 @@ anywhere and so you can change it without forking it.
 
 **New here? [The Quick Start Guide](docs/QUICKSTART.md) walks through birth
 settings, controls, mods worth turning on, a tour of town, and the first steps
-into the dungeon - with real screenshots at every step.**
+into the dungeon, with real screenshots at every step.**
 
 > ## Try it now: [play in your browser](https://angband.rpgm.world/)
 >
 > No install, no account, nothing to download. The link opens straight into
 > the game, and it keeps your save in that browser.
 >
-> **Why you might like playing this way:** it is the fastest way there is -
-> one click, and you are rolling a character.
+> This is the fastest way to play: one click, and you are rolling a character.
 >
 > That copy tracks the latest **published release**, not master's bleeding
 > edge, so it is the same stable build every method below plays, just already
@@ -30,25 +29,25 @@ into the dungeon - with real screenshots at every step.**
 > - **[Download a release](https://github.com/neostryder/neo-angband/releases)**
 >   for Windows, macOS or Linux. A file that sits on your machine and does not
 >   change until you replace it.
->   **Why you might like playing this way:** you want a copy that stays put,
->   with nothing running in a browser tab.
+>   Choose this if you want a copy that stays put, with nothing running in a
+>   browser tab.
 > - **[Run it from source](#play-it)**, cloned at a commit you chose. About
 >   two minutes with Node and pnpm installed.
->   **Why you might like playing this way:** you want a change that has not
->   reached a release yet, or you are chasing a difference from the original
->   and need to name the exact commit that showed it.
+>   Choose this if you want a change that has not reached a release yet, or if
+>   you are chasing a difference from the original and need to name the exact
+>   commit that showed it.
 > - **[Self-host it as a static site](docs/INSTALL.md#2-self-host-as-a-static-site)**,
 >   the same files the browser build serves, on a host you control.
->   **Why you might like playing this way:** you want a copy that only
->   changes when you decide to update it, for yourself or a group.
+>   Choose this if you want a copy that only changes when you decide to update
+>   it, for yourself or a group.
 > - **[Install it as a PWA](docs/INSTALL.md#3-install-as-a-pwa-offline-any-platform)**,
 >   which pins the browser build to your device and works with no connection.
->   **Why you might like playing this way:** you want it on a phone or
->   tablet, offline, without an app store.
+>   Choose this if you want it on a phone or tablet, offline, without an app
+>   store.
 > - **[Desktop app](docs/INSTALL.md#4-desktop-app-electron)** - the same game
 >   in a native window instead of a browser tab.
->   **Why you might like playing this way:** you want it to feel like an
->   installed application rather than a website.
+>   Choose this if you want it to feel like an installed application rather than
+>   a website.
 
 ---
 
@@ -127,9 +126,9 @@ saves in a folder beside itself.
 
 Those builds are **not code-signed**, so your OS will block the first launch.
 
-- **Windows:** one click, *More info → Run anyway*.
+- **Windows:** one click, *More info -> Run anyway*.
 - **macOS:** the dialog you get does **not** contain the way through, so ignore
-  it. Open **System Settings → Privacy & Security**, scroll down to
+  it. Open **System Settings -> Privacy & Security**, scroll down to
   **Security**, and press **Open Anyway** on the line naming the app.
   [The full steps are here.](docs/INSTALL.md#macos-blocks-it-first-time) On
   Apple Silicon, take the **arm64** build, not the Intel one.
@@ -227,7 +226,7 @@ Close enough that a difference is treated as a bug.
   buildable, and ported code cites the line it came from.
 - **The two implementations are compared automatically.** The original game ships
   its own statistical tool for measuring dungeon generation; it runs against
-  the real compiled C and against this port, and test the results against each
+  the real compiled C and against this port, and tests the results against each
   other across a range of depths.
 - **Where faithfulness and "improvement" disagree, faithfulness wins.**
   Quality-of-life changes ship as mods you can turn off.
@@ -312,7 +311,7 @@ what each one is actually known for:
 - **[ToME](https://www.t-o-m-e.net/history.html)** (Tales of Middle-earth)
   began as PernAngband, themed around Anne McCaffrey's Pern; a legal dispute
   over that licensed setting forced the Pern material out and the project
-  redirected into a comprehensive, heavily authored Middle-earth RPG - a useful
+  redirected into a large, heavily authored Middle-earth RPG - a useful
   case study in the risk of building a variant's identity on someone else's
   licensed world.
 - **[FroxComposband](https://github.com/sulkasormi/frogcomposband)** (formerly
@@ -383,7 +382,7 @@ rpgm.tools**. [SECURITY.md](SECURITY.md) says what is worth reporting.
 
 | | |
 | --- | --- |
-| [Quick Start Guide](docs/QUICKSTART.md) | New player? Start here - birth, controls, mods, town, and the first dive, with screenshots |
+| [Quick Start Guide](docs/QUICKSTART.md) | New player? Start here - birth, controls, mods, town, and the first descent, with screenshots |
 | [Every doc, indexed](docs/README.md) | The full documentation hub, organized by task |
 | [Make a mod](docs/modding/tutorials/README.md) | Seven short tutorials, start to finish |
 | [How modding works](docs/MODS.md) | The design, and what a mod can reach |

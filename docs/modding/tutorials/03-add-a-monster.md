@@ -9,7 +9,7 @@ soldier ant, living on dungeon level 2.
 
 ---
 
-## The whole mod
+## Mod files
 
 ```
 my-monster-mod/
@@ -49,8 +49,8 @@ file is `monster.json`:
 
 Every monster inherits from a *monster base*, the template that decides its
 symbol on the map, what it is made of, which attacks it can have, and a pile of
-other defaults. `ant` is one the base game ships. So are `canine`, `orc`,
-`dragon`, and fifty-odd others - the file is
+other defaults. `ant` is one that the base game ships. So are `canine`, `orc`,
+`dragon`, and fifty-odd others. The file is
 `packages/content/pack/monster_base.json` and it holds 56 records in total, so it
 is short enough to read.
 
@@ -70,36 +70,36 @@ tutorial's own test asserts the base exists rather than trusting it.
 Same principle as items: find a monster close to what you want in
 `packages/content/pack/monster.json` and copy its shape.
 
-- **`speed`**: 110 is normal walking pace, the same as an unhasted player. 120
+- `speed`: 110 is normal walking pace, the same as an unhasted player. 120
   is fast enough to be genuinely dangerous.
-- **`depth`** and **`rarity`**: where it lives and how often it shows up there.
-- **`experience`**: not a flat award. What the player actually gets is
+- `depth` and `rarity`: where it lives and how often it shows up there.
+- `experience`: not a flat award. What the player actually gets is
   `experience * the monster's level / the player's level`, so the same monster is
   worth steadily less as the character grows.
-- **`sleepiness`**: how likely it is to be asleep when you arrive. 0 means it is
+- `sleepiness`: how likely it is to be asleep when you arrive. 0 means it is
   always awake and coming for you.
-- **`blow`**: a list. Each entry is a `method` (how it attacks), an `effect`
+- `blow`: a list. Each entry is a `method` (how it attacks), an `effect`
   (what that does to you), and `damage` dice. Three blows means three attacks per
   turn. The available methods and effects are in `blow_methods.json` and
   `blow_effects.json` beside the monster file.
-- **`color`**: a single letter, and the case matters. `u` is Umber (brown), `y`
+- `color`: a single letter, and the case matters. `u` is Umber (brown), `y`
   is Yellow, `w` is White - `W` is Light Slate, which is what the soldier ant
   actually is. `packages/core/src/color.ts` is the chart.
 
-## What you should see
+## Check the result
 
 Start a character, descend to level 2, and look for a brown `a`. Look it up with
 `/` or recall it with `l` and the game will describe it using the text you wrote.
 
-## Try changing this
+## Variations to try
 
-- Make it a **unique**: add `"flags": ["UNIQUE"]`, give it a capitalised proper
+- Make it a unique: add `"flags": ["UNIQUE"]`, give it a capitalised proper
   name and a lot more hit points.
-- Give it a **second blow** by adding another entry to the `blow` array.
-- Make it **fast and fragile**: `speed` 130, `hit-points` 4.
-- Add a whole **family**: several records in one array, sharing a base.
+- Give it a second blow by adding another entry to the `blow` array.
+- Make it fast and fragile: `speed` 130, `hit-points` 4.
+- Add a whole family: several records in one array, sharing a base.
 
-## Try breaking it
+## Test a bad base reference
 
 Change `"base": "ant"` to `"base": "aunt"` and reload. Notice what does *and does
 not* happen. That is the failure mode described above, and it is much easier to
@@ -109,9 +109,9 @@ recognise later if you have seen it once on purpose.
 
 Your ant already has an appearance, and you only wrote half of it:
 
-- **`"color": "u"`** is yours: umber, so it draws as a brown `a` and reads as a
+- `"color": "u"` is yours: umber, so it draws as a brown `a` and reads as a
   different creature from the white `a` beside it.
-- **The letter `a` is not yours.** It comes from `"base": "ant"`, along with
+- The letter `a` is not yours. It comes from `"base": "ant"`, along with
   everything else the template carries. Change the base and the letter changes.
 
 **In a tile set, your ant has no picture, and the game will not invent one.** A
@@ -152,13 +152,13 @@ tile mod that fills blanks, the family it borrows from.
 If you want a *specific* picture, a mod can say so. Both routes are past what this
 tutorial covers, and they differ more than they look:
 
-- **Point at a picture that already exists.** Ship a `.prf` as a `prefs`
+- Point at a picture that already exists. Ship a `.prf` as a `prefs`
   resource, and its `monster:carpenter ant:<attr>:<char>` line layers over the
   player's tile set and wins over anything a tile mod would have filled in. One
   line, no art, but the numbers are *atlas coordinates*, so they are correct for
   one pack and wrong for every other. Reach for this when your mod ships or
   requires a particular set.
-- **Ship a whole tile set.** A mod with the `tiles` facet contributes a graphics
+- Ship a whole tile set. A mod with the `tiles` facet contributes a graphics
   mode of its own (`tilePacks`), which is how the Linoleum sets are delivered.
   That is a set the player chooses from the Graphics menu, not one picture added
   to somebody else's set, which nothing supports today.
@@ -185,11 +185,11 @@ mirror of [Tutorial 1](01-tweak-a-value.md) is worth seeing on a monster:
 Giant black ants now have a little more health and hunt in groups. Two things
 that section is teaching beyond the ops themselves:
 
-- **`add` is not `set`.** `{"op": "add", "path": "hit-points", "value": 3}` means
+- `add` is not `set`. `{"op": "add", "path": "hit-points", "value": 3}` means
   "three more than whatever it is", so it still does the right thing if the base
   game retunes the monster, and it still does the right thing if another mod
   changed it first. `set` would silently undo both.
-- **`addFlag` composes.** Two mods adding different flags to the same monster both
+- `addFlag` composes. Two mods adding different flags to the same monster both
   get their flag; neither is a conflict. That is true of `addFlag`, `removeFlag`
   and `append`, and not true of `set`, `merge`, `add` or `mul`. For those, two
   mods on the same field is a reported conflict and the one that loads last wins.
@@ -197,7 +197,7 @@ that section is teaching beyond the ops themselves:
 A patched monster keeps its picture, because the tile set already knows it by
 name. Only the ant you *added* has nothing drawn for it.
 
-## The finished version
+## Sample mod
 
 `samples/tutorials/tutorial-03-add-a-monster/` in this repository is exactly
 this mod. It is not a copy of the tutorial. It is a mod that gets loaded and

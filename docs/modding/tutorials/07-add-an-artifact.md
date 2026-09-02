@@ -26,10 +26,10 @@ describing the difference, not the thing.
 Two consequences follow from that, and they are what makes artifacts feel
 different from tutorial 2:
 
-- **It is unique.** The game generates each artifact at most once per character.
+- It is unique. The game generates each artifact at most once per character.
   There is no `alloc` fight with a hundred other shields; there is one of these,
   or there is not one yet.
-- **It inherits some things and not others.** The base object supplies the
+- It inherits some things and not others. The base object supplies the
   kind's flags, and its activation when your artifact declares none. It does NOT
   supply the numbers: `weight`, `ac`, `to-a`, `to-h`, `to-d` and the damage dice
   all come from the artifact record, and one you leave out binds to zero rather
@@ -37,7 +37,7 @@ different from tutorial 2:
   leather shield's weight class, its material, how it reacts to acid: all of that
   arrives for free because you named the base.
 
-## The whole mod
+## Mod files
 
 ```
 my-artifact-mod/
@@ -123,11 +123,11 @@ Leather Shield of the Watchful Eye~*.
 
 Both halves of it have to name something real:
 
-- **`tval`** is the item type, and it comes from `object_base.json`. `shield`,
+- `tval` is the item type, and it comes from `object_base.json`. `shield`,
   `sword`, `hard armor`, `light`, `ring`. Note the American spelling on the
   armour ones, which catches people, and note that these are the base game's
   own strings rather than anything you get to choose.
-- **`sval`** is the base object's name inside that type, from `object.json`, with
+- `sval` is the base object's name inside that type, from `object.json`, with
   the `&` and `~` decoration stripped off. The entry reads
   `"& Leather Shield~"`; you write `"Leather Shield"`.
 
@@ -174,21 +174,21 @@ dropped, so `'Angrist'` is `core:angrist`. If a ref does not resolve, the loader
 tells you so by name; that is the friendly failure, and it is what
 `npx neo-angband-mod-check` is for.
 
-## What to fiddle with
+## Artifact fields
 
 Everything below `base-object` is the fun part.
 
-- **`level`** is how deep the game considers the artifact to be, which feeds
+- `level` is how deep the game considers the artifact to be, which feeds
   into how it is priced and how good it is allowed to be.
-- **`alloc`** is `common`, the weighting against everything else eligible, and
+- `alloc` is `common`, the weighting against everything else eligible, and
   `minmax`, the depth band it can appear in. `"12 to 70"` means it will not be
   generated shallower than 12 or deeper than 70.
-- **`armor.ac`** replaces the base object's armour class, and **`armor.to-a`** is
+- `armor.ac` replaces the base object's armour class, and `armor.to-a` is
   the bonus on top. On a weapon you would be reaching for `attack.hd`, `to-h` and
   `to-d` instead.
-- **`flags`** are the yes-or-no properties: `SEE_INVIS`, `PROT_FEAR`,
+- `flags` are the yes-or-no properties: `SEE_INVIS`, `PROT_FEAR`,
   `FREE_ACT`, `REGEN`, and a long list more.
-- **`values`** are the ones that carry a number, written with the number in
+- `values` are the ones that carry a number, written with the number in
   square brackets: `INFRA[2]`, `RES_DARK[1]`, `STR[2]`, `SPEED[5]`.
 
 Both lists are in `packages/content/pack/object_property.json`. One catch when
@@ -204,7 +204,7 @@ If you want an artifact that does something when you activate it, that is `act`
 plus `time`, and the names come from `activation.json`. Copy a base-game artifact
 that already activates and change the numbers before writing one from scratch.
 
-## What you learned
+## Artifact rules to remember
 
 - An artifact is a **layer over an existing item**, not a new item, which is why
   `base-object` exists and why the rest is mostly numbers.
@@ -214,7 +214,7 @@ that already activates and change the numbers before writing one from scratch.
   because the base game needs that behaviour for the Phial. Copy the sval.
 - `add` beats `set` when you are adjusting a number the base game owns.
 
-## The finished version
+## Sample mod
 
 `samples/tutorials/tutorial-07-add-an-artifact/` in this repository is exactly
 this mod. It is not a copy of the tutorial. It is a mod that gets loaded and
