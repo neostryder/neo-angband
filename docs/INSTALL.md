@@ -352,22 +352,44 @@ running and look at the **Kind** column: it should say *Apple*, not *Intel*.
 
 ### Arch Linux and the AppImage
 
+Neo Angband's official AUR definition is [`neo-angband-bin`](../packaging/aur/),
+which packages the exact x86_64 AppImage attached to an upstream GitHub release.
+When the package has been submitted to the AUR, install or update it with your
+usual AUR helper:
+
+```bash
+yay -S neo-angband-bin
+```
+
+It can also be built directly from this checkout on Arch:
+
+```bash
+cd packaging/aur
+makepkg -si
+```
+
+The packaged launcher stores saves, settings and mods under
+`${XDG_DATA_HOME:-~/.local/share}/neo-angband` rather than in the pacman-owned
+`/opt` directory. Set `NEO_ANGBAND_DATA` before launching if you prefer another
+location.
+
+The first AUR submission still needs an AUR account; until a maintainer completes
+that one-time step, use the direct AppImage instructions below or build the
+prepared package locally.
+
 **A bare Arch install is missing one package the AppImage needs.** AppImages
 run by mounting themselves through FUSE, and Arch's base install does not
 include it. Without it, double-clicking or running the AppImage does nothing
 visible, or fails with a `fuse: device not found` / `dlopen(): error loading
-libfuse.so.2` message on the command line.
+`libfuse.so.2` message on the command line. The AUR package declares `fuse2` as
+a dependency; for a direct AppImage install, run `pacman -S fuse2` yourself.
 
-1. Install it: `pacman -S fuse2`. This one package is the whole fix; nothing
-   else about the AppImage is Arch-specific.
-2. Or skip it entirely: take the **`.tar.gz`** build instead of the AppImage.
-   It is the same app with no FUSE mount step, so it needs nothing beyond
-   what a bare install already has - extract it and run the binary inside.
+Or skip the AppImage entirely: take the **`.tar.gz`** build instead. It is the
+same app with no FUSE mount step, so it needs nothing beyond what a bare install
+already has - extract it and run the binary inside.
 
 The **`.deb`** build will not help here regardless: a bare Arch install has no
-`dpkg`, and installing one is not the idiomatic path on this distribution
-anyway. There is no AUR package yet, so `pacman`/`yay` cannot install Neo
-Angband directly - the AppImage or the `.tar.gz` are the real options today.
+`dpkg`, and installing one is not the idiomatic path on this distribution.
 
 ### Updating
 

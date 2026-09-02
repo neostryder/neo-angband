@@ -1,0 +1,42 @@
+# Maintainer: Neo Angband contributors <neostryder@users.noreply.github.com>
+
+pkgname=neo-angband-bin
+pkgver=1.3.0
+pkgrel=1
+pkgdesc="Modern TypeScript port of Angband, packaged from the upstream AppImage"
+arch=('x86_64')
+url='https://github.com/neostryder/neo-angband'
+license=('GPL-2.0-only')
+depends=('fuse2')
+provides=('neo-angband')
+conflicts=('neo-angband')
+options=('!strip')
+
+_appimage="Neo.Angband-${pkgver}-x86_64.AppImage"
+source=(
+  "${pkgname}-${pkgver}.AppImage::${url}/releases/download/v${pkgver}/${_appimage}"
+  'neo-angband.desktop'
+  'neo-angband.sh'
+)
+noextract=("${pkgname}-${pkgver}.AppImage")
+sha256sums=(
+  'c07494de525ea5a8e92d80836d7263a87a5e86ca341273ce50f0b8bce8ec3b4e'
+  '6cf2db0375f6e96d363c59fb965ab9e0e69593ccbe61ca34e2cba3aaf08de830'
+  'd59dd29ed3177e55c29bb6b7c70f2420a622960483531034ea7119a4798d5479'
+)
+
+prepare() {
+  chmod +x "${srcdir}/${pkgname}-${pkgver}.AppImage"
+  "${srcdir}/${pkgname}-${pkgver}.AppImage" --appimage-extract >/dev/null
+}
+
+package() {
+  install -Dm755 "${srcdir}/${pkgname}-${pkgver}.AppImage" \
+    "${pkgdir}/opt/neo-angband/neo-angband.AppImage"
+  install -Dm755 "${srcdir}/neo-angband.sh" \
+    "${pkgdir}/usr/bin/neo-angband"
+  install -Dm644 "${srcdir}/neo-angband.desktop" \
+    "${pkgdir}/usr/share/applications/neo-angband.desktop"
+  install -Dm644 "${srcdir}/squashfs-root/.DirIcon" \
+    "${pkgdir}/usr/share/pixmaps/neo-angband.png"
+}

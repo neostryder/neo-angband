@@ -119,6 +119,28 @@ Tag `origin/master` after the push rather than a local commit: the local commit
 is not in the public history, and a tag pointing at one would name an object the
 public repository does not have.
 
+### Updating the official AUR package
+
+The AUR package definition lives in [`packaging/aur/`](../packaging/aur/) as
+`neo-angband-bin`. It deliberately repackages the released x86_64 AppImage:
+building Electron and its dependency graph again in `makepkg` would be slower,
+less reproducible, and would not be the artifact players receive from the release.
+
+**After the GitHub Release is published**, update this directory for its version:
+
+1. Change `pkgver` in `PKGBUILD` to the tag without its `v`. The source URL is
+   derived from it, so it will select that release's `Neo.Angband-<version>-x86_64.AppImage`.
+2. Run `updpkgsums` from `packaging/aur/` to replace the AppImage SHA-256, then
+   run `makepkg --printsrcinfo > .SRCINFO`. Compare the new digest with the
+   GitHub release asset's `sha256:` digest before committing it.
+3. Test with `makepkg -s` (preferably in a clean chroot), commit the updated
+   `PKGBUILD`, `.SRCINFO`, desktop entry and launcher to the separate AUR Git
+   repository, then push **that AUR repository** using its normal workflow.
+
+This repository only prepares the source files. Its first AUR submission needs
+an AUR account and is therefore a manual maintainer action; it must never be
+attempted by the GitHub Release workflow.
+
 ### The changelog is the release notes
 
 The public repository is read by people who cannot see this history, so

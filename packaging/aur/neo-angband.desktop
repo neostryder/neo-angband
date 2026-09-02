@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Neo Angband
+Comment=Modern TypeScript port of Angband
+Exec=neo-angband %U
+Terminal=false
+Type=Application
+Icon=neo-angband
+Categories=Game;RolePlaying;
+StartupWMClass=Neo Angband

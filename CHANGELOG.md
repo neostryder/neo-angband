@@ -40,6 +40,11 @@ still calls itself.
 
 ### Added
 
+- [Visible] [Docs] **Added the `neo-angband-bin` AUR package definition.** It
+  installs the released x86_64 AppImage with an Arch launcher, desktop entry and
+  icon, and documents both local `makepkg` installation and the one-time AUR
+  submission still required from an account (#130).
+
 - [Visible] [Docs] **Added a beginner walkthrough and tested finished mod for making a custom town shop.** It uses Neo Angband's content and store-behaviour seams instead of upstream source-file edits (#148).
 
 - Deleting a profile now asks whether to keep its living characters first;
