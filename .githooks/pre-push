@@ -1,29 +1,43 @@
 #!/bin/sh
-# Refuse a plain push of master to origin - IN THIS REPO ONLY.
+# Refuse pushing this repository's PRIVATE history to origin - IN THIS REPO ONLY.
 #
 # This repository's local history and its public one are different graphs -
 # the public repo is a curated replay built by tools/publish.mjs, not a
 # fast-forward of this branch (see docs/RELEASING.md's "git push origin
-# master is NOT how this repository publishes"). A plain push of master is
-# harmless by itself: git already rejects it as a non-fast-forward, since the
-# two histories share no common tip. The actual risk is what happens next -
-# reaching for --force out of habit, which would publish the private
-# development history a curated repo exists to keep off the public one.
+# master is NOT how this repository publishes"). publish.mjs never pushes
+# local master's real commits at all - it builds brand-new objects with
+# `git commit-tree`, each parented on the public tip, and pushes THOSE
+# instead (`git push origin <built-sha>:refs/heads/master`). A built commit
+# is never checked out as local master and is not a descendant of it; only
+# the real, private development commits are.
 #
-# So this hook turns "git rejects it, cryptically, after you already typed
-# --force" into a same-second, friendly refusal naming the right command,
-# for the one push that is never correct here. Nothing else is touched: a
-# tag push, a feature branch, or master under any remote but "origin" all go
-# through untouched.
+# NOTE: `ea5d5b3e4` ("Squash: curated tree on top of angband/angband") is
+# NOT a usable marker for "this is the private side" - it is the COMMON
+# ancestor of both histories (the public tree was built from a squash of
+# everything up to that point, so the public history's own root IS that
+# commit). An earlier version of this hook checked ancestry from that commit
+# and refused EVERY push, including origin/master's own legitimate tip,
+# because that tip also descends from it.
+#
+# The thing that actually tells the two apart: is local `refs/heads/master`
+# an ANCESTOR of what is being pushed? True for local master itself, true
+# for any branch built on top of it (a feature branch, most of all) - false
+# for a publish.mjs-built commit, which descends from the PUBLIC tip
+# instead, and false for a tag on an already-public commit.
+#
+# This generalizes the original check (which compared ref NAMES: "is the
+# ref literally master"), and that generalization is the point - it missed
+# a real case (2026-09-01): a feature branch built on top of local master
+# carries the same 1300+ private commits as reachable objects, real name
+# included, even though neither the branch nor the target ref was named
+# "master". The ref name was never what mattered; what the commit descends
+# from is.
 #
 # THE FOUR MOD REPOSITORIES SHARE THIS FILE (same mechanism as pre-commit:
-# `git config core.hooksPath /path/to/neo-angband/.githooks`), and a mod repo's
-# master pushes NORMALLY - RELEASING.md's own mod section is "commit, tag,
-# push the tag", no publish.mjs, no replay. Found the hard way: it blocked
-# neo-angband-mod-borg's real, ordinary, fast-forward push of two already-
-# tagged-and-released commits, on the strength of a rule that only this one
-# repository's history needs. So the gate is "does tools/publish.mjs exist
-# in the repo actually being pushed", not just "is the ref master."
+# `git config core.hooksPath /path/to/neo-angband/.githooks`), and have no
+# such divergence - RELEASING.md's own mod section is "commit, tag, push the
+# tag", no publish.mjs, no replay. So the gate is "does tools/publish.mjs
+# exist in the repo actually being pushed", not just "is the ref master."
 #
 # Bypass, for the rare case this is genuinely wrong even here: git push --no-verify.
 
@@ -38,19 +52,34 @@ if [ "$1" != "origin" ]; then
   exit 0
 fi
 
+if ! git rev-parse --verify --quiet refs/heads/master >/dev/null; then
+  cat >/dev/null
+  exit 0
+fi
+
 REFUSE=0
-while read -r local_ref _local_sha remote_ref _remote_sha; do
-  if [ "$local_ref" = "refs/heads/master" ] && [ "$remote_ref" = "refs/heads/master" ]; then
+REFUSED_REF=""
+while read -r local_ref local_sha remote_ref _remote_sha; do
+  # A branch delete has local_sha all zeros - nothing to check.
+  case "$local_sha" in
+    0000000000000000000000000000000000000000) continue ;;
+  esac
+  if git merge-base --is-ancestor refs/heads/master "$local_sha" 2>/dev/null; then
     REFUSE=1
+    REFUSED_REF="${local_ref:-$remote_ref}"
   fi
 done
 
 if [ "$REFUSE" = "1" ]; then
   echo "" >&2
-  echo "pre-push: refusing a plain push of master to origin." >&2
+  echo "pre-push: refusing to push '$REFUSED_REF' to origin." >&2
   echo "" >&2
-  echo "This repo's public master is a curated replay, not this branch." >&2
-  echo "Publish with:" >&2
+  echo "Local refs/heads/master is an ancestor of what you are pushing, which" >&2
+  echo "means it carries real private development history - not just master" >&2
+  echo "under another name. This is true of any branch or tag built on top" >&2
+  echo "of local master, not only master itself." >&2
+  echo "" >&2
+  echo "Publish real changes with:" >&2
   echo "" >&2
   echo "    node tools/publish.mjs --push" >&2
   echo "" >&2
