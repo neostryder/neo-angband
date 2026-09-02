@@ -288,6 +288,12 @@ import {
 import { dropSessionMods, loadSessionMods } from "./mod-session";
 import type { ModUpgradeDeps } from "./mod-browse";
 import { pendingUpgrades, refreshInstalledMods, type ModUpgrade } from "./mod-refresh";
+import {
+  gameUpdateModFailureLines,
+  runGameUpdatePass,
+  shouldOfferGameUpdateMods,
+  type GameUpdatePassChoice,
+} from "./game-update-pass";
 import { zipImportDeps } from "./mod-zip-source";
 import { DEFAULT_AUTHORS_URL, fetchAuthors } from "./mod-authors";
 import { readConsent, writeConsent } from "./mod-consent";
@@ -363,7 +369,7 @@ setMenuTransformProblemReporter((owner, problem) => reportModFault(owner ?? "mod
  * which the player can still read and play with. Attributed, because a mod that
  * silently drew nothing is the bug this reporter exists to make visible. */
 setTileFillProblemReporter((owner, problem) => reportModFault(owner ?? "mods", problem));
-import { showModUpgrades } from "./mod-browse";
+import { gameUpdateModInstaller, showModUpgrades } from "./mod-browse";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD, UI_BG, UI_MORE, UI_LINK } from "./ui-colors";
 import { initA11y } from "./a11y";
 import { DEMO_AGENTS } from "./agents/demo";
@@ -11285,6 +11291,44 @@ async function waitingModUpdates(): Promise<readonly ModUpgrade[]> {
   }
 }
 
+/** Ask once whether the game update should carry the already-checked mod tags too. */
+async function chooseGameUpdatePass(
+  surface: GridSurface & GridPointerInput,
+  pending: readonly ModUpgrade[],
+): Promise<GameUpdatePassChoice | null> {
+  const count = pending.length;
+  const includeLabel =
+    count === 1
+      ? t("main.update.withMods.includeOne", "Update the game and {count} installed mod", { count })
+      : t("main.update.withMods.includeMany", "Update the game and {count} installed mods", { count });
+  const picked = await selectFromMenu(
+    surface,
+    "core:update-game-and-mods",
+    t("main.update.withMods.title", "Update game and mods?"),
+    [
+      {
+        label: includeLabel,
+        color: UI_GOLD,
+        hint: t(
+          "main.update.withMods.includeHint",
+          "Install the compatible tags listed on the Update page, then restart on the new game.",
+        ),
+      },
+      {
+        label: t("main.update.withMods.gameOnly", "Update the game only"),
+        color: UI_TEXT,
+        hint: t(
+          "main.update.withMods.gameOnlyHint",
+          "Keep every installed mod at its current tag. You can update mods later from Mods.",
+        ),
+      },
+    ],
+    t("main.update.withMods.footer", "[ ESC to cancel the update ]"),
+  );
+  if (picked === null) return null;
+  return picked === 0 ? "game-and-mods" : "game-only";
+}
+
 
 /**
  * The browse screen's dependencies - the wiring that makes six modules reachable.
@@ -11569,54 +11613,96 @@ async function showUpdatePage(): Promise<void> {
       return true;
     }
     if (!offer) return true;
+    /* Captured before the async pass so TypeScript and the code agree that this
+     * is the release the player accepted, not a later probe's answer. */
+    const selectedOffer = offer;
+    const selectedBridge = bridge;
 
-    if (view.how === "web") {
-      /* Awaited: it asks the worker to check and, if one is waiting, to take
-       * over - a bare reload would serve the cached old build back out of the
-       * worker's own cache and bring this row straight back. */
-      view = { ...view, phase: "installing" };
-      paint();
-      await applyWebUpdate();
-      return false;
-    }
-    if (view.how === "manual" || !bridge?.update || !offer.asset) {
-      await bridge?.update?.("reveal", view.releaseUrl);
+    if (view.how !== "web" && (view.how === "manual" || !selectedBridge?.update || !selectedOffer.asset)) {
+      await selectedBridge?.update?.("reveal", view.releaseUrl);
       return false;
     }
 
-    /* Downloading. Progress is throttled to whole percents - see above. */
-    view = { ...view, phase: "downloading", received: 0, total: offer.asset.size };
-    paint();
-    let lastPercent = -1;
-    const stop = bridge.onUpdateProgress?.((received, total) => {
-      const pc = total > 0 ? Math.floor((received / total) * 100) : -1;
-      if (pc === lastPercent) return;
-      lastPercent = pc;
-      view = { ...view, received, total };
-      paint();
+    let choice: GameUpdatePassChoice = "game-only";
+    if (shouldOfferGameUpdateMods(modPending)) {
+      const picked = await chooseGameUpdatePass(surface, modPending);
+      if (picked === null) return true;
+      choice = picked;
+    }
+
+    let installMod: ((update: ModUpgrade) => Promise<string | null>) | null = null;
+    let installModSetupProblem: string | null = null;
+    if (choice === "game-and-mods") {
+      try {
+        /* One catalogue read decides every update's existing consent origin. */
+        installMod = await gameUpdateModInstaller(surface, browse);
+      } catch (error: unknown) {
+        installModSetupProblem = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    const result = await runGameUpdatePass(choice, modPending, {
+      updateMod: async (update) =>
+        installMod === null
+          ? (installModSetupProblem ?? "The mod update could not be prepared.")
+          : await installMod(update),
+      reportModFailures: async (failures) => {
+        await showTextScreen(
+          surface,
+          t("main.update.withMods.failedTitle", "Some mod updates failed"),
+          gameUpdateModFailureLines(failures).map((text, index) => ({
+            text,
+            color: index === 0 ? UI_GOLD : UI_TEXT,
+          })),
+        );
+      },
+      updateGame: async (): Promise<boolean> => {
+        if (view.how === "web") {
+          /* Awaited: it asks the worker to check and, if one is waiting, to take
+           * over - a bare reload would serve the cached old build back out of the
+           * worker's own cache and bring this row straight back. */
+          view = { ...view, phase: "installing" };
+          paint();
+          await applyWebUpdate();
+          return false;
+        }
+
+        /* Downloading. Progress is throttled to whole percents - see above. */
+        view = { ...view, phase: "downloading", received: 0, total: selectedOffer.asset!.size };
+        paint();
+        let lastPercent = -1;
+        const stop = selectedBridge?.onUpdateProgress?.((received, total) => {
+          const pc = total > 0 ? Math.floor((received / total) * 100) : -1;
+          if (pc === lastPercent) return;
+          lastPercent = pc;
+          view = { ...view, received, total };
+          paint();
+        });
+        /* The desktop main process re-reads this release from GitHub and derives
+         * the URL, digest, and platform asset itself. The renderer only says which
+         * release the player selected. */
+        const res = (await selectedBridge!.update!("download", selectedOffer.tag)) as
+          | { ok?: boolean; error?: string }
+          | undefined;
+        stop?.();
+
+        if (!res?.ok) {
+          view = { ...view, phase: "failed", error: res?.error };
+          return true;
+        }
+        view = { ...view, phase: "installing" };
+        paint();
+        const applied = (await selectedBridge!.update!("apply")) as { ok?: boolean; error?: string } | undefined;
+        if (!applied?.ok) {
+          view = { ...view, phase: "failed", error: applied?.error };
+          return true;
+        }
+        /* The main process is quitting and a swap script is waiting on this pid.
+         * There is nothing left to draw. */
+        return false;
+      },
     });
-    /* The desktop main process re-reads this release from GitHub and derives
-     * the URL, digest, and platform asset itself. The renderer only says which
-     * release the player selected. */
-    const res = (await bridge.update("download", offer.tag)) as
-      | { ok?: boolean; error?: string }
-      | undefined;
-    stop?.();
-
-    if (!res?.ok) {
-      view = { ...view, phase: "failed", error: res?.error };
-      return true;
-    }
-    view = { ...view, phase: "installing" };
-    paint();
-    const applied = (await bridge.update("apply")) as { ok?: boolean; error?: string } | undefined;
-    if (!applied?.ok) {
-      view = { ...view, phase: "failed", error: applied?.error };
-      return true;
-    }
-    /* The main process is quitting and a swap script is waiting on this pid.
-     * There is nothing left to draw. */
-    return false;
+    return result.game;
   };
 
   /** The current page as a screen; `updateScreen` owns the shape, this the tone. */

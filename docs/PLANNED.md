@@ -125,6 +125,10 @@ lines, and the conflict pane are the three that are known to exist.
 
 Tracked as issue #9.
 
+## Mod updates
+
+Game updates can now optionally carry the compatible updates already found for installed mods; what remains for #111 is automatic or periodic checking without opening a screen. Recommended-new-mod discovery is deferred with that background pass, rather than being folded into an update check.
+
 ## The tile seams
 
 ### Two mods answering for the player's cell is unreported

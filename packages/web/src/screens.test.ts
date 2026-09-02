@@ -2840,7 +2840,7 @@ describe("every action is on exactly one side of the prompt census", () => {
     }
   });
 
-  it("finds the four prompting sites, and the control that is not one", () => {
+  it("finds the prompting sites, and the control that is not one", () => {
     /* Verified by following each host's `invoke` into what it calls; the
      * citations are in `SCREEN_PROMPTS`' own comment. `sort-exp` is the control:
      * it goes through `invoke`, does real work, and never touches the terminal. */
@@ -2853,6 +2853,7 @@ describe("every action is on exactly one side of the prompt census", () => {
       "core:character/file charsheet:file line",
       "core:character/rename charsheet:rename screen",
       "core:report/describe report:describe line",
+      "core:update/confirm update:confirm screen",
       "core:update/mods update:mods screen",
     ]);
     expect(screenPromptFor("core:monster-list", "sort-exp")).toBeUndefined();

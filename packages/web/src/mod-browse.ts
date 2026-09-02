@@ -80,6 +80,7 @@ import {
   unavailableMods,
   upToDateHeadline,
   type ModRefresh,
+  type ModUpgrade,
 } from "./mod-refresh";
 import { t } from "@rpgm-tools/neo-angband-core";
 
@@ -846,7 +847,13 @@ async function installOne(
   entry: Extract<BrowseEntry, { ok: true }>,
   origin: ModOrigin,
   deps: ModBrowseDeps,
-  opts?: { readonly offerEnable?: boolean },
+  opts?: {
+    readonly offerEnable?: boolean;
+    /** A combined game update reports all failed mods together before restart. */
+    readonly reportOutcome?: boolean;
+    /** Lets that combined report retain the installer's exact refusal. */
+    readonly onFailure?: (problem: string) => void;
+  },
 ): Promise<boolean> {
   const m = entry.mod;
   /* BEFORE the install, because afterwards there is nothing left to compare - the
@@ -900,7 +907,10 @@ async function installOne(
     });
 
   if (!result.ok) {
-    await showTextScreen(term, installFailureScreen(m.name, result.problem, result.unmet));
+    opts?.onFailure?.(result.problem);
+    if (opts?.reportOutcome !== false) {
+      await showTextScreen(term, installFailureScreen(m.name, result.problem, result.unmet));
+    }
     return false;
   }
 
@@ -913,17 +923,19 @@ async function installOne(
       ? await deps.offerEnable(m.id)
       : false;
 
-  await showTextScreen(term, m.name, [
-    ...installOutcomeLines(m.name, m.version, before, m.tag, enabled),
-    { text: "", color: C_FG },
-    {
-      text: t("modBrowse.installOne.stored", "{count} file(s) stored, from {source}.", {
-        count: result.meta.files.length,
-        source: repoPageUrl(m.repo, m.tag),
-      }),
-      color: C_DIM,
-    },
-  ]);
+  if (opts?.reportOutcome !== false) {
+    await showTextScreen(term, m.name, [
+      ...installOutcomeLines(m.name, m.version, before, m.tag, enabled),
+      { text: "", color: C_FG },
+      {
+        text: t("modBrowse.installOne.stored", "{count} file(s) stored, from {source}.", {
+          count: result.meta.files.length,
+          source: repoPageUrl(m.repo, m.tag),
+        }),
+        color: C_DIM,
+      },
+    ]);
+  }
   return true;
 }
 
@@ -2244,6 +2256,34 @@ export async function showModBrowse(term: GridSurface & GridPointerInput, deps: 
  * ------------------------------------------------------------------ */
 
 /**
+ * Prepare the existing single-mod installer for a game-update pass.
+ *
+ * The pending tags still come from `pendingUpgrades`; this only turns one of
+ * those already-shown, pinned tags into the same install operation the mod
+ * manager normally performs.  One curated-list read covers the entire pass.
+ */
+export async function gameUpdateModInstaller(
+  term: GridSurface & GridPointerInput,
+  deps: ModUpgradeDeps,
+): Promise<(upgrade: ModUpgrade) => Promise<string | null>> {
+  const curated = await curatedRepos(deps);
+  return async (upgrade) => {
+    const entry = await deps.discover({ repo: upgrade.repo, tag: upgrade.to });
+    if (!entry.ok) return entry.problem;
+    const origin: ModOrigin = curated.has(upgrade.repo.toLowerCase()) ? "curated" : "third-party";
+    let problem: string | null = null;
+    const installed = await installOne(term, entry, origin, deps, {
+      offerEnable: false,
+      reportOutcome: false,
+      onFailure: (reason) => {
+        problem = reason;
+      },
+    });
+    return installed ? null : (problem ?? "The mod was not installed.");
+  };
+}
+
+/**
  * "Update installed mods": ask each installed mod's OWN repository, then offer.
  *
  * WHAT THIS SCREEN USED TO SAY. It compared the installed tags against the catalogue
@@ -2530,7 +2570,10 @@ function aboutModUpgradesLines(): readonly ScreenLine[] {
       color: C_DIM,
     },
     {
-      text: t("modBrowse.aboutUpgrades.body4", "Updating the game is not what brings a newer mod."),
+      text: t(
+        "modBrowse.aboutUpgrades.body4",
+        "Game and mod updates can be installed together from Update, or separately here.",
+      ),
       color: C_DIM,
     },
   ];

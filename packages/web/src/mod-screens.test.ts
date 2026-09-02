@@ -91,7 +91,7 @@ const ABOUT_ROWS = [
   "Each mod lives in its own repository and releases on its own schedule,",
   "so this asks every installed mod where it came from and compares the",
   "version you have with the newest one your update channel allows.",
-  "Updating the game is not what brings a newer mod.",
+  "Game and mod updates can be installed together from Update, or separately here.",
 ];
 
 const BLIND_ROWS = [

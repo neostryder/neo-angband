@@ -2980,6 +2980,8 @@ export interface ScreenPromptFact {
  * - `core:report` `describe`: `showReportPage`'s `act` -> `getString`, up to
  *   `REPORT_DESCRIPTION_LINES` times, each of them `prt(prompt, 0, 0)` and a
  *   line edit on row 0.
+ * - `core:update` `confirm`: `showUpdatePage`'s `act` can ask whether a game
+ *   update should include pending mod tags; that chooser is a whole screen.
  * - `core:update` `mods`: `showUpdatePage`'s `act` -> `showModUpgrades`
  *   (mod-browse.ts), a whole nested screen with its own loop - and the site that
  *   needs the re-entrancy guard, because today it re-enters the SAME presenter
@@ -3000,6 +3002,7 @@ export const SCREEN_PROMPTS: Readonly<
     describe: { promptId: "report:describe", extent: "line" },
   },
   "core:update": {
+    confirm: { promptId: "update:confirm", extent: "screen" },
     mods: { promptId: "update:mods", extent: "screen" },
   },
 };
@@ -3020,7 +3023,7 @@ export const SCREEN_PROMPTS: Readonly<
  * - `sort-exp` flips a boolean and rebuilds the view (`showMonsterList`'s host).
  *   It is the CONTROL for this whole design: an action that goes through
  *   `invoke`, does real work, and never touches the terminal.
- * - `confirm` / `channel` on `core:update` do call `paint()`, but `paint()`
+ * - `channel` on `core:update` does call `paint()`, but `paint()`
  *   returns immediately while `owned` is true - which is precisely the case a
  *   presenter is holding the page in. What is left is the network and the
  *   updater bridge.
@@ -3035,7 +3038,7 @@ export const SCREEN_NO_PROMPT: Readonly<Record<string, readonly string[]>> = {
   "core:character": ["page-next", "page-prev"],
   "core:character-flags": ["page-next", "page-prev"],
   "core:monster-list": ["sort-exp"],
-  "core:update": ["confirm", "channel"],
+  "core:update": ["channel"],
   "core:report": ["log-level", "confirm", ...REPORT_TRACKER_ACTION_IDS],
 };
 

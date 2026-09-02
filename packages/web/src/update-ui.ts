@@ -213,7 +213,7 @@ export function modUpdateLines(v: UpdateView): UpdateLine[] {
     }
   }
   out.push({ text: "", tone: "body" });
-  out.push({ text: "M updates your mods. It does not touch the game.", tone: "good" });
+  out.push({ text: "ENTER can include them with a game update. M updates mods only.", tone: "good" });
   return out;
 }
 
