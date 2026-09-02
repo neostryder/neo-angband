@@ -443,6 +443,7 @@ import {
   showFloorList,
   showLevelMap,
   MENU_CLOSE,
+  MENU_ACTION,
   getChar,
   getFile,
   getQuantity,
@@ -6389,6 +6390,7 @@ async function gameMenuOnce(): Promise<boolean> {
     },
   );
   if (pick === null) return false; // ESC resumes
+  if (pick === MENU_ACTION) return true;
   switch (entries[pick]?.action) {
     case "character":
       await showCharacterSheet(term, state, playerName, charSheetOpts());

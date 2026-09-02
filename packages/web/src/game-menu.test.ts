@@ -13,7 +13,7 @@ import {
   gameMenuFooter,
   deathMenuFooter,
 } from "./game-menu";
-import { selectFromMenu, menuLetter, MENU_CLOSE } from "./overlay";
+import { selectFromMenu, menuLetter, MENU_ACTION, MENU_CLOSE } from "./overlay";
 import { menuRegistry } from "./menu-registry";
 import type { GlyphTerm } from "./term";
 
@@ -170,6 +170,27 @@ describe("gameMenuEntries (the Escape menu structure)", () => {
     );
     press(win, "Enter");
     expect(await done).toBe(entries.length - 1);
+  });
+
+  it("runs a mod-owned Game menu action rather than mapping its new row onto a core action", async () => {
+    const entries = gameMenuEntries();
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    let calls = 0;
+    menuRegistry.forOwner("backup-mod").addAction("core:game-menu", "choose-folder", "Choose backup folder...", () => {
+      calls++;
+    });
+    const done = selectFromMenu(
+      term,
+      "core:game-menu",
+      "Game menu",
+      entries.map((entry) => entry.item),
+      gameMenuFooter(),
+    );
+    press(win, menuLetter(entries.length));
+    expect(await done).toBe(MENU_ACTION);
+    expect(calls).toBe(1);
   });
 
   it("every row is reachable by double tap; ESC resumes (null)", async () => {

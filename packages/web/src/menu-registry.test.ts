@@ -53,4 +53,33 @@ describe("MenuRegistry", () => {
       ["invalid", 'menu "core:game-menu" transformer returned rows that are not menu rows'],
     ]);
   });
+
+  it("adds a mod-owned Game menu row and dispatches only that row to its callback", async () => {
+    const problems: Array<[string | null, string]> = [];
+    const menus = new MenuRegistry((owner, problem) => problems.push([owner, problem]));
+    let calls = 0;
+    menus.forOwner("backup-mod").addAction("core:game-menu", "choose-folder", "Choose backup folder...", () => {
+      calls++;
+    });
+
+    const rows = menus.transform("core:game-menu", ROWS);
+    const action = rows.at(-1)!;
+    expect(action).toMatchObject({
+      id: "mod-action:backup-mod:choose-folder",
+      label: "Choose backup folder...",
+      semantic: { kind: "mod-action", ref: "backup-mod:choose-folder" },
+    });
+    expect(await menus.runAction("core:game-menu", action.id)).toBe(true);
+    expect(calls).toBe(1);
+    expect(await menus.runAction("core:game-menu", "mod-action:forged")).toBe(false);
+    expect(calls).toBe(1);
+    expect(problems).toEqual([]);
+  });
+
+  it("rejects an action outside the Game menu", () => {
+    const menus = new MenuRegistry(() => undefined);
+    expect(() =>
+      menus.forOwner("backup-mod").addAction("core:knowledge-group", "backup", "Backup", () => undefined),
+    ).toThrow(/not supported/u);
+  });
 });

@@ -109,6 +109,9 @@ describe("the gate refuses an undeclared domain", () => {
     );
     expect(() => host.glyphs.set("vault", "Q", {})).toThrow(/registry:glyph/u);
     expect(() => host.tval.classes.set("reach:isProbe", () => true)).toThrow(/registry:tval/u);
+    expect(() =>
+      host.menus.addAction("core:game-menu", "backup", "Choose backup folder...", () => undefined),
+    ).toThrow(/registry:menu/u);
   });
 });
 

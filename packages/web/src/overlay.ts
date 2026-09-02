@@ -1748,6 +1748,9 @@ export const MENU_CLOSE = -3;
  */
 export const MENU_REFRESH = -4;
 
+/** A mod-owned menu row ran; callers that keep a menu open should show it again. */
+export const MENU_ACTION = -5;
+
 export function selectFromMenu(
   host: GridSurface & GridPointerInput,
   id: string,
@@ -1807,6 +1810,7 @@ export function selectFromMenu(
           if (pickedId === null) return null;
           const source = originalIndex.get(pickedId);
           if (source !== undefined) return source;
+          if (await menuRegistry.runAction(id, pickedId)) return MENU_ACTION;
         }
       })();
     }
@@ -1995,7 +1999,9 @@ export function selectFromMenu(
       cursor = i;
       extra?.onHighlight?.(cursor);
     };
+    let actionRunning = false;
     const pick = (i: number): void => {
+      if (actionRunning) return;
       const it = items[i];
       if (!it || it.disabled) return;
       if (extra?.browseOnly) {
@@ -2021,7 +2027,17 @@ export function selectFromMenu(
        * front end but cannot accidentally invoke whichever core action happened
        * to occupy the same ordinal slot. */
       const source = originalIndex.get(it.id ?? "");
-      if (source === undefined) return;
+      if (source === undefined) {
+        /* This starts synchronously inside the menu-selection gesture. That is
+         * what lets a callback ask the browser for a folder before the gesture
+         * expires; it is awaited only to keep this modal from leaking input. */
+        actionRunning = true;
+        void menuRegistry.runAction(id, it.id ?? "").then((ran) => {
+          if (ran) finish(MENU_ACTION);
+          else actionRunning = false;
+        });
+        return;
+      }
       finish(source);
     };
     const commands = extra?.commands;
@@ -2321,7 +2337,10 @@ async function askThroughPresenter(deps: {
        * terminal path silently ignores a pick on one for the same reason; here
        * it is said out loud, because a presenter cannot see why nothing
        * happened. */
-      if (source === undefined) return refuse(`"${answer.choice}", which no game action stands behind`);
+      if (source === undefined) {
+        if (await menuRegistry.runAction(question.id, row.id ?? "")) return MENU_ACTION;
+        return refuse(`"${answer.choice}", which no game action stands behind`);
+      }
       return source;
     }
     const resolved = runMenuCommand(answer, deps);

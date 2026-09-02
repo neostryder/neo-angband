@@ -328,10 +328,15 @@ export type MenuTransformer = (
   rows: readonly MenuTransformRow[],
 ) => readonly MenuTransformRow[];
 
+/** Code to run after the player selects a mod-owned menu action. */
+export type MenuActionHandler = () => void | Promise<void>;
+
 /** Structural target implemented by the web front end, not by headless core. */
 export interface MenuRegistryTarget {
   register(id: string, transformer: MenuTransformer, owner?: string): void;
   handlerFor(id: string): MenuTransformer | null;
+  /** Add one owned, runnable row to an existing menu. */
+  addAction?(id: string, action: string, label: string, handler: MenuActionHandler, owner?: string): void;
 }
 
 /**
@@ -680,6 +685,16 @@ export interface MenuFacade {
   register(id: string, transformer: MenuTransformer): void;
   /** The currently installed transformer, for layering/wrapping an earlier mod. */
   handlerFor(id: string): MenuTransformer | null;
+  /**
+   * Add a row the host can actually run, rather than merely transforming the
+   * presentation of a row whose action core already knows. `action` is scoped
+   * to this mod, so two mods may both call theirs "backup" without colliding.
+   *
+   * The first supported location is `core:game-menu`, the Escape game menu.
+   * The callback starts directly from the selection gesture, so a browser-only
+   * action such as `ctx.backupFolder.choose()` may still open its folder picker.
+   */
+  addAction(id: "core:game-menu", action: string, label: string, handler: MenuActionHandler): void;
 }
 
 /**
@@ -1607,6 +1622,14 @@ export function createModRegistryHost(
       handlerFor(id): MenuTransformer | null {
         requireCap(capabilities, "menu");
         return requireTarget(targets.menus, "menu").handlerFor(id);
+      },
+      addAction(id, action, label, handler): void {
+        requireCap(capabilities, "menu");
+        const menus = requireTarget(targets.menus, "menu");
+        if (!menus.addAction) {
+          throw new Error("mod registry: menu actions are not available in this game (host did not wire them)");
+        }
+        menus.addAction(id, action, label, handler);
       },
     },
     tiles: {

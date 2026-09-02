@@ -1421,7 +1421,7 @@ written down, and the table below is a reading of it:
 | `registry:rune` | what a RUNE is: the unit of object knowledge. `rune.desc` (the recall line), `.name` (the display decoration), `.knows` / `.learn` (the knowledge pair, handed the player so YOUR mod keeps the store, since core never grew a slot for it), `.objectHas` (whether an item carries it) and `.modMessage` (the "You feel stronger!" line, keyed on the modifier). Plus `.contribute`, which is how your rune gets into the list every consumer enumerates, and without it the six tables above are handlers nothing ever calls |
 | `registry:vocab` | declare genuinely new vocabulary (flags, stats, mod-coined kinds) and store per-entity values |
 | `registry:message` | message TYPES: `messages.define(name, sound?)` coins one and returns its number, `.lookup(name)` finds an existing one, `.types()` lists what has been added, `.addSounds(...)` attaches sounds. Adding a `message_type.json` RECORD needs no capability, the same way adding an item does; this is the code half, for a type your own plugin raises |
-| `registry:menu` | rewrite one stable menu id's semantic rows. `menus.handlerFor(id)` returns the earlier transformer, so a later mod wraps it before calling `menus.register(id, ...)`; a throw or a non-row-array result is reported against that mod and leaves the original menu usable |
+| `registry:menu` | rewrite one stable menu id's semantic rows. `menus.handlerFor(id)` returns the earlier transformer, so a later mod wraps it before calling `menus.register(id, ...)`; a throw or a non-row-array result is reported against that mod and leaves the original menu usable. `menus.addAction("core:game-menu", action, label, handler)` adds a namespaced, runnable row to the Escape Game menu; it is the door for a mod-owned callback rather than a rewrite of a core action |
 | `registry:tiles` | supply tiles for content the loaded tile pack does not draw, which in practice means content a mod added. `tiles.register(filler)` installs one filler per mod; every registered filler runs, in load order, after the pack's own prefs and every mod's. It can only write where NOTHING is assigned, so it cannot repaint the tile set even by mistake and two mods cannot fight over an index. The same seam also grew a repaint-in-place door (`fill.transform`, mirror and/or a palette remap over an existing tile) and a player-cell door (`tiles.player`, asked once per frame what the character's own cell should show). See [Filling tiles](#filling-tiles) and [Repainting a tile, and drawing the player's own cell](#repainting-a-tile-and-drawing-the-players-own-cell) |
 
 A facade you did not declare throws when you touch it, even if the player
@@ -1546,6 +1546,31 @@ register(host) {
   ]);
 }
 ```
+
+That transformer changes presentation only: a row it invents has no core action
+behind it. To add a **runnable** row of your own, declare `registry:menu` and
+use `addAction` instead. The host namespaces `action` by your mod id, appends
+the row to the Escape Game menu, and calls only your handler when the player
+selects it. The handler begins in the selection gesture, so it may open a
+browser folder picker.
+
+```js
+register(host, ctx) {
+  host.menus.addAction(
+    "core:game-menu",
+    "choose-backup-folder",
+    "Choose backup folder...",
+    async () => {
+      const name = await ctx.backupFolder?.choose();
+      ctx.log(name ? `Using backup folder: ${name}` : "Backup folder unchanged.");
+    },
+  );
+}
+```
+
+`core:game-menu` is the only action location in this API version. A callback
+that throws is reported against its mod and returns the player to the Game menu;
+it never falls through to a similarly positioned core row.
 
 Plugin code runs **in process, synchronously**, with the same access to the rng,
 the chunk, the player and the monster that core has, because a deep override

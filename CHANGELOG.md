@@ -45,6 +45,8 @@ still calls itself.
   icon, and documents both local `makepkg` installation and the one-time AUR
   submission still required from an account (#130).
 
+- [Internal] [Modding-API] **Mods can add runnable rows to the Escape Game menu.** A plugin that declares `registry:menu` can call `host.menus.addAction("core:game-menu", action, label, handler)`; the host namespaces the action to that mod and invokes only its callback when selected. This closes the menu-callback seam needed by save-backup UI without making a new row accidentally select a core command (#96).
+
 - [Visible] [Docs] **Added a beginner walkthrough and tested finished mod for making a custom town shop.** It uses Neo Angband's content and store-behaviour seams instead of upstream source-file edits (#148).
 
 - [Visible] [UI] **Linoleum tile-pack conversion now shows a rotating terminal-HUD glyph and messages when it starts and finishes.** First-time atlas conversion continues in the background while the game remains responsive (#124).
