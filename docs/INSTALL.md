@@ -511,7 +511,7 @@ Notes:
    and `borg` - each live in their own repository and arrive through the same
    route, and the same verification, as anybody else's. Nothing is
    second-class, including mine.
-2. The mod manager's **Install a mod...** row downloads from a mod's own repository
+2. The mod manager's **Recommended mods...** row downloads from a mod's own repository
    at a pinned TAG (never a branch, so what arrives cannot change under you). What
    gets pinned is the ORIGIN: the first install records which repository the mod came
    from, and only a copy from that same repository may ever replace it, so an update

@@ -165,7 +165,7 @@ that has not been settled.
 Seven, **none of them bundled**, all OFF until enabled (see
 `DEFAULT_ENABLED_MODS` - an untouched install is the faithful base game with no mod
 loaded). Each lives in its own repository and arrives through the mod manager's
-*Install a mod...* row:
+*Recommended mods...* row:
 
 | id | shape | where it lives | what it adds |
 | --- | --- | --- | --- |

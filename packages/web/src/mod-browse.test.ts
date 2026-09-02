@@ -385,7 +385,29 @@ describe("the screen is REACHABLE", () => {
     readFileSync(join(import.meta.dirname, f), "utf8");
 
   it("is wired into the mod screen's Get mods row", () => {
-    expect(read("mods.ts")).toContain("showModBrowse(term, {");
+    const mods = read("mods.ts");
+    expect(mods).toContain("showRecommendedMods(term, {");
+    /* The first-run path skips the general source chooser, but the other three
+     * doors must remain reachable rather than becoming collateral damage. */
+    const browse = read("mod-browse.ts");
+    expect(browse).toContain('label: t("modBrowse.source.otherSources", "Get a mod another way...")');
+    expect(browse).toContain("await showModBrowse(term, deps)");
+  });
+
+  it("makes first install an explicit combined action without hiding permission gates", () => {
+    const browse = read("mod-browse.ts");
+    const mods = read("mods.ts");
+    expect(browse).toContain('"Install and enable {version}"');
+    expect(browse).toContain('"Install only {version}"');
+    expect(browse).toContain("Permissions are still asked separately.");
+    /* The old generic second yes/no prompt is gone, but enableMod continues to
+     * own the safety decisions that may actually change what runs. */
+    expect(mods).not.toContain('"Turn {name} on now?"');
+    expect(mods).toContain("confirmGameplayNoscore(");
+    expect(mods).toContain("confirmDeclaredConflicts(term, deps, m)");
+    expect(mods).toContain("consentPrompt(term, m)");
+    expect(mods).toContain("leaveAfterEnabledInstall: () => enabledThroughInstall");
+    expect(mods).toContain("await applyModChanges(term, deps, tileModsAtEntry)");
   });
 
   it("is given real dependencies by main.ts, not left optional forever", () => {

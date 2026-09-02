@@ -146,8 +146,8 @@ looks, and can be changed again at any time from the same menu.
 
 The game **ships with no mods installed at all** - a fresh copy is stock Angband,
 faithfully, and stays that way until something is turned on deliberately.
-`Escape` -> **Mods** -> **Install a mod...** -> **Recommended mods** shows the
-curated list, downloaded live from each mod's own repository:
+`Escape` -> **Mods** -> **Recommended mods...** shows the curated list,
+downloaded live from each mod's own repository:
 
 ![The recommended mods list](img/screenshots/quickstart-mods-list.png)
 

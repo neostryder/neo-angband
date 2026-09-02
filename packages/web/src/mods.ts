@@ -66,7 +66,7 @@ import {
   type ModProblem,
 } from "./mod-problems";
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
-import { showModBrowse, showModUpgrades, type ModUpgradeDeps } from "./mod-browse";
+import { showModUpgrades, showRecommendedMods, type ModUpgradeDeps } from "./mod-browse";
 import { displayName } from "./mod-authors";
 import { modUpgradeRowLabel } from "./mod-refresh";
 import type { ConflictReportLines } from "./mod-conflicts";
@@ -340,7 +340,7 @@ export function noFolderPickerLines(): ScreenLine[] {
     {
       text: t(
         "modsScreen.noPicker.body2",
-        "route is closed here. Downloading is not: Install a mod... needs",
+        "route is closed here. Downloading is not: Recommended mods... needs",
       ),
       color: C_FG,
     },
@@ -592,7 +592,7 @@ export function rowDetail(
         t(
           "modsScreen.detail.missing.action",
           "Open it to take it off the list. If you want it back instead, " +
-            "Install a mod... will fetch it again.",
+            "Recommended mods... will fetch it again.",
         ),
         w,
         C_WARN,
@@ -1142,7 +1142,7 @@ async function consentPromptForMods(
 }
 
 /**
- * The question asked straight after a download: turn it on now?
+ * Enable a mod straight after the player selected "Install and enable".
  *
  * It re-reads the mod sources first, and that call is what makes the rest of this
  * possible. `listCatalog()` is built from a report latched at boot, so a mod
@@ -1151,6 +1151,13 @@ async function consentPromptForMods(
  * consent prompt and the non-scoring warning, which are exactly the things that
  * must not be skipped by a convenience. With the sources re-read the mod is a
  * real catalogue row and goes through the same enableMod every other path uses.
+ *
+ * There is intentionally no second yes/no screen for a content-only mod. The
+ * action the player just chose already says "Install and enable", while the
+ * browse pane they chose it from names the mod, version, author standing,
+ * engine range, payload size, and source. Anything that changes the safety
+ * decision (capabilities, a declared conflict, or a non-scoring game) still
+ * stops here and asks in its own words before the mod is enabled.
  */
 async function enableAfterInstall(
   term: GridSurface & GridPointerInput,
@@ -1164,32 +1171,6 @@ async function enableAfterInstall(
    * list will show why - so say nothing and leave it off. */
   if (!m || m.missing) return false;
   if (m.enabled) return true;
-  const pick = await selectFromMenu(
-    term,
-    "core:mod-enable",
-    t("modsScreen.enableAfterInstall.title", "Turn {name} on now?", { name: m.name }),
-    [
-      {
-        label: t("modsScreen.enableAfterInstall.yes", "Yes, turn it on"),
-        color: C_ENABLED,
-        hint: t(
-          "modsScreen.enableAfterInstall.yesHint",
-          "Takes effect when the game reloads, which you are offered on the way out.",
-        ),
-      },
-      {
-        label: t("modsScreen.enableAfterInstall.no", "No, leave it off"),
-        color: C_DIM,
-        hint: t(
-          "modsScreen.enableAfterInstall.noHint",
-          "It stays installed. You can switch it on in the list at any time.",
-        ),
-      },
-    ],
-    t("modsScreen.enableAfterInstall.footer", "[ Enter to choose; ESC leaves it off ]"),
-    { minListRows: 2, detail: () => rowDetail(m, term.size().cols, 99) },
-  );
-  if (pick !== 0) return false;
   return enableMod(term, deps, m);
 }
 
@@ -1264,6 +1245,46 @@ async function enableRecommendedMods(
     }
   }
   return toEnable.length > 0 || mods.some((m) => (m.manifest.rules?.length ?? 0) > 0 || (m.manifest.sections?.length ?? 0) > 0);
+}
+
+/**
+ * Offer the existing one reload decision at the point a combined first install
+ * finishes. Reload remains optional: "Later" leaves the recorded enablement in
+ * place for a normal future reload. Returning here rather than repainting the
+ * source and manager menus is safe because the player has already seen the
+ * install outcome and can reopen either list at any time.
+ */
+async function applyModChanges(
+  term: GridSurface & GridPointerInput,
+  deps: ModManagerDeps,
+  tileModsAtEntry: ReadonlySet<string>,
+): Promise<void> {
+  /* A newly-enabled tiles mod contributes Graphics rows and nothing else, so
+   * say so here and open that screen after the reload. Without this the player
+   * enables a tile mod, reloads, sees an unchanged ASCII map, and concludes the
+   * mod is broken - which is what happened. */
+  const newTiles = [...enabledTileModIds(deps)].some((id) => !tileModsAtEntry.has(id));
+  const pick = await selectFromMenu(
+    term,
+    "core:mod-apply",
+    newTiles
+      ? t("modsScreen.applyPrompt.titleTiles", "Apply mod changes? (adds tile sets to Graphics)")
+      : t("modsScreen.applyPrompt.title", "Apply mod changes?"),
+    [
+      {
+        label: newTiles
+          ? t("modsScreen.applyPrompt.reloadTiles", "Reload now, then pick a tile set")
+          : t("modsScreen.applyPrompt.reload", "Reload now to apply"),
+        color: C_ENABLED,
+      },
+      {
+        label: t("modsScreen.applyPrompt.later", "Later (changes are saved; apply on next reload)"),
+        color: C_FG,
+      },
+    ],
+    t("modsScreen.applyPrompt.footer", "[ a/b or tap ]"),
+  );
+  if (pick === 0) deps.requestReload(newTiles ? { showGraphics: true } : undefined);
 }
 
 /**
@@ -3054,7 +3075,7 @@ export async function runModManager(
     /* Action rows below the list, each with a FIXED tag.
      *
      * Positional lettering put these on whatever letter followed the last mod,
-     * so every install shifted them: `f) Install a mod...` became `g)` the
+     * so every install shifted them: `f) Recommended mods...` became `g)` the
      * moment a mod appeared above it, and a player - or a scripted test, which
      * is how this was caught - pressing the letter they used yesterday landed on
      * Auto-sort. The mods keep a, b, c...; the actions never move. Upstream does
@@ -3095,16 +3116,16 @@ export async function runModManager(
     if (deps.modBrowse) {
       addAction(
         catalog.length === 0
-          ? t("modsScreen.run.installStart", "Install a mod...  (start here)")
-          : t("modsScreen.run.install", "Install a mod..."),
+          ? t("modsScreen.run.installStart", "Recommended mods...  (start here)")
+          : t("modsScreen.run.install", "Recommended mods..."),
         "download",
         C_ENABLED,
-        t("modsScreen.run.installHint", "Pick one from the list; the game downloads and checks it for you."),
+        t("modsScreen.run.installHint", "Pick a curated mod; the game downloads, checks, and can enable it."),
       );
       /* KEEPING A MOD IS A SEPARATE JOB FROM GETTING ONE, and it had no row.
        *
        * The browse screen can update a mod - its row says so - but it is called
-       * "Install a mod", which is not where anyone looks for something they
+       * "Recommended mods", which is not where anyone looks for something they
        * already installed. So the job has its own row here.
        *
        * THE COUNT IS NOT ON THIS ROW ANY MORE, and that is the honest shape. It
@@ -3221,7 +3242,7 @@ export async function runModManager(
              * screen telling a player to do something there is nothing to do. */
             t(
               "modsScreen.run.footer.empty",
-              "[ No mods installed - Install a mod... to get one; ESC to go back ]",
+              "[ No mods installed - Recommended mods... to get one; ESC to go back ]",
             )
           : t("modsScreen.run.footer.normal", "[ Space turns one on or off, Enter opens it; ESC to go back ]");
     const pick = await selectFromMenu(term, "core:mods", t("modsScreen.run.title", "Mods"), items, footer, {
@@ -3261,7 +3282,7 @@ export async function runModManager(
       detail: (i) => {
         const rk = rowKinds[i];
         /* The one action row that gets a pane of its own. On a fresh install the
-         * whole screen is this row, and "Install a mod..." alone does not answer
+         * whole screen is this row, and "Recommended mods..." alone does not answer
          * the question a player has, which is where these come from and whether
          * running one is safe. */
         if (rk?.kind === "download" && catalog.length === 0) {
@@ -3384,15 +3405,18 @@ export async function runModManager(
       if (await autoSortLoadOrder(term, deps)) dirty = true;
     } else if (rk.kind === "download") {
       if (deps.modBrowse) {
-        const touched = await showModBrowse(term, {
+        let enabledThroughInstall = false;
+        const touched = await showRecommendedMods(term, {
           ...deps.modBrowse,
           offerEnable: async (id) => {
             if (await enableAfterInstall(term, deps, id)) {
               dirty = true;
+              enabledThroughInstall = true;
               return true;
             }
             return false;
           },
+          leaveAfterEnabledInstall: () => enabledThroughInstall,
           applyRecommended: async (ids, enableAllOptions) => {
             const applied = await enableRecommendedMods(term, deps, ids, enableAllOptions);
             if (applied) dirty = true;
@@ -3400,6 +3424,10 @@ export async function runModManager(
           },
         });
         if (touched) dirty = true;
+        if (enabledThroughInstall) {
+          await applyModChanges(term, deps, tileModsAtEntry);
+          return;
+        }
       }
     } else if (rk.kind === "modupdates") {
       if (deps.modBrowse) {
@@ -3430,34 +3458,7 @@ export async function runModManager(
     }
   }
 
-  if (dirty) {
-    /* A newly-enabled tiles mod contributes Graphics rows and nothing else, so
-     * say so here and open that screen after the reload. Without this the player
-     * enables a tile mod, reloads, sees an unchanged ASCII map, and concludes the
-     * mod is broken - which is what happened. */
-    const newTiles = [...enabledTileModIds(deps)].some((id) => !tileModsAtEntry.has(id));
-    const pick = await selectFromMenu(
-      term,
-      "core:mod-apply",
-      newTiles
-        ? t("modsScreen.applyPrompt.titleTiles", "Apply mod changes? (adds tile sets to Graphics)")
-        : t("modsScreen.applyPrompt.title", "Apply mod changes?"),
-      [
-        {
-          label: newTiles
-            ? t("modsScreen.applyPrompt.reloadTiles", "Reload now, then pick a tile set")
-            : t("modsScreen.applyPrompt.reload", "Reload now to apply"),
-          color: C_ENABLED,
-        },
-        {
-          label: t("modsScreen.applyPrompt.later", "Later (changes are saved; apply on next reload)"),
-          color: C_FG,
-        },
-      ],
-      t("modsScreen.applyPrompt.footer", "[ a/b or tap ]"),
-    );
-    if (pick === 0) deps.requestReload(newTiles ? { showGraphics: true } : undefined);
-  }
+  if (dirty) await applyModChanges(term, deps, tileModsAtEntry);
 }
 
 /**

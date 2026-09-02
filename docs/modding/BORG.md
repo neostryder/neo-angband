@@ -34,11 +34,10 @@ untripped. A Borg run is replayable.
 
 Three steps, and the third is separate from the second on purpose.
 
-1. **Install it.** Escape menu -> **Mods** -> *Install a mod...*, pick **Borg**
-   from the recommended list, press Enter.
-2. **Enable it**, then choose *Apply changes and reload*. The mod is now loaded
-   and has done nothing to your character.
-3. **Hand it the keyboard.** Press **Ctrl-Z** in play. The host warns twice,
+1. **Install and enable it.** Escape menu -> **Mods** -> *Recommended mods...*,
+   pick **Borg**, choose *Install and enable*, then choose the offered reload.
+   The mod is now loaded and has done nothing to your character.
+2. **Hand it the keyboard.** Press **Ctrl-Z** in play. The host warns twice,
    asks for confirmation, and the Borg takes over from the next turn.
 
 There is deliberately no settings-screen switch for this. Installing a mod and

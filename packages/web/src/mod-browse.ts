@@ -121,8 +121,18 @@ export interface ModBrowseDeps {
     /** False when the answer could not be recorded, which must be reported. */
     readonly write: (allow: boolean) => boolean;
   };
-  /** Offer to turn a freshly-installed mod on. See ModCatalogueDeps.offerEnable. */
+  /**
+   * Enable a freshly-installed mod when the player chose the combined action.
+   * The owner still runs capability, conflict, and no-score gates before it can
+   * return true; this is deliberately not a shortcut around those decisions.
+   */
   readonly offerEnable?: (id: string) => Promise<boolean>;
+  /**
+   * The common first-install route returns to its owner once its outcome has
+   * been read, so the owner can offer the one reload that makes the staged mod
+   * run. Other routes leave this absent and keep browsing as before.
+   */
+  readonly leaveAfterEnabledInstall?: () => boolean;
   /**
    * The manager-owned bulk enable path. It owns live rules, sections, save
    * ratchets, and the one combined capability approval for recommended mods.
@@ -1178,6 +1188,17 @@ async function showSource(
         ),
       });
     }
+    const otherSourcesAt = origin === "curated" ? items.length : -1;
+    if (otherSourcesAt >= 0) {
+      items.push({
+        label: t("modBrowse.source.otherSources", "Get a mod another way..."),
+        color: C_DIM,
+        hint: t(
+          "modBrowse.source.otherSourcesHint",
+          "A registry, one repository, or a file. These can need third-party-mod consent.",
+        ),
+      });
+    }
     const aboutAt = items.length;
     items.push({
       label: t("modBrowse.common.whatIsThis", "What is this?"),
@@ -1228,6 +1249,10 @@ async function showSource(
 
     if (pick === recommendedActionsAt) {
       if (await showRecommendedActions(term, entries, deps)) changed = true;
+      continue;
+    }
+    if (pick === otherSourcesAt) {
+      if (await showModBrowse(term, deps)) changed = true;
       continue;
     }
     if (pick === aboutAt) {
@@ -1302,9 +1327,27 @@ async function showSource(
       at === null
         ? [
             {
-              label: t("modBrowse.actions.install", "Install {version}", { version: entry.mod.version }),
+              /* The detail pane is already visible before this action is chosen,
+               * so this is an explicit decision to install AND stage this one
+               * mod for the next reload. It replaces the old second, generic
+               * "turn it on now?" question. Plugin capabilities, declared
+               * conflicts, and the no-score warning remain their own gates
+               * after the verified files have been stored and before anything
+               * can run. */
+              label: t("modBrowse.actions.installEnable", "Install and enable {version}", { version: entry.mod.version }),
               color: C_FG,
-              hint: t("modBrowse.actions.installHint", "Download and store it."),
+              hint: t(
+                "modBrowse.actions.installEnableHint",
+                "Download, check, and turn it on for the next reload. Permissions are still asked separately.",
+              ),
+            },
+            {
+              label: t("modBrowse.actions.installOnly", "Install only {version}", { version: entry.mod.version }),
+              color: C_DIM,
+              hint: t(
+                "modBrowse.actions.installOnlyHint",
+                "Download and check it, but leave it off.",
+              ),
             },
           ]
         : at === entry.mod.tag
@@ -1358,7 +1401,10 @@ async function showSource(
       ]);
       continue;
     }
-    if (await installOne(term, entry, origin, deps)) changed = true;
+    if (await installOne(term, entry, origin, deps, { offerEnable: at === null && what === 0 })) {
+      changed = true;
+      if (deps.leaveAfterEnabledInstall?.()) return changed;
+    }
   }
 }
 
@@ -2107,6 +2153,19 @@ function aboutImport(folder: string | null, canArchive: boolean): readonly Scree
     fg(t("modBrowse.aboutImport.body12", "An imported mod keeps the repository its own manifest declares, so the")),
     fg(t("modBrowse.aboutImport.body13", "update check has somewhere to ask. You can also import a newer zip.")),
   ];
+}
+
+/**
+ * The common entry point: the curated list, without making a player cross the
+ * general-purpose source chooser first. The chooser remains available from
+ * Recommended mods' "Get a mod another way..." row for registries,
+ * repositories, and archives.
+ */
+export async function showRecommendedMods(
+  term: GridSurface & GridPointerInput,
+  deps: ModBrowseDeps,
+): Promise<boolean> {
+  return openRegistry(term, "curated", deps.curated, deps);
 }
 
 /**

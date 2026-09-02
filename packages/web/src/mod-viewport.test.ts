@@ -156,7 +156,7 @@ function openManager(term: FakeTerm, mods: CatalogMod[]): Promise<void> {
       combinedRows: [],
     }),
     requestReload: () => {},
-    /* The rows under test ("Install a mod", "Update installed mods") are gated on
+    /* The rows under test ("Recommended mods", "Update installed mods") are gated on
      * this being wired, so a manager with no browse deps paints neither and the
      * assertions below would fail for the wrong reason. Nothing here is called: this
      * test opens the manager and reads the rows. */
@@ -353,7 +353,7 @@ describe("a mod that is switched on and not installed", () => {
 
     const detail = rowDetail(catalog[0]!, 80).map((l) => l.text).join(" ");
     expect(detail).toContain("not installed");
-    expect(detail).toContain("Install a mod...");
+    expect(detail).toContain("Recommended mods...");
   });
 
   it("does not invent a row for a mod that IS installed", () => {
@@ -379,7 +379,7 @@ describe("the action rows never move", () => {
   it("keeps the same tag whatever the mod list does", async () => {
     /* The measured defect: action rows were lettered positionally, so installing
      * a mod shifted every one of them down. A player - or a script - pressing
-     * the letter that meant "Install a mod..." yesterday lands on "Auto-sort"
+     * the digit that meant "Recommended mods..." yesterday lands on "Auto-sort"
      * today. Digits, fixed, because the mods take the letters. */
     const tagOf = (rows: string[], label: string): string | undefined =>
       rows.find((r) => r.includes(label))?.[0];
@@ -387,7 +387,7 @@ describe("the action rows never move", () => {
     const few = await walk(80, catalogue().slice(0, 1));
     const many = await walk(80, catalogue());
 
-    for (const label of ["Install a mod...", "View conflicts", "Done"]) {
+    for (const label of ["Recommended mods...", "View conflicts", "Done"]) {
       const a = tagOf(few.rows, label);
       const b = tagOf(many.rows, label);
       expect(a, `${label} was not painted`).toBeDefined();

@@ -92,7 +92,7 @@ describe("noFolderPickerLines", () => {
   });
 
   it("names the route that DOES work in this browser", () => {
-    expect(text).toContain("Install a mod...");
+    expect(text).toContain("Recommended mods...");
     /* And says why it is safe, because "download from the internet" is the part a
      * cautious player would otherwise stop at. */
     expect(text).toMatch(/digest/iu);

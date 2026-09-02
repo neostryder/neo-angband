@@ -60,6 +60,8 @@ still calls itself.
 
 ### Changed
 
+- [Visible] [UI] **Recommended mods now open directly from the Mods screen, and selecting an uninstalled mod offers one explicit "Install and enable" action instead of asking the same enable question again after downloading.** The successful-install screen now goes straight to the existing reload choice instead of requiring backtracking through the source and mod menus. The mod's detail pane remains visible before that decision; capability consent, mod-conflict, and non-scoring-game warnings still stop the flow before anything runs. Other install sources remain available from the recommended list (#103).
+
 - [Visible] [UI] **The Discord invite, the GitHub issues address, and the support email printed on the Help, Report-a-problem, mid-turn-fault, and crash screens are now real links.** A tap, click, or the existing key (`G`/`1`/`C` on the report screen, or a click on the community page) opens the address in a browser tab or, for the support address, a `mailto:` compose window; the email's displayed text stays the obfuscated "strider-angband (at) rpgm.tools" form. Link text is coloured with the terminal's own "-more-" cyan rather than an invented hyperlink blue, and the crash screen (a DOM overlay, not the terminal) draws real `<a>` anchors in the same colour (#59).
 
 ### Fixed

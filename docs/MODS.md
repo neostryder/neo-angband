@@ -28,14 +28,14 @@ open to mods, including capabilities that do not exist in the base resources.
 
 ## Getting a mod, in one paragraph
 
-Press `Escape`, choose **Mods**, choose **Install a mod...**, pick one from the
-**Recommended mods** list, press Enter. The game reads the mod from its own
+Press `Escape`, choose **Mods**, choose **Recommended mods...**, pick one, then
+choose **Install and enable**. The game reads the mod from its own
 repository at a release tag: the newest one this build can actually run, which is
 not always the newest one that exists. It checks the mod against the requirements
 every mod has to meet, and records the digest of every byte that arrived so it can
-tell you later whether the copy on your machine has changed. Then turn it on and
-choose **Apply changes and reload**. Nothing else is required, and nothing needs
-a folder, an account or a tool.
+tell you later whether the copy on your machine has changed. Then choose the
+reload offered after the outcome. Nothing else is required, and nothing needs a
+folder, an account or a tool.
 
 The recommended list is a list of **repositories and nothing else**. Names,
 versions, descriptions and compatibility all come from the mod itself when the

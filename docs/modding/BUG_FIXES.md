@@ -2,7 +2,7 @@
 
 > **NOT BUNDLED.** The game ships no mods at all; this one lives in
 > [neo-angband-mod-bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes)
-> and installs through the mod manager's *Install a mod...* row, at a pinned tag.
+> and installs through the mod manager's *Recommended mods...* row, at a pinned tag.
 > The tag is what stops the download changing under you; the install records a
 > SHA-256 of the bytes that actually arrived, which is what later answers whether
 > the copy on the machine has changed. No digest ships inside the game.

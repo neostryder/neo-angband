@@ -173,8 +173,9 @@ The game explains the rest on **Where your characters live** (`Shift-W`).
 
 ## Mods
 
-Press `Escape`, choose **Mods**, choose **Install a mod...**, pick one, press
-Enter. That is the whole process; nothing needs a folder, an account or a tool.
+Press `Escape`, choose **Mods**, choose **Recommended mods...**, pick one, then
+choose **Install and enable** and reload. That is the whole process; nothing
+needs a folder, an account or a tool.
 
 The game **bundles no mods at all**, not even the author's. Each one lives in its
 own repository and installs by the same verified route anybody's would, which is
