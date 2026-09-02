@@ -158,10 +158,10 @@ and `tiles`.  Their registrations are not just data:
 
 ## Shipped-mod audit
 
-The audited entry files were the current `plugin.ts`/`plugin.js` in the sibling
-repositories `neo-angband-mod-borg`, `-bug-fixes`, `-qol`, `-linoleum`, and
-`-feature-restoration`.  This is an audit of real installed code, not only of
-the type declarations.
+The audited entry files were the current `plugin.ts`/`plugin.js` in all seven
+sibling mod repositories: `neo-angband-mod-borg`, `-bug-fixes`, `-qol`,
+`-linoleum`, `-feature-restoration`, `-forge`, and `-upstream-catchup`.  This is
+an audit of real installed code, not only of the type declarations.
 
 | Mod | Actual use | Can it move to a Worker without functionality loss today? |
 | --- | --- | --- |
@@ -170,6 +170,8 @@ the type declarations.
 | QoL | `hooks()` calls live core (`movementTunnelTest`, `tunnelAux`, `OptionState`, policy setters) and returns synchronous hooks; `register()` mutates live options; it installs raw `document`/`window` keyboard/pointer listeners, queries canvases, reads `ctx.display` and `ctx.state`, and returns HUD output; `uninstall()` removes listeners. | **No.** Workers have no `document`, `window`, `HTMLElement`, canvas DOM, or synchronous hook access.  A host-owned overlay/input/render protocol could reproduce some UI eventually, but the current raw-DOM implementation cannot cross. |
 | linoleum | `register()` stores `ctx.state`/`ctx.registries`-derived data and installs `host.tiles.register(fill => ...)` plus `host.tiles.player(view => ...)`. | **No.** Both are synchronous tile callbacks over a live/mutable fill surface.  Precompute-plus-declaration could be designed, but it is a new rendering/tile ABI and may not preserve per-frame shape changes without a new data stream. |
 | feature-restoration | `register()` installs a synchronous store discount RNG handler and a `feature-restoration:spike` command handler that closes over `ctx.core` and mutates/reads live state, chunk, gear, and messages. | **No.** This is a direct live-engine callback and RNG boundary.  A Worker reply cannot safely run in the command/roll it is handling. |
+| forge | `regions()` paints a text-grid tab through a synchronous `place`/`paint`/`input` triple, and its `input` handler calls `openWorkshop(ctx, doc)` against a live `document` to open a full DOM overlay. | **No.** The tab geometry alone could become a declaration, but the workshop overlay is exactly the raw-DOM case: no `Document` crosses a Worker boundary. |
+| upstream-catchup | `hooks()` returns synchronous callbacks over the same `HooksCtx` shape as bug-fixes; `register()` installs `host.tiles.register(fill => applyCatchupTiles(fill, ctx.registries, ctx.core))`, a live tile-fill callback closing over both registries and core. | **No.** Same synchronous-hook and live-tile-callback cases as bug-fixes and linoleum above. |
 
 Therefore **not every existing shipped mod can be migrated to a message-passing
 boundary without losing functionality**.  This is a go/no-go blocker for a plan
