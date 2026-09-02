@@ -15,6 +15,7 @@
 import { inputEvents } from "./input-door";
 import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
 import { screenRegionSpec } from "./overlay";
+import { openExternalUrl } from "./external-link";
 import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import {
   BASIC_COLORS,
@@ -24,24 +25,14 @@ import {
   ENGINE_VERSION,
   t,
 } from "@rpgm-tools/neo-angband-core";
-import { UI_DIM } from "./ui-colors";
+import { UI_DIM, UI_LINK } from "./ui-colors";
 
 /**
- * The Angband baseline this port reproduces.
- *
- * This no longer fills news.txt's `$VERSION` slot. The slot sits beside art that
- * now reads "Neo Angband", so stamping Angband's release number there told the
- * player the wrong thing about what they were running - and the port's version is
- * the one that changes, so it is the one worth showing. ENGINE_VERSION takes the
- * slot; Angband's number moves to ANGBAND_CREDIT, in the grey block at the foot
- * of the screen where the project's own links already are.
- *
- * The substitution stays a substitution either way: NEWS below is still a
- * verbatim copy of reference/lib/screens/news.txt, token included.
+ * `$VERSION` is news.txt's slot beside the title art. It shows the port version,
+ * which is the version that changes for a player running Neo Angband.
  */
-const BASELINE_VERSION = "4.2.6";
 
-/** news.txt verbatim (reference/lib/screens/news.txt); $VERSION is filled in. */
+/** news.txt's verbatim title art (rows 0-12); $VERSION is filled in. */
 const NEWS: readonly string[] = [
   "",
   "{mud}                                       ^                        {/}",
@@ -56,15 +47,6 @@ const NEWS: readonly string[] = [
   "{mud}         ^^^^  {/}{red}/_/   \\_\\_| |_|\\__, |_.__/ \\__,_|_| |_|\\__,_| {/}{mud}^^^^^^^^{/}",
   "{mud}        ^^^^^                {/}{red} |___/{/}  $VERSION",
   "{mud}       ^^^^^^^^^^^^^^^^^^                     ^^^^  ^^^^^^^^^^^^^^^^^^^ {/}",
-  "{light slate}         \"When the world is old and the Powers grow weary, then Morgoth,{/}",
-  "{light slate}          seeing that the guard sleepeth, shall come back through the   {/}",
-  "{light slate}          Door of Night out of the Timeless Void.  Then shall the Last  {/}",
-  "{light slate}          Battle be gathered...\"                                        {/}",
-  "",
-  "{light slate}                         Website: http://rephial.org/           {/}",
-  "{light slate}                     Forums: https://angband.live/forums/       {/}",
-  "              ",
-  "                           For help press '?' in-game",
 ];
 
 /**
@@ -125,55 +107,9 @@ const NEO_COLOUR = "red";
 
 /**
  * news.txt's last mountain row: the long ground ridge that closes the scene.
- * The port's credit is inserted directly BELOW it, which pushes everything from
- * the Morgoth quote down one row.
+ * The Neo Angband project information block begins directly below it.
  */
 const GROUND_ROW = 12;
-
-/**
- * news.txt's near-blank spacer (fourteen spaces) between the Forums link and the
- * help line. Angband's credit takes it over rather than being inserted, so the
- * screen gains exactly ONE row overall and still ends above the prompt on a
- * 24-row terminal - see titleLines.
- */
-const SPACER_ROW = 20;
-
-/**
- * The port's own credit, painted directly under the mountain scene.
- *
- * It used to sit at the foot of the screen, one row above the prompt, where it
- * read as a footnote to Angband's links rather than as whose game this is. The
- * art is Angband's; this line is not, which is exactly why it belongs against
- * the title and not buried in the credit block.
- *
- * No version number here - it is already beside the title, two rows up.
- */
-function portCredit(): string {
-  return `{light slate}${t("news.credit.port", "A port by {author} / {org}", {
-    author: "neostryder",
-    org: "RPGM Tools",
-  })}{/}`;
-}
-
-/**
- * Angband's own credit, in the grey block at the foot of the screen beside the
- * links, carrying the baseline release the port reproduces.
- *
- * Slate (0x808080) is Angband's own mid-grey, so this is grey by the game's
- * palette rather than by a CSS colour invented for the web build.
- *
- * Deliberately NOT a partial copyright notice: the full statement (Ben Harrison,
- * James E. Wilson, Robert A. Koeneke, and the licence choice) ships in the
- * licence files, and a three-name notice trimmed to fit 80 columns would be worse
- * than a line that points at the real one.
- */
-function angbandCredit(): string {
-  return `{slate}${t(
-    "news.credit.angband",
-    "Based on Angband {version} by the Angband developers",
-    { version: BASELINE_VERSION },
-  )}{/}`;
-}
 
 /** One painted title row. */
 export interface TitleLine {
@@ -182,21 +118,83 @@ export interface TitleLine {
   /**
    * Centre the line for the terminal width instead of painting from column 0.
    * news.txt's own rows carry baked-in centring as leading spaces and must NOT
-   * be re-centred; the two lines the port adds have no such padding and must.
+   * be re-centred; the project information block is deliberately left-aligned.
    */
   centred: boolean;
+  /**
+   * Optional display runs for a line with links. This remains separate from
+   * news.txt's colour markup, so the markup parser continues to describe only
+   * Angband colours while a run can independently carry an external URL.
+   */
+  runs?: readonly TitleRun[];
 }
 
+/** One display run within a title line, optionally a tappable external link. */
+export interface TitleRun {
+  text: string;
+  css: string;
+  href?: string;
+}
+
+const DOCS_URL = "https://angband.rpgm.world/docs";
+const GITHUB_URL = "https://github.com/neostryder/neo-angband";
+const RELEASES_URL = "https://releases.rpgm.tools/repos/neo-angband/";
+const DISCORD_URL = "https://discord.gg/YegtwbHTBQ";
+
+/** The project information shown below core or mod-provided title art. */
+const PROJECT_INFORMATION: readonly TitleLine[] = [
+  {
+    markup: "Neo Angband: TypeScript port of Angband 4.2.6 with general-purpose mod loading.",
+    centred: false,
+  },
+  { markup: "", centred: false },
+  {
+    markup: `Docs and quick start: ${DOCS_URL}`,
+    centred: false,
+    runs: [
+      { text: "Docs and quick start: ", css: colorToCss(COLOUR_WHITE) },
+      { text: DOCS_URL, css: UI_LINK, href: DOCS_URL },
+    ],
+  },
+  {
+    markup: `GitHub: ${GITHUB_URL}`,
+    centred: false,
+    runs: [
+      { text: "GitHub: ", css: colorToCss(COLOUR_WHITE) },
+      { text: GITHUB_URL, css: UI_LINK, href: GITHUB_URL },
+    ],
+  },
+  {
+    markup: `Releases: ${RELEASES_URL}`,
+    centred: false,
+    runs: [
+      { text: "Releases: ", css: colorToCss(COLOUR_WHITE) },
+      { text: RELEASES_URL, css: UI_LINK, href: RELEASES_URL },
+    ],
+  },
+  {
+    markup: `Discord: ${DISCORD_URL}`,
+    centred: false,
+    runs: [
+      { text: "Discord: ", css: colorToCss(COLOUR_WHITE) },
+      { text: DISCORD_URL, css: UI_LINK, href: DISCORD_URL },
+    ],
+  },
+  {
+    markup:
+      "Thank you, neostryder and past maintainers and developers and to all those who have given us so many creative variants!",
+    centred: false,
+  },
+  { markup: "", centred: false },
+];
+
 /**
- * The full painted screen: news.txt with the port's two credit lines woven in.
+ * The full painted screen: news.txt's title art followed by project information.
  *
  * Pure, and separate from the paint loop, so the row budget is checkable without
- * a terminal. That budget is the thing an edit here breaks silently: NEWS is 22
- * rows (0-21), the insert after GROUND_ROW makes 23 (0-22), and the prompt sits
- * at row 23 - so on upstream's 80x24 terminal this fits with nothing to spare.
- * That is why Angband's credit REPLACES the spacer instead of being inserted:
- * a second insert would put the help line under the prompt. news.test.ts asserts
- * the count.
+ * a terminal. NEWS is 13 rows (0-12) and PROJECT_INFORMATION is 8, for 21
+ * painted rows (0-20). The prompt remains on upstream's row 23, leaving two
+ * blank rows between the information and prompt. news.test.ts asserts the count.
  */
 /**
  * A mod's replacement for news.txt, or null for core's own (MOD_REACH gap 7's
@@ -207,9 +205,9 @@ export interface TitleLine {
  * before the title is drawn; see installModResources for why that is sound.
  *
  * The mod's rows go through the SAME pipeline core's do - `$VERSION`
- * substitution, the two credit lines, the row budget - rather than replacing the
- * screen wholesale. Credit for what the game is built on is not a mod's to
- * remove, and the budget is the thing an edit here breaks silently.
+ * substitution, the project information block, the row budget - rather than
+ * replacing the screen wholesale. This information is not a mod's to remove,
+ * and the budget is the thing an edit here breaks silently.
  */
 let splashOverride: readonly string[] | null = null;
 
@@ -224,18 +222,17 @@ export function splashIsModded(): boolean {
 }
 
 /**
- * How many rows the title screen has for art, once the two credit lines are
- * taken out of the budget.
+ * How many rows the title screen has for mod art, once the eight project
+ * information rows are taken out of the budget.
  *
  * The budget itself is 23 (0-22) with the prompt at row 23, which is upstream's
  * 80x24 terminal with nothing to spare - see the comment on titleLines. Core's
- * own art is woven at fixed indices because it was written to be; a mod's art is
- * any length, so it is CLAMPED and the credits are appended after it. Those are
- * two different problems and one formula cannot solve both: GROUND_ROW and
- * SPACER_ROW are positions inside news.txt's picture, and a mod's picture does
- * not have them.
+ * own art ends at GROUND_ROW because it was written to be; a mod's art is any
+ * length, so it is CLAMPED and the information is appended after it. Those are
+ * two different problems and one formula cannot solve both: GROUND_ROW is a
+ * position inside news.txt's picture, and a mod's picture does not have it.
  */
-export const MOD_SPLASH_ROWS = 21;
+export const MOD_SPLASH_ROWS = 15;
 
 export function titleLines(): readonly TitleLine[] {
   const out: TitleLine[] = [];
@@ -244,26 +241,22 @@ export function titleLines(): readonly TitleLine[] {
      * drawn for a taller screen, and showing the top of it beats showing none
      * of it - the same choice reflow mode makes when the grid does not fit.
      *
-     * THE CREDITS ARE NOT OPTIONAL, and this is the only place that could have
+     * THE PROJECT INFORMATION IS NOT OPTIONAL, and this is the only place that could have
      * quietly made them so. Weaving them at core's indices would have dropped
-     * one or both for any art that is not exactly news.txt's shape: SPACER_ROW
-     * is 20, so a 12-row splash would never reach it and the Angband credit
-     * would vanish without a word. Appending is the form that cannot fail. */
+     * it for any art that is not exactly news.txt's shape: GROUND_ROW is 12,
+     * so a shorter splash would never reach it and the project information would
+     * vanish without a word. Appending is the form that cannot fail. */
     for (const raw of splashOverride.slice(0, MOD_SPLASH_ROWS)) {
       out.push({ markup: raw.replace("$VERSION", ENGINE_VERSION), centred: false });
     }
-    out.push({ markup: portCredit(), centred: true });
-    out.push({ markup: angbandCredit(), centred: true });
+    out.push(...PROJECT_INFORMATION);
     return out;
   }
   for (let i = 0; i < NEWS.length; i++) {
     const raw = NEWS[i] ?? "";
-    out.push({
-      markup: i === SPACER_ROW ? angbandCredit() : raw.replace("$VERSION", ENGINE_VERSION),
-      centred: i === SPACER_ROW,
-    });
-    if (i === GROUND_ROW) out.push({ markup: portCredit(), centred: true });
+    out.push({ markup: raw.replace("$VERSION", ENGINE_VERSION), centred: false });
   }
+  out.push(...PROJECT_INFORMATION);
   return out;
 }
 
@@ -432,21 +425,19 @@ export function titleKeyChoice(
   return rows.find((r) => r.choice === wanted && r.enabled)?.choice ?? null;
 }
 
-/** A coloured span within a title line. */
-interface Run {
-  text: string;
-  css: string;
-}
-
 /**
  * Parse one {colour}...{/} markup line into coloured runs. `{/}` resets to the
  * default (COLOUR_WHITE); a `{name}` opens that colour (colorTextToAttr resolves
  * the name, e.g. "mud", "red", "light slate"). Text outside any tag is white.
  * Spaces are preserved so the file's baked-in centring survives.
+ *
+ * Returns `TitleRun[]` (never with `href` set) rather than its own narrower
+ * type, so a markup-parsed line and a link-bearing `TitleLine.runs` line are
+ * the same shape for `paintTitleArt` to iterate without a union mismatch.
  */
-export function parseNewsLine(line: string): Run[] {
+export function parseNewsLine(line: string): TitleRun[] {
   const white = colorToCss(COLOUR_WHITE);
-  const runs: Run[] = [];
+  const runs: TitleRun[] = [];
   const re = /\{([^}]*)\}/g;
   let last = 0;
   let cur = white;
@@ -461,6 +452,24 @@ export function parseNewsLine(line: string): Run[] {
   const tail = line.slice(last);
   if (tail) runs.push({ text: tail, css: cur });
   return runs;
+}
+
+/** One clickable span this title-art paint left on the grid. */
+export interface TitleLinkSpan {
+  readonly row: number;
+  readonly startCol: number;
+  readonly endCol: number;
+  readonly href: string;
+}
+
+/** The title link under `cell`, if any. */
+export function titleLinkSpanAt(
+  spans: readonly TitleLinkSpan[],
+  cell: { row: number; col: number },
+): TitleLinkSpan | undefined {
+  return spans.find(
+    (span) => span.row === cell.row && cell.col >= span.startCol && cell.col < span.endCol,
+  );
 }
 
 /**
@@ -563,14 +572,15 @@ export interface TitleDeps {
  * have answered. showTitleScreen repaints this art itself; the terminal diffs
  * against what is already on the canvas, so the second call draws nothing.
  */
-export function paintTitleArt(term: GridSurface & GridPointerInput): void {
+export function paintTitleArt(term: GridSurface & GridPointerInput): readonly TitleLinkSpan[] {
   const { cols, rows: height } = term.size();
   term.clear();
   const lines = titleLines();
+  const links: TitleLinkSpan[] = [];
   for (let y = 0; y < lines.length && y < height; y++) {
     const line = lines[y];
     if (!line) continue;
-    const runs = parseNewsLine(line.markup);
+    const runs = line.runs ?? parseNewsLine(line.markup);
     /* Centring measures the RUNS, not the markup: a {colour} tag occupies no
      * columns, so centring on the raw string's length would shift the line
      * left by the width of its tags. */
@@ -581,6 +591,9 @@ export function paintTitleArt(term: GridSurface & GridPointerInput): void {
       if (x >= cols) break;
       const chunk = run.text.slice(0, cols - x);
       term.print(x, y, chunk, run.css);
+      if (run.href !== undefined && chunk !== "") {
+        links.push({ row: y, startCol: x, endCol: x + chunk.length, href: run.href });
+      }
       x += chunk.length;
     }
   }
@@ -591,6 +604,7 @@ export function paintTitleArt(term: GridSurface & GridPointerInput): void {
     if (y >= height) break;
     term.print(NEO_COL, y, (NEO_ART[i] ?? "").slice(0, Math.max(0, cols - NEO_COL)), neoCss);
   }
+  return links;
 }
 
 export function showTitleScreen(
@@ -603,6 +617,7 @@ export function showTitleScreen(
   return new Promise<TitleChoice>((resolve) => {
     const rows = titleRows(opts);
     let spans: { row: TitleRow; start: number; end: number }[] = [];
+    let linkSpans: readonly TitleLinkSpan[] = [];
     let promptRow = 0;
     /* The shimmer's current colour. Held outside paint() so a full repaint (a
      * resize) keeps the frame the player is looking at rather than flashing
@@ -610,11 +625,10 @@ export function showTitleScreen(
     let shimmer = colorToCss(COLOUR_WHITE);
     const paint = (): void => {
       const { cols, rows: height } = term.size();
-      paintTitleArt(term);
-      /* The prompt line, on upstream's own row. Both credits are part of the
-       * painted screen above (titleLines) rather than being dropped in here, so
-       * there is one place where the layout is decided and one place to check it
-       * against the row budget. */
+      linkSpans = paintTitleArt(term);
+      /* The prompt line, on upstream's own row. The project information is part
+       * of the painted screen above (titleLines), so there is one place where the
+       * layout is decided and one place to check it against the row budget. */
       promptRow = Math.min(height - 1, 23);
       spans = titleRowSpans(rows, cols);
       const white = colorToCss(COLOUR_WHITE);
@@ -672,6 +686,11 @@ export function showTitleScreen(
     };
     inputEvents.addEventListener("keydown", onKey, true);
     setActiveCellTap(term, (cell) => {
+      const link = titleLinkSpanAt(linkSpans, cell);
+      if (link) {
+        openExternalUrl(link.href);
+        return;
+      }
       if (cell.row !== promptRow) return;
       const hit = spans.find((s) => cell.col >= s.start && cell.col <= s.end);
       if (hit?.row.enabled) finish(hit.row.choice);

@@ -302,13 +302,14 @@ describe("two mods offering the same thing", () => {
 });
 
 describe("the consumers actually read what was latched", () => {
-  it("paints a mod's splash, and STILL credits Angband and the port", () => {
+  it("paints a mod's splash, and STILL shows the project information", () => {
     setSplashArt(["{red}MY TOTAL CONVERSION{/}", "line two"]);
     const markup = titleLines().map((l) => l.markup);
     expect(markup[0]).toContain("MY TOTAL CONVERSION");
-    /* Weaving the credits at core's own row indices would have dropped them for
-     * any art that is not news.txt's shape - a two-row splash never reaches row
-     * 20. Appending is the form that cannot silently lose them. */
+    /* Weaving the project information at core's own row index (GROUND_ROW) would
+     * have dropped it for any art shorter than news.txt's own shape - a two-row
+     * splash never reaches row 12. Appending is the form that cannot silently
+     * lose it. */
     expect(markup.some((m) => m.includes("Angband"))).toBe(true);
     expect(markup.some((m) => m.includes("neostryder"))).toBe(true);
   });
@@ -316,7 +317,7 @@ describe("the consumers actually read what was latched", () => {
   it("clamps art that is too tall instead of running off the terminal", () => {
     setSplashArt(Array.from({ length: 60 }, (_, i) => `row ${i}`));
     const lines = titleLines();
-    expect(lines).toHaveLength(MOD_SPLASH_ROWS + 2);
+    expect(lines).toHaveLength(MOD_SPLASH_ROWS + 8);
   });
 
   it("REPLACES a core help page when the slot matches, and keeps the rest", () => {

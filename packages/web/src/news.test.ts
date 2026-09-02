@@ -9,18 +9,22 @@ import {
   COLOUR_WHITE,
   COLOUR_L_WHITE,
 } from "@rpgm-tools/neo-angband-core";
-import { ENGINE_VERSION, PARITY_BASELINE } from "@rpgm-tools/neo-angband-core";
+import { ENGINE_VERSION } from "@rpgm-tools/neo-angband-core";
 import {
+  MOD_SPLASH_ROWS,
   paintTitleArt,
   parseNewsLine,
+  setSplashArt,
   shimmerCss,
   showTitleScreen,
   TITLE_SHIMMER_MS,
+  titleLinkSpanAt,
   titleKeyChoice,
   titleLines,
   titleRows,
   titleRowSpans,
 } from "./news";
+import { UI_LINK } from "./ui-colors";
 
 describe("news title screen markup (news.txt {colour}...{/})", () => {
   it("colours bare text (outside any tag) COLOUR_WHITE", () => {
@@ -44,8 +48,8 @@ describe("news title screen markup (news.txt {colour}...{/})", () => {
     ]);
   });
 
-  it("resolves the multi-word 'light slate' name used by the quote lines", () => {
-    // news.txt draws the quote / website / forums in {light slate} = Light Slate.
+  it("resolves a multi-word colour name", () => {
+    // `light slate` is a valid Angband colour name, regardless of title content.
     expect(parseNewsLine("{light slate}Website{/}")).toEqual([
       { text: "Website", css: colorToCss(COLOUR_L_WHITE) },
     ]);
@@ -181,7 +185,7 @@ const strip = (s: string): string => s.replace(/\{[^}]*\}/gu, "");
 /**
  * Per-row colour+glyph, resolved the way showTitleScreen paints it. At module
  * scope because two suites need it: the 'Neo' overlay's clearance checks and the
- * credit block's placement checks.
+ * project-information placement checks.
  */
 function renderTitle(
   over: Partial<Parameters<typeof showTitleScreen>[1]> = {},
@@ -280,10 +284,10 @@ describe("the title art paints before anything is known (the town-map flash)", (
 
     /* Pinned to STATED text as well as to each other: "these two agree" is
      * satisfied by breaking both, so name something the art must contain. */
-    const art = Array.from({ length: 23 }, (_, y) => rowText(grid, y)).join("\n");
+    const art = Array.from({ length: 21 }, (_, y) => rowText(grid, y)).join("\n");
     expect(art).toContain(ENGINE_VERSION);
     expect(art).toContain("^"); // the mountains in news.txt
-    for (let y = 0; y < 23; y++) {
+    for (let y = 0; y < 21; y++) {
       expect(rowText(grid, y), `art row ${String(y)}`).toBe(rowText(full, y));
     }
   });
@@ -394,80 +398,91 @@ describe("the 'Neo' overlay against news.txt (reference/lib/screens/news.txt)", 
 });
 
 /**
- * Whose game the title screen says this is.
- *
- * news.txt's `$VERSION` slot used to show Angband's release number, under art
- * that reads "Neo Angband" - so the screen named the wrong version of the wrong
- * program, and the port's own credit sat at the very foot of the screen where it
- * read as a footnote to Angband's links. Both moved: the port's version takes the
- * slot beside the title, its credit sits directly under the mountain scene, and
- * Angband's release is credited in grey down in the link block.
- *
- * The constraint that makes this breakable is the ROW BUDGET. Upstream's splash
- * prompt is pinned to row 23 on an 80x24 terminal (main-win.c:5476), news.txt is
- * 22 rows, and inserting the port credit makes 23 - exactly full. A second
- * inserted row would push the help line onto the prompt, which is why Angband's
- * credit takes over news.txt's blank spacer instead of being inserted.
+ * The title scene ends at the ground ridge. Neo Angband's project information
+ * follows in eight rows, so its links are visible and the 80x24 prompt remains
+ * on upstream's row 23 with two blank rows above it.
  */
-describe("title screen credits (whose version, and where)", () => {
-  const SLATE = colorToCss(colorTextToAttr("slate"));
-
+describe("title screen project information", () => {
   it("shows the PORT's version in news.txt's $VERSION slot, not Angband's", () => {
     const slot = titleLines().find((l) => l.markup.includes(ENGINE_VERSION));
     expect(slot, `no line carries ${ENGINE_VERSION}`).toBeDefined();
-    /* The regression this pins: the slot showing 4.2.6 under a "Neo Angband"
-     * title. It must be the port's number there and nowhere near Angband's. */
-    expect(strip(slot!.markup)).not.toContain(PARITY_BASELINE);
     expect(slot!.markup).not.toContain("$VERSION");
   });
 
-  it("puts the port's credit directly under the mountain scene's ground ridge", () => {
+  it("replaces the old footer with the exact eight-row project-information block", () => {
     const lines = titleLines();
-    /* The ridge is the last row with mountain carets; the credit is the next. */
     const ridge = lines.findLastIndex((l) => strip(l.markup).includes("^"));
-    const credit = lines.findIndex((l) => l.markup.includes("neostryder"));
-    expect(credit).toBe(ridge + 1);
-    expect(lines[credit]!.centred).toBe(true);
+    expect(lines.slice(ridge + 1).map((line) => line.markup)).toEqual([
+      "Neo Angband: TypeScript port of Angband 4.2.6 with general-purpose mod loading.",
+      "",
+      "Docs and quick start: https://angband.rpgm.world/docs",
+      "GitHub: https://github.com/neostryder/neo-angband",
+      "Releases: https://releases.rpgm.tools/repos/neo-angband/",
+      "Discord: https://discord.gg/YegtwbHTBQ",
+      "Thank you, neostryder and past maintainers and developers and to all those who have given us so many creative variants!",
+      "",
+    ]);
   });
 
-  it("credits Angband's release in grey, down in the link block", () => {
+  it("keeps the core screen and prompt in their row budget", () => {
     const lines = titleLines();
-    const idx = lines.findIndex((l) => l.markup.includes(PARITY_BASELINE));
-    expect(idx).toBeGreaterThan(lines.findIndex((l) => l.markup.includes("rephial.org")));
-    expect(lines[idx]!.markup).toContain("{slate}");
+    expect(lines).toHaveLength(21);
     const grid = renderTitle();
-    expect(rowText(grid, idx)).toContain(`Angband ${PARITY_BASELINE}`);
-    expect(grid[idx]!.find((c) => c.ch !== " ")!.fg).toBe(SLATE);
-  });
-
-  it("keeps the whole screen inside the row budget, above upstream's prompt row", () => {
-    /* 23 painted rows (0-22), prompt at 23. One more line anywhere above and the
-     * help row lands under the prompt - the failure this exists to catch. */
-    const lines = titleLines();
-    expect(lines.length).toBe(23);
-    const grid = renderTitle();
-    expect(rowText(grid, 22)).toContain("For help press");
+    expect(rowText(grid, 20)).toBe("");
+    expect(rowText(grid, 21)).toBe("");
+    expect(rowText(grid, 22)).toBe("");
     expect(rowText(grid, 23)).toContain("(N)ew");
   });
 
-  it("moves the quote down a row rather than painting over it", () => {
-    /* The insert shifts everything below the ridge; the quote must survive whole,
-     * one row lower than news.txt has it. */
-    const quote = NEWS_TXT.findIndex((l) => l.includes("When the world is old"));
-    const grid = renderTitle();
-    expect(rowText(grid, quote)).not.toContain("When the world is old");
-    expect(rowText(grid, quote + 1)).toContain("When the world is old");
+  it("marks only each URL as a link at its painted grid span", () => {
+    const { grid, term } = gridTerm();
+    const spans = paintTitleArt(term);
+    expect(spans).toEqual([
+      {
+        row: 15,
+        startCol: "Docs and quick start: ".length,
+        endCol: "Docs and quick start: https://angband.rpgm.world/docs".length,
+        href: "https://angband.rpgm.world/docs",
+      },
+      {
+        row: 16,
+        startCol: "GitHub: ".length,
+        endCol: "GitHub: https://github.com/neostryder/neo-angband".length,
+        href: "https://github.com/neostryder/neo-angband",
+      },
+      {
+        row: 17,
+        startCol: "Releases: ".length,
+        endCol: "Releases: https://releases.rpgm.tools/repos/neo-angband/".length,
+        href: "https://releases.rpgm.tools/repos/neo-angband/",
+      },
+      {
+        row: 18,
+        startCol: "Discord: ".length,
+        endCol: "Discord: https://discord.gg/YegtwbHTBQ".length,
+        href: "https://discord.gg/YegtwbHTBQ",
+      },
+    ]);
+    for (const span of spans) {
+      expect(grid[span.row]![span.startCol]!.fg).toBe(UI_LINK);
+      expect(titleLinkSpanAt(spans, { row: span.row, col: span.startCol })?.href).toBe(span.href);
+      expect(titleLinkSpanAt(spans, { row: span.row, col: span.endCol })).toBeUndefined();
+    }
   });
 
-  it("re-centres only the two lines the port adds", () => {
-    /* news.txt's rows carry their centring as leading spaces; re-centring one
-     * would shift it. Only the added lines, which have no padding, are centred. */
-    const centred = titleLines().filter((l) => l.centred);
-    expect(centred).toHaveLength(2);
-    expect(centred.map((l) => strip(l.markup))).toEqual([
-      "A port by neostryder / RPGM Tools",
-      `Based on Angband ${PARITY_BASELINE} by the Angband developers`,
-    ]);
+  it("appends the same project information after mod art", () => {
+    setSplashArt(["mod splash"]);
+    try {
+      const lines = titleLines();
+      expect(MOD_SPLASH_ROWS).toBe(15);
+      expect(lines).toHaveLength(9);
+      expect(lines[0]!.markup).toBe("mod splash");
+      expect(lines.slice(1).map((line) => line.markup)).toContain(
+        "Docs and quick start: https://angband.rpgm.world/docs",
+      );
+    } finally {
+      setSplashArt(null);
+    }
   });
 });
 

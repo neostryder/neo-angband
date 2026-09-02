@@ -63,6 +63,8 @@ still calls itself.
 
 - [Visible] [UI] **Linoleum tile-pack conversion now shows a rotating terminal-HUD glyph and messages when it starts and finishes.** First-time atlas conversion continues in the background while the game remains responsive (#124).
 
+- [Visible] [UI] **The title screen's footer is now a short project description, a Docs/GitHub/Releases/Discord link block, and a thank-you line, replacing the Morgoth quote, the Website/Forums lines, and both credit lines.** The four links are real clickable/tappable spans using the same mechanism issue #59 established, not just printed URLs (#168).
+
 - Deleting a profile now asks whether to keep its living characters first;
   kept ones go into a small holding pool and can be reclaimed into any
   profile afterward from a new `Reclaim saves...` row on the Profile screen
