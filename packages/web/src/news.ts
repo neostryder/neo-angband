@@ -105,12 +105,6 @@ const NEO_COL = 19;
 /** news.txt colours the "Angband" letters red; "Neo" joins them. */
 const NEO_COLOUR = "red";
 
-/**
- * news.txt's last mountain row: the long ground ridge that closes the scene.
- * The Neo Angband project information block begins directly below it.
- */
-const GROUND_ROW = 12;
-
 /** One painted title row. */
 export interface TitleLine {
   /** `{colour}...{/}` markup, as news.txt writes it. */
@@ -227,10 +221,11 @@ export function splashIsModded(): boolean {
  *
  * The budget itself is 23 (0-22) with the prompt at row 23, which is upstream's
  * 80x24 terminal with nothing to spare - see the comment on titleLines. Core's
- * own art ends at GROUND_ROW because it was written to be; a mod's art is any
- * length, so it is CLAMPED and the information is appended after it. Those are
- * two different problems and one formula cannot solve both: GROUND_ROW is a
- * position inside news.txt's picture, and a mod's picture does not have it.
+ * own art ends at row 12, news.txt's last mountain row, because it was written
+ * to be; a mod's art is any length, so it is CLAMPED and the information is
+ * appended after it. Those are two different problems and one formula cannot
+ * solve both: row 12 is a position inside news.txt's picture, and a mod's
+ * picture does not have it.
  */
 export const MOD_SPLASH_ROWS = 15;
 
@@ -243,9 +238,10 @@ export function titleLines(): readonly TitleLine[] {
      *
      * THE PROJECT INFORMATION IS NOT OPTIONAL, and this is the only place that could have
      * quietly made them so. Weaving them at core's indices would have dropped
-     * it for any art that is not exactly news.txt's shape: GROUND_ROW is 12,
-     * so a shorter splash would never reach it and the project information would
-     * vanish without a word. Appending is the form that cannot fail. */
+     * it for any art that is not exactly news.txt's shape: row 12 is news.txt's
+     * last mountain row, so a shorter splash would never reach it and the
+     * project information would vanish without a word. Appending is the form
+     * that cannot fail. */
     for (const raw of splashOverride.slice(0, MOD_SPLASH_ROWS)) {
       out.push({ markup: raw.replace("$VERSION", ENGINE_VERSION), centred: false });
     }
