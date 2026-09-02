@@ -47,6 +47,8 @@ still calls itself.
 
 - [Visible] [Docs] **Added a beginner walkthrough and tested finished mod for making a custom town shop.** It uses Neo Angband's content and store-behaviour seams instead of upstream source-file edits (#148).
 
+- [Visible] [UI] **Linoleum tile-pack conversion now shows a rotating terminal-HUD glyph and messages when it starts and finishes.** First-time atlas conversion continues in the background while the game remains responsive (#124).
+
 - Deleting a profile now asks whether to keep its living characters first;
   kept ones go into a small holding pool and can be reclaimed into any
   profile afterward from a new `Reclaim saves...` row on the Profile screen

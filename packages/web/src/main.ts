@@ -419,7 +419,14 @@ import {
 } from "./tiles";
 import { LinoleumPack, loadLinoleumPack } from "./linoleum-pack";
 import { ensureLinoleumTilesheetPack } from "./linoleum-cache";
-import { hideTileConversionBanner, showTileConversionBanner } from "./tile-conversion-banner";
+import {
+  beginTileConversion,
+  finishTileConversion,
+  paintTileConversionIndicator,
+  tileConversionFinishedNotice,
+  tileConversionInProgress,
+  tileConversionStartedNotice,
+} from "./tile-conversion-indicator";
 import { urlBaseResolver, type PackFileResolver } from "./pack-files";
 import {
   showTextScreen,
@@ -1750,18 +1757,7 @@ const availableTileModes: readonly TileModeEntry[] = composeTileModes({
 let tileset: TileBlitter | null = null;
 let tileMap: TileMap | null = null;
 let currentGrafID = GRAPHICS_NONE;
-/**
- * Bumped on every linoleum selection that may need a first-time conversion,
- * so a stale attempt's own banner timer or cleanup never touches a newer
- * attempt's banner - `currentGrafID` alone is not enough, because switching
- * away and straight back to the SAME grafID while a conversion is still in
- * flight would make the stale check pass for the wrong attempt (#124).
- */
 let linoleumConversionSeq = 0;
-/** How long a conversion may run before the "still working" banner appears -
- * short enough to catch a real Shockbolt-sized wait, long enough that an
- * already-cached pack's near-instant resolve never flashes it at all. */
-const LINOLEUM_BANNER_DELAY_MS = 400;
 /* Read once while resources install - the file AND everything its `%:` lines
  * include (#278). Every pack-map rebuild replays this in enabled load order; a
  * graphics-mode switch never needs to resolve mod files. */
@@ -1855,28 +1851,29 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
     }
 
     // A first-time selection converts the whole source atlas before the pack
-    // is usable, which can run long enough to look like a hang (#124). Rather
-    // than block the menu on it, hand the player back to the game now and let
-    // a banner - shown only if it is still running after a short grace period,
-    // so an already-cached pack never flashes one - name what is happening.
+    // is usable.  The cache tells us when this is a real conversion rather than
+    // a cache hit, so the terminal HUD glyph and messages never flash falsely.
     const modId = entry.modId;
     const tilesheet = entry.tilesheet;
     const seq = ++linoleumConversionSeq;
+    const conversionId = String(seq);
     void (async () => {
-      const bannerTimer = setTimeout(() => {
-        if (linoleumConversionSeq === seq) showTileConversionBanner(menuname);
-      }, LINOLEUM_BANNER_DELAY_MS);
-      try {
-        const resolve = await ensureLinoleumTilesheetPack({
-          modId,
-          source: tilesheet,
-          resolve: sourceResolver,
-        });
-        await applyLoaded(resolve);
-      } finally {
-        clearTimeout(bannerTimer);
-        if (linoleumConversionSeq === seq) hideTileConversionBanner();
-      }
+      const resolve = await ensureLinoleumTilesheetPack({
+        modId,
+        source: tilesheet,
+        resolve: sourceResolver,
+        onConversionStart: () => {
+          beginTileConversion(conversionId);
+          say(tileConversionStartedNotice(menuname));
+          renderBackground();
+        },
+        onConversionFinish: () => {
+          finishTileConversion(conversionId);
+          say(tileConversionFinishedNotice(menuname));
+          renderBackground();
+        },
+      });
+      await applyLoaded(resolve);
     })();
     return;
   }
@@ -8652,6 +8649,13 @@ function render(targeting?: TargetingOverlay): void {
    * a second copy of the ownership rule on the hot path. */
   renderHudFrame(currentHudFrame(vp, cols, rows, regions, targeting), liveHudSink);
 
+  // A source-atlas cache miss is still working in the background.  This is a
+  // terminal cell, not DOM chrome: it survives the canvas renderer, follows
+  // the existing idle display tick, and appears only while the cache reports a
+  // real conversion.  The status row reserves its final column, so this sits
+  // in the lower-right corner without reflowing its usual indicators.
+  paintTileConversionIndicator(term, cols, rows, animFrame, UI_GOLD);
+
   // The map cursor - GlyphTerm.setCursor's one-pixel gold frame, drawn last
   // and on top of whatever the cell painted (#290). While targeting/looking,
   // the interactive loop's own grid takes the frame; between turns it is
@@ -13852,7 +13856,7 @@ setInterval(() => {
   // panned camera every 250ms for no benefit - simplest faithful stand-in
   // for upstream's own single-threaded UI, where nothing repaints mid-command.
   if (dead || scoresOpen || locateActive) return;
-  if (!hasAnimatedVisibleMonster()) return;
+  if (!hasAnimatedVisibleMonster() && !tileConversionInProgress()) return;
   animFrame = (animFrame + 1) & 0xff; // uint8_t flicker counter
   // Background: an overlay (title, character select, birth, any menu) owns the
   // terminal, and a flicker frame must not paint the map over it.

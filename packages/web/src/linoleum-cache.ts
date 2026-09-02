@@ -199,21 +199,30 @@ export async function ensureLinoleumTilesheetPack(input: {
   scope?: unknown;
   cache?: LinoleumCacheStore | null;
   converter?: LinoleumConverter;
+  /** Called only for a cache miss, immediately before source-atlas conversion. */
+  onConversionStart?: () => void;
+  /** Paired with onConversionStart after conversion and cache persistence settle. */
+  onConversionFinish?: () => void;
 }): Promise<PackFileResolver> {
   const persistent = input.cache === undefined ? await idbCache(input.scope ?? globalThis) : input.cache;
   const cache = persistent ?? memoryCache();
   const prefix = cachePrefix(input.modId, input.source);
   if (await cache.get(`${prefix}manifest.txt`) !== null) return cachedResolver(cache, prefix);
-  const produced = await (input.converter ?? browserLinoleumConverter)({
-    source: input.source,
-    resolve: input.resolve,
-  });
-  if (produced === null || produced.length === 0) return input.resolve;
-  const entries = produced.map(([path, body]) => [`${prefix}${path}`, body] as const);
-  if (await cache.put(entries)) return cachedResolver(cache, prefix);
-  /* A quota refusal must not turn a selected tileset into raw source files.
-   * It is still usable for this selection, just not retained past this page. */
-  const transient = memoryCache();
-  await transient.put(entries);
-  return cachedResolver(transient, prefix);
+  input.onConversionStart?.();
+  try {
+    const produced = await (input.converter ?? browserLinoleumConverter)({
+      source: input.source,
+      resolve: input.resolve,
+    });
+    if (produced === null || produced.length === 0) return input.resolve;
+    const entries = produced.map(([path, body]) => [`${prefix}${path}`, body] as const);
+    if (await cache.put(entries)) return cachedResolver(cache, prefix);
+    /* A quota refusal must not turn a selected tileset into raw source files.
+     * It is still usable for this selection, just not retained past this page. */
+    const transient = memoryCache();
+    await transient.put(entries);
+    return cachedResolver(transient, prefix);
+  } finally {
+    input.onConversionFinish?.();
+  }
 }

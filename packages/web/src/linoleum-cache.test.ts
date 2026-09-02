@@ -70,6 +70,26 @@ describe("ensureLinoleumTilesheetPack", () => {
     ]);
   });
 
+  it("reports conversion activity only for the cache-miss conversion", async () => {
+    const cache = memoryStore();
+    const activity: string[] = [];
+    const converter: LinoleumConverter = async () => [["manifest.txt", new TextEncoder().encode("pack:x:X\nresolution:8\n")]];
+    const input = {
+      modId: "m",
+      source,
+      resolve: async () => null,
+      cache,
+      converter,
+      onConversionStart: () => activity.push("start"),
+      onConversionFinish: () => activity.push("finish"),
+    };
+
+    await ensureLinoleumTilesheetPack(input);
+    await ensureLinoleumTilesheetPack(input);
+
+    expect(activity).toEqual(["start", "finish"]);
+  });
+
   it("uses a new cache namespace when a mod changes its source revision", async () => {
     const cache = memoryStore();
     let conversions = 0;
