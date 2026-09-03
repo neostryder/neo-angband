@@ -42,12 +42,12 @@ describe("API-2 Worker host broker", () => {
     await vi.waitFor(() => expect(command).toHaveBeenCalledWith("display.repaint", {}));
   });
 
-  it("refuses lookalike records, foreign ids, and requests before ready", () => {
+  it("refuses lookalike records and foreign ids while allowing boot-time requests", async () => {
     const worker = new FakeWorker();
     const problems: string[] = [];
     startModWorker(worker, {
       id: "worker",
-      capabilities: [],
+      capabilities: ["prefs:read"],
       entryUrl: "mem://worker/worker.js",
       snapshot: { id: "worker", modApi: 2, protocolVersion: MOD_WORKER_PROTOCOL_VERSION, engineVersion: "1.4.0", modVersion: "1.0.0", flags: {}, data: {}, capabilities: [], newCharacter: false },
       prefs: { get: () => null, set: () => undefined },
@@ -57,9 +57,32 @@ describe("API-2 Worker host broker", () => {
     worker.receive({ type: "prefs.get", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "other", requestId: 1 });
     worker.receive(Object.assign(Object.create({ hidden: true }), { type: "ready", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "worker", hasMigrateBag: false }));
     worker.receive({ type: "prefs.get", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "worker", requestId: 2 });
+    await vi.waitFor(() => expect(worker.sent.at(-1)).toMatchObject({ type: "reply", requestId: 2, ok: true }));
     expect(problems.join(" ")).toContain("wrong protocol version or plugin id");
     expect(problems.join(" ")).toContain("Object.prototype");
-    expect(problems.join(" ")).toContain("before ready");
+  });
+
+  it("assigns subscriptions, publishes only to them, and validates declarative panels", async () => {
+    const worker = new FakeWorker();
+    const subscribed: Array<[string, string]> = [];
+    const ui = vi.fn(async () => ({ panelId: "status" }));
+    const host = startModWorker(worker, {
+      id: "worker", capabilities: ["state:model.read", "ui:panel"], entryUrl: "mem://worker/worker.js",
+      snapshot: { id: "worker", modApi: 2, protocolVersion: MOD_WORKER_PROTOCOL_VERSION, engineVersion: "1.4.0", modVersion: "1.0.0", flags: {}, data: {}, capabilities: [], newCharacter: false },
+      prefs: { get: () => null, set: () => undefined }, readAsset: async () => null,
+      onSubscribe: (id, topic) => subscribed.push([id, topic]), onUi: ui,
+    });
+    worker.receive({ type: "event.subscribe", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "worker", requestId: 1, topic: "state.snapshot" });
+    await vi.waitFor(() => expect(subscribed).toHaveLength(1));
+    const subscriptionId = subscribed[0]![0];
+    ready(worker);
+    await host.ready;
+    host.publishModel(subscriptionId, { turn: 3 });
+    expect(worker.sent.at(-1)).toMatchObject({ type: "event.model", subscriptionId, model: { turn: 3 } });
+    worker.receive({ type: "ui.mount", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "worker", requestId: 2, panel: { id: "status", root: { type: "column", children: [{ type: "text", text: "Ready" }] } } });
+    await vi.waitFor(() => expect(ui).toHaveBeenCalledWith("mount", expect.anything(), undefined));
+    worker.receive({ type: "ui.mount", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "worker", requestId: 3, panel: { id: "status", root: { type: "html", markup: "<b>no</b>" } } });
+    await vi.waitFor(() => expect(worker.sent.at(-1)).toMatchObject({ type: "reply", requestId: 3, ok: false }));
   });
 
   it("round-trips a cloned asynchronous bag migration and terminates on teardown", async () => {

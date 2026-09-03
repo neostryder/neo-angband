@@ -6,10 +6,46 @@
  * incompatibly. Every value is structured-clone data, never a host handle.
  */
 
-export const MOD_WORKER_PROTOCOL_VERSION = "1.0.0";
+export const MOD_WORKER_PROTOCOL_VERSION = "1.1.0";
 
 export type WorkerLogLevel = "info" | "warn" | "error";
 export type WorkerJson = null | boolean | number | string | WorkerJson[] | { [key: string]: WorkerJson };
+
+/** The small, reactive read model exposed by the initial Worker ABI. */
+export interface ModStateSnapshot {
+  readonly turn: number;
+  readonly dead: boolean;
+  readonly level: { readonly depth: number; readonly width: number; readonly height: number };
+  readonly player: {
+    readonly name: string;
+    readonly level: number;
+    readonly experience: number;
+    readonly gold: number;
+    readonly hp: { readonly current: number; readonly max: number };
+    readonly mana: { readonly current: number; readonly max: number };
+    readonly speed: number;
+    readonly position: { readonly x: number; readonly y: number };
+  };
+}
+
+/** Host-rendered panel controls. Text is always assigned with textContent. */
+export type ModWorkerPanelNode =
+  | { readonly type: "text"; readonly text: string }
+  | { readonly type: "button"; readonly label: string; readonly action: string }
+  | { readonly type: "row"; readonly children: readonly ModWorkerPanelNode[] }
+  | { readonly type: "column"; readonly children: readonly ModWorkerPanelNode[] };
+
+export interface ModWorkerPanel {
+  readonly id: string;
+  readonly title?: string;
+  readonly root: ModWorkerPanelNode;
+}
+
+export interface ModWorkerPanelPatch {
+  readonly title?: string | null;
+  readonly root?: ModWorkerPanelNode;
+  readonly visible?: boolean;
+}
 
 export interface WorkerInitSnapshot {
   readonly id: string;
@@ -27,6 +63,7 @@ export type HostToModWorker =
   | { readonly type: "init"; readonly protocolVersion: string; readonly pluginId: string; readonly entryUrl: string; readonly snapshot: WorkerInitSnapshot }
   | { readonly type: "migrateBag"; readonly requestId: number; readonly pluginId: string; readonly data: WorkerJson; readonly fromSchema: number }
   | { readonly type: "event.model"; readonly pluginId: string; readonly subscriptionId: string; readonly model: WorkerJson }
+  | { readonly type: "ui.action"; readonly pluginId: string; readonly panelId: string; readonly action: string }
   | { readonly type: "teardown"; readonly pluginId: string };
 
 export type ModWorkerRequest =

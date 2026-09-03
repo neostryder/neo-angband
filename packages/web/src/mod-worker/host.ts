@@ -8,6 +8,7 @@ import {
   type WorkerJson,
   type WorkerLogLevel,
 } from "./protocol";
+import { panelDescription, panelId as validPanelId, panelPatch } from "./panel-schema";
 
 const MAX_MESSAGE_BYTES = 64 * 1024;
 const MAX_REQUESTS_PER_MINUTE = 60;
@@ -27,8 +28,12 @@ export interface ModWorkerHostDeps {
   readonly prefs: { get(): unknown; set(value: unknown): void };
   readonly readAsset: (path: string) => Promise<Uint8Array | null>;
   readonly onLog?: (level: WorkerLogLevel, message: string) => void;
+  /** Read a fresh cloned model after a capability-checked subscription begins. */
+  readonly modelForTopic?: (topic: ModWorkerTopic) => unknown;
   readonly onCommand?: (code: string, args: WorkerJson) => Promise<WorkerJson | null>;
-  readonly onUi?: (operation: "mount" | "patch", payload: WorkerJson) => Promise<WorkerJson | null>;
+  readonly onSubscribe?: (subscriptionId: string, topic: ModWorkerTopic) => void;
+  readonly onUi?: (operation: "mount" | "patch", payload: WorkerJson, panelId?: string) => Promise<WorkerJson | null>;
+  readonly onTeardown?: () => void;
   readonly onProblem?: (message: string) => void;
 }
 
@@ -37,10 +42,12 @@ export interface StartedModWorker {
   canMigrateBag(): boolean;
   migrateBag(data: unknown, fromSchema: number): Promise<WorkerJson>;
   publishModel(subscriptionId: string, model: unknown): void;
+  publishUiAction(panelId: string, action: string): void;
   teardown(): void;
 }
 
 type Lifecycle = "starting" | "ready" | "tearing-down" | "stopped";
+export type ModWorkerTopic = "state.snapshot" | "display.snapshot";
 
 /**
  * Host-side API-2 broker. It owns every live service and rejects malformed,
@@ -50,7 +57,9 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   const granted = new Set(deps.capabilities);
   let state: Lifecycle = "starting";
   let requestId = 0;
+  let subscriptionId = 0;
   let hasMigrateBag = false;
+  const subscriptions = new Map<string, ModWorkerTopic>();
   const pendingMigrations = new Map<number, { resolve(value: WorkerJson): void; reject(reason: Error): void; timeout: ReturnType<typeof setTimeout> }>();
   const requestTimes: number[] = [];
   let resolveReady: () => void = () => undefined;
@@ -76,6 +85,9 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       return;
     }
     post({ type: "reply", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: deps.id, requestId: id, ok: true, value: result });
+  };
+  const postModel = (subscriptionId: string, model: unknown): void => {
+    try { post({ type: "event.model", pluginId: deps.id, subscriptionId, model: cloneWorkerJson(model) }); } catch (err) { fail(asError(err).message); }
   };
   const allowed = (capability: string): boolean => granted.has(capability) || granted.has("*");
   const admit = (message: unknown): ModWorkerToHost | null => {
@@ -125,7 +137,9 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       return;
     }
     if (message.type === "teardown.ack") return;
-    if (state !== "ready") return fail("refused worker request before ready");
+    /* A module may await prefs, assets, or subscriptions from its default export
+     * before it can truthfully send ready. Starting is therefore a live broker
+     * state, while bag migration still begins only after ready below. */
     if (message.type === "log") {
       if (message.message.length > 4096) return fail("refused worker log longer than 4096 characters");
       deps.onLog?.(message.level, message.message);
@@ -168,7 +182,20 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     }
     if (message.type === "event.subscribe") {
       if (!allowed("state:model.read") || !validTopic(message.topic)) return reply(message.requestId, new Error("event.subscribe requires state:model.read and a declared topic"));
-      return reply(message.requestId, message.topic);
+      subscriptionId += 1;
+      const id = `subscription-${String(subscriptionId)}`;
+      subscriptions.set(id, message.topic);
+      try {
+        deps.onSubscribe?.(id, message.topic);
+        reply(message.requestId, id);
+        /* postMessage ordering keeps this after the reply that installs the
+         * listener in bootstrap.ts, so the initial model cannot race it. */
+        if (deps.modelForTopic) postModel(id, deps.modelForTopic(message.topic));
+        return;
+      } catch (err) {
+        subscriptions.delete(id);
+        return reply(message.requestId, asError(err));
+      }
     }
     if (message.type === "command.submit") {
       if (!allowed("command:submit") || !validCode(message.code)) return reply(message.requestId, new Error("command.submit requires command:submit and a semantic code"));
@@ -177,7 +204,11 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     }
     if (message.type === "ui.mount" || message.type === "ui.patch") {
       if (!allowed("ui:panel") || (message.type === "ui.patch" && !validId(message.panelId))) return reply(message.requestId, new Error("host-owned UI requires ui:panel and a valid panel id"));
-      try { reply(message.requestId, (await deps.onUi?.(message.type === "ui.mount" ? "mount" : "patch", message.type === "ui.mount" ? message.panel : message.patch)) ?? null); } catch (err) { reply(message.requestId, asError(err)); }
+      const payload = message.type === "ui.mount" ? message.panel : message.patch;
+      if (message.type === "ui.mount" ? !panelDescription(payload) : !panelPatch(payload)) {
+        return reply(message.requestId, new Error("host-owned UI needs a declared panel grammar"));
+      }
+      try { reply(message.requestId, (await deps.onUi?.(message.type === "ui.mount" ? "mount" : "patch", payload, message.type === "ui.patch" ? message.panelId : undefined)) ?? null); } catch (err) { reply(message.requestId, asError(err)); }
     }
   };
 
@@ -207,8 +238,12 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       });
     },
     publishModel(subscriptionId: string, model: unknown): void {
-      if (state !== "ready" || !validId(subscriptionId)) return;
-      try { post({ type: "event.model", pluginId: deps.id, subscriptionId, model: cloneWorkerJson(model) }); } catch (err) { fail(asError(err).message); }
+      if (state !== "ready" || !subscriptions.has(subscriptionId)) return;
+      postModel(subscriptionId, model);
+    },
+    publishUiAction(panelId: string, action: string): void {
+      if (state !== "ready" || !allowed("ui:panel") || !validPanelId(panelId) || !validPanelId(action)) return;
+      post({ type: "ui.action", pluginId: deps.id, panelId, action });
     },
     teardown(): void {
       if (state === "stopped" || state === "tearing-down") return;
@@ -221,6 +256,8 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
         pending.reject(new Error("worker stopped during bag migration"));
       }
       pendingMigrations.clear();
+      subscriptions.clear();
+      deps.onTeardown?.();
     },
   };
 }
@@ -231,7 +268,7 @@ function cloneSnapshot(snapshot: WorkerInitSnapshot): WorkerInitSnapshot {
 function asError(value: unknown): Error { return value instanceof Error ? value : new Error(String(value)); }
 function validId(value: string): boolean { return /^[a-z][a-z0-9-]{0,63}$/.test(value); }
 function validPath(value: string): boolean { return value.length > 0 && value.length <= 256 && !value.startsWith("/") && !value.includes("\\") && !value.split("/").some((part) => part === "" || part === "." || part === ".."); }
-function validTopic(value: string): boolean { return value === "state.snapshot" || value === "display.snapshot"; }
+function validTopic(value: string): value is ModWorkerTopic { return value === "state.snapshot" || value === "display.snapshot"; }
 function validCode(value: string): boolean { return /^[a-z][a-z0-9-]{0,63}(?:\.[a-z][a-z0-9-]{0,63})+$/.test(value); }
 function isWorkerMessage(value: unknown): value is ModWorkerToHost {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;

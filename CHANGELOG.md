@@ -54,6 +54,8 @@ still calls itself.
 
 - [Internal] [Modding-API] **Added the opt-in API-2 Worker plugin ABI.** A manifest can select `modApi: 2`, `runtime: "worker"`, and a `workerEntry`; Neo Angband then starts that entry through a host-owned Dedicated Worker bootstrap with a versioned, validated structured-clone protocol. API-1 `plugin.js` remains explicitly trusted in-process code (#155).
 
+- [Internal] [Modding-API] **Completed API-2's reactive model and host-owned panel protocols.** Subscribed Worker plugins now receive cloned state and display snapshots after changed rendered frames, and the `ui:panel` capability now renders a small host-owned text/button/layout panel grammar rather than forwarding a placeholder UI intent (#155).
+
 - [Visible] [Docs] **Added the `neo-angband-bin` AUR package definition.** It
   installs the released x86_64 AppImage with an Arch launcher, desktop entry and
   icon, and documents both local `makepkg` installation and the one-time AUR
@@ -178,7 +180,7 @@ still calls itself.
 
 ## [1.1.2] - 2026-08-27
 
-Current state of the project at version `1.5.0` - a fixes release. No player
+Current state of the project at version `1.6.0` - a fixes release. No player
 action is needed for the Linoleum id change below; an existing install
 carries its enabled choice and rule choices across automatically.
 

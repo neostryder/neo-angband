@@ -8,16 +8,24 @@ import {
   type WorkerInitSnapshot,
   type WorkerJson,
   type WorkerLogLevel,
+  type ModWorkerPanel,
+  type ModWorkerPanelPatch,
+  type ModStateSnapshot,
 } from "./protocol";
+import type { ModDisplaySnapshot } from "../mod-plugin";
 
 export interface ModWorkerApi {
   readonly init: WorkerInitSnapshot;
   log(level: WorkerLogLevel, message: string): void;
   prefs: { get(): Promise<WorkerJson | null>; set(value: WorkerJson | null): Promise<void> };
   assets: { read(path: string): Promise<Uint8Array | null> };
-  events: { subscribe(topic: "state.snapshot" | "display.snapshot", listener: (model: WorkerJson) => void): Promise<string> };
+  events: { subscribe(topic: "state.snapshot", listener: (model: ModStateSnapshot) => void): Promise<string>; subscribe(topic: "display.snapshot", listener: (model: ModDisplaySnapshot) => void): Promise<string> };
   commands: { submit(code: string, args: WorkerJson): Promise<WorkerJson | null> };
-  ui: { mount(panel: WorkerJson): Promise<WorkerJson | null>; patch(panelId: string, patch: WorkerJson): Promise<WorkerJson | null> };
+  ui: {
+    mount(panel: ModWorkerPanel): Promise<WorkerJson | null>;
+    patch(panelId: string, patch: ModWorkerPanelPatch): Promise<WorkerJson | null>;
+    onAction(listener: (event: { readonly panelId: string; readonly action: string }) => void): () => void;
+  };
 }
 
 export interface ModWorkerModule {
@@ -36,6 +44,7 @@ export function installModWorkerBootstrap(scope: WorkerScope): void {
   let nextRequest = 0;
   const pending = new Map<number, { resolve(value: WorkerJson | Uint8Array | null): void; reject(reason: Error): void }>();
   const listeners = new Map<string, (model: WorkerJson) => void>();
+  const uiListeners = new Set<(event: { readonly panelId: string; readonly action: string }) => void>();
 
   const send = (message: Record<string, unknown>): void => {
     if (!id) return;
@@ -60,6 +69,10 @@ export function installModWorkerBootstrap(scope: WorkerScope): void {
     }
     if (message.type === "event.model") {
       listeners.get(message.subscriptionId)?.(message.model);
+      return;
+    }
+    if (message.type === "ui.action") {
+      for (const listener of uiListeners) listener({ panelId: message.panelId, action: message.action });
       return;
     }
     if (message.type === "migrateBag") {
@@ -98,7 +111,7 @@ export function installModWorkerBootstrap(scope: WorkerScope): void {
         events: {
           subscribe: async (topic, listener): Promise<string> => {
             const subscriptionId = await request<string>({ type: "event.subscribe", topic });
-            listeners.set(subscriptionId, listener);
+            listeners.set(subscriptionId, listener as unknown as (model: WorkerJson) => void);
             return subscriptionId;
           },
         },
@@ -106,6 +119,10 @@ export function installModWorkerBootstrap(scope: WorkerScope): void {
         ui: {
           mount: (panel): Promise<WorkerJson | null> => request({ type: "ui.mount", panel }),
           patch: (panelId, patch): Promise<WorkerJson | null> => request({ type: "ui.patch", panelId, patch }),
+          onAction: (listener): (() => void) => {
+            uiListeners.add(listener);
+            return () => uiListeners.delete(listener);
+          },
         },
       };
       await plugin.default?.(api);

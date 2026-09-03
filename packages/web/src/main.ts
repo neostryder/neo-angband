@@ -349,7 +349,9 @@ import { defaultProfileStore } from "./profiles";
 import { scopedStorage, type ScopedStorage } from "./profile-scope";
 import { runProfileScreen } from "./profile-ui";
 import { modPrefs, setPrefsStorage } from "./mod-prefs";
-import { startModWorker, type StartedModWorker } from "./mod-worker/host";
+import { startModWorker, type ModWorkerTopic, type StartedModWorker } from "./mod-worker/host";
+import { createModWorkerPanelRenderer } from "./mod-worker/panels";
+import { MOD_WORKER_PROTOCOL_VERSION, type ModStateSnapshot, type WorkerJson } from "./mod-worker/protocol";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, reportModFault } from "./mod-problems";
 import { teardownModPlugins } from "./mod-teardown";
@@ -8548,6 +8550,10 @@ interface TargetingOverlay {
  */
 const CURSOR_BG = "#3a4a6a"; // palette-exempt: map cursor highlight background
 
+/* Assigned after API-2 workers start. A render is the only point where both the
+ * state and display models describe one completed host frame. */
+let publishWorkerModels: ((force?: boolean) => void) | undefined;
+
 function render(targeting?: TargetingOverlay): void {
   // verify_panel before drawing so every viewport() reader in this frame sees
   // the same offset. Skipped in 'L' locate mode, where locateCam pans instead.
@@ -8702,6 +8708,8 @@ function render(targeting?: TargetingOverlay): void {
   } else {
     term.hideCursor();
   }
+
+  publishWorkerModels?.();
 
   /* THE STACK IS PAINTED LAST, and the ordering is the whole point rather than
    * tidiness. render() opens with term.clear(), so a stack painted before it -
@@ -13342,23 +13350,72 @@ const sessionFacts: ModSessionFacts = { newCharacter: bootedNew && !birthPending
  * any bag migration. API-1 remains on every one of its existing in-process paths.
  * The bootstrap is ours; the mod entry URL is imported only inside that Worker. */
 const workerPlugins = new Map<string, StartedModWorker>();
+const workerModelSubscriptions = new Map<string, Map<string, ModWorkerTopic>>();
+const workerPanelRenderer = createModWorkerPanelRenderer();
+let lastWorkerStateModel: string | undefined;
+let lastWorkerDisplayModel: string | undefined;
+
+function workerStateSnapshot(): ModStateSnapshot {
+  const player = state.actor.player;
+  return {
+    turn: state.turn,
+    dead: state.isDead,
+    level: { depth: state.chunk.depth, width: state.chunk.width, height: state.chunk.height },
+    player: {
+      name: player.fullName,
+      level: player.lev,
+      experience: player.exp,
+      gold: player.au,
+      hp: { current: player.chp, max: player.mhp },
+      mana: { current: player.csp, max: player.msp },
+      speed: state.actor.speed,
+      position: { x: state.actor.grid.x, y: state.actor.grid.y },
+    },
+  };
+}
+
+/* Publish only after a completed render and only when the cloned model changed.
+ * This follows the agent bridge's snapshot-before-decision rhythm without an
+ * idle polling timer or a live state reference crossing into a Worker. */
+publishWorkerModels = (force = false): void => {
+  const subscriptions = [...workerModelSubscriptions.entries()]
+    .flatMap(([pluginId, entries]) => [...entries.entries()].map(([subscriptionId, topic]) => ({ pluginId, subscriptionId, topic })));
+  if (subscriptions.length === 0) return;
+  const wantState = subscriptions.some((entry) => entry.topic === "state.snapshot");
+  const wantDisplay = subscriptions.some((entry) => entry.topic === "display.snapshot");
+  const stateModel = wantState ? workerStateSnapshot() : undefined;
+  const displayModel = wantDisplay ? displayControl.snapshot() : undefined;
+  const stateChanged = stateModel !== undefined && (force || JSON.stringify(stateModel) !== lastWorkerStateModel);
+  const displayChanged = displayModel !== undefined && (force || JSON.stringify(displayModel) !== lastWorkerDisplayModel);
+  if (stateModel !== undefined) lastWorkerStateModel = JSON.stringify(stateModel);
+  if (displayModel !== undefined) lastWorkerDisplayModel = JSON.stringify(displayModel);
+  for (const entry of subscriptions) {
+    const session = workerPlugins.get(entry.pluginId);
+    if (!session) continue;
+    if (entry.topic === "state.snapshot" && stateChanged) session.publishModel(entry.subscriptionId, stateModel);
+    if (entry.topic === "display.snapshot" && displayChanged) session.publishModel(entry.subscriptionId, displayModel);
+  }
+};
 {
   const disk = diskPacks();
   for (const loaded of activeModCode().workers) {
+    let worker: Worker | undefined;
+    let session: StartedModWorker | undefined;
     try {
-      const worker = new Worker(new URL("./mod-worker/bootstrap.ts", import.meta.url), { type: "module" });
-      const session = startModWorker(worker, {
+      workerModelSubscriptions.set(loaded.id, new Map());
+      worker = new Worker(new URL("./mod-worker/bootstrap.ts", import.meta.url), { type: "module" });
+      session = startModWorker(worker, {
         id: loaded.id,
         capabilities: loaded.manifest.capabilities ?? [],
         entryUrl: loaded.entryUrl,
         snapshot: {
           id: loaded.id,
           modApi: 2,
-          protocolVersion: "1.0.0",
+          protocolVersion: MOD_WORKER_PROTOCOL_VERSION,
           engineVersion: ENGINE_VERSION,
           modVersion: loaded.manifest.version,
           flags: folderRuleFlags.get(loaded.id) ?? {},
-          data: loaded.data as Record<string, import("./mod-worker/protocol").WorkerJson>,
+          data: loaded.data as Record<string, WorkerJson>,
           capabilities: loaded.manifest.capabilities ?? [],
           newCharacter: sessionFacts.newCharacter ?? false,
         },
@@ -13371,6 +13428,7 @@ const workerPlugins = new Map<string, StartedModWorker>();
           return new Uint8Array(await response.arrayBuffer());
         },
         onLog: (level, message) => log[level](`mod:${loaded.id}`, message),
+        modelForTopic: (topic) => topic === "state.snapshot" ? workerStateSnapshot() : displayControl.snapshot(),
         onCommand: async (code) => {
           /* The first real semantic command is deliberately harmless. It proves
            * command intents cross the broker without opening a string-addressed
@@ -13379,6 +13437,21 @@ const workerPlugins = new Map<string, StartedModWorker>();
           repaintEverything();
           return { repainted: true };
         },
+        onSubscribe: (subscriptionId, topic) => {
+          workerModelSubscriptions.get(loaded.id)?.set(subscriptionId, topic);
+          queueMicrotask(() => publishWorkerModels?.(true));
+        },
+        onUi: async (operation, payload, panelId) => workerPanelRenderer.apply(
+          loaded.id,
+          operation,
+          payload,
+          panelId,
+          (id, action) => session?.publishUiAction(id, action),
+        ),
+        onTeardown: () => {
+          workerModelSubscriptions.delete(loaded.id);
+          workerPanelRenderer.teardown(loaded.id);
+        },
         onProblem: (message) => reportModFault(loaded.id, `Worker request refused: ${message}`),
       });
       await Promise.race([
@@ -13386,7 +13459,11 @@ const workerPlugins = new Map<string, StartedModWorker>();
         new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Worker did not become ready")), 3000)),
       ]);
       workerPlugins.set(loaded.id, session);
+      publishWorkerModels(true);
     } catch (err) {
+      session?.teardown();
+      if (!session) worker?.terminate();
+      workerModelSubscriptions.delete(loaded.id);
       reportModFault(loaded.id, `API-2 Worker failed to boot: ${faultMessage(err)}`);
     }
   }
