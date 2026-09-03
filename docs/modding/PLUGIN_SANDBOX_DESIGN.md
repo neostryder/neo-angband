@@ -173,11 +173,140 @@ an audit of real installed code, not only of the type declarations.
 | forge | `regions()` paints a text-grid tab through a synchronous `place`/`paint`/`input` triple, and its `input` handler calls `openWorkshop(ctx, doc)` against a live `document` to open a full DOM overlay. | **No.** The tab geometry alone could become a declaration, but the workshop overlay is exactly the raw-DOM case: no `Document` crosses a Worker boundary. |
 | upstream-catchup | `hooks()` returns synchronous callbacks over the same `HooksCtx` shape as bug-fixes; `register()` installs `host.tiles.register(fill => applyCatchupTiles(fill, ctx.registries, ctx.core))`, a live tile-fill callback closing over both registries and core. | **No.** Same synchronous-hook and live-tile-callback cases as bug-fixes and linoleum above. |
 
-Therefore **not every existing shipped mod can be migrated to a message-passing
-boundary without losing functionality**.  This is a go/no-go blocker for a plan
-whose premise is “move all ordinary plugins to Workers while preserving API 1.”
-It is not an Electron blocker, nor a reason to abandon workers for the class of
-plugins that can use a reactive API.
+Therefore no existing shipped mod can be moved unchanged. This is a blocker for
+any plan whose premise is "move all ordinary plugins to Workers while preserving
+API 1." It is not a blocker for the deliberately redesigned, full-cutover ABI
+specified below. The migration must replace each live callback with a bounded
+host operation, policy, snapshot, or declarative UI contract; it must not retain
+an API-1 escape hatch for the difficult mods.
+
+## Full API-2 surface: closing the API-1 gap
+
+This section is the full-cutover design. It preserves the shipped decisions:
+one Worker per plugin, structured-clone data only, capability-gated host
+operations, the event/model protocol, declarative panels, and `command.submit`.
+It does not make a Worker call a live function synchronously. "Resolved" below
+means that the replacement can carry every shipped mod to API 2; it never means
+that an API-1 callback is passed through.
+
+### Protocol additions and rules
+
+The existing `protocol.ts` messages remain the base. The following names are
+wire shapes, not TypeScript implementations. Every request has the existing
+`protocolVersion`, `pluginId`, and `requestId`; every reply uses the existing
+success/error envelope. Payloads are cloned, schema-checked, size-limited, and
+capability-gated on the host.
+
+* `query.snapshot { domain, revision?, selector }` returns a named, versioned,
+  immutable record snapshot. `domain` is an allow-listed domain, never an export
+  name. A reply includes `{ revision, data }`; the host emits
+  `event.snapshotInvalidated { domain, revision }` when the data can change.
+* `policy.install { policy, revision, body }` installs validated data into a
+  host cache. The host, not the Worker, evaluates it in a synchronous comparator,
+  renderer, RNG roll, or turn path. A later installation replaces only that
+  plugin's policy and is applied in normal load order.
+* `hook.request { hook, sequence, input }` and
+  `hook.result { sequence, decision, patch? }` are a serial async decision.
+  The host sends requests to participating plugins in load order and applies the
+  existing fold rule after each answer. Input is a purpose-built snapshot; a
+  patch is a validated declarative operation, never an object mutation.
+* `registry.declare { kind, id, definition }` is a serializable content or
+  command declaration. `registry.revoke { kind, id }` is its teardown inverse.
+  The host validates the kind-specific schema and owns the live registry.
+* `ui.region.declare { id, layer, placement, inputActions }` and
+  `ui.region.patch { id, cells, visible? }` replace region callbacks. `cells`
+  is a bounded display list of text cells and styles. The host retains the last
+  accepted patch and paints that cache synchronously every frame.
+
+Requests that affect a save or command are ordered with the owning game action.
+A timed-out request has the old faithful neutral answer, reports the fault, and
+does not leave a half-applied action. A Worker never chooses host object handles
+except where a snapshot explicitly exposes a stable numeric handle and the host
+validates that it is still eligible.
+
+### Category A: reads and ordinary context
+
+| API-1 capability | Resolved via | API-2 shape and verified scope |
+| --- | --- | --- |
+| `ctx.core` | Query snapshots plus semantic intents | `query.snapshot { domain: "engine.facts", selector }` exposes only documented constants and facts, and `command.submit` or a named intent performs a write. QoL's `movementTunnelTest` and `tunnelAux` become the `walk.blocked` host operation below; Borg stops binding the core namespace. There is no `core.call` message. |
+| `ctx.registries` | Versioned, cached query snapshot | `query.snapshot { domain: "content.borg-v1" }` returns Borg's exact static needs in one batch: monster `ridx`, flags, level, sleep, spell power/frequencies, friend presence, blow dice/effect names, spell ordinals and messages; object/ego/artifact activation names; and blow-method messages. It is invalidated only on content composition or reload, not per monster considered. Linoleum and catchup receive `content.tiles-v1` records instead. |
+| `ctx.composedRecords` | Paged query snapshot | `query.snapshot { domain: "content.records-v1", selector: { packFile?, cursor?, fields? } }` returns cloned JSON records and a content revision. This is sufficient for Forge's peer and field work without exposing bound registries. |
+| `ctx.authoring` | Needs its own follow-up design pass | Forge uses a large public SDK, complete composed records, editable drafts, install/session-load/reload, and wizard testing. Pure SDK code could be bundled with the Worker, but its public versioning, generated documentation, record paging, and interactive editor model need one dedicated Forge API-2 design before its port. This is a named migration blocker, not a reason to retain API 1. |
+| `ctx.state` | Push snapshots and semantic intents | Expand `event.subscribe` with capability-scoped models such as `state.player-v1`, `state.options-v1`, `state.map-hover-v1`, `state.shape-v1`, and `state.shop-v1`. Borg's shop/awareness facts join its controller model; QoL gets only the option/map fields it needs. No snapshot has methods or mutable arrays. |
+| `ctx.flags`, `ctx.newCharacter`, `ctx.data`, `ctx.id`, `ctx.api`, `ctx.engine` | Existing immutable init snapshot | Keep them in `WorkerInitSnapshot`, with schema/versioned `data`. They are already clone-safe. |
+| `ctx.prefs` | Existing async request/reply | Keep `prefs.get` and `prefs.set`; add `event.prefsSaved` only if a port needs the API-1 save notification. QoL's boot restore awaits `prefs.get`; its options event awaits a read-modify-write or uses a host `prefs.update` compare-and-set. |
+| `ctx.log` | Existing message | Keep bounded `log`. All seven mods that log need no live context. |
+
+The Borg inspection changes an earlier broad claim: its danger resolver is not
+only a per-monster registry lookup. It also builds message tables from blow
+methods and monster spells, resolves activation identity through object, ego,
+and artifact records, and reads the shop entrance and awareness state. The
+single cached `content.borg-v1` snapshot plus dynamic controller/state models is
+therefore required; sending just monster races would be incomplete.
+
+### Category B: registry and content overrides
+
+| API-1 facade | Resolved via | API-2 declaration or policy |
+| --- | --- | --- |
+| `effects`, `rooms`, `profiles`, `blows`, `projections`, `uiEntry`, `glyphs`, `effectInfo`, `randart`, `tval`, `rune` | Dedicated declarative schemas are required; no shipped caller | Use `registry.declare { kind, id, definition }` only for definitions that the host can validate and execute itself. The current facades accept synchronous handlers, so a generic replacement would recreate API 1 and is rejected. Each kind needs a follow-up schema before API-2 promises that kind to third parties. The audit found no real call site in the seven shipped mods. |
+| `vocab`, `messages` | Declarative registration | `registry.declare { kind: "vocab" or "messages", id, definition }` contains namespaced terms, values, and static templates only. The host owns lookup and persistence. No shipped mod currently uses either facade. |
+| `menus` | Declarative action plus async presenter | `registry.declare { kind: "menu.action", id, label, commandCode }` adds a host-owned row; `menu.present` events and `menu.answer` replies cover prompts the host can await. Existing synchronous transformers do not cross. No shipped mod uses it. |
+| `stores.setDiscountRoll` | Precomputed policy/table | `policy.install { policy: "store.discount-v1", body: { minimumCost: 5, rolls: [{ oneIn: 25, percent: 10 }, { oneIn: 50, percent: 25 }, { oneIn: 150, percent: 50 }, { oneIn: 300, percent: 75 }, { oneIn: 500, percent: 90 }] } }`. The host draws RNG and applies the table synchronously. This exactly covers feature-restoration's rule. |
+| `commands.register` and `commands.setVerb` | Async command invocation | `registry.declare { kind: "command", id, verb, input: { direction: true }, intentCodes: ["door.spike-v1"] }` installs a host parser. On use, `command.invoke { id, input, state: CommandSnapshot }` goes to the Worker and the Worker returns `command.intent { code: "door.spike-v1", direction }`. The host alone checks spikes, confusion, blockers, door lock, energy, messages, and gear consumption. This is a discrete player action, so an async answer is acceptable. |
+| `monsters.setTurnHook` | Precomputed policy/table, if the seam is retained | `policy.install { policy: "monster.turn-v1", body }` may contain only host-defined predicates and outcomes over a published monster-turn snapshot. A future request for arbitrary per-turn code needs its own schema; no shipped mod calls this hook today. |
+| `tiles.register` | Precomputed tile assignment table | The host sends `tile.fill.request { pack, contentRevision, unassignedMonsterIds, unassignedObjectIds }`. The Worker computes once from `content.tiles-v1` and replies `tile.assignments { monsters, objects }`; the host accepts only blank, in-range assignments. This covers both Linoleum's kin fill and upstream-catchup's fill without a mutable `TileFill`. |
+| `tiles.player` | Push-on-change plus host cache | `event.subscribe("state.shape-v1")` provides shape, class, race, and palette revision. The Worker sends `tile.player.set { tile: TileId | null, inputRevision }` whenever that state or its precomputed shape table changes. The renderer reads the cached tile synchronously on every repaint. Linoleum's provider is a table lookup, not a computation that needs a round trip per frame. |
+
+### Category C: `ModHooks`
+
+| Hook | Resolved via | API-2 shape |
+| --- | --- | --- |
+| `walkBlockedByDiggable` | Real async request/response | `hook.request { hook: "walk.blocked", input: { grid, canTunnel, moveEnergy } }` returns `decline` or `handle: "tunnel"`. On `tunnel`, the host performs its own one tunnel attempt and spends the supplied energy. This preserves QoL's check-before-RNG ordering without exposing `CaveCmdDeps`. |
+| `objectListTiebreak` | Precomputed policy/table | `policy.install { policy: "object-list.order-v1", body: { keys: ["dy", "dx"] } }`. The host compares these scalar fields inside `Array.sort`; no async comparator exists. This covers bug-fixes' strict geometric order. |
+| `projectionRadius` | Real async request/response | `hook.request { hook: "projection.radius", input: { radius, maxRange } }` returns `{ radius }`; the host range-validates it before geometry. The shipped clamp is tiny, but this follows the approved discrete-event pattern and preserves chained load order. |
+| `levelGenerated` | Real async request/response plus validated patch | `hook.request { hook: "level.generated", input: LevelGenerationSnapshot }` may return `accept`, `reject`, or `patch: { addStair: { kind, at } }`. The snapshot includes walkability, stair locations, player spot, no-stair cells, adjacent-wall counts, and quest facts. The host validates the location and calls its own stair placement primitive. This covers the bug-fixes repair, which only chooses a deterministic replacement stair. |
+| `artifactCommit` | Real async request/response | `hook.request { hook: "artifact.commit", input: { artifactIndex, alreadyCreated } }` returns `allow` or `deny`. This is RNG-free and exactly covers the shipped duplicate guard. |
+| `partialStackMerge` | Real async request/response | `hook.request { hook: "stack.partialMerge", input: { drained: { number, maxStack }, receiving: { number, maxStack } } }` returns `allow` or `deny`. No `GameObject` crosses. |
+| `packOverflowVictim` | Real async request/response | `hook.request { hook: "pack.overflowVictim", input: { orderedHandles, departedQuiver } }` returns `{ handle }` or `decline`; the host verifies that the handle is still in the pack. |
+| `historyAdd` | Real async request/response | `hook.request { hook: "history.add", input: { what, type, duplicate, rawUserInput? } }` returns `{ accept, what?, expandUserInput? }`. The host owns immutable type/duplicate facts and persists only the approved rewritten fields. |
+| `historyDisplay` | Async batch presentation | `hook.request { hook: "history.display", input: { entries, playerName } }` returns a same-length text list. History screen and dump presentation already have asynchronous control flow available; saved entries are not changed. |
+| `saveNoiseScent` | Precomputed policy | `policy.install { policy: "save.include-v1", body: { noiseScent: true } }` is read synchronously by serialization. This covers the shipped constant-true hook. |
+| `shapeLearnObviousFlagsDirectly` | Precomputed policy | `policy.install { policy: "shape.learn-v1", body: { obviousFlagsDirectly: true } }` lets the host perform its existing bounded operation synchronously. |
+| `levelRevisited` | Precomputed policy plus host operation | `policy.install { policy: "level.revisit-v1", body: { clearNoise: true, ageScent: true } }`. The host applies the known uint16-safe update from frozen and current turns. This covers upstream-catchup's constant rule and avoids copying typed arrays to a Worker. |
+| `messageText` | Queue-and-flush for general transforms; policy for the shipped mod | `message.transform.request { sequence, raw, type }` and ordered `message.transform.result { sequence, text }` hold messages until they can be committed in order to both `state.messages.add(text, code)` and the display/event sink. Before serialization, `flushMessageTransforms()` awaits all earlier sequences, then serialization reads the log. Bug-fixes' actual `miscStringFix` is an exact-match table, so it should instead install `policy.install { policy: "message.rewrite-v1", body: { exact: [...] } }`; that removes latency for the shipped port while retaining the generic queue design for a future transform. |
+| `optionsChanged` | Async event | `event.optionsChanged { snapshot }` has no return value. QoL persists its filtered settings through asynchronous prefs calls. |
+| `abilityGained` | Async event plus declarative UI/keymap requests | Keep the already-shipped event form and let QoL open a host-owned form and submit a keymap bind after the event. |
+
+The save inspection found a hard qualification to the `messageText` design. The
+current `persistSave()` directly calls `saveGame(game)` synchronously, is invoked
+from autosave, level and menu paths, and is also called from `beforeunload`.
+There is not currently a clean await point. Before API 2 enables a general
+message transform, all normal save callers must route through an async save
+coordinator that flushes first. `beforeunload` cannot reliably await a Worker;
+the follow-up must choose and document its bounded fallback (for example, flush
+earlier on visibility change and save only finalized messages on forced unload).
+The shipped exact-match policy avoids this limitation, but a full generic,
+persisted chained transform cannot claim complete fidelity until that save
+coordinator exists.
+
+### Category D: UI, interaction, and lifecycle
+
+| API-1 capability/member | Resolved via | API-2 shape and verified scope |
+| --- | --- | --- |
+| `ctx.ui.openPanel` | Expanded declarative UI | Keep `ui.mount`/`ui.patch`, and add schema-checked form controls, values, validation messages, and `ui.action` events. QoL's macro wizard needs an input field and buttons, not an `HTMLElement`. |
+| `ctx.keymaps` | Async semantic request | `keymap.query { key }` and `keymap.bind { trigger, action }` are capability-gated host requests. The host checks availability and owns keyboard dispatch. |
+| `ctx.display` (`snapshot`, grid/camera/map/sidebar/tile/filter/repaint/onKey) | Push display snapshots plus display intents | Keep `display.snapshot` subscription; add `display.intent { kind: "grid" | "camera" | "mapView" | "sidebarExtent" | "tileScaling" | "visualFilter" | "repaint", value }` and `input.key`/`input.pointer` events with clone-safe fields. QoL's zoom/pan changes only on user input, resize, or option change, so each intent can be asynchronous. Its hover card must become a host-owned declarative overlay fed by `state.map-hover-v1`, not canvas/DOM sampling. |
+| `installMod`, `reloadGame`, `loadModForSession` | Existing promise-shaped RPC | Add named `mod.install`, `game.reload`, and `mod.loadForSession` request codes with existing byte, archive, and consent limits. Forge already awaits these actions. |
+| `ctx.debug` | Semantic host commands | `debug.request { code, args }` is capability-gated and confirmed by the host. No shipped mod uses it; a generic live debug facade is rejected. |
+| `ctx.wizard` | Needs a small named command catalogue | Forge uses a wizard test surface, not an incidental one-shot call. Define `wizard.catalogue` and individually validated `wizard.request` codes after a focused Forge design; the host remains responsible for confirmation and save detachment. |
+| `ctx.backupFolder` | Async mediated storage | Keep capability-gated `backup.choose`, `backup.write`, and `backup.forget` requests. No shipped mod uses it. |
+| `frontend(ctx)` | Push-on-change display-list cache | `ui.frontend.declare` claims the allowed surface once; `ui.frontend.patch { revision, displayList }` updates a host cache. The host presents the last valid display list every frame. No shipped mod currently supplies `frontend`; the audit's callback cadence is confirmed by the host render loop, not by a shipped frontend. |
+| `hud(ctx)` | Push-on-change display-list cache | `ui.hud.declare { regions }` and `ui.hud.patch { revision, cells }` replace `HudFrameSink.present`. Inspection corrects the simpler assumption here: QoL returns a sidebar sink whose `present(section, frame)` paints every HUD frame, including live player values. The host must publish a coalesced HUD model when its values change and paint the last Worker display list synchronously; it cannot wait for a Worker during each render. |
+| `menu(ctx)` and `screen(ctx)` | Async host presentation | `menu.present`/`menu.answer` and `screen.present`/`screen.dismiss` give the host overlay and focus ownership. The audit found no shipped caller; synchronous presenter functions do not cross. |
+| `regions(ctx)` | Push-on-change region cache | `ui.region.declare` is once per lifetime and `ui.region.patch` changes the cached cells on state/input changes. The current compositor calls every `paint(surface)` synchronously on every `render()`; Forge's actual tab paint is constant text and placement depends only on grid size, so one declaration plus cached patch is sufficient. Its workshop itself is covered by the Forge follow-up, not by a raw `Document`. |
+| `migrateBag` | Existing async migration | Keep `migrateBag` request/result. The audit found no shipped caller, but it is already naturally Worker-shaped. |
+| `controller(ctx)` | Existing agent decision protocol plus cached snapshots | Use the existing serialized perceive/act pump for one decision per player turn. Feed it Borg's `content.borg-v1` cache and dynamic models rather than `bindCore`, registries, or `GameState`. A few milliseconds is acceptable at the command boundary; the host waits before asking for the next player action, not during rendering. |
+| `uninstall()` | Host-owned teardown | Keep bounded `teardown`/acknowledgement then termination. UI, policies, declarations, and caches are keyed by plugin id and removed by the host even if the Worker does not acknowledge. |
 
 ## Browser and Electron
 
@@ -231,20 +360,28 @@ This is a breaking change to the ordinary plugin API.  The recommended path is:
    commands, and a host-owned UI/display protocol.  Version its wire messages
    independently.
 3. Port one opt-in mod only after its required reads/actions are explicitly
-   represented.  Borg is the strongest candidate for a later pilot because the
-   controller transport already exists, but it is not yet an easy pilot due to
-   its direct initialization dependencies.
-4. Keep callback-heavy engine extensions as API-1 trusted plugins unless and
-   until core deliberately replaces the individual extension with declarative
-   host behavior.  Do not silently run an API-2 fallback in-process.
-5. Give API 1 the documented deprecation period, then remove it only in the
-   next major mod-API change.  If the product goal is “all plugins are
-   technically sandboxed,” removal—not a version-window bump alone—is the point
-   at which that claim becomes true.
+   represented. Borg is a useful controller pilot because the decision transport
+   already exists, but its content snapshot must come first.
+4. Port every shipped callback-heavy mod through the named policies, hook
+   requests, declarations, and UI caches in the full-surface section. Do not
+   silently run an API-2 fallback in-process.
+5. Complete the explicitly named follow-up designs for Forge authoring/wizard
+   and the generic persisted message-transform save coordinator before claiming
+   the corresponding API-2 surfaces are complete.
+6. Deprecate API 1 only after every shipped mod has moved, then remove it in the
+   later major mod-API change that the project chooses.
 
 A mere `MOD_API_VERSION` bump with an accepted API-1 compatibility window does
 not make existing plugins safe.  It only labels them old while still executing
 them in the process.
+
+### Full-cutover end state
+
+API 1 is a migration compatibility path, not a permanent second ABI. The end
+state is that all seven shipped mods run as API-2 Workers and API 1 is deprecated
+because nothing shipped still requires its trusted in-process callbacks, live
+objects, or DOM access. The exact deprecation and removal dates are a separate
+product decision and are intentionally not set here.
 
 ## Threat model: honest limits
 
@@ -289,5 +426,5 @@ audit shows it is not.
 
 The correct next implementation is therefore a human-approved API-2 scope,
 starting with a reactive-only capability whose complete host contract is known.
-It must stay opt-in and leave all current shipped mods exactly as they run
-today.
+It stays opt-in while each migration is verified, but the target is the full
+cutover specified above rather than a permanent split.
