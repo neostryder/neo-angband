@@ -227,8 +227,9 @@ export interface ModDisplaySnapshot {
  *
  * It contains no bindings, zoom steps, gesture interpretation, persistence, or
  * animation. A mod supplies those policies and uses this surface to apply the
- * resulting whole-cell grid, camera, map window, sidebar reservation, and tile
- * sampling choice.
+ * resulting whole-cell grid, camera, map window, sidebar reservation, tile
+ * sampling choice, and (with the separately consented display:filter capability)
+ * a post-processing filter on the terminal canvas.
  */
 export interface ModDisplay {
   snapshot(): ModDisplaySnapshot;
@@ -239,6 +240,8 @@ export interface ModDisplay {
   setMapView(view: ModMapView | null): void;
   setSidebarExtent(extent: { readonly columns: number; readonly topRows: number } | null): void;
   setTileScaling(mode: "auto" | "crisp"): void;
+  /** Apply a CSS filter to the terminal canvas, or clear the current filter. */
+  setVisualFilter(filter: string | null): void;
   repaint(): void;
 }
 
@@ -332,10 +335,13 @@ export interface ModPluginContext {
   /**
    * Live display geometry, once the web shell has a game surface.
    *
-   * Absent during content composition. It is intentionally ungated: this is a
-   * layout/rendering seam, and in-process plugin code already receives the live
-   * game namespace and document. The narrow interface makes ownership explicit
-   * without pretending to add an isolation boundary.
+   * Absent during content composition. Geometry, sampling, and repaint methods
+   * are intentionally ungated: this is a layout/rendering seam, and in-process
+   * plugin code already receives the live game namespace and document. The
+   * narrow interface makes ownership explicit without pretending to add an
+   * isolation boundary. setVisualFilter is different: it is explicitly gated by
+   * display:filter so the consent screen tells a player that a mod changes the
+   * final rendered appearance.
    */
   readonly display?: ModDisplay;
   /**

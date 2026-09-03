@@ -62,6 +62,8 @@ describe("describeCapability", () => {
     expect(describeCapability("state:*.read")).toMatchObject({ elevated: true });
     expect(describeCapability("network:example.com")).toMatchObject({ elevated: true });
     expect(describeCapability("network:*").text).toMatch(/ANY host/i);
+    expect(describeCapability("display:filter")).toMatchObject({ elevated: false });
+    expect(describeCapability("display:filter").text).toMatch(/post-processing filter/i);
   });
 
   it("gives mod:install and mod:session DIFFERENT sentences, and neither is padding", () => {

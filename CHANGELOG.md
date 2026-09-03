@@ -50,6 +50,8 @@ still calls itself.
 
 ### Added
 
+- [Visible] [Modding-API] **Mods can apply a consented post-processing visual filter to the terminal canvas.** The new `display:filter` capability exposes `ctx.display.setVisualFilter(filter)`, which affects the final ASCII or tile frame and every terminal-grid screen without changing the game's named color palette (#166).
+
 - [Visible] [Docs] **Added the `neo-angband-bin` AUR package definition.** It
   installs the released x86_64 AppImage with an Arch launcher, desktop entry and
   icon, and documents both local `makepkg` installation and the one-time AUR
@@ -174,7 +176,7 @@ still calls itself.
 
 ## [1.1.2] - 2026-08-27
 
-Current state of the project at version `1.3.0` - a fixes release. No player
+Current state of the project at version `1.4.0` - a fixes release. No player
 action is needed for the Linoleum id change below; an existing install
 carries its enabled choice and rule choices across automatically.
 

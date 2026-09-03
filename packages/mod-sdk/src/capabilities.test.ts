@@ -507,6 +507,18 @@ describe("CapabilitySet: has / check", () => {
     expect(wild.has("display:replace")).toBe(false);
   });
 
+  it("keeps display:filter separate from taking over the dungeon renderer", () => {
+    const filter = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["display:filter"] }),
+    );
+    expect(filter.has("display:filter")).toBe(true);
+    expect(filter.has("display:replace")).toBe(false);
+    const replace = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["display:replace"] }),
+    );
+    expect(replace.has("display:filter")).toBe(false);
+  });
+
   it("grants an exact network host and rejects a different host", () => {
     const set = CapabilitySet.fromManifest(
       manifest("plugin", { capabilities: ["network:api.example.com"] }),

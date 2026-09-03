@@ -181,6 +181,10 @@
  *                             the character on disk untouched. Neither is a
  *                             superset of the other and `grantCovers` compares the
  *                             action, so one consent cannot buy both.
+ *  - "display:filter"      - apply a post-processing filter to the game's rendered
+ *                             terminal canvas. It is deliberately separate from
+ *                             display:replace: changing the appearance of the
+ *                             faithful renderer is not taking ownership of it.
  *  - "ui:panel.mount"      - draw with real HTML instead of the character grid: a
  *                             panel of the mod's own, mounted on the page above
  *                             the game. A THIRD "ui:" action, and the reason it is
@@ -226,7 +230,7 @@ export type ParsedCapability =
   | { kind: "state"; domain: string; access: "read" }
   | { kind: "network"; host: string }
   | { kind: "registry"; domain: string }
-  | { kind: "display"; action: "replace" }
+  | { kind: "display"; action: "replace" | "filter" }
   | { kind: "ui"; region: string; action: "replace" | "create" | "mount" }
   | { kind: "backup"; action: "folder" }
   | { kind: "mod"; action: "install" | "session" }
@@ -319,8 +323,8 @@ export function parseCapability(cap: string): ParsedCapability {
    * sees of the dungeon is drawn by this mod." It is the display OWNER, so it
    * has no domain to name and no wildcard to sit under - `registry:*` must not
    * carry it, which is exactly what a separate kind buys. */
-  if (cap === "display:replace") {
-    return { kind: "display", action: "replace" };
+  if (cap === "display:replace" || cap === "display:filter") {
+    return { kind: "display", action: cap === "display:replace" ? "replace" : "filter" };
   }
   /* "backup:folder": lets the mod write files into a folder the player picks;
    * the mod never learns the folder's real path (the browser will not say),
@@ -434,7 +438,7 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
       /* Exact match only. See parseCapability: `registry:*` does not reach
        * here, so a mod holding the override wildcard still cannot take the
        * display without asking for it by name. */
-      return grant.kind === "display";
+      return grant.kind === "display" && grant.action === request.action;
     case "backup":
       /* Exact match only, same reasoning as "display" - there is exactly one
        * backup capability and no wildcard grant could ever cover it. */

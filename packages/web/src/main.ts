@@ -319,6 +319,7 @@ import {
   type ModSessionFacts,
 } from "./mod-context";
 import type { ModDisplay, ModPluginContext } from "./mod-plugin";
+import { setCanvasVisualFilter } from "./visual-filter";
 import { migrateModBags } from "./mod-bags";
 import {
   folderPickingSupported,
@@ -8476,6 +8477,9 @@ const displayControl: ModDisplay = {
     setTileScalingMode(mode);
     term.invalidate();
     if (levelMapActive) levelMapRepaint?.();
+  },
+  setVisualFilter(filter) {
+    setCanvasVisualFilter(canvas, filter);
   },
   repaint() {
     if (levelMapActive) levelMapRepaint?.();

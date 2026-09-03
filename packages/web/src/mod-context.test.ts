@@ -9,7 +9,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   modPluginContext,
   setModDisplayControl,
@@ -65,16 +65,58 @@ describe("modPluginContext session facts", () => {
       setMapView: () => undefined,
       setSidebarExtent: () => undefined,
       setTileScaling: () => undefined,
+      setVisualFilter: () => undefined,
       repaint: () => undefined,
     } as unknown as ModDisplay;
     setModDisplayControl(undefined);
     expect(modPluginContext("qol", {}).display).toBeUndefined();
     setModDisplayControl(display);
     try {
-      expect(modPluginContext("qol", {}).display).toBe(display);
+      expect(modPluginContext("qol", {}).display?.snapshot()).toEqual({ mode: "play" });
     } finally {
       setModDisplayControl(undefined);
     }
+  });
+
+  it("requires display:filter before a mod can change final canvas pixels", () => {
+    const setVisualFilter = vi.fn();
+    const display = {
+      snapshot: () => ({ mode: "play" }),
+      onKey: () => () => undefined,
+      setGrid: () => undefined,
+      setCamera: () => undefined,
+      setMapView: () => undefined,
+      setSidebarExtent: () => undefined,
+      setTileScaling: () => undefined,
+      setVisualFilter,
+      repaint: () => undefined,
+    } as unknown as ModDisplay;
+    const without = CapabilitySet.fromManifest({
+      id: "plain-display",
+      name: "Plain display",
+      version: "1.0.0",
+      shape: "plugin",
+      facets: ["plugin"],
+      modApi: 1,
+      capabilities: [],
+    });
+    expect(() =>
+      modPluginContext("plain-display", {}, undefined, {}, { display, capabilities: without })
+        .display?.setVisualFilter("contrast(1.5)"),
+    ).toThrow(/display:filter/);
+
+    const withFilter = CapabilitySet.fromManifest({
+      id: "filtered-display",
+      name: "Filtered display",
+      version: "1.0.0",
+      shape: "plugin",
+      facets: ["plugin"],
+      modApi: 1,
+      capabilities: ["display:filter"],
+    });
+    modPluginContext("filtered-display", {}, undefined, {}, { display, capabilities: withFilter })
+      .display?.setVisualFilter("contrast(1.5)");
+    expect(setVisualFilter).toHaveBeenCalledWith("contrast(1.5)");
   });
 });
 

@@ -30,6 +30,7 @@ import {
   type ModUi,
   type ModWizard,
 } from "./mod-plugin";
+import { VISUAL_FILTER_CAPABILITY } from "./visual-filter";
 import { diskPacks } from "./disk-packs";
 import { modPrefs, type ModPrefs } from "./mod-prefs";
 import { createBackupFolder } from "./mod-backup";
@@ -132,12 +133,12 @@ export function modPluginContext(
   const loadModForSession = sessionLoaderFor(session);
   const debug = debugFor(id, session);
   const wizard = wizardFor(id, session);
-  const display = session.display ?? displayControl;
+  const display = displayFor(session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
   const registries = session.registries ?? boundRegistries;
   const records = session.composedRecords ?? composedRecords;
-  return Object.freeze({
+  const context: ModPluginContext = {
     id,
     api: MOD_API_VERSION,
     engine: neoCore.ENGINE_VERSION,
@@ -173,11 +174,41 @@ export function modPluginContext(
      * same question as `ctx.registries !== undefined` - the shape `state` uses. */
     ...(registries ? { registries } : {}),
     ...(records ? { composedRecords: records } : {}),
-  });
+  };
+  return Object.freeze(context);
 }
 
 /** The live display door, latched after the shell has constructed its surface. */
 let displayControl: ModDisplay | undefined;
+
+/**
+ * The display geometry door is available to every in-process plugin, but the
+ * final canvas appearance is a separately declared player-facing change. Keep
+ * that one method on a per-plugin facade so the same live canvas can be safely
+ * handed to more than one plugin without one mod borrowing another's grant.
+ */
+function displayFor(session: ModSessionFacts): ModDisplay | undefined {
+  const display = session.display ?? displayControl;
+  if (!display) return undefined;
+  const facade: ModDisplay = {
+    snapshot: () => display.snapshot(),
+    onKey: (listener) => display.onKey(listener),
+    setGrid: (request) => display.setGrid(request),
+    setCamera: (origin) => display.setCamera(origin),
+    setMapView: (view) => display.setMapView(view),
+    setSidebarExtent: (extent) => display.setSidebarExtent(extent),
+    setTileScaling: (mode) => display.setTileScaling(mode),
+    setVisualFilter: (filter) => {
+      if (!session.capabilities) {
+        throw new Error(`this plugin needs capability "${VISUAL_FILTER_CAPABILITY}"; no capability set was supplied`);
+      }
+      session.capabilities.check(VISUAL_FILTER_CAPABILITY);
+      display.setVisualFilter(filter);
+    },
+    repaint: () => display.repaint(),
+  };
+  return Object.freeze(facade);
+}
 
 /** Install or clear the geometry-only display door (boot path and tests). */
 export function setModDisplayControl(display: ModDisplay | undefined): void {

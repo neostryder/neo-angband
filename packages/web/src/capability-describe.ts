@@ -183,6 +183,13 @@ export function describeCapability(cap: string): CapabilityDescription {
       return { cap, text: r.text, elevated: r.elevated };
     }
     case "display":
+      if (parsed.action === "filter") {
+        return {
+          cap,
+          text: "Apply a visual post-processing filter to the game's terminal canvas",
+          elevated: false,
+        };
+      }
       return {
         cap,
         text: "Draw the dungeon itself - everything you see of the map comes from this mod instead of the game",
