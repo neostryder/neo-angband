@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { startModWorker, type ModWorkerLike } from "./host";
 import { MOD_WORKER_PROTOCOL_VERSION, type HostReply, type HostToModWorker } from "./protocol";
+import { ModWorkerTransport } from "./transport";
 
 class FakeWorker implements ModWorkerLike {
   readonly sent: Array<HostToModWorker | HostReply> = [];
@@ -100,5 +101,38 @@ describe("API-2 Worker host broker", () => {
     await expect(result).resolves.toEqual({ new: true });
     host.teardown();
     expect(worker.terminated).toBe(true);
+  });
+
+  it("brokers the six API-2 transport messages through the normal limits and capabilities", async () => {
+    const worker = new FakeWorker();
+    const regions = new ModWorkerTransport();
+    const host = startModWorker(worker, {
+      id: "worker", capabilities: ["query:snapshot", "policy:install", "hook:respond", "registry:declare", "ui:region"], entryUrl: "mem://worker/worker.js",
+      snapshot: { id: "worker", modApi: 2, protocolVersion: MOD_WORKER_PROTOCOL_VERSION, engineVersion: "1.4.0", modVersion: "1.0.0", flags: {}, data: {}, capabilities: [], newCharacter: false },
+      prefs: { get: () => null, set: () => undefined }, readAsset: async () => null, transport: regions,
+    });
+    ready(worker);
+    await host.ready;
+    const committed = regions.artifactCommit({ artifactIndex: 7, alreadyCreated: false });
+    await vi.waitFor(() => expect(worker.sent.at(-1)).toMatchObject({ type: "hook.request", hook: "artifact.commit", sequence: 1, input: { artifactIndex: 7, alreadyCreated: false } }));
+    const hookRequest = worker.sent.at(-1) as Extract<HostToModWorker, { type: "hook.request" }>;
+    worker.receive({ type: "hook.result", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "worker", requestId: hookRequest.requestId, sequence: hookRequest.sequence, decision: "deny" });
+    await expect(committed).resolves.toBe(false);
+    worker.receive({ type: "query.snapshot", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "worker", requestId: 1, domain: "engine.facts", selector: {} });
+    await vi.waitFor(() => expect(worker.sent.at(-1)).toMatchObject({ type: "reply", requestId: 1, ok: true, value: { revision: 1 } }));
+    worker.receive({ type: "policy.install", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "worker", requestId: 2, policy: "object-list.order-v1", revision: 1, body: { keys: ["dy", "dx"] } });
+    await vi.waitFor(() => expect(worker.sent.at(-1)).toMatchObject({ requestId: 2, ok: true }));
+    worker.receive({ type: "registry.declare", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "worker", requestId: 3, kind: "command", id: "worker-wave", definition: { id: "worker-wave", verb: "wave", input: "none", intentCodes: ["wave"] } });
+    await vi.waitFor(() => expect(regions.hasCommand("worker", "worker-wave")).toBe(true));
+    worker.receive({ type: "ui.region.declare", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "worker", requestId: 4, id: "worker-tab", layer: "hud", placement: { x: 0, y: 0, width: 2, height: 1 }, inputActions: [] });
+    worker.receive({ type: "ui.region.patch", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "worker", requestId: 5, id: "worker-tab", cells: [{ x: 0, y: 0, text: "W" }] });
+    await vi.waitFor(() => expect(worker.sent.at(-1)).toMatchObject({ requestId: 5, ok: true }));
+    const painted: string[] = [];
+    regions.paintRegion("worker", "worker-tab", (cell) => painted.push(cell.text));
+    expect(painted).toEqual(["W"]);
+    worker.receive({ type: "event.subscribe", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "worker", requestId: 6, topic: "snapshot.invalidated" });
+    await vi.waitFor(() => expect(worker.sent.at(-1)).toMatchObject({ requestId: 6, ok: true }));
+    host.publishSnapshotInvalidated("engine.facts", 2);
+    expect(worker.sent.at(-1)).toMatchObject({ type: "event.snapshotInvalidated", domain: "engine.facts", revision: 2 });
   });
 });

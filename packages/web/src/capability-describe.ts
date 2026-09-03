@@ -271,6 +271,16 @@ export function describeCapability(cap: string): CapabilityDescription {
         text: "Create new shortcut keymaps in your current keyset without replacing your existing shortcuts",
         elevated: false,
       };
+    case "query":
+      return { cap, text: "Read the host's named, cloned engine and content snapshots", elevated: false };
+    case "policy":
+      return { cap, text: "Install declared host-side policies that the game evaluates synchronously", elevated: true };
+    case "hook":
+      return { cap, text: "Answer approved asynchronous game decisions with a safe timeout fallback", elevated: true };
+    case "registry-declaration":
+      return { cap, text: "Declare host-owned commands or content using approved data schemas", elevated: true };
+    case "ui-region":
+      return { cap, text: "Add and update a host-painted text region on the game screen", elevated: true };
     case "ui":
       /* Named, because the consent is worth exactly as much as the player's
        * ability to picture what changes. "Replace part of the interface" tells

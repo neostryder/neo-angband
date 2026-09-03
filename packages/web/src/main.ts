@@ -352,6 +352,7 @@ import { modPrefs, setPrefsStorage } from "./mod-prefs";
 import { startModWorker, type ModWorkerTopic, type StartedModWorker } from "./mod-worker/host";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
 import { MOD_WORKER_PROTOCOL_VERSION, type ModStateSnapshot, type WorkerJson } from "./mod-worker/protocol";
+import { ModWorkerTransport } from "./mod-worker/transport";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, reportModFault } from "./mod-problems";
 import { teardownModPlugins } from "./mod-teardown";
@@ -13352,6 +13353,15 @@ const sessionFacts: ModSessionFacts = { newCharacter: bootedNew && !birthPending
 const workerPlugins = new Map<string, StartedModWorker>();
 const workerModelSubscriptions = new Map<string, Map<string, ModWorkerTopic>>();
 const workerPanelRenderer = createModWorkerPanelRenderer();
+const workerTransport = new ModWorkerTransport({
+  commands: {
+    register: (code, action) => registry.register(code, action),
+    revoke: (code) => registry.unregister(code),
+    setVerb: (code, verb) => state.commandVerbs?.set(code, verb),
+  },
+  onCommandIntent: (pluginId, commandId, intentCode) => log.info(`worker:${pluginId}`, `command ${commandId} returned intent ${intentCode}`),
+  onProblem: (pluginId, message) => reportModFault(pluginId, message),
+});
 let lastWorkerStateModel: string | undefined;
 let lastWorkerDisplayModel: string | undefined;
 
@@ -13453,6 +13463,8 @@ publishWorkerModels = (force = false): void => {
           workerPanelRenderer.teardown(loaded.id);
         },
         onProblem: (message) => reportModFault(loaded.id, `Worker request refused: ${message}`),
+        transport: workerTransport,
+        loadOrder: activeModCode().workers.findIndex((candidate) => candidate.id === loaded.id),
       });
       await Promise.race([
         session.ready,

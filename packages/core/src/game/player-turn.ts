@@ -116,6 +116,11 @@ export class ActionRegistry {
     this.actions.set(code, action);
   }
 
+  /** Remove an API-2 declaration during its host-owned teardown. */
+  unregister(code: string): void {
+    this.actions.delete(code);
+  }
+
   has(code: string): boolean {
     return this.actions.has(code);
   }

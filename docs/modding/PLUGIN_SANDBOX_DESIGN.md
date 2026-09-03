@@ -218,6 +218,23 @@ capability-gated on the host.
   is a bounded display list of text cells and styles. The host retains the last
   accepted patch and paints that cache synchronously every frame.
 
+### Implemented first transport pass
+
+The first implementation keeps the shapes above and adds the base envelope to
+both directions: host `hook.request` carries `protocolVersion`, `pluginId`, and
+`requestId`, and worker `hook.result` carries the same envelope plus its
+`sequence`. This makes a host request rejectable by the existing broker rather
+than creating an unvalidated reply channel. Snapshot invalidations use the
+existing subscription shape: a worker subscribes to `snapshot.invalidated` and
+the host pushes `event.snapshotInvalidated { subscriptionId, domain, revision }`.
+
+The initial fixed snapshot domain is `engine.facts`; it contains only static
+host constants. The initial policy is `object-list.order-v1` with
+`{ keys: ["dy", "dx"] }`, the initial hook is `artifact.commit`, and the
+initial declaration kind is `command`. These are deliberately proof surfaces,
+not a port of any shipped mod. Regions accept at most 1024 text cells and are
+painted from the host cache.
+
 Requests that affect a save or command are ordered with the owning game action.
 A timed-out request has the old faithful neutral answer, reports the fault, and
 does not leave a half-applied action. A Worker never chooses host object handles

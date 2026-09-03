@@ -9,6 +9,7 @@ import {
   type WorkerLogLevel,
 } from "./protocol";
 import { panelDescription, panelId as validPanelId, panelPatch } from "./panel-schema";
+import { isSnapshotDomain, ModWorkerTransport } from "./transport";
 
 const MAX_MESSAGE_BYTES = 64 * 1024;
 const MAX_REQUESTS_PER_MINUTE = 60;
@@ -35,6 +36,10 @@ export interface ModWorkerHostDeps {
   readonly onUi?: (operation: "mount" | "patch", payload: WorkerJson, panelId?: string) => Promise<WorkerJson | null>;
   readonly onTeardown?: () => void;
   readonly onProblem?: (message: string) => void;
+  /** Shared per-game API-2 cache. It owns policies, declarations and regions. */
+  readonly transport?: ModWorkerTransport;
+  /** The resolved plugin load position, used by the same folds as ModHooks. */
+  readonly loadOrder?: number;
 }
 
 export interface StartedModWorker {
@@ -43,11 +48,12 @@ export interface StartedModWorker {
   migrateBag(data: unknown, fromSchema: number): Promise<WorkerJson>;
   publishModel(subscriptionId: string, model: unknown): void;
   publishUiAction(panelId: string, action: string): void;
+  publishSnapshotInvalidated(domain: string, revision: number): void;
   teardown(): void;
 }
 
 type Lifecycle = "starting" | "ready" | "tearing-down" | "stopped";
-export type ModWorkerTopic = "state.snapshot" | "display.snapshot";
+export type ModWorkerTopic = "state.snapshot" | "display.snapshot" | "snapshot.invalidated";
 
 /**
  * Host-side API-2 broker. It owns every live service and rejects malformed,
@@ -61,6 +67,8 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   let hasMigrateBag = false;
   const subscriptions = new Map<string, ModWorkerTopic>();
   const pendingMigrations = new Map<number, { resolve(value: WorkerJson): void; reject(reason: Error): void; timeout: ReturnType<typeof setTimeout> }>();
+  const pendingHooks = new Map<number, { sequence: number; resolve(value: { decision: "allow" | "deny"; patch?: WorkerJson }): void }>();
+  const transport = deps.transport ?? new ModWorkerTransport({ onProblem: (pluginId, message) => deps.onProblem?.(`${pluginId}: ${message}`) });
   const requestTimes: number[] = [];
   let resolveReady: () => void = () => undefined;
   let rejectReady: (reason: Error) => void = () => undefined;
@@ -165,6 +173,13 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       pending.reject(new Error(message.error));
       return;
     }
+    if (message.type === "hook.result") {
+      const pending = pendingHooks.get(message.requestId);
+      if (!pending || pending.sequence !== message.sequence) return fail("refused unknown hook result");
+      pendingHooks.delete(message.requestId);
+      pending.resolve(message.patch === undefined ? { decision: message.decision } : { decision: message.decision, patch: cloneWorkerJson(message.patch) });
+      return;
+    }
     if (message.type === "prefs.get") {
       if (!allowed("prefs:read")) return reply(message.requestId, new Error("prefs:read capability required"));
       try { reply(message.requestId, cloneWorkerJson(deps.prefs.get())); } catch (err) { reply(message.requestId, asError(err)); }
@@ -181,7 +196,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       return;
     }
     if (message.type === "event.subscribe") {
-      if (!allowed("state:model.read") || !validTopic(message.topic)) return reply(message.requestId, new Error("event.subscribe requires state:model.read and a declared topic"));
+      if ((!allowed("state:model.read") && !(message.topic === "snapshot.invalidated" && allowed("query:snapshot"))) || !validTopic(message.topic)) return reply(message.requestId, new Error("event.subscribe requires its read capability and a declared topic"));
       subscriptionId += 1;
       const id = `subscription-${String(subscriptionId)}`;
       subscriptions.set(id, message.topic);
@@ -196,6 +211,34 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
         subscriptions.delete(id);
         return reply(message.requestId, asError(err));
       }
+    }
+    if (message.type === "query.snapshot") {
+      if (!allowed("query:snapshot")) return reply(message.requestId, new Error("query:snapshot capability required"));
+      try { reply(message.requestId, transport.snapshot(message.domain, message.revision, message.selector)); } catch (err) { reply(message.requestId, asError(err)); }
+      return;
+    }
+    if (message.type === "policy.install") {
+      if (!allowed("policy:install")) return reply(message.requestId, new Error("policy:install capability required"));
+      try { transport.installPolicy(deps.id, deps.loadOrder ?? 0, message.policy, message.revision, message.body); reply(message.requestId, null); } catch (err) { reply(message.requestId, asError(err)); }
+      return;
+    }
+    if (message.type === "registry.declare" || message.type === "registry.revoke") {
+      if (!allowed("registry:declare")) return reply(message.requestId, new Error("registry:declare capability required"));
+      try {
+        if (message.type === "registry.declare") transport.declare(deps.id, message.kind, message.id, message.definition);
+        else transport.revoke(deps.id, message.kind, message.id);
+        reply(message.requestId, null);
+      } catch (err) { reply(message.requestId, asError(err)); }
+      return;
+    }
+    if (message.type === "ui.region.declare" || message.type === "ui.region.patch") {
+      if (!allowed("ui:region")) return reply(message.requestId, new Error("ui:region capability required"));
+      try {
+        if (message.type === "ui.region.declare") transport.declareRegion(deps.id, { id: message.id, layer: message.layer, placement: message.placement, inputActions: message.inputActions });
+        else transport.patchRegion(deps.id, message.id, { cells: message.cells, ...(message.visible === undefined ? {} : { visible: message.visible }) });
+        reply(message.requestId, null);
+      } catch (err) { reply(message.requestId, asError(err)); }
+      return;
     }
     if (message.type === "command.submit") {
       if (!allowed("command:submit") || !validCode(message.code)) return reply(message.requestId, new Error("command.submit requires command:submit and a semantic code"));
@@ -213,6 +256,16 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   };
 
   worker.onmessage = (event): void => { void receive(event.data); };
+  transport.addHookPeer({
+    pluginId: deps.id,
+    loadOrder: deps.loadOrder ?? 0,
+    request: (hook, sequence, input) => new Promise((resolve, reject) => {
+      if (!allowed("hook:respond") || state !== "ready") return resolve({ decision: "allow" });
+      requestId += 1;
+      pendingHooks.set(requestId, { sequence, resolve });
+      try { post({ type: "hook.request", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: deps.id, requestId, hook, sequence, input: cloneWorkerJson(input) }); } catch (err) { pendingHooks.delete(requestId); reject(asError(err)); }
+    }),
+  });
   worker.onerror = (event): void => {
     const error = new Error(event.message || "worker failed");
     if (state === "starting") rejectReady(error);
@@ -245,6 +298,10 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       if (state !== "ready" || !allowed("ui:panel") || !validPanelId(panelId) || !validPanelId(action)) return;
       post({ type: "ui.action", pluginId: deps.id, panelId, action });
     },
+    publishSnapshotInvalidated(domain: string, revision: number): void {
+      if (state !== "ready" || !allowed("query:snapshot") || !isSnapshotDomain(domain) || !Number.isInteger(revision) || revision < 0) return;
+      for (const [id, topic] of subscriptions) if (topic === "snapshot.invalidated") post({ type: "event.snapshotInvalidated", pluginId: deps.id, subscriptionId: id, domain, revision });
+    },
     teardown(): void {
       if (state === "stopped" || state === "tearing-down") return;
       state = "tearing-down";
@@ -256,7 +313,10 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
         pending.reject(new Error("worker stopped during bag migration"));
       }
       pendingMigrations.clear();
+      for (const pending of pendingHooks.values()) pending.resolve({ decision: "allow" });
+      pendingHooks.clear();
       subscriptions.clear();
+      transport.removePlugin(deps.id);
       deps.onTeardown?.();
     },
   };
@@ -268,7 +328,7 @@ function cloneSnapshot(snapshot: WorkerInitSnapshot): WorkerInitSnapshot {
 function asError(value: unknown): Error { return value instanceof Error ? value : new Error(String(value)); }
 function validId(value: string): boolean { return /^[a-z][a-z0-9-]{0,63}$/.test(value); }
 function validPath(value: string): boolean { return value.length > 0 && value.length <= 256 && !value.startsWith("/") && !value.includes("\\") && !value.split("/").some((part) => part === "" || part === "." || part === ".."); }
-function validTopic(value: string): value is ModWorkerTopic { return value === "state.snapshot" || value === "display.snapshot"; }
+function validTopic(value: string): value is ModWorkerTopic { return value === "state.snapshot" || value === "display.snapshot" || value === "snapshot.invalidated"; }
 function validCode(value: string): boolean { return /^[a-z][a-z0-9-]{0,63}(?:\.[a-z][a-z0-9-]{0,63})+$/.test(value); }
 function isWorkerMessage(value: unknown): value is ModWorkerToHost {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
@@ -283,6 +343,13 @@ function isWorkerMessage(value: unknown): value is ModWorkerToHost {
     case "prefs.set": return request() && (message["value"] === null || message["value"] !== undefined);
     case "asset.read": return request() && typeof message["path"] === "string";
     case "event.subscribe": return request() && typeof message["topic"] === "string";
+    case "query.snapshot": return request() && typeof message["domain"] === "string" && message["selector"] !== undefined && (message["revision"] === undefined || (Number.isInteger(message["revision"]) && (message["revision"] as number) >= 0));
+    case "policy.install": return request() && typeof message["policy"] === "string" && Number.isInteger(message["revision"]) && message["body"] !== undefined;
+    case "hook.result": return request() && Number.isInteger(message["sequence"]) && (message["decision"] === "allow" || message["decision"] === "deny") && (message["patch"] === undefined || message["patch"] !== undefined);
+    case "registry.declare": return request() && typeof message["kind"] === "string" && typeof message["id"] === "string" && message["definition"] !== undefined;
+    case "registry.revoke": return request() && typeof message["kind"] === "string" && typeof message["id"] === "string";
+    case "ui.region.declare": return request() && typeof message["id"] === "string" && typeof message["layer"] === "string" && message["placement"] !== undefined && message["inputActions"] !== undefined;
+    case "ui.region.patch": return request() && typeof message["id"] === "string" && message["cells"] !== undefined && (message["visible"] === undefined || typeof message["visible"] === "boolean");
     case "command.submit": return request() && typeof message["code"] === "string" && message["args"] !== undefined;
     case "ui.mount": return request() && message["panel"] !== undefined;
     case "ui.patch": return request() && typeof message["panelId"] === "string" && message["patch"] !== undefined;

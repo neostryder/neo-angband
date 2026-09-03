@@ -63,6 +63,8 @@ export type HostToModWorker =
   | { readonly type: "init"; readonly protocolVersion: string; readonly pluginId: string; readonly entryUrl: string; readonly snapshot: WorkerInitSnapshot }
   | { readonly type: "migrateBag"; readonly requestId: number; readonly pluginId: string; readonly data: WorkerJson; readonly fromSchema: number }
   | { readonly type: "event.model"; readonly pluginId: string; readonly subscriptionId: string; readonly model: WorkerJson }
+  | { readonly type: "event.snapshotInvalidated"; readonly pluginId: string; readonly subscriptionId: string; readonly domain: string; readonly revision: number }
+  | { readonly type: "hook.request"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly hook: "artifact.commit"; readonly sequence: number; readonly input: WorkerJson }
   | { readonly type: "ui.action"; readonly pluginId: string; readonly panelId: string; readonly action: string }
   | { readonly type: "teardown"; readonly pluginId: string };
 
@@ -72,6 +74,13 @@ export type ModWorkerRequest =
   | { readonly type: "prefs.set"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly value: WorkerJson | null }
   | { readonly type: "asset.read"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly path: string }
   | { readonly type: "event.subscribe"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly topic: string }
+  | { readonly type: "query.snapshot"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly domain: string; readonly revision?: number; readonly selector: WorkerJson }
+  | { readonly type: "policy.install"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly policy: string; readonly revision: number; readonly body: WorkerJson }
+  | { readonly type: "hook.result"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly sequence: number; readonly decision: "allow" | "deny"; readonly patch?: WorkerJson }
+  | { readonly type: "registry.declare"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly kind: string; readonly id: string; readonly definition: WorkerJson }
+  | { readonly type: "registry.revoke"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly kind: string; readonly id: string }
+  | { readonly type: "ui.region.declare"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly id: string; readonly layer: string; readonly placement: WorkerJson; readonly inputActions: WorkerJson }
+  | { readonly type: "ui.region.patch"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly id: string; readonly cells: WorkerJson; readonly visible?: boolean }
   | { readonly type: "command.submit"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly code: string; readonly args: WorkerJson }
   | { readonly type: "ui.mount"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly panel: WorkerJson }
   | { readonly type: "ui.patch"; readonly protocolVersion: string; readonly pluginId: string; readonly requestId: number; readonly panelId: string; readonly patch: WorkerJson }

@@ -12,6 +12,7 @@ import {
   type ModWorkerPanelPatch,
   type ModStateSnapshot,
 } from "./protocol";
+import type { RegionCell } from "./transport";
 import type { ModDisplaySnapshot } from "../mod-plugin";
 
 export interface ModWorkerApi {
@@ -19,7 +20,11 @@ export interface ModWorkerApi {
   log(level: WorkerLogLevel, message: string): void;
   prefs: { get(): Promise<WorkerJson | null>; set(value: WorkerJson | null): Promise<void> };
   assets: { read(path: string): Promise<Uint8Array | null> };
-  events: { subscribe(topic: "state.snapshot", listener: (model: ModStateSnapshot) => void): Promise<string>; subscribe(topic: "display.snapshot", listener: (model: ModDisplaySnapshot) => void): Promise<string> };
+  events: { subscribe(topic: "state.snapshot", listener: (model: ModStateSnapshot) => void): Promise<string>; subscribe(topic: "display.snapshot", listener: (model: ModDisplaySnapshot) => void): Promise<string>; onSnapshotInvalidated(listener: (event: { readonly domain: string; readonly revision: number }) => void): Promise<string> };
+  query: { snapshot(domain: "engine.facts", selector: WorkerJson, revision?: number): Promise<{ readonly revision: number; readonly data: WorkerJson }> };
+  policies: { install(policy: "object-list.order-v1", revision: number, body: { readonly keys: readonly ("dy" | "dx")[] }): Promise<void> };
+  registry: { declare(kind: "command", id: string, definition: { readonly id: string; readonly verb: string; readonly input: "none" | "direction"; readonly intentCodes: readonly string[] }): Promise<void>; revoke(kind: "command", id: string): Promise<void> };
+  regions: { declare(region: { readonly id: string; readonly layer: "hud" | "overlay"; readonly placement: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }; readonly inputActions: readonly string[] }): Promise<void>; patch(id: string, cells: readonly RegionCell[], visible?: boolean): Promise<void> };
   commands: { submit(code: string, args: WorkerJson): Promise<WorkerJson | null> };
   ui: {
     mount(panel: ModWorkerPanel): Promise<WorkerJson | null>;
@@ -31,6 +36,7 @@ export interface ModWorkerApi {
 export interface ModWorkerModule {
   default?(api: ModWorkerApi): void | Promise<void>;
   migrateBag?(data: WorkerJson, fromSchema: number): WorkerJson | Promise<WorkerJson>;
+  hooks?: { artifactCommit?(input: { readonly artifactIndex: number; readonly alreadyCreated: boolean }): { readonly decision: "allow" | "deny"; readonly patch?: WorkerJson } | Promise<{ readonly decision: "allow" | "deny"; readonly patch?: WorkerJson }> };
 }
 
 interface WorkerScope {
@@ -44,6 +50,7 @@ export function installModWorkerBootstrap(scope: WorkerScope): void {
   let nextRequest = 0;
   const pending = new Map<number, { resolve(value: WorkerJson | Uint8Array | null): void; reject(reason: Error): void }>();
   const listeners = new Map<string, (model: WorkerJson) => void>();
+  const invalidationListeners = new Map<string, (event: { readonly domain: string; readonly revision: number }) => void>();
   const uiListeners = new Set<(event: { readonly panelId: string; readonly action: string }) => void>();
 
   const send = (message: Record<string, unknown>): void => {
@@ -71,6 +78,14 @@ export function installModWorkerBootstrap(scope: WorkerScope): void {
       listeners.get(message.subscriptionId)?.(message.model);
       return;
     }
+    if (message.type === "event.snapshotInvalidated") {
+      invalidationListeners.get(message.subscriptionId)?.({ domain: message.domain, revision: message.revision });
+      return;
+    }
+    if (message.type === "hook.request") {
+      void answerHook(message);
+      return;
+    }
     if (message.type === "ui.action") {
       for (const listener of uiListeners) listener({ panelId: message.panelId, action: message.action });
       return;
@@ -95,6 +110,17 @@ export function installModWorkerBootstrap(scope: WorkerScope): void {
       send({ type: "migrateBag.error", requestId: message.requestId, error: err instanceof Error ? err.message : String(err) });
     }
   };
+  const answerHook = async (message: Extract<HostToModWorker, { type: "hook.request" }>): Promise<void> => {
+    try {
+      const input = message.input as { artifactIndex?: unknown; alreadyCreated?: unknown };
+      if (message.hook !== "artifact.commit" || typeof input.artifactIndex !== "number" || !Number.isInteger(input.artifactIndex) || typeof input.alreadyCreated !== "boolean") throw new Error("unsupported hook request");
+      const result = await plugin?.hooks?.artifactCommit?.({ artifactIndex: input.artifactIndex, alreadyCreated: input.alreadyCreated }) ?? { decision: "allow" as const };
+      if (result.decision !== "allow" && result.decision !== "deny") throw new Error("invalid hook decision");
+      send({ type: "hook.result", requestId: message.requestId, sequence: message.sequence, decision: result.decision, ...(result.patch === undefined ? {} : { patch: result.patch }) });
+    } catch (err) {
+      send({ type: "hook.result", requestId: message.requestId, sequence: message.sequence, decision: "allow" });
+    }
+  };
   const boot = async (message: Extract<HostToModWorker, { type: "init" }>): Promise<void> => {
     if (id !== null || message.protocolVersion !== MOD_WORKER_PROTOCOL_VERSION || message.snapshot.id !== message.pluginId) return;
     id = message.pluginId;
@@ -114,6 +140,21 @@ export function installModWorkerBootstrap(scope: WorkerScope): void {
             listeners.set(subscriptionId, listener as unknown as (model: WorkerJson) => void);
             return subscriptionId;
           },
+          onSnapshotInvalidated: async (listener): Promise<string> => {
+            const subscriptionId = await request<string>({ type: "event.subscribe", topic: "snapshot.invalidated" });
+            invalidationListeners.set(subscriptionId, listener);
+            return subscriptionId;
+          },
+        },
+        query: { snapshot: (domain, selector, revision): Promise<{ readonly revision: number; readonly data: WorkerJson }> => request({ type: "query.snapshot", domain, selector, ...(revision === undefined ? {} : { revision }) }) },
+        policies: { install: async (policy, revision, body): Promise<void> => { await request({ type: "policy.install", policy, revision, body }); } },
+        registry: {
+          declare: async (kind, declarationId, definition): Promise<void> => { await request({ type: "registry.declare", kind, id: declarationId, definition }); },
+          revoke: async (kind, declarationId): Promise<void> => { await request({ type: "registry.revoke", kind, id: declarationId }); },
+        },
+        regions: {
+          declare: async (region): Promise<void> => { await request({ type: "ui.region.declare", ...region }); },
+          patch: async (regionId, cells, visible): Promise<void> => { await request({ type: "ui.region.patch", id: regionId, cells, ...(visible === undefined ? {} : { visible }) }); },
         },
         commands: { submit: (code, args): Promise<WorkerJson | null> => request({ type: "command.submit", code, args }) },
         ui: {

@@ -59,6 +59,13 @@
       "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24)."
     },
     {
+      "file": "packages/web/src/mod-worker/host.ts",
+      "cases": 19,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - API-2's closed Worker request vocabulary. A mod selects a documented semantic message but cannot add a host request arm."
+    },
+    {
       "file": "packages/core/src/game/char-sheet.ts",
       "cases": 18,
       "hasDefault": true,
@@ -87,6 +94,20 @@
       "verdict": "HOST - argument parsing for the stats tool. Not shipped to players."
     },
     {
+      "file": "packages/mod-sdk/src/capabilities.ts",
+      "cases": 16,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - capability grants are host-owned consent vocabulary. The new API-2 tokens are documented grants, not mod-extensible capability kinds."
+    },
+    {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 16,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. A mod cannot insert an unreviewed consent category."
+    },
+    {
       "file": "packages/web/src/equip-cmp.ts",
       "cases": 16,
       "hasDefault": true,
@@ -106,6 +127,13 @@
       "hasDefault": false,
       "kind": "SWITCH",
       "verdict": "INTERNAL - the save format's own block union. A mod persists through the mod storage seam; it does not add a save-block kind."
+    },
+    {
+      "file": "packages/web/src/mod-worker/host.ts",
+      "cases": 14,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "INTERNAL - worker message validation mirrors the closed API-2 request grammar. It is a boundary check, not a mod extension point."
     },
     {
       "file": "packages/web/src/wizard.ts",
@@ -129,13 +157,6 @@
       "verdict": "REACHABLE - monster blow effects go through registry:blow (MOD_REACH gaps 9/10); this switch is the fallback path behind it."
     },
     {
-      "file": "packages/web/src/mod-worker/host.ts",
-      "cases": 12,
-      "hasDefault": true,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - API-2 Worker request schema validation over the closed, reviewed wire vocabulary."
-    },
-    {
       "file": "packages/core/src/mon/lore-file.ts",
       "cases": 11,
       "hasDefault": true,
@@ -148,20 +169,6 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "CONTROL FLOW - health decile to colour. A numeric bucket, not a dispatch table."
-    },
-      {
-        "file": "packages/mod-sdk/src/capabilities.ts",
-        "cases": 11,
-        "hasDefault": false,
-        "kind": "SWITCH",
-        "verdict": "INTERNAL - capability-grant coverage is the mod system's own closed vocabulary. A mod requests a documented capability but cannot define a new capability kind, so keymap:write extends this host-owned policy rather than exposing an unmodelled game dispatch."
-      },
-      {
-        "file": "packages/web/src/capability-describe.ts",
-        "cases": 11,
-        "hasDefault": false,
-        "kind": "SWITCH",
-        "verdict": "INTERNAL - the consent copy is keyed by the mod system's own capability kinds. Adding keymap:write changes the host's controlled permission vocabulary; plugins can request a kind but never extend this switch themselves."
     },
     {
       "file": "packages/web/src/main.ts",
@@ -227,13 +234,6 @@
       "verdict": "UI - menu action routing, entries[pick].action (MOD_REACH gap 18/24)."
     },
     {
-      "file": "packages/web/src/mod-worker/host.ts",
-      "cases": 9,
-      "hasDefault": false,
-      "kind": "IF_CHAIN",
-      "verdict": "INTERNAL - API-2 Worker broker dispatches only the closed, capability-checked semantic request vocabulary."
-    },
-    {
       "file": "packages/web/src/shop.ts",
       "cases": 9,
       "hasDefault": true,
@@ -282,12 +282,12 @@
       "kind": "SWITCH",
       "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
     },
-      {
-        "file": "packages/mod-sdk/src/capabilities.ts",
-        "cases": 8,
-        "hasDefault": false,
-        "kind": "IF_CHAIN",
-        "verdict": "INTERNAL - parsing recognizes the closed capability grammar owned by the mod SDK. keymap:write is a new documented token, not a game behavior branch that a mod must be able to add at runtime."
+    {
+      "file": "packages/mod-sdk/src/capabilities.ts",
+      "cases": 8,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "INTERNAL - parsing recognizes the closed capability grammar owned by the mod SDK. keymap:write is a new documented token, not a game behavior branch that a mod must be able to add at runtime."
     },
     {
       "file": "packages/mod-sdk/src/patch.ts",

@@ -192,6 +192,9 @@ describe("the switch census", () => {
       /* 6 until API-2 introduced the Worker broker's schema and request
        * dispatch. Both are intentionally host-internal: a mod may select a
        * documented semantic request, never add a request kind. */
+      /* The API-2 transport enlarged and reshaped the existing host and
+       * capability rows; it replaced four internal rows with four internal
+       * rows, so the classification count stays nine. */
       INTERNAL: 9,
       /* 3 until the i18n sweep (neostryder/neo-angband#95) added shop.ts's
        * commentWelcome, the greeting-tier-to-translated-line switch that keeps

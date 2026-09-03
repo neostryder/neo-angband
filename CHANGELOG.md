@@ -50,6 +50,8 @@ still calls itself.
 
 ### Added
 
+- [Internal] [Modding-API] **Added API-2's generic Worker transport caches and messages.** Workers can now read allow-listed versioned snapshots, receive invalidations, install host-evaluated policies, answer serial asynchronous hook decisions, declare host-owned commands, and push cached text regions. This is ABI plumbing only; no shipped mod has moved to API-2 yet.
+
 - [Internal] [Modding-API] **Mods can observe newly gained spells and known item activations, then create an unused keymap through a consented host facade.** `ModHooks.abilityGained` reports the committed ability, while `keymap:write` exposes `ctx.keymaps` backed by the live keymap store and its normal preference save path (#167).
 
 - [Visible] [Modding-API] **Mods can apply a consented post-processing visual filter to the terminal canvas.** The new `display:filter` capability exposes `ctx.display.setVisualFilter(filter)`, which affects the final ASCII or tile frame and every terminal-grid screen without changing the game's named color palette (#166).
@@ -182,7 +184,7 @@ still calls itself.
 
 ## [1.1.2] - 2026-08-27
 
-Current state of the project at version `1.7.0` - a fixes release. No player
+Current state of the project at version `1.8.0` - a fixes release. No player
 action is needed for the Linoleum id change below; an existing install
 carries its enabled choice and rule choices across automatically.
 

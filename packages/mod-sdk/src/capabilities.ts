@@ -235,7 +235,12 @@ export type ParsedCapability =
   | { kind: "backup"; action: "folder" }
   | { kind: "mod"; action: "install" | "session" }
   | { kind: "debug"; action: "spawn" | "wizard" }
-  | { kind: "keymap"; action: "write" };
+  | { kind: "keymap"; action: "write" }
+  | { kind: "query"; action: "snapshot" }
+  | { kind: "policy"; action: "install" }
+  | { kind: "hook"; action: "respond" }
+  | { kind: "registry-declaration"; action: "declare" }
+  | { kind: "ui-region"; action: "write" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 /**
@@ -376,6 +381,11 @@ export function parseCapability(cap: string): ParsedCapability {
   if (cap === "keymap:write") {
     return { kind: "keymap", action: "write" };
   }
+  if (cap === "query:snapshot") return { kind: "query", action: "snapshot" };
+  if (cap === "policy:install") return { kind: "policy", action: "install" };
+  if (cap === "hook:respond") return { kind: "hook", action: "respond" };
+  if (cap === "registry:declare") return { kind: "registry-declaration", action: "declare" };
+  if (cap === "ui:region") return { kind: "ui-region", action: "write" };
   const ui = UI_RE.exec(cap);
   if (ui) {
     return { kind: "ui", region: ui[1] as string, action: "replace" };
@@ -468,6 +478,16 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
       return grant.kind === "debug" && grant.action === request.action;
     case "keymap":
       return grant.kind === "keymap" && grant.action === request.action;
+    case "query":
+      return grant.kind === "query" && grant.action === request.action;
+    case "policy":
+      return grant.kind === "policy" && grant.action === request.action;
+    case "hook":
+      return grant.kind === "hook" && grant.action === request.action;
+    case "registry-declaration":
+      return grant.kind === "registry-declaration" && grant.action === request.action;
+    case "ui-region":
+      return grant.kind === "ui-region" && grant.action === request.action;
     case "ui":
       /* Per region, with one wildcard. A `display` grant is NOT accepted here
        * and a `ui` grant is not accepted above: owning the dungeon and owning
