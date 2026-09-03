@@ -389,6 +389,8 @@ export function modManifest(raw: unknown): PackManifest {
     ...(m.loadBefore ? { loadBefore: m.loadBefore } : {}),
     ...(m.saveSchema !== undefined ? { saveSchema: m.saveSchema } : {}),
     ...(m.modApi !== undefined ? { modApi: m.modApi } : {}),
+    ...(m.runtime ? { runtime: m.runtime } : {}),
+    ...(m.workerEntry ? { workerEntry: m.workerEntry } : {}),
     ...(m.capabilities ? { capabilities: m.capabilities } : {}),
     /* The pack's DECLARED FIELDS. Forgetting this one is not inert like the
      * ordering hints were - it inverts the feature: every field the mod

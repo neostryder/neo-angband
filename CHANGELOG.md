@@ -52,6 +52,8 @@ still calls itself.
 
 - [Visible] [Modding-API] **Mods can apply a consented post-processing visual filter to the terminal canvas.** The new `display:filter` capability exposes `ctx.display.setVisualFilter(filter)`, which affects the final ASCII or tile frame and every terminal-grid screen without changing the game's named color palette (#166).
 
+- [Internal] [Modding-API] **Added the opt-in API-2 Worker plugin ABI.** A manifest can select `modApi: 2`, `runtime: "worker"`, and a `workerEntry`; Neo Angband then starts that entry through a host-owned Dedicated Worker bootstrap with a versioned, validated structured-clone protocol. API-1 `plugin.js` remains explicitly trusted in-process code (#155).
+
 - [Visible] [Docs] **Added the `neo-angband-bin` AUR package definition.** It
   installs the released x86_64 AppImage with an Arch launcher, desktop entry and
   icon, and documents both local `makepkg` installation and the one-time AUR

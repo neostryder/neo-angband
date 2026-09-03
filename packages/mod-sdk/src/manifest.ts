@@ -309,6 +309,9 @@ export const DEFAULT_PACK_GROUP = "content";
  */
 export type Capability = string;
 
+/** How code declared by a plugin-facet pack is executed. */
+export type PluginRuntime = "in-process" | "worker";
+
 /**
  * One graphics mode a `tiles`-facet pack contributes.
  *
@@ -479,6 +482,16 @@ export interface PackManifest {
    * exist yet.
    */
   modApi?: number;
+  /**
+   * The execution ABI selected by a code pack. API 1 keeps the historical
+   * in-process `plugin.js` entry; API 2 requires the isolated worker runtime.
+   */
+  runtime?: PluginRuntime;
+  /**
+   * The module imported by the host-owned API-2 Worker bootstrap. This is a
+   * mod-relative file, never a host module name or URL.
+   */
+  workerEntry?: string;
   /**
    * Player-toggleable flags this pack owns (see PackRule). The bundled qol /
    * bug-fixes mods use this to declare their fixes/tweaks for the in-app "Fixes
@@ -682,6 +695,32 @@ export function validateManifest(value: unknown): PackManifest {
         `manifest ${id}: modApi must be a positive integer (the mod-plugin ABI version)`,
       );
     }
+  }
+  if (m["runtime"] !== undefined && m["runtime"] !== "in-process" && m["runtime"] !== "worker") {
+    throw new ManifestError(`manifest ${id}: runtime must be "in-process" or "worker"`);
+  }
+  if (m["workerEntry"] !== undefined) {
+    const entry = m["workerEntry"];
+    if (
+      typeof entry !== "string" ||
+      entry.length === 0 ||
+      entry.startsWith("/") ||
+      entry.includes("\\") ||
+      entry.split("/").some((part) => part === "" || part === "." || part === "..")
+    ) {
+      throw new ManifestError(`manifest ${id}: workerEntry must be a non-empty relative file path`);
+    }
+  }
+  if (m["modApi"] === 2) {
+    if (m["runtime"] !== "worker") {
+      throw new ManifestError(`manifest ${id}: modApi 2 requires runtime "worker"`);
+    }
+    if (typeof m["workerEntry"] !== "string") {
+      throw new ManifestError(`manifest ${id}: modApi 2 requires workerEntry`);
+    }
+  }
+  if (m["runtime"] === "worker" && m["modApi"] !== 2) {
+    throw new ManifestError(`manifest ${id}: runtime "worker" requires modApi 2`);
   }
   if (
     m["nondeterministic"] !== undefined &&

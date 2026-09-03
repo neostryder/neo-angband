@@ -189,7 +189,10 @@ describe("the switch census", () => {
       /* 5 until `append`/`removeValue` took patch.ts's op switch to 8 cases.
        * A field op is the mod system's own vocabulary, like a capability kind:
        * what a mod varies is the PATH it addresses, never the verb. */
-      INTERNAL: 6,
+      /* 6 until API-2 introduced the Worker broker's schema and request
+       * dispatch. Both are intentionally host-internal: a mod may select a
+       * documented semantic request, never add a request kind. */
+      INTERNAL: 8,
       /* 3 until the i18n sweep (neostryder/neo-angband#95) added shop.ts's
        * commentWelcome, the greeting-tier-to-translated-line switch that keeps
        * COMMENT_WELCOME's English array intact for its RNG-parity-relevant

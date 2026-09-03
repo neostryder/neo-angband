@@ -249,6 +249,7 @@ describe("every layer's reason reaches diskPackStatus", () => {
     setDiskPacks(NO_DISK_PACKS);
     setModCode({
       plugins: [],
+      workers: [],
       problems: [{ id: "codey", why: "plugin.js failed to load: boom" }],
       skipped: [{ id: "shy", why: "awaiting consent for registry:effects" }],
     });

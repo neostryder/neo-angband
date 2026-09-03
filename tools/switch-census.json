@@ -129,6 +129,13 @@
       "verdict": "REACHABLE - monster blow effects go through registry:blow (MOD_REACH gaps 9/10); this switch is the fallback path behind it."
     },
     {
+      "file": "packages/web/src/mod-worker/host.ts",
+      "cases": 12,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - API-2 Worker request schema validation over the closed, reviewed wire vocabulary."
+    },
+    {
       "file": "packages/core/src/mon/lore-file.ts",
       "cases": 11,
       "hasDefault": true,
@@ -218,6 +225,13 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "UI - menu action routing, entries[pick].action (MOD_REACH gap 18/24)."
+    },
+    {
+      "file": "packages/web/src/mod-worker/host.ts",
+      "cases": 9,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "INTERNAL - API-2 Worker broker dispatches only the closed, capability-checked semantic request vocabulary."
     },
     {
       "file": "packages/web/src/shop.ts",

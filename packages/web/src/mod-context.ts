@@ -18,7 +18,7 @@ import * as neoAuthoring from "@rpgm-tools/neo-angband-mod-sdk";
 import { log } from "./logging";
 import type { CoreRegistries, GameState } from "@rpgm-tools/neo-angband-core";
 import {
-  MOD_API_VERSION,
+  IN_PROCESS_MOD_API_VERSION,
   type BackupFolder,
   type ModAuthoringApi,
   type ModCoreApi,
@@ -140,7 +140,9 @@ export function modPluginContext(
   const records = session.composedRecords ?? composedRecords;
   const context: ModPluginContext = {
     id,
-    api: MOD_API_VERSION,
+    /* API 1 is still deliberately the trusted in-process context. API 2 gets
+     * its separate immutable Worker init snapshot and never reaches here. */
+    api: IN_PROCESS_MOD_API_VERSION,
     engine: neoCore.ENGINE_VERSION,
     flags: Object.freeze({ ...flags }),
     core: neoCore as unknown as ModCoreApi,

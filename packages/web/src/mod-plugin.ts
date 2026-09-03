@@ -113,6 +113,9 @@ export type { ComposedRecords, JsonRecord } from "@rpgm-tools/neo-angband-mod-sd
  */
 export const MOD_API_VERSION = 1;
 
+/** The retained, explicitly trusted in-process ABI. */
+export const IN_PROCESS_MOD_API_VERSION = 1;
+
 /**
  * The OLDEST ABI this host still accepts. Everything in [MIN, VERSION] loads.
  *

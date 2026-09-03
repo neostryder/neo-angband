@@ -108,8 +108,19 @@ export interface LoadedModPlugin {
   readonly data: Readonly<Record<string, unknown>>;
 }
 
+/** An API-2 entry that has passed every manifest and consent gate but is not imported. */
+export interface LoadedModWorker {
+  readonly id: string;
+  readonly manifest: PackManifest;
+  readonly api: 2;
+  /** Kept alive for the host-owned Worker bootstrap to import after it starts. */
+  readonly entryUrl: string;
+  readonly data: Readonly<Record<string, unknown>>;
+}
+
 export interface ModCodeReport {
   readonly plugins: readonly LoadedModPlugin[];
+  readonly workers: readonly LoadedModWorker[];
   /**
    * One entry per pack that ships code and could not be used.
    *
@@ -130,7 +141,7 @@ export interface ModCodeReport {
   readonly skipped: readonly ModProblem[];
 }
 
-const EMPTY: ModCodeReport = { plugins: [], problems: [], skipped: [] };
+const EMPTY: ModCodeReport = { plugins: [], workers: [], problems: [], skipped: [] };
 
 export interface LoadModCodeOptions {
   /** The packs read off disk (readModDir's output). */
@@ -170,10 +181,11 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
   const hostApi = opts.hostApi ?? MOD_API_VERSION;
   const minApi = opts.minApi ?? MOD_API_MIN;
   const plugins: LoadedModPlugin[] = [];
+  const workers: LoadedModWorker[] = [];
   const problems: ModProblem[] = [];
   const skipped: ModProblem[] = [];
 
-  const withCode = opts.packs.filter((p) => hasPlugin(p));
+  const withCode = opts.packs.filter((p) => hasPlugin(p) || hasWorkerPlugin(p));
   if (withCode.length === 0) return EMPTY;
   if (!opts.codeUrl) {
     /* Packs that ship code, and a source that cannot serve it. Saying so beats
@@ -182,10 +194,10 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
     for (const pack of withCode) {
       problems.push({
         id: pack.manifest.id,
-        why: `ships ${PLUGIN_FILE}, but this mods folder cannot serve code`,
+        why: `ships code, but this mods folder cannot serve code`,
       });
     }
-    return { plugins, problems, skipped };
+    return { plugins, workers, problems, skipped };
   }
 
   const doImport = opts.importer ?? ((url: string) => import(/* @vite-ignore */ url));
@@ -245,7 +257,11 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
      * a promise rather than a hope. A DEPRECATED plugin is reported and then
      * loaded - the line is for its author, and taking the mod away to deliver it
      * would be the behaviour the window exists to replace. */
-    const verdict = modApiVerdict(declared, hostApi, minApi);
+    /* API 2 is a separate Worker ABI, not a change to the retained API-1
+     * window. Its independently versioned wire protocol is checked at boot. */
+    const verdict = declared === 2 && pack.manifest.runtime === "worker"
+      ? { ok: true, deprecated: false } as const
+      : modApiVerdict(declared, hostApi, minApi);
     if (!verdict.ok) {
       problems.push({ id, why: verdict.why });
       continue;
@@ -259,6 +275,34 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
         id,
         why: `awaiting consent for ${missing.join(", ")}`,
       });
+      continue;
+    }
+
+    if (declared === 2 && pack.manifest.runtime === "worker") {
+      if (pack.manifest.runtime !== "worker" || !pack.manifest.workerEntry) {
+        problems.push({ id, why: "modApi 2 requires runtime \"worker\" and workerEntry" });
+        continue;
+      }
+      if (!hasWorkerPlugin(pack)) {
+        problems.push({ id, why: `declares workerEntry ${pack.manifest.workerEntry} but the file is not in the mod` });
+        continue;
+      }
+      let entryUrl: string | null;
+      try {
+        entryUrl = await opts.codeUrl(id, pack.manifest.workerEntry);
+      } catch (e) {
+        problems.push({ id, why: message(e) });
+        continue;
+      }
+      if (entryUrl === null) {
+        problems.push({ id, why: `${pack.manifest.workerEntry} is listed in the folder but could not be opened` });
+        continue;
+      }
+      workers.push({ id, manifest: pack.manifest, api: 2, entryUrl, data: pack.files });
+      continue;
+    }
+    if (!hasPlugin(pack)) {
+      problems.push({ id, why: `targets trusted API 1 but does not ship ${PLUGIN_FILE}` });
       continue;
     }
 
@@ -307,7 +351,7 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
     });
   }
 
-  return { plugins, problems, skipped };
+  return { plugins, workers, problems, skipped };
 }
 
 /* --- The latch ---------------------------------------------------------------
@@ -343,6 +387,13 @@ export function hasPlugin(pack: DiskPack): boolean {
   return pack.code.some((f) => f.toLowerCase() === PLUGIN_FILE);
 }
 
+/** Whether this pack ships the API-2 worker entry its manifest selected. */
+export function hasWorkerPlugin(pack: DiskPack): boolean {
+  const entry = pack.manifest.workerEntry;
+  return pack.manifest.modApi === 2 && typeof entry === "string" &&
+    pack.code.some((file) => file.toLowerCase() === entry.toLowerCase());
+}
+
 /**
  * The folder packs that ship code, as manifests, for the mod manager's catalog.
  *
@@ -359,7 +410,7 @@ export function hasPlugin(pack: DiskPack): boolean {
  * tests could not see that; only driving the real game could.
  */
 export function folderPluginManifests(packs: readonly DiskPack[]): PackManifest[] {
-  return packs.filter((p) => hasPlugin(p) && hasFacet(p.manifest, "plugin")).map((p) => p.manifest);
+  return packs.filter((p) => (hasPlugin(p) || hasWorkerPlugin(p)) && hasFacet(p.manifest, "plugin")).map((p) => p.manifest);
 }
 
 /**

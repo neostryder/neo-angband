@@ -320,7 +320,7 @@ import {
 } from "./mod-context";
 import type { ModDisplay, ModPluginContext } from "./mod-plugin";
 import { setCanvasVisualFilter } from "./visual-filter";
-import { migrateModBags } from "./mod-bags";
+import { migrateModBags, migrateModBagsAsync } from "./mod-bags";
 import {
   folderPickingSupported,
   forgetModFolder,
@@ -348,7 +348,8 @@ import {
 import { defaultProfileStore } from "./profiles";
 import { scopedStorage, type ScopedStorage } from "./profile-scope";
 import { runProfileScreen } from "./profile-ui";
-import { setPrefsStorage } from "./mod-prefs";
+import { modPrefs, setPrefsStorage } from "./mod-prefs";
+import { startModWorker, type StartedModWorker } from "./mod-worker/host";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, reportModFault } from "./mod-problems";
 import { teardownModPlugins } from "./mod-teardown";
@@ -11112,6 +11113,7 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
     revokePanels: revokeModPanels,
     closePanels: closeAllModPanels,
   });
+  for (const worker of workerPlugins.values()) worker.teardown();
   installedController = null;
   installedControllerSpeed = null;
   stopInstalledController = null;
@@ -13336,6 +13338,60 @@ const folderRuleFlags = resolveModRuleFlagsByMod();
  * ask it again anyway. */
 const sessionFacts: ModSessionFacts = { newCharacter: bootedNew && !birthPending };
 
+/* API-2 starts only here, after the save and resolved rule flags exist but before
+ * any bag migration. API-1 remains on every one of its existing in-process paths.
+ * The bootstrap is ours; the mod entry URL is imported only inside that Worker. */
+const workerPlugins = new Map<string, StartedModWorker>();
+{
+  const disk = diskPacks();
+  for (const loaded of activeModCode().workers) {
+    try {
+      const worker = new Worker(new URL("./mod-worker/bootstrap.ts", import.meta.url), { type: "module" });
+      const session = startModWorker(worker, {
+        id: loaded.id,
+        capabilities: loaded.manifest.capabilities ?? [],
+        entryUrl: loaded.entryUrl,
+        snapshot: {
+          id: loaded.id,
+          modApi: 2,
+          protocolVersion: "1.0.0",
+          engineVersion: ENGINE_VERSION,
+          modVersion: loaded.manifest.version,
+          flags: folderRuleFlags.get(loaded.id) ?? {},
+          data: loaded.data as Record<string, import("./mod-worker/protocol").WorkerJson>,
+          capabilities: loaded.manifest.capabilities ?? [],
+          newCharacter: sessionFacts.newCharacter ?? false,
+        },
+        prefs: modPrefs(loaded.id),
+        readAsset: async (path) => {
+          const url = await disk.assetUrl?.(loaded.id, path);
+          if (!url) return null;
+          const response = await fetch(url);
+          if (!response.ok) return null;
+          return new Uint8Array(await response.arrayBuffer());
+        },
+        onLog: (level, message) => log[level](`mod:${loaded.id}`, message),
+        onCommand: async (code) => {
+          /* The first real semantic command is deliberately harmless. It proves
+           * command intents cross the broker without opening a string-addressed
+           * core RPC; game-changing commands need their own reviewed operation. */
+          if (code !== "display.repaint") throw new Error(`unsupported API-2 command ${code}`);
+          repaintEverything();
+          return { repainted: true };
+        },
+        onProblem: (message) => reportModFault(loaded.id, `Worker request refused: ${message}`),
+      });
+      await Promise.race([
+        session.ready,
+        new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Worker did not become ready")), 3000)),
+      ]);
+      workerPlugins.set(loaded.id, session);
+    } catch (err) {
+      reportModFault(loaded.id, `API-2 Worker failed to boot: ${faultMessage(err)}`);
+    }
+  }
+}
+
 /* Each mod's own save bag, brought up to the schema that mod is now at, BEFORE
  * any of its other code runs (mod-bags.ts).
  *
@@ -13381,6 +13437,27 @@ const sessionFacts: ModSessionFacts = { newCharacter: bootedNew && !birthPending
   if (bags.migrated.length > 0) {
     log.info("mods", `migrated saved data for: ${bags.migrated.join(", ")}`);
   }
+}
+
+/* API-2 migration is necessarily asynchronous: only cloned bag data crosses
+ * the Worker boundary, and a rejected or absent migrator leaves the old bag. */
+{
+  const bags = await migrateModBagsAsync(
+    game.mods,
+    activeModCode().workers.map((loaded) => {
+      const worker = workerPlugins.get(loaded.id);
+      return {
+        id: loaded.id,
+        saveSchema: loaded.manifest.saveSchema,
+        migrate: worker?.canMigrateBag()
+          ? async (data, from) => (await worker.migrateBag(data, from)) as import("@rpgm-tools/neo-angband-core").JsonValue
+          : undefined,
+      };
+    }),
+  );
+  game.mods = { ...bags.bags };
+  for (const problem of bags.problems) if (problem.id !== null) reportModFault(problem.id, problem.why);
+  if (bags.migrated.length > 0) log.info("mods", `migrated Worker data for: ${bags.migrated.join(", ")}`);
 }
 
 for (const loaded of activeModCode().plugins) {

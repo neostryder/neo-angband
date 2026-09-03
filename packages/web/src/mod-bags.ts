@@ -34,6 +34,8 @@ import { faultMessage, type ModProblem } from "./mod-problems";
 
 /** A mod's own migrator, as the plugin ABI declares it. */
 export type BagMigrateFn = (data: JsonValue, fromSchema: number) => JsonValue;
+/** The API-2 form crosses a Worker boundary, so it returns asynchronously. */
+export type AsyncBagMigrateFn = (data: JsonValue, fromSchema: number) => Promise<JsonValue>;
 
 /** One mod, as this pass needs to see it. */
 export interface BagOwner {
@@ -42,6 +44,10 @@ export interface BagOwner {
   readonly saveSchema: number | undefined;
   /** Its `migrateBag`, already bound to the plugin; undefined when it ships none. */
   readonly migrate: BagMigrateFn | undefined;
+}
+
+export interface AsyncBagOwner extends Omit<BagOwner, "migrate"> {
+  readonly migrate: AsyncBagMigrateFn | undefined;
 }
 
 export interface BagMigrationResult {
@@ -133,5 +139,37 @@ export function migrateModBags(
     }
   }
 
+  return { bags: migrated.length > 0 ? out : bags, migrated, problems };
+}
+
+/** API-2 equivalent of migrateModBags. The old bag remains authoritative on failure. */
+export async function migrateModBagsAsync(
+  bags: Readonly<Record<string, ModBag>>,
+  owners: readonly AsyncBagOwner[],
+): Promise<BagMigrationResult> {
+  const out: Record<string, ModBag> = { ...bags };
+  const migrated: string[] = [];
+  const problems: ModProblem[] = [];
+  for (const owner of owners) {
+    const bag = bags[owner.id];
+    const target = owner.saveSchema;
+    if (!bag || target === undefined || bag.schema === target) continue;
+    if (bag.schema > target) {
+      problems.push({ id: owner.id, why: `its saved data was written by a newer version of it (data schema ${String(bag.schema)}, this version reads ${String(target)}) - the data is kept as it is` });
+      continue;
+    }
+    if (!owner.migrate) {
+      problems.push({ id: owner.id, why: `its saved data is at schema ${String(bag.schema)} and this version expects ${String(target)}, but the mod ships no migrateBag - the old data is kept untouched` });
+      continue;
+    }
+    try {
+      const data = await owner.migrate(bag.data, bag.schema);
+      if (data === undefined) throw new Error("returned nothing");
+      out[owner.id] = { schema: target, data };
+      migrated.push(owner.id);
+    } catch (err) {
+      problems.push({ id: owner.id, why: `its migrateBag failed while bringing saved data from schema ${String(bag.schema)} to ${String(target)}, so the old data is kept unchanged: ${faultMessage(err)}` });
+    }
+  }
   return { bags: migrated.length > 0 ? out : bags, migrated, problems };
 }

@@ -382,9 +382,9 @@ describe("a mod folder on disk supplies working code", () => {
      * message - which is exactly how the check would rot into a formality. */
     writeMod(
       "stale",
-      { modApi: MOD_API_VERSION + 1 },
+      { modApi: MOD_API_VERSION + 2 },
       `throw new Error("top-level code ran, so the gate did not hold");
-       export default { api: ${MOD_API_VERSION + 1} };`,
+       export default { api: ${MOD_API_VERSION + 2} };`,
     );
     const report = await readModDir(fsSource([{ id: "stale", files: ["manifest.json"], code: [PLUGIN_FILE] }]));
     const code = await loadModCode({

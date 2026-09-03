@@ -18,7 +18,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { problemLines } from "./mod-problems";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
-import { loadModCode, hasPlugin, PLUGIN_FILE } from "./mod-code";
+import { loadModCode, hasPlugin, hasWorkerPlugin, PLUGIN_FILE } from "./mod-code";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
 import { MOD_API_MIN, MOD_API_VERSION, modApiVerdict, validateModPlugin } from "./mod-plugin";
 
@@ -63,6 +63,27 @@ const ALL_ENABLED = (): boolean => true;
 const NO_CAPS = (): readonly string[] => [];
 
 describe("a folder can supply code", () => {
+  it("selects API-2 worker code without importing it in the renderer", async () => {
+    const importer = vi.fn();
+    const pack = codePack("worker", {
+      modApi: 2,
+      runtime: "worker",
+      workerEntry: "worker.js",
+    });
+    const workerPack = { ...pack, code: ["worker.js"] };
+    const report = await loadModCode({
+      packs: [workerPack],
+      codeUrl: resolver(),
+      enabled: ALL_ENABLED,
+      consented: NO_CAPS,
+      importer,
+    });
+    expect(importer).not.toHaveBeenCalled();
+    expect(report.plugins).toEqual([]);
+    expect(report.workers).toMatchObject([{ id: "worker", api: 2, entryUrl: "mem://worker/worker.js" }]);
+    expect(hasWorkerPlugin(workerPack)).toBe(true);
+  });
+
   it("imports an enabled pack's plugin and returns it in load order", async () => {
     const plugin = { api: MOD_API_VERSION, hooks: () => undefined };
     const other = { api: MOD_API_VERSION, register: () => undefined };
