@@ -37,6 +37,7 @@ import {
   objectStackable,
   tvalIsMoney,
   tvalIsMushroom,
+  tvalIsWearable,
   tvalIsZapper,
 } from "../obj/object.js";
 import { objectTouch } from "../obj/known-object.js";
@@ -337,6 +338,25 @@ function playerPickupAux(
     } else if (hasZapper && tvalIsZapper(stack.tval)) {
       state.flavorKnown.objectFlavorAware(stack.kind, flavorDeps);
     }
+  }
+
+  /* An activatable wearable becomes an ability the player can use once its
+   * kind is already known (including the pickup that taught a racial flavour),
+   * or this particular object's activation was learned earlier. Do not expose a
+   * hidden activation merely because the live object carries one. */
+  if (
+    stack &&
+    tvalIsWearable(stack.tval) &&
+    (stack.activation?.effect ?? stack.effect)?.length &&
+    (state.flavorKnown?.isAware(stack.kind) ||
+      (stack.activation !== null && stack.knownActivation === stack.activation))
+  ) {
+    state.modHooks?.abilityGained?.({
+      kind: "activation",
+      kindIndex: stack.kind.kidx,
+      name: stack.kind.name,
+      command: "activate",
+    });
   }
 
   /* inven_carry's own "You have %s (%c)." message (obj-gear.c:893-921): describe

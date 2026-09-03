@@ -737,10 +737,24 @@ export function checkDevices(
    * the awareness rule cannot express: activating an item teaches THAT
    * object's effect or activation without making its kind aware, which is how
    * a special-artifact kind (flavor_init leaves the 14 of them unaware,
-   * obj-util.c L243-245) ever comes to aim itself properly on the next use. */
+  * obj-util.c L243-245) ever comes to aim itself properly on the next use. */
   if (activated) {
-    if (obj.effect) obj.knownEffect = obj.effect;
-    else if (obj.activation) obj.knownActivation = obj.activation;
+    let newlyKnown = false;
+    if (obj.effect) {
+      newlyKnown = obj.knownEffect !== obj.effect;
+      obj.knownEffect = obj.effect;
+    } else if (obj.activation) {
+      newlyKnown = obj.knownActivation !== obj.activation;
+      obj.knownActivation = obj.activation;
+    }
+    if (newlyKnown) {
+      state.modHooks?.abilityGained?.({
+        kind: "activation",
+        kindIndex: obj.kind.kidx,
+        name: obj.kind.name,
+        command: "activate",
+      });
+    }
   }
 
   return 1;

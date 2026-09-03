@@ -50,6 +50,8 @@ still calls itself.
 
 ### Added
 
+- [Internal] [Modding-API] **Mods can observe newly gained spells and known item activations, then create an unused keymap through a consented host facade.** `ModHooks.abilityGained` reports the committed ability, while `keymap:write` exposes `ctx.keymaps` backed by the live keymap store and its normal preference save path (#167).
+
 - [Visible] [Modding-API] **Mods can apply a consented post-processing visual filter to the terminal canvas.** The new `display:filter` capability exposes `ctx.display.setVisualFilter(filter)`, which affects the final ASCII or tile frame and every terminal-grid screen without changing the game's named color palette (#166).
 
 - [Internal] [Modding-API] **Added the opt-in API-2 Worker plugin ABI.** A manifest can select `modApi: 2`, `runtime: "worker"`, and a `workerEntry`; Neo Angband then starts that entry through a host-owned Dedicated Worker bootstrap with a versioned, validated structured-clone protocol. API-1 `plugin.js` remains explicitly trusted in-process code (#155).

@@ -21,6 +21,7 @@ import { processPlayer } from "./player-turn.js";
 import type { ActionRegistry } from "./player-turn.js";
 import { startGame } from "../session/game.js";
 import type { GamePack } from "../session/game.js";
+import type { AbilityGained } from "../mod/hooks.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -117,6 +118,8 @@ describe("startGame for a Mage (spellcasting wiring)", () => {
     const { state, registry, booted } = startMage(777);
     const p = state.actor.player;
     const handle = bookHandle(state);
+    const gained: AbilityGained[] = [];
+    state.modHooks = { abilityGained: (ability) => gained.push(ability) };
 
     /* Study: Mage chooses (PF_CHOOSE_SPELLS); spell 0 = Magic Missile. */
     const energy = run(state, registry, {
@@ -126,6 +129,15 @@ describe("startGame for a Mage (spellcasting wiring)", () => {
     expect(energy).toBe(state.z.moveEnergy);
     expect(spellOkayToCast(p, 0)).toBe(true);
     expect(p.upkeep.newSpells).toBe(0);
+    expect(gained).toEqual([
+      {
+        kind: "spell",
+        spellIndex: 0,
+        name: "Magic Missile",
+        realm: "arcane",
+        command: "cast",
+      },
+    ]);
 
     /* Put a tough target next to the player (any free cardinal grid). */
     const grid = state.actor.grid;

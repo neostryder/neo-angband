@@ -640,6 +640,18 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
           birth: {},
         }),
     },
+    abilityGained: {
+      yes: (log, tag) => ({ abilityGained: () => void log.push(tag) }),
+      no: (log, tag) => ({ abilityGained: () => void log.push(tag) }),
+      run: (h) =>
+        h.abilityGained?.({
+          kind: "spell",
+          spellIndex: 0,
+          name: "Magic Missile",
+          realm: "Magic",
+          command: "cast",
+        }),
+    },
   };
 
   /** The fold `probe` exhibits, read off composeModHooks' actual behaviour. */
@@ -750,6 +762,18 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
   it("levelRevisited leaves the frozen level untouched when its observer throws", () => {
     const { hooks } = guarded({ levelRevisited: THROWS });
     expect(hooks.levelRevisited?.(CHUNK, 19, 50)).toBeUndefined();
+  });
+
+  it("abilityGained is dropped when its observer throws", () => {
+    const { hooks } = guarded({ abilityGained: THROWS });
+    expect(
+      hooks.abilityGained?.({
+        kind: "activation",
+        kindIndex: 1,
+        name: "Ring of Flames",
+        command: "activate",
+      }),
+    ).toBeUndefined();
   });
 
   it("messageText returns the RAW message, never an empty one", () => {

@@ -248,6 +248,14 @@ export interface ModDisplay {
   repaint(): void;
 }
 
+/** A consented door to the live user keymap for the current keyset. */
+export interface ModKeymaps {
+  /** True only for a valid trigger that has no existing keymap in this keyset. */
+  isBindableTriggerKey(trigger: string): boolean;
+  /** Bind an unused trigger, persist it through the host keymap store, and report success. */
+  bind(trigger: string, action: string): boolean;
+}
+
 /** What the host hands a plugin. Frozen before it is passed. */
 export interface ModPluginContext {
   /** The mod's own id, which is also its folder name. */
@@ -347,6 +355,13 @@ export interface ModPluginContext {
    * final rendered appearance.
    */
   readonly display?: ModDisplay;
+  /**
+   * Create keymaps in the player's current keyset. Present only when the mod
+   * declared `keymap:write` and the player consented. `bind()` never replaces a
+   * player mapping: check `isBindableTriggerKey()` first and handle false as a
+   * declined race with another keymap editor or mod.
+   */
+  readonly keymaps?: ModKeymaps;
   /**
    * Whether this session's character was just CREATED, as opposed to loaded from
    * a save.

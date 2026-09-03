@@ -114,6 +114,24 @@ export interface HistoryDisplayEntry {
   readonly expandUserInput?: true;
 }
 
+/** A newly available player ability, named without exposing a mutable game object. */
+export type AbilityGained =
+  | {
+      readonly kind: "spell";
+      readonly spellIndex: number;
+      readonly name: string;
+      readonly realm: string;
+      /** The host command that opens this spell's casting picker. */
+      readonly command: "cast";
+    }
+  | {
+      readonly kind: "activation";
+      readonly kindIndex: number;
+      readonly name: string;
+      /** The host command that opens the activation picker. */
+      readonly command: "activate";
+    };
+
 /**
  * A mod's behaviour contributions. Every member is optional; an absent member
  * means "this mod does not touch that point" and core takes its faithful path.
@@ -387,6 +405,16 @@ export interface ModHooks {
    * choices past the character they were made on).
    */
   optionsChanged?: (options: OptionStateData) => void;
+
+  /**
+   * The player learned a spell or gained a known activatable item
+   * (spell-cmd.ts, pickup.ts, and obj-cmd.ts). This is a notification: core has already
+   * committed the knowledge and does not read a return value. `command` is the
+   * semantic command a host turns into its current keyset's activation input;
+   * a mod may use it when offering a keymap without guessing which command the
+   * player uses.
+   */
+  abilityGained?: (ability: AbilityGained) => void;
 }
 
 /**
@@ -415,7 +443,7 @@ export interface ModHooks {
  *  - ANY hooks (saveNoiseScent, shapeLearnObviousFlagsDirectly) are disjunctive:
  *    one mod asking for the data is enough, because the data is additive and a
  *    second mod cannot object.
- *  - NOTIFICATION hooks (optionsChanged, levelRevisited) call every contributor
+ *  - NOTIFICATION hooks (optionsChanged, levelRevisited, abilityGained) call every contributor
  *    in load order.  There is no answer for a later mod to override.
  *
  * WHY THE LAST TWO ARE NOT EXCEPTIONS. "Later wins" answers the question "two
@@ -478,6 +506,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   levelRevisited: "all-observe",
   messageText: "chained",
   optionsChanged: "all-observe",
+  abilityGained: "all-observe",
 };
 
 /**
@@ -658,6 +687,13 @@ export function guardModHooks(
     };
   }
 
+  const ability = hooks.abilityGained;
+  if (ability) {
+    out.abilityGained = (gained): void => {
+      guard("abilityGained", () => ability({ ...gained }), undefined);
+    };
+  }
+
   return out;
 }
 
@@ -811,6 +847,13 @@ export function composeModHooks(
       for (const fn of optionsChanged) {
         fn({ ...data, values: { ...data.values }, birth: { ...data.birth } });
       }
+    };
+  }
+
+  const abilityGained = list.map((c) => c.abilityGained).filter(isFn);
+  if (abilityGained.length > 0) {
+    out.abilityGained = (gained): void => {
+      for (const fn of abilityGained) fn({ ...gained });
     };
   }
 

@@ -234,7 +234,8 @@ export type ParsedCapability =
   | { kind: "ui"; region: string; action: "replace" | "create" | "mount" }
   | { kind: "backup"; action: "folder" }
   | { kind: "mod"; action: "install" | "session" }
-  | { kind: "debug"; action: "spawn" | "wizard" };
+  | { kind: "debug"; action: "spawn" | "wizard" }
+  | { kind: "keymap"; action: "write" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 /**
@@ -372,6 +373,9 @@ export function parseCapability(cap: string): ParsedCapability {
   if (cap === "debug:wizard") {
     return { kind: "debug", action: "wizard" };
   }
+  if (cap === "keymap:write") {
+    return { kind: "keymap", action: "write" };
+  }
   const ui = UI_RE.exec(cap);
   if (ui) {
     return { kind: "ui", region: ui[1] as string, action: "replace" };
@@ -462,6 +466,8 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
        * experience and the acquirement too. Exactly the #261 lesson, caught by
        * adding the second action rather than by shipping it. */
       return grant.kind === "debug" && grant.action === request.action;
+    case "keymap":
+      return grant.kind === "keymap" && grant.action === request.action;
     case "ui":
       /* Per region, with one wildcard. A `display` grant is NOT accepted here
        * and a `ui` grant is not accepted above: owning the dungeon and owning

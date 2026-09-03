@@ -69,6 +69,7 @@ import { ODESC } from "../obj/desc.js";
 import { createDefaultRegistry, processPlayer } from "./player-turn.js";
 import { makeState, plReg } from "./harness.js";
 import type { GameState } from "./context.js";
+import type { AbilityGained } from "../mod/hooks.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -2325,6 +2326,8 @@ describe("per-object effect knowledge (cmd-obj.c L97-103, L424-429)", () => {
     const ring = makeNamed("Flames", TV.RING);
     expect(objNeedsAim(ring, { flavor: unawareFlavor() })).toBe(true);
     const h = carry(state, ring);
+    const gained: AbilityGained[] = [];
+    state.modHooks = { abilityGained: (ability) => gained.push(ability) };
 
     let asked = 0;
     const deps = makeDeps(state, {
@@ -2339,6 +2342,14 @@ describe("per-object effect knowledge (cmd-obj.c L97-103, L424-429)", () => {
 
     /* ...but check_devices recorded what it just did (cmd-obj.c L98-101). */
     expect(ring.knownEffect).toBe(ring.effect);
+    expect(gained).toEqual([
+      {
+        kind: "activation",
+        kindIndex: ring.kind.kidx,
+        name: ring.kind.name,
+        command: "activate",
+      },
+    ]);
 
     /* Second use: the kind is STILL unaware - nothing about the player's
      * knowledge changed - yet known_aim is now true off the per-object bit. */
@@ -2357,12 +2368,22 @@ describe("per-object effect knowledge (cmd-obj.c L97-103, L424-429)", () => {
     light.effect = null;
     const activation = { effect: makeNamed("Cure Light Wounds", TV.POTION).effect };
     light.activation = activation as never;
+    const gained: AbilityGained[] = [];
+    state.modHooks = { abilityGained: (ability) => gained.push(ability) };
     const h = carry(state, light);
     useAux(state, light, USE.TIMEOUT, makeDeps(state, { flavor: unawareFlavor() }), {
       handle: h,
     });
     expect(light.knownActivation).toBe(activation);
     expect(light.knownEffect).toBeUndefined();
+    expect(gained).toEqual([
+      {
+        kind: "activation",
+        kindIndex: light.kind.kidx,
+        name: light.kind.name,
+        command: "activate",
+      },
+    ]);
   });
 
   it("a wand aims without any of this, as it always did", () => {

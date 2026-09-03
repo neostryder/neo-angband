@@ -149,6 +149,20 @@
       "kind": "SWITCH",
       "verdict": "CONTROL FLOW - health decile to colour. A numeric bucket, not a dispatch table."
     },
+      {
+        "file": "packages/mod-sdk/src/capabilities.ts",
+        "cases": 11,
+        "hasDefault": false,
+        "kind": "SWITCH",
+        "verdict": "INTERNAL - capability-grant coverage is the mod system's own closed vocabulary. A mod requests a documented capability but cannot define a new capability kind, so keymap:write extends this host-owned policy rather than exposing an unmodelled game dispatch."
+      },
+      {
+        "file": "packages/web/src/capability-describe.ts",
+        "cases": 11,
+        "hasDefault": false,
+        "kind": "SWITCH",
+        "verdict": "INTERNAL - the consent copy is keyed by the mod system's own capability kinds. Adding keymap:write changes the host's controlled permission vocabulary; plugins can request a kind but never extend this switch themselves."
+    },
     {
       "file": "packages/web/src/main.ts",
       "cases": 11,
@@ -169,20 +183,6 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "HOST - command-line option letters. Host wiring, not game content."
-    },
-    {
-      "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 10,
-      "hasDefault": false,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - grantCovers's dispatch on capability KIND (command/event/state/network/registry/display/ui/backup/mod/debug), same class as capability-describe.ts's 17-case row below: a mod cannot add a capability kind, because a kind is what the host defines. Resizing this switch is the symptom of the mod system growing a new kind (backup:folder at #133, then mod:install and debug:spawn with the in-game authoring doors), never a gap. Note that ui:panel.mount, which landed alongside those two, did NOT resize it: a third ACTION on an existing kind widens an arm rather than adding one, which is the distinction grantCovers compares the action in order to make."
-    },
-    {
-      "file": "packages/web/src/capability-describe.ts",
-      "cases": 10,
-      "hasDefault": false,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - describeCapability's dispatch on capability KIND, the consent-text sibling of capabilities.ts's grantCovers switch above and the same reasoning as this file's own 17-case row: a mod cannot add a capability kind, so this switch resizes only when the mod system itself grows one (backup:folder at #133, then mod:install and debug:spawn). The two switches move together by construction - a kind with a grant rule and no consent sentence would be a grant the player is never shown - which is why they are the same size in every revision of this census."
     },
     {
       "file": "packages/core/src/game/target-loop.ts",
@@ -281,6 +281,13 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
+    },
+      {
+        "file": "packages/mod-sdk/src/capabilities.ts",
+        "cases": 8,
+        "hasDefault": false,
+        "kind": "IF_CHAIN",
+        "verdict": "INTERNAL - parsing recognizes the closed capability grammar owned by the mod SDK. keymap:write is a new documented token, not a game behavior branch that a mod must be able to add at runtime."
     },
     {
       "file": "packages/mod-sdk/src/patch.ts",

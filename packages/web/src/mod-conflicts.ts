@@ -283,6 +283,7 @@ function hookDescription(hook: keyof ModHooks): string {
     levelRevisited: "what happens to transient tracking when a frozen level returns",
     messageText: "the wording of game messages",
     optionsChanged: "being told when you change your options",
+    abilityGained: "being told when you gain a spell or known activation",
   };
   return words[hook];
 }

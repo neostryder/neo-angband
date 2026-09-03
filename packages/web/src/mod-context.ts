@@ -25,6 +25,7 @@ import {
   type ModDebug,
   type ModDisplay,
   type ModInstallOutcome,
+  type ModKeymaps,
   type ModPluginContext,
   type ModSessionOutcome,
   type ModUi,
@@ -45,6 +46,7 @@ import {
 } from "./install-runtime";
 import { createModDebug, SPAWN_CAPABILITY, type DebugDoorDeps } from "./spawn-runtime";
 import { createModWizard, WIZARD_CAPABILITY, type WizardDoorDeps } from "./wizard-runtime";
+import { createModKeymaps, KEYMAP_WRITE_CAPABILITY } from "./macro-runtime";
 import type { CapabilitySet, ComposedRecords } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /**
@@ -134,6 +136,7 @@ export function modPluginContext(
   const debug = debugFor(id, session);
   const wizard = wizardFor(id, session);
   const display = displayFor(session);
+  const keymaps = keymapsFor(state, session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
   const registries = session.registries ?? boundRegistries;
@@ -158,6 +161,7 @@ export function modPluginContext(
      * mod gets is the id it was loaded under, so no mod can read another's. */
     prefs: session.prefs ?? modPrefs(id),
     ...(display ? { display } : {}),
+    ...(keymaps ? { keymaps } : {}),
     /* Defaults FALSE, which is the safe way round: a mod that seeds something
      * for a new life must not seed it over a character who already lived one,
      * so a caller that forgets to say gets the answer that changes nothing. */
@@ -178,6 +182,12 @@ export function modPluginContext(
     ...(records ? { composedRecords: records } : {}),
   };
   return Object.freeze(context);
+}
+
+/** `ctx.keymaps` is meaningful only during a live game and with its own consent. */
+function keymapsFor(state: GameState | undefined, session: ModSessionFacts): ModKeymaps | undefined {
+  if (!state || !session.capabilities?.has(KEYMAP_WRITE_CAPABILITY)) return undefined;
+  return createModKeymaps(state);
 }
 
 /** The live display door, latched after the shell has constructed its surface. */

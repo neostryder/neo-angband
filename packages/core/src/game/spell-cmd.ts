@@ -431,6 +431,16 @@ export function installSpellCommands(
     }
 
     spellLearn(player, spellIndex, env.msg);
+    const learned = spellByIndex(player.cls, spellIndex);
+    if (learned) {
+      state.modHooks?.abilityGained?.({
+        kind: "spell",
+        spellIndex,
+        name: learned.name,
+        realm: learned.realm.name,
+        command: "cast",
+      });
+    }
     calcSpells(player, deps.statInd, env.msg);
     return state.z.moveEnergy;
   });

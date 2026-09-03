@@ -5,6 +5,7 @@ import { TV } from "../generated/index.js";
 import { loc } from "../loc.js";
 import { Rng } from "../rng.js";
 import { ObjRegistry } from "../obj/bind.js";
+import { FlavorKnowledge } from "../obj/knowledge.js";
 import type { ObjPackJson } from "../obj/types.js";
 import { objectPrep } from "../obj/make.js";
 import type { GameObject } from "../obj/object.js";
@@ -223,6 +224,26 @@ describe("doAutopickup / playerPickupItem", () => {
     expect(picked).toBe(1);
     expect(floorPile(state, loc(5, 5)).length).toBe(0);
     expect(obj.grid).toBeNull();
+  });
+
+  it("notifies when a known activatable wearable enters the pack", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const ring = underfoot(state, makeObj(TV.RING));
+    ring.activation = { effect: [{}] } as never;
+    const gained: unknown[] = [];
+    state.flavorKnown = new FlavorKnowledge(reg.ordinaryKindCount);
+    state.flavorKnown.setAware(ring.kind);
+    state.modHooks = { abilityGained: (ability) => gained.push(ability) };
+
+    expect(playerPickupItem(state, ring, deps)).toBe(1);
+    expect(gained).toEqual([
+      {
+        kind: "activation",
+        kindIndex: ring.kind.kidx,
+        name: ring.kind.name,
+        command: "activate",
+      },
+    ]);
   });
 
   it("the pickup message reports the merged stack count and slot (inven_carry)", () => {

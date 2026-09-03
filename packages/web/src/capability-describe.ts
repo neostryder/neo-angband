@@ -265,6 +265,12 @@ export function describeCapability(cap: string): CapabilityDescription {
           "character it happens to is marked for good and can no longer be scored",
         elevated: true,
       };
+    case "keymap":
+      return {
+        cap,
+        text: "Create new shortcut keymaps in your current keyset without replacing your existing shortcuts",
+        elevated: false,
+      };
     case "ui":
       /* Named, because the consent is worth exactly as much as the player's
        * ability to picture what changes. "Replace part of the interface" tells
