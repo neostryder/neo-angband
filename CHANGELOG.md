@@ -182,7 +182,7 @@ still calls itself.
 
 ## [1.1.2] - 2026-08-27
 
-Current state of the project at version `1.6.0` - a fixes release. No player
+Current state of the project at version `1.7.0` - a fixes release. No player
 action is needed for the Linoleum id change below; an existing install
 carries its enabled choice and rule choices across automatically.
 
