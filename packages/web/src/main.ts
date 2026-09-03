@@ -8553,7 +8553,7 @@ const CURSOR_BG = "#3a4a6a"; // palette-exempt: map cursor highlight background
 
 /* Assigned after API-2 workers start. A render is the only point where both the
  * state and display models describe one completed host frame. */
-let publishWorkerModels: ((force?: boolean) => void) | undefined;
+let publishWorkerModels: ((force?: boolean) => void) | undefined = undefined;
 
 function render(targeting?: TargetingOverlay): void {
   // verify_panel before drawing so every viewport() reader in this frame sees
