@@ -117,7 +117,7 @@ export function installModWorkerBootstrap(scope: WorkerScope): void {
       const result = await plugin?.hooks?.artifactCommit?.({ artifactIndex: input.artifactIndex, alreadyCreated: input.alreadyCreated }) ?? { decision: "allow" as const };
       if (result.decision !== "allow" && result.decision !== "deny") throw new Error("invalid hook decision");
       send({ type: "hook.result", requestId: message.requestId, sequence: message.sequence, decision: result.decision, ...(result.patch === undefined ? {} : { patch: result.patch }) });
-    } catch (err) {
+    } catch (_err) {
       send({ type: "hook.result", requestId: message.requestId, sequence: message.sequence, decision: "allow" });
     }
   };
