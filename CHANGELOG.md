@@ -46,7 +46,7 @@ commit a tag resolved to when the mod was installed, and a tag that has
 since been retargeted is reported as moved rather than as the version it
 still calls itself.
 
-## [Unreleased]
+## [1.8.0] - 2026-09-04
 
 ### Added
 
