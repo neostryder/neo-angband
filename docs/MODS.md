@@ -339,8 +339,9 @@ The narrower reductions in a browser, precisely:
   pack loads across engine versions and reports what it could not apply, rather
   than being refused; a pack that ships code gets a deprecation release before
   an ABI bump strands it. The four gates that can strand a mod, what to put in
-  `engine`, and the one place the promise does not yet hold (`ctx.core`) are in
-  `modding/MOD_COMPATIBILITY.md`.
+  `engine`, and the named subset of `ctx.core` the promise covers are in
+  `modding/MOD_COMPATIBILITY.md`. Everything else on `ctx.core` is an escape
+  hatch: a plugin may call it, and a rename there can ship in the same release.
 
 ## Beyond-parity systems are mods, not core (decision 22)
 

@@ -7,11 +7,13 @@ The short answer, and the target the rest of this document explains:
 
 > A mod that is pure data should survive engine releases without being
 > republished. A mod that ships code should survive patch and minor releases,
-> and get a release's warning before an ABI change strands it.
+> and get a release's warning before an ABI change strands it. That ABI includes
+> a named subset of `ctx.core`; the rest of that namespace is an escape hatch.
 
 Written down on 2026-08-02, after measuring how the four gates actually behaved.
 Three of the four were stricter than they needed to be, and the fourth did not
-exist.
+exist. The fourth is `ctx.core`. A named subset of that namespace is part of the
+promise; the rest of it is an escape hatch.
 
 ## The four things that can strand a mod
 
@@ -20,7 +22,7 @@ exist.
 | 1 | `engine` | a semver range over `ENGINE_VERSION` | **warns** for data, **refuses** code |
 | 2 | `modApi` | the plugin ABI, an integer | refuses outside the accepted window |
 | 3 | a patch target | one `patches` / `fieldPatches` / `removes` ref | **skips that op**, keeps the mod |
-| 4 | `ctx.core` | any of the engine's ~1950 exports | nothing. See below. |
+| 4 | `ctx.core` | a guaranteed name disappearing; any other export a plugin actually calls | the loader still does nothing at load time; a guaranteed name cannot be removed from the engine without an alias or a two-release ABI bump. See below. |
 
 ### 1. `engine` is a label on data and a gate on code
 
@@ -231,10 +233,10 @@ instead of `values`, say) took down the whole pack, or every installed mod when
 the raw error named none of them; it is now refused the same way a missing
 patch target already was.
 
-### 4. The handed-in namespaces are not covered by any of the above, and that is the honest gap
+### 4. `ctx.core` is handed over whole; a named subset of it is guaranteed
 
 `ModPluginContext.core` is the **live core module namespace** - the whole engine,
-around 1,950 runtime exports, deliberately not a curated slice (decision 18, and
+1,974 runtime exports, deliberately not a curated slice (decision 18, and
 because a curated list is the thing that drifts). The count is not maintained by
 hand: `packages/core/mod-api-surface.json` is the recorded surface and
 `mod-core-surface.test.ts` fails in BOTH directions against it, so a removal and
@@ -247,12 +249,60 @@ A core function can be renamed without touching any of that, so the one number a
 mod author checks says nothing about the surface they spend all their time
 calling.
 
-What exists now is not a fence but a **ratchet**:
+That width is why the whole namespace cannot carry the compatibility promise: a
+ban on removing any of 1,974 names would freeze the port. First-party plugins
+call 23 of those names at runtime, and those 23 are the part of `ctx.core` the
+promise covers.
+
+| Export | `typeof` | Called by |
+|---|---|---|
+| `DDGRID` | object | feature-restoration |
+| `FEAT` | object | bug-fixes, borg |
+| `MON_RACE_FLAG_ENTRIES` | object | borg |
+| `MON_SPELL_ENTRIES` | object | borg |
+| `OptionState` | function | qol |
+| `REST_COMPLETE` | number | borg |
+| `RSF` | object | borg |
+| `Rng` | function | borg |
+| `TV` | object | borg |
+| `describeLookGrid` | function | qol |
+| `gearObjectForUse` | function | feature-restoration |
+| `knownPile` | function | qol |
+| `loc` | function | bug-fixes |
+| `movementTunnelTest` | function | qol |
+| `parseTilePrefs` | function | upstream-catchup |
+| `placeStairs` | function | bug-fixes |
+| `playerConfuseDir` | function | feature-restoration |
+| `setPrefErrorPolicy` | function | qol |
+| `squareIsEmpty` | function | bug-fixes |
+| `squareIsNoStairs` | function | bug-fixes |
+| `squareIsVisibleTrap` | function | qol |
+| `squareNumWallsAdjacent` | function | bug-fixes |
+| `tunnelAux` | function | qol |
+
+qol 7, bug-fixes 6, borg 7, feature-restoration 3, upstream-catchup 1. linoleum
+and forge call none: linoleum reaches the game through `host.tiles` and
+`ctx.registries`; forge holds `ctx.core` and does not read a name from it.
+
+`packages/core/mod-core-guaranteed.json` is the list, and
+`mod-core-guaranteed.test.ts` fails if any of those names is missing from the
+live namespace a plugin receives, or if its `typeof` has changed. Removing one
+is a compatibility break: keep the old name as an alias, or take the two-release
+`modApi` path. Updating `mod-api-surface.json` is not enough.
+
+**Everything else on `ctx.core` is the escape hatch.** A plugin may call it. A
+rename or removal of an unguaranteed name is recorded in the table below and can
+ship in the same release. Prefer a seam (`ModHooks`, `ctx.registries`, a
+capability-gated facade) when one exists. Reaching past those into an
+unguaranteed name is coupling to that engine release.
+
+What exists for the rest of the namespace is not a fence but a **ratchet**:
 `packages/core/mod-api-surface.json` records every runtime export, and
 `mod-core-surface.test.ts` fails when the set changes in either direction.
 
-- A **removal or rename** fails CI with the names, and the fix is either to keep
-  the old name as an alias or to record the break here and take it knowingly.
+- A **removal or rename** of an unguaranteed name fails CI with the names, and
+  the fix is either to keep the old name as an alias or to record the break here
+  and take it knowingly. A guaranteed name cannot take that second path.
 - An **addition** also fails, with a one-line fix
   (`node tools/api-surface.mjs --update`). That is not pedantry: a baseline that
   tolerated additions would go stale, an export added in one release and removed
@@ -262,9 +312,10 @@ What exists now is not a fence but a **ratchet**:
 #### There are two such namespaces now, watched the same way
 
 `ctx.authoring` is the mod SDK's public barrel, 94 runtime exports, handed over
-whole on exactly the terms `ctx.core` is and for exactly the same reason: a
-curated subset of an authoring API is a second list to maintain, and the first
-thing that happens to a curated list is that it lags the function somebody needs.
+whole for the same reason `ctx.core` is: a curated subset of an authoring API is
+a second list to maintain, and the first thing that happens to a curated list is
+that it lags the function somebody needs. It is ratchet-only. It is not part of
+the named `ctx.core` subset above.
 
 Until it was handed to a plugin, a rename inside the SDK was caught by `tsc -b`
 over this repository, because every consumer of it was in the repository. That
@@ -430,12 +481,15 @@ Nothing else about `UiEntryConfig` moved, and a plugin that only calls
 unaffected: every one of those gained an OPTIONAL trailing registry argument and
 behaves exactly as before when it is omitted.
 
-**This does not make `ctx.core` stable.** It makes breaking it visible to the
-person breaking it, in the repository where it happens, before it reaches a
-player's browser. The remaining pressure valve is `ModHooks`, which is a closed
-interface of eight members that the bug-fixes mod alone needed six of - if
-authors keep reaching past it into `ctx.core`, that is the signal to grow the
-seam, not to fence the namespace.
+**The rest of `ctx.core` is not frozen.** The ratchet makes a break visible in
+this repository before it reaches a player's browser. Nested keys on a
+guaranteed object (`FEAT.MORE`, `TV.SWORD`, `RSF.BR_FIRE`) follow the same
+shape-change recording as the rest of the engine: the promise is the top-level
+name and its `typeof`, not every property behind it. The remaining pressure
+valve is `ModHooks`, which is a closed interface of eight members that the
+bug-fixes mod alone needed six of - if authors keep reaching past it into
+unguaranteed `ctx.core` names, that is the signal to grow the seam or to add a
+name to the guaranteed subset, not to fence the namespace.
 
 ## What is *not* a compatibility mechanism
 

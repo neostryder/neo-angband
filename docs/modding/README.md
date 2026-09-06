@@ -446,8 +446,9 @@ version and are called out in release notes.
 **`MOD_COMPATIBILITY.md` is the page that answers "will my mod still work".**
 In one line: a data-only mod should survive engine releases without being
 republished, and a mod that ships code gets a release's warning before an ABI
-change strands it. That page has the mechanisms, the measurements behind them,
-and the one place the promise does not yet hold (`ctx.core`).
+change strands it. That ABI includes a named subset of `ctx.core`; the rest of
+that namespace is an escape hatch. That page has the mechanisms, the
+measurements behind them, and the list of guaranteed names.
 
 ## Licensing for mod authors
 

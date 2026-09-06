@@ -15,11 +15,15 @@
  * version number a mod author checks says nothing about the surface they spend
  * all their time calling.
  *
- * WHAT THIS DOES, AND WHAT IT DELIBERATELY DOES NOT. It does not forbid a
- * removal; that would freeze the port, which is still growing. It makes one
- * DELIBERATE: a rename now fails here, with the names, and the fix is either to
- * keep the old name as an alias or to record the break in the compatibility doc
- * and take it knowingly.
+ * WHAT THIS DOES, AND WHAT IT DELIBERATELY DOES NOT. Over the whole namespace
+ * it does not forbid a removal; that would freeze the port, which is still
+ * growing. It makes one DELIBERATE: a rename now fails here, with the names,
+ * and the fix is either to keep the old name as an alias or to record the break
+ * in the compatibility doc and take it knowingly.
+ *
+ * A named subset of this namespace IS forbidden to disappear.
+ * `mod-core-guaranteed.test.ts` is that check; updating this baseline is not
+ * enough to drop one of those names.
  *
  * IMPORTED THE WAY A PLUGIN GETS IT, not read off the source. `mod-context.ts`
  * builds `ctx.core` from exactly this import, so measuring the same object is the

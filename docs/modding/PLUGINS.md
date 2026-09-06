@@ -161,7 +161,7 @@ What `ctx` carries:
 | `api` | the ABI version the **host** implements |
 | `engine` | the engine version, if you want to adapt rather than refuse |
 | `flags` | **your** resolved rule toggles: `choices[flag] ?? rule.default`, sliced to the rules your own manifest declares |
-| `core` | the live engine namespace: core's entire public API |
+| `core` | the live engine namespace: core's entire public API. A named subset is guaranteed; the rest is an escape hatch. See [MOD_COMPATIBILITY.md](MOD_COMPATIBILITY.md) |
 | `state` | the live `GameState`. Handed to `register`, `migrateBag`, `controller` and every display seam; **never** to `hooks`, because the host composes hooks before a game exists |
 | `assetUrl` | `(path) => Promise<string \| null>`, a URL for one of *your* files |
 | `data` | your own record files, parsed, keyed without `.json` |

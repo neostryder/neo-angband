@@ -4,24 +4,28 @@
  *
  * WHY. `ctx.core` is the live core module namespace - the whole engine, not a
  * curated slice (packages/web/src/mod-plugin.ts says so in as many words, and
- * ratified decision 18 is that this is deliberate). It is also completely
- * unguarded: `MOD_API_VERSION` covers the SHAPE of the plugin contract, and
- * nothing at all covers the 1700-odd names behind `ctx.core`. Rename one and
- * every plugin using it breaks - at runtime, in a player's browser, with no
- * error anywhere in this repository and nothing in CI that could have known.
+ * ratified decision 18 is that this is deliberate). `MOD_API_VERSION` covers
+ * the SHAPE of the plugin contract, not the names behind `ctx.core`. Rename
+ * one and every plugin using it breaks - at runtime, in a player's browser.
  *
- * That is the SKSE-shaped hole, and it cannot be closed by taking the namespace
- * away (decision 18) or by hand-curating a smaller one (the curated list is the
- * thing that drifts). What it CAN be closed by is making a removal deliberate:
- * this records every runtime export, and the test beside it fails when the set
- * changes in either direction.
+ * This tool is the ratchet over the whole set: a removal or addition fails,
+ * the baseline is updated, and a known break is recorded. A named subset of
+ * `ctx.core` is separately guaranteed (`packages/core/mod-core-guaranteed.json`,
+ * `mod-core-guaranteed.test.ts`); updating this baseline is not enough to drop
+ * one of those names.
+ *
+ * That is the SKSE-shaped hole for the namespace as a whole, and it cannot be
+ * closed by taking the namespace away (decision 18) or by hand-curating what a
+ * plugin may see. A named subset of `ctx.core` is guaranteed separately. This
+ * tool is the ratchet over everything else: a removal is deliberate, recorded,
+ * and visible.
  *
  * TWO SURFACES, NOT ONE, since `ctx.authoring` landed. That field is the mod
- * SDK's public barrel handed in whole, on exactly the terms `ctx.core` is, so it
- * arrived carrying exactly the same hole and closes it the same way. The SDK was
- * out of scope here while it was only a build-time dependency of the host; it is
- * now a namespace a plugin holds at runtime, and a rename inside it costs a mod
- * author the same silent breakage.
+ * SDK's public barrel handed in whole, the same way `ctx.core` is, so it
+ * arrived carrying the same hole and closes it the same way (a ratchet, not a
+ * named subset). The SDK was out of scope here while it was only a build-time
+ * dependency of the host; it is now a namespace a plugin holds at runtime, and
+ * a rename inside it costs a mod author the same silent breakage.
  *
  * WHY BOTH DIRECTIONS. A baseline that only failed on removals would go stale -
  * an export added in one release and removed in the next would never have been
@@ -122,6 +126,21 @@ async function checkSurface(surface) {
         `through ${surface.field}:\n  ${removed.join("\n  ")}\n` +
         "Every plugin using one of these breaks, at runtime, in a player's browser.",
     );
+    if (surface.field === "ctx.core") {
+      const guaranteedFile = resolve(here, "../packages/core/mod-core-guaranteed.json");
+      const guaranteed = new Set(
+        JSON.parse(readFileSync(guaranteedFile, "utf8")).exports.map((entry) => entry.name),
+      );
+      const broken = removed.filter((name) => guaranteed.has(name));
+      if (broken.length > 0) {
+        console.error(
+          `api-surface: ${broken.length} of those are GUARANTEED ctx.core exports:\n  ` +
+            `${broken.join("\n  ")}\n` +
+            "Keep the old name as an alias, or take the two-release modApi path. " +
+            "Updating this baseline is not enough. See docs/modding/MOD_COMPATIBILITY.md.",
+        );
+      }
+    }
   }
   if (added.length > 0) {
     console.error(

@@ -46,6 +46,12 @@ commit a tag resolved to when the mod was installed, and a tag that has
 since been retargeted is reported as moved rather than as the version it
 still calls itself.
 
+## [Unreleased]
+
+### Changed
+
+- [Visible] [Modding-API] **The mod compatibility promise now covers a named subset of `ctx.core`.** Twenty-three runtime exports that first-party plugins actually call are guaranteed to remain, and a test fails if any of them disappears or changes `typeof`. The rest of the namespace stays an escape hatch (#81).
+
 ## [1.8.0] - 2026-09-04
 
 ### Added

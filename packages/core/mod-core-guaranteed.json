@@ -1,0 +1,28 @@
+{
+  "note": "Runtime exports on ctx.core that the mod compatibility promise covers. A removal of any of these names is a compatibility break: keep the old name as an alias, or take the two-release modApi path. Updating mod-api-surface.json is not enough. See docs/modding/MOD_COMPATIBILITY.md.",
+  "exports": [
+    { "name": "DDGRID", "kind": "object" },
+    { "name": "FEAT", "kind": "object" },
+    { "name": "MON_RACE_FLAG_ENTRIES", "kind": "object" },
+    { "name": "MON_SPELL_ENTRIES", "kind": "object" },
+    { "name": "OptionState", "kind": "function" },
+    { "name": "REST_COMPLETE", "kind": "number" },
+    { "name": "RSF", "kind": "object" },
+    { "name": "Rng", "kind": "function" },
+    { "name": "TV", "kind": "object" },
+    { "name": "describeLookGrid", "kind": "function" },
+    { "name": "gearObjectForUse", "kind": "function" },
+    { "name": "knownPile", "kind": "function" },
+    { "name": "loc", "kind": "function" },
+    { "name": "movementTunnelTest", "kind": "function" },
+    { "name": "parseTilePrefs", "kind": "function" },
+    { "name": "placeStairs", "kind": "function" },
+    { "name": "playerConfuseDir", "kind": "function" },
+    { "name": "setPrefErrorPolicy", "kind": "function" },
+    { "name": "squareIsEmpty", "kind": "function" },
+    { "name": "squareIsNoStairs", "kind": "function" },
+    { "name": "squareIsVisibleTrap", "kind": "function" },
+    { "name": "squareNumWallsAdjacent", "kind": "function" },
+    { "name": "tunnelAux", "kind": "function" }
+  ]
+}
