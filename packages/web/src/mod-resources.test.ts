@@ -24,7 +24,7 @@ import {
   type ResourceRuntime,
 } from "./mod-resources";
 import type { ModAssetSource } from "./tile-mods";
-import { setSplashArt, titleLines, MOD_SPLASH_ROWS } from "./news";
+import { setSplashArt, titleLines, MOD_SPLASH_ROWS, PROJECT_INFORMATION } from "./news";
 import { coreHelpPageIds, helpIndexLabels, helpLinesFromText, setModHelpPages } from "./help";
 import { FONT_16X24 } from "./font-16x24";
 
@@ -317,7 +317,7 @@ describe("the consumers actually read what was latched", () => {
   it("clamps art that is too tall instead of running off the terminal", () => {
     setSplashArt(Array.from({ length: 60 }, (_, i) => `row ${i}`));
     const lines = titleLines();
-    expect(lines).toHaveLength(MOD_SPLASH_ROWS + 8);
+    expect(lines).toHaveLength(MOD_SPLASH_ROWS + PROJECT_INFORMATION.length);
   });
 
   it("REPLACES a core help page when the slot matches, and keeps the rest", () => {

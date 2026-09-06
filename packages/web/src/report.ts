@@ -496,7 +496,7 @@ export function reportLines(v: ReportView): ReportLine[] {
       "body",
     );
     say(
-      t("report.screen.beforePost.four", "  Angband 4.2.6 is a parity difference. The form asks which."),
+      t("report.screen.beforePost.four", "  Vanilla Angband is a parity difference. The form asks which."),
       "body",
     );
     say("");

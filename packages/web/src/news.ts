@@ -113,7 +113,9 @@ export interface TitleLine {
   /**
    * Centre the line for the terminal width instead of painting from column 0.
    * news.txt's own rows carry baked-in centring as leading spaces and must NOT
-   * be re-centred; the project information block is deliberately left-aligned.
+   * be re-centred. The project information block carries no padding of its own, so
+   * it IS centred here, which is what keeps it aligned under the centred art
+   * rather than hard against column 0.
    */
   centred: boolean;
   /**
@@ -137,15 +139,15 @@ const RELEASES_URL = "https://releases.rpgm.tools/repos/neo-angband/";
 const DISCORD_URL = "https://discord.gg/YegtwbHTBQ";
 
 /** The project information shown below core or mod-provided title art. */
-const PROJECT_INFORMATION: readonly TitleLine[] = [
+export const PROJECT_INFORMATION: readonly TitleLine[] = [
   {
-    markup: "Neo Angband: TypeScript port of Angband 4.2.6 with general-purpose mod loading.",
-    centred: false,
+    markup: "Neo Angband: TypeScript port of Angband with general-purpose mod loading.",
+    centred: true,
   },
-  { markup: "", centred: false },
+  { markup: "", centred: true },
   {
     markup: `Docs and quick start: ${DOCS_URL}`,
-    centred: false,
+    centred: true,
     runs: [
       { text: "Docs and quick start: ", css: colorToCss(COLOUR_WHITE) },
       { text: DOCS_URL, css: UI_LINK, href: DOCS_URL },
@@ -153,7 +155,7 @@ const PROJECT_INFORMATION: readonly TitleLine[] = [
   },
   {
     markup: `GitHub: ${GITHUB_URL}`,
-    centred: false,
+    centred: true,
     runs: [
       { text: "GitHub: ", css: colorToCss(COLOUR_WHITE) },
       { text: GITHUB_URL, css: UI_LINK, href: GITHUB_URL },
@@ -161,7 +163,7 @@ const PROJECT_INFORMATION: readonly TitleLine[] = [
   },
   {
     markup: `Releases: ${RELEASES_URL}`,
-    centred: false,
+    centred: true,
     runs: [
       { text: "Releases: ", css: colorToCss(COLOUR_WHITE) },
       { text: RELEASES_URL, css: UI_LINK, href: RELEASES_URL },
@@ -169,25 +171,33 @@ const PROJECT_INFORMATION: readonly TitleLine[] = [
   },
   {
     markup: `Discord: ${DISCORD_URL}`,
-    centred: false,
+    centred: true,
     runs: [
       { text: "Discord: ", css: colorToCss(COLOUR_WHITE) },
       { text: DISCORD_URL, css: UI_LINK, href: DISCORD_URL },
     ],
   },
+  /* Two rows, not one. The paint loop clips each row at the terminal width, so
+   * this sentence as a single 119-character line lost its last 39 characters
+   * mid-word on the 80-column grid the screen is built for. Every painted row
+   * is width-checked in news.test.ts so a re-lengthened line fails there rather
+   * than silently truncating again. */
   {
-    markup:
-      "Thank you, neostryder and past maintainers and developers and to all those who have given us so many creative variants!",
-    centred: false,
+    markup: "Thank you, neostryder and past maintainers and developers, and to all those",
+    centred: true,
   },
-  { markup: "", centred: false },
+  {
+    markup: "who have given us so many creative variants!",
+    centred: true,
+  },
+  { markup: "", centred: true },
 ];
 
 /**
  * The full painted screen: news.txt's title art followed by project information.
  *
  * Pure, and separate from the paint loop, so the row budget is checkable without
- * a terminal. NEWS is 13 rows (0-12) and PROJECT_INFORMATION is 8, for 21
+ * a terminal. NEWS is 13 rows (0-12) and PROJECT_INFORMATION is 9, for 22
  * painted rows (0-20). The prompt remains on upstream's row 23, leaving two
  * blank rows between the information and prompt. news.test.ts asserts the count.
  */
