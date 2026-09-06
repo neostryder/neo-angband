@@ -1,7 +1,7 @@
 {
   "name": "@rpgm-tools/neo-angband-content",
-  "version": "1.9.0",
-  "description": "The core content pack: Vanilla Angband gamedata compiled to schema-validated pack format",
+  "version": "1.8.0",
+  "description": "The core content pack: Angband 4.2.6 gamedata compiled to schema-validated pack format",
   "license": "GPL-2.0-only",
   "author": "neostryder (RPGM Tools)",
   "homepage": "https://github.com/neostryder/neo-angband#readme",

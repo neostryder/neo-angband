@@ -241,6 +241,13 @@
       "verdict": "UI - keypress routing in the character sheet (MOD_REACH gap 23)."
     },
     {
+      "file": "packages/web/src/gamepad-input.ts",
+      "cases": 9,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "UI - controller role routing, one arm per adapter-owned input role. The roles are a closed vocabulary about the pad rather than about the game, and every game command a pad reaches is a `cmd:` binding resolved through the shared command catalogue, so a mod adding a command gains a controller route without an arm here (MOD_REACH gap 21)."
+    },
+    {
       "file": "packages/web/src/main.ts",
       "cases": 9,
       "hasDefault": true,

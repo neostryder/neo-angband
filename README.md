@@ -189,7 +189,6 @@ the only way to know that route actually works.
 | [borg](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player |
 | [forge](https://github.com/neostryder/neo-angband-mod-forge) | An in-game workshop for building a mod from something that already exists |
 | [upstream-catchup](https://github.com/neostryder/neo-angband-mod-upstream-catchup) | Changes Angband accepted after the 4.2.6 tag this port is pinned to, each cited to its commit |
-| [squire](https://github.com/neostryder/neo-angband-mod-squire) | An autoplayer that runs a single errand and hands control straight back |
 
 **What a mod can do:** change any value in any of the game's data files; add
 items, monsters, artifacts and whole new kinds of item; add or retune spells;
@@ -279,7 +278,7 @@ Morgoth's fortress, with Morgoth as the final enemy - and added unique monsters,
 artifacts, item activation, level feelings, and special rooms. Sean Marsh,
 Geoff Hill, and others carried it forward after Cutler and Astrand moved on; the
 first release outside Warwick, 2.4.frog_knows, reached the public on 11 April
-1993. This project ports Vanilla Angband, the latest release in that continuing line.
+1993. This project ports Angband 4.2.6, one release in that continuing line.
 
 Images: Rogue screenshot by Thedarkb, [CC BY-SA
 4.0](https://creativecommons.org/licenses/by-sa/4.0/), via [Wikimedia

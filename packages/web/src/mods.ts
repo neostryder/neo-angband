@@ -3336,7 +3336,7 @@ export async function runModManager(
               t(
                 "modsScreen.run.emptyBody1",
                 "That is the normal starting state - Neo Angband ships as " +
-                  "Vanilla Angband and nothing else, and every mod, including the " +
+                  "Angband 4.2.6 and nothing else, and every mod, including the " +
                   "ones written here, is something you choose to add.",
               ),
               w,

@@ -200,8 +200,8 @@ export function installTouchControls(host: TouchControlsHost): () => void {
       const actions = document.createElement("div");
       actions.className = "touch-actions";
       for (const action of context.replies) {
-        const dir = Number(action.id.replace("key:", ""));
-        if ((context.kind === "direction" || context.kind === "target") && dir >= 1 && dir <= 9) {
+        const dir = action.direction;
+        if ((context.kind === "direction" || context.kind === "target") && dir !== undefined) {
           const node = actionButton(compass, action, snapshot.token);
           node.style.gridRow = String(3 - Math.floor((dir - 1) / 3));
           node.style.gridColumn = String((dir - 1) % 3 + 1);

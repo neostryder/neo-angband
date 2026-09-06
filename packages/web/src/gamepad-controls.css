@@ -1,0 +1,120 @@
+/* palette-exempt: native DOM controls, independent of the terminal palette. */
+#gamepad-controls {
+  position: fixed;
+  inset: 0;
+  z-index: 32;
+  pointer-events: none;
+  color: #e8e8ef;
+  font: 15px system-ui, sans-serif;
+}
+#gamepad-controls * { box-sizing: border-box; }
+#gamepad-controls button,
+#gamepad-controls select {
+  font: inherit;
+  color: inherit;
+  background: #232937;
+  border: 1px solid #555c70;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+#gamepad-controls button:disabled { opacity: .45; }
+
+.gamepad-notice {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  max-width: min(90vw, 640px);
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: #141923e6;
+  border: 1px solid #8094af;
+  pointer-events: none;
+}
+
+.gamepad-wheel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(88vmin, 520px);
+  height: min(88vmin, 520px);
+  border-radius: 50%;
+  background: radial-gradient(circle, #141923f2 40%, #141923b8 100%);
+  border: 1px solid #55607a;
+  pointer-events: auto;
+}
+.gamepad-hub {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 30%;
+  display: grid;
+  gap: 2px;
+  text-align: center;
+}
+.gamepad-hub span { color: #a8b2c8; font-size: 13px; }
+.gamepad-hub small { color: #8f99ad; font-size: 11px; }
+.gamepad-wedge {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 22%;
+  min-height: 48px;
+  /* Two neighbours clear each other when EITHER axis separates them, and on a
+     ring of eight the nearest pair is separated horizontally by r*sin(45deg)
+     and the next pair vertically by r*cos(45deg). At a 36% radius that is
+     about 101px and 100px, so a wedge under 88px wide and under 74px tall
+     never touches one. The height is clipped rather than allowed to grow: a
+     ring that stays a ring is worth more than a fourth line of a label the hub
+     shows in full anyway. */
+  max-height: 74px;
+  overflow: hidden;
+  display: grid;
+  gap: 1px;
+  align-content: center;
+  text-align: center;
+  padding: 4px 6px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+.gamepad-wedge small { color: #a8b2c8; font-size: 10px; }
+.gamepad-wedge[aria-selected="true"] {
+  background: #294c6c;
+  border-color: #99caff;
+}
+
+.gamepad-legend {
+  position: absolute;
+  inset: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  margin: auto;
+  max-width: 720px;
+  max-height: 100%;
+  overflow: auto;
+  padding: 14px;
+  border-radius: 12px;
+  background: #141923f7;
+  border: 1px solid #8094af;
+  pointer-events: auto;
+}
+.gamepad-legend h2 { margin: 0 0 6px; font-size: 18px; }
+.gamepad-detail { margin: 0 0 10px; color: #a8b2c8; overflow-wrap: anywhere; }
+.gamepad-rows { display: grid; gap: 6px; }
+.gamepad-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) 2fr 2fr;
+  gap: 6px;
+  align-items: center;
+  padding: 2px;
+  border-radius: 8px;
+}
+.gamepad-row[aria-current="true"] { background: #294c6c; }
+.gamepad-row select { min-width: 0; }
+.gamepad-name { text-align: left; }
+.gamepad-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+@media (max-width: 560px) {
+  .gamepad-row { grid-template-columns: 1fr; }
+}

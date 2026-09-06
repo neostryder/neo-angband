@@ -1,11 +1,30 @@
 /** Device-neutral, lifetime-scoped answers to the shell's current question. */
-import { clearQueuedUiInputs, dispatchUiInput } from "./input-door";
+import { clearQueuedUiInputs, dispatchUiInput, type AngbandDirection } from "./input-door";
+
+/**
+ * What an action MEANS, for an adapter that cannot read its label.
+ *
+ * A touchscreen renders every reply as a labelled button and the player reads
+ * which one is Cancel. A controller has no such luxury: it has to know which
+ * reply the Cancel button answers and which reply a stick pushed north-east
+ * answers, before it can draw anything at all. Both facts were previously
+ * recoverable only by parsing the action's id back into the key it wraps, which
+ * is a second definition of the same thing and one that goes stale silently.
+ * They are declared here instead: derived by the helper where the key already
+ * settles the answer, and stated by the caller where it does not. `t` accepts a
+ * target in the target loop and takes off a ring at the game screen, so no
+ * amount of looking at the key alone can tell an adapter which one it is.
+ */
+export type ControlRole = "cancel" | "accept" | "next" | "previous";
 
 export interface ControlAction {
   readonly id: string;
   readonly label: string;
   readonly disabled?: boolean | undefined;
   readonly selected?: boolean;
+  readonly role?: ControlRole;
+  /** The keypad direction this action answers, where it answers one. */
+  readonly direction?: AngbandDirection;
   readonly run: () => void;
 }
 
@@ -24,6 +43,15 @@ export interface ControlContext {
 
 export interface ControlCommand extends ControlAction {
   readonly category: string;
+  /**
+   * The command's key in the ORIGINAL keyset, where it has one.
+   *
+   * A stable name for the command rather than an instruction to press it. A
+   * saved controller binding needs to survive the roguelike-keyset option being
+   * turned on, and the row's own ordinal is an upstream table position that
+   * says nothing to a player reading a mapping screen.
+   */
+  readonly key?: string;
 }
 
 export interface ControlSnapshot {
@@ -129,8 +157,17 @@ export function controlKey(key: string, ctrl = false): void {
   } }, undefined, true);
 }
 
-export function keyAction(label: string, key: string, ctrl = false): ControlAction {
-  return { id: `${ctrl ? "ctrl:" : "key:"}${key}`, label, run: () => controlKey(key, ctrl) };
+export function keyAction(label: string, key: string, ctrl = false, role?: ControlRole): ControlAction {
+  // A direction and a cancel are derived rather than passed in: the key IS the
+  // meaning for those two, so a caller that had to restate it could restate it
+  // wrongly. Anything else has to be said.
+  const direction = !ctrl && /^[1-9]$/.test(key) ? (Number(key) as AngbandDirection) : undefined;
+  const settled: ControlRole | undefined = role ?? (!ctrl && key === "Escape" ? "cancel" : undefined);
+  return {
+    id: `${ctrl ? "ctrl:" : "key:"}${key}`, label,
+    ...(direction ? { direction } : {}), ...(settled ? { role: settled } : {}),
+    run: () => controlKey(key, ctrl),
+  };
 }
 
 export const cancelAction = (): ControlAction => keyAction("Cancel", "Escape");

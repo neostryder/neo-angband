@@ -23,7 +23,7 @@ that). "Still open" is not one of them, and neither is silence.
 
 Last reviewed: 2026-08-23.
 
-## Complete mobile controls (#145) and controller reuse (#65)
+## Complete mobile controls (#145)
 
 The first touch increment adds a shared prompt surface, collapsible controls,
 native text entry and separate Touch/Desktop keymaps. The complete inventory
@@ -36,9 +36,25 @@ store and advanced editor screens; named per-mod presets, import/export and
 hand preference; full-character phone acceptance. Font/tile sizing, pinch,
 pan and fitted sidebar reflow already belong to the shipped QoL display
 controller. Upstream count prefixes, literal keymap bypass and subwindow
-toggle remain keyboard-shell parity gaps. Controller mapping can reuse the
-prompt context stack and literal reply dispatch; device discovery, analog
-dead zones and gamepad mapping remain part of #65.
+toggle remain keyboard-shell parity gaps.
+
+---
+
+## Complete controller support (#65)
+
+The first controller increment adds capability detection, derived default
+layouts, per-pad saved bindings, dead zones and eight-way stick resolution, a
+radial command wheel over the real command catalogue, and a mapping screen. The
+scheme is in [GAMEPAD_CONTROLS.md](design/GAMEPAD_CONTROLS.md), against the same
+[keyboard inventory](design/TOUCH_COMMAND_INVENTORY.md) the touch scheme uses.
+
+Remaining work: a text-entry scheme, without which a name, an inscription, a
+note, a rest count and a search cannot be answered from a pad; a persistent
+on-screen legend, because the connection notice names the wheel button once and
+then goes away; triggers on the minority of pads that report them as axes rather
+than as buttons; rumble as progressive enhancement; confirmation of the hat
+switch's rotation against a physical pad; and full-character acceptance with the
+keyboard unplugged.
 
 ---
 
@@ -364,11 +380,3 @@ choices, and an optional birth/game-options section, plus the two Mods-menu
 actions to make one and load one - is at docs/MOD_PROFILES.md.
 
 Tracked as issue #87.
-
-## Squire in the curated registry
-
-`mods/registry.json` does not yet list `neostryder/neo-angband-mod-squire`. The
-game resolves every fact about a mod from that repository's own manifest at a
-TAG, so a registry entry pointing at a repository with no release tag would put
-a row in the player's mod list that cannot install. The entry goes in with
-Squire's first release, not before.

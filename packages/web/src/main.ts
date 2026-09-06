@@ -1,6 +1,8 @@
 import { controlProfile } from "./control-profile";
 import { controlSurface, cancelAction, keyAction, directionActions, stopControlInput } from "./control-surface";
 import { installTouchControls } from "./touch-controls";
+import { installGamepadControls } from "./gamepad-controls";
+import { startGamepadRuntime } from "./gamepad-input";
 /**
  * Neo Angband web front end.
  *
@@ -4967,8 +4969,9 @@ function runTargetLoop(
       lastMon = mon;
       controls.update({
         kind: "target", label: mode & TARGET.LOOK ? "Look" : "Target", detail: text,
-        replies: [...directionActions(), keyAction("Select target", "t"),
-          keyAction("Next", "+"), keyAction("Previous", "-"), keyAction("Free cursor", "o"),
+        replies: [...directionActions(), keyAction("Select target", "t", false, "accept"),
+          keyAction("Next", "+", false, "next"), keyAction("Previous", "-", false, "previous"),
+          keyAction("Free cursor", "o"),
           keyAction("Player", "p"), keyAction("Interesting", "m"),
           ...(mon ? [keyAction("Recall", "r")] : []), keyAction("Help", "?"), cancelAction()],
       });
@@ -10424,6 +10427,9 @@ controlSurface.setCommands(
     const rows = commandTable().map((command, index) => ({
       id: command.id ?? `core:keypress-command:${index}`,
       label: command.desc, category: command.cat ?? "Port",
+      // The original keyset's key names the command for a saved binding; the
+      // key actually sent still follows the live keyset option.
+      ...(command.ctrl ? { key: `^${command.ctrl}` } : command.o ? { key: command.o } : {}),
       run: () => runConfirmedCommand(command.ctrl ? `^${command.ctrl}` : keyForKeyset(command, rogue), command.act),
     }));
     // These root commands live outside the cached keypress registry.
@@ -10446,15 +10452,23 @@ controlSurface.setCommands(
   },
 );
 
+function stopForControlAdapter(): void {
+  if (installedController !== null) stopInstalledController?.();
+  else stopControlInput();
+}
+
 if (controlProfile() === "touch" || window.matchMedia?.("(pointer: coarse)").matches) {
   installTouchControls({
     save: () => { persistSave(); },
-    stop: () => {
-      if (installedController !== null) stopInstalledController?.();
-      else stopControlInput();
-    },
+    stop: stopForControlAdapter,
   });
 }
+
+// Installed unconditionally, unlike the touch sheet: a controller can be
+// plugged into anything, and it stays invisible until one actually reports.
+const gamepadControls = installGamepadControls({ stop: stopForControlAdapter });
+const gamepadRuntime = startGamepadRuntime(controlSurface, gamepadControls.host);
+gamepadControls.attach(gamepadRuntime.adapter);
 
 // ---- Session continuity + anti-scum: force a save on every exit path -------
 // A refresh, navigation, tab-hide or close all force-flush the in-progress game
@@ -14064,6 +14078,12 @@ setAutoplayerInterruptOwner({
 if (import.meta.env.DEV) {
   (window as unknown as { __neo?: unknown }).__neo = {
     resumed: resumedActive,
+    /* A pad is sampled on animation frames, and a hidden tab has none - which
+     * is the right behaviour for a player and the wrong one for a harness. This
+     * hands a harness one sample at a time, through the same adapter, so what
+     * it drives is the shipped routing rather than a copy of it. */
+    gamepadPoll: (pads: readonly unknown[], now: number) =>
+      gamepadRuntime.adapter.poll(pads as never, now),
     get turn() {
       return state.turn;
     },

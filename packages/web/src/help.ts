@@ -736,7 +736,7 @@ export function helpCommunityScreen(
         kind: "text",
         color: FG,
         paragraphs: [
-          [{ text: `You are playing Neo Angband ${ENGINE_VERSION}, a port of Vanilla Angband.` }],
+          [{ text: `You are playing Neo Angband ${ENGINE_VERSION}, a port of Angband 4.2.6.` }],
           [],
           [
             {
