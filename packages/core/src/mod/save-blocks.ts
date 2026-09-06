@@ -52,9 +52,14 @@
  * separate hard-incompatibility concern, not a quarantine case. Finer
  * sub-property granularity (a mod ego or brand on an otherwise-core object, a
  * mod origin-race on a core object) degrades to the base entity and is a
- * documented follow-up. The player-facing recoveries built ON TOP of this store
- * (stranded characters returning to town, mod items surfaced in the home, the
- * stash view) are P-UI work per MOD_LIFECYCLE section 6 step 2.
+ * documented follow-up. Of the player-facing recoveries built ON TOP of this
+ * store (MOD_LIFECYCLE decision 7), the stash view and the one-time keep/purge
+ * question are built - `mod/orphan-stash.ts` is the read-only model and
+ * `packages/web/src/mod-orphans.ts` the screen - and a quarantined item is
+ * surfaced there rather than as home stock, because the exact restore this file
+ * performs needs the gear handle and equipment slots that only the store
+ * carries. Returning a stranded character to town is still P-UI work per
+ * MOD_LIFECYCLE section 6 step 2.
  */
 
 import { parseId } from "./ids.js";

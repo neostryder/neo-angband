@@ -208,7 +208,23 @@ import { GameEvents, useFlavorGlyph, makeShapeLoreEnv } from "@rpgm-tools/neo-an
 import type { BoltEventData, ExplosionEventData } from "@rpgm-tools/neo-angband-core";
 import { registerLocale, setLocale, t } from "@rpgm-tools/neo-angband-core";
 import type { LocaleBundle } from "@rpgm-tools/neo-angband-core";
-import { describeLoadFailure, describeMigration, describePackMismatch } from "./save-recovery.js";
+import type { OrphanStash, OrphanStore } from "@rpgm-tools/neo-angband-core";
+import {
+  describeLoadFailure,
+  describeMigration,
+  describePackMismatch,
+  describeQuarantine,
+} from "./save-recovery.js";
+import {
+  orphanKeptMessage,
+  orphanPurgeFooter,
+  orphanPurgeLines,
+  orphanPurgeMenu,
+  orphanPurgeTitle,
+  orphanPurgedMessage,
+  stashOf,
+  type OrphanViewDeps,
+} from "./mod-orphans";
 import { installCrashScreen } from "./crash-screen.js";
 import { showSafeModeScreen } from "./safe-mode.js";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, effectInfoRegistry, randartRegistry, runeRegistry, tvalRegistry, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
@@ -595,6 +611,8 @@ import {
 import {
   advanceDeterminism,
   advanceModNoscore,
+  orphanPromptDue,
+  purgeOrphans,
   enterScore,
   NOSCORE,
   noscoreInvalidatesScore,
@@ -1274,6 +1292,25 @@ function bootGame(): ReturnType<typeof startGame> {
           if (loaded.mismatchedPacks.length > 0) {
             const mismatchNote = describePackMismatch(loaded.mismatchedPacks);
             loadedNote = loadedNote ? `${loadedNote} ${mismatchNote}` : mismatchNote;
+          }
+          /* MOD_LIFECYCLE decision 7: this load QUARANTINED something. The save
+           * has always been right about it - the entity is frozen, not deleted -
+           * and the screen has always been silent, so the whole of what a player
+           * could observe was an item missing from the pack. Said here for the
+           * same reason the two notes above are: once, at the moment it happens,
+           * naming what it was and where to find it. The stash view (Mods, then
+           * Set aside) is the rest of the answer.
+           *
+           * GATED ON `quarantined`, NOT ON THE STORE BEING NON-EMPTY. The store
+           * survives every later reload, so gating on it would say this on every
+           * single boot for the rest of the character's life. `quarantined` is
+           * the count this load newly froze, which is exactly the load worth
+           * interrupting. */
+          if (loaded.quarantined > 0) {
+            const quarantineNote = describeQuarantine(orphanStashFor(loaded.orphans));
+            if (quarantineNote) {
+              loadedNote = loadedNote ? `${loadedNote} ${quarantineNote}` : quarantineNote;
+            }
           }
           /* THE MOMENT THIS PAGE BECOMES THIS CHARACTER'S WRITER, and the only
            * one on the resume path. Everything above this line is reading; from
@@ -6220,6 +6257,29 @@ async function exitToTitle(): Promise<void> {
  * there is no nested-modal race. ESC resumes.
  */
 /**
+ * What the stash view and the keep/purge prompt read (MOD_LIFECYCLE decision 7).
+ *
+ * `present` is the namespaces that actually composed, the same set `loadGame`
+ * reconciles the save against, so a pack that is installed and did not compose
+ * reads as switched off rather than as missing. `installed` is the CONTENT
+ * packs discovery can see, which is the only kind that can own a quarantined
+ * entity: quarantine is keyed on content namespaces, and a plugin-shape mod
+ * contributes none.
+ */
+function orphanViewDeps(store: () => OrphanStore | undefined): OrphanViewDeps {
+  return {
+    store,
+    present: () => presentNamespaces(),
+    installed: () => new Set(discoverContentModManifests().map((m) => m.id)),
+  };
+}
+
+/** The stash model over one store, for the boot note and the boot prompt. */
+function orphanStashFor(store: OrphanStore | undefined): OrphanStash {
+  return stashOf(orphanViewDeps(() => store));
+}
+
+/**
  * The in-app mod manager (W2.4). Builds a live catalog from the three discovery
  * sources + the persisted store, and reloads on Apply so content re-composes
  * (pack.ts) and enabled plugins re-install (boot). Content-mod enablement and
@@ -6336,6 +6396,10 @@ async function modManagerDeps(): Promise<ModManagerDeps> {
      * failure it can hit - offline, rate-limited, storage refused - is a message on a
      * row rather than a reason to hide the screen. */
     modBrowse: modBrowseDeps(),
+    /* The stash row and its screen. Read live off the running game, because
+     * enabling a mod here does not rehydrate anything until the reload and a
+     * cached read would keep saying so afterwards. */
+    orphans: orphanViewDeps(() => game.orphans),
     isModNoscore: () => game.manifest.modNoscore,
     advanceSaveRatchets: (mod) => {
       game.manifest.determinism = advanceDeterminism(game.manifest.determinism, mod.nondeterministic);
@@ -11280,6 +11344,49 @@ async function confirmPendingAutoplayerInstall(): Promise<void> {
 }
 
 /**
+ * MOD_LIFECYCLE decision 8: the one-time, per-save keep-or-purge question.
+ *
+ * Asked once per character, the first time it boots with anything quarantined,
+ * and never again whichever way it is answered - `orphansAcknowledged` rides on
+ * the save, so a player who declines is not nagged and a character that strands
+ * more content later is not re-asked. KEEPING IS THE DEFAULT and is what ESC
+ * gives: quarantine is the whole guarantee, and the only thing that may undo it
+ * is an explicit, counted answer.
+ *
+ * Chained after `confirmPendingAutoplayerInstall` in the boot promise for the
+ * same reason that one is chained where it is: the game screen is live by then,
+ * so this cannot flash past behind a loading animation or a birth flow that
+ * still owns the terminal. A character with nothing quarantined never sees it.
+ */
+async function offerOrphanChoice(): Promise<void> {
+  if (!orphanPromptDue(game.orphans, game.orphansAcknowledged)) return;
+  const stash = orphanStashFor(game.orphans);
+  await openModal(async () => {
+    await showTextScreen(term, orphanPurgeTitle(), orphanPurgeLines(stash), orphanPurgeFooter());
+    const pick = await selectFromMenu(
+      term,
+      "core:mod-orphan-purge",
+      orphanPurgeTitle(),
+      orphanPurgeMenu(stash),
+      t("modsScreen.common.footer.abTapEsc", "[ a/b or tap; ESC cancels ]"),
+    );
+    /* ESC (null) is KEEP, not "ask me again". The question has been put, and a
+     * player who dismissed it has answered it in the only direction that
+     * destroys nothing. */
+    const purged = pick === 1;
+    if (purged) game.orphans = purgeOrphans();
+    game.orphansAcknowledged = true;
+    /* FORCED, and written now rather than waiting for the throttle to let the
+     * next autosave through: the point of "one-time" is that the answer
+     * survives whatever happens next, and a purge that is not on disk is a
+     * purge the following boot re-asks about. */
+    autosave(true);
+    say(purged ? orphanPurgedMessage(stash.total) : orphanKeptMessage(stash.total));
+    render();
+  });
+}
+
+/**
  * Installed mods with a newer version in their own repository. Never throws.
  *
  * A NETWORK CALL PER INSTALLED MOD, so where it is called from is now part of the
@@ -12905,7 +13012,8 @@ void applyModResources()
   })
   .then(resetVisualsForCharacter)
   .then(maybeShowGraphics)
-  .then(confirmPendingAutoplayerInstall);
+  .then(confirmPendingAutoplayerInstall)
+  .then(offerOrphanChoice);
 
 // ---- Agent controller seam (W1.5) ----------------------------------------
 // A bundled in-process agent can drive the real game through the frozen

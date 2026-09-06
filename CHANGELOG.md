@@ -54,6 +54,8 @@ still calls itself.
 
 - [Visible] [Modding-API] **`neo-angband-mod-check` now refuses a manifest whose capability strings the game would reject at load.** The check calls `CapabilitySet.fromManifest`, so a typo'd capability or a capability on a content pack fails in the author's own folder instead of in a player's install (#79).
 
+- [Visible] [UI] [Modding-API] **Items and creatures set aside by a missing mod are now visible, explained, and reclaimable.** Uninstalling a content mod has always frozen its entities in the save rather than deleting them, but nothing said so: they simply disappeared from the pack. Mods now has a "Set aside by a missing mod" row carrying the count, and its screen lists everything held, grouped by the mod that owned it, with what each thing was, why it is inert, and what would bring it back. A load that newly freezes something says so on the message line, naming what it was, and a character with something set aside is asked once whether to keep it frozen (the default) or throw it away permanently. Nothing held takes a pack slot, weight or a home slot while it waits, and reinstalling the mod returns a worn item to the slot it came off and a carried one to the pack (#76).
+
 ### Changed
 
 - [Visible] [Modding-API] **The mod compatibility promise now covers a named subset of `ctx.core`.** Twenty-three runtime exports that first-party plugins actually call are guaranteed to remain, and a test fails if any of them disappears or changes `typeof`. The rest of the namespace stays an escape hatch (#81).

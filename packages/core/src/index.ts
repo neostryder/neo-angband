@@ -129,6 +129,10 @@ export * from "./session/save-migrate.js";
  * the fold, so both are part of the published API - see mod/hooks.ts. */
 export * from "./mod/hooks.js";
 export * from "./mod/save-blocks.js";
+/* The player-facing half of the same store: what is quarantined, which pack
+ * owned it, and whether that pack can be found now. Read-only over
+ * save-blocks.ts's storage - see mod/orphan-stash.ts. */
+export * from "./mod/orphan-stash.js";
 export * from "./mod/ids.js";
 export * from "./mod/registry-host.js";
 export * from "./mod/vocabulary.js";

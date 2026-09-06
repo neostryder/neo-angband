@@ -46,6 +46,7 @@ import type {
 } from "../session/save.js";
 import { orphanCount, quarantineSave, rehydrateSave } from "./save-blocks.js";
 import type { OrphanEntry, SaveManifest } from "./save-blocks.js";
+import { orphanPromptDue, purgeOrphans } from "./orphan-stash.js";
 
 /* ------------------------------------------------------------------ *
  * The standard headless pack fixture (mirrors session/save.test.ts).
@@ -480,6 +481,119 @@ describe("mod dehydrate/rehydrate end-to-end (D1, decision 19)", () => {
     expect(restored.mods).toEqual({
       frost: { schema: 3, data: { seenWyrms: 2, note: "cold" } },
     });
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Decision 8's one-time keep/purge answer, through the REAL save path.
+ *
+ * The stash view is read-only; this is the one place a player's answer writes
+ * to the orphans store, so both answers are proved against `saveGame` and
+ * `loadGame` rather than against the pure transforms. Keeping must be lossless
+ * to the byte, and purging must touch the orphans block and nothing else - the
+ * failure that would matter is a purge that also lost a level, a mod bag or a
+ * manifest, which no assertion about the store alone would catch.
+ * ------------------------------------------------------------------ */
+
+describe("the one-time keep/purge answer round-trips through save and load (decision 8)", () => {
+  /** A loaded game holding quarantined frost content and not yet asked. */
+  function loadedWithOrphans(): { game: StartedGame; store: SavedGame["orphans"] } {
+    const { original } = buildModdedSave();
+    const { save: quarantined } = quarantineSave(original, manifest, coreOnly);
+    const game = loadGame(pack, quarantined, new Set(["core"]));
+    return { game, store: clone(quarantined.orphans) };
+  }
+
+  it("arrives unasked, with every quarantined entity carried onto the live game", () => {
+    const { game, store } = loadedWithOrphans();
+    expect(game.orphansAcknowledged).toBe(false);
+    expect(orphanPromptDue(game.orphans, game.orphansAcknowledged)).toBe(true);
+    expect(game.orphans).toEqual(store);
+    expect(orphanCount(game.orphans)).toBe(orphanCount(store));
+  });
+
+  /* `quarantined` is what makes the load-time note a ONE-TIME note rather than
+   * a line on every boot for the rest of the character's life: it counts what
+   * THIS load newly froze, and the second load has nothing left to freeze
+   * because the first one already moved it all into the store. */
+  it("reports a fresh quarantine once, and reports nothing on the next load", () => {
+    const { original } = buildModdedSave();
+
+    /* The load that actually loses the content: the save still has frost ids in
+     * its live collections, and loadGame is what prunes them. */
+    const first = loadGame(pack, clone(original), new Set(["core"]));
+    expect(first.quarantined).toBeGreaterThan(0);
+    expect(first.quarantined).toBe(orphanCount(first.orphans));
+
+    /* Reloaded with frost still missing: the same entities, nothing new. */
+    const second = loadGame(pack, clone(saveGame(first)), new Set(["core"]));
+    expect(second.quarantined).toBe(0);
+    expect(orphanCount(second.orphans)).toBe(orphanCount(first.orphans));
+  });
+
+  it("reports nothing on a game that never had a mod", () => {
+    const fresh = startGame(pack, { seed: 20260906, depth: 1, className: "Warrior" });
+    expect(fresh.quarantined).toBe(0);
+    expect(loadGame(pack, clone(saveGame(fresh)), new Set(["core"])).quarantined).toBe(0);
+  });
+
+  it("KEEP is lossless: the store survives the write, the reload, and is never asked again", () => {
+    const { game, store } = loadedWithOrphans();
+    game.orphansAcknowledged = true;
+
+    const written = saveGame(game);
+    expect(written.orphansAcknowledged).toBe(true);
+    expect(written.orphans).toEqual(store);
+
+    /* And once more round the loop, because "one-time" is a claim about the
+     * NEXT load rather than about this one: an acknowledgement that failed to
+     * serialize would re-ask on every single boot. */
+    const again = loadGame(pack, clone(written), new Set(["core"]));
+    expect(again.orphansAcknowledged).toBe(true);
+    expect(again.orphans).toEqual(store);
+    expect(orphanPromptDue(again.orphans, again.orphansAcknowledged)).toBe(false);
+
+    /* Nothing degraded on the second trip either: reinstalling frost after any
+     * number of keeps still puts every entity back. */
+    const rehydrated = rehydrateSave(saveGame(again), bothPresent);
+    expect(rehydrated.orphans).toBeUndefined();
+  });
+
+  it("PURGE drops the orphans block permanently and leaves the rest of the save untouched", () => {
+    const kept = loadedWithOrphans().game;
+    kept.orphansAcknowledged = true;
+    const keptSave = saveGame(kept);
+
+    const purged = loadedWithOrphans().game;
+    purged.orphans = purgeOrphans();
+    purged.orphansAcknowledged = true;
+    const purgedSave = saveGame(purged);
+
+    /* Gone, and gone rather than emptied: an empty object left in the save
+     * would make every later load carry a block that means nothing. */
+    expect(purgedSave.orphans).toBeUndefined();
+    expect(orphanCount(purgedSave.orphans)).toBe(0);
+
+    /* THE REST OF THE SAVE IS IDENTICAL. Compared against the keep run's own
+     * save with only the two orphan fields removed, so any other difference -
+     * a lost level cache, a dropped mod bag, a rewritten manifest - fails
+     * here rather than being discovered by a player. */
+    const strip = (save: SavedGame): SavedGame => {
+      const copy = clone(save);
+      delete copy.orphans;
+      delete copy.orphansAcknowledged;
+      return copy;
+    };
+    expect(strip(purgedSave)).toEqual(strip(keptSave));
+    expect(purgedSave.orphansAcknowledged).toBe(true);
+    expect(purgedSave.mods).toEqual(keptSave.mods);
+
+    /* And it stays purged: reloading does not resurrect it, and reinstalling
+     * frost has nothing left to bring back. */
+    const reloaded = loadGame(pack, clone(purgedSave), new Set(["core"]));
+    expect(orphanCount(reloaded.orphans)).toBe(0);
+    expect(orphanPromptDue(reloaded.orphans, reloaded.orphansAcknowledged)).toBe(false);
+    expect(rehydrateSave(saveGame(reloaded), bothPresent).orphans).toBeUndefined();
   });
 });
 
