@@ -1481,23 +1481,6 @@ Ranked by how much of "the whole game can be made over" each one makes moddable.
 
 ---
 
-### Gap 21 current correction, 2026-09-06
-
-The row above contains historical measurements. The current code-derived record
-is docs/design/PRESENTATION_OWNER_SEAM.md. Its counts replace the old estimates:
-the HUD has 3 separately replaceable regions, the terminal has 33 full-screen
-erase paths plus its 1 compositor repaint, and 40 semantic ScreenView ids are
-modelled. The full-screen erase ratchet derives 31 region-declared paths, 2
-pending prompt paths, and 34 including the compositor in
-packages/web/src/main-regions.test.ts:430 through
-packages/web/src/main-regions.test.ts:433.
-
-The presentation owner seam is live for the HUD, menus, and ScreenView paths.
-Registry:menu still changes rows and now composes with menu presentation rather
-than replacing it. The two pending prompt paths and screens sharing the
-core:text fallback remain incomplete. The design records the exact surface list,
-the host guarantees, and the compatibility fallback rule.
-
 ## The goal: every dispatch point in this document becomes moddable
 
 **A correction, recorded 2026-08-08.** An earlier revision of this page argued

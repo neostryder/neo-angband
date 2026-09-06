@@ -440,6 +440,11 @@ export class GlyphTerm
    */
   private glyphCache = new Map<string, HTMLCanvasElement | null>();
   private sizeListeners = new Set<(size: TermSize) => void>();
+  /** The visual viewport's origin in layout-viewport CSS pixels. */
+  private viewportX = 0;
+  private viewportY = 0;
+  /** Avoid repainting the whole terminal twice for one browser resize. */
+  private fittedViewport = "";
   /**
    * The active modal's tap handler (see onCellTap). While set, a pointerdown
    * on the canvas is consumed here (stopImmediatePropagation) so the in-world
@@ -495,13 +500,18 @@ export class GlyphTerm
     if (!ctx) throw new Error("canvas 2d context unavailable");
     this.ctx = ctx;
     if (options.bitmapFont !== undefined) this.font = options.bitmapFont;
-    this.fit();
+    this.fit(true);
     const refit = () => {
-      this.fit();
+      if (!this.fit()) return;
       const size = this.size();
       for (const listener of this.sizeListeners) listener(size);
     };
     window.addEventListener("resize", refit);
+    /* A virtual keyboard can resize the visual viewport without changing the
+     * layout viewport. The canvas and its region geometry must follow what the
+     * player can actually see, not the rectangle the page had before typing. */
+    window.visualViewport?.addEventListener("resize", refit);
+    window.visualViewport?.addEventListener("scroll", refit);
     // Some embeds start at 0x0 and never fire window resize; observe the
     // document element so the grid appears as soon as there is space.
     new ResizeObserver(refit).observe(document.documentElement);
@@ -568,7 +578,7 @@ export class GlyphTerm
       this.options.minRows = options.minRows;
       this.options.snapViewportToEven = options.snapViewportToEven;
     }
-    this.fit();
+    this.fit(true);
     const size = this.size();
     for (const listener of this.sizeListeners) listener(size);
   }
@@ -596,8 +606,8 @@ export class GlyphTerm
     return {
       cellWidth: this.cellW,
       cellHeight: this.cellH,
-      originX: this.offsetX,
-      originY: this.offsetY,
+      originX: this.viewportX + this.offsetX,
+      originY: this.viewportY + this.offsetY,
     };
   }
 
@@ -619,12 +629,23 @@ export class GlyphTerm
    * a letterboxed 80x24 grid (largest cell that fits, centered); in reflow mode
    * it sizes a responsive grid honoring the minCols/minRows floor.
    */
-  private fit(): void {
+  private fit(force = false): boolean {
     const dpr = window.devicePixelRatio || 1;
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const visual = window.visualViewport;
+    const w = visual?.width ?? window.innerWidth;
+    const h = visual?.height ?? window.innerHeight;
+    const x = visual?.offsetLeft ?? 0;
+    const y = visual?.offsetTop ?? 0;
+    const viewport = `${dpr}:${w}:${h}:${x}:${y}`;
+    if (!force && viewport === this.fittedViewport) return false;
+    this.fittedViewport = viewport;
+    this.viewportX = x;
+    this.viewportY = y;
     this.canvas.width = Math.floor(w * dpr);
     this.canvas.height = Math.floor(h * dpr);
+    this.canvas.style.position = "fixed";
+    this.canvas.style.left = `${x}px`;
+    this.canvas.style.top = `${y}px`;
     this.canvas.style.width = `${w}px`;
     this.canvas.style.height = `${h}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -658,6 +679,7 @@ export class GlyphTerm
      * this runs from a resize/ResizeObserver callback rather than from a frame
      * of gameplay. */
     this.flush();
+    return true;
   }
 
   /**

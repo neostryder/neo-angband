@@ -48,9 +48,9 @@ still calls itself.
 
 ## [Unreleased]
 
-### Added
+- [Visible] [UI] **Panels follow the visible viewport on phones.** The game canvas and host-owned panel container now resize together when a virtual keyboard changes the visual viewport, keeping a modal panel's usable area above the keyboard.
 
-- [Visible] [Modding-API] **Mods can replace each named HUD region through the presentation owner seam.** hud() independently owns the message area, vitals, and status line with core fallback, frozen frame data, and per-region fault recovery; the accompanying design records the menu and screen presentation contracts and code-derived surface inventory (#12).
+### Added
 
 - [Visible] [Modding-API] **Mods can manage their own keyboard bindings through the consented keymap facade.** `keymap:write` now lets a mod enumerate, rebind, and remove only bindings it owns; player edits take ownership back and mod teardown removes remaining claims (#93).
 

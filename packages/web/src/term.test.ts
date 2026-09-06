@@ -83,6 +83,13 @@ describe("carryGrid", () => {
 });
 
 describe("GlyphTerm.fit", () => {
+  it("uses and listens to the visual viewport, so a virtual keyboard changes the canvas", () => {
+    expect(TERM).toContain("const visual = window.visualViewport");
+    expect(TERM).toContain('window.visualViewport?.addEventListener("resize", refit)');
+    expect(TERM).toContain('window.visualViewport?.addEventListener("scroll", refit)');
+    expect(TERM).toContain('this.canvas.style.position = "fixed"');
+  });
+
   it("carries the grid over instead of allocating a blank one", () => {
     expect(TERM).toMatch(/this\.grid = carryGrid\(this\.grid, this\.rows, this\.cols\)/);
     // The blank allocation is the regression. Nothing in the file may reintroduce it.
@@ -99,7 +106,7 @@ describe("GlyphTerm.fit", () => {
      * vanished" looked like. Size observers run only after that flush. */
     expect(TERM).toMatch(/carryGrid\(this\.grid[\s\S]{0,900}?this\.fullRepaint = true/);
     expect(TERM).toMatch(/this\.fullRepaint = true;[\s\S]{0,900}?this\.flush\(\)/);
-    expect(TERM).toMatch(/this\.fit\(\);\s*const size = this\.size\(\);\s*for \(const listener of this\.sizeListeners\) listener\(size\)/);
+    expect(TERM).toMatch(/if \(!this\.fit\(\)\) return;\s*const size = this\.size\(\);\s*for \(const listener of this\.sizeListeners\) listener\(size\)/);
   });
 });
 

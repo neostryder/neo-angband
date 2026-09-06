@@ -1,0 +1,13 @@
+{
+  "id": "viewport-panel",
+  "name": "Viewport Panel",
+  "version": "1.0.0",
+  "shape": "plugin",
+  "modApi": 1,
+  "engine": ">=0.19.0",
+  "author": "neostryder",
+  "license": "GPL-2.0-only",
+  "repository": "https://github.com/neostryder/neo-angband",
+  "capabilities": ["ui:panel.mount"],
+  "description": "A small editable panel that reports the visible viewport. It demonstrates a form that stays inside the host-owned panel rectangle when a phone keyboard changes the viewport."
+}
