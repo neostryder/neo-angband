@@ -1,6 +1,7 @@
 # Issue 17 report
 
 Implementation commit: `276cfaff001556af252a40401e9b428223d2c152` (`Make panels follow the visual viewport (#17)`).
+Report commit: `b18db91185ad8dbb653153acc0ea4d0ce936c8e4` (`Document layout region findings (#17)`).
 
 ## Pre-existing customizable-layout work
 
