@@ -11,9 +11,9 @@ player layout editor.
 - `packages/web/src/regions.ts` defines the four role-named base rectangles:
   `messages`, `sidebar`, `map`, and `status`. It projects each into both grid
   cells and CSS pixels, and defines the ordered `LiveRegion` stack.
-- `packages/web/src/ui-stack.ts`, `region-surface.ts`, `region-runtime.ts`, and
-  `region-input.ts` provide placement, clipping, compositing, and painted-cell
-  pointer ownership. `regionInputAt()` deliberately covers pointer input only.
+- `packages/web/src/ui-stack.ts`, `region-surface.ts`, and `region-runtime.ts`
+  provide placement, clipping, compositing, and painted-cell pointer ownership.
+  `regionInputAt()` in `ui-stack.ts` deliberately covers pointer input only.
 - `packages/web/src/main.ts` derives the base rectangles from `viewport()` and
   the three existing sidebar choices: Left, Top, and None. The player can choose
   those modes, but cannot place, resize, persist, or reorder any role.
