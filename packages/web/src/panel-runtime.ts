@@ -176,6 +176,8 @@ interface LivePanel {
   readonly container: HTMLElement;
   /** Whether it took the screen, which decides Escape and the pointer. */
   readonly modal: boolean;
+  /** Removes the visual-viewport listeners installed for this container. */
+  readonly stopViewport: () => void;
   readonly finish: () => void;
 }
 
@@ -380,6 +382,7 @@ function removePanel(panel: LivePanel, by: "player" | "host" | "mod" | "invarian
   if (by === "player") {
     cooldowns.set(panel.modId, Date.now() + PLAYER_CLOSE_COOLDOWN_MS);
   }
+  panel.stopViewport();
   try {
     panel.container.remove();
   } catch {
@@ -404,6 +407,48 @@ function removePanel(panel: LivePanel, by: "player" | "host" | "mod" | "invarian
    * a continuation that opens another panel cannot find the old one still on top
    * or still owning the keyboard. */
   panel.finish();
+}
+
+/** The small part of VisualViewport a panel needs, kept structural for tests. */
+interface PanelViewport {
+  readonly width: number;
+  readonly height: number;
+  readonly offsetLeft: number;
+  readonly offsetTop: number;
+  addEventListener(type: "resize" | "scroll", listener: EventListener): void;
+  removeEventListener(type: "resize" | "scroll", listener: EventListener): void;
+}
+
+/**
+ * Keep a fixed panel over the part of the page the player can currently see.
+ *
+ * `100vh` is the layout viewport on browsers where a virtual keyboard leaves
+ * that viewport alone. A panel sized from it can put its lower fields behind
+ * the keyboard even while the canvas has fitted to the smaller visual viewport.
+ * The host owns both rectangles, so it is the one place that may make them
+ * agree. A desktop browser and Electron have no separate visual viewport here;
+ * their existing `inset: 0` geometry remains the fallback.
+ */
+function fitPanelViewport(container: HTMLElement, viewport: PanelViewport | undefined): void {
+  if (!viewport) return;
+  container.style.inset = "auto";
+  container.style.left = `${viewport.offsetLeft}px`;
+  container.style.top = `${viewport.offsetTop}px`;
+  container.style.width = `${viewport.width}px`;
+  container.style.height = `${viewport.height}px`;
+}
+
+function trackPanelViewport(container: HTMLElement, doc: Document): () => void {
+  const viewport = doc.defaultView?.visualViewport as PanelViewport | undefined;
+  if (!viewport) return () => {};
+  const fit = (): void => fitPanelViewport(container, viewport);
+  fit();
+  viewport.addEventListener("resize", fit);
+  viewport.addEventListener("scroll", fit);
+  return (): void => {
+    viewport.removeEventListener("resize", fit);
+    viewport.removeEventListener("scroll", fit);
+  };
 }
 
 /**
@@ -545,6 +590,8 @@ function mountPanel(
   const root = mount.attachShadow({ mode: "closed" });
   container.appendChild(mount);
 
+  const stopViewport = trackPanelViewport(container, doc);
+
   let open = true;
   let settle: () => void = () => {};
   const closed = new Promise<void>((resolve) => {
@@ -555,6 +602,7 @@ function mountPanel(
     id,
     container,
     modal,
+    stopViewport,
     finish: () => {
       if (!open) return;
       open = false;

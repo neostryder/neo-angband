@@ -53,7 +53,39 @@ interface FakeNode {
   focus(): void;
 }
 
+interface FakeViewport {
+  width: number;
+  height: number;
+  offsetLeft: number;
+  offsetTop: number;
+  readonly listeners: Map<string, EventListener[]>;
+  addEventListener(type: string, listener: EventListener): void;
+  removeEventListener(type: string, listener: EventListener): void;
+  emit(type: string): void;
+}
+
 let body: FakeNode;
+let panelViewport: FakeViewport | undefined;
+
+function viewport(): FakeViewport {
+  const listeners = new Map<string, EventListener[]>();
+  return {
+    width: 390,
+    height: 844,
+    offsetLeft: 0,
+    offsetTop: 0,
+    listeners,
+    addEventListener: (type, listener) => {
+      listeners.set(type, [...(listeners.get(type) ?? []), listener]);
+    },
+    removeEventListener: (type, listener) => {
+      listeners.set(type, (listeners.get(type) ?? []).filter((candidate) => candidate !== listener));
+    },
+    emit: (type) => {
+      for (const listener of listeners.get(type) ?? []) listener(new Event(type));
+    },
+  };
+}
 
 function node(tagName: string): FakeNode {
   const self: FakeNode = {
@@ -129,6 +161,7 @@ function asSurface(el: FakeNode): Element {
 
 function installDom(): void {
   body = node("body");
+  panelViewport = undefined;
   (globalThis as { document?: unknown }).document = {
     createElement: (tag: string) => node(tag),
     body,
@@ -169,6 +202,7 @@ afterEach(() => {
   resetModPanels();
   setPanelGameSurface(undefined);
   delete (globalThis as { document?: unknown }).document;
+  panelViewport = undefined;
 });
 
 describe("openPanel", () => {
@@ -202,6 +236,28 @@ describe("openPanel", () => {
     expect(plain?.style["pointerEvents"]).toBe("none");
     expect(plain?.focused).toBe(false);
     expect(plain?.children.some((c) => c.tagName === "button")).toBe(false);
+  });
+
+  it("tracks the visible viewport while a phone keyboard changes it", () => {
+    installDom();
+    panelViewport = viewport();
+    (globalThis as { document?: unknown }).document = {
+      createElement: (tag: string) => node(tag),
+      body,
+      defaultView: { visualViewport: panelViewport },
+    };
+    const panel = createModUi("builder").openPanel({ id: "editor", modal: true });
+    const container = containerOf(panel.id);
+    expect(container?.style).toMatchObject({ left: "0px", top: "0px", width: "390px", height: "844px" });
+
+    panelViewport.height = 492;
+    panelViewport.offsetTop = 8;
+    panelViewport.emit("resize");
+    expect(container?.style).toMatchObject({ left: "0px", top: "8px", width: "390px", height: "492px" });
+
+    panel.close();
+    expect(panelViewport.listeners.get("resize")).toEqual([]);
+    expect(panelViewport.listeners.get("scroll")).toEqual([]);
   });
 
   it("answers openPanels about the asking mod and nobody else", () => {
