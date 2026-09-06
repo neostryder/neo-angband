@@ -189,6 +189,7 @@ the only way to know that route actually works.
 | [borg](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player |
 | [forge](https://github.com/neostryder/neo-angband-mod-forge) | An in-game workshop for building a mod from something that already exists |
 | [upstream-catchup](https://github.com/neostryder/neo-angband-mod-upstream-catchup) | Changes Angband accepted after the 4.2.6 tag this port is pinned to, each cited to its commit |
+| [squire](https://github.com/neostryder/neo-angband-mod-squire) | An autoplayer that runs a single errand and hands control straight back |
 
 **What a mod can do:** change any value in any of the game's data files; add
 items, monsters, artifacts and whole new kinds of item; add or retune spells;

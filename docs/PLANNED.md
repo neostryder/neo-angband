@@ -364,3 +364,11 @@ choices, and an optional birth/game-options section, plus the two Mods-menu
 actions to make one and load one - is at docs/MOD_PROFILES.md.
 
 Tracked as issue #87.
+
+## Squire in the curated registry
+
+`mods/registry.json` does not yet list `neostryder/neo-angband-mod-squire`. The
+game resolves every fact about a mod from that repository's own manifest at a
+TAG, so a registry entry pointing at a repository with no release tag would put
+a row in the player's mod list that cannot install. The entry goes in with
+Squire's first release, not before.
