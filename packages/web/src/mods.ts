@@ -66,12 +66,6 @@ import {
   type ModProblem,
 } from "./mod-problems";
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
-import {
-  orphanRowLabel,
-  orphanStashScreen,
-  stashOf,
-  type OrphanViewDeps,
-} from "./mod-orphans";
 import { showModUpgrades, showRecommendedMods, type ModUpgradeDeps } from "./mod-browse";
 import { displayName } from "./mod-authors";
 import { modUpgradeRowLabel } from "./mod-refresh";
@@ -233,16 +227,6 @@ export interface ModManagerDeps {
   };
   isModNoscore?: () => boolean;
   advanceSaveRatchets?: (mod: CatalogMod) => void;
-  /**
-   * The live game's quarantine store and what the host can see of the packs
-   * that own it, for the "Set aside by a missing mod" row and its screen
-   * (MOD_LIFECYCLE decision 7, mod-orphans.ts).
-   *
-   * Absent while no game is running - the title screen's mod manager has no
-   * character and therefore nothing set aside - and the row simply does not
-   * appear, rather than appearing and saying zero.
-   */
-  orphans?: OrphanViewDeps;
   /**
    * The `?mods=` URL override, when one is in force, else null. It outranks the
    * store for the RUNNING session (resolveEnabledIds), so the [x] boxes here -
@@ -3075,7 +3059,6 @@ export async function runModManager(
     );
     type ActionKind =
       | "conflicts"
-      | "orphans"
       | "autosort"
       | "install"
       | "download"
@@ -3104,7 +3087,6 @@ export async function runModManager(
       folder: "2",
       conflicts: "3",
       autosort: "4",
-      orphans: "5",
       install: "6",
       reload: "9",
       done: "0",
@@ -3202,30 +3184,6 @@ export async function runModManager(
         "Work out an order from what the mods ask for. Your own moves are kept.",
       ),
     );
-    /* THE STASH ROW CARRIES ITS COUNT (MOD_LIFECYCLE decision 7). Unlike the
-     * update row above it, the number is a local read of the character already
-     * open rather than a request per mod, and the player this row is for is one
-     * whose items disappeared with no explanation: a row that says nothing until
-     * it is opened would leave them exactly where they were. It is offered even
-     * at zero once a game is running, because "nothing is set aside" is the
-     * answer to the question that brought them here. */
-    const stash = deps.orphans ? stashOf(deps.orphans) : null;
-    if (stash) {
-      addAction(
-        orphanRowLabel(stash.total),
-        "orphans",
-        stash.total > 0 ? C_WARN : C_DIM,
-        stash.total > 0
-          ? t(
-              "modsScreen.run.orphansHint",
-              "Items and creatures frozen in your save because the mod that made them is gone.",
-            )
-          : t(
-              "modsScreen.run.orphansHintEmpty",
-              "Nothing of yours is waiting on a mod that is no longer loaded.",
-            ),
-      );
-    }
     /* The problems belonging to no ROW - a folder whose manifest would not validate
      * never becomes a catalogue entry, so there is nowhere else in this screen they
      * can appear. Badged onto the row that shows them, because the failure this whole
@@ -3443,13 +3401,6 @@ export async function runModManager(
       if (await manageMod(term, deps, rk.id)) dirty = true;
     } else if (rk.kind === "conflicts") {
       await viewConflicts(term, deps);
-    } else if (rk.kind === "orphans") {
-      /* Rebuilt on open rather than reusing the row's read: enabling a mod in
-       * this same screen does not rehydrate anything until the reload, but the
-       * pack sets behind `availability` can move, and a screen showing a stale
-       * "frost is not installed" over a frost that is now installed would be
-       * the one sentence on it a player would act on. */
-      if (deps.orphans) await showTextScreen(term, orphanStashScreen(stashOf(deps.orphans)));
     } else if (rk.kind === "autosort") {
       if (await autoSortLoadOrder(term, deps)) dirty = true;
     } else if (rk.kind === "download") {

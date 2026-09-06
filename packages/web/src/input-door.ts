@@ -116,6 +116,14 @@ export interface DomKeyboardOwner {
 
 let domKeyboardOwner: DomKeyboardOwner | undefined;
 
+const controlDomOwners = new Set<DomKeyboardOwner>();
+
+/** Add a shell control field without replacing a mod panel's keyboard owner. */
+export function addControlDomOwner(owner: DomKeyboardOwner): () => void {
+  controlDomOwners.add(owner);
+  return () => controlDomOwners.delete(owner);
+}
+
 /**
  * Install (or clear, with `undefined`) the DOM keyboard owner. One at a time:
  * there is one page, and an owner that had to be consulted in an order would be
@@ -314,8 +322,8 @@ function browserKeydown(event: Event): void {
     autoplayerInterruptOwner.interrupt();
     return;
   }
-  const owner = domKeyboardOwner;
-  if (owner) {
+  for (const owner of [domKeyboardOwner, ...controlDomOwners]) {
+    if (!owner) continue;
     /* ESCAPE FIRST, and asked whether or not the mounted DOM would have claimed
      * this key. `preventDefault` only when it was actually consumed: an owner
      * with nothing to close gives the key back rather than swallowing it, so the
@@ -336,14 +344,17 @@ function browserKeydown(event: Event): void {
 }
 
 function browserPaste(event: Event): void {
+  if ([...controlDomOwners].some((owner) => owner.owns(event as KeyboardEvent))) return;
   deliverAuxiliary("paste", event);
 }
 
 function browserCompositionStart(event: Event): void {
+  if ([...controlDomOwners].some((owner) => owner.owns(event as KeyboardEvent))) return;
   deliverAuxiliary("compositionstart", event);
 }
 
 function browserCompositionEnd(event: Event): void {
+  if ([...controlDomOwners].some((owner) => owner.owns(event as KeyboardEvent))) return;
   deliverAuxiliary("compositionend", event);
 }
 
@@ -449,6 +460,7 @@ export function clearInputDoor(): void {
   keymapResolver = undefined;
   keymapResolverOptions = undefined;
   domKeyboardOwner = undefined;
+  controlDomOwners.clear();
   autoplayerInterruptOwner = undefined;
   nextSequence = 1;
   if (browserWindow) {

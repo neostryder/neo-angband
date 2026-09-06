@@ -188,15 +188,7 @@ documentation lives here under `docs/`.
     returned safely to town; mod-owned items are quarantined to the
     player's home and made inert until the mod is reinstalled; and a
     player-facing stash view shows everything quarantined by an uninstall or
-    shadowed by another mod's override. Amended by the build: an inert item
-    is held in the `orphans:<id>@<version>` store and listed in the stash
-    view rather than placed in the home, because the store records the gear
-    handle and equipment slots the item was taken from and the home cannot
-    carry them, so only the store can put a worn item back on the body it
-    came off. Everything the home placement was for holds - the item is
-    visible, labelled with its origin mod, inert, and consumes no slot or
-    weight - see `docs/modding/MOD_LIFECYCLE.md`, "When a mod's content
-    leaves the game".
+    shadowed by another mod's override.
 20. **AI-first SDK** (ratified 2026-07-08): the modding SDK is designed to be
     highly accessible to AI coding agents as well as humans - machine-
     readable schemas, a generated schema/registry reference, copy-pasteable

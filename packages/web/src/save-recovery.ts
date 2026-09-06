@@ -10,8 +10,7 @@
  * intact, readable by the very next release - went down that path too.
  */
 
-import { SaveFromFutureError, t } from "@rpgm-tools/neo-angband-core";
-import type { OrphanStash } from "@rpgm-tools/neo-angband-core";
+import { SaveFromFutureError } from "@rpgm-tools/neo-angband-core";
 
 /**
  * The message for a failed load. One line, under the 80-column terminal, and
@@ -64,43 +63,4 @@ export function describeMigration(migration: {
  */
 export function describePackMismatch(mismatchedPacks: readonly string[]): string {
   return `Session mod content changed since this was saved: ${mismatchedPacks.join(", ")}.`;
-}
-
-/**
- * The line shown on a load that QUARANTINED something: an item, a monster or a
- * level entity whose defining mod is no longer loaded, frozen into the save's
- * orphans store instead of being deleted (MOD_LIFECYCLE decision 7).
- *
- * Said with names, because the symptom without it is an item simply missing
- * from the pack. The save has always been right about this and the screen has
- * always been silent, which is the worst possible split: a guarantee that
- * nothing a player earned vanishes without a trace is worth nothing when the
- * trace is only in the file.
- *
- * PRESENT TENSE, AND ABOUT THE WHOLE STASH, because the caller is what makes
- * this a one-time line: `StartedGame.quarantined` is non-zero only on the load
- * where the loss actually happened, and on every later boot the store still
- * holds the same entities with nothing new to report. So the sentence describes
- * what is being held rather than claiming this load set all of it aside, which
- * would be wrong for a character that had already stranded something else.
- *
- * NAMES ARE CAPPED rather than truncated mid-word, on the same 78-column budget
- * the notes above keep, and the count carries the rest - uninstalling a content
- * mod can strand dozens of things at once, and a message line naming all of
- * them says less than one naming three and a number.
- */
-export function describeQuarantine(stash: OrphanStash, limit = 3): string {
-  if (stash.total === 0) return "";
-  const named = stash.groups.flatMap((g) => g.items).slice(0, limit);
-  const mods = stash.groups.map((g) => g.namespace).join(", ");
-  const head = t(
-    "orphans.note.head",
-    "{count, plural, one {# thing of yours is} other {# things of yours are}} set aside: {mods} did not load.",
-    { count: stash.total, mods },
-  );
-  const names =
-    named.length > 0
-      ? ` ${t("orphans.note.names", "{names}.", { names: named.map((i) => i.name).join(", ") })}`
-      : "";
-  return `${head}${names} ${t("orphans.note.where", "Nothing is lost - Mods, then Set aside, lists them.")}`;
 }

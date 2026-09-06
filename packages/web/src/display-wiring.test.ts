@@ -116,7 +116,7 @@ describe("the ENTER command browser", () => {
     expect(src).toContain("chooseCommand(term, commandCategories(), render, roguelike)");
     /* Not a second copy of the inscription veto: the menu row and the keypress
      * go through the one runConfirmedCommand. */
-    expect(src.match(/runConfirmedCommand\(/gu)?.length).toBe(3); // 1 definition, 2 callers
+    expect(src.match(/runConfirmedCommand\(/gu)?.length).toBe(4); // definition, keyboard, command browser and touch surface
     expect(src.match(/keyConfirmCount\(/gu)?.length).toBe(1);
   });
 

@@ -40,6 +40,29 @@ describe("keymap store (keymap_add / find / remove)", () => {
     expect(keymapModeFor(true)).toBe("rogue");
   });
 
+  it("copies Desktop once and saves both keysets and mod owners independently in Touch", () => {
+    loadKeymapPrefs("desktop");
+    keymapAdd("orig", "X", "R&[Enter]");
+    keymapAdd("rogue", "X", "ma");
+    keymapSetOwner("rogue", "X", "qol");
+    saveKeymapPrefs();
+    loadKeymapPrefs("touch");
+    expect(keymapFind("orig", "X")).toBe("R&[Enter]");
+    expect(keymapOwner("rogue", "X")).toBe("qol");
+    keymapAdd("orig", "X", "v");
+    keymapAdd("rogue", "X", "t");
+    saveKeymapPrefs();
+    loadKeymapPrefs("desktop");
+    expect(keymapFind("orig", "X")).toBe("R&[Enter]");
+    expect(keymapFind("rogue", "X")).toBe("ma");
+    expect(keymapOwner("rogue", "X")).toBe("qol");
+    loadKeymapPrefs("touch");
+    expect(keymapFind("orig", "X")).toBe("v");
+    expect(keymapFind("rogue", "X")).toBe("t");
+    expect(keymapOwner("rogue", "X")).toBeNull();
+    loadKeymapPrefs("desktop");
+  });
+
   it("add / find / remove a keymap, per mode", () => {
     keymapAdd("orig", "X", "qc");
     expect(keymapFind("orig", "X")).toBe("qc");

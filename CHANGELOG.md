@@ -48,13 +48,13 @@ still calls itself.
 
 ## [Unreleased]
 
+- [Visible] [UI] **Touch controls follow successive item, direction and target prompts.** A collapsible control sheet provides full-label choices, menu navigation, a command drawer and native text entry. Touch and desktop keymaps persist independently. Map taps resolve on release, while a hold opens the existing context menu without first moving; a second finger cancels the single-finger gesture (#145).
+
 ### Added
 
 - [Visible] [Modding-API] **Mods can manage their own keyboard bindings through the consented keymap facade.** `keymap:write` now lets a mod enumerate, rebind, and remove only bindings it owns; player edits take ownership back and mod teardown removes remaining claims (#93).
 
 - [Visible] [Modding-API] **`neo-angband-mod-check` now refuses a manifest whose capability strings the game would reject at load.** The check calls `CapabilitySet.fromManifest`, so a typo'd capability or a capability on a content pack fails in the author's own folder instead of in a player's install (#79).
-
-- [Visible] [UI] [Modding-API] **Items and creatures set aside by a missing mod are now visible, explained, and reclaimable.** Uninstalling a content mod has always frozen its entities in the save rather than deleting them, but nothing said so: they simply disappeared from the pack. Mods now has a "Set aside by a missing mod" row carrying the count, and its screen lists everything held, grouped by the mod that owned it, with what each thing was, why it is inert, and what would bring it back. A load that newly freezes something says so on the message line, naming what it was, and a character with something set aside is asked once whether to keep it frozen (the default) or throw it away permanently. Nothing held takes a pack slot, weight or a home slot while it waits, and reinstalling the mod returns a worn item to the slot it came off and a carried one to the pack (#76).
 
 ### Changed
 

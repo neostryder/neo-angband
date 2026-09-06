@@ -1,3 +1,4 @@
+import { controlSurface, cancelAction } from "./control-surface";
 /**
  * The ENTER command browser: textui_action_menu_choose (ui-context.c:1268) over
  * cmd_menu (:1157), the only route upstream offers to a nested command category
@@ -122,12 +123,20 @@ function runMenu(
   roguelike = false,
 ): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
+    const controls = controlSurface.push({ kind: "menu", label: "Commands" });
     let cursor = 0;
     let top = 0;
     const count = items.length;
     const page = Math.max(1, Math.min(pageRows, box.y1 - row));
 
     const paint = (): void => {
+      controls.update({
+        kind: "menu", label: "Commands",
+        rows: items.map((item, index) => ({
+          id: item.id ?? `row:${index}`, label: item.label,
+          disabled: item.disabled, selected: cursor === index, run: () => finish(index),
+        })), replies: [cancelAction()],
+      });
       const { cols } = term.size();
       /* screen_save / screen_load around each menu (ui-context.c:1182, :1230-
        * 1237): the box is drawn OVER the game screen and what it covered comes
@@ -148,6 +157,7 @@ function runMenu(
     };
 
     const finish = (value: number | null): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(value);

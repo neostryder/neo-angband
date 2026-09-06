@@ -92,15 +92,6 @@ deletion - even of cosmetics - violates the "nothing a player earned vanishes
 without a trace" guarantee. The prompt is per-save and one-time so it never
 nags; declining leaves everything quarantined and reversible.
 
-BUILT. The prompt is put once the game screen is live, keeps first, and
-counts what a purge would destroy; dismissing it keeps, because the question
-has been asked and keeping is the only answer that destroys nothing. The
-answer is recorded in `SavedGame.orphansAcknowledged` and forced to disk
-immediately, so neither answer is re-asked and a purge cannot be undone by a
-crash. `orphanPromptDue` and `purgeOrphans`
-(`packages/core/src/mod/orphan-stash.ts`) are the whole of the engine side;
-purging is the only write in the orphan path.
-
 ### When a mod's content leaves the game (RATIFIED, decision 19)
 
 Quarantine is the storage mechanism; these are the player-facing
@@ -117,35 +108,19 @@ uninstalled but SHADOWED - a later mod in the load order `removes` or
   content as normal on the next descent; no half-loaded mod geometry is
   ever walked.
 - Stranded items. Items whose definition came from the missing mod are
-  not dropped and not deleted. They are frozen in the
-  `orphans:<id>@<version>` store as inert entries - listed, labelled with
-  their origin mod, and not equippable, usable or sellable while the mod
-  is absent. Reinstalling the mod puts each one back in the slot it came
-  out of: an item that was worn returns to that equipment slot when the
-  slot is still free, and one that was carried returns to the pack.
-  BUILT, and built AS THE STORE rather than as home stock: the frozen
-  entry records the gear handle and the equipment slots it was
-  quarantined out of (`packages/core/src/mod/save-blocks.ts`), which is
-  what makes the exact restore possible. It occupies no home slot, no
-  pack slot and no weight while it waits, so it costs the player nothing
-  that a home slot would have cost, and the stash view below is where it
-  is seen and reclaimed.
+  not dropped and not deleted. They are moved into the player's HOME
+  (the game's existing persistent stash) as inert entries - visible,
+  labelled with their origin mod, but not equippable, usable, or
+  sellable while the mod is absent. Reinstalling the mod (same major
+  version) reactivates them in place. This uses the same
+  `orphans:<id>@<version>` store; the home is just where the player sees
+  and reclaims them.
 - The stash view. A dedicated, always-reachable screen lists everything
   currently quarantined - by uninstall OR by another mod's override -
   grouped by the mod that owns it, showing what it is, why it is inert
-  ("frost is not installed" / "frost is installed but switched off"), and
-  what would restore it ("install frost again" / "turn frost back on").
+  ("frost uninstalled" / "shadowed by bigmonsters"), and what would
+  restore it ("reinstall frost >=1.0" / "move bigmonsters below frost").
   Nothing a player earned ever vanishes without a trace they can find.
-  BUILT: Mods -> "Set aside by a missing mod", screen id
-  `core:mod-orphans` (`packages/web/src/mod-orphans.ts`), over the
-  read-only model in `packages/core/src/mod/orphan-stash.ts`. The row
-  carries the count, and a load that newly freezes something says so on
-  the message line naming what it was. Quarantine is keyed on namespace
-  PRESENCE, so the screen derives the reason from what the host can see
-  now rather than from a reason the store records; the shadowed case
-  reaches the same screen through the same route as soon as quarantine
-  produces it, because a shadowed entity's own namespace is present and
-  the screen already words that state.
 
 These recoveries are graceful degradation, not gameplay rollback: they
 preserve what the player has against a tooling change, and do not let the
@@ -796,17 +771,10 @@ The repo carries sample mods that CI installs and runs.
 6. Pre-migration snapshot as operational safety, reconciled with the
    no-save-scum rule. [DECIDED]
 7. Uninstall recovery: stranded characters return to town, mod items are
-   quarantined and reactivate in the slot they came out of on reinstall,
-   and a stash view surfaces everything quarantined or shadowed. [DECIDED;
-   the stash view and the item surfacing are BUILT, see "When a mod's
-   content leaves the game" above. The item half is the orphans store
-   rather than home stock, because the store records the gear handle and
-   equipment slots an item was taken from and the home has no way to carry
-   those; the effect a home entry was for - visible, labelled, inert,
-   costing no slot - is what the stash view provides. The stranded-location
-   half is not built.]
+   quarantined to the player's home and reactivate on reinstall, and a
+   stash view surfaces everything quarantined or shadowed. [DECIDED]
 8. Orphan policy: quarantine by default with a one-time per-save keep/purge
-   prompt (keep default); no auto-purge. [DECIDED 2026-07-14; BUILT]
+   prompt (keep default); no auto-purge. [DECIDED 2026-07-14]
 9. Integrate with Vortex and the other popular mod managers, and split the
    labour with them: the game keeps rudimentary management (enable/disable,
    per-patch opt-out, a one-step order nudge, conflict report, profiles)

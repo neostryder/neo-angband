@@ -160,9 +160,9 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 47 into a CLOSED vocabulary", () => {
+  it("classifies all 42 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 47 dispatch points, ZERO are content dispatch a
+     * than written in prose: of 42 dispatch points, ZERO are content dispatch a
      * mod would want. That is the finish line MOD_REACH gap list set - every
      * one of the eighteen candidates the 2026-08-09 census opened with is now
      * a registry, obj/knowledge.ts (gap 16) last. What is left is UI routing,
@@ -195,17 +195,12 @@ describe("the switch census", () => {
       /* The API-2 transport enlarged and reshaped the existing host and
        * capability rows; it replaced four internal rows with four internal
        * rows, so the classification count stays nine. */
-      /* 9 until #76 added mod/orphan-stash.ts's OrphanKind-to-category map,
-       * the sibling of the save-blocks.ts row beside it and closed for the
-       * same reason: a mod chooses what goes into a save, never which
-       * collection quarantine takes it out of. */
-      INTERNAL: 10,
+      INTERNAL: 9,
       /* 3 until the i18n sweep (neostryder/neo-angband#95) added shop.ts's
        * commentWelcome, the greeting-tier-to-translated-line switch that keeps
        * COMMENT_WELCOME's English array intact for its RNG-parity-relevant
-       * .length while routing the display text through the translator. 4 until
-       * #76 added the stash view's one phrase per orphan category. */
-      LOCALIZATION: 5,
+       * .length while routing the display text through the translator. */
+      LOCALIZATION: 4,
       PARSER: 3,
       REACHABLE: 6,
       /* 15 until #283. ui-entry.ts's COMBINERS row left when the array became a
@@ -214,9 +209,7 @@ describe("the switch census", () => {
        * Back to 15 when the mod manager's own detail screen reached eight action
        * arms: the count moves UP because a screen grew a control, which is the
        * same honesty in the other direction. It dropped to 14 when the unified
-       * Mod options action removed the old separate rules and parts arms. The
-       * stash-view row (#76) grew that same chain back to nine arms without
-       * adding a row, because the file was already on the census. */
+       * Mod options action removed the old separate rules and parts arms. */
       UI: 14,
     });
     /* The counts have to add up to the census, or a class went missing. */
@@ -229,7 +222,7 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.verdict).toContain("DEBUG");
   });
 
-  it("is measuring something: 47 dispatch points, 633 size labels", () => {
+  it("is measuring something: 40 dispatch points, 533 size labels", () => {
     /* Control for the census ITSELF. A scanner that silently matched nothing -
      * a broken regex, a wrong root - would make both tests above pass forever
      * against an empty tree. */
@@ -363,9 +356,8 @@ describe("the switch census", () => {
     expect(keys.has("IF_CHAIN|packages/core/src/game/target-loop.ts|9")).toBe(true);
     /* Was 9 arms; neo-angband#163 removed the "profiles" branch (the old
      * mod-loadout-snapshot mechanism, superseded by player/testing profiles),
-     * dropping this chain to 8, and #76's stash-view row put it back to 9 -
-     * still the same row throughout, and the arm count is what moved. */
-    expect(keys.has("IF_CHAIN|packages/web/src/mods.ts|9")).toBe(true);
+     * dropping this chain to 8 - still the same row, one arm fewer. */
+    expect(keys.has("IF_CHAIN|packages/web/src/mods.ts|8")).toBe(true);
   });
 
   it("has no CANDIDATE left, which is what the alpha gate asked for", () => {

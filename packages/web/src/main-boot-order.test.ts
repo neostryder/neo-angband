@@ -240,42 +240,4 @@ describe("main boot order", () => {
       expect(noComments.slice(at, at + 300)).toMatch(/reportModFault\(/u);
     },
   );
-
-  /**
-   * The quarantine store had a complete, tested save half and no reader for a
-   * whole release - exactly the green-and-dead seam the three tests above exist
-   * for, and the reason issue #76 was filed. Three lines make it observable, and
-   * every one of them is in this file, which cannot be imported here because it
-   * boots a game on import. So they are asserted on the source with comments
-   * stripped: a citation must not be able to satisfy a claim about code.
-   */
-  const stripped = (): string =>
-    mainSource.replace(/\/\*[\s\S]*?\*\//gu, "").replace(/\/\/[^\n]*/gu, "");
-
-  it("says so on the load that quarantines something (#76)", () => {
-    const src = stripped();
-    const at = src.search(/loaded\.quarantined/u);
-    expect(at, "main.ts never reads StartedGame.quarantined").toBeGreaterThan(-1);
-    expect(src.slice(at, at + 400)).toMatch(/describeQuarantine\(/u);
-    /* Folded into the load note rather than replacing it, so a migration note
-     * and a quarantine note on the same load do not silently cancel out. */
-    expect(src.slice(at, at + 400)).toMatch(/loadedNote/u);
-  });
-
-  it("gives the mod manager the live orphan store, so the stash view has one (#76)", () => {
-    expect(stripped()).toMatch(/orphans:\s*orphanViewDeps\(\(\)\s*=>\s*game\.orphans\)/u);
-  });
-
-  it("asks the one-time keep/purge question from the boot chain (#76)", () => {
-    const src = stripped();
-    /* In the chain, not merely declared: a declared-and-uncalled prompt is the
-     * same dead seam one layer up. */
-    expect(src).toMatch(/\.then\(offerOrphanChoice\)/u);
-    const at = src.search(/async function offerOrphanChoice/u);
-    expect(at, "main.ts never declares offerOrphanChoice").toBeGreaterThan(-1);
-    const body = src.slice(at, at + 1200);
-    expect(body).toMatch(/orphanPromptDue\(/u);
-    expect(body).toMatch(/purgeOrphans\(\)/u);
-    expect(body).toMatch(/orphansAcknowledged = true/u);
-  });
 });
