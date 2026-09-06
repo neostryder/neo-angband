@@ -618,31 +618,6 @@ export class GlyphTerm
    * Recompute cell metrics and grid size. In the default fixed mode this sizes
    * a letterboxed 80x24 grid (largest cell that fits, centered); in reflow mode
    * it sizes a responsive grid honoring the minCols/minRows floor.
-   *
-   * BROWSER-NATIVE PAGE ZOOM (#64) needs no separate handling here. In Chromium
-   * and Firefox, zooming changes `devicePixelRatio` and the reported viewport
-   * size exactly the way a denser display would, and fires `resize`, so this
-   * method already recomputes the backing store, CSS size, and letterbox from
-   * fresh values on every zoom step - the same fractional-dpr handling this
-   * class already carries for high-density displays (see cellBox) covers a
-   * zoom-induced ratio with no new code path. Because the canvas always fills
-   * the viewport at the current device-pixel ratio, its backing-store
-   * resolution stays close to constant across zoom levels (measured: within 1
-   * device pixel of a 1280x800 dpr-1 baseline across 0.67x-2x, letterboxed grid
-   * unchanged at 80x24), so ordinary page zoom is a no-op rather than a defect
-   * - it neither breaks the grid nor makes it bigger. Only a very small
-   * physical window pushed to an extreme zoom level can exceed this class's
-   * existing minimum-cell-size floor and clip, which is the same fallback a
-   * plain tiny window hits with no zoom involved (see fitFixed).
-   *
-   * WebKit/Safari is the one browser where this does not hold: it keeps
-   * `devicePixelRatio` pinned at 1 while zooming, so its own page zoom shrinks
-   * or grows the CSS viewport with no matching backing-store change, and the
-   * browser's compositor then magnifies that fixed-resolution render instead
-   * of asking this class for a sharper one. There is no signal available to
-   * this method that would let it tell a real 1x display from a zoomed Safari
-   * tab, so this is a WebKit zoom-model limitation rather than something a
-   * canvas-sizing change here can correct for.
    */
   private fit(): void {
     const dpr = window.devicePixelRatio || 1;

@@ -526,6 +526,20 @@ export interface StartedGame {
   /** decision-8: whether the one-time orphan keep/purge prompt has been shown. */
   orphansAcknowledged: boolean;
   /**
+   * How many entities THIS load newly quarantined, as opposed to how many the
+   * store holds (`orphanCount(orphans)` answers that).
+   *
+   * The difference is the whole value of the number. A save reloaded with the
+   * same mod still missing quarantines nothing new - the entities were pruned
+   * out of the live collections on the first load and written into the store -
+   * so this is non-zero exactly on the load where the loss actually happened.
+   * That is the load a host should say something on (MOD_LIFECYCLE decision 7's
+   * "nothing a player earned vanishes without a trace"); saying it on every
+   * subsequent boot would be a nag, and saying it on none of them is the silence
+   * the stash view exists to end. 0 on a new game and on a clean reload.
+   */
+  quarantined: number;
+  /**
    * Namespaces present now whose recorded content hash no longer matches
    * their current one (issue #20, save-blocks.ts mismatchedNamespaces): a
    * pack that PATCHED a record - a session mod re-pricing a core sword,
@@ -3856,6 +3870,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     mods: {},
     orphans: {},
     orphansAcknowledged: false,
+    quarantined: 0,
     mismatchedPacks: [],
     options,
     randartSeed,
@@ -4778,6 +4793,7 @@ export function loadGame(
     mods: save.mods ?? {},
     orphans: quarantine.orphans,
     orphansAcknowledged: save.orphansAcknowledged ?? false,
+    quarantined: quarantine.quarantined,
     mismatchedPacks,
     ...(migration.applied.length > 0 || migration.notes.length > 0
       ? { saveMigration: { applied: migration.applied, notes: migration.notes } }

@@ -122,6 +122,13 @@
       "verdict": "UI - options-menu action routing. Mod options is a host-provided row and only the host owns its dispatch arm."
     },
     {
+      "file": "packages/core/src/mod/orphan-stash.ts",
+      "cases": 15,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - OrphanKind to the player-facing category the stash view groups by. The mod system's own vocabulary, exactly like save-blocks.ts's sibling row: a mod chooses what it puts in a save, never which collection quarantine pulls it out of, so there is no arm here for a mod to add."
+    },
+    {
       "file": "packages/core/src/mod/save-blocks.ts",
       "cases": 15,
       "hasDefault": false,
@@ -192,6 +199,13 @@
       "verdict": "HOST - command-line option letters. Host wiring, not game content."
     },
     {
+      "file": "packages/web/src/mod-orphans.ts",
+      "cases": 10,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "LOCALIZATION - one translated phrase per OrphanCategory for the stash view. The categories are core's closed vocabulary and the arms are wording; a locale replaces the text through the message catalogue rather than by adding an arm."
+    },
+    {
       "file": "packages/core/src/game/target-loop.ts",
       "cases": 9,
       "hasDefault": false,
@@ -232,6 +246,13 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "UI - menu action routing, entries[pick].action (MOD_REACH gap 18/24)."
+    },
+    {
+      "file": "packages/web/src/mods.ts",
+      "cases": 9,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "UI - row-action routing in the mod-manager screen, an `if/else if (rk.kind === ...)` chain instead of main.ts's items[idx].action switch pattern. A mod-manager feature added to this menu has no arm to land in (MOD_REACH gap 18/24). Was 9 arms, then 8 when neo-angband#163 removed the profiles branch, and 9 again with the stash-view row (#76)."
     },
     {
       "file": "packages/web/src/shop.ts",
@@ -309,13 +330,6 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "UI - keypress routing in a birth screen (MOD_REACH gap 23). Two screens, same finding."
-    },
-    {
-      "file": "packages/web/src/mods.ts",
-      "cases": 8,
-      "hasDefault": false,
-      "kind": "IF_CHAIN",
-      "verdict": "UI - row-action routing in the mod-manager screen, an `if/else if (rk.kind === ...)` chain instead of main.ts's items[idx].action switch pattern. A mod-manager feature added to this menu has no arm to land in (MOD_REACH gap 18/24). Was 9 arms; neo-angband#163 removed the profiles branch."
     }
   ]
 }
