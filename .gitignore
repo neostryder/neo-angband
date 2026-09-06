@@ -90,3 +90,6 @@ tall-tile-shots/
 # call. Same reasoning: a working artefact of a hand-run comparison, and the
 # JSON carries wall-clock timestamps so it would never diff cleanly anyway.
 sound-shots/
+
+# Dispatch report scratch files, never project content
+REPORT-*.md
