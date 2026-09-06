@@ -31,7 +31,7 @@ function longPressSource(): string {
       ts.isVariableStatement(statement) &&
       statement.declarationList.declarations.some(
         (declaration) =>
-          ts.isIdentifier(declaration.name) && declaration.name.text === "touchPointers",
+          ts.isIdentifier(declaration.name) && declaration.name.text === "longPressTimer",
       ),
   );
   const endAt = source.statements.findIndex((statement) => {
@@ -55,7 +55,6 @@ function longPressSource(): string {
 
 interface Press {
   /** Grids `dispatchContextClick` was asked to open a menu on, in order. */
-  readonly walked: number[];
   readonly opened: Array<{ readonly x: number; readonly y: number }>;
   /** Dispatch a touch pointer event at a cell, which is also its grid here. */
   readonly send: (type: string, pointerId: number, col: number, row: number) => void;
@@ -73,7 +72,6 @@ function press(): Press {
   }).outputText;
   const canvas = new EventTarget();
   const opened: Array<{ readonly x: number; readonly y: number }> = [];
-  const walked: number[] = [];
   new Function(
     "canvas",
     "term",
@@ -85,8 +83,6 @@ function press(): Press {
     "scoresOpen",
     "dead",
     "modalDepth",
-    "state",
-    "queueWalk",
     emitted,
   )(
     canvas,
@@ -103,11 +99,8 @@ function press(): Press {
     false,
     false,
     0,
-    { actor: { grid: { x: 0, y: 0 } } },
-    (dir: number) => { walked.push(dir); },
   );
   return {
-    walked,
     opened,
     send: (type, pointerId, col, row) => {
       canvas.dispatchEvent(
@@ -124,7 +117,7 @@ function press(): Press {
 
 const HOLD = 450;
 
-describe("main.ts touch release and hold ownership (#145, #277)", () => {
+describe("main.ts long-press belongs to the finger that started it (#277)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -132,23 +125,24 @@ describe("main.ts touch release and hold ownership (#145, #277)", () => {
     vi.useRealTimers();
   });
 
-  it("cancels the gesture when a second finger joins then lifts", () => {
+  it("does not cancel when a SECOND finger lifts", () => {
     const { opened, send } = press();
     send("pointerdown", 1, 5, 5);
     send("pointerdown", 2, 9, 9);
     send("pointerup", 2, 9, 9);
     vi.advanceTimersByTime(HOLD);
-    // Two fingers belong to zoom/pan, even after one lifts.
-    expect(opened).toEqual([]);
+    /* Before the fix, pointer 2's lift ran the bare `cancelLongPress` and the
+     * menu never opened - `opened` was empty. */
+    expect(opened).toEqual([{ x: 5, y: 5 }]);
   });
 
-  it("cancels the gesture when a second finger joins then drags", () => {
+  it("does not cancel when a SECOND finger drags away", () => {
     const { opened, send } = press();
     send("pointerdown", 1, 5, 5);
     send("pointerdown", 2, 9, 9);
     send("pointermove", 2, 12, 12);
     vi.advanceTimersByTime(HOLD);
-    expect(opened).toEqual([]);
+    expect(opened).toEqual([{ x: 5, y: 5 }]);
   });
 
   it("does not let a second finger steal the pressed cell", () => {
@@ -156,19 +150,19 @@ describe("main.ts touch release and hold ownership (#145, #277)", () => {
     send("pointerdown", 1, 5, 5);
     send("pointerdown", 2, 9, 9);
     vi.advanceTimersByTime(HOLD);
-    // Neither finger can claim a single-finger action after multitouch.
-    expect(opened).toEqual([]);
+    /* Before the fix, the second pointerdown overwrote `longPressTarget` and
+     * left the first timer running, so the menu opened on 9,9 - the cell nobody
+     * had held. One menu, and it is the first finger's. */
+    expect(opened).toEqual([{ x: 5, y: 5 }]);
   });
 
   /* The controls. Without these, "ignore the other pointer" is indistinguishable
    * from "ignore every pointer", which would pass the three above by never
    * cancelling anything at all. */
-  it("moves once on quick release and never opens a hold menu", () => {
-    const { opened, walked, send } = press();
+  it("still cancels when the PRESSING finger lifts", () => {
+    const { opened, send } = press();
     send("pointerdown", 1, 5, 5);
-    expect(walked).toEqual([]);
     send("pointerup", 1, 5, 5);
-    expect(walked).toEqual([3]);
     vi.advanceTimersByTime(HOLD);
     expect(opened).toEqual([]);
   });
@@ -191,14 +185,12 @@ describe("main.ts touch release and hold ownership (#145, #277)", () => {
 
   /* And the baseline: a lone finger held for the full 450ms opens the menu. A
    * harness that opened nothing would pass every cancellation test above. */
-  it("opens the menu without moving before or after release", () => {
-    const { opened, walked, send } = press();
+  it("opens the menu on the pressed cell when one finger holds", () => {
+    const { opened, send } = press();
     send("pointerdown", 1, 5, 5);
     vi.advanceTimersByTime(HOLD - 1);
     expect(opened).toEqual([]);
     vi.advanceTimersByTime(1);
     expect(opened).toEqual([{ x: 5, y: 5 }]);
-    send("pointerup", 1, 5, 5);
-    expect(walked).toEqual([]);
   });
 });

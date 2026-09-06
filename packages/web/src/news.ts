@@ -1,4 +1,3 @@
-import { controlSurface } from "./control-surface";
 /**
  * The title / news screen (reference/lib/screens/news.txt), shown at boot before
  * any game interaction. This is the faithful equivalent of the GUI ports
@@ -613,15 +612,6 @@ export function showTitleScreen(
   const term = regionSurface(host, handle.cells);
   return new Promise<TitleChoice>((resolve) => {
     const rows = titleRows(opts);
-    let cursor = rows.findIndex((row) => row.enabled);
-    const controls = controlSurface.push({ kind: "menu", label: "Neo Angband" });
-    const publishControls = (): void => controls.update({
-      kind: "menu", label: "Neo Angband",
-      rows: rows.map((row, index) => ({
-        id: row.choice, label: row.label.replace(/[()]/gu, ""), selected: cursor === index,
-        disabled: !row.enabled, run: () => finish(row.choice),
-      })),
-    });
     let spans: { row: TitleRow; start: number; end: number }[] = [];
     let linkSpans: readonly TitleLinkSpan[] = [];
     let promptRow = 0;
@@ -672,7 +662,6 @@ export function showTitleScreen(
     };
     const finish = (choice: TitleChoice): void => {
       closed = true;
-      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       /* The title screen is a promise that resolves once; a timer left running
@@ -684,20 +673,6 @@ export function showTitleScreen(
       resolve(choice);
     };
     const onKey = (ev: KeyboardEvent): void => {
-      if (ev.key === "ArrowUp" || ev.key === "ArrowDown") {
-        const direction = ev.key === "ArrowUp" ? -1 : 1;
-        do { cursor = (cursor + direction + rows.length) % rows.length; } while (!rows[cursor]?.enabled);
-        publishControls();
-        ev.preventDefault();
-        ev.stopImmediatePropagation();
-        return;
-      }
-      if (ev.key === "Enter" && rows[cursor]?.enabled) {
-        ev.preventDefault();
-        ev.stopImmediatePropagation();
-        finish(rows[cursor]!.choice);
-        return;
-      }
       const choice = titleKeyChoice(ev.key, rows, ev.ctrlKey || ev.metaKey);
       /* An unrecognised key is swallowed, not passed through: the screen under
        * this one is not ready for input yet. */
@@ -716,7 +691,6 @@ export function showTitleScreen(
       const hit = spans.find((s) => cell.col >= s.start && cell.col <= s.end);
       if (hit?.row.enabled) finish(hit.row.choice);
     });
-    publishControls();
     paint();
     if (opts.updateReady) beginShimmer();
     /* THE ANSWER CAN ARRIVE AFTER THE SCREEN DOES - see TitleDeps.updateReadyLater.

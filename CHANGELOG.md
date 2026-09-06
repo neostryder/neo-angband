@@ -48,8 +48,6 @@ still calls itself.
 
 ## [Unreleased]
 
-- [Visible] [UI] **Touch controls follow successive item, direction and target prompts.** A collapsible control sheet provides full-label choices, menu navigation, a command drawer and native text entry. Touch and desktop keymaps persist independently. Map taps resolve on release, while a hold opens the existing context menu without first moving; a second finger cancels the single-finger gesture (#145).
-
 ### Added
 
 - [Visible] [Modding-API] **Mods can manage their own keyboard bindings through the consented keymap facade.** `keymap:write` now lets a mod enumerate, rebind, and remove only bindings it owns; player edits take ownership back and mod teardown removes remaining claims (#93).

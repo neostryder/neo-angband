@@ -1,6 +1,3 @@
-import { controlProfile } from "./control-profile";
-import { controlSurface, cancelAction, keyAction, directionActions, stopControlInput } from "./control-surface";
-import { installTouchControls } from "./touch-controls";
 /**
  * Neo Angband web front end.
  *
@@ -658,7 +655,6 @@ import { enqueueKeys } from "./input-queue";
 import {
   decodeActionTokens,
   isBindableTriggerKey,
-  keymapEntries,
   keymapFind,
   keymapModeFor,
   loadKeymapPrefs,
@@ -915,7 +911,7 @@ installPanelKeyboardOwner();
 loadColorPrefs();
 // User keymaps (do_cmd_keymaps) are a global pref too; load them before the
 // first keypress so a saved keymap fires from boot.
-loadKeymapPrefs(controlProfile());
+loadKeymapPrefs();
 // Accessibility bridge: mirrors messages to an ARIA live region and labels the
 // canvas, since the canvas itself is opaque to screen readers (a11y.ts).
 const a11y = initA11y(canvas);
@@ -2349,13 +2345,10 @@ function renderBackground(): void {
 
 async function openModal<T>(fn: () => Promise<T>): Promise<T> {
   modalDepth++;
-  const controls = controlSurface.push({ kind: "key", label: "Game screen", replies: [cancelAction()] });
   try {
     return await fn();
   } finally {
-    controls.dispose();
     modalDepth--;
-    controlSurface.refreshCommands();
     /* renderBackground, not render: when modals NEST, the inner one closing must
      * not repaint the map over the outer one's screen. This was live - the
      * key_confirm_command gate opens a modal, and its close wiped the item
@@ -4903,7 +4896,6 @@ function runTargetLoop(
     // modalDepth) stand down and taps cannot leak through to move the player
     // or advance the game while targeting (#62).
     modalDepth++;
-    const controls = controlSurface.push({ kind: "target", label: "Target" });
     const targets = targetGetMonsters(state, mode);
     let ui = initTargetLoopUi(state, startX, startY);
     // target_dir_allow only sees the keypad-direction keys upstream's own
@@ -4928,13 +4920,6 @@ function runTargetLoop(
       );
       const { text, mon } = describeLookGrid(state, cur, mode);
       lastMon = mon;
-      controls.update({
-        kind: "target", label: mode & TARGET.LOOK ? "Look" : "Target", detail: text,
-        replies: [...directionActions(), keyAction("Select target", "t"),
-          keyAction("Next", "+"), keyAction("Previous", "-"), keyAction("Free cursor", "o"),
-          keyAction("Player", "p"), keyAction("Interesting", "m"),
-          ...(mon ? [keyAction("Recall", "r")] : []), keyAction("Help", "?"), cancelAction()],
-      });
       // health_track / monster_race_track (aux_monster): re-tracked every
       // frame the cursor sits on an obvious monster, not just on selection.
       if (mon) state.healthWho = mon;
@@ -4949,7 +4934,6 @@ function runTargetLoop(
     };
 
     const finish = (): void => {
-      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       canvas.removeEventListener("pointerdown", onTap);
       modalDepth--; // release the input gate raised for this loop
@@ -4966,9 +4950,7 @@ function runTargetLoop(
     const openRecall = (mon: Monster): void => {
       inputEvents.removeEventListener("keydown", onKey, true);
       canvas.removeEventListener("pointerdown", onTap);
-      const recallControls = controlSurface.push({ kind: "key", label: "Monster recall", replies: [cancelAction()] });
       void showMonsterRecall(mon).then(() => {
-        recallControls.dispose();
         inputEvents.addEventListener("keydown", onKey, true);
         canvas.addEventListener("pointerdown", onTap);
         paint();
@@ -7437,6 +7419,10 @@ function knownObjectShown(x: number, y: number): ReturnType<typeof knownObject> 
   return knownObject(state, loc(x, y));
 }
 
+// Touch open/disarm: tapping the "Open"/"Disarm" action-bar button arms this,
+// so the NEXT canvas tap resolves to a direction for that command instead of
+// a walk (open/close cancel it without spending it on an unrelated tap).
+let pendingChestAction: "open" | "disarm" | null = null;
 
 /**
  * Dev-only: the TERMINAL cell the player was last painted into. The player is
@@ -8571,7 +8557,6 @@ const CURSOR_BG = "#3a4a6a"; // palette-exempt: map cursor highlight background
 let publishWorkerModels: ((force?: boolean) => void) | undefined = undefined;
 
 function render(targeting?: TargetingOverlay): void {
-  controlSurface.refreshCommands();
   // verify_panel before drawing so every viewport() reader in this frame sees
   // the same offset. Skipped in 'L' locate mode, where locateCam pans instead.
   if (!locateCam) verifyPanel();
@@ -9094,7 +9079,6 @@ function pumpStep(): void {
   // Keys arriving during the wait are the abort, not commands (see the keydown
   // handler); set the flag before yielding so none is missed.
   pumping = true;
-  controlSurface.refreshCommands();
   setTimeout(() => {
     // A -more- prompt, a floor pile or a store screen may have taken the
     // terminal in this step's tail: let it finish before stepping again.
@@ -9104,7 +9088,6 @@ function pumpStep(): void {
     }
     if (dead || !state.playing) {
       pumping = false;
-      controlSurface.refreshCommands();
       return;
     }
     advance();
@@ -10202,7 +10185,6 @@ inputEvents.addEventListener("keydown", (ev) => {
 // (the "intelligent controller / mobile input" idea), not core.
 const regionPointerOwners = new WeakMap<PointerEvent, NonNullable<ReturnType<typeof regionInputAt>>>();
 canvas.addEventListener("pointerdown", (ev) => {
-  if (ev.pointerType === "touch") return; // touch resolves on release below
   if (scoresOpen || dead || modalDepth > 0) return; // a modal owns input
   const cell = term.cellAt(ev.clientX, ev.clientY);
   if (!cell) return;
@@ -10226,11 +10208,27 @@ canvas.addEventListener("pointerdown", (ev) => {
   if (sx < 0 || sy < 0 || sx >= vp.mapCols || sy >= vp.mapRows) return; // HUD tap
   const dx = Math.sign(vp.camX + sx - state.actor.grid.x);
   const dy = Math.sign(vp.camY + sy - state.actor.grid.y);
-  if (dx === 0 && dy === 0) return;
+  if (dx === 0 && dy === 0) {
+    // Tapped the player's own tile: no move, but a pending open/disarm
+    // resolves to dir 5 (a chest underfoot).
+    if (pendingChestAction) {
+      ev.preventDefault();
+      commandBuffer.push({ code: pendingChestAction, dir: 5 });
+      pendingChestAction = null;
+      advance();
+    }
+    return;
+  }
   ev.preventDefault();
   // Keypad direction: 7 8 9 / 4 5 6 / 1 2 3, so dir = (1-dy)*3 + (dx+2).
   const dir = (1 - dy) * 3 + (dx + 2);
-  void queueWalk(dir); // normal movement and hazard checks
+  if (pendingChestAction) {
+    commandBuffer.push({ code: pendingChestAction, dir });
+    pendingChestAction = null;
+    advance();
+  } else {
+    void queueWalk(dir); // lava confirm on a tap-to-step, like the keyboard walk
+  }
 });
 
 // ---- Context menus (ui-context.c textui_process_click's mouse routing) ----
@@ -10239,8 +10237,8 @@ canvas.addEventListener("pointerdown", (ev) => {
 // does, then classify and dispatch (routeContextClick, context-menu.ts).
 // Touch: a long-press (pointerdown held ~450ms, cancelled by the pressing
 // finger's own move or lift) opens the same menu at the pressed cell, since a
-// phone has no right-click. A second finger cancels the pending single-finger
-// gesture so QoL pinch and swipe cannot also become a move or context action.
+// phone has no right-click. A second finger is ignored outright - it neither
+// cancels the press nor starts one of its own (#277).
 canvas.addEventListener("contextmenu", (ev) => {
   ev.preventDefault();
   if (scoresOpen || dead || modalDepth > 0) return;
@@ -10256,7 +10254,6 @@ canvas.addEventListener("contextmenu", (ev) => {
   void openModal(() => dispatchContextClick(grid));
 });
 
-const touchPointers = new Set<number>();
 let longPressTimer: ReturnType<typeof setTimeout> | null = null;
 type LongPressTarget =
   | {
@@ -10285,10 +10282,7 @@ function cancelLongPressFrom(ev: PointerEvent): void {
   if (longPressTarget?.pointerId === ev.pointerId) cancelLongPress();
 }
 canvas.addEventListener("pointerdown", (ev) => {
-  if (ev.pointerType !== "touch") return;
-  touchPointers.add(ev.pointerId);
-  if (touchPointers.size > 1) { cancelLongPress(); return; }
-  if (scoresOpen || dead || modalDepth > 0) return;
+  if (scoresOpen || dead || modalDepth > 0 || ev.pointerType !== "touch") return;
   if (longPressTarget) return; // a press is already running, and it is not this finger's
   const cell = term.cellAt(ev.clientX, ev.clientY);
   if (!cell) return;
@@ -10314,29 +10308,8 @@ canvas.addEventListener("pointerdown", (ev) => {
     void openModal(() => dispatchContextClick(target.grid));
   }, 450);
 });
-canvas.addEventListener("pointerup", (ev) => {
-  const target = longPressTarget;
-  const tap = target?.pointerId === ev.pointerId && touchPointers.size === 1;
-  touchPointers.delete(ev.pointerId);
-  cancelLongPressFrom(ev);
-  if (!tap || !target || scoresOpen || dead || modalDepth > 0) return;
-  if (target.kind === "region-cell") {
-    target.owner.spec.input?.({ ...target.owner.local, kind: "tap" });
-    return;
-  }
-  if (!(state.options?.get("mouse_movement") ?? true)) return;
-  const dx = Math.sign(target.grid.x - state.actor.grid.x);
-  const dy = Math.sign(target.grid.y - state.actor.grid.y);
-  if (dx !== 0 || dy !== 0) void queueWalk((1 - dy) * 3 + dx + 2);
-});
-canvas.addEventListener("pointercancel", (ev) => {
-  touchPointers.delete(ev.pointerId);
-  cancelLongPressFrom(ev);
-});
-canvas.addEventListener("pointerleave", (ev) => {
-  touchPointers.delete(ev.pointerId);
-  cancelLongPressFrom(ev);
-});
+canvas.addEventListener("pointerup", cancelLongPressFrom);
+canvas.addEventListener("pointercancel", cancelLongPressFrom);
 canvas.addEventListener("pointermove", (ev) => {
   if (!longPressTarget || longPressTarget.pointerId !== ev.pointerId) return;
   if (longPressTarget.kind === "core-grid") {
@@ -10352,45 +10325,78 @@ canvas.addEventListener("pointermove", (ev) => {
   }
 });
 
-// Every input adapter shares the same root commands and readiness guard.
-controlSurface.setCommands(
-  () => gameScreenLive && !scoresOpen && !dead && modalDepth === 0 && !pumping,
-  () => {
-    const rogue = rogueLikeKeys();
-    const rows = commandTable().map((command, index) => ({
-      id: command.id ?? `core:keypress-command:${index}`,
-      label: command.desc, category: command.cat ?? "Port",
-      run: () => runConfirmedCommand(command.ctrl ? `^${command.ctrl}` : keyForKeyset(command, rogue), command.act),
-    }));
-    // These root commands live outside the cached keypress registry.
-    const extra = [
-      ["Help", "?", false], ["Save", "s", true], ["Save and quit", "x", true],
-      ["Messages", "p", true], ["Previous message", "o", true],
-      ["Level feeling", "f", true], ["Autopickup", "g", true],
-      ["Redraw", "r", true], ["Toggle wizard", "w", true],
-      ["Game menu", "Escape", false], ["Command browser", "Enter", false],
-    ] as const;
-    const macros = keymapEntries(keymapModeFor(rogue)).map(([trigger, action]) => ({
-      id: `macro:${trigger}`, label: `${trigger}: ${action}`, category: "Macros",
-      run: () => dispatchUiInput({ key: {
-        key: trigger, modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false,
-      } }),
-    }));
-    return [...rows, ...macros, ...extra.map(([label, key, ctrl]) => ({
-      ...keyAction(label, key, ctrl), category: "System",
-    }))];
-  },
-);
-
-if (controlProfile() === "touch" || window.matchMedia?.("(pointer: coarse)").matches) {
-  installTouchControls({
-    save: () => { persistSave(); },
-    stop: () => {
-      if (installedController !== null) stopInstalledController?.();
-      else stopControlInput();
-    },
+// On touch devices (coarse pointer), add an on-screen bar for the discrete
+// actions the keyboard has, so a phone player is not stuck. Hidden on desktop,
+// where the keyboard is the native scheme.
+function installTouchActionBar(): void {
+  const bar = document.createElement("div");
+  Object.assign(bar.style, {
+    position: "fixed",
+    left: "0",
+    right: "0",
+    bottom: "0",
+    display: "flex",
+    gap: "6px",
+    justifyContent: "center",
+    padding: "6px",
+    pointerEvents: "none",
+    zIndex: "10",
   });
+  const actions: Array<[string, () => void]> = [
+    ["Get", () => { void openModal(pickupCmd); }],
+    ["Down >", () => { commandBuffer.push({ code: "descend" }); advance(); }],
+    ["Up <", () => { commandBuffer.push({ code: "ascend" }); advance(); }],
+    ["Open", () => {
+      pendingChestAction = "open";
+      message = "Tap a direction (or yourself) to open.";
+      render();
+    }],
+    ["Disarm", () => {
+      pendingChestAction = "disarm";
+      message = "Tap a direction (or yourself) to disarm.";
+      render();
+    }],
+    ["Inv", () => { void openModal(() => showTextScreen(term, inventoryScreen(state))); }],
+    ["Objs", () => { void openModal(() => showTextScreen(term, objectListScreen(state))); }],
+    ["Map", () => { void openModal(showLevelMapForShell); }],
+    ["Locate", () => { void openModal(() => runLocate()); }],
+    ["Insp", () => { void openModal(() => inspectItem()); }],
+    ["Insc", () => { void openModal(() => inscribeItem()); }],
+    ["Fuel", () => { void openModal(() => refuelItem()); }],
+    ["Char", () => { void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())); }],
+    ["Hist", () => { void openModal(() => showTextScreen(term, playerHistoryScreen(state))); }],
+    ["Ignore", () => { void openModal(() => openIgnoreSetup()); }],
+    ["Opts", () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx(), openModOptions)).then(() => autosave(true)); }],
+    ["Help", () => { void openModal(() => runHelp(term, rogueLikeKeys())); }],
+    ["Save", () => { autosave(true); message = "Game saved."; render(); }],
+    ["Switch", () => { switchCharacter(); }],
+    ["New", () => { if (!dead) persistSave(); newGame(); }],
+  ];
+  for (const [label, fn] of actions) {
+    const btn = document.createElement("button");
+    btn.textContent = label;
+    Object.assign(btn.style, {
+      pointerEvents: "auto",
+      padding: "8px 12px",
+      // palette-exempt: DOM coarse-pointer touch button (D2 browser affordance,
+      // a translucent HTML overlay, not a terminal glyph).
+      background: "rgba(20,20,28,0.82)",
+      color: UI_TEXT,
+      border: "1px solid #3a3a44", // palette-exempt: DOM touch-button border
+      borderRadius: "6px",
+      font: "14px system-ui, sans-serif",
+      touchAction: "manipulation",
+    });
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (dead && label !== "New" && label !== "Help") return;
+      fn();
+    });
+    bar.appendChild(btn);
+  }
+  document.body.appendChild(bar);
 }
+if (window.matchMedia?.("(pointer: coarse)").matches) installTouchActionBar();
 
 // ---- Session continuity + anti-scum: force a save on every exit path -------
 // A refresh, navigation, tab-hide or close all force-flush the in-progress game

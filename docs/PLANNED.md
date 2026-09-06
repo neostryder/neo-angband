@@ -23,23 +23,6 @@ that). "Still open" is not one of them, and neither is silence.
 
 Last reviewed: 2026-08-23.
 
-## Complete mobile controls (#145) and controller reuse (#65)
-
-The first touch increment adds a shared prompt surface, collapsible controls,
-native text entry and separate Touch/Desktop keymaps. The complete inventory
-and design are in [TOUCH_COMMAND_INVENTORY.md](design/TOUCH_COMMAND_INVENTORY.md)
-and [TOUCH_CONTROLS.md](design/TOUCH_CONTROLS.md).
-
-Remaining work: an eligibility-aware creature ring; on-demand vital summaries
-through the QoL HUD; semantic actions for remaining knowledge, character,
-store and advanced editor screens; named per-mod presets, import/export and
-hand preference; full-character phone acceptance. Font/tile sizing, pinch,
-pan and fitted sidebar reflow already belong to the shipped QoL display
-controller. Upstream count prefixes, literal keymap bypass and subwindow
-toggle remain keyboard-shell parity gaps. Controller mapping can reuse the
-prompt context stack and literal reply dispatch; device discovery, analog
-dead zones and gamepad mapping remain part of #65.
-
 ---
 
 ## Core fidelity

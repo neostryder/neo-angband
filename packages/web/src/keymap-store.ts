@@ -7,21 +7,13 @@
  * KEYMAP_MODE_ORIG / KEYMAP_MODE_ROGUE - so the same trigger can differ between
  * the original and roguelike keysets, exactly as upstream keys them by mode.
  *
- * Persistence is per control profile in localStorage, shared across characters.
- * Desktop retains the original storage keys; Touch copies them once and then
- * saves independently. Each profile includes both keyset modes and mod owners.
+ * Persistence is a user-global pref in localStorage (like colours / graphics /
+ * font). Upstream stores keymaps in a user pref file shared across characters,
+ * not the per-character save; localStorage is the port's faithful equivalent.
  */
 
 /** keymap modes (keymap.c KEYMAP_MODE_*). */
 export type KeymapMode = "orig" | "rogue";
-
-import type { ControlProfile } from "./control-profile";
-
-let activeProfile: ControlProfile = "desktop";
-
-function profileKey(key: string): string {
-  return activeProfile === "desktop" ? key : `${key}:touch`;
-}
 
 /** trigger char -> action string, per mode. */
 type KeymapTable = Record<string, string>;
@@ -92,21 +84,9 @@ export function keymapRemoveOwnedBy(owner: string): boolean {
 }
 
 /** Load saved keymaps into the live tables (boot, before first input). */
-export function loadKeymapPrefs(profile: ControlProfile = "desktop"): void {
-  activeProfile = profile;
-  clearKeymaps();
-  // Copy once, including owners. Subsequent phone edits never touch Desktop.
-  if (profile === "touch") {
-    try {
-      if (localStorage.getItem(profileKey(KEYMAP_PREF_KEY)) === null) {
-        for (const key of [KEYMAP_OWNER_PREF_KEY, KEYMAP_PREF_KEY]) {
-          localStorage.setItem(profileKey(key), localStorage.getItem(key) ?? "{}");
-        }
-      }
-    } catch { /* Storage can be unavailable. */ }
-  }
+export function loadKeymapPrefs(): void {
   try {
-    const raw = localStorage.getItem(profileKey(KEYMAP_PREF_KEY));
+    const raw = localStorage.getItem(KEYMAP_PREF_KEY);
     if (!raw) return;
     const data = JSON.parse(raw) as unknown;
     if (!data || typeof data !== "object") return;
@@ -122,7 +102,7 @@ export function loadKeymapPrefs(profile: ControlProfile = "desktop"): void {
     /* ignore: a corrupt pref just means no custom keymaps. */
   }
   try {
-    const raw = localStorage.getItem(profileKey(KEYMAP_OWNER_PREF_KEY));
+    const raw = localStorage.getItem(KEYMAP_OWNER_PREF_KEY);
     if (!raw) return;
     const data = JSON.parse(raw) as unknown;
     if (!data || typeof data !== "object") return;
@@ -141,8 +121,8 @@ export function loadKeymapPrefs(profile: ControlProfile = "desktop"): void {
 /** Persist the live keymaps as the user's keymap pref. */
 export function saveKeymapPrefs(): void {
   try {
-    localStorage.setItem(profileKey(KEYMAP_PREF_KEY), JSON.stringify(tables));
-    localStorage.setItem(profileKey(KEYMAP_OWNER_PREF_KEY), JSON.stringify(owners));
+    localStorage.setItem(KEYMAP_PREF_KEY, JSON.stringify(tables));
+    localStorage.setItem(KEYMAP_OWNER_PREF_KEY, JSON.stringify(owners));
   } catch {
     /* ignore: storage may be unavailable (private mode). */
   }
