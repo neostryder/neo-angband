@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-06
+
 ### Added
 
 - [Visible] [UI] **Touch controls follow successive item, direction and target prompts.** A collapsible control sheet provides full-label choices, menu navigation, a command drawer and native text entry. Touch and desktop keymaps persist independently. Map taps resolve on release, while a hold opens the existing context menu without first moving; a second finger cancels the single-finger gesture (#145).
@@ -212,7 +214,7 @@ still calls itself.
 
 ## [1.1.2] - 2026-08-27
 
-Current state of the project at version `1.8.0` - a fixes release. No player
+Current state of the project at version `1.9.0` - a fixes release. No player
 action is needed for the Linoleum id change below; an existing install
 carries its enabled choice and rule choices across automatically.
 
