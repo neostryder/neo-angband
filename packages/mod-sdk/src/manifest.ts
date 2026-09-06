@@ -304,8 +304,10 @@ export const DEFAULT_PACK_GROUP = "content";
  * runtime grants only what a `shape: plugin` pack declares and the user
  * approves; content and tile packs request none. The vocabulary
  * ("command:add", "event:turn-start", "state:*.read", "network:<host>", ...)
- * is enforced by the capability model (P7 phase 5); the manifest only records
- * the request, so any string is accepted here.
+ * is enforced by parseCapability / CapabilitySet.fromManifest in
+ * capabilities.ts. The manifest records the request as strings; checkMod
+ * runs that same function, so an unrecognized capability is a check
+ * failure rather than a silent accept.
  */
 export type Capability = string;
 

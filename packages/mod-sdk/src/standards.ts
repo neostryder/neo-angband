@@ -15,10 +15,13 @@
  *     cannot describe a rule that is not enforced or omit one that is.
  *
  * WHAT IT DOES NOT DUPLICATE. Everything validateManifest already decides is
- * delegated to validateManifest. This module adds only the rules that need to see
- * something the manifest validator cannot: the FILE LIST. That is not a small
- * addition - two of the rules below are defects this project actually shipped, both
- * invisible to a validator with no files to look at:
+ * delegated to validateManifest. Capability grammar is the same: this module
+ * calls CapabilitySet.fromManifest rather than restating parseCapability's
+ * patterns. What it adds is the rules that need to see something those two
+ * cannot: the FILE LIST, and the join between a validated manifest and the
+ * capability model (validateManifest cannot import capabilities.ts without a
+ * cycle). Two of the file-list rules below are defects this project actually
+ * shipped, both invisible to a validator with no files to look at:
  *
  *   - `modApi` is documented as REQUIRED of any pack shipping plugin.js, and nothing
  *     enforced it, because validateManifest never sees whether plugin.js is there.
@@ -32,8 +35,9 @@
  * learn to ignore.
  */
 
-import { compareSemver, satisfies } from "./semver.js";
+import { CapabilitySet } from "./capabilities.js";
 import { ManifestError, hasFacet, validateManifest, type PackManifest } from "./manifest.js";
+import { compareSemver, satisfies } from "./semver.js";
 
 /** The file a mod's code lives in, when it has any. */
 export const PLUGIN_FILE = "plugin.js";
@@ -296,6 +300,38 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
         return null;
       } catch (e) {
         return `engine range cannot be read: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    },
+  },
+  {
+    id: "capabilities-recognized",
+    level: "required",
+    title: "Request only capabilities the game knows",
+    why:
+      "A capability string is the consent surface a player reads and the gate the " +
+      "runtime actually opens. An unrecognized string, or a capability on a pack " +
+      "that cannot execute, is refused when the game loads the plugin - after the " +
+      "player has already installed it. This check is CapabilitySet.fromManifest, " +
+      "the same function the loader calls, so a typo that used to pass here and " +
+      "fail there cannot.",
+    check: (mod) => {
+      const m = manifestObject(mod);
+      if (m === null) return null;
+      let manifest: PackManifest;
+      try {
+        /* validateManifest first, so this rule never re-describes the schema. A
+         * malformed capabilities field (not an array of strings) belongs to
+         * manifest-fields; this rule only speaks once there is a PackManifest
+         * to hand to the capability model. */
+        manifest = validateManifest(m);
+      } catch {
+        return null;
+      }
+      try {
+        CapabilitySet.fromManifest(manifest);
+        return null;
+      } catch (e) {
+        return e instanceof Error ? e.message : String(e);
       }
     },
   },

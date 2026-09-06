@@ -19,6 +19,36 @@ itself does not have one. This package is that pipeline, with no engine attached
 so a mod's build script or test can validate a manifest, resolve a load order or
 compose records without pulling in a game.
 
+## Tools
+
+Two command-line tools ship in this package. They are the validate and bundle
+halves of authoring, living next to the schema they enforce. There is no
+separate `neo-pack` CLI.
+
+### `neo-angband-mod-check`
+
+Runs the same rules the game enforces at install against a folder:
+
+```
+npx neo-angband-mod-check path/to/your-mod
+```
+
+That includes the manifest schema, the capability grammar (`parseCapability` /
+`CapabilitySet.fromManifest`), the engine range, and the file-list rules a
+schema cannot see (a `plugin.js` with no `modApi`, a committed zip that is not
+declared in `payload.archives`). Exit 0 means the game will accept the mod.
+
+### `neo-angband-mod-build`
+
+Compiles a mod's TypeScript into the `plugin.js` its folder distributes, and
+enforces the plugin ABI while doing it: no bare imports, one bundled file, a
+default export that looks like a `ModPlugin`. `--check` verifies a committed
+`plugin.js` is current without writing.
+
+Scaffolding a new mod repository (CI, license files, GitHub workflows) is not
+a package concern and is not provided here. A new mod is a folder with a
+`manifest.json`; the check is what says whether that folder will install.
+
 ## Exports
 
 | Area | Exports |

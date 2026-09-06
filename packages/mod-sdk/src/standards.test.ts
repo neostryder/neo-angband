@@ -247,6 +247,73 @@ describe("required rules, each shown failing", () => {
       "engine-range",
     );
   });
+
+  it("capabilities-recognized: a typo is the game's own parseCapability, not a second grammar", () => {
+    /* THE GAP THIS RULE CLOSES. validateManifest accepts any string in
+     * capabilities, because the vocabulary lives in capabilities.ts and importing
+     * that from the schema would cycle. So a typo used to pass checkMod, pass
+     * install, and fail when the loader called CapabilitySet.fromManifest. The
+     * check is that same function, so the two cannot disagree. */
+    const r = checkMod(
+      goodMod({}, { ...GOOD_MANIFEST, shape: "plugin", capabilities: ["comand:add"] }),
+    );
+    expect(r.errors.map((f) => f.id)).toContain("capabilities-recognized");
+    expect(r.errors.find((f) => f.id === "capabilities-recognized")?.problem).toMatch(
+      /unrecognized capability/,
+    );
+  });
+
+  it("capabilities-recognized: a content pack may not request any", () => {
+    /* fromManifest, not a restated shape check. A content pack cannot execute, so
+     * a capability list on one is author confusion the loader already refuses. */
+    const r = checkMod(goodMod({}, { ...GOOD_MANIFEST, capabilities: ["command:add"] }));
+    expect(r.errors.map((f) => f.id)).toContain("capabilities-recognized");
+    expect(r.errors.find((f) => f.id === "capabilities-recognized")?.problem).toMatch(
+      /only shape "plugin"/,
+    );
+  });
+
+  it("capabilities-recognized: a plugin with a real capability is silent", () => {
+    expect(
+      failed(
+        goodMod(
+          {},
+          {
+            ...GOOD_MANIFEST,
+            shape: "plugin",
+            capabilities: ["command:add", "event:turn-start", "registry:*"],
+          },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("capabilities-recognized: a hybrid content+plugin pack may request them", () => {
+    /* hasFacet is what fromManifest asks. A pack whose primary shape is content
+     * but that also ships code is the ordinary hybrid, not an exotic case. */
+    expect(
+      failed(
+        goodMod(
+          {},
+          {
+            ...GOOD_MANIFEST,
+            facets: ["content", "plugin"],
+            capabilities: ["command:add"],
+          },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("capabilities-recognized: silent when the manifest itself is malformed", () => {
+    /* One failure, not two. manifest-fields owns the schema; this rule only
+     * speaks once there is a PackManifest to hand to fromManifest. */
+    const r = checkMod(
+      goodMod({}, { ...GOOD_MANIFEST, id: "Not Kebab", capabilities: ["nope"] }),
+    );
+    expect(r.errors.map((f) => f.id)).toContain("manifest-fields");
+    expect(r.errors.map((f) => f.id)).not.toContain("capabilities-recognized");
+  });
 });
 
 describe("githubRepo: one answer, shared by the rule, the installer and the update check", () => {
@@ -421,6 +488,10 @@ describe("the checker itself", () => {
     "declare-a-repository": goodMod({}, { ...GOOD_MANIFEST, repository: undefined }),
     "credit-an-author": goodMod({}, { ...GOOD_MANIFEST, author: undefined }),
     "engine-range": goodMod({}, { ...GOOD_MANIFEST, engine: ">=nonsense" }),
+    "capabilities-recognized": goodMod(
+      {},
+      { ...GOOD_MANIFEST, shape: "plugin", capabilities: ["nope"] },
+    ),
     "updates-can-be-offered": goodMod({}, {
       ...GOOD_MANIFEST,
       repository: "https://gitlab.com/someone/their-mod",

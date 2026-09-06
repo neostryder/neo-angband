@@ -10,6 +10,8 @@
  * got it right when somebody else's install fails. This runs the SAME rules the game
  * runs at install time - literally the same functions, imported from the SDK - so a
  * green run here means the game will accept the mod, and a red one names the field.
+ * Capability strings go through CapabilitySet.fromManifest, the same function the
+ * loader calls, so a typo that used to pass here and fail at load cannot.
  *
  * ARCHIVES. If the folder holds committed .zip files, they are read as the payload
  * the way the installer reads them, so the "does this mod ship plugin.js" questions

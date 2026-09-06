@@ -157,8 +157,10 @@ that has not been settled.
   Scope of record; no repository or code exists yet.
 - Coming as the engine lands them (P7 deliverables): handler registry
   catalog (effects, commands, room builders), the sandbox capability
-  reference for scripted plugins, dialog/quest/shop cookbooks, the
-  `neo-pack` validator/bundler, and publishing guidance.
+  reference for scripted plugins, dialog/quest/shop cookbooks, and
+  publishing guidance. Validate and bundle are not in that list:
+  `neo-angband-mod-check` and `neo-angband-mod-build` already ship in
+  `@rpgm-tools/neo-angband-mod-sdk`.
 
 ## The first-party mods
 

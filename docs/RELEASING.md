@@ -739,11 +739,13 @@ import monsters from "@rpgm-tools/neo-angband-content/pack/monster.json" with { 
 
 ## What is deliberately NOT published
 
-- **A `create-neo-mod` scaffolder**: `docs/MODS.md` describes `neo-pack` as a
-  planned validator/bundler CLI. It does not exist yet, and the name is not
-  reserved on npm. Half its job now exists though: `@rpgm-tools/neo-angband-mod-sdk`
-  ships a `neo-angband-mod-build` bin that compiles a mod's TypeScript into the
-  `plugin.js` a mod folder distributes, and enforces the plugin ABI while doing it.
+- **A `create-neo-mod` scaffolder, and a separate `neo-pack` CLI**: a new
+  mod repository's required shape is mostly repository furniture (CI, license
+  files, GitHub workflows), not package content, so scaffolding is not a
+  published tool. Validate and bundle already ship inside
+  `@rpgm-tools/neo-angband-mod-sdk` as `neo-angband-mod-check` and
+  `neo-angband-mod-build`. The `neo-pack` name is not reserved on npm and
+  is not going to be.
 - **The mods themselves**: see above. Every mod repository's manifest is
   `private: true` - `neo-angband-mod-qol`, `-bug-fixes`, `-feature-restoration`,
   `-linoleum`, `-borg` and `-forge` - and stays that way. Publishing one would

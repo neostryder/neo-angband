@@ -407,9 +407,14 @@ the documentation alone.
   guidance.
 - Typed APIs: `@rpgm-tools/neo-angband-core` exports the same typed interfaces the base
   game is built from; plugin authors get full TypeScript types.
-- Validation-first tooling: `neo-pack` (planned) scaffolds, validates, and
-  bundles packs; validation errors point at the offending line of the
-  author's JSON.
+- Validation-first tooling: `@rpgm-tools/neo-angband-mod-sdk` ships
+  `neo-angband-mod-check` and `neo-angband-mod-build`. The check runs the
+  same install-time rules the game enforces (manifest schema, capability
+  grammar, engine range, file-list requirements) against a folder, so a
+  green run means the game will accept the mod. The build compiles a
+  mod's TypeScript into the `plugin.js` a folder distributes, and
+  enforces the plugin ABI while doing it. There is no separate `neo-pack`
+  CLI.
 - Sample mods maintained in-repo as living documentation and CI-tested
   against every engine change, so the SDK cannot silently rot. They live in
   `samples/`: the seven tutorial mods under `samples/tutorials/` (one per

@@ -55,6 +55,12 @@ The game shows it beside the mod's name, so a player can tell two mods of the sa
 
 Without it the mod is offered to every version of the game forever, including the one that changes the thing it depends on. With it, a player is told the mod is too old instead of watching it misbehave. This was advice until it was measured: every mod that had shipped declared one, and the mods that did not were the ones nothing had checked.
 
+### Request only capabilities the game knows
+
+`capabilities-recognized`
+
+A capability string is the consent surface a player reads and the gate the runtime actually opens. An unrecognized string, or a capability on a pack that cannot execute, is refused when the game loads the plugin - after the player has already installed it. This check is CapabilitySet.fromManifest, the same function the loader calls, so a typo that used to pass here and fail there cannot.
+
 ### Declare modApi if the mod ships plugin.js
 
 `plugin-declares-modapi`

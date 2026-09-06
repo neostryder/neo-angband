@@ -751,9 +751,10 @@ UI next, marketplace last:
    marketplace" above), the externally-authored enabled-set/order file, and
    a Vortex/MO2 extension over the shared on-disk format.
 
-A `neo-pack` CLI (validate + bundle, a sibling of `neo-linoleum`) ships
-alongside so authors can check a pack in CI before publishing, and the
-repo carries sample mods that CI installs and runs.
+Authors check a pack in CI with `neo-angband-mod-check` (the same rules
+the game enforces at install) and produce a distributable `plugin.js`
+with `neo-angband-mod-build`. Both ship in `@rpgm-tools/neo-angband-mod-sdk`.
+The repo carries sample mods that CI installs and runs.
 
 ---
 
