@@ -72,9 +72,9 @@ write down at all.
 | **Replace the front end**: draw the world yourself, any way you like | **Complete** | gap 9 |
 | Know **where you may draw**: named regions, in grid cells and CSS pixels, on every frame | **Complete** | gap 9 |
 | Drive the game programmatically: an autoplayer, a bot, a test harness | **Complete** | `BORG.md`, `ModPlugin.controller` |
-| Menus: add, reorder, retitle and re-tag **rows** (`registry:menu`). How a menu is **presented** is not reachable | **WIP** | gap 21 |
-| **Replace the UI**: the HUD, the status line, the message area, menu presentation, the ~50 full screens | **Not yet** | gap 21 |
-| Own a HUD region (messages, vitals, status) with core drawing the ones you do not claim, or **create a region of your own**: ordered, overlapping, transparent, composited, and owning pointer input on the cells it paints | **WIP** | gap 21 |
+| Menus: add, reorder, retitle and re-tag **rows** (registry:menu), then replace the presentation of a supported question | **WIP** | gap 21, PRESENTATION_OWNER_SEAM.md |
+| **Replace the UI**: the HUD, status line, message area, menu presentation, and full screens | **WIP** | gap 21, PRESENTATION_OWNER_SEAM.md |
+| Own a HUD region (messages, vitals, status) with core drawing the ones you do not claim, or **create a region of your own**: ordered, overlapping, transparent, composited, and owning pointer input on the cells it paints | **WIP** | gap 21, PRESENTATION_OWNER_SEAM.md |
 | Retitle, regroup, reorder, re-tag or rebind an existing web keypress command (`registry:menu`); the command's closure stays shell-private | **Complete** | `MOD_REACH.md` row 23 |
 | Rename one of your own rule flags or sections without losing the player's saved choice (`renamedRuleFlags`, `renamedSectionFlags`) | **Complete** | `AUTHORING.md` |
 | Rebind keys, or add a gamepad: `input-door.ts` is host infrastructure, not a seam | **Not yet** | `MOD_SEAMS.md` |

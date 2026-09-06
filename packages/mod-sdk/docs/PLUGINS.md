@@ -1392,8 +1392,13 @@ absent paths leave the exact glyph sink active.
 
 The same is true of `UiInput` in `packages/web/src/input-door.ts`. It is the
 single device-neutral route by which keyboard and keymap input reaches screens;
-its direction carries an analog vector and angle. It does not grant a plugin a
-binding registry in this phase. Stored player keymaps are evaluated first when
+its direction carries an analog vector and angle. A plugin that declares and is
+granted `keymap:write` receives `ctx.keymaps` during a live game. `bind()` claims
+only a free trigger; `entries()` lists only bindings the calling mod owns; and
+`rebind()` and `remove()` can change only those owned bindings. A plugin cannot
+read, overwrite, or remove the player's bindings or another mod's bindings. A
+player change clears the mod claim, and bindings still owned by a departing mod
+are removed during host teardown. Stored player keymaps are evaluated first when
 the root owns input; score pages, modals, and run interruption retain their
 existing literal-key gates, so a mod must not use injected input to outrank the
 player's chosen mapping or an active screen.
