@@ -1,0 +1,68 @@
+/* palette-exempt: native DOM controls, independent of the terminal palette. */
+#touch-controls {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  color: #e8e8ef;
+  font: 16px system-ui, sans-serif;
+}
+#touch-controls * { box-sizing: border-box; }
+#touch-controls button, #touch-controls input, #touch-controls summary {
+  min-height: 48px;
+  min-width: 48px;
+  font: inherit;
+  touch-action: manipulation;
+}
+#touch-controls button {
+  padding: 8px 10px;
+  border: 1px solid #555c70;
+  border-radius: 8px;
+  background: #232937;
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+#touch-controls button:disabled { opacity: .45; }
+#touch-controls button[aria-pressed="true"] { background: #294c6c; border-color: #99caff; }
+#touch-controls input {
+  width: 100%;
+  color: #f3f3f8;
+  background: #141923;
+  border: 1px solid #8094af;
+  border-radius: 6px;
+  padding: 8px;
+}
+#touch-controls h2 { font-size: 18px; margin: 0 0 8px; overflow-wrap: anywhere; }
+#touch-controls form { display: flex; gap: 6px; margin: 8px 0; }
+#touch-controls form input { min-width: 0; }
+.touch-launcher {
+  position: absolute;
+  bottom: max(6px, env(safe-area-inset-bottom));
+  left: max(6px, env(safe-area-inset-left));
+  right: max(6px, env(safe-area-inset-right));
+  display: flex;
+  justify-content: space-between;
+  pointer-events: auto;
+}
+.touch-sheet {
+  position: absolute;
+  bottom: calc(58px + env(safe-area-inset-bottom));
+  left: max(6px, env(safe-area-inset-left));
+  right: max(6px, env(safe-area-inset-right));
+  max-width: 520px;
+  margin: auto;
+  max-height: calc(72dvh - 58px - env(safe-area-inset-bottom));
+  padding: 10px;
+  border: 1px solid #647186;
+  border-radius: 12px;
+  background: rgba(16, 20, 29, .97);
+  overflow: auto;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+}
+.touch-sheet[hidden] { display: none; }
+.touch-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.touch-rows { display: grid; gap: 6px; max-height: 28dvh; overflow: auto; margin: 8px 0; }
+.touch-rows button { text-align: left; }
+.touch-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; max-width: 290px; margin: 8px auto; }
+.touch-detail { white-space: pre-wrap; margin: 6px 0; overflow-wrap: anywhere; }

@@ -1,3 +1,4 @@
+import { controlSurface, keyAction, cancelAction } from "./control-surface";
 /**
  * Character birth (player-birth.c / ui-birth.c): the staged creation flow.
  * Faithful stage order (birth_stage enum, ui-birth.c L60-74): QUICKSTART (only
@@ -855,6 +856,7 @@ function paintPointBuyOnTerminal(
   roguelike = false,
 ): Promise<number[] | null> {
   return new Promise<number[] | null>((resolve) => {
+    const controls = controlSurface.push({ kind: "menu", label: "Allocate stats" });
     const buy = resetStats();
     // Re-enter with the previous allocation (ESC back then forward) by replaying
     // it through buy_stat, so the pool and per-stat costs stay consistent.
@@ -871,6 +873,13 @@ function paintPointBuyOnTerminal(
     const clsAdj = cls.statAdj ?? [];
 
     const paint = (): void => {
+      controls.update({
+        kind: "menu", label: "Allocate stats", detail: `Points left: ${buy.pointsLeft}. Left decreases; Right increases.`,
+        rows: buy.stats.map((stat, index) => ({
+          id: `stat:${index}`, label: `${["STR", "INT", "WIS", "DEX", "CON"][index]}: ${stat}`,
+          selected: cursor === index, run: () => { cursor = index; paint(); },
+        })), replies: [keyAction("Accept stats", "Enter"), keyAction("Reset", "r"), cancelAction()],
+      });
       const { cols, rows } = term.size();
       term.clear();
       // Faithful two-column layout when wide enough: character panels on the
@@ -949,6 +958,7 @@ function paintPointBuyOnTerminal(
       term.setCursor(tableCol + COST_OFFSET + 4, STAT_ROW0 + cursor);
     };
     const finish = (value: number[] | null): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(value);
@@ -1290,6 +1300,7 @@ function paintBirthMenuOnTerminal(
   roguelike = false,
 ): Promise<BirthMenuResult> {
   return new Promise<BirthMenuResult>((resolve) => {
+    const controls = controlSurface.push({ kind: "menu", label: hint });
     const count = active.rows.length;
     let cursor = Math.min(Math.max(active.initialCursor, 0), Math.max(0, count - 1));
 
@@ -1316,6 +1327,16 @@ function paintBirthMenuOnTerminal(
     };
 
     const paint = (): void => {
+      controls.update({
+        kind: "menu", label: hint,
+        detail: active.detail?.(cursor).map((line) => line.text).join("\n"),
+        rows: active.rows.map((row, index) => ({
+          id: row.tag, label: row.name, selected: index === cursor,
+          run: () => finish({ kind: "pick", index }),
+        })),
+        replies: [keyAction("Random", "*"), keyAction("Options", "="), keyAction("Help", "?"),
+          ...(active.allowFinish ? [keyAction("Finish randomly", "@")] : []), cancelAction()],
+      });
       const { cols, rows } = term.size();
       term.clear();
       // print_menu_instructions (ui-birth.c L635): the light-blue title line at
@@ -1356,6 +1377,7 @@ function paintBirthMenuOnTerminal(
     };
 
     const finish = (res: BirthMenuResult): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(res);
@@ -1635,7 +1657,12 @@ function paintConfirmOnTerminal(
       prompt.slice(0, cols - 1),
       PB_FG,
     );
+    const controls = controlSurface.push({
+      kind: "check", label: "Begin the adventure?",
+      replies: [keyAction("Begin", "Enter"), keyAction("Start over", "S"), cancelAction()],
+    });
     const finish = (value: ConfirmResult): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(value);

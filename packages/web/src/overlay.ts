@@ -1,3 +1,4 @@
+import { controlSurface, cancelAction, keyAction, directionActions } from "./control-surface";
 /**
  * Modal overlay primitives for the glyph terminal: the reusable screen/menu
  * machinery every full-screen UI (inventory, equipment, character sheet,
@@ -317,6 +318,10 @@ function paintViewOnTerminal(
   roguelike = false,
 ): Promise<void> {
   return new Promise<void>((resolve) => {
+    const controls = controlSurface.push({
+      kind: "key", label: title, detail: lines.map((line) => line.text).join("\n"),
+      replies: [cancelAction()],
+    });
     let top = 0;
     let linkSpans: LinkSpan[] = [];
     const paint = (): void => {
@@ -354,6 +359,7 @@ function paintViewOnTerminal(
       term.print(0, rows - 1, (footer + more).slice(0, cols - 1), DIM);
     };
     const finish = (): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve();
@@ -875,7 +881,9 @@ export function getRepDir(
     /* prt("Direction or <click> (Escape to cancel)? ", 0, 0) (ui-input.c:1512):
      * prt, not put_str - it is drawn over the live message row. */
     term.prt(0, 0, "Direction or <click> (Escape to cancel)? ".slice(0, cols - 1), FG);
+    const controls = controlSurface.push({ kind: "direction", label: "Choose a direction", replies: [...directionActions(), ...(allow5 ? [keyAction("Self", "5")] : []), cancelAction()] });
     const finish = (value: number | null): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
       resolve(value);
@@ -916,7 +924,9 @@ export function getAimDir(
     /* textui_get_aim_dir asks through get_com_ex (ui-input.c:1637), which is
      * `prt(prompt, 0, 0)` at ui-input.c:1427 - over the live message row. */
     term.prt(0, 0, prompt.slice(0, cols - 1), FG);
+    const controls = controlSurface.push({ kind: "direction", label: "Aim", replies: [...directionActions(), keyAction("Choose target", "*"), keyAction("Closest", "'"), ...(targetOkay ? [keyAction("Current target", "5")] : []), cancelAction()] });
     const finish = (value: number | null): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
       resolve(value);
@@ -957,7 +967,9 @@ export function getCheck(term: GridSurface & GridPointerInput, prompt: string): 
      * message row, and a bare print left the tail of the previous message behind
      * - the live "Save and quit?[y/n] d5) (+5,+3) (0)." report. */
     term.prt(0, 0, buf.slice(0, cols - 1), FG);
+    const controls = controlSurface.push({ kind: "check", label: prompt, replies: [keyAction("Yes", "y"), keyAction("No", "n"), cancelAction()] });
     const finish = (value: boolean): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
       resolve(value);
@@ -1000,7 +1012,9 @@ export function getKeyInline(
     const { cols } = term.size();
     /* prt(prompt, 0, 0) (get_com_ex, ui-input.c:1427). */
     term.prt(col, 0, prompt.slice(0, Math.max(0, cols - 1 - col)), FG);
+    const controls = controlSurface.push({ kind: "key", label: prompt, replies: [keyAction("Continue", "Enter"), cancelAction()], text: { value: "", maxLength: 1, submit: (value) => { if (value) finish(value); } } });
     const finish = (key: string): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
       resolve(key);
@@ -1192,7 +1206,12 @@ export function promptTextInline(
       term.prt(0, row, prompt.slice(0, cols - 1), FG);
       paintLineEdit(term, x, row, st, firsttime);
     };
+    const controls = controlSurface.push({
+      kind: "text", label: prompt, replies: [cancelAction()],
+      text: { value: initial, maxLength: maxLen, submit: (value) => finish(value) },
+    });
     const finish = (value: string | null): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       inputEvents.removeEventListener("paste", onPaste, true);
       inputEvents.removeEventListener("compositionstart", onCompositionStart, true);
@@ -1386,7 +1405,12 @@ export function promptText(
       paintLineEdit(term, PROMPT.length, BODY_TOP, st, firsttime);
       term.print(0, rows - 1, footer.slice(0, cols - 1), DIM);
     };
+    const controls = controlSurface.push({
+      kind: "text", label: title, replies: [cancelAction()],
+      text: { value: initial, maxLength: maxLen, submit: (value) => finish(value) },
+    });
     const finish = (value: string | null): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       inputEvents.removeEventListener("paste", onPaste, true);
       inputEvents.removeEventListener("compositionstart", onCompositionStart, true);
@@ -1487,7 +1511,15 @@ export function promptNumber(
       paintLineEdit(term, PROMPT.length, y, st, firsttime);
       term.print(0, rows - 1, "[ digits, Enter to accept, ESC to cancel ]".slice(0, cols - 1), DIM);
     };
+    const controls = controlSurface.push({
+      kind: "text", label: title, detail: subtitle, replies: [cancelAction()],
+      text: { value: String(current), maxLength: maxLen, submit: (value) => {
+        if (!/^\d*$/u.test(value)) return;
+        finish(Math.max(min, Math.min(max, parseInt(value, 10) || 0)));
+      } },
+    });
     const finish = (value: number | null): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       inputEvents.removeEventListener("compositionstart", onCompositionStart, true);
       inputEvents.removeEventListener("compositionend", onCompositionEnd, true);
@@ -1815,6 +1847,7 @@ export function selectFromMenu(
       })();
     }
     return new Promise<number | null>((resolve) => {
+    const controls = controlSurface.push({ kind: "menu", label: title });
     let cursor = initialMenuCursor(items, extra?.initialCursor);
     let top = 0;
     // Painted geometry, kept for the tap handler (a tapped screen row maps
@@ -1831,6 +1864,21 @@ export function selectFromMenu(
      * landed on, and in overlay mode the rows do not start at BODY_TOP. */
     let boxCol = 0;
     const paint = (): void => {
+      controls.update({
+        kind: "menu", label: title,
+        detail: [items[cursor]?.hint, ...(detailShown ? detail?.(cursor)?.map((line) => line.text) ?? [] : [])].filter(Boolean).join("\n"),
+        rows: items.map((item, index) => ({
+          id: `row:${index}`, label: item.label, disabled: item.disabled,
+          selected: cursor === index, run: () => pick(index),
+        })),
+        replies: [
+          ...(toggleKey ? [keyAction("Description", toggleKey)] : []),
+          ...Object.keys(extra?.commands ?? {}).map((key) => keyAction(`Action ${key}`, key)),
+          ...Object.keys(extra?.ctrlCommands ?? {}).map((key) => keyAction(`Control ${key}`, key, true)),
+          ...(extra?.optionsKey ? [keyAction("Options", extra.optionsKey)] : []),
+          cancelAction(),
+        ],
+      });
       const { cols, rows } = term.size();
       /* Upstream's header is the prompt AND the legend on one row (get_item builds
        * `header` from both), because the box it opens has no footer line. */
@@ -1990,6 +2038,7 @@ export function selectFromMenu(
       if (!boxed) term.print(0, rows - 1, (extra?.footer ?? displayedFooter).slice(0, cols - 1), DIM);
     };
     const finish = (value: number | null): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(value);
@@ -2546,6 +2595,7 @@ export function itemSelect(
       resolve(null);
       return;
     }
+    const controls = controlSurface.push({ kind: "item", label: prompt });
     let cursor = 0;
     let top = 0;
     let paintedBodyRows = 1;
@@ -2554,6 +2604,20 @@ export function itemSelect(
     const src = (): ItemMenuSource => sources[cur]!;
 
     const paint = (): void => {
+      controls.update({
+        kind: "item", label: prompt, detail: src().label,
+        rows: src().items.map((item, index) => ({
+          id: `row:${index}`, label: item.label, disabled: item.disabled,
+          selected: cursor === index, run: () => pick(index),
+        })),
+        replies: [
+          ...sources.map((source, index) => ({
+            id: `source:${index}`, label: source.label,
+            disabled: source.items.length === 0, selected: index === cur,
+            run: () => switchTo(source.label),
+          })), cancelAction(),
+        ],
+      });
       const { cols, rows } = term.size();
       term.clear();
       // Prompt then header on the top line (show_prompt + menu header).
@@ -2586,6 +2650,7 @@ export function itemSelect(
     };
 
     const finish = (value: { source: number; index: number } | null): void => {
+      controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
       resolve(value);

@@ -49,6 +49,7 @@ still calls itself.
 ## [Unreleased]
 
 - [Visible] [UI] **Panels follow the visible viewport on phones.** The game canvas and host-owned panel container now resize together when a virtual keyboard changes the visual viewport, keeping a modal panel's usable area above the keyboard.
+- [Visible] [UI] **Touch controls follow successive item, direction and target prompts.** A collapsible control sheet provides full-label choices, menu navigation, a command drawer and native text entry. Touch and desktop keymaps persist independently. Map taps resolve on release, while a hold opens the existing context menu without first moving; a second finger cancels the single-finger gesture (#145).
 
 ### Added
 
