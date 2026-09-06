@@ -10,17 +10,17 @@
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(packageDir, "..", "..");
-const sourceDir = resolve(repoRoot, "docs", "modding");
-const outputDir = resolve(packageDir, "docs");
+export const sourceDir = resolve(repoRoot, "docs", "modding");
+export const outputDir = resolve(packageDir, "docs");
 const githubDocsUrl = "https://github.com/neostryder/neo-angband/blob/master";
 
 /* These are the reusable SDK and authoring references. First-party mod design
  * records deliberately stay in the repository rather than shipping here. */
-const documents = [
+export const documents = [
   "README.md",
   "AUTHORING.md",
   "MOD_COMPATIBILITY.md",
@@ -98,22 +98,36 @@ function verifyLinks(outputFile) {
   }
 }
 
-rmSync(outputDir, { recursive: true, force: true });
-mkdirSync(outputDir, { recursive: true });
-
-for (const sourceRelative of documents) {
+/** The exact bytes one source document becomes under `docs/`. */
+export function renderDocument(sourceRelative) {
   const sourceFile = resolve(sourceDir, sourceRelative);
-  const outputFile = resolve(outputDir, sourceRelative);
   if (!existsSync(sourceFile)) throw new Error(`missing source document: ${sourceRelative}`);
-  mkdirSync(dirname(outputFile), { recursive: true });
-  const text = rewriteLinks(readFileSync(sourceFile, "utf8"), sourceFile).replace(/\n{2,}$/u, "\n");
-  writeFileSync(outputFile, text, "utf8");
+  return rewriteLinks(readFileSync(sourceFile, "utf8"), sourceFile).replace(/\n{2,}$/u, "\n");
 }
 
-for (const sourceRelative of documents) verifyLinks(resolve(outputDir, sourceRelative));
+/** Rewrite the whole output tree from source. Returns how many documents it wrote. */
+export function syncDocs() {
+  rmSync(outputDir, { recursive: true, force: true });
+  mkdirSync(outputDir, { recursive: true });
 
-/* stderr, not stdout: this runs as `prepack`, and `npm pack --json` (the check
- * this repository's own tooling and CI run) expects clean JSON on stdout - a
- * lifecycle script's own stdout output lands in the same stream and breaks
- * that parse. */
-console.error(`synced ${String(documents.length)} SDK authoring documents to docs/`);
+  for (const sourceRelative of documents) {
+    const outputFile = resolve(outputDir, sourceRelative);
+    mkdirSync(dirname(outputFile), { recursive: true });
+    writeFileSync(outputFile, renderDocument(sourceRelative), "utf8");
+  }
+
+  for (const sourceRelative of documents) verifyLinks(resolve(outputDir, sourceRelative));
+  return documents.length;
+}
+
+/* Running this file writes; importing it must not. The drift check in
+ * packages/core/src/npm-publish.test.ts imports `renderDocument` to compare the
+ * committed tree against its source, and would rewrite the very tree it is
+ * checking if the module wrote on import. */
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  /* stderr, not stdout: this runs as `prepack`, and `npm pack --json` (the check
+   * this repository's own tooling and CI run) expects clean JSON on stdout - a
+   * lifecycle script's own stdout output lands in the same stream and breaks
+   * that parse. */
+  console.error(`synced ${String(syncDocs())} SDK authoring documents to docs/`);
+}

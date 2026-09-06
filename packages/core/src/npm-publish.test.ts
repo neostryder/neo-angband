@@ -25,12 +25,14 @@
 
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error -- plain .mjs tooling, no types; see tools/publishable.mjs
 import { publishablePackages } from "../../../tools/publishable.mjs";
 // @ts-expect-error -- plain .mjs tooling, no types; see tools/npm-pack-result.mjs
 import { packResult } from "../../../tools/npm-pack-result.mjs";
+// @ts-expect-error -- plain .mjs tooling, no types; see packages/mod-sdk/scripts/sync-docs.mjs
+import { documents, outputDir, renderDocument } from "../../mod-sdk/scripts/sync-docs.mjs";
 
 const packagesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -357,5 +359,52 @@ describe("the mod SDK ships its plugin builder", () => {
     /* The guarantee that is the whole point of the tool living here rather than being
      * copied into each mod repo. */
     expect(src).toContain("external-bare-specifiers");
+  });
+});
+
+
+/**
+ * The committed generated tree is CURRENT, not merely regenerated at pack time.
+ *
+ * `prepack` guarantees the TARBALL is right, and the test above pins that wiring.
+ * It says nothing about the copies tracked in the repository, which are what a
+ * reader of the repository sees. Those went stale twice: once when a version-bump
+ * revert dropped the prepack wiring entirely, and again between 2026-09-02 and
+ * 2026-09-06, when six documents drifted and `MOD_COMPATIBILITY.md` was missing
+ * the `ctx.keymaps` row its source had carried for a day.
+ *
+ * Neither gap was detectable from the packaging assertions, because both trees
+ * existed and both were listed. The only thing that separates a current copy from
+ * a stale one is its BYTES against a fresh render of its source, so that is what
+ * this compares. `renderDocument` is the same function `syncDocs` writes through,
+ * so the check cannot drift from the generator the way a reimplementation would.
+ */
+describe("the generated SDK documentation tree", () => {
+  for (const document of documents as string[]) {
+    it(`has ${document} committed exactly as its source renders`, () => {
+      const committed = join(outputDir as string, document);
+      expect(existsSync(committed), `${document} is not committed under docs/`).toBe(true);
+      expect(
+        readFileSync(committed, "utf8"),
+        `packages/mod-sdk/docs/${document} is stale. Run: pnpm --dir packages/mod-sdk run sync-docs`,
+      ).toBe(renderDocument(document) as string);
+    });
+  }
+
+  it("carries nothing the generator does not write", () => {
+    /* syncDocs() removes the output directory before rewriting it, so a file that
+     * survives a sync is one nothing generates. Committing such a file makes the
+     * repository disagree with every tarball, since packing deletes it again. */
+    const expected = new Set((documents as string[]).map((d) => d.split("/").join(sep)));
+    const found: string[] = [];
+    const walk = (dir: string, prefix: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const rel = prefix === "" ? entry.name : `${prefix}${sep}${entry.name}`;
+        if (entry.isDirectory()) walk(join(dir, entry.name), rel);
+        else found.push(rel);
+      }
+    };
+    walk(outputDir as string, "");
+    expect(found.filter((f) => !expected.has(f))).toEqual([]);
   });
 });
