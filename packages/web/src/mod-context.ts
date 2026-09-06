@@ -136,7 +136,7 @@ export function modPluginContext(
   const debug = debugFor(id, session);
   const wizard = wizardFor(id, session);
   const display = displayFor(session);
-  const keymaps = keymapsFor(state, session);
+  const keymaps = keymapsFor(id, state, session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
   const registries = session.registries ?? boundRegistries;
@@ -185,9 +185,9 @@ export function modPluginContext(
 }
 
 /** `ctx.keymaps` is meaningful only during a live game and with its own consent. */
-function keymapsFor(state: GameState | undefined, session: ModSessionFacts): ModKeymaps | undefined {
+function keymapsFor(id: string, state: GameState | undefined, session: ModSessionFacts): ModKeymaps | undefined {
   if (!state || !session.capabilities?.has(KEYMAP_WRITE_CAPABILITY)) return undefined;
-  return createModKeymaps(state);
+  return createModKeymaps(id, state);
 }
 
 /** The live display door, latched after the shell has constructed its surface. */

@@ -248,12 +248,24 @@ export interface ModDisplay {
   repaint(): void;
 }
 
-/** A consented door to the live user keymap for the current keyset. */
+/** One binding the calling mod owns in the current keyset. */
+export interface ModKeymapBinding {
+  readonly trigger: string;
+  readonly action: string;
+}
+
+/** A consented door to the calling mod's live user keymaps in the current keyset. */
 export interface ModKeymaps {
   /** True only for a valid trigger that has no existing keymap in this keyset. */
   isBindableTriggerKey(trigger: string): boolean;
-  /** Bind an unused trigger, persist it through the host keymap store, and report success. */
+  /** Bind an unused trigger, claim it for this mod, persist it, and report success. */
   bind(trigger: string, action: string): boolean;
+  /** List only bindings this mod owns, never the player's or another mod's. */
+  entries(): readonly ModKeymapBinding[];
+  /** Replace this mod's binding, persist it, and report success. */
+  rebind(trigger: string, action: string): boolean;
+  /** Remove this mod's binding, persist it, and report success. */
+  remove(trigger: string): boolean;
 }
 
 /** What the host hands a plugin. Frozen before it is passed. */
@@ -356,10 +368,11 @@ export interface ModPluginContext {
    */
   readonly display?: ModDisplay;
   /**
-   * Create keymaps in the player's current keyset. Present only when the mod
-   * declared `keymap:write` and the player consented. `bind()` never replaces a
-   * player mapping: check `isBindableTriggerKey()` first and handle false as a
-   * declined race with another keymap editor or mod.
+   * Manage this mod's keymaps in the player's current keyset. Present only when
+   * the mod declared `keymap:write` and the player consented. `bind()` never
+   * replaces an existing mapping. `entries()`, `rebind()`, and `remove()` only
+   * reach bindings this mod owns; a player edit takes ownership back, and host
+   * teardown removes any bindings still owned by a departing mod.
    */
   readonly keymaps?: ModKeymaps;
   /**

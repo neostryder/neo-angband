@@ -118,6 +118,35 @@ describe("modPluginContext session facts", () => {
       .display?.setVisualFilter("contrast(1.5)");
     expect(setVisualFilter).toHaveBeenCalledWith("contrast(1.5)");
   });
+
+  it("hands keymaps over only with the existing keymap:write capability", () => {
+    const state = { options: { get: () => false } } as never;
+    const denied = CapabilitySet.fromManifest({
+      id: "plain-keys",
+      name: "Plain keys",
+      version: "1.0.0",
+      shape: "plugin",
+      facets: ["plugin"],
+      modApi: 1,
+      capabilities: [],
+    });
+    expect(modPluginContext("plain-keys", {}, state, {}, { capabilities: denied }).keymaps).toBeUndefined();
+
+    const granted = CapabilitySet.fromManifest({
+      id: "key-owner",
+      name: "Key owner",
+      version: "1.0.0",
+      shape: "plugin",
+      facets: ["plugin"],
+      modApi: 1,
+      capabilities: ["keymap:write"],
+    });
+    const keymaps = modPluginContext("key-owner", {}, state, {}, { capabilities: granted }).keymaps;
+    expect(keymaps).toBeDefined();
+    expect(typeof keymaps?.entries).toBe("function");
+    expect(typeof keymaps?.rebind).toBe("function");
+    expect(typeof keymaps?.remove).toBe("function");
+  });
 });
 
 describe("main.ts actually passes the session facts (drift guard)", () => {

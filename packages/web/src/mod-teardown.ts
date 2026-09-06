@@ -80,6 +80,8 @@ export interface ModTeardownDeps {
    * behind it.
    */
   readonly closePanels?: () => number;
+  /** Remove keymaps still owned by each departing plugin, after its uninstall. */
+  readonly releaseKeymaps?: (id: string) => void;
 }
 
 /** What the pass actually did, for the log and for the tests. */
@@ -133,19 +135,26 @@ export function teardownModPlugins(deps: ModTeardownDeps): ModTeardownResult {
 
   for (const loaded of deps.plugins) {
     const uninstall = loaded.plugin.uninstall;
-    if (!uninstall) continue;
+    if (uninstall) {
+      try {
+        uninstall.call(loaded.plugin);
+        torndown.push(loaded.id);
+      } catch (err) {
+        failed.push(loaded.id);
+        /* Said in terms of what it costs the player: the mod is going away either
+         * way, so the consequence is what its teardown did not get to write. */
+        reportModFault(
+          loaded.id,
+          `uninstall() failed, so anything it meant to clean up or save was not: ${faultMessage(err)}`,
+        );
+        log.error(`mod:${loaded.id}`, `uninstall() failed:`, err);
+      }
+    }
     try {
-      uninstall.call(loaded.plugin);
-      torndown.push(loaded.id);
+      deps.releaseKeymaps?.(loaded.id);
     } catch (err) {
-      failed.push(loaded.id);
-      /* Said in terms of what it costs the player: the mod is going away either
-       * way, so the consequence is what its teardown did not get to write. */
-      reportModFault(
-        loaded.id,
-        `uninstall() failed, so anything it meant to clean up or save was not: ${faultMessage(err)}`,
-      );
-      log.error(`mod:${loaded.id}`, `uninstall() failed:`, err);
+      reportModFault(loaded.id, `its owned keymaps could not be removed before the reload: ${faultMessage(err)}`);
+      log.error(`mod:${loaded.id}`, `removing owned keymaps failed:`, err);
     }
   }
 

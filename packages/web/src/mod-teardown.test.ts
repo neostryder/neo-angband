@@ -26,6 +26,8 @@ import {
   teardownModPlugins,
   type ModTeardownTarget,
 } from "./mod-teardown";
+import { createModKeymaps, releaseModKeymaps } from "./macro-runtime";
+import { clearKeymaps, keymapFind } from "./keymap-store";
 
 /** A plugin whose uninstall records into `order`, or throws. */
 function target(
@@ -61,6 +63,7 @@ describe("teardownModPlugins", () => {
   beforeEach(() => {
     resetModTeardown();
     resetModFaults();
+    clearKeymaps();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
@@ -114,6 +117,20 @@ describe("teardownModPlugins", () => {
     expect(out.torndown).toEqual(["a", "c"]);
     expect(out.failed).toEqual(["bad"]);
     expect(out.released).toBe("bad");
+  });
+
+  it("removes every departing mod's owned keymaps even when its uninstall fails", () => {
+    const state = { options: { get: () => false } } as never;
+    expect(createModKeymaps("bad", state).bind("F1", "a")).toBe(true);
+    expect(createModKeymaps("quiet", state).bind("F2", "b")).toBe(true);
+    const order: string[] = [];
+    teardownModPlugins({
+      plugins: [target("bad", order, { throws: true }), target("quiet", order, { absent: true })],
+      controller: null,
+      releaseKeymaps: releaseModKeymaps,
+    });
+    expect(keymapFind("orig", "F1")).toBeNull();
+    expect(keymapFind("orig", "F2")).toBeNull();
   });
 
   it("puts a failed teardown on that mod's row, not only in the console", () => {

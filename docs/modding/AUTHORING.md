@@ -639,14 +639,16 @@ without retaining live game state.
 
 Input follows the same staged rule. `UiInput` is available to host code through
 the one input door and can represent a continuous direction (vector, magnitude,
-angle) without translating it to a keyboard arrow. A front-end member DOES
-exist - `ModPlugin.frontend?(ctx)`, gated by `display:replace`, and pointer input
-arrives per region through `RegionDeclaration.input` - so what is still absent is
-narrower than "no seam": there is no plugin member for rebinding KEYS, and
-`input-door.ts` is host infrastructure rather than a capability. Do not build on
-key rebinding until it has one. Player keymaps keep precedence over any later
-input consumer while the root owns input; an active modal, score screen, or run
-interruption continues to receive the player's literal key first.
+angle) without translating it to a keyboard arrow. A plugin declaring
+`keymap:write` receives `ctx.keymaps` during a live game: `bind(trigger, action)`
+claims a free keyboard trigger, `entries()` lists only that mod's claims, and
+`rebind()` and `remove()` operate only on those claims. It cannot inspect,
+replace, or remove player bindings or another mod's bindings. A player edit takes
+ownership back, and host teardown removes bindings still owned by a mod before it
+is disabled or reloaded. `input-door.ts` remains host infrastructure rather than
+a capability. Player keymaps keep precedence over any later input consumer while
+the root owns input; an active modal, score screen, or run interruption continues
+to receive the player's literal key first.
 
 ## Knowing which mod a record came from
 

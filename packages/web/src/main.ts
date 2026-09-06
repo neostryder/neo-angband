@@ -356,6 +356,7 @@ import { ModWorkerTransport } from "./mod-worker/transport";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, reportModFault } from "./mod-problems";
 import { teardownModPlugins } from "./mod-teardown";
+import { releaseModKeymaps } from "./macro-runtime";
 import {
   closeAllModPanels,
   installPanelKeyboardOwner,
@@ -11121,6 +11122,7 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
     controller: installedController,
     revokePanels: revokeModPanels,
     closePanels: closeAllModPanels,
+    releaseKeymaps: releaseModKeymaps,
   });
   for (const worker of workerPlugins.values()) worker.teardown();
   installedController = null;

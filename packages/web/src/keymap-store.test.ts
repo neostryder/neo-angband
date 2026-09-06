@@ -8,7 +8,9 @@ import {
   keymapEntries,
   keymapFind,
   keymapModeFor,
+  keymapOwner,
   keymapRemove,
+  keymapSetOwner,
   loadKeymapPrefs,
   saveKeymapPrefs,
 } from "./keymap-store";
@@ -70,6 +72,17 @@ describe("keymap store (keymap_add / find / remove)", () => {
     loadKeymapPrefs();
     expect(keymapFind("orig", "Q")).toBe("qd");
     expect(keymapFind("rogue", "Z")).toBe("maa");
+  });
+
+  it("round-trips an ownership claim and drops it when the player edits the binding", () => {
+    keymapAdd("orig", "F1", "qa");
+    keymapSetOwner("orig", "F1", "shortcut-mod");
+    saveKeymapPrefs();
+    clearKeymaps();
+    loadKeymapPrefs();
+    expect(keymapOwner("orig", "F1")).toBe("shortcut-mod");
+    keymapAdd("orig", "F1", "player");
+    expect(keymapOwner("orig", "F1")).toBeNull();
   });
 
   it("load tolerates a corrupt pref", () => {

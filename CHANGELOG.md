@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- [Visible] [Modding-API] **Mods can manage their own keyboard bindings through the consented keymap facade.** `keymap:write` now lets a mod enumerate, rebind, and remove only bindings it owns; player edits take ownership back and mod teardown removes remaining claims (#93).
+
 ### Changed
 
 - [Visible] [Modding-API] **The mod compatibility promise now covers a named subset of `ctx.core`.** Twenty-three runtime exports that first-party plugins actually call are guaranteed to remain, and a test fails if any of them disappears or changes `typeof`. The rest of the namespace stays an escape hatch (#81).

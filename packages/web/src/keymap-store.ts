@@ -20,6 +20,13 @@ type KeymapTable = Record<string, string>;
 const tables: Record<KeymapMode, KeymapTable> = { orig: {}, rogue: {} };
 
 const KEYMAP_PREF_KEY = "neo-angband:keymaps";
+/* Kept apart from the player-owned preference so an older build can still read
+ * its keymaps. It records only which live binding a mod may later manage. */
+const KEYMAP_OWNER_PREF_KEY = "neo-angband:keymap-owners";
+
+/** Mod owner per trigger, per mode. A missing entry means player-owned. */
+type KeymapOwners = Record<KeymapMode, Record<string, string>>;
+const owners: KeymapOwners = { orig: {}, rogue: {} };
 
 /** The keymap mode for the active keyset (rogue_like_commands). */
 export function keymapModeFor(roguelike: boolean): KeymapMode {
@@ -34,12 +41,16 @@ export function keymapFind(mode: KeymapMode, trigger: string): string | null {
 /** keymap_add (keymap.c): bind `trigger` to `action` in `mode` (replaces any). */
 export function keymapAdd(mode: KeymapMode, trigger: string, action: string): void {
   tables[mode][trigger] = action;
+  /* The keymap editor owns this path. A player replacement turns a former mod
+   * binding into the player's binding, so later mod teardown must leave it. */
+  delete owners[mode][trigger];
 }
 
 /** keymap_remove (keymap.c): drop `trigger` in `mode`; returns whether one existed. */
 export function keymapRemove(mode: KeymapMode, trigger: string): boolean {
   if (trigger in tables[mode]) {
     delete tables[mode][trigger];
+    delete owners[mode][trigger];
     return true;
   }
   return false;
@@ -48,6 +59,28 @@ export function keymapRemove(mode: KeymapMode, trigger: string): boolean {
 /** All bindings for a mode (trigger, action) pairs, for the editor's listing. */
 export function keymapEntries(mode: KeymapMode): [string, string][] {
   return Object.entries(tables[mode]);
+}
+
+/** The mod which owns this binding, or null for a player binding. */
+export function keymapOwner(mode: KeymapMode, trigger: string): string | null {
+  return owners[mode][trigger] ?? null;
+}
+
+/** Mark an existing binding as belonging to one mod. Only the facade calls this. */
+export function keymapSetOwner(mode: KeymapMode, trigger: string, owner: string): void {
+  if (!(trigger in tables[mode])) throw new Error("keymap owner requires an existing binding");
+  owners[mode][trigger] = owner;
+}
+
+/** Remove every binding still owned by one mod. Returns whether anything changed. */
+export function keymapRemoveOwnedBy(owner: string): boolean {
+  let removed = false;
+  for (const mode of ["orig", "rogue"] as const) {
+    for (const [trigger] of keymapEntries(mode)) {
+      if (keymapOwner(mode, trigger) === owner) removed = keymapRemove(mode, trigger) || removed;
+    }
+  }
+  return removed;
 }
 
 /** Load saved keymaps into the live tables (boot, before first input). */
@@ -68,12 +101,28 @@ export function loadKeymapPrefs(): void {
   } catch {
     /* ignore: a corrupt pref just means no custom keymaps. */
   }
+  try {
+    const raw = localStorage.getItem(KEYMAP_OWNER_PREF_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw) as unknown;
+    if (!data || typeof data !== "object") return;
+    for (const mode of ["orig", "rogue"] as const) {
+      const known = (data as Record<string, unknown>)[mode];
+      if (!known || typeof known !== "object") continue;
+      for (const [trigger, owner] of Object.entries(known as Record<string, unknown>)) {
+        if (typeof owner === "string" && owner.length > 0 && trigger in tables[mode]) owners[mode][trigger] = owner;
+      }
+    }
+  } catch {
+    /* ignore: missing or corrupt ownership leaves every keymap player-owned. */
+  }
 }
 
 /** Persist the live keymaps as the user's keymap pref. */
 export function saveKeymapPrefs(): void {
   try {
     localStorage.setItem(KEYMAP_PREF_KEY, JSON.stringify(tables));
+    localStorage.setItem(KEYMAP_OWNER_PREF_KEY, JSON.stringify(owners));
   } catch {
     /* ignore: storage may be unavailable (private mode). */
   }
@@ -83,6 +132,8 @@ export function saveKeymapPrefs(): void {
 export function clearKeymaps(): void {
   tables.orig = {};
   tables.rogue = {};
+  owners.orig = {};
+  owners.rogue = {};
 }
 
 /**
