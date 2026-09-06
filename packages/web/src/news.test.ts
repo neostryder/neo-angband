@@ -413,22 +413,37 @@ describe("title screen project information", () => {
     const lines = titleLines();
     const ridge = lines.findLastIndex((l) => strip(l.markup).includes("^"));
     expect(lines.slice(ridge + 1).map((line) => line.markup)).toEqual([
-      "Neo Angband: TypeScript port of Angband 4.2.6 with general-purpose mod loading.",
+      "Neo Angband: TypeScript port of Angband with general-purpose mod loading.",
       "",
       "Docs and quick start: https://angband.rpgm.world/docs",
       "GitHub: https://github.com/neostryder/neo-angband",
       "Releases: https://releases.rpgm.tools/repos/neo-angband/",
       "Discord: https://discord.gg/YegtwbHTBQ",
-      "Thank you, neostryder and past maintainers and developers and to all those who have given us so many creative variants!",
+      "Thank you, neostryder and past maintainers and developers, and to all those",
+      "who have given us so many creative variants!",
       "",
     ]);
   });
 
+  it("paints no row past the right edge of the grid", () => {
+    /* The paint loop clips each row at `cols` and says nothing, so a line that
+     * outgrows the grid loses its tail mid-word rather than failing. That is
+     * what happened to the thank-you line, which sat 39 columns over the
+     * 80-column width and was truncated on the live title screen for as long as
+     * it existed. Measuring the RUNS, not the markup, because a colour tag
+     * occupies no columns. */
+    for (const line of titleLines()) {
+      const runs = line.runs ?? parseNewsLine(line.markup);
+      const width = runs.reduce((n, r) => n + r.text.length, 0);
+      expect(width, `"${line.markup}" is ${String(width)} columns wide`).toBeLessThanOrEqual(80);
+    }
+  });
+
   it("keeps the core screen and prompt in their row budget", () => {
     const lines = titleLines();
-    expect(lines).toHaveLength(21);
+    expect(lines).toHaveLength(22);
     const grid = renderTitle();
-    expect(rowText(grid, 20)).toBe("");
+    expect(rowText(grid, 20)).toContain("creative variants!");
     expect(rowText(grid, 21)).toBe("");
     expect(rowText(grid, 22)).toBe("");
     expect(rowText(grid, 23)).toContain("(N)ew");
@@ -437,29 +452,35 @@ describe("title screen project information", () => {
   it("marks only each URL as a link at its painted grid span", () => {
     const { grid, term } = gridTerm();
     const spans = paintTitleArt(term);
+    /* The project information block is centred, so a row's link no longer starts
+     * at its label width. Deriving the offset with the paint loop's own
+     * arithmetic rather than writing the resulting column down: a hardcoded
+     * number here would have to be re-measured every time a label or a URL
+     * changes length, and would say nothing about WHY it moved. */
+    const at = (label: string, url: string): { startCol: number; endCol: number } => {
+      const full = label + url;
+      const left = Math.max(0, Math.floor((80 - full.length) / 2));
+      return { startCol: left + label.length, endCol: left + full.length };
+    };
     expect(spans).toEqual([
       {
         row: 15,
-        startCol: "Docs and quick start: ".length,
-        endCol: "Docs and quick start: https://angband.rpgm.world/docs".length,
+        ...at("Docs and quick start: ", "https://angband.rpgm.world/docs"),
         href: "https://angband.rpgm.world/docs",
       },
       {
         row: 16,
-        startCol: "GitHub: ".length,
-        endCol: "GitHub: https://github.com/neostryder/neo-angband".length,
+        ...at("GitHub: ", "https://github.com/neostryder/neo-angband"),
         href: "https://github.com/neostryder/neo-angband",
       },
       {
         row: 17,
-        startCol: "Releases: ".length,
-        endCol: "Releases: https://releases.rpgm.tools/repos/neo-angband/".length,
+        ...at("Releases: ", "https://releases.rpgm.tools/repos/neo-angband/"),
         href: "https://releases.rpgm.tools/repos/neo-angband/",
       },
       {
         row: 18,
-        startCol: "Discord: ".length,
-        endCol: "Discord: https://discord.gg/YegtwbHTBQ".length,
+        ...at("Discord: ", "https://discord.gg/YegtwbHTBQ"),
         href: "https://discord.gg/YegtwbHTBQ",
       },
     ]);
@@ -475,7 +496,7 @@ describe("title screen project information", () => {
     try {
       const lines = titleLines();
       expect(MOD_SPLASH_ROWS).toBe(15);
-      expect(lines).toHaveLength(9);
+      expect(lines).toHaveLength(10);
       expect(lines[0]!.markup).toBe("mod splash");
       expect(lines.slice(1).map((line) => line.markup)).toContain(
         "Docs and quick start: https://angband.rpgm.world/docs",

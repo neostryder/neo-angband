@@ -278,7 +278,7 @@ Morgoth's fortress, with Morgoth as the final enemy - and added unique monsters,
 artifacts, item activation, level feelings, and special rooms. Sean Marsh,
 Geoff Hill, and others carried it forward after Cutler and Astrand moved on; the
 first release outside Warwick, 2.4.frog_knows, reached the public on 11 April
-1993. This project ports Angband 4.2.6, one release in that continuing line.
+1993. This project ports Vanilla Angband, the latest release in that continuing line.
 
 Images: Rogue screenshot by Thedarkb, [CC BY-SA
 4.0](https://creativecommons.org/licenses/by-sa/4.0/), via [Wikimedia

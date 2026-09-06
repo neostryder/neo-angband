@@ -89,7 +89,7 @@ export function initA11y(canvas: HTMLElement | null): A11y {
     { class: "a11y-sr", id: "a11y-instructions" },
     "Neo Angband. Play with the keyboard: arrow keys or numpad to move, " +
       "press ? at any time for the full command list and help. Game messages " +
-      "are announced automatically. This is a faithful port of Angband 4.2.6.",
+      "are announced automatically. This is a faithful port of Vanilla Angband.",
   );
 
   const status = el("div", {

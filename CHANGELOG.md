@@ -48,10 +48,9 @@ still calls itself.
 
 ## [Unreleased]
 
-- [Visible] [UI] **Panels follow the visible viewport on phones.** The game canvas and host-owned panel container now resize together when a virtual keyboard changes the visual viewport, keeping a modal panel's usable area above the keyboard.
-- [Visible] [UI] **Touch controls follow successive item, direction and target prompts.** A collapsible control sheet provides full-label choices, menu navigation, a command drawer and native text entry. Touch and desktop keymaps persist independently. Map taps resolve on release, while a hold opens the existing context menu without first moving; a second finger cancels the single-finger gesture (#145).
-
 ### Added
+
+- [Visible] [UI] **Touch controls follow successive item, direction and target prompts.** A collapsible control sheet provides full-label choices, menu navigation, a command drawer and native text entry. Touch and desktop keymaps persist independently. Map taps resolve on release, while a hold opens the existing context menu without first moving; a second finger cancels the single-finger gesture (#145).
 
 - [Visible] [Modding-API] **Mods can replace each named HUD region through the presentation owner seam.** hud() independently owns the message area, vitals, and status line with core fallback, frozen frame data, and per-region fault recovery; the accompanying design records the menu and screen presentation contracts and code-derived surface inventory (#12).
 
@@ -63,7 +62,17 @@ still calls itself.
 
 ### Changed
 
+- [Visible] [UI] **The title screen centres its project information under the art.** The block of links and credits was painted from column 0, which left it hanging off the left edge of a centred screen.
+
+- [Visible] [UI] **Player-facing text names Angband rather than a specific upstream release.** The title screen, help, accessibility notes, the mods screen and the bug-report form named a specific version, which is a moving target and had to be re-edited on every upstream bump.
+
 - [Visible] [Modding-API] **The mod compatibility promise now covers a named subset of `ctx.core`.** Twenty-three runtime exports that first-party plugins actually call are guaranteed to remain, and a test fails if any of them disappears or changes `typeof`. The rest of the namespace stays an escape hatch (#81).
+
+### Fixed
+
+- [Visible] [UI] **The title screen no longer cuts its closing line off mid-word.** The thank-you line ran 39 columns past the 80-column grid and was silently clipped, so it ended partway through a word. Every painted row is now width-checked (#174).
+
+- [Visible] [UI] **Panels follow the visible viewport on phones.** The game canvas and host-owned panel container now resize together when a virtual keyboard changes the visual viewport, keeping a modal panel's usable area above the keyboard.
 
 ## [1.8.0] - 2026-09-04
 
