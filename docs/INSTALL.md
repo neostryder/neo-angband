@@ -548,7 +548,12 @@ Notes:
    offer a manual text/tile scale control. Browser pinch-zoom is intentionally
    disabled on the game canvas (the page sets `maximum-scale=1,
    user-scalable=no`) so a stray pinch cannot blur or misalign the grid - resize
-   the window or use your OS/browser page zoom instead.
+   the window or use your OS/browser page zoom instead. In Chromium and
+   Firefox this tracks cleanly at any zoom level, since the canvas resizes
+   itself to match. Safari is the exception: it does not report a changed
+   `devicePixelRatio` while zooming, so Safari's own page zoom scales up the
+   already-rendered canvas instead of asking for a sharper one, and can look
+   softer than the same zoom level in Chromium or Firefox.
 8. By default a browser may delete a site's whole storage bucket to reclaim space,
    without asking - which under this game's terminal-death rule is permanent
    character loss from a mechanism you never see. So the first time a character save

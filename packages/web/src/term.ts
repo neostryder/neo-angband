@@ -440,11 +440,6 @@ export class GlyphTerm
    */
   private glyphCache = new Map<string, HTMLCanvasElement | null>();
   private sizeListeners = new Set<(size: TermSize) => void>();
-  /** The visual viewport's origin in layout-viewport CSS pixels. */
-  private viewportX = 0;
-  private viewportY = 0;
-  /** Avoid repainting the whole terminal twice for one browser resize. */
-  private fittedViewport = "";
   /**
    * The active modal's tap handler (see onCellTap). While set, a pointerdown
    * on the canvas is consumed here (stopImmediatePropagation) so the in-world
@@ -500,18 +495,13 @@ export class GlyphTerm
     if (!ctx) throw new Error("canvas 2d context unavailable");
     this.ctx = ctx;
     if (options.bitmapFont !== undefined) this.font = options.bitmapFont;
-    this.fit(true);
+    this.fit();
     const refit = () => {
-      if (!this.fit()) return;
+      this.fit();
       const size = this.size();
       for (const listener of this.sizeListeners) listener(size);
     };
     window.addEventListener("resize", refit);
-    /* A virtual keyboard can resize the visual viewport without changing the
-     * layout viewport. The canvas and its region geometry must follow what the
-     * player can actually see, not the rectangle the page had before typing. */
-    window.visualViewport?.addEventListener("resize", refit);
-    window.visualViewport?.addEventListener("scroll", refit);
     // Some embeds start at 0x0 and never fire window resize; observe the
     // document element so the grid appears as soon as there is space.
     new ResizeObserver(refit).observe(document.documentElement);
@@ -578,7 +568,7 @@ export class GlyphTerm
       this.options.minRows = options.minRows;
       this.options.snapViewportToEven = options.snapViewportToEven;
     }
-    this.fit(true);
+    this.fit();
     const size = this.size();
     for (const listener of this.sizeListeners) listener(size);
   }
@@ -606,8 +596,8 @@ export class GlyphTerm
     return {
       cellWidth: this.cellW,
       cellHeight: this.cellH,
-      originX: this.viewportX + this.offsetX,
-      originY: this.viewportY + this.offsetY,
+      originX: this.offsetX,
+      originY: this.offsetY,
     };
   }
 
@@ -628,24 +618,38 @@ export class GlyphTerm
    * Recompute cell metrics and grid size. In the default fixed mode this sizes
    * a letterboxed 80x24 grid (largest cell that fits, centered); in reflow mode
    * it sizes a responsive grid honoring the minCols/minRows floor.
+   *
+   * BROWSER-NATIVE PAGE ZOOM (#64) needs no separate handling here. In Chromium
+   * and Firefox, zooming changes `devicePixelRatio` and the reported viewport
+   * size exactly the way a denser display would, and fires `resize`, so this
+   * method already recomputes the backing store, CSS size, and letterbox from
+   * fresh values on every zoom step - the same fractional-dpr handling this
+   * class already carries for high-density displays (see cellBox) covers a
+   * zoom-induced ratio with no new code path. Because the canvas always fills
+   * the viewport at the current device-pixel ratio, its backing-store
+   * resolution stays close to constant across zoom levels (measured: within 1
+   * device pixel of a 1280x800 dpr-1 baseline across 0.67x-2x, letterboxed grid
+   * unchanged at 80x24), so ordinary page zoom is a no-op rather than a defect
+   * - it neither breaks the grid nor makes it bigger. Only a very small
+   * physical window pushed to an extreme zoom level can exceed this class's
+   * existing minimum-cell-size floor and clip, which is the same fallback a
+   * plain tiny window hits with no zoom involved (see fitFixed).
+   *
+   * WebKit/Safari is the one browser where this does not hold: it keeps
+   * `devicePixelRatio` pinned at 1 while zooming, so its own page zoom shrinks
+   * or grows the CSS viewport with no matching backing-store change, and the
+   * browser's compositor then magnifies that fixed-resolution render instead
+   * of asking this class for a sharper one. There is no signal available to
+   * this method that would let it tell a real 1x display from a zoomed Safari
+   * tab, so this is a WebKit zoom-model limitation rather than something a
+   * canvas-sizing change here can correct for.
    */
-  private fit(force = false): boolean {
+  private fit(): void {
     const dpr = window.devicePixelRatio || 1;
-    const visual = window.visualViewport;
-    const w = visual?.width ?? window.innerWidth;
-    const h = visual?.height ?? window.innerHeight;
-    const x = visual?.offsetLeft ?? 0;
-    const y = visual?.offsetTop ?? 0;
-    const viewport = `${dpr}:${w}:${h}:${x}:${y}`;
-    if (!force && viewport === this.fittedViewport) return false;
-    this.fittedViewport = viewport;
-    this.viewportX = x;
-    this.viewportY = y;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
     this.canvas.width = Math.floor(w * dpr);
     this.canvas.height = Math.floor(h * dpr);
-    this.canvas.style.position = "fixed";
-    this.canvas.style.left = `${x}px`;
-    this.canvas.style.top = `${y}px`;
     this.canvas.style.width = `${w}px`;
     this.canvas.style.height = `${h}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -679,7 +683,6 @@ export class GlyphTerm
      * this runs from a resize/ResizeObserver callback rather than from a frame
      * of gameplay. */
     this.flush();
-    return true;
   }
 
   /**

@@ -202,23 +202,15 @@ that fails one run in two is worth closing rather than living with.
 
 Tracked as issue #16.
 
-### Player-owned layout regions have no model yet
+### A mod panel has never been driven on a phone or in Electron fullscreen
 
-The live region stack already names and places the game's `messages`, `sidebar`,
-`map` and `status` rectangles, and it lets a mod replace or add a region. It is
-not a player layout system: `viewport()` still derives each base rectangle from
-the three sidebar modes, no player preference records a region's position or
-size, and no player-facing editor can move one. The missing model must make a
-player arrangement and a mod replacement describe the same region identity and
-geometry, rather than adding a second overlay layout beside `ui-stack.ts`.
+`ui:panel.mount`'s ownership, invariant and escape-hatch logic have unit tests
+and were probed in the shipping desktop build over CDP, but a virtual
+keyboard's effect on the canvas and Electron's fullscreen behavior have not
+been measured, because both need a mod that mounts a panel and the first one
+is still being written.
 
-Before this can land, the remaining full-screen builders must declare regions,
-the menu presentation seam needs its own region owner, and keyboard focus for a
-player-selected region needs a policy. `regionInputAt()` deliberately answers
-only positional pointer ownership today, so it cannot decide where Arrow keys or
-Enter belong after a player moves a panel.
-
-Tracked with issue #17's wider layout work.
+Tracked as issue #17.
 
 ### A mod that installs a mod is not recorded as having done so
 

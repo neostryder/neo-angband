@@ -610,13 +610,6 @@ Six things about it, and the first two are the ones that will surprise you:
   action bar does with its buttons. `modal: true` takes the pointer, takes the
   focus on mount, and gets `role="dialog"`; a plain panel takes neither and gets
   `role="group"`.
-- **The host fits the container to the visual viewport.** On a phone, opening
-  the virtual keyboard can leave the layout viewport at its former height while
-  shrinking the visible rectangle. The host follows `visualViewport` for the
-  panel and the canvas, including its offset, so a modal panel does not extend
-  behind the keyboard. A panel that puts fields near its lower edge should still
-  call `element.scrollIntoView({ block: "center" })` when a field receives focus:
-  a browser may reserve more of the visible rectangle for its own input chrome.
 - **The keyboard is decided per keystroke, by where the caret is.** The game's
   front end has ONE keydown registration - `window`, capture phase, installed at
   import - and every modal handler behind it calls `stopImmediatePropagation`. So
