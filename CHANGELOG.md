@@ -50,6 +50,8 @@ still calls itself.
 
 ### Added
 
+- [Visible] [Modding-API] **Mods can replace each named HUD region through the presentation owner seam.** hud() independently owns the message area, vitals, and status line with core fallback, frozen frame data, and per-region fault recovery; the accompanying design records the menu and screen presentation contracts and code-derived surface inventory (#12).
+
 - [Visible] [Modding-API] **Mods can manage their own keyboard bindings through the consented keymap facade.** `keymap:write` now lets a mod enumerate, rebind, and remove only bindings it owns; player edits take ownership back and mod teardown removes remaining claims (#93).
 
 - [Visible] [Modding-API] **`neo-angband-mod-check` now refuses a manifest whose capability strings the game would reject at load.** The check calls `CapabilitySet.fromManifest`, so a typo'd capability or a capability on a content pack fails in the author's own folder instead of in a player's install (#79).

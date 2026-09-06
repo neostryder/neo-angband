@@ -310,6 +310,44 @@ describe("installing", () => {
 });
 
 describe("routing a live frame", () => {
+  it("routes the message area, vitals, and status line to their independently consented owners", () => {
+    const term = coreSink();
+    const seen: HudSectionName[] = [];
+    const sink = (expected: HudSectionName): HudSectionSink => ({
+      present: (section) => {
+        expect(section.name).toBe(expected);
+        seen.push(section.name);
+      },
+    });
+    const installed = installHud(
+      [
+        coreHudCandidate(term),
+        {
+          id: "message-skin",
+          manifest: manifest("message-skin", ["ui:messages.replace"]),
+          plugin: { hud: () => ({ messages: sink("messages") }) },
+        },
+        {
+          id: "vitals-skin",
+          manifest: manifest("vitals-skin", ["ui:sidebar.replace"]),
+          plugin: { hud: () => ({ sidebar: sink("sidebar") }) },
+        },
+        {
+          id: "status-skin",
+          manifest: manifest("status-skin", ["ui:status.replace"]),
+          plugin: { hud: () => ({ status: sink("status") }) },
+        },
+      ],
+      CONTEXT,
+      () => undefined,
+    );
+
+    hudFrameSink(installed, () => undefined).present(frame());
+
+    expect(seen).toEqual(["messages", "sidebar", "status"]);
+    expect(term.drawn).toEqual([]);
+  });
+
   it("hands each owner its own section, and the frame it came from", () => {
     const term = coreSink();
     const seen: { section: HudSection; frame: HudFrame }[] = [];
