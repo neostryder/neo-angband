@@ -26,16 +26,25 @@ keep it faithful. Read it once before your first change.
 - **Node** `>=22` (the `.nvmrc` pins `24` - use it if you run `nvm`). CI runs 24
   here; the mod repositories run 22, so the `>=22` floor is exercised rather
   than merely claimed.
-- **pnpm** `11.18.0`, the version in the root `package.json` `packageManager`
-  field. Get it with **`corepack enable pnpm`** and let that field decide - the
-  shim reads it on every run, so you never track this number by hand.
+- **pnpm** `12.3.4`, the version in the root `package.json` `packageManager`
+  field. Install it with **`npm install -g @pnpm/exe`**, and let that field
+  decide the version pnpm runs as - pnpm reads it on every run when
+  `manage-package-manager-versions` is enabled, which is its default, so you
+  never track this number by hand.
 
-  Do not expect `pnpm self-update` to make the jump from 10: pnpm 11 ships a
-  different package layout, and pnpm 10 downloads it to a path it then cannot
-  find (`Failed to switch pnpm to v11.18.0 ... pnpm CLI is missing`). Once
-  `packageManager` says 11, a standalone pnpm 10 fails that way on *every*
-  command in this repo, `--help` included. `corepack enable pnpm` is the way out;
-  `npx pnpm@11.18.0 <cmd>` works in a pinch without installing anything.
+  **`corepack enable pnpm` is no longer an option.** Corepack was removed from
+  Node, so on Node 25 or newer the command does not exist. Instructions
+  elsewhere that still recommend it predate that removal.
+
+  Do not expect `pnpm self-update` to make the jump from a pnpm 10 install.
+  pnpm 10 fetches its own binary from `@pnpm/win-x64`, which stopped publishing
+  at `11.26.0`; the package that carries 12.x is `@pnpm/exe`. A pnpm 10 asked to
+  reach 12 therefore fails with `No matching version found for
+  @pnpm/win-x64@12.3.4`, and an earlier failure of the same kind can leave a
+  half-written copy under `<pnpm home>/.tools` that reports
+  `Failed to switch pnpm to v<version> ... pnpm CLI is missing` on every command
+  afterwards. Deleting that `.tools` directory clears it. `npx pnpm@12.3.4 <cmd>`
+  works in a pinch without installing anything.
 
 This is a pnpm workspace (`pnpm-workspace.yaml`); all packages live under
 `packages/`.

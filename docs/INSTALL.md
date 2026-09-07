@@ -45,12 +45,13 @@ reported as damage, and a save the game cannot open is never overwritten.
 
 **Prerequisites** for everything except the download and the PWA install:
 [Node](https://nodejs.org/)
-22 or newer, and [pnpm](https://pnpm.io/installation) **11**: run
-**`corepack enable pnpm`** and the `packageManager` field in the root
-`package.json` decides the exact version. The 11 is not advisory: pnpm 10 fails on
-*every* command in this repository, `--help` included, because 11 ships a
-different package layout that 10 downloads to a path it cannot then run from.
-`npx pnpm@11 <cmd>` works in a pinch without installing anything, and
+22 or newer, and [pnpm](https://pnpm.io/installation) **12**: run
+**`npm install -g @pnpm/exe`** and the `packageManager` field in the root
+`package.json` decides the exact version. The 12 is not advisory: an older pnpm
+cannot upgrade itself into it, because the binary package it fetches
+(`@pnpm/win-x64`) stopped publishing at 11.26.0 while 12.x ships as `@pnpm/exe`.
+Corepack is no longer a route either; Node removed it.
+`npx pnpm@12 <cmd>` works in a pinch without installing anything, and
 [CONTRIBUTING.md](../CONTRIBUTING.md) has the long version. Everything below
 assumes you have cloned the repo and run `pnpm install` once at its root.
 
