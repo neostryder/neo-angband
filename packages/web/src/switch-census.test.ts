@@ -160,9 +160,9 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 48 into a CLOSED vocabulary", () => {
+  it("classifies all 49 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 48 dispatch points, ZERO are content dispatch a
+     * than written in prose: of 49 dispatch points, ZERO are content dispatch a
      * mod would want. That is the finish line MOD_REACH gap list set - every
      * one of the eighteen candidates the 2026-08-09 census opened with is now
      * a registry, obj/knowledge.ts (gap 16) last. What is left is UI routing,
@@ -219,8 +219,11 @@ describe("the switch census", () => {
        * adding a row, because the file was already on the census. 15 again with
        * the controller adapter's role routing (#65): a new input device is a new
        * UI dispatch, and the count going up for one is the lens widening rather
-       * than the tree getting worse. */
-      UI: 15,
+       * than the tree getting worse. 16 with the re-consent arm (#190), which is
+       * the same shape once more: a mod whose grant has fallen behind its
+       * manifest gained an action on the screen it is managed from, so the chain
+       * that routes that screen's buttons grew by one. */
+      UI: 16,
     });
     /* The counts have to add up to the census, or a class went missing. */
     expect([...byClass.values()].reduce((a, b) => a + b, 0)).toBe(
@@ -232,7 +235,7 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.verdict).toContain("DEBUG");
   });
 
-  it("is measuring something: 48 dispatch points, 633 size labels", () => {
+  it("is measuring something: 49 dispatch points, 633 size labels", () => {
     /* Control for the census ITSELF. A scanner that silently matched nothing -
      * a broken regex, a wrong root - would make both tests above pass forever
      * against an empty tree. */

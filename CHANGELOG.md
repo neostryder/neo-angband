@@ -59,6 +59,10 @@ still calls itself.
   repository fails when the two part, so a renamed switch or a flipped default
   cannot leave a page quietly claiming the old one.
 
+### Fixed
+
+- [Visible] [Modding-API] **A mod that asks for a new permission after you allowed it now asks again, instead of quietly doing nothing.** Permission is granted once, when a mod is turned on. A mod that adds a permission in a later version and then updates in place was left holding an out-of-date grant, and its code stopped loading. Nothing said so: the mod stayed switched on, stayed in the list, and every one of its settings still appeared and still took a click, because those settings are read from the mod's description rather than from the code that was never loaded. A mod whose permission list grew over four releases could lose all thirteen of its settings at once, all in the same moment, with no message anywhere. The mod's own screen now offers to allow what is newly asked for, showing only what changed rather than the whole list again, and the detail pane says the code is not running and names what is holding it. Saying no offers to switch the mod off, so a mod listed as on and contributing nothing is a state you chose rather than one you cannot see. Only mods that run code are affected; a mod that adds content only was never gated this way (#190).
+
 ## [1.10.1] - 2026-09-07
 
 ### Changed

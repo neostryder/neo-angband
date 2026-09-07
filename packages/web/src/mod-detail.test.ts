@@ -34,6 +34,7 @@ const LONG_DESC =
 
 function mod(over: Partial<CatalogMod> = {}): CatalogMod {
   return {
+    granted: [],
     id: "bug-fixes",
     name: "Bug Fixes",
     version: "1.0.0",

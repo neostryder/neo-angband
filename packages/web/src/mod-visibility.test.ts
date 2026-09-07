@@ -293,6 +293,7 @@ function catalogMod(over: Partial<CatalogMod> = {}): CatalogMod {
     manifest: { id: "qol", name: "Quality of Life", version: "0.10.0", shape: "plugin" },
     enabled: true,
     capabilities: [],
+    granted: [],
     nondeterministic: false,
     affectsGameplay: false,
     consented: true,

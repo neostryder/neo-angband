@@ -191,6 +191,28 @@ a cosmetic pack gone) degrades gracefully via quarantine.
 The `capabilities` list applies only to `shape: plugin` mods and is the
 consent surface (section 4). Content and tile packs request none.
 
+**A grant records what was asked for at the moment it was given, so it can fall
+behind the manifest.** Consent is written when a mod is enabled. A mod that adds
+a capability in a later version and is then updated in place therefore holds a
+grant that is a strict subset of what it now requests, and a plugin whose grant
+does not cover its manifest does not load: `loadPluginPacks` puts it on
+`skipped` rather than `problems`, because a mod the player has switched off
+belongs on that same list and neither is a fault.
+
+This is invisible from everything else on the screen. The row stays enabled, and
+every rule the mod declares still renders and still accepts a click, because the
+options rows are built from manifests rather than from loaded code. Only the
+plugin half is affected; `pack.ts` performs no capability check, so a
+content-and-plugin hybrid short a grant keeps composing its content while its
+code does not run.
+
+The manager therefore treats a grant that has fallen behind as a state with its
+own action rather than as an absence. The row carries the stored grant alongside
+the requested list, the detail pane names the difference and says the code is not
+running, and the mod's own screen offers to allow what is newly asked. Declining
+offers to switch the mod off, so that a mod which is listed as on and is
+contributing nothing is a state the player chose rather than one they cannot see.
+
 The vocabulary is `command:add`, `event:<name>`, `state:<domain>.read`,
 `network:<host>`, `registry:<domain>`, **`display:replace`** and
 **`ui:<region>.replace`**. The last two are the screen, and they are two grants

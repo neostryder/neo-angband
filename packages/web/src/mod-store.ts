@@ -388,6 +388,18 @@ export interface CatalogMod {
    */
   consented: boolean;
   /**
+   * The capabilities actually stored against this mod, which is NOT the same as
+   * the ones it currently asks for.
+   *
+   * A grant is written once, when the mod is enabled, so an updated mod whose
+   * manifest grew a capability carries a grant that is a strict subset of
+   * `capabilities`. Carrying the stored list on the row is what lets a screen
+   * name the difference rather than the whole set, and it keeps the screens that
+   * do so pure - they take a row and nothing else, which is what makes their
+   * wording assertable.
+   */
+  granted: readonly string[];
+  /**
    * This mod is switched ON and is not installed - there is no manifest behind
    * this row, only the id in the enabled set.
    *
@@ -852,13 +864,32 @@ export function resolveModRules(
   return out;
 }
 
+/**
+ * The capabilities a manifest asks for that the stored grant does not cover.
+ *
+ * A grant is written once, when a mod is enabled, and never revisited. A mod
+ * that adds a capability in a later version and is then updated in place
+ * therefore carries a grant that is a subset of what it now asks for, and this
+ * is the difference. It is the list the player has to see: they already decided
+ * about the rest, and re-reading the whole set hides what actually changed.
+ *
+ * Order follows the manifest rather than the grant, so the reading order is the
+ * author's own.
+ */
+export function capabilitiesNotYetGranted(
+  required: readonly string[],
+  consented: readonly string[],
+): readonly string[] {
+  const have = new Set(consented);
+  return required.filter((c) => !have.has(c));
+}
+
 /** True when every capability in `required` is present in `consented`. */
 export function consentSatisfied(
   required: readonly string[],
   consented: readonly string[],
 ): boolean {
-  const have = new Set(consented);
-  return required.every((c) => have.has(c));
+  return capabilitiesNotYetGranted(required, consented).length === 0;
 }
 
 /** The inputs buildCatalog merges (each list is manifests of one load kind). */
@@ -890,9 +921,8 @@ function toCatalogMod(
   installedBy: Readonly<Record<string, string>>,
 ): CatalogMod {
   const capabilities = manifest.capabilities ?? [];
-  const consented =
-    capabilities.length === 0 ||
-    consentSatisfied(capabilities, consents[manifest.id] ?? []);
+  const granted = consents[manifest.id] ?? [];
+  const consented = capabilities.length === 0 || consentSatisfied(capabilities, granted);
   const installedByModId = installedBy[manifest.id];
   return {
     id: manifest.id,
@@ -903,6 +933,7 @@ function toCatalogMod(
     manifest,
     enabled: enabled.has(manifest.id),
     capabilities,
+    granted,
     nondeterministic: manifest.nondeterministic ?? false,
     affectsGameplay: manifest.affectsGameplay ?? false,
     consented,
@@ -971,6 +1002,7 @@ export function buildCatalog(input: CatalogInput): CatalogMod[] {
       manifest: { id, name: id, version: "-", shape: "content" } as PackManifest,
       enabled: true,
       capabilities: [],
+      granted: [],
       nondeterministic: false,
       affectsGameplay: false,
       consented: true,

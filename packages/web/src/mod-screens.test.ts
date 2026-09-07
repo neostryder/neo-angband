@@ -447,6 +447,7 @@ const CM = (over: Partial<CatalogMod>): CatalogMod => ({
   kind: "content",
   enabled: false,
   capabilities: [],
+  granted: [],
   nondeterministic: false,
   affectsGameplay: false,
   consented: false,

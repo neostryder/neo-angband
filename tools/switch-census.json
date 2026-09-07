@@ -337,6 +337,13 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "UI - keypress routing in a birth screen (MOD_REACH gap 23). Two screens, same finding."
+    },
+    {
+      "file": "packages/web/src/mods.ts",
+      "cases": 8,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "UI - action routing for the mod manager's own detail menu (enable, regrant, disable, drop, options, up, down, read). Not a moddability gap: the branches are this screen's buttons rather than game content, and each one is built next to the row that offers it, so a mod cannot want a ninth without wanting a row that is not there."
     }
   ]
 }

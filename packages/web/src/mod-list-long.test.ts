@@ -343,6 +343,7 @@ describe("the margin scroll cue (#102)", () => {
 
 function catalogOf(n: number): CatalogMod[] {
   return Array.from({ length: n }, (_, i) => ({
+    granted: [],
     id: `item-${i}`,
     name: `Mod number ${i}`,
     version: "1.0.0",

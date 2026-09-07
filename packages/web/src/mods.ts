@@ -57,6 +57,7 @@ import {
 } from "./screen-view";
 import type { GridPointerInput, GridSurface } from "./term";
 import type { ModDirKind, ModOrigin } from "./disk-packs";
+import { capabilitiesNotYetGranted } from "./mod-store";
 import type { AutoplayerSpeed, CatalogMod, ModStore } from "./mod-store";
 import { dropSessionMods } from "./mod-session";
 import type { ModRuleDecl } from "./pack";
@@ -815,18 +816,47 @@ export function rowDetail(
           .map((l, i) => (i === 0 ? l : { ...l, text: `    ${l.text}` })),
       );
     }
-    below.push(
-      ...wrapped(
-        m.consented
-          ? t("modsScreen.detail.consented", "You have allowed this.")
-          : t(
-              "modsScreen.detail.notConsented",
-              "You have not allowed this yet - you will be asked when you turn it on.",
-            ),
-        w,
-        m.consented ? C_ENABLED : C_WARN,
-      ),
-    );
+    /* THREE STATES, NOT TWO. An enabled mod that is short a capability used to
+     * be told "you will be asked when you turn it on", which is the one case
+     * where that sentence is false: it IS on, nothing is going to ask, and its
+     * code is not running. That is the state a mod lands in when it adds a
+     * capability in a later version and is then updated in place, and it is
+     * exactly the state a player cannot diagnose from the outside, because the
+     * rules all still render and click. Say what is true instead, and name the
+     * capability that is holding it, since "some permission" is not something
+     * anyone can act on. */
+    if (m.consented) {
+      below.push(...wrapped(t("modsScreen.detail.consented", "You have allowed this."), w, C_ENABLED));
+    } else if (m.enabled) {
+      const pending = capabilitiesNotYetGranted(m.capabilities, m.granted);
+      below.push(
+        ...wrapped(
+          t(
+            "modsScreen.detail.enabledNotConsented",
+            "Its code is NOT running: this version asks for something new.",
+          ),
+          w,
+          C_DANGER,
+        ),
+      );
+      for (const d of describeCapabilities(pending)) {
+        below.push(
+          ...wrapped(`  - ${d.text}`, w, C_WARN)
+            .map((l, i) => (i === 0 ? l : { ...l, text: `    ${l.text}` })),
+        );
+      }
+    } else {
+      below.push(
+        ...wrapped(
+          t(
+            "modsScreen.detail.notConsented",
+            "You have not allowed this yet - you will be asked when you turn it on.",
+          ),
+          w,
+          C_WARN,
+        ),
+      );
+    }
   }
 
   /* The description gets whatever the head and the below block leave. This used
@@ -1158,6 +1188,121 @@ async function consentPromptForMods(
 }
 
 /**
+ * Allow what a mod has STARTED asking for since it was turned on.
+ *
+ * A grant is written once, at enable, and `enableModById` returns early on a mod
+ * that is already enabled, so nothing revisits it. A mod that adds a capability
+ * in a later version and is then updated in place therefore keeps a grant that no
+ * longer covers its manifest, and the loader drops its code onto the not-a-fault
+ * list and carries on. Nothing was broken, nothing was reported, and every rule
+ * the mod declares still rendered and still took clicks, because the options rows
+ * are built from manifests rather than from loaded code. The measured case was a
+ * mod whose capability list grew at four consecutive releases; an install that
+ * consented before the last two lost all thirteen of its rules at once.
+ *
+ * This screen shows ONLY what is new. The player already decided about the rest,
+ * and re-reading the whole list is what hides the part that changed.
+ *
+ * Declining does not return the mod to a silent skip. The state is stated in
+ * full, and turning the mod off is offered, because a mod that is switched on and
+ * contributing nothing is the condition this whole path exists to end - leaving
+ * it that way with no comment would reproduce the bug one screen later.
+ */
+async function regrantConsent(
+  term: GridSurface & GridPointerInput,
+  deps: ModManagerDeps,
+  m: CatalogMod,
+): Promise<boolean> {
+  const pending = capabilitiesNotYetGranted(m.capabilities, m.granted);
+  if (pending.length === 0) return false;
+
+  await showTextScreen(
+    term,
+    t("modsScreen.regrant.title", "{name} v{version}", { name: m.name, version: m.version }),
+    [
+    {
+      text: t("modsScreen.regrant.headline", "This version asks for something new."),
+      color: C_FG,
+    },
+    { text: "", color: C_FG },
+    {
+      text: t(
+        "modsScreen.regrant.why",
+        "You allowed an earlier version. This one wants more, so its code is",
+      ),
+      color: C_FG,
+    },
+    {
+      text: t("modsScreen.regrant.why2", "not running until you say yes to the rest:"),
+      color: C_FG,
+    },
+    { text: "", color: C_FG },
+    ...describeCapabilities(pending).flatMap((d) => [
+      {
+        text: `  - ${d.text}${d.elevated ? `  ${t("modsScreen.detail.elevatedTag", "[powerful]")}` : ""}`,
+        color: d.elevated ? C_WARN : C_FG,
+      },
+    ]),
+    { text: "", color: C_FG },
+    {
+      text: t(
+        "modsScreen.regrant.alreadyAllowed",
+        "What you allowed before is unchanged. Only the above is new.",
+      ),
+      color: C_DIM,
+    },
+    ],
+  );
+
+  const pick = await selectFromMenu(
+    term,
+    "core:mod-capability-regrant",
+    t("modsScreen.regrant.confirm", 'Allow this too, so "{name}" runs again?', { name: m.name }),
+    [
+      { label: t("modsScreen.regrant.yes", "Yes, allow it"), color: C_ENABLED },
+      {
+        label: t("modsScreen.regrant.no", "No, leave it off"),
+        color: C_FG,
+        hint: t("modsScreen.regrant.noHint", "The mod stays on the list and keeps doing nothing."),
+      },
+    ],
+    t("modsScreen.common.footer.abTapEsc", "[ a/b or tap; ESC cancels ]"),
+  );
+
+  if (pick === 0) {
+    deps.store.setConsent(m.id, m.capabilities);
+    return true;
+  }
+
+  /* NOT A SILENT SKIP. The mod is switched on and inert either way; the only
+   * question is whether the player knows. Offer the switch, and take no for an
+   * answer without pretending the state is fine. */
+  const off = await selectFromMenu(
+    term,
+    "core:mod-capability-regrant-declined",
+    t("modsScreen.regrantOff.title", "{name} stays switched on and does nothing.", { name: m.name }),
+    [
+      {
+        label: t("modsScreen.regrantOff.disable", "Turn it off"),
+        color: C_WARN,
+        hint: t("modsScreen.regrantOff.disableHint", "So the list matches what is actually running."),
+      },
+      {
+        label: t("modsScreen.regrantOff.leave", "Leave it on"),
+        color: C_DIM,
+        hint: t("modsScreen.regrantOff.leaveHint", "You can allow it later from this screen."),
+      },
+    ],
+    t("modsScreen.common.footer.abTapEsc", "[ a/b or tap; ESC leaves it on ]"),
+  );
+  if (off === 0) {
+    deps.store.setModEnabled(m.id, false);
+    return true;
+  }
+  return false;
+}
+
+/**
  * Enable a mod straight after the player selected "Install and enable".
  *
  * It re-reads the mod sources first, and that call is what makes the rest of this
@@ -1484,6 +1629,20 @@ async function manageMod(
         acts.push("options");
       }
     } else if (m.enabled) {
+      /* FIRST, because it is the only row that changes whether this mod does
+       * anything at all. Everything below it is a setting on a mod that is not
+       * currently running. */
+      if (!m.consented) {
+        items.push({
+          label: t("modsScreen.manageMod.regrant", "Allow what it now asks for (it is not running)"),
+          color: C_DANGER,
+          hint: t(
+            "modsScreen.manageMod.regrantHint",
+            "This version wants more than you allowed. Its code is off until you agree.",
+          ),
+        });
+        acts.push("regrant");
+      }
       items.push({ label: t("modsScreen.manageMod.disable", "Disable"), color: C_WARN });
       acts.push("disable");
       if (showOptionsRow) {
@@ -1572,6 +1731,8 @@ async function manageMod(
     }
     if (act === "enable") {
       if (await enableMod(term, deps, m)) changed = true;
+    } else if (act === "regrant") {
+      if (await regrantConsent(term, deps, m)) changed = true;
     } else if (act === "disable") {
       deps.store.setModEnabled(m.id, false);
       changed = true;
