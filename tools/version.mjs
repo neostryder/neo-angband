@@ -74,11 +74,18 @@ export function versionSites() {
       what: "the ENGINE_VERSION example output",
       pattern: /(console\.log\(ENGINE_VERSION, PARITY_BASELINE\); \/\/ )(\d+\.\d+\.\d+)( )/u,
     },
-    {
-      file: "CHANGELOG.md",
-      what: "the Unreleased summary",
-      pattern: /(Current state of the project at version `)([^`]+)(`)/u,
-    },
+    /* CHANGELOG.md is deliberately NOT a site. It was one: the file opened with a
+     * single "Current state of the project at version `X`" greeting, and that
+     * sentence was the drift this tool was written to stop. The sentence then
+     * moved down into each release's own section, where it describes THAT
+     * release and is history rather than a claim about today. Releases after
+     * 1.1.2 stopped writing one at all, so the non-global pattern above matched
+     * the oldest surviving line - 1.1.2's - and every bump from 1.2.0 forward
+     * rewrote it, until the 1.1.2 section announced itself as version 1.9.0. A
+     * site whose subject has moved is worse than an uncovered one: the tool
+     * keeps writing, confidently, into the wrong sentence. The version heading
+     * a release is cut under is written by hand, and no line in this file needs
+     * to name the current version. */
     /* version-sync.test.ts already REQUIRED the runbook's example tag to equal
      * the project version, but nothing maintained it - so every bump broke CI
      * until somebody remembered to hand-edit the runbook. A check whose subject

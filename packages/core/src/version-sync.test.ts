@@ -73,6 +73,37 @@ describe("the list of sites is complete", () => {
     const missing = sites.filter((s) => !existsSync(join(repoRoot, s.file))).map((s) => s.file);
     expect(missing).toEqual([]);
   });
+
+  it("gives every site a pattern that matches one place, or says it matches all of them", () => {
+    /* The failure this catches is not a pattern that stopped matching - the test
+     * above covers that - but one that matches SEVERAL places while the tool
+     * rewrites only the first. A non-global replacement is silent about the rest,
+     * so the site drifts from the second occurrence onward while everything
+     * reports green.
+     *
+     * It has happened. CHANGELOG.md's "Current state of the project at version
+     * `X`" began as one greeting at the top of the file, then moved down into
+     * each release's own section, where it is history rather than a claim about
+     * today. Releases after 1.1.2 stopped writing one, so the pattern matched
+     * 1.1.2's line, and every bump from 1.2.0 forward rewrote it until that
+     * section announced itself as version 1.9.0 - a sentence about a release
+     * from 2026-08-27 restated wrongly eight times, in the public repository,
+     * by the tool whose whole job is to keep the version honest.
+     *
+     * A site with genuinely many occurrences is fine and both runbook tag sites
+     * are exactly that; it just has to be GLOBAL, so the tool writes all of them
+     * rather than one. */
+    const ambiguous = sites
+      .filter((s) => !s.pattern.flags.includes("g"))
+      .map((s) => {
+        const source = readFileSync(join(repoRoot, s.file), "utf8");
+        const hits = [...source.matchAll(new RegExp(s.pattern.source, `${s.pattern.flags}g`))].length;
+        return { site: `${s.file} - ${s.what}`, hits };
+      })
+      .filter((r) => r.hits > 1)
+      .map((r) => `${r.site} matches ${String(r.hits)} places but is rewritten once`);
+    expect(ambiguous).toEqual([]);
+  });
 });
 
 describe("a version is derived, not picked", () => {
