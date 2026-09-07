@@ -3,8 +3,8 @@
 // Three projects, one per engine, so a spec can be run against Chromium, Gecko
 // and WebKit from the same invocation:
 //
-//   pnpm exec playwright test                     all three engines
-//   pnpm exec playwright test --project=webkit    one engine
+//   pnpm test:e2e                 all three browser engines
+//   pnpm test:e2e:electron        packaged desktop app
 //
 // WebKit is the reason this lane exists. Windows has no Safari, so Playwright's
 // bundled WebKit build is the only real WebKit engine available on this
@@ -27,8 +27,25 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "list" : "line",
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    {
+      name: "chromium",
+      testIgnore: "**/*.electron.spec.ts",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "firefox",
+      testIgnore: "**/*.electron.spec.ts",
+      use: { ...devices["Desktop Firefox"] },
+    },
+    {
+      name: "webkit",
+      testIgnore: "**/*.electron.spec.ts",
+      use: { ...devices["Desktop Safari"] },
+    },
+    {
+      name: "electron",
+      testMatch: "**/*.electron.spec.ts",
+      workers: 1,
+    },
   ],
 });

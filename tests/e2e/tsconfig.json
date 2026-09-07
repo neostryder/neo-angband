@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
     /* Nothing here is shipped or imported by another project, so there is no
      * emit to place. Declarations still emit, into a directory the repository
      * ignores, because `tsc -b` only accepts a composite project and composite
