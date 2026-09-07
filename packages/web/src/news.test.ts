@@ -12,6 +12,7 @@ import {
 import { ENGINE_VERSION } from "@rpgm-tools/neo-angband-core";
 import {
   MOD_SPLASH_ROWS,
+  PROJECT_INFORMATION,
   paintTitleArt,
   parseNewsLine,
   setSplashArt,
@@ -419,8 +420,9 @@ describe("title screen project information", () => {
       "GitHub: https://github.com/neostryder/neo-angband",
       "Releases: https://releases.rpgm.tools/repos/neo-angband/",
       "Discord: https://discord.gg/YegtwbHTBQ",
-      "Thank you, neostryder and past maintainers and developers, and to all those",
-      "who have given us so many creative variants!",
+      "",
+      "Thank you, Eric Branlund and past maintainers and developers, and to",
+      "all those who have given us so many creative variants!",
       "",
     ]);
   });
@@ -441,10 +443,9 @@ describe("title screen project information", () => {
 
   it("keeps the core screen and prompt in their row budget", () => {
     const lines = titleLines();
-    expect(lines).toHaveLength(22);
+    expect(lines).toHaveLength(23);
     const grid = renderTitle();
-    expect(rowText(grid, 20)).toContain("creative variants!");
-    expect(rowText(grid, 21)).toBe("");
+    expect(rowText(grid, 21)).toContain("creative variants!");
     expect(rowText(grid, 22)).toBe("");
     expect(rowText(grid, 23)).toContain("(N)ew");
   });
@@ -501,7 +502,10 @@ describe("title screen project information", () => {
     try {
       const lines = titleLines();
       expect(MOD_SPLASH_ROWS).toBe(15);
-      expect(lines).toHaveLength(10);
+      /* Derived, not written down: this literal has needed bumping every time a
+       * row joined the information block, which is a count the block itself
+       * already knows. */
+      expect(lines).toHaveLength(1 + PROJECT_INFORMATION.length);
       expect(lines[0]!.markup).toBe("mod splash");
       expect(lines.slice(1).map((line) => line.markup)).toContain(
         "Docs and quick start: https://angband.rpgm.world/docs",
