@@ -84,14 +84,18 @@ const saved: Record<string, unknown> = {};
  * At dpr 1 or 2 every cell edge is already whole and the defect cannot appear -
  * a test that only ran at those would have passed throughout.
  */
-function useDpr(dpr: number): void {
+function useViewport(width: number, height: number, dpr = 1): void {
   (globalThis as Record<string, unknown>).window = {
-    innerWidth: 1280,
-    innerHeight: 800,
+    innerWidth: width,
+    innerHeight: height,
     devicePixelRatio: dpr,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   };
+}
+
+function useDpr(dpr: number): void {
+  useViewport(1280, 800, dpr);
 }
 
 beforeEach(() => {
@@ -286,5 +290,82 @@ describe("runtime responsive grid", () => {
     expect(term.size().rows).toBeGreaterThanOrEqual(12);
     expect(term.metrics().originX).toBe(0);
     expect(term.metrics().originY).toBe(0);
+  });
+});
+
+describe("fixed title-grid projection", () => {
+  it("scales and centers the 80x24 grid without stretching or clipping", () => {
+    /* These are deliberately viewport shapes rather than convenient multiples
+     * of the font. The title is a fixed grid, so this is the geometry that also
+     * contains its art, menu row and URL hit spans. */
+    for (const [name, width, height] of [
+      ["wide desktop", 1920, 1080],
+      ["tall narrow phone", 360, 800],
+      ["short wide letterbox", 1200, 300],
+      ["near-square", 800, 800],
+    ] as const) {
+      useViewport(width, height);
+      const term = new GlyphTerm(stubCanvas(), {
+        minCols: 32,
+        minRows: 18,
+        fontPx: 18,
+        reflow: false,
+      });
+      const { cols, rows } = term.size();
+      const metrics = term.metrics();
+      const gridWidth = cols * metrics.cellWidth;
+      const gridHeight = rows * metrics.cellHeight;
+
+      expect({ cols, rows }, name).toEqual({ cols: 80, rows: 24 });
+      expect(metrics.cellWidth / metrics.cellHeight, name).toBeCloseTo(16 / 24, 12);
+      expect(metrics.originX, name).toBeCloseTo((width - gridWidth) / 2, 12);
+      expect(metrics.originY, name).toBeCloseTo((height - gridHeight) / 2, 12);
+      expect(gridWidth, name).toBeLessThanOrEqual(width);
+      expect(gridHeight, name).toBeLessThanOrEqual(height);
+      expect(Math.min(Math.abs(width - gridWidth), Math.abs(height - gridHeight)), name).toBeCloseTo(0, 12);
+
+      /* The same metric that bounds the painted grid maps the center of a URL
+       * cell back to that cell. A transform that only changed drawing would
+       * fail this check by landing on a different logical cell. */
+      expect(
+        term.cellAt(
+          metrics.originX + (42.5 * metrics.cellWidth),
+          metrics.originY + (15.5 * metrics.cellHeight),
+        ),
+        name,
+      ).toEqual({ col: 42, row: 15 });
+    }
+  });
+
+  it("shrinks below the former minimum cell size instead of clipping a small viewport", () => {
+    useViewport(160, 100);
+    const term = new GlyphTerm(stubCanvas(), {
+      minCols: 32,
+      minRows: 18,
+      fontPx: 18,
+      reflow: false,
+    });
+    const { cellWidth, cellHeight, originX, originY } = term.metrics();
+    expect(cellWidth).toBe(2);
+    expect(cellHeight).toBe(3);
+    expect(originX + (80 * cellWidth)).toBe(160);
+    expect(originY + (24 * cellHeight)).toBe(86);
+  });
+
+  it("routes a pointer by the snapped painted edge at a fractional title scale", () => {
+    useViewport(360, 800);
+    const term = new GlyphTerm(stubCanvas(), {
+      minCols: 32,
+      minRows: 18,
+      fontPx: 18,
+      reflow: false,
+    });
+    /* The 4.5px cell's first painted right edge rounds to 5px. The range from
+     * 4.5 through 5 is visibly still column 0, and must not tap column 1. */
+    expect(term.cellAt(4.75, 320)).toEqual({ col: 0, row: 0 });
+    expect(term.cellAt(5, 320)).toEqual({ col: 1, row: 0 });
+    /* The first row is 6.75px high and begins at the 319px letterbox edge. */
+    expect(term.cellAt(1, 325.75)).toEqual({ col: 0, row: 0 });
+    expect(term.cellAt(1, 326)).toEqual({ col: 0, row: 1 });
   });
 });
