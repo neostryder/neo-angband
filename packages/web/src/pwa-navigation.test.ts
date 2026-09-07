@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROJECT_INFORMATION } from "./news";
@@ -122,6 +122,36 @@ describe("the /docs page is reachable from inside the installed app", () => {
         patterns.some((p) => p.test(path)),
         `${path} would be answered with index.html, not the page itself`,
       ).toBe(true);
+    }
+  });
+
+  it("covers every page the docs directory actually serves", () => {
+    /* The denylist is deliberately narrow, and it is only CORRECT while
+     * public/docs/ holds exactly one page. Today it does: a single index.html
+     * that forwards to the docs tree on GitHub, which is why /docs and /docs/
+     * are the whole of it and /docs/anything-else is a 404 on the origin.
+     *
+     * Add a second page under there and the pattern silently stops covering
+     * it, the worker answers that page with the game, and the failure looks
+     * exactly like the one this file was written for - working from a fresh
+     * visit, broken from every install. So the guard is derived from the
+     * directory rather than from a list: whatever public/docs/ serves has to
+     * be denied, and growing the directory fails here rather than in front of
+     * a player.
+     *
+     * `index.html` is checked as the directory itself, both spellings, since
+     * that is how it is reached rather than by name. */
+    const patterns = denylist();
+    const served = readdirSync(join(webRoot, "public", "docs"));
+    expect(served, "public/docs/ is empty").not.toEqual([]);
+    for (const file of served) {
+      const paths = file === "index.html" ? ["/docs", "/docs/"] : [`/docs/${file}`];
+      for (const path of paths) {
+        expect(
+          patterns.some((p) => p.test(path)),
+          `public/docs/${file} is served at ${path}, which the worker would answer with index.html`,
+        ).toBe(true);
+      }
     }
   });
 
