@@ -14,7 +14,15 @@ overrides:
 # this `onlyBuiltDependencies` (a list); pnpm 11 removed that in favour of
 # `allowBuilds` (a map), so the old key is not deprecated - it is simply not read,
 # and a silently-dropped entry here is a script that stops running with nothing
-# said about it.
+# said about it. pnpm 12 still reads `allowBuilds`, confirmed 2026-09-07 by the
+# `allowBuilds` block that `node_modules/.modules.yaml` records after an install.
+#
+# `pnpm install --force` does NOT re-run these scripts. It re-extracts each package
+# from the store, and a postinstall's output is not part of what the store keeps, so
+# a forced install can leave an allowed build undone even though the policy above
+# permits it - measured 2026-09-07, when Electron came back with no `dist/`. The
+# repair is to run that package's own installer, `node install.js` in Electron's
+# case, rather than another `--force`.
 #
 # Electron is the one that must stay true: its postinstall DOWNLOADS the Chromium
 # binary, and without it `electron .` dies with "Electron failed to install
@@ -39,8 +47,12 @@ allowBuilds:
   electron-winstaller: false
   esbuild: false
 
-# NOT SET, deliberately: minimumReleaseAge. pnpm 11 defaults it to 1440 minutes, so
-# a package published in the last day will not resolve.
+# NOT SET, deliberately: minimumReleaseAge. pnpm applies a release-age delay by
+# default, so a package published very recently will not resolve. The exact default
+# is deliberately not restated here: naming a figure for one major is what made the
+# previous version of this comment wrong, and `pnpm config get minimumReleaseAge`
+# reports nothing when the value is the built-in default. The companion settings are
+# `minimumReleaseAgeExclude` and `minimumReleaseAgeStrict`.
 #
 # It cannot stall the project's own release, which was the first worry: every internal
 # dependency here is `workspace:*`, and the two mod repositories that DO consume the
