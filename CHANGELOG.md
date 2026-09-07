@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-09-07
+
 ### Changed
 
 - [Visible] [UI] **The install screens name the browser's own install command instead of gesturing at a menu.** Only Chromium lets a page offer an install button, so Safari and Firefox players were told to look for "Install" somewhere in their browser. Safari on iPhone and iPad is now pointed at Share and Add to Home Screen, Safari on macOS at File and Add to Dock, Chromium at the address bar icon or the Android menu, and a non-Safari browser on iOS is told that only Safari can install there. Firefox is told plainly that it cannot install a web app on any platform and pointed at the desktop app instead, rather than sent hunting for a menu item that does not exist. An unrecognised browser keeps the general wording rather than being guessed at (#181).
