@@ -48,6 +48,17 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- [Internal] [Docs] **Every mod repository now carries a `docs/README.md` quick
+  reference, and the mod table in this repository's README links each mod at
+  its own.** One page per mod, in the same shape for all eight: every switch it
+  exposes, the flag or section id a save knows it by, whether it starts on or
+  off, and the engine range and capabilities it asks the game for. Each page is
+  built from that mod's `manifest.json`, and a `docs-sync.test.ts` in each
+  repository fails when the two part, so a renamed switch or a flipped default
+  cannot leave a page quietly claiming the old one.
+
 ## [1.10.1] - 2026-09-07
 
 ### Changed
