@@ -39,6 +39,19 @@ export default defineConfig({
       "na-wt-*/**",
       ".integration-*/**",
       "reference/**",
+      /*
+       * Playwright's specs, which are not vitest's to run. Vitest collects
+       * `*.spec.ts` as well as `*.test.ts` by default, so the moment an e2e
+       * suite appeared the whole run went red: a Playwright `test()` needs
+       * Playwright's own runner and throws "calling test() from an async
+       * test.describe() block" under vitest, before a single assertion.
+       *
+       * The naming convention is the seam. `*.test.ts` is vitest's and runs on
+       * `pnpm test`; `*.spec.ts` under tests/e2e is Playwright's and runs on
+       * its own command against a real browser. Excluding the directory rather
+       * than the extension keeps that boundary where somebody can see it.
+       */
+      "tests/e2e/**",
     ],
   },
 });
