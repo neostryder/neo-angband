@@ -10542,7 +10542,7 @@ if (controlProfile() === "touch" || window.matchMedia?.("(pointer: coarse)").mat
 
 // Installed unconditionally, unlike the touch sheet: a controller can be
 // plugged into anything, and it stays invisible until one actually reports.
-const gamepadControls = installGamepadControls({ stop: stopForControlAdapter });
+const gamepadControls = installGamepadControls({ stop: stopForControlAdapter }, canvas);
 const gamepadRuntime = startGamepadRuntime(controlSurface, gamepadControls.host);
 gamepadControls.attach(gamepadRuntime.adapter);
 

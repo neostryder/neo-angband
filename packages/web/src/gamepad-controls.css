@@ -17,6 +17,9 @@
   --gp-plate-lit: #16304ceb;
   --gp-edge: #c3cfe861;
   --gp-select: #8ec5ff;
+  /* The live canvas measurement in gamepad-controls.ts replaces this fallback
+     as soon as the overlay mounts. */
+  --gp-size: min(72vmin, 520px);
 }
 #gamepad-controls * { box-sizing: border-box; }
 /* An open wheel owns the pointer for the WHOLE viewport, not just for its own
@@ -73,9 +76,6 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  /* Was min(88vmin, 520px) with a filled disc behind it. The ring is now sized
-     to the wedges rather than to a background it no longer has. */
-  --gp-size: min(58vmin, 360px);
   transform: translate(-50%, -50%);
   width: var(--gp-size);
   height: var(--gp-size);
@@ -99,9 +99,13 @@
   box-shadow: 0 0 0 1px #000000b3;
   line-height: 1.25;
 }
-.gamepad-hub strong { color: var(--gp-accent); font-size: 12px; letter-spacing: .04em; }
-.gamepad-hub span { color: var(--gp-fg); font-size: 11px; }
-.gamepad-hub small { color: #9aa5bd; font-size: 10px; }
+.gamepad-hub strong {
+  color: var(--gp-accent);
+  font-size: clamp(12px, calc(var(--gp-size) * 0.034), 17px);
+  letter-spacing: .04em;
+}
+.gamepad-hub span { color: var(--gp-fg); font-size: clamp(11px, calc(var(--gp-size) * 0.03), 15px); }
+.gamepad-hub small { color: #9aa5bd; font-size: clamp(10px, calc(var(--gp-size) * 0.026), 13px); }
 .gamepad-wedge {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -125,12 +129,12 @@
   overflow: hidden;
 }
 .gamepad-icon {
-  width: clamp(20px, calc(var(--gp-size) * 0.086), 32px);
-  height: clamp(20px, calc(var(--gp-size) * 0.086), 32px);
+  width: clamp(24px, calc(var(--gp-size) * 0.095), 48px);
+  height: clamp(24px, calc(var(--gp-size) * 0.095), 48px);
   filter: drop-shadow(0 1px 1px #000000a6);
 }
 .gamepad-wedge span {
-  font-size: clamp(9px, calc(var(--gp-size) * 0.031), 12px);
+  font-size: clamp(10px, calc(var(--gp-size) * 0.036), 15px);
   line-height: 1.1;
   max-width: 100%;
   overflow: hidden;
@@ -179,12 +183,6 @@
   .gamepad-row { grid-template-columns: 1fr; }
 }
 
-/* THE ONE ADAPTATION A FINGER GETS, and it is a size rather than a layout.
-   Same eight wedges, same icons, same words, same places. A mouse commits on a
-   pixel and a finger commits on a pad of them, so the ring grows until a wedge
-   clears the 44px a touch target needs with room to spare: at 80vmin a 375px
-   phone draws a 300px ring and a 64px wedge, and anything wider is already at
-   the 360px ceiling the desktop uses. */
-@media (pointer: coarse) {
-  .gamepad-wheel { --gp-size: min(80vmin, 360px); }
-}
+/* THE ONE ADAPTATION A FINGER GETS is a size rather than a layout. The live
+   canvas measurement gives a coarse pointer 80 percent of its short side, so a
+   375px phone draws a 300px ring and a 64px wedge. */

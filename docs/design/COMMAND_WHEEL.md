@@ -580,13 +580,14 @@ Opening the wheel inside the target loop showed the prompt's own replies as
 icons: Select, Next, Previous, Free, Player, Interesting, Help, Cancel, eight
 wedges and eight drawn marks, with no reply left as bare text.
 
-Geometry, measured from the live DOM at a 1280 by 820 viewport. The wheel's box
-is 360 by 360 where it was up to 520 by 520, and the wedges occupy 351 by 354 of
-it. A wedge is 77.4 by 77.4, or 83.6 with the selected wedge's scale applied. No
-pair of wedges intersects and none intersects the hub, whose own box is 129.6 by
-39.7. The icon draws at 33.4 pixels and the word at 11.2. The wheel's computed
-`background-image` is `none`, its `background-color` is `rgba(0, 0, 0, 0)` and
-its border width is 0: the filled panel is gone rather than merely dimmed.
+Geometry is measured from the live canvas rectangle in CSS pixels, so it follows
+each resize while the browser applies the current device-pixel ratio to the DOM
+overlay. At a 1280 by 820 viewport, the wheel's box is 520 by 520. A wedge is
+111.8 by 111.8, or 120.7 with the selected wedge's scale applied. No pair of
+wedges intersects and none intersects the hub. The icon draws at 48 pixels and
+the word at 15. The wheel's computed `background-image` is `none`, its
+`background-color` is `rgba(0, 0, 0, 0)` and its border width is 0: the filled
+panel is gone rather than merely dimmed.
 
 Read over both extremes of background. In the town at midday, over lit stone
 floor, shop entrances and townspeople, every plate and every word held. On a
@@ -652,12 +653,11 @@ on the player's own tile opened `Command for yourself`: Cast, Go Up, Go Down,
 Explore, Look, Rest, Inventory, Character, Center Map, Other. Upstream's menu
 still has that gesture.
 
-Geometry over the live canvas: the wheel's box is 360 by 360, a wedge is 77.4 by
-77.4 and 83.6 selected, the hub is 129.6 by 39.7, the icon draws at 33.4 and the
-word at 11.2. Its computed `background-image` is `none`, its `background-color`
-is `rgba(0, 0, 0, 0)` and its border width is 0. While the wheel is open the
-root's computed `pointer-events` is `auto`, which is what stops a missed wedge
-reaching the map.
+Geometry over the live canvas: the wheel's box is 520 by 520, a wedge is 111.8
+by 111.8 and 120.7 selected, the icon draws at 48 and the word at 15. Its
+computed `background-image` is `none`, its `background-color` is `rgba(0, 0, 0,
+0)` and its border width is 0. While the wheel is open the root's computed
+`pointer-events` is `auto`, which is what stops a missed wedge reaching the map.
 
 **Touch, at a 375 by 812 viewport under Android emulation, reloaded so the
 load-time device gates re-ran.** The browser reported a coarse pointer and five
@@ -673,11 +673,10 @@ Item On, Cast On, Alter, Walk Towards and Throw To, and the player did not move.
 A quick release two cells east did move, which is the control that says the same
 harness reaches tap-to-move at all.
 
-Touch geometry: `--gp-size` resolves to `min(80vmin, 360px)` and draws a 300.4
-ring, a 64.6 wedge and 69.7 selected, a 108.1 by 39.7 hub, a 25.8 icon and a
-9.31 word. No pair of wedges intersects and none intersects the hub. The word
-sits on its own 9-pixel clamp floor there, which is the smallest the design
-allows; the icon is what leads at that size.
+Touch geometry: the live canvas measurement resolves `--gp-size` to 300px and
+draws a 64.5 wedge and 69.7 selected, a 108px hub, a 28.5 icon and a 10.8 word.
+No pair of wedges intersects and none intersects the hub. The icon leads at that
+size while the word stays above its 10-pixel floor.
 
 **Gamepad.** An Xbox pad reporting 17 buttons and 4 axes announced `Controller
 ready: 17 buttons, two sticks, d-pad, triggers. RT opens the command wheel.` RT

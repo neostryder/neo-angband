@@ -23,6 +23,7 @@ import type { AngbandDirection } from "./input-door";
 import { commandName, controlSurface, type ControlCommand } from "./control-surface";
 import { addControlDomOwner } from "./input-door";
 import { buttonName, describePad } from "./gamepad-device";
+import { commandWheelDiameter } from "./gamepad-wheel-geometry";
 import { buildIcon, type IconName } from "./gamepad-wheel-icons";
 import {
   WEDGES, WHEEL_GROUPS, entryFor, groupCommands, replyEntry,
@@ -81,7 +82,10 @@ function pageCount(total: number): number {
  * the wheel needs the pad list, and the mapping screen needs to swallow a
  * button press.
  */
-export function installGamepadControls(host: GamepadControlsHost): {
+export function installGamepadControls(
+  host: GamepadControlsHost,
+  surface: HTMLElement,
+): {
   readonly host: GamepadHost;
   attach(adapter: {
     captureButton(report: (index: number) => void): () => void;
@@ -111,6 +115,20 @@ export function installGamepadControls(host: GamepadControlsHost): {
   legend.hidden = true;
   root.append(notice, wheel, legend);
   document.body.append(root);
+
+  /* The overlay is in CSS pixel space, so its source is the canvas's live CSS
+   * rectangle. canvas.width is a device-pixel backing store and would make a
+   * high-density display choose geometry that does not fit the overlay. */
+  const coarsePointer = window.matchMedia("(pointer: coarse)");
+  const sizeWheel = () => {
+    const { width, height } = surface.getBoundingClientRect();
+    root.style.setProperty("--gp-size", `${commandWheelDiameter({ width, height }, coarsePointer.matches)}px`);
+  };
+  const wheelResize = new ResizeObserver(sizeWheel);
+  wheelResize.observe(surface);
+  window.addEventListener("resize", sizeWheel);
+  coarsePointer.addEventListener("change", sizeWheel);
+  sizeWheel();
 
   let pads: readonly ConnectedPad[] = [];
   let open: "wheel" | "legend" | undefined;
@@ -304,6 +322,9 @@ export function installGamepadControls(host: GamepadControlsHost): {
    * prompt shape without a second button nobody would remember.
    */
   function openWheel(): void {
+    // A resize and a right-click can share a frame, so read the canvas again
+    // before making the wheel visible instead of waiting for the observer.
+    sizeWheel();
     open = "wheel";
     const snapshot = controlSurface.current();
     ring = snapshot
@@ -667,6 +688,9 @@ export function installGamepadControls(host: GamepadControlsHost): {
     dispose: () => {
       if (noticeTimer !== undefined) clearTimeout(noticeTimer);
       releaseCapture?.();
+      wheelResize.disconnect();
+      window.removeEventListener("resize", sizeWheel);
+      coarsePointer.removeEventListener("change", sizeWheel);
       removeOwner();
       root.remove();
     },
