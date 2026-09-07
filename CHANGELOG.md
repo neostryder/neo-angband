@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- [Visible] [UI] **The title screen's documentation link reaches the documentation.** The service worker answered every navigation with the game, including the one path on the site that is a page of its own, so the link loaded the title screen again. It worked exactly once, on a first visit before a worker was installed, and never again from a returning visit or the installed app (#180).
+
 ## [1.10.0] - 2026-09-07
 
 ### Added

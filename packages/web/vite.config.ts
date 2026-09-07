@@ -149,6 +149,28 @@ export default defineConfig({
          * JS chunk (full engine + bundled Borg) is the other thing that would not
          * fit under workbox's 2 MiB default. */
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
+        /* /docs is a REAL PAGE, not a route into the game.
+         *
+         * The generated worker registers a NavigationRoute bound to index.html,
+         * which is right for a single-page game: any deep link lands on the
+         * title screen instead of a 404. With no denylist it is right for
+         * EVERY path, including the one path on this origin that is a document
+         * of its own - public/docs/index.html, which forwards to the docs tree
+         * on GitHub and is the title screen's first link.
+         *
+         * The worker intercepts before the network, so it beat both the page
+         * and the Pages 301 that adds the trailing slash. The failure looked
+         * like a link that was never wired up: a first visit with no worker
+         * yet reached the redirect and worked, while every visit after that -
+         * and every visit from the installed app, which always has one - was
+         * answered with the game. That is why it read as broken to a player
+         * and fine to anything checking the URL from outside.
+         *
+         * Both spellings are listed because the link itself carries no
+         * trailing slash, and the pattern is left unanchored so it still holds
+         * if the bundle is ever served under a base path rather than at an
+         * origin root. */
+        navigateFallbackDenylist: [/\/docs\/?$/u],
       },
     }),
   ],
