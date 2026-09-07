@@ -13,6 +13,7 @@
     "build": "tsc -b",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "typecheck": "tsc -b",
     "check:private": "node tools/private-scan.mjs",
     "check:npm": "node tools/check-npm-package.mjs",

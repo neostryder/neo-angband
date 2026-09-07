@@ -9,6 +9,7 @@
     { "path": "packages/web" },
     { "path": "packages/web/tsconfig.mods.json" },
     { "path": "packages/desktop" },
-    { "path": "packages/mcp" }
+    { "path": "packages/mcp" },
+    { "path": "tests/e2e" }
   ]
 }

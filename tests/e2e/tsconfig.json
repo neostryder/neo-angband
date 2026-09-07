@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    /* Nothing here is shipped or imported by another project, so there is no
+     * emit to place. Declarations still emit, into a directory the repository
+     * ignores, because `tsc -b` only accepts a composite project and composite
+     * requires declarations. The point of the project is the type check. */
+    "outDir": "dist-types",
+    "emitDeclarationOnly": true,
+    "types": ["node"]
+  },
+  "include": ["."],
+  "exclude": ["dist-types"]
+}
