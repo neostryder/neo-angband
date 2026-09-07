@@ -20,7 +20,7 @@
  *     lives in core (host/bridge.ts), so neither end can drift from the other.
  */
 
-import { app, BrowserWindow, dialog, ipcMain, screen, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, session, shell } from "electron";
 import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -1439,7 +1439,6 @@ async function createWindow(port: number): Promise<void> {
   const win = new BrowserWindow({
     ...placement,
     backgroundColor: "#0b0b0b",
-    autoHideMenuBar: true,
     /* Restored, as main-sdl.c restores its own `Fullscreen` (L4694, L5905): a
      * player who chose fullscreen chose it for the game, not for one session. */
     fullscreen: startState.fullscreen,
@@ -1474,18 +1473,50 @@ async function createWindow(port: number): Promise<void> {
    * before-input-event sees the key before the page does and cannot be eaten.
    */
   win.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown") return;
+
     if (
-      input.type !== "keyDown" ||
-      input.key !== "F11" ||
-      input.control ||
-      input.alt ||
-      input.meta ||
-      input.shift
+      input.key === "F11" &&
+      !input.control &&
+      !input.alt &&
+      !input.meta &&
+      !input.shift
     ) {
+      event.preventDefault();
+      win.setFullScreen(!win.isFullScreen());
       return;
     }
-    event.preventDefault();
-    win.setFullScreen(!win.isFullScreen());
+
+    /* Electron's default application menu supplied these commands. The game
+     * captures renderer key events, so without this browser-process path the
+     * standard clipboard shortcuts and DevTools have no route. Do not add menu
+     * accelerators: unhandled chords, including Ctrl+=, Ctrl+- and Ctrl+0, must
+     * reach the renderer for mod bindings. */
+    const key = input.key.toLowerCase();
+    const devTools =
+      key === "i" &&
+      ((input.control && input.shift && !input.alt && !input.meta) ||
+        (input.meta && input.alt && !input.control && !input.shift));
+    if (devTools) {
+      event.preventDefault();
+      win.webContents.toggleDevTools();
+      return;
+    }
+    const command = input.meta || input.control;
+    if (!command || input.alt || input.shift) return;
+    if (key === "c") {
+      event.preventDefault();
+      win.webContents.copy();
+    } else if (key === "v") {
+      event.preventDefault();
+      win.webContents.paste();
+    } else if (key === "x") {
+      event.preventDefault();
+      win.webContents.cut();
+    } else if (key === "a") {
+      event.preventDefault();
+      win.webContents.selectAll();
+    }
   });
 
   /* The window's state is tracked HERE rather than asked of the window inside each
@@ -1541,11 +1572,6 @@ async function createWindow(port: number): Promise<void> {
   win.on("resize", rememberBounds);
   win.on("move", rememberBounds);
 
-  const applyChrome = (): void => {
-    win.setMenuBarVisibility(!fullscreen);
-  };
-  applyChrome();
-
   win.on("enter-full-screen", () => {
     fullscreen = true;
     /* At most one of the two, and fullscreen is the one that can be restored - see
@@ -1554,12 +1580,10 @@ async function createWindow(port: number): Promise<void> {
      * back on the way out. Cleared here rather than only at write time so the
      * TRACKED state never holds a pair the restore path cannot reproduce. */
     maximized = false;
-    applyChrome();
     save();
   });
   win.on("leave-full-screen", () => {
     fullscreen = false;
-    applyChrome();
     save();
   });
   /* MEASURED: entering fullscreen from an already-maximised window emits a
@@ -1702,6 +1726,13 @@ async function start(): Promise<void> {
    * text must work on a checkout that has not built the renderer yet, the same
    * way `angband -l` never touches a display module. */
   if (handleEarlyExit()) return;
+
+  /* The default application menu owns its accelerators in Electron's browser
+   * process, before the renderer can see them. The game deliberately owns its
+   * keys, including mod bindings, so no application menu is installed. The few
+   * commands that have no renderer route are handled in createWindow's
+   * before-input-event listener. */
+  Menu.setApplicationMenu(null);
 
   /* One playing instance per install, taken AFTER the early-exit commands so that
    * `-l` and the usage text still work while the game is running (upstream's

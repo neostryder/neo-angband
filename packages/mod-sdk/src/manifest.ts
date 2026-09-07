@@ -113,6 +113,13 @@ export interface PackRule {
   description: string;
   /** Whether the rule is ON by default when the mod is enabled. */
   default: boolean;
+  /**
+   * True when this rule changes plugin setup that is built once per game, such
+   * as what `register()` installs. The manager records the choice and asks for
+   * a reload instead of claiming that it changed live. Absent means the rule is
+   * consumed by `hooks()` and can be applied live.
+   */
+  requiresReload?: boolean;
 }
 
 /**
@@ -807,6 +814,11 @@ function validateRules(value: unknown, id: string): Set<string> {
     }
     if (typeof r["default"] !== "boolean") {
       throw new ManifestError(`manifest ${id}: rule ${r["flag"]} default must be a boolean`);
+    }
+    if (r["requiresReload"] !== undefined && typeof r["requiresReload"] !== "boolean") {
+      throw new ManifestError(
+        `manifest ${id}: rule ${r["flag"]} requiresReload must be a boolean`,
+      );
     }
   }
   return seen;

@@ -472,11 +472,22 @@ describe("createWindow's window-state wiring", () => {
     expect(body.match(/isMaximized\s*\(/g) ?? []).toHaveLength(0);
   });
 
-  it("hides the menu bar from the same tracked flag", () => {
-    /* setMenuBarVisibility(!win.isFullScreen()) was inverted for the same reason,
-     * showing the menu bar on the way INTO fullscreen. */
-    expect(body).toContain("win.setMenuBarVisibility(!fullscreen)");
-    expect(body).not.toContain("setMenuBarVisibility(!win.isFullScreen())");
+  it("removes the application menu and retains only its unreachable commands", () => {
+    expect(MAIN).toContain("Menu.setApplicationMenu(null)");
+    expect(body).not.toContain("autoHideMenuBar");
+    expect(body).not.toContain("setMenuBarVisibility");
+    expect(body).toContain("win.webContents.toggleDevTools()");
+    for (const command of ["copy", "paste", "cut", "selectAll"]) {
+      expect(body).toContain(`win.webContents.${command}()`);
+    }
+  });
+
+  it("leaves the mod zoom chords unhandled in the browser process", () => {
+    /* No default menu remains and the before-input-event handler only prevents
+     * F11, DevTools and the four clipboard shortcuts. Ctrl+=, Ctrl+- and Ctrl+0
+     * therefore continue to Electron's renderer event path. */
+    expect(MAIN).toContain("Menu.setApplicationMenu(null)");
+    expect(body).not.toMatch(/input\.key === "(?:=|-|0)"/);
   });
 
   it("persists maximised, which isFullScreen() cannot see", () => {

@@ -24,6 +24,44 @@ function refusal(fn: () => unknown): string {
   throw new Error("expected a ManifestError, got none");
 }
 
+describe("rule application", () => {
+  it("accepts a register-side rule that requires a reload", () => {
+    expect(
+      validateManifest(
+        manifest({
+          rules: [
+            {
+              flag: "frost.tiles",
+              title: "Tiles",
+              description: "Registers tile fill handlers.",
+              default: true,
+              requiresReload: true,
+            },
+          ],
+        }),
+      ).rules?.[0]?.requiresReload,
+    ).toBe(true);
+  });
+
+  it("refuses a rule whose reload declaration is not a boolean", () => {
+    expect(() =>
+      validateManifest(
+        manifest({
+          rules: [
+            {
+              flag: "frost.tiles",
+              title: "Tiles",
+              description: "Registers tile fill handlers.",
+              default: true,
+              requiresReload: "yes",
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/requiresReload must be a boolean/);
+  });
+});
+
 describe("sections", () => {
   it("accepts a fully specified section", () => {
     expect(() =>

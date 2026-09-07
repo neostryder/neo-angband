@@ -213,9 +213,10 @@ export interface ModManagerDeps {
    */
   ruleDecls?: () => ModRuleDecl[];
   /**
-   * Apply a rule toggle to the LIVE running game immediately (writes
-   * GameState.modRules), so a tweak takes effect without a reload. Absent when
-   * no game is running (the choice still persists and applies on next start).
+   * Apply a hooks-side rule toggle to the LIVE running game immediately (writes
+   * GameState.modRules). A rule whose manifest requires a reload is recorded
+   * and follows the ordinary reload path instead. Absent when no game is running
+   * (the choice still persists and applies on next start).
    */
   applyRuleLive?: (flag: string, on: boolean) => void;
   /**
@@ -1399,7 +1400,7 @@ async function enableRecommendedMods(
   for (const m of mods) {
     for (const rule of m.manifest.rules ?? []) {
       deps.store.setRuleChoice(rule.flag, true);
-      deps.applyRuleLive?.(rule.flag, true);
+      if (!rule.requiresReload) deps.applyRuleLive?.(rule.flag, true);
     }
     for (const section of m.manifest.sections ?? []) {
       deps.store.setSectionChoice(m.id, section.id, true);
@@ -2062,8 +2063,9 @@ export function autoSortScreen(
  * Prefixing every row with Fix or Part keeps that distinction visible, and the
  * all-mods view also prefixes the owning mod so its flat list remains legible.
  *
- * Returns true only for section changes, which still need a reload. Rule choices
- * are applied live by the existing hook path and do not make the manager dirty.
+ * Returns true for section changes and rules whose manifest says registration
+ * must be rebuilt on reload. Hooks-side rules are applied live and do not make
+ * the manager dirty.
  */
 async function manageModOptions(
   term: GridSurface & GridPointerInput,
@@ -2241,7 +2243,8 @@ async function manageModOptions(
     if (option.kind === "rule") {
       const on = ruleChoices[option.decl.rule.flag] ?? option.decl.rule.default;
       deps.store.setRuleChoice(option.decl.rule.flag, !on);
-      deps.applyRuleLive?.(option.decl.rule.flag, !on);
+      if (option.decl.rule.requiresReload) changed = true;
+      else deps.applyRuleLive?.(option.decl.rule.flag, !on);
     } else if (option.kind === "section") {
       if (option.needs !== null) continue;
       deps.store.setSectionChoice(option.mod.id, option.section.id, !option.on);
@@ -2286,8 +2289,12 @@ function modOptionDetail(
       { text: "", color: C_FG },
       ...wrapped(
         t(
-          "modsScreen.options.ruleNote",
-          "This is a behavioural fix or tweak. It takes effect at once while this mod is enabled.",
+          option.decl.rule.requiresReload
+            ? "modsScreen.options.ruleReloadNote"
+            : "modsScreen.options.ruleNote",
+          option.decl.rule.requiresReload
+            ? "This is a behavioural fix or tweak. Changing it takes effect after a reload."
+            : "This is a behavioural fix or tweak. It takes effect at once while this mod is enabled.",
         ),
         cols - 1,
         C_DIM,

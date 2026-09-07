@@ -356,3 +356,83 @@ describe("leaving after a real change offers to reload, and honours the answer",
     expect(catalog.find((m) => m.id === "qol")?.enabled).toBe(true);
   });
 });
+
+describe("rule application modes", () => {
+  it("records a register-side rule and asks for a reload without applying it live", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80, 24);
+    const store = new ModStore(fakeStorage());
+    store.setModEnabled("tiles", true);
+    const requestReload = vi.fn();
+    const applyRuleLive = vi.fn();
+    const rule = {
+      flag: "tiles.fill",
+      title: "Fill missing tiles",
+      description: "Registers a tile fill handler.",
+      default: false,
+      requiresReload: true,
+    };
+    const mod = { ...manifest("tiles", "Tiles"), rules: [rule] };
+    const done = runModOptionsBrowser(term, {
+      ...makeDeps(store, requestReload, [mod]),
+      ruleDecls: () => [{ modId: "tiles", modName: "Tiles", rule }],
+      applyRuleLive,
+    });
+
+    await flush();
+    press(win, "Enter"); // All mods -> the one rule
+    await flush();
+    expect(term.snapshot().join("\n")).toContain("takes effect after a reload");
+    press(win, " "); // Toggle the rule
+    await flush();
+    expect(store.getRuleChoices()["tiles.fill"]).toBe(true);
+    expect(applyRuleLive).not.toHaveBeenCalled();
+    press(win, "Escape"); // Options -> browser
+    await flush();
+    press(win, "Escape"); // Browser -> reload prompt
+    await flush();
+    expect(term.snapshot().join("\n")).toContain("Reload now to apply");
+    press(win, "a");
+    const result = await raceTimeout(done);
+    expect(result.timedOut, "the reload prompt never resolved").toBe(false);
+    expect(requestReload).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies a hooks-side rule live without requesting a reload", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80, 24);
+    const store = new ModStore(fakeStorage());
+    store.setModEnabled("hooks", true);
+    const requestReload = vi.fn();
+    const applyRuleLive = vi.fn();
+    const rule = {
+      flag: "hooks.message",
+      title: "Message hook",
+      description: "Registers a hook.",
+      default: false,
+    };
+    const mod = { ...manifest("hooks", "Hooks"), rules: [rule] };
+    const done = runModOptionsBrowser(term, {
+      ...makeDeps(store, requestReload, [mod]),
+      ruleDecls: () => [{ modId: "hooks", modName: "Hooks", rule }],
+      applyRuleLive,
+    });
+
+    await flush();
+    press(win, "Enter");
+    await flush();
+    expect(term.snapshot().join("\n")).toContain("takes effect at once");
+    press(win, " ");
+    await flush();
+    expect(store.getRuleChoices()["hooks.message"]).toBe(true);
+    expect(applyRuleLive).toHaveBeenCalledWith("hooks.message", true);
+    press(win, "Escape");
+    await flush();
+    press(win, "Escape");
+    const result = await raceTimeout(done);
+    expect(result.timedOut, "the options browser did not return").toBe(false);
+    expect(requestReload).not.toHaveBeenCalled();
+  });
+});

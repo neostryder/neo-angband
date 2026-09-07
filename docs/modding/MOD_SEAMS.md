@@ -368,6 +368,9 @@ host and the mod**:
 
 1. The mod DECLARES its patches in `manifest.json` under `rules`, each an entry
    of `{ "flag": "qol.autoDig", "title": "...", "description": "...", "default": true }`.
+   A rule that changes one-time plugin setup, such as code in `register()`, also
+   declares `"requiresReload": true`; its choice takes effect after the manager
+   reloads the game, rather than live.
 2. `packages/web/src/pack.ts` `loadEnabledModRuleDecls()` gathers the `rules` of
    every ENABLED mod, in load order.
 3. `packages/web/src/mod-store.ts` `resolveModRules(decls, choices)` computes the
@@ -423,6 +426,13 @@ behaviour mod must keep (spelled out in the header of
    another mod's.
 3. **A disabled mod is never called at all.** `enabledModIds()` drives the loop,
    so returning `{}` means "enabled, but every patch off".
+
+Rules read by one-time plugin setup, such as `register(host, ctx)`, are different.
+Registration installs live handlers only once after the game exists, so changing
+their flags cannot replace what was registered already. Declare
+`"requiresReload": true` on each such rule. The manager then saves the choice
+and presents its ordinary reload prompt. Do not set it on a hooks-side rule: the
+host rebuilds `modHooks` live for those.
 
 **The patch bodies are the mods' code, not core's.** There is no `bugfix.*` or
 `qol.*` string in `packages/core/src` outside comments, no staircase repair, no
