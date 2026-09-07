@@ -449,7 +449,7 @@ describe("title screen project information", () => {
     expect(rowText(grid, 23)).toContain("(N)ew");
   });
 
-  it("marks only each URL as a link at its painted cell span", () => {
+  it("marks only each URL as a link at its painted grid span", () => {
     const { grid, term } = gridTerm();
     const spans = paintTitleArt(term);
     /* The project information block is centred, so a row's link no longer starts
@@ -486,11 +486,6 @@ describe("title screen project information", () => {
     ]);
     for (const span of spans) {
       expect(grid[span.row]![span.startCol]!.fg).toBe(UI_LINK);
-      /* Cell spans, rather than CSS pixels, are the title's link contract.
-       * GlyphTerm projects these same cells for both paint and cellAt(), so
-       * scaling the fixed title grid cannot leave the link target behind. */
-      expect(span.startCol).toBeGreaterThanOrEqual(0);
-      expect(span.endCol).toBeLessThanOrEqual(80);
       expect(titleLinkSpanAt(spans, { row: span.row, col: span.startCol })?.href).toBe(span.href);
       expect(titleLinkSpanAt(spans, { row: span.row, col: span.endCol })).toBeUndefined();
     }

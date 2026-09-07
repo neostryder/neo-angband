@@ -6,9 +6,23 @@
   pointer-events: none;
   color: #e8e8ef;
   font: 15px system-ui, sans-serif;
+
+  /* The wheel's own two tones plus its states. The accent is warm and the body
+     is near-white, which is the pair that stays apart on every background the
+     dungeon produces: a lit stone floor is warm grey, a dark corridor is near
+     black, and neither sits between these two. */
+  --gp-fg: #f2f4fb;
+  --gp-accent: #ffc167;
+  --gp-plate: #0a0d14db;
+  --gp-plate-lit: #16304ceb;
+  --gp-edge: #c3cfe861;
+  --gp-select: #8ec5ff;
 }
 #gamepad-controls * { box-sizing: border-box; }
-#gamepad-controls button,
+/* The wedge is excluded rather than overridden: this rule carries the id, so a
+   class on the wedge would lose to it and the wheel would silently keep the
+   legend's chrome. */
+#gamepad-controls button:not(.gamepad-wedge),
 #gamepad-controls select {
   font: inherit;
   color: inherit;
@@ -17,6 +31,7 @@
   border-radius: 8px;
   padding: 6px 10px;
 }
+#gamepad-controls button { font: inherit; }
 #gamepad-controls button:disabled { opacity: .45; }
 
 .gamepad-notice {
@@ -33,16 +48,34 @@
   pointer-events: none;
 }
 
+/* THE WHEEL HAS NO PANEL.
+   It draws straight onto the live canvas, so nothing here may rely on a filled
+   ground to sit on, and the dungeon underneath is arbitrary: a black corridor,
+   a warm lit room, a wall of torch-lit stone, a screen full of monsters. Four
+   things carry legibility instead, and each one is doing a different job.
+   1. Every wedge is its OWN plate, sized to its art rather than to the ring, so
+      the covered area is about a fifth of what a panel covered.
+   2. Each plate carries a double edge - a pale inner border and a black outer
+      ring. One of the two always separates the plate from the background,
+      because no dungeon colour is both light and dark.
+   3. The icons are two flat tones with no stroke thinner than 1.6 of their 24
+      unit box, which is the width that survives being drawn at 30px over
+      texture.
+   4. The word under the icon carries its own dark halo, so it holds even where
+      the plate is at its most translucent. */
 .gamepad-wheel {
   position: absolute;
   left: 50%;
   top: 50%;
+  /* Was min(88vmin, 520px) with a filled disc behind it. The ring is now sized
+     to the wedges rather than to a background it no longer has. */
+  --gp-size: min(58vmin, 360px);
   transform: translate(-50%, -50%);
-  width: min(88vmin, 520px);
-  height: min(88vmin, 520px);
+  width: var(--gp-size);
+  height: var(--gp-size);
   border-radius: 50%;
-  background: radial-gradient(circle, #141923f2 40%, #141923b8 100%);
-  border: 1px solid #55607a;
+  /* Absorbs a stray click inside its own footprint rather than passing it to
+     the map underneath, which would walk the character while the wheel is up. */
   pointer-events: auto;
 }
 .gamepad-hub {
@@ -50,39 +83,60 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 30%;
+  width: calc(var(--gp-size) * 0.36);
   display: grid;
-  gap: 2px;
+  gap: 1px;
   text-align: center;
+  padding: 5px 7px;
+  border-radius: 10px;
+  background: var(--gp-plate);
+  box-shadow: 0 0 0 1px #000000b3;
+  line-height: 1.25;
 }
-.gamepad-hub span { color: #a8b2c8; font-size: 13px; }
-.gamepad-hub small { color: #8f99ad; font-size: 11px; }
+.gamepad-hub strong { color: var(--gp-accent); font-size: 12px; letter-spacing: .04em; }
+.gamepad-hub span { color: var(--gp-fg); font-size: 11px; }
+.gamepad-hub small { color: #9aa5bd; font-size: 10px; }
 .gamepad-wedge {
   position: absolute;
   transform: translate(-50%, -50%);
-  width: 22%;
-  min-height: 48px;
-  /* Two neighbours clear each other when EITHER axis separates them, and on a
-     ring of eight the nearest pair is separated horizontally by r*sin(45deg)
-     and the next pair vertically by r*cos(45deg). At a 36% radius that is
-     about 101px and 100px, so a wedge under 88px wide and under 74px tall
-     never touches one. The height is clipped rather than allowed to grow: a
-     ring that stays a ring is worth more than a fourth line of a label the hub
-     shows in full anyway. */
-  max-height: 74px;
-  overflow: hidden;
+  /* A wedge clears both its neighbours while it stays under 0.707 of the ring
+     radius on both axes. At a 38% radius that ceiling is 0.269 of the wheel;
+     0.215 leaves the gap a ring needs to read as a ring. Both axes scale with
+     the wheel, so a small viewport shrinks the wedges rather than colliding
+     them. */
+  width: calc(var(--gp-size) * 0.215);
+  height: calc(var(--gp-size) * 0.215);
   display: grid;
-  gap: 1px;
-  align-content: center;
-  text-align: center;
-  padding: 4px 6px;
-  font-size: 12px;
-  line-height: 1.2;
+  grid-template-rows: 1fr auto;
+  gap: 2px;
+  place-items: center;
+  padding: 6px 3px 4px;
+  border: 1px solid var(--gp-edge);
+  border-radius: 14px;
+  background: var(--gp-plate);
+  box-shadow: 0 0 0 1px #000000c9, 0 2px 8px #00000073;
+  color: var(--gp-fg);
+  overflow: hidden;
 }
-.gamepad-wedge small { color: #a8b2c8; font-size: 10px; }
+.gamepad-icon {
+  width: clamp(20px, calc(var(--gp-size) * 0.086), 32px);
+  height: clamp(20px, calc(var(--gp-size) * 0.086), 32px);
+  filter: drop-shadow(0 1px 1px #000000a6);
+}
+.gamepad-wedge span {
+  font-size: clamp(9px, calc(var(--gp-size) * 0.031), 12px);
+  line-height: 1.1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 0 3px #000, 0 1px 2px #000;
+}
 .gamepad-wedge[aria-selected="true"] {
-  background: #294c6c;
-  border-color: #99caff;
+  background: var(--gp-plate-lit);
+  border-color: var(--gp-select);
+  box-shadow: 0 0 0 1px #000000c9, 0 0 12px #8ec5ff59;
+  transform: translate(-50%, -50%) scale(1.08);
 }
 
 .gamepad-legend {

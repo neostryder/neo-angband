@@ -183,14 +183,6 @@ receive the updated object. Mod-created regions and player-rearranged core
 regions must both remain members of the same stack, so compositing and pointer
 routing continue to answer one question about one object.
 
-The fixed 80 by 24 terminal is projected into the visual viewport by
-GlyphTerm.fitFixed(), including while the title screen owns the full-screen
-region. It uses one uniform cell scale and letterboxes the unused dimension;
-it does not add a title-only canvas transform. Grid painting, region pixels,
-and cellAt() therefore share the same cell metrics, so a title link's painted
-rectangle and its pointer hit target cannot diverge on a narrow or short
-viewport.
-
 ## Landed and remaining work
 
 Landed: the three HUD regions are separately replaceable, menus have a
