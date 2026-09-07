@@ -44,11 +44,8 @@ toggle remain keyboard-shell parity gaps.
 
 The first controller increment adds capability detection, derived default
 layouts, per-pad saved bindings, dead zones and eight-way stick resolution, a
-radial command wheel over the real command catalogue, and a mapping screen. A
-second pass makes the wheel icon-led, drops the panel behind it, and re-splits
-its first ring by how often a command is reached for rather than by the command
-table's own filing. The scheme is in
-[GAMEPAD_CONTROLS.md](design/GAMEPAD_CONTROLS.md), against the same
+radial command wheel over the real command catalogue, and a mapping screen. The
+scheme is in [GAMEPAD_CONTROLS.md](design/GAMEPAD_CONTROLS.md), against the same
 [keyboard inventory](design/TOUCH_COMMAND_INVENTORY.md) the touch scheme uses.
 
 Remaining work: a text-entry scheme, without which a name, an inscription, a
@@ -58,15 +55,6 @@ then goes away; triggers on the minority of pads that report them as axes rather
 than as buttons; rumble as progressive enhancement; confirmation of the hat
 switch's rotation against a physical pad; and full-character acceptance with the
 keyboard unplugged.
-
-One gap found while re-splitting the wheel and left alone deliberately, because
-it belongs to the mapping screen rather than to the wheel: **Center map cannot
-be bound to a button.** `ControlCommand.key` is the ORIGINAL-keyset key, and
-Center map is the one table row that has a roguelike key (`@`) and no original
-one, so it reaches the wheel but is filtered out of the mapping screen's choice
-list, which takes only commands with a key. The wheel reaches it by name
-instead. A fix has to settle what a keyless row's stable binding name is, which
-is a decision about saved bindings and not a rename.
 
 ---
 

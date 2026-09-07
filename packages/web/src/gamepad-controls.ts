@@ -16,10 +16,6 @@ import type { AngbandDirection } from "./input-door";
 import { controlSurface, type ControlCommand } from "./control-surface";
 import { addControlDomOwner } from "./input-door";
 import { buttonName, describePad } from "./gamepad-device";
-import { buildIcon, type IconName } from "./gamepad-wheel-icons";
-import {
-  WEDGES, WHEEL_GROUPS, entryFor, groupCommands, replyEntry,
-} from "./gamepad-wheel-plan";
 import {
   GAMEPAD_ROLES, ROLE_LABEL, defaultBindings, rebind, roleOf, saveBindings,
   type BindingTarget, type GamepadBindings,
@@ -31,28 +27,20 @@ export interface GamepadControlsHost {
   stop(): void;
 }
 
-/**
- * Where a wedge sits, as a fraction of the ring's radius.
- *
- * Two neighbours clear each other when EITHER axis separates them: on a ring of
- * eight, the north/north-east pair is separated horizontally by r*sin(45deg)
- * and the north-east/east pair vertically by r*cos(45deg), both 0.707r. So a
- * wedge no wider and no taller than 0.707r never touches one.
- */
-const RADIUS_PERCENT = 38;
+/** Wedges per ring. Eight is the size a radial menu was measured at. */
+const WEDGES = 8;
+
+/** Where a wedge sits, as a fraction of the ring's radius. */
+const RADIUS_PERCENT = 36;
 
 type Ring =
-  | { readonly kind: "groups" }
-  | { readonly kind: "group"; readonly id: string; readonly page: number }
+  | { readonly kind: "categories"; readonly page: number }
+  | { readonly kind: "commands"; readonly category: string; readonly page: number }
   /** The replies of the prompt that was open when the wheel was opened. */
   | { readonly kind: "replies"; readonly token: number; readonly page: number };
 
 interface Wedge {
-  /** The full name, carried by the hub and by the accessible label. */
   readonly label: string;
-  /** The one word printed under the icon. */
-  readonly word: string;
-  readonly icon: IconName;
   readonly detail?: string | undefined;
   readonly take: () => void;
   readonly disabled?: boolean | undefined;
@@ -102,7 +90,7 @@ export function installGamepadControls(host: GamepadControlsHost): {
 
   let pads: readonly ConnectedPad[] = [];
   let open: "wheel" | "legend" | undefined;
-  let ring: Ring = { kind: "groups" };
+  let ring: Ring = { kind: "categories", page: 0 };
   let cursor = 0;
   let legendRow = 0;
   let releaseCapture: (() => void) | undefined;
@@ -129,6 +117,14 @@ export function installGamepadControls(host: GamepadControlsHost): {
     return controlSurface.commands();
   }
 
+  function categories(): readonly string[] {
+    const seen: string[] = [];
+    for (const command of commands()) {
+      if (!seen.includes(command.category)) seen.push(command.category);
+    }
+    return seen;
+  }
+
   /**
    * The replies a stick cannot already answer.
    *
@@ -138,13 +134,12 @@ export function installGamepadControls(host: GamepadControlsHost): {
    * at an aim prompt, Free cursor and Recall in the target loop, the item
    * sources, Yes and No.
    */
-  function replyWedges(token: number, page: number): readonly Wedge[] {
+  function replyWedges(token: number): readonly Wedge[] {
     const snapshot = controlSurface.current();
     if (!snapshot || snapshot.token !== token) return [];
     const replies = (snapshot.context.replies ?? []).filter((action) => action.direction === undefined);
-    return pageOf(replies, page).map((action) => ({
+    return pageOf(replies, ring.page).map((action) => ({
       label: action.label,
-      ...replyEntry(action),
       disabled: action.disabled,
       take: () => {
         close();
@@ -153,42 +148,33 @@ export function installGamepadControls(host: GamepadControlsHost): {
     }));
   }
 
-  /** The commands on one group's ring, or every unclaimed command for More. */
-  function inGroup(id: string): readonly ControlCommand[] {
-    const group = WHEEL_GROUPS.find((candidate) => candidate.id === id);
-    return group ? groupCommands(group, commands()) : [];
-  }
-
   /**
    * The wheel's current ring.
    *
    * Two levels, never three. Eight choices per level with one level of nesting
    * is where a radial menu was measured to stay under a ten percent error rate;
-   * a third level is where that stops being true, so a long group pages rather
-   * than subdividing.
+   * a third level is where that stops being true, so a long category pages
+   * rather than subdividing.
    */
   function wedges(): readonly Wedge[] {
-    if (ring.kind === "replies") return replyWedges(ring.token, ring.page);
-    if (ring.kind === "groups") {
-      const all = commands();
-      return WHEEL_GROUPS.map((group) => {
-        const held = groupCommands(group, all).length;
-        return {
-          label: group.word,
-          word: group.word,
-          icon: group.icon,
-          detail: `${held} command${held === 1 ? "" : "s"}`,
-          take: () => {
-            ring = { kind: "group", id: group.id, page: 0 };
-            cursor = 0;
-            render();
-          },
-        };
-      });
+    if (ring.kind === "replies") return replyWedges(ring.token);
+    if (ring.kind === "categories") {
+      const all = categories();
+      return pageOf(all, ring.page).map((category) => ({
+        label: category,
+        detail: `${commands().filter((command) => command.category === category).length} commands`,
+        take: () => {
+          ring = { kind: "commands", category, page: 0 };
+          cursor = 0;
+          render();
+        },
+      }));
     }
-    return pageOf(inGroup(ring.id), ring.page).map((command) => ({
+    const category = ring.category;
+    const inCategory = commands().filter((command) => command.category === category);
+    return pageOf(inCategory, ring.page).map((command) => ({
       label: command.label,
-      ...entryFor(command),
+      detail: command.key,
       disabled: command.disabled,
       take: () => {
         close();
@@ -199,24 +185,14 @@ export function installGamepadControls(host: GamepadControlsHost): {
 
   function ringPages(): number {
     const current = ring;
-    // The first ring is exactly the eight groups, so it never pages: the page
-    // counter only appears once the player is inside one.
-    if (current.kind === "groups") return 1;
-    if (current.kind === "group") return pageCount(inGroup(current.id).length);
+    if (current.kind === "categories") return pageCount(categories().length);
+    if (current.kind === "commands") {
+      return pageCount(commands().filter((command) => command.category === current.category).length);
+    }
     const snapshot = controlSurface.current();
     if (!snapshot || snapshot.token !== current.token) return 1;
     return pageCount((snapshot.context.replies ?? [])
       .filter((action) => action.direction === undefined).length);
-  }
-
-  /** The name the hub shows over the current ring. */
-  function ringTitle(): string {
-    const current = ring;
-    if (current.kind === "group") {
-      return WHEEL_GROUPS.find((group) => group.id === current.id)?.word ?? "Commands";
-    }
-    if (current.kind === "replies") return controlSurface.current()?.context.label ?? "Prompt";
-    return "Commands";
   }
 
   function close(): void {
@@ -239,7 +215,7 @@ export function installGamepadControls(host: GamepadControlsHost): {
     const snapshot = controlSurface.current();
     ring = snapshot
       ? { kind: "replies", token: snapshot.token, page: 0 }
-      : { kind: "groups" };
+      : { kind: "categories", page: 0 };
     cursor = 0;
     render();
   }
@@ -250,48 +226,49 @@ export function installGamepadControls(host: GamepadControlsHost): {
     const hub = document.createElement("div");
     hub.className = "gamepad-hub";
     const title = document.createElement("strong");
-    title.textContent = ringTitle();
+    title.textContent = ring.kind === "commands"
+      ? ring.category
+      : ring.kind === "replies"
+        ? controlSurface.current()?.context.label ?? "Prompt"
+        : "Commands";
     const hint = document.createElement("span");
     const pages = ringPages();
-    // The hub carries the selected item's name IN FULL. That is what makes the
-    // one word at the rim safe: the wedge says Nearest and the hub says Fire at
-    // nearest target, so nothing is lost by shortening the label under an icon.
-    const selected = items[cursor];
-    hint.textContent = selected
-      ? selected.detail ? `${selected.label} - ${selected.detail}` : selected.label
-      : "";
-    hub.append(title, hint);
+    // The hub carries the selected label in full, which is what makes clipping
+    // a long one out at the rim safe.
+    hint.textContent = items[cursor]?.label ?? "";
     if (pages > 1) {
       const page = document.createElement("small");
-      page.textContent = `Page ${(ring.kind === "groups" ? 0 : ring.page) + 1} of ${pages}`;
-      hub.append(page);
+      page.textContent = `Page ${ring.page + 1} of ${pages}`;
+      hub.append(title, hint, page);
+      wheel.append(hub);
+    } else {
+      hub.append(title, hint);
+      wheel.append(hub);
     }
-    wheel.append(hub);
     items.forEach((item, index) => {
       const node = document.createElement("button");
       node.type = "button";
       node.className = "gamepad-wedge";
       node.setAttribute("role", "option");
       node.setAttribute("aria-selected", String(index === cursor));
-      // The wedge prints one word; the full name is what a screen reader gets,
-      // for the same reason the hub carries it.
-      node.setAttribute("aria-label", item.detail
-        ? `${item.label}, ${item.detail}` : item.label);
       node.disabled = item.disabled ?? false;
       // Placed by angle rather than laid out in a grid: the whole point of a
       // radial is that every choice is the same distance from the centre, and
       // that only holds if the position comes from the angle. The offset is a
-      // fraction of the RING, not of the wedge, so every wedge sits at the same
-      // radius whatever its own size.
+      // fraction of the RING, not of the wedge, because a wedge holding two
+      // lines of text is taller than one holding one and would otherwise sit at
+      // a different radius from its neighbours.
       const angle = (index * (2 * Math.PI)) / WEDGES;
       node.style.left = `${50 + RADIUS_PERCENT * Math.sin(angle)}%`;
       node.style.top = `${50 - RADIUS_PERCENT * Math.cos(angle)}%`;
-      // Icon first: it is the indicator a player reads, and the word beneath is
-      // the confirmation rather than the other way round.
-      node.append(buildIcon(item.icon));
-      const word = document.createElement("span");
-      word.textContent = item.word;
-      node.append(word);
+      const label = document.createElement("span");
+      label.textContent = item.label;
+      node.append(label);
+      if (item.detail) {
+        const detail = document.createElement("small");
+        detail.textContent = item.detail;
+        node.append(detail);
+      }
       node.addEventListener("click", (event) => {
         event.preventDefault();
         cursor = index;
@@ -479,11 +456,11 @@ export function installGamepadControls(host: GamepadControlsHost): {
       wedges()[cursor]?.take();
     },
     overlayCancel: () => {
-      // Backing out of a group returns to the eight groups; backing out of a
+      // Backing out of a category returns to the categories; backing out of a
       // prompt's replies closes the wheel and leaves the prompt alone, because
       // the prompt's own Cancel is one of the replies rather than this button.
-      if (open === "wheel" && ring.kind === "group") {
-        ring = { kind: "groups" };
+      if (open === "wheel" && ring.kind === "commands") {
+        ring = { kind: "categories", page: 0 };
         cursor = 0;
         render();
         return;
@@ -491,10 +468,10 @@ export function installGamepadControls(host: GamepadControlsHost): {
       close();
     },
     overlayPage: (delta: number) => {
-      if (open !== "wheel" || ring.kind === "groups") return;
+      if (open !== "wheel") return;
       const pages = ringPages();
       const page = ((ring.page + delta) % pages + pages) % pages;
-      ring = { ...ring, page };
+      ring = ring.kind === "categories" ? { kind: "categories", page } : { ...ring, page };
       cursor = 0;
       render();
     },

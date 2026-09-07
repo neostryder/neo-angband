@@ -50,7 +50,11 @@ still calls itself.
 
 ### Added
 
-- [Visible] [UI] **A controller can now play the game.** A connected gamepad walks, fights and answers the item, direction and target prompts, with a radial command wheel reaching every command the keyboard has and, while a prompt is open, that prompt's own replies. The wheel is icon-led: every wedge is a picture with a single word under it, and it opens on eight groups chosen for how often a hand reaches for them during play - Use, Magic, Fight, Gear, Travel, Carry, Map, and More for everything else - rather than on the command list's own filing. It draws straight onto the map with no panel behind it, and each wedge carries its own plate so it stays readable over a lit room or an unlit corridor alike. Layouts are derived from what the pad reports rather than from a list of known models, so a pad with four buttons stays playable and a pad the browser does not recognise still works; button names follow the detected family. Every button is remappable on its own screen, including a second layer under a held modifier, and the bindings are saved per controller. Sticks use a scaled radial dead zone with sector hysteresis and a hold-to-repeat delay, so a diagonal is not lost and a released stick does not take a step backwards (#65).
+- [Visible] [UI] **A controller can now play the game.** A connected gamepad walks, fights and answers the item, direction and target prompts, with a radial command wheel reaching every command the keyboard has and, while a prompt is open, that prompt's own replies. Layouts are derived from what the pad reports rather than from a list of known models, so a pad with four buttons stays playable and a pad the browser does not recognise still works; button names follow the detected family. Every button is remappable on its own screen, including a second layer under a held modifier, and the bindings are saved per controller. Sticks use a scaled radial dead zone with sector hysteresis and a hold-to-repeat delay, so a diagonal is not lost and a released stick does not take a step backwards (#65).
+
+### Fixed
+
+- [Visible] [UI] **The title screen credits Angband's own maintainer.** The thank-you line named this port's author, who has done no work on Vanilla Angband. It now names Nick McConnell, as upstream names him in its own `docs/version.rst`, and a blank row separates the credit from the links above it.
 
 ## [1.9.0] - 2026-09-06
 

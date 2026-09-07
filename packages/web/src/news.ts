@@ -182,12 +182,16 @@ export const PROJECT_INFORMATION: readonly TitleLine[] = [
    * mid-word on the 80-column grid the screen is built for. Every painted row
    * is width-checked in news.test.ts so a re-lengthened line fails there rather
    * than silently truncating again. */
+  { markup: "", centred: true },
+  /* Angband's own maintainer, named as upstream names him in docs/version.rst.
+   * This port's author is credited in the repository, not here: the thanks are
+   * owed to the people who made the game this one is a port of. */
   {
-    markup: "Thank you, neostryder and past maintainers and developers, and to all those",
+    markup: "Thank you, Nick McConnell and past maintainers and developers, and to",
     centred: true,
   },
   {
-    markup: "who have given us so many creative variants!",
+    markup: "all those who have given us so many creative variants!",
     centred: true,
   },
   { markup: "", centred: true },
@@ -197,7 +201,7 @@ export const PROJECT_INFORMATION: readonly TitleLine[] = [
  * The full painted screen: news.txt's title art followed by project information.
  *
  * Pure, and separate from the paint loop, so the row budget is checkable without
- * a terminal. NEWS is 13 rows (0-12) and PROJECT_INFORMATION is 9, for 22
+ * a terminal. NEWS is 13 rows (0-12) and PROJECT_INFORMATION is 10, for 23
  * painted rows (0-20). The prompt remains on upstream's row 23, leaving two
  * blank rows between the information and prompt. news.test.ts asserts the count.
  */

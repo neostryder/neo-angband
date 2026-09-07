@@ -212,11 +212,11 @@ player did not ask for the cardinal.
 
 One button, two meanings, decided by what is on screen.
 
-With no prompt open it is the command catalogue: a ring of eight groups, then a
-ring of that group's commands, taken from the same registry the keyboard and the
-command browser use. Selecting one calls the existing confirmed-command route,
-so a mod that adds a command gains a controller route without anything here
-knowing about it.
+With no prompt open it is the command catalogue: a ring of the real command
+categories, then a ring of that category's commands, taken from the same
+registry the keyboard and the command browser use. Selecting one calls the
+existing confirmed-command route, so a mod that adds a command gains a
+controller route without anything here knowing about it.
 
 With a prompt open the catalogue is unreachable anyway, because the shell will
 not start a command inside a prompt. So the same button shows THAT PROMPT'S
@@ -232,99 +232,6 @@ left for abandoning the wheel, because letting go is how a player abandons one.
 A wedge is placed by its angle rather than laid out in a grid, because the
 measured advantage of a radial is that every choice is the same distance from
 the centre, and that only holds if the position comes from the angle.
-
-### What the first ring holds, and why
-
-The first ring is not the command table's own grouping. `ui-game.c`'s lists -
-Items, Action commands, Port, Manage items, Information, Utility, Hidden,
-System - are the right shape for a keyboard help screen and the wrong shape for
-a pad. Port is two rows and was taking an eighth of the ring; Hidden is
-upstream's drawer for Version info and a pref-file line and was taking another;
-Cast a spell sat twelve rows deep inside Information, behind Browse.
-
-The split is by how often a hand reaches for a command during play. Seven groups
-hold the fifty commands a character uses constantly, and the eighth is More.
-
-| Group | Holds | Commands |
-| --- | --- | --- |
-| Use | Quaff, Read, Eat, Aim, Zap, Staff, Activate, Use | 8 |
-| Magic | Cast, Browse, Study, Abilities | 4 |
-| Fight | Fire, Nearest, Throw, Target, Closest, Look, Steal | 7 |
-| Gear | Wear, Remove, Swap, Examine, Fuel, Inventory, Equipment, Quiver | 8 |
-| Travel | Up, Down, Rest, Run, Explore, Walk, Stand, Repeat | 8 |
-| Carry | Pickup, Drop, Ignore, Ignoring, Inscribe, Uninscribe, Autopickup | 7 |
-| Map | Map, Monsters, Objects, Locate, Center, Symbol, Character, Knowledge | 8 |
-| More | every command the seven do not claim, 25 of them, paged | 25 |
-
-Promoted out of a category and onto the first ring: Cast, Browse, Study and
-Abilities, which were behind Information; Rest, the stairs, Look and the two
-targeting commands, which were inside a thirteen-row Action commands list; the
-three item listings and Pick up, which were inside Manage items; the map, the
-two visible-thing lists, Locate, Identify symbol, Character and Knowledge, which
-were the back half of Information; Swap weapon, which was the whole of Port; and
-Walk, Run, Stand, Explore, Repeat, Steal, Center map and Autopickup, which were
-scattered across Hidden and System.
-
-Demoted to More: the grid verbs - Disarm, Tunnel, Open, Close and Walk into a
-trap - because 4.2's own movement opens a door, disarms a trap and handles the
-hazard check when a character walks into one, so a pad reaches for them rarely;
-and the whole of the save, quit, options, notes, version, pref-line, debug and
-Borg tail, which a character touches a handful of times in a life.
-
-More is a COMPLEMENT rather than a list. Anything the seven groups do not claim
-is on it, in the order the command surface reports it, so a command added by a
-mod, by a player keymap or by a later version of the table is reachable the
-moment it exists and cannot be dropped by editing the split. Two levels still,
-never three: More pages rather than reopening the old category tier.
-
-### Icon first, one word beneath
-
-Every item on every ring is a picture with a single word under it, and no item
-is text-only. The word is the wedge's label; the hub carries the item's name in
-full, so a wedge reading Nearest sits under a hub reading Fire at nearest
-target. A name that will not reduce to one word is the signal that the command
-belongs on the second level, and each of those is in More.
-
-The icons are drawn rather than cut from a tileset, and the survey that settled
-that is worth recording. Shockbolt's 64x64 sheet is the richest art the game
-ships and it was checked first: it carries a true, recognisable picture for the
-object NOUNS - potion, scroll, wand, staff, rod, food, mushroom, spell book,
-sword, dagger, bow, arrow, armour, helm, boots, shield, cloak, gloves, ring,
-amulet, lantern, torch, flask, pick, shovel, chest, gold and the item pile - and
-map cells for stairs, doors and rubble. It carries nothing for the verbs and the
-interface concepts, which are most of what a wheel is made of: look, target,
-rest, run, explore, repeat, inscribe, ignore, drop, examine, locate, recentre,
-options, help, save, messages, redraw, character and knowledge. About twenty of
-the fifty-eight slots have a tile and the rest do not, and a ring that is one
-third painted portraiture and two thirds flat marks reads as two designs rather
-than one.
-
-Three further facts pointed the same way. The wheel has to look the same for a
-player rendering in ASCII, and the sheet is a 17.5 MB download fetched only when
-that graphics mode is selected. The sheet's terms withhold permission to modify
-it, and `packages/web/public/tiles/CREDITS.md` records that this repository
-holds the sheets while the cut-up, per-tile form belongs to the linoleum mod, so
-crops and downscales baked into the game's own furniture would cross a boundary
-already written down. And a mark that stays readable at 30 pixels over an
-arbitrary background wants a heavy silhouette and two flat tones, which is the
-opposite of a painted 64 pixel render. The drawn set therefore models its
-silhouettes on Angband's own objects without using the art.
-
-### Legibility with nothing behind it
-
-The wheel has no panel. Wedges draw straight onto the live canvas, so the ground
-under them is a black corridor one moment and a torch-lit stone floor the next.
-Four things carry legibility in a panel's place, each doing a different job.
-
-- Every wedge is its own plate, sized to its art rather than to the ring, so the
-  covered area is a fraction of what a full disc covered.
-- Each plate carries a double edge: a pale inner border and a black outer ring.
-  One of the two always separates the plate from the background, because no
-  dungeon colour is both light and dark.
-- Icons are two flat tones with no stroke thinner than 1.6 of their 24 unit box,
-  which is the width that survives being drawn at 30 pixels over texture.
-- The word under the icon carries its own dark halo, so it holds where the plate
-  is at its most translucent.
 
 ## The mapping screen
 
@@ -364,22 +271,17 @@ Every entry has a route.
 
 | Entries | Route |
 | --- | --- |
-| 1-16, 28, 30-34, 40 | The Use, Gear and Carry rings; the item prompt is answered by cursor and Confirm, with the shoulders switching source and the wheel offering the rest of its replies |
-| 17-18, 22-27, 29, 61-66, 69-70, 75-76 | The stick and the cross walk and answer direction prompts; the Travel ring holds the rest and More holds the grid verbs; Rest's count uses the text answer |
+| 1-16, 28, 30-34, 40 | Items and Manage items rings of the wheel; the item prompt is answered by cursor and Confirm, with the shoulders switching source and the wheel offering the rest of its replies |
+| 17-18, 22-27, 29, 61-66, 69-70, 75-76 | The stick and the cross walk and answer direction prompts; the Action commands ring holds the rest; Rest's count uses the text answer |
 | 19-21, 43, 67, 82 | The target loop, with the stick on the cursor, Confirm on Select target, the shoulders on previous and next, and the remaining target actions in the wheel |
-| 35-38 | The Magic ring; book and spell lists are ordinary item prompts; effect prompts arrive as their own contexts |
-| 39, 41-42, 44-50 | The Map ring, and More for Help and the message history, then the screen's own navigation through the cursor and page keys |
-| 51-60 | More; Escape on the menu button reaches the game menu directly |
-| 68, 71-72 | More, with their normal gates |
-| 73-74 | Swap weapon is on the Gear ring; the remaining port command is in More |
+| 35-38 | The Information ring for Cast and Browse; book and spell lists are ordinary item prompts; effect prompts arrive as their own contexts |
+| 39, 41-42, 44-50 | Information ring, then the screen's own navigation through the cursor and page keys |
+| 51-60 | Utility and System rings; Escape on the menu button reaches the game menu directly |
+| 68, 71-72 | Advanced commands through the wheel, with their normal gates |
+| 73-74 | Port commands through the wheel |
 | 77-78 | Confirm at the game screen opens the command browser; Cancel is the prompt's own; Stop is a bindable role |
 | 79-80 | Count prefixes and the literal keymap bypass are keyboard-shell parity gaps, not controller work |
 | 81, 83-84 | Menu and store navigation through the cursor, page keys and the replies wheel; text answers need the entry scheme below |
-
-No entry depends on the split above being right. More is the complement of the
-seven curated rings, so every command reaches a wedge whatever the split does,
-and `gamepad-wheel-plan.test.ts` asserts that against the real command table
-rather than against a fixture.
 
 ## First-increment browser measurements
 
@@ -398,11 +300,9 @@ to x 44 and turn 40: one repeat past the 250 ms delay rather than a burst.
 Holding the cross down and left together stepped south-west, which is the
 diagonal a cross only reaches as a vector.
 
-The wheel opened on a ring of the eight command-table categories the first
-increment used: Items 16, Action commands 13, Port 2, Manage items 5,
-Information 12, Utility 3, Hidden 13, System 11. That grouping is superseded by
-the seven-plus-More split above. Pointing east selected the third wedge and
-Confirm opened it. The Items ring
+The wheel opened on a ring of eight real categories: Items 16, Action commands
+13, Port 2, Manage items 5, Information 12, Utility 3, Hidden 13, System 11.
+Pointing east selected the third wedge and Confirm opened it. The Items ring
 reported `Page 1 of 2`. Selecting Wear or wield opened the real item prompt,
 Confirm took the row, and the torch was wielded with the turn advancing 40 to
 50. Opening the wheel while that prompt was up showed the prompt's own replies,
@@ -424,47 +324,11 @@ offer; it now reads `Key Escape`.
 Swapping to a pad reporting 4 buttons, 2 axes and no recognised layout produced
 `Controller ready: 4 buttons, one stick, unrecognised layout. Button 3 opens the
 command wheel`, and that pad's own third button opened the same wheel with the
-same eight wedges.
+same eight categories.
 
 At a 396-pixel ring the eight wedges measured 87 by up to 74 pixels with no pair
-of wedges intersecting and none intersecting the hub. Those figures belong to
-the text-wedge layout and are superseded below. The wheel is drawn over the live
-canvas rather than replacing it.
-
-## Second-increment browser measurements
-
-The wheel redrawn icon-first, driven the same way, in a live game with Shockbolt
-Light selected. This pass overrode `navigator.getGamepads` with a synthesised
-pad rather than calling the diagnostic poll hook, so the shipped runtime's own
-sampling loop drove every sample.
-
-The first ring opened on Use, Magic, Fight, Gear, Travel, Carry, Map, More, and
-reported no page counter, because the eight groups are exactly one ring. The
-hub read `Commands` over the selected wedge's full name. Confirm on Use opened
-Quaff, Read, Eat, Aim, Zap, Staff, Activate, Use, with the hub reading `Use` over
-`Quaff a potion` - the one-word wedge and the full name at the same time. The
-stick pushed north-west selected the eighth wedge, More, and Confirm opened it on
-`Page 1 of 4`: Disarm, Tunnel, Open, Close, Trap, Options, Retire, Dump, then
-Notes, Version, Pref, Alter, Stand, Debug, Borg, Help, then Save, Quit, Messages,
-Previous, Feeling, Redraw, Wizard, Menu, then Browser. Twenty-five commands over
-four pages, which is every command the seven curated rings do not claim.
-
-Opening the wheel inside the target loop showed the prompt's own replies as
-icons: Select, Next, Previous, Free, Player, Interesting, Help, Cancel, eight
-wedges and eight drawn marks, with no reply left as bare text.
-
-Geometry, measured from the live DOM at a 1280 by 820 viewport. The wheel's box
-is 360 by 360 where it was up to 520 by 520, and the wedges occupy 351 by 354 of
-it. A wedge is 77.4 by 77.4, or 83.6 with the selected wedge's scale applied. No
-pair of wedges intersects and none intersects the hub, whose own box is 129.6 by
-39.7. The icon draws at 33.4 pixels and the word at 11.2. The wheel's computed
-`background-image` is `none`, its `background-color` is `rgba(0, 0, 0, 0)` and
-its border width is 0: the filled panel is gone rather than merely dimmed.
-
-Read over both extremes of background. In the town at midday, over lit stone
-floor, shop entrances and townspeople, every plate and every word held. On a
-dungeon level in an unlit corridor, over near-black, the pale plate border was
-what separated the wedges from the ground. The same eight icons read in both.
+of wedges intersecting and none intersecting the hub. The wheel is drawn over
+the live canvas rather than replacing it.
 
 ## Built, and not yet built
 
