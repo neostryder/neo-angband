@@ -183,11 +183,16 @@ export const PROJECT_INFORMATION: readonly TitleLine[] = [
    * is width-checked in news.test.ts so a re-lengthened line fails there rather
    * than silently truncating again. */
   { markup: "", centred: true },
-  /* Angband's own maintainer, named as upstream names him in docs/version.rst.
-   * This port's author is credited in the repository, not here: the thanks are
-   * owed to the people who made the game this one is a port of. */
+  /* Angband's own maintainer. NOT taken from the 4.2.6 tree's own
+   * docs/version.rst, which still names Nick McConnell: the handover happened at
+   * the 4.2.6 release itself, so that file was stale the moment it shipped.
+   * Sourced instead from who published the 4.2.6 release upstream and who
+   * authors its commits. Nick McConnell maintained all of 4.2's development and
+   * is covered by "past maintainers". This port's author is credited in the
+   * repository, not here: the thanks are owed to the people who made the game
+   * this one is a port of. */
   {
-    markup: "Thank you, Nick McConnell and past maintainers and developers, and to",
+    markup: "Thank you, Eric Branlund and past maintainers and developers, and to",
     centred: true,
   },
   {

@@ -54,7 +54,7 @@ still calls itself.
 
 ### Fixed
 
-- [Visible] [UI] **The title screen credits Angband's own maintainer.** The thank-you line named this port's author, who has done no work on Vanilla Angband. It now names Nick McConnell, as upstream names him in its own `docs/version.rst`, and a blank row separates the credit from the links above it.
+- [Visible] [UI] **The title screen credits Angband's own maintainer.** The thank-you line named this port's author, who has done no work on Vanilla Angband. It now names Eric Branlund, who has maintained Angband since the 4.2.6 release, and a blank row separates the credit from the links above it.
 
 ## [1.9.0] - 2026-09-06
 

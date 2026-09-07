@@ -421,7 +421,7 @@ describe("title screen project information", () => {
       "Releases: https://releases.rpgm.tools/repos/neo-angband/",
       "Discord: https://discord.gg/YegtwbHTBQ",
       "",
-      "Thank you, Nick McConnell and past maintainers and developers, and to",
+      "Thank you, Eric Branlund and past maintainers and developers, and to",
       "all those who have given us so many creative variants!",
       "",
     ]);
