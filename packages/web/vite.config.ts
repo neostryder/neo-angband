@@ -166,11 +166,16 @@ export default defineConfig({
          * answered with the game. That is why it read as broken to a player
          * and fine to anything checking the URL from outside.
          *
-         * Both spellings are listed because the link itself carries no
-         * trailing slash, and the pattern is left unanchored so it still holds
-         * if the bundle is ever served under a base path rather than at an
-         * origin root. */
-        navigateFallbackDenylist: [/\/docs\/?$/u],
+         * The pattern ends on `[?#]` as well as on the string, because workbox
+         * tests a navigation against `pathname + search` rather than the path
+         * alone. A plain `$` therefore covered /docs and /docs/ and let
+         * /docs?utm_source=... through to the game - which is the spelling a
+         * link shared from anywhere that tags its outbound URLs would have. It
+         * is left unanchored at the START so it still holds if the bundle is
+         * ever served under a base path rather than at an origin root, and the
+         * optional slash is what keeps /documentation and /docs-old falling
+         * back to the game where they belong. */
+        navigateFallbackDenylist: [/\/docs\/?(?:[?#]|$)/u],
       },
     }),
   ],

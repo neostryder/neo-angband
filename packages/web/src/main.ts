@@ -706,6 +706,7 @@ import { checkPhase, updateFooter, updateLines } from "./update-ui";
 import type { UpdateHow, UpdateLine, UpdateView } from "./update-ui";
 import { installLines, offerInstall, type InstallLine } from "./install-local";
 import { installChoiceLines } from "./install-choice";
+import { detectInstallTarget, type InstallTarget } from "./install-target";
 import { installLogSinks, log, setLogLevel } from "./logging";
 import { formatLogLine, LOG_LEVELS, LOG_RING_DEFAULT } from "@rpgm-tools/neo-angband-core/log";
 import { WEB_BUILD_ID } from "./build-id";
@@ -12420,10 +12421,27 @@ function showInstallChoicePage(): Promise<void> {
   });
 }
 
+/**
+ * Which browser this is, for the two screens that have to name its install menu.
+ *
+ * Read here rather than inside either screen so both answer identically, and so
+ * neither has to touch `navigator` - they take the answer as data and stay
+ * testable without a browser.
+ */
+function installTarget(): InstallTarget {
+  return detectInstallTarget({
+    userAgent: navigator.userAgent,
+    maxTouchPoints: navigator.maxTouchPoints,
+  });
+}
+
 async function paintInstallChoiceOnTerminal(
   surface: GridSurface & GridPointerInput,
 ): Promise<void> {
-  const lines = installChoiceLines({ canPromptInstall: canPromptInstall() });
+  const lines = installChoiceLines({
+    canPromptInstall: canPromptInstall(),
+    target: installTarget(),
+  });
   const footer = "[ D: desktop app   W: install as an app   ESC: back ]";
   /* Content runs longer than the 20 body rows a 24-row terminal leaves after
    * the title and footer - up to 26 lines, worst case. Scrolling reuses the
@@ -12519,6 +12537,7 @@ async function showInstallPage(): Promise<void> {
     isStandalone: isStandalone(),
     canPickFolder: folderPickingSupported(),
     canPromptInstall: canPromptInstall(),
+    target: installTarget(),
     caps: host().capabilities,
   });
   const offer = canPromptInstall();

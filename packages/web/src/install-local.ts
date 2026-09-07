@@ -32,6 +32,7 @@
  */
 
 import type { HostCapabilities } from "@rpgm-tools/neo-angband-core";
+import { installInstructions, installRoute, type InstallTarget } from "./install-target";
 
 /** How a line is coloured; the caller owns the palette. */
 export type Tone = "head" | "body" | "dim" | "good" | "warn";
@@ -51,6 +52,14 @@ export interface InstallContext {
   readonly canPickFolder: boolean;
   /** A browser install prompt is available right now (beforeinstallprompt fired). */
   readonly canPromptInstall: boolean;
+  /**
+   * Which browser this is, for the case where no prompt is coming.
+   *
+   * Only ever read when `canPromptInstall` is false. A browser that fires the
+   * event needs no instructions, and one that does not is the whole reason
+   * this field exists.
+   */
+  readonly target: InstallTarget;
   /** What the live host reports it can do. */
   readonly caps: HostCapabilities;
 }
@@ -96,11 +105,16 @@ export function installLines(ctx: InstallContext): InstallLine[] {
     if (ctx.canPromptInstall) {
       out.push(good("Press ENTER on this page to install it now."));
     } else {
-      /* Firefox and desktop Safari never fire beforeinstallprompt at all, and
-       * iOS Safari installs from the Share sheet instead - so this is the
-       * ordinary case on two of the four engines, not an error. */
-      out.push(dim("Your browser has not offered an install button here. Look"));
-      out.push(dim("for \"Install\" or \"Add to Home Screen\" in its own menu."));
+      /* Firefox and Safari never fire beforeinstallprompt, and Apple and
+       * Mozilla have both declined it on purpose, so no prompt is the ordinary
+       * case on two of the four engines rather than an error. What differs is
+       * whether there is anywhere to send the reader. */
+      const route = installRoute(ctx.target);
+      if (route === "own-menu") {
+        out.push(body("This browser installs it from its own menu, not from the page:"));
+      }
+      const tone = route === "own-menu" ? good : route === "unrecognised" ? dim : warn;
+      for (const step of installInstructions(ctx.target)) out.push(tone(step));
     }
     out.push(gap);
     out.push(dim("Your characters stay exactly where they are - it is the same game,"));

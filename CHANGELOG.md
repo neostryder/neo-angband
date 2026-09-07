@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Changed
+
+- [Visible] [UI] **The install screens name the browser's own install command instead of gesturing at a menu.** Only Chromium lets a page offer an install button, so Safari and Firefox players were told to look for "Install" somewhere in their browser. Safari on iPhone and iPad is now pointed at Share and Add to Home Screen, Safari on macOS at File and Add to Dock, Chromium at the address bar icon or the Android menu, and a non-Safari browser on iOS is told that only Safari can install there. Firefox is told plainly that it cannot install a web app on any platform and pointed at the desktop app instead, rather than sent hunting for a menu item that does not exist. An unrecognised browser keeps the general wording rather than being guessed at (#181).
+
 ### Fixed
 
 - [Visible] [UI] **The title screen's documentation link reaches the documentation.** The service worker answered every navigation with the game, including the one path on the site that is a page of its own, so the link loaded the title screen again. It worked exactly once, on a first visit before a worker was installed, and never again from a returning visit or the installed app (#180).

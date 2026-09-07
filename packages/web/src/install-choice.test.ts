@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { installChoiceLines, type ChoiceContext } from "./install-choice";
 
 function ctx(over: Partial<ChoiceContext> = {}): ChoiceContext {
-  return { canPromptInstall: true, ...over };
+  return { canPromptInstall: true, target: "chromium-desktop", ...over };
 }
 
 const text = (c: ChoiceContext): string =>
@@ -74,6 +74,21 @@ describe("the one line that depends on the browser", () => {
     expect(t).not.toMatch(/install it in one press/u);
     expect(t).toMatch(/Add to Home Screen|Install/u);
   });
+
+  it("names the menu the reader actually has, not a menu in general", () => {
+    /* The detector is unit-tested next door; this asserts the SCREEN passes it
+     * through. A page that computed the right answer and painted the generic
+     * sentence anyway would leave both suites green. */
+    expect(text(ctx({ canPromptInstall: false, target: "safari-ios" }))).toMatch(/Share/u);
+    expect(text(ctx({ canPromptInstall: false, target: "safari-macos" }))).toMatch(/File menu/u);
+    expect(text(ctx({ canPromptInstall: false, target: "chromium-android" }))).toMatch(/browser menu/u);
+  });
+
+  it("does not promise Firefox a menu it does not have", () => {
+    const t = text(ctx({ canPromptInstall: false, target: "firefox" }));
+    expect(t).toMatch(/cannot install/u);
+    expect(t).not.toMatch(/Add to Home Screen|its own way in/u);
+  });
 });
 
 describe("every line is renderable", () => {
@@ -83,7 +98,17 @@ describe("every line is renderable", () => {
   });
 
   it("fits an 80-column terminal", () => {
-    for (const c of [ctx({ canPromptInstall: true }), ctx({ canPromptInstall: false })]) {
+    const targets = [
+      "chromium-desktop",
+      "chromium-android",
+      "safari-ios",
+      "safari-macos",
+      "ios-non-safari",
+      "firefox",
+      "unknown",
+    ] as const;
+    const cases = [ctx({ canPromptInstall: true }), ...targets.map((t) => ctx({ canPromptInstall: false, target: t }))];
+    for (const c of cases) {
       for (const line of installChoiceLines(c)) {
         expect(line.text.length, line.text).toBeLessThanOrEqual(78);
       }

@@ -34,6 +34,7 @@ function ctx(over: Partial<InstallContext> = {}): InstallContext {
     isStandalone: false,
     canPickFolder: true,
     canPromptInstall: true,
+    target: "chromium-desktop",
     caps: TAB,
     ...over,
   };
@@ -134,6 +135,40 @@ describe("what it does promise", () => {
     expect(t).toMatch(/do NOT follow you/u);
     expect(t).toMatch(/press Shift-X on a character/u);
     expect(t).toMatch(/press Shift-M there/u);
+  });
+});
+
+describe("the browser's own install path", () => {
+  it("names where this browser keeps its install command", () => {
+    const at = (target: InstallContext["target"]): string =>
+      installLines(ctx({ canPromptInstall: false, target }))
+        .map((l) => l.text)
+        .join("\n");
+    expect(at("chromium-desktop")).toMatch(/address bar/u);
+    expect(at("safari-ios")).toMatch(/Share/u);
+    expect(at("safari-macos")).toMatch(/File menu/u);
+    expect(at("ios-non-safari")).toMatch(/only Safari/u);
+  });
+
+  it("tells Firefox plainly that it cannot, and points at the download", () => {
+    /* Mozilla removed desktop site-specific browsers and has declined the
+     * install prompt, and Firefox for Android has no install either. There is
+     * no menu to name, so naming one would send a reader hunting for an item
+     * that is not there. */
+    const t = installLines(ctx({ canPromptInstall: false, target: "firefox" }))
+      .map((l) => l.text)
+      .join("\n");
+    expect(t).toMatch(/Firefox cannot install web apps/u);
+    expect(t).toMatch(/desktop build/u);
+    expect(t).not.toMatch(/installs from its own menu/u);
+  });
+
+  it("says none of it when the browser will offer a real button", () => {
+    const t = installLines(ctx({ canPromptInstall: true }))
+      .map((l) => l.text)
+      .join("\n");
+    expect(t).toMatch(/Press ENTER/u);
+    expect(t).not.toMatch(/address bar|Share|File menu/u);
   });
 });
 

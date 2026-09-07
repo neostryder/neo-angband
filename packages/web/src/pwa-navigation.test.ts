@@ -27,14 +27,57 @@ import { PROJECT_INFORMATION } from "./news";
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** The `navigateFallbackDenylist` patterns, read from the build config. */
+/**
+ * The `navigateFallbackDenylist` patterns, read from the build config.
+ *
+ * Scanned rather than matched with one regex. The obvious `\[([^\]]*)\]` stops
+ * at the first `]` in the array, which is fine until a pattern contains a
+ * character class - and the pattern this file exists to protect contains
+ * `[?#]`. That truncated the array mid-literal, found no regex in the remains,
+ * and failed every case here with "declared but empty" while the config was
+ * correct. A parser that breaks on the very syntax its subject needs is worse
+ * than no parser, so this walks the array instead and knows when it is inside
+ * a literal.
+ */
 function denylist(): RegExp[] {
   const config = readFileSync(join(webRoot, "vite.config.ts"), "utf8");
-  const declared = /navigateFallbackDenylist:\s*\[([^\]]*)\]/u.exec(config);
-  expect(declared, "vite.config.ts declares no navigateFallbackDenylist").not.toBeNull();
-  const literals = [...(declared?.[1] ?? "").matchAll(/\/((?:[^/\\]|\\.)+)\/([gimsuy]*)/gu)];
-  expect(literals.length, "the denylist is declared but empty").toBeGreaterThan(0);
-  return literals.map((m) => new RegExp(m[1] ?? "", m[2]));
+  const key = config.indexOf("navigateFallbackDenylist:");
+  expect(key, "vite.config.ts declares no navigateFallbackDenylist").toBeGreaterThan(-1);
+
+  const open = config.indexOf("[", key);
+  expect(open, "navigateFallbackDenylist is not an array literal").toBeGreaterThan(-1);
+
+  const patterns: RegExp[] = [];
+  let i = open + 1;
+  while (i < config.length && config[i] !== "]") {
+    if (config[i] !== "/") {
+      i += 1;
+      continue;
+    }
+    /* A regex literal: everything to the next unescaped `/`, then its flags. */
+    let j = i + 1;
+    let source = "";
+    while (j < config.length && config[j] !== "/") {
+      if (config[j] === "\\") {
+        source += config.slice(j, j + 2);
+        j += 2;
+        continue;
+      }
+      source += config[j];
+      j += 1;
+    }
+    let flags = "";
+    j += 1;
+    while (j < config.length && /[gimsuy]/u.test(config[j] ?? "")) {
+      flags += config[j];
+      j += 1;
+    }
+    patterns.push(new RegExp(source, flags));
+    i = j;
+  }
+
+  expect(patterns.length, "the denylist is declared but empty").toBeGreaterThan(0);
+  return patterns;
 }
 
 /** Every external link the title screen actually paints. */
@@ -67,13 +110,28 @@ describe("the /docs page is reachable from inside the installed app", () => {
     expect(patterns.some((p) => p.test("/docs/"))).toBe(true);
   });
 
+  it("denies the path when a query string or fragment is attached", () => {
+    /* Workbox matches a navigation against `pathname + search`, not the path on
+     * its own, so a pattern anchored with a bare `$` stops matching the moment
+     * anything is appended. That is not a hypothetical spelling: it is what a
+     * link shared through anywhere that tags its outbound URLs looks like, and
+     * it would have been swallowed silently while the plain path worked. */
+    const patterns = denylist();
+    for (const path of ["/docs?utm_source=discord", "/docs/?ref=x", "/docs#quick-start"]) {
+      expect(
+        patterns.some((p) => p.test(path)),
+        `${path} would be answered with index.html, not the page itself`,
+      ).toBe(true);
+    }
+  });
+
   it("still falls back to the game for the paths a deep link uses", () => {
     /* The denylist is a hole in a rule that is otherwise correct. A pattern
      * loose enough to catch the game's own entry points would turn every
      * refresh of a running install into a network request, and an offline one
      * into a failure. */
     const patterns = denylist();
-    for (const path of ["/", "/index.html", "/play", "/documentation"]) {
+    for (const path of ["/", "/index.html", "/play", "/documentation", "/docs-old"]) {
       expect(
         patterns.some((p) => p.test(path)),
         `${path} is excluded from the fallback and would not load offline`,

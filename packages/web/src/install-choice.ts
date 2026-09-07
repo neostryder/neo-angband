@@ -43,10 +43,14 @@ export interface ChoiceLine {
   readonly tone: ChoiceTone;
 }
 
+import { installInstructions, installRoute, type InstallTarget } from "./install-target";
+
 /** What the page needs to know to describe the PWA path honestly. */
 export interface ChoiceContext {
   /** A browser install prompt is available right now (beforeinstallprompt fired). */
   readonly canPromptInstall: boolean;
+  /** Which browser this is, read only when no prompt is coming. */
+  readonly target: InstallTarget;
 }
 
 const head = (text: string): ChoiceLine => ({ text, tone: "head" });
@@ -91,8 +95,11 @@ export function installChoiceLines(ctx: ChoiceContext): ChoiceLine[] {
   if (ctx.canPromptInstall) {
     out.push(dim("This browser can install it in one press."));
   } else {
-    out.push(dim("This browser has no one-press install here; look for"));
-    out.push(dim("\"Install\" or \"Add to Home Screen\" in its own menu."));
+    if (installRoute(ctx.target) === "own-menu") {
+      out.push(dim("No one-press install here, but the browser has"));
+      out.push(dim("its own way in:"));
+    }
+    for (const step of installInstructions(ctx.target)) out.push(body(step));
   }
 
   return out;
