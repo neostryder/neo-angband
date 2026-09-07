@@ -93,3 +93,9 @@ sound-shots/
 
 # Dispatch report scratch files, never project content
 REPORT-*.md
+
+# Playwright writes a per-failure trace, screenshot and video tree here, and an
+# HTML report beside it. Both are run artefacts of whichever engine happened to
+# fail, so they are regenerated rather than committed.
+test-results/
+playwright-report/
