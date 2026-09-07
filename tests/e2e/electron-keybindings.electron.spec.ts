@@ -1,6 +1,20 @@
-// This is an application-level regression test. A default Electron application
-// menu consumes these accelerators before renderer keydown listeners can see
-// them, so source inspection alone cannot prove the intended behavior.
+// This proves the renderer receives Ctrl zoom chords that are INJECTED into it.
+// It does NOT prove that a real keypress reaches the renderer, and it must not
+// be cited as evidence for that.
+//
+// Electron resolves application-menu accelerators in the browser process.
+// Playwright's keyboard API injects through the DevTools protocol, which enters
+// below that layer, so an injected chord arrives whether or not a menu claims
+// it. The measurement that settles this: the packaged build under
+// C:\Temp\na\audit-1.10.2 is 1.10.2-edge.133, which predates the removal of the
+// default menu and still carries it, and every chord below passes against that
+// build anyway. A test that passes with the menu present cannot be detecting
+// the menu's absence.
+//
+// What this test is good for is renderer-side behaviour: that nothing inside
+// the page swallows these chords, and that the probe ordering below works.
+// Verifying that a real keypress survives the browser process needs operating
+// system level input, which nothing in this lane provides.
 import { expect, test, type ObservedKeyEvent } from "./electron.fixture.js";
 
 const zoomChords = [
