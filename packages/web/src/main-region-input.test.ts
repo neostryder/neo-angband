@@ -75,6 +75,34 @@ describe("main.ts routes pointer gestures through region ownership", () => {
   it("keeps long-press targets distinct for core cells and region cells", () => {
     expect(mainSource).toContain('kind: "core-grid"');
     expect(mainSource).toContain('kind: "region-cell"');
+    expect(mainSource).toContain('kind: "wheel"');
     expect(mainSource).toContain("longPressTarget");
+  });
+
+  /**
+   * The command wheel is the LAST resort of the one hold rule, on both
+   * pointers (#65). Asserted as an ordering for the same reason the guards
+   * above are: what would regress is somebody moving the wheel ahead of the
+   * grid, which would displace upstream's own context menu rather than sit
+   * beside it.
+   */
+  it("reaches the wheel only after a region and a grid have refused the hold", () => {
+    const context = listener("contextmenu", "dispatchContextClick");
+    const longPress = listener("pointerdown", "pointerType !== \"touch\"");
+
+    expect(context).toContain("pointerCommandWheel()");
+    expect(context.indexOf("contextClickGrid("))
+      .toBeLessThan(context.lastIndexOf("pointerCommandWheel()"));
+
+    expect(longPress).toContain("pointerCommandWheel()");
+    expect(longPress.indexOf("contextClickGrid("))
+      .toBeLessThan(longPress.indexOf("pointerCommandWheel()"));
+  });
+
+  it("suppresses the browser's own menu before any branch can return", () => {
+    const context = listener("contextmenu", "dispatchContextClick");
+    // Every early return below it would otherwise leave the browser menu to
+    // open over the game, which is the one thing a right-click must never do.
+    expect(context.indexOf("preventDefault()")).toBeLessThan(context.indexOf("scoresOpen"));
   });
 });

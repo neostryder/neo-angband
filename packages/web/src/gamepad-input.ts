@@ -15,7 +15,7 @@
  */
 import type { AngbandDirection } from "./input-door";
 import type { ControlAction, ControlSurface } from "./control-surface";
-import { controlKey, stopControlInput } from "./control-surface";
+import { commandName, controlKey, stopControlInput } from "./control-surface";
 import { describeCapabilities, padSignature, readPads, type PadCapabilities, type PadSnapshot } from "./gamepad-device";
 import { loadBindings, roleOf, type BindingTarget, type GamepadBindings, type GamepadRole } from "./gamepad-bindings";
 import {
@@ -252,10 +252,14 @@ export class GamepadAdapter {
    * and the keyset translation that the command table already owns, so a pad
    * cannot start a command inside a prompt and cannot fire the wrong command
    * because the player changed keysets.
+   *
+   * The name is `commandName`'s, so a row whose only key belongs to the
+   * roguelike keyset is bindable under its own label rather than unnameable.
    */
-  private command(key: string): void {
+  private command(name: string): void {
     if (!this.surface.canCommand()) return;
-    const command = this.surface.commands().find((candidate) => candidate.key === key);
+    const command = this.surface.commands()
+      .find((candidate) => commandName(candidate) === name);
     if (!command) return;
     this.surface.invokeCommand(command.id);
   }

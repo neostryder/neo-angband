@@ -3,7 +3,7 @@ import { ControlSurface, cancelAction, directionActions, keyAction } from "./con
 import { clearInputDoor, inputEvents } from "./input-door";
 import { STANDARD_BUTTON, type PadSnapshot } from "./gamepad-device";
 import { GamepadAdapter, startGamepadRuntime, type ConnectedPad, type GamepadHost } from "./gamepad-input";
-import { DEFAULT_REPEAT } from "./gamepad-analog";
+import { DEFAULT_DEAD_ZONE, DEFAULT_REPEAT } from "./gamepad-analog";
 
 function synthPad(overrides: Partial<PadSnapshot> = {}): PadSnapshot {
   const buttons = overrides.buttons
@@ -173,6 +173,35 @@ describe("commands", () => {
     const adapter = new GamepadAdapter(surface, stubHost());
     adapter.poll([withButtons([STANDARD_BUTTON.faceLeft])], 0);
     expect(run).not.toHaveBeenCalled();
+  });
+  /**
+   * The one table row with no original-keyset key (#65).
+   *
+   * Center map is `o: null, r: "@"`: its only key belongs to the roguelike
+   * keyset, so `ControlCommand.key` is undefined and the row had no name a
+   * binding could hold. The mapping screen filtered it out for that reason and
+   * a player found the command simply missing. Its name is now its label,
+   * which is what `commandName` returns for any row without a key.
+   */
+  it("runs a command whose only key belongs to the other keyset", () => {
+    const surface = new ControlSurface();
+    const center = vi.fn();
+    surface.setCommands(() => true, () => [
+      { id: "core:keypress-command:57", label: "Center map", category: "Hidden", run: center },
+    ]);
+    const adapter = new GamepadAdapter(surface, stubHost());
+    adapter.poll([synthPad()], 0);
+    adapter.setBindings(0, {
+      buttons: { [STANDARD_BUTTON.faceUp]: "cmd:Center map" },
+      layer: {}, deadZone: DEFAULT_DEAD_ZONE,
+    });
+    const log = recorder();
+    adapter.poll([withButtons([STANDARD_BUTTON.faceUp])], 16);
+    expect(center).toHaveBeenCalledTimes(1);
+    // Still a name rather than a keypress: no literal reached the door, so the
+    // roguelike '@' cannot be sent to a player who is not using that keyset.
+    expect(log.keys).toEqual([]);
+    log.dispose();
   });
   it("reads the second layer while the modifier is held, in the same frame", () => {
     const surface = new ControlSurface();

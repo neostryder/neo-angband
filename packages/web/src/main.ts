@@ -10300,26 +10300,74 @@ canvas.addEventListener("pointerdown", (ev) => {
   void queueWalk(dir); // normal movement and hazard checks
 });
 
-// ---- Context menus (ui-context.c textui_process_click's mouse routing) ----
-// Desktop: the canvas 'contextmenu' event (the browser's own right-click) is
-// the router - compute the tapped grid exactly as the pointerdown handler
-// does, then classify and dispatch (routeContextClick, context-menu.ts).
-// Touch: a long-press (pointerdown held ~450ms, cancelled by the pressing
-// finger's own move or lift) opens the same menu at the pressed cell, since a
-// phone has no right-click. A second finger cancels the pending single-finger
-// gesture so QoL pinch and swipe cannot also become a move or context action.
+/**
+ * The command wheel, opened by a pointer instead of by a pad button.
+ *
+ * The SAME wheel: the same eight groups, the same icons and words, the same
+ * point-then-commit rule. A gamepad reaches it through the button bound to
+ * `role:commands`, a mouse through a right-click, a finger through a long
+ * press, and the surface itself does not know which one asked.
+ *
+ * Opening it toggles, so the gesture that opened it closes it again. An empty
+ * wheel is refused rather than shown: with no prompt to answer and no command
+ * startable - during a death screen, the high scores, a turn still resolving -
+ * every wedge would be inert, and a surface that swallows a gesture and does
+ * nothing is worse than the gesture doing nothing.
+ */
+function pointerCommandWheel(): void {
+  if (gamepadControls.wheelOpen()) {
+    gamepadControls.closeWheel();
+    return;
+  }
+  if (!controlSurface.current() && !controlSurface.canCommand()) return;
+  gamepadControls.openWheel();
+}
+
+// ---- Context menus, and the wheel (ui-context.c textui_process_click) ------
+// ONE RULE, and the mouse and a finger both follow it. A pointer HOLD - a
+// right-click, or a stationary press held ~450ms because a phone has no right
+// button - resolves in this order:
+//
+//   1. A region painted over the map owns its own cells, so the hold is that
+//      region's (#276).
+//   2. A live map grid answers with upstream's own context menu for that grid
+//      (routeContextClick / context_menu_player / context_menu_cave). It keeps
+//      the gesture because it is a menu ABOUT A GRID - Look At, Walk To, Jump
+//      Onto - and the wheel has no grid to be about. Nothing is displaced.
+//   3. Anything else - the sidebar, the message and status lines, the
+//      letterbox margins, or the whole screen while a modal owns it - opens the
+//      command wheel. Nothing was bound there before.
+//
+// A pad's wheel button has no pointer and therefore no grid under it, so rule 2
+// cannot apply to it and it falls to rule 3. That is the whole of the
+// difference between the three devices, and the hardware settles it rather than
+// the design.
+//
+// A second finger cancels the pending single-finger gesture so QoL pinch and
+// swipe cannot also become a move, a context action or a wheel.
 canvas.addEventListener("contextmenu", (ev) => {
+  // The browser's own menu never appears, whichever branch below runs - and it
+  // must be suppressed before any of them can return early.
   ev.preventDefault();
-  if (scoresOpen || dead || modalDepth > 0) return;
+  if (scoresOpen || dead) return;
   const cell = term.cellAt(ev.clientX, ev.clientY);
-  if (!cell) return;
+  if (!cell) {
+    pointerCommandWheel();
+    return;
+  }
   const owner = regionInputAt(cell.col, cell.row);
   if (owner) {
     owner.spec.input?.({ ...owner.local, kind: "context" });
     return;
   }
-  const grid = contextClickGrid(ev.clientX, ev.clientY);
-  if (!grid) return;
+  // A modal owns the screen, so there is no map grid to ask about even where
+  // one is still painted underneath: inside one, a hold can only mean the
+  // wheel, which then shows that prompt's own replies.
+  const grid = modalDepth > 0 ? null : contextClickGrid(ev.clientX, ev.clientY);
+  if (!grid) {
+    pointerCommandWheel();
+    return;
+  }
   void openModal(() => dispatchContextClick(grid));
 });
 
@@ -10337,6 +10385,13 @@ type LongPressTarget =
       readonly pointerId: number;
       readonly cell: { readonly col: number; readonly row: number };
       readonly owner: NonNullable<ReturnType<typeof regionInputAt>>;
+    }
+  /** A press with no grid under it: the sidebar, the margins, inside a modal. */
+  | {
+      readonly kind: "wheel";
+      readonly pointerId: number;
+      /** Null in the letterbox, where the term owns no cell at all. */
+      readonly cell: { readonly col: number; readonly row: number } | null;
     };
 let longPressTarget: LongPressTarget | null = null;
 function cancelLongPress(): void {
@@ -10355,20 +10410,24 @@ canvas.addEventListener("pointerdown", (ev) => {
   if (ev.pointerType !== "touch") return;
   touchPointers.add(ev.pointerId);
   if (touchPointers.size > 1) { cancelLongPress(); return; }
-  if (scoresOpen || dead || modalDepth > 0) return;
+  if (scoresOpen || dead) return;
   if (longPressTarget) return; // a press is already running, and it is not this finger's
   const cell = term.cellAt(ev.clientX, ev.clientY);
-  if (!cell) return;
   /* The tap listener above sees this same PointerEvent first. Retain its
    * answer so a handler that releases itself after throwing cannot make this
    * very long-press fall through to the dungeon in the later listener. */
-  const owner = regionPointerOwners.get(ev) ?? regionInputAt(cell.col, cell.row);
-  if (owner) {
+  const owner = cell ? regionPointerOwners.get(ev) ?? regionInputAt(cell.col, cell.row) : undefined;
+  if (owner && cell) {
     longPressTarget = { kind: "region-cell", pointerId: ev.pointerId, cell, owner };
   } else {
-    const grid = contextClickGrid(ev.clientX, ev.clientY);
-    if (!grid) return;
-    longPressTarget = { kind: "core-grid", pointerId: ev.pointerId, cell, grid };
+    /* The same three-way resolution the right-click above makes, in the same
+     * order. A grid to ask about, or the wheel - and inside a modal, or out in
+     * the letterbox where the term owns no cell at all, it can only be the
+     * wheel, whatever is still painted under the finger. */
+    const grid = cell && modalDepth === 0 ? contextClickGrid(ev.clientX, ev.clientY) : null;
+    longPressTarget = grid && cell
+      ? { kind: "core-grid", pointerId: ev.pointerId, cell, grid }
+      : { kind: "wheel", pointerId: ev.pointerId, cell: cell ?? null };
   }
   longPressTimer = setTimeout(() => {
     const target = longPressTarget;
@@ -10376,6 +10435,16 @@ canvas.addEventListener("pointerdown", (ev) => {
     if (!target) return;
     if (target.kind === "region-cell") {
       target.owner.spec.input?.({ ...target.owner.local, kind: "context" });
+      return;
+    }
+    if (target.kind === "wheel") {
+      /* The finger is STILL DOWN. It opened the wheel and it commits nothing:
+       * lifting it is neither a choice nor a cancellation, and the wedge is
+       * taken by a separate tap afterwards. Release-to-select is the phone's
+       * natural radial idiom and it is refused on purpose - letting go is the
+       * only gesture a finger has left for abandoning the wheel, so a release
+       * that chose a wedge would leave no way out of one. */
+      pointerCommandWheel();
       return;
     }
     void openModal(() => dispatchContextClick(target.grid));
@@ -10391,6 +10460,9 @@ canvas.addEventListener("pointerup", (ev) => {
     target.owner.spec.input?.({ ...target.owner.local, kind: "tap" });
     return;
   }
+  // A quick release on the sidebar or the margins is not a step: there was no
+  // grid under it to step toward.
+  if (target.kind === "wheel") return;
   if (!(state.options?.get("mouse_movement") ?? true)) return;
   const dx = Math.sign(target.grid.x - state.actor.grid.x);
   const dy = Math.sign(target.grid.y - state.actor.grid.y);
@@ -10413,10 +10485,13 @@ canvas.addEventListener("pointermove", (ev) => {
     }
     return;
   }
+  /* A cell compared against a cell, and the letterbox's "no cell" against
+   * itself: a finger that started outside the grid has moved off its press as
+   * soon as it reports a cell, and one that started on a cell has moved off as
+   * soon as it stops reporting that one. */
   const cell = term.cellAt(ev.clientX, ev.clientY);
-  if (!cell || cell.col !== longPressTarget.cell.col || cell.row !== longPressTarget.cell.row) {
-    cancelLongPress();
-  }
+  const held = longPressTarget.cell;
+  if (cell?.col !== held?.col || cell?.row !== held?.row) cancelLongPress();
 });
 
 // Every input adapter shares the same root commands and readiness guard.

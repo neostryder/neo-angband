@@ -74,9 +74,14 @@ Every inventory entry has a route in the final scheme:
 Quick release on a map cell takes one step toward it, subject to mouse_movement
 and the existing hazard confirmation. A press must not move on pointerdown.
 After 450 ms, a stationary single-finger press opens the context menu without
-spending a turn. Movement beyond the slop threshold, pointer cancellation or a
-second finger cancels both tap and hold. A region painted above the map retains
-input ownership. A held finger must not become a step when the menu closes.
+spending a turn. That hold carries a second meaning off the map: away from a map
+grid, and inside a modal, it opens the shared command wheel instead, under the
+same rule a right-click follows. Both are described in
+[COMMAND_WHEEL.md](COMMAND_WHEEL.md), which owns the wheel for all three input
+methods rather than for a controller alone. Movement beyond the slop threshold,
+pointer cancellation or a second finger cancels both tap and hold. A region
+painted above the map retains input ownership. A held finger must not become a
+step when the menu closes.
 
 The final creature ring uses the existing context classifier and visible
 knowledge. At most six large wedges offer the currently applicable actions:
@@ -135,7 +140,7 @@ Changing mods must not delete another preset. Imports validate schema/version,
 show unavailable command IDs and never execute macros. Sync/export and arbitrary
 named per-mod presets are beyond the two-profile first increment.
 
-## What issue #65 inherits
+## What issue #65 inherits and what it gave back
 
 A controller adapter inherits the root command catalog and readiness guard,
 the current context stack and stale-handle guard,
@@ -146,6 +151,13 @@ source/page switching, and a stick to direction without duplicating command
 logic. A future analog ring may use the existing `UiDirection` vector and angle.
 Controller discovery, dead zones, focus policy, haptics and mapping UI remain
 specific to #65. A gamepad text-entry overlay can answer the same text context.
+
+The traffic runs both ways now. The radial command surface #65 built over that
+catalog is not a controller surface: a long press reaches the same wheel a pad
+button does, with the same rings, icons, words and commit rule, and only the
+ring's SIZE changes for a finger. The touch sheet keeps every prompt shape it
+owns; the wheel is what answers the command catalogue and, inside a prompt, the
+prompt's own replies.
 
 ## Verification and remaining acceptance
 

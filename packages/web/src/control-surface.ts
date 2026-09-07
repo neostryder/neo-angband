@@ -54,6 +54,27 @@ export interface ControlCommand extends ControlAction {
   readonly key?: string;
 }
 
+/**
+ * The stable NAME of a command, for anything that has to refer to one later.
+ *
+ * A saved controller binding, a wheel group's membership list and a mapping
+ * screen's row all name a command rather than pressing a key, so the name has
+ * to survive the roguelike-keyset option being turned on and has to exist for
+ * every command. `key` covers most of them and is preferred because it is the
+ * shortest thing that is stable. It is UNDEFINED for two kinds of row: the
+ * eleven root commands that live outside the cached keypress registry, and the
+ * one table row whose only key belongs to the roguelike keyset (Center map,
+ * `o: null, r: "@"`). Those fall back to the command's own label.
+ *
+ * The two cannot collide. A key is one character or a caret pair; a label is
+ * words. So `cmd:g` and `cmd:Center map` name different commands and always
+ * will, and a row with no original-keyset key is bindable rather than filtered
+ * off the mapping screen for lacking a name.
+ */
+export function commandName(command: { readonly key?: string; readonly label: string }): string {
+  return command.key ?? command.label;
+}
+
 export interface ControlSnapshot {
   readonly token: number;
   readonly context: ControlContext;

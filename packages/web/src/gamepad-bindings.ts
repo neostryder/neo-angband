@@ -8,13 +8,15 @@
  *   the modifier layer. These are the only inputs whose meaning changes with
  *   the question on screen, and they are the reason a pad can answer a prompt
  *   at all.
- * - `cmd:<key>` belongs to the game. The key is the ORIGINAL keyset's key for
- *   that command, used purely as a stable name: the adapter looks the command
- *   up in the live command table, so a player using the roguelike keyset gets
- *   the same command through the key that keyset actually uses. Binding a pad
- *   button to a letter would have quietly changed meaning with the keyset
- *   option, which is exactly the bug a player would report as "my controller
- *   stopped working".
+ * - `cmd:<name>` belongs to the game. The name is `commandName`'s: the
+ *   ORIGINAL keyset's key for that command where it has one, and the command's
+ *   own label where it does not. Either way it is a name rather than an
+ *   instruction to press something, and the adapter looks the command up in the
+ *   live command table, so a player using the roguelike keyset gets the same
+ *   command through the key that keyset actually uses. Binding a pad button to
+ *   a letter would have quietly changed meaning with the keyset option, which
+ *   is exactly the bug a player would report as "my controller stopped
+ *   working".
  * - `key:<literal>` is the escape hatch, one literal keypress, for the
  *   handful of root controls that are not command-table rows.
  *

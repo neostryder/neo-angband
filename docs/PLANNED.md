@@ -44,8 +44,13 @@ toggle remain keyboard-shell parity gaps.
 
 The first controller increment adds capability detection, derived default
 layouts, per-pad saved bindings, dead zones and eight-way stick resolution, a
-radial command wheel over the real command catalogue, and a mapping screen. The
-scheme is in [GAMEPAD_CONTROLS.md](design/GAMEPAD_CONTROLS.md), against the same
+radial command wheel over the real command catalogue, and a mapping screen. A
+second pass makes the wheel icon-led, drops the panel behind it, and re-splits
+its first ring by how often a command is reached for rather than by the command
+table's own filing. A third makes the wheel the surface all three input methods
+share: a pad button, a right-click and a long press open the same rings under
+the same commit rule. The scheme is in
+[COMMAND_WHEEL.md](design/COMMAND_WHEEL.md), against the same
 [keyboard inventory](design/TOUCH_COMMAND_INVENTORY.md) the touch scheme uses.
 
 Remaining work: a text-entry scheme, without which a name, an inscription, a
@@ -55,6 +60,14 @@ then goes away; triggers on the minority of pads that report them as axes rather
 than as buttons; rumble as progressive enhancement; confirmation of the hat
 switch's rotation against a physical pad; and full-character acceptance with the
 keyboard unplugged.
+
+One pointer gap remains, and it is the term's rather than the wheel's. Inside a
+modal that owns cell taps, the term consumes the canvas `pointerdown` outright
+so the in-world tap-to-move and long-press handlers cannot double-fire beneath
+an open menu, which also means a long press inside such a modal never reaches
+the wheel. A right-click does, because `contextmenu` is not the event being
+consumed. Closing it means giving the term's tap owner a way to decline a hold
+while still claiming a tap.
 
 ---
 
