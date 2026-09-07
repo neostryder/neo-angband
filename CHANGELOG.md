@@ -52,9 +52,9 @@ still calls itself.
 
 - [Visible] [UI] **A controller can now play the game.** A connected gamepad walks, fights and answers the item, direction and target prompts, with a radial command wheel reaching every command the keyboard has and, while a prompt is open, that prompt's own replies. Layouts are derived from what the pad reports rather than from a list of known models, so a pad with four buttons stays playable and a pad the browser does not recognise still works; button names follow the detected family. Every button is remappable on its own screen, including a second layer under a held modifier, and the bindings are saved per controller. Sticks use a scaled radial dead zone with sector hysteresis and a hold-to-repeat delay, so a diagonal is not lost and a released stick does not take a step backwards (#65).
 
-### Fixed
+### Changed
 
-- [Visible] [UI] **The title screen credits Angband's own maintainer.** The thank-you line named this port's author, who has done no work on Vanilla Angband. It now names Eric Branlund, who has maintained Angband since the 4.2.6 release, and a blank row separates the credit from the links above it.
+- [Visible] [UI] **The title screen now scales to fit every viewport without stretching or clipping.** Its 80 by 24 grid stays centered and keeps link targets aligned with the painted URLs.
 
 ## [1.9.0] - 2026-09-06
 

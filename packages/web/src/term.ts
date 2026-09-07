@@ -4,8 +4,8 @@
  * REND-1): upstream Angband draws every screen against an exact 80-column,
  * 24-row terminal (status line rows 22/23, message row 0, right-aligned
  * inventory, store column stops), so the port must present the same fixed grid
- * for those placements to land. The grid is drawn at the largest integer cell
- * size that fits the window and CENTERED (letterboxed) - the area around it is
+ * for those placements to land. The grid is drawn at the largest uniform cell
+ * scale that fits the window and CENTERED (letterboxed) - the area around it is
  * background fill, exactly as a real terminal letterboxes a fixed character
  * matrix in a larger window.
  *
@@ -618,15 +618,39 @@ export class GlyphTerm
    */
   cellAt(clientX: number, clientY: number): GridCell | null {
     const rect = this.canvas.getBoundingClientRect();
-    const col = Math.floor((clientX - rect.left - this.offsetX) / this.cellW);
-    const row = Math.floor((clientY - rect.top - this.offsetY) / this.cellH);
+    /* cellBox rounds both painted edges to device pixels. Reverse those exact
+     * edges here, rather than dividing by the unsnapped CSS metric: at a
+     * fractional cell width, the sliver between the mathematical boundary and
+     * its rounded painted boundary otherwise looks like one cell but taps as
+     * its neighbour. */
+    const col = this.cellAtAxis(clientX, rect.left, this.offsetX, this.cellW, this.cols);
+    const row = this.cellAtAxis(clientY, rect.top, this.offsetY, this.cellH, this.rows);
     if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return null;
     return { col, row };
   }
 
+  /** Map a client coordinate through the same snapped edges that cellBox paints. */
+  private cellAtAxis(client: number, canvasStart: number, offset: number, cell: number, count: number): number {
+    const dpr = this.dpr();
+    const pixel = Math.floor((client - canvasStart) * dpr);
+    const edge = (index: number): number => Math.round((offset + index * cell) * dpr);
+    if (pixel < edge(0) || pixel >= edge(count)) return -1;
+    /* Find the last painted left edge at or before this device pixel. This also
+     * handles zero-device-pixel cells at extremely small scales: a cell with no
+     * painted pixels is not an input target. */
+    let lower = 0;
+    let upper = count;
+    while (lower + 1 < upper) {
+      const middle = Math.floor((lower + upper) / 2);
+      if (edge(middle) <= pixel) lower = middle;
+      else upper = middle;
+    }
+    return lower;
+  }
+
   /**
    * Recompute cell metrics and grid size. In the default fixed mode this sizes
-   * a letterboxed 80x24 grid (largest cell that fits, centered); in reflow mode
+   * a letterboxed 80x24 grid (largest uniform scale that fits, centered); in reflow mode
    * it sizes a responsive grid honoring the minCols/minRows floor.
    *
    * BROWSER-NATIVE PAGE ZOOM (#64) needs no separate handling here. In Chromium
@@ -699,7 +723,7 @@ export class GlyphTerm
     this.ctx.textBaseline = "top";
     // Sync the fallback vector font to the current cell (used only for glyphs
     // the bitmap font lacks). Harmless when a bitmap glyph is blitted instead.
-    this.ctx.font = `${Math.max(8, Math.floor(this.cellH * 0.82))}px ${FONT_STACK}`;
+    this.ctx.font = `${Math.max(1, Math.floor(this.cellH * 0.82))}px ${FONT_STACK}`;
     /* Synchronously, not queued: a resize must show the new geometry now, and
      * this runs from a resize/ResizeObserver callback rather than from a frame
      * of gameplay. */
@@ -845,56 +869,47 @@ export class GlyphTerm
   }
 
   /**
-   * Fixed 80x24 (REND-1): pick the largest font at which the whole grid fits
-   * the window, then center it so the grid is letterboxed. If even the smallest
-   * font overflows (a very small window), the grid stays 80x24 and clamps the
-   * offset to 0 (it clips rather than reflowing - reflow is the mobile opt-in).
+   * Fixed 80x24 (REND-1): scale the whole grid uniformly to fit the window,
+   * then center it so the grid is letterboxed. This is also the title screen's
+   * scaling policy: all paint and pointer coordinates remain grid coordinates,
+   * so the same cell metric projects both a link glyph and its tap target.
    */
   private fitFixed(w: number, h: number): void {
-    // Bitmap font: scale the native 16x24 cell UNIFORMLY (preserving its aspect)
-    // by the largest factor at which the whole 80x24 grid still fits, then
-    // centre it - a letterboxed terminal. A uniform scale keeps the glyphs
-    // undistorted; nearest-neighbour (imageSmoothingEnabled=false) keeps them
-    // crisp even at a fractional factor.
+    // Bitmap font: scale the native cell UNIFORMLY (preserving its aspect) by
+    // the largest factor at which the whole 80x24 grid fits, then centre it.
+    // Do not impose a minimum cell size here. A minimum makes an 80x24 title
+    // physically larger than a small visual viewport and clips both its art and
+    // its click targets. Fractional CSS metrics are safe: cellBox snaps each
+    // painted edge to device pixels, and cellAt uses these exact metrics for
+    // the reverse pointer mapping.
     if (this.font) {
-      const scale = Math.min(
+      const scale = Math.max(0, Math.min(
         w / (this.font.w * FIXED_COLS),
         h / (this.font.h * FIXED_ROWS),
-      );
-      const cellW = Math.max(4, Math.floor(this.font.w * scale));
-      const cellH = Math.max(6, Math.floor(this.font.h * scale));
-      this.cellW = cellW;
-      this.cellH = cellH;
+      ));
+      this.cellW = this.font.w * scale;
+      this.cellH = this.font.h * scale;
       this.cols = FIXED_COLS;
       this.rows = FIXED_ROWS;
-      this.offsetX = Math.max(0, Math.floor((w - cellW * FIXED_COLS) / 2));
-      this.offsetY = Math.max(0, Math.floor((h - cellH * FIXED_ROWS) / 2));
+      this.offsetX = (w - this.cellW * FIXED_COLS) / 2;
+      this.offsetY = (h - this.cellH * FIXED_ROWS) / 2;
       return;
     }
-    const MIN_FONT = 8;
-    const MAX_FONT = 48;
-    let fontPx = MAX_FONT;
-    let cellW = 0;
-    let cellH = 0;
-    for (; fontPx >= MIN_FONT; fontPx--) {
-      this.ctx.font = `${fontPx}px ${FONT_STACK}`;
-      cellW = Math.ceil(this.ctx.measureText("M").width);
-      cellH = Math.ceil(fontPx * 1.2);
-      if (cellW * FIXED_COLS <= w && cellH * FIXED_ROWS <= h) break;
-    }
-    if (fontPx < MIN_FONT) {
-      fontPx = MIN_FONT;
-      this.ctx.font = `${fontPx}px ${FONT_STACK}`;
-      cellW = Math.ceil(this.ctx.measureText("M").width);
-      cellH = Math.ceil(fontPx * 1.2);
-    }
-    this.cellW = cellW;
-    this.cellH = cellH;
+    /* Keep the vector fallback in the same one-scale model. It is not the
+     * shipped title font, but its geometry must not reintroduce clipping for a
+     * renderer that deliberately opts out of the bitmap font. */
+    const baseFontPx = 48;
+    this.ctx.font = `${baseFontPx}px ${FONT_STACK}`;
+    const baseCellW = Math.ceil(this.ctx.measureText("M").width);
+    const baseCellH = Math.ceil(baseFontPx * 1.2);
+    const scale = Math.max(0, Math.min(w / (baseCellW * FIXED_COLS), h / (baseCellH * FIXED_ROWS)));
+    this.cellW = baseCellW * scale;
+    this.cellH = baseCellH * scale;
     this.cols = FIXED_COLS;
     this.rows = FIXED_ROWS;
-    this.offsetX = Math.max(0, Math.floor((w - cellW * FIXED_COLS) / 2));
-    this.offsetY = Math.max(0, Math.floor((h - cellH * FIXED_ROWS) / 2));
-    this.ctx.font = `${fontPx}px ${FONT_STACK}`;
+    this.offsetX = (w - this.cellW * FIXED_COLS) / 2;
+    this.offsetY = (h - this.cellH * FIXED_ROWS) / 2;
+    this.ctx.font = `${Math.max(1, Math.floor(baseFontPx * scale))}px ${FONT_STACK}`;
   }
 
   /** Responsive grid (reflow opt-in): the pre-REND-1 behavior. */
