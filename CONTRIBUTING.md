@@ -23,7 +23,7 @@ keep it faithful. Read it once before your first change.
 
 ## Prerequisites
 
-- **Node** `>=22` (the `.nvmrc` pins `24` - use it if you run `nvm`). CI runs 24
+- **Node** `>=22` (the `.nvmrc` pins `26` - use it if you run `nvm`). CI runs 26
   here; the mod repositories run 22, so the `>=22` floor is exercised rather
   than merely claimed.
 - **pnpm** `12.3.4`, the version in the root `package.json` `packageManager`
@@ -33,7 +33,7 @@ keep it faithful. Read it once before your first change.
   never track this number by hand.
 
   **`corepack enable pnpm` is no longer an option.** Corepack was removed from
-  Node, so on Node 25 or newer the command does not exist. Instructions
+  Node in 25, so it does not exist at all on the pinned 26. Instructions
   elsewhere that still recommend it predate that removal.
 
   Do not expect `pnpm self-update` to make the jump from a pnpm 10 install.
@@ -172,7 +172,7 @@ New original code (UI, mod-sdk) needs no ledger entry.
 
 - New ported behavior gets vitest coverage that cites the C lines it locks in,
   the same way the ported code does.
-- CI (`.github/workflows/ci.yml`) runs on Node 24 and must stay green: it does
+- CI (`.github/workflows/ci.yml`) runs on Node 26 and must stay green: it does
   `pnpm build`, `pnpm lint`, the web `bundle`, `pnpm test`, and the CLI parity
   `scenarios` as a standalone run.
 - Run `pnpm test` (and, for engine changes, `pnpm --filter @rpgm-tools/neo-angband-cli

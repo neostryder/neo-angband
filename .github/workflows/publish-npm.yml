@@ -67,7 +67,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
           registry-url: https://registry.npmjs.org
           # No cache on the release path deliberately. It runs a handful of times a
           # year, and a release build that reuses nothing is one less thing to have
@@ -80,8 +80,8 @@ jobs:
           # out loud. Turn it off out loud too.
           package-manager-cache: false
 
-      # Trusted publishing needs npm >= 11.5.1. Node 24 bundles 11.16.0 as of
-      # v24.18.1, which clears that bar, and this step installs npm@latest (12.x)
+      # Trusted publishing needs npm >= 11.5.1. Node 26 bundles 11.19.0 as of
+      # v26.8.1, which clears that bar, and this step installs npm@latest (12.x)
       # on top anyway - but a floor that is satisfied by accident is still worth
       # asserting, because an old npm does not error: it silently looks for a token
       # and fails with ENEEDAUTH, which reads like a permissions problem and is not

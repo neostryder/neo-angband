@@ -41,7 +41,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
@@ -74,7 +74,7 @@ jobs:
       # It runs on npm@latest, the same npm publish-npm.yml installs, and NOT on the
       # npm the runner happens to bundle. That is not tidiness: `npm pack --json`
       # returns an array on npm 11 and an object keyed by package name on npm 12, and
-      # because this step ran on Node 24's bundled 11.x while only the release path
+      # because this step ran on the runner's bundled 11.x while only the release path
       # ever saw 12, the checker was broken for every package with a green CI to
       # prove otherwise. A tool whose whole job is to find out what npm actually does
       # has to run on the npm that will do it.
@@ -104,7 +104,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
           cache: pnpm
       # NOT setting ELECTRON_SKIP_BINARY_DOWNLOAD. This is the job that launches
       # Chromium, so it is the job that needs it.

@@ -24,7 +24,19 @@ const read = (p: string): string => readFileSync(fileURLToPath(new URL(p, repoRo
 const rootManifest = JSON.parse(read("package.json")) as { packageManager: string };
 const [pm, pmVersion] = rootManifest.packageManager.split("@");
 
-const WORKFLOWS = ["ci.yml", "pages.yml", "mod-canary.yml", "publish-npm.yml"] as const;
+/* EVERY workflow that sets up Node, not a sample of them. This list held four
+ * of the seven, and the three it left out - discord-announce, edge, release -
+ * were free to sit on an older line indefinitely, which is the same drift the
+ * rest of this file exists to catch. */
+const WORKFLOWS = [
+  "ci.yml",
+  "discord-announce.yml",
+  "edge.yml",
+  "mod-canary.yml",
+  "pages.yml",
+  "publish-npm.yml",
+  "release.yml",
+] as const;
 
 describe("the pnpm version", () => {
   it("is pinned in packageManager, exactly, with no range", () => {

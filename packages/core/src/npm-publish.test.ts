@@ -116,7 +116,7 @@ describe("`npm pack --json`, whichever npm answers", () => {
    * keyed by package name. tools/check-npm-package.mjs read the array shape, so
    * on npm 12 it threw `object is not iterable` for EVERY package - including
    * core, which was green in CI the whole time, because CI ran it on the npm
-   * Node 24 bundles and only the release path installed npm@latest.
+   * the runner bundled and only the release path installed npm@latest.
    *
    * Fixing that without a test would just buy the next shape change the same
    * free pass, and this is a function nothing else can reach: the checker packs

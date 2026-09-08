@@ -40,7 +40,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
       - run: node .github/scripts/discord-announce.mjs
         env:
           REPO: ${{ github.repository }}
