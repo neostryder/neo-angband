@@ -309,9 +309,14 @@ export interface StoreScreenDeps {
    * picker over USE_INVEN|USE_EQUIP|USE_QUIVER|USE_FLOOR, filtered by `tester`
    * (store_will_buy_tester for a shop; accept-anything for the Home). The quiver
    * rides the pack in this gear model, so USE_QUIVER folds into the inventory
-   * pass. Returns the chosen source, or "empty"/"cancel".
+   * pass. `term` is the store's active screen surface, so the nested picker
+   * keeps its input ownership. Returns the chosen source, or "empty"/"cancel".
    */
-  sellPick: (prompt: string, tester: (obj: GameObject) => boolean) => Promise<SellPick>;
+  sellPick: (
+    term: GridSurface & GridPointerInput,
+    prompt: string,
+    tester: (obj: GameObject) => boolean,
+  ) => Promise<SellPick>;
   /**
    * store_process_command_key item-management commands (ui-store.c:823-863):
    * the store loop re-enables a subset of the dungeon inventory verbs. wield/
@@ -972,7 +977,7 @@ export async function runStore(
       : noSelling
         ? t("shop.sell.givePrompt", "Give which item? ")
         : t("shop.sell.sellPrompt", "Sell which item? ");
-    const picked = await deps.sellPick(sellPrompt, (obj) => game.willBuy(store, obj));
+    const picked = await deps.sellPick(term, sellPrompt, (obj) => game.willBuy(store, obj));
     if (picked.kind === "empty") {
       // store_sell reject (ui-store.c L499), shared by shops and the Home.
       storeSay(t("shop.sell.nothingWanted", "You have nothing that I want. "));

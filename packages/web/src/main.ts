@@ -2834,6 +2834,7 @@ async function selectTargetItem(
  * item is returned as the live object (game.sellFloor takes it directly).
  */
 async function storeSellPick(
+  host: GridSurface & GridPointerInput,
   prompt: string,
   tester: (o: GameObject) => boolean,
 ): Promise<SellPick> {
@@ -2847,7 +2848,7 @@ async function storeSellPick(
   // store_sell's get_item runs under CMD_DROP (ui-store.c:518), so the @-tag
   // command letter here is Drop's, not a sell-specific one.
   const chosen = await itemSelect(
-    term,
+    host,
     prompt.trim(),
     sources,
     0,

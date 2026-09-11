@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { newGear, gearAdd, objectNew, TV, FEAT } from "@rpgm-tools/neo-angband-core";
 import type { GameObject, ObjectKind, StartedGame, Store } from "@rpgm-tools/neo-angband-core";
 import {
@@ -9,7 +9,97 @@ import {
   SEL_ROGUE,
   contextMenuPosition,
   paintContextMenu,
+  runStore,
 } from "./shop";
+import { itemSelect } from "./overlay";
+import { clearInputDoor, dispatchUiInput } from "./input-door";
+import { resetRegionStack } from "./ui-stack";
+import type { GridPointerInput, GridSurface } from "./term";
+
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+interface StoreTerm extends GridSurface, GridPointerInput {
+  fireTap(col: number, row: number): void;
+}
+
+function storeTerm(): StoreTerm {
+  let tap: ((cell: { col: number; row: number }) => void) | undefined;
+  return {
+    size: () => ({ cols: 80, rows: 24 }),
+    invalidate: () => {},
+    flush: () => {},
+    clear: () => {},
+    setCursor: () => {},
+    hideCursor: () => {},
+    put: () => {},
+    print: () => {},
+    eraseToEol: () => {},
+    prt: () => {},
+    onCellTap: (listener) => {
+      tap = listener;
+      return () => {
+        if (tap === listener) tap = undefined;
+      };
+    },
+    fireTap: (col, row) => tap?.({ col, row }),
+  };
+}
+
+afterEach(() => {
+  clearInputDoor();
+  resetRegionStack();
+});
+
+describe("runStore sell picker surface", () => {
+  it("passes the store's active terminal surface into the inventory picker", async () => {
+    const host = storeTerm();
+    let pickerHost: (GridSurface & GridPointerInput) | undefined;
+    const store = {
+      feat: FEAT.STORE_GENERAL,
+      stock: [],
+      owner: { name: "Bilbo", maxCost: 5000 },
+    } as unknown as Store;
+    let itemSelected = false;
+    const game = {
+      state: {
+        gear: newGear(),
+        actor: { player: { au: 0, lev: 1 }, combat: { ammoTval: 0 } },
+        rng: { oneIn: () => true },
+      },
+      booted: { registries: { hints: [] } },
+      price: () => 0,
+      willBuy: () => true,
+    } as unknown as StartedGame;
+    const done = runStore(host, game, store, () => {}, {} as never, {
+      featureName: "General Store",
+      rogueLike: false,
+      examine: async () => {},
+      sellPick: async (term) => {
+        pickerHost = term;
+        const picked = await itemSelect(term, "Sell which item?", [
+          { label: "Inven", items: [{ label: "a Potion of Cure Light Wounds", tag: "a" }] },
+        ]);
+        itemSelected = picked?.source === 0 && picked.index === 0;
+        return { kind: "cancel" };
+      },
+    });
+
+    dispatchUiInput({ key: { key: "s", modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false } });
+    await tick();
+    expect(pickerHost).toBeDefined();
+    expect(pickerHost).not.toBe(host);
+    expect(pickerHost!.size()).toEqual(host.size());
+
+    host.fireTap(0, 1);
+    await tick();
+    expect(itemSelected).toBe(true);
+
+    dispatchUiInput({ key: { key: "Escape", modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false } });
+    await done;
+  });
+});
 
 /**
  * find_inven (store.c L1515-1644): the count of a stackable equivalent already
