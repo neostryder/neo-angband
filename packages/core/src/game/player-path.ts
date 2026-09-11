@@ -1310,6 +1310,7 @@ function beginPath(
 export function pathfindAction(state: GameState, cmd: PlayerCommand): number {
   const dest = cmd.args?.dest as Loc | undefined;
   if (!dest || !state.chunk.inBounds(dest)) return 0;
+  if ((state.actor.player.timed[TMD.CONFUSED] ?? 0) > 0) return 0;
   return beginPath(state, findPath(state, state.actor.grid, dest), dest);
 }
 

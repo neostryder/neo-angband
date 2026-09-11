@@ -10262,15 +10262,15 @@ inputEvents.addEventListener("keydown", (ev) => {
   advance();
 });
 
-// ---- Touch input: tap a map cell to step toward it (one square) ----------
-// The core game is UI-agnostic (decision 21); this is the web shell's native
-// touch scheme so the game is playable on a phone or tablet with no keyboard.
-// A tap resolves to the 8-way keypad direction from the player toward the
-// tapped square and queues a single walk. A richer controller is a future mod
-// (the "intelligent controller / mobile input" idea), not core.
+// ---- Mouse input: click a map cell to walk or pathfind --------------------
+// The core game is UI-agnostic (decision 21). A click next to the player is a
+// single walk, as upstream's mouse handler requires near trap-detection
+// borders. A distant, currently seen floor grid starts CMD_PATHFIND instead;
+// its existing run engine owns every later step and disturbance. Touch taps
+// resolve on release below and retain their one-step scheme.
 const regionPointerOwners = new WeakMap<PointerEvent, NonNullable<ReturnType<typeof regionInputAt>>>();
 canvas.addEventListener("pointerdown", (ev) => {
-  if (ev.pointerType === "touch") return; // touch resolves on release below
+  if (ev.pointerType === "touch" || ev.button !== 0) return; // touch resolves on release below
   if (scoresOpen || dead || modalDepth > 0) return; // a modal owns input
   const cell = term.cellAt(ev.clientX, ev.clientY);
   if (!cell) return;
@@ -10292,10 +10292,21 @@ canvas.addEventListener("pointerdown", (ev) => {
   const sx = col - vp.mapOriginX;
   const sy = row - vp.mapTop;
   if (sx < 0 || sy < 0 || sx >= vp.mapCols || sy >= vp.mapRows) return; // HUD tap
-  const dx = Math.sign(vp.camX + sx - state.actor.grid.x);
-  const dy = Math.sign(vp.camY + sy - state.actor.grid.y);
+  const grid = loc(vp.camX + sx, vp.camY + sy);
+  const dx = Math.sign(grid.x - state.actor.grid.x);
+  const dy = Math.sign(grid.y - state.actor.grid.y);
   if (dx === 0 && dy === 0) return;
   ev.preventDefault();
+  if (
+    (Math.abs(grid.x - state.actor.grid.x) > 1 || Math.abs(grid.y - state.actor.grid.y) > 1) &&
+    state.chunk.inBounds(grid) &&
+    squareIsSeen(state.chunk, grid) &&
+    state.chunk.isPassable(grid)
+  ) {
+    commandBuffer.push({ code: "pathfind", args: { dest: grid } });
+    advance();
+    return;
+  }
   // Keypad direction: 7 8 9 / 4 5 6 / 1 2 3, so dir = (1-dy)*3 + (dx+2).
   const dir = (1 - dy) * 3 + (dx + 2);
   void queueWalk(dir); // normal movement and hazard checks

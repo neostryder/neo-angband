@@ -79,6 +79,17 @@ describe("main.ts routes pointer gestures through region ownership", () => {
     expect(mainSource).toContain("longPressTarget");
   });
 
+  it("pathfinds to distant seen floor while adjacent clicks remain walks", () => {
+    const tap = listener("pointerdown", "queueWalk");
+
+    expect(tap).toContain('code: "pathfind"');
+    expect(tap).toContain("squareIsSeen(state.chunk, grid)");
+    expect(tap).toContain("state.chunk.isPassable(grid)");
+    expect(tap).toContain("Math.abs(grid.x - state.actor.grid.x) > 1");
+    expect(tap).toContain("Math.abs(grid.y - state.actor.grid.y) > 1");
+    expect(tap.indexOf('code: "pathfind"')).toBeLessThan(tap.indexOf("queueWalk("));
+  });
+
   /**
    * The command wheel is the LAST resort of the one hold rule, on both
    * pointers (#65). Asserted as an ordering for the same reason the guards

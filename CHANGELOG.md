@@ -61,6 +61,8 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] [UI] **Clicking a distant visible floor tile now pathfinds to it.** Adjacent clicks still take one careful step, while a longer route follows the normal running and disturbance rules. Reported by darkness.
+
 - [Visible] [UI] **The shared command wheel now follows the live game canvas.** Its former 360px cap left its labels too small in an ordinary desktop window. The wheel now measures the canvas whenever it opens or resizes, uses CSS pixels so high-density displays retain correct geometry, and preserves the larger touch share that keeps phone wedges finger-sized (neostryder/neo-angband#185).
 
 - [Visible] [UI] **Desktop mod bindings can now use Ctrl+=, Ctrl+- and Ctrl+0.** Electron's default application menu intercepted these chords before the game renderer could receive them, even while the menu bar was hidden. The desktop app now installs no application menu. Its otherwise unreachable DevTools and standard copy, paste, cut and select-all commands remain available through browser-process key handling; the default menu's other accelerators are removed (neostryder/neo-angband#182).

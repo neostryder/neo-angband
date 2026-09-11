@@ -480,6 +480,15 @@ describe("do_cmd_pathfind (travel)", () => {
     expect(state.cmdQueue!.length).toBe(0);
   });
 
+  it("does not start while confused", () => {
+    const state = makeState({ w: 40, h: 25, playerGrid: loc(5, 5) });
+    memorizeAll(state);
+    state.actor.player.timed[TMD.CONFUSED] = 5;
+    pump(state, travelRegistry(), { code: "pathfind", args: { dest: loc(15, 12) } });
+    expect(locEq(state.actor.grid, loc(5, 5))).toBe(true);
+    expect(state.cmdQueue?.length ?? 0).toBe(0);
+  });
+
   it("auto-opens a closed door in the path and continues", () => {
     const state = makeState({ w: 12, h: 7, playerGrid: loc(1, 3) });
     corridor(state, 3, 7);
