@@ -142,6 +142,22 @@ export interface GridReflowOptions {
   readonly snapViewportToEven: boolean;
 }
 
+/** Construction policy for one canvas-backed terminal. */
+export interface GlyphTermOptions {
+  minCols: number;
+  minRows: number;
+  fontPx: number;
+  reflow: boolean;
+  snapViewportToEven?: boolean;
+  bitmapFont?: BitmapFontData | null;
+  /**
+   * Element whose client rectangle this terminal occupies. Omitted for the
+   * original full-viewport behavior. A bounded element lets independent terms
+   * share one browser window without drawing over one another.
+   */
+  boundsElement?: HTMLElement;
+}
+
 /** One serialized grid cell for appearance-parity snapshots (snapshotColored). */
 export interface ColoredCell {
   ch: string;
@@ -386,6 +402,8 @@ export class GlyphTerm
     SurfaceSizeEvents,
     GridGeometry
 {
+  private readonly canvas: HTMLCanvasElement;
+  private readonly options: GlyphTermOptions;
   private ctx: CanvasRenderingContext2D;
   /** Term_gotoxy's cursor cell, and whether Term_set_cursor showed it. */
   private cursorX = 0;
@@ -463,34 +481,17 @@ export class GlyphTerm
    */
   private painted = 0;
 
-  constructor(
-    private canvas: HTMLCanvasElement,
-    private options: {
-      minCols: number;
-      minRows: number;
-      fontPx: number;
-      /**
-       * Opt-in responsive mode (a future mobile QoL mod). When true the grid
-       * scales to fill the window (floor(w/cellW) x floor(h/cellH), with the
-       * minCols/minRows floor) as it did before REND-1. When false (the
-       * default) the grid is the fixed 80x24 main term, letterboxed.
-       */
-      reflow: boolean;
-      snapViewportToEven?: boolean;
-      /**
-       * The bitmap font to blit (FONT-1). Omit for the faithful default
-       * (FONT_16X24); pass null to disable bitmap blitting and use FONT_STACK.
-       */
-      bitmapFont?: BitmapFontData | null;
-    } = {
+  constructor(canvas: HTMLCanvasElement, options: Partial<GlyphTermOptions> = {}) {
+    this.canvas = canvas;
+    this.options = {
       // The responsive floor, used only in reflow (mobile opt-in) mode.
       minCols: 32,
       minRows: 18,
       fontPx: 18,
       reflow: false,
       snapViewportToEven: false,
-    },
-  ) {
+      ...options,
+    };
     /* alpha: false. The terminal paints its own opaque background over every
      * pixel it owns, so there is nothing for the compositor to blend the canvas
      * against - and saying so lets it skip that blend for the whole surface
@@ -499,7 +500,7 @@ export class GlyphTerm
     const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) throw new Error("canvas 2d context unavailable");
     this.ctx = ctx;
-    if (options.bitmapFont !== undefined) this.font = options.bitmapFont;
+    if (this.options.bitmapFont !== undefined) this.font = this.options.bitmapFont;
     this.fit(true);
     const refit = () => {
       if (!this.fit()) return;
@@ -514,7 +515,7 @@ export class GlyphTerm
     window.visualViewport?.addEventListener("scroll", refit);
     // Some embeds start at 0x0 and never fire window resize; observe the
     // document element so the grid appears as soon as there is space.
-    new ResizeObserver(refit).observe(document.documentElement);
+    new ResizeObserver(refit).observe(this.options.boundsElement ?? document.documentElement);
     // Tap plumbing for modals (onCellTap): registered ONCE here, ahead of the
     // shell's own canvas pointerdown listeners (main.ts adds tap-to-move and
     // long-press after constructing the term), so an active modal handler can
@@ -681,10 +682,11 @@ export class GlyphTerm
   private fit(force = false): boolean {
     const dpr = window.devicePixelRatio || 1;
     const visual = window.visualViewport;
-    const w = visual?.width ?? window.innerWidth;
-    const h = visual?.height ?? window.innerHeight;
-    const x = visual?.offsetLeft ?? 0;
-    const y = visual?.offsetTop ?? 0;
+    const bounds = this.options.boundsElement?.getBoundingClientRect();
+    const w = bounds?.width ?? visual?.width ?? window.innerWidth;
+    const h = bounds?.height ?? visual?.height ?? window.innerHeight;
+    const x = bounds?.left ?? visual?.offsetLeft ?? 0;
+    const y = bounds?.top ?? visual?.offsetTop ?? 0;
     const viewport = `${dpr}:${w}:${h}:${x}:${y}`;
     if (!force && viewport === this.fittedViewport) return false;
     this.fittedViewport = viewport;

@@ -493,9 +493,10 @@ const parseColor: Handler = (fields, sink) => {
 };
 
 /**
- * parse_prefs_window (ui-prefs.c L1054-1083). The port has ONE terminal, so the
- * bound is ANGBAND_TERM_MAX purely to keep the grammar's error behaviour; the
- * sink is what decides whether a subwindow flag means anything.
+ * parse_prefs_window (ui-prefs.c L1054-1083). The web shell now has two typed
+ * subwindows, but does not yet expose upstream's arbitrary eight-term flag
+ * matrix to this sink. The bound keeps the full grammar's error behaviour for
+ * that follow-up and for other front ends.
  */
 const ANGBAND_TERM_MAX = 8;
 /** window_flag_desc[] length (ui-prefs.h / ui-display.c window_flag_desc). */
@@ -1135,9 +1136,10 @@ export function dumpUiEntryRenderers(deps: DumpDeps): string {
 /**
  * option_dump (ui-prefs.c L352-386): the SUBWINDOW flag set, not the game
  * options - the row that drives it is labelled "Save subwindow setup to pref
- * file". The port is one terminal with no subwindows, so there is nothing to
- * enumerate and the dump is its header alone, which is exactly what upstream
- * writes when no angband_term[i>0] exists (a single-window build).
+ * file". The web shell's first two typed panels persist in localStorage; an
+ * arbitrary per-term flag set is not modelled yet, so there is still nothing
+ * for this core writer to enumerate. It returns the header alone until that
+ * remaining preference-file integration lands.
  */
 export function optionDump(): string {
   return "# Options\n\n";

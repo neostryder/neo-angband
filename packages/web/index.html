@@ -23,16 +23,67 @@
         background: #101014;
         overflow: hidden;
       }
+      #game-layout {
+        position: fixed;
+        inset: 0;
+        display: flex;
+      }
+      #game-view {
+        position: relative;
+        flex: 1 1 auto;
+        min-width: 0;
+      }
       #game {
         display: block;
-        width: 100vw;
-        height: 100vh;
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+      }
+      #subwindows {
+        flex: 0 0 clamp(280px, 32vw, 520px);
+        min-width: 0;
+        display: grid;
+        grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
+        border-left: 1px solid #50505a;
+        background: #101014;
+      }
+      #subwindows[data-count="1"] {
+        grid-template-rows: minmax(0, 1fr);
+      }
+      #subwindows[hidden],
+      .subwindow-slot[hidden] {
+        display: none;
+      }
+      .subwindow-slot {
+        position: relative;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .subwindow-slot + .subwindow-slot {
+        border-top: 1px solid #50505a;
+      }
+      .subwindow-slot canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
         image-rendering: pixelated;
       }
     </style>
   </head>
   <body>
-    <canvas id="game"></canvas>
+    <div id="game-layout">
+      <main id="game-view">
+        <canvas id="game"></canvas>
+      </main>
+      <aside id="subwindows" aria-label="Subwindows" hidden>
+        <section id="subwindow-monsters-slot" class="subwindow-slot" aria-label="Visible monsters" hidden>
+          <canvas id="subwindow-monsters"></canvas>
+        </section>
+        <section id="subwindow-messages-slot" class="subwindow-slot" aria-label="Message history" hidden>
+          <canvas id="subwindow-messages"></canvas>
+        </section>
+      </aside>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

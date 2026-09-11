@@ -182,6 +182,51 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     await done;
   });
 
+  it("toggles the two supported subwindows independently from upstream's w row", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const enabled = new Map<string, boolean>([
+      ["messages", false],
+      ["monsters", false],
+    ]);
+    const subwindows = {
+      choices: [
+        { id: "messages", label: "Display messages" },
+        { id: "monsters", label: "Display monster list" },
+      ],
+      enabled: (id: string) => enabled.get(id) ?? false,
+      set: (id: string, value: boolean) => void enabled.set(id, value),
+    };
+    const done = runOptionsMenu(
+      term,
+      makeState(),
+      async () => {},
+      undefined,
+      undefined,
+      undefined,
+      subwindows,
+    );
+    expect(term.snapshot().join("\n")).toContain("w) Subwindow setup");
+    press(win, "w");
+    await tick();
+    expect(term.snapshot().join("\n")).toContain(". Display messages");
+    press(win, "Enter");
+    await tick();
+    expect(enabled.get("messages")).toBe(true);
+    expect(enabled.get("monsters")).toBe(false);
+    expect(term.snapshot().join("\n")).toContain("X Display messages");
+    press(win, "ArrowDown");
+    press(win, "Enter");
+    await tick();
+    expect(enabled.get("messages")).toBe(true);
+    expect(enabled.get("monsters")).toBe(true);
+    press(win, "Escape");
+    await tick();
+    press(win, "Escape");
+    await done;
+  });
+
   it("(a) lists every INTERFACE option (table order) and excludes birth/cheat", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;

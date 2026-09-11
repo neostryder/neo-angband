@@ -106,6 +106,7 @@ import {
   winnerScreen,
   ctimeStamp,
   monsterListScreenLines,
+  monsterListSubwindowLines,
   monsterListScreen,
   magicBooks,
   packMenu,
@@ -1709,6 +1710,18 @@ describe("monsterListScreenLines ([, ui-mon-list.c)", () => {
     const lines = monsterListScreenLines(state, 80);
     expect(lines).toHaveLength(1);
     expect(lines[0]!.text).toContain("hallucinations are too wild");
+  });
+
+  it("fits the static subwindow and reserves the upstream others row", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const races = monReg.races.filter((race) => race.name && !race.flags.has(RF.UNIQUE)).slice(0, 6);
+    races.forEach((race, index) => {
+      state.monsters.push(fakeVisibleMon(race, loc(21 + index, 12)));
+    });
+    const lines = monsterListSubwindowLines(state, 4, 40);
+    expect(lines).toHaveLength(4);
+    expect(lines[0]!.text).toBe("You can see 6 monsters:");
+    expect(lines[3]!.text).toBe("      ...and 4 others.");
   });
 });
 

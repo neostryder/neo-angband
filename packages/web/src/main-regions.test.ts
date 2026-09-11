@@ -197,6 +197,14 @@ const TERM_CLEAR_COMPOSITOR: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
+ * Full clears of independent terminals. These surfaces do not overlap the main
+ * term or its region stack, so repainting one cannot erase another owner.
+ */
+const TERM_CLEAR_INDEPENDENT: Readonly<Record<string, readonly string[]>> = {
+  "subwindows.ts": ["paintSubwindowLines"],
+};
+
+/**
  * Sites whose erase is A REGION'S OWN.
  *
  * The source text of these painters is unchanged and so is the picture: `term`
@@ -299,7 +307,12 @@ const TERM_CLEAR_PENDING: Readonly<Record<string, readonly string[]>> = {
  */
 const TERM_CLEAR_ALLOWED: Readonly<Record<string, readonly string[]>> = (() => {
   const merged: Record<string, string[]> = {};
-  for (const part of [TERM_CLEAR_COMPOSITOR, TERM_CLEAR_REGIONS, TERM_CLEAR_PENDING]) {
+  for (const part of [
+    TERM_CLEAR_COMPOSITOR,
+    TERM_CLEAR_INDEPENDENT,
+    TERM_CLEAR_REGIONS,
+    TERM_CLEAR_PENDING,
+  ]) {
     for (const [file, sites] of Object.entries(part)) {
       (merged[file] ??= []).push(...sites);
     }
@@ -428,9 +441,10 @@ describe("term.clear() is a ratchet: the list of full-screen erases may only shr
      * with no push behind it anywhere in the file, is exactly the accident this
      * catches, and it is the accident a table of claims invites. */
     expect(siteCount(TERM_CLEAR_COMPOSITOR)).toBe(1);
+    expect(siteCount(TERM_CLEAR_INDEPENDENT)).toBe(1);
     expect(siteCount(TERM_CLEAR_REGIONS)).toBe(31);
     expect(siteCount(TERM_CLEAR_PENDING), "MOD_REACH.md's gap-21 row quotes this").toBe(2);
-    expect(siteCount(TERM_CLEAR_ALLOWED)).toBe(34);
+    expect(siteCount(TERM_CLEAR_ALLOWED)).toBe(35);
 
     for (const file of Object.keys(TERM_CLEAR_REGIONS)) {
       const text = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");

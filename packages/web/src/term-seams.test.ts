@@ -239,6 +239,26 @@ describe("cell edges land on device pixels", () => {
 });
 
 describe("runtime responsive grid", () => {
+  it("fits an independent term to its assigned layout element", () => {
+    const canvas = stubCanvas();
+    const bounds = {
+      getBoundingClientRect: () => ({ left: 900, top: 40, width: 360, height: 300 }),
+    } as unknown as HTMLElement;
+    const term = new GlyphTerm(canvas, {
+      boundsElement: bounds,
+      reflow: true,
+      minCols: 20,
+      minRows: 4,
+      fontPx: 16,
+    });
+    expect(canvas.width).toBe(396);
+    expect(canvas.height).toBe(330);
+    expect(canvas.style.left).toBe("900px");
+    expect(canvas.style.top).toBe("40px");
+    expect(term.size().cols).toBeGreaterThanOrEqual(20);
+    expect(term.size().rows).toBeGreaterThanOrEqual(4);
+  });
+
   it("changes the real addressable grid and returns to fixed mode", () => {
     const term = new GlyphTerm(stubCanvas(), {
       minCols: 32,

@@ -2406,6 +2406,112 @@ export function monsterListScreenLines(
 }
 
 /**
+ * monster_list_show_subwindow (ui-mon-list.c L354-376): the non-interactive
+ * visible-monster list fitted to an independent term. Unlike the interactive
+ * '[' screen, this has no title or footer and reserves an "...and N others."
+ * row when the term is too short.
+ */
+export function monsterListSubwindowLines(
+  state: GameState,
+  height: number,
+  width: number,
+): ScreenLine[] {
+  if (height < 1 || width < 1) return [];
+  const p = state.actor.player;
+  if ((p.timed[TMD.IMAGE] ?? 0) > 0) {
+    const text = t(
+      "screens.monsterList.hallucinating",
+      "Your hallucinations are too wild to see things clearly.",
+    ).slice(0, width);
+    return [{ text, color: colorToCss(COLOUR_ORANGE) }];
+  }
+
+  const list = monsterListCollect(state);
+  monsterListSort(list, monsterListStandardCompare);
+  let losLines = list.totalEntries[MONSTER_LIST_SECTION_LOS] ?? 0;
+  let espLines = list.totalEntries[MONSTER_LIST_SECTION_ESP] ?? 0;
+  const headerLines = espLines > 0 ? 3 : 1;
+  const linesRemaining = height - headerLines - losLines;
+  if (linesRemaining < espLines) espLines = Math.max(linesRemaining - 1, 0);
+  if (linesRemaining < 0) losLines = Math.max(0, losLines - Math.abs(linesRemaining) - 1);
+  if (headerLines >= height) {
+    losLines = 0;
+    espLines = 0;
+  }
+
+  const sectionLines = (
+    section: number,
+    linesToDisplay: number,
+    prefix: string,
+    showOthers: boolean,
+  ): ScreenLine[] => {
+    const total = list.totalMonsters[section] ?? 0;
+    const entries = list.entries.filter((entry) => (entry.count[section] ?? 0) > 0);
+    if (total === 0) {
+      return [{ text: t("screens.monsterList.sectionEmpty", "{prefix} no monsters.", { prefix }) }];
+    }
+    const othersLabel = showOthers ? `${t("screens.monsterList.other", "other")} ` : "";
+    let caption = t(
+      "screens.monsterList.sectionCaption",
+      "{prefix} {count, plural, one {# {othersLabel}monster} other {# {othersLabel}monsters}}:",
+      { prefix, count: total, othersLabel },
+    );
+    if (linesToDisplay === 0 && caption.endsWith(":")) caption = `${caption.slice(0, -1)}.`;
+    const lines: ScreenLine[] = [{ text: caption.slice(0, width) }];
+    for (const entry of entries.slice(0, linesToDisplay)) {
+      const count = entry.count[section] ?? 0;
+      const location = monsterListLocation(entry, section);
+      const asleepN = entry.asleep[section] ?? 0;
+      const asleep =
+        asleepN > 0 && count > 1
+          ? ` (${asleepN} asleep)`
+          : asleepN === 1 && count === 1
+            ? " (asleep)"
+            : "";
+      const fullWidth = Math.max(0, width - 2 - location.length - 1);
+      const name = clipTo(getMonName(entry.race, count), Math.max(0, fullWidth - asleep.length));
+      const detail = `${name}${asleep}`.padEnd(fullWidth).slice(0, fullWidth) + location;
+      const glyphColor = colorToCss(entry.attr || entry.race.dAttr);
+      const lineColor = colorToCss(monsterListEntryLineColor(entry, state.chunk.depth));
+      const text = `${entry.race.dChar} ${detail}`.slice(0, width);
+      lines.push({
+        text,
+        runs: [
+          { text: entry.race.dChar.slice(0, width), color: glyphColor },
+          { text: text.slice(1), color: lineColor },
+        ],
+      });
+    }
+    if (linesToDisplay > 0 && linesToDisplay < entries.length) {
+      const remaining = entries
+        .slice(linesToDisplay)
+        .reduce((sum, entry) => sum + (entry.count[section] ?? 0), 0);
+      lines.push({ text: `      ...and ${remaining} others.`.slice(0, width) });
+    }
+    return lines;
+  };
+
+  const lines = sectionLines(
+    MONSTER_LIST_SECTION_LOS,
+    losLines,
+    t("screens.monsterList.youCanSee", "You can see"),
+    false,
+  );
+  if ((list.totalEntries[MONSTER_LIST_SECTION_ESP] ?? 0) > 0) {
+    lines.push({ text: "" });
+    lines.push(
+      ...sectionLines(
+        MONSTER_LIST_SECTION_ESP,
+        espLines,
+        t("screens.monsterList.youAreAwareOf", "You are aware of"),
+        (list.totalMonsters[MONSTER_LIST_SECTION_LOS] ?? 0) > 0,
+      ),
+    );
+  }
+  return lines.slice(0, height);
+}
+
+/**
  * ignore_tval (ui-options.c L1699): the eligible categories - only tvals
  * whose object_base actually carries svals (kb_info[tval].num_svals > 0).
  */

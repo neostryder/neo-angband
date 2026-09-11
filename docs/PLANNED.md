@@ -35,8 +35,8 @@ through the QoL HUD; semantic actions for remaining knowledge, character,
 store and advanced editor screens; named per-mod presets, import/export and
 hand preference; full-character phone acceptance. Font/tile sizing, pinch,
 pan and fitted sidebar reflow already belong to the shipped QoL display
-controller. Upstream count prefixes, literal keymap bypass and subwindow
-toggle remain keyboard-shell parity gaps.
+controller. Upstream count prefixes, literal keymap bypass and the `^E`
+inventory/equipment subwindow flip remain keyboard-shell parity gaps.
 
 ---
 
@@ -68,6 +68,23 @@ an open menu, which also means a long press inside such a modal never reaches
 the wheel. A right-click does, because `contextmenu` is not the event being
 consumed. Closing it means giving the term's tap owner a way to decline a hold
 while still claiming a tap.
+
+---
+
+## Complete subwindow coverage (#191)
+
+The first subwindow increment adds two separately configurable canvas terms in
+a right-hand column: message history and the static visible-monster list. These
+are upstream's Term-1 and Term-3 defaults, both start disabled so the former
+single-window layout is unchanged, and `=` -> `w` toggles either one. The
+message term keeps its newest entries at the bottom and the monster term uses
+upstream's height fitting and `...and N others.` row.
+
+Remaining upstream types: inventory, equipment, basic/extra/compact/topbar
+player displays, dungeon map, overhead view, monster recall, object recall,
+status, and the object list. The arbitrary eight-term flag matrix, assignment of
+multiple flags to a term, player-controlled panel sizing/placement, `window:`
+pref-file loading and dumping, and the `^E` inventory/equipment flip also remain.
 
 ---
 
@@ -143,10 +160,10 @@ documents. Recorded here so the next audit does not repeat the reading:
   citing a previously-fixed bug in its own comment.
 - `finish_parse_prefs` (`ui-prefs.c` L1162): merges newly-parsed subwindow flags
   over the existing set, so a term the pref file never mentions keeps its prior
-  flags. The port has one terminal and no persistent per-term state to merge
-  into; `packages/core/src/visuals/prefs.ts` (`parseWindow`) already records
-  this as a no-port-subject case, the same shape as `world`'s hook among the
-  first 33.
+  flags. The initial message and monster-list terms persist two named switches,
+  not the arbitrary per-term matrix this hook merges. `packages/core/src/visuals/prefs.ts`
+  (`parseWindow`) keeps the full grammar, while applying and dumping those flags
+  remains in the subwindow worklist above.
 
 Tracked as issue #1.
 

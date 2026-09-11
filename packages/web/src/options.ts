@@ -7,8 +7,8 @@
  * a STABLE letter (a, b, x, w, i, {, d, h, m, o, s, t, u, p, e, c, v) that is
  * not simply the row's position (there are blank separator rows too), and
  * do_cmd_options itself sets MN_CASELESS_TAGS so either case of a tag
- * selects the row. This shell builds only the rows that make sense without a
- * filesystem or subwindows, but keeps their upstream letters:
+ * selects the row. This shell builds the rows that make sense for its current
+ * display and filesystem support, while keeping their upstream letters:
  *   (a) User interface options  - option_toggle_menu(OP_INTERFACE)
  *   (b) Birth (difficulty) options - option_toggle_menu(OPT_PAGE_BIRTH+10),
  *       but since this screen only runs IN-GAME (birth itself is birth.ts's
@@ -18,6 +18,8 @@
  *       SCOPE 2026-07-16 (the earlier "decision 16 omission" was rescinded).
  *       Toggling a cheat option on couples its score_* twin on in OptionState,
  *       invalidating the character's score exactly as upstream option_set does.
+ *   (w) Subwindow setup - do_cmd_options_win, limited to the two independent
+ *       terms the web shell currently provides: messages and monster list.
  *   (i) Item ignoring setup - do_cmd_options_item, already built as
  *       openIgnoreSetup() (main.ts); this screen only calls it, so '='
  *       reclaims ownership of the top-level menu while sibling gap #51's
@@ -32,7 +34,6 @@
  *       option, so it lives in the web layer (main.ts, localStorage) and is
  *       injected here exactly like the graphics tile-mode selector below.
  * Omitted (documented, not silently dropped):
- *   (w) Subwindow setup - the port is ONE terminal, not eight.
  *   ({) Auto-inscription - built, but reachable only from the knowledge
  *       browser ('~'), which is the same screen upstream's row opens.
  * The rest of that list is no longer omitted: (e) keymaps, (c) colours,
@@ -770,6 +771,46 @@ export interface SidebarModeMenu {
   set: (index: number) => void;
 }
 
+/** The supported subset of do_cmd_options_win's independent term flags. */
+export interface SubwindowMenu {
+  choices: readonly { id: string; label: string }[];
+  enabled: (id: string) => boolean;
+  set: (id: string, enabled: boolean) => void;
+}
+
+/**
+ * (w) Subwindow setup. Each supported flag is independently toggleable and
+ * applies immediately, matching do_cmd_options_win's live X/dot matrix while
+ * omitting the term and flag combinations this increment does not implement.
+ */
+async function runSubwindowPage(
+  term: GridSurface & GridPointerInput,
+  subwindows: SubwindowMenu,
+): Promise<void> {
+  let cursor = 0;
+  for (;;) {
+    const items: MenuItem[] = subwindows.choices.map((choice) => ({
+      label: `${subwindows.enabled(choice.id) ? "X" : "."} ${choice.label}`,
+    }));
+    const idx = await selectFromMenu(
+      term,
+      "core:subwindows",
+      t("options.subwindows.title", "Subwindow setup"),
+      items,
+      t("options.subwindows.footer", "[ Enter: toggle, ESC to return ]"),
+      {
+        initialCursor: cursor,
+        onHighlight: (i) => {
+          cursor = i;
+        },
+      },
+    );
+    if (idx === null) return;
+    const choice = subwindows.choices[idx];
+    if (choice) subwindows.set(choice.id, !subwindows.enabled(choice.id));
+  }
+}
+
 /**
  * do_cmd_sidebar_mode's loop (ui-options.c L1085): show the current mode and
  * cycle Left -> Top -> None -> Left on any key, ESC to return. Upstream mutates
@@ -908,13 +949,13 @@ export async function runOptionsMenu(
   sidebar?: SidebarModeMenu,
   prefs?: PrefsUiCtx,
   openModOptions?: () => Promise<void>,
+  subwindows?: SubwindowMenu,
 ): Promise<void> {
   // Upstream's option_actions[] in ui-options.c:2036-2058, in ITS order:
   //   a b x w i {   d h m o   s t u   p e c v
-  // The rows below are that sequence with the ones a browser cannot offer
+  // The rows below are that sequence with the ones this shell cannot offer
   // removed. What is dropped and why (the full display-lever inventory is in
   // docs/INSTALL.md, "Screen and display controls"):
-  //   w  Subwindow setup     - the port is ONE surface, not eight terms.
   //   {  Auto-inscription    - the capability is present but reachable only from
   //                            the knowledge browser (`~`), the same screen
   //                            upstream's row opens. Missing shortcut, not
@@ -922,8 +963,8 @@ export async function runOptionsMenu(
   // The pref-file rows s / t / u / p / v are present (prefs-ui.ts): they write
   // into and read back out of the virtual ANGBAND_DIR_USER, which is what they
   // do upstream. `s` dumps the subwindow flag set, which for a one-terminal
-  // build is its header alone - exactly what option_dump writes when no
-  // angband_term[i>0] exists.
+  // build remains its header alone. Arbitrary term/flag pref assignments are a
+  // follow-up to the two locally persisted flags this screen exposes.
   // There is deliberately NO graphics entry - upstream picks graphics in the
   // frontend menu bar, not in do_cmd_options; the web shell mirrors that by
   // placing tile selection in the in-game menu.
@@ -931,6 +972,9 @@ export async function runOptionsMenu(
     { label: t("options.menu.interface", "User interface options"), tag: "a" },
     { label: t("options.menu.birth", "Birth (difficulty) options"), tag: "b" },
     { label: t("options.menu.cheat", "Cheat options"), tag: "x" },
+    ...(subwindows
+      ? [{ label: t("options.menu.subwindows", "Subwindow setup"), tag: "w" }]
+      : []),
     { label: t("options.menu.ignore", "Item ignoring setup"), tag: "i" },
     { label: t("options.menu.delayFactor", "Set base delay factor"), tag: "d" },
     { label: t("options.menu.hitpointWarn", "Set hitpoint warning"), tag: "h" },
@@ -985,6 +1029,9 @@ export async function runOptionsMenu(
         break;
       case "x":
         await runCheatPage(term, state);
+        break;
+      case "w":
+        if (subwindows) await runSubwindowPage(term, subwindows);
         break;
       case "i":
         await openIgnoreSetup();

@@ -519,6 +519,15 @@ import {
 } from "./game-menu";
 import { MessageLog, messageTypeCode, packMessages, pushTypedMessage } from "./messages";
 import {
+  applySubwindowVisibility,
+  MessageSubwindowPainter,
+  paintMonsterSubwindow,
+  readSubwindowSettings,
+  SUBWINDOW_CHOICES,
+  writeSubwindowSettings,
+  type SubwindowId,
+} from "./subwindows";
+import {
   inventoryScreen,
   equipmentScreen,
   quiverScreen,
@@ -666,7 +675,7 @@ import { readStoredLocale } from "./locale-store";
 import { chooseCommand, groupCommands, keyForKeyset, transformKeypressCommandTable } from "./command-menu";
 import type { CommandCategory } from "./command-menu";
 import { runOptionsMenu, runTileModePage } from "./options";
-import type { TileModeMenu, SidebarModeMenu } from "./options";
+import type { TileModeMenu, SidebarModeMenu, SubwindowMenu } from "./options";
 import { loadColorPrefs, saveColorPrefs } from "./colors";
 import {
   dispatchUiInput,
@@ -920,7 +929,34 @@ async function rediscoverModSources(): Promise<void> {
 }
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
-const term = new GlyphTerm(canvas);
+const gameView = document.getElementById("game-view") as HTMLElement;
+const subwindowColumn = document.getElementById("subwindows") as HTMLElement;
+const messageSubwindowSlot = document.getElementById("subwindow-messages-slot") as HTMLElement;
+const monsterSubwindowSlot = document.getElementById("subwindow-monsters-slot") as HTMLElement;
+const messageSubwindowCanvas = document.getElementById("subwindow-messages") as HTMLCanvasElement;
+const monsterSubwindowCanvas = document.getElementById("subwindow-monsters") as HTMLCanvasElement;
+let subwindowSettings = readSubwindowSettings(localStorage);
+applySubwindowVisibility(
+  subwindowColumn,
+  messageSubwindowSlot,
+  monsterSubwindowSlot,
+  subwindowSettings,
+);
+const term = new GlyphTerm(canvas, { boundsElement: gameView });
+const messageSubwindowTerm = new GlyphTerm(messageSubwindowCanvas, {
+  boundsElement: messageSubwindowSlot,
+  reflow: true,
+  minCols: 24,
+  minRows: 4,
+  fontPx: 16,
+});
+const monsterSubwindowTerm = new GlyphTerm(monsterSubwindowCanvas, {
+  boundsElement: monsterSubwindowSlot,
+  reflow: true,
+  minCols: 24,
+  minRows: 4,
+  fontPx: 16,
+});
 /* THE PANEL LAYER, wired here rather than beside the mod boot, because both of
  * these are about the page and neither depends on a game existing. A mod's DOM
  * panel needs the input door to stand down for the field the player is typing
@@ -2364,6 +2400,47 @@ let modalDepth = 0;
  */
 let gameScreenLive = false;
 
+const messageSubwindowPainter = new MessageSubwindowPainter();
+
+/** Repaint the enabled independent terms from the same completed game state. */
+function renderSubwindows(): void {
+  if (!gameScreenLive) {
+    if (subwindowSettings.messages) messageSubwindowTerm.clear();
+    if (subwindowSettings.monsters) monsterSubwindowTerm.clear();
+    return;
+  }
+  if (subwindowSettings.messages) messageSubwindowPainter.paint(messageSubwindowTerm, msglog);
+  if (subwindowSettings.monsters) paintMonsterSubwindow(monsterSubwindowTerm, state);
+}
+
+const subwindowMenu: SubwindowMenu = {
+  choices: SUBWINDOW_CHOICES,
+  enabled: (id) => subwindowSettings[id as SubwindowId],
+  set: (id, enabled) => {
+    if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
+    subwindowSettings = { ...subwindowSettings, [id]: enabled };
+    writeSubwindowSettings(localStorage, subwindowSettings);
+    applySubwindowVisibility(
+      subwindowColumn,
+      messageSubwindowSlot,
+      monsterSubwindowSlot,
+      subwindowSettings,
+    );
+    /* Flex layout resolves synchronously. The resize event lets all three
+     * GlyphTerms remeasure their own bounds immediately instead of waiting for
+     * ResizeObserver's next delivery. */
+    window.dispatchEvent(new Event("resize"));
+    renderSubwindows();
+  },
+};
+
+messageSubwindowTerm.onSizeChanged(() => {
+  if (subwindowSettings.messages) renderSubwindows();
+});
+monsterSubwindowTerm.onSizeChanged(() => {
+  if (subwindowSettings.monsters) renderSubwindows();
+});
+
 /**
  * A BACKGROUND repaint: a redraw nothing the player just did asked for, arriving
  * asynchronously - a graphics pack's atlas finishing its fetch, its prefs
@@ -2937,7 +3014,15 @@ async function runContextMenuPlayerOther(): Promise<void> {
       await openIgnoreSetup();
       break;
     case "options":
-      await runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx(), openModOptions);
+      await runOptionsMenu(
+        term,
+        state,
+        openIgnoreSetup,
+        sidebarModeMenu,
+        prefsUiCtx(),
+        openModOptions,
+        subwindowMenu,
+      );
       autosave(true);
       break;
     case "help":
@@ -6513,7 +6598,15 @@ async function gameMenuOnce(): Promise<boolean> {
        * over it would hide the confirmation it just produced. */
       return false;
     case "options":
-      await runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx(), openModOptions);
+      await runOptionsMenu(
+        term,
+        state,
+        openIgnoreSetup,
+        sidebarModeMenu,
+        prefsUiCtx(),
+        openModOptions,
+        subwindowMenu,
+      );
       autosave(true); // flush any option change to the per-slot save
       break;
     case "graphics":
@@ -8803,6 +8896,7 @@ function render(targeting?: TargetingOverlay): void {
    * while the player is moving, which reads as the mod being broken and is
    * reproducible nowhere else. Nothing in core registers a painter today; this
    * is the seam being put in the one place it can be correct in. */
+  renderSubwindows();
   paintRegionStack(term);
 }
 
@@ -9770,7 +9864,7 @@ function buildCommandTable(): CommandRow[] {
     { desc: "Character description", cat: "Information", o: "C", act: () => void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())) },
     { desc: "Check knowledge", cat: "Information", o: "~", act: () => void openModal(openKnowledgeMenu) },
     // Utility/assorted (cmd_util, ui-game.c:196-203).
-    { desc: "Interact with options", cat: "Utility", o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx(), openModOptions)).then(() => autosave(true)); } },
+    { desc: "Interact with options", cat: "Utility", o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx(), openModOptions, subwindowMenu)).then(() => autosave(true)); } },
     { desc: "Retire character and quit", cat: "Utility", o: "Q", act: () => void openModal(retireCmd) },
     { desc: "Save \"screen dump\"", cat: "Utility", o: ")", act: () => screenDumpCmd() },
     // Hidden commands (cmd_hidden, ui-game.c:211-223).

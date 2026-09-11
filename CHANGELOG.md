@@ -50,6 +50,16 @@ still calls itself.
 
 ### Added
 
+- [Visible] [UI] **Message history and visible monsters can now stay open beside
+  the main play view.** The new `=` -> `w` Subwindow setup enables either
+  independently in its own right-hand canvas term, remembers the choices, and
+  leaves both off by default so the existing single-window layout is unchanged.
+  Messages follow upstream's bottom-aligned history display, and the monster
+  term follows its static list sizing and overflow count. This increment does
+  not add inventory, equipment, player, map, overhead, recall, status, or object
+  list terms, arbitrary term/flag assignment, pref-file window flags, movable
+  panel geometry, or the `^E` inventory/equipment flip. Reported by darkness.
+
 - [Internal] [Docs] **Every mod repository now carries a `docs/README.md` quick
   reference, and the mod table in this repository's README links each mod at
   its own.** One page per mod, in the same shape for all eight: every switch it

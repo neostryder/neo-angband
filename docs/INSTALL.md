@@ -570,7 +570,7 @@ Notes:
 
 ## Screen and display controls
 
-The terminal is a **fixed 80 columns x 24 rows**, drawn at the largest whole
+The main terminal is a **fixed 80 columns x 24 rows**, drawn at the largest whole
 cell size that fits your window and centred, so the surrounding area is
 letterbox. 80x24 is both upstream's default main-window size and its enforced
 minimum (`MIN_COLS_MAIN` / `MIN_ROWS_MAIN`, `reference/src/main-sdl2.c:139`), and
@@ -589,11 +589,12 @@ Every lever upstream gives a player over the display, and where it is here:
 | Keymaps, colours | `=` -> **Edit keymaps** / **Edit colours** |
 | **Resize the main window for a bigger map** | **Not yet.** The grid stays 80x24 and scales; it does not grow into a larger window. |
 | **Big-tile multiplier** (`tile_width` / `tile_height`) | **Not yet.** Both are fixed at 1, so tiles are one cell each. |
-| **Subwindows** (monster list / messages / inventory in separate terms) | **Not offered.** The port is one surface, by design. |
+| **Subwindows** (monster list / messages / inventory in separate terms) | `=` -> **Subwindow setup**. Message history and the visible-monster list can occupy independent right-hand terms, separately or together. Both start off. Inventory/equipment and the other upstream types remain planned. |
 | Save/load `.prf` pref files | **Not applicable.** Settings persist in browser storage automatically, so there is nothing to write or read back. |
 | Auto-inscription setup | Present, but reached from the knowledge browser (`~`) rather than from the options menu, where upstream also lists it. |
 
-The three "not yet" rows are the honest gaps. A screen-rendering
+The two "not yet" rows and the explicitly named remaining subwindow types are
+the honest gaps. A screen-rendering
 quality-of-life mod is the intended home for going beyond upstream here (a
 reflow mode already exists behind an opt-in flag in the terminal code); core
 stays on upstream's own defaults.

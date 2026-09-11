@@ -93,7 +93,7 @@ caret then X at the command prompt. Key case matters.
 | 57 | Take notes | `:` | same | S, then text |
 | 58 | Version info | `V` | same | S |
 | 59 | Single preference line | double quote | same | S, then text |
-| 60 | Toggle inventory/equipment windows | `^E` | same | S; upstream subwindow operation, no root control handler in this port |
+| 60 | Toggle inventory/equipment windows | `^E` | same | S; flips upstream inventory/equipment subwindows, whose panel types remain unimplemented |
 | 61 | Alter grid | `+` | same | D; engine chooses applicable alter action |
 | 62 | Steal from monster | `s` | same | D; normal rogue ability and energy rules |
 | 63 | Walk | `;` | same | D; bump attacks, automatic door/trap handling and hazard checks |
@@ -134,8 +134,8 @@ roguelike `x` is Look. Original `S` is Abilities, not Save, despite an old inlin
 comment. Original `p` is Explore, not prayer. There is no separate search or
 bash command in the 4.2.6 command table. Do not invent either from older versions.
 
-Upstream is authoritative for the count and bypass prefixes and subwindow
-toggle, which the port currently lacks. Target-loop pathfinding (`g`/Alt-click)
+Upstream is authoritative for the count and bypass prefixes and the `^E`
+inventory/equipment subwindow flip, which the port currently lacks. Target-loop pathfinding (`g`/Alt-click)
 is also explicitly absent in this shell. These are parity gaps, not permission
 to emulate rules with a touch macro. Touch must expose available commands and
 record unavailable upstream operations rather than silently assign substitutes.
