@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-09-11
+
 ### Added
 
 - [Visible] [UI] **Messages, inventory, visible monsters, and visible floor items
