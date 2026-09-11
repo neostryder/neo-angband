@@ -50,15 +50,17 @@ still calls itself.
 
 ### Added
 
-- [Visible] [UI] **Message history and visible monsters can now stay open beside
-  the main play view.** The new `=` -> `w` Subwindow setup enables either
-  independently in its own right-hand canvas term, remembers the choices, and
-  leaves both off by default so the existing single-window layout is unchanged.
-  Messages follow upstream's bottom-aligned history display, and the monster
-  term follows its static list sizing and overflow count. This increment does
-  not add inventory, equipment, player, map, overhead, recall, status, or object
-  list terms, arbitrary term/flag assignment, pref-file window flags, movable
-  panel geometry, or the `^E` inventory/equipment flip. Reported by darkness.
+- [Visible] [UI] **Messages, inventory, visible monsters, and visible floor items
+  can now stay open beside the main play view.** The new `=` -> `w` Subwindow
+  setup enables each independently in its own right-hand canvas term, remembers
+  the choices, and leaves all four off by default so the existing single-window
+  layout is unchanged. These are upstream's Term-1 through Term-4 defaults:
+  messages are bottom-aligned, inventory includes burden and quiver summaries,
+  and both static object and monster lists fit their height with an overflow
+  count. The remaining default Term-5 through Term-7 recall, overhead, and
+  compact-player terms stay planned, along with arbitrary term/flag assignment,
+  pref-file window flags, movable panel geometry, and the `^E`
+  inventory/equipment flip. Reported by darkness.
 
 - [Internal] [Docs] **Every mod repository now carries a `docs/README.md` quick
   reference, and the mod table in this repository's README links each mod at

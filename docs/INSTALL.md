@@ -589,7 +589,7 @@ Every lever upstream gives a player over the display, and where it is here:
 | Keymaps, colours | `=` -> **Edit keymaps** / **Edit colours** |
 | **Resize the main window for a bigger map** | **Not yet.** The grid stays 80x24 and scales; it does not grow into a larger window. |
 | **Big-tile multiplier** (`tile_width` / `tile_height`) | **Not yet.** Both are fixed at 1, so tiles are one cell each. |
-| **Subwindows** (monster list / messages / inventory in separate terms) | `=` -> **Subwindow setup**. Message history and the visible-monster list can occupy independent right-hand terms, separately or together. Both start off. Inventory/equipment and the other upstream types remain planned. |
+| **Subwindows** (messages / inventory / monster list / item list in separate terms) | `=` -> **Subwindow setup**. Upstream's Term-1 through Term-4 defaults can occupy independent bordered panels in a right-hand column, in any combination. All four start off. Term-5 recall, Term-6 overhead, Term-7 compact player stats, and the inventory/equipment flip remain planned. |
 | Save/load `.prf` pref files | **Not applicable.** Settings persist in browser storage automatically, so there is nothing to write or read back. |
 | Auto-inscription setup | Present, but reached from the knowledge browser (`~`) rather than from the options menu, where upstream also lists it. |
 

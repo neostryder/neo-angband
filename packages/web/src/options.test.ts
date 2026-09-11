@@ -182,18 +182,22 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     await done;
   });
 
-  it("toggles the two supported subwindows independently from upstream's w row", async () => {
+  it("toggles the four supported subwindows independently from upstream's w row", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
     const enabled = new Map<string, boolean>([
       ["messages", false],
+      ["inventory", false],
       ["monsters", false],
+      ["items", false],
     ]);
     const subwindows = {
       choices: [
         { id: "messages", label: "Display messages" },
+        { id: "inventory", label: "Display inventory" },
         { id: "monsters", label: "Display monster list" },
+        { id: "items", label: "Display item list" },
       ],
       enabled: (id: string) => enabled.get(id) ?? false,
       set: (id: string, value: boolean) => void enabled.set(id, value),
@@ -214,13 +218,23 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     press(win, "Enter");
     await tick();
     expect(enabled.get("messages")).toBe(true);
+    expect(enabled.get("inventory")).toBe(false);
     expect(enabled.get("monsters")).toBe(false);
+    expect(enabled.get("items")).toBe(false);
     expect(term.snapshot().join("\n")).toContain("X Display messages");
     press(win, "ArrowDown");
     press(win, "Enter");
     await tick();
     expect(enabled.get("messages")).toBe(true);
+    expect(enabled.get("inventory")).toBe(true);
+    press(win, "ArrowDown");
+    press(win, "Enter");
+    await tick();
     expect(enabled.get("monsters")).toBe(true);
+    press(win, "ArrowDown");
+    press(win, "Enter");
+    await tick();
+    expect(enabled.get("items")).toBe(true);
     press(win, "Escape");
     await tick();
     press(win, "Escape");

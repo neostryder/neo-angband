@@ -93,7 +93,7 @@ caret then X at the command prompt. Key case matters.
 | 57 | Take notes | `:` | same | S, then text |
 | 58 | Version info | `V` | same | S |
 | 59 | Single preference line | double quote | same | S, then text |
-| 60 | Toggle inventory/equipment windows | `^E` | same | S; flips upstream inventory/equipment subwindows, whose panel types remain unimplemented |
+| 60 | Toggle inventory/equipment windows | `^E` | same | S; flips the implemented inventory panel to equipment; the flip control remains unimplemented |
 | 61 | Alter grid | `+` | same | D; engine chooses applicable alter action |
 | 62 | Steal from monster | `s` | same | D; normal rogue ability and energy rules |
 | 63 | Walk | `;` | same | D; bump attacks, automatic door/trap handling and hazard checks |

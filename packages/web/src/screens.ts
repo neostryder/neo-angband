@@ -76,8 +76,10 @@ import {
   MONSTER_LIST_SECTION_LOS,
   MONSTER_LIST_SECTION_ESP,
   COLOUR_ORANGE,
+  COLOUR_L_UMBER,
   getMonName,
   TMD,
+  tvalIsAmmo,
   EQUIP_SLOT_ENTRIES,
   monsterKnowledgeGroups,
   weightRemaining,
@@ -104,6 +106,7 @@ import type {
   MonsterRace,
   MonsterCategory,
   ScoreRow,
+  Constants,
 } from "@rpgm-tools/neo-angband-core";
 import type { ScreenLine, MenuItem } from "./overlay";
 /* TYPE-ONLY, and deliberately: `updateScreen` and `reportScreen` read two fields
@@ -612,6 +615,84 @@ export function equipmentScreen(
  */
 export function inventoryLines(state: GameState): ScreenLine[] {
   return screenBodyLines(inventoryScreen(state));
+}
+
+/**
+ * show_inven(OLIST_WINDOW | OLIST_WEIGHT | OLIST_QUIVER): the static Term-2
+ * inventory. The item rows come from inventoryScreen(), which is also the main
+ * inventory view's source. Only the subwindow-specific burden header, tighter
+ * column fitting, and quiver capacity summary are added here.
+ */
+export function inventorySubwindowLines(
+  state: GameState,
+  width: number,
+  constants: Pick<Constants, "quiverSlotSize" | "thrownQuiverMult">,
+): ScreenLine[] {
+  if (width < 1) return [];
+  const player = state.actor.player;
+  const totalWeight = player.upkeep.totalWeight;
+  const remaining = state.playerState
+    ? weightRemaining(state.playerState, totalWeight)
+    : 0;
+  const burden =
+    `Burden ${Math.trunc(totalWeight / 10)}.${Math.abs(totalWeight % 10)} lb ` +
+    `(${Math.trunc(Math.abs(remaining) / 10)}.${Math.abs(remaining) % 10} lb ` +
+    `${remaining < 0 ? "overweight" : "remaining"}) `;
+  const lines: ScreenLine[] = [{ text: burden.slice(0, width), color: UI_TEXT }];
+
+  const pack = inventoryScreen(state).blocks[0];
+  if (!pack || pack.kind !== "table") return lines;
+  const showWeight = width >= 40;
+  const extraWidth = showWeight ? 9 : 0;
+  const maxLength = Math.max(
+    40,
+    ...pack.rows.map((row) => 3 + (row.cells.name?.text.length ?? 0)),
+  );
+  const extraOffset = Math.max(0, Math.min(maxLength, width - 1 - extraWidth));
+  for (const row of pack.rows) {
+    const prefix = row.tag === undefined ? "   " : `${row.tag}) `;
+    const nameWidth = Math.max(0, extraOffset - prefix.length);
+    const name = clipTo(row.cells.name?.text ?? "", nameWidth).padEnd(nameWidth);
+    const weight = showWeight ? row.cells.weight?.text ?? "" : "";
+    const text = `${prefix}${name}${weight}`.slice(0, width);
+    lines.push({
+      text,
+      runs: [
+        { text: prefix.slice(0, width), color: UI_TEXT },
+        { text: name.slice(0, Math.max(0, width - prefix.length)), color: row.color ?? UI_TEXT },
+        {
+          text: weight.slice(0, Math.max(0, width - prefix.length - name.length)),
+          color: UI_TEXT,
+        },
+      ],
+    });
+  }
+
+  let quiverCount = 0;
+  const quiverHandles = new Set((state.gear.quiver ?? []).filter((handle) => handle !== 0));
+  for (const handle of quiverHandles) {
+    const obj = gearGet(state.gear, handle);
+    if (!obj) continue;
+    quiverCount += obj.number * (tvalIsAmmo(obj.tval) ? 1 : constants.thrownQuiverMult);
+  }
+  const quiverSlots = Math.ceil(quiverCount / constants.quiverSlotSize);
+  for (let slot = 0; slot < quiverSlots; slot++) {
+    const count =
+      slot === quiverSlots - 1
+        ? quiverCount - constants.quiverSlotSize * (quiverSlots - 1)
+        : constants.quiverSlotSize;
+    const prefix = `${objLetter(pack.rows.length + slot)}) `;
+    const detail = `in Quiver: ${count} missile${count === 1 ? "" : "s"}`;
+    const text = `${prefix}${detail}`.slice(0, width);
+    lines.push({
+      text,
+      runs: [
+        { text: prefix.slice(0, width), color: UI_DIM },
+        { text: detail.slice(0, Math.max(0, width - prefix.length)), color: colorToCss(COLOUR_L_UMBER) },
+      ],
+    });
+  }
+  return lines;
 }
 
 /** The equipment viewer lines; see `inventoryLines` on why this is a one-liner. */
@@ -1564,6 +1645,81 @@ export function objectListScreen(
 /** The object-list lines; see `inventoryLines` on why this is a one-liner. */
 export function objectListLines(state: GameState): ScreenLine[] {
   return screenBodyLines(objectListScreen(state));
+}
+
+/** One objectListScreen() row in the static subwindow's right-aligned layout. */
+function objectListSubwindowRow(row: ScreenRow, width: number): ScreenLine {
+  const glyph = row.cells.glyph?.text ?? "*";
+  const location = ` ${row.cells.location?.text ?? ""}`;
+  const nameWidth = Math.max(0, width - 2 - location.length - 1);
+  const name = clipTo(row.cells.name?.text ?? "", nameWidth).padEnd(nameWidth);
+  const rest = ` ${name}${location}`;
+  const text = `${glyph}${rest}`.slice(0, width);
+  return {
+    text,
+    runs: [
+      { text: glyph.slice(0, width), color: row.cells.glyph?.color ?? row.color ?? UI_TEXT },
+      { text: rest.slice(0, Math.max(0, width - glyph.length)), color: row.color ?? UI_TEXT },
+    ],
+  };
+}
+
+/**
+ * object_list_show_subwindow: the static Term-4 item list fitted to the term.
+ * Collection, sorting, names, colors, and section captions all come from the
+ * same objectListScreen() model used by the interactive ']' view.
+ */
+export function objectListSubwindowLines(
+  state: GameState,
+  height: number,
+  width: number,
+): ScreenLine[] {
+  if (height < 1 || width < 1) return [];
+  const tables = objectListScreen(state).blocks.filter(
+    (block): block is ScreenTableBlock => block.kind === "table",
+  );
+  const los = tables.find((block) => block.key === "in-view");
+  const remembered = tables.find((block) => block.key === "remembered");
+  if (!los) return [];
+
+  let losLines = los.rows.length;
+  let rememberedLines = remembered?.rows.length ?? 0;
+  const headerLines = remembered ? 3 : 1;
+  const linesRemaining = height - headerLines - los.rows.length;
+  if (remembered && linesRemaining < remembered.rows.length) {
+    rememberedLines = Math.max(linesRemaining - 1, 0);
+  }
+  if (linesRemaining < 0) losLines = Math.max(0, los.rows.length - Math.abs(linesRemaining) - 1);
+  if (headerLines >= height) {
+    losLines = 0;
+    rememberedLines = 0;
+  }
+
+  const sectionLines = (block: ScreenTableBlock, count: number): ScreenLine[] => {
+    if (block.rows.length === 0) return screenBlockLines(block, width);
+    const caption = block.caption ?? { text: "" };
+    const captionText =
+      count === 0 && caption.text.endsWith(":")
+        ? `${caption.text.slice(0, -1)}.`
+        : caption.text;
+    const out: ScreenLine[] = [
+      caption.color === undefined
+        ? { text: captionText.slice(0, width) }
+        : { text: captionText.slice(0, width), color: caption.color },
+    ];
+    out.push(...block.rows.slice(0, count).map((row) => objectListSubwindowRow(row, width)));
+    if (count > 0 && count < block.rows.length) {
+      out.push({ text: `      ...and ${block.rows.length - count} others.`.slice(0, width) });
+    }
+    return out;
+  };
+
+  const lines = sectionLines(los, losLines);
+  if (remembered) {
+    lines.push({ text: "" });
+    lines.push(...sectionLines(remembered, rememberedLines));
+  }
+  return lines.slice(0, height);
 }
 
 /**

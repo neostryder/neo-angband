@@ -493,7 +493,7 @@ const parseColor: Handler = (fields, sink) => {
 };
 
 /**
- * parse_prefs_window (ui-prefs.c L1054-1083). The web shell now has two typed
+ * parse_prefs_window (ui-prefs.c L1054-1083). The web shell now has four typed
  * subwindows, but does not yet expose upstream's arbitrary eight-term flag
  * matrix to this sink. The bound keeps the full grammar's error behaviour for
  * that follow-up and for other front ends.
@@ -1136,7 +1136,7 @@ export function dumpUiEntryRenderers(deps: DumpDeps): string {
 /**
  * option_dump (ui-prefs.c L352-386): the SUBWINDOW flag set, not the game
  * options - the row that drives it is labelled "Save subwindow setup to pref
- * file". The web shell's first two typed panels persist in localStorage; an
+ * file". The web shell's first four typed panels persist in localStorage; an
  * arbitrary per-term flag set is not modelled yet, so there is still nothing
  * for this core writer to enumerate. It returns the header alone until that
  * remaining preference-file integration lands.

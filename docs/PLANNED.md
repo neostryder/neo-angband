@@ -73,18 +73,20 @@ while still claiming a tap.
 
 ## Complete subwindow coverage (#191)
 
-The first subwindow increment adds two separately configurable canvas terms in
-a right-hand column: message history and the static visible-monster list. These
-are upstream's Term-1 and Term-3 defaults, both start disabled so the former
-single-window layout is unchanged, and `=` -> `w` toggles either one. The
-message term keeps its newest entries at the bottom and the monster term uses
-upstream's height fitting and `...and N others.` row.
+The current subwindow increment adds four separately configurable canvas terms
+in a right-hand column: message history, inventory, the static visible-monster
+list, and the static visible-floor-item list. These are upstream's Term-1 through
+Term-4 defaults. All start disabled so the former single-window layout is
+unchanged, and `=` -> `w` toggles each one. The message term keeps its newest
+entries at the bottom, inventory includes upstream's burden and quiver summary,
+and both static lists use upstream's height fitting and `...and N others.` row.
 
-Remaining upstream types: inventory, equipment, basic/extra/compact/topbar
-player displays, dungeon map, overhead view, monster recall, object recall,
-status, and the object list. The arbitrary eight-term flag matrix, assignment of
-multiple flags to a term, player-controlled panel sizing/placement, `window:`
-pref-file loading and dumping, and the `^E` inventory/equipment flip also remain.
+The remaining upstream default assignment is Term-5 monster and object recall,
+Term-6 overhead view, and Term-7 compact player display. Other non-default flags
+for equipment, basic/extra/topbar player displays, the dungeon map, and status
+also remain. The arbitrary eight-term flag matrix, assignment of multiple flags
+to a term, player-controlled panel sizing/placement, `window:` pref-file loading
+and dumping, and the `^E` inventory/equipment flip remain too.
 
 ---
 
@@ -160,10 +162,10 @@ documents. Recorded here so the next audit does not repeat the reading:
   citing a previously-fixed bug in its own comment.
 - `finish_parse_prefs` (`ui-prefs.c` L1162): merges newly-parsed subwindow flags
   over the existing set, so a term the pref file never mentions keeps its prior
-  flags. The initial message and monster-list terms persist two named switches,
-  not the arbitrary per-term matrix this hook merges. `packages/core/src/visuals/prefs.ts`
-  (`parseWindow`) keeps the full grammar, while applying and dumping those flags
-  remains in the subwindow worklist above.
+  flags. The message, inventory, monster-list, and item-list terms persist four
+  named switches, not the arbitrary per-term matrix this hook merges.
+  `packages/core/src/visuals/prefs.ts` (`parseWindow`) keeps the full grammar,
+  while applying and dumping those flags remains in the subwindow worklist above.
 
 Tracked as issue #1.
 

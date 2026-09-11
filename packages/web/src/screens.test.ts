@@ -91,6 +91,7 @@ import {
   spellBrowseLines,
   bookSpellMenu,
   inventoryLines,
+  inventorySubwindowLines,
   objectWeightColumn,
   deviceFailColumn,
   deviceMenu,
@@ -115,6 +116,7 @@ import {
   equipmentScreen,
   equipmentLines,
   objectListScreen,
+  objectListSubwindowLines,
   playerHistoryScreen,
   messageHistoryScreen,
   quiverScreen,
@@ -525,6 +527,16 @@ describe("objectListLines (']' object_list_show_interactive)", () => {
     const after = state.rng.getState();
     expect(after).toEqual(before);
   });
+
+  it("fits the shared object-list model to a static subwindow with an others row", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    for (let x = 21; x <= 24; x++) putRealFloor(state, loc(x, 12), "& Wooden Torch~");
+    const lines = objectListSubwindowLines(state, 3, 42);
+    expect(lines).toHaveLength(3);
+    expect(lines[0]!.text).toBe("You can see 4 objects:");
+    expect(lines[1]!.text).toContain("Wooden Torch");
+    expect(lines[2]!.text).toBe("      ...and 3 others.");
+  });
 });
 
 describe("historyLines (history_display, ui-history.c)", () => {
@@ -819,6 +831,28 @@ describe("the inventory and equipment screens, and the lines they still render t
     const expected =
       `a) ${objectName(state, obj).padEnd(45).slice(0, 45)} ${objectWeightColumn(obj)}`;
     expect(inventoryLines(state)[0]!.text).toBe(expected);
+  });
+
+  it("feeds the Term-2 inventory from the shared model with burden and weight", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const obj = addPack(state, "& Ration~ of Food", 2);
+    state.actor.player.upkeep.totalWeight = obj.number * obj.weight;
+    const lines = inventorySubwindowLines(state, 60, objConstants);
+    expect(lines[0]!.text).toMatch(/^Burden \d+\.\d lb \(/u);
+    expect(lines[1]!.text).toContain(objectName(state, obj));
+    expect(lines[1]!.text.endsWith(objectWeightColumn(obj))).toBe(true);
+  });
+
+  it("includes upstream's quiver-capacity summary in the inventory subwindow", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const arrow = objReg.kinds.find((kind) => kind.tval === TV.ARROW) as ObjectKind;
+    const obj = addPack(state, arrow.name, 7);
+    const handle = [...state.gear.store.entries()].find(([, candidate]) => candidate === obj)![0];
+    state.gear.inven = [];
+    state.gear.quiver = [handle];
+    const lines = inventorySubwindowLines(state, 60, objConstants);
+    expect(lines[1]!.text).toBe("a) in Quiver: 7 missiles");
+    expect(obj.tval).toBe(TV.ARROW);
   });
 
   it("keeps an empty body slot as a ROW, disabled and with no item semantic", () => {

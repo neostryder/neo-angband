@@ -40,15 +40,23 @@
         image-rendering: pixelated;
       }
       #subwindows {
-        flex: 0 0 clamp(280px, 32vw, 520px);
+        flex: 0 0 clamp(400px, 38vw, 680px);
         min-width: 0;
         display: grid;
-        grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
         border-left: 1px solid #50505a;
         background: #101014;
       }
       #subwindows[data-count="1"] {
         grid-template-rows: minmax(0, 1fr);
+      }
+      #subwindows[data-count="2"] {
+        grid-template-rows: repeat(2, minmax(0, 1fr));
+      }
+      #subwindows[data-count="3"] {
+        grid-template-rows: repeat(3, minmax(0, 1fr));
+      }
+      #subwindows[data-count="4"] {
+        grid-template-rows: repeat(4, minmax(0, 1fr));
       }
       #subwindows[hidden],
       .subwindow-slot[hidden] {
@@ -59,7 +67,7 @@
         min-height: 0;
         overflow: hidden;
       }
-      .subwindow-slot + .subwindow-slot {
+      .subwindow-slot:not([hidden]) ~ .subwindow-slot:not([hidden]) {
         border-top: 1px solid #50505a;
       }
       .subwindow-slot canvas {
@@ -76,8 +84,14 @@
         <canvas id="game"></canvas>
       </main>
       <aside id="subwindows" aria-label="Subwindows" hidden>
+        <section id="subwindow-inventory-slot" class="subwindow-slot" aria-label="Inventory" hidden>
+          <canvas id="subwindow-inventory"></canvas>
+        </section>
         <section id="subwindow-monsters-slot" class="subwindow-slot" aria-label="Visible monsters" hidden>
           <canvas id="subwindow-monsters"></canvas>
+        </section>
+        <section id="subwindow-items-slot" class="subwindow-slot" aria-label="Visible floor items" hidden>
+          <canvas id="subwindow-items"></canvas>
         </section>
         <section id="subwindow-messages-slot" class="subwindow-slot" aria-label="Message history" hidden>
           <canvas id="subwindow-messages"></canvas>

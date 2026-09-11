@@ -1,39 +1,49 @@
 /**
  * The browser shell's first independent Angband terms.
  *
- * Upstream assigns messages to Term-1 and the visible-monster list to Term-3
- * by default (ui-init.c L94-98). The web layout gives those two useful views
- * their own simultaneous canvases and leaves both disabled until the player
- * opts in, preserving the former single-surface layout by default.
+ * Upstream's defaults assign messages, inventory, the visible-monster list,
+ * and the floor-item list to Term-1 through Term-4 (ui-init.c L94-97). The web
+ * layout gives those four views simultaneous canvases and leaves all disabled
+ * until the player opts in, preserving the former single-surface layout.
  */
 
 import { COLOUR_RED, colorToCss } from "@rpgm-tools/neo-angband-core";
-import type { GameState } from "@rpgm-tools/neo-angband-core";
+import type { Constants, GameState } from "@rpgm-tools/neo-angband-core";
 import { format, type LoggedMessage, type MessageLog } from "./messages";
-import { monsterListSubwindowLines } from "./screens";
+import {
+  inventorySubwindowLines,
+  monsterListSubwindowLines,
+  objectListSubwindowLines,
+} from "./screens";
 import type { GridSurface } from "./term";
 import type { ScreenLine } from "./overlay";
 import { UI_TEXT } from "./ui-colors";
 
-export type SubwindowId = "messages" | "monsters";
+export type SubwindowId = "messages" | "inventory" | "monsters" | "items";
 
 export interface SubwindowSettings {
   messages: boolean;
+  inventory: boolean;
   monsters: boolean;
+  items: boolean;
 }
 
 export const SUBWINDOW_STORAGE_KEY = "neo-angband:subwindows";
 export const DEFAULT_SUBWINDOW_SETTINGS: Readonly<SubwindowSettings> = {
   messages: false,
+  inventory: false,
   monsters: false,
+  items: false,
 };
 
 export const SUBWINDOW_CHOICES: readonly { id: SubwindowId; label: string }[] = [
   { id: "messages", label: "Display messages" },
+  { id: "inventory", label: "Display inventory" },
   { id: "monsters", label: "Display monster list" },
+  { id: "items", label: "Display item list" },
 ];
 
-/** Read only the two supported booleans; malformed or older data is harmless. */
+/** Read only the four supported booleans; malformed or older data is harmless. */
 export function readSubwindowSettings(storage: Pick<Storage, "getItem">): SubwindowSettings {
   try {
     const raw = storage.getItem(SUBWINDOW_STORAGE_KEY);
@@ -41,7 +51,9 @@ export function readSubwindowSettings(storage: Pick<Storage, "getItem">): Subwin
     const parsed = JSON.parse(raw) as Partial<Record<SubwindowId, unknown>>;
     return {
       messages: parsed.messages === true,
+      inventory: parsed.inventory === true,
       monsters: parsed.monsters === true,
+      items: parsed.items === true,
     };
   } catch {
     return { ...DEFAULT_SUBWINDOW_SETTINGS };
@@ -53,7 +65,7 @@ export function writeSubwindowSettings(
   storage: Pick<Storage, "setItem" | "removeItem">,
   settings: SubwindowSettings,
 ): void {
-  if (!settings.messages && !settings.monsters) {
+  if (!Object.values(settings).some(Boolean)) {
     storage.removeItem(SUBWINDOW_STORAGE_KEY);
     return;
   }
@@ -63,14 +75,16 @@ export function writeSubwindowSettings(
 /** Show the column and the independently enabled slots without changing content. */
 export function applySubwindowVisibility(
   column: Pick<HTMLElement, "hidden" | "dataset">,
-  messageSlot: Pick<HTMLElement, "hidden">,
-  monsterSlot: Pick<HTMLElement, "hidden">,
+  slots: Readonly<Record<SubwindowId, Pick<HTMLElement, "hidden">>>,
   settings: SubwindowSettings,
 ): void {
-  messageSlot.hidden = !settings.messages;
-  monsterSlot.hidden = !settings.monsters;
-  column.hidden = !settings.messages && !settings.monsters;
-  column.dataset.count = settings.messages && settings.monsters ? "2" : "1";
+  let count = 0;
+  for (const choice of SUBWINDOW_CHOICES) {
+    slots[choice.id].hidden = !settings[choice.id];
+    if (settings[choice.id]) count++;
+  }
+  column.hidden = count === 0;
+  column.dataset.count = String(count);
 }
 
 /** Paint styled terminal rows, optionally anchored to the bottom of the term. */
@@ -110,22 +124,26 @@ export class MessageSubwindowPainter {
   private paintedNewest: LoggedMessage | null = null;
   private paintedNewestText = "";
   private paintedLength = -1;
+  private paintedCols = -1;
+  private paintedRows = -1;
 
   paint(term: GridSurface, log: MessageLog): void {
     const all = log.all();
     const newest = all[all.length - 1] ?? null;
     const newestText = newest ? format(newest) : "";
+    const { cols, rows } = term.size();
     /* Idle animation frames repaint the game but upstream updates this term
      * only on EVENT_STATE. Do not turn a fresh red message back to its ordinary
      * colour merely because another canvas requested a frame. */
     if (
       newest === this.paintedNewest &&
       newestText === this.paintedNewestText &&
-      all.length === this.paintedLength
+      all.length === this.paintedLength &&
+      cols === this.paintedCols &&
+      rows === this.paintedRows
     ) {
       return;
     }
-    const { rows } = term.size();
     const newestFirst = [...all].reverse();
     let fresh = true;
     const lines = newestFirst
@@ -140,6 +158,8 @@ export class MessageSubwindowPainter {
     this.paintedNewest = newest;
     this.paintedNewestText = newestText;
     this.paintedLength = all.length;
+    this.paintedCols = cols;
+    this.paintedRows = rows;
     paintSubwindowLines(term, lines, true);
   }
 }
@@ -148,4 +168,20 @@ export class MessageSubwindowPainter {
 export function paintMonsterSubwindow(term: GridSurface, state: GameState): void {
   const { cols, rows } = term.size();
   paintSubwindowLines(term, monsterListSubwindowLines(state, rows, cols));
+}
+
+/** update_inven_subwindow, using the shared inventory screen model. */
+export function paintInventorySubwindow(
+  term: GridSurface,
+  state: GameState,
+  constants: Pick<Constants, "quiverSlotSize" | "thrownQuiverMult">,
+): void {
+  const { cols } = term.size();
+  paintSubwindowLines(term, inventorySubwindowLines(state, cols, constants));
+}
+
+/** update_itemlist_subwindow, using the shared floor-item screen model. */
+export function paintItemListSubwindow(term: GridSurface, state: GameState): void {
+  const { cols, rows } = term.size();
+  paintSubwindowLines(term, objectListSubwindowLines(state, rows, cols));
 }

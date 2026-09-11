@@ -521,6 +521,8 @@ import { MessageLog, messageTypeCode, packMessages, pushTypedMessage } from "./m
 import {
   applySubwindowVisibility,
   MessageSubwindowPainter,
+  paintInventorySubwindow,
+  paintItemListSubwindow,
   paintMonsterSubwindow,
   readSubwindowSettings,
   SUBWINDOW_CHOICES,
@@ -932,16 +934,21 @@ const canvas = document.getElementById("game") as HTMLCanvasElement;
 const gameView = document.getElementById("game-view") as HTMLElement;
 const subwindowColumn = document.getElementById("subwindows") as HTMLElement;
 const messageSubwindowSlot = document.getElementById("subwindow-messages-slot") as HTMLElement;
+const inventorySubwindowSlot = document.getElementById("subwindow-inventory-slot") as HTMLElement;
 const monsterSubwindowSlot = document.getElementById("subwindow-monsters-slot") as HTMLElement;
+const itemListSubwindowSlot = document.getElementById("subwindow-items-slot") as HTMLElement;
 const messageSubwindowCanvas = document.getElementById("subwindow-messages") as HTMLCanvasElement;
+const inventorySubwindowCanvas = document.getElementById("subwindow-inventory") as HTMLCanvasElement;
 const monsterSubwindowCanvas = document.getElementById("subwindow-monsters") as HTMLCanvasElement;
+const itemListSubwindowCanvas = document.getElementById("subwindow-items") as HTMLCanvasElement;
+const subwindowSlots = {
+  messages: messageSubwindowSlot,
+  inventory: inventorySubwindowSlot,
+  monsters: monsterSubwindowSlot,
+  items: itemListSubwindowSlot,
+};
 let subwindowSettings = readSubwindowSettings(localStorage);
-applySubwindowVisibility(
-  subwindowColumn,
-  messageSubwindowSlot,
-  monsterSubwindowSlot,
-  subwindowSettings,
-);
+applySubwindowVisibility(subwindowColumn, subwindowSlots, subwindowSettings);
 const term = new GlyphTerm(canvas, { boundsElement: gameView });
 const messageSubwindowTerm = new GlyphTerm(messageSubwindowCanvas, {
   boundsElement: messageSubwindowSlot,
@@ -950,10 +957,24 @@ const messageSubwindowTerm = new GlyphTerm(messageSubwindowCanvas, {
   minRows: 4,
   fontPx: 16,
 });
+const inventorySubwindowTerm = new GlyphTerm(inventorySubwindowCanvas, {
+  boundsElement: inventorySubwindowSlot,
+  reflow: true,
+  minCols: 50,
+  minRows: 4,
+  fontPx: 16,
+});
 const monsterSubwindowTerm = new GlyphTerm(monsterSubwindowCanvas, {
   boundsElement: monsterSubwindowSlot,
   reflow: true,
   minCols: 24,
+  minRows: 4,
+  fontPx: 16,
+});
+const itemListSubwindowTerm = new GlyphTerm(itemListSubwindowCanvas, {
+  boundsElement: itemListSubwindowSlot,
+  reflow: true,
+  minCols: 40,
   minRows: 4,
   fontPx: 16,
 });
@@ -2406,11 +2427,17 @@ const messageSubwindowPainter = new MessageSubwindowPainter();
 function renderSubwindows(): void {
   if (!gameScreenLive) {
     if (subwindowSettings.messages) messageSubwindowTerm.clear();
+    if (subwindowSettings.inventory) inventorySubwindowTerm.clear();
     if (subwindowSettings.monsters) monsterSubwindowTerm.clear();
+    if (subwindowSettings.items) itemListSubwindowTerm.clear();
     return;
   }
   if (subwindowSettings.messages) messageSubwindowPainter.paint(messageSubwindowTerm, msglog);
+  if (subwindowSettings.inventory) {
+    paintInventorySubwindow(inventorySubwindowTerm, state, constants);
+  }
   if (subwindowSettings.monsters) paintMonsterSubwindow(monsterSubwindowTerm, state);
+  if (subwindowSettings.items) paintItemListSubwindow(itemListSubwindowTerm, state);
 }
 
 const subwindowMenu: SubwindowMenu = {
@@ -2420,14 +2447,9 @@ const subwindowMenu: SubwindowMenu = {
     if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
     subwindowSettings = { ...subwindowSettings, [id]: enabled };
     writeSubwindowSettings(localStorage, subwindowSettings);
-    applySubwindowVisibility(
-      subwindowColumn,
-      messageSubwindowSlot,
-      monsterSubwindowSlot,
-      subwindowSettings,
-    );
-    /* Flex layout resolves synchronously. The resize event lets all three
-     * GlyphTerms remeasure their own bounds immediately instead of waiting for
+    applySubwindowVisibility(subwindowColumn, subwindowSlots, subwindowSettings);
+    /* Flex layout resolves synchronously. The resize event lets every
+     * GlyphTerm remeasure its own bounds immediately instead of waiting for
      * ResizeObserver's next delivery. */
     window.dispatchEvent(new Event("resize"));
     renderSubwindows();
@@ -2437,8 +2459,14 @@ const subwindowMenu: SubwindowMenu = {
 messageSubwindowTerm.onSizeChanged(() => {
   if (subwindowSettings.messages) renderSubwindows();
 });
+inventorySubwindowTerm.onSizeChanged(() => {
+  if (subwindowSettings.inventory) renderSubwindows();
+});
 monsterSubwindowTerm.onSizeChanged(() => {
   if (subwindowSettings.monsters) renderSubwindows();
+});
+itemListSubwindowTerm.onSizeChanged(() => {
+  if (subwindowSettings.items) renderSubwindows();
 });
 
 /**

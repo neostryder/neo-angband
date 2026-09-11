@@ -50,26 +50,61 @@ describe("subwindow settings", () => {
       setItem: (key: string, value: string) => void values.set(key, value),
       removeItem: (key: string) => void values.delete(key),
     };
-    expect(readSubwindowSettings(storage)).toEqual({ messages: false, monsters: false });
-    writeSubwindowSettings(storage, { messages: true, monsters: false });
-    expect(readSubwindowSettings(storage)).toEqual({ messages: true, monsters: false });
-    writeSubwindowSettings(storage, { messages: false, monsters: false });
+    expect(readSubwindowSettings(storage)).toEqual({
+      messages: false,
+      inventory: false,
+      monsters: false,
+      items: false,
+    });
+    writeSubwindowSettings(storage, {
+      messages: true,
+      inventory: true,
+      monsters: false,
+      items: true,
+    });
+    expect(readSubwindowSettings(storage)).toEqual({
+      messages: true,
+      inventory: true,
+      monsters: false,
+      items: true,
+    });
+    writeSubwindowSettings(storage, {
+      messages: false,
+      inventory: false,
+      monsters: false,
+      items: false,
+    });
     expect(values.has(SUBWINDOW_STORAGE_KEY)).toBe(false);
   });
 
-  it("shows only enabled slots and removes the whole column when both are off", () => {
+  it("shows only enabled slots and removes the whole column when all are off", () => {
     const column = { hidden: false, dataset: {} as DOMStringMap };
     const messages = { hidden: false };
+    const inventory = { hidden: false };
     const monsters = { hidden: false };
-    applySubwindowVisibility(column, messages, monsters, { messages: false, monsters: false });
-    expect(column.hidden).toBe(true);
-    applySubwindowVisibility(column, messages, monsters, { messages: true, monsters: false });
-    expect({ column: column.hidden, messages: messages.hidden, monsters: monsters.hidden }).toEqual({
-      column: false,
+    const items = { hidden: false };
+    const slots = { messages, inventory, monsters, items };
+    applySubwindowVisibility(column, slots, {
       messages: false,
-      monsters: true,
+      inventory: false,
+      monsters: false,
+      items: false,
     });
-    expect(column.dataset.count).toBe("1");
+    expect(column.hidden).toBe(true);
+    applySubwindowVisibility(column, slots, {
+      messages: true,
+      inventory: true,
+      monsters: false,
+      items: true,
+    });
+    expect({
+      column: column.hidden,
+      messages: messages.hidden,
+      inventory: inventory.hidden,
+      monsters: monsters.hidden,
+      items: items.hidden,
+    }).toEqual({ column: false, messages: false, inventory: false, monsters: true, items: false });
+    expect(column.dataset.count).toBe("3");
   });
 });
 
@@ -92,6 +127,17 @@ describe("subwindow terminal painting", () => {
     expect(term.colors()[2]![0]).toBe("#00ff00");
     expect(term.colors()[3]![0]).toBe(colorToCss(COLOUR_RED));
   });
+
+  it("repaints unchanged messages after the panel grid changes size", () => {
+    const first = recordingTerm(30, 4);
+    const resized = recordingTerm(12, 2);
+    const log = new MessageLog();
+    const painter = new MessageSubwindowPainter();
+    log.push("a message long enough to clip", "#00ff00");
+    painter.paint(first, log);
+    painter.paint(resized, log);
+    expect(resized.text()).toEqual(["", "a message lo"]);
+  });
 });
 
 describe("production subwindow wiring", () => {
@@ -100,9 +146,13 @@ describe("production subwindow wiring", () => {
 
   it("provides separate canvases and repaints them with each live game frame", () => {
     expect(html).toContain('id="subwindow-messages"');
+    expect(html).toContain('id="subwindow-inventory"');
     expect(html).toContain('id="subwindow-monsters"');
+    expect(html).toContain('id="subwindow-items"');
     expect(main).toContain("const messageSubwindowTerm = new GlyphTerm");
+    expect(main).toContain("const inventorySubwindowTerm = new GlyphTerm");
     expect(main).toContain("const monsterSubwindowTerm = new GlyphTerm");
+    expect(main).toContain("const itemListSubwindowTerm = new GlyphTerm");
     expect(main).toMatch(/renderSubwindows\(\);\s+paintRegionStack\(term\);/u);
   });
 });
