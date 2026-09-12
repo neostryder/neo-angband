@@ -166,7 +166,10 @@ function makeDeps(
 /** Open the manager over a fresh fake window + terminal. Caller drives it with
  * `press` and must eventually close it (Escape from the top list, or an
  * answered apply-prompt) or the returned promise never settles. */
-function open(mods: CatalogManifest[]): {
+function open(
+  mods: CatalogManifest[],
+  extraDeps: Partial<ModManagerDeps> = {},
+): {
   win: FakeWindow;
   term: FakeTerm;
   store: ModStore;
@@ -178,7 +181,7 @@ function open(mods: CatalogManifest[]): {
   const term = makeTerm(80, 24);
   const store = new ModStore(fakeStorage());
   const requestReload = vi.fn();
-  const done = runModManager(term, makeDeps(store, requestReload, mods));
+  const done = runModManager(term, { ...makeDeps(store, requestReload, mods), ...extraDeps });
   return { win, term, store, requestReload, done };
 }
 
@@ -354,6 +357,87 @@ describe("leaving after a real change offers to reload, and honours the answer",
       consents: store.getConsents(),
     });
     expect(catalog.find((m) => m.id === "qol")?.enabled).toBe(true);
+  });
+});
+
+describe("feature onboarding when a mod is switched on", () => {
+  const rule = {
+    flag: "qol.thing",
+    title: "A thing",
+    description: "Does a thing.",
+    default: true,
+  };
+
+  it("does not appear at all for a mod that declares no rules", async () => {
+    // Covered implicitly by every test above (plain manifest(), no rules) -
+    // each toggles a mod on with a single Space and closes with a single
+    // Escape, which would hang here if a feature-onboarding menu appeared
+    // and consumed that Escape instead of reaching "Done".
+    const { win, done, store } = open([manifest("qol", "Quality of Life")]);
+    await flush();
+    press(win, " ");
+    await flush();
+    press(win, "Escape"); // Done, not swallowed by an onboarding menu
+    await flush();
+    press(win, "b"); // "Later"
+    const result = await raceTimeout(done);
+    expect(result.timedOut, "no onboarding menu should have appeared").toBe(false);
+    expect(store.isEnabled("qol")).toBe(true);
+  });
+
+  it("'Do not enable any features' turns every declared rule off", async () => {
+    const mod = { ...manifest("qol", "Quality of Life"), rules: [rule] };
+    const { win, done, store } = open([mod]);
+    await flush();
+    press(win, " "); // toggle on -> the feature-onboarding menu appears
+    await flush();
+    press(win, "c"); // "Do not enable any features"
+    await flush();
+    expect(store.getRuleChoices()["qol.thing"]).toBe(false);
+    press(win, "Escape"); // Done -> dirty -> apply prompt
+    await flush();
+    press(win, "b"); // "Later"
+    const result = await raceTimeout(done);
+    expect(result.timedOut, "the apply prompt never resolved").toBe(false);
+  });
+
+  it("'Enable default features', including via ESC, leaves the rule unset", async () => {
+    const mod = { ...manifest("qol", "Quality of Life"), rules: [rule] };
+    const { win, done, store } = open([mod]);
+    await flush();
+    press(win, " "); // toggle on -> the feature-onboarding menu appears
+    await flush();
+    press(win, "Escape"); // same as picking "Enable default features"
+    await flush();
+    expect(store.getRuleChoices()["qol.thing"]).toBeUndefined();
+    press(win, "Escape"); // Done -> dirty -> apply prompt
+    await flush();
+    press(win, "b"); // "Later"
+    const result = await raceTimeout(done);
+    expect(result.timedOut, "the apply prompt never resolved").toBe(false);
+  });
+
+  it("'Choose features to enable' opens that mod's own options screen", async () => {
+    const mod = { ...manifest("qol", "Quality of Life"), rules: [rule] };
+    const { win, term, done, store } = open([mod], {
+      ruleDecls: () => [{ modId: "qol", modName: "Quality of Life", rule }],
+    });
+    await flush();
+    press(win, " "); // toggle on -> the feature-onboarding menu appears
+    await flush();
+    press(win, "b"); // "Choose features to enable"
+    await flush();
+    expect(term.snapshot().join("\n")).toContain("Mod options - Quality of Life");
+    press(win, " "); // the rule defaults on; toggle it off, inside that screen
+    await flush();
+    expect(store.getRuleChoices()["qol.thing"]).toBe(false);
+    press(win, "Escape"); // options screen -> back to the manager
+    await flush();
+    press(win, "Escape"); // Done -> dirty -> apply prompt
+    await flush();
+    press(win, "b"); // "Later"
+    const result = await raceTimeout(done);
+    expect(result.timedOut, "the apply prompt never resolved").toBe(false);
   });
 });
 

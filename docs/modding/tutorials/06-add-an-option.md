@@ -104,11 +104,17 @@ changes nothing at all until you pick a feature.
 
 ## Check the result
 
-Enable the mod and reload. Nothing changes yet, and that is correct.
+Enable the mod. Switching a mod on that declares at least one rule asks which of
+its features to turn on: **Enable default features** (whatever `"default"` says
+in the manifest, which for this tutorial is off), **Choose features to enable**
+(opens this mod's own options screen so you can decide per rule), or **Do not
+enable any features** (every rule off, regardless of its manifest default).
+Picking the default here leaves *Congratulate me on gaining a level* off, exactly
+as `"default": false` says.
 
-Press `Escape`, choose **Mods**, choose your mod, and you will find *Congratulate
-me on gaining a level* on its own screen, off. Turn it on, choose **Apply changes
-and reload**, and gain a level.
+Press `Escape`, choose **Mods**, choose your mod, and you will find that same
+option on its own screen. Turn it on, choose **Apply changes and reload**, and
+gain a level.
 
 ## Variations to try
 

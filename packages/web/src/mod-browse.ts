@@ -1065,7 +1065,7 @@ async function showRecommendedActions(
         color: C_FG,
         hint: t(
           "modBrowse.recommended.enableAllOptionsHint",
-          "Turn recommended mods on and select every fix and part. One approval screen covers them.",
+          "Take each mod's own default features and every optional part, with no per-mod choice. Off asks once per mod instead.",
         ),
       },
     ];

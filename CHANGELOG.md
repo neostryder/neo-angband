@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- [Visible] [UI] [Modding-API] **Switching a mod on that declares any features now asks which of them to turn on**, rather than silently taking the manifest's own defaults: enable default features, choose features to enable (opens that mod's own options screen), or enable none of them regardless of default. Enabling several mods in one visit to the Mods screen asks once per mod, in order, before the single reload that applies them all. The "Enable all options from recommended mods..." bulk action changes meaning to match: checked, it takes every mod's own default features (plus every optional part) with no per-mod question; unchecked, it now asks the same per-mod question instead of silently taking defaults.
+
 ### Fixed
 
 - [Visible] [UI] **A responsive mod display can now use the terminal's actual bounded surface instead of guessing from the browser window.** This keeps a mod's enlarged layout aligned with the game view when it is narrower or offset, without changing the default fixed-grid renderer (#207).

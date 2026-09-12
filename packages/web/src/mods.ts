@@ -1355,7 +1355,73 @@ async function enableMod(
   }
   deps.advanceSaveRatchets?.(m);
   deps.store.setModEnabled(m.id, true);
+  await offerFeatureOnboarding(term, deps, m);
   return true;
+}
+
+/**
+ * A mod's own optional behaviour is opt-in-or-out at the moment it is
+ * switched on, not just buried in an options screen the player may never
+ * open. Skipped entirely when the manifest declares no rules - there is
+ * nothing to choose. Runs AFTER `setModEnabled(m.id, true)`: the reused
+ * "choose individually" screen refuses to show a disabled mod's rules
+ * (`manageModOptions`'s own "enable this mod first" branch), so the store
+ * has to already say the mod is on before this can open it.
+ *
+ * Fires every time a mod moves from off to on, including a re-enable after
+ * being switched off, not just the first time ever - a player who turned
+ * something off wants the same choice back when they turn it on again, not
+ * to inherit whatever they picked previously with no way to revisit it here.
+ *
+ * Runs from inside the caller's own enable step, before the manager's single
+ * end-of-loop reload - never after it - so enabling several mods in one
+ * visit asks this once per mod, in order, rather than reloading once per
+ * answer.
+ */
+async function offerFeatureOnboarding(
+  term: GridSurface & GridPointerInput,
+  deps: ModManagerDeps,
+  m: CatalogMod,
+): Promise<void> {
+  const rules = m.manifest.rules ?? [];
+  if (rules.length === 0) return;
+
+  const pick = await selectFromMenu(
+    term,
+    "core:mod-feature-onboarding",
+    t("modsScreen.onboarding.title", "{name} is on. Which of its features?", { name: m.name }),
+    [
+      {
+        label: t("modsScreen.onboarding.defaults", "Enable default features"),
+        color: C_ENABLED,
+        hint: t("modsScreen.onboarding.defaultsHint", "Use what this mod ships turned on."),
+      },
+      {
+        label: t("modsScreen.onboarding.choose", "Choose features to enable"),
+        color: C_FG,
+        hint: t("modsScreen.onboarding.chooseHint", "Open its options and pick each one."),
+      },
+      {
+        label: t("modsScreen.onboarding.none", "Do not enable any features"),
+        color: C_DIM,
+        hint: t("modsScreen.onboarding.noneHint", "The mod stays on but every feature starts off."),
+      },
+    ],
+    t("modsScreen.common.footer.abcTapEsc", "[ a/b/c or tap; ESC = default features ]"),
+  );
+
+  if (pick === 1) {
+    await manageModOptions(term, deps, [m], m.name);
+    return;
+  }
+  if (pick === 2) {
+    for (const rule of rules) {
+      deps.store.setRuleChoice(rule.flag, false);
+      if (!rule.requiresReload) deps.applyRuleLive?.(rule.flag, false);
+    }
+  }
+  /* pick === 0, or ESC: leave every choice unset, so resolveModRules falls
+   * back to each rule's own manifest default. */
 }
 
 /**
@@ -1396,17 +1462,24 @@ async function enableRecommendedMods(
     deps.store.setModEnabled(m.id, true);
   }
 
-  if (!enableAllOptions) return toEnable.length > 0;
+  if (!enableAllOptions) {
+    /* Same per-mod choice as the ordinary enable path, one after another, so
+     * a batch of recommended mods behaves the same as enabling that many
+     * mods individually rather than silently taking raw manifest defaults. */
+    for (const m of toEnable) await offerFeatureOnboarding(term, deps, m);
+    return toEnable.length > 0;
+  }
+  /* The checkbox's own promise is "one approval screen covers them" - so it
+   * skips the per-mod rule picker rather than answering it, and every rule
+   * is left unset, which resolveModRules already reads as each rule's own
+   * manifest default. Sections have no such picker yet, so they keep their
+   * previous force-on behaviour here unchanged. */
   for (const m of mods) {
-    for (const rule of m.manifest.rules ?? []) {
-      deps.store.setRuleChoice(rule.flag, true);
-      if (!rule.requiresReload) deps.applyRuleLive?.(rule.flag, true);
-    }
     for (const section of m.manifest.sections ?? []) {
       deps.store.setSectionChoice(m.id, section.id, true);
     }
   }
-  return toEnable.length > 0 || mods.some((m) => (m.manifest.rules?.length ?? 0) > 0 || (m.manifest.sections?.length ?? 0) > 0);
+  return toEnable.length > 0 || mods.some((m) => (m.manifest.sections?.length ?? 0) > 0);
 }
 
 /**
