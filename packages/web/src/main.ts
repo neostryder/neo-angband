@@ -8204,6 +8204,7 @@ function hallucinationResolver():
 let levelMapActive = false;
 let levelMapView: { x: number; y: number; width: number; height: number } | null = null;
 let levelMapRepaint: (() => void) | null = null;
+let fullMapOverview = false;
 
 function buildOverviewForShell(): LevelOverview {
   const { cols, rows } = term.size();
@@ -8301,7 +8302,7 @@ function buildOverviewForShell(): LevelOverview {
   /* Selecting a graphics renderer is the mode gate, not whether one specific
    * asset has finished loading.  tileDrawFor still falls back to its ASCII
    * glyph while a pack is warming, just as the live map does. */
-  return tileset ? buildGraphicsOverview(overviewParams) : buildOverview(overviewParams);
+  return tileset || fullMapOverview ? buildGraphicsOverview(overviewParams) : buildOverview(overviewParams);
 }
 
 /** The faithful map modal, with only a repaint/window access point added. */
@@ -8688,6 +8689,10 @@ const displayControl: ModDisplay = {
   setTileScaling(mode) {
     setTileScalingMode(mode);
     term.invalidate();
+    if (levelMapActive) levelMapRepaint?.();
+  },
+  setFullMapOverview(enabled) {
+    fullMapOverview = enabled;
     if (levelMapActive) levelMapRepaint?.();
   },
   setVisualFilter(filter) {

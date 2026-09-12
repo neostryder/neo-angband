@@ -245,6 +245,8 @@ export interface ModDisplay {
   setMapView(view: ModMapView | null): void;
   setSidebarExtent(extent: { readonly columns: number; readonly topRows: number } | null): void;
   setTileScaling(mode: "auto" | "crisp"): void;
+  /** Choose the full-detail map picture instead of the compressed ASCII miniature. */
+  setFullMapOverview(enabled: boolean): void;
   /** Apply a CSS filter to the terminal canvas, or clear the current filter. */
   setVisualFilter(filter: string | null): void;
   repaint(): void;

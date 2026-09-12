@@ -210,6 +210,7 @@ function displayFor(session: ModSessionFacts): ModDisplay | undefined {
     setMapView: (view) => display.setMapView(view),
     setSidebarExtent: (extent) => display.setSidebarExtent(extent),
     setTileScaling: (mode) => display.setTileScaling(mode),
+    setFullMapOverview: (enabled) => display.setFullMapOverview(enabled),
     setVisualFilter: (filter) => {
       if (!session.capabilities) {
         throw new Error(`this plugin needs capability "${VISUAL_FILTER_CAPABILITY}"; no capability set was supplied`);

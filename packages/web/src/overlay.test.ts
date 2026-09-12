@@ -19,7 +19,7 @@ import {
 } from "./overlay";
 import type { MenuItem, ItemMenuSource, ScreenLine } from "./overlay";
 import type { GlyphTerm } from "./term";
-import type { Overview } from "./mapview";
+import type { GraphicsOverview, Overview } from "./mapview";
 
 // showTextScreen/selectFromMenu/getRepDir already exercise this repo's
 // keydown-listener modal pattern end to end (see help.test.ts); showLevelMap
@@ -158,6 +158,7 @@ function overview(over: Partial<Overview> = {}): Overview {
 describe("showLevelMap (do_cmd_view_map modal)", () => {
   afterEach(() => {
     delete (globalThis as { window?: unknown }).window;
+    delete (globalThis as { document?: unknown }).document;
   });
 
   it("draws a COLOUR_WHITE box, the cell glyphs, and the player marker", () => {
@@ -206,6 +207,46 @@ describe("showLevelMap (do_cmd_view_map modal)", () => {
     press(win, "Escape");
     await done;
     expect(repaint).toBeUndefined();
+  });
+
+  it("smoothly scales the complete graphics overview into its modal canvas", () => {
+    const win = Object.assign(makeFakeWindow(), { devicePixelRatio: 1 });
+    (globalThis as { window?: unknown }).window = win;
+    const contexts: Array<Record<string, unknown>> = [];
+    const canvases: Array<Record<string, unknown>> = [];
+    const document = {
+      body: { appendChild: (canvas: Record<string, unknown>) => void canvases.push(canvas) },
+      createElement: () => {
+        const ctx: Record<string, unknown> = {
+          drawImage: () => undefined,
+          fillText: () => undefined,
+          setTransform: () => undefined,
+        };
+        contexts.push(ctx);
+        return {
+          style: {},
+          getContext: () => ctx,
+          setAttribute: () => undefined,
+          remove: () => undefined,
+        };
+      },
+    };
+    (globalThis as { document?: unknown }).document = document;
+    const term = Object.assign(makeTerm(6, 6), {
+      metrics: () => ({ cellWidth: 10, cellHeight: 10, originX: 0, originY: 0 }),
+    });
+    const graphics: GraphicsOverview = {
+      kind: "graphics",
+      cells: [[{ ch: ".", css: "#fff" }, { ch: "#", css: "#fff" }]],
+      width: 2,
+      height: 1,
+      origin: { x: 0, y: 0 },
+      playerGrid: { x: 0, y: 0 },
+    };
+    void showLevelMap(term as never, graphics);
+    const displayContext = contexts[1];
+    expect(displayContext).toMatchObject({ imageSmoothingEnabled: true, imageSmoothingQuality: "high" });
+    expect(canvases[0]?.style).toMatchObject({ imageRendering: "auto" });
   });
 
   it("resolves on any key press (anykey)", async () => {

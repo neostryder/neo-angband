@@ -65,6 +65,7 @@ describe("modPluginContext session facts", () => {
       setMapView: () => undefined,
       setSidebarExtent: () => undefined,
       setTileScaling: () => undefined,
+      setFullMapOverview: () => undefined,
       setVisualFilter: () => undefined,
       repaint: () => undefined,
     } as unknown as ModDisplay;
@@ -88,6 +89,7 @@ describe("modPluginContext session facts", () => {
       setMapView: () => undefined,
       setSidebarExtent: () => undefined,
       setTileScaling: () => undefined,
+      setFullMapOverview: () => undefined,
       setVisualFilter,
       repaint: () => undefined,
     } as unknown as ModDisplay;
@@ -117,6 +119,24 @@ describe("modPluginContext session facts", () => {
     modPluginContext("filtered-display", {}, undefined, {}, { display, capabilities: withFilter })
       .display?.setVisualFilter("contrast(1.5)");
     expect(setVisualFilter).toHaveBeenCalledWith("contrast(1.5)");
+  });
+
+  it("forwards the full-detail map choice through the display facade", () => {
+    const setFullMapOverview = vi.fn();
+    const display = {
+      snapshot: () => ({ mode: "play" }),
+      onKey: () => () => undefined,
+      setGrid: () => undefined,
+      setCamera: () => undefined,
+      setMapView: () => undefined,
+      setSidebarExtent: () => undefined,
+      setTileScaling: () => undefined,
+      setFullMapOverview,
+      setVisualFilter: () => undefined,
+      repaint: () => undefined,
+    } as unknown as ModDisplay;
+    modPluginContext("qol", {}, undefined, {}, { display }).display?.setFullMapOverview(true);
+    expect(setFullMapOverview).toHaveBeenCalledWith(true);
   });
 
   it("hands keymaps over only with the existing keymap:write capability", () => {
@@ -150,6 +170,12 @@ describe("modPluginContext session facts", () => {
 });
 
 describe("main.ts actually passes the session facts (drift guard)", () => {
+  it("uses the full-detail map path when a display mod requests it", () => {
+    expect(MAIN_TS_SOURCE).toMatch(
+      /return tileset \|\| fullMapOverview \? buildGraphicsOverview\(overviewParams\) : buildOverview\(overviewParams\);/u,
+    );
+  });
+
   it("builds them once, from bootedNew and the birth screen being done", () => {
     /* bootedNew ALONE is true of the throwaway game running behind the birth
      * screen. Pinning the conjunction keeps a later simplification from seeding

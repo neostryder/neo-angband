@@ -600,7 +600,7 @@ function mountGraphicsOverview(
     top: `${String(top)}px`,
     width: `${String(width)}px`,
     height: `${String(height)}px`,
-    imageRendering: "pixelated",
+    imageRendering: "auto",
     pointerEvents: "none",
     zIndex: "1",
   });
@@ -608,7 +608,8 @@ function mountGraphicsOverview(
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(source, 0, 0, width, height);
   try {
     document.body.appendChild(canvas);
