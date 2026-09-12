@@ -1869,6 +1869,81 @@ describe("selectFromMenu: overlay mode draws a box over the map", () => {
   });
 });
 
+describe("selectFromMenu: a boxed menu's detail pane wraps to the box's real width", () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  /** A plain greedy word-wrap, standing in for a caller like spellBrowseLines. */
+  function wrapWords(text: string, width: number): ScreenLine[] {
+    const lines: string[] = [];
+    let cur = "";
+    for (const word of text.split(" ")) {
+      const next = cur === "" ? word : `${cur} ${word}`;
+      if (next.length > width && cur !== "") {
+        lines.push(cur);
+        cur = word;
+      } else {
+        cur = next;
+      }
+    }
+    if (cur !== "") lines.push(cur);
+    return lines.map((text) => ({ text }));
+  }
+
+  it("hands the detail callback the box's own width, not the full terminal width", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80, 24);
+    const LONG =
+      "Fires a magic missile that always hits its target and does unresistable damage. " +
+      "Sometimes a beam is fired instead that hurts each monster in its path. " +
+      "The chance to get a beam goes up with your character level.";
+    let seenWidth = -1;
+    /* Short spell names, like the real cast/study/browse menus - a book's rows
+     * are single spell names, so `boxCol` narrows in well short of column 0. */
+    const items: MenuItem[] = [{ label: "Magic Missile" }, { label: "Light Room" }];
+    const done = selectFromMenu(
+      term,
+      "Browsing spells. ('?' to toggle description)",
+      items,
+      "[ ESC to exit ]",
+      {
+        overlay: true,
+        subtitle: `${"Name".padEnd(33)}Lv Mana Fail Info`,
+        detail: (_i, availableCols) => {
+          seenWidth = availableCols ?? -1;
+          return wrapWords(LONG, availableCols ?? 80);
+        },
+        detailToggleKey: "?",
+        detailInitiallyShown: true,
+      },
+    );
+    /* The box's real width is well under the terminal's 80 columns - a used-to-
+     * be-invisible-to-the-caller fact that let every boxed detail pane wrap
+     * assuming the full width and then get clipped at the box's real edge. */
+    expect(seenWidth).toBeGreaterThan(0);
+    expect(seenWidth).toBeLessThan(80);
+    const shot = term.snapshot().join(" ");
+    /* Every word of the description survives - a line wrapped to the width this
+     * menu actually reported does not run past the box and get cut mid-word. */
+    for (const word of [
+      "unresistable",
+      "damage.",
+      "Sometimes",
+      "monster",
+      "path.",
+      "chance",
+      "character",
+      "level.",
+    ]) {
+      expect(shot).toContain(word);
+    }
+    press(win, "Escape");
+    await done;
+  });
+});
+
 describe("selectFromMenu: a detail pane cannot squeeze the list away", () => {
   afterEach(() => {
     delete (globalThis as { window?: unknown }).window;

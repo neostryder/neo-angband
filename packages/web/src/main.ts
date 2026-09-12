@@ -4348,8 +4348,8 @@ async function castSpell(): Promise<void> {
     "[ ESC to cancel ]",
     {
       subtitle: SPELL_HEADER,
-      detail: (i) =>
-        spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, term.size().cols),
+      detail: (i, availableCols) =>
+        spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, availableCols ?? term.size().cols),
       detailToggleKey: "?",
       /* spell_menu_new's region is `{ 0 - width, 1, width, -99 }` (ui-spell.c:229)
        * - right-aligned, one row down, over the map. */
@@ -4446,8 +4446,8 @@ async function studySpell(): Promise<void> {
       "[ ESC to cancel ]",
       {
         subtitle: SPELL_HEADER,
-        detail: (i) =>
-          spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, term.size().cols),
+        detail: (i, availableCols) =>
+          spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, availableCols ?? term.size().cols),
         detailToggleKey: "?",
         overlay: true, // ui-spell.c:229, as in castSpell
       },
@@ -4532,8 +4532,8 @@ async function browseBookObject(handle: number): Promise<void> {
     {
       subtitle: SPELL_HEADER,
       browseOnly: true,
-      detail: (i) =>
-        spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, term.size().cols),
+      detail: (i, availableCols) =>
+        spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, availableCols ?? term.size().cols),
       detailToggleKey: "?",
       detailInitiallyShown: true,
       overlay: true, // ui-spell.c:229 - the same region the cast menu uses

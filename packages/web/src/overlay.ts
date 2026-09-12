@@ -1618,8 +1618,19 @@ export interface SelectMenuOptions {
    * whose scrolling boxes are deliberately unlike the normal lettered menu.
    */
   terminalPicker?: (items: readonly MenuItem[]) => Promise<string | null>;
-  /** browse_hook: lines shown below the list for the row under the cursor. */
-  detail?: (index: number) => readonly ScreenLine[];
+  /**
+   * browse_hook: lines shown below the list for the row under the cursor.
+   *
+   * The second argument is the pane's real available width - `term.size().cols`
+   * minus however far a boxed menu's own box sits from column 0 (`boxCol`),
+   * undefined for a caller reached through a mod's own menu presenter, which has
+   * no terminal column grid to report. A caller that pre-wraps its lines should
+   * wrap to THIS width, not to `term.size().cols` - a boxed menu with short item
+   * labels narrows its own box well inside the terminal, and prose wrapped for
+   * the full terminal width runs past the box's real edge and is clipped there
+   * mid-word (#217).
+   */
+  detail?: (index: number, availableCols?: number) => readonly ScreenLine[];
   /**
    * Enables the `@`-inscription quick-select (MN_INSCRIP_TAGS) on this menu, for
    * the object pickers upstream drives through get_item. The value is the
@@ -1865,9 +1876,35 @@ export function selectFromMenu(
      * landed on, and in overlay mode the rows do not start at BODY_TOP. */
     let boxCol = 0;
     const paint = (): void => {
+      const { cols, rows } = term.size();
+      /* Upstream's header is the prompt AND the legend on one row (get_item builds
+       * `header` from both), because the box it opens has no footer line. */
+      const heading = boxed ? `${title} ${extra?.footer ?? displayedFooter}` : title;
+      if (boxed) {
+        /* max_len over the rows about to be drawn - the header included, since
+         * it sits inside the box - then the same clamp upstream applies: right-
+         * align to fit, but never push the box past the prompt's own end, and give
+         * up on the offset entirely once it is down to a few columns. */
+        const widest = items.reduce(
+          (w, it) => Math.max(w, 3 + it.label.length),
+          extra?.subtitle?.length ?? 0,
+        );
+        boxCol = Math.min(cols - 1 - widest, heading.length - 2);
+        if (boxCol <= 3) boxCol = 0;
+      } else {
+        boxCol = 0;
+      }
+      /* Computed here, ahead of the box's own erase/clear below, so BOTH detail
+       * calls in this function - the accessibility copy right after and the
+       * paint below - wrap prose to what the box can actually show rather than
+       * to the full terminal width. A boxed menu with short item labels (the
+       * spell cast/study/browse menus, whose rows are short spell names) narrows
+       * `boxCol` well inside the terminal; prose wrapped for the full width runs
+       * past the box's real right edge and used to be clipped there mid-word. */
+      const availableCols = Math.max(1, cols - 1 - boxCol);
       controls.update({
         kind: "menu", label: title,
-        detail: [items[cursor]?.hint, ...(detailShown ? detail?.(cursor)?.map((line) => line.text) ?? [] : [])].filter(Boolean).join("\n"),
+        detail: [items[cursor]?.hint, ...(detailShown ? detail?.(cursor, availableCols)?.map((line) => line.text) ?? [] : [])].filter(Boolean).join("\n"),
         rows: items.map((item, index) => ({
           id: `row:${index}`, label: item.label, disabled: item.disabled,
           selected: cursor === index, run: () => pick(index),
@@ -1880,28 +1917,13 @@ export function selectFromMenu(
           cancelAction(),
         ],
       });
-      const { cols, rows } = term.size();
-      /* Upstream's header is the prompt AND the legend on one row (get_item builds
-       * `header` from both), because the box it opens has no footer line. */
-      const heading = boxed ? `${title} ${extra?.footer ?? displayedFooter}` : title;
       /* menu_layout gives a menu with a `header` its own row, and the list starts
        * below it (the spell menu's "Name Lv Mana Fail Info", ui-spell.c:250). Off
        * screen that is BODY_TOP's spare row; in a box it has to be counted. */
       const subtitleRow = extra?.subtitle ? 1 : 0;
       if (boxed) {
-        /* max_len over the rows about to be drawn - the header included, since
-         * it sits inside the box - then the same clamp upstream applies: right-
-         * align to fit, but never push the box past the prompt's own end, and give
-         * up on the offset entirely once it is down to a few columns. */
-        const widest = items.reduce(
-          (w, it) => Math.max(w, 3 + it.label.length),
-          extra?.subtitle?.length ?? 0,
-        );
-        boxCol = Math.min(cols - 1 - widest, heading.length - 2);
-        if (boxCol <= 3) boxCol = 0;
         term.eraseToEol(0, HEADER_ROW);
       } else {
-        boxCol = 0;
         term.clear();
       }
       term.print(0, HEADER_ROW, heading.slice(0, cols - 1), TITLE);
@@ -1920,7 +1942,7 @@ export function selectFromMenu(
        * the end of a mod's pane is where the two permanent-once-on warnings are. */
       const listFloor = Math.min(items.length, Math.max(1, extra?.minListRows ?? 3));
       const paneRoom = Math.max(0, rows - BODY_TOP - 1 - hintRows - listFloor);
-      const wanted = detail && detailShown ? detail(cursor) : [];
+      const wanted = detail && detailShown ? detail(cursor, availableCols) : [];
       const detailLines =
         wanted.length <= paneRoom
           ? wanted

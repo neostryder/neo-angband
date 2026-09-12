@@ -58,6 +58,8 @@ still calls itself.
 
 - [Visible] [UI] **Linoleum tiles for nearby live monsters and floor items now begin loading before they enter view.** Floor items reuse the flavor-aware display tile selection, so an unidentified item never warms its true kind tile (#215).
 
+- [Visible] [UI] **A spell's description in the Cast, Study, and Browse menus no longer drops text mid-word.** The description pane was wrapped to the full terminal width regardless of how narrow the boxed menu actually sat, so a line could run past the box's real edge and lose whatever did not fit; it now wraps to the box's own available width (#217).
+
 - [Visible] [UI] **The Linoleum Map overview now rebuilds when a tile image finishes loading.** Tiles that were still loading when the overview opened no longer remain ASCII until it is reopened (#216).
 
 - [Visible] [UI] **The graphics Map overview now uses high-quality smoothing when its complete picture is reduced to fit the modal.** Its final scale was forcing nearest-neighbour sampling despite the upstream graphical overview using linear scaling (#211).
