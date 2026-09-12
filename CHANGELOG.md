@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-09-12
+
 ### Added
 
 - [Visible] [UI] [Modding-API] **Content mods can declare recovered historical object art per bundled tile pack.** Native atlas cells overlay missing classic mappings before tile fillers run, while a mod-owned standalone image can supply a confirmed substitute where a pack has no real art (#218).
