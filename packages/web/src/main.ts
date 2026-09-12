@@ -2156,10 +2156,16 @@ function tileDrawFor(
  * (#290). TileSet (the tilesheet engine) has no such seam and exposes no
  * `preload`, so this is a no-op there.
  *
- * Known terrain is warmed through the map-memory path. Live monsters and floor
- * piles use the same radius, because their number and their distinct assets are
- * small beside the terrain scan, while the existing 40-grid head start is what
- * makes either path warm before it can reach the viewport.
+ * Known terrain is warmed through the map-memory path. Live monsters, floor
+ * piles, revealed traps and the player's own tile use the same radius (or, for
+ * the player, no radius at all - there is only ever one), because their number
+ * and their distinct assets are small beside the terrain scan, while the
+ * existing 40-grid head start is what makes any of these paths warm before it
+ * can reach the viewport. A trap is its own resolution path (tileForTrap, not
+ * tileForFeature) and so needs its own loop rather than riding the terrain
+ * scan's (#224); the player's own tile is warmed unconditionally because a
+ * mod's registry:tiles player-door seam can swap it (Linoleum's shapechange
+ * rule among them) the instant an effect begins, with no walk-up warning.
  */
 function precacheTilesNear(cx: number, cy: number, radius: number): void {
   const ts = tileset;
@@ -2197,6 +2203,22 @@ function precacheTilesNear(cx: number, cy: number, radius: number): void {
     const kind = shown.multiple ? (pileKind ?? shown.obj.kind) : shown.obj.kind;
     preload(shownObjectTile(kind).atlas, grid.x, grid.y);
   }
+  // Revealed traps (trapIndex's own visibility gate, ui-map.c:98): a trap never
+  // goes through the terrain scan above, since it is its own tile category
+  // resolved through tileForTrap rather than tileForFeature (#224).
+  for (const list of state.traps.values()) {
+    for (const t of list) {
+      if (!t.flags.has(TRF.VISIBLE) || !t.kind.glyph.trim()) continue;
+      const { x, y } = t.grid;
+      if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+      preload(tileForTrap(tileMap, t.kind.tidx, LIGHTING.LOS), x, y);
+    }
+  }
+  // The player's own tile: normally warm from the first frame, but a mod's
+  // registry:tiles player-door seam (Linoleum's shapechange rule among them)
+  // can start returning a different asset the instant a shapechange begins,
+  // which is exactly the cold-start race this function otherwise prevents.
+  preload(playerTileOverride() ?? tileForMonster(tileMap, 0), state.actor.grid.x, state.actor.grid.y);
 }
 
 /**

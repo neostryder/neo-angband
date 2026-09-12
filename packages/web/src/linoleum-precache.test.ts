@@ -43,4 +43,19 @@ describe("Linoleum entity precaching", () => {
     expect(cell).toContain("const { shownFlavor, atlas } = shownObjectTile(kind)");
     expect(cell).toContain("tileDrawFor(atlas, gx, gy, dimmed)");
   });
+
+  it("warms revealed traps through their own tileForTrap path (#224)", () => {
+    const body = functionBody(MAIN, "precacheTilesNear");
+    expect(body).toContain("for (const list of state.traps.values())");
+    expect(body).toContain("t.flags.has(TRF.VISIBLE)");
+    expect(body).toContain("t.kind.glyph.trim()");
+    expect(body).toContain("tileForTrap(tileMap, t.kind.tidx, LIGHTING.LOS)");
+  });
+
+  it("warms the player's own tile, including a mod's shapechange override (#224)", () => {
+    const body = functionBody(MAIN, "precacheTilesNear");
+    expect(body).toContain(
+      "preload(playerTileOverride() ?? tileForMonster(tileMap, 0), state.actor.grid.x, state.actor.grid.y)",
+    );
+  });
 });
