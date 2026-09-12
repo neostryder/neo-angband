@@ -594,9 +594,17 @@ export function storeCheckNum(store: Store, obj: GameObject): boolean {
   if (store.stock.length < store.stockSize) return true;
   const mode = store.feat === FEAT.HOME ? OSTACK_PACK : OSTACK_STORE;
   for (const stockObj of store.stock) {
-    if (objectMergeable(stockObj, obj, mode, STORE_LIMITS)) return true;
+    if (storeObjectSimilar(stockObj, obj, mode)) return true;
   }
   return false;
+}
+
+/** store_object_similar's additional pre-4.2.6 discount identity check. */
+function storeObjectSimilar(first: GameObject, second: GameObject, mode: number): boolean {
+  return (
+    (first.discount ?? 0) === (second.discount ?? 0) &&
+    objectMergeable(first, second, mode, STORE_LIMITS)
+  );
 }
 
 /**
@@ -649,7 +657,7 @@ export function storeCarry(
 
   /* Try to merge into an existing stack. */
   for (const stockObj of store.stock) {
-    if (objectMergeable(stockObj, obj, OSTACK_STORE, STORE_LIMITS)) {
+    if (storeObjectSimilar(stockObj, obj, OSTACK_STORE)) {
       storeObjectAbsorb(stockObj, obj);
       return stockObj;
     }
@@ -963,10 +971,11 @@ export function createTownStores(
   rng: Rng,
   maxDepth: number,
   classes?: readonly PlayerClass[],
+  behaviour?: StoreBehaviourRegistry,
 ): Store[] {
   const stores = bound.map((b) =>
     bindStoreRuntime(b, rng, deps.constants.storeInvenMax, deps.reg, classes),
   );
-  storeReset({ rng, deps, maxDepth, stores });
+  storeReset({ rng, deps, maxDepth, stores, ...(behaviour ? { behaviour } : {}) });
   return stores;
 }

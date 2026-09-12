@@ -14054,6 +14054,14 @@ for (const loaded of activeModCode().plugins) {
   }
 }
 
+/*
+ * startGame makes a new town's stock before it can expose a live GameState to
+ * plugin register(). Rebuild that one initial batch after every enabled plugin
+ * has had the same registration opportunity. A core-only boot and a loaded
+ * save have no handler-backed fresh batch, so existing stock is never re-rolled.
+ */
+game.resolveInitialStoreDiscounts();
+
 /* The display slot is last-load-wins, unlike the autoplayer's historical
  * first-claim guard. Select BEFORE invoking: a lower front end never gets a
  * chance to mount anything when a later mod replaces it.

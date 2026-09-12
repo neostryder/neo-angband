@@ -62,6 +62,8 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] [Modding-API] **Restored store discount handlers now apply to a new character's initial town stock after enabled plugins finish registering.** Later maintenance already used the live handler; the initial shelves now do too (#219).
+
 - [Visible] [UI] [Modding-API] **Object registry binding now rejects duplicate tval/sval pairs before graphics preferences can misdirect an item tile.** Mod-added objects sharing an existing tval retain their own mapping and fall back to their ASCII glyph when a tile pack has no matching art (#218).
 
 - [Visible] [UI] **Linoleum tiles for nearby live monsters and floor items now begin loading before they enter view.** Floor items reuse the flavor-aware display tile selection, so an unidentified item never warms its true kind tile (#215).

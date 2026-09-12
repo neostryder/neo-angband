@@ -22,6 +22,7 @@ import {
   StoreBehaviourRegistry,
   storeCreateRandom,
   storeMaint,
+  storeCarry,
   storeReset,
   storeUpdate,
   storeWillBuy,
@@ -227,6 +228,25 @@ describe("store maintenance (store.c store_reset/store_maint)", () => {
     const countsA = a.stores.map((s) => s.stock.length);
     const countsB = b.stores.map((s) => s.stock.length);
     expect(countsA).toEqual(countsB);
+  });
+});
+
+describe("store stock identity", () => {
+  it("does not merge differently discounted stock", () => {
+    const { ctx, stores } = context();
+    const general = stores.find((store) => store.feat === FEAT.STORE_GENERAL);
+    if (!general) throw new Error("missing general store");
+    const fullPrice = makeKind(TV.POTION);
+    const halfPrice = makeKind(TV.POTION);
+    fullPrice.number = 2;
+    halfPrice.number = 2;
+    halfPrice.discount = 50;
+
+    storeCarry(ctx.rng, reg, constants, general, fullPrice, true);
+    storeCarry(ctx.rng, reg, constants, general, halfPrice, true);
+
+    expect(general.stock).toHaveLength(2);
+    expect(general.stock.map((obj) => obj.discount ?? 0)).toEqual([0, 50]);
   });
 });
 

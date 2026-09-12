@@ -8,7 +8,9 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { createModRegistryHost } from "../mod/registry-host.js";
 import { FEAT } from "../generated/index.js";
+import { priceItem } from "../store/price.js";
 import { startGame } from "./game.js";
 import type { GamePack } from "./game.js";
 import type { GameState } from "../game/context.js";
@@ -98,5 +100,88 @@ describe("the return to town spends the accrued days (store.c:1422)", () => {
     expect(stockOf(state), "four days of maintenance moved the stock").not.toBe(
       before,
     );
+  });
+});
+
+describe("fresh-town store behaviour registered by a plugin", () => {
+  it("resolves a registered discount into the real initial stock and listing price", () => {
+    const game = startGame(pack, { seed: 21, depth: 0 });
+    const { state } = game;
+    const behaviour = state.storeBehaviour;
+    const stores = state.stores;
+    expect(behaviour, "wireGame creates the live store registry").toBeDefined();
+    expect(stores, "fixture: a town game has store stock").toBeDefined();
+    if (!behaviour || !stores) throw new Error("missing store behaviour fixture");
+
+    const stock = stores.flatMap((store) => store.stock);
+    expect(stock.some((obj) => obj.discount !== undefined)).toBe(false);
+
+    /* This is the same live facade a folder plugin receives after game boot.
+     * The forced result is the #139 pattern, making both discount mutations
+     * observable without depending on a probabilistic roll. */
+    let rolls = 0;
+    const host = createModRegistryHost(
+      { stores: behaviour },
+      { has: (capability: string): boolean => capability === "registry:store" },
+    );
+    const featureRestorationStylePlugin = {
+      register(): void {
+        host.stores.setDiscountRoll(() => {
+          rolls++;
+          return 50;
+        });
+      },
+    };
+    featureRestorationStylePlugin.register();
+    expect(behaviour.discountRollHandler()).toBeTypeOf("function");
+
+    /* main.ts resolves this one deferred batch immediately after plugin
+     * registration. It is the real town stock that startGame created, not an
+     * isolated massProduce object. */
+    game.resolveInitialStoreDiscounts();
+    const refreshedStores = state.stores ?? [];
+    const discounted = refreshedStores.flatMap((store) => store.stock).filter((obj) => obj.discount === 50);
+    expect(rolls).toBeGreaterThan(0);
+    expect(discounted.length).toBeGreaterThan(0);
+
+    const obj = discounted.find((candidate) => candidate.number > 1);
+    expect(obj, "fixture: a mass-produced stack has more than one item").toBeDefined();
+    if (!obj) throw new Error("missing stack fixture");
+    expect(obj.number).toBeLessThanOrEqual(Math.trunc(obj.kind.base.maxStack / 2));
+
+    const store = refreshedStores.find((candidate) => candidate.stock.includes(obj));
+    expect(store, "discounted item remains in its real store").toBeDefined();
+    if (!store) throw new Error("missing discounted item store");
+    const discountedPrice = priceItem(
+      game.booted.registries.objects,
+      store,
+      store.owner,
+      obj,
+      false,
+      1,
+      true,
+      false,
+    );
+    delete obj.discount;
+    const fullPrice = priceItem(
+      game.booted.registries.objects,
+      store,
+      store.owner,
+      obj,
+      false,
+      1,
+      true,
+      false,
+    );
+    obj.discount = 50;
+    expect(discountedPrice).toBe(fullPrice - Math.trunc((fullPrice * 50) / 100));
+
+    /* The handler stays on the same live registry for ordinary later store
+     * maintenance, rather than being a one-off initial-stock substitute. */
+    const initialRolls = rolls;
+    game.changeLevel(1);
+    state.daycount = 4;
+    game.changeLevel(0);
+    expect(rolls).toBeGreaterThan(initialRolls);
   });
 });

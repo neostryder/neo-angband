@@ -574,6 +574,12 @@ export interface StartedGame {
    */
   changeLevel: (depth: number) => void;
   /**
+   * Rebuild a fresh town's pre-plugin stock once, after the host has installed
+   * enabled registry handlers. A loaded save has no fresh-town batch, so this
+   * is a no-op there and never re-rolls saved store stock.
+   */
+  resolveInitialStoreDiscounts: () => void;
+  /**
    * reincarnate_borg (borg/borg-reincarnate.c): wipe the live player, roll a new
    * one from the real birth pipeline, and carry on in the SAME session - no new
    * savefile, no return to a menu. Race and class are rolled unless pinned. See
@@ -3541,7 +3547,9 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   // begins in the dungeon (tests) still draws no store RNG until town.
   const startDepth = opts.depth ?? 1;
   let earlyStores: Store[] | undefined;
+  let resolveInitialStoreDiscounts = (): void => {};
   if (reg.stores && startDepth === 0) {
+    const townRngState = mainRng.getState();
     const bookKeys = new Set(
       birth.player.cls.magic.books.map((b) => `${b.tvalIdx},${b.sval}`),
     );
@@ -3563,6 +3571,26 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
       birth.player.maxDepth,
       players.classes,
     );
+    let resolved = false;
+    resolveInitialStoreDiscounts = (): void => {
+      if (resolved) return;
+      resolved = true;
+      if (state.storeBehaviour?.discountRollHandler() === null) return;
+      /* Re-run only town stock from the original pre-store RNG state. The main
+       * stream keeps the state used to create the rest of this already-live
+       * game, while the recreated shelves now take the registered discount
+       * branch before storeCarry can merge their stacks. */
+      const townRng = new Rng(1);
+      townRng.setState(townRngState);
+      state.stores = createTownStores(
+        reg.stores!.stores,
+        storeDeps,
+        townRng,
+        birth.player.maxDepth,
+        players.classes,
+        state.storeBehaviour,
+      );
+    };
   }
 
   // OPT(player, birth_randarts) (obj-randart.c do_randart): seed_randart =
@@ -3875,6 +3903,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     options,
     randartSeed,
     changeLevel,
+    resolveInitialStoreDiscounts,
     reincarnate: makeReincarnate(
       state,
       reg,
@@ -4801,6 +4830,7 @@ export function loadGame(
     options,
     randartSeed,
     changeLevel,
+    resolveInitialStoreDiscounts: (): void => {},
     reincarnate: makeReincarnate(
       state,
       reg,
