@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { FEAT, PROJ } from "../generated/index.js";
-import { tvalFindIdx } from "../obj/bind.js";
+import { ObjRegistry, tvalFindIdx } from "../obj/bind.js";
 import { bindCore } from "../session/boot.js";
 import type { CorePack } from "../session/boot.js";
 import {
@@ -158,6 +158,35 @@ describe("parseTilePrefs: object lines", () => {
     const pile = reg.objects.pileKind;
     expect(pile).not.toBeNull();
     expect(tileForObject(oldMap, pile!)).toEqual({ attr: 131, char: 159 });
+  });
+
+  it("keeps a mod-added kind under an existing tval out of another kind's tile", () => {
+    const objects = new ObjRegistry({
+      ...pack.obj,
+      object: {
+        ...pack.obj.object,
+        records: [
+          ...pack.obj.object.records,
+          {
+            name: "& Mod Flask~",
+            type: "flask",
+            graphics: { glyph: "~", color: "W" },
+          },
+        ],
+      },
+    } as CorePack["obj"]);
+    const tval = tvalFindIdx("flask");
+    const flask = objects.lookupKind(tval, objects.lookupSval(tval, "Flask of oil"));
+    const modFlask = objects.lookupKind(tval, objects.lookupSval(tval, "Mod Flask"));
+    expect(flask).toMatchObject({ tval, sval: 1, kidx: 6 });
+    expect(modFlask).toMatchObject({ tval, sval: 2, kidx: 375 });
+
+    const map = parseTilePrefs("object:flask:Flask of oil:0x8A:0x9A\n", {
+      ...deps,
+      objects,
+    });
+    expect(tileForObject(map, flask!)).toEqual({ attr: 0x8a, char: 0x9a });
+    expect(tileForObject(map, modFlask!)).toBeNull();
   });
 });
 

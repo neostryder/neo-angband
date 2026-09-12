@@ -58,6 +58,8 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] [UI] [Modding-API] **Object registry binding now rejects duplicate tval/sval pairs before graphics preferences can misdirect an item tile.** Mod-added objects sharing an existing tval retain their own mapping and fall back to their ASCII glyph when a tile pack has no matching art (#218).
+
 - [Visible] [UI] **Linoleum tiles for nearby live monsters and floor items now begin loading before they enter view.** Floor items reuse the flavor-aware display tile selection, so an unidentified item never warms its true kind tile (#215).
 
 - [Visible] [UI] **A spell's description in the Cast, Study, and Browse menus no longer drops text mid-word.** The description pane was wrapped to the full terminal width regardless of how narrow the boxed menu actually sat, so a line could run past the box's real edge and lose whatever did not fit; it now wraps to the box's own available width (#217).

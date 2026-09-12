@@ -411,6 +411,8 @@ export class ObjRegistry {
   readonly bases: ObjectBase[] = [];
   /** k_info in kidx order; ordinary kinds then INSTA_ART dummies. */
   readonly kinds: ObjectKind[] = [];
+  /** Ordinary object kind keys reserved while the composed pack binds. */
+  private readonly kindsByTvalSval = new Map<string, ObjectKind>();
   /** Count of ordinary kinds (before artifact dummy kinds). */
   ordinaryKindCount = 0;
   /** e_info in eidx order. */
@@ -992,11 +994,19 @@ export class ObjRegistry {
         kind.allocMin = amin;
         kind.allocMax = amax;
       }
+      const key = `${String(tval)}:${String(kind.sval)}`;
+      const existing = this.kindsByTvalSval.get(key);
+      if (existing) {
+        throw new Error(
+          `object: ${rec.name}: duplicate tval/sval ${key}, already used by ${existing.name}`,
+        );
+      }
       /* Keys core does not read ride along instead of being dropped. This is
        * the ONLY thing that makes an added key survive: composition always
        * carried it, and every binder used to discard it, so a mod could write
        * a new field, get no error, and find nothing at runtime. */
       this.kinds.push(attachExt("object", rec, kind));
+      this.kindsByTvalSval.set(key, kind);
     }
     this.ordinaryKindCount = this.kinds.length;
   }
