@@ -10,6 +10,7 @@ import {
   contextMenuPosition,
   paintContextMenu,
   runStore,
+  truncateStoreItemName,
 } from "./shop";
 import { itemSelect } from "./overlay";
 import { clearInputDoor, dispatchUiInput } from "./input-door";
@@ -50,6 +51,24 @@ function storeTerm(): StoreTerm {
 afterEach(() => {
   clearInputDoor();
   resetRegionStack();
+});
+
+describe("store item-name truncation", () => {
+  const name = "a very long store item name";
+
+  it("keeps the faithful plain slice when the display seam is off", () => {
+    expect(truncateStoreItemName(name, 12, false)).toBe(name.slice(0, 12));
+  });
+
+  it("marks an overlong name with an ASCII ellipsis when the display seam is on", () => {
+    expect(truncateStoreItemName(name, 12, true)).toBe("a very lo...");
+    expect(truncateStoreItemName("a short name", 20, true)).toBe("a short name");
+  });
+
+  it("keeps the faithful slice when the name column cannot fit an ellipsis", () => {
+    expect(truncateStoreItemName(name, 1, true)).toBe(name.slice(0, 1));
+    expect(truncateStoreItemName(name, 2, true)).toBe(name.slice(0, 2));
+  });
 });
 
 describe("runStore sell picker surface", () => {

@@ -247,6 +247,8 @@ export interface ModDisplay {
   setTileScaling(mode: "auto" | "crisp"): void;
   /** Choose the full-detail map picture instead of the compressed ASCII miniature. */
   setFullMapOverview(enabled: boolean): void;
+  /** Show a trailing ellipsis for store item names that exceed their column. */
+  setStoreItemNameEllipsis(enabled: boolean): void;
   /** Apply a CSS filter to the terminal canvas, or clear the current filter. */
   setVisualFilter(filter: string | null): void;
   repaint(): void;

@@ -50,6 +50,8 @@ still calls itself.
 
 ### Added
 
+- [Visible] [UI] **Mods can opt store item names into a trailing ellipsis when they exceed their list column.** Core keeps Angband's exact plain truncation unless a display mod enables the dedicated seam (#214).
+
 - [Visible] [Modding-API] **Mods can select the full-detail Map overview instead of the compressed ASCII miniature.** This lets an opt-in convenience preserve every known cave grid while keeping the core default faithful to Angband's text-terminal map (#212).
 
 - [Visible] [UI] [Modding-API] **Switching a mod on that declares any features now asks which of them to turn on**, rather than silently taking the manifest's own defaults: enable default features, choose features to enable (opens that mod's own options screen), or enable none of them regardless of default. Enabling several mods in one visit to the Mods screen asks once per mod, in order, before the single reload that applies them all. The "Enable all options from recommended mods..." bulk action changes meaning to match: checked, it takes every mod's own default features (plus every optional part) with no per-mod question; unchecked, it now asks the same per-mod question instead of silently taking defaults.

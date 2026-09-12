@@ -292,6 +292,8 @@ export type SellPick =
 export interface StoreScreenDeps {
   /** f_info[store->feat].name, e.g. "General Store" (store_display_frame). */
   featureName: string;
+  /** Opt-in display nicety: mark store names truncated to their column with "...". */
+  storeItemNameEllipsis?: boolean;
   /**
    * store_at(cave, player->grid), re-resolved per transaction. Each of
    * do_cmd_buy / _retrieve / _sell / _stash calls it afresh (store.c:1665,
@@ -341,6 +343,15 @@ export interface StoreScreenDeps {
 
 /** One keyboard key or one grid tap from the store's own input listener. */
 type StoreInput = { type: "key"; key: string } | { type: "tap"; row: number; col: number };
+
+/**
+ * store_display_entry's name column. The default stays byte-for-byte with the
+ * upstream slice; an opt-in display preference can make a real truncation clear.
+ */
+export function truncateStoreItemName(name: string, nameWidth: number, ellipsis: boolean): string {
+  if (!ellipsis || name.length <= nameWidth || nameWidth < 3) return name.slice(0, nameWidth);
+  return `${name.slice(0, nameWidth - 3)}...`;
+}
 
 /**
  * Read a single key OR a tap while the store owns the terminal (the store menu's
@@ -743,7 +754,12 @@ export async function runStore(
       term.print(1, y, `${tag}) `, colCursor);
       const desc = ODESC.PREFIX | ODESC.FULL | (isHome ? 0 : ODESC.STORE);
       const name = describeObject(game.state, obj, desc);
-      term.print(4, y, name.slice(0, gm.nameWidth), objectColor(obj));
+      term.print(
+        4,
+        y,
+        truncateStoreItemName(name, gm.nameWidth, deps.storeItemNameEllipsis === true),
+        objectColor(obj),
+      );
       const w = obj.weight;
       const weightStr = `${String(Math.trunc(w / 10)).padStart(3)}.${w % 10} lb`;
       term.print(gm.weightX, y, weightStr, colCursor);

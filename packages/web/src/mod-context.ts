@@ -211,6 +211,7 @@ function displayFor(session: ModSessionFacts): ModDisplay | undefined {
     setSidebarExtent: (extent) => display.setSidebarExtent(extent),
     setTileScaling: (mode) => display.setTileScaling(mode),
     setFullMapOverview: (enabled) => display.setFullMapOverview(enabled),
+    setStoreItemNameEllipsis: (enabled) => display.setStoreItemNameEllipsis(enabled),
     setVisualFilter: (filter) => {
       if (!session.capabilities) {
         throw new Error(`this plugin needs capability "${VISUAL_FILTER_CAPABILITY}"; no capability set was supplied`);

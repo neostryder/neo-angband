@@ -139,6 +139,25 @@ describe("modPluginContext session facts", () => {
     expect(setFullMapOverview).toHaveBeenCalledWith(true);
   });
 
+  it("forwards the store item-name ellipsis choice through the display facade", () => {
+    const setStoreItemNameEllipsis = vi.fn();
+    const display = {
+      snapshot: () => ({ mode: "play" }),
+      onKey: () => () => undefined,
+      setGrid: () => undefined,
+      setCamera: () => undefined,
+      setMapView: () => undefined,
+      setSidebarExtent: () => undefined,
+      setTileScaling: () => undefined,
+      setFullMapOverview: () => undefined,
+      setStoreItemNameEllipsis,
+      setVisualFilter: () => undefined,
+      repaint: () => undefined,
+    } as unknown as ModDisplay;
+    modPluginContext("qol", {}, undefined, {}, { display }).display?.setStoreItemNameEllipsis(true);
+    expect(setStoreItemNameEllipsis).toHaveBeenCalledWith(true);
+  });
+
   it("hands keymaps over only with the existing keymap:write capability", () => {
     const state = { options: { get: () => false } } as never;
     const denied = CapabilitySet.fromManifest({
