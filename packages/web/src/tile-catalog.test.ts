@@ -433,9 +433,8 @@ describe("the game does not know or expect any particular mod", () => {
     expect(main).toMatch(/tileForMonster\(tileMap, mon\.race\.ridx\), mon\.grid\.x, mon\.grid\.y\)/);
     /* Every object arm - live pile, remembered pile, sensed marker - goes
      * through the one objectKindCell, which is handed the grid it is drawing. */
-    expect(main).toMatch(
-      /tileForShownObject\(tileMap, kind,[\s\S]*?\),\s*gx,\s*gy,/,
-    );
+    expect(main).toMatch(/function shownObjectTile\(kind: ObjectKind\)/);
+    expect(main).toMatch(/tileDrawFor\(atlas, gx, gy, dimmed\)/);
     /* The live pile arm draws whatever floorDisplay picked - the top object's
      * kind, or `<pile>` when a second displayable object shares the grid
      * (ui-map.c:216-219) - at the grid floorDisplay handed back. Pinned as the
@@ -459,11 +458,12 @@ describe("the game does not know or expect any particular mod", () => {
    */
   it("asks for the flavour's tile while the player is unaware", () => {
     const main = read("main.ts");
-    /* The same useFlavor that decides the glyph decides the tile - not a
-     * second, separately-derived condition that can drift from it. */
+    /* The shared resolver selects one shown flavor, then both the glyph and
+     * tile consume that result instead of deriving separate conditions. */
     expect(main).toMatch(
-      /tileForShownObject\(tileMap, kind, useFlavor && flavor \? flavor\.fidx : null\)/,
+      /tileForShownObject\(tileMap, kind, shownFlavor \? shownFlavor\.fidx : null\)/,
     );
+    expect(main).toMatch(/const \{ shownFlavor, atlas \} = shownObjectTile\(kind\)/);
     expect(main).not.toMatch(/tileForObject\(tileMap, [a-zA-Z.]*kind\)/);
   });
 

@@ -56,6 +56,10 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] [UI] **Linoleum tiles for nearby live monsters and floor items now begin loading before they enter view.** Floor items reuse the flavor-aware display tile selection, so an unidentified item never warms its true kind tile (#215).
+
+- [Visible] [UI] **The Linoleum Map overview now rebuilds when a tile image finishes loading.** Tiles that were still loading when the overview opened no longer remain ASCII until it is reopened (#216).
+
 - [Visible] [UI] **The graphics Map overview now uses high-quality smoothing when its complete picture is reduced to fit the modal.** Its final scale was forcing nearest-neighbour sampling despite the upstream graphical overview using linear scaling (#211).
 
 - [Visible] [UI] **A responsive mod display can now use the terminal's actual bounded surface instead of guessing from the browser window.** This keeps a mod's enlarged layout aligned with the game view when it is narrower or offset, without changing the default fixed-grid renderer (#207).

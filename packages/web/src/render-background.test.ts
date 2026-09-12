@@ -89,6 +89,14 @@ describe("background repaints stand down while an overlay owns the terminal", ()
     }
   });
 
+  it("rebuilds an open level map when a tile image becomes ready", () => {
+    /* Linoleum's coalesced onReady callback already reaches repaintEverything.
+     * The live map is gated while the modal owns the terminal, so the modal's
+     * own repaint seam must be called here as well. */
+    const body = functionBody(MAIN, "repaintEverything");
+    expect(body).toMatch(/renderBackground\(\);\s*levelMapRepaint\?\.\(\);/);
+  });
+
   it("routes resize/reflow to the active map modal or the guarded background", () => {
     expect(MAIN).toMatch(
       /term\.onSizeChanged\(\(\) => \{[\s\S]{0,300}?clampDisplayOrigin\(panelCam,[\s\S]{0,300}?if \(levelMapActive\) levelMapRepaint\?\.\(\);\s*else renderBackground\(\);\s*\}\)/,

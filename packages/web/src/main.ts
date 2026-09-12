@@ -1913,6 +1913,7 @@ function tileResolverFor(entry: TileModeEntry | undefined): PackFileResolver {
 function repaintEverything(): void {
   term.invalidate();
   renderBackground();
+  levelMapRepaint?.();
 }
 
 async function applyTileMode(grafID: number, persist = false): Promise<void> {
@@ -2102,9 +2103,10 @@ function tileDrawFor(
  * (#290). TileSet (the tilesheet engine) has no such seam and exposes no
  * `preload`, so this is a no-op there.
  *
- * Only KNOWN terrain is warmed, mirroring the same knownFeat gate the
- * `remembered` render callback uses - there is nothing to precache for a grid
- * the player has never seen, and asking would just be extra work every call.
+ * Known terrain is warmed through the map-memory path. Live monsters and floor
+ * piles use the same radius, because their number and their distinct assets are
+ * small beside the terrain scan, while the existing 40-grid head start is what
+ * makes either path warm before it can reach the viewport.
  */
 function precacheTilesNear(cx: number, cy: number, radius: number): void {
   const ts = tileset;
@@ -2113,16 +2115,34 @@ function precacheTilesNear(cx: number, cy: number, radius: number): void {
   const x1 = Math.min(state.chunk.width - 1, cx + radius);
   const y0 = Math.max(0, cy - radius);
   const y1 = Math.min(state.chunk.height - 1, cy + radius);
+  const preload = (atlas: TileAtlas | null, x: number, y: number): void => {
+    if (atlas && isTile(atlas.attr, atlas.char)) {
+      ts.preload?.(tileCode(atlas.attr, atlas.char), { x, y });
+    }
+  };
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
       const kf = knownFeat(state, loc(x, y));
       if (kf < 0) continue;
       const f = features.get(kf);
       const disp = f.mimic !== null ? features.get(f.mimic) : f;
-      const atlas = tileForFeature(tileMap, disp.fidx, LIGHTING.LOS);
-      if (!atlas || !isTile(atlas.attr, atlas.char)) continue;
-      ts.preload(tileCode(atlas.attr, atlas.char), { x, y });
+      preload(tileForFeature(tileMap, disp.fidx, LIGHTING.LOS), x, y);
     }
+  }
+  for (let i = 1; i < state.monsters.length; i++) {
+    const mon = state.monsters[i];
+    if (!mon) continue;
+    const { x, y } = mon.grid;
+    if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+    preload(tileForMonster(tileMap, mon.race.ridx), x, y);
+  }
+  const pileKind = booted.registries.objects.pileKind;
+  for (const pile of state.floor.values()) {
+    const shown = floorDisplay(pile, state.isIgnored);
+    const grid = shown?.obj.grid;
+    if (!shown || !grid || grid.x < x0 || grid.x > x1 || grid.y < y0 || grid.y > y1) continue;
+    const kind = shown.multiple ? (pileKind ?? shown.obj.kind) : shown.obj.kind;
+    preload(shownObjectTile(kind).atlas, grid.x, grid.y);
   }
 }
 
@@ -7651,6 +7671,25 @@ function gridIndex(x: number, y: number): number {
  */
 type CellGlyph = ResolvedGlyph;
 
+/**
+ * Resolve the flavor-aware object tile once for both live drawing and Linoleum
+ * precaching. An unaware flavored item must request its flavor tile, never the
+ * kind tile, because the latter can reveal an identity the glyph intentionally
+ * conceals.
+ */
+function shownObjectTile(kind: ObjectKind) {
+  const flavor = state.flavorGlyph?.(kind);
+  const shownFlavor = useFlavorGlyph(kind, flavor, game.flavor?.isAware(kind) ?? false) && flavor
+    ? flavor
+    : null;
+  return {
+    shownFlavor,
+    atlas: tileMap
+      ? tileForShownObject(tileMap, kind, shownFlavor ? shownFlavor.fidx : null)
+      : null,
+  };
+}
+
 // Revealed traps draw under objects and monsters (upstream layer order).
 function trapIndex(): Map<number, CellGlyph> {
   const map = new Map<number, CellGlyph>();
@@ -7698,30 +7737,22 @@ function objectKindCell(
   /** The grid is REMEMBERED, not seen: draw it at DIM_SCALE (see tileDrawFor). */
   dimmed = false,
 ): CellGlyph {
-  const flavor = state.flavorGlyph?.(kind);
-  const useFlavor = useFlavorGlyph(kind, flavor, game.flavor?.isAware(kind) ?? false);
+  const { shownFlavor, atlas } = shownObjectTile(kind);
   /* THE SAME DECISION DECIDES THE TILE. This used to ask for the KIND's tile
    * unconditionally, two lines above the code that carefully worked out that
    * the kind is not what should be drawn - so every flavoured item fell back
    * to a glyph in a tile set (an Ochre Potion painted as `!` beside fully
    * drawn armour), and would have leaked the identified art if the set had
    * happened to carry one. */
-  const tile = tileMap
-    ? tileDrawFor(
-        tileForShownObject(tileMap, kind, useFlavor && flavor ? flavor.fidx : null),
-        gx,
-        gy,
-        dimmed,
-      )
-    : undefined;
+  const tile = tileDrawFor(atlas, gx, gy, dimmed);
   /* Both arms read the x_attr table: flavor_x_attr/char[fidx] (ui-object.c:100)
    * or kind_x_attr/char[kidx] (:107), never the gamedata record directly. */
-  const g = useFlavor ? glyphs.flavorGlyph(flavor.fidx) : glyphs.kindGlyph(kind.kidx);
+  const g = shownFlavor ? glyphs.flavorGlyph(shownFlavor.fidx) : glyphs.kindGlyph(kind.kidx);
   const attr =
-    g?.attr ?? (useFlavor ? colorTextToAttr(flavor.attr) : colorCharToAttr(kind.dAttr));
+    g?.attr ?? (shownFlavor ? colorTextToAttr(shownFlavor.attr) : colorCharToAttr(kind.dAttr));
   const css = colorToCss(attr);
   return {
-    ch: g?.char ?? (useFlavor ? flavor.char : kind.dChar),
+    ch: g?.char ?? (shownFlavor ? shownFlavor.char : kind.dChar),
     attr,
     css: dimmed ? dim(css) : css,
     ...(tile ? { tile } : {}),
