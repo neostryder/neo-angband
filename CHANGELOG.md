@@ -62,6 +62,8 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] **Curing blindness now refreshes the view immediately, instead of leaving reading and spellcasting blocked until the next move.** The player's own grid could keep reading as unseen (still showing "You have no light to read by." / "You cannot see!") after blindness cleared with no move in between - a rest, or a cure landing while stationary - because nothing recomputed the view on a blindness transition; a later move papered over the gap by recomputing anyway, which is why it went unnoticed until now (#220).
+
 - [Visible] [Modding-API] **Restored store discount handlers now apply to a new character's initial town stock after enabled plugins finish registering.** Later maintenance already used the live handler; the initial shelves now do too (#219).
 
 - [Visible] [UI] [Modding-API] **Object registry binding now rejects duplicate tval/sval pairs before graphics preferences can misdirect an item tile.** Mod-added objects sharing an existing tval retain their own mapping and fall back to their ASCII glyph when a tile pack has no matching art (#218).

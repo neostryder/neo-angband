@@ -1296,6 +1296,18 @@ function wireGame(
   let runTimedTransition:
     | ((idx: number, begin: boolean, canDisturb: boolean) => void)
     | undefined;
+  /* TMD_BLIND's flag_update, PU_UPDATE_VIEW | PU_MONSTERS (list-player-timed.h)
+   * applied unconditionally on every notified change (player-timed.c:902-903),
+   * ported narrowly rather than as a full generic flag_update table (#220).
+   * Without this, no_light(p) - !square_isseen(cave, p->grid) - stays stale
+   * against whichever grid the player was on when blindness last changed:
+   * a normal turn's own view recompute papers over it, so it only shows once
+   * blindness clears without an intervening move (a multi-turn rest, or a
+   * cure landing while stationary) and the player tries to read or cast
+   * before moving again. */
+  const refreshViewOnBlindTransition = (idx: number): void => {
+    if (idx === TMD.BLIND) state.updateFov?.(state);
+  };
   if (reg.projections) {
     const effects = new EffectRegistry();
     effectRegistry = effects;
@@ -1809,8 +1821,10 @@ function wireGame(
        * just the world clock. The thunk reads runTimedTransition (assigned just
        * below) at call time, so SCRAMBLE_STATS fires when the potion lands. */
       timedHooks: {
-        onTransition: (idx: number, begin: boolean, canDisturb: boolean): void =>
-          runTimedTransition?.(idx, begin, canDisturb),
+        onTransition: (idx: number, begin: boolean, canDisturb: boolean): void => {
+          refreshViewOnBlindTransition(idx);
+          runTimedTransition?.(idx, begin, canDisturb);
+        },
       },
       /* The shared take_hit consequences, so effect-driven player damage (traps,
        * EF_DAMAGE, activations, monster casts via mon-cast) shows the message
@@ -2294,6 +2308,7 @@ function wireGame(
        * effect starts or lapses on the world clock (e.g. SPRINT ends -> SLOW,
        * SCRAMBLE ends -> UNSCRAMBLE_STATS), run its bound chain. */
       onTransition: (idx: number, begin: boolean, canDisturb: boolean): void => {
+        refreshViewOnBlindTransition(idx);
         runTimedTransition?.(idx, begin, canDisturb);
       },
       /* print_custom_message weapon substitution (obj-util.c:1118, gap 2.9):

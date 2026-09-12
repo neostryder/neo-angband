@@ -163,3 +163,54 @@ describe("on-begin/on-end effect chains fire in live play (audit 01 T2)", () => 
     expect(p.timed[TMD.SLOW]).toBeGreaterThan(0);
   });
 });
+
+describe("blindness transitions recompute the view (#220)", () => {
+  /*
+   * TMD_BLIND's flag_update, PU_UPDATE_VIEW | PU_MONSTERS (list-player-timed.h),
+   * applied unconditionally on every notified change (player-timed.c:902-903).
+   * no_light(p) is !square_isseen(cave, p->grid) (cave-view.c:913-917): with a
+   * stale view the player's own grid keeps reading as unseen from however it
+   * stood while blind, and player_can_read/player_can_cast refuse with "You
+   * have no light to read by." / "You cannot see!" until an unrelated move
+   * forces a fresh recompute. Reported from play, 2026-09-12.
+   */
+  it("going blind recomputes the view", () => {
+    const game = start(303);
+    const p = game.state.actor.player;
+    const blind = game.state.world!.timedTable![TMD.BLIND]!;
+    const hooks = game.state.world!.timedHooks!;
+    let calls = 0;
+    game.state.updateFov = (): void => void calls++;
+
+    playerIncTimed(p, blind, 10, true, true, false, hooks);
+    expect(p.timed[TMD.BLIND]).toBeGreaterThan(0);
+    expect(calls).toBe(1);
+  });
+
+  it("curing blindness recomputes the view too, not just going blind", () => {
+    const game = start(303);
+    const p = game.state.actor.player;
+    const blind = game.state.world!.timedTable![TMD.BLIND]!;
+    const hooks = game.state.world!.timedHooks!;
+    playerIncTimed(p, blind, 10, true, true, false, hooks);
+    let calls = 0;
+    game.state.updateFov = (): void => void calls++;
+
+    playerClearTimed(p, blind, true, true, hooks);
+    expect(p.timed[TMD.BLIND]).toBe(0);
+    expect(calls).toBe(1);
+  });
+
+  it("an unrelated timed effect (SLOW) does not trigger a view recompute", () => {
+    const game = start(303);
+    const p = game.state.actor.player;
+    const slow = game.state.world!.timedTable![TMD.SLOW]!;
+    const hooks = game.state.world!.timedHooks!;
+    let calls = 0;
+    game.state.updateFov = (): void => void calls++;
+
+    playerIncTimed(p, slow, 10, true, true, false, hooks);
+    playerClearTimed(p, slow, true, true, hooks);
+    expect(calls).toBe(0);
+  });
+});
