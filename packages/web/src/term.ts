@@ -461,6 +461,9 @@ export class GlyphTerm
   /** The visual viewport's origin in layout-viewport CSS pixels. */
   private viewportX = 0;
   private viewportY = 0;
+  /** The CSS-pixel rectangle this terminal was last fitted into. */
+  private viewportWidth = 0;
+  private viewportHeight = 0;
   /** Avoid repainting the whole terminal twice for one browser resize. */
   private fittedViewport = "";
   /**
@@ -613,6 +616,22 @@ export class GlyphTerm
   }
 
   /**
+   * The CSS-pixel rectangle the canvas occupies.
+   *
+   * A bounded terminal may be narrower than the browser window. Consumers that
+   * place companion UI must use this measured rectangle rather than independently
+   * reading window dimensions, which can describe a different surface.
+   */
+  surfaceBounds(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: this.viewportX,
+      y: this.viewportY,
+      width: this.viewportWidth,
+      height: this.viewportHeight,
+    };
+  }
+
+  /**
    * The grid cell under a client-space pixel (e.g. a pointer/touch), for
    * tap-to-move on touch devices. Coordinates are in client space; this method
    * owns the canvas rectangle and letterbox, and returns null outside the grid.
@@ -692,6 +711,8 @@ export class GlyphTerm
     this.fittedViewport = viewport;
     this.viewportX = x;
     this.viewportY = y;
+    this.viewportWidth = w;
+    this.viewportHeight = h;
     this.canvas.width = Math.floor(w * dpr);
     this.canvas.height = Math.floor(h * dpr);
     this.canvas.style.position = "fixed";

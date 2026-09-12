@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- [Visible] [UI] **A responsive mod display can now use the terminal's actual bounded surface instead of guessing from the browser window.** This keeps a mod's enlarged layout aligned with the game view when it is narrower or offset, without changing the default fixed-grid renderer (#207).
+
 ## [1.11.0] - 2026-09-11
 
 ### Added

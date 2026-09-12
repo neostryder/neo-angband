@@ -208,6 +208,8 @@ export interface ModMapView {
 
 /** Current display geometry, copied on every read. */
 export interface ModDisplaySnapshot {
+  /** The CSS-pixel rectangle the terminal was measured against. */
+  readonly surface?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   readonly mode: "play" | "map";
   readonly grid: {
     readonly cols: number;

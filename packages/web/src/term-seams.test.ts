@@ -255,6 +255,7 @@ describe("runtime responsive grid", () => {
     expect(canvas.height).toBe(330);
     expect(canvas.style.left).toBe("900px");
     expect(canvas.style.top).toBe("40px");
+    expect(term.surfaceBounds()).toEqual({ x: 900, y: 40, width: 360, height: 300 });
     expect(term.size().cols).toBeGreaterThanOrEqual(20);
     expect(term.size().rows).toBeGreaterThanOrEqual(4);
   });

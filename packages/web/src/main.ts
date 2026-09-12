@@ -8592,6 +8592,7 @@ const displayControl: ModDisplay = {
   snapshot() {
     const { cols, rows } = term.size();
     const metrics = term.metrics();
+    const surface = term.surfaceBounds();
     if (levelMapActive) {
       let width = Math.max(1, cols - 2);
       let height = Math.max(1, rows - 2);
@@ -8614,6 +8615,7 @@ const displayControl: ModDisplay = {
         metrics,
       );
       return {
+        surface,
         mode: "map" as const,
         grid: { cols, rows, cellWidth: metrics.cellWidth, cellHeight: metrics.cellHeight },
         viewport: {
@@ -8628,6 +8630,7 @@ const displayControl: ModDisplay = {
     }
     const vp = viewport();
     return {
+      surface,
       mode: "play" as const,
       grid: { cols, rows, cellWidth: metrics.cellWidth, cellHeight: metrics.cellHeight },
       viewport: {
