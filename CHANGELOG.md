@@ -50,6 +50,8 @@ still calls itself.
 
 ### Added
 
+- [Visible] [UI] [Modding-API] **Content mods can declare recovered historical object art per bundled tile pack.** Native atlas cells overlay missing classic mappings before tile fillers run, while a mod-owned standalone image can supply a confirmed substitute where a pack has no real art (#218).
+
 - [Visible] [UI] **Mods can show the selected store item's full description on the message line.** The dedicated display seam remains off by default, preserving Angband's ordinary store screen until an opt-in convenience enables it (#214).
 
 - [Visible] [UI] **Mods can opt store item names into a trailing ellipsis when they exceed their list column.** Core keeps Angband's exact plain truncation unless a display mod enables the dedicated seam (#214).

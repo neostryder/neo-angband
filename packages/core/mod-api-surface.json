@@ -527,6 +527,7 @@
     "applyMagicArmour",
     "applyMagicWeapon",
     "applyRenderer",
+    "applyRestoredItemArt",
     "arenaInterceptDeath",
     "artifactGenName",
     "artifactHistoryName",

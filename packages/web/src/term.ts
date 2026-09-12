@@ -270,6 +270,20 @@ interface CanvasAssetRenderer {
 /** The legacy tilesheet/loose-pack adapter; it is intentionally not GridSurface API. */
 const canvasAssetRenderer: CanvasAssetRenderer = {
   draw(ctx, asset, px, py, w, h): boolean {
+    if (asset.kind === "canvas-image" && asset.data && typeof asset.data === "object") {
+      const data = asset.data as { image?: CanvasImageSource; dimScale?: number };
+      if (!data.image) return false;
+      const alpha = ctx.globalAlpha;
+      ctx.globalAlpha = alpha * (data.dimScale ?? 1);
+      try {
+        ctx.drawImage(data.image, px, py, w, h);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        ctx.globalAlpha = alpha;
+      }
+    }
     if (asset.kind !== "canvas-tile" || !asset.data || typeof asset.data !== "object") return false;
     const data = asset.data as {
       blitter?: {

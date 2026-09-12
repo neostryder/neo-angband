@@ -1245,6 +1245,7 @@ export async function loadLinoleumPack(input: {
   menuname: string;
   deps: TilePrefsDeps;
   modPrefTexts?: readonly ModPrefText[];
+  applyRestoredItemArt?: (map: TileMap) => void | Promise<void>;
 }): Promise<LinoleumPack | null> {
   const manifestText = await readPackText(input.resolve, "manifest.txt");
   if (manifestText === null) return null;
@@ -1294,6 +1295,7 @@ export async function loadLinoleumPack(input: {
    * differs is what the two can OFFER: this one hands over a real `derive`, and
    * tiles.ts hands over null.
    */
+  await input.applyRestoredItemArt?.(index.map);
   const allocator = derivedSlots(index.slots);
   tileRegistry.run(
     index.map,

@@ -45,6 +45,7 @@
  */
 
 import { getGraphicsMode, GRAPHICS_NONE } from "@rpgm-tools/neo-angband-core";
+import type { RestoredItemArt } from "@rpgm-tools/neo-angband-core";
 import type { LinoleumTilesheetSource } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   diskPacks,
@@ -482,4 +483,57 @@ export function discoverEnabledTileModes(): TileModePack[] {
  */
 export function discoverEnabledTileModeClaims(): TileModePack[] {
   return enabledTileModeClaims(discoverMods());
+}
+
+function readRestoredItemArt(raw: unknown): RestoredItemArt[] {
+  const list = (raw as { restoredItemArt?: unknown } | null)?.restoredItemArt;
+  if (!Array.isArray(list)) return [];
+  const out: RestoredItemArt[] = [];
+  for (const entry of list) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+    const item = entry as { kind?: unknown; packs?: unknown };
+    if (typeof item.kind !== "string" || typeof item.packs !== "object" || item.packs === null || Array.isArray(item.packs)) continue;
+    const packs: Record<string, RestoredItemArt["packs"][string]> = {};
+    for (const [pack, value] of Object.entries(item.packs)) {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+      const tile = value as { row?: unknown; col?: unknown; asset?: unknown };
+      if (Number.isInteger(tile.row) && Number.isInteger(tile.col)) {
+        packs[pack] = { row: tile.row as number, col: tile.col as number };
+      } else if (typeof tile.asset === "string") {
+        packs[pack] = { asset: tile.asset };
+      }
+    }
+    out.push({ kind: item.kind, packs });
+  }
+  return out;
+}
+
+function modAssetResolver(source: ModAssetSource, modId: string): PackFileResolver {
+  if (source.kind === "bundle") return urlBaseResolver(`${source.base}/${modId}`);
+  return (rel) => source.assetUrl(modId, rel);
+}
+
+/** Resolve enabled mods' recovered object art for the active pack before fillers run. */
+export async function restoredItemArtForPack(pack: string): Promise<RestoredItemArt[]> {
+  const discovered = discoverMods();
+  const out: RestoredItemArt[] = [];
+  for (const id of discovered.enabledIds) {
+    const raw = discovered.manifests.get(id);
+    const source = discovered.sources.get(id);
+    if (raw === undefined || source === undefined) continue;
+    const resolve = modAssetResolver(source, id);
+    for (const declaration of readRestoredItemArt(raw)) {
+      const tile = declaration.packs[pack];
+      if (tile === undefined) continue;
+      if ("asset" in tile) {
+        let asset: string | null;
+        try { asset = await resolve(tile.asset); } catch { asset = null; }
+        if (asset === null) continue;
+        out.push({ kind: declaration.kind, packs: { [pack]: { asset } } });
+      } else {
+        out.push({ kind: declaration.kind, packs: { [pack]: tile } });
+      }
+    }
+  }
+  return out;
 }

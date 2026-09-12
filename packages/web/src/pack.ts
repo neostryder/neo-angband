@@ -436,6 +436,7 @@ export function modManifest(raw: unknown): PackManifest {
      * the same shape as `tilePacks` above, and the same reason it is dangerous:
      * the symptom does not appear where the mistake is. */
     ...(m.resources ? { resources: m.resources } : {}),
+    ...(m.restoredItemArt ? { restoredItemArt: m.restoredItemArt } : {}),
     ...(m.repository ? { repository: m.repository } : {}),
     /* Which of the repository's files ARE the mod. Carried through because the
      * updater re-reads an installed mod's manifest to work out what to fetch for

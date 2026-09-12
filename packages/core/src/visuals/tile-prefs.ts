@@ -73,7 +73,22 @@ const PROJ_MAX = projNameToIdx("MAX");
 export interface TileAtlas {
   attr: number;
   char: number;
+  /** A mod-relative standalone image URL, for recovered historical art. */
+  asset?: string;
 }
+
+/** One restored object kind's historical art, keyed by the bundled tile-pack directory. */
+export interface RestoredItemArt {
+  /** Stable namespaced object-kind id, rather than a load-order-dependent kidx. */
+  kind: string;
+  /** One native atlas cell or standalone substitute for each pack the mod supports. */
+  packs: Readonly<Record<string, RestoredItemTile>>;
+}
+
+/** A real cell on the active pack's sheet, or a standalone image when that pack has none. */
+export type RestoredItemTile =
+  | { readonly row: number; readonly col: number }
+  | { readonly asset: string };
 
 /**
  * The parsed tile mapping: the port of the x_attr/x_char globals as one
@@ -96,6 +111,39 @@ export class TileMap {
     { length: PROJ_MAX },
     () => [] as (TileAtlas | undefined)[],
   );
+}
+
+/**
+ * Overlay declared historical art after a pack's own pref files have populated its map.
+ *
+ * This intentionally fills only an absent object slot. A current pref entry remains the
+ * pack author's own choice; a restored declaration supplies the otherwise-missing art
+ * before a tile-pack mod is invited to invent a donor tile for the kind.
+ */
+export function applyRestoredItemArt(
+  map: TileMap,
+  declarations: readonly RestoredItemArt[],
+  pack: string,
+  kindIndex: (id: string) => number | undefined,
+): void {
+  for (const declaration of declarations) {
+    const tile = declaration.packs[pack];
+    if (tile === undefined) continue;
+    const kidx = kindIndex(declaration.kind);
+    if (kidx === undefined || map.object[kidx] !== undefined) continue;
+    if ("asset" in tile) {
+      map.object[kidx] = { attr: 0, char: 0, asset: tile.asset };
+    } else if (
+      Number.isInteger(tile.row) &&
+      Number.isInteger(tile.col) &&
+      tile.row >= 0 &&
+      tile.row < 128 &&
+      tile.col >= 0 &&
+      tile.col < 128
+    ) {
+      map.object[kidx] = { attr: 0x80 | tile.row, char: 0x80 | tile.col };
+    }
+  }
 }
 
 /** The registries a pref parse resolves names/tvals against. */

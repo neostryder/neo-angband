@@ -10,6 +10,12 @@ import type { FieldDecl, FieldType } from "./fields.js";
 import { resourceComplaint } from "./resources.js";
 import type { PackResource } from "./resources.js";
 
+/** Historical object art declared by a content pack, keyed by stable kind id. */
+export interface RestoredItemArt {
+  kind: string;
+  packs: Readonly<Record<string, { row: number; col: number } | { asset: string }>>;
+}
+
 /** Pack identifiers are namespaced: "<pack>:<id>", e.g. "core:kobold". */
 export type PackRef = `${string}:${string}`;
 
@@ -554,6 +560,11 @@ export interface PackManifest {
    */
   resources?: PackResource[];
   /**
+   * Historical art for object kinds a content mod restores. Each entry is keyed
+   * by the stable kind id and by the bundled tile-pack directory.
+   */
+  restoredItemArt?: readonly RestoredItemArt[];
+  /**
    * Declares the pack deliberately nondeterministic (a wall-clock event, an
    * external agent, live multiplayer). Trips the save's determinism ratchet
    * once, irreversibly (MOD_LIFECYCLE section 4, decision 4/18).
@@ -750,6 +761,7 @@ export function validateManifest(value: unknown): PackManifest {
   validateCompat(m["compat"], id, sectionIds);
   validateTilePacks(m["tilePacks"], id);
   validateResources(m["resources"], id);
+  validateRestoredItemArt(m["restoredItemArt"], id);
   validatePayload(m["payload"], id);
   for (const key of [
     "engine",
@@ -1188,6 +1200,57 @@ function validateResources(value: unknown, id: string): void {
   for (const entry of value) {
     const complaint = resourceComplaint(entry, id);
     if (complaint !== null) throw new ManifestError(complaint);
+  }
+}
+
+/** Validate historical object-art declarations before the shell reaches their files. */
+function validateRestoredItemArt(value: unknown, id: string): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    throw new ManifestError(`manifest ${id}: restoredItemArt must be an array`);
+  }
+  const kinds = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new ManifestError(`manifest ${id}: each restoredItemArt entry must be an object`);
+    }
+    const item = entry as Record<string, unknown>;
+    if (typeof item["kind"] !== "string" || !item["kind"].includes(":")) {
+      throw new ManifestError(`manifest ${id}: restoredItemArt kind must be a namespaced id`);
+    }
+    if (kinds.has(item["kind"])) {
+      throw new ManifestError(`manifest ${id}: restoredItemArt repeats kind ${item["kind"]}`);
+    }
+    kinds.add(item["kind"]);
+    const packs = item["packs"];
+    if (typeof packs !== "object" || packs === null || Array.isArray(packs)) {
+      throw new ManifestError(`manifest ${id}: restoredItemArt ${item["kind"]} needs a packs map`);
+    }
+    for (const [pack, tile] of Object.entries(packs)) {
+      if (pack === "" || typeof tile !== "object" || tile === null || Array.isArray(tile)) {
+        throw new ManifestError(`manifest ${id}: restoredItemArt ${item["kind"]} has an invalid pack entry`);
+      }
+      const spec = tile as Record<string, unknown>;
+      const native = Number.isInteger(spec["row"]) && Number.isInteger(spec["col"]);
+      const asset = typeof spec["asset"] === "string";
+      if (native === asset) {
+        throw new ManifestError(
+          `manifest ${id}: restoredItemArt ${item["kind"]} ${pack} needs exactly one of row/col or asset`,
+        );
+      }
+      if (native) {
+        const row = spec["row"] as number;
+        const col = spec["col"] as number;
+        if (row < 0 || row > 127 || col < 0 || col > 127) {
+          throw new ManifestError(`manifest ${id}: restoredItemArt ${item["kind"]} ${pack} cell is out of range`);
+        }
+      } else {
+        const path = spec["asset"] as string;
+        if (path === "" || path.includes("\\") || path.split("/").includes("..") || /^([a-z][a-z0-9+.-]*:)?\//iu.test(path)) {
+          throw new ManifestError(`manifest ${id}: restoredItemArt ${item["kind"]} ${pack} asset must stay inside the mod folder`);
+        }
+      }
+    }
   }
 }
 

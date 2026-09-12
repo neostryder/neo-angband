@@ -395,6 +395,7 @@ export async function loadTilePrefs(
   mode: GraphicsMode,
   deps: TilePrefsDeps,
   modPrefTexts: readonly ModPrefText[] = [],
+  applyRestoredItemArt?: (map: TileMap) => void | Promise<void>,
 ): Promise<TileMap | null> {
   if (!mode.pref || mode.pref === "none") return null;
   const fetchText = async (name: string): Promise<string | null> => {
@@ -437,6 +438,7 @@ export async function loadTilePrefs(
    * picture gets null and copies a donor instead. The loose-pack engine
    * (linoleum-pack.ts) can allocate, so it passes a real one.
    */
+  await applyRestoredItemArt?.(map);
   tileRegistry.run(
     map,
     { engine: "tilesheet", id: mode.directory, menuname: mode.menuname },

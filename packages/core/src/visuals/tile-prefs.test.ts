@@ -13,6 +13,7 @@ import {
   tileForShownObject,
   tileForMonster,
   tileForObject,
+  applyRestoredItemArt,
   tileForProjection,
   tileForTrap,
 } from "./tile-prefs.js";
@@ -187,6 +188,41 @@ describe("parseTilePrefs: object lines", () => {
     });
     expect(tileForObject(map, flask!)).toEqual({ attr: 0x8a, char: 0x9a });
     expect(tileForObject(map, modFlask!)).toBeNull();
+  });
+
+  it("overlays declared restored art only onto an otherwise-unmapped kind", () => {
+    const flask = reg.objects.lookupKind(
+      tvalFindIdx("flask"),
+      reg.objects.lookupSval(tvalFindIdx("flask"), "Flask of Oil"),
+    )!;
+    const restored = { kidx: 999 };
+    const map = new TileMap();
+    map.object[flask.kidx] = { attr: 0x8a, char: 0x9a };
+    applyRestoredItemArt(
+      map,
+      [
+        {
+          kind: "feature-restoration:flask:iron-spike",
+          packs: {
+            old: { row: 11, col: 4 },
+            nomad: { asset: "assets/iron-spike.png" },
+          },
+        },
+      ],
+      "old",
+      (id) => (id === "feature-restoration:flask:iron-spike" ? restored.kidx : undefined),
+    );
+    expect(tileForObject(map, restored)).toEqual({ attr: 0x8b, char: 0x84 });
+    expect(tileForObject(map, flask)).toEqual({ attr: 0x8a, char: 0x9a });
+
+    const assetMap = new TileMap();
+    applyRestoredItemArt(
+      assetMap,
+      [{ kind: "feature-restoration:flask:iron-spike", packs: { nomad: { asset: "spike.png" } } }],
+      "nomad",
+      () => restored.kidx,
+    );
+    expect(tileForObject(assetMap, restored)).toEqual({ attr: 0, char: 0, asset: "spike.png" });
   });
 });
 

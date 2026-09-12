@@ -210,6 +210,7 @@ import type {
   HistoryAddEntry,
 } from "@rpgm-tools/neo-angband-core";
 import { GameEvents, useFlavorGlyph, makeShapeLoreEnv } from "@rpgm-tools/neo-angband-core";
+import { applyRestoredItemArt } from "@rpgm-tools/neo-angband-core";
 import type { BoltEventData, ExplosionEventData } from "@rpgm-tools/neo-angband-core";
 import { registerLocale, setLocale, t } from "@rpgm-tools/neo-angband-core";
 import type { LocaleBundle } from "@rpgm-tools/neo-angband-core";
@@ -451,6 +452,7 @@ import {
   type TileModeEntry,
 } from "./tiles";
 import { LinoleumPack, loadLinoleumPack } from "./linoleum-pack";
+import { restoredItemArtForPack } from "./tile-mods";
 import { ensureLinoleumTilesheetPack } from "./linoleum-cache";
 import {
   beginTileConversion,
@@ -1876,6 +1878,46 @@ let linoleumConversionSeq = 0;
  * include (#278). Every pack-map rebuild replays this in enabled load order; a
  * graphics-mode switch never needs to resolve mod files. */
 let modTilePrefTexts: readonly ModPrefText[] = [];
+const standaloneTileImages = new Map<string, HTMLImageElement | null>();
+
+/** The bundled Linoleum rows are conversions of these same five core sheets. */
+function linoleumSourceDirectory(grafID: number): string {
+  switch (grafID) {
+    case 101: return "old";
+    case 102: return "adam-bolt";
+    case 103: return "gervais";
+    case 104: return "nomad";
+    case 105:
+    case 106: return "shockbolt";
+    default: return "";
+  }
+}
+
+/** Apply enabled mods' stable-id restoration declarations before tile fillers run. */
+async function applyDeclaredRestoredItemArt(map: TileMap, pack: string): Promise<void> {
+  const declarations = await restoredItemArtForPack(pack);
+  const ids = new ContentIdResolver({ objects: booted.registries.objects });
+  applyRestoredItemArt(map, declarations, pack, (id) => ids.kindIndex(id));
+}
+
+/** Start a recovered standalone substitute image once and repaint when it arrives. */
+function standaloneTileImage(url: string): HTMLImageElement | null {
+  const cached = standaloneTileImages.get(url);
+  if (standaloneTileImages.has(url)) return cached ?? null;
+  standaloneTileImages.set(url, null);
+  try {
+    const image = new Image();
+    image.addEventListener("load", () => {
+      standaloneTileImages.set(url, image);
+      repaintEverything();
+    });
+    image.addEventListener("error", () => standaloneTileImages.set(url, null));
+    image.src = url;
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 /**
  * How a mode's files are reached: the contributing mod's own resolver when a mod
@@ -1943,6 +1985,8 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
         menuname,
         deps: { ...tileDeps, vars: playerPrefVars() },
         modPrefTexts: modTilePrefTexts,
+        applyRestoredItemArt: (map) =>
+          applyDeclaredRestoredItemArt(map, linoleumSourceDirectory(grafID)),
       });
       // Ignore a stale load if the mode changed during the fetch.
       if (currentGrafID !== grafID) return;
@@ -2010,7 +2054,7 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
   const map = await loadTilePrefs(resolve, mode, {
     ...tileDeps,
     vars: playerPrefVars(),
-  }, modTilePrefTexts);
+  }, modTilePrefTexts, (loaded) => applyDeclaredRestoredItemArt(loaded, mode.directory));
   // Ignore a stale load if the mode changed during the fetch.
   if (currentGrafID === grafID) {
     tileMap = map;
@@ -2063,6 +2107,15 @@ function tileDrawFor(
 ): RenderAssetRef | undefined {
   const ts = tileset;
   if (!atlas || !ts || !ts.ready) return undefined;
+  if (atlas.asset !== undefined) {
+    const image = standaloneTileImage(atlas.asset);
+    if (image === null) return undefined;
+    return {
+      kind: "canvas-image",
+      key: `standalone:${atlas.asset}:${dimmed ? "dim" : "lit"}`,
+      data: { image, dimScale: dimmed ? DIM_SCALE : 1 },
+    };
+  }
   if (!isTile(atlas.attr, atlas.char)) return undefined;
   const code = tileCode(atlas.attr, atlas.char);
   return {
