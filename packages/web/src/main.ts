@@ -9480,43 +9480,54 @@ async function playProjectionAnimation(
   blasts: readonly ExplosionEventData[],
 ): Promise<void> {
   const delayMs = state.options?.delayFactor ?? DEFAULT_DELAY_FACTOR;
-  let trail: Loc[] = [];
-  for (const b of bolts) {
-    const from = loc(b.ox, b.oy);
-    const to = loc(b.x, b.y);
-    if (trail.length > 0) {
-      const last = trail[trail.length - 1]!;
-      if (last.x !== from.x || last.y !== from.y) trail = [];
+  /* A marker glyph is painted straight onto the terminal model between one
+   * render() and the next, on the assumption that this loop always reaches
+   * its OWN following render() (or the unconditional one at the end) to
+   * paint over it. If anything throws mid-loop, that assumption breaks:
+   * nothing else ever revisits an unknown/unexplored cell, so whatever
+   * marker was last painted there stays in the model indefinitely (#222,
+   * #213). The finally below is what still guarantees a clean render()
+   * happens regardless. */
+  try {
+    let trail: Loc[] = [];
+    for (const b of bolts) {
+      const from = loc(b.ox, b.oy);
+      const to = loc(b.x, b.y);
+      if (trail.length > 0) {
+        const last = trail[trail.length - 1]!;
+        if (last.x !== from.x || last.y !== from.y) trail = [];
+      }
+      render();
+      const fg = boltColour(b.projType);
+      for (const t of trail) paintProjectionMarker(t, BOLT_CHARS[0]!, fg);
+      paintProjectionMarker(to, boltMotionChar(from, to), fg);
+      await sleep(delayMs);
+      if (b.beam) trail.push(to);
+      else trail = [];
     }
-    render();
-    const fg = boltColour(b.projType);
-    for (const t of trail) paintProjectionMarker(t, BOLT_CHARS[0]!, fg);
-    paintProjectionMarker(to, boltMotionChar(from, to), fg);
-    await sleep(delayMs);
-    if (b.beam) trail.push(to);
-    else trail = [];
-  }
-  // display_explosion (ui-display.c:1559-1640): draw the blast from inside
-  // out, flushing (and pausing) once per radius ring rather than per grid -
-  // distanceToGrid is already sorted ascending (computeProjection's own
-  // outward sort), so a ring boundary is just "the next grid's distance grew".
-  for (const e of blasts) {
-    const fg = boltColour(e.projType);
-    const drawn: Loc[] = [];
-    for (let i = 0; i < e.blastGrid.length; i++) {
-      const g = e.blastGrid[i]!;
-      if (e.playerSeesGrid[i]) drawn.push(g);
-      const atRingEnd =
-        i === e.blastGrid.length - 1 ||
-        (e.distanceToGrid[i + 1] ?? 0) > (e.distanceToGrid[i] ?? 0);
-      if (atRingEnd && drawn.length > 0) {
-        render();
-        for (const d of drawn) paintProjectionMarker(d, BOLT_CHARS[0]!, fg);
-        await sleep(delayMs);
+    // display_explosion (ui-display.c:1559-1640): draw the blast from inside
+    // out, flushing (and pausing) once per radius ring rather than per grid -
+    // distanceToGrid is already sorted ascending (computeProjection's own
+    // outward sort), so a ring boundary is just "the next grid's distance grew".
+    for (const e of blasts) {
+      const fg = boltColour(e.projType);
+      const drawn: Loc[] = [];
+      for (let i = 0; i < e.blastGrid.length; i++) {
+        const g = e.blastGrid[i]!;
+        if (e.playerSeesGrid[i]) drawn.push(g);
+        const atRingEnd =
+          i === e.blastGrid.length - 1 ||
+          (e.distanceToGrid[i + 1] ?? 0) > (e.distanceToGrid[i] ?? 0);
+        if (atRingEnd && drawn.length > 0) {
+          render();
+          for (const d of drawn) paintProjectionMarker(d, BOLT_CHARS[0]!, fg);
+          await sleep(delayMs);
+        }
       }
     }
+  } finally {
+    render();
   }
-  render();
 }
 
 function advance(): void {
@@ -9620,9 +9631,23 @@ function advance(): void {
     continueAdvance(status, preLen, beforeX, beforeY, seeFloorReq);
     return;
   }
-  void playProjectionAnimation(bolts, blasts).then(() => {
-    continueAdvance(status, preLen, beforeX, beforeY, seeFloorReq);
-  });
+  void playProjectionAnimation(bolts, blasts)
+    .catch((e: unknown) => {
+      /* playProjectionAnimation's own finally already forces a clean render()
+       * on the way out, so this is only reachable if THAT render() itself
+       * throws. Either way, the turn still has to finish - an uncaught
+       * rejection here would silently skip continueAdvance entirely (no
+       * message pump, no HUD update), leaving whatever was last on screen
+       * indefinitely (#222, #213). */
+      taintSession({
+        id: null,
+        hook: "playing a projection animation",
+        why: e instanceof Error ? e.message : String(e),
+      });
+    })
+    .then(() => {
+      continueAdvance(status, preLen, beforeX, beforeY, seeFloorReq);
+    });
 }
 
 /**

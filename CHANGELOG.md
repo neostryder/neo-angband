@@ -56,6 +56,8 @@ still calls itself.
 
 - [Visible] [Modding-API] **Toggling a tile mod off and back on within the same visit to the Mods screen now correctly offers to pick a tile set again on reload.** The "is this newly available" check compared against a snapshot taken when the screen was first opened, so a mod already enabled at that moment still read as unchanged after an off-then-on cycle, and the reload happened without ever routing to Graphics (#208).
 
+- [Visible] **A spell's projectile or explosion animation can no longer leave a stray marker glyph stuck on an unexplored cell if something interrupts the animation partway through.** The animation always reaches a cleanup redraw now, even when a step fails, instead of leaving the interrupted frame on screen indefinitely (#222, #213).
+
 ## [1.12.0] - 2026-09-12
 
 ### Added
