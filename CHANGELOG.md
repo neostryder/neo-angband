@@ -54,6 +54,8 @@ still calls itself.
 
 - [Visible] [UI] **A revealed trap, and the player's own tile (including a mod's shapechange override), are now warmed ahead of time along with terrain, monsters and floor items**, so they no longer flash their ASCII glyph for a frame before the real tile loads in a Linoleum-engine tile pack (#224).
 
+- [Visible] [Modding-API] **Toggling a tile mod off and back on within the same visit to the Mods screen now correctly offers to pick a tile set again on reload.** The "is this newly available" check compared against a snapshot taken when the screen was first opened, so a mod already enabled at that moment still read as unchanged after an off-then-on cycle, and the reload happened without ever routing to Graphics (#208).
+
 ## [1.12.0] - 2026-09-12
 
 ### Added

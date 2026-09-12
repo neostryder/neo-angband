@@ -1213,6 +1213,7 @@ async function regrantConsent(
   term: GridSurface & GridPointerInput,
   deps: ModManagerDeps,
   m: CatalogMod,
+  tileModsAtEntry: Set<string>,
 ): Promise<boolean> {
   const pending = capabilitiesNotYetGranted(m.capabilities, m.granted);
   if (pending.length === 0) return false;
@@ -1298,6 +1299,7 @@ async function regrantConsent(
   );
   if (off === 0) {
     deps.store.setModEnabled(m.id, false);
+    tileModsAtEntry.delete(m.id);
     return true;
   }
   return false;
@@ -1622,6 +1624,7 @@ async function manageMod(
   term: GridSurface & GridPointerInput,
   deps: ModManagerDeps,
   id: string,
+  tileModsAtEntry: Set<string>,
 ): Promise<boolean> {
   let changed = false;
   let cursor = 0;
@@ -1666,6 +1669,7 @@ async function manageMod(
       );
       if (pick === 0) {
         deps.store.setModEnabled(m.id, false);
+        tileModsAtEntry.delete(m.id);
         return true;
       }
       return changed;
@@ -1806,9 +1810,11 @@ async function manageMod(
     if (act === "enable") {
       if (await enableMod(term, deps, m)) changed = true;
     } else if (act === "regrant") {
-      if (await regrantConsent(term, deps, m)) changed = true;
+      if (await regrantConsent(term, deps, m, tileModsAtEntry)) changed = true;
     } else if (act === "disable") {
       deps.store.setModEnabled(m.id, false);
+      /* Same reasoning as the space-toggle handler in runModManager (#208). */
+      tileModsAtEntry.delete(m.id);
       changed = true;
     } else if (act === "drop") {
       if (await dropSession(term, deps, m)) changed = true;
@@ -3669,6 +3675,11 @@ export async function runModManager(
       if (m) {
         if (m.enabled) {
           deps.store.setModEnabled(m.id, false);
+          /* A disable within this same visit makes tileModsAtEntry stale for
+           * this id: re-enabling it later in the visit must be treated as
+           * newly available again, exactly like a mod that was off when the
+           * screen opened (#208). */
+          tileModsAtEntry.delete(m.id);
           dirty = true;
         } else if (await enableMod(term, deps, m)) {
           dirty = true;
@@ -3681,7 +3692,7 @@ export async function runModManager(
       pick === null ? { kind: "done" } : rowKinds[pick];
     if (!rk || rk.kind === "done") break;
     if (rk.kind === "mod" && "id" in rk) {
-      if (await manageMod(term, deps, rk.id)) dirty = true;
+      if (await manageMod(term, deps, rk.id, tileModsAtEntry)) dirty = true;
     } else if (rk.kind === "conflicts") {
       await viewConflicts(term, deps);
     } else if (rk.kind === "orphans") {

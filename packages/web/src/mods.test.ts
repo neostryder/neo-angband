@@ -124,6 +124,18 @@ function manifest(id: string, name = id): CatalogManifest {
   return { id, name, version: "1.0.0", shape: "content" } as CatalogManifest;
 }
 
+/** A tile-contributing manifest (non-empty tilePacks), otherwise as minimal as
+ * `manifest()` - just enough for enabledTileModIds to count it (#208). */
+function tileManifest(id: string, name = id): CatalogManifest {
+  return {
+    id,
+    name,
+    version: "1.0.0",
+    shape: "tiles",
+    tilePacks: [{ grafID: 1, engine: "linoleum", menuname: name, path: "sources/x", tilesheet: {} }],
+  } as CatalogManifest;
+}
+
 /** Race a promise against a short real-time timeout, so an unexpected extra
  * prompt this test never answers fails as an assertion instead of hanging the
  * whole suite. */
@@ -169,6 +181,7 @@ function makeDeps(
 function open(
   mods: CatalogManifest[],
   extraDeps: Partial<ModManagerDeps> = {},
+  store: ModStore = new ModStore(fakeStorage()),
 ): {
   win: FakeWindow;
   term: FakeTerm;
@@ -179,7 +192,6 @@ function open(
   const win = makeFakeWindow();
   (globalThis as { window?: unknown }).window = win;
   const term = makeTerm(80, 24);
-  const store = new ModStore(fakeStorage());
   const requestReload = vi.fn();
   const done = runModManager(term, { ...makeDeps(store, requestReload, mods), ...extraDeps });
   return { win, term, store, requestReload, done };
@@ -357,6 +369,33 @@ describe("leaving after a real change offers to reload, and honours the answer",
       consents: store.getConsents(),
     });
     expect(catalog.find((m) => m.id === "qol")?.enabled).toBe(true);
+  });
+});
+
+describe("a tile mod toggled off then back on in one visit still routes to Graphics (#208)", () => {
+  it("still asks to pick a tile set, even though it was already enabled when the screen opened", async () => {
+    // Already enabled BEFORE the screen opens, matching the reported repro:
+    // toggling it off then back on in the same visit must not read as "no
+    // change from entry" just because it was on when tileModsAtEntry snapshot.
+    const preseeded = new ModStore(fakeStorage());
+    preseeded.setModEnabled("linoleum", true);
+    const { win, done, requestReload, store } = open(
+      [tileManifest("linoleum", "Linoleum")],
+      {},
+      preseeded,
+    );
+    await flush();
+    press(win, " "); // toggle off
+    await flush();
+    press(win, " "); // toggle back on, same visit
+    await flush();
+    press(win, "Escape"); // Done -> dirty -> apply prompt
+    await flush();
+    press(win, "a"); // "Reload now, then pick a tile set"
+    const result = await raceTimeout(done);
+    expect(result.timedOut, "the apply prompt never resolved").toBe(false);
+    expect(requestReload).toHaveBeenCalledWith({ showGraphics: true });
+    expect(store.isEnabled("linoleum")).toBe(true);
   });
 });
 
