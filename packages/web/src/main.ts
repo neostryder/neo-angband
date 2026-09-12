@@ -8237,6 +8237,7 @@ let levelMapView: { x: number; y: number; width: number; height: number } | null
 let levelMapRepaint: (() => void) | null = null;
 let fullMapOverview = false;
 let storeItemNameEllipsis = false;
+let storeSelectionDescription = false;
 
 function buildOverviewForShell(): LevelOverview {
   const { cols, rows } = term.size();
@@ -8729,6 +8730,9 @@ const displayControl: ModDisplay = {
   },
   setStoreItemNameEllipsis(enabled) {
     storeItemNameEllipsis = enabled;
+  },
+  setStoreSelectionDescription(enabled) {
+    storeSelectionDescription = enabled;
   },
   setVisualFilter(filter) {
     setCanvasVisualFilter(canvas, filter);
@@ -9252,6 +9256,7 @@ function enterStoreModal(store: Store): Promise<void> {
       featureName: feat?.name ?? store.featName,
       rogueLike: state.options?.get("rogue_like_commands") ?? false,
       storeItemNameEllipsis,
+      storeSelectionDescription,
       // store_examine (ui-store.c L749): the object_info screen for a fully
       // known store item, header capitalised as ODESC_CAPITAL does.
       examine: async (obj) => {

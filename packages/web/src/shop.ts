@@ -294,6 +294,8 @@ export interface StoreScreenDeps {
   featureName: string;
   /** Opt-in display nicety: mark store names truncated to their column with "...". */
   storeItemNameEllipsis?: boolean;
+  /** Opt-in display nicety: show the selected store item's full description on row 0. */
+  storeSelectionDescription?: boolean;
   /**
    * store_at(cave, player->grid), re-resolved per transaction. Each of
    * do_cmd_buy / _retrieve / _sell / _stash calls it afresh (store.c:1665,
@@ -797,6 +799,13 @@ export async function runStore(
 
     if (prompt !== undefined) term.print(0, 0, prompt.slice(0, cols - 1), UI_TEXT);
     else if (statusMsg) term.print(0, 0, statusMsg.slice(0, cols - 1), UI_TEXT);
+    else if (deps.storeSelectionDescription === true) {
+      const obj = displayStock[cursor];
+      if (obj) {
+        const desc = ODESC.PREFIX | ODESC.FULL | (isHome ? 0 : ODESC.STORE);
+        term.print(0, 0, describeObject(game.state, obj, desc).slice(0, cols - 1), UI_TEXT);
+      }
+    }
   };
 
   /** Move the cursor from an arrow / numpad key; returns true if it handled it. */

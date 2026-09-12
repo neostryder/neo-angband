@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { newGear, gearAdd, objectNew, TV, FEAT } from "@rpgm-tools/neo-angband-core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { newGear, gearAdd, objectNew, TV, FEAT, ODESC, describeObject } from "@rpgm-tools/neo-angband-core";
 import type { GameObject, ObjectKind, StartedGame, Store } from "@rpgm-tools/neo-angband-core";
 import {
   findInven,
@@ -16,6 +16,17 @@ import { itemSelect } from "./overlay";
 import { clearInputDoor, dispatchUiInput } from "./input-door";
 import { resetRegionStack } from "./ui-stack";
 import type { GridPointerInput, GridSurface } from "./term";
+
+vi.mock("@rpgm-tools/neo-angband-core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@rpgm-tools/neo-angband-core")>();
+  return {
+    ...actual,
+    describeObject: vi.fn(
+      (_state: unknown, obj: unknown) =>
+        (obj as { fullDescription?: string }).fullDescription ?? "",
+    ),
+  };
+});
 
 function tick(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -51,7 +62,54 @@ function storeTerm(): StoreTerm {
 afterEach(() => {
   clearInputDoor();
   resetRegionStack();
+  vi.mocked(describeObject).mockClear();
 });
+
+interface RecordingStoreTerm extends StoreTerm {
+  rowZero(): readonly string[];
+}
+
+function recordingStoreTerm(): RecordingStoreTerm {
+  const messages: string[] = [];
+  const term = storeTerm();
+  return {
+    ...term,
+    print: (x, y, text) => {
+      if (x === 0 && y === 0) messages.push(text);
+    },
+    rowZero: () => messages,
+  };
+}
+
+function selectionStock(fullDescription: string, sval: number): GameObject {
+  return {
+    tval: TV.FOOD,
+    sval,
+    number: 1,
+    weight: 10,
+    kind: { base: { attr: "white" } },
+    fullDescription,
+  } as unknown as GameObject;
+}
+
+function selectionGame(): StartedGame {
+  return {
+    state: {
+      gear: newGear(),
+      actor: { player: { au: 0, lev: 1 }, combat: { ammoTval: 0 } },
+      rng: { oneIn: () => true },
+    },
+    booted: { registries: { hints: [] } },
+    price: () => 0,
+    willBuy: () => true,
+  } as unknown as StartedGame;
+}
+
+function dispatchStoreKey(key: string): void {
+  dispatchUiInput({
+    key: { key, modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false },
+  });
+}
 
 describe("store item-name truncation", () => {
   const name = "a very long store item name";
@@ -68,6 +126,93 @@ describe("store item-name truncation", () => {
   it("keeps the faithful slice when the name column cannot fit an ellipsis", () => {
     expect(truncateStoreItemName(name, 1, true)).toBe(name.slice(0, 1));
     expect(truncateStoreItemName(name, 2, true)).toBe(name.slice(0, 2));
+  });
+});
+
+describe("store selection description", () => {
+  const store = (stock: GameObject[]): Store => ({
+    feat: FEAT.STORE_GENERAL,
+    stock,
+    owner: { name: "Bilbo", maxCost: 5000 },
+  }) as unknown as Store;
+  const deps = {
+    featureName: "General Store",
+    rogueLike: false,
+    examine: async () => {},
+    sellPick: async () => ({ kind: "cancel" as const }),
+  };
+
+  it("leaves row 0 unchanged when the display seam is off", async () => {
+    const host = recordingStoreTerm();
+    const first = selectionStock("the complete first description", 1);
+    const second = selectionStock("the complete second description", 2);
+    const done = runStore(host, selectionGame(), store([first, second]), () => {}, {} as never, deps);
+
+    await tick();
+    dispatchStoreKey("ArrowDown");
+    await tick();
+    expect(host.rowZero()).toEqual([]);
+
+    dispatchStoreKey("Escape");
+    await done;
+  });
+
+  it("shows the selected full description and updates it as the cursor moves", async () => {
+    const host = recordingStoreTerm();
+    const game = selectionGame();
+    const first = selectionStock("the complete first description", 1);
+    const second = selectionStock("the complete second description", 2);
+    const done = runStore(host, game, store([first, second]), () => {}, {} as never, {
+      ...deps,
+      storeSelectionDescription: true,
+    });
+
+    await tick();
+    expect(host.rowZero()).toEqual(["the complete first description"]);
+    expect(describeObject).toHaveBeenCalledWith(
+      game.state,
+      first,
+      ODESC.PREFIX | ODESC.FULL | ODESC.STORE,
+    );
+
+    dispatchStoreKey("ArrowDown");
+    await tick();
+    expect(host.rowZero()).toEqual([
+      "the complete first description",
+      "the complete second description",
+    ]);
+
+    dispatchStoreKey("Escape");
+    await done;
+  });
+
+  it("keeps a transaction or error message on row 0 until the next input clears it", async () => {
+    const host = recordingStoreTerm();
+    const item = selectionStock("the complete selected description", 1);
+    const done = runStore(host, selectionGame(), store([item]), () => {}, {} as never, {
+      ...deps,
+      storeSelectionDescription: true,
+      sellPick: async () => ({ kind: "empty" }),
+    });
+
+    await tick();
+    dispatchStoreKey("s");
+    await tick();
+    expect(host.rowZero()).toEqual([
+      "the complete selected description",
+      "You have nothing that I want. ",
+    ]);
+
+    dispatchStoreKey("ArrowDown");
+    await tick();
+    expect(host.rowZero()).toEqual([
+      "the complete selected description",
+      "You have nothing that I want. ",
+      "the complete selected description",
+    ]);
+
+    dispatchStoreKey("Escape");
+    await done;
   });
 });
 

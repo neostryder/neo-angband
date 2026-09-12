@@ -212,6 +212,7 @@ function displayFor(session: ModSessionFacts): ModDisplay | undefined {
     setTileScaling: (mode) => display.setTileScaling(mode),
     setFullMapOverview: (enabled) => display.setFullMapOverview(enabled),
     setStoreItemNameEllipsis: (enabled) => display.setStoreItemNameEllipsis(enabled),
+    setStoreSelectionDescription: (enabled) => display.setStoreSelectionDescription(enabled),
     setVisualFilter: (filter) => {
       if (!session.capabilities) {
         throw new Error(`this plugin needs capability "${VISUAL_FILTER_CAPABILITY}"; no capability set was supplied`);

@@ -249,6 +249,8 @@ export interface ModDisplay {
   setFullMapOverview(enabled: boolean): void;
   /** Show a trailing ellipsis for store item names that exceed their column. */
   setStoreItemNameEllipsis(enabled: boolean): void;
+  /** Show the selected store item's full description on the message line. */
+  setStoreSelectionDescription(enabled: boolean): void;
   /** Apply a CSS filter to the terminal canvas, or clear the current filter. */
   setVisualFilter(filter: string | null): void;
   repaint(): void;
