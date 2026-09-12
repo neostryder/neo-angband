@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ELEM, OF, PROJ, TMD, TV } from "../generated/index.js";
 import { loc } from "../loc.js";
 import { objectNew } from "../obj/object.js";
@@ -438,6 +438,33 @@ describe("project-player side effects (project-player.c handlers)", () => {
     expect(p.statCur[0]!).toBe(15); // STR sustained.
   });
 
+  it("EF_DRAIN_STAT marks bonuses dirty on a real drain, not when a sustain blocks it (#223)", () => {
+    const state = makeState({ seed: 4 });
+    const p = state.actor.player;
+    for (let i = 0; i < 5; i++) {
+      p.statCur[i] = 15;
+      p.statMax[i] = 15;
+    }
+    const updateBonuses = vi.fn();
+    state.updateBonuses = updateBonuses;
+    sideFx(state)({ dam: 200000, typ: PROJ.FIRE, power: 90 });
+    expect(p.statCur[0]!).toBeLessThan(15);
+    expect(updateBonuses).toHaveBeenCalledTimes(1);
+
+    const sustained = makeState({ seed: 4 });
+    equipWithFlag(sustained, OF.SUST_STR);
+    const sp = sustained.actor.player;
+    for (let i = 0; i < 5; i++) {
+      sp.statCur[i] = 15;
+      sp.statMax[i] = 15;
+    }
+    const sustainedUpdate = vi.fn();
+    sustained.updateBonuses = sustainedUpdate;
+    sideFx(sustained)({ dam: 200000, typ: PROJ.FIRE, power: 90 });
+    expect(sp.statCur[0]!).toBe(15); // STR sustained, no real change.
+    expect(sustainedUpdate).not.toHaveBeenCalled();
+  });
+
   it("TIME's random stat drain uses 'You're not as %s...' with NO sustain (P3)", () => {
     /* Search for a seed whose TIME roll takes the project_player_drain_stats(2)
      * branch (one_in(2) false, one_in(5) false), then assert its parity. */
@@ -462,6 +489,30 @@ describe("project-player side effects (project-player.c handlers)", () => {
       /* Points drained even though STR is sustained (this path ignores sustain). */
       const total = p.statCur.reduce((a, v) => a + v, 0);
       expect(total).toBeLessThan(75);
+    }
+    expect(hit, "a seed should hit the TIME drain-2-stats branch").toBe(true);
+  });
+
+  it("TIME's random stat drain marks bonuses dirty once per stat actually drained (#223)", () => {
+    let hit = false;
+    for (let seed = 1; seed <= 80 && !hit; seed++) {
+      const state = makeState({ seed });
+      const p = state.actor.player;
+      p.exp = 0;
+      p.maxExp = 0;
+      for (let i = 0; i < 5; i++) {
+        p.statCur[i] = 15;
+        p.statMax[i] = 15;
+      }
+      const updateBonuses = vi.fn();
+      state.updateBonuses = updateBonuses;
+      const msgs: string[] = [];
+      sideFx(state, { msgs })({ dam: 30, typ: PROJ.TIME, power: 0 });
+      const perStat = /^You're not as (strong|bright|wise|agile|hale) as you used to be\.\.\.$/;
+      const drainCount = msgs.filter((m) => perStat.test(m)).length;
+      if (drainCount === 0) continue;
+      hit = true;
+      expect(updateBonuses).toHaveBeenCalledTimes(drainCount);
     }
     expect(hit, "a seed should hit the TIME drain-2-stats branch").toBe(true);
   });

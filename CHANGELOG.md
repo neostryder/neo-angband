@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- [Visible] **A drained stat's number now updates on the character screen at the moment it is actually drained**, instead of only after some later action happens to recompute derived stats. The stat's color still flipped immediately and the drain message still fired, but the displayed current/best values could keep reading as undrained for a while, which read as though the drain message and color change had happened with no real effect (#223).
+
 ## [1.12.0] - 2026-09-12
 
 ### Added

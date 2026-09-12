@@ -614,7 +614,14 @@ const time: PlayerSideHandler = (c) => {
     c.drainStatsRandom(2);
   } else {
     c.msg("You're not as powerful as you used to be...");
-    for (let i = 0; i < STAT_MAX; i++) playerStatDec(c.p(), i, false);
+    let changed = false;
+    for (let i = 0; i < STAT_MAX; i++) {
+      if (playerStatDec(c.p(), i, false)) changed = true;
+    }
+    /* PU_BONUS (player.c:198-203, #223): this branch bypasses drainStat and
+     * drainStatsRandom above (whole-body TIME drain, all stats at once), so
+     * it needs its own bonus-refresh once, same as those two. */
+    if (changed) c.state.updateBonuses?.();
   }
 };
 
@@ -760,6 +767,10 @@ export function makePlayerSideEffects(
     if (playerStatDec(p(), stat, false)) {
       equipLearnFlag(p(), state.runeEnv, flag);
       msg(`You feel very ${negAdj}.`);
+      /* PU_BONUS (player.c:198-203, #223): playerStatDec never marks anything
+       * dirty on its own, so the character screen's cached statTop/statUse
+       * would otherwise still read the pre-drain value. */
+      state.updateBonuses?.();
     }
   };
 
@@ -773,7 +784,9 @@ export function makePlayerSideEffects(
     for (let i = 0; i < num; i++) {
       const stat = state.rng.randint1(5) - 1;
       msg(`You're not as ${STAT_ADJECTIVE[stat] ?? "good"} as you used to be...`);
-      playerStatDec(p(), stat, false);
+      /* PU_BONUS (player.c:198-203, #223), gated on a real change exactly like
+       * drainStat and mon-side.ts's drainStat above. */
+      if (playerStatDec(p(), stat, false)) state.updateBonuses?.();
     }
   };
 

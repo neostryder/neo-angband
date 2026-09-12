@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { OF, TMD, TV } from "../generated/index.js";
+import { describe, expect, it, vi } from "vitest";
+import { OF, STAT, TMD, TV } from "../generated/index.js";
 import { loc } from "../loc.js";
 import type { GameObject } from "../obj/object.js";
 import { objectNew } from "../obj/object.js";
@@ -8,8 +8,10 @@ import { MonAllocTable } from "../mon/make.js";
 import type { MonPlaceDeps } from "./mon-place.js";
 import { pickAndPlaceDistantMonster } from "./mon-place.js";
 import {
+  PY_EXERT,
   digestFood,
   isDaytime,
+  playerOverExert,
   processDamageOverTime,
   processFaintOrStarve,
   rechargeObjects,
@@ -178,6 +180,60 @@ describe("damage over time", () => {
     processDamageOverTime(state);
     /* Exactly three one_in_(2) = randint0(2) draws for the CON/STR/exp rolls. */
     expect(seen).toEqual([2, 2, 2]);
+  });
+
+  it("Black Breath marks bonuses dirty when it actually drains CON or STR (#223)", () => {
+    const state = makeState();
+    const p = state.actor.player;
+    p.timed[TMD.BLACKBREATH] = 10;
+    p.statCur[STAT.CON] = 15;
+    p.statMax[STAT.CON] = 15;
+    p.statCur[STAT.STR] = 15;
+    p.statMax[STAT.STR] = 15;
+    /* Force the CON and STR rolls true, but leave the third (life-drain) roll
+     * false: playerExpLose's adjustLevel restores every drained stat on a
+     * levelup (upstream's real EF_RESTORE_STAT-on-levelup behavior), which
+     * would otherwise erase the very drain this test is asserting. */
+    let call = 0;
+    state.rng.randint0 = (): number => (call++ < 2 ? 0 : 1);
+    const updateBonuses = vi.fn();
+    state.updateBonuses = updateBonuses;
+
+    processDamageOverTime(state);
+
+    expect(p.statCur[STAT.CON]).toBeLessThan(15);
+    expect(p.statCur[STAT.STR]).toBeLessThan(15);
+    expect(updateBonuses).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("spellcasting overexertion", () => {
+  it("marks bonuses dirty when CON overexertion actually drains the stat (#223)", () => {
+    const state = makeState();
+    const p = state.actor.player;
+    p.statCur[STAT.CON] = 15;
+    p.statMax[STAT.CON] = 15;
+    const updateBonuses = vi.fn();
+    state.updateBonuses = updateBonuses;
+
+    /* chance 100: the randint0(100) < chance gate always fires. */
+    playerOverExert(state, PY_EXERT.CON, 100, 0);
+
+    expect(p.statCur[STAT.CON]).toBeLessThan(15);
+    expect(updateBonuses).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not mark bonuses dirty when the stat is already at its floor", () => {
+    const state = makeState();
+    const p = state.actor.player;
+    p.statCur[STAT.CON] = 3;
+    p.statMax[STAT.CON] = 3;
+    const updateBonuses = vi.fn();
+    state.updateBonuses = updateBonuses;
+
+    playerOverExert(state, PY_EXERT.CON, 100, 0);
+
+    expect(updateBonuses).not.toHaveBeenCalled();
   });
 });
 

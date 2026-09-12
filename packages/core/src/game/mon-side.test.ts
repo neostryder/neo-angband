@@ -263,6 +263,27 @@ describe("live monster melee - stat drain", () => {
     });
     expect(setup.state.actor.player.statCur[STAT.STR]).toBeLessThan(18);
   });
+
+  it("marks bonuses dirty on a real drain, so the character screen's cached stat display refreshes (#223)", () => {
+    const updateBonuses = vi.fn();
+    const { setup } = attackHit(make("LOSE_CON", "HIT", "1d1"), (s) => {
+      s.state.actor.player.statCur[STAT.CON] = 18;
+      s.state.actor.player.statMax[STAT.CON] = 18;
+      s.state.updateBonuses = updateBonuses;
+    });
+    expect(setup.state.actor.player.statCur[STAT.CON]).toBeLessThan(18);
+    expect(updateBonuses).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not mark bonuses dirty when the stat is already at its floor (no real change)", () => {
+    const updateBonuses = vi.fn();
+    attackHit(make("LOSE_CON", "HIT", "1d1"), (s) => {
+      s.state.actor.player.statCur[STAT.CON] = 3;
+      s.state.actor.player.statMax[STAT.CON] = 3;
+      s.state.updateBonuses = updateBonuses;
+    });
+    expect(updateBonuses).not.toHaveBeenCalled();
+  });
 });
 
 describe("live monster melee - theft", () => {

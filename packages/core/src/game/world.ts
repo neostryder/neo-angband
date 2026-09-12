@@ -321,7 +321,10 @@ export function playerOverExert(
     if (rng.randint0(100) < chance) {
       const perm = rng.randint0(100) < Math.trunc(chance / 2) && chance >= 50;
       worldMsg(state, "You have damaged your health!");
-      playerStatDec(p, STAT.CON, perm);
+      /* PU_BONUS (player.c:198-203, #223): the character screen's cached stat
+       * display otherwise stays at its pre-drain value until the periodic
+       * world sweep next recomputes bonuses. */
+      if (playerStatDec(p, STAT.CON, perm)) state.updateBonuses?.();
     }
   }
 
@@ -443,11 +446,13 @@ export function processDamageOverTime(state: GameState): boolean {
   if (p.timed[TMD.BLACKBREATH]) {
     if (state.rng.oneIn(2)) {
       worldMsg(state, "The Black Breath sickens you.");
-      playerStatDec(p, STAT.CON, false);
+      /* PU_BONUS (player.c:198-203, #223), same reasoning as playerOverExert
+       * above. */
+      if (playerStatDec(p, STAT.CON, false)) state.updateBonuses?.();
     }
     if (state.rng.oneIn(2)) {
       worldMsg(state, "The Black Breath saps your strength.");
-      playerStatDec(p, STAT.STR, false);
+      if (playerStatDec(p, STAT.STR, false)) state.updateBonuses?.();
     }
     if (state.rng.oneIn(2)) {
       /* Life draining. */

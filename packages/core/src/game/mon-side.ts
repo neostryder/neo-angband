@@ -288,6 +288,13 @@ export function makeMonBlowEnv(
         msg(
           `You're not as ${STAT_ADJECTIVE[stat] ?? "good"} as you used to be...`,
         );
+        /* player_stat_dec sets PU_BONUS unconditionally on a real change
+         * (player.c:198-203); playerStatDec mutates statCur/statMax but never
+         * marks anything dirty on its own, so without this the character
+         * screen's statTop/statUse (calc_bonuses' cached snapshot) stays at
+         * its pre-drain value until something else happens to recompute
+         * bonuses (#223). */
+        state.updateBonuses?.();
       }
     },
 
