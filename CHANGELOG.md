@@ -48,6 +48,11 @@ still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- [Visible] [Parity] **A projectile animation's marker glyph no longer sticks on unexplored terrain after the spell resolves.** A bare unexplored grid with nothing else to draw used to omit its resolved glyph entirely, which let the terminal's redraw skip over it and leave the last-painted marker in place indefinitely (#222).
+- [Visible] [UI] **The message line no longer leaves the tail of a longer previous message on screen when a shorter one follows it.** The line is now erased before each new message is drawn, matching the terminal's own erase-then-print convention used elsewhere (#232).
+
 ## [1.13.1] - 2026-09-12
 
 ### Fixed

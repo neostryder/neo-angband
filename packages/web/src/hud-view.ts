@@ -425,11 +425,21 @@ function hudEntry(model: HudModel, screen: HudPlacement): HudEntry {
  * screen), and a run is truncated at the section's reserved last column.
  */
 export function paintHudSection(
-  surface: Pick<GridSurface, "print">,
+  surface: Pick<GridSurface, "print" | "eraseToEol">,
   section: HudSection,
 ): void {
   const { col, row, cols, rows } = section.clip;
   const bound = col + cols - 1;
+  /* The messages section is the one entry per frame that is free-form length
+   * (`hudMessagesSection` builds a single run covering the whole row), so a
+   * shorter or absent new message leaves the tail of a longer previous one on
+   * screen unless this erases first - the same failure c_prt()'s own erase
+   * step exists to prevent (see term.ts's prt()). sidebar/status pack several
+   * fixed-width fields per row via flowEntries; blanket-erasing those rows
+   * would wipe a neighbouring field this section's own entries never redraw. */
+  if (section.name === "messages") {
+    for (let r = row; r < row + rows; r++) surface.eraseToEol(col, r);
+  }
   for (const entry of section.entries) {
     if (entry.screen.row < row || entry.screen.row >= row + rows) continue;
     let x = entry.screen.col;
@@ -442,12 +452,12 @@ export function paintHudSection(
 }
 
 /** The default terminal projection of a whole frame. */
-export function paintHudFrame(surface: Pick<GridSurface, "print">, frame: HudFrame): void {
+export function paintHudFrame(surface: Pick<GridSurface, "print" | "eraseToEol">, frame: HudFrame): void {
   for (const section of hudSections(frame)) paintHudSection(surface, section);
 }
 
 /** The unmodded renderer's sink; it is an ordinary consumer of the live frame. */
-export function glyphHudFrameSink(surface: Pick<GridSurface, "print">): HudFrameSink {
+export function glyphHudFrameSink(surface: Pick<GridSurface, "print" | "eraseToEol">): HudFrameSink {
   return { present: (frame) => paintHudFrame(surface, frame) };
 }
 
@@ -459,7 +469,7 @@ export function glyphHudFrameSink(surface: Pick<GridSurface, "print">): HudFrame
  * needs nothing but the section. A replacement generally does need it, which is
  * why the argument is in the interface rather than shaped around this one.
  */
-export function glyphHudSectionSink(surface: Pick<GridSurface, "print">): HudSectionSink {
+export function glyphHudSectionSink(surface: Pick<GridSurface, "print" | "eraseToEol">): HudSectionSink {
   return { present: (section) => paintHudSection(surface, section) };
 }
 

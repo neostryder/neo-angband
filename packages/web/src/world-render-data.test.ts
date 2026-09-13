@@ -72,6 +72,25 @@ describe("the production live-world data producer", () => {
     });
   });
 
+  /**
+   * A genuinely unexplored grid with no cursor, monster or path colour used
+   * to omit `visual` entirely, and `paintWorldFrame` skips its `put()` call
+   * for any cell with no `visual` - so a projectile marker drawn directly by
+   * `term.print` over that grid was never repainted over on the very next
+   * render, and survived on screen as residue (#222). Grid (2,0) is outside
+   * both `reads()`'s "seen" and "knownFeature" fixtures and has no monster,
+   * so it exercises this exact bare arm.
+   */
+  it("blanks, rather than omits, a bare unexplored cell (#222-residue)", () => {
+    const frame = projectLiveWorld(reads({}), { present: () => {} });
+    const cell = frame.cells.find((c) => c.grid.x === 2 && c.grid.y === 0);
+    expect(cell).toMatchObject({
+      visibility: "unknown",
+      visual: { ch: " ", fg: "#000" },
+      overlays: [],
+    });
+  });
+
   it("delivers the exact production frame to an independent sink", () => {
     let received: WorldFrame | undefined;
     const frame = projectLiveWorld(reads({}), { present: (value) => { received = value; } });

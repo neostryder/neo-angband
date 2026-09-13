@@ -33,10 +33,18 @@ import { screenRegions, type LiveRegion } from "./regions";
 /** A surface that records what was printed, in order. */
 function recorder(): {
   calls: { x: number; y: number; text: string; fg: string }[];
+  erased: { x: number; y: number }[];
   print(x: number, y: number, text: string, fg: string): void;
+  eraseToEol(x: number, y: number): void;
 } {
   const calls: { x: number; y: number; text: string; fg: string }[] = [];
-  return { calls, print: (x, y, text, fg) => calls.push({ x, y, text, fg }) };
+  const erased: { x: number; y: number }[] = [];
+  return {
+    calls,
+    erased,
+    print: (x, y, text, fg) => calls.push({ x, y, text, fg }),
+    eraseToEol: (x, y) => erased.push({ x, y }),
+  };
 }
 
 /** The text a section paints on one row, with gaps filled in. */
@@ -198,6 +206,25 @@ describe("painting a section", () => {
     const surface = recorder();
     paintHudSection(surface, section({ entries: [{ key: "sp", runs: [], screen: { col: 0, row: 1 } }] }));
     expect(surface.calls).toEqual([]);
+  });
+
+  it("erases the messages row before drawing, so a shorter message cannot leave a longer one's tail (#232)", () => {
+    const surface = recorder();
+    paintHudSection(
+      surface,
+      section({
+        name: "messages",
+        clip: { col: 0, row: 0, cols: 80, rows: 1 },
+        entries: [{ key: "message", runs: [{ text: "ok", css: WHITE }], screen: { col: 0, row: 0 } }],
+      }),
+    );
+    expect(surface.erased).toEqual([{ x: 0, y: 0 }]);
+  });
+
+  it("never erases sidebar or status rows, since several fields share one row", () => {
+    const surface = recorder();
+    paintHudSection(surface, section());
+    expect(surface.erased).toEqual([]);
   });
 });
 

@@ -210,20 +210,24 @@ function projectUnseen<TMemory, TMonster>(
   const feature = read.knownFeature(grid);
   if (feature < 0) {
     const overlays: WorldLayer[] = [];
-    let visual: ResolvedGlyph | undefined = cursor
-      ? { ch: " ", attr: 0, css: read.unknownForeground }
-      : undefined;
     /* map_info's m_idx check runs unconditionally (cave-map.c L103-104,
      * L173-177) - it never tests square_isknown before deciding whether a
      * visible monster occupies this grid. A telepathically-sensed monster on
      * terrain the player has never explored must still draw, the same way it
      * would over a lit or remembered grid; this branch used to return before
      * ever reading read.monsters, so ESP could only ever reveal a monster
-     * standing on ground the player had already walked. */
+     * standing on ground the player had already walked.
+     *
+     * `visual` is unconditional (not gated on `cursor`) so this cell is never
+     * blank: map_info always calls Term_queue_char for every grid on a full
+     * redraw, and paintWorldFrame skips a `put()` entirely when `visual` is
+     * absent. A blank cell here is a hole nothing ever repaints, which is how
+     * a directly-term.print'd projectile marker over unknown terrain used to
+     * survive on screen indefinitely. */
+    let visual: ResolvedGlyph = { ch: " ", attr: 0, css: read.unknownForeground };
     const monster = read.monsters.get(key);
     if (monster) {
-      const under: ResolvedGlyph = visual ?? { ch: " ", attr: 0, css: read.unknownForeground };
-      visual = read.monsterGlyph(under, monster);
+      visual = read.monsterGlyph(visual, monster);
       addLayer(overlays, visual);
     }
     if (pathColour !== undefined) {
@@ -232,7 +236,7 @@ function projectUnseen<TMemory, TMonster>(
     }
     return {
       grid, screen, visibility: "unknown" as const, overlays, cursor,
-      ...(visual ? { visual: toVisual(visual, cursor, read.cursorBackground) } : {}),
+      visual: toVisual(visual, cursor, read.cursorBackground),
     };
   }
   const memory = read.remembered(grid, feature);

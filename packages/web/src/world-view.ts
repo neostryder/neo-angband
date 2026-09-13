@@ -53,7 +53,9 @@ export interface WorldCell {
   readonly terrain?: WorldLayer;
   /** Bottom-to-top semantic occupants, excluding terrain. */
   readonly overlays: readonly WorldLayer[];
-  /** The existing terminal renderer's resolved result; absent for unknown space. */
+  /** The existing terminal renderer's resolved result. Core always sets this,
+   * including blank unknown space, since `paintWorldFrame` skips a `put()`
+   * for a cell with none - optional here only for a replacement's own cells. */
   readonly visual?: WorldVisual;
   /** The interactive look/target highlight, independent of terminal chrome. */
   readonly cursor: boolean;
