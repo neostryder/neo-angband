@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.13.2] - 2026-09-13
+
 ### Fixed
 
 - [Visible] [Parity] **A projectile animation's marker glyph no longer sticks on unexplored terrain after the spell resolves.** A bare unexplored grid with nothing else to draw used to omit its resolved glyph entirely, which let the terminal's redraw skip over it and leave the last-painted marker in place indefinitely (#222).
