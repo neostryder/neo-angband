@@ -182,7 +182,7 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     await done;
   });
 
-  it("toggles the four supported subwindows independently from upstream's w row", async () => {
+  it("toggles subwindows independently from upstream's w row", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();

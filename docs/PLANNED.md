@@ -73,20 +73,14 @@ while still claiming a tap.
 
 ## Complete subwindow coverage (#191)
 
-The current subwindow increment adds four separately configurable canvas terms
-in a right-hand column: message history, inventory, the static visible-monster
-list, and the static visible-floor-item list. These are upstream's Term-1 through
-Term-4 defaults. All start disabled so the former single-window layout is
-unchanged, and `=` -> `w` toggles each one. The message term keeps its newest
-entries at the bottom, inventory includes upstream's burden and quiver summary,
-and both static lists use upstream's height fitting and `...and N others.` row.
+The tiled subwindow shell now offers every non-Borg PW_* content type, each in
+its own panel, with right-click docking and splitter resize around the main
+view. All panels still start off; enabling the Term-1 through Term-7 types
+places them in a canonical tiling of upstream's default assignment.
 
-The remaining upstream default assignment is Term-5 monster and object recall,
-Term-6 overhead view, and Term-7 compact player display. Other non-default flags
-for equipment, basic/extra/topbar player displays, the dungeon map, and status
-also remain. The arbitrary eight-term flag matrix, assignment of multiple flags
-to a term, player-controlled panel sizing/placement, `window:` pref-file loading
-and dumping, and the `^E` inventory/equipment flip remain too.
+Remaining: the arbitrary eight-term flag matrix and assignment of multiple
+flags to one term, `window:` pref-file loading and dumping, and the `^E`
+inventory/equipment flip. Tracked as issue #191.
 
 ---
 

@@ -701,6 +701,50 @@ export function equipmentLines(state: GameState): ScreenLine[] {
 }
 
 /**
+ * show_equip(OLIST_WINDOW | OLIST_WEIGHT): the static Term equipment list.
+ * Rows come from equipmentScreen(); only the subwindow column fitting is added.
+ */
+export function equipmentSubwindowLines(state: GameState, width: number): ScreenLine[] {
+  if (width < 1) return [];
+  const equip = equipmentScreen(state).blocks[0];
+  if (!equip || equip.kind !== "table") return [];
+  const showWeight = width >= 40;
+  const extraWidth = showWeight ? 9 : 0;
+  const maxLength = Math.max(
+    40,
+    ...equip.rows.map((row) => {
+      const slot = row.cells.slot?.text ?? "";
+      const name = row.cells.name?.text ?? "";
+      return 3 + slot.length + 1 + name.length;
+    }),
+  );
+  const extraOffset = Math.max(0, Math.min(maxLength, width - 1 - extraWidth));
+  const lines: ScreenLine[] = [];
+  for (const row of equip.rows) {
+    const prefix = row.tag === undefined ? "   " : `${row.tag}) `;
+    const slot = row.cells.slot?.text ?? "";
+    const rawName = row.cells.name?.text ?? "";
+    const body = slot.length > 0 ? `${slot} ${rawName}` : rawName;
+    const nameWidth = Math.max(0, extraOffset - prefix.length);
+    const name = clipTo(body, nameWidth).padEnd(nameWidth);
+    const weight = showWeight ? row.cells.weight?.text ?? "" : "";
+    const text = `${prefix}${name}${weight}`.slice(0, width);
+    lines.push({
+      text,
+      runs: [
+        { text: prefix.slice(0, width), color: UI_TEXT },
+        { text: name.slice(0, Math.max(0, width - prefix.length)), color: row.color ?? UI_TEXT },
+        {
+          text: weight.slice(0, Math.max(0, width - prefix.length - name.length)),
+          color: UI_TEXT,
+        },
+      ],
+    });
+  }
+  return lines;
+}
+
+/**
  * The quiver (|) as a screen: the occupied slots, tagged by their digit.
  *
  * One column, because that is what the game draws. The weight is published as row

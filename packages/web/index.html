@@ -26,12 +26,20 @@
       #game-layout {
         position: fixed;
         inset: 0;
-        display: flex;
+        background: #101014;
+      }
+      #game-view,
+      .tile-leaf {
+        position: absolute;
+        overflow: hidden;
+        min-width: 0;
+        min-height: 0;
       }
       #game-view {
-        position: relative;
-        flex: 1 1 auto;
-        min-width: 0;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
       }
       #game {
         display: block;
@@ -39,42 +47,53 @@
         height: 100%;
         image-rendering: pixelated;
       }
-      #subwindows {
-        flex: 0 0 clamp(400px, 38vw, 680px);
-        min-width: 0;
-        display: grid;
-        border-left: 1px solid #50505a;
-        background: #101014;
-      }
-      #subwindows[data-count="1"] {
-        grid-template-rows: minmax(0, 1fr);
-      }
-      #subwindows[data-count="2"] {
-        grid-template-rows: repeat(2, minmax(0, 1fr));
-      }
-      #subwindows[data-count="3"] {
-        grid-template-rows: repeat(3, minmax(0, 1fr));
-      }
-      #subwindows[data-count="4"] {
-        grid-template-rows: repeat(4, minmax(0, 1fr));
-      }
-      #subwindows[hidden],
-      .subwindow-slot[hidden] {
+      .tile-leaf[hidden] {
         display: none;
       }
-      .subwindow-slot {
-        position: relative;
-        min-height: 0;
+      .tile-title {
+        height: 20px;
+        padding: 0 8px;
+        box-sizing: border-box;
+        background: #18181e;
+        color: #c0c0c8;
+        font: 12px/20px sans-serif;
+        user-select: none;
+        border-bottom: 1px solid #50505a;
+        white-space: nowrap;
         overflow: hidden;
+        text-overflow: ellipsis;
       }
-      .subwindow-slot:not([hidden]) ~ .subwindow-slot:not([hidden]) {
-        border-top: 1px solid #50505a;
+      .tile-body {
+        position: absolute;
+        inset: 20px 0 0 0;
       }
+      .tile-body canvas,
       .subwindow-slot canvas {
         display: block;
         width: 100%;
         height: 100%;
         image-rendering: pixelated;
+      }
+      .tile-gutter {
+        position: absolute;
+        z-index: 3;
+        background: #2a2a32;
+        touch-action: none;
+      }
+      .tile-gutter:hover,
+      .tile-gutter:active {
+        background: #6a6a78;
+      }
+      .tile-drop-preview {
+        position: absolute;
+        z-index: 4;
+        pointer-events: none;
+        background: rgba(201, 162, 39, 0.28);
+        outline: 1px solid #c9a227;
+      }
+      .tile-host-dragging,
+      .tile-host-dragging * {
+        cursor: grabbing !important;
       }
     </style>
   </head>
@@ -83,20 +102,6 @@
       <main id="game-view">
         <canvas id="game"></canvas>
       </main>
-      <aside id="subwindows" aria-label="Subwindows" hidden>
-        <section id="subwindow-inventory-slot" class="subwindow-slot" aria-label="Inventory" hidden>
-          <canvas id="subwindow-inventory"></canvas>
-        </section>
-        <section id="subwindow-monsters-slot" class="subwindow-slot" aria-label="Visible monsters" hidden>
-          <canvas id="subwindow-monsters"></canvas>
-        </section>
-        <section id="subwindow-items-slot" class="subwindow-slot" aria-label="Visible floor items" hidden>
-          <canvas id="subwindow-items"></canvas>
-        </section>
-        <section id="subwindow-messages-slot" class="subwindow-slot" aria-label="Message history" hidden>
-          <canvas id="subwindow-messages"></canvas>
-        </section>
-      </aside>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

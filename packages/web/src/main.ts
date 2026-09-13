@@ -208,6 +208,7 @@ import type {
   MonsterLore,
   LoreDeps,
   HistoryAddEntry,
+  Textblock,
 } from "@rpgm-tools/neo-angband-core";
 import { GameEvents, useFlavorGlyph, makeShapeLoreEnv } from "@rpgm-tools/neo-angband-core";
 import { applyRestoredItemArt } from "@rpgm-tools/neo-angband-core";
@@ -507,7 +508,7 @@ import { userPath, userWrite, exportUserFile, FileType } from "./user-io";
 import { loadLoreFile, saveLoreFile } from "./lore-file";
 import { LORE_FILE } from "@rpgm-tools/neo-angband-core";
 import { buildGraphicsOverview, buildOverview, panLocate, locateSectorBanner } from "./mapview";
-import type { BuildOverviewParams, LevelOverview, OverviewGlyph } from "./mapview";
+import type { BuildOverviewParams, LevelOverview, Overview, OverviewGlyph } from "./mapview";
 import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
 import { startLoading } from "./loading";
@@ -521,16 +522,27 @@ import {
 } from "./game-menu";
 import { MessageLog, messageTypeCode, packMessages, pushTypedMessage } from "./messages";
 import {
-  applySubwindowVisibility,
   MessageSubwindowPainter,
+  paintEquipmentSubwindow,
   paintInventorySubwindow,
   paintItemListSubwindow,
+  paintMonsterRecallSubwindow,
   paintMonsterSubwindow,
-  readSubwindowSettings,
+  paintObjectRecallSubwindow,
+  paintOverviewSubwindow,
+  paintPlayerBasicSubwindow,
+  paintPlayerCompactSubwindow,
+  paintPlayerExtraSubwindow,
+  paintPlayerTopbarSubwindow,
+  paintStatusSubwindow,
+  readSubwindowState,
+  setSubwindowEnabled,
   SUBWINDOW_CHOICES,
-  writeSubwindowSettings,
+  writeSubwindowState,
   type SubwindowId,
+  type SubwindowState,
 } from "./subwindows";
+import { mountSubwindowShell } from "./subwindow-shell";
 import {
   inventoryScreen,
   equipmentScreen,
@@ -934,52 +946,22 @@ async function rediscoverModSources(): Promise<void> {
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const gameView = document.getElementById("game-view") as HTMLElement;
-const subwindowColumn = document.getElementById("subwindows") as HTMLElement;
-const messageSubwindowSlot = document.getElementById("subwindow-messages-slot") as HTMLElement;
-const inventorySubwindowSlot = document.getElementById("subwindow-inventory-slot") as HTMLElement;
-const monsterSubwindowSlot = document.getElementById("subwindow-monsters-slot") as HTMLElement;
-const itemListSubwindowSlot = document.getElementById("subwindow-items-slot") as HTMLElement;
-const messageSubwindowCanvas = document.getElementById("subwindow-messages") as HTMLCanvasElement;
-const inventorySubwindowCanvas = document.getElementById("subwindow-inventory") as HTMLCanvasElement;
-const monsterSubwindowCanvas = document.getElementById("subwindow-monsters") as HTMLCanvasElement;
-const itemListSubwindowCanvas = document.getElementById("subwindow-items") as HTMLCanvasElement;
-const subwindowSlots = {
-  messages: messageSubwindowSlot,
-  inventory: inventorySubwindowSlot,
-  monsters: monsterSubwindowSlot,
-  items: itemListSubwindowSlot,
-};
-let subwindowSettings = readSubwindowSettings(localStorage);
-applySubwindowVisibility(subwindowColumn, subwindowSlots, subwindowSettings);
+const gameLayout = document.getElementById("game-layout") as HTMLElement;
+let subwindowState: SubwindowState = readSubwindowState(localStorage);
+const subwindowTerms = new Map<SubwindowId, GlyphTerm>();
+const subwindowShell = mountSubwindowShell({
+  host: gameLayout,
+  mainSlot: gameView,
+  labels: Object.fromEntries(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.label])),
+  onTreeChange: (tree) => {
+    subwindowState = { ...subwindowState, tree };
+    writeSubwindowState(localStorage, subwindowState);
+    applySubwindowLayout();
+    renderSubwindows();
+  },
+});
+subwindowShell.apply(subwindowState.tree);
 const term = new GlyphTerm(canvas, { boundsElement: gameView });
-const messageSubwindowTerm = new GlyphTerm(messageSubwindowCanvas, {
-  boundsElement: messageSubwindowSlot,
-  reflow: true,
-  minCols: 24,
-  minRows: 4,
-  fontPx: 16,
-});
-const inventorySubwindowTerm = new GlyphTerm(inventorySubwindowCanvas, {
-  boundsElement: inventorySubwindowSlot,
-  reflow: true,
-  minCols: 50,
-  minRows: 4,
-  fontPx: 16,
-});
-const monsterSubwindowTerm = new GlyphTerm(monsterSubwindowCanvas, {
-  boundsElement: monsterSubwindowSlot,
-  reflow: true,
-  minCols: 24,
-  minRows: 4,
-  fontPx: 16,
-});
-const itemListSubwindowTerm = new GlyphTerm(itemListSubwindowCanvas, {
-  boundsElement: itemListSubwindowSlot,
-  reflow: true,
-  minCols: 40,
-  minRows: 4,
-  fontPx: 16,
-});
 /* THE PANEL LAYER, wired here rather than beside the mod boot, because both of
  * these are about the page and neither depends on a game existing. A mod's DOM
  * panel needs the input door to stand down for the field the player is typing
@@ -2517,52 +2499,113 @@ let modalDepth = 0;
 let gameScreenLive = false;
 
 const messageSubwindowPainter = new MessageSubwindowPainter();
+let recalledMonsterRace: MonsterRace | null = null;
+let recalledObject: { title: string; tb: Textblock } | null = null;
+
+function ensureSubwindowTerm(id: SubwindowId): GlyphTerm | undefined {
+  const existing = subwindowTerms.get(id);
+  if (existing) return existing;
+  const canvas = subwindowShell.canvas(id);
+  const bounds = subwindowShell.bounds(id);
+  if (!canvas || !bounds) return undefined;
+  const next = new GlyphTerm(canvas, {
+    boundsElement: bounds,
+    reflow: true,
+    minCols: 20,
+    minRows: 3,
+    fontPx: 16,
+  });
+  subwindowTerms.set(id, next);
+  next.onSizeChanged(() => {
+    if (subwindowState.enabled[id]) renderSubwindows();
+  });
+  return next;
+}
+
+function trackMonsterRecall(race: MonsterRace | null | undefined): void {
+  if (race) recalledMonsterRace = race;
+}
+
+function trackObjectRecall(title: string, tb: Textblock): void {
+  recalledObject = { title, tb };
+}
+
+function applySubwindowLayout(): void {
+  subwindowShell.apply(subwindowState.tree);
+  for (const choice of SUBWINDOW_CHOICES) {
+    if (subwindowState.enabled[choice.id]) ensureSubwindowTerm(choice.id);
+  }
+  window.dispatchEvent(new Event("resize"));
+}
+
+function paintSubwindowContent(
+  id: SubwindowId,
+  panel: GlyphTerm,
+  deps: ReturnType<typeof displayDeps>,
+): void {
+  const painters: Record<SubwindowId, () => void> = {
+    messages: () => messageSubwindowPainter.paint(panel, msglog),
+    inventory: () => paintInventorySubwindow(panel, state, constants),
+    equipment: () => paintEquipmentSubwindow(panel, state),
+    monsters: () => paintMonsterSubwindow(panel, state),
+    items: () => paintItemListSubwindow(panel, state),
+    "player-basic": () => paintPlayerBasicSubwindow(panel, state, playerName),
+    "player-extra": () =>
+      paintPlayerExtraSubwindow(
+        panel,
+        state,
+        playerName,
+        buildUiEntryConfig(uiEntryPacks, state.uiEntry),
+      ),
+    "player-compact": () => paintPlayerCompactSubwindow(panel, state, deps),
+    "player-topbar": () => paintPlayerTopbarSubwindow(panel, state, deps),
+    status: () => paintStatusSubwindow(panel, state, deps),
+    "monster-recall": () => {
+      const race = state.healthWho?.race ?? recalledMonsterRace;
+      trackMonsterRecall(race);
+      paintMonsterRecallSubwindow(
+        panel,
+        race,
+        race ? getLore(state.lore, race) : null,
+        recallDeps(),
+      );
+    },
+    "object-recall": () =>
+      paintObjectRecallSubwindow(panel, recalledObject?.title ?? null, recalledObject?.tb ?? null),
+    map: () => paintOverviewSubwindow(panel, buildSubwindowOverview(panel, "map")),
+    overhead: () => paintOverviewSubwindow(panel, buildSubwindowOverview(panel, "overhead")),
+  };
+  painters[id]();
+}
 
 /** Repaint the enabled independent terms from the same completed game state. */
 function renderSubwindows(): void {
   if (!gameScreenLive) {
-    if (subwindowSettings.messages) messageSubwindowTerm.clear();
-    if (subwindowSettings.inventory) inventorySubwindowTerm.clear();
-    if (subwindowSettings.monsters) monsterSubwindowTerm.clear();
-    if (subwindowSettings.items) itemListSubwindowTerm.clear();
+    for (const [id, panel] of subwindowTerms) {
+      if (subwindowState.enabled[id]) panel.clear();
+    }
     return;
   }
-  if (subwindowSettings.messages) messageSubwindowPainter.paint(messageSubwindowTerm, msglog);
-  if (subwindowSettings.inventory) {
-    paintInventorySubwindow(inventorySubwindowTerm, state, constants);
+  const deps = displayDeps();
+  for (const choice of SUBWINDOW_CHOICES) {
+    if (!subwindowState.enabled[choice.id]) continue;
+    const panel = ensureSubwindowTerm(choice.id);
+    if (!panel) continue;
+    paintSubwindowContent(choice.id, panel, deps);
   }
-  if (subwindowSettings.monsters) paintMonsterSubwindow(monsterSubwindowTerm, state);
-  if (subwindowSettings.items) paintItemListSubwindow(itemListSubwindowTerm, state);
 }
 
 const subwindowMenu: SubwindowMenu = {
   choices: SUBWINDOW_CHOICES,
-  enabled: (id) => subwindowSettings[id as SubwindowId],
+  enabled: (id) => subwindowState.enabled[id as SubwindowId],
   set: (id, enabled) => {
     if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
-    subwindowSettings = { ...subwindowSettings, [id]: enabled };
-    writeSubwindowSettings(localStorage, subwindowSettings);
-    applySubwindowVisibility(subwindowColumn, subwindowSlots, subwindowSettings);
-    /* Flex layout resolves synchronously. The resize event lets every
-     * GlyphTerm remeasure its own bounds immediately instead of waiting for
-     * ResizeObserver's next delivery. */
-    window.dispatchEvent(new Event("resize"));
+    subwindowState = setSubwindowEnabled(subwindowState, id as SubwindowId, enabled);
+    writeSubwindowState(localStorage, subwindowState);
+    applySubwindowLayout();
     renderSubwindows();
   },
 };
-
-messageSubwindowTerm.onSizeChanged(() => {
-  if (subwindowSettings.messages) renderSubwindows();
-});
-inventorySubwindowTerm.onSizeChanged(() => {
-  if (subwindowSettings.inventory) renderSubwindows();
-});
-monsterSubwindowTerm.onSizeChanged(() => {
-  if (subwindowSettings.monsters) renderSubwindows();
-});
-itemListSubwindowTerm.onSizeChanged(() => {
-  if (subwindowSettings.items) renderSubwindows();
-});
 
 /**
  * A BACKGROUND repaint: a redraw nothing the player just did asked for, arriving
@@ -3431,6 +3474,7 @@ async function runContextMenuObject(handle: number): Promise<ContextMenuResult> 
       const name = objectName(state, obj);
       const header = name.charAt(0).toUpperCase() + name.slice(1);
       const tb = objectInfoTextblock(state, obj, inspectExtras);
+      trackObjectRecall(header, tb);
       await showTextScreen(term, objectRecallScreen(header, tb));
       /* MENU_VALUE_INSPECT returns 2 (L821): the caller reopens this menu on the
        * same object, so reading an item's info does not throw you out of it. */
@@ -3637,6 +3681,7 @@ async function inspectOnce(
   const name = objectName(state, obj);
   const header = name.charAt(0).toUpperCase() + name.slice(1); /* ODESC_CAPITAL */
   const tb = objectInfoTextblock(state, obj, inspectExtras);
+  trackObjectRecall(header, tb);
   await showTextScreen(term, objectRecallScreen(header, tb));
   return true;
 }
@@ -4815,6 +4860,7 @@ function recallDeps(): LoreDeps {
  * paragraphs unwrapped and the terminal draws the wrap it always had.
  */
 async function showRaceRecall(race: MonsterRace, lore: MonsterLore): Promise<void> {
+  trackMonsterRecall(race);
   await showTextScreen(term, monsterRecallScreen(race, lore, recallDeps()));
 }
 
@@ -8314,10 +8360,11 @@ let fullMapOverview = false;
 let storeItemNameEllipsis = false;
 let storeSelectionDescription = false;
 
-function buildOverviewForShell(): LevelOverview {
-  const { cols, rows } = term.size();
-  const mapW = Math.min(cols - 2, state.chunk.width);
-  const mapH = Math.min(rows - 2, state.chunk.height);
+function overviewParamsFor(
+  mapW: number,
+  mapH: number,
+  view?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+): BuildOverviewParams {
   const monsterAt = monsterIndex();
   const trapAt = trapIndex();
   /* Its own resolver, not the live map's: display_map is a separate refresh,
@@ -8326,12 +8373,12 @@ function buildOverviewForShell(): LevelOverview {
   const playerCell = hallucinate?.({ ...state.actor.grid }, {
     object: false, sensed: false, monster: false,
   })?.monster;
-  const overviewParams: BuildOverviewParams = {
+  return {
     width: state.chunk.width,
     height: state.chunk.height,
     mapW,
     mapH,
-    ...(levelMapView ? { view: levelMapView } : {}),
+    ...(view ? { view } : {}),
     knownFeatAt: (x, y) => knownFeat(state, loc(x, y)),
     featureGlyph: (fidx, x = 0, y = 0) => {
       const f = features.get(fidx);
@@ -8407,10 +8454,39 @@ function buildOverviewForShell(): LevelOverview {
         }
       : {}),
   };
+}
+
+function buildOverviewForShell(): LevelOverview {
+  const { cols, rows } = term.size();
+  const mapW = Math.min(cols - 2, state.chunk.width);
+  const mapH = Math.min(rows - 2, state.chunk.height);
+  const overviewParams = overviewParamsFor(mapW, mapH, levelMapView ?? undefined);
   /* Selecting a graphics renderer is the mode gate, not whether one specific
    * asset has finished loading.  tileDrawFor still falls back to its ASCII
    * glyph while a pack is warming, just as the live map does. */
   return tileset || fullMapOverview ? buildGraphicsOverview(overviewParams) : buildOverview(overviewParams);
+}
+
+function buildSubwindowOverview(panel: GlyphTerm, kind: "map" | "overhead"): Overview {
+  const { cols, rows } = panel.size();
+  const caveW = state.chunk.width;
+  const caveH = state.chunk.height;
+  if (kind === "overhead") {
+    const viewW = Math.max(1, Math.min(cols, caveW));
+    const viewH = Math.max(1, Math.min(rows, caveH));
+    const px = state.actor.grid.x;
+    const py = state.actor.grid.y;
+    const view = {
+      x: Math.max(0, Math.min(caveW - viewW, px - Math.floor(viewW / 2))),
+      y: Math.max(0, Math.min(caveH - viewH, py - Math.floor(viewH / 2))),
+      width: viewW,
+      height: viewH,
+    };
+    return buildOverview(overviewParamsFor(viewW, viewH, view));
+  }
+  const mapW = Math.max(1, Math.min(cols, caveW));
+  const mapH = Math.max(1, Math.min(rows, caveH));
+  return buildOverview(overviewParamsFor(mapW, mapH));
 }
 
 /** The faithful map modal, with only a repaint/window access point added. */

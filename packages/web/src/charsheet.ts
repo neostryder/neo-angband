@@ -443,8 +443,13 @@ export function characterFlagsScreen(
  * rows for `characterFlagsScreen`. Wide mode does not use this; it tiles the same
  * blocks side by side.
  */
-function characterGridLines(state: GameState, name: string, config: UiEntryConfig): ScreenLine[] {
+/** The faithful terminal's rows for `characterFlagsScreen` (display_player mode 1). */
+export function characterFlagsLines(state: GameState, name: string, config: UiEntryConfig): ScreenLine[] {
   return screenBodyLines(characterFlagsScreen(state, name, config));
+}
+
+function characterGridLines(state: GameState, name: string, config: UiEntryConfig): ScreenLine[] {
+  return characterFlagsLines(state, name, config);
 }
 
 /**

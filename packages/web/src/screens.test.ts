@@ -92,6 +92,7 @@ import {
   bookSpellMenu,
   inventoryLines,
   inventorySubwindowLines,
+  equipmentSubwindowLines,
   objectWeightColumn,
   deviceFailColumn,
   deviceMenu,
@@ -853,6 +854,13 @@ describe("the inventory and equipment screens, and the lines they still render t
     const lines = inventorySubwindowLines(state, 60, objConstants);
     expect(lines[1]!.text).toBe("a) in Quiver: 7 missiles");
     expect(obj.tval).toBe(TV.ARROW);
+  });
+
+  it("fits the equipment subwindow from the shared slot model", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const lines = equipmentSubwindowLines(state, 50);
+    expect(lines.length).toBe(state.actor.player.body.count);
+    expect(lines.some((line) => line.text.includes("(nothing)"))).toBe(true);
   });
 
   it("keeps an empty body slot as a ROW, disabled and with no item semantic", () => {

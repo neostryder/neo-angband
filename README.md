@@ -363,8 +363,8 @@ An honest list, so nobody wastes a report on something already written down:
 - **The terminal is a fixed 80x24**, scaled to your window. That is the original's
   default and its minimum, but the original also lets you resize for a bigger map
   and this does not yet.
-- **No subwindows.** The original can put the monster list, messages and inventory
-  in separate windows; this is one surface.
+- **Subwindows tile inside the one game window**, rather than opening as separate
+  OS windows. `=` then `w` turns each panel on; right-click-drag docks it.
 - **The mod catalogue is short.** Not a stub: the game bundles nothing, so every
   mod arrives through *Install a mod...*, which downloads from the mod's own
   repository at a pinned tag, pins the mod to that repository so nothing from

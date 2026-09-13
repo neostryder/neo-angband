@@ -589,12 +589,11 @@ Every lever upstream gives a player over the display, and where it is here:
 | Keymaps, colours | `=` -> **Edit keymaps** / **Edit colours** |
 | **Resize the main window for a bigger map** | **Not yet.** The grid stays 80x24 and scales; it does not grow into a larger window. |
 | **Big-tile multiplier** (`tile_width` / `tile_height`) | **Not yet.** Both are fixed at 1, so tiles are one cell each. |
-| **Subwindows** (messages / inventory / monster list / item list in separate terms) | `=` -> **Subwindow setup**. Upstream's Term-1 through Term-4 defaults can occupy independent bordered panels in a right-hand column, in any combination. All four start off. Term-5 recall, Term-6 overhead, Term-7 compact player stats, and the inventory/equipment flip remain planned. |
+| **Subwindows** (messages, inventory, equipment, player, map, recall, lists, status) | `=` -> **Subwindow setup**. Each content type is its own tiled panel around the main view: right-click-drag to dock, drag a splitter to resize. All start off. Combining several flags in one term, the `^E` inventory/equipment flip, and pref-file window geometry remain planned. |
 | Save/load `.prf` pref files | **Not applicable.** Settings persist in browser storage automatically, so there is nothing to write or read back. |
 | Auto-inscription setup | Present, but reached from the knowledge browser (`~`) rather than from the options menu, where upstream also lists it. |
 
-The two "not yet" rows and the explicitly named remaining subwindow types are
-the honest gaps. A screen-rendering
+The two "not yet" rows are the honest remaining display gaps. A screen-rendering
 quality-of-life mod is the intended home for going beyond upstream here (a
 reflow mode already exists behind an opt-in flag in the terminal code); core
 stays on upstream's own defaults.

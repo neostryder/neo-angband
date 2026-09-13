@@ -48,6 +48,14 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- [Visible] [UI] **Subwindows now offer every non-Borg content type from Angband 4.2.6**, not just the four lists that previously lived in a fixed side column. `=` then `w` can show inventory, equipment, the four player displays, the dungeon map, messages, the overhead view, monster and object recall, the monster and item lists, and the status line, each in its own panel (#191).
+
+### Changed
+
+- [Visible] [UI] **Subwindow panels tile the viewport with the main view instead of stacking in one right-hand column.** Right-click-drag docks a panel onto another panel's edge, splitters resize the tiles, and the arrangement always fills the window with no gaps. The layout is stored with the on/off flags and still starts with every panel off; enabling the original Term-1 through Term-7 types places them around a large main view (#191).
+
 ### Fixed
 
 - [Visible] **A drained stat's number now updates on the character screen at the moment it is actually drained**, instead of only after some later action happens to recompute derived stats. The stat's color still flipped immediately and the drain message still fired, but the displayed current/best values could keep reading as undrained for a while, which read as though the drain message and color change had happened with no real effect (#223).
