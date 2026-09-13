@@ -550,8 +550,10 @@ function objDescCharges(
 
 /**
  * obj_desc_inscrip (obj-desc.c L514): player inscription plus game markers
- * (empty / tried / cursed / ignore / ??). The "ignore" marker is emitted when
- * KnownDesc.ignoreItemOk is supplied (obj-desc.c L536-538).
+ * (empty / tried / cursed / ignore / ?? / N% off). The "ignore" marker is
+ * emitted when KnownDesc.ignoreItemOk is supplied (obj-desc.c L536-538).
+ * Pre-4.2.6 discounted store objects retain their percentage after purchase,
+ * and object1.c displayed that percentage in every full description.
  */
 function objDescInscrip(
   obj: GameObject,
@@ -581,6 +583,8 @@ function objDescInscrip(
     u.push("??");
   }
 
+  if ((obj.discount ?? 0) > 0) u.push(`${String(obj.discount)}% off`);
+
   if (u.length === 0) return "";
   let out = "";
   for (let i = 0; i < u.length; i++) {
@@ -594,7 +598,9 @@ function objDescInscrip(
 
 /**
  * obj_desc_aware (obj-desc.c L565): the in-store "{unseen}" / "{??}" /
- * "{cursed}" markers.
+ * "{cursed}" markers. A restored pre-4.2.6 discount is another special
+ * inscription, so it is visible in a store listing instead of only changing
+ * an otherwise unlabelled price.
  */
 function objDescAware(
   obj: GameObject,
@@ -603,10 +609,12 @@ function objDescAware(
   env: RuneEnv,
   deps: KnownDesc,
 ): string {
-  if (!deps.isAware(obj.kind)) return " {unseen}";
-  if (!objectRunesKnownUpstream(obj, shadow, p, env)) return " {??}";
-  if (shadow.curses) return " {cursed}";
-  return "";
+  const u: string[] = [];
+  if (!deps.isAware(obj.kind)) u.push("unseen");
+  else if (!objectRunesKnownUpstream(obj, shadow, p, env)) u.push("??");
+  else if (shadow.curses) u.push("cursed");
+  if ((obj.discount ?? 0) > 0) u.push(`${String(obj.discount)}% off`);
+  return u.length > 0 ? ` {${u.join(", ")}}` : "";
 }
 
 /**

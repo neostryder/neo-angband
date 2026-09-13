@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- [Visible] [UI] [Modding-API] **Store listings now label restored discounts with the historical "{N% off}" inscription.** The price column already applied the reduction, but its missing label made a real discount indistinguishable from an ordinary price (#219).
+
 ## [1.13.0] - 2026-09-12
 
 ### Added

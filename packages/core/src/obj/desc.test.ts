@@ -319,3 +319,28 @@ describe("object_desc store {??} only on unlearned runes (OD-STORE)", () => {
     expect(name).toContain("{??}");
   });
 });
+
+describe("restored store discount inscriptions", () => {
+  it("shows the historical percentage in both a store and a later inventory description", () => {
+    const obj = mkObj(ordinaryKind((k) => k.tval === TV.SWORD));
+    obj.discount = 25;
+
+    const storeName = objectDesc(
+      obj,
+      ODESC.PREFIX | ODESC.FULL | ODESC.STORE,
+      makePlayer(),
+      makeEnv(),
+      { isAware: () => true, isTried: () => false },
+    );
+    const inventoryName = objectDesc(
+      obj,
+      ODESC.PREFIX | ODESC.FULL,
+      makePlayer(),
+      makeEnv(),
+      { isAware: () => true, isTried: () => false },
+    );
+
+    expect(storeName).toMatch(/\{25% off\}$/);
+    expect(inventoryName).toMatch(/\{25% off\}$/);
+  });
+});

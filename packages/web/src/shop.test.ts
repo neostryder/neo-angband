@@ -67,17 +67,21 @@ afterEach(() => {
 
 interface RecordingStoreTerm extends StoreTerm {
   rowZero(): readonly string[];
+  listings(): readonly string[];
 }
 
 function recordingStoreTerm(): RecordingStoreTerm {
   const messages: string[] = [];
+  const listings: string[] = [];
   const term = storeTerm();
   return {
     ...term,
     print: (x, y, text) => {
       if (x === 0 && y === 0) messages.push(text);
+      if (x === 4 && y >= 4) listings.push(text);
     },
     rowZero: () => messages,
+    listings: () => listings,
   };
 }
 
@@ -181,6 +185,18 @@ describe("store selection description", () => {
       "the complete first description",
       "the complete second description",
     ]);
+
+    dispatchStoreKey("Escape");
+    await done;
+  });
+
+  it("paints the discount inscription returned by its object description", async () => {
+    const host = recordingStoreTerm();
+    const item = selectionStock("a Long Sword {25% off}", 1);
+    const done = runStore(host, selectionGame(), store([item]), () => {}, {} as never, deps);
+
+    await tick();
+    expect(host.listings()).toContain("a Long Sword {25% off}");
 
     dispatchStoreKey("Escape");
     await done;
