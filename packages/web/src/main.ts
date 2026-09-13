@@ -535,6 +535,8 @@ import {
   paintPlayerExtraSubwindow,
   paintPlayerTopbarSubwindow,
   paintStatusSubwindow,
+  dumpSubwindowLayoutPrefText,
+  parseSubwindowStateJson,
   readSubwindowState,
   setSubwindowEnabled,
   SUBWINDOW_CHOICES,
@@ -2609,6 +2611,21 @@ function setSubwindowEnabledLive(id: SubwindowId, enabled: boolean): void {
   renderSubwindows();
 }
 
+/**
+ * neo-subwindows (#238): a loaded pref file supplied a whole arrangement -
+ * which panels are open and the BSP tree they are tiled into. Malformed or
+ * absent JSON is a silent no-op (parseSubwindowStateJson returns null),
+ * exactly like every other pref line a foreign or damaged file might carry.
+ */
+function applyLoadedSubwindowLayout(json: string): void {
+  const next = parseSubwindowStateJson(json);
+  if (!next) return;
+  subwindowState = next;
+  writeSubwindowState(localStorage, subwindowState);
+  applySubwindowLayout();
+  renderSubwindows();
+}
+
 const subwindowMenu: SubwindowMenu = {
   choices: SUBWINDOW_CHOICES,
   enabled: (id) => subwindowState.enabled[id as SubwindowId],
@@ -3115,12 +3132,19 @@ function prefsUiCtx(): PrefsUiCtx {
        * absent too: the port's keymaps live in keymap-store.ts's own persisted
        * store, which the keymap editor writes; letting a pref file write them
        * would need that store's user/default split, which it does not have. */
+      /* neo-subwindows (#238): the web shell's own BSP tiling tree - see
+       * dumpSubwindowLayout below for the matching dump half. */
+      subwindowLayout: (json) => applyLoadedSubwindowLayout(json),
     },
     afterLoad: () => {
       /* Term_xtra(TERM_XTRA_REACT) + Term_redraw_all (ui-options.c L866-867). */
       saveColorPrefs();
       render();
     },
+    /* neo-subwindows (#238): appended to core's optionDump() banner by
+     * dumpWindowSettings (prefs-ui.ts), so "Dump window settings" carries the
+     * tiling tree too and an arrangement can be ported between installs. */
+    dumpSubwindowLayout: () => dumpSubwindowLayoutPrefText(subwindowState),
   };
 }
 

@@ -51,6 +51,7 @@ still calls itself.
 ### Added
 
 - [Visible] [UI] **Each subwindow panel now has its own close control in its title bar.** A panel can be closed directly from its own chrome, the same as unchecking it in the Interface Options subwindow checklist (#246).
+- [Visible] [UI] **"Save subwindow setup to pref file" now dumps the full tiled panel arrangement, not just its header, and "Load a user pref file" restores it.** A subwindow layout can now be carried between installs (hosted and local, or one machine to another) the same way any other pref file is (#238).
 
 ### Changed
 

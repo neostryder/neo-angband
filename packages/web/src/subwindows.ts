@@ -77,6 +77,14 @@ export interface SubwindowState {
 
 export const SUBWINDOW_STORAGE_KEY = "neo-angband:subwindows";
 
+/**
+ * neo-subwindows (#238): the pref-file directive that carries this state as
+ * one JSON payload. Not an upstream directive - see prefs.ts's PrefSink.
+ * subwindowLayout doc comment for why the BSP tree needs a directive of its
+ * own rather than reusing upstream's window:i:j:v grammar.
+ */
+export const SUBWINDOW_PREF_DIRECTIVE = "neo-subwindows";
+
 export const SUBWINDOW_CHOICES: readonly { id: SubwindowId; label: string }[] = [
   { id: "inventory", label: "Display inven/equip" },
   { id: "equipment", label: "Display equip/inven" },
@@ -260,6 +268,41 @@ export function writeSubwindowSettings(
   settings: SubwindowSettings,
 ): void {
   writeSubwindowState(storage, { enabled: settings, tree: treeForSettings(settings) });
+}
+
+/**
+ * neo-subwindows (#238): serialise the tiling tree plus which panels are
+ * enabled as one pref-file line, so an arrangement can be carried between
+ * installs (hosted vs local, or one machine to another) via the same
+ * "save subwindow setup to pref file" flow upstream uses for window flags.
+ */
+export function dumpSubwindowLayoutPrefText(state: SubwindowState): string {
+  const payload = JSON.stringify({ enabled: state.enabled, tree: state.tree });
+  return `${SUBWINDOW_PREF_DIRECTIVE}:${payload}\n`;
+}
+
+/**
+ * neo-subwindows (#238): the inverse of dumpSubwindowLayoutPrefText. Returns
+ * null on anything malformed - a bad or foreign pref file must never corrupt
+ * the live layout, only fail to change it.
+ */
+export function parseSubwindowStateJson(json: string): SubwindowState | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const record = parsed as Partial<Record<string, unknown>>;
+  const tree = parseLayoutTree(record.tree);
+  if (!tree) return null;
+  const enabled = parseEnabled(
+    record.enabled && typeof record.enabled === "object"
+      ? (record.enabled as Partial<Record<string, unknown>>)
+      : {},
+  );
+  return { enabled, tree: reconcileSubwindowTree(tree, enabled) };
 }
 
 export function setSubwindowEnabled(state: SubwindowState, id: SubwindowId, enabled: boolean): SubwindowState {

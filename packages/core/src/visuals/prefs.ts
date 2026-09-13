@@ -142,6 +142,16 @@ export interface PrefSink {
   colorTable?(idx: number, k: number, r: number, g: number, b: number): void;
   /** parse_prefs_window: the subwindow flag set finish_parse_prefs applies. */
   windowFlag?(window: number, flag: number, value: number): void;
+  /**
+   * neo-subwindows (#238): the web shell's BSP subwindow tiling tree, as a JSON
+   * payload. NOT part of upstream's grammar - this port's tiling tree has no
+   * upstream analog (window:i:j:v addresses a fixed term/flag pair, not an
+   * arbitrary nested layout), so it is a new directive rather than a divergent
+   * reading of an existing one. An unrecognised directive is a silent no-op
+   * (see the HANDLERS dispatch below), so a sink that does not implement this
+   * simply ignores the line, exactly like every other optional PrefSink member.
+   */
+  subwindowLayout?(json: string): void;
   /** parse_prefs_entry_renderer -> ui_entry_renderer_customize. */
   entryRenderer?(
     name: string,
@@ -516,6 +526,18 @@ const parseWindow: Handler = (fields, sink) => {
   return null;
 };
 
+/**
+ * neo-subwindows (#238, no upstream original): the whole line's tail is one
+ * JSON payload, so it is reassembled with `:` rather than read as fields -
+ * `line.split(":")` in the caller already split on every colon the JSON
+ * payload itself contains (object syntax is full of them), and `fields.join(":")`
+ * is the exact inverse of that split for everything after the directive.
+ */
+const parseSubwindowLayout: Handler = (fields, sink) => {
+  sink.subwindowLayout?.(fields.join(":"));
+  return null;
+};
+
 /** parse_prefs_entry_renderer (ui-prefs.c L1085-1122). */
 const parseEntryRenderer: Handler = (fields, sink) => {
   const name = fields[0];
@@ -544,6 +566,7 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
   color: parseColor,
   window: parseWindow,
   "entry-renderer": parseEntryRenderer,
+  "neo-subwindows": parseSubwindowLayout,
 };
 
 /* ------------------------------------------------------------------------
@@ -1136,10 +1159,16 @@ export function dumpUiEntryRenderers(deps: DumpDeps): string {
 /**
  * option_dump (ui-prefs.c L352-386): the SUBWINDOW flag set, not the game
  * options - the row that drives it is labelled "Save subwindow setup to pref
- * file". The web shell's first four typed panels persist in localStorage; an
- * arbitrary per-term flag set is not modelled yet, so there is still nothing
- * for this core writer to enumerate. It returns the header alone until that
- * remaining preference-file integration lands.
+ * file". Upstream's model is a fixed ANGBAND_TERM_MAX of terms, each with a
+ * flag bitset (the `window:<term>:<flag>:<value>` grammar, still fully
+ * parsed - see parseWindow / PrefSink.windowFlag); this port is one terminal
+ * tiled into an arbitrary BSP tree, which has no term index or flag bit to
+ * enumerate here. It returns the header alone, always - the tiling tree
+ * itself is a web-shell concept (subwindows.ts) with no core representation,
+ * so the "Save subwindow setup to pref file" call site composes this
+ * header with its own serialized section afterward (dumpSubwindowLayoutPrefText,
+ * subwindows.ts; PrefsUiCtx.dumpSubwindowLayout, prefs-ui.ts) rather than this
+ * function growing a dependency on web-shell state. #238.
  */
 export function optionDump(): string {
   return "# Options\n\n";

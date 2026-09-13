@@ -4,14 +4,17 @@ import { MessageLog } from "./messages";
 import {
   MessageSubwindowPainter,
   canonicalSubwindowTree,
+  dumpSubwindowLayoutPrefText,
   paintOverviewSubwindow,
   paintSubwindowLines,
+  parseSubwindowStateJson,
   playerCompactLines,
   playerTopbarLines,
   readSubwindowSettings,
   readSubwindowState,
   setSubwindowEnabled,
   statusSubwindowLines,
+  SUBWINDOW_PREF_DIRECTIVE,
   SUBWINDOW_STORAGE_KEY,
   treeForSettings,
   writeSubwindowState,
@@ -125,6 +128,43 @@ describe("subwindow settings", () => {
     expect(state.enabled.messages).toBe(false);
     expect(containsLeaf(state.tree, "messages")).toBe(false);
     expect(leafIds(state.tree)).toEqual([MAIN_TILE_ID]);
+  });
+});
+
+describe("neo-subwindows pref-file serialisation (#238)", () => {
+  it("dumps and re-parses the same enabled set and tree", () => {
+    const enabled = { ...allOff, messages: true, inventory: true, items: true };
+    const state = { enabled, tree: treeForSettings(enabled) };
+    const line = dumpSubwindowLayoutPrefText(state);
+    expect(line.startsWith(`${SUBWINDOW_PREF_DIRECTIVE}:`)).toBe(true);
+    expect(line.endsWith("\n")).toBe(true);
+    const json = line.slice(`${SUBWINDOW_PREF_DIRECTIVE}:`.length, -1);
+    const roundTrip = parseSubwindowStateJson(json);
+    expect(roundTrip).not.toBeNull();
+    expect(roundTrip!.enabled).toEqual(enabled);
+    expect(leafIds(roundTrip!.tree).sort()).toEqual(leafIds(state.tree).sort());
+  });
+
+  it("returns null for malformed JSON rather than throwing", () => {
+    expect(parseSubwindowStateJson("{not json")).toBeNull();
+  });
+
+  it("returns null when the tree is missing the main tile", () => {
+    expect(
+      parseSubwindowStateJson(JSON.stringify({ enabled: allOff, tree: { kind: "leaf", id: "messages" } })),
+    ).toBeNull();
+  });
+
+  it("ignores unknown ids and defaults missing ones to false when reading enabled", () => {
+    const json = JSON.stringify({
+      enabled: { messages: true, "not-a-real-id": true },
+      tree: { kind: "leaf", id: MAIN_TILE_ID },
+    });
+    const state = parseSubwindowStateJson(json);
+    expect(state).not.toBeNull();
+    expect(state!.enabled.messages).toBe(true);
+    expect(state!.enabled.inventory).toBe(false);
+    expect(containsLeaf(state!.tree, "messages")).toBe(true);
   });
 });
 

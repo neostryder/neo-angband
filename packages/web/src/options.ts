@@ -963,9 +963,10 @@ export async function runOptionsMenu(
   //                            missing feature.
   // The pref-file rows s / t / u / p / v are present (prefs-ui.ts): they write
   // into and read back out of the virtual ANGBAND_DIR_USER, which is what they
-  // do upstream. `s` still writes only its header because the four named local
-  // settings are not the arbitrary term/flag matrix that option_dump serializes.
-  // That preference-file integration remains a follow-up.
+  // do upstream. `s` dumps the web shell's BSP tiling tree as a neo-subwindows
+  // line (subwindows.ts, prefs.ts) alongside core's own header, since the
+  // tiling tree has no upstream term/flag matrix to serialize into
+  // option_dump - see neo-angband#238.
   // There is deliberately NO graphics entry - upstream picks graphics in the
   // frontend menu bar, not in do_cmd_options; the web shell mirrors that by
   // placing tile selection in the in-game menu.

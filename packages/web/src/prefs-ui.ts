@@ -60,6 +60,14 @@ export interface PrefsUiCtx {
   extraSink?: Partial<PrefSink>;
   /** Repaint after a load changed colours (Term_xtra REACT + redraw_all). */
   afterLoad?: () => void;
+  /**
+   * neo-subwindows (#238): the web shell's BSP tiling tree, as a
+   * `neo-subwindows:<json>` pref line. Core's optionDump() stays upstream-only
+   * (a bare "# Options" banner) because the tiling tree is a web-shell concept
+   * with no core representation; dumpWindowSettings below appends this text
+   * to that banner instead of core growing a web dependency.
+   */
+  dumpSubwindowLayout?: () => string;
 }
 
 /**
@@ -487,7 +495,12 @@ export async function runColorsMenu(
 
 /** do_dump_options (ui-options.c L1247-1251): the subwindow flag dump. */
 export function dumpWindowSettings(ctx: PrefsUiCtx): Promise<void> {
-  return dumpPrefFile(ctx, () => optionDump(), t("prefsUi.dumpWindowSettings", "Dump window settings"), 20);
+  return dumpPrefFile(
+    ctx,
+    () => optionDump() + (ctx.dumpSubwindowLayout?.() ?? ""),
+    t("prefsUi.dumpWindowSettings", "Dump window settings"),
+    20,
+  );
 }
 
 /** do_dump_autoinsc (ui-options.c L1254-1258). */

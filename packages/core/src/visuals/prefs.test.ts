@@ -506,6 +506,30 @@ describe("a `%` include's errors are marked, not merged (ui-prefs.c L429-441)", 
   });
 });
 
+describe("neo-subwindows (#238, no upstream original)", () => {
+  it("hands the whole JSON tail to the sink, rejoined past the directive's own colon", () => {
+    const payload = '{"enabled":{"map":true},"tree":{"kind":"leaf","id":"main"}}';
+    let received: string | null = null;
+    const errors = processPrefText(`neo-subwindows:${payload}`, deps, {
+      ...glyphTableSink(table()),
+      subwindowLayout: (json) => {
+        received = json;
+      },
+    });
+    expect(errors).toHaveLength(0);
+    expect(received).toBe(payload);
+  });
+
+  it("is a silent no-op when the sink does not implement subwindowLayout", () => {
+    const errors = processPrefText(
+      'neo-subwindows:{"enabled":{},"tree":{"kind":"leaf","id":"main"}}',
+      deps,
+      glyphTableSink(table()),
+    );
+    expect(errors).toHaveLength(0);
+  });
+});
+
 /** Every `.prf` under reference/lib/tiles, the files reset_visuals(true) reads. */
 const BUNDLED_TILE_PREFS = [
   "adam-bolt/flvr-new.prf",
