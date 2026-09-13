@@ -52,6 +52,8 @@ still calls itself.
 
 - [Visible] [UI] [Modding-API] **Store listings now label restored discounts with the historical "{N% off}" inscription.** The price column already applied the reduction, but its missing label made a real discount indistinguishable from an ordinary price (#219).
 
+- [Visible] [Parity] **A telepathically-sensed (or otherwise detected) creature now draws even on ground that has never been explored**, instead of only on ground the player had already seen or remembered at least once. Whether a monster's own terrain was known used to gate whether it was drawn at all, when upstream only ever lets that gate the terrain glyph underneath it (#231).
+
 ## [1.13.0] - 2026-09-12
 
 ### Added
