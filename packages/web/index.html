@@ -52,16 +52,37 @@
       }
       .tile-title {
         height: 20px;
-        padding: 0 8px;
+        padding: 0 4px 0 8px;
         box-sizing: border-box;
         background: #18181e;
         color: #c0c0c8;
         font: 12px/20px sans-serif;
         user-select: none;
         border-bottom: 1px solid #50505a;
+        display: flex;
+        align-items: center;
+      }
+      .tile-title-label {
+        flex: 1;
+        min-width: 0;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      .tile-close {
+        flex: none;
+        width: 16px;
+        height: 16px;
+        margin-left: 4px;
+        border: none;
+        background: transparent;
+        color: #70707a;
+        font: 13px/16px sans-serif;
+        cursor: pointer;
+        padding: 0;
+      }
+      .tile-close:hover {
+        color: #e0e0e6;
       }
       .tile-body {
         position: absolute;

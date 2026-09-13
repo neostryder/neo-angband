@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- [Visible] [UI] **Each subwindow panel now has its own close control in its title bar.** A panel can be closed directly from its own chrome, the same as unchecking it in the Interface Options subwindow checklist (#246).
+
 ### Changed
 
 - [Visible] [UI] **The Display player (basic) subwindow reads in a clearer order.** Identity, then age/height/weight/turns, then level/experience/gold/burden/depth, then the stat table, then combat stats, then saving throw and skills, then flavor text last (#243).

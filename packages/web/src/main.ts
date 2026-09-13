@@ -959,6 +959,12 @@ const subwindowShell = mountSubwindowShell({
     applySubwindowLayout();
     renderSubwindows();
   },
+  /* A panel's own close [x] (neo-angband#246): the same live-disable path the
+   * Interface Options subwindow checklist already uses. */
+  onClose: (id) => {
+    if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
+    setSubwindowEnabledLive(id as SubwindowId, false);
+  },
 });
 subwindowShell.apply(subwindowState.tree);
 const term = new GlyphTerm(canvas, { boundsElement: gameView });
@@ -2595,15 +2601,20 @@ function renderSubwindows(): void {
   }
 }
 
+/** The live path shared by the Interface Options checklist and a panel's own close [x] (neo-angband#246). */
+function setSubwindowEnabledLive(id: SubwindowId, enabled: boolean): void {
+  subwindowState = setSubwindowEnabled(subwindowState, id, enabled);
+  writeSubwindowState(localStorage, subwindowState);
+  applySubwindowLayout();
+  renderSubwindows();
+}
+
 const subwindowMenu: SubwindowMenu = {
   choices: SUBWINDOW_CHOICES,
   enabled: (id) => subwindowState.enabled[id as SubwindowId],
   set: (id, enabled) => {
     if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
-    subwindowState = setSubwindowEnabled(subwindowState, id as SubwindowId, enabled);
-    writeSubwindowState(localStorage, subwindowState);
-    applySubwindowLayout();
-    renderSubwindows();
+    setSubwindowEnabledLive(id as SubwindowId, enabled);
   },
 };
 

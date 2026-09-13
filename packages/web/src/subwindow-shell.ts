@@ -33,6 +33,8 @@ export interface SubwindowShellOptions {
   mainSlot: HTMLElement;
   labels: Readonly<Record<string, string>>;
   onTreeChange: (tree: LayoutNode) => void;
+  /** A panel's own close [x] was clicked (neo-angband#246); never fired for the main tile. */
+  onClose?: (id: string) => void;
 }
 
 const DRAG_THRESHOLD = 6;
@@ -55,7 +57,7 @@ function pointerInHost(host: HTMLElement, event: PointerEvent): { x: number; y: 
 }
 
 export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell {
-  const { host, mainSlot, labels, onTreeChange } = opts;
+  const { host, mainSlot, labels, onTreeChange, onClose } = opts;
   host.classList.add("tile-host");
   mainSlot.classList.add("tile-leaf");
   mainSlot.dataset.tile = MAIN_TILE_ID;
@@ -96,7 +98,23 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     leaf.setAttribute("aria-label", labels[id] ?? id);
     const title = document.createElement("div");
     title.className = "tile-title";
-    title.textContent = labels[id] ?? id;
+    const label = document.createElement("span");
+    label.className = "tile-title-label";
+    label.textContent = labels[id] ?? id;
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "tile-close";
+    close.textContent = "×";
+    close.setAttribute("aria-label", `Close ${labels[id] ?? id}`);
+    /* stopPropagation: the leaf's own pointerdown (drag-to-dock) listener is
+     * capture-phase, so a plain click here would still start a drag. */
+    close.addEventListener("pointerdown", (event) => event.stopPropagation());
+    close.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onClose?.(id);
+    });
+    title.appendChild(label);
+    title.appendChild(close);
     const body = document.createElement("div");
     body.className = "tile-body";
     const canvas = document.createElement("canvas");
