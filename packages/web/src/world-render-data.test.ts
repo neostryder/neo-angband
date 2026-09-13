@@ -50,6 +50,28 @@ describe("the production live-world data producer", () => {
     });
   });
 
+  /**
+   * A telepathically-sensed monster must draw over terrain the player has
+   * NEVER explored, not only over seen or remembered ground - map_info's
+   * m_idx check runs unconditionally (cave-map.c L103-104, L173-177), before
+   * it ever asks square_isknown. This grid is neither seen nor knownFeature'd
+   * (grid (2,0), key 2, is outside both reads()'s "seen" and "knownFeature"
+   * fixtures), so it exercises projectUnseen's feature<0 arm specifically.
+   */
+  it("draws a monster on genuinely unexplored terrain (#226-telepathy)", () => {
+    const monster: ResolvedGlyph = { ch: "p", attr: 3, css: "#3", layer: { kind: "monster", id: 3 } };
+    const frame = projectLiveWorld(
+      reads({ monsters: new Map([[2, monster]]) }),
+      { present: () => {} },
+    );
+    const cell = frame.cells.find((c) => c.grid.x === 2 && c.grid.y === 0);
+    expect(cell).toMatchObject({
+      visibility: "unknown",
+      visual: { ch: "p", fg: "#3" },
+      overlays: [{ kind: "monster", id: 3 }],
+    });
+  });
+
   it("delivers the exact production frame to an independent sink", () => {
     let received: WorldFrame | undefined;
     const frame = projectLiveWorld(reads({}), { present: (value) => { received = value; } });
