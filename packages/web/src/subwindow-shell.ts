@@ -9,7 +9,6 @@
 
 import {
   MAIN_TILE_ID,
-  SPLITTER_PX,
   applyDrop,
   computeLayout,
   dropZoneAt,
