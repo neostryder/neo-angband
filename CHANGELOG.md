@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-09-12
+
 ### Added
 
 - [Visible] [UI] **Subwindows now offer every non-Borg content type from Angband 4.2.6**, not just the four lists that previously lived in a fixed side column. `=` then `w` can show inventory, equipment, the four player displays, the dungeon map, messages, the overhead view, monster and object recall, the monster and item lists, and the status line, each in its own panel (#191).
