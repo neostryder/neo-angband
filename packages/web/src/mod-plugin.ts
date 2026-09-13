@@ -210,7 +210,14 @@ export interface ModMapView {
 export interface ModDisplaySnapshot {
   /** The CSS-pixel rectangle the terminal was measured against. */
   readonly surface?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
-  readonly mode: "play" | "map";
+  /**
+   * "store" covers a shop screen: it renders over the same play viewport as
+   * "play" (a shop is not the level-map modal), but a display-oriented mod
+   * needs to tell the two apart so an overlay meant for ordinary play (a
+   * responsive status sidebar, for one) can hide itself over a shop's own
+   * item listing instead of painting across it.
+   */
+  readonly mode: "play" | "map" | "store";
   readonly grid: {
     readonly cols: number;
     readonly rows: number;

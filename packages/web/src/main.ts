@@ -8366,6 +8366,10 @@ let levelMapActive = false;
 let levelMapView: { x: number; y: number; width: number; height: number } | null = null;
 let levelMapRepaint: (() => void) | null = null;
 let fullMapOverview = false;
+/** True for exactly the lifetime of enterStoreModal's runStore() call, so
+ * displayControl.snapshot() can report mode "store" for a display-oriented
+ * mod (#234), the same way levelMapActive reports mode "map". */
+let storeModalActive = false;
 let storeItemNameEllipsis = false;
 let storeSelectionDescription = false;
 
@@ -8825,7 +8829,7 @@ const displayControl: ModDisplay = {
     const vp = viewport();
     return {
       surface,
-      mode: "play" as const,
+      mode: storeModalActive ? ("store" as const) : ("play" as const),
       grid: { cols, rows, cellWidth: metrics.cellWidth, cellHeight: metrics.cellHeight },
       viewport: {
         origin: { x: vp.camX, y: vp.camY },
@@ -9405,17 +9409,19 @@ function runStoreItemCmd(code: string, args: Record<string, unknown>): string | 
   return fresh.length ? fresh.join(" ") : null;
 }
 
-function enterStoreModal(store: Store): Promise<void> {
+async function enterStoreModal(store: Store): Promise<void> {
   // enter_store's own guard (ui-store.c:1257-1262): re-resolve store_at from the
   // grid, because the screen opens a tick after the step that triggered it.
   const refusal = enterStoreGuard(storeAtPlayer());
   if (refusal) {
     say(refusal);
-    return Promise.resolve();
+    return;
   }
   const feat = features.get(store.feat);
-  return openModal(() =>
-    runStore(term, game, store, say, constants, {
+  storeModalActive = true;
+  try {
+    await openModal(() =>
+      runStore(term, game, store, say, constants, {
       // Each do_cmd_buy / _sell / _retrieve / _stash calls store_at(cave,
       // player->grid) AFRESH (store.c:1665, :1795, :1872, :2014); the shop
       // screen must not trust the Store it was opened with.
@@ -9472,12 +9478,14 @@ function enterStoreModal(store: Store): Promise<void> {
         quiver: () => showTextScreen(term, quiverScreen(state)),
       },
     }),
-  ).then(() => {
-    /* leave_store's "Disable repeats" (ui-store.c:1315-1317). A store visit
-     * rearranges the pack wholesale, so the remembered command's handle or floor
-     * index no longer means what it did when it was recorded. */
-    cmdDisableRepeat(state.actor.player);
-  });
+    );
+  } finally {
+    storeModalActive = false;
+  }
+  /* leave_store's "Disable repeats" (ui-store.c:1315-1317). A store visit
+   * rearranges the pack wholesale, so the remembered command's handle or floor
+   * index no longer means what it did when it was recorded. */
+  cmdDisableRepeat(state.actor.player);
 }
 
 /** The store the player is currently standing on (square_shopnum), or null. */

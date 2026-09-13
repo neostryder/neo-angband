@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- [Visible] [Modding-API] **The display seam a mod reads now reports a distinct mode while a shop screen is open, rather than reporting ordinary play.** A mod-rendered overlay meant only for ordinary play can now hide itself over a shop's own item listing instead of painting across it (#234).
+
 ## [1.13.2] - 2026-09-13
 
 ### Fixed
