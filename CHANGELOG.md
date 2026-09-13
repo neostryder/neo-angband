@@ -52,6 +52,7 @@ still calls itself.
 
 - [Visible] [Parity] **A projectile animation's marker glyph no longer sticks on unexplored terrain after the spell resolves.** A bare unexplored grid with nothing else to draw used to omit its resolved glyph entirely, which let the terminal's redraw skip over it and leave the last-painted marker in place indefinitely (#222).
 - [Visible] [UI] **The message line no longer leaves the tail of a longer previous message on screen when a shorter one follows it.** The line is now erased before each new message is drawn, matching the terminal's own erase-then-print convention used elsewhere (#232).
+- [Visible] [Parity] **A projectile-hit animation no longer visually lands on a monster's old position when that monster also moves the same turn.** The turn (including any monster's own move) had already fully resolved by the time the replay started, so every frame of the animation drew monsters at their post-turn grid. The replay now draws from a snapshot of monster positions taken before the turn began, settling onto the real, live positions once the animation ends (#233).
 
 ## [1.13.1] - 2026-09-12
 

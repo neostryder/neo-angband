@@ -8967,7 +8967,14 @@ const CURSOR_BG = "#3a4a6a"; // palette-exempt: map cursor highlight background
  * state and display models describe one completed host frame. */
 let publishWorkerModels: ((force?: boolean) => void) | undefined = undefined;
 
-function render(targeting?: TargetingOverlay): void {
+/**
+ * `monstersOverride`, when given, replaces the live `monsterIndex()` read for
+ * this one frame - used by `playProjectionAnimation` to keep every frame of a
+ * bolt/blast replay drawing monsters at their pre-turn grid, since the turn
+ * (including any monster's own move) has already fully resolved by the time
+ * the replay starts (see that function's own doc for why).
+ */
+function render(targeting?: TargetingOverlay, monstersOverride?: Map<number, MonsterCell>): void {
   controlSurface.refreshCommands();
   // verify_panel before drawing so every viewport() reader in this frame sees
   // the same offset. Skipped in 'L' locate mode, where locateCam pans instead.
@@ -8991,7 +8998,7 @@ function render(targeting?: TargetingOverlay): void {
   /* do_animation runs once per frame, BEFORE the glyphs are resolved, exactly
    * as upstream's animation timer fires before the redraw it triggers. */
   doAnimation();
-  const monsterAt = monsterIndex();
+  const monsterAt = monstersOverride ?? monsterIndex();
   const objectAt = objectIndex();
   const trapAt = trapIndex();
   /* One resolver per frame, so a grid visited twice answers the same both
@@ -9559,10 +9566,24 @@ function paintProjectionMarker(grid: Loc, ch: string, fg: string): void {
  * over the previous frame), pausing delayFactor ms per step - a beam's
  * grids stay lit as a trail behind the moving tip, matching the second,
  * un-erased bolt_pict call display_bolt makes per beam grid.
+ *
+ * `monsterSnapshot` is `advance()`'s pre-turn `monsterIndex()` read. The turn
+ * that generated these events has already fully resolved (including any
+ * monster's own move) by the time this replay starts, so drawing from the
+ * LIVE monster index here would show every monster at its post-turn grid for
+ * the entire flight - the projectile would visually travel toward a target
+ * that appears to have already moved, before this replay ever gets to depict
+ * anything (#233). Every render() during the replay draws monsters from this
+ * frozen snapshot instead, so the flight is depicted against the positions
+ * that were actually true when the effect fired; the unconditional render()
+ * in the finally block below is the one place that reads live state, which
+ * is what settles the screen onto the real, current positions once the
+ * animation ends.
  */
 async function playProjectionAnimation(
   bolts: readonly BoltEventData[],
   blasts: readonly ExplosionEventData[],
+  monsterSnapshot: Map<number, MonsterCell>,
 ): Promise<void> {
   const delayMs = state.options?.delayFactor ?? DEFAULT_DELAY_FACTOR;
   /* A marker glyph is painted straight onto the terminal model between one
@@ -9582,7 +9603,7 @@ async function playProjectionAnimation(
         const last = trail[trail.length - 1]!;
         if (last.x !== from.x || last.y !== from.y) trail = [];
       }
-      render();
+      render(undefined, monsterSnapshot);
       const fg = boltColour(b.projType);
       for (const t of trail) paintProjectionMarker(t, BOLT_CHARS[0]!, fg);
       paintProjectionMarker(to, boltMotionChar(from, to), fg);
@@ -9604,7 +9625,7 @@ async function playProjectionAnimation(
           i === e.blastGrid.length - 1 ||
           (e.distanceToGrid[i + 1] ?? 0) > (e.distanceToGrid[i] ?? 0);
         if (atRingEnd && drawn.length > 0) {
-          render();
+          render(undefined, monsterSnapshot);
           for (const d of drawn) paintProjectionMarker(d, BOLT_CHARS[0]!, fg);
           await sleep(delayMs);
         }
@@ -9682,6 +9703,11 @@ function advance(): void {
    * (which shuts every writer, not just this one), then let the shared notice
    * say what happened - the same modal a mod fault raises, worded for a core
    * fault. This is an alpha; the bug it reports is the point. */
+  // Captured before runGameLoop touches anything: playProjectionAnimation's own
+  // replay needs the grid every monster was actually on when this turn's
+  // bolts/blasts fired, not wherever the same turn's own monster processing
+  // later left them (#233).
+  const monsterSnapshot = monsterIndex();
   let status;
   try {
     status = runGameLoop(state, registry);
@@ -9716,7 +9742,7 @@ function advance(): void {
     continueAdvance(status, preLen, beforeX, beforeY, seeFloorReq);
     return;
   }
-  void playProjectionAnimation(bolts, blasts)
+  void playProjectionAnimation(bolts, blasts, monsterSnapshot)
     .catch((e: unknown) => {
       /* playProjectionAnimation's own finally already forces a clean render()
        * on the way out, so this is only reachable if THAT render() itself
