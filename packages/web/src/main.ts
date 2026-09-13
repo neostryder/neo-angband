@@ -10537,9 +10537,12 @@ inputEvents.addEventListener("keydown", (ev) => {
 // ---- Mouse input: click a map cell to walk or pathfind --------------------
 // The core game is UI-agnostic (decision 21). A click next to the player is a
 // single walk, as upstream's mouse handler requires near trap-detection
-// borders. A distant, currently seen floor grid starts CMD_PATHFIND instead;
-// its existing run engine owns every later step and disturbance. Touch taps
-// resolve on release below and retain their one-step scheme.
+// borders. Any other in-bounds click starts CMD_PATHFIND instead, exactly as
+// upstream's own handler does (ui-context.c's textui_process_click, the
+// unmodified left-click branch): no visibility or passability pre-check -
+// find_path's own result (0 steps) is what silently no-ops an unreachable
+// destination. Touch taps resolve on release below and retain their one-step
+// scheme.
 const regionPointerOwners = new WeakMap<PointerEvent, NonNullable<ReturnType<typeof regionInputAt>>>();
 canvas.addEventListener("pointerdown", (ev) => {
   if (ev.pointerType === "touch" || ev.button !== 0) return; // touch resolves on release below
@@ -10571,9 +10574,7 @@ canvas.addEventListener("pointerdown", (ev) => {
   ev.preventDefault();
   if (
     (Math.abs(grid.x - state.actor.grid.x) > 1 || Math.abs(grid.y - state.actor.grid.y) > 1) &&
-    state.chunk.inBounds(grid) &&
-    squareIsSeen(state.chunk, grid) &&
-    state.chunk.isPassable(grid)
+    state.chunk.inBounds(grid)
   ) {
     commandBuffer.push({ code: "pathfind", args: { dest: grid } });
     advance();

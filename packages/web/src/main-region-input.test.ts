@@ -79,12 +79,17 @@ describe("main.ts routes pointer gestures through region ownership", () => {
     expect(mainSource).toContain("longPressTarget");
   });
 
-  it("pathfinds to distant seen floor while adjacent clicks remain walks", () => {
+  it("pathfinds to any distant in-bounds click while adjacent clicks remain walks (#192)", () => {
+    // Matches upstream's own click handler (ui-context.c textui_process_click):
+    // no visibility or passability pre-check gates the pathfind branch, only
+    // the adjacent-click-is-a-walk carve-out. Gating on squareIsSeen here once
+    // made the branch practically unreachable, since a click beyond torch
+    // radius is almost never currently lit - see #192.
     const tap = listener("pointerdown", "queueWalk");
 
     expect(tap).toContain('code: "pathfind"');
-    expect(tap).toContain("squareIsSeen(state.chunk, grid)");
-    expect(tap).toContain("state.chunk.isPassable(grid)");
+    expect(tap).not.toContain("squareIsSeen(state.chunk, grid)");
+    expect(tap).not.toContain("state.chunk.isPassable(grid)");
     expect(tap).toContain("Math.abs(grid.x - state.actor.grid.x) > 1");
     expect(tap).toContain("Math.abs(grid.y - state.actor.grid.y) > 1");
     expect(tap.indexOf('code: "pathfind"')).toBeLessThan(tap.indexOf("queueWalk("));
