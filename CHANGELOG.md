@@ -66,6 +66,8 @@ still calls itself.
 
 - [Visible] **A spell's projectile or explosion animation can no longer leave a stray marker glyph stuck on an unexplored cell if something interrupts the animation partway through.** The animation always reaches a cleanup redraw now, even when a step fails, instead of leaving the interrupted frame on screen indefinitely (#222, #213).
 
+- [Visible] [Parity] **Resting no longer refuses to spend even one turn just because a monster is known somewhere on the level.** The check gating rest used the flag telepathy sets at unlimited range with no regard for line of sight, and ignored the disturb_near option entirely, so a single telepathically-sensed monster anywhere made resting impossible from any position, forever, regardless of that option (#225).
+
 - [Visible] [UI] **Clicking a distant tile pathfinds there again instead of taking a single step.** The click handler required the destination to be currently lit, which a click beyond torch radius almost never is, so the pathfind branch was practically unreachable and every distant click silently fell back to a one-step walk. Matches upstream's own click handler, which has no such requirement (#192). Reported by darkness.
 
 ## [1.12.0] - 2026-09-12

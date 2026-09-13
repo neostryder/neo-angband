@@ -156,3 +156,25 @@ describe("resting is announced by prt_state, not by a message", () => {
     expect(MAIN).not.toMatch(/function restingIsSpecial\(/);
   });
 });
+
+/**
+ * anyVisibleMonster (#225): resting's own monster-disturb check, gating every
+ * turn of driveRest. It used to check MFLAG.VISIBLE, which telepathy sets at
+ * unlimited range regardless of actual line of sight, and it never consulted
+ * disturb_near at all - unlike known.ts's updateMon and monster-turn.ts's
+ * monsterTurn, the only other two monster-visibility disturbs in the
+ * codebase. A single telepathically-sensed monster anywhere on the level made
+ * resting impossible from any position, forever, with the option off or on.
+ */
+describe("anyVisibleMonster (#225)", () => {
+  const body = functionBody(MAIN, "anyVisibleMonster");
+
+  it("checks MFLAG.VIEW (actually in sight), not MFLAG.VISIBLE (known by any means)", () => {
+    expect(body).toContain("MFLAG.VIEW");
+    expect(body).not.toContain("MFLAG.VISIBLE");
+  });
+
+  it("is gated on disturb_near, matching every other monster-visibility disturb", () => {
+    expect(body).toMatch(/state\.options\?\.get\("disturb_near"\)/);
+  });
+});

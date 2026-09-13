@@ -5873,11 +5873,20 @@ function playerHasCombatRegen(): boolean {
   return state.playerState?.pflags.has(PF.COMBAT_REGEN) ?? false;
 }
 
-/** Any visible monster interrupts rest (disturb on visible monster). */
+/**
+ * A monster actually in view interrupts rest, gated by disturb_near - matching
+ * the same two checks known.ts's updateMon and monster-turn.ts's monsterTurn
+ * already make for every other monster-visibility disturb (#225). This used
+ * to check MFLAG.VISIBLE, which telepathy sets at unlimited range with no
+ * regard for disturb_near, so a single telepathically-sensed monster anywhere
+ * on the level made resting impossible from any position, forever, regardless
+ * of the option.
+ */
 function anyVisibleMonster(): boolean {
+  if (!(state.options?.get("disturb_near") ?? true)) return false;
   for (let i = 1; i < state.monsters.length; i++) {
     const mon = state.monsters[i];
-    if (mon && mon.mflag.has(MFLAG.VISIBLE)) return true;
+    if (mon && mon.mflag.has(MFLAG.VIEW)) return true;
   }
   return false;
 }
