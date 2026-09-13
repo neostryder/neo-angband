@@ -377,7 +377,15 @@ describe("the character sheet gave up its model in step 5b-iv", () => {
     const { state } = setup();
     const view = characterFlagsScreen(state, "Fred", buildUiEntryConfig(uiEntryPacks));
     expect(view.id).toBe("core:character-flags");
-    const resist = view.blocks[0]!;
+    /* Sustains leads, ahead of the resist/ability/hindrance/modifier regions,
+     * and carries its own label column here - unlike the wide desktop screen
+     * (buildSustainBlock, still labels: false there), this panel has no stat
+     * table beside it to give its rows meaning by position alone. */
+    const sustains = view.blocks[0]!;
+    if (sustains.kind !== "table") throw new Error("the sustains block stopped being a table");
+    expect(sustains.caption!.text).toBe("Sustains");
+    expect(sustains.columns.map((c) => c.key)).toContain("label");
+    const resist = view.blocks[1]!;
     if (resist.kind !== "table") throw new Error("the flag grid stopped being a table");
     expect(resist.caption!.text).toBe("Resistances");
     /* One column per body slot plus the player's '@', each slot headed by its
@@ -389,20 +397,19 @@ describe("the character sheet gave up its model in step 5b-iv", () => {
     /* A row is addressed by the ui_entry name, which is the only handle a
      * presenter has on WHICH resistance it is looking at. */
     expect(resist.rows[0]!.id).toMatch(/</u);
-    /* The sustains block is the same table minus its label column, exactly as
-     * upstream calls the renderer there with label = NULL. */
-    const sustains = view.blocks.at(-1)!;
-    if (sustains.kind !== "table") throw new Error("the sustains block stopped being a table");
-    expect(sustains.columns.map((c) => c.key)).not.toContain("label");
   });
 
   it("did not move the player's screen: the same rows come out of the model", () => {
     /* The narrow list is now `screenBodyLines(characterScreen(...))`. If the
      * model and the renderer disagree about a column stop, the phone layout is
      * what breaks - so the upstream-cited assertions above this file's fold are
-     * the parity check, and this one pins that the wrapper is the same function. */
+     * the parity check, and this one pins that the wrapper is the same function.
+     * The stat table sits after topleft/misc/midleft (#243), so it is found by
+     * its own header text rather than assumed to be the first line. */
     const { state } = setup("Some history for the block.");
-    expect(characterSheetLines(state, "Fred", 80)[0]).toEqual(statHeaderLine());
+    const lines = characterSheetLines(state, "Fred", 80);
+    const statLine = lines.find((l) => l.text === statHeaderLine().text);
+    expect(statLine).toEqual(statHeaderLine());
   });
 });
 
@@ -1179,8 +1186,13 @@ describe("characterSheetLines narrow: same 6-wide fields, blank-unless-drained C
   it("header and data share the exact column stops", () => {
     const { state } = setup();
     const lines = characterSheetLines(state, "Fred");
-    const header = lines[0]!.text;
-    const str = lines[1]!.text;
+    /* The stat table now sits after the topleft/misc/midleft panels (#243:
+     * player-basic reorder), not at index 0, so locate it by its own header
+     * text rather than assuming a fixed position. */
+    const headerIdx = lines.findIndex((l) => l.text === statHeaderLine().text);
+    expect(headerIdx).toBeGreaterThanOrEqual(0);
+    const header = lines[headerIdx]!.text;
+    const str = lines[headerIdx + 1]!.text;
     expect(header.slice(5, 11)).toBe("  Self");
     expect(header.slice(24, 30)).toBe("  Best");
     expect(str.slice(0, 5)).toBe("STR! ");
@@ -1189,7 +1201,7 @@ describe("characterSheetLines narrow: same 6-wide fields, blank-unless-drained C
     expect(header.slice(30)).toBe("");
     expect(str.slice(30).trim()).toBe("");
     // The drained CON row carries the trailing yellow value at col 31.
-    const con = lines[5]!;
+    const con = lines[headerIdx + 5]!;
     expect(con.text.slice(0, 4)).toBe("Con:");
     expect(con.text.slice(31).trim()).not.toBe("");
     const lastRun = con.runs![con.runs!.length - 1]!;
@@ -1198,7 +1210,9 @@ describe("characterSheetLines narrow: same 6-wide fields, blank-unless-drained C
 
   it("stat rows carry per-column runs (L_GREEN / L_BLUE)", () => {
     const { state } = setup();
-    const str = characterSheetLines(state, "Fred")[1]!;
+    const lines = characterSheetLines(state, "Fred");
+    const headerIdx = lines.findIndex((l) => l.text === statHeaderLine().text);
+    const str = lines[headerIdx + 1]!;
     expect(str.runs).toBeDefined();
     const colors = str.runs!.map((r) => r.color);
     expect(colors).toContain(colorToCss(COLOUR_L_GREEN));

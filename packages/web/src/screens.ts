@@ -1118,6 +1118,12 @@ export function characterTitle(state: GameState, name?: string): string {
  * pairs and a presenter wants the pairs: `row.id` is a slug of the label (`hp`,
  * `turns-used`) and `cells.value.values.value` is the number where the whole
  * field is one, so a card can print the level without finding the colon.
+ *
+ * Block order here is this port's own reading order for the scrollable
+ * single-column layout (narrow/phone and the player-basic subwindow), not
+ * upstream's screen coordinates - those stay exact in drawPlayerXtraInfo,
+ * which paints the wide desktop sheet and the birth screens at their own
+ * fixed anchors regardless of this order.
  */
 export function characterScreen(
   state: GameState,
@@ -1126,14 +1132,21 @@ export function characterScreen(
 ): ScreenView {
   const d = { ...charSheetDeps(state, name), ...deps };
   const history = historyTextBlock(state);
+  const panels = characterPanels(state, d);
+  const panelByKey = (key: string): ScreenTableBlock =>
+    panelBlock(panels.find((p) => p.key === key) ?? { key, lines: [] });
   return freezeView({
     id: "core:character",
     title: characterTitle(state, name),
     footer: CHARACTER_FOOTER,
     actions: CHARACTER_ACTIONS,
     blocks: [
+      panelByKey("topleft"),
+      panelByKey("misc"),
+      panelByKey("midleft"),
       statTableBlock(statTable(state, d), 1),
-      ...characterPanels(state, d).map(panelBlock),
+      panelByKey("combat"),
+      panelByKey("skills"),
       ...(history === null ? [] : [history]),
     ],
   });

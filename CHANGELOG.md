@@ -48,6 +48,11 @@ still calls itself.
 
 ## [Unreleased]
 
+### Changed
+
+- [Visible] [UI] **The Display player (basic) subwindow reads in a clearer order.** Identity, then age/height/weight/turns, then level/experience/gold/burden/depth, then the stat table, then combat stats, then saving throw and skills, then flavor text last (#243).
+- [Visible] [UI] **The Display player (extra) subwindow's Sustains block now leads, ahead of the resistance/ability/hindrance/modifier regions, and carries its own stat row labels.** Shown on its own in this subwindow, without the stat table beside it, the block previously gave no indication of which row was which stat (#244).
+
 ### Fixed
 
 - [Visible] [Modding-API] **The display seam a mod reads now reports a distinct mode while a shop screen is open, rather than reporting ordinary play.** A mod-rendered overlay meant only for ordinary play can now hide itself over a shop's own item listing instead of painting across it (#234).

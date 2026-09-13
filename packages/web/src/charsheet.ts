@@ -421,8 +421,18 @@ export function characterFlagsScreen(
     actions: CHARACTER_ACTIONS,
     /* A section title precedes each block so the STACKED list stays legible. The
      * wide layout tiles the same blocks side by side and draws no titles, which
-     * is upstream's screen - it shows them only in the character dump. */
+     * is upstream's screen - it shows them only in the character dump.
+     *
+     * Sustains leads, ahead of the resist/ability/hindrance/modifier regions,
+     * and carries its own row labels (STR/INT/WIS/DEX/CON) here - unlike the
+     * wide desktop screen, this panel has no stat table beside it to give its
+     * rows meaning by position alone. */
     blocks: [
+      gridPanelBlock(state, statModPanel, {
+        labels: true,
+        caption: t("charsheet.panel.sustains", "Sustains"),
+        gapAfter: 1,
+      }),
       ...resistPanels.map((panel) =>
         gridPanelBlock(state, panel, {
           labels: true,
@@ -430,10 +440,6 @@ export function characterFlagsScreen(
           gapAfter: 1,
         }),
       ),
-      gridPanelBlock(state, statModPanel, {
-        labels: false,
-        caption: t("charsheet.panel.sustains", "Sustains"),
-      }),
     ],
   });
 }

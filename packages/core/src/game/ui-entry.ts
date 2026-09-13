@@ -2382,11 +2382,16 @@ export function characterGrid(
   }
 
   /* Stat-modifier panel (display_player_sust_info): stat_mod entries, player
-     column shows only the sustain (val forced to 0), no label drawn. */
+     column shows only the sustain (val forced to 0). The row label IS
+     populated (withLabel: true) so a consumer that wants one - the player-
+     extra subwindow does, since it shows this panel without the stat table
+     beside it for reference - can display it; the wide desktop screen still
+     draws no label there (gridPanelBlock's labels: false at that call site),
+     matching upstream exactly. */
   const statIter = iterateEntries(config, "CHAR_SCREEN1", "stat_modifiers", "stat_modifiers");
   const nStat = statIter.length > STAT_MAX ? STAT_MAX : statIter.length;
   const statRows: UiGridRow[] = [];
-  for (let i = 0; i < nStat; i++) statRows.push(renderRow(statIter[i]!, true, false));
+  for (let i = 0; i < nStat; i++) statRows.push(renderRow(statIter[i]!, true, true));
 
   return { resistPanels, statModPanel: { key: "stat_modifiers", rows: statRows } };
 }

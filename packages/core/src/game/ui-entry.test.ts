@@ -425,10 +425,12 @@ describe("characterGrid (ui-player.c assembly)", () => {
     expect(rows.find((r) => r.name === "resist_ui_compact_0<NEXUS>")!.label).toBe("Nexus:");
   });
 
-  it("draws no label on the stat-mod (sustain) panel rows", () => {
+  it("labels the stat-mod (sustain) panel rows with the stat name plus a trailing colon", () => {
     const st = makeState();
     const grid = characterGrid(st, config);
-    expect(grid.statModPanel.rows.every((r) => r.label === "")).toBe(true);
+    const rows = grid.statModPanel.rows;
+    expect(rows.every((r) => r.label !== "")).toBe(true);
+    expect(rows.find((r) => r.name === "stat_mod_ui_compact_0<STR>")!.label).toBe("  STR:");
   });
 });
 
