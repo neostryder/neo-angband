@@ -230,6 +230,9 @@ explanation of why that matters and what can and cannot be recovered from it.
 
 ## Where to go next
 
+- **Want extra information on screen while you play?**
+  [Subwindows](SUBWINDOWS.md) let you tile inventory, messages, a second map
+  view, and more beside the main game.
 - **Something feels wrong or looks broken?** [Report it](../README.md#reporting-a-difference) -
   the parity target is the game with no mods enabled, so if `qol` or `bug-fixes`
   changed something on purpose, that is expected.

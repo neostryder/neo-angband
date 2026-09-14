@@ -44,6 +44,9 @@ install, and how to mod the game. Start with the top-level
   dungeon, with screenshots at every stage.
 - [INSTALL.md](./INSTALL.md) - playing in a browser, installing the offline
   PWA, self-hosting the static site, and the desktop app.
+- [SUBWINDOWS.md](./SUBWINDOWS.md) - opening, arranging, and saving a layout
+  of extra panels (inventory, messages, a second map view, and more) beside
+  the main play view.
 - [LOGGING.md](./LOGGING.md) - where the game writes its log, how much a build
   logs and why that is decided by the version rather than by a setting, and what
   is in a problem report. Nothing is uploaded anywhere.

@@ -364,7 +364,9 @@ An honest list, so nobody wastes a report on something already written down:
   default and its minimum, but the original also lets you resize for a bigger map
   and this does not yet.
 - **Subwindows tile inside the one game window**, rather than opening as separate
-  OS windows. `=` then `w` turns each panel on; right-click-drag docks it.
+  OS windows. `=` then `w` turns each panel on; right-click-drag docks it. See
+  [docs/SUBWINDOWS.md](docs/SUBWINDOWS.md) for the full walkthrough, including
+  saving your own layout as a personal default.
 - **The mod catalogue is short.** Not a stub: the game bundles nothing, so every
   mod arrives through *Install a mod...*, which downloads from the mod's own
   repository at a pinned tag, pins the mod to that repository so nothing from
@@ -398,6 +400,7 @@ rpgm.tools**. [SECURITY.md](SECURITY.md) says what is worth reporting.
 | [Linoleum tile packs](docs/LINOLEUM.md) | The loose-pack tile format, the converter, and tileset licensing |
 | [How faithful is the port?](docs/PARITY.md) | The methodology, in full |
 | [Installing and playing](docs/INSTALL.md) | Every platform, every install method |
+| [Subwindows](docs/SUBWINDOWS.md) | Extra panels beside the main view: opening, arranging, and saving a layout |
 | [Logs and problem reports](docs/LOGGING.md) | What is logged, where, and what is never uploaded |
 | [Architecture](docs/ARCHITECTURE.md) | How the engine is put together |
 | [Port plan](docs/PORT_PLAN.md) | The ratified governing decisions and phase plan |
