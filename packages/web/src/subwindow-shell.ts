@@ -53,12 +53,25 @@ export interface SubwindowShell {
   /** The id of the panel that currently holds DOM focus, or null. */
   focusedId(): string | null;
   /**
-   * Hide (or restore) every non-main panel and splitter while a full-screen
-   * modal owns the terminal - the Options Menu, a shop, the target loop, and
-   * anything else main.ts's modalDepth already tracks. A panel remembers its
-   * own tiling visibility and returns to exactly that once cleared.
+   * Disable every splitter drag handle while a full-screen modal owns the
+   * terminal - the Options Menu, a shop, the target loop, the "-more-"
+   * pager, and anything else main.ts's modalDepth already tracks. Subwindow
+   * panels are NOT hidden by this any more (neostryder/neo-angband#261):
+   * a modal's own content renders through the main tile's own rect, which
+   * this leaves untouched, so the other panels can safely keep showing
+   * their last-painted content for the modal's whole duration.
    */
   setModalActive(active: boolean): void;
+  /**
+   * Whether a game is actually being played right now. False - the default,
+   * matching the title screen and every pre-play screen (Open, Update,
+   * Profile, character creation) - gives the main view the WHOLE host rect
+   * and hides every other panel and splitter, since none of them have
+   * anything to show before a game exists (neostryder/neo-angband#260).
+   * True (set the moment main.ts's gameScreenLive does) restores the normal
+   * tiled layout.
+   */
+  setGameLive(live: boolean): void;
   destroy(): void;
 }
 
@@ -314,23 +327,37 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
    * neo-angband#241 follow-up: a subwindow panel used to keep drawing over a
    * full-screen modal (the Options Menu, a shop, ...) because visibility here
    * was driven purely by BSP-tree membership, with no notion that something
-   * else currently owns the whole screen. `lastVisibleIds` is the tiling
-   * answer; `modalActive` (set via setModalActive, driven by main.ts's
-   * modalDepth) overrides it to hide every non-main leaf without losing track
-   * of what should reappear once the modal closes.
+   * else currently owns the whole screen. That is fixed differently now
+   * (#261): panels stay visible through a modal, so `modalActive` only
+   * disables splitter drag handles below. `lastVisibleIds` (the tiling
+   * answer) and `gameLive` (#260 - false before a game exists) are what drive
+   * `applyLeafVisibility` instead.
    */
   let modalActive = false;
+  let gameLive = false;
   let lastVisibleIds = new Set<string>([MAIN_TILE_ID]);
 
   function applyLeafVisibility(): void {
     for (const [id, leaf] of slots) {
       if (id === MAIN_TILE_ID) continue;
-      leaf.hidden = modalActive || !lastVisibleIds.has(id);
+      leaf.hidden = !gameLive || !lastVisibleIds.has(id);
     }
   }
 
   function paint(tree: LayoutNode): void {
     currentTree = tree;
+    if (!gameLive) {
+      // #260: no game exists yet (the title screen, Open/Update/Profile,
+      // character creation) - the main view takes the WHOLE host rect
+      // regardless of the persisted tiling tree, since no other panel has
+      // anything relevant to show.
+      lastVisibleIds = new Set([MAIN_TILE_ID]);
+      setRect(mainSlot, hostSize(host));
+      if (!mainSlot.isConnected) host.appendChild(mainSlot);
+      applyLeafVisibility();
+      clearGutters();
+      return;
+    }
     const layout = computeLayout(tree, hostSize(host));
     lastVisibleIds = new Set(layout.tiles.map((tile) => tile.id));
     for (const tile of layout.tiles) {
@@ -525,8 +552,12 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     },
     setModalActive(active) {
       modalActive = active;
-      applyLeafVisibility();
       for (const gutter of gutters) gutter.hidden = modalActive;
+    },
+    setGameLive(live) {
+      if (gameLive === live) return;
+      gameLive = live;
+      paint(currentTree);
     },
     destroy() {
       removeKeyboardOwner();

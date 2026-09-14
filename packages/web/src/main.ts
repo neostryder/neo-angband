@@ -13673,6 +13673,7 @@ void applyModResources()
      * stopLoading is idempotent for exactly that reason. */
     stopLoading();
     gameScreenLive = true;
+    subwindowShell.setGameLive(true);
     render();
   })
   .then(resetVisualsForCharacter)

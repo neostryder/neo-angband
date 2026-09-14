@@ -61,7 +61,10 @@ describe("background repaints stand down while an overlay owns the terminal", ()
      * gates nothing, and a flag nothing ever sets leaves the map permanently
      * blank after the title. */
     expect(MAIN).toMatch(/let gameScreenLive = false;/);
-    expect(MAIN).toMatch(/gameScreenLive = true;\s*render\(\);/);
+    // subwindowShell.setGameLive(true) (neo-angband#260) sits between the flag
+    // and the repaint: the main view drops out of its pre-play, full-viewport
+    // mode the same moment a game actually starts.
+    expect(MAIN).toMatch(/gameScreenLive = true;\s*subwindowShell\.setGameLive\(true\);\s*render\(\);/);
   });
 
   it("routes the graphics-pack repaints through it (the title-screen bug)", () => {

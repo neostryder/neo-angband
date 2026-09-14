@@ -66,6 +66,8 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] [UI] **The title screen and every pre-play screen (Open, Update, Profile, character creation) now fill the whole viewport**, instead of being confined to whatever sub-rectangle the persisted subwindow tiling layout currently allots the main view, leaving the space belonging to other (inert, pre-game) panels as dead black space (#260).
+- [Visible] [UI] **Subwindow panels no longer blank out during ordinary gameplay.** Opening the Options Menu, an inventory or spell selection screen, the character sheet, a shop, the target loop, or waiting out a "-more-" message prompt used to hide every other enabled panel for as long as the screen was up; they now keep showing their last-rendered content undisturbed (#261).
 - [Visible] [Modding-API] **The display seam a mod reads now reports a distinct mode while a shop screen is open, rather than reporting ordinary play.** A mod-rendered overlay meant only for ordinary play can now hide itself over a shop's own item listing instead of painting across it (#234).
 - [Visible] [UI] **A subwindow panel no longer draws over a full-screen modal.** The Options Menu, the inventory selection screen, and every other screen that takes over the keyboard now hide every tiled panel while they are up, instead of leaving one floating over part of the screen (#248).
 - [Visible] [Localization] **A message wrapping a substituted value in quote marks, such as "Loaded 'Amram.prf'.", now actually substitutes the value.** The single quote immediately before the placeholder was read as the start of a brace-escape sequence instead of a literal apostrophe, so the placeholder itself never resolved (#247).
