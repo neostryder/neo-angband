@@ -177,7 +177,7 @@ export function processPrefFile(
   if (text === null) {
     if (!quiet) {
       ctx.say(
-        t("prefsUi.cannotOpen", "Cannot open '{path}'.", {
+        t("prefsUi.cannotOpen", "Cannot open ''{path}''.", {
           path: io.displayPath(HostDir.USER, name),
         }),
       );
@@ -381,9 +381,9 @@ export async function loadPrefFileHack(ctx: PrefsUiCtx, row: number): Promise<vo
     : await getString(term, t("prefsUi.fileLabel", "File: "), ftmp, 80, row + 2);
   if (name === null) return;
   if (!processPrefFile(ctx, name)) {
-    ctx.say(t("prefsUi.loadFailed", "Failed to load '{name}'!", { name }));
+    ctx.say(t("prefsUi.loadFailed", "Failed to load ''{name}''!", { name }));
   } else {
-    ctx.say(t("prefsUi.loaded", "Loaded '{name}'.", { name }));
+    ctx.say(t("prefsUi.loaded", "Loaded ''{name}''.", { name }));
   }
   } finally {
     popRegion(handle);

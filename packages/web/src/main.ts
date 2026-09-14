@@ -7704,7 +7704,7 @@ function screenDumpCmd(): void {
     if (!userWrite(file, text, mode === DUMP_HTML ? FileType.HTML : FileType.TEXT)) {
       /* html_screenshot's only failure: it could not open the file (L322-325). */
       say(
-        t("main.screendump.write-failed", "Cannot write the '{path}' file!", {
+        t("main.screendump.write-failed", "Cannot write the ''{path}'' file!", {
           path: userPath(file),
         }),
       );

@@ -63,6 +63,7 @@ still calls itself.
 
 - [Visible] [Modding-API] **The display seam a mod reads now reports a distinct mode while a shop screen is open, rather than reporting ordinary play.** A mod-rendered overlay meant only for ordinary play can now hide itself over a shop's own item listing instead of painting across it (#234).
 - [Visible] [UI] **A subwindow panel no longer draws over a full-screen modal.** The Options Menu, the inventory selection screen, and every other screen that takes over the keyboard now hide every tiled panel while they are up, instead of leaving one floating over part of the screen (#248).
+- [Visible] [Localization] **A message wrapping a substituted value in quote marks, such as "Loaded 'Amram.prf'.", now actually substitutes the value.** The single quote immediately before the placeholder was read as the start of a brace-escape sequence instead of a literal apostrophe, so the placeholder itself never resolved (#247).
 
 ## [1.13.2] - 2026-09-13
 

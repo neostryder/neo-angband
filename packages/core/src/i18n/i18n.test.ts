@@ -163,6 +163,17 @@ describe("ICU formatting, with the plural rules coming from the platform", () =>
     expect(formatMessage("a '{literal'} brace", {})).toBe("a {literal} brace");
   });
 
+  it("prints real quote marks around a substituted value with '' (#247)", () => {
+    /* A single '{name}' does NOT do this: the lone apostrophe matches the
+     * brace-escape rule above instead of standing on its own, and {name}
+     * never parses as a placeholder at all - the exact bug four of this
+     * project's own messages shipped with. */
+    expect(formatMessage("Loaded ''{name}''.", { name: "Amram.prf" })).toBe(
+      "Loaded 'Amram.prf'.",
+    );
+    expect(formatMessage("'{name}'", { name: "x" })).not.toContain("x");
+  });
+
   it("shows a placeholder with no value AS ITSELF, so the fault is visible", () => {
     /* A blank would be a sentence with a hole nobody can diagnose - and this
      * fires when the translation invented a slot, which is the translator's

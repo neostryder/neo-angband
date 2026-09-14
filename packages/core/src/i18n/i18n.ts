@@ -292,7 +292,13 @@ export function patternFor(id: string, fallback: string): string {
  *   {name, select, a {..} other {..}}        exact match on the value
  *
  * `#` inside a plural arm is the number, formatted for the locale. `'{'` escapes
- * a literal brace, as ICU spells it.
+ * a literal brace, as ICU spells it, and `''` is a literal apostrophe, checked
+ * FIRST so it wins even where the apostrophe also happens to sit next to a
+ * brace - `''{name}''` around a placeholder prints real quote marks around the
+ * substituted value, matching how upstream's own `msg("Loaded '%s'.", ftmp)`
+ * reads (#247: a single `'{name}'` does not do this - the lone apostrophe
+ * matches the brace-escape rule above instead of standing on its own, so the
+ * value never substitutes at all).
  *
  * THE PLURAL CATEGORIES ARE NOT CORE'S TO KNOW. `Intl.PluralRules` answers
  * `one`/`few`/`many`/`other` per language, so a Polish catalogue writes the arms
@@ -337,6 +343,15 @@ function parsePattern(pattern: string): Part[] {
   let i = 0;
   while (i < pattern.length) {
     const c = pattern[i] as string;
+    if (c === "'" && pattern[i + 1] === "'") {
+      /* #247: checked before the brace-escape rule below, so a genuine literal
+       * apostrophe wins even when it also happens to sit next to a brace -
+       * '{name}' would otherwise read as the brace-escape rule firing on the
+       * SECOND quote, swallowing the { and never parsing {name} as an arg. */
+      text += "'";
+      i += 2;
+      continue;
+    }
     if (c === "'" && (pattern[i + 1] === "{" || pattern[i + 1] === "}")) {
       /* ICU's quoting: '{ is a literal brace. */
       text += pattern[i + 1];
@@ -370,6 +385,13 @@ function parsePattern(pattern: string): Part[] {
 function matchBrace(s: string, open: number): number {
   let depth = 0;
   for (let i = open; i < s.length; i++) {
+    /* Same precedence as parsePattern's own two checks, and for the same
+     * reason (#247): a literal '' must not be misread as the brace-escape
+     * rule firing on its second quote. */
+    if (s[i] === "'" && s[i + 1] === "'") {
+      i++;
+      continue;
+    }
     if (s[i] === "'" && (s[i + 1] === "{" || s[i + 1] === "}")) {
       i++;
       continue;
