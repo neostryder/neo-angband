@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-09-13
+
 ### Added
 
 - [Visible] [UI] **The dungeon map subwindow has its own graphics dropdown.** ASCII and all installed, enabled graphics packs are selectable independently of the main view, with the choice retained across reloads and subwindow pref-file save/restore (#239).
