@@ -152,6 +152,18 @@ export interface PrefSink {
    * simply ignores the line, exactly like every other optional PrefSink member.
    */
   subwindowLayout?(json: string): void;
+  /**
+   * mod-block (no upstream original, neo-angband#262): a mod-registered named
+   * block of pref-file content, carried as its OWN directive so a malformed
+   * or unrecognised block can never reach, or be mistaken for, any of core's
+   * own directives - `neo-subwindows` included. `name` says which registered
+   * block this line belongs to; the rest of the line is that block's own
+   * payload, opaque to this parser exactly the way neo-subwindows's JSON
+   * payload is. An unrecognised name is exactly as silent as an unrecognised
+   * directive (see the HANDLERS dispatch below) - it just means the block's
+   * owning mod is not installed, or not enabled, on this machine.
+   */
+  modBlock?(name: string, payload: string): void;
   /** parse_prefs_entry_renderer -> ui_entry_renderer_customize. */
   entryRenderer?(
     name: string,
@@ -538,6 +550,18 @@ const parseSubwindowLayout: Handler = (fields, sink) => {
   return null;
 };
 
+/**
+ * mod-block (neo-angband#262): `name` is the first field, and the rest of the
+ * line - colons included - is that block's own opaque payload, reassembled
+ * the same way parseSubwindowLayout reassembles its JSON.
+ */
+const parseModBlock: Handler = (fields, sink) => {
+  const name = fields[0];
+  if (name === undefined) return PARSE_ERROR.MISSING_FIELD;
+  sink.modBlock?.(name, fields.slice(1).join(":"));
+  return null;
+};
+
 /** parse_prefs_entry_renderer (ui-prefs.c L1085-1122). */
 const parseEntryRenderer: Handler = (fields, sink) => {
   const name = fields[0];
@@ -567,6 +591,7 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
   window: parseWindow,
   "entry-renderer": parseEntryRenderer,
   "neo-subwindows": parseSubwindowLayout,
+  "mod-block": parseModBlock,
 };
 
 /* ------------------------------------------------------------------------

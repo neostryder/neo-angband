@@ -83,6 +83,7 @@ describe("modPluginContext session facts", () => {
   it("publishes the latched subwindows door after boot and omits it before boot, fully ungated (#241)", () => {
     const setGrid = vi.fn();
     const addControl = vi.fn(() => () => undefined);
+    const registerPrefBlock = vi.fn(() => () => undefined);
     const subwindows: ModSubwindows = {
       list: () => [
         {
@@ -95,6 +96,7 @@ describe("modPluginContext session facts", () => {
       ],
       setGrid,
       addControl,
+      registerPrefBlock,
     };
     setModSubwindowsControl(undefined);
     expect(modPluginContext("qol", {}).subwindows).toBeUndefined();
@@ -106,6 +108,9 @@ describe("modPluginContext session facts", () => {
       expect(setGrid).toHaveBeenCalledWith("messages", null);
       ctx.subwindows?.addControl("messages", "zoom-out", { glyph: "-", onActivate: () => undefined });
       expect(addControl).toHaveBeenCalledTimes(1);
+      const block = { serialize: () => "8", parse: (text: string) => text, apply: () => undefined };
+      ctx.subwindows?.registerPrefBlock("qol-zoom", block);
+      expect(registerPrefBlock).toHaveBeenCalledWith("qol-zoom", block);
     } finally {
       setModSubwindowsControl(undefined);
     }

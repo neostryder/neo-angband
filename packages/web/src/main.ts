@@ -538,8 +538,11 @@ import {
   paintStatusSubwindow,
   dumpSubwindowLayoutPrefText,
   parseSubwindowStateJson,
+  applySubwindowPrefBlock,
+  dumpSubwindowPrefBlocks,
   readSubwindowDefault,
   readSubwindowState,
+  registerSubwindowPrefBlock,
   scrollSubwindow,
   setSubwindowEnabled,
   SUBWINDOW_CHOICES,
@@ -3199,6 +3202,11 @@ function prefsUiCtx(): PrefsUiCtx {
       /* neo-subwindows (#238): the web shell's own BSP tiling tree - see
        * dumpSubwindowLayout below for the matching dump half. */
       subwindowLayout: (json) => applyLoadedSubwindowLayout(json),
+      /* mod-block (#262): a mod-registered named pref-file block, kept
+       * entirely separate from subwindowLayout above so a malformed or
+       * unrecognised one can never reach - or be mistaken for - core's own
+       * tiling state. See dumpModBlocks below for the matching dump half. */
+      modBlock: (name, payload) => applySubwindowPrefBlock(name, payload),
     },
     afterLoad: () => {
       /* Term_xtra(TERM_XTRA_REACT) + Term_redraw_all (ui-options.c L866-867). */
@@ -3209,6 +3217,9 @@ function prefsUiCtx(): PrefsUiCtx {
      * dumpWindowSettings (prefs-ui.ts), so "Dump window settings" carries the
      * tiling tree too and an arrangement can be ported between installs. */
     dumpSubwindowLayout: () => dumpSubwindowLayoutPrefText(subwindowState),
+    /* mod-block (#262): every mod-registered block's own line, appended
+     * alongside dumpSubwindowLayout's rather than folded into it. */
+    dumpModBlocks: () => dumpSubwindowPrefBlocks(),
   };
 }
 
@@ -9075,6 +9086,9 @@ const subwindowsControl: ModSubwindows = {
     const panelId = asSubwindowId(id);
     if (!panelId) return () => undefined;
     return subwindowShell.addControl(panelId, key, control);
+  },
+  registerPrefBlock(name, block) {
+    return registerSubwindowPrefBlock(name, block);
   },
 };
 

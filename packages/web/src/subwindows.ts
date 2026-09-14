@@ -366,6 +366,75 @@ export function setSubwindowEnabled(state: SubwindowState, id: SubwindowId, enab
   return { ...state, enabled: nextEnabled, tree: reconcileSubwindowTree(state.tree, nextEnabled) };
 }
 
+/**
+ * A mod's own named block of pref-file content, carried alongside (never
+ * inside) `neo-subwindows`'s own JSON (neo-angband#262). `serialize` returns
+ * this block's current text, or null to leave it out of a dump entirely (a
+ * mod with nothing worth saving right now); `parse` is its inverse and
+ * returns null for anything malformed, the same contract
+ * parseSubwindowStateJson already keeps; `apply` is called only with a value
+ * `parse` itself accepted.
+ */
+export interface SubwindowPrefBlock<T = unknown> {
+  serialize(): string | null;
+  parse(text: string): T | null;
+  apply(value: T): void;
+}
+
+const subwindowPrefBlocks = new Map<string, SubwindowPrefBlock>();
+
+/**
+ * Register (or replace) one named block. Re-registering an in-use name
+ * replaces it outright - the same "last one wins" rule the subwindow shell's
+ * `addControl` already uses for a re-added key - rather than erroring, since
+ * a mod re-registering its own block on reload (a hot-reload, a settings
+ * change) is the ordinary case, not a collision to guard against. Returns an
+ * unregister function that is a no-op once superseded by a later
+ * registration under the same name.
+ */
+export function registerSubwindowPrefBlock<T>(name: string, block: SubwindowPrefBlock<T>): () => void {
+  subwindowPrefBlocks.set(name, block as SubwindowPrefBlock);
+  return () => {
+    if (subwindowPrefBlocks.get(name) === block) subwindowPrefBlocks.delete(name);
+  };
+}
+
+/**
+ * Every registered block's own `mod-block:<name>:<payload>` line, one per
+ * block whose serialize() returned non-null text - appended alongside
+ * dumpSubwindowLayoutPrefText's own line rather than folded into its JSON,
+ * so a change here can never touch that parser (#262).
+ */
+export function dumpSubwindowPrefBlocks(): string {
+  let out = "";
+  for (const [name, block] of subwindowPrefBlocks) {
+    const text = block.serialize();
+    if (text === null) continue;
+    out += `mod-block:${name}:${text}\n`;
+  }
+  return out;
+}
+
+/**
+ * The inverse of dumpSubwindowPrefBlocks for one already-split `mod-block`
+ * line. An unregistered name (that block's owning mod is not installed, or
+ * not enabled, on this machine) or a payload the block's own parser rejects
+ * is a silent no-op, exactly like an unrecognised pref directive - neither
+ * can reach, or alter, core's own subwindow state (#262).
+ */
+export function applySubwindowPrefBlock(name: string, payload: string): void {
+  const block = subwindowPrefBlocks.get(name);
+  if (!block) return;
+  let value: unknown;
+  try {
+    value = block.parse(payload);
+  } catch {
+    return;
+  }
+  if (value === null) return;
+  block.apply(value);
+}
+
 interface ColoredChar {
   ch: string;
   color: string;

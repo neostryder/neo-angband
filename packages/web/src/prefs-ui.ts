@@ -68,6 +68,14 @@ export interface PrefsUiCtx {
    * to that banner instead of core growing a web dependency.
    */
   dumpSubwindowLayout?: () => string;
+  /**
+   * neo-angband#262: every `mod-block:<name>:<payload>` line a mod has
+   * registered via `ctx.subwindows.registerPrefBlock`, appended to the same
+   * "Dump window settings" banner alongside dumpSubwindowLayout's own line -
+   * kept separate from it so a malformed or unrecognised mod block can never
+   * touch core's own tiling state either on dump or on a later load.
+   */
+  dumpModBlocks?: () => string;
 }
 
 /**
@@ -497,7 +505,7 @@ export async function runColorsMenu(
 export function dumpWindowSettings(ctx: PrefsUiCtx): Promise<void> {
   return dumpPrefFile(
     ctx,
-    () => optionDump() + (ctx.dumpSubwindowLayout?.() ?? ""),
+    () => optionDump() + (ctx.dumpSubwindowLayout?.() ?? "") + (ctx.dumpModBlocks?.() ?? ""),
     t("prefsUi.dumpWindowSettings", "Dump window settings"),
     20,
   );

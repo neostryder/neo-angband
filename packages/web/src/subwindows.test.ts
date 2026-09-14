@@ -3,8 +3,10 @@ import { COLOUR_RED, colorToCss } from "@rpgm-tools/neo-angband-core";
 import { MessageLog } from "./messages";
 import {
   MessageSubwindowPainter,
+  applySubwindowPrefBlock,
   canonicalSubwindowTree,
   dumpSubwindowLayoutPrefText,
+  dumpSubwindowPrefBlocks,
   paintOverviewSubwindow,
   paintSubwindowLines,
   parseSubwindowStateJson,
@@ -13,6 +15,7 @@ import {
   readSubwindowSettings,
   readSubwindowState,
   readSubwindowDefault,
+  registerSubwindowPrefBlock,
   scrollSubwindow,
   setSubwindowEnabled,
   statusSubwindowLines,
@@ -479,5 +482,86 @@ describe("tiled panel scroll (#258)", () => {
     scrollSubwindow(term, -1);
     painter.paint(term, log);
     expect(term.text()).toEqual(["a", "b"]);
+  });
+});
+
+describe("mod-registered subwindow pref blocks (#262)", () => {
+  it("dumps a registered block's own mod-block line, and omits one whose serialize() returns null", () => {
+    const unregisterA = registerSubwindowPrefBlock("qol-zoom", {
+      serialize: () => "8:10:12",
+      parse: (text) => text,
+      apply: () => undefined,
+    });
+    const unregisterB = registerSubwindowPrefBlock("qol-empty", {
+      serialize: () => null,
+      parse: (text) => text,
+      apply: () => undefined,
+    });
+    try {
+      expect(dumpSubwindowPrefBlocks()).toBe("mod-block:qol-zoom:8:10:12\n");
+    } finally {
+      unregisterA();
+      unregisterB();
+    }
+  });
+
+  it("applies a value only when the block's own parser accepts it, and ignores an unknown block name", () => {
+    const apply = vi.fn();
+    const unregister = registerSubwindowPrefBlock("qol-zoom", {
+      serialize: () => null,
+      parse: (text) => (text === "bad" ? null : text),
+      apply,
+    });
+    try {
+      applySubwindowPrefBlock("qol-zoom", "8:10:12");
+      expect(apply).toHaveBeenCalledWith("8:10:12");
+      applySubwindowPrefBlock("qol-zoom", "bad");
+      expect(apply).toHaveBeenCalledTimes(1);
+      applySubwindowPrefBlock("no-such-block", "anything");
+      expect(apply).toHaveBeenCalledTimes(1);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("never lets a block's own parser throw escape into the caller, isolating one bad block from the rest", () => {
+    const apply = vi.fn();
+    const unregister = registerSubwindowPrefBlock("qol-zoom", {
+      serialize: () => null,
+      parse: () => {
+        throw new Error("malformed");
+      },
+      apply,
+    });
+    try {
+      expect(() => applySubwindowPrefBlock("qol-zoom", "anything")).not.toThrow();
+      expect(apply).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
+  it("replaces a block re-registered under the same name, and a superseded unregister is a no-op", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const unregisterFirst = registerSubwindowPrefBlock("qol-zoom", {
+      serialize: () => null,
+      parse: (text) => text,
+      apply: first,
+    });
+    const unregisterSecond = registerSubwindowPrefBlock("qol-zoom", {
+      serialize: () => null,
+      parse: (text) => text,
+      apply: second,
+    });
+    applySubwindowPrefBlock("qol-zoom", "x");
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith("x");
+    unregisterFirst();
+    applySubwindowPrefBlock("qol-zoom", "y");
+    expect(second).toHaveBeenCalledWith("y");
+    unregisterSecond();
+    applySubwindowPrefBlock("qol-zoom", "z");
+    expect(second).toHaveBeenCalledTimes(2);
   });
 });

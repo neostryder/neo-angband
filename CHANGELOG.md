@@ -58,6 +58,7 @@ still calls itself.
 - [Visible] [UI] **Dragging a subwindow panel now outlines every place it could be dropped on every other panel at once**, instead of only revealing one target's drop zone as the cursor happens to pass over it, and a panel's title bar carries a small drag-handle cue with a tooltip explaining that right-click-drag rearranges it (#249).
 - [Visible] [Modding-API] **The display seam a mod reads now reports a distinct mode while any full-screen modal is open**, not only a shop screen, matching every place core itself already hides tiled subwindow panels for the same reason (#250).
 - [Visible] [UI] **Tiled text panels (message history, monster/item lists, and every other panel painted from plain text lines) now wrap content wider than the panel instead of clipping it, and can be scrolled with the mouse wheel or a trackpad swipe to see everything that overflows** (#258).
+- [Visible] [Modding-API] **A mod can now register its own named block of state in the subwindow pref-file export/import**, saved and restored alongside the tiled panel arrangement itself (a per-panel zoom level, for instance) without teaching core anything about what that state is. An unregistered or malformed block is a silent no-op, exactly like any other unrecognised pref line, and can never alter core's own subwindow layout (#262).
 
 ### Changed
 

@@ -316,6 +316,20 @@ export interface ModSubwindows {
    * unregister function.
    */
   addControl(id: string, key: string, control: ModSubwindowControl): () => void;
+  /**
+   * Register (or replace) a named block of this mod's own state in the
+   * subwindow pref-file export/import (neo-angband#262) - a per-panel zoom
+   * level a mod maintains outside core's own tiling state, say. `serialize`
+   * returns this block's current text, or null to leave it out of a dump
+   * entirely; `parse` is its inverse and returns null for anything
+   * malformed; `apply` is called only with a value `parse` itself accepted,
+   * never with anything it rejected. Returns an unregister function.
+   */
+  registerPrefBlock<T>(name: string, block: {
+    serialize(): string | null;
+    parse(text: string): T | null;
+    apply(value: T): void;
+  }): () => void;
 }
 
 /** One binding the calling mod owns in the current keyset. */

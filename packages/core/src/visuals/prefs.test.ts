@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { objectShortName } from "../obj/bind.js";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { COLOUR_RED, colorCharToAttr } from "../color.js";
 import { TV } from "../generated/index.js";
@@ -527,6 +527,39 @@ describe("neo-subwindows (#238, no upstream original)", () => {
       glyphTableSink(table()),
     );
     expect(errors).toHaveLength(0);
+  });
+});
+
+describe("mod-block (#262, no upstream original)", () => {
+  it("splits the name from the rest of the line and rejoins the payload past its own colons", () => {
+    let receivedName: string | null = null;
+    let receivedPayload: string | null = null;
+    const errors = processPrefText(
+      "mod-block:qol-zoom:8:10:12",
+      deps,
+      {
+        ...glyphTableSink(table()),
+        modBlock: (name, payload) => {
+          receivedName = name;
+          receivedPayload = payload;
+        },
+      },
+    );
+    expect(errors).toHaveLength(0);
+    expect(receivedName).toBe("qol-zoom");
+    expect(receivedPayload).toBe("8:10:12");
+  });
+
+  it("is a silent no-op when the sink does not implement modBlock", () => {
+    const errors = processPrefText("mod-block:qol-zoom:8:10:12", deps, glyphTableSink(table()));
+    expect(errors).toHaveLength(0);
+  });
+
+  it("reports a bare directive with no name at all as a bad line rather than calling the sink", () => {
+    const modBlock = vi.fn();
+    const errors = processPrefText("mod-block", deps, { ...glyphTableSink(table()), modBlock });
+    expect(errors).toHaveLength(1);
+    expect(modBlock).not.toHaveBeenCalled();
   });
 });
 
