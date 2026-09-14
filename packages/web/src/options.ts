@@ -777,7 +777,8 @@ export interface SubwindowMenu {
   choices: readonly { id: string; label: string }[];
   enabled: (id: string) => boolean;
   set: (id: string, enabled: boolean) => void;
-  mapTiles?: TileModeMenu;
+  saveDefault: () => boolean;
+  restoreDefault: () => "restored" | "missing" | "failed";
 }
 
 /**
@@ -794,20 +795,18 @@ async function runSubwindowPage(
     const items: MenuItem[] = subwindows.choices.map((choice) => ({
       label: `${subwindows.enabled(choice.id) ? "X" : "."} ${choice.label}`,
     }));
-    if (subwindows.mapTiles) {
-      const tiles = subwindows.mapTiles;
-      const current = tiles.modes.find((mode) => mode.grafID === tiles.current());
-      items.push({ label: t("options.subwindows.mapTiles", "Dungeon map graphics: {mode}", {
-        mode: current?.menuname ?? "None (ASCII)",
-      }) });
-    }
+    items.push(
+      { label: t("options.subwindows.saveDefault", "Save as my default"), tag: "s" },
+      { label: t("options.subwindows.restoreDefault", "Restore my default"), tag: "r" },
+    );
     const idx = await selectFromMenu(
       term,
       "core:subwindows",
       t("options.subwindows.title", "Subwindow setup"),
       items,
-      t("options.subwindows.footer", "[ Enter: toggle, ESC to return ]"),
+      t("options.subwindows.footerDefaults", "[ Enter: select, s save default, r restore default, ESC to return ]"),
       {
+        caselessTags: true,
         initialCursor: cursor,
         onHighlight: (i) => {
           cursor = i;
@@ -815,13 +814,27 @@ async function runSubwindowPage(
       },
     );
     if (idx === null) return;
-    if (idx === subwindows.choices.length && subwindows.mapTiles) {
-      await runTileModePage(term, subwindows.mapTiles,
-        t("options.subwindows.mapTilesTitle", "Dungeon map graphics"));
+    const choice = subwindows.choices[idx];
+    if (choice) {
+      subwindows.set(choice.id, !subwindows.enabled(choice.id));
       continue;
     }
-    const choice = subwindows.choices[idx];
-    if (choice) subwindows.set(choice.id, !subwindows.enabled(choice.id));
+    let message: string;
+    if (idx === subwindows.choices.length) {
+      message = subwindows.saveDefault()
+        ? t("options.toggle.saved", "Successfully saved.")
+        : t("options.toggle.saveFailed", "Save failed.");
+    } else {
+      const result = subwindows.restoreDefault();
+      if (result === "restored") continue;
+      message = result === "missing"
+        ? t("options.subwindows.noDefault", "No saved subwindow default is available.")
+        : t("options.toggle.restoreFailed", "Restore failed.");
+    }
+    await getKeyInline(
+      term,
+      t("options.acknowledge", "{message}  Press any key to continue.", { message }),
+    );
   }
 }
 
@@ -928,7 +941,6 @@ export interface TileModeMenu {
 export async function runTileModePage(
   term: GridSurface & GridPointerInput,
   tiles: TileModeMenu,
-  title = t("options.tileMode.title", "Graphics (tiles) mode"),
 ): Promise<void> {
   const cur = tiles.current();
   const items: MenuItem[] = tiles.modes.map((m) => ({
@@ -948,7 +960,7 @@ export async function runTileModePage(
   const idx = await selectFromMenu(
     term,
     "core:graphics-mode",
-    title,
+    t("options.tileMode.title", "Graphics (tiles) mode"),
     items,
     t("options.tileMode.footer", "[ choose a tile set, ESC to keep current ]"),
   );

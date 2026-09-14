@@ -76,10 +76,7 @@ describe("background repaints stand down while an overlay owns the terminal", ()
     // asserts the whole chain rather than the one name it used to: nothing in
     // applyTileMode may repaint without invalidating, and repaintEverything may
     // not repaint without the modalDepth gate.
-    expect(body).toContain("const request = graphics.begin(grafID)");
-    expect(body).toContain("ts.onReady = request.repaint");
-    expect(body).toContain("request.publish(ts, map)");
-    expect(MAIN).toContain("new TileModeState(repaintEverything)");
+    expect(body).toContain("repaintEverything()");
     const outer = functionBody(MAIN, "repaintEverything");
     expect(outer).toContain("term.invalidate()");
     expect(outer).toContain("renderBackground()");

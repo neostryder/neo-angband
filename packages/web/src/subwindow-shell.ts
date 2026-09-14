@@ -19,21 +19,12 @@ import {
   type LayoutNode,
   type Rect,
 } from "./subwindow-layout";
-import { addControlDomOwner } from "./input-door";
 
 /** One mod-owned chrome control (neo-angband#241), rendered between the title label and the close button. */
 export interface SubwindowControlSpec {
   readonly glyph: string;
   readonly title?: string;
   readonly onActivate: () => void;
-}
-
-/** A core selector in the same title-bar area as registered button controls. */
-export interface SubwindowSelectSpec {
-  readonly label: string;
-  readonly value: string;
-  readonly choices: readonly { value: string; label: string }[];
-  readonly onChange: (value: string) => void;
 }
 
 export interface SubwindowShell {
@@ -49,7 +40,6 @@ export interface SubwindowShell {
    * renders it as soon as the panel reappears.
    */
   addControl(id: string, key: string, control: SubwindowControlSpec): () => void;
-  setSelect(id: string, spec: SubwindowSelectSpec): void;
   /** The id of the panel that currently holds DOM focus, or null. */
   focusedId(): string | null;
   /**
@@ -122,14 +112,8 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
    * "+") without colliding with another mod's. Kept even for a panel not
    * currently tiled, so re-enabling it restores its controls. */
   const panelControls = new Map<string, Map<string, SubwindowControlSpec>>();
-  const panelSelects = new Map<string, SubwindowSelectSpec>();
   const controlsContainers = new Map<string, HTMLElement>();
   let focusedId: string | null = null;
-  const removeKeyboardOwner = addControlDomOwner({
-    owns: (event) => event.target instanceof Element && host.contains(event.target)
-      && event.target.matches(".tile-select"),
-    escape: () => false,
-  });
 
   function controlsFor(id: string): Map<string, SubwindowControlSpec> {
     let byKey = panelControls.get(id);
@@ -156,33 +140,11 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     container.appendChild(button);
   }
 
-  function updateSelect(select: HTMLSelectElement, spec: SubwindowSelectSpec): void {
-    select.title = spec.label;
-    select.setAttribute("aria-label", spec.label);
-    select.replaceChildren();
-    for (const choice of spec.choices) {
-      const option = document.createElement("option");
-      option.value = choice.value;
-      option.textContent = choice.label;
-      select.appendChild(option);
-    }
-    select.value = spec.value;
-  }
-
   /** Re-render one panel's controls container from its current registered set. */
   function refreshControls(id: string): void {
     const container = controlsContainers.get(id);
     if (!container) return;
     container.replaceChildren();
-    const spec = panelSelects.get(id);
-    if (spec) {
-      const select = document.createElement("select");
-      select.className = "tile-select";
-      updateSelect(select, spec);
-      select.addEventListener("pointerdown", (event) => event.stopPropagation());
-      select.addEventListener("change", () => panelSelects.get(id)?.onChange(select.value));
-      container.appendChild(select);
-    }
     for (const spec of controlsFor(id).values()) renderControl(container, spec);
   }
 
@@ -386,7 +348,6 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
 
   const onLeafPointerDown = (event: PointerEvent): void => {
     if (event.button !== 2) return;
-    if (event.target instanceof Element && event.target.closest(".tile-controls, .tile-close")) return;
     const leaf = event.currentTarget;
     if (!(leaf instanceof HTMLElement)) return;
     const id = leaf.dataset.tile;
@@ -514,12 +475,6 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
         refreshControls(id);
       };
     },
-    setSelect(id, spec) {
-      panelSelects.set(id, spec);
-      const select = controlsContainers.get(id)?.querySelector<HTMLSelectElement>(".tile-select");
-      if (select) updateSelect(select, spec);
-      else refreshControls(id);
-    },
     focusedId() {
       return focusedId;
     },
@@ -529,7 +484,6 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       for (const gutter of gutters) gutter.hidden = modalActive;
     },
     destroy() {
-      removeKeyboardOwner();
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);

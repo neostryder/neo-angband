@@ -40,8 +40,8 @@ describe("Linoleum entity precaching", () => {
     expect(display).toContain("useFlavorGlyph(kind, flavor, game.flavor?.isAware(kind) ?? false)");
     expect(display).toContain("tileForShownObject(tileMap, kind, shownFlavor ? shownFlavor.fidx : null)");
     const cell = functionBody(MAIN, "objectKindCell");
-    expect(cell).toContain("const { shownFlavor, atlas } = shownObjectTile(kind, graphics)");
-    expect(cell).toContain("tileDrawFor(atlas, gx, gy, dimmed, graphics)");
+    expect(cell).toContain("const { shownFlavor, atlas } = shownObjectTile(kind)");
+    expect(cell).toContain("tileDrawFor(atlas, gx, gy, dimmed)");
   });
 
   it("warms revealed traps through their own tileForTrap path (#224)", () => {

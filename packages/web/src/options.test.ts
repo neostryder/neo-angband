@@ -3,6 +3,15 @@ import { describe, expect, it, afterEach, vi } from "vitest";
 import { HostDir, NULL_HOST, OptionState, Rng, setHost } from "@rpgm-tools/neo-angband-core";
 import type { GameState, HostIo } from "@rpgm-tools/neo-angband-core";
 import { runOptionsMenu, runTileModePage } from "./options";
+import {
+  SUBWINDOW_CHOICES,
+  readSubwindowDefault,
+  readSubwindowState,
+  setSubwindowEnabled,
+  writeSubwindowDefault,
+  writeSubwindowState,
+  type SubwindowId,
+} from "./subwindows";
 import type { GlyphTerm } from "./term";
 
 // main.ts's own keydown handler is the ground truth for how '=' is wired;
@@ -201,6 +210,8 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
       ],
       enabled: (id: string) => enabled.get(id) ?? false,
       set: (id: string, value: boolean) => void enabled.set(id, value),
+      saveDefault: () => true,
+      restoreDefault: () => "missing" as const,
     };
     const done = runOptionsMenu(
       term,
@@ -241,36 +252,82 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     await done;
   });
 
-  it("selects map graphics from Subwindow setup while the panel is disabled", async () => {
+  it("saves and restores a personal subwindow default from the setup screen", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
     const term = makeTerm();
-    let mode = 0;
-    const set = vi.fn();
-    const mapTiles = {
-      modes: [{ grafID: 0, menuname: "None (ASCII)" }, { grafID: 3, menuname: "Gervais" }],
-      current: () => mode,
-      apply: async (id: number) => { mode = id; },
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => void values.set(key, value),
+      removeItem: (key: string) => void values.delete(key),
     };
+    let live = setSubwindowEnabled(readSubwindowState(storage), "inventory", true);
+    const baseline = structuredClone(live);
     const done = runOptionsMenu(term, makeState(), async () => {}, undefined, undefined, undefined, {
-      choices: [{ id: "map", label: "Display dungeon map" }],
-      enabled: () => false,
-      set,
-      mapTiles,
+      choices: SUBWINDOW_CHOICES,
+      enabled: (id) => live.enabled[id as SubwindowId],
+      set: (id, value) => {
+        live = setSubwindowEnabled(live, id as SubwindowId, value);
+        writeSubwindowState(storage, live);
+      },
+      saveDefault: () => writeSubwindowDefault(storage, live),
+      restoreDefault: () => {
+        const saved = readSubwindowDefault(storage);
+        if (!saved) return "missing";
+        writeSubwindowState(storage, saved);
+        live = saved;
+        return "restored";
+      },
     });
     press(win, "w");
     await tick();
-    expect(term.snapshot().join("\n")).toContain("Dungeon map graphics: None (ASCII)");
-    press(win, "ArrowDown");
-    press(win, "Enter");
+    expect(term.snapshot().join("\n")).toContain("s) Save as my default");
+    expect(term.snapshot().join("\n")).toContain("r) Restore my default");
+    press(win, "r");
     await tick();
-    expect(term.snapshot().join("\n")).toContain("Dungeon map graphics");
-    press(win, "ArrowDown");
-    press(win, "Enter");
+    expect(term.snapshot().join("\n")).toContain("No saved subwindow default is available.");
+    expect(live).toEqual(baseline);
+    press(win, " ");
     await tick();
-    expect(mode).toBe(3);
-    expect(set).not.toHaveBeenCalled();
-    expect(term.snapshot().join("\n")).toContain("Dungeon map graphics: Gervais");
+    press(win, "S");
+    await tick();
+    expect(term.snapshot().join("\n")).toContain("Successfully saved.");
+    expect(readSubwindowDefault(storage)).toEqual(baseline);
+    press(win, " ");
+    await tick();
+    press(win, "a");
+    await tick();
+    expect(live.enabled.inventory).toBe(false);
+    press(win, "R");
+    await tick();
+    expect(live).toEqual(baseline);
+    expect(readSubwindowState(storage)).toEqual(baseline);
+    expect(term.snapshot().join("\n")).toContain("X Display inven/equip");
+    press(win, "Escape");
+    await tick();
+    press(win, "Escape");
+    await done;
+  });
+
+  it.each(["s", "r"])("reports a failed subwindow default action (%s)", async (key) => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runOptionsMenu(term, makeState(), async () => {}, undefined, undefined, undefined, {
+      choices: SUBWINDOW_CHOICES,
+      enabled: () => false,
+      set: () => {},
+      saveDefault: () => false,
+      restoreDefault: () => "failed",
+    });
+    press(win, "w");
+    await tick();
+    press(win, key);
+    await tick();
+    expect(term.snapshot().join("\n")).toContain(key === "s" ? "Save failed." : "Restore failed.");
+    press(win, " ");
+    await tick();
     press(win, "Escape");
     await tick();
     press(win, "Escape");

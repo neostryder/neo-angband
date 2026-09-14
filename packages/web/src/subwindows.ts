@@ -73,11 +73,10 @@ export type SubwindowSettings = Record<SubwindowId, boolean>;
 export interface SubwindowState {
   enabled: SubwindowSettings;
   tree: LayoutNode;
-  /** Independent dungeon-map grafID; absent in older layouts means ASCII. */
-  mapTileMode?: number;
 }
 
 export const SUBWINDOW_STORAGE_KEY = "neo-angband:subwindows";
+export const SUBWINDOW_DEFAULT_STORAGE_KEY = "neo-angband:subwindows:default";
 
 /**
  * neo-subwindows (#238): the pref-file directive that carries this state as
@@ -234,10 +233,6 @@ function parseEnabled(raw: Partial<Record<string, unknown>>): SubwindowSettings 
   return enabled;
 }
 
-function parseMapTileMode(raw: unknown): number {
-  return typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0 ? raw : 0;
-}
-
 export function readSubwindowState(storage: Pick<Storage, "getItem">): SubwindowState {
   try {
     const raw = storage.getItem(SUBWINDOW_STORAGE_KEY);
@@ -253,11 +248,7 @@ export function readSubwindowState(storage: Pick<Storage, "getItem">): Subwindow
           : parsed,
       );
       const tree = parseLayoutTree(parsed.tree);
-      return {
-        enabled,
-        tree: reconcileSubwindowTree(tree ?? treeForSettings(enabled), enabled),
-        mapTileMode: parseMapTileMode(parsed.mapTileMode),
-      };
+      return { enabled, tree: reconcileSubwindowTree(tree ?? treeForSettings(enabled), enabled) };
     }
     const enabled = parseEnabled(parsed);
     return { enabled, tree: treeForSettings(enabled) };
@@ -276,19 +267,38 @@ export function writeSubwindowState(
   storage: Pick<Storage, "setItem" | "removeItem">,
   state: SubwindowState,
 ): void {
-  if (!Object.values(state.enabled).some(Boolean) && !state.mapTileMode) {
+  if (!Object.values(state.enabled).some(Boolean)) {
     storage.removeItem(SUBWINDOW_STORAGE_KEY);
     return;
   }
-  storage.setItem(
-    SUBWINDOW_STORAGE_KEY,
-    JSON.stringify({
-      v: 2,
-      enabled: state.enabled,
-      tree: state.tree,
-      mapTileMode: parseMapTileMode(state.mapTileMode),
-    }),
-  );
+  storage.setItem(SUBWINDOW_STORAGE_KEY, serializeSubwindowState(state));
+}
+
+function serializeSubwindowState(state: SubwindowState): string {
+  return JSON.stringify({ v: 2, enabled: state.enabled, tree: state.tree });
+}
+
+/** A missing, unreadable, or malformed personal default leaves the live layout intact. */
+export function readSubwindowDefault(storage: Pick<Storage, "getItem">): SubwindowState | null {
+  try {
+    const raw = storage.getItem(SUBWINDOW_DEFAULT_STORAGE_KEY);
+    return raw === null ? null : parseSubwindowStateJson(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** Preserve an all-disabled layout as a saved default, too. */
+export function writeSubwindowDefault(
+  storage: Pick<Storage, "setItem">,
+  state: SubwindowState,
+): boolean {
+  try {
+    storage.setItem(SUBWINDOW_DEFAULT_STORAGE_KEY, serializeSubwindowState(state));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Persist the display setting outside the character save, like window flags. */
@@ -306,9 +316,7 @@ export function writeSubwindowSettings(
  * "save subwindow setup to pref file" flow upstream uses for window flags.
  */
 export function dumpSubwindowLayoutPrefText(state: SubwindowState): string {
-  const payload = JSON.stringify({
-    enabled: state.enabled, tree: state.tree, mapTileMode: parseMapTileMode(state.mapTileMode),
-  });
+  const payload = JSON.stringify({ enabled: state.enabled, tree: state.tree });
   return `${SUBWINDOW_PREF_DIRECTIVE}:${payload}\n`;
 }
 
@@ -333,12 +341,12 @@ export function parseSubwindowStateJson(json: string): SubwindowState | null {
       ? (record.enabled as Partial<Record<string, unknown>>)
       : {},
   );
-  return { enabled, tree: reconcileSubwindowTree(tree, enabled), mapTileMode: parseMapTileMode(record.mapTileMode) };
+  return { enabled, tree: reconcileSubwindowTree(tree, enabled) };
 }
 
 export function setSubwindowEnabled(state: SubwindowState, id: SubwindowId, enabled: boolean): SubwindowState {
   const nextEnabled = { ...state.enabled, [id]: enabled };
-  return { ...state, enabled: nextEnabled, tree: reconcileSubwindowTree(state.tree, nextEnabled) };
+  return { enabled: nextEnabled, tree: reconcileSubwindowTree(state.tree, nextEnabled) };
 }
 
 /** Paint styled terminal rows, optionally anchored to the bottom of the term. */
@@ -655,8 +663,8 @@ export function paintObjectRecallSubwindow(
   paintSubwindowLines(term, screenBodyLines(objectRecallScreen(title, tb), cols));
 }
 
-/** PW_MAP / PW_OVERHEAD: miniature with optional foreground and terrain tiles. */
-export function paintOverviewSubwindow(term: GridSurface, overview: Overview | null, graphics = false): void {
+/** PW_MAP / PW_OVERHEAD: ASCII miniature painted into the term. */
+export function paintOverviewSubwindow(term: GridSurface, overview: Overview | null): void {
   const { cols, rows } = term.size();
   term.clear();
   if (!overview || overview.mapW < 1 || overview.mapH < 1) {
@@ -673,24 +681,14 @@ export function paintOverviewSubwindow(term: GridSurface, overview: Overview | n
     for (let col = 0; col < maxCol; col++) {
       const glyph = cells[col];
       if (!glyph) continue;
-      term.put(originX + col, originY + row, {
-        ch: glyph.ch, fg: glyph.css,
-        ...(graphics && glyph.tile ? { tile: glyph.tile } : {}),
-        ...(graphics && glyph.bgTile ? { bgTile: glyph.bgTile } : {}),
-      });
+      term.put(originX + col, originY + row, { ch: glyph.ch, fg: glyph.css });
     }
   }
   const player = overview.playerGlyph ?? { ch: "@", css: UI_TEXT };
   const px = originX + overview.playerCol;
   const py = originY + overview.playerRow;
   if (px >= 0 && py >= 0 && px < cols && py < rows) {
-    const under = overview.cells[overview.playerRow]?.[overview.playerCol];
-    const bgTile = under?.bgTile ?? under?.tile;
-    term.put(px, py, {
-      ch: player.ch, fg: player.css,
-      ...(graphics && player.tile ? { tile: player.tile } : {}),
-      ...(graphics && player.tile && bgTile ? { bgTile } : {}),
-    });
+    term.put(px, py, { ch: player.ch, fg: player.css });
   }
   term.hideCursor();
 }

@@ -422,19 +422,19 @@ describe("the game does not know or expect any particular mod", () => {
     expect(main).toMatch(/entry\?\.engine === "linoleum"/);
     expect(main).toMatch(/await loadLinoleumPack\(\{/);
     // The pack supplies BOTH halves: the blitter and the entity->tile map.
-    expect(main).toMatch(/request\.publish\(pack, pack\.index\.map\)/);
+    expect(main).toMatch(/tileMap = pack\.index\.map/);
   });
 
   it("passes the map cell to the blit, so a variant pool can resolve", () => {
     const main = read("main.ts");
     expect(main).toMatch(/data: \{ blitter: ts, code, grid: \{ x, y \}, dimScale: dimmed \? DIM_SCALE : 1 \}/);
     // Every call site feeds the grid it is drawing, not a placeholder.
-    expect(main).toMatch(/tileForTrap\(tileMap, t\.kind\.tidx, LIGHTING\.LOS\), t\.grid\.x, t\.grid\.y, false, graphics\)/);
-    expect(main).toMatch(/tileForMonster\(tileMap, mon\.race\.ridx\), mon\.grid\.x, mon\.grid\.y, false, graphics\)/);
+    expect(main).toMatch(/tileForTrap\(tileMap, t\.kind\.tidx, LIGHTING\.LOS\), t\.grid\.x, t\.grid\.y\)/);
+    expect(main).toMatch(/tileForMonster\(tileMap, mon\.race\.ridx\), mon\.grid\.x, mon\.grid\.y\)/);
     /* Every object arm - live pile, remembered pile, sensed marker - goes
      * through the one objectKindCell, which is handed the grid it is drawing. */
-    expect(main).toMatch(/function shownObjectTile\(kind: ObjectKind, graphics = mainTileMode\)/);
-    expect(main).toMatch(/tileDrawFor\(atlas, gx, gy, dimmed, graphics\)/);
+    expect(main).toMatch(/function shownObjectTile\(kind: ObjectKind\)/);
+    expect(main).toMatch(/tileDrawFor\(atlas, gx, gy, dimmed\)/);
     /* The live pile arm draws whatever floorDisplay picked - the top object's
      * kind, or `<pile>` when a second displayable object shares the grid
      * (ui-map.c:216-219) - at the grid floorDisplay handed back. Pinned as the
@@ -463,7 +463,7 @@ describe("the game does not know or expect any particular mod", () => {
     expect(main).toMatch(
       /tileForShownObject\(tileMap, kind, shownFlavor \? shownFlavor\.fidx : null\)/,
     );
-    expect(main).toMatch(/const \{ shownFlavor, atlas \} = shownObjectTile\(kind, graphics\)/);
+    expect(main).toMatch(/const \{ shownFlavor, atlas \} = shownObjectTile\(kind\)/);
     expect(main).not.toMatch(/tileForObject\(tileMap, [a-zA-Z.]*kind\)/);
   });
 
@@ -488,7 +488,7 @@ describe("the game does not know or expect any particular mod", () => {
     expect(main).toMatch(/kinds\.unknownItemKind/);
     /* `true` = remembered. An object has no lighting variant in any pref file,
      * so nothing but the renderer can make a remembered one look remembered. */
-    expect(main).toMatch(/return objectKindCell\(kind, gx, gy, true, graphics\)/);
+    expect(main).toMatch(/return objectKindCell\(kind, gx, gy, true\)/);
     /* And the dimming reaches BOTH halves of the cell from one constant, so the
      * glyph and the tile cannot disagree about how dark "remembered" is. */
     expect(main).toMatch(/const DIM_SCALE = 0\.38;/);

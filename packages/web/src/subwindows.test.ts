@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { COLOUR_RED, colorToCss } from "@rpgm-tools/neo-angband-core";
 import { MessageLog } from "./messages";
 import {
@@ -12,19 +12,20 @@ import {
   playerTopbarLines,
   readSubwindowSettings,
   readSubwindowState,
+  readSubwindowDefault,
   setSubwindowEnabled,
   statusSubwindowLines,
   SUBWINDOW_PREF_DIRECTIVE,
   SUBWINDOW_STORAGE_KEY,
+  SUBWINDOW_DEFAULT_STORAGE_KEY,
   treeForSettings,
   writeSubwindowState,
+  writeSubwindowDefault,
   type SubwindowSettings,
-  type SubwindowState,
 } from "./subwindows";
 import { computeLayout, containsLeaf, leafIds, MAIN_TILE_ID } from "./subwindow-layout";
 import type { GridSurface } from "./term";
 import type { Overview } from "./mapview";
-import { buildOverview } from "./mapview";
 
 function recordingTerm(cols: number, rows: number): GridSurface & {
   text(): string[];
@@ -88,27 +89,6 @@ const allOff: SubwindowSettings = {
 };
 
 describe("subwindow settings", () => {
-  it("keeps the map pack through toggles, reloads, and pref-file save/restore with all panels closed", () => {
-    const storage = memoryStorage();
-    let state: SubwindowState = { ...readSubwindowState(storage), mapTileMode: 3 };
-    state = setSubwindowEnabled(state, "map", true);
-    const closed = setSubwindowEnabled(state, "map", false);
-    writeSubwindowState(storage, closed);
-    expect(readSubwindowState(storage).mapTileMode).toBe(3);
-    const pref = dumpSubwindowLayoutPrefText(closed);
-    const restored = parseSubwindowStateJson(pref.slice(SUBWINDOW_PREF_DIRECTIVE.length + 1));
-    expect(restored?.mapTileMode).toBe(3);
-    expect(restored?.enabled.map).toBe(false);
-  });
-
-  it.each([undefined, null, "3", -1, 1.5, {}, 1e30])("defaults malformed or missing map modes to ASCII: %j", (value) => {
-    const storage = memoryStorage();
-    const data = { v: 2, enabled: { ...allOff, map: true }, tree: treeForSettings(allOff), mapTileMode: value };
-    storage.setItem(SUBWINDOW_STORAGE_KEY, JSON.stringify(data));
-    expect(readSubwindowState(storage).mapTileMode).toBe(0);
-    expect(parseSubwindowStateJson(JSON.stringify(data))?.mapTileMode).toBe(0);
-  });
-
   it("defaults to the unchanged single-window layout and survives storage", () => {
     const storage = memoryStorage();
     expect(readSubwindowSettings(storage)).toEqual(allOff);
@@ -151,6 +131,66 @@ describe("subwindow settings", () => {
     expect(state.enabled.messages).toBe(false);
     expect(containsLeaf(state.tree, "messages")).toBe(false);
     expect(leafIds(state.tree)).toEqual([MAIN_TILE_ID]);
+  });
+});
+
+describe("personal subwindow default (#236)", () => {
+  it("snapshots the current tree independently of subsequent live layout changes", () => {
+    const storage = memoryStorage();
+    const live = setSubwindowEnabled(readSubwindowState(storage), "messages", true);
+    if (live.tree.kind !== "split") throw new Error("Expected a split layout");
+    live.tree.ratio = 0.43;
+    writeSubwindowState(storage, live);
+    const originalLive = storage.getItem(SUBWINDOW_STORAGE_KEY);
+    const expected = structuredClone(live);
+    expect(writeSubwindowDefault(storage, live)).toBe(true);
+    expect(storage.getItem(SUBWINDOW_STORAGE_KEY)).toBe(originalLive);
+    live.tree.ratio = 0.61;
+    const disturbed = setSubwindowEnabled(live, "inventory", true);
+    writeSubwindowState(storage, disturbed);
+    const saved = readSubwindowDefault(storage);
+    expect(saved).toEqual(expected);
+    expect(saved).not.toBe(live);
+    writeSubwindowState(storage, saved!);
+    expect(readSubwindowState(storage)).toEqual(expected);
+    if (saved!.tree.kind === "split") saved!.tree.ratio = 0.7;
+    expect(readSubwindowDefault(storage)).toEqual(expected);
+    expect(writeSubwindowDefault(storage, disturbed)).toBe(true);
+    expect(readSubwindowDefault(storage)).toEqual(disturbed);
+  });
+
+  it("preserves and restores a default with every panel disabled", () => {
+    const storage = memoryStorage();
+    const empty = readSubwindowState(storage);
+    expect(writeSubwindowDefault(storage, empty)).toBe(true);
+    writeSubwindowState(storage, setSubwindowEnabled(empty, "messages", true));
+    const saved = readSubwindowDefault(storage);
+    expect(saved).toEqual(empty);
+    writeSubwindowState(storage, saved!);
+    expect(storage.getItem(SUBWINDOW_STORAGE_KEY)).toBeNull();
+    expect(readSubwindowDefault(storage)).toEqual(empty);
+  });
+
+  it.each([null, "{not json", "null", "{}", '{"tree":{"kind":"leaf","id":"messages"}}'])(
+    "leaves live storage untouched when the saved default is absent or malformed (%s)",
+    (raw) => {
+      const storage = memoryStorage();
+      const live = setSubwindowEnabled(readSubwindowState(storage), "inventory", true);
+      writeSubwindowState(storage, live);
+      if (raw !== null) storage.setItem(SUBWINDOW_DEFAULT_STORAGE_KEY, raw);
+      const before = new Map(storage.values);
+      expect(readSubwindowDefault(storage)).toBeNull();
+      expect(storage.values).toEqual(before);
+    },
+  );
+
+  it("reports unavailable storage without throwing", () => {
+    const storage = {
+      getItem: () => { throw new Error("Storage unavailable"); },
+      setItem: () => { throw new Error("Quota exceeded"); },
+    };
+    expect(readSubwindowDefault(storage)).toBeNull();
+    expect(writeSubwindowDefault(storage, readSubwindowState(memoryStorage()))).toBe(false);
   });
 });
 
@@ -223,31 +263,6 @@ describe("canonical default tree (#236)", () => {
 });
 
 describe("subwindow terminal painting", () => {
-  it("preserves cave coordinates, foreground tiles and terrain beneath a map panel's player", () => {
-    const terrain = { kind: "canvas-tile", key: "floor", data: {} };
-    const monster = { kind: "canvas-tile", key: "monster", data: {}, tall: true };
-    const player = { kind: "canvas-tile", key: "player", data: {} };
-    const featureGlyph = vi.fn(() => ({ ch: ".", css: "#444", priority: 1, tile: terrain }));
-    const overview = buildOverview({
-      width: 4, height: 2, mapW: 2, mapH: 1,
-      knownFeatAt: () => 1,
-      featureGlyph,
-      monsterGlyphAt: (x, y) => x === 2 && y === 0 ? { ch: "M", css: "#fff", tile: monster } : null,
-      playerGrid: { x: 0, y: 0 },
-      playerGlyph: { ch: "@", css: "#fff", tile: player },
-    }, true);
-    expect(featureGlyph).toHaveBeenCalledWith(1, 2, 0);
-    const term = recordingTerm(2, 1);
-    const put = vi.spyOn(term, "put");
-    paintOverviewSubwindow(term, overview, true);
-    expect(put).toHaveBeenCalledWith(1, 0, { ch: "M", fg: "#fff", tile: monster, bgTile: terrain });
-    expect(put).toHaveBeenLastCalledWith(0, 0, { ch: "@", fg: "#fff", tile: player, bgTile: terrain });
-    put.mockClear();
-    paintOverviewSubwindow(term, overview);
-    expect(put).toHaveBeenCalledWith(1, 0, { ch: "M", fg: "#fff" });
-    expect(put).toHaveBeenLastCalledWith(0, 0, { ch: "@", fg: "#fff" });
-  });
-
   it("bottom-aligns the newest message rows", () => {
     const term = recordingTerm(20, 4);
     paintSubwindowLines(term, [{ text: "older" }, { text: "newest" }], true);
