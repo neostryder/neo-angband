@@ -125,56 +125,74 @@ const DEFAULT_DOCK: Readonly<Record<SubwindowId, { edge: DockEdge; ratio: number
   status: { edge: "bottom", ratio: 0.12 },
 };
 
-/** Upstream Term-1..Term-7 assignment, as a tiling tree around the main view. */
+/**
+ * The default tiling arrangement for a newly-enabled panel with no saved tree
+ * of its own (#236): a full multi-panel layout rather than upstream's flat
+ * Term-1..7 right-hand column, built around a main view sharing its row with
+ * the dungeon map. A panel this tree does not place falls back to DEFAULT_DOCK
+ * the same way it already did, so leaving one out here is never a gap.
+ */
 export function canonicalSubwindowTree(): LayoutNode {
   return {
     kind: "split",
     axis: "v",
-    ratio: 0.68,
+    ratio: 0.92,
     first: {
       kind: "split",
-      axis: "h",
-      ratio: 0.78,
-      first: { kind: "leaf", id: MAIN_TILE_ID },
-      second: { kind: "leaf", id: "messages" },
-    },
-    second: {
-      kind: "split",
-      axis: "h",
-      ratio: 0.22,
-      first: { kind: "leaf", id: "inventory" },
-      second: {
+      axis: "v",
+      ratio: 0.11814488056710794,
+      first: {
         kind: "split",
         axis: "h",
-        ratio: 0.25,
-        first: { kind: "leaf", id: "monsters" },
+        ratio: 0.6325118418796261,
+        first: { kind: "leaf", id: "player-basic" },
         second: {
           kind: "split",
           axis: "h",
-          ratio: 0.33,
-          first: { kind: "leaf", id: "items" },
-          second: {
+          ratio: 0.35968923702293415,
+          first: { kind: "leaf", id: "equipment" },
+          second: { kind: "leaf", id: "inventory" },
+        },
+      },
+      second: {
+        kind: "split",
+        axis: "v",
+        ratio: 0.814788482047636,
+        first: {
+          kind: "split",
+          axis: "h",
+          ratio: 0.6325118418796261,
+          first: { kind: "leaf", id: MAIN_TILE_ID },
+          second: { kind: "leaf", id: "map" },
+        },
+        second: {
+          kind: "split",
+          axis: "h",
+          ratio: 0.8427305041435362,
+          first: {
             kind: "split",
             axis: "h",
-            ratio: 0.5,
+            ratio: 0.7955276675939713,
             first: {
               kind: "split",
-              axis: "v",
-              ratio: 0.5,
-              first: { kind: "leaf", id: "monster-recall" },
-              second: { kind: "leaf", id: "object-recall" },
-            },
-            second: {
-              kind: "split",
               axis: "h",
-              ratio: 0.5,
-              first: { kind: "leaf", id: "overhead" },
-              second: { kind: "leaf", id: "player-compact" },
+              ratio: 0.7,
+              first: {
+                kind: "split",
+                axis: "h",
+                ratio: 0.48665462266530424,
+                first: { kind: "leaf", id: "monsters" },
+                second: { kind: "leaf", id: "items" },
+              },
+              second: { kind: "leaf", id: "messages" },
             },
+            second: { kind: "leaf", id: "monster-recall" },
           },
+          second: { kind: "leaf", id: "object-recall" },
         },
       },
     },
+    second: { kind: "leaf", id: "player-extra" },
   };
 }
 

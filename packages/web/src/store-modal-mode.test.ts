@@ -40,6 +40,24 @@ describe("enterStoreModal reports a distinct display mode while a shop is open (
   });
 
   it("displayControl.snapshot() reports mode \"store\" only while that flag is set", () => {
-    expect(src).toContain('mode: storeModalActive ? ("store" as const) : ("play" as const),');
+    expect(src).toContain(
+      'mode: storeModalActive\n        ? ("store" as const)\n        : modalDepth > 0\n          ? ("modal" as const)\n          : ("play" as const),',
+    );
+  });
+});
+
+describe('displayControl.snapshot() reports mode "modal" over any other full-screen takeover (#250)', () => {
+  it("falls back to modalDepth once storeModalActive is ruled out, ahead of the ordinary \"play\" default", () => {
+    const at = src.indexOf('mode: storeModalActive');
+    expect(at, "main.ts no longer computes mode from storeModalActive").toBeGreaterThan(-1);
+    const clause = src.slice(at, at + 200);
+    const storeAt = clause.indexOf('"store" as const');
+    const modalAt = clause.indexOf("modalDepth > 0");
+    const modalValueAt = clause.indexOf('"modal" as const');
+    const playAt = clause.indexOf('"play" as const');
+    expect(storeAt).toBeGreaterThan(-1);
+    expect(modalAt).toBeGreaterThan(storeAt);
+    expect(modalValueAt).toBeGreaterThan(modalAt);
+    expect(playAt).toBeGreaterThan(modalValueAt);
   });
 });

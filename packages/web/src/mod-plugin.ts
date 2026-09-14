@@ -216,8 +216,14 @@ export interface ModDisplaySnapshot {
    * needs to tell the two apart so an overlay meant for ordinary play (a
    * responsive status sidebar, for one) can hide itself over a shop's own
    * item listing instead of painting across it.
+   *
+   * "modal" covers every OTHER full-screen takeover core's own modalDepth
+   * already tracks - the Options Menu, an item-selection screen, the target
+   * loop, and anything else that hides tiled subwindow panels (#248). A
+   * display-oriented overlay should hide here too, for the same reason it
+   * hides over "store": nothing of the ordinary play view is left to overlay.
    */
-  readonly mode: "play" | "map" | "store";
+  readonly mode: "play" | "map" | "store" | "modal";
   readonly grid: {
     readonly cols: number;
     readonly rows: number;

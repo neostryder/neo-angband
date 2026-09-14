@@ -54,11 +54,13 @@ still calls itself.
 - [Visible] [UI] **"Save subwindow setup to pref file" now dumps the full tiled panel arrangement, not just its header, and "Load a user pref file" restores it.** A subwindow layout can now be carried between installs (hosted and local, or one machine to another) the same way any other pref file is (#238).
 - [Visible] [Modding-API] **A mod can now read and resize any subwindow panel's own whole-cell geometry, and add a control to its title bar.** `ctx.subwindows` mirrors `ctx.display`'s geometry seam, but scoped to one tiled panel instead of the main view, for a mod implementing its own per-panel zoom gesture (#241).
 - [Visible] [UI] **Dragging a subwindow panel now outlines every place it could be dropped on every other panel at once**, instead of only revealing one target's drop zone as the cursor happens to pass over it, and a panel's title bar carries a small drag-handle cue with a tooltip explaining that right-click-drag rearranges it (#249).
+- [Visible] [Modding-API] **The display seam a mod reads now reports a distinct mode while any full-screen modal is open**, not only a shop screen, matching every place core itself already hides tiled subwindow panels for the same reason (#250).
 
 ### Changed
 
 - [Visible] [UI] **The Display player (basic) subwindow reads in a clearer order.** Identity, then age/height/weight/turns, then level/experience/gold/burden/depth, then the stat table, then combat stats, then saving throw and skills, then flavor text last (#243).
 - [Visible] [UI] **The Display player (extra) subwindow's Sustains block now leads, ahead of the resistance/ability/hindrance/modifier regions, and carries its own stat row labels.** Shown on its own in this subwindow, without the stat table beside it, the block previously gave no indication of which row was which stat (#244).
+- [Visible] [UI] **A newly-enabled subwindow panel without a saved arrangement of its own now joins a full multi-panel default layout**, built around a main view sharing its row with the dungeon map, instead of upstream's flat Term-1..7 right-hand column (#236).
 
 ### Fixed
 

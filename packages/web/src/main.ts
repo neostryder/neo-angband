@@ -8418,7 +8418,10 @@ let levelMapRepaint: (() => void) | null = null;
 let fullMapOverview = false;
 /** True for exactly the lifetime of enterStoreModal's runStore() call, so
  * displayControl.snapshot() can report mode "store" for a display-oriented
- * mod (#234), the same way levelMapActive reports mode "map". */
+ * mod (#234), the same way levelMapActive reports mode "map". Checked before
+ * modalDepth in the snapshot below, so a store visit (itself run inside
+ * openModal, and so modalDepth > 0 too) still reports the more specific
+ * "store" rather than the generic "modal" (#250). */
 let storeModalActive = false;
 let storeItemNameEllipsis = false;
 let storeSelectionDescription = false;
@@ -8879,7 +8882,11 @@ const displayControl: ModDisplay = {
     const vp = viewport();
     return {
       surface,
-      mode: storeModalActive ? ("store" as const) : ("play" as const),
+      mode: storeModalActive
+        ? ("store" as const)
+        : modalDepth > 0
+          ? ("modal" as const)
+          : ("play" as const),
       grid: { cols, rows, cellWidth: metrics.cellWidth, cellHeight: metrics.cellHeight },
       viewport: {
         origin: { x: vp.camX, y: vp.camY },
