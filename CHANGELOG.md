@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 
+- [Visible] [UI] **The dungeon map subwindow has its own graphics dropdown.** ASCII and all installed, enabled graphics packs are selectable independently of the main view, with the choice retained across reloads and subwindow pref-file save/restore (#239).
 - [Visible] [UI] **Each subwindow panel now has its own close control in its title bar.** A panel can be closed directly from its own chrome, the same as unchecking it in the Interface Options subwindow checklist (#246).
 - [Visible] [UI] **"Save subwindow setup to pref file" now dumps the full tiled panel arrangement, not just its header, and "Load a user pref file" restores it.** A subwindow layout can now be carried between installs (hosted and local, or one machine to another) the same way any other pref file is (#238).
 - [Visible] [Modding-API] **A mod can now read and resize any subwindow panel's own whole-cell geometry, and add a control to its title bar.** `ctx.subwindows` mirrors `ctx.display`'s geometry seam, but scoped to one tiled panel instead of the main view, for a mod implementing its own per-panel zoom gesture (#241).

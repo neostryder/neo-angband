@@ -223,7 +223,7 @@ describe("modPluginContext session facts", () => {
 describe("main.ts actually passes the session facts (drift guard)", () => {
   it("uses the full-detail map path when a display mod requests it", () => {
     expect(MAIN_TS_SOURCE).toMatch(
-      /return tileset \|\| fullMapOverview \? buildGraphicsOverview\(overviewParams\) : buildOverview\(overviewParams\);/u,
+      /return mainTileMode\.tileset \|\| fullMapOverview \? buildGraphicsOverview\(overviewParams\) : buildOverview\(overviewParams\);/u,
     );
   });
 

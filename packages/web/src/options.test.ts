@@ -241,6 +241,42 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     await done;
   });
 
+  it("selects map graphics from Subwindow setup while the panel is disabled", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    let mode = 0;
+    const set = vi.fn();
+    const mapTiles = {
+      modes: [{ grafID: 0, menuname: "None (ASCII)" }, { grafID: 3, menuname: "Gervais" }],
+      current: () => mode,
+      apply: async (id: number) => { mode = id; },
+    };
+    const done = runOptionsMenu(term, makeState(), async () => {}, undefined, undefined, undefined, {
+      choices: [{ id: "map", label: "Display dungeon map" }],
+      enabled: () => false,
+      set,
+      mapTiles,
+    });
+    press(win, "w");
+    await tick();
+    expect(term.snapshot().join("\n")).toContain("Dungeon map graphics: None (ASCII)");
+    press(win, "ArrowDown");
+    press(win, "Enter");
+    await tick();
+    expect(term.snapshot().join("\n")).toContain("Dungeon map graphics");
+    press(win, "ArrowDown");
+    press(win, "Enter");
+    await tick();
+    expect(mode).toBe(3);
+    expect(set).not.toHaveBeenCalled();
+    expect(term.snapshot().join("\n")).toContain("Dungeon map graphics: Gervais");
+    press(win, "Escape");
+    await tick();
+    press(win, "Escape");
+    await done;
+  });
+
   it("(a) lists every INTERFACE option (table order) and excludes birth/cheat", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;

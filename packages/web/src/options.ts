@@ -777,6 +777,7 @@ export interface SubwindowMenu {
   choices: readonly { id: string; label: string }[];
   enabled: (id: string) => boolean;
   set: (id: string, enabled: boolean) => void;
+  mapTiles?: TileModeMenu;
 }
 
 /**
@@ -793,6 +794,13 @@ async function runSubwindowPage(
     const items: MenuItem[] = subwindows.choices.map((choice) => ({
       label: `${subwindows.enabled(choice.id) ? "X" : "."} ${choice.label}`,
     }));
+    if (subwindows.mapTiles) {
+      const tiles = subwindows.mapTiles;
+      const current = tiles.modes.find((mode) => mode.grafID === tiles.current());
+      items.push({ label: t("options.subwindows.mapTiles", "Dungeon map graphics: {mode}", {
+        mode: current?.menuname ?? "None (ASCII)",
+      }) });
+    }
     const idx = await selectFromMenu(
       term,
       "core:subwindows",
@@ -807,6 +815,11 @@ async function runSubwindowPage(
       },
     );
     if (idx === null) return;
+    if (idx === subwindows.choices.length && subwindows.mapTiles) {
+      await runTileModePage(term, subwindows.mapTiles,
+        t("options.subwindows.mapTilesTitle", "Dungeon map graphics"));
+      continue;
+    }
     const choice = subwindows.choices[idx];
     if (choice) subwindows.set(choice.id, !subwindows.enabled(choice.id));
   }
@@ -915,6 +928,7 @@ export interface TileModeMenu {
 export async function runTileModePage(
   term: GridSurface & GridPointerInput,
   tiles: TileModeMenu,
+  title = t("options.tileMode.title", "Graphics (tiles) mode"),
 ): Promise<void> {
   const cur = tiles.current();
   const items: MenuItem[] = tiles.modes.map((m) => ({
@@ -934,7 +948,7 @@ export async function runTileModePage(
   const idx = await selectFromMenu(
     term,
     "core:graphics-mode",
-    t("options.tileMode.title", "Graphics (tiles) mode"),
+    title,
     items,
     t("options.tileMode.footer", "[ choose a tile set, ESC to keep current ]"),
   );
