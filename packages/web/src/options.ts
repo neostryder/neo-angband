@@ -18,9 +18,10 @@
  *       SCOPE 2026-07-16 (the earlier "decision 16 omission" was rescinded).
  *       Toggling a cheat option on couples its score_* twin on in OptionState,
  *       invalidating the character's score exactly as upstream option_set does.
- *   (w) Subwindow setup - do_cmd_options_win, limited to the four independent
- *       terms the web shell currently provides: messages, inventory, monster
- *       list, and item list.
+ *   (w) Subwindow setup - do_cmd_options_win, covering every upstream PW_*
+ *       content type this shell offers (see SUBWINDOW_CHOICES in
+ *       subwindows.ts), each tiled independently rather than confined to a
+ *       fixed right-hand column.
  *   (i) Item ignoring setup - do_cmd_options_item, already built as
  *       openIgnoreSetup() (main.ts); this screen only calls it, so '='
  *       reclaims ownership of the top-level menu while sibling gap #51's
