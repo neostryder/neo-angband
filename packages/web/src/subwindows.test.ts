@@ -165,7 +165,11 @@ describe("personal subwindow default (#236)", () => {
     live.tree.ratio = 0.43;
     writeSubwindowState(storage, live);
     const originalLive = storage.getItem(SUBWINDOW_STORAGE_KEY);
-    const expected = structuredClone(live);
+    // A round trip through the v2 JSON shape always normalises mapTileMode to
+    // a concrete number (see readSubwindowState), so the values compared
+    // against a saved-then-reloaded default carry it even though the
+    // in-memory `live` object, never itself serialised, does not.
+    const expected = { ...structuredClone(live), mapTileMode: 0 };
     expect(writeSubwindowDefault(storage, live)).toBe(true);
     expect(storage.getItem(SUBWINDOW_STORAGE_KEY)).toBe(originalLive);
     live.tree.ratio = 0.61;
@@ -179,7 +183,7 @@ describe("personal subwindow default (#236)", () => {
     if (saved!.tree.kind === "split") saved!.tree.ratio = 0.7;
     expect(readSubwindowDefault(storage)).toEqual(expected);
     expect(writeSubwindowDefault(storage, disturbed)).toBe(true);
-    expect(readSubwindowDefault(storage)).toEqual(disturbed);
+    expect(readSubwindowDefault(storage)).toEqual({ ...disturbed, mapTileMode: 0 });
   });
 
   it("preserves and restores a default with every panel disabled", () => {
@@ -188,10 +192,10 @@ describe("personal subwindow default (#236)", () => {
     expect(writeSubwindowDefault(storage, empty)).toBe(true);
     writeSubwindowState(storage, setSubwindowEnabled(empty, "messages", true));
     const saved = readSubwindowDefault(storage);
-    expect(saved).toEqual(empty);
+    expect(saved).toEqual({ ...empty, mapTileMode: 0 });
     writeSubwindowState(storage, saved!);
     expect(storage.getItem(SUBWINDOW_STORAGE_KEY)).toBeNull();
-    expect(readSubwindowDefault(storage)).toEqual(empty);
+    expect(readSubwindowDefault(storage)).toEqual({ ...empty, mapTileMode: 0 });
   });
 
   it.each([null, "{not json", "null", "{}", '{"tree":{"kind":"leaf","id":"messages"}}'])(

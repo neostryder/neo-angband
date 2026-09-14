@@ -302,6 +302,11 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     };
     let live = setSubwindowEnabled(readSubwindowState(storage), "inventory", true);
     const baseline = structuredClone(live);
+    // A round trip through storage always normalises mapTileMode to a
+    // concrete number (see readSubwindowState), so a value that has been
+    // saved and reloaded carries it even though the in-memory `baseline`,
+    // never itself serialised, does not.
+    const roundTripped = { ...baseline, mapTileMode: 0 };
     const done = runOptionsMenu(term, makeState(), async () => {}, undefined, undefined, undefined, {
       choices: SUBWINDOW_CHOICES,
       enabled: (id) => live.enabled[id as SubwindowId],
@@ -331,7 +336,7 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     press(win, "S");
     await tick();
     expect(term.snapshot().join("\n")).toContain("Successfully saved.");
-    expect(readSubwindowDefault(storage)).toEqual(baseline);
+    expect(readSubwindowDefault(storage)).toEqual(roundTripped);
     press(win, " ");
     await tick();
     press(win, "a");
@@ -339,8 +344,8 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     expect(live.enabled.inventory).toBe(false);
     press(win, "R");
     await tick();
-    expect(live).toEqual(baseline);
-    expect(readSubwindowState(storage)).toEqual(baseline);
+    expect(live).toEqual(roundTripped);
+    expect(readSubwindowState(storage)).toEqual(roundTripped);
     expect(term.snapshot().join("\n")).toContain("X Display inven/equip");
     press(win, "Escape");
     await tick();
