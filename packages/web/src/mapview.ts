@@ -68,7 +68,7 @@ export interface BuildOverviewParams {
   knownFeatAt: (x: number, y: number) => number;
   /**
    * The mimic-resolved display glyph + Feature.priority for a known feat index.
-   * `x`/`y` are supplied by the full-grid graphics path so a tile pack with
+   * `x`/`y` are supplied by graphics paths so a tile pack with
    * position-dependent variants can choose the same picture as the live map.
    * The compressed ASCII path deliberately leaves them omitted: it retains its
    * established, display_map-style priority reduction unchanged.
@@ -174,7 +174,7 @@ function resolveOverviewGrid(
   x: number,
   y: number,
   fidx: number,
-  /** Keep buildOverview's established no-coordinate feature call intact. */
+  /** Graphics paths resolve tile variants using the original cave coordinates. */
   fullGrid: boolean,
 ): ResolvedOverviewGrid {
   const { priority: terrainPrio, ...terrain } = fullGrid
@@ -236,7 +236,7 @@ function resolveOverviewGrid(
  * provably equivalent to upstream's FEAT_NONE, priority 2, since every real
  * terrain feature's priority is >= 5.
  */
-export function buildOverview(p: BuildOverviewParams): Overview {
+export function buildOverview(p: BuildOverviewParams, graphics = false): Overview {
   const { mapW, mapH } = p;
   const view = overviewBounds(p);
   if (mapW < 1 || mapH < 1 || view.width < 1 || view.height < 1) {
@@ -261,7 +261,7 @@ export function buildOverview(p: BuildOverviewParams): Overview {
       const fidx = p.knownFeatAt(x, y);
       if (fidx < 0) continue;
       const col = Math.floor(((x - view.x) * mapW) / view.width);
-      const { glyph, priority: prio } = resolveOverviewGrid(p, x, y, fidx, false);
+      const { glyph, priority: prio } = resolveOverviewGrid(p, x, y, fidx, graphics);
       const rowArr = priority[row]!;
       if (prio > rowArr[col]!) {
         rowArr[col] = prio;

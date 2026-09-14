@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 
+- [Visible] [UI] **The dungeon map subwindow has its own graphics dropdown.** ASCII and all installed, enabled graphics packs are selectable independently of the main view, with the choice retained across reloads and subwindow pref-file save/restore (#239).
 - [Visible] [UI] **Subwindow setup can save and restore a personal default layout.** Save as my default snapshots the current panel selection and tiling arrangement separately from the live layout; Restore my default reapplies it, or reports that no saved default is available (#236).
 - [Visible] [UI] **Each subwindow panel now has its own close control in its title bar.** A panel can be closed directly from its own chrome, the same as unchecking it in the Interface Options subwindow checklist (#246).
 - [Visible] [UI] **"Save subwindow setup to pref file" now dumps the full tiled panel arrangement, not just its header, and "Load a user pref file" restores it.** A subwindow layout can now be carried between installs (hosted and local, or one machine to another) the same way any other pref file is (#238).

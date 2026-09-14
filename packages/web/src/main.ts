@@ -1,3 +1,4 @@
+import { TileModeState } from "./tile-mode-state";
 import { controlProfile } from "./control-profile";
 import { controlSurface, cancelAction, keyAction, directionActions, stopControlInput } from "./control-surface";
 import { installTouchControls } from "./touch-controls";
@@ -450,7 +451,6 @@ import {
   setTileScalingMode,
   tileCode,
   type ModPrefText,
-  type TileBlitter,
   type TileModeEntry,
 } from "./tiles";
 import { LinoleumPack, loadLinoleumPack } from "./linoleum-pack";
@@ -1863,9 +1863,11 @@ const availableTileModes: readonly TileModeEntry[] = composeTileModes({
   mods: discoverEnabledTileModes(),
 });
 
-let tileset: TileBlitter | null = null;
-let tileMap: TileMap | null = null;
-let currentGrafID = GRAPHICS_NONE;
+const mainTileMode = new TileModeState(repaintEverything);
+const mapTileMode = new TileModeState(() => {
+  subwindowTerms.get("map")?.invalidate();
+  renderBackground();
+});
 let linoleumConversionSeq = 0;
 /* Read once while resources install - the file AND everything its `%:` lines
  * include (#278). Every pack-map rebuild replays this in enabled load order; a
@@ -1951,8 +1953,10 @@ function repaintEverything(): void {
   levelMapRepaint?.();
 }
 
-async function applyTileMode(grafID: number, persist = false): Promise<void> {
-  currentGrafID = grafID;
+async function applyTileMode(
+  grafID: number, persist = false, graphics = mainTileMode,
+): Promise<void> {
+  const request = graphics.begin(grafID);
   if (persist) {
     if (grafID && grafID !== GRAPHICS_NONE) {
       localStorage.setItem(TILE_MODE_KEY, String(grafID));
@@ -1966,9 +1970,6 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
       : undefined;
 
   if (entry?.engine === "linoleum") {
-    tileset = null;
-    tileMap = null;
-    repaintEverything();
     const sourceResolver = tileResolverFor(entry);
     const menuname = entry.menuname;
 
@@ -1982,17 +1983,16 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
           applyDeclaredRestoredItemArt(map, linoleumSourceDirectory(grafID)),
       });
       // Ignore a stale load if the mode changed during the fetch.
-      if (currentGrafID !== grafID) return;
+      if (!request.isCurrent()) return;
       if (pack) {
-        pack.onReady = () => repaintEverything();
-        tileset = pack;
-        tileMap = pack.index.map;
+        pack.onReady = request.repaint;
+        request.publish(pack, pack.index.map);
         // Warm the ground around the player before the first frame draws it -
         // a fresh load's cache is completely cold, which is exactly when the
         // flash (#290) is most visible.
-        precacheTilesNear(state.actor.grid.x, state.actor.grid.y, PRECACHE_RADIUS);
+        if (graphics === mainTileMode) precacheTilesNear(state.actor.grid.x, state.actor.grid.y, PRECACHE_RADIUS);
       }
-      repaintEverything();
+      request.repaint();
     };
 
     if (entry.tilesheet === undefined || entry.modId === undefined) {
@@ -2033,26 +2033,18 @@ async function applyTileMode(grafID: number, persist = false): Promise<void> {
   const mode =
     grafID && grafID !== GRAPHICS_NONE ? getGraphicsMode(grafID) : undefined;
   if (!mode || mode.grafID === GRAPHICS_NONE) {
-    tileset = null;
-    tileMap = null;
-    repaintEverything();
     return;
   }
   const resolve = tileResolverFor(entry);
   const ts = createTileRenderer({ resolve, grafID });
-  if (ts) ts.onReady = () => repaintEverything();
-  tileset = ts;
-  tileMap = null;
-  repaintEverything();
+  if (ts) ts.onReady = request.repaint;
+  request.publish(ts, null);
   const map = await loadTilePrefs(resolve, mode, {
     ...tileDeps,
     vars: playerPrefVars(),
   }, modTilePrefTexts, (loaded) => applyDeclaredRestoredItemArt(loaded, mode.directory));
   // Ignore a stale load if the mode changed during the fetch.
-  if (currentGrafID === grafID) {
-    tileMap = map;
-    repaintEverything();
-  }
+  request.publish(ts, map);
 }
 
 /**
@@ -2097,8 +2089,9 @@ function tileDrawFor(
    * new one.
    */
   dimmed = false,
+  graphics = mainTileMode,
 ): RenderAssetRef | undefined {
-  const ts = tileset;
+  const ts = graphics.tileset;
   if (!atlas || !ts || !ts.ready) return undefined;
   if (atlas.asset !== undefined) {
     const image = standaloneTileImage(atlas.asset);
@@ -2161,7 +2154,8 @@ function tileDrawFor(
  * rule among them) the instant an effect begins, with no walk-up warning.
  */
 function precacheTilesNear(cx: number, cy: number, radius: number): void {
-  const ts = tileset;
+  const { tileMap } = mainTileMode;
+  const ts = mainTileMode.tileset;
   if (!ts?.preload || !ts.ready || !tileMap) return;
   const x0 = Math.max(0, cx - radius);
   const x1 = Math.min(state.chunk.width - 1, cx + radius);
@@ -2235,9 +2229,32 @@ const tileModeMenu: TileModeMenu = {
       ...(m.modName === undefined ? {} : { modName: m.modName }),
     })),
   ],
-  current: () => currentGrafID,
+  current: () => mainTileMode.grafID,
   apply: (grafID: number) => applyTileMode(grafID, true),
 };
+
+const mapTileModeMenu: TileModeMenu = {
+  modes: tileModeMenu.modes,
+  current: () => mapTileMode.grafID,
+  apply: (grafID) => applyMapTileMode(grafID),
+};
+
+/** The map panel uses the same installed-pack rows as the main graphics menu. */
+async function applyMapTileMode(grafID: number): Promise<void> {
+  const mode = tileModeMenu.modes.some((entry) => entry.grafID === grafID) ? grafID : GRAPHICS_NONE;
+  subwindowState = { ...subwindowState, mapTileMode: mode };
+  writeSubwindowState(localStorage, subwindowState);
+  subwindowShell.setSelect("map", {
+    label: t("options.subwindows.mapTilesTitle", "Dungeon map graphics"),
+    value: String(mode),
+    choices: mapTileModeMenu.modes.map((entry) => ({
+      value: String(entry.grafID),
+      label: entry.modName ? `${entry.menuname} [${entry.modName}]` : entry.menuname,
+    })),
+    onChange: (value) => { void applyMapTileMode(Number(value)); },
+  });
+  await applyTileMode(mode, false, mapTileMode);
+}
 
 // Sidebar mode (do_cmd_sidebar_mode, ui-options.c): SIDEBAR_MODE is a UI-term
 // display setting (angband_term[0]->sidebar_mode), not a player option, so it
@@ -2597,7 +2614,7 @@ function paintSubwindowContent(
     },
     "object-recall": () =>
       paintObjectRecallSubwindow(panel, recalledObject?.title ?? null, recalledObject?.tb ?? null),
-    map: () => paintOverviewSubwindow(panel, buildSubwindowOverview(panel, "map")),
+    map: () => paintOverviewSubwindow(panel, buildSubwindowOverview(panel, "map"), true),
     overhead: () => paintOverviewSubwindow(panel, buildSubwindowOverview(panel, "overhead")),
   };
   painters[id]();
@@ -2643,12 +2660,15 @@ function applyLoadedSubwindowLayout(json: string): void {
 function restoreSubwindowLayout(next: SubwindowState): void {
   writeSubwindowState(localStorage, next);
   subwindowState = next;
+  void applyMapTileMode(next.mapTileMode ?? GRAPHICS_NONE);
+  writeSubwindowState(localStorage, subwindowState);
   applySubwindowLayout();
   renderSubwindows();
 }
 
 const subwindowMenu: SubwindowMenu = {
   choices: SUBWINDOW_CHOICES,
+  mapTiles: mapTileModeMenu,
   enabled: (id) => subwindowState.enabled[id as SubwindowId],
   set: (id, enabled) => {
     if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
@@ -7874,7 +7894,8 @@ type CellGlyph = ResolvedGlyph;
  * kind tile, because the latter can reveal an identity the glyph intentionally
  * conceals.
  */
-function shownObjectTile(kind: ObjectKind) {
+function shownObjectTile(kind: ObjectKind, graphics = mainTileMode) {
+  const { tileMap } = graphics;
   const flavor = state.flavorGlyph?.(kind);
   const shownFlavor = useFlavorGlyph(kind, flavor, game.flavor?.isAware(kind) ?? false) && flavor
     ? flavor
@@ -7888,13 +7909,14 @@ function shownObjectTile(kind: ObjectKind) {
 }
 
 // Revealed traps draw under objects and monsters (upstream layer order).
-function trapIndex(): Map<number, CellGlyph> {
+function trapIndex(graphics = mainTileMode): Map<number, CellGlyph> {
+  const { tileMap } = graphics;
   const map = new Map<number, CellGlyph>();
   for (const list of state.traps.values()) {
     for (const t of list) {
       if (!t.flags.has(TRF.VISIBLE) || !t.kind.glyph.trim()) continue;
       const tile = tileMap
-        ? tileDrawFor(tileForTrap(tileMap, t.kind.tidx, LIGHTING.LOS), t.grid.x, t.grid.y)
+        ? tileDrawFor(tileForTrap(tileMap, t.kind.tidx, LIGHTING.LOS), t.grid.x, t.grid.y, false, graphics)
         : undefined;
       /* get_trap_graphics (ui-map.c:98): trap_x_attr/char[lighting][tidx]. */
       const g = glyphs.trapGlyph(LIGHTING.LOS, t.kind.tidx);
@@ -7933,15 +7955,16 @@ function objectKindCell(
   gy: number,
   /** The grid is REMEMBERED, not seen: draw it at DIM_SCALE (see tileDrawFor). */
   dimmed = false,
+  graphics = mainTileMode,
 ): CellGlyph {
-  const { shownFlavor, atlas } = shownObjectTile(kind);
+  const { shownFlavor, atlas } = shownObjectTile(kind, graphics);
   /* THE SAME DECISION DECIDES THE TILE. This used to ask for the KIND's tile
    * unconditionally, two lines above the code that carefully worked out that
    * the kind is not what should be drawn - so every flavoured item fell back
    * to a glyph in a tile set (an Ochre Potion painted as `!` beside fully
    * drawn armour), and would have leaked the identified art if the set had
    * happened to carry one. */
-  const tile = tileDrawFor(atlas, gx, gy, dimmed);
+  const tile = tileDrawFor(atlas, gx, gy, dimmed, graphics);
   /* Both arms read the x_attr table: flavor_x_attr/char[fidx] (ui-object.c:100)
    * or kind_x_attr/char[kidx] (:107), never the gamedata record directly. */
   const g = shownFlavor ? glyphs.flavorGlyph(shownFlavor.fidx) : glyphs.kindGlyph(kind.kidx);
@@ -7975,6 +7998,7 @@ function rememberedObjectCell(
   mem: KnownObjectMemory,
   gx: number,
   gy: number,
+  graphics = mainTileMode,
 ): CellGlyph {
   const kinds = booted.registries.objects;
   /* ui-map.c:200-224's priority: the money star, then the item star, then the
@@ -7991,7 +8015,7 @@ function rememberedObjectCell(
   /* dimmed: this grid is remembered, not seen. Without it the item was the one
    * thing on a dim corridor drawn at full brightness - "the cell stays lit
    * instead of going dim when I walk away". */
-  if (kind) return objectKindCell(kind, gx, gy, true);
+  if (kind) return objectKindCell(kind, gx, gy, true, graphics);
   return { ch: "*", attr: COLOUR_L_DARK, css: UI_DIM, layer: { kind: "object" } };
 }
 
@@ -8069,8 +8093,8 @@ function terrainGlyph(
   const css = colorToCss(attr);
   // A terrain tile (per the pack's feat mapping at this lighting) takes over
   // the cell; when the pack does not map this feat, the ASCII glyph shows.
-  const tile = tileMap
-    ? tileDrawFor(tileForFeature(tileMap, disp.fidx, lighting), x, y)
+  const tile = mainTileMode.tileMap
+    ? tileDrawFor(tileForFeature(mainTileMode.tileMap, disp.fidx, lighting), x, y)
     : undefined;
   if (disp.flags.has(TF["WALL"])) {
     if (state.options?.get("hybrid_walls"))
@@ -8169,7 +8193,8 @@ function doAnimation(): void {
  * decile are upstream's own display code and a mod overriding a tile has said
  * nothing about them.
  */
-function playerMapGlyph(): { ch: string; css: string; tile?: RenderAssetRef } {
+function playerMapGlyph(graphics = mainTileMode): { ch: string; css: string; tile?: RenderAssetRef } {
+  const { tileMap } = graphics;
   const slot = glyphs.monsterGlyph(0) ?? { attr: COLOUR_WHITE, char: "@" };
   const p = state.actor.player;
   const g = playerGlyph(slot, {
@@ -8182,7 +8207,7 @@ function playerMapGlyph(): { ch: string; css: string; tile?: RenderAssetRef } {
    * with it. Undefined in ASCII mode, or when a pack resolves no player asset. */
   const atlas = tileMap ? (playerTileOverride() ?? tileForMonster(tileMap, 0)) : null;
   const tile = atlas
-    ? tileDrawFor(atlas, state.actor.grid.x, state.actor.grid.y)
+    ? tileDrawFor(atlas, state.actor.grid.x, state.actor.grid.y, false, graphics)
     : undefined;
   return { ch: g.char, css: colorToCss(g.attr), ...(tile ? { tile } : {}) };
 }
@@ -8241,7 +8266,8 @@ interface MonsterCell {
  * monsters the player can see (or has detected - MFLAG MARK) are drawn;
  * noteSpots maintains the flags after every FOV refresh.
  */
-function monsterIndex(): Map<number, MonsterCell> {
+function monsterIndex(graphics = mainTileMode): Map<number, MonsterCell> {
+  const { tileMap } = graphics;
   const map = new Map<number, MonsterCell>();
   const purpleUniques = state.options?.get("purple_uniques") ?? false;
   for (let i = 1; i < state.monsters.length; i++) {
@@ -8258,7 +8284,7 @@ function monsterIndex(): Map<number, MonsterCell> {
      * (melee, monster turn, messages) already honoured it. */
     if (monsterIsCamouflaged(mon)) continue;
     const tile = tileMap
-      ? tileDrawFor(tileForMonster(tileMap, mon.race.ridx), mon.grid.x, mon.grid.y)
+      ? tileDrawFor(tileForMonster(tileMap, mon.race.ridx), mon.grid.x, mon.grid.y, false, graphics)
       : undefined;
     map.set(gridIndex(mon.grid.x, mon.grid.y), {
       input: {
@@ -8325,7 +8351,8 @@ const hallucinationRandom: HallucinationRandom = {
  * DIRECTLY, with none of composeMonster's clear/unique/animated resolution -
  * upstream's hallucinate arm returns before any of that (ui-map.c L232-235).
  */
-function fakeMonsterCell(gx: number, gy: number): CellGlyph | null {
+function fakeMonsterCell(gx: number, gy: number, graphics = mainTileMode): CellGlyph | null {
+  const { tileMap } = graphics;
   const races = booted.registries.monsters.races;
   const ridx = hallucinatoryMonster(
     { count: races.length, named: (i) => !!races[i]?.name },
@@ -8334,7 +8361,7 @@ function fakeMonsterCell(gx: number, gy: number): CellGlyph | null {
   if (ridx === null) return null;
   const race = races[ridx]!;
   const g = glyphs.monsterGlyph(ridx) ?? { attr: race.dAttr, char: race.dChar };
-  const tile = tileMap ? tileDrawFor(tileForMonster(tileMap, ridx), gx, gy) : undefined;
+  const tile = tileMap ? tileDrawFor(tileForMonster(tileMap, ridx), gx, gy, false, graphics) : undefined;
   return {
     ch: g.char,
     attr: g.attr,
@@ -8350,7 +8377,8 @@ function fakeMonsterCell(gx: number, gy: number): CellGlyph | null {
  * hallucinated potion shows the unflavoured kind colour rather than the one its
  * flavour rolled this game.
  */
-function fakeObjectCell(gx: number, gy: number): CellGlyph | null {
+function fakeObjectCell(gx: number, gy: number, graphics = mainTileMode): CellGlyph | null {
+  const { tileMap } = graphics;
   const kinds = booted.registries.objects.kinds;
   const kidx = hallucinatoryObject(
     {
@@ -8363,7 +8391,7 @@ function fakeObjectCell(gx: number, gy: number): CellGlyph | null {
   if (kidx === null) return null;
   const kind = kinds[kidx]!;
   const g = glyphs.kindGlyph(kidx) ?? { attr: colorCharToAttr(kind.dAttr), char: kind.dChar };
-  const tile = tileMap ? tileDrawFor(tileForShownObject(tileMap, kind, null), gx, gy) : undefined;
+  const tile = tileMap ? tileDrawFor(tileForShownObject(tileMap, kind, null), gx, gy, false, graphics) : undefined;
   return {
     ch: g.char,
     attr: g.attr,
@@ -8385,7 +8413,7 @@ function fakeObjectCell(gx: number, gy: number): CellGlyph | null {
  * player's own square could show a monster in one pass and an '@' in the other
  * - a flicker with no upstream counterpart.
  */
-function hallucinationResolver():
+function hallucinationResolver(graphics = mainTileMode):
   | ((grid: { x: number; y: number }, present: HallucinationPresence) => HallucinatedCell | null)
   | undefined {
   if ((state.actor.player.timed[TMD.IMAGE] ?? 0) <= 0) return undefined;
@@ -8410,8 +8438,8 @@ function hallucinationResolver():
     if (verdict.hallucinate) {
       /* Upstream's object arm runs before its monster arm, so the two draws
        * happen in that order on a grid that substitutes both. */
-      const object = verdict.objectGlyph ? fakeObjectCell(grid.x, grid.y) : null;
-      const monster = verdict.monsterGlyph ? fakeMonsterCell(grid.x, grid.y) : null;
+      const object = verdict.objectGlyph ? fakeObjectCell(grid.x, grid.y, graphics) : null;
+      const monster = verdict.monsterGlyph ? fakeMonsterCell(grid.x, grid.y, graphics) : null;
       cell = { ...(object ? { object } : {}), ...(monster ? { monster } : {}) };
     }
     frame.set(key, cell);
@@ -8447,12 +8475,14 @@ function overviewParamsFor(
   mapW: number,
   mapH: number,
   view?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  graphics = mainTileMode,
 ): BuildOverviewParams {
-  const monsterAt = monsterIndex();
-  const trapAt = trapIndex();
+  const { tileMap } = graphics;
+  const monsterAt = monsterIndex(graphics);
+  const trapAt = trapIndex(graphics);
   /* Its own resolver, not the live map's: display_map is a separate refresh,
    * and upstream rolls afresh in each one. */
-  const hallucinate = hallucinationResolver();
+  const hallucinate = hallucinationResolver(graphics);
   const playerCell = hallucinate?.({ ...state.actor.grid }, {
     object: false, sensed: false, monster: false,
   })?.monster;
@@ -8475,7 +8505,7 @@ function overviewParamsFor(
        * can pick a per-grid variant; the unchanged compressed ASCII path uses
        * its established (0,0) tile identity. */
       const tile = tileMap
-        ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), x, y)
+        ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), x, y, false, graphics)
         : undefined;
       return {
         ch: slot?.char ?? disp.dChar,
@@ -8489,7 +8519,7 @@ function overviewParamsFor(
       if (!mem) return null;
       /* display_map goes through grid_data_as_text too (ui-map.c:446), so the
        * miniature resolves a remembered object the same way the map does. */
-      const cell = rememberedObjectCell(mem, x, y);
+      const cell = rememberedObjectCell(mem, x, y, graphics);
       return { ch: cell.ch, css: cell.css, ...(cell.tile ? { tile: cell.tile } : {}) };
     },
     trapGlyphAt: (x, y) => trapAt.get(gridIndex(x, y)) ?? null,
@@ -8519,7 +8549,7 @@ function overviewParamsFor(
      * map_info at L864, so the phantom-monster arm reaches the miniature too. */
     playerGlyph: playerCell
       ? { ch: playerCell.ch, css: playerCell.css, ...(playerCell.tile ? { tile: playerCell.tile } : {}) }
-      : playerMapGlyph(),
+      : playerMapGlyph(graphics),
     ...(hallucinate
       ? {
           hallucinateAt: (x, y, present) => {
@@ -8547,7 +8577,7 @@ function buildOverviewForShell(): LevelOverview {
   /* Selecting a graphics renderer is the mode gate, not whether one specific
    * asset has finished loading.  tileDrawFor still falls back to its ASCII
    * glyph while a pack is warming, just as the live map does. */
-  return tileset || fullMapOverview ? buildGraphicsOverview(overviewParams) : buildOverview(overviewParams);
+  return mainTileMode.tileset || fullMapOverview ? buildGraphicsOverview(overviewParams) : buildOverview(overviewParams);
 }
 
 function buildSubwindowOverview(panel: GlyphTerm, kind: "map" | "overhead"): Overview {
@@ -8569,7 +8599,7 @@ function buildSubwindowOverview(panel: GlyphTerm, kind: "map" | "overhead"): Ove
   }
   const mapW = Math.max(1, Math.min(cols, caveW));
   const mapH = Math.max(1, Math.min(rows, caveH));
-  return buildOverview(overviewParamsFor(mapW, mapH));
+  return buildOverview(overviewParamsFor(mapW, mapH, undefined, mapTileMode), true);
 }
 
 /** The faithful map modal, with only a repaint/window access point added. */
@@ -9180,8 +9210,8 @@ function render(targeting?: TargetingOverlay, monstersOverride?: Map<number, Mon
     remembered: ({ x, y }, kf) => {
       const f = features.get(kf);
       const disp = f.mimic !== null ? features.get(f.mimic) : f;
-      const tile = tileMap
-        ? tileDrawFor(tileForFeature(tileMap, disp.fidx, LIGHTING.LIT), x, y)
+      const tile = mainTileMode.tileMap
+        ? tileDrawFor(tileForFeature(mainTileMode.tileMap, disp.fidx, LIGHTING.LIT), x, y)
         : undefined;
       const slot = glyphs.featGlyph(LIGHTING.LIT, disp.fidx);
       const attr = slot?.attr ?? colorCharToAttr(disp.dAttr);
@@ -11348,6 +11378,7 @@ const stopLoading = startLoading(term, { seed: Date.now() >>> 0 });
 // best-effort: fetches the pack image + prefs and repaints when ready, leaving
 // the map ASCII on any failure.
 void applyTileMode(readTileMode());
+void applyMapTileMode(subwindowState.mapTileMode ?? GRAPHICS_NONE);
 
 // --- Birth: choose a character for a new game -------------------------------
 // A brand-new game opens the staged birth screen (ui-birth.c stage order). The
@@ -13487,8 +13518,8 @@ async function maybeShowGraphics(): Promise<void> {
  * one reparse and one repaint.
  */
 async function resetVisualsForCharacter(): Promise<void> {
-  if (!currentGrafID || currentGrafID === GRAPHICS_NONE) return;
-  await applyTileMode(currentGrafID);
+  if (mainTileMode.grafID !== GRAPHICS_NONE) await applyTileMode(mainTileMode.grafID);
+  if (mapTileMode.grafID !== GRAPHICS_NONE) await applyMapTileMode(mapTileMode.grafID);
 }
 
 /**
@@ -14779,22 +14810,22 @@ if (import.meta.env.DEV) {
     // and pref map are loaded, and how many cells the last render blitted as
     // tiles (proves the map render chose tiles, not ASCII).
     tiles: () => ({
-      grafID: currentGrafID,
-      mode: tileset?.menuname ?? null,
+      grafID: mainTileMode.grafID,
+      mode: mainTileMode.tileset?.menuname ?? null,
       // Which engine is drawing, and for a loose pack how much of it has
       // streamed in so far (a tilesheet has one image, hence null).
-      engine: tileset instanceof LinoleumPack ? "linoleum" : tileset ? "tilesheet" : null,
+      engine: mainTileMode.tileset instanceof LinoleumPack ? "linoleum" : mainTileMode.tileset ? "tilesheet" : null,
       assets:
-        tileset instanceof LinoleumPack
+        mainTileMode.tileset instanceof LinoleumPack
           ? {
-              slots: tileset.index.slots.length,
-              requested: tileset.requestedAssets,
-              loaded: tileset.loadedAssets,
-              skipped: tileset.index.skipped,
+              slots: mainTileMode.tileset.index.slots.length,
+              requested: mainTileMode.tileset.requestedAssets,
+              loaded: mainTileMode.tileset.loadedAssets,
+              skipped: mainTileMode.tileset.index.skipped,
             }
           : null,
-      atlasReady: !!tileset && tileset.ready,
-      mapLoaded: !!tileMap,
+      atlasReady: !!mainTileMode.tileset && mainTileMode.tileset.ready,
+      mapLoaded: !!mainTileMode.tileMap,
       tileCells: term.tileCellCount(),
       // The two-pass (tap, tcp) draw: cells whose foreground tile has the
       // terrain tile under it, so an alpha tile shows floor and not UI_BG.
@@ -14803,7 +14834,7 @@ if (import.meta.env.DEV) {
       // race/cls are what fed $RACE/$CLASS into the parse.
       race: state.actor.player.race.name,
       cls: state.actor.player.cls.name,
-      playerTile: tileMap ? tileForMonster(tileMap, 0) : null,
+      playerTile: mainTileMode.tileMap ? tileForMonster(mainTileMode.tileMap, 0) : null,
       // Canvas rect of the player's own cell, for a pixel-exact crop.
       playerRect: lastPlayerCell
         ? term.cellRect(lastPlayerCell.x, lastPlayerCell.y)
