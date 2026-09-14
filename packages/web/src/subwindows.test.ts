@@ -13,6 +13,7 @@ import {
   readSubwindowSettings,
   readSubwindowState,
   readSubwindowDefault,
+  scrollSubwindow,
   setSubwindowEnabled,
   statusSubwindowLines,
   SUBWINDOW_PREF_DIRECTIVE,
@@ -334,7 +335,7 @@ describe("subwindow terminal painting", () => {
     expect(term.colors()[3]![0]).toBe(colorToCss(COLOUR_RED));
   });
 
-  it("repaints unchanged messages after the panel grid changes size", () => {
+  it("re-wraps unchanged messages to each panel's own size", () => {
     const first = recordingTerm(30, 4);
     const resized = recordingTerm(12, 2);
     const log = new MessageLog();
@@ -342,7 +343,11 @@ describe("subwindow terminal painting", () => {
     log.push("a message long enough to clip", "#00ff00");
     painter.paint(first, log);
     painter.paint(resized, log);
-    expect(resized.text()).toEqual(["", "a message lo"]);
+    // Word-wrapped at 12 columns this message is three physical rows ("a
+    // message" / "long enough" / "to clip"); a 2-row bottom-anchored panel
+    // shows only the tail of its own independent wrap, not a truncation of
+    // the wider panel's.
+    expect(resized.text()).toEqual(["long enough", "to clip"]);
   });
 
   it("lays compact player fields in upstream's compact-subwindow order", () => {
@@ -384,6 +389,28 @@ describe("subwindow terminal painting", () => {
     expect(lines[2]!.text).toContain("Fed");
   });
 
+  it("wraps a line across physical rows on word boundaries", () => {
+    const term = recordingTerm(10, 5);
+    paintSubwindowLines(term, [{ text: "one two three four" }]);
+    expect(term.text()).toEqual(["one two", "three four", "", "", ""]);
+  });
+
+  it("hard-splits a single token longer than the panel width", () => {
+    const term = recordingTerm(5, 3);
+    paintSubwindowLines(term, [{ text: "abcdefgh" }]);
+    expect(term.text()).toEqual(["abcde", "fgh", ""]);
+  });
+
+  it("preserves each wrapped row's own colour when a multi-colour line splits on a word boundary", () => {
+    const term = recordingTerm(4, 2);
+    paintSubwindowLines(term, [
+      { text: "red blue", runs: [{ text: "red ", color: "red" }, { text: "blue", color: "blue" }] },
+    ]);
+    expect(term.text()).toEqual(["red", "blue"]);
+    expect(term.colors()[0]![0]).toBe("red");
+    expect(term.colors()[1]![0]).toBe("blue");
+  });
+
   it("paints an overhead miniature onto the term, including the player", () => {
     const term = recordingTerm(8, 6);
     const overview: Overview = {
@@ -401,5 +428,56 @@ describe("subwindow terminal painting", () => {
     const rows = term.text();
     expect(rows.some((row) => row.includes("#"))).toBe(true);
     expect(rows.some((row) => row.includes("@"))).toBe(true);
+  });
+});
+
+describe("tiled panel scroll (#258)", () => {
+  it("scrolls a top-anchored panel toward later content and clamps at the end", () => {
+    const term = recordingTerm(10, 2);
+    const lines = ["row0", "row1", "row2", "row3", "row4"].map((text) => ({ text }));
+    scrollSubwindow(term, 100);
+    paintSubwindowLines(term, lines);
+    expect(term.text()).toEqual(["row3", "row4"]);
+    scrollSubwindow(term, 100);
+    paintSubwindowLines(term, lines);
+    expect(term.text()).toEqual(["row3", "row4"]);
+  });
+
+  it("scrolls a bottom-anchored panel toward earlier content and clamps at the start", () => {
+    const term = recordingTerm(10, 2);
+    const lines = ["row0", "row1", "row2", "row3", "row4"].map((text) => ({ text }));
+    paintSubwindowLines(term, lines, true);
+    expect(term.text()).toEqual(["row3", "row4"]);
+    scrollSubwindow(term, -2);
+    paintSubwindowLines(term, lines, true);
+    expect(term.text()).toEqual(["row1", "row2"]);
+    scrollSubwindow(term, -100);
+    paintSubwindowLines(term, lines, true);
+    expect(term.text()).toEqual(["row0", "row1"]);
+  });
+
+  it("self-corrects a scroll position that overshoots after the content shrinks", () => {
+    const term = recordingTerm(10, 2);
+    const long = ["row0", "row1", "row2", "row3", "row4"].map((text) => ({ text }));
+    scrollSubwindow(term, -100);
+    paintSubwindowLines(term, long, true);
+    expect(term.text()).toEqual(["row0", "row1"]);
+    const short = ["row0", "row1"].map((text) => ({ text }));
+    paintSubwindowLines(term, short, true);
+    expect(term.text()).toEqual(["row0", "row1"]);
+  });
+
+  it("forces MessageSubwindowPainter to repaint on a scroll change alone, with no log change", () => {
+    const term = recordingTerm(30, 2);
+    const log = new MessageLog();
+    const painter = new MessageSubwindowPainter();
+    log.push("a", "#00ff00");
+    log.push("b", "#00ff00");
+    log.push("c", "#00ff00");
+    painter.paint(term, log);
+    expect(term.text()).toEqual(["b", "c"]);
+    scrollSubwindow(term, -1);
+    painter.paint(term, log);
+    expect(term.text()).toEqual(["a", "b"]);
   });
 });

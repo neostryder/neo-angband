@@ -366,7 +366,123 @@ export function setSubwindowEnabled(state: SubwindowState, id: SubwindowId, enab
   return { ...state, enabled: nextEnabled, tree: reconcileSubwindowTree(state.tree, nextEnabled) };
 }
 
-/** Paint styled terminal rows, optionally anchored to the bottom of the term. */
+interface ColoredChar {
+  ch: string;
+  color: string;
+}
+
+function flattenLine(line: ScreenLine): ColoredChar[] {
+  const chars: ColoredChar[] = [];
+  if (line.runs) {
+    for (const run of line.runs) {
+      for (const ch of run.text) chars.push({ ch, color: run.color });
+    }
+  } else {
+    const color = line.color ?? UI_TEXT;
+    for (const ch of line.text) chars.push({ ch, color });
+  }
+  return chars;
+}
+
+function coalesceToLine(chars: readonly ColoredChar[]): ScreenLine {
+  if (chars.length === 0) return { text: "" };
+  const runs: { text: string; color: string }[] = [];
+  let text = "";
+  for (const c of chars) {
+    text += c.ch;
+    const last = runs[runs.length - 1];
+    if (last && last.color === c.color) last.text += c.ch;
+    else runs.push({ text: c.ch, color: c.color });
+  }
+  // A single-colour row keeps the plain-text shape every caller already
+  // builds, rather than always forcing the (equivalent) one-run shape.
+  return runs.length === 1 ? { text, color: runs[0]!.color } : { text, runs };
+}
+
+/**
+ * Word-wrap one logical line to `cols`-wide physical rows (neo-angband#258),
+ * preserving per-character colour across the split. A run of non-space
+ * characters longer than `cols` on its own is hard-split rather than left
+ * overflowing, the way a single very long token has to be somewhere.
+ */
+function wrapScreenLine(line: ScreenLine, cols: number): ScreenLine[] {
+  if (cols <= 0) return [line];
+  const chars = flattenLine(line);
+  if (chars.length <= cols) return [coalesceToLine(chars)];
+
+  const words: ColoredChar[][] = [];
+  let current: ColoredChar[] = [];
+  for (const c of chars) {
+    if (c.ch === " ") {
+      if (current.length > 0) {
+        words.push(current);
+        current = [];
+      }
+    } else {
+      current.push(c);
+    }
+  }
+  if (current.length > 0) words.push(current);
+
+  const rows: ColoredChar[][] = [];
+  let row: ColoredChar[] = [];
+  for (const word of words) {
+    const sepLen = row.length > 0 ? 1 : 0;
+    if (word.length > cols) {
+      if (row.length > 0) {
+        rows.push(row);
+        row = [];
+      }
+      let i = 0;
+      while (i < word.length) {
+        const take = word.slice(i, i + cols);
+        i += take.length;
+        if (i < word.length) rows.push(take);
+        else row = take;
+      }
+      continue;
+    }
+    if (row.length + sepLen + word.length > cols) {
+      rows.push(row);
+      row = [...word];
+    } else {
+      if (sepLen) row.push({ ch: " ", color: word[0]!.color });
+      row.push(...word);
+    }
+  }
+  if (row.length > 0) rows.push(row);
+  return rows.length > 0 ? rows.map(coalesceToLine) : [{ text: "" }];
+}
+
+/**
+ * A tiled panel's scroll position, in wrapped physical rows, as a signed
+ * offset from its natural default anchor (the newest rows for a
+ * bottom-anchored panel, the first rows otherwise) - not an absolute row
+ * index, so a panel whose content has since shrunk or grown still lands
+ * somewhere sane without this needing to track it. Keyed by each panel's own
+ * stable term instance (main.ts's subwindowTerms never recreates one across
+ * repaints) rather than threaded through paintSubwindowLines' dozen-odd
+ * callers, since only the scroll gesture itself needs to reach this (#258).
+ */
+const scrollOffsets = new WeakMap<GridSurface, number>();
+
+/** Scroll a tiled text panel by `deltaRows` physical rows (mouse wheel). The
+ * offset self-clamps against the panel's actual wrapped content on its next
+ * repaint, so this never needs to know the panel's current line count. */
+export function scrollSubwindow(term: GridSurface, deltaRows: number): void {
+  scrollOffsets.set(term, (scrollOffsets.get(term) ?? 0) + deltaRows);
+}
+
+/** The raw, not-yet-clamped scroll delta a caller with its own repaint cache
+ * (MessageSubwindowPainter) needs in its cache key, so scrolling a panel
+ * whose content has not otherwise changed still triggers a repaint. */
+function peekSubwindowScroll(term: GridSurface): number {
+  return scrollOffsets.get(term) ?? 0;
+}
+
+/** Paint styled terminal rows, optionally anchored to the bottom of the term.
+ * Lines wider than the term wrap to further physical rows instead of being
+ * cut off, and the whole wrapped result scrolls per scrollSubwindow (#258). */
 export function paintSubwindowLines(
   term: GridSurface,
   lines: readonly ScreenLine[],
@@ -374,10 +490,19 @@ export function paintSubwindowLines(
 ): void {
   const { cols, rows } = term.size();
   term.clear();
-  const visible = bottom ? lines.slice(-rows) : lines.slice(0, rows);
-  const top = bottom ? rows - visible.length : 0;
+  const wrapped = lines.flatMap((line) => wrapScreenLine(line, cols));
+  const maxTop = Math.max(0, wrapped.length - rows);
+  const defaultTop = bottom ? maxTop : 0;
+  const delta = scrollOffsets.get(term) ?? 0;
+  const top = Math.max(0, Math.min(maxTop, defaultTop + delta));
+  scrollOffsets.set(term, top - defaultTop);
+  const visible = wrapped.slice(top, top + rows);
+  // A bottom-anchored panel with fewer wrapped rows than it has room for
+  // (the common case: a handful of messages in a tall message log) pins
+  // that content to the bottom of the panel rather than its top.
+  const rowOffset = bottom ? Math.max(0, rows - visible.length) : 0;
   visible.forEach((line, index) => {
-    const y = top + index;
+    const y = rowOffset + index;
     if (line.runs) {
       let x = 0;
       for (const run of line.runs) {
@@ -537,28 +662,35 @@ export class MessageSubwindowPainter {
   private paintedLength = -1;
   private paintedCols = -1;
   private paintedRows = -1;
+  private paintedScroll = 0;
 
   paint(term: GridSurface, log: MessageLog): void {
     const all = log.all();
     const newest = all[all.length - 1] ?? null;
     const newestText = newest ? format(newest) : "";
     const { cols, rows } = term.size();
+    const scroll = peekSubwindowScroll(term);
     /* Idle animation frames repaint the game but upstream updates this term
      * only on EVENT_STATE. Do not turn a fresh red message back to its ordinary
-     * colour merely because another canvas requested a frame. */
+     * colour merely because another canvas requested a frame. The scroll
+     * check is what makes wheel-scrolling this panel (#258) actually repaint
+     * it when the log itself has not changed since the last frame. */
     if (
       newest === this.paintedNewest &&
       newestText === this.paintedNewestText &&
       all.length === this.paintedLength &&
       cols === this.paintedCols &&
-      rows === this.paintedRows
+      rows === this.paintedRows &&
+      scroll === this.paintedScroll
     ) {
       return;
     }
+    // The whole log, not just the newest `rows`: paintSubwindowLines wraps
+    // and scrolls now (#258), so scrolling back needs real history to scroll
+    // into rather than only ever the most recent screenful.
     const newestFirst = [...all].reverse();
     let fresh = true;
     const lines = newestFirst
-      .slice(0, rows)
       .map((entry): ScreenLine => {
         if (entry === this.previousNewest) fresh = false;
         const color = fresh ? colorToCss(COLOUR_RED) : entry.color;
@@ -571,6 +703,7 @@ export class MessageSubwindowPainter {
     this.paintedLength = all.length;
     this.paintedCols = cols;
     this.paintedRows = rows;
+    this.paintedScroll = scroll;
     paintSubwindowLines(term, lines, true);
   }
 }

@@ -82,6 +82,12 @@ export interface SubwindowShellOptions {
   onTreeChange: (tree: LayoutNode) => void;
   /** A panel's own close [x] was clicked (neo-angband#246); never fired for the main tile. */
   onClose?: (id: string) => void;
+  /**
+   * A mouse wheel or trackpad swipe over a tiled panel's body (neo-angband#258);
+   * never fired for the main tile, which has its own zoom/pan handling. Positive
+   * `deltaRows` scrolls toward newer/later content, negative toward older/earlier.
+   */
+  onScroll?: (id: string, deltaRows: number) => void;
 }
 
 const DRAG_THRESHOLD = 6;
@@ -104,7 +110,7 @@ function pointerInHost(host: HTMLElement, event: PointerEvent): { x: number; y: 
 }
 
 export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell {
-  const { host, mainSlot, labels, onTreeChange, onClose } = opts;
+  const { host, mainSlot, labels, onTreeChange, onClose, onScroll } = opts;
   host.classList.add("tile-host");
   mainSlot.classList.add("tile-leaf");
   mainSlot.dataset.tile = MAIN_TILE_ID;
@@ -254,10 +260,31 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     if (event.button === 0 && leaf instanceof HTMLElement) leaf.focus();
   };
 
+  /*
+   * neo-angband#258: a wheel/trackpad gesture over a tiled panel scrolls its
+   * text content instead of the page. `deltaMode` 0 (the common pixel case)
+   * yields large deltaY magnitudes, so this divides down to a small number of
+   * rows per event; `deltaMode` 1 (line mode, some mice under Firefox) yields
+   * deltaY values already close to 1-3, where the floor below still rounds up
+   * to at least one row rather than getting lost to integer division.
+   */
+  const onLeafWheel = (event: WheelEvent): void => {
+    if (!onScroll) return;
+    const leaf = event.currentTarget;
+    if (!(leaf instanceof HTMLElement)) return;
+    const id = leaf.dataset.tile;
+    if (!id || id === MAIN_TILE_ID) return;
+    if (event.deltaY === 0) return;
+    event.preventDefault();
+    const rows = Math.sign(event.deltaY) * Math.max(1, Math.round(Math.abs(event.deltaY) / 40));
+    onScroll(id, rows);
+  };
+
   function bindLeafDrag(leaf: HTMLElement): void {
     leaf.addEventListener("pointerdown", onLeafPointerDown, true);
     leaf.addEventListener("contextmenu", onContextMenu);
     leaf.addEventListener("pointerdown", onLeafFocusClick);
+    leaf.addEventListener("wheel", onLeafWheel, { passive: false });
   }
 
   function ensureSlot(id: string): HTMLElement {
@@ -572,6 +599,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
         leaf.removeEventListener("pointerdown", onLeafPointerDown, true);
         leaf.removeEventListener("contextmenu", onContextMenu);
         leaf.removeEventListener("pointerdown", onLeafFocusClick);
+        leaf.removeEventListener("wheel", onLeafWheel);
       }
       clearGutters();
       clearGuides();

@@ -540,6 +540,7 @@ import {
   parseSubwindowStateJson,
   readSubwindowDefault,
   readSubwindowState,
+  scrollSubwindow,
   setSubwindowEnabled,
   SUBWINDOW_CHOICES,
   writeSubwindowState,
@@ -969,6 +970,17 @@ const subwindowShell = mountSubwindowShell({
   onClose: (id) => {
     if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
     setSubwindowEnabledLive(id as SubwindowId, false);
+  },
+  /* neo-angband#258: a wheel/trackpad scroll over a tiled text panel scrolls
+   * its own content instead of resizing anything. Repaints only the one
+   * panel scrolled, not the whole set. */
+  onScroll: (id, deltaRows) => {
+    if (!gameScreenLive || !SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
+    const panelId = id as SubwindowId;
+    const panel = subwindowTerms.get(panelId);
+    if (!panel || !subwindowState.enabled[panelId]) return;
+    scrollSubwindow(panel, deltaRows);
+    paintSubwindowContent(panelId, panel, displayDeps());
   },
 });
 subwindowShell.apply(subwindowState.tree);

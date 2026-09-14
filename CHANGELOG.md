@@ -57,6 +57,7 @@ still calls itself.
 - [Visible] [Modding-API] **A mod can now read and resize any subwindow panel's own whole-cell geometry, and add a control to its title bar.** `ctx.subwindows` mirrors `ctx.display`'s geometry seam, but scoped to one tiled panel instead of the main view, for a mod implementing its own per-panel zoom gesture (#241).
 - [Visible] [UI] **Dragging a subwindow panel now outlines every place it could be dropped on every other panel at once**, instead of only revealing one target's drop zone as the cursor happens to pass over it, and a panel's title bar carries a small drag-handle cue with a tooltip explaining that right-click-drag rearranges it (#249).
 - [Visible] [Modding-API] **The display seam a mod reads now reports a distinct mode while any full-screen modal is open**, not only a shop screen, matching every place core itself already hides tiled subwindow panels for the same reason (#250).
+- [Visible] [UI] **Tiled text panels (message history, monster/item lists, and every other panel painted from plain text lines) now wrap content wider than the panel instead of clipping it, and can be scrolled with the mouse wheel or a trackpad swipe to see everything that overflows** (#258).
 
 ### Changed
 
