@@ -28,6 +28,7 @@ import {
   type ModKeymaps,
   type ModPluginContext,
   type ModSessionOutcome,
+  type ModSubwindows,
   type ModUi,
   type ModWizard,
 } from "./mod-plugin";
@@ -136,6 +137,7 @@ export function modPluginContext(
   const debug = debugFor(id, session);
   const wizard = wizardFor(id, session);
   const display = displayFor(session);
+  const subwindows = subwindowsFor(session);
   const keymaps = keymapsFor(id, state, session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
@@ -161,6 +163,7 @@ export function modPluginContext(
      * mod gets is the id it was loaded under, so no mod can read another's. */
     prefs: session.prefs ?? modPrefs(id),
     ...(display ? { display } : {}),
+    ...(subwindows ? { subwindows } : {}),
     ...(keymaps ? { keymaps } : {}),
     /* Defaults FALSE, which is the safe way round: a mod that seeds something
      * for a new life must not seed it over a character who already lived one,
@@ -228,6 +231,24 @@ function displayFor(session: ModSessionFacts): ModDisplay | undefined {
 /** Install or clear the geometry-only display door (boot path and tests). */
 export function setModDisplayControl(display: ModDisplay | undefined): void {
   displayControl = display;
+}
+
+/** The live subwindow door, latched after the shell has mounted its tiling host. */
+let subwindowsControl: ModSubwindows | undefined;
+
+/**
+ * `ctx.subwindows` is a straight pass-through, unlike `displayFor`'s
+ * `setVisualFilter` wrapping: every method on `ModSubwindows` is already
+ * ungated (see its own header), so there is no per-plugin capability check to
+ * interpose here the way there is for the one gated `display` method.
+ */
+function subwindowsFor(session: ModSessionFacts): ModSubwindows | undefined {
+  return session.subwindows ?? subwindowsControl;
+}
+
+/** Install or clear the subwindow geometry/chrome door (boot path and tests). */
+export function setModSubwindowsControl(subwindows: ModSubwindows | undefined): void {
+  subwindowsControl = subwindows;
 }
 
 /**
@@ -427,6 +448,8 @@ export interface ModSessionFacts {
   readonly prefs?: ModPrefs;
   /** Override the display door (tests and alternate front ends). */
   readonly display?: ModDisplay;
+  /** Override the subwindow door (tests and alternate front ends). */
+  readonly subwindows?: ModSubwindows;
   /**
    * THIS mod's resolved capability grants (ticket #133's `ctx.backupFolder`
    * gate). Absent in most call sites today - see MOD_REACH.md's own note that

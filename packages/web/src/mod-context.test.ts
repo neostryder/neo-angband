@@ -15,8 +15,9 @@ import {
   setModDisplayControl,
   setModInstallDoor,
   setModRegistries,
+  setModSubwindowsControl,
 } from "./mod-context";
-import type { ModDisplay } from "./mod-plugin";
+import type { ModDisplay, ModSubwindows } from "./mod-plugin";
 import type { CoreRegistries } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modPrefs, modPrefsKey } from "./mod-prefs";
@@ -76,6 +77,37 @@ describe("modPluginContext session facts", () => {
       expect(modPluginContext("qol", {}).display?.snapshot()).toEqual({ mode: "play" });
     } finally {
       setModDisplayControl(undefined);
+    }
+  });
+
+  it("publishes the latched subwindows door after boot and omits it before boot, fully ungated (#241)", () => {
+    const setGrid = vi.fn();
+    const addControl = vi.fn(() => () => undefined);
+    const subwindows: ModSubwindows = {
+      list: () => [
+        {
+          id: "messages",
+          label: "Display messages",
+          bounds: { x: 0, y: 0, width: 100, height: 40 },
+          focused: false,
+          grid: { cols: 20, rows: 3, cellWidth: 8, cellHeight: 16 },
+        },
+      ],
+      setGrid,
+      addControl,
+    };
+    setModSubwindowsControl(undefined);
+    expect(modPluginContext("qol", {}).subwindows).toBeUndefined();
+    setModSubwindowsControl(subwindows);
+    try {
+      const ctx = modPluginContext("qol", {});
+      expect(ctx.subwindows?.list()).toHaveLength(1);
+      ctx.subwindows?.setGrid("messages", null);
+      expect(setGrid).toHaveBeenCalledWith("messages", null);
+      ctx.subwindows?.addControl("messages", "zoom-out", { glyph: "-", onActivate: () => undefined });
+      expect(addControl).toHaveBeenCalledTimes(1);
+    } finally {
+      setModSubwindowsControl(undefined);
     }
   });
 

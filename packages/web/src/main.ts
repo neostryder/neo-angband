@@ -339,9 +339,10 @@ import {
   setModInstallDoor,
   setModRegistries,
   setModDebugDoor,
+  setModSubwindowsControl,
   type ModSessionFacts,
 } from "./mod-context";
-import type { ModDisplay, ModPluginContext } from "./mod-plugin";
+import type { ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows } from "./mod-plugin";
 import { setCanvasVisualFilter } from "./visual-filter";
 import { migrateModBags, migrateModBagsAsync } from "./mod-bags";
 import {
@@ -2488,6 +2489,20 @@ state.onMelee = (mon, result): void => {
 let modalDepth = 0;
 
 /**
+ * The only place modalDepth is mutated. A subwindow panel (Display monster
+ * list, Display messages, ...) used to keep drawing over a full-screen modal
+ * because the tiling shell had no idea one was up - reported live while
+ * testing the Options Menu. Keeping the shell's own hide/restore in lockstep
+ * with every increment and decrement, rather than adding it at just one call
+ * site, is what makes it cover every modal this gates (shops and the target
+ * loop mutate modalDepth directly too, not only openModal).
+ */
+function adjustModalDepth(delta: 1 | -1): void {
+  modalDepth += delta;
+  subwindowShell.setModalActive(modalDepth > 0);
+}
+
+/**
  * Whether the MAP is what should be on screen.
  *
  * False from module scope until boot settles on a game, and it is what stops
@@ -2659,13 +2674,13 @@ function renderBackground(): void {
 }
 
 async function openModal<T>(fn: () => Promise<T>): Promise<T> {
-  modalDepth++;
+  adjustModalDepth(1);
   const controls = controlSurface.push({ kind: "key", label: "Game screen", replies: [cancelAction()] });
   try {
     return await fn();
   } finally {
     controls.dispose();
-    modalDepth--;
+    adjustModalDepth(-1);
     controlSurface.refreshCommands();
     /* renderBackground, not render: when modals NEST, the inner one closing must
      * not repaint the map over the outer one's screen. This was live - the
@@ -5232,7 +5247,7 @@ function runTargetLoop(
     // canvas tap-to-move / long-press / context handlers (all gated on
     // modalDepth) stand down and taps cannot leak through to move the player
     // or advance the game while targeting (#62).
-    modalDepth++;
+    adjustModalDepth(1);
     const controls = controlSurface.push({ kind: "target", label: "Target" });
     const targets = targetGetMonsters(state, mode);
     let ui = initTargetLoopUi(state, startX, startY);
@@ -5283,7 +5298,7 @@ function runTargetLoop(
       controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       canvas.removeEventListener("pointerdown", onTap);
-      modalDepth--; // release the input gate raised for this loop
+      adjustModalDepth(-1); // release the input gate raised for this loop
       render();
       resolve(targetIsSet(state));
     };
@@ -8943,6 +8958,61 @@ const displayControl: ModDisplay = {
 };
 
 setModDisplayControl(displayControl);
+
+/** neo-angband#241: the whole-cell geometry ensureSubwindowTerm gives every panel by default. */
+const SUBWINDOW_DEFAULT_GRID = {
+  cellHeight: 16,
+  minCols: 20,
+  minRows: 3,
+  snapViewportToEven: false,
+};
+
+function asSubwindowId(id: string): SubwindowId | undefined {
+  return SUBWINDOW_CHOICES.some((choice) => choice.id === id) ? (id as SubwindowId) : undefined;
+}
+
+/**
+ * neo-angband#241: per-panel geometry and chrome for a mod implementing its
+ * own subwindow zoom gesture, the same way `displayControl` above lets one
+ * implement the main view's. See ModSubwindows's own header for why every
+ * method here is ungated.
+ */
+const subwindowsControl: ModSubwindows = {
+  list(): readonly ModSubwindowInfo[] {
+    const focused = subwindowShell.focusedId();
+    const out: ModSubwindowInfo[] = [];
+    for (const choice of SUBWINDOW_CHOICES) {
+      if (!subwindowState.enabled[choice.id]) continue;
+      const body = subwindowShell.bounds(choice.id);
+      const panelTerm = subwindowTerms.get(choice.id);
+      if (!body || !panelTerm) continue;
+      const rect = body.getBoundingClientRect();
+      const { cols, rows } = panelTerm.size();
+      const metrics = panelTerm.metrics();
+      out.push({
+        id: choice.id,
+        label: choice.label,
+        bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+        focused: focused === choice.id,
+        grid: { cols, rows, cellWidth: metrics.cellWidth, cellHeight: metrics.cellHeight },
+      });
+    }
+    return out;
+  },
+  setGrid(id, request) {
+    const panelId = asSubwindowId(id);
+    const panelTerm = panelId ? subwindowTerms.get(panelId) : undefined;
+    if (!panelTerm) return;
+    panelTerm.setReflow(request ?? SUBWINDOW_DEFAULT_GRID);
+  },
+  addControl(id, key, control) {
+    const panelId = asSubwindowId(id);
+    if (!panelId) return () => undefined;
+    return subwindowShell.addControl(panelId, key, control);
+  },
+};
+
+setModSubwindowsControl(subwindowsControl);
 
 /**
  * verify_panel (ui-output.c L563-670): keep the map offset (panelCam) so the

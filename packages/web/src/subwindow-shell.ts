@@ -19,12 +19,35 @@ import {
   type Rect,
 } from "./subwindow-layout";
 
+/** One mod-owned chrome control (neo-angband#241), rendered between the title label and the close button. */
+export interface SubwindowControlSpec {
+  readonly glyph: string;
+  readonly title?: string;
+  readonly onActivate: () => void;
+}
+
 export interface SubwindowShell {
   apply(tree: LayoutNode): void;
   slot(id: string): HTMLElement | undefined;
   canvas(id: string): HTMLCanvasElement | undefined;
   bounds(id: string): HTMLElement | undefined;
   tree(): LayoutNode;
+  /**
+   * Add (or replace) one chrome control on a panel's title bar, keyed by
+   * `key` - re-adding the same key updates it in place. Returns an unregister
+   * function. A panel not currently tiled still remembers the control and
+   * renders it as soon as the panel reappears.
+   */
+  addControl(id: string, key: string, control: SubwindowControlSpec): () => void;
+  /** The id of the panel that currently holds DOM focus, or null. */
+  focusedId(): string | null;
+  /**
+   * Hide (or restore) every non-main panel and splitter while a full-screen
+   * modal owns the terminal - the Options Menu, a shop, the target loop, and
+   * anything else main.ts's modalDepth already tracks. A panel remembers its
+   * own tiling visibility and returns to exactly that once cleared.
+   */
+  setModalActive(active: boolean): void;
   destroy(): void;
 }
 
@@ -61,12 +84,68 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   host.classList.add("tile-host");
   mainSlot.classList.add("tile-leaf");
   mainSlot.dataset.tile = MAIN_TILE_ID;
+  /*
+   * neo-angband#241: the main view is not focusable (it has no tabIndex, and
+   * gains none here - left-click stays reserved for game input), so a click
+   * on it leaves whatever subwindow leaf was last focused as
+   * document.activeElement instead of moving focus away, which is the
+   * browser's ordinary behaviour for a click on a non-focusable element.
+   * Without this, `focusedId()` would keep reporting a panel long after the
+   * player returned to ordinary play. Blurring on the main view's own
+   * pointerdown clears it without adding a focus stop of its own.
+   */
+  const onMainPointerDown = (): void => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== mainSlot && active.closest(".tile-leaf")) active.blur();
+  };
+  mainSlot.addEventListener("pointerdown", onMainPointerDown);
 
   const slots = new Map<string, HTMLElement>();
   const canvases = new Map<string, HTMLCanvasElement>();
   slots.set(MAIN_TILE_ID, mainSlot);
   const mainCanvas = mainSlot.querySelector("canvas");
   if (mainCanvas instanceof HTMLCanvasElement) canvases.set(MAIN_TILE_ID, mainCanvas);
+
+  /* neo-angband#241: mod-owned chrome controls, keyed per panel then per
+   * caller-supplied key so a mod can register more than one (e.g. "-" and
+   * "+") without colliding with another mod's. Kept even for a panel not
+   * currently tiled, so re-enabling it restores its controls. */
+  const panelControls = new Map<string, Map<string, SubwindowControlSpec>>();
+  const controlsContainers = new Map<string, HTMLElement>();
+  let focusedId: string | null = null;
+
+  function controlsFor(id: string): Map<string, SubwindowControlSpec> {
+    let byKey = panelControls.get(id);
+    if (!byKey) {
+      byKey = new Map();
+      panelControls.set(id, byKey);
+    }
+    return byKey;
+  }
+
+  function renderControl(container: HTMLElement, spec: SubwindowControlSpec): void {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "tile-control";
+    button.textContent = spec.glyph;
+    if (spec.title) button.title = spec.title;
+    /* Same stopPropagation reasoning as .tile-close: the leaf's own
+     * pointerdown (drag-to-dock) listener is capture-phase. */
+    button.addEventListener("pointerdown", (event) => event.stopPropagation());
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      spec.onActivate();
+    });
+    container.appendChild(button);
+  }
+
+  /** Re-render one panel's controls container from its current registered set. */
+  function refreshControls(id: string): void {
+    const container = controlsContainers.get(id);
+    if (!container) return;
+    container.replaceChildren();
+    for (const spec of controlsFor(id).values()) renderControl(container, spec);
+  }
 
   let currentTree: LayoutNode = { kind: "leaf", id: MAIN_TILE_ID };
   const gutters: HTMLElement[] = [];
@@ -84,9 +163,22 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     active: boolean;
   } | null = null;
 
+  /*
+   * neo-angband#241: a plain left click focuses the leaf (a canvas has no
+   * tabIndex of its own, so a click on it would otherwise never move focus),
+   * which is how a mod tells this panel apart from the main view for a
+   * "focus + Ctrl-keystroke" zoom gesture. Left-click still does not
+   * otherwise act on the leaf - see the header on why it stays reserved.
+   */
+  const onLeafFocusClick = (event: PointerEvent): void => {
+    const leaf = event.currentTarget;
+    if (event.button === 0 && leaf instanceof HTMLElement) leaf.focus();
+  };
+
   function bindLeafDrag(leaf: HTMLElement): void {
     leaf.addEventListener("pointerdown", onLeafPointerDown, true);
     leaf.addEventListener("contextmenu", onContextMenu);
+    leaf.addEventListener("pointerdown", onLeafFocusClick);
   }
 
   function ensureSlot(id: string): HTMLElement {
@@ -95,12 +187,17 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     const leaf = document.createElement("section");
     leaf.className = "tile-leaf subwindow-slot";
     leaf.dataset.tile = id;
+    leaf.tabIndex = 0;
     leaf.setAttribute("aria-label", labels[id] ?? id);
     const title = document.createElement("div");
     title.className = "tile-title";
     const label = document.createElement("span");
     label.className = "tile-title-label";
     label.textContent = labels[id] ?? id;
+    const controls = document.createElement("span");
+    controls.className = "tile-controls";
+    controlsContainers.set(id, controls);
+    refreshControls(id);
     const close = document.createElement("button");
     close.type = "button";
     close.className = "tile-close";
@@ -114,6 +211,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       onClose?.(id);
     });
     title.appendChild(label);
+    title.appendChild(controls);
     title.appendChild(close);
     const body = document.createElement("div");
     body.className = "tile-body";
@@ -134,20 +232,35 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     gutters.length = 0;
   }
 
+  /*
+   * neo-angband#241 follow-up: a subwindow panel used to keep drawing over a
+   * full-screen modal (the Options Menu, a shop, ...) because visibility here
+   * was driven purely by BSP-tree membership, with no notion that something
+   * else currently owns the whole screen. `lastVisibleIds` is the tiling
+   * answer; `modalActive` (set via setModalActive, driven by main.ts's
+   * modalDepth) overrides it to hide every non-main leaf without losing track
+   * of what should reappear once the modal closes.
+   */
+  let modalActive = false;
+  let lastVisibleIds = new Set<string>([MAIN_TILE_ID]);
+
+  function applyLeafVisibility(): void {
+    for (const [id, leaf] of slots) {
+      if (id === MAIN_TILE_ID) continue;
+      leaf.hidden = modalActive || !lastVisibleIds.has(id);
+    }
+  }
+
   function paint(tree: LayoutNode): void {
     currentTree = tree;
     const layout = computeLayout(tree, hostSize(host));
-    const visible = new Set(layout.tiles.map((tile) => tile.id));
+    lastVisibleIds = new Set(layout.tiles.map((tile) => tile.id));
     for (const tile of layout.tiles) {
       const leaf = tile.id === MAIN_TILE_ID ? mainSlot : ensureSlot(tile.id);
-      leaf.hidden = false;
       setRect(leaf, tile.rect);
       if (!leaf.isConnected) host.appendChild(leaf);
     }
-    for (const [id, leaf] of slots) {
-      if (id === MAIN_TILE_ID) continue;
-      if (!visible.has(id)) leaf.hidden = true;
-    }
+    applyLeafVisibility();
     clearGutters();
     for (const splitter of layout.splitters) {
       const gutter = document.createElement("div");
@@ -156,6 +269,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       gutter.dataset.path = splitter.path.join(".");
       gutter.setAttribute("role", "separator");
       gutter.style.cursor = splitter.axis === "v" ? "col-resize" : "row-resize";
+      gutter.hidden = modalActive;
       setRect(gutter, splitter.rect);
       gutter.addEventListener("pointerdown", onGutterPointerDown);
       host.appendChild(gutter);
@@ -264,10 +378,25 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     paint(currentTree);
   };
 
+  /*
+   * neo-angband#241: `focusin` bubbles (unlike `focus`), so one delegated
+   * listener on the host tracks which panel - if any - currently holds DOM
+   * focus. Every focus change fires a `focusin` somewhere, including one that
+   * lands outside any leaf, so there is no matching `focusout` case to handle
+   * separately.
+   */
+  const onFocusIn = (event: FocusEvent): void => {
+    const target = event.target;
+    const leaf = target instanceof Element ? target.closest(".tile-leaf") : null;
+    const id = leaf instanceof HTMLElement ? leaf.dataset.tile : undefined;
+    focusedId = id && id !== MAIN_TILE_ID ? id : null;
+  };
+
   window.addEventListener("pointermove", onPointerMove);
   window.addEventListener("pointerup", onPointerUp);
   window.addEventListener("pointercancel", onPointerUp);
   window.addEventListener("resize", onResize);
+  host.addEventListener("focusin", onFocusIn);
 
   return {
     apply(tree) {
@@ -288,15 +417,34 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     tree() {
       return currentTree;
     },
+    addControl(id, key, control) {
+      controlsFor(id).set(key, control);
+      refreshControls(id);
+      return () => {
+        controlsFor(id).delete(key);
+        refreshControls(id);
+      };
+    },
+    focusedId() {
+      return focusedId;
+    },
+    setModalActive(active) {
+      modalActive = active;
+      applyLeafVisibility();
+      for (const gutter of gutters) gutter.hidden = modalActive;
+    },
     destroy() {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
       window.removeEventListener("resize", onResize);
+      host.removeEventListener("focusin", onFocusIn);
+      mainSlot.removeEventListener("pointerdown", onMainPointerDown);
       for (const leaf of slots.values()) {
         if (leaf === mainSlot) continue;
         leaf.removeEventListener("pointerdown", onLeafPointerDown, true);
         leaf.removeEventListener("contextmenu", onContextMenu);
+        leaf.removeEventListener("pointerdown", onLeafFocusClick);
       }
       clearGutters();
       preview.remove();

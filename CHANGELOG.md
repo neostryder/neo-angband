@@ -52,6 +52,7 @@ still calls itself.
 
 - [Visible] [UI] **Each subwindow panel now has its own close control in its title bar.** A panel can be closed directly from its own chrome, the same as unchecking it in the Interface Options subwindow checklist (#246).
 - [Visible] [UI] **"Save subwindow setup to pref file" now dumps the full tiled panel arrangement, not just its header, and "Load a user pref file" restores it.** A subwindow layout can now be carried between installs (hosted and local, or one machine to another) the same way any other pref file is (#238).
+- [Visible] [Modding-API] **A mod can now read and resize any subwindow panel's own whole-cell geometry, and add a control to its title bar.** `ctx.subwindows` mirrors `ctx.display`'s geometry seam, but scoped to one tiled panel instead of the main view, for a mod implementing its own per-panel zoom gesture (#241).
 
 ### Changed
 
@@ -61,6 +62,7 @@ still calls itself.
 ### Fixed
 
 - [Visible] [Modding-API] **The display seam a mod reads now reports a distinct mode while a shop screen is open, rather than reporting ordinary play.** A mod-rendered overlay meant only for ordinary play can now hide itself over a shop's own item listing instead of painting across it (#234).
+- [Visible] [UI] **A subwindow panel no longer draws over a full-screen modal.** The Options Menu, the inventory selection screen, and every other screen that takes over the keyboard now hide every tiled panel while they are up, instead of leaving one floating over part of the screen (#248).
 
 ## [1.13.2] - 2026-09-13
 

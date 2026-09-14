@@ -263,6 +263,55 @@ export interface ModDisplay {
   repaint(): void;
 }
 
+/**
+ * One subwindow panel's identity and live geometry (neo-angband#241) - the
+ * main view is never one of these; use `display` for it.
+ */
+export interface ModSubwindowInfo {
+  readonly id: string;
+  readonly label: string;
+  /** This panel's body, in CSS pixels, for hit-testing a pointer event against it. */
+  readonly bounds: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  /** Whether this panel currently holds DOM focus (the player clicked into it). */
+  readonly focused: boolean;
+  readonly grid: { readonly cols: number; readonly rows: number; readonly cellWidth: number; readonly cellHeight: number };
+}
+
+/** A small control a mod adds to one subwindow panel's title bar, beside its close button. */
+export interface ModSubwindowControl {
+  /** A short glyph or label drawn on the control itself - kept to a character or two. */
+  readonly glyph: string;
+  /** Hover / accessible name. */
+  readonly title?: string;
+  onActivate(): void;
+}
+
+/**
+ * Per-subwindow-panel geometry and chrome (neo-angband#241), for a mod
+ * implementing its own zoom gesture the way `display` lets one implement the
+ * main view's - `ctx.display.onKey`/a mod's own `window` wheel listener still
+ * drive it; this only exposes what panels exist and lets a gesture apply to
+ * one of them instead of the main view.
+ *
+ * Absent during content composition, and on a front end with no subwindow
+ * shell. Entirely ungated, on the same reasoning `display`'s own geometry
+ * methods are: in-process plugin code already holds the document, so this is
+ * a typed door onto what a mod could otherwise only reach by guessing at the
+ * shell's own DOM structure, not a boundary being withheld.
+ */
+export interface ModSubwindows {
+  /** Every currently visible panel. */
+  list(): readonly ModSubwindowInfo[];
+  /** Apply new whole-cell geometry to one panel, or null to return it to its default. */
+  setGrid(id: string, request: ModDisplayGridRequest | null): void;
+  /**
+   * Add (or replace) this mod's control in a panel's title bar, keyed by
+   * `key` so more than one (e.g. "-" and "+") can coexist. Returns an
+   * unregister function.
+   */
+  addControl(id: string, key: string, control: ModSubwindowControl): () => void;
+}
+
 /** One binding the calling mod owns in the current keyset. */
 export interface ModKeymapBinding {
   readonly trigger: string;
@@ -382,6 +431,13 @@ export interface ModPluginContext {
    * final rendered appearance.
    */
   readonly display?: ModDisplay;
+  /**
+   * Live subwindow-panel geometry and chrome (neo-angband#241), once the web
+   * shell has a subwindow host. Absent during content composition, and on a
+   * front end that never mounts one - see `ModSubwindows`'s own header for
+   * why this is ungated like the rest of `display`.
+   */
+  readonly subwindows?: ModSubwindows;
   /**
    * Manage this mod's keymaps in the player's current keyset. Present only when
    * the mod declared `keymap:write` and the player consented. `bind()` never

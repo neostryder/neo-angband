@@ -114,9 +114,13 @@ describe("background repaints stand down while an overlay owns the terminal", ()
      * open underneath: exactly the title-screen failure one level in. It went
      * live with the key_confirm_command gate, whose confirmation modal wiped the
      * item picker it had just approved. renderBackground reads modalDepth AFTER
-     * the decrement, so the outermost close still repaints. */
+     * the decrement, so the outermost close still repaints. adjustModalDepth
+     * is the sole place that mutates modalDepth (neo-angband#241 follow-up,
+     * keeping the subwindow shell's modal-hide in lockstep with it), so the
+     * decrement this test pins is the call to that function, not the bare
+     * decrement it wraps. */
     const body = functionBody(MAIN, "openModal");
-    expect(body).toMatch(/modalDepth--;[\s\S]*renderBackground\(\);/);
+    expect(body).toMatch(/adjustModalDepth\(-1\);[\s\S]*renderBackground\(\);/);
     const bare = body.match(/(?<![A-Za-z])render\(\)/g) ?? [];
     expect(bare, "openModal must not call render() directly").toEqual([]);
   });
