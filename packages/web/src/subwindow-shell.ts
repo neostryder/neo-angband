@@ -9,6 +9,7 @@
 
 import {
   MAIN_TILE_ID,
+  allDropZones,
   applyDrop,
   computeLayout,
   dropZoneAt,
@@ -154,6 +155,33 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   preview.hidden = true;
   host.appendChild(preview);
 
+  /*
+   * neo-angband#249: every reachable zone on every candidate panel, shown for
+   * the whole span of a drag rather than only the one currently under the
+   * pointer (which stays the separate `preview` div above, layered on top so
+   * the active target still stands out). Rebuilt once when a drag starts (and
+   * again on a resize mid-drag); tiles don't otherwise move during a plain
+   * panel drag, so there's no need to recompute this on every pointer move.
+   */
+  const guides: HTMLElement[] = [];
+
+  function clearGuides(): void {
+    for (const guide of guides) guide.remove();
+    guides.length = 0;
+  }
+
+  function renderGuides(zones: readonly DropZone[]): void {
+    clearGuides();
+    for (const zone of zones) {
+      const guide = document.createElement("div");
+      guide.className = "tile-drop-guide";
+      guide.dataset.kind = zone.kind;
+      setRect(guide, zone.preview);
+      host.appendChild(guide);
+      guides.push(guide);
+    }
+  }
+
   let resize: { path: readonly number[]; pointerId: number } | null = null;
   let drag: {
     id: string;
@@ -189,8 +217,18 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     leaf.dataset.tile = id;
     leaf.tabIndex = 0;
     leaf.setAttribute("aria-label", labels[id] ?? id);
+    /* neo-angband#249: the only hint anywhere that right-click-drag rearranges
+     * a panel. Set on the whole leaf, not just the handle glyph below, so the
+     * tooltip appears over the title bar and body alike; the close button and
+     * any mod control below still carry their own, more specific title and
+     * take precedence over this one where they overlap it. */
+    leaf.title = "Right-click and drag to move this panel.";
     const title = document.createElement("div");
     title.className = "tile-title";
+    const handle = document.createElement("span");
+    handle.className = "tile-drag-handle";
+    handle.textContent = "⠿";
+    handle.setAttribute("aria-hidden", "true");
     const label = document.createElement("span");
     label.className = "tile-title-label";
     label.textContent = labels[id] ?? id;
@@ -203,6 +241,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     close.className = "tile-close";
     close.textContent = "×";
     close.setAttribute("aria-label", `Close ${labels[id] ?? id}`);
+    close.title = `Close ${labels[id] ?? id}`;
     /* stopPropagation: the leaf's own pointerdown (drag-to-dock) listener is
      * capture-phase, so a plain click here would still start a drag. */
     close.addEventListener("pointerdown", (event) => event.stopPropagation());
@@ -210,6 +249,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       event.stopPropagation();
       onClose?.(id);
     });
+    title.appendChild(handle);
     title.appendChild(label);
     title.appendChild(controls);
     title.appendChild(close);
@@ -341,6 +381,8 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     if (!drag.active && dx * dx + dy * dy >= DRAG_THRESHOLD * DRAG_THRESHOLD) {
       drag.active = true;
       host.classList.add("tile-host-dragging");
+      const { tiles } = computeLayout(currentTree, hostSize(host));
+      renderGuides(allDropZones(tiles, drag.id));
     }
     if (drag.active) showPreview(zoneFromEvent(event));
   };
@@ -357,6 +399,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     drag = null;
     host.classList.remove("tile-host-dragging");
     preview.hidden = true;
+    clearGuides();
     if (!wasActive) return;
     const zone = zoneFromEvent(event);
     if (!zone || zone.id === incoming) return;
@@ -376,6 +419,13 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
 
   const onResize = (): void => {
     paint(currentTree);
+    /* A window resize mid-drag moves every tile rect; the drag's own guides
+     * (rendered once at drag-start, not recomputed per pointer move) would
+     * otherwise go stale and point at the pre-resize geometry. */
+    if (drag?.active) {
+      const { tiles } = computeLayout(currentTree, hostSize(host));
+      renderGuides(allDropZones(tiles, drag.id));
+    }
   };
 
   /*
@@ -447,6 +497,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
         leaf.removeEventListener("pointerdown", onLeafFocusClick);
       }
       clearGutters();
+      clearGuides();
       preview.remove();
     },
   };

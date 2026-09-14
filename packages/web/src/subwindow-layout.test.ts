@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAIN_TILE_ID,
   SPLITTER_PX,
+  allDropZones,
   applyDrop,
   clampRatio,
   computeLayout,
@@ -155,6 +156,31 @@ describe("dropZoneAt and applyDrop", () => {
     const after = computeLayout(afterTree, VIEW);
     tiled(after.tiles, after.splitters, VIEW);
     expect(containsLeaf(afterTree, "messages")).toBe(true);
+  });
+
+  it("lists a swap plus all four dock zones for every tile except the excluded one (#249)", () => {
+    let tree = insertAtEdge(mainOnly, "messages", MAIN_TILE_ID, "bottom", 0.2);
+    tree = insertAtEdge(tree, "inventory", MAIN_TILE_ID, "right", 0.3);
+    const { tiles } = computeLayout(tree, VIEW);
+    const zones = allDropZones(tiles, "messages");
+    expect(zones.some((zone) => zone.id === "messages")).toBe(false);
+    for (const id of [MAIN_TILE_ID, "inventory"]) {
+      expect(zones.filter((zone) => zone.kind === "swap" && zone.id === id)).toHaveLength(1);
+      for (const edge of ["left", "right", "top", "bottom"] as const) {
+        expect(
+          zones.filter((zone) => zone.kind === "dock" && zone.id === id && zone.edge === edge),
+        ).toHaveLength(1);
+      }
+    }
+    expect(zones).toHaveLength(2 * 5);
+  });
+
+  it("matches dropZoneAt's own geometry for the same tile and edge", () => {
+    const { tiles } = computeLayout(mainOnly, VIEW);
+    const zones = allDropZones(tiles, "nonexistent");
+    const left = zones.find((zone) => zone.kind === "dock" && zone.edge === "left");
+    const atEdge = dropZoneAt(tiles, 10, 400);
+    expect(left?.preview).toEqual(atEdge?.preview);
   });
 
   it("swapping two panels exchanges their rectangles", () => {

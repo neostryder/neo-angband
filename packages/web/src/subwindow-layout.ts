@@ -303,6 +303,35 @@ export function dropZoneAt(
   return { kind: "swap", id: hit.id, preview: hit.rect };
 }
 
+/**
+ * Every zone `dropZoneAt` could ever return against `tiles`, for every tile
+ * except `excludeId` (the panel being dragged) - the swap (center) zone plus
+ * all four dock (edge) zones per remaining tile, computed exhaustively rather
+ * than by hit-testing one pointer position. Shares dropZoneAt's own geometry
+ * (same defaults, same edgeBand math) so a rendered guide always lines up with
+ * where a drop actually lands; used to show every candidate at once during a
+ * drag instead of only the one currently under the pointer (neo-angband#249).
+ */
+export function allDropZones(
+  tiles: readonly TileRect[],
+  excludeId: TileId,
+  opts: { fraction?: number; minPx?: number; maxPx?: number } = {},
+): DropZone[] {
+  const fraction = opts.fraction ?? 0.25;
+  const minPx = opts.minPx ?? 12;
+  const maxPx = opts.maxPx ?? 56;
+  const edges: DockEdge[] = ["left", "right", "top", "bottom"];
+  const zones: DropZone[] = [];
+  for (const tile of tiles) {
+    if (tile.id === excludeId) continue;
+    zones.push({ kind: "swap", id: tile.id, preview: tile.rect });
+    for (const edge of edges) {
+      zones.push({ kind: "dock", id: tile.id, edge, preview: edgeBand(tile.rect, edge, fraction, minPx, maxPx) });
+    }
+  }
+  return zones;
+}
+
 export function applyDrop(
   tree: LayoutNode,
   incomingId: TileId,
