@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-09-20
+
 ### Added
 
 - [Visible] [UI] **Mods can itemize the inventory subwindow's quiver rows by name instead of a capacity summary.** Core keeps Angband's exact "in Quiver: N missiles" summary unless a display mod enables the dedicated seam (#254).
