@@ -788,9 +788,10 @@ export function paintInventorySubwindow(
   term: GridSurface,
   state: GameState,
   constants: Pick<Constants, "quiverSlotSize" | "thrownQuiverMult">,
+  quiverItemization = false,
 ): void {
   const { cols } = term.size();
-  paintSubwindowLines(term, inventorySubwindowLines(state, cols, constants));
+  paintSubwindowLines(term, inventorySubwindowLines(state, cols, constants, quiverItemization));
 }
 
 /** update_equip_subwindow, using the shared equipment screen model. */

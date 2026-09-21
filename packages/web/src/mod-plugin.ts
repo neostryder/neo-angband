@@ -264,6 +264,8 @@ export interface ModDisplay {
   setStoreItemNameEllipsis(enabled: boolean): void;
   /** Show the selected store item's full description on the message line. */
   setStoreSelectionDescription(enabled: boolean): void;
+  /** Itemize the inventory subwindow's quiver rows by name instead of a capacity summary. */
+  setQuiverItemization(enabled: boolean): void;
   /** Apply a CSS filter to the terminal canvas, or clear the current filter. */
   setVisualFilter(filter: string | null): void;
   repaint(): void;

@@ -622,11 +622,18 @@ export function inventoryLines(state: GameState): ScreenLine[] {
  * inventory. The item rows come from inventoryScreen(), which is also the main
  * inventory view's source. Only the subwindow-specific burden header, tighter
  * column fitting, and quiver capacity summary are added here.
+ *
+ * `quiverItemization` is an opt-in display seam (#254): off, this stays
+ * byte-identical to upstream's summarized "in Quiver: N missiles" block; on,
+ * it lists each distinct quiver stack by name instead, reusing `quiverMenu`'s
+ * own iteration (and so its `objectName`/`objectColor` naming) rather than a
+ * second copy of it.
  */
 export function inventorySubwindowLines(
   state: GameState,
   width: number,
   constants: Pick<Constants, "quiverSlotSize" | "thrownQuiverMult">,
+  quiverItemization = false,
 ): ScreenLine[] {
   if (width < 1) return [];
   const player = state.actor.player;
@@ -666,6 +673,29 @@ export function inventorySubwindowLines(
         },
       ],
     });
+  }
+
+  if (quiverItemization) {
+    const { items } = quiverMenu(state);
+    if (items.length > 0) {
+      const heading = "--Quiver--";
+      lines.push({ text: heading.slice(0, width), color: UI_DIM });
+      for (const item of items) {
+        const prefix = `${item.tag}) `;
+        const text = `${prefix}${item.label}`.slice(0, width);
+        lines.push({
+          text,
+          runs: [
+            { text: prefix.slice(0, width), color: UI_DIM },
+            {
+              text: item.label.slice(0, Math.max(0, width - prefix.length)),
+              color: item.color ?? UI_TEXT,
+            },
+          ],
+        });
+      }
+    }
+    return lines;
   }
 
   let quiverCount = 0;

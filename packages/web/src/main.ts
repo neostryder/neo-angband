@@ -2602,7 +2602,7 @@ function paintSubwindowContent(
 ): void {
   const painters: Record<SubwindowId, () => void> = {
     messages: () => messageSubwindowPainter.paint(panel, msglog),
-    inventory: () => paintInventorySubwindow(panel, state, constants),
+    inventory: () => paintInventorySubwindow(panel, state, constants, quiverItemization),
     equipment: () => paintEquipmentSubwindow(panel, state),
     monsters: () => paintMonsterSubwindow(panel, state),
     items: () => paintItemListSubwindow(panel, state),
@@ -8493,6 +8493,9 @@ let fullMapOverview = false;
 let storeModalActive = false;
 let storeItemNameEllipsis = false;
 let storeSelectionDescription = false;
+/** Opt-in display seam (#254): itemize the inventory subwindow's quiver rows
+ * by name instead of the summarized "in Quiver: N missiles" capacity block. */
+let quiverItemization = false;
 
 function overviewParamsFor(
   mapW: number,
@@ -9024,6 +9027,9 @@ const displayControl: ModDisplay = {
   },
   setStoreSelectionDescription(enabled) {
     storeSelectionDescription = enabled;
+  },
+  setQuiverItemization(enabled) {
+    quiverItemization = enabled;
   },
   setVisualFilter(filter) {
     setCanvasVisualFilter(canvas, filter);

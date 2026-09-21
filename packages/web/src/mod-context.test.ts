@@ -195,6 +195,25 @@ describe("modPluginContext session facts", () => {
     expect(setStoreItemNameEllipsis).toHaveBeenCalledWith(true);
   });
 
+  it("forwards the quiver itemization choice through the display facade", () => {
+    const setQuiverItemization = vi.fn();
+    const display = {
+      snapshot: () => ({ mode: "play" }),
+      onKey: () => () => undefined,
+      setGrid: () => undefined,
+      setCamera: () => undefined,
+      setMapView: () => undefined,
+      setSidebarExtent: () => undefined,
+      setTileScaling: () => undefined,
+      setFullMapOverview: () => undefined,
+      setQuiverItemization,
+      setVisualFilter: () => undefined,
+      repaint: () => undefined,
+    } as unknown as ModDisplay;
+    modPluginContext("qol", {}, undefined, {}, { display }).display?.setQuiverItemization(true);
+    expect(setQuiverItemization).toHaveBeenCalledWith(true);
+  });
+
   it("hands keymaps over only with the existing keymap:write capability", () => {
     const state = { options: { get: () => false } } as never;
     const denied = CapabilitySet.fromManifest({

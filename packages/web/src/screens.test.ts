@@ -856,6 +856,42 @@ describe("the inventory and equipment screens, and the lines they still render t
     expect(obj.tval).toBe(TV.ARROW);
   });
 
+  it("stays byte-identical to the summarized quiver block when the itemization seam is left off (#254)", () => {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const arrow = objReg.kinds.find((kind) => kind.tval === TV.ARROW) as ObjectKind;
+    const obj = addPack(state, arrow.name, 7);
+    const handle = [...state.gear.store.entries()].find(([, candidate]) => candidate === obj)![0];
+    state.gear.inven = [];
+    state.gear.quiver = [handle];
+    const defaulted = inventorySubwindowLines(state, 60, objConstants);
+    const explicitlyOff = inventorySubwindowLines(state, 60, objConstants, false);
+    expect(defaulted).toEqual(explicitlyOff);
+    expect(defaulted[1]!.text).toBe("a) in Quiver: 7 missiles");
+  });
+
+  it("itemizes each distinct quiver stack by name when the display seam is on (#254)", () => {
+    /* Reuses quiverMenu's own iteration - the same naming/colour/tag the
+     * dedicated quiver picker (the "|" command) already shows - rather than a
+     * second copy of quiver-item naming. */
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    const arrow = objReg.kinds.find((kind) => kind.tval === TV.ARROW) as ObjectKind;
+    addPack(state, arrow.name, 7);
+    addPack(state, "& Iron Shot~", 20);
+    state.gear.inven = [];
+
+    const filledQuiverSlots = (state.gear.quiver ?? []).filter((h) => h !== 0);
+    expect(filledQuiverSlots).toHaveLength(2);
+
+    const { items } = quiverMenu(state);
+    expect(items).toHaveLength(2);
+    const lines = inventorySubwindowLines(state, 60, objConstants, true);
+    expect(lines[1]!.text).toBe("--Quiver--");
+    items.forEach((item, i) => {
+      expect(lines[2 + i]!.text).toBe(`${item.tag}) ${item.label}`);
+    });
+    expect(lines.some((l) => l.text.includes("in Quiver:"))).toBe(false);
+  });
+
   it("fits the equipment subwindow from the shared slot model", () => {
     const state = makeTestState({ playerGrid: loc(20, 12) });
     const lines = equipmentSubwindowLines(state, 50);
