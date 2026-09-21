@@ -48,6 +48,11 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- [Visible] [UI] **Mods can itemize the inventory subwindow's quiver rows by name instead of a capacity summary.** Core keeps Angband's exact "in Quiver: N missiles" summary unless a display mod enables the dedicated seam (#254).
+- [Visible] [Modding-API] **A mod can now adjust an object's computed gold value after core's own faithful pricing has already run.** `registry:tval`'s new `valueAdjust` table (keyed on tval) hands a handler the faithful value, the item's total effective AC, and its kind, and returns whatever value should be used instead; left unregistered, it is exactly a no-op and core's own pricing is unaffected. `neo-angband-mod-bug-fixes` is the first consumer: its opt-in armour-value floor closes the case where 4.2.6's own formula can price a magical item below a plain item of the same total AC (#179).
+
 ## [1.14.0] - 2026-09-13
 
 ### Added

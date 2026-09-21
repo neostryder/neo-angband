@@ -53,8 +53,11 @@
  *   Gated by "registry:randart".
  * - tval     (TvalRegistry, obj/tval-registry.ts): every question core asks
  *   about an item CLASS - is it a weapon, can it be worn, can it be flavoured,
- *   is it good, what is it worth unidentified. object.json always accepted a new
- *   ITEM; this is the CLASS. Gated by "registry:tval".
+ *   is it good, what is it worth unidentified, and what a mod may adjust a
+ *   computed real value TO once core's own faithful pricing has run
+ *   (`valueAdjust`, keyed on tval, added for #179 - a magical armour item
+ *   pricing below a plain item of the same total AC). object.json always
+ *   accepted a new ITEM; this is the CLASS. Gated by "registry:tval".
  * - rune     (RuneRegistry, obj/rune-registry.ts): every question core asks
  *   about a RUNE - what it is called and described as, whether an item carries
  *   it, whether the player knows it, how it is learned, and the line a modifier
@@ -182,6 +185,7 @@ import type {
   TvalGoodHandler,
   TvalRegistry,
   TvalTable,
+  TvalValueAdjustHandler,
   TvalValueBaseHandler,
 } from "../obj/tval-registry.js";
 import type {
@@ -995,6 +999,14 @@ export interface TvalFacade {
   /** What an UNIDENTIFIED item of this class is worth, keyed on tval. */
   readonly valueBase: TvalTableFacade<number, TvalValueBaseHandler>;
   /**
+   * A post-computation adjustment to `object_value_real`'s own faithful
+   * result, keyed on tval - the seam for a mod that wants to nudge a
+   * computed GOLD VALUE rather than guess at an unaware one. Unregistered
+   * means unchanged: `object_value_real` (obj/value.ts) returns exactly what
+   * it computed, for every tval, with nothing here to consult.
+   */
+  readonly valueAdjust: TvalTableFacade<number, TvalValueAdjustHandler>;
+  /**
    * What the item class is CALLED, keyed on tval. Without an entry every
    * message, menu row, shop line and recall header naming the class reads the
    * literal string "(nothing)" - upstream's own default arm. This is the single
@@ -1552,6 +1564,7 @@ export function createModRegistryHost(
       classes: tvalTable(capabilities, targets, (r) => r.classes),
       good: tvalTable(capabilities, targets, (r) => r.good),
       valueBase: tvalTable(capabilities, targets, (r) => r.valueBase),
+      valueAdjust: tvalTable(capabilities, targets, (r) => r.valueAdjust),
       basename: tvalTable(capabilities, targets, (r) => r.basename),
     },
     rune: {

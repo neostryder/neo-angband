@@ -15,6 +15,11 @@
  * still-unknown runes is valued from what the player actually knows. A caller
  * with no context prices the real object, which is exact for a fully-known item
  * (store stock, identified gear) and over-values only an item with unknown runes.
+ *
+ * object_value_real ends with an optional per-tval adjustment - registry:tval's
+ * `valueAdjust` table (tval-registry.ts) - a mod's one seam over the computed
+ * gold value itself, once core's own faithful arithmetic has already run. See
+ * that table's own doc comment; unused, it is exactly a no-op.
  */
 
 import { OF, TV } from "../generated/index.js";
@@ -169,6 +174,20 @@ export function objectValueReal(
 
     /* No negative value. */
     if (totalValue < 0) totalValue = 0;
+  }
+
+  /* registry:tval's `valueAdjust` table (obj/tval-registry.ts, TvalRegistry):
+   * a mod's one opportunity to adjust the faithful value just computed above,
+   * keyed on this object's own tval. No handler registered - the default,
+   * and core's own faithful 4.2.6 behaviour - is a no-op: `totalValue`
+   * returns exactly as computed, unconditionally. See
+   * neo-angband-mod-bug-fixes' armour-value floor (#179) for the one real
+   * caller: 4.2.6's own pricing formula can price a magical item below a
+   * plain item of the same total AC, and that mod floors it back up when its
+   * toggle is on. */
+  const valueAdjust = tvalRegistry().valueAdjust.handlerFor(obj.tval);
+  if (valueAdjust) {
+    totalValue = valueAdjust({ reg, obj, qty, baseValue: totalValue, totalAc: obj.ac + obj.toA });
   }
 
   return totalValue;

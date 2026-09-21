@@ -67,6 +67,7 @@
  * design.
  */
 
+import type { ObjRegistry } from "./bind.js";
 import type { GameObject } from "./object.js";
 import type { ObjectKind } from "./types.js";
 
@@ -148,6 +149,49 @@ export interface TvalBasenameContext {
 export type TvalBasenameHandler = (ctx: TvalBasenameContext) => string;
 
 /* ------------------------------------------------------------------ *
+ * Table 5: object_value_real's post-computation adjustment, keyed on tval.
+ * ------------------------------------------------------------------ */
+
+/**
+ * What a value-adjustment handler is handed: everything `object_value_real`
+ * (obj/value.ts) already knows about the item once its own faithful
+ * computation has finished, plus the registry the mod may need to price a
+ * comparison object of its own (see `totalAc` below).
+ */
+export interface TvalValueAdjustContext {
+  /** The registry the faithful computation ran against - passed through so a
+   * handler can call `objectValueReal` again on an object of its own
+   * construction (a synthetic baseline, say) without importing a second copy
+   * of anything. */
+  readonly reg: ObjRegistry;
+  /** The object being valued. Read-only as far as this hook is concerned -
+   * nothing consumes a mutation made here. */
+  readonly obj: GameObject;
+  /** The stack size `baseValue` was computed for (object_value_real's own `qty`). */
+  readonly qty: number;
+  /** object_value_real's own faithful result, for `qty` items, before this hook runs. */
+  readonly baseValue: number;
+  /** `obj.ac + obj.toA` - the item's total effective AC. Present (and 0) for a
+   * non-armour tval; a handler registered for such a tval simply has no reason
+   * to read it. */
+  readonly totalAc: number;
+}
+
+/**
+ * Adjust `object_value_real`'s own computed value for one tval, once core's
+ * faithful pricing has already run. Return `ctx.baseValue` unchanged to leave
+ * it alone, or a different number to override it - `object_value_real`
+ * returns exactly what this handler returns, with no further clamping.
+ *
+ * No handler registered (the default, and core's own faithful 4.2.6
+ * behaviour) is a no-op: `object_value_real` returns `baseValue` exactly as
+ * computed, for every tval, unconditionally. This is the one seam a mod has
+ * over an object's computed GOLD value, as opposed to `valueBase` above (the
+ * flat guess at an item whose flavor is not yet known).
+ */
+export type TvalValueAdjustHandler = (ctx: TvalValueAdjustContext) => number;
+
+/* ------------------------------------------------------------------ *
  * The tables.
  * ------------------------------------------------------------------ */
 
@@ -195,6 +239,8 @@ export class TvalRegistry {
   readonly valueBase = new TvalTable<number, TvalValueBaseHandler>();
   /** `obj_desc_get_basename` - what the item class is CALLED, keyed on tval. */
   readonly basename = new TvalTable<number, TvalBasenameHandler>();
+  /** `object_value_real`'s post-computation adjustment, keyed on tval. */
+  readonly valueAdjust = new TvalTable<number, TvalValueAdjustHandler>();
 }
 
 /* ------------------------------------------------------------------ *

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { bindConstants } from "../constants.js";
 import { TV } from "../generated/index.js";
 import { bindPlayer } from "../player/bind.js";
@@ -10,6 +10,8 @@ import type { KnownDesc } from "./known-object.js";
 import type { RuneEnv } from "./knowledge.js";
 import { makeRuneEnv, OBJ_NOTICE, playerLearnAllRunes } from "./knowledge.js";
 import { objectPrep } from "./make.js";
+import { resetTvalRegistry, tvalRegistry } from "./tval-registry.js";
+import type { TvalValueAdjustContext } from "./tval-registry.js";
 import type { ObjPackJson } from "./types.js";
 import { objectValue, objectValueBase, objectValueReal } from "./value.js";
 import { Rng } from "../rng.js";
@@ -51,6 +53,35 @@ function make(tval: number) {
   return objectPrep(new Rng(1), reg, constants, firstOrdinaryKind(tval), 0, "minimise");
 }
 
+/**
+ * A 1d4 sword with every variable-power input zeroed - power 6, so
+ * object_value_real prices it at 6*(6+5) = 66 for a single item. The fixture
+ * the "prices a weapon from its power" test below establishes, factored out
+ * so the valueAdjust seam tests can build on the same known baseline without
+ * re-deriving (and risking mis-deriving) it by hand.
+ */
+function makeBasicSword() {
+  const sword = make(TV.SWORD);
+  sword.dd = 1;
+  sword.ds = 4;
+  sword.toH = 0;
+  sword.toD = 0;
+  sword.toA = 0;
+  sword.ac = 0;
+  sword.weight = 100;
+  sword.ego = null;
+  sword.brands = null;
+  sword.slays = null;
+  sword.curses = null;
+  sword.flags.wipe();
+  for (const e of sword.elInfo) {
+    e.resLevel = 0;
+    e.flags = 0;
+  }
+  for (let i = 0; i < sword.modifiers.length; i++) sword.modifiers[i] = 0;
+  return sword;
+}
+
 describe("object_value_real (obj-power.c constant-price path)", () => {
   it("prices a constant-price item at kind.cost * qty", () => {
     const potion = make(TV.POTION);
@@ -79,24 +110,7 @@ describe("object_value_real (obj-power.c constant-price path)", () => {
 describe("object_value_real (obj-power.c variable-power path)", () => {
   it("prices a weapon from its power via value = power*(power+5)", () => {
     // A 1d4 weapon has power 6, so value = 6*(6+5) = 66 for a single item.
-    const sword = make(TV.SWORD);
-    sword.dd = 1;
-    sword.ds = 4;
-    sword.toH = 0;
-    sword.toD = 0;
-    sword.toA = 0;
-    sword.ac = 0;
-    sword.weight = 100;
-    sword.ego = null;
-    sword.brands = null;
-    sword.slays = null;
-    sword.curses = null;
-    sword.flags.wipe();
-    for (const e of sword.elInfo) {
-      e.resLevel = 0;
-      e.flags = 0;
-    }
-    for (let i = 0; i < sword.modifiers.length; i++) sword.modifiers[i] = 0;
+    const sword = makeBasicSword();
     expect(objectValueReal(reg, sword, 1)).toBe(66);
     expect(objectValueReal(reg, sword, 2)).toBe(132);
   });
@@ -134,6 +148,65 @@ describe("object_value (obj-power.c dispatch)", () => {
   it("prices a variable-power item by object_power regardless of awareness", () => {
     const cloak = make(TV.CLOAK);
     expect(objectValue(reg, cloak, 1, false)).toBe(objectValueReal(reg, cloak, 1));
+  });
+});
+
+describe("object_value_real's registry:tval `valueAdjust` seam (#179)", () => {
+  afterEach(() => {
+    /* Every test in this file shares the module-level TvalRegistry singleton,
+     * so a handler left installed here would leak into every test that runs
+     * after it - including, worst case, the "no mod installed" tests above if
+     * the suite is ever reordered. */
+    resetTvalRegistry();
+  });
+
+  it("is a no-op with no handler registered - unpatched behaviour is unchanged", () => {
+    const sword = makeBasicSword();
+
+    /* Same fixture and same expected result as the faithful-formula test
+     * above (66 for a single 1d4 weapon) - nothing here changed it. */
+    expect(objectValueReal(reg, sword, 1)).toBe(66);
+  });
+
+  it("invokes a registered handler and returns exactly what it returns", () => {
+    const sword = makeBasicSword();
+    sword.toA = 3;
+    sword.ac = 5;
+
+    /* The faithful value with no handler installed - derived from the real
+     * computation rather than hand-computed, so this test does not depend on
+     * knowing object_power's exact arithmetic for a non-zero AC. */
+    const faithful = objectValueReal(reg, sword, 1);
+
+    let seen: TvalValueAdjustContext | undefined;
+    tvalRegistry().valueAdjust.set(TV.SWORD, (ctx) => {
+      seen = ctx;
+      return ctx.baseValue + 1000;
+    });
+
+    expect(objectValueReal(reg, sword, 1)).toBe(faithful + 1000);
+
+    expect(seen).toBeDefined();
+    expect(seen!.baseValue).toBe(faithful);
+    expect(seen!.qty).toBe(1);
+    expect(seen!.totalAc).toBe(sword.ac + sword.toA);
+    expect(seen!.obj).toBe(sword);
+    expect(seen!.reg).toBe(reg);
+  });
+
+  it("only fires for the tval it was registered under", () => {
+    tvalRegistry().valueAdjust.set(TV.SWORD, () => 999999);
+
+    const cloak = make(TV.CLOAK);
+    expect(objectValueReal(reg, cloak, 1)).toBeLessThan(999999);
+  });
+
+  it("resetTvalRegistry() removes an installed handler - the mod-disabled state", () => {
+    tvalRegistry().valueAdjust.set(TV.SWORD, () => 42);
+    resetTvalRegistry();
+
+    const sword = makeBasicSword();
+    expect(objectValueReal(reg, sword, 1)).toBe(66);
   });
 });
 

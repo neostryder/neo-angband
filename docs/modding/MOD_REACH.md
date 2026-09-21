@@ -903,7 +903,7 @@ and the host constructs it for real:
 | `registry:glyph` | `GlyphFacade` | `GlyphRegistry` (`RoomRegistry.glyphs`, `gen/glyph.ts`) | - |
 | `registry:effect-info` | `EffectInfoFacade` (four tables) | `EffectInfoRegistry` (`effects/effect-info-registry.ts`, module-level) | - |
 | `registry:randart` | `RandartFacade` (four tables) | `RandartRegistry` (`obj/randart-registry.ts`, module-level) | - |
-| `registry:tval` | `TvalFacade` (four tables) | `TvalRegistry` (`obj/tval-registry.ts`, module-level) | - |
+| `registry:tval` | `TvalFacade` (five tables) | `TvalRegistry` (`obj/tval-registry.ts`, module-level) | - |
 | `registry:vocab` | `VocabFacade` | `VocabularyRegistry` | `:231-256` |
 
 - Gating is real: `requireCap` throws `AgentCapabilityError` (`:165`);

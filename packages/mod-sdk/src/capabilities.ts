@@ -82,8 +82,11 @@
  *                             "registry:tval" reaches every question core asks
  *                             about an item CLASS - is it a weapon, can it be
  *                             worn or flavoured, is it good, what is it worth
- *                             unidentified. Distinct from shipping a new ITEM,
- *                             which needs no capability at all.
+ *                             unidentified, and what a mod may adjust a
+ *                             computed real value TO once core's own faithful
+ *                             pricing has run (`valueAdjust`, keyed on tval).
+ *                             Distinct from shipping a new ITEM, which needs
+ *                             no capability at all.
  *                             "registry:vocab" (W2.3) declares
  *                             NEW vocabulary (flags/stats/any kind). Distinct
  *                             from "command:add": that adds a command via the
