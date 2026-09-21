@@ -472,6 +472,12 @@ export class GlyphTerm
    */
   private glyphCache = new Map<string, HTMLCanvasElement | null>();
   private sizeListeners = new Set<(size: TermSize) => void>();
+  /**
+   * Notified at the end of every flush() - see onRepaint below. Empty for
+   * every player who has not asked for a visual-filter overlay, so iterating
+   * it costs nothing measurable on the hot path.
+   */
+  private repaintListeners = new Set<() => void>();
   /** The visual viewport's origin in layout-viewport CSS pixels. */
   private viewportX = 0;
   private viewportY = 0;
@@ -563,6 +569,25 @@ export class GlyphTerm
   onSizeChanged(listener: (size: TermSize) => void): () => void {
     this.sizeListeners.add(listener);
     return () => this.sizeListeners.delete(listener);
+  }
+
+  /**
+   * Subscribe to be notified right after flush() paints - the one point every
+   * draw path (grid writes, cursor moves, a resize, a font/tileset swap)
+   * converges on, since every mutator here only touches the grid model and
+   * queues a flush (see `shown` above).
+   *
+   * Built for the visual-filter overlay (visual-filter.ts): `this.canvas`'s
+   * 2d context is created `{ alpha: false }` for performance, and an
+   * alpha:false canvas does not composite a CSS `filter` in Chromium
+   * (neo-angband#184). The overlay mirrors this canvas's latest pixel content
+   * onto a second, alpha-enabled canvas and filters THAT one instead - this
+   * is how it learns a new frame landed. An empty listener set (every player
+   * with no filter active) costs one no-op iteration per flush.
+   */
+  onRepaint(listener: () => void): () => void {
+    this.repaintListeners.add(listener);
+    return () => this.repaintListeners.delete(listener);
   }
 
   size(): TermSize {
@@ -875,6 +900,7 @@ export class GlyphTerm
       /* Same cell, but the diff may have just repainted the glyph under it. */
       this.drawCursor();
     }
+    for (const listener of this.repaintListeners) listener();
   }
 
   /**

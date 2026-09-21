@@ -53,6 +53,10 @@ still calls itself.
 - [Visible] [UI] **Mods can itemize the inventory subwindow's quiver rows by name instead of a capacity summary.** Core keeps Angband's exact "in Quiver: N missiles" summary unless a display mod enables the dedicated seam (#254).
 - [Visible] [Modding-API] **A mod can now adjust an object's computed gold value after core's own faithful pricing has already run.** `registry:tval`'s new `valueAdjust` table (keyed on tval) hands a handler the faithful value, the item's total effective AC, and its kind, and returns whatever value should be used instead; left unregistered, it is exactly a no-op and core's own pricing is unaffected. `neo-angband-mod-bug-fixes` is the first consumer: its opt-in armour-value floor closes the case where 4.2.6's own formula can price a magical item below a plain item of the same total AC (#179).
 
+### Fixed
+
+- [Visible] [UI] [Modding-API] **The high-contrast and colourblind-correction accessibility filters now actually change what's on screen.** A mod's `ctx.display.setVisualFilter` CSS filter is now drawn onto a second, alpha-enabled canvas that mirrors the main view every frame, instead of being set directly on the main canvas - whose own alpha-disabled 2d context (kept deliberately, for its own performance reasons) never composited a CSS filter in the first place, so the filter was silently a no-op no matter what a mod or a player selected. `setVisualFilter`'s own signature is unchanged; only how the web shell realises it moved (#184).
+
 ## [1.14.0] - 2026-09-13
 
 ### Added

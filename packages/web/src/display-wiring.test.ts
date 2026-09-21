@@ -101,6 +101,34 @@ describe("displayDeps", () => {
 });
 
 /**
+ * neo-angband#184: #game's own `filter` CSS style is a measured no-op (its 2d
+ * context is `alpha: false`, and Chromium does not composite a CSS filter
+ * through that path), so ModDisplay.setVisualFilter has to reach the game
+ * through the VisualFilterOverlay (visual-filter.ts) instead of touching
+ * `canvas.style.filter` directly. Pixel proof that the overlay itself works
+ * lives outside vitest (a live CDP capture); what only the source can show is
+ * that the shell actually wires the overlay in, on the one canvas the filter
+ * mods ask to affect, rather than reintroducing the direct assignment.
+ */
+describe("the visual-filter overlay wiring", () => {
+  it("routes setVisualFilter through the overlay, not through canvas.style.filter", () => {
+    expect(src).toContain("visualFilterOverlay.setFilter(filter)");
+    // The old, broken direct assignment must not come back.
+    expect(src).not.toMatch(/canvas\.style\.filter\s*=/u);
+    expect(src).not.toContain("setCanvasVisualFilter");
+  });
+
+  it("constructs the overlay once, over the same canvas the filter mods target", () => {
+    expect(src.match(/new VisualFilterOverlay\(/gu)?.length).toBe(1);
+    expect(src).toMatch(/new VisualFilterOverlay\(canvas\)/u);
+  });
+
+  it("feeds the overlay from the terminal's own repaint hook, so every frame is mirrored", () => {
+    expect(src).toContain("term.onRepaint(() => visualFilterOverlay.sync())");
+  });
+});
+
+/**
  * PORT_TODO 3.18: ENTER opens the command browser, and the table it browses is
  * upstream's.
  *

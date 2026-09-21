@@ -344,7 +344,7 @@ import {
   type ModSessionFacts,
 } from "./mod-context";
 import type { ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows } from "./mod-plugin";
-import { setCanvasVisualFilter } from "./visual-filter";
+import { VisualFilterOverlay } from "./visual-filter";
 import { migrateModBags, migrateModBagsAsync } from "./mod-bags";
 import {
   folderPickingSupported,
@@ -988,6 +988,14 @@ const subwindowShell = mountSubwindowShell({
 });
 subwindowShell.apply(subwindowState.tree);
 const term = new GlyphTerm(canvas, { boundsElement: gameView });
+/* neo-angband#184: #game's own `filter` style is a no-op (its 2d context is
+ * `alpha: false`, and Chromium does not composite CSS filters through that
+ * path), so a mod-applied accessibility filter mirrors #game onto this
+ * separate, alpha-enabled overlay and filters that instead - see
+ * visual-filter.ts. Created lazily; a player who never turns a filter on
+ * never creates the overlay's canvas. */
+const visualFilterOverlay = new VisualFilterOverlay(canvas);
+term.onRepaint(() => visualFilterOverlay.sync());
 /* THE PANEL LAYER, wired here rather than beside the mod boot, because both of
  * these are about the page and neither depends on a game existing. A mod's DOM
  * panel needs the input door to stand down for the field the player is typing
@@ -9032,7 +9040,7 @@ const displayControl: ModDisplay = {
     quiverItemization = enabled;
   },
   setVisualFilter(filter) {
-    setCanvasVisualFilter(canvas, filter);
+    visualFilterOverlay.setFilter(filter);
   },
   repaint() {
     if (levelMapActive) levelMapRepaint?.();
