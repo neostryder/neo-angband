@@ -88,6 +88,19 @@ describe("describeCapability", () => {
     expect(session.text).toMatch(/what it did to a character is not/i);
   });
 
+  it("gives mod:read its own sentence, distinct from install and session", () => {
+    const install = describeCapability("mod:install");
+    const session = describeCapability("mod:session");
+    const read = describeCapability("mod:read");
+    expect(read.elevated).toBe(true);
+    expect(read.text).not.toBe(install.text);
+    expect(read.text).not.toBe(session.text);
+    /* It reaches the network on the player's behalf, and it is proportionate
+     * because nothing lands in the library and nothing is installed. */
+    expect(read.text).toMatch(/on your behalf/i);
+    expect(read.text).toMatch(/nothing is installed/i);
+  });
+
   it("says what ui:panel.mount and debug:spawn actually are, not what they are called", () => {
     /* Neither arm had a test when mod:session was added. They are the two grants a
      * player is most likely to look for by name, so the wording is the whole

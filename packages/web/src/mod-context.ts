@@ -31,6 +31,7 @@ import {
   type ModSubwindows,
   type ModUi,
   type ModWizard,
+  type ReadModResult,
 } from "./mod-plugin";
 import { VISUAL_FILTER_CAPABILITY } from "./visual-filter";
 import { diskPacks } from "./disk-packs";
@@ -45,6 +46,7 @@ import {
   SESSION_CAPABILITY,
   type InstallDoorDeps,
 } from "./install-runtime";
+import { createModReader, READ_CAPABILITY, type ReadDoorDeps } from "./mod-read-runtime";
 import { createModDebug, SPAWN_CAPABILITY, type DebugDoorDeps } from "./spawn-runtime";
 import { createModWizard, WIZARD_CAPABILITY, type WizardDoorDeps } from "./wizard-runtime";
 import { createModKeymaps, KEYMAP_WRITE_CAPABILITY } from "./macro-runtime";
@@ -134,6 +136,7 @@ export function modPluginContext(
   const installMod = installerFor(id, session);
   const reloadGame = reloadGameFor(session);
   const loadModForSession = sessionLoaderFor(session);
+  const readMod = readModFor(session);
   const debug = debugFor(id, session);
   const wizard = wizardFor(id, session);
   const display = displayFor(session);
@@ -177,6 +180,7 @@ export function modPluginContext(
     ...(installMod ? { installMod } : {}),
     ...(reloadGame ? { reloadGame } : {}),
     ...(loadModForSession ? { loadModForSession } : {}),
+    ...(readMod ? { readMod } : {}),
     ...(debug ? { debug } : {}),
     ...(wizard ? { wizard } : {}),
     /* Spread rather than set to undefined, so `"registries" in ctx` answers the
@@ -363,6 +367,40 @@ function sessionLoaderFor(
 }
 
 /**
+ * `ctx.readMod`: present only when this mod's manifest declared `mod:read`
+ * AND the host has latched the read door.
+ *
+ * TWO REASONS FOR ABSENCE, the same shape `installerFor` uses and for the
+ * same reason: a context built by a unit test with no read door latched gets
+ * no door, which is the right answer, since resolving a reference needs the
+ * same network and channel wiring an install does and a test has not
+ * supplied it.
+ */
+function readModFor(
+  session: ModSessionFacts,
+): ((ref: string) => Promise<ReadModResult>) | undefined {
+  if (session.readMod !== undefined) return session.readMod;
+  if (!session.capabilities?.has(READ_CAPABILITY)) return undefined;
+  if (!readDoor) return undefined;
+  return createModReader(readDoor);
+}
+
+/**
+ * Where a mod reference gets resolved, latched once per page.
+ *
+ * THE SAME LATCH REASONING as `installDoor` below: seven call sites build a
+ * context, and a new one that forgot to thread this through would hand its
+ * mod `readMod: undefined` - indistinguishable from a capability the player
+ * never granted.
+ */
+let readDoor: ReadDoorDeps | undefined;
+
+/** Latch the read door (the boot path, and the tests). */
+export function setModReadDoor(deps: ReadDoorDeps | undefined): void {
+  readDoor = deps;
+}
+
+/**
  * Where installs go, latched once per page.
  *
  * A LATCH FOR THE SAME REASON `boundRegistries` IS ONE, and the reason is the
@@ -467,6 +505,8 @@ export interface ModSessionFacts {
   readonly reloadGame?: () => Promise<void>;
   /** Override ctx.loadModForSession directly (tests, and a front end of its own). */
   readonly loadModForSession?: (bytes: Uint8Array) => Promise<ModSessionOutcome>;
+  /** Override ctx.readMod directly (tests, and a front end with its own door). */
+  readonly readMod?: (ref: string) => Promise<ReadModResult>;
   /** Override ctx.debug directly (tests, and a front end with its own). */
   readonly debug?: ModDebug;
   /** Override ctx.wizard directly (tests, and a front end with its own). */

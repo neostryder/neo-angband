@@ -87,6 +87,10 @@ import type {
 /* Type-only, like every other import here: a mod's source imports this module,
  * and a value import would put the host's code in every plugin's bundle. */
 import type { ModPrefs } from "./mod-prefs";
+/* Type-only, same reasoning: `ctx.readMod`'s answer is shaped like whatever
+ * discoverMod produces, and a plugin's source must never pull in the module
+ * that actually talks to GitHub. */
+import type { DiscoveredMod } from "./mod-discover";
 import type {
   ComposedRecords,
   HudOwnership,
@@ -99,6 +103,13 @@ import type {
 
 /** The renderer-neutral map snapshot a selected front end receives. */
 export type { WorldFrame } from "@rpgm-tools/neo-angband-mod-sdk";
+
+/**
+ * What a repository holds, exactly as `ctx.readMod` reports it - re-exported
+ * so a plugin's own source can name the shape of `ReadModResult.mod` without
+ * resolving mod-discover.ts for itself.
+ */
+export type { DiscoveredMod } from "./mod-discover";
 
 /**
  * The shape of `ctx.composedRecords`, re-exported so a plugin's own source can
@@ -618,6 +629,39 @@ export interface ModPluginContext {
    */
   readonly loadModForSession?: (bytes: Uint8Array) => Promise<ModSessionOutcome>;
   /**
+   * Resolve a mod reference through the SAME resolver the mods screen's own
+   * "install from a repository" door uses, and hand back its manifest and
+   * payload listing - without installing anything.
+   *
+   * Present only when your manifest declared `mod:read` and the player
+   * consented to it; `undefined` otherwise, so guard with
+   * `if (!ctx.readMod) return;`.
+   *
+   * `ref` IS ANYTHING A PLAYER COULD TYPE into that screen: `owner/repo`, a
+   * `github.com/owner/repo` URL, or a URL pinning one tag (a
+   * `.../tree/<tag>`). It is parsed and resolved by the exact functions the
+   * install door calls - the tags API, the channel filter, the manifest read
+   * at each candidate tag until one is engine-compatible - so a mod cannot see
+   * a reference resolve here that an install would refuse, or the other way
+   * round. Writing that walk yourself instead would drift from it the moment
+   * either copy changed, in the direction of believing something the real
+   * install door would turn away.
+   *
+   * REFUSES RATHER THAN GUESSES. An address that does not resolve, and one
+   * that resolves to nothing this build can run, both come back as
+   * `{ok: false, problem}` with the host's own sentence for why - never a
+   * throw, and never a version this engine cannot load reported as though it
+   * were fine.
+   *
+   * NOT AN INSTALL, AND NOT THE MOD'S FILES. `mod.payload` is the listing the
+   * mods screen computes before ever offering an install - paths and archive
+   * names, and a byte total when the tree could be read - not the bytes of
+   * each file. Getting the actual bytes still means installing it, through
+   * `ctx.installMod` or the player's own zip import; nothing here writes to
+   * storage or to the player's library.
+   */
+  readonly readMod?: (ref: string) => Promise<ReadModResult>;
+  /**
    * Conjure an item or a creature into the live game, for a mod that wants to
    * show the player the thing they just made.
    *
@@ -853,6 +897,27 @@ export type ModSessionOutcome =
       /** False when this browser would not hold the archive across the reload. */
       readonly survivesReload: boolean;
     }
+  | { readonly ok: false; readonly problem: string };
+
+/**
+ * What `ctx.readMod` resolved, or the refusal instead.
+ *
+ * A RESULT, NEVER A THROW, the same shape `ModInstallOutcome` and
+ * `ModSessionOutcome` use and for the same reason: the caller is a mod that
+ * will be deciding something from this, so every refusal is one whole
+ * sentence it can act on - an address that never resolved and one that
+ * resolved to a version this build cannot run are both `{ok: false, problem}`,
+ * not two different shapes to check for.
+ *
+ * `mod` IS `DiscoveredMod`, not a second description of the same facts. It is
+ * exactly what the mods screen itself would show for this reference: the
+ * manifest's id, name, author, version, description and engine range; every
+ * orderable tag the repository offers; and the payload listing - paths and
+ * archive names, with a byte total when the tree could be read. It is NOT the
+ * bytes of any file; see `readMod`'s own comment on `ModPluginContext`.
+ */
+export type ReadModResult =
+  | { readonly ok: true; readonly mod: DiscoveredMod }
   | { readonly ok: false; readonly problem: string };
 
 /** What came of conjuring something into the live game. */

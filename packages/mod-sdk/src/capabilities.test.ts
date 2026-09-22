@@ -275,6 +275,48 @@ describe("backup:folder (#133)", () => {
   });
 });
 
+describe("mod:read (#172)", () => {
+  it("parses mod:read as its own kind, with no domain and no wildcard", () => {
+    expect(parseCapability("mod:read")).toEqual({
+      kind: "mod-read",
+      action: "read",
+    });
+  });
+
+  it("rejects mod:read-all and mod:* - there is deliberately no wildcard", () => {
+    expect(() => parseCapability("mod:read-all")).toThrow(CapabilityError);
+    expect(() => parseCapability("mod:*")).toThrow(CapabilityError);
+  });
+
+  it("registry:* does not cover it, same as backup:folder", () => {
+    const wild = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["registry:*"] }),
+    );
+    expect(wild.has("mod:read")).toBe(false);
+  });
+
+  it("neither mod:install nor mod:session covers it - a DIFFERENT kind, not a third action", () => {
+    /* Reading a reference makes network requests on the player's behalf and
+     * installs nothing; putting a pack in the library (either capability)
+     * installs something and reaches no network of its own. Two different
+     * bargains, so `grantCovers` must not let one buy the other. */
+    const installer = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["mod:install", "mod:session"] }),
+    );
+    expect(installer.has("mod:read")).toBe(false);
+  });
+
+  it("grants exactly mod:read and nothing else", () => {
+    const set = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["mod:read"] }),
+    );
+    expect(set.has("mod:read")).toBe(true);
+    expect(set.has("mod:install")).toBe(false);
+    expect(set.has("mod:session")).toBe(false);
+    expect(set.has("display:replace")).toBe(false);
+  });
+});
+
 describe("parseCapability: rejects garbage", () => {
   it("rejects an unknown capability kind", () => {
     expect(() => parseCapability("filesystem:read")).toThrow(CapabilityError);

@@ -14,6 +14,7 @@ import {
   modPluginContext,
   setModDisplayControl,
   setModInstallDoor,
+  setModReadDoor,
   setModRegistries,
   setModSubwindowsControl,
 } from "./mod-context";
@@ -356,6 +357,7 @@ describe("ctx.registries - the bound content a mod can ask about", () => {
     expect(ctx.loadModForSession).toBeUndefined();
     expect(ctx.ui).toBeUndefined();
     expect(ctx.debug).toBeUndefined();
+    expect(ctx.readMod).toBeUndefined();
   });
 
   it("reloadGame arrives with either staging door and with nothing else", () => {
@@ -411,6 +413,46 @@ describe("ctx.registries - the bound content a mod can ask about", () => {
      * that saves the character. A bare location.reload() here would compile, pass,
      * and lose the player's progress since the last save. */
     expect(MAIN_TS_SOURCE).toMatch(/reload: \(\) => \{\s*reloadAfterModChange\(\);\s*\},/u);
+  });
+
+  it("ctx.readMod: present only with mod:read AND a latched door, absent otherwise (#172)", () => {
+    /* THE SAME TWO-REASON GATE `ctx.installMod` uses: a manifest that never
+     * asked, and a door the boot path never latched, are two independent ways
+     * to get `undefined` rather than a facade that throws. */
+    const granted = CapabilitySet.fromManifest({
+      id: "qol",
+      name: "qol",
+      version: "1.0.0",
+      shape: "plugin",
+      capabilities: ["mod:read"],
+    });
+    /* No door latched: the capability alone buys nothing. */
+    expect(
+      modPluginContext("qol", {}, undefined, {}, { capabilities: granted }).readMod,
+    ).toBeUndefined();
+
+    setModReadDoor({
+      env: () => ({
+        engineVersion: "0.18.0",
+        fetch: () => Promise.reject(new Error("no network in this test")),
+      }),
+    });
+    try {
+      const ctx = modPluginContext("qol", {}, undefined, {}, { capabilities: granted });
+      expect(ctx.readMod).toBeDefined();
+      /* And with no grant at all, the latched door buys nothing either. */
+      expect(modPluginContext("qol", {}).readMod).toBeUndefined();
+    } finally {
+      setModReadDoor(undefined);
+    }
+  });
+
+  it("main.ts actually latches the read door", () => {
+    /* THE SAME CLASS OF DRIFT GUARD as the reload one above: every test in this
+     * file passes against a boot path that never calls setModReadDoor, which is
+     * indistinguishable from a capability the player was never actually able to
+     * use. */
+    expect(MAIN_TS_SOURCE).toMatch(/setModReadDoor\(\{/u);
   });
 
   it("mod:install does not hand over the session door, or the other way round", () => {

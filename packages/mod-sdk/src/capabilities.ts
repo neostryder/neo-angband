@@ -158,6 +158,28 @@
  *                             sold under the other's sentence. It is a shorter
  *                             LIFETIME for the archive and not a smaller reach for
  *                             the records: what composes, composes.
+ *  - "mod:read"            - resolve a repository reference through the SAME
+ *                             resolver the "install from a repository" door
+ *                             uses (the tags call, the channel filter, the
+ *                             manifest read at each candidate tag until one is
+ *                             engine-compatible), and hand back its manifest
+ *                             and payload listing. Nothing is installed and
+ *                             nothing is written to the player's library. Its
+ *                             own kind, like "backup:folder" and
+ *                             "display:replace": there is nothing to range
+ *                             over, so it has no wildcard either, and neither
+ *                             "mod:install" nor "mod:session" covers it - a
+ *                             mod that may put a pack in the library has not
+ *                             thereby been allowed to make network requests on
+ *                             the player's behalf to look one up. It is also
+ *                             not a "network:<host>" grant: that family gates
+ *                             a different, agent-facing door, and in-process
+ *                             plugin code can already fetch for itself with no
+ *                             capability at all (see this file's own header).
+ *                             What this buys is that the answer came from the
+ *                             host's own resolution rules rather than a
+ *                             second copy of them that could accept a
+ *                             reference the real installer would refuse.
  *  - "debug:spawn"         - conjure an item or a creature into the live game the
  *                             way the debug commands do. Its own kind and no
  *                             wildcard, and here that is the whole point rather
@@ -237,6 +259,7 @@ export type ParsedCapability =
   | { kind: "ui"; region: string; action: "replace" | "create" | "mount" }
   | { kind: "backup"; action: "folder" }
   | { kind: "mod"; action: "install" | "session" }
+  | { kind: "mod-read"; action: "read" }
   | { kind: "debug"; action: "spawn" | "wizard" }
   | { kind: "keymap"; action: "write" }
   | { kind: "query"; action: "snapshot" }
@@ -360,6 +383,17 @@ export function parseCapability(cap: string): ParsedCapability {
   if (cap === "mod:session") {
     return { kind: "mod", action: "session" };
   }
+  /* "mod:read": resolve a repository reference through the SAME resolver the
+   * install door uses and hand back its manifest and payload listing, without
+   * installing anything. A DIFFERENT kind from "mod", not a third action on
+   * it - "install" and "session" are two ways to put a pack IN the library,
+   * and this puts nothing anywhere, so "mod:*" covering it would be exactly
+   * the escalation grantCovers's action comparison exists to refuse. Its own
+   * kind, no wildcard, same reasoning as "backup:folder": there is nothing to
+   * range over. */
+  if (cap === "mod:read") {
+    return { kind: "mod-read", action: "read" };
+  }
   /* "debug:spawn": put an item or a creature into the live game the way the debug
    * commands do, marking the character the way they do. Its own kind and no
    * wildcard on purpose - a player asking "which of my mods can conjure things"
@@ -467,6 +501,12 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
        * session. Neither is a superset of the other, there is no wildcard, and a
        * kind-only comparison would have let one consent buy both. */
       return grant.kind === "mod" && grant.action === request.action;
+    case "mod-read":
+      /* Exact match only, same reasoning as "backup" - there is exactly one
+       * mod-read capability and no wildcard grant could ever cover it, and
+       * neither "mod:install" nor "mod:session" reaches here: they are a
+       * different `kind` entirely, not a wider action of the same one. */
+      return grant.kind === "mod-read";
     case "debug":
       /* Exact match only, and here that is the point rather than a consequence:
        * this is the grant a player is most likely to check for by name, so it

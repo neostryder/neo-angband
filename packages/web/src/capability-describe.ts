@@ -234,6 +234,20 @@ export function describeCapability(cap: string): CapabilityDescription {
           "you read what they ask for and turn them on yourself",
         elevated: true,
       };
+    case "mod-read":
+      /* NEITHER "INSTALL" NOR "ADD" - this line has to say something the other
+       * two "mod" lines do not, or a player reads it as a weaker copy of one
+       * of them. It puts nothing in the library and switches nothing on; what
+       * it does is reach the network on the player's behalf, the same way
+       * installing from a repository does, and hand back what it found. */
+      return {
+        cap,
+        text:
+          "Look up a mod at a repository address, the same way installing one does - its name, description, " +
+          "author, version and file listing - by reaching out to that repository on your behalf. " +
+          "Nothing is installed and nothing is added to your library",
+        elevated: true,
+      };
     case "debug":
       /* THE WIZARD ARM IS A DIFFERENT SENTENCE, and the difference is what the
        * player pays rather than how much the mod gets. Spawning happens to the
