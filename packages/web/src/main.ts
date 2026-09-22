@@ -2641,7 +2641,7 @@ function paintSubwindowContent(
     messages: () => messageSubwindowPainter.paint(panel, msglog),
     inventory: () => paintInventorySubwindow(panel, state, constants, quiverItemization),
     equipment: () => paintEquipmentSubwindow(panel, state),
-    monsters: () => paintMonsterSubwindow(panel, state),
+    monsters: () => paintMonsterSubwindow(panel, state, monsterListColorKey),
     items: () => paintItemListSubwindow(panel, state),
     "player-basic": () => paintPlayerBasicSubwindow(panel, state, playerName),
     "player-extra": () =>
@@ -3313,7 +3313,7 @@ async function runContextMenuPlayerOther(): Promise<void> {
       await showTextScreen(term, messageHistoryScreen(msglog));
       break;
     case "monsters":
-      await showMonsterList(term, state);
+      await showMonsterList(term, state, monsterListColorKey);
       break;
     case "objects":
       await showTextScreen(term, objectListScreen(state));
@@ -8570,6 +8570,9 @@ let storeSelectionDescription = false;
 /** Opt-in display seam (#254): itemize the inventory subwindow's quiver rows
  * by name instead of the summarized "in Quiver: N missiles" capacity block. */
 let quiverItemization = false;
+/** Opt-in display seam (#269): add monsterListEntryLineColor's row colour key
+ * to the visible-monster list ('[') and its passive subwindow. */
+let monsterListColorKey = false;
 
 function overviewParamsFor(
   mapW: number,
@@ -9104,6 +9107,9 @@ const displayControl: ModDisplay = {
   },
   setQuiverItemization(enabled) {
     quiverItemization = enabled;
+  },
+  setMonsterListColorKey(enabled) {
+    monsterListColorKey = enabled;
   },
   setVisualFilter(filter) {
     visualFilterOverlay.setFilter(filter);
@@ -10420,7 +10426,7 @@ function buildCommandTable(): CommandRow[] {
     { desc: "Full dungeon map", cat: "Information", o: "M", act: () => void openModal(showLevelMapForShell) },
     { desc: "Toggle ignoring of items", cat: "Information", o: "K", r: "O", act: () => { state.ignore.unignoring = !state.ignore.unignoring; void openModal(() => applyIgnoreDrop()); } },
     { desc: "Display visible item list", cat: "Information", o: "]", act: () => void openModal(() => showTextScreen(term, objectListScreen(state))) },
-    { desc: "Display visible monster list", cat: "Information", o: "[", act: () => void openModal(() => showMonsterList(term, state)) },
+    { desc: "Display visible monster list", cat: "Information", o: "[", act: () => void openModal(() => showMonsterList(term, state, monsterListColorKey)) },
     { desc: "Locate player on map", cat: "Information", o: "L", r: "W", act: () => void openModal(() => runLocate()) },
     { desc: "Identify symbol", cat: "Information", o: "/", act: () => void openModal(querySymbolCmd) },
     { desc: "Character description", cat: "Information", o: "C", act: () => void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())) },

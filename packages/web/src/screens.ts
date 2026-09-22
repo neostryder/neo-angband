@@ -34,6 +34,7 @@ import {
   tvalCanHaveFailure,
   COLOUR_L_DARK,
   COLOUR_RED,
+  COLOUR_VIOLET,
   targetGetMonsters,
   squareMonster,
   lookMonDesc,
@@ -2430,6 +2431,28 @@ export function monsterListFooter(sortExp: boolean): string {
   );
 }
 
+/**
+ * qol.miscNiceties' setMonsterListColorKey seam (#269): the one-line legend for
+ * monsterListEntryLineColor's convention (violet a unique, red a monster whose
+ * native level is above the current dungeon depth, white everything else),
+ * split into colour runs the way helpParts (birth.ts) splits its own legend -
+ * the connecting text runs through t(), and each colour name is drawn in the
+ * colour it names. Only ever read when the display flag a mod turns on is set;
+ * core's own default screen never calls this.
+ */
+function monsterListColorKeyRuns(): { text: string; color: string }[] {
+  const dim = colorToCss(COLOUR_WHITE);
+  return [
+    { text: t("screens.monsterList.colorKey.lead", "Key: "), color: dim },
+    { text: t("screens.monsterList.colorKey.violet", "violet"), color: colorToCss(COLOUR_VIOLET) },
+    { text: t("screens.monsterList.colorKey.violetTail", " a unique, "), color: dim },
+    { text: t("screens.monsterList.colorKey.red", "red"), color: colorToCss(COLOUR_RED) },
+    { text: t("screens.monsterList.colorKey.redTail", " above the current depth, "), color: dim },
+    { text: t("screens.monsterList.colorKey.white", "white"), color: colorToCss(COLOUR_WHITE) },
+    { text: t("screens.monsterList.colorKey.whiteTail", " an ordinary monster."), color: dim },
+  ];
+}
+
 /** The " dy N/S dx E/W" offset upstream prints for a LONE monster, else "". */
 function monsterListLocation(
   entry: ReturnType<typeof monsterListCollect>["entries"][number],
@@ -2568,6 +2591,7 @@ export function monsterListScreen(
   state: GameState,
   cols = 80,
   sortExp = false,
+  colorKey = false,
 ): ScreenView {
   const p = state.actor.player;
   const view = (blocks: ScreenBlock[]): ScreenView =>
@@ -2636,6 +2660,12 @@ export function monsterListScreen(
       ),
     );
   }
+  /* qol.miscNiceties' setMonsterListColorKey seam (#269): a text block, not a
+   * footer line - the footer is a single fixed-width row (see overlay.ts's
+   * displayedFooter), and the key needs its own line under the last section. */
+  if (colorKey) {
+    blocks.push({ kind: "text", paragraphs: [monsterListColorKeyRuns()] });
+  }
   return view(blocks);
 }
 
@@ -2644,8 +2674,9 @@ export function monsterListScreenLines(
   state: GameState,
   cols = 80,
   sortExp = false,
+  colorKey = false,
 ): ScreenLine[] {
-  return screenBodyLines(monsterListScreen(state, cols, sortExp), cols);
+  return screenBodyLines(monsterListScreen(state, cols, sortExp, colorKey), cols);
 }
 
 /**
@@ -2658,6 +2689,7 @@ export function monsterListSubwindowLines(
   state: GameState,
   height: number,
   width: number,
+  colorKey = false,
 ): ScreenLine[] {
   if (height < 1 || width < 1) return [];
   const p = state.actor.player;
@@ -2750,6 +2782,23 @@ export function monsterListSubwindowLines(
         (list.totalMonsters[MONSTER_LIST_SECTION_LOS] ?? 0) > 0,
       ),
     );
+  }
+  /* qol.miscNiceties' setMonsterListColorKey seam (#269): the same key as the
+   * interactive screen, clipped to this panel's own width and dropped
+   * entirely by the trailing slice below when the panel is too short for it -
+   * the same fate the "...and N others." row already accepts. */
+  if (colorKey) {
+    const runs = monsterListColorKeyRuns();
+    let text = "";
+    const clipped: { text: string; color: string }[] = [];
+    for (const run of runs) {
+      if (text.length >= width) break;
+      const chunk = run.text.slice(0, width - text.length);
+      if (chunk.length === 0) continue;
+      clipped.push({ text: chunk, color: run.color });
+      text += chunk;
+    }
+    lines.push(clipped.length ? { text, runs: clipped } : { text });
   }
   return lines.slice(0, height);
 }

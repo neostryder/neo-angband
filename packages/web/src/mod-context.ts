@@ -221,6 +221,7 @@ function displayFor(session: ModSessionFacts): ModDisplay | undefined {
     setStoreItemNameEllipsis: (enabled) => display.setStoreItemNameEllipsis(enabled),
     setStoreSelectionDescription: (enabled) => display.setStoreSelectionDescription(enabled),
     setQuiverItemization: (enabled) => display.setQuiverItemization(enabled),
+    setMonsterListColorKey: (enabled) => display.setMonsterListColorKey(enabled),
     setVisualFilter: (filter) => {
       if (!session.capabilities) {
         throw new Error(`this plugin needs capability "${VISUAL_FILTER_CAPABILITY}"; no capability set was supplied`);

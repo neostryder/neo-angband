@@ -277,6 +277,14 @@ export interface ModDisplay {
   setStoreSelectionDescription(enabled: boolean): void;
   /** Itemize the inventory subwindow's quiver rows by name instead of a capacity summary. */
   setQuiverItemization(enabled: boolean): void;
+  /**
+   * Add a one-line colour key to the visible-monster list ('[') and its
+   * passive subwindow, naming what monsterListEntryLineColor's row colours
+   * mean (violet a unique, red a monster whose native level is above the
+   * current dungeon depth, white everything else). Off leaves both screens
+   * exactly as upstream draws them.
+   */
+  setMonsterListColorKey(enabled: boolean): void;
   /** Apply a CSS filter to the terminal canvas, or clear the current filter. */
   setVisualFilter(filter: string | null): void;
   repaint(): void;

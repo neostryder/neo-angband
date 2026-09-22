@@ -215,6 +215,25 @@ describe("modPluginContext session facts", () => {
     expect(setQuiverItemization).toHaveBeenCalledWith(true);
   });
 
+  it("forwards the monster list colour key choice through the display facade", () => {
+    const setMonsterListColorKey = vi.fn();
+    const display = {
+      snapshot: () => ({ mode: "play" }),
+      onKey: () => () => undefined,
+      setGrid: () => undefined,
+      setCamera: () => undefined,
+      setMapView: () => undefined,
+      setSidebarExtent: () => undefined,
+      setTileScaling: () => undefined,
+      setFullMapOverview: () => undefined,
+      setMonsterListColorKey,
+      setVisualFilter: () => undefined,
+      repaint: () => undefined,
+    } as unknown as ModDisplay;
+    modPluginContext("qol", {}, undefined, {}, { display }).display?.setMonsterListColorKey(true);
+    expect(setMonsterListColorKey).toHaveBeenCalledWith(true);
+  });
+
   it("hands keymaps over only with the existing keymap:write capability", () => {
     const state = { options: { get: () => false } } as never;
     const denied = CapabilitySet.fromManifest({

@@ -43,9 +43,10 @@ import type { GameState } from "@rpgm-tools/neo-angband-core";
 export function showMonsterList(
   term: GridSurface & GridPointerInput,
   state: GameState,
+  colorKey = false,
 ): Promise<void> {
   let sortExp = false;
-  const viewFor = (): ScreenView => monsterListScreen(state, term.size().cols, sortExp);
+  const viewFor = (): ScreenView => monsterListScreen(state, term.size().cols, sortExp, colorKey);
   const host: ScreenHost = {
     invoke: (id: string): Promise<ScreenView | undefined> => {
       /* An unknown id is a no-op returning the current view, never an error: a
@@ -62,10 +63,10 @@ export function showMonsterList(
        * seam is already out; all that is left is to show the player the screen
        * they asked for - with whichever sort they had reached. */
       if (!(error instanceof ScreenAbandoned)) throw error;
-      return showMonsterListOnTerminal(term, state, sortExp);
+      return showMonsterListOnTerminal(term, state, sortExp, colorKey);
     });
   }
-  return showMonsterListOnTerminal(term, state, sortExp);
+  return showMonsterListOnTerminal(term, state, sortExp, colorKey);
 }
 
 /** The faithful terminal's own visible-monster list; see `showMonsterList`. */
@@ -73,6 +74,7 @@ function showMonsterListOnTerminal(
   host: GridSurface & GridPointerInput,
   state: GameState,
   initialSortExp: boolean,
+  colorKey = false,
 ): Promise<void> {
   const handle = pushRegion(screenRegionSpec(), host.size());
   const term = regionSurface(host, handle.cells);
@@ -84,7 +86,7 @@ function showMonsterListOnTerminal(
     const paint = (): void => {
       const { cols, rows } = term.size();
       term.clear();
-      const lines = monsterListScreenLines(state, cols, sortExp);
+      const lines = monsterListScreenLines(state, cols, sortExp, colorKey);
       term.print(0, HEADER_ROW, MONSTER_LIST_TITLE.slice(0, cols - 1), UI_TEXT);
       const bodyRows = rows - BODY_TOP - 1;
       const maxTop = Math.max(0, lines.length - bodyRows);

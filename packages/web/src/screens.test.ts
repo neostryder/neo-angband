@@ -1804,6 +1804,85 @@ describe("monsterListScreenLines ([, ui-mon-list.c)", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* #269: the row colour key, gated behind setMonsterListColorKey        */
+/* ------------------------------------------------------------------ */
+
+describe("the monster list's colour key (#269)", () => {
+  const kobold = monReg.races.find(
+    (r) => r.name === "kobold" && !r.flags.has(RF.UNIQUE),
+  ) as MonsterRace;
+
+  /* The exact wording the display seam draws, naming monsterListEntryLineColor's
+   * convention: violet a unique, red above the current depth, white ordinary. */
+  const KEY_TEXT =
+    "Key: violet a unique, red above the current depth, white an ordinary monster.";
+
+  function withOneKobold(): GameState {
+    const state = makeTestState({ playerGrid: loc(20, 12) });
+    state.monsters.push(fakeVisibleMon(kobold, loc(22, 12)));
+    return state;
+  }
+
+  it("leaves monsterListScreen's blocks exactly as they were when the flag is off (the default)", () => {
+    const withoutArg = monsterListScreen(withOneKobold(), 80);
+    const explicitlyOff = monsterListScreen(withOneKobold(), 80, false, false);
+    expect(withoutArg.blocks.some((b) => b.kind === "text")).toBe(false);
+    expect(explicitlyOff.blocks).toEqual(withoutArg.blocks);
+  });
+
+  it("adds exactly one text block naming the row colour convention when the flag is on", () => {
+    const off = monsterListScreen(withOneKobold(), 80, false, false);
+    const on = monsterListScreen(withOneKobold(), 80, false, true);
+    /* Every block the flag-off screen drew is still there, untouched. */
+    expect(on.blocks.slice(0, off.blocks.length)).toEqual(off.blocks);
+    expect(on.blocks).toHaveLength(off.blocks.length + 1);
+
+    const key = on.blocks[on.blocks.length - 1] as ScreenTextBlock;
+    expect(key.kind).toBe("text");
+    const runs = key.paragraphs[0]!;
+    expect(runs.map((r) => r.text).join("")).toBe(KEY_TEXT);
+    const colorOf = (word: string): string | undefined =>
+      runs.find((r) => r.text === word)?.color;
+    expect(colorOf("violet")).toBe(colorToCss(COLOUR_VIOLET));
+    expect(colorOf("red")).toBe(colorToCss(COLOUR_RED));
+    expect(colorOf("white")).toBe(colorToCss(COLOUR_WHITE));
+  });
+
+  it("carries the key onto the faithful terminal's rows as one extra line", () => {
+    const off = monsterListScreenLines(withOneKobold(), 80, false, false);
+    const on = monsterListScreenLines(withOneKobold(), 80, false, true);
+    expect(on.slice(0, off.length)).toEqual(off);
+    expect(on).toHaveLength(off.length + 1);
+    expect(on[on.length - 1]!.text).toBe(KEY_TEXT);
+  });
+
+  it("leaves the passive subwindow's rows unchanged when the flag is off (the default)", () => {
+    const state = withOneKobold();
+    const withoutArg = monsterListSubwindowLines(state, 10, 40);
+    const explicitlyOff = monsterListSubwindowLines(state, 10, 40, false);
+    expect(explicitlyOff).toEqual(withoutArg);
+  });
+
+  it("adds exactly the key line, clipped to the panel's own width, when the flag is on", () => {
+    const state = withOneKobold();
+    const off = monsterListSubwindowLines(state, 10, 40, false);
+    const on = monsterListSubwindowLines(state, 10, 40, true);
+    expect(on.slice(0, off.length)).toEqual(off);
+    expect(on).toHaveLength(off.length + 1);
+    const keyLine = on[on.length - 1]!;
+    expect(keyLine.text).toBe(KEY_TEXT.slice(0, 40));
+    expect(keyLine.runs?.map((r) => r.text).join("")).toBe(keyLine.text);
+  });
+
+  it("drops the key rather than displacing a monster row when the panel is too short for it", () => {
+    const state = withOneKobold();
+    const off = monsterListSubwindowLines(state, 2, 40, false);
+    const on = monsterListSubwindowLines(state, 2, 40, true);
+    expect(on).toEqual(off);
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* The model (#253 step 5b-vi): the monster list as a document         */
 /* ------------------------------------------------------------------ */
 

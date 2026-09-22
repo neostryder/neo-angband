@@ -802,9 +802,13 @@ export class MessageSubwindowPainter {
 }
 
 /** monster_list_show_subwindow, repainted from current game state. */
-export function paintMonsterSubwindow(term: GridSurface, state: GameState): void {
+export function paintMonsterSubwindow(
+  term: GridSurface,
+  state: GameState,
+  colorKey = false,
+): void {
   const { cols, rows } = term.size();
-  paintSubwindowLines(term, monsterListSubwindowLines(state, rows, cols));
+  paintSubwindowLines(term, monsterListSubwindowLines(state, rows, cols, colorKey));
 }
 
 /** update_inven_subwindow, using the shared inventory screen model. */
