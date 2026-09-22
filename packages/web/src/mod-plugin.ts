@@ -374,6 +374,46 @@ export interface ModKeymaps {
   remove(trigger: string): boolean;
 }
 
+/**
+ * neo-angband#171: a plugin's own live per-character storage - the save bag
+ * `migrateBag` migrates, read and written during play rather than only
+ * rewritten at mod-load time.
+ *
+ * `migrateBag` gave a mod a way to bring an OLD bag forward when its schema
+ * changed, but nothing to write a NEW one during play. A mod that wanted to
+ * remember something per character had no seam for that and approximated a
+ * save key instead - name, race, class, birth stats - and kept it in
+ * `ctx.prefs`, which is install-wide, not per-character, and collides between
+ * two characters that happen to match on all of those. This is the missing
+ * write seam, keyed to the actual save rather than to a fingerprint of it.
+ *
+ * SCOPED BY MOD ID, exactly like `ctx.prefs`: the id a mod gets is the id it
+ * was loaded under, so no mod can read or write another mod's storage by
+ * passing a different one.
+ *
+ * ENTIRELY UNGATED, like `ctx.prefs`: no capability changes what a mod's own
+ * bag holds, only whether there is a live character to hold one for at all.
+ */
+export interface ModCharacterStore {
+  /**
+   * This mod's own data on the CURRENT character's save, or null when it has
+   * never written one this life - a fresh character, or a mod enabled
+   * mid-game that has not written yet. Read fresh every call, never cached.
+   */
+  get(): unknown;
+  /**
+   * Replace this mod's own data on the current character's save. Stamped with
+   * whatever `saveSchema` this mod's manifest currently declares (0 when it
+   * declares none) - the same number `migrateBag` reads back on a later load,
+   * so a mod that bumps `saveSchema` after writing here still gets a coherent
+   * migration rather than data silently mismarked as already current.
+   *
+   * Passing null or undefined clears it, the same convention `ctx.prefs.set`
+   * uses.
+   */
+  set(value: unknown): void;
+}
+
 /** What the host hands a plugin. Frozen before it is passed. */
 export interface ModPluginContext {
   /** The mod's own id, which is also its folder name. */
@@ -512,6 +552,16 @@ export interface ModPluginContext {
    * teardown removes any bindings still owned by a departing mod.
    */
   readonly keymaps?: ModKeymaps;
+  /**
+   * neo-angband#171: this mod's own live per-character storage - the actual
+   * save bag, not a fingerprint approximated from birth-fixed facts. Absent
+   * during content composition and on any host that has not latched a live
+   * game to write into - the same absence `state` itself has, and for the
+   * same reason: there is no character to key storage to before one exists.
+   * See `ModCharacterStore`'s own header for scoping and what a write is
+   * tagged with.
+   */
+  readonly characterStore?: ModCharacterStore;
   /**
    * Whether this session's character was just CREATED, as opposed to loaded from
    * a save.

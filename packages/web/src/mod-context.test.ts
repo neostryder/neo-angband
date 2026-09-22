@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   modPluginContext,
+  setModCharacterStoreControl,
   setModDisplayControl,
   setModInstallDoor,
   setModReadDoor,
@@ -19,9 +20,10 @@ import {
   setModSubwindowsControl,
   setModKeyRepeatControl,
 } from "./mod-context";
-import type { ModDisplay, ModSubwindows } from "./mod-plugin";
+import type { ModCharacterStoreControl } from "./mod-context";
+import type { ModCharacterStore, ModDisplay, ModSubwindows } from "./mod-plugin";
 import type { KeyRepeatVerdict } from "./key-repeat";
-import type { CoreRegistries } from "@rpgm-tools/neo-angband-core";
+import type { CoreRegistries, ModBag } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modPrefs, modPrefsKey } from "./mod-prefs";
 
@@ -276,6 +278,127 @@ describe("modPluginContext session facts", () => {
     expect(typeof keymaps?.entries).toBe("function");
     expect(typeof keymaps?.rebind).toBe("function");
     expect(typeof keymaps?.remove).toBe("function");
+  });
+});
+
+describe("ctx.characterStore - a mod's own live per-character bag (#171)", () => {
+  /* `characterStoreFor` only checks truthiness, the same shape keymapsFor's own
+   * test above uses: a live game is whatever has a character to key storage to,
+   * not any particular GameState field this seam reads. */
+  const state = {} as never;
+
+  function fakeControl(): ModCharacterStoreControl & { readonly bags: Map<string, ModBag> } {
+    const bags = new Map<string, ModBag>();
+    return {
+      bags,
+      getBag: (id) => bags.get(id),
+      setBag: (id, bag) => {
+        if (bag) bags.set(id, bag);
+        else bags.delete(id);
+      },
+      saveSchemaOf: () => 2,
+    };
+  }
+
+  it("is absent without a live character, even with a control latched", () => {
+    setModCharacterStoreControl(fakeControl());
+    try {
+      expect(modPluginContext("qol", {}).characterStore).toBeUndefined();
+    } finally {
+      setModCharacterStoreControl(undefined);
+    }
+  });
+
+  it("is absent with a live character but no control latched", () => {
+    setModCharacterStoreControl(undefined);
+    expect(modPluginContext("qol", {}, state).characterStore).toBeUndefined();
+  });
+
+  it("reads null before any write, and round-trips a write through the latched control", () => {
+    const control = fakeControl();
+    setModCharacterStoreControl(control);
+    try {
+      const ctx = modPluginContext("qol", {}, state);
+      expect(ctx.characterStore?.get()).toBeNull();
+      ctx.characterStore?.set({ seenWyrms: 3 });
+      expect(ctx.characterStore?.get()).toEqual({ seenWyrms: 3 });
+      expect(control.bags.get("qol")).toEqual({ schema: 2, data: { seenWyrms: 3 } });
+    } finally {
+      setModCharacterStoreControl(undefined);
+    }
+  });
+
+  it("scopes storage to each mod's own id - one mod cannot read or overwrite another's (#171)", () => {
+    const control = fakeControl();
+    setModCharacterStoreControl(control);
+    try {
+      const a = modPluginContext("mod-a", {}, state);
+      const b = modPluginContext("mod-b", {}, state);
+      a.characterStore?.set({ mine: "a" });
+      b.characterStore?.set({ mine: "b" });
+      expect(a.characterStore?.get()).toEqual({ mine: "a" });
+      expect(b.characterStore?.get()).toEqual({ mine: "b" });
+      expect(control.bags.size).toBe(2);
+    } finally {
+      setModCharacterStoreControl(undefined);
+    }
+  });
+
+  it("clears the bag when set with null or undefined, the same convention ctx.prefs.set uses", () => {
+    const control = fakeControl();
+    setModCharacterStoreControl(control);
+    try {
+      const ctx = modPluginContext("qol", {}, state);
+      ctx.characterStore?.set({ x: 1 });
+      ctx.characterStore?.set(null);
+      expect(ctx.characterStore?.get()).toBeNull();
+      expect(control.bags.has("qol")).toBe(false);
+    } finally {
+      setModCharacterStoreControl(undefined);
+    }
+  });
+
+  it("survives a value that cannot round-trip through JSON, leaving the old bag untouched", () => {
+    const control = fakeControl();
+    control.bags.set("qol", { schema: 1, data: { safe: true } });
+    setModCharacterStoreControl(control);
+    try {
+      const ctx = modPluginContext("qol", {}, state);
+      const circular: Record<string, unknown> = {};
+      circular["self"] = circular;
+      expect(() => ctx.characterStore?.set(circular)).not.toThrow();
+      expect(ctx.characterStore?.get()).toEqual({ safe: true });
+    } finally {
+      setModCharacterStoreControl(undefined);
+    }
+  });
+
+  it("stamps a write with this mod's CURRENT saveSchema, not a fixed number", () => {
+    const bags = new Map<string, ModBag>();
+    setModCharacterStoreControl({
+      getBag: (id) => bags.get(id),
+      setBag: (id, bag) => {
+        if (bag) bags.set(id, bag);
+        else bags.delete(id);
+      },
+      saveSchemaOf: (id) => (id === "qol" ? 5 : undefined),
+    });
+    try {
+      modPluginContext("qol", {}, state).characterStore?.set({ x: 1 });
+      expect(bags.get("qol")?.schema).toBe(5);
+      modPluginContext("other", {}, state).characterStore?.set({ y: 1 });
+      /* Declares no saveSchema: tagged 0 rather than a fabricated number, and it
+       * never matters because migrateModBags skips a mod with none declared. */
+      expect(bags.get("other")?.schema).toBe(0);
+    } finally {
+      setModCharacterStoreControl(undefined);
+    }
+  });
+
+  it("a test may override ctx.characterStore directly, without a control latched", () => {
+    const store: ModCharacterStore = { get: () => ({ fixed: true }), set: () => undefined };
+    const ctx = modPluginContext("qol", {}, state, {}, { characterStore: store });
+    expect(ctx.characterStore).toBe(store);
   });
 });
 
@@ -548,5 +671,15 @@ describe("ctx.registries - the bound content a mod can ask about", () => {
      * classify() call could feed a tracker no door reads from. */
     expect(MAIN_TS_SOURCE).toMatch(/setModKeyRepeatControl\(\(\) => keyRepeatTracker\.last\(\)\);/u);
     expect(MAIN_TS_SOURCE).toMatch(/keyRepeatTracker\.classify\(ev\);/u);
+  });
+
+  it("main.ts actually latches ctx.characterStore onto the live StartedGame's own bags (#171)", () => {
+    /* THE SAME CLASS OF CHECK again: a door this file's unit tests can build by
+     * hand but no boot path ever installs is indistinguishable from a seam that
+     * always answers undefined. `game.mods` is read AND written through the
+     * latch, so both directions get their own assertion. */
+    expect(MAIN_TS_SOURCE).toMatch(/setModCharacterStoreControl\(\{/u);
+    expect(MAIN_TS_SOURCE).toMatch(/getBag: \(id\) => game\.mods\[id\],/u);
+    expect(MAIN_TS_SOURCE).toMatch(/game\.mods = next;/u);
   });
 });

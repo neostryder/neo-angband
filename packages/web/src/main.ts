@@ -337,6 +337,7 @@ import { hideAutoplayerBanner, showAutoplayerBanner } from "./autoplayer-banner"
 import {
   modOwnFiles,
   modPluginContext,
+  setModCharacterStoreControl,
   setModComposedRecords,
   setModDisplayControl,
   setModInstallDoor,
@@ -1562,6 +1563,27 @@ setModRegistries(booted.registries);
  * functions cannot disagree about which elements of a passthrough file are
  * records. */
 setModComposedRecords(composedObjects(composedRecords()));
+/* neo-angband#171's live per-character storage door: a mod's own bag on THIS
+ * StartedGame, read and written fresh on every call rather than a value
+ * captured here, because `game.mods` is replaced wholesale by both the bag
+ * migration pass below and by a plugin's own live write through this door.
+ *
+ * `saveSchemaOf` reads whichever loaded mod owns `id`, folder plugin or
+ * Worker alike, so a live write is tagged with the schema the mod's manifest
+ * currently declares - the same number `migrateBag` compares against on a
+ * later load - rather than a number invented here. */
+setModCharacterStoreControl({
+  getBag: (id) => game.mods[id],
+  setBag: (id, bag) => {
+    const next = { ...game.mods };
+    if (bag) next[id] = bag;
+    else delete next[id];
+    game.mods = next;
+  },
+  saveSchemaOf: (id) =>
+    activeModCode().plugins.find((p) => p.id === id)?.manifest.saveSchema ??
+    activeModCode().workers.find((p) => p.id === id)?.manifest.saveSchema,
+});
 /* And where a mod holding `mod:install` may land an archive. The env is the same
  * one every other install path is given (`modBrowseDeps`), and the consent switch
  * is read at the MOMENT OF USE rather than captured here, so a player turning

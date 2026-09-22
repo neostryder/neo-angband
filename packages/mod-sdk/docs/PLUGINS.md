@@ -108,6 +108,18 @@ Your handle on your own bag is the `data` argument `migrateBag` is given, and th
 value the host writes back for you. Reaching for `ctx.state.mods` finds nothing,
 because there is no such field.
 
+**`migrateBag` is not a WRITE seam.** It only brings an old bag forward at
+mod-load time; it gives you no way to write a new one during play. For that,
+use `ctx.characterStore` (neo-angband#171): `get()` and `set(value)` on your
+own bag, live, keyed to the actual character rather than to a fingerprint of
+one. Before this existed, a mod that needed to remember something about a
+character had to approximate a save key from birth-fixed facts (name, race,
+class, birth stats) and keep it in `ctx.prefs` instead. That store covers the
+whole install rather than one character, so it collides between two
+characters who happen to match on all of those facts. `ctx.characterStore.set()`
+stamps your write with whatever `saveSchema` your manifest currently declares,
+so `migrateBag` still sees a coherent number on the next load.
+
 When you change the SHAPE of that data, bump `saveSchema` and ship a
 `migrateBag`:
 
@@ -177,6 +189,7 @@ What `ctx` carries:
 | `loadModForSession` | `(bytes) => Promise<{ok, id, version, survivesReload} \| {ok, problem}>`, loading a **content** mod for this session only. Present only when your manifest declared `mod:session`. Code is refused on the same terms. It is **on** from the next reload rather than waiting to be switched on, and the archive is forgotten when the game closes - but what it did to a character is not. Say that to the player |
 | `ui` | `{ openPanel(spec), openPanels }`, panels of **real HTML** rather than character cells. Present only when your manifest declared `ui:panel.mount`; absent everywhere else, so test for it. See `MOD_SEAMS.md` section 4b - the two things that surprise everybody are that Escape is the player's and that a non-modal panel's container takes no pointer events |
 | `keyRepeat` | `() => { isRepeat, reportedRepeat, intervalMs, ageMs } \| null`, the host's own judgment on the most recent root-screen keydown - a genuine key-repeat versus a fresh press. Entirely ungated, like `subwindows`; `null` before the root handler has classified a keydown this session. Read-side only for now - nothing here yet suppresses or alters a command from it (#35) |
+| `characterStore` | `{ get(), set(value) }`, this mod's own live per-character storage - the same save bag `migrateBag` migrates, read and written during play instead of only at mod-load time. Scoped by mod id like `prefs`; entirely ungated. Present only once there is a live character. A write is stamped with your manifest's CURRENT `saveSchema` (0 if you declare none), the same number `migrateBag` reads back on a later load (#171) |
 
 `flags` is sliced per mod on purpose: a mod must not be able to read or act on
 another mod's toggles, or its behaviour would silently depend on which other mods

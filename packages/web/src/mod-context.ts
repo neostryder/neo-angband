@@ -16,11 +16,12 @@ import * as neoCore from "@rpgm-tools/neo-angband-core";
  * plugin imports. mod-plugin.ts keeps its SDK imports type-only. */
 import * as neoAuthoring from "@rpgm-tools/neo-angband-mod-sdk";
 import { log } from "./logging";
-import type { CoreRegistries, GameState } from "@rpgm-tools/neo-angband-core";
+import type { CoreRegistries, GameState, ModBag } from "@rpgm-tools/neo-angband-core";
 import {
   IN_PROCESS_MOD_API_VERSION,
   type BackupFolder,
   type ModAuthoringApi,
+  type ModCharacterStore,
   type ModCoreApi,
   type ModDebug,
   type ModDisplay,
@@ -144,6 +145,7 @@ export function modPluginContext(
   const subwindows = subwindowsFor(session);
   const keyRepeat = keyRepeatFor(session);
   const keymaps = keymapsFor(id, state, session);
+  const characterStore = characterStoreFor(id, state, session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
   const registries = session.registries ?? boundRegistries;
@@ -171,6 +173,7 @@ export function modPluginContext(
     ...(subwindows ? { subwindows } : {}),
     ...(keyRepeat ? { keyRepeat } : {}),
     ...(keymaps ? { keymaps } : {}),
+    ...(characterStore ? { characterStore } : {}),
     /* Defaults FALSE, which is the safe way round: a mod that seeds something
      * for a new life must not seed it over a character who already lived one,
      * so a caller that forgets to say gets the answer that changes nothing. */
@@ -198,6 +201,83 @@ export function modPluginContext(
 function keymapsFor(id: string, state: GameState | undefined, session: ModSessionFacts): ModKeymaps | undefined {
   if (!state || !session.capabilities?.has(KEYMAP_WRITE_CAPABILITY)) return undefined;
   return createModKeymaps(id, state);
+}
+
+/**
+ * What the host supplies before `ctx.characterStore` can do anything: a live
+ * view onto the StartedGame's own per-mod save bags. NOT `GameState` - see
+ * PLUGINS.md's own note that `ctx.state.mods` finds nothing, because a bag
+ * lives one level up, on the `StartedGame` the host holds.
+ *
+ * Every method reads and applies FRESH per call rather than a value captured
+ * once, the same reason `DebugDoorDeps.wizard` is a getter: the live game's
+ * `mods` record is replaced wholesale by every migration pass (mod-bags.ts)
+ * and by every live write this seam itself makes, so a value captured once at
+ * boot would go stale the moment either happens.
+ */
+export interface ModCharacterStoreControl {
+  /** This mod's current bag, or undefined when it has never written one. */
+  getBag(id: string): ModBag | undefined;
+  /** Replace this mod's bag; undefined clears it. */
+  setBag(id: string, bag: ModBag | undefined): void;
+  /** This mod's CURRENT saveSchema declaration, for tagging a live write. */
+  saveSchemaOf(id: string): number | undefined;
+}
+
+/** The live character-bag door, latched once the host holds a StartedGame. */
+let characterStoreControl: ModCharacterStoreControl | undefined;
+
+/**
+ * neo-angband#171: `ctx.characterStore` is the live counterpart to
+ * `migrateBag` - the same per-mod save bag, read and written during play
+ * rather than only migrated at load. UNGATED, like `subwindowsFor` /
+ * `keyRepeatFor` above: no capability changes what a mod's own bag holds, only
+ * whether there is a live character to hold one for at all - `!state` is the
+ * only reason a real call site ever leaves this absent.
+ */
+function characterStoreFor(
+  id: string,
+  state: GameState | undefined,
+  session: ModSessionFacts,
+): ModCharacterStore | undefined {
+  if (session.characterStore !== undefined) return session.characterStore;
+  if (!state) return undefined; // no character yet, so nothing to key storage to
+  const control = characterStoreControl;
+  if (!control) return undefined;
+  return {
+    get(): unknown {
+      const bag = control.getBag(id);
+      if (!bag) return null;
+      /* Defensive clone: a caller mutating what it read back must not silently
+       * corrupt the live save - the same hazard `jsonClone` (core's
+       * save-blocks.ts) guards the quarantine pass against. */
+      return JSON.parse(JSON.stringify(bag.data)) as unknown;
+    },
+    set(value: unknown): void {
+      if (value === null || value === undefined) {
+        control.setBag(id, undefined);
+        return;
+      }
+      let data: ModBag["data"];
+      try {
+        /* Also the validation step: a value that cannot round-trip through
+         * JSON (a function, a cycle) is rejected here rather than reaching
+         * the save at all, the same failure mode `modPrefs` swallows and
+         * logs rather than throws back into the plugin that called this from
+         * inside a hook. */
+        data = JSON.parse(JSON.stringify(value)) as ModBag["data"];
+      } catch (err) {
+        log.warn(`mod:${id}`, "character storage could not be saved", err);
+        return;
+      }
+      control.setBag(id, { schema: control.saveSchemaOf(id) ?? 0, data });
+    },
+  };
+}
+
+/** Install or clear the live character-bag door (the boot path, and the tests). */
+export function setModCharacterStoreControl(control: ModCharacterStoreControl | undefined): void {
+  characterStoreControl = control;
 }
 
 /** The live display door, latched after the shell has constructed its surface. */
@@ -515,6 +595,8 @@ export interface ModSessionFacts {
   readonly subwindows?: ModSubwindows;
   /** Override the key-repeat query (tests and alternate front ends). */
   readonly keyRepeat?: () => KeyRepeatVerdict | null;
+  /** Override ctx.characterStore directly (tests, and a front end with its own). */
+  readonly characterStore?: ModCharacterStore;
   /**
    * THIS mod's resolved capability grants (ticket #133's `ctx.backupFolder`
    * gate). Absent in most call sites today - see MOD_REACH.md's own note that
