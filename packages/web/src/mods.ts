@@ -69,7 +69,6 @@ import {
 import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
 import {
   orphanRowLabel,
-  orphanStashScreen,
   stashOf,
   viewOrphanStash,
   type OrphanViewDeps,
