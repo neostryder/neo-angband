@@ -255,7 +255,18 @@ const TERM_CLEAR_REGIONS: Readonly<Record<string, readonly string[]>> = {
    * and the install progress screen repaints several times a second at a moment
    * the player cannot interrupt - the worst possible time to wipe a front end
    * with no way for it to learn that it happened. */
-  "mod-browse.ts": ["installOne > result", "openRegistry", "paintWhile", "showSource"],
+  "mod-browse.ts": [
+    "installOne > result",
+    "openRegistry",
+    "paintWhile",
+    "showSource",
+    /* The repository door's "asking the repository what it holds..." wait
+     * screen (#23) - the same pushRegion/regionSurface/clear pattern
+     * openRegistry already uses immediately above, for the same reason: a
+     * discovery round trip is a real wait, held across an await rather than
+     * a key loop. */
+    "showRepoInstallSummary",
+  ],
   /* The install-choice screen ahead of "(I)nstall locally" needs two keys
    * (D and W) `showTextScreen` does not offer, so it paints itself - and is a
    * region from the start rather than a conversion, copying `showLevelMap`'s
@@ -442,9 +453,9 @@ describe("term.clear() is a ratchet: the list of full-screen erases may only shr
      * catches, and it is the accident a table of claims invites. */
     expect(siteCount(TERM_CLEAR_COMPOSITOR)).toBe(1);
     expect(siteCount(TERM_CLEAR_INDEPENDENT)).toBe(2);
-    expect(siteCount(TERM_CLEAR_REGIONS)).toBe(31);
+    expect(siteCount(TERM_CLEAR_REGIONS)).toBe(32);
     expect(siteCount(TERM_CLEAR_PENDING), "MOD_REACH.md's gap-21 row quotes this").toBe(2);
-    expect(siteCount(TERM_CLEAR_ALLOWED)).toBe(36);
+    expect(siteCount(TERM_CLEAR_ALLOWED)).toBe(37);
 
     for (const file of Object.keys(TERM_CLEAR_REGIONS)) {
       const text = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");

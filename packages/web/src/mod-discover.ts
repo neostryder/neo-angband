@@ -16,7 +16,12 @@
  */
 
 import { engineAllows, engineProblem, type GateableManifest } from "./mod-engine";
-import { newerGameCouldRun } from "@rpgm-tools/neo-angband-mod-sdk";
+import {
+  COMPAT_CLAIMS,
+  newerGameCouldRun,
+  type CompatClaim,
+  type PackCompat,
+} from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   newestTag,
   payloadFromTree,
@@ -118,6 +123,36 @@ export interface DiscoveredMod {
    * relative to the pack. Empty when the manifest names none.
    */
   readonly screenshots: readonly string[];
+  /**
+   * SPDX license expression the manifest declares, or null when it states none.
+   *
+   * Optional for the same reason `sha` is: a fixture built before this field
+   * existed still type-checks as a DiscoveredMod. `discoverMod` itself always
+   * sets it.
+   */
+  readonly license?: string | null;
+  /**
+   * Capabilities the manifest requests (only meaningful for a `shape: plugin`
+   * pack; empty for content). Read here, RATHER THAN LEFT TO THE INSTALLER, so
+   * the pre-install summary (mod-preinstall.ts) can describe them in plain
+   * language - via capability-describe.ts, the one place that wording lives -
+   * before a byte is fetched.
+   *
+   * Optional rather than required-and-empty, so an older fixture still
+   * type-checks; absent is read as "none declared", same as `[]`.
+   */
+  readonly capabilities?: readonly string[];
+  /**
+   * What this manifest claims about OTHER packs (see PackCompat in the SDK),
+   * filtered to entries whose shape is actually usable rather than validated -
+   * a malformed entry here is the real install's problem to refuse, not this
+   * row's to throw over. Read for the same reason `capabilities` is: the
+   * pre-install summary's conflict check (declaredConflicts, mod-conflicts.ts)
+   * needs it before install, not only after.
+   *
+   * Optional, same reasoning as `capabilities`; absent reads as "declares nothing".
+   */
+  readonly compat?: readonly PackCompat[];
   /**
    * Whether the mod would LOAD in this build, and what to say about the range if
    * there is anything to say - both straight from the loader's own verdict
@@ -338,6 +373,12 @@ export interface ManifestFacts {
   readonly gateable: GateableManifest;
   /** Paths to screenshot assets the manifest declares, in the order it lists them. */
   readonly screenshots: readonly string[];
+  /** SPDX license expression, or null when the manifest states none. */
+  readonly license: string | null;
+  /** Capabilities requested, filtered to strings. Empty for a content-only pack. */
+  readonly capabilities: readonly string[];
+  /** Compat claims about other packs, filtered to entries with a usable shape. */
+  readonly compat: readonly PackCompat[];
 }
 
 type ManifestRead =
@@ -383,6 +424,15 @@ async function readManifestFacts(
   const screenshots = Array.isArray(screenshotsField)
     ? screenshotsField.filter((s): s is string => typeof s === "string")
     : [];
+  const license =
+    typeof manifest["license"] === "string" && manifest["license"] !== ""
+      ? manifest["license"]
+      : null;
+  const capabilitiesField = manifest["capabilities"];
+  const capabilities = Array.isArray(capabilitiesField)
+    ? capabilitiesField.filter((s): s is string => typeof s === "string")
+    : [];
+  const compat = readDeclaredCompat(manifest["compat"]);
   return {
     ok: true,
     facts: {
@@ -399,6 +449,9 @@ async function readManifestFacts(
         typeof manifest["description"] === "string" ? manifest["description"] : null,
       engine,
       screenshots,
+      license,
+      capabilities,
+      compat,
       gateable: {
         id,
         ...(engine === null ? {} : { engine }),
@@ -406,6 +459,39 @@ async function readManifestFacts(
       },
     },
   };
+}
+
+/**
+ * A manifest's `compat` array (PackCompat[]), filtered to entries with a usable
+ * shape rather than validated - a malformed entry is a real install's problem
+ * (validateManifest, mod-sdk) to refuse, not discovery's to throw over. Mirrors
+ * validateCompat's field checks (manifest.ts) without the throw.
+ */
+function readDeclaredCompat(value: unknown): readonly PackCompat[] {
+  if (!Array.isArray(value)) return [];
+  const out: PackCompat[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+    const c = entry as Record<string, unknown>;
+    const withId = c["with"];
+    const claim = c["claim"];
+    const because = c["because"];
+    if (typeof withId !== "string" || withId === "") continue;
+    if (typeof claim !== "string" || !COMPAT_CLAIMS.includes(claim as CompatClaim)) continue;
+    if (typeof because !== "string" || because === "") continue;
+    const scope = Array.isArray(c["scope"])
+      ? c["scope"].filter((s): s is string => typeof s === "string")
+      : undefined;
+    const range = typeof c["range"] === "string" ? c["range"] : undefined;
+    out.push({
+      with: withId,
+      claim: claim as CompatClaim,
+      because,
+      ...(scope ? { scope } : {}),
+      ...(range ? { range } : {}),
+    });
+  }
+  return out;
 }
 
 /** What the version walk found. */
@@ -585,8 +671,21 @@ export async function discoverMod(
       return { ok: false, problem: `${ref.repo} has no version whose manifest could be read.` };
     }
     if (chosen === null) engineHeld = null;
-    const { tag, manifest, id, name, author, version, description, engine, screenshots, gateable } =
-      facts;
+    const {
+      tag,
+      manifest,
+      id,
+      name,
+      author,
+      version,
+      description,
+      engine,
+      screenshots,
+      license,
+      capabilities,
+      compat,
+      gateable,
+    } = facts;
 
     /* Read off the same tags-call response the picked tag came from - a second
      * request would be a second chance for the tag to have moved BETWEEN the two
@@ -657,6 +756,9 @@ export async function discoverMod(
         description,
         engine,
         screenshots,
+        license,
+        capabilities,
+        compat,
         /* The MOD's claim, evaluated against THIS build by the SAME code that
          * decides at load time. Two copies of a compatibility rule is one copy
          * that learns, so this calls the loader's rather than re-deriving it. */

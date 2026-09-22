@@ -339,6 +339,7 @@ import {
   setModComposedRecords,
   setModDisplayControl,
   setModInstallDoor,
+  setModReadDoor,
   setModRegistries,
   setModDebugDoor,
   setModSubwindowsControl,
@@ -1582,6 +1583,21 @@ setModInstallDoor({
   reload: () => {
     reloadAfterModChange();
   },
+});
+/* And where a mod holding `mod:read` may resolve a repository reference - the
+ * same tags/channel/manifest walk `modBrowseDeps().discover` uses below, built
+ * fresh on every call rather than once here, so a channel change mid-session
+ * reaches the very next resolution - the same reasoning `allowed` above reads
+ * consent at the moment of use instead of capturing it. */
+setModReadDoor({
+  env: () => ({
+    engineVersion: ENGINE_VERSION,
+    channel: readChannel(channelStore(), ENGINE_VERSION),
+    fetch: async (url) => {
+      const res = await fetch(url);
+      return { ok: res.ok, status: res.status, text: () => res.text() };
+    },
+  }),
 });
 /* A shop line no item answers is one mod's fault, not a failed launch.
  *

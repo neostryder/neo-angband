@@ -283,27 +283,48 @@ which is correct, while a field the pack PATCHED on a core record simply returns
 to its unpatched value, because a patch lives in the composition and not in the
 save. `docs/PLANNED.md` carries the second as open work.
 
-### From a git repository (proposed design, not the shipped path)
+### From a git repository
 
-[PROPOSED] throughout, and the heading used to read "(today)", which it was not.
-The shipped installer reads `manifest.json` at a TAG and nothing else: no branch
-head and no bare commit. What it actually does, including how it
-picks which release to offer and what an install pins, is in
-[MOD_COMPATIBILITY.md](MOD_COMPATIBILITY.md) and [../MODS.md](../MODS.md). The
-design below is kept as the design of record for where the installer is going.
+The heading used to read "(proposed design, not the shipped path)" and step 4
+below used to carry its own `[PROPOSED]`. Step 4, the pre-install summary, is
+now built (issue #23): `mod-preinstall.ts` (`packages/web/src`) reads the
+candidate's own declared content files at its pinned tag and reports what it
+adds, what it patches, replaces or removes - each touched record paired with
+its owning pack and whether that owner is actually enabled right now, rather
+than a claim about a load order nothing has composed yet - alongside its
+capabilities (in `capability-describe.ts`'s own words, not a second copy of
+them), license, and any `conflicts` claim that applies once the candidate
+joins the player's enabled set in either direction (`mod-conflicts.ts`'s
+`declaredConflicts`, reused rather than reimplemented). Size, author and
+screenshots were already shown by discovery (`mod-discover.ts`) before this
+work; the summary carries them alongside the new sections rather than
+duplicating them. `mod-browse.ts`'s `showRepoInstallSummary` is what shows it,
+between pasting a repository address and the existing install action - the
+player confirms or cancels there, and confirming runs the same install path
+(`installOne`) the other doors already use.
+
+Steps 1, 3 and 5 remain `[PROPOSED]`: the shipped installer reads
+`manifest.json` at a TAG and nothing else (no branch head and no bare commit),
+a full schema/dependency-availability check still happens only at the actual
+install rather than ahead of the summary, and an install still appends to the
+load order rather than inserting at a dependency-resolved position. What the
+installer actually does, including how it picks which release to offer and
+what an install pins, is in [MOD_COMPATIBILITY.md](MOD_COMPATIBILITY.md) and
+[../MODS.md](../MODS.md). The numbered list below is kept as the design of
+record for where the rest of the installer is going.
 
 The user pastes a repository URL (or picks a ref). The app:
 
-1. Resolves a specific ref (tag preferred, else branch head, else
+1. [PROPOSED] Resolves a specific ref (tag preferred, else branch head, else
    commit) and pins it - installs are reproducible, not "latest".
 2. Fetches the tree at that ref and reads `manifest.json`.
-3. Validates: schema, `engine` compatibility, dependency availability
-   and version ranges, and (for plugins) the capability list.
-4. Shows a pre-install summary: what it adds, what it patches/replaces/
-   removes (computed against the current load order), capabilities it
-   requests in plain language, size, license, author, screenshots, and
-   any conflicts with already-enabled mods.
-5. On confirm, materializes the mod into local storage
+3. [PROPOSED] Validates: schema, `engine` compatibility, dependency
+   availability and version ranges, and (for plugins) the capability list.
+4. Shows a pre-install summary: what it adds, what it patches, replaces or
+   removes and whether each touched record's owner is enabled, capabilities it
+   requests in plain language, size, license, author, screenshots, and any
+   conflicts with already-enabled mods.
+5. [PROPOSED] On confirm, materializes the mod into local storage
    (content-addressed by hash), enables it, and inserts it into the load
    order at the dependency-correct position.
 
