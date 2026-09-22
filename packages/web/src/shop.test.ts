@@ -571,3 +571,159 @@ describe("paintContextMenu (context_menu_store_item's backdrop, #128)", () => {
     }
   });
 });
+
+/**
+ * The missing-mod stash view's home entry point (issue 76): a follow-up to
+ * the per-item delete added in 3ade020f9. The stash screen itself lives in
+ * mod-orphans.ts and is exercised there; this only has to prove shop.ts's own
+ * wiring - the 'k' key and its help-legend row are gated on `deps.viewStash`
+ * and, live, on `hasItems()`, and neither one ever reads or writes
+ * `store.stock`, which is the home's own inventory and slot count.
+ */
+describe("the missing-mod stash entry point inside the home (issue 76)", () => {
+  function homeStore(stock: GameObject[] = []): Store {
+    return {
+      feat: FEAT.HOME,
+      stock,
+      owner: { name: "", maxCost: 0 },
+    } as unknown as Store;
+  }
+
+  const baseDeps = {
+    featureName: "Your Home",
+    rogueLike: false,
+    examine: async () => {},
+    sellPick: async () => ({ kind: "cancel" as const }),
+  };
+
+  function allPrintsTerm(): StoreTerm & { texts: () => readonly string[] } {
+    const texts: string[] = [];
+    const term = storeTerm();
+    return {
+      ...term,
+      print: (_x, _y, text) => {
+        texts.push(text);
+      },
+      texts: () => texts,
+    };
+  }
+
+  it("opens the stash view when 'k' is pressed and something is stashed", async () => {
+    const host = storeTerm();
+    let opened = 0;
+    const done = runStore(host, selectionGame(), homeStore(), () => {}, {} as never, {
+      ...baseDeps,
+      viewStash: {
+        hasItems: () => true,
+        open: async () => {
+          opened++;
+        },
+      },
+    });
+
+    await tick();
+    dispatchStoreKey("k");
+    await tick();
+    expect(opened).toBe(1);
+
+    dispatchStoreKey("Escape");
+    await done;
+  });
+
+  it("does nothing when 'k' is pressed and the stash is empty", async () => {
+    const host = storeTerm();
+    let opened = 0;
+    const done = runStore(host, selectionGame(), homeStore(), () => {}, {} as never, {
+      ...baseDeps,
+      viewStash: {
+        hasItems: () => false,
+        open: async () => {
+          opened++;
+        },
+      },
+    });
+
+    await tick();
+    dispatchStoreKey("k");
+    await tick();
+    expect(opened).toBe(0);
+
+    dispatchStoreKey("Escape");
+    await done;
+  });
+
+  it("does nothing in an ordinary store, even if viewStash were somehow supplied", async () => {
+    const host = storeTerm();
+    let opened = 0;
+    const ordinaryStore = {
+      feat: FEAT.STORE_GENERAL,
+      stock: [],
+      owner: { name: "Bilbo", maxCost: 5000 },
+    } as unknown as Store;
+    const done = runStore(host, selectionGame(), ordinaryStore, () => {}, {} as never, {
+      ...baseDeps,
+      featureName: "General Store",
+      viewStash: {
+        hasItems: () => true,
+        open: async () => {
+          opened++;
+        },
+      },
+    });
+
+    await tick();
+    dispatchStoreKey("k");
+    await tick();
+    expect(opened).toBe(0);
+
+    dispatchStoreKey("Escape");
+    await done;
+  });
+
+  it("never reads or writes the home's own stock - no slot is added or removed", async () => {
+    const host = storeTerm();
+    const stock: GameObject[] = [selectionStock("a Torch", 1)];
+    const store = homeStore(stock);
+    const done = runStore(host, selectionGame(), store, () => {}, {} as never, {
+      ...baseDeps,
+      viewStash: { hasItems: () => true, open: async () => {} },
+    });
+
+    await tick();
+    dispatchStoreKey("k");
+    await tick();
+    // Same array, same length: opening the stash neither added a home entry
+    // nor consumed a home storage slot.
+    expect(store.stock).toBe(stock);
+    expect(store.stock.length).toBe(1);
+
+    dispatchStoreKey("Escape");
+    await done;
+  });
+
+  it("mentions the key in the help legend only while the home has something stashed", async () => {
+    const withStash = allPrintsTerm();
+    const doneWith = runStore(withStash, selectionGame(), homeStore(), () => {}, {} as never, {
+      ...baseDeps,
+      viewStash: { hasItems: () => true, open: async () => {} },
+    });
+    await tick();
+    dispatchStoreKey("?");
+    await tick();
+    expect(withStash.texts().join("")).toContain("set aside");
+    dispatchStoreKey("Escape");
+    await doneWith;
+
+    const withoutStash = allPrintsTerm();
+    const doneWithout = runStore(withoutStash, selectionGame(), homeStore(), () => {}, {} as never, {
+      ...baseDeps,
+      viewStash: { hasItems: () => false, open: async () => {} },
+    });
+    await tick();
+    dispatchStoreKey("?");
+    await tick();
+    expect(withoutStash.texts().join("")).not.toContain("set aside");
+    dispatchStoreKey("Escape");
+    await doneWithout;
+  });
+});

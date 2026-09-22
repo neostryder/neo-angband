@@ -341,6 +341,26 @@ export interface StoreScreenDeps {
     /** '|' -> do_cmd_quiver (ui-store.c:850). */
     quiver: () => Promise<void>;
   };
+  /**
+   * The missing-mod stash view (mod-orphans.ts, issue 76), reachable with 'k'
+   * only while standing in the home. There is no upstream ui-store.c command
+   * this maps to - the Home is where a player already goes looking for
+   * anything that went missing, so this is the same screen the Mods menu's
+   * "Set aside by a missing mod" row already opens, given a second door.
+   *
+   * Absent on every other store, so the key and its help-legend row never
+   * appear anywhere there is nothing to reach. `hasItems` is read again on
+   * every keypress and every legend paint, so the row and the key both drop
+   * the moment the stash empties rather than only on the next visit - and
+   * neither one ever reads or writes `store.stock`, so opening it can never
+   * add an entry to the home's own inventory or spend one of its slots.
+   */
+  viewStash?: {
+    /** Whether the stash currently holds anything worth opening for. */
+    hasItems: () => boolean;
+    /** Opens the stash view (mod-orphans.ts's orphanStashScreen). */
+    open: () => Promise<void>;
+  };
 }
 
 /** One keyboard key or one grid tap from the store's own input listener. */
@@ -710,6 +730,18 @@ export async function runStore(
       text: t("shop.help.inspects", " inspects an item from your inventory. "),
       color: w,
     });
+    // Issue 76: only in the home, and only while there is something to
+    // reach - an empty stash advertises no command at all.
+    if (isHome && deps.viewStash?.hasItems()) {
+      runs.push({ text: "k", color: g });
+      runs.push({
+        text: t(
+          "shop.help.viewStash",
+          " views what is set aside by a missing mod, without touching your home. ",
+        ),
+        color: w,
+      });
+    }
     runs.push({ text: "ESC", color: g });
     runs.push({ text: t("shop.help.exits", " exits the building."), color: w });
     return runs;
@@ -1276,6 +1308,13 @@ export async function runStore(
       if (k === "i") { await deps.manageItem.inventory(); continue; }
       if (k === "e") { await deps.manageItem.equipment(); continue; }
       if (k === "|") { await deps.manageItem.quiver(); continue; }
+    }
+    // Issue 76: the missing-mod stash view, home-only and gated live on
+    // whether there is anything in it - never reads or writes store.stock,
+    // so it can neither add a home entry nor spend a home storage slot.
+    if (isHome && k === "k" && deps.viewStash?.hasItems()) {
+      await deps.viewStash.open();
+      continue;
     }
     const sel = selections.indexOf(k);
     if (sel >= 0) {

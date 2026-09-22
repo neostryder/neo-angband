@@ -231,6 +231,7 @@ import {
   orphanPurgeTitle,
   orphanPurgedMessage,
   stashOf,
+  viewOrphanStash,
   type OrphanViewDeps,
 } from "./mod-orphans";
 import { installCrashScreen } from "./crash-screen.js";
@@ -9748,6 +9749,27 @@ async function enterStoreModal(store: Store): Promise<void> {
         equipment: () => showTextScreen(term, equipmentScreen(state)),
         quiver: () => showTextScreen(term, quiverScreen(state)),
       },
+      // The missing-mod stash view (mod-orphans.ts, issue 76): a second door
+      // into the same screen the Mods menu's "Set aside by a missing mod" row
+      // already opens, reachable from the home instead of only from Mods.
+      // orphanViewDeps/applyOrphanStore are the exact read/write pair that
+      // row already uses, so a delete made here is identical to one made
+      // there; neither one ever touches `store.stock`, so the home's own
+      // inventory and slot count are untouched by opening or using it.
+      //
+      // Spread rather than a plain `viewStash: cond ? {...} : undefined`:
+      // exactOptionalPropertyTypes forbids assigning undefined to an optional
+      // property, and omitting the key entirely on a non-home store is also
+      // the more honest shape - an ordinary shop never had this field at all.
+      ...(store.feat === FEAT.HOME
+        ? {
+            viewStash: {
+              hasItems: () =>
+                stashOf(orphanViewDeps(() => game.orphans, applyOrphanStore)).total > 0,
+              open: () => viewOrphanStash(term, orphanViewDeps(() => game.orphans, applyOrphanStore)),
+            },
+          }
+        : {}),
     }),
     );
   } finally {

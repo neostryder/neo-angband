@@ -283,4 +283,31 @@ describe("main boot order", () => {
     expect(body).toMatch(/purgeOrphans\(\)/u);
     expect(body).toMatch(/orphansAcknowledged = true/u);
   });
+
+  it("gives the home its own door into the real stash view, gated on FEAT.HOME (#76)", () => {
+    /* Follow-up to the two tests above: until this landed the stash view was
+     * reachable only from Mods. enterStoreModal's deps object is the only
+     * place a second door could be wired, and the same green-and-dead risk
+     * applies here - a `viewStash` field that exists but is not actually the
+     * real screen, or is not gated on the home, would pass a shallower check. */
+    const src = stripped();
+    const at = src.search(/async function enterStoreModal/u);
+    expect(at, "main.ts no longer declares enterStoreModal").toBeGreaterThan(-1);
+    const body = src.slice(at, at + 6000);
+    const viewStashAt = body.search(/viewStash:/u);
+    expect(viewStashAt, "enterStoreModal never wires viewStash").toBeGreaterThan(-1);
+    // The gate reads as `...(store.feat === FEAT.HOME ? { viewStash: {...} } : {})`,
+    // so the condition sits BEFORE the key itself; widen the window to cover it.
+    const clause = body.slice(Math.max(0, viewStashAt - 200), viewStashAt + 500);
+    // Only offered in the home - an ordinary shop never gets the field at all.
+    expect(clause).toMatch(/store\.feat === FEAT\.HOME/u);
+    // hasItems reads the same live stash the Mods row reads, not a stub.
+    expect(clause).toMatch(
+      /stashOf\(orphanViewDeps\(\(\)\s*=>\s*game\.orphans,\s*applyOrphanStore\)\)\.total > 0/u,
+    );
+    // open() is the actual stash view, not a placeholder screen.
+    expect(clause).toMatch(
+      /viewOrphanStash\(term,\s*orphanViewDeps\(\(\)\s*=>\s*game\.orphans,\s*applyOrphanStore\)\)/u,
+    );
+  });
 });
