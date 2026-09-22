@@ -10754,6 +10754,11 @@ function dispatchControlKey(key: string, roguelike: boolean): boolean {
 
 inputEvents.addEventListener("keydown", (ev) => {
   logKeypress(ev);
+  // #35: classify every keydown that reaches this screen, unconditionally and
+  // before any early return below, so ctx.keyRepeat's verdict covers exactly
+  // what the player pressed rather than only the keys that went on to do
+  // something.
+  keyRepeatTracker.classify(ev);
   // Caret (^) prefix fallback (#3): the flag armed below survives to color
   // exactly the next keydown and no further - captured and cleared here, at
   // the very top, so a modal, an interrupt, or any other early return between

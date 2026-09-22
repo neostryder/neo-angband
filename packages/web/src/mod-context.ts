@@ -33,6 +33,7 @@ import {
   type ModWizard,
   type ReadModResult,
 } from "./mod-plugin";
+import type { KeyRepeatVerdict } from "./key-repeat";
 import { VISUAL_FILTER_CAPABILITY } from "./visual-filter";
 import { diskPacks } from "./disk-packs";
 import { modPrefs, type ModPrefs } from "./mod-prefs";
@@ -141,6 +142,7 @@ export function modPluginContext(
   const wizard = wizardFor(id, session);
   const display = displayFor(session);
   const subwindows = subwindowsFor(session);
+  const keyRepeat = keyRepeatFor(session);
   const keymaps = keymapsFor(id, state, session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
@@ -167,6 +169,7 @@ export function modPluginContext(
     prefs: session.prefs ?? modPrefs(id),
     ...(display ? { display } : {}),
     ...(subwindows ? { subwindows } : {}),
+    ...(keyRepeat ? { keyRepeat } : {}),
     ...(keymaps ? { keymaps } : {}),
     /* Defaults FALSE, which is the safe way round: a mod that seeds something
      * for a new life must not seed it over a character who already lived one,
@@ -255,6 +258,26 @@ function subwindowsFor(session: ModSessionFacts): ModSubwindows | undefined {
 /** Install or clear the subwindow geometry/chrome door (boot path and tests). */
 export function setModSubwindowsControl(subwindows: ModSubwindows | undefined): void {
   subwindowsControl = subwindows;
+}
+
+/**
+ * neo-angband#35: the live key-repeat query, latched once `main.ts`'s own root
+ * keydown handler exists and has a tracker to read from.
+ */
+let keyRepeatControl: (() => KeyRepeatVerdict | null) | undefined;
+
+/**
+ * `ctx.keyRepeat` is a straight pass-through, like `subwindowsFor` above:
+ * entirely ungated (see the field's own header in mod-plugin.ts), so there is
+ * no per-plugin capability check to interpose here.
+ */
+function keyRepeatFor(session: ModSessionFacts): (() => KeyRepeatVerdict | null) | undefined {
+  return session.keyRepeat ?? keyRepeatControl;
+}
+
+/** Install or clear the key-repeat door (the boot path, and the tests). */
+export function setModKeyRepeatControl(control: (() => KeyRepeatVerdict | null) | undefined): void {
+  keyRepeatControl = control;
 }
 
 /**
@@ -490,6 +513,8 @@ export interface ModSessionFacts {
   readonly display?: ModDisplay;
   /** Override the subwindow door (tests and alternate front ends). */
   readonly subwindows?: ModSubwindows;
+  /** Override the key-repeat query (tests and alternate front ends). */
+  readonly keyRepeat?: () => KeyRepeatVerdict | null;
   /**
    * THIS mod's resolved capability grants (ticket #133's `ctx.backupFolder`
    * gate). Absent in most call sites today - see MOD_REACH.md's own note that

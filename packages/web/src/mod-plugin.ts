@@ -91,6 +91,7 @@ import type { ModPrefs } from "./mod-prefs";
  * discoverMod produces, and a plugin's source must never pull in the module
  * that actually talks to GitHub. */
 import type { DiscoveredMod } from "./mod-discover";
+import type { KeyRepeatVerdict } from "./key-repeat";
 import type {
   ComposedRecords,
   HudOwnership,
@@ -479,6 +480,30 @@ export interface ModPluginContext {
    * why this is ungated like the rest of `display`.
    */
   readonly subwindows?: ModSubwindows;
+  /**
+   * neo-angband#35: the host's own judgment on the most recent root-screen
+   * keydown - a genuine key-repeat (the browser's own auto-repeat while a key
+   * stays held, or a keydown close enough behind the previous one to be
+   * indistinguishable from one) versus a fresh, deliberate press. Call it
+   * inside your own keydown handling to read the CURRENT verdict; see
+   * key-repeat.ts for the two signals it combines and why a third
+   * (event-staleness) figure is reported but does not by itself decide it.
+   *
+   * `null` before the root handler has classified a keydown this session.
+   * Absent during content composition and on any host that has not wired a
+   * live keydown handler yet - the same absence `display` and `subwindows`
+   * have, and for the same reason: this rides `main.ts`'s own DOM keydown
+   * handling, which core never sees (packages/core has no DOM).
+   *
+   * ENTIRELY UNGATED, like `subwindows`: this is read-only timing information
+   * about a keypress you could already observe for yourself via
+   * `ctx.display.onKey`, not a capability over the game or the platform.
+   *
+   * THIS IS THE READ-SIDE PRIMITIVE ONLY. Nothing in this codebase yet uses
+   * the verdict to suppress or alter a command - building on it to skip a
+   * stale repeat is a separate, later change.
+   */
+  readonly keyRepeat?: () => KeyRepeatVerdict | null;
   /**
    * Manage this mod's keymaps in the player's current keyset. Present only when
    * the mod declared `keymap:write` and the player consented. `bind()` never

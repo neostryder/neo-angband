@@ -17,8 +17,10 @@ import {
   setModReadDoor,
   setModRegistries,
   setModSubwindowsControl,
+  setModKeyRepeatControl,
 } from "./mod-context";
 import type { ModDisplay, ModSubwindows } from "./mod-plugin";
+import type { KeyRepeatVerdict } from "./key-repeat";
 import type { CoreRegistries } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modPrefs, modPrefsKey } from "./mod-prefs";
@@ -114,6 +116,19 @@ describe("modPluginContext session facts", () => {
       expect(registerPrefBlock).toHaveBeenCalledWith("qol-zoom", block);
     } finally {
       setModSubwindowsControl(undefined);
+    }
+  });
+
+  it("publishes the latched key-repeat door after boot and omits it before boot, fully ungated (#35)", () => {
+    const verdict: KeyRepeatVerdict = { isRepeat: true, reportedRepeat: true, intervalMs: 10, ageMs: 1 };
+    setModKeyRepeatControl(undefined);
+    expect(modPluginContext("qol", {}).keyRepeat).toBeUndefined();
+    setModKeyRepeatControl(() => verdict);
+    try {
+      const ctx = modPluginContext("qol", {});
+      expect(ctx.keyRepeat?.()).toEqual(verdict);
+    } finally {
+      setModKeyRepeatControl(undefined);
     }
   });
 
@@ -522,5 +537,16 @@ describe("ctx.registries - the bound content a mod can ask about", () => {
      * resolvers and a green suite. This asserts the call exists, on the value the
      * surrounding code already documents as "whichever set this launch built". */
     expect(MAIN_TS_SOURCE).toMatch(/setModRegistries\(booted\.registries\);/u);
+  });
+
+  it("main.ts actually wires ctx.keyRepeat to the tracker its own keydown listener feeds (#35)", () => {
+    /* THE SAME CLASS OF CHECK, and for the same reason: a `ctx.keyRepeat` this
+     * repo's own tests can see but no boot path ever latches is indistinguishable
+     * from one that always answers undefined. Two assertions, because the door
+     * and the feed are two separate lines that could drift apart independently -
+     * the latch could point at a tracker nothing ever classifies into, or the
+     * classify() call could feed a tracker no door reads from. */
+    expect(MAIN_TS_SOURCE).toMatch(/setModKeyRepeatControl\(\(\) => keyRepeatTracker\.last\(\)\);/u);
+    expect(MAIN_TS_SOURCE).toMatch(/keyRepeatTracker\.classify\(ev\);/u);
   });
 });
