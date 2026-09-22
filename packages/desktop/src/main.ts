@@ -53,6 +53,7 @@ import type { BackupOp } from "./bridge-channel.js";
 import {
   backupFolderDisplayName,
   isBackupFileName,
+  listBackupFiles,
   readBackupFolder,
   writeBackupFolder,
 } from "./backup-folder.js";
@@ -630,6 +631,13 @@ function installBackupChannel(): void {
       case "forget":
         writeBackupFolder(USER_BASE, null);
         return { ok: true };
+
+      case "list":
+        /* #24, the read side of #133: every `.neochar` file this build can
+         * currently read out of the chosen folder, name plus text - the
+         * folder's own path never crosses this reply either, matching every
+         * other op on this channel. */
+        return folder === null ? [] : listBackupFiles(folder);
 
       case "write": {
         const { name, text } = (arg ?? {}) as { name?: unknown; text?: unknown };

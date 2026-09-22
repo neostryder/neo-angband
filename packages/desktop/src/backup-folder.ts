@@ -71,3 +71,36 @@ export function writeBackupFolder(userBase: string, folderPath: string | null): 
 export function backupFolderDisplayName(folderPath: string): string {
   return path.basename(folderPath);
 }
+
+/**
+ * Ticket #24 (the read side of #133): every `.neochar` file currently
+ * readable in `folderPath`, name plus its full text - the renderer's own
+ * `readBackupFiles` (mod-backup.ts) does the header peek; this only reads
+ * bytes off disk.
+ *
+ * BEST-EFFORT, LIKE `write()`'s OWN FAILURE MODE. One unreadable file
+ * (permissions, a race with deletion between the `readdirSync` and the
+ * `readFileSync`) is skipped rather than failing the whole listing - the
+ * same tolerance `write()`'s caller already extends to a lapsed grant. An
+ * unreadable FOLDER answers an empty list, never a throw: this feeds a boot
+ * checkpoint, and a folder that went missing must not be the thing that
+ * stops the game from finishing loading.
+ */
+export function listBackupFiles(folderPath: string): { name: string; text: string }[] {
+  let names: string[];
+  try {
+    names = fs.readdirSync(folderPath);
+  } catch {
+    return [];
+  }
+  const out: { name: string; text: string }[] = [];
+  for (const name of names) {
+    if (!isBackupFileName(name)) continue;
+    try {
+      out.push({ name, text: fs.readFileSync(path.join(folderPath, name), "utf8") });
+    } catch {
+      /* unreadable: skip it, keep the rest of the listing */
+    }
+  }
+  return out;
+}

@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { encodeSavedGame, type SavedGame } from "@rpgm-tools/neo-angband-core";
 import { decideImport } from "./transfer-gate";
 import type { CharMeta, DeathRecord } from "./roster";
-import { encodeTransfer, decodeTransfer, type TransferMeta } from "./save-transfer";
+import { encodeTransfer, decodeTransfer, peekTransferMeta, type TransferMeta } from "./save-transfer";
 import { gzipCodec } from "./save-codec";
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -208,5 +208,54 @@ describe("death is terminal, and outlives the memorial", () => {
      * another surface. */
     const d = decideImport(file({ turn: 60_000 }), [], [death({ turn: 50_000 })]);
     expect(d.kind).toBe("refused");
+  });
+});
+
+describe("the cloud-backup checkpoint sees the same gate, not a second one (#24)", () => {
+  /**
+   * A raw `.neochar` TEXT, the shape a backup folder actually holds - `file()`
+   * above already decodes one, which is right for the tests that only need
+   * `decideImport`'s input; these need the text itself, because the
+   * checkpoint's own instrument (`peekTransferMeta`) reads a file off disk,
+   * not an already-decoded `TransferFile`.
+   */
+  function rawFile(over: { turn?: number; lineage?: string } = {}): string {
+    return encodeTransfer({
+      meta: { ...META, ...(over.turn !== undefined ? { turn: over.turn } : {}) },
+      save: SAVE,
+      engine: "0.17.0",
+      exportedAt: "2026-08-03T12:00:00.000Z",
+      lineage: over.lineage ?? "lin-grond",
+    });
+  }
+
+  it("peekTransferMeta identifies the same lineage decodeTransfer would", () => {
+    const text = rawFile();
+    const peek = peekTransferMeta(text);
+    const decoded = decodeTransfer(text);
+    expect(peek.ok && peek.lineage).toBe("lin-grond");
+    expect(decoded.ok && decoded.file.lineage).toBe(peek.ok ? peek.lineage : undefined);
+  });
+
+  it("a file the checkpoint found for a lineage that died here is still refused, not routed around", () => {
+    /* This is the whole point of "offer what is in the folder" rather than
+     * "merge": finding the file and reading its lineage (what the checkpoint
+     * does) never imports it. Whatever calls decideImport next - a manual
+     * Shift-M pick, or the checkpoint handing the same file to the same
+     * importCharacter - gets the same refusal for the same reason. */
+    const text = rawFile({ turn: 30_000 }); // exported before the death below
+    const peek = peekTransferMeta(text);
+    expect(peek.ok && peek.lineage).toBe("lin-grond");
+    const decoded = decodeTransfer(text);
+    if (!decoded.ok) throw new Error(decoded.why);
+    const decision = decideImport(decoded.file, [], [death({ turn: 50_000 })]);
+    expect(decision.kind).toBe("refused");
+  });
+
+  it("the same pipeline offers cleanly when nothing here remembers that lineage", () => {
+    const text = rawFile();
+    const decoded = decodeTransfer(text);
+    if (!decoded.ok) throw new Error(decoded.why);
+    expect(decideImport(decoded.file, [], [])).toEqual({ kind: "new" });
   });
 });

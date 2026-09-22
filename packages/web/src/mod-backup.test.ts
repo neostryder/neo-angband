@@ -6,6 +6,10 @@
  * out of `neoDesktop.backup` (only a name and {ok} booleans cross it), and
  * `notifyBackupSinks` contains a throw to the ONE mod that threw, per the
  * fault table in CLOUD_BACKUP_DESIGN.md.
+ *
+ * Ticket #24 adds the read side: `list()`/`readBackupFiles` on both
+ * platforms, and `newBackupArrivals`, the pure "who is worth asking about"
+ * filter the host's own checkpoint is built on.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,8 +18,34 @@ import {
   backupPickingSupported,
   clearBackupSinks,
   createBackupFolder,
+  newBackupArrivals,
   notifyBackupSinks,
+  readBackupFiles,
+  type BackupFileRead,
 } from "./mod-backup";
+import { encodeTransfer, type TransferMeta } from "./save-transfer";
+
+const META: TransferMeta = {
+  name: "Bilbo",
+  race: "Hobbit",
+  cls: "Rogue",
+  sex: "Male",
+  level: 12,
+  depth: 10,
+  maxDepth: 10,
+  turn: 5000,
+  alive: true,
+};
+
+function neochar(lineage: string, meta: TransferMeta = META): string {
+  return encodeTransfer({
+    meta,
+    save: "",
+    engine: "0.10.0",
+    exportedAt: "2026-07-31T12:00:00.000Z",
+    lineage,
+  });
+}
 
 afterEach(() => {
   clearBackupSinks();
@@ -139,5 +169,151 @@ describe("notifyBackupSinks: per-mod fault containment", () => {
     notifyBackupSinks(() => ({ name: "x.neochar", text: "{}" }));
     notifyBackupSinks(() => ({ name: "x.neochar", text: "{}" }));
     expect(calls).toBe(1);
+  });
+});
+
+describe("list()/readBackupFiles: ticket #24's read side", () => {
+  function desktopListScope(
+    files: readonly { name: string; text: string }[],
+  ): { neoDesktop: { backup: ReturnType<typeof vi.fn> } } {
+    let chosen: string | null = null;
+    return {
+      neoDesktop: {
+        backup: vi.fn(async (op: string) => {
+          if (op === "choose") {
+            chosen = "picked";
+            return "picked";
+          }
+          if (op === "list") return chosen === null ? [] : files;
+          return null;
+        }),
+      },
+    };
+  }
+
+  it("desktop: identifies a file's lineage without decoding its save bytes", async () => {
+    const scope = desktopListScope([{ name: "Bilbo-lin00001.neochar", text: neochar("lin-bilbo") }]);
+    const backup = createBackupFolder("qol", scope);
+    expect(await backup?.list()).toEqual([]); // no folder chosen yet
+    await backup?.choose();
+    const entries = await backup?.list();
+    expect(entries).toEqual([
+      { name: "Bilbo-lin00001.neochar", lineage: "lin-bilbo", characterName: "Bilbo", level: 12 },
+    ]);
+  });
+
+  it("desktop: reports a file it could not parse by name, without a lineage", async () => {
+    const scope = desktopListScope([{ name: "garbage.neochar", text: "not json" }]);
+    const backup = createBackupFolder("qol", scope);
+    await backup?.choose();
+    expect(await backup?.list()).toEqual([
+      { name: "garbage.neochar", characterName: "", level: 0 },
+    ]);
+  });
+
+  it("browser: entries() lists every readable .neochar file, filtering anything else", async () => {
+    const entries = new Map<string, { kind: "file"; name: string; getFile(): Promise<{ text(): Promise<string> }> }>();
+    entries.set("Bilbo.neochar", {
+      kind: "file",
+      name: "Bilbo.neochar",
+      getFile: async () => ({ text: async () => neochar("lin-bilbo") }),
+    });
+    entries.set("notes.txt", {
+      kind: "file",
+      name: "notes.txt",
+      getFile: async () => ({ text: async () => "irrelevant" }),
+    });
+    const handle = {
+      kind: "directory" as const,
+      name: "NeoAngband",
+      queryPermission: async () => "granted" as const,
+      getFileHandle: async () => ({ createWritable: async () => ({ write: async () => undefined, close: async () => undefined }) }),
+      values: () => entries.values(),
+    };
+    const stored = new Map<string, unknown>();
+    stored.set("backup:qol", handle);
+    const storeNames = new Set<string>();
+    const db = {
+      objectStoreNames: { contains: (n: string) => storeNames.has(n) },
+      createObjectStore: (n: string) => storeNames.add(n),
+      transaction: () => ({
+        objectStore: () => ({
+          get: (key: string) => fakeRequest(stored.get(key)),
+          put: (value: unknown, key: string) => {
+            stored.set(key, value);
+            return fakeRequest(undefined);
+          },
+        }),
+      }),
+    };
+    const scope = {
+      indexedDB: {
+        open: () => {
+          const req: {
+            result?: unknown;
+            onsuccess?: (() => void) | null;
+            onupgradeneeded?: (() => void) | null;
+          } = {};
+          queueMicrotask(() => {
+            req.result = db;
+            req.onupgradeneeded?.();
+            req.onsuccess?.();
+          });
+          return req;
+        },
+      },
+    };
+    const files = await readBackupFiles("qol", scope);
+    expect(files).toHaveLength(1);
+    expect(files[0]?.name).toBe("Bilbo.neochar");
+    expect(files[0]?.peek.ok && files[0].peek.lineage).toBe("lin-bilbo");
+  });
+
+  /** A minimal IDBRequest-shaped object that resolves on the next microtask. */
+  function fakeRequest<T>(value: T): { result?: T; onsuccess?: (() => void) | null } {
+    const req: { result?: T; onsuccess?: (() => void) | null } = { result: value };
+    queueMicrotask(() => req.onsuccess?.());
+    return req;
+  }
+});
+
+describe("newBackupArrivals: who is worth asking about", () => {
+  function file(lineage: string | undefined, name = `${lineage ?? "unreadable"}.neochar`): BackupFileRead {
+    return {
+      name,
+      text: lineage ? neochar(lineage) : "not json",
+      peek: lineage
+        ? { ok: true, meta: META, engine: "0.10.0", exportedAt: "", lineage }
+        : { ok: false, why: "unreadable" },
+    };
+  }
+
+  it("offers a lineage that is in neither the roster nor the death ledger", () => {
+    const arrivals = newBackupArrivals([file("lin-new")], new Set(), new Set());
+    expect(arrivals.map((f) => f.name)).toEqual(["lin-new.neochar"]);
+  });
+
+  it("does not offer a lineage already in the local roster", () => {
+    const arrivals = newBackupArrivals([file("lin-here")], new Set(["lin-here"]), new Set());
+    expect(arrivals).toEqual([]);
+  });
+
+  it("does not offer a lineage this roster has recorded a death for", () => {
+    const arrivals = newBackupArrivals([file("lin-dead")], new Set(), new Set(["lin-dead"]));
+    expect(arrivals).toEqual([]);
+  });
+
+  it("skips a file it could not even peek, rather than offering a nameless import", () => {
+    const arrivals = newBackupArrivals([file(undefined)], new Set(), new Set());
+    expect(arrivals).toEqual([]);
+  });
+
+  it("reports a lineage found twice (two mods, one folder) only once", () => {
+    const arrivals = newBackupArrivals(
+      [file("lin-dup", "a.neochar"), file("lin-dup", "b.neochar")],
+      new Set(),
+      new Set(),
+    );
+    expect(arrivals.map((f) => f.name)).toEqual(["a.neochar"]);
   });
 });

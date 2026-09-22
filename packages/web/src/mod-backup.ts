@@ -13,7 +13,8 @@
  */
 
 import { STORE_HANDLES, idbDelete, idbGet, idbPut, openDb } from "./idb";
-import type { BackupFolder } from "./mod-plugin";
+import type { BackupFolder, BackupFolderEntry } from "./mod-plugin";
+import { peekTransferMeta, type TransferPeek } from "./save-transfer";
 
 /* ------------------------------------------------------------------ *
  * The desktop implementation: packages/desktop's BACKUP_CHANNEL, over the
@@ -70,6 +71,9 @@ function desktopBackupFolder(id: string, scope: unknown): BackupFolder {
     onSave(fn) {
       setOnSave(id, fn);
     },
+    async list(): Promise<readonly BackupFolderEntry[]> {
+      return (await readBackupFiles(id, scope)).map(toEntry);
+    },
   };
 }
 
@@ -88,6 +92,17 @@ interface FsWritable {
   close(): Promise<void>;
 }
 
+/**
+ * One entry a directory handle's own async iteration hands back - the same
+ * shape mod-folder.ts's `FsDirHandle.values()` already yields, so a fake
+ * folder built for one reads for the other.
+ */
+interface BackupDirEntry {
+  readonly kind: "file" | "directory";
+  readonly name: string;
+  getFile?(): Promise<{ text(): Promise<string> }>;
+}
+
 interface BackupDirHandle {
   readonly kind: "directory";
   readonly name: string;
@@ -97,6 +112,13 @@ interface BackupDirHandle {
     name: string,
     opts?: { create?: boolean },
   ): Promise<{ createWritable(): Promise<FsWritable> }>;
+  /**
+   * The File System Access directory's own async-iterable listing of its
+   * entries, each already carrying its own name. Optional in this interface
+   * only because a test fixture may not need it - every real
+   * `FileSystemDirectoryHandle` has it.
+   */
+  values?(): AsyncIterable<BackupDirEntry>;
 }
 
 interface PickerScope {
@@ -146,18 +168,58 @@ async function permission(
   }
 }
 
-function browserBackupFolder(id: string, scope: unknown): BackupFolder {
-  const key = `backup:${id}`;
+/** The saved directory handle for this mod, or null if none is chosen / unreadable. */
+async function savedHandle(id: string, scope: unknown): Promise<BackupDirHandle | null> {
+  const db = await openDb(scope);
+  if (!db) return null;
+  return asBackupDirHandle(await idbGet(db, STORE_HANDLES, `backup:${id}`));
+}
 
-  async function saved(): Promise<BackupDirHandle | null> {
-    const db = await openDb(scope);
-    if (!db) return null;
-    return asBackupDirHandle(await idbGet(db, STORE_HANDLES, key));
+/**
+ * A directory entry's name looks like a backup file: `.neochar`, no leading
+ * dot. Not a security boundary the way `isBackupFileName` is on the desktop
+ * side (nothing here crosses an untrusted-renderer IPC channel) - just a
+ * filter so a stray file the player dropped in the same folder is not handed
+ * to `peekTransferMeta` and reported as an unreadable entry.
+ */
+function looksLikeBackupFile(name: string): boolean {
+  return name.endsWith(".neochar") && !name.startsWith(".");
+}
+
+/**
+ * Every `.neochar` file the browser tab's directory handle can currently see,
+ * name plus full text - read-only, no permission REQUEST (no user gesture is
+ * available at a checkpoint like boot), so a lapsed grant reads as "nothing
+ * here" rather than reprompting the player unasked.
+ */
+async function browserBackupFiles(id: string, scope: unknown): Promise<RawBackupFile[]> {
+  const handle = await savedHandle(id, scope);
+  if (!handle) return [];
+  if ((await permission(handle)) !== "granted") return [];
+  const iterate = handle.values?.bind(handle);
+  if (!iterate) return [];
+  const files: RawBackupFile[] = [];
+  try {
+    for await (const entry of iterate()) {
+      if (!looksLikeBackupFile(entry.name) || entry.kind !== "file" || !entry.getFile) continue;
+      try {
+        const file = await entry.getFile();
+        files.push({ name: entry.name, text: await file.text() });
+      } catch {
+        /* One unreadable file (deleted mid-scan, a permissions race) does not
+         * fail the rest of the listing. */
+      }
+    }
+  } catch {
+    return []; // the iterator itself failed: report an empty folder, not a crash
   }
+  return files;
+}
 
+function browserBackupFolder(id: string, scope: unknown): BackupFolder {
   return {
     async name(): Promise<string | null> {
-      const handle = await saved();
+      const handle = await savedHandle(id, scope);
       return handle ? handle.name : null;
     },
 
@@ -176,17 +238,17 @@ function browserBackupFolder(id: string, scope: unknown): BackupFolder {
         return null;
       }
       const db = await openDb(scope);
-      if (db) await idbPut(db, STORE_HANDLES, key, handle);
+      if (db) await idbPut(db, STORE_HANDLES, `backup:${id}`, handle);
       return handle.name;
     },
 
     async forget(): Promise<void> {
       const db = await openDb(scope);
-      if (db) await idbDelete(db, STORE_HANDLES, key);
+      if (db) await idbDelete(db, STORE_HANDLES, `backup:${id}`);
     },
 
     async write(name: string, text: string): Promise<boolean> {
-      const handle = await saved();
+      const handle = await savedHandle(id, scope);
       if (!handle) return false;
       if ((await permission(handle)) !== "granted") return false;
       try {
@@ -203,7 +265,118 @@ function browserBackupFolder(id: string, scope: unknown): BackupFolder {
     onSave(fn) {
       setOnSave(id, fn);
     },
+
+    async list(): Promise<readonly BackupFolderEntry[]> {
+      return (await readBackupFiles(id, scope)).map(toEntry);
+    },
   };
+}
+
+/* ------------------------------------------------------------------ *
+ * Ticket #24: listing what is already in the folder, shared by both
+ * platforms. `BackupFolder.list()` on each implementation above is a thin
+ * wrapper over `readBackupFiles` below, trimmed down to `BackupFolderEntry`;
+ * the host's own "offer what is in the folder" checkpoint calls
+ * `readBackupFiles` directly, since it needs the full text to hand a chosen
+ * candidate to the existing import path without reading the file twice.
+ * ------------------------------------------------------------------ */
+
+/** Name + full text, before any peek at what is inside. */
+interface RawBackupFile {
+  readonly name: string;
+  readonly text: string;
+}
+
+/** One file `readBackupFiles` read, with a cheap peek at its header already done. */
+export interface BackupFileRead {
+  readonly name: string;
+  readonly text: string;
+  readonly peek: TransferPeek;
+}
+
+/**
+ * The desktop side of `list()`: `BACKUP_CHANNEL`'s own `"list"` op returns
+ * every `.neochar` file the main process could read as `{name, text}` pairs -
+ * the chosen folder's path never crosses the bridge here either, same as
+ * every other op on this channel. Defended the way `write`'s own `{ok}`
+ * reply is: the renderer does not trust its own IPC blindly.
+ *
+ * `id` is unused: the desktop backup folder is one global path for the whole
+ * app (backup-folder.ts's own record, not keyed per mod), unlike the browser
+ * tab's per-mod IndexedDB handle - see BACKUP_CHANNEL's doc comment.
+ */
+async function desktopBackupFiles(_id: string, scope: unknown): Promise<RawBackupFile[]> {
+  const bridge = backupBridge(scope);
+  if (!bridge) return [];
+  const r = await bridge.backup("list");
+  if (!Array.isArray(r)) return [];
+  const out: RawBackupFile[] = [];
+  for (const item of r) {
+    if (item !== null && typeof item === "object") {
+      const { name, text } = item as { name?: unknown; text?: unknown };
+      if (typeof name === "string" && typeof text === "string") out.push({ name, text });
+    }
+  }
+  return out;
+}
+
+/** `BackupFileRead` trimmed to the mod-facing shape - see `BackupFolderEntry`'s own doc comment. */
+function toEntry(f: BackupFileRead): BackupFolderEntry {
+  return {
+    name: f.name,
+    ...(f.peek.ok && f.peek.lineage !== undefined ? { lineage: f.peek.lineage } : {}),
+    characterName: f.peek.ok ? f.peek.meta.name : "",
+    level: f.peek.ok ? f.peek.meta.level : 0,
+  };
+}
+
+/**
+ * Every `.neochar` file readable in this mod's chosen backup folder right
+ * now, with a cheap header peek at each (never a full decode, never an
+ * import) - host-internal, one level more detailed than `BackupFolder.list()`
+ * because the host's own checkpoint needs the full text and `list()`'s mod
+ * consumers do not. Never throws; empty when there is no folder, no
+ * permission, or nothing readable.
+ */
+export async function readBackupFiles(
+  id: string,
+  scope: unknown = globalThis,
+): Promise<readonly BackupFileRead[]> {
+  const raw = backupBridge(scope)
+    ? await desktopBackupFiles(id, scope)
+    : await browserBackupFiles(id, scope);
+  return raw.map(({ name, text }) => ({ name, text, peek: peekTransferMeta(text) }));
+}
+
+/**
+ * Which of `files` are worth OFFERING: readable, carrying a lineage, and that
+ * lineage is neither already in this roster nor already recorded as dead here.
+ *
+ * Pure and host-agnostic - the "offer what is in the folder" checkpoint's own
+ * "who do I even ask about" decision, factored out so it is testable without
+ * booting main.ts (which cannot be imported in a test - it boots a game on
+ * import) and without a real folder of any kind.
+ *
+ * A file whose peek failed (unparsable, wrong magic, too large to peek at) is
+ * left out: there is nothing to offer for a file this build could not even
+ * identify. A lineage that appears twice - two mods pointed at the same
+ * folder, say - is reported once, in the order `files` gave it.
+ */
+export function newBackupArrivals(
+  files: readonly BackupFileRead[],
+  knownLineages: ReadonlySet<string>,
+  deadLineages: ReadonlySet<string>,
+): BackupFileRead[] {
+  const seen = new Set<string>();
+  const out: BackupFileRead[] = [];
+  for (const file of files) {
+    if (!file.peek.ok || file.peek.lineage === undefined) continue;
+    const lineage = file.peek.lineage;
+    if (knownLineages.has(lineage) || deadLineages.has(lineage) || seen.has(lineage)) continue;
+    seen.add(lineage);
+    out.push(file);
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ *

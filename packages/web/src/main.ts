@@ -776,7 +776,13 @@ import {
   transferFilename,
   type TransferMeta,
 } from "./save-transfer";
-import { backupFilename, notifyBackupSinks } from "./mod-backup";
+import {
+  backupFilename,
+  newBackupArrivals,
+  notifyBackupSinks,
+  readBackupFiles,
+  type BackupFileRead,
+} from "./mod-backup";
 import { decideImport } from "./transfer-gate";
 import { storageLines, type StorageTone } from "./storage-page";
 
@@ -13440,6 +13446,56 @@ async function exportCharacter(id: string): Promise<void> {
 }
 
 /**
+ * Ticket #24 (the read side of #133's cloud backup): once per game launch,
+ * look at every capability-declared mod's chosen backup folder for a
+ * `.neochar` file this roster does not already have, and offer it - never
+ * import it silently, and never through a second import path: a "yes" runs
+ * the exact same `importCharacter` Shift-M does, so the anti-scum death-ledger
+ * refusal in transfer-gate.ts applies here exactly as it does there.
+ *
+ * ONE PASS, NOT A POLL. Called once from the top of bootMenus(), the same
+ * unconditional-entry shape stopLoading() already uses there - see that
+ * function's own header for why. There is no timer and nothing here waits for
+ * a folder to change; a file that arrives after this pass is offered on the
+ * NEXT launch, which is what "checkpoint" means here.
+ *
+ * DEATH IS ALSO CHECKED HERE, before ever asking, so the player is not asked
+ * about a character this build already knows died - but that is a courtesy,
+ * not the gate: the refusal a manual import would give still comes from
+ * `decideImport` inside `importCharacter`, unconditionally, for the same
+ * file. Skipping the offer here saves a question; it is not where the rule
+ * against resurrecting a dead lineage lives.
+ *
+ * NO ROSTER ACCESS FROM MOD CODE. This runs entirely in host code - no mod's
+ * `hooks()` or `register()` has fired yet this boot (both require a live
+ * game, per mod-plugin.ts's own header), so there is nothing for a mod to
+ * consume here; `createBackupFolder`'s id-scoped storage is read directly,
+ * the same way `notifyBackupSinks` and `backupFilename` already are.
+ */
+async function checkBackupArrivals(): Promise<void> {
+  const known = new Set(listRoster().map((c) => lineageOf(c)));
+  const dead = new Set(listDeaths().map((d) => d.lineage));
+  for (const loaded of activeModCode().plugins) {
+    if (!CapabilitySet.fromManifest(loaded.manifest).has("backup:folder")) continue;
+    let files: readonly BackupFileRead[];
+    try {
+      files = await readBackupFiles(loaded.id);
+    } catch {
+      continue; // a faulting platform bridge must not block the rest of boot
+    }
+    for (const file of newBackupArrivals(files, known, dead)) {
+      if (!file.peek.ok) continue; // newBackupArrivals's own contract guarantees this; guarded for the type checker
+      const { name, level, race, cls } = file.peek.meta;
+      const yes = await confirmYesNo(
+        `${name || "That character"}, a level ${String(level)} ${race} ${cls}, was found ` +
+          `in your backup folder - import now? `,
+      );
+      if (yes) await importCharacter({ name: file.name, text: file.text });
+    }
+  }
+}
+
+/**
  * Read a character file and give it a slot.
  *
  * Never on top of a DIFFERENT character: the file carries no slot id
@@ -13449,9 +13505,18 @@ async function exportCharacter(id: string): Promise<void> {
  * and comes back further along takes their own slot again rather than becoming a
  * second copy. transfer-gate.ts draws that line, and is also what refuses a file
  * that would be a restore point.
+ *
+ * `preloaded`, when given, is a file this build already read off disk itself -
+ * ticket #24's "offer what is in the folder" checkpoint, handing over a
+ * candidate it found in a mod's cloud-backup folder rather than one Shift-M's
+ * own file dialog picked. Everything from here down - the decode, the SAME
+ * `decideImport` anti-scum gate, the write, the outcome screen - is exactly
+ * what a manual Shift-M import runs, on purpose: a second import path would be
+ * a second place for that gate to be gotten wrong.
  */
-async function importCharacter(): Promise<void> {
-  const picked = await pickTextFile(`${TRANSFER_EXT},application/json`, MAX_TRANSFER_TEXT_BYTES);
+async function importCharacter(preloaded?: { readonly name: string; readonly text: string }): Promise<void> {
+  const picked =
+    preloaded ?? (await pickTextFile(`${TRANSFER_EXT},application/json`, MAX_TRANSFER_TEXT_BYTES));
   if (!picked) return; // cancelled
   if ("tooLarge" in picked) {
     await showTextScreen(term, "Import character", [
@@ -13573,6 +13638,11 @@ async function bootMenus(): Promise<void> {
    * return from here without painting anything.
    */
   stopLoading();
+  /* #24: the "offer what is in the folder" checkpoint, once per launch, before
+   * any menu paints - see checkBackupArrivals's own header. Wrapped in
+   * openModal like every other pre-game screen below, so a prompt it shows
+   * behaves like the rest of this function's modal stack. */
+  await openModal(() => checkBackupArrivals());
   /* ?agent= suppresses the title for the whole session (maybeTitle's first line),
    * so there is no level above to back up TO and no loop to make infinite: an
    * autoplayer boot keeps the old fall-through. Every other suppressor

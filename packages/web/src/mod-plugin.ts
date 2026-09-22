@@ -1231,6 +1231,43 @@ export interface BackupFolder {
    * transfer file, so the mod never touches save bytes directly.
    */
   onSave(fn: (file: { readonly name: string; readonly text: string }) => void): void;
+  /**
+   * Ticket #24 (the read side of #133's cloud backup): every `.neochar` file
+   * currently sitting in the chosen folder, identified cheaply - a JSON
+   * header read, never a full decode of its save bytes and never an import.
+   * Empty when there is no folder chosen, permission has lapsed, or the
+   * folder cannot be read; never throws, same contract as `write()`.
+   *
+   * WHY THIS IS ENOUGH TO "OFFER WHAT IS IN THE FOLDER" WITHOUT A SECOND
+   * IMPORT PATH. A caller that wants to know "is there a character here I do
+   * not have yet" only needs a lineage to compare against its own roster,
+   * not the save bytes - and reading save bytes for every file, every time a
+   * caller merely wants to look, is the cost this method exists to avoid.
+   * Actually bringing a file in still goes through the real import door
+   * (Shift-M on the host, or whatever a caller builds on top of that).
+   */
+  list(): Promise<readonly BackupFolderEntry[]>;
+}
+
+/**
+ * One `.neochar` file `BackupFolder.list()` found, identified without a full
+ * decode - see that method's own doc comment for why a lineage is enough.
+ */
+export interface BackupFolderEntry {
+  /** The file's name inside the chosen folder. */
+  readonly name: string;
+  /**
+   * The character's lineage (roster.ts's stable identity across a transfer),
+   * read from the file's own JSON header. Absent for a file this build could
+   * not even parse as a transfer file - still reported by name, rather than
+   * silently dropped, so a caller can say "found a file it could not read"
+   * instead of pretending the folder held one fewer file than it did.
+   */
+  readonly lineage?: string;
+  /** The character's name, for a sentence a player can recognise. Empty when unreadable. */
+  readonly characterName: string;
+  /** Character level, for the same sentence. 0 when unreadable. */
+  readonly level: number;
 }
 
 /**

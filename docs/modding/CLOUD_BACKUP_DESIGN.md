@@ -1,23 +1,24 @@
 # Cloud backup via a player-chosen folder (ticket #133)
 
-**Status, 2026-08-15: engine side DONE, mod side BLOCKED.** Ticket #133 is one
+**Status: the write side and the read side are both built.** Ticket #133 is one
 sentence: "QoL: hands-off cloud backup via a player-chosen folder." This
 document is the rest of it: what defect it closes, where it lives, and the
 seams it needs. `ctx.backupFolder` exists end-to-end (both platforms,
 capability-gated, `hooks(ctx)` and `register(ctx)` both see it, `persistSave`
 notifies every consenting mod); see the "File-by-file implementation plan" section's steps
-0-5, all DONE.
+0-5, all DONE. Step 6, `neo-angband-mod-qol`'s Game-menu row calling
+`choose()`, shipped once `registry:menu` existed (see the update note in
+section 3 below). Step 7, the docs, is this table row and the one in
+`PLUGINS.md`; `MOD_SEAMS.md` and `docs/modding/README.md` still have no
+dedicated section for `ctx.backupFolder` and remain a gap outside this ticket.
 
-Two steps are NOT done. **Step 6**, the `neo-angband-mod-qol` menu row that
-would let a player actually call `choose()`, cannot be finished small: it is
-blocked on a UI-seam gap ("menu row -> runs a mod's own callback") that this
-design's section 3 assumed existed and does not; see the correction there. That gap is
-the same shape as `MOD_REACH.md` gap 21 and is deferred alongside it, so the
-alpha could ship before every remaining seam was finished. **Step 7**, the docs,
-has not been done either: `MOD_SEAMS.md` has no section for `ctx.backupFolder`
-and `docs/modding/README.md` does not mention the `backup:folder` capability, so
-the only place an author meets either is `PLUGINS.md` in passing. A capability
-an author cannot find is a capability only its first consumer uses.
+**Issue #24 closes the other half.** Everything above answers "how does a
+save leave this machine." Nothing watched for one ARRIVING on a second
+machine - a player still had to notice the file and import it by hand with
+Shift-M. See "The read side (issue #24)" below, after the anti-scum section,
+for what was built: `BackupFolder.list()`, a cheap header-only peek at a
+`.neochar` file, and a host checkpoint that offers what it finds through the
+exact same import path Shift-M already uses.
 
 ---
 
@@ -397,6 +398,59 @@ of gap a new feature can reopen silently: an automatic, frequent, filesystem-lev
 copy of a save is a more tempting scum vector than an occasional manual export,
 and it is closed by the same file format doing the same job it already does,
 not by new logic this ticket would otherwise have to write and prove.
+
+---
+
+## The read side (issue #24): offering what is in the folder
+
+The write side puts a `.neochar` file into the player's folder on every save.
+This is the other half: something has to notice a file arrive there for a
+character this machine has not met, and offer it - never import it silently,
+and never through a second import path, since a second implementation of the
+anti-scum gate is a second place for that gate to be gotten wrong.
+
+**`BackupFolder` gains `list()`.** Both platform implementations
+(`mod-backup.ts`) can now answer every `.neochar` file currently readable in
+the chosen folder, each identified by a cheap peek at its JSON header - never
+a full decode, never a base64 unpack of the save bytes it carries.
+`save-transfer.ts`'s `peekTransferMeta` is that peek: the same magic/version
+checks `decodeTransfer` runs, factored into a shared `parseEnvelope` so the two
+never drift, stopping short of ever touching the `save` field. On desktop,
+`BACKUP_CHANNEL`'s `"list"` op reads the folder in the main process
+(`backup-folder.ts`'s `listBackupFiles`) and returns `{name, text}` pairs - the
+folder's own path never crosses the bridge here either, matching every other
+op on this channel. On the browser tab, the directory handle's own
+`values()` async iteration reads each `.neochar` file's text directly.
+
+**The checkpoint is host code, not mod code, and runs once per game launch.**
+`register(host, ctx)` and `hooks(ctx)` both require a live game (see this
+document's own read of `packages/web/src/mod-plugin.ts`'s header), which does
+not exist until AFTER a character is chosen - so no mod's own code ever runs
+before the character-select screen, and a mod cannot be the thing that offers
+an arrival before one is playing. `checkBackupArrivals` (`main.ts`) is
+therefore host code, called unconditionally at the top of `bootMenus()`
+(the same one-shot, no-branch-to-hide-behind shape `stopLoading()` already
+uses there): for every mod whose manifest declares `backup:folder`, it reads
+that mod's folder directly (`readBackupFiles`, the same module `persistSave`'s
+`notifyBackupSinks` already calls into), filters to lineages this roster does
+not already have and has not recorded a death for (`newBackupArrivals`, a pure
+function so this decision is testable without booting the game), and asks a
+plain `[y/n]` question per remaining candidate.
+
+**A "yes" runs `importCharacter` - the exact function Shift-M already calls -**
+with the found file instead of a picked one. Nothing about the decode, the
+`decideImport` anti-scum gate, the write, or the outcome screen is
+reimplemented: the checkpoint's only job is deciding WHO to ask about, never
+deciding whether an import is allowed. A file for a lineage this roster has
+already recorded a death for is refused by `decideImport`, unconditionally,
+whether it arrived through Shift-M's file dialog or through this checkpoint -
+proven directly in `transfer-gate.test.ts`, which builds a real encoded file,
+peeks its lineage the way the checkpoint does, and confirms `decideImport`
+still refuses it against a matching death record.
+
+**No polling.** One pass, one launch. A file that lands in the folder after
+this pass is offered on the next launch - which is what "checkpoint" means
+here, as opposed to a timer watching the folder.
 
 ---
 

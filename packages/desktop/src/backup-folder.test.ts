@@ -11,6 +11,7 @@ import * as path from "node:path";
 import {
   backupFolderDisplayName,
   isBackupFileName,
+  listBackupFiles,
   readBackupFolder,
   writeBackupFolder,
 } from "./backup-folder.js";
@@ -65,5 +66,37 @@ describe("the persisted folder record", () => {
     fs.mkdirSync(base, { recursive: true });
     fs.writeFileSync(path.join(base, "backup-folder.json"), "not json", "utf8");
     expect(readBackupFolder(base)).toBeNull();
+  });
+});
+
+describe("listBackupFiles: ticket #24's read side", () => {
+  it("reads every .neochar file's name and text out of the folder", () => {
+    fs.writeFileSync(path.join(base, "Bilbo-abcdef12.neochar"), '{"a":1}', "utf8");
+    fs.writeFileSync(path.join(base, "Frodo-00112233.neochar"), '{"b":2}', "utf8");
+    const files = listBackupFiles(base).sort((a, b) => a.name.localeCompare(b.name));
+    expect(files).toEqual([
+      { name: "Bilbo-abcdef12.neochar", text: '{"a":1}' },
+      { name: "Frodo-00112233.neochar", text: '{"b":2}' },
+    ]);
+  });
+
+  it("ignores anything that is not a plain .neochar leaf name", () => {
+    fs.writeFileSync(path.join(base, "Bilbo-abcdef12.neochar"), "{}", "utf8");
+    fs.writeFileSync(path.join(base, "notes.txt"), "not a character file", "utf8");
+    fs.writeFileSync(path.join(base, ".hidden.neochar"), "{}", "utf8");
+    expect(listBackupFiles(base)).toEqual([{ name: "Bilbo-abcdef12.neochar", text: "{}" }]);
+  });
+
+  it("reports an empty list for a folder that does not exist, not a crash", () => {
+    expect(listBackupFiles(path.join(base, "does-not-exist"))).toEqual([]);
+  });
+
+  it("skips one unreadable file rather than failing the whole listing", () => {
+    fs.writeFileSync(path.join(base, "Bilbo-abcdef12.neochar"), "{}", "utf8");
+    /* A directory with a .neochar-shaped name: readdirSync lists it, and
+     * reading it as a file throws - the race/permissions case this exists
+     * to tolerate. */
+    fs.mkdirSync(path.join(base, "Frodo-00112233.neochar"));
+    expect(listBackupFiles(base)).toEqual([{ name: "Bilbo-abcdef12.neochar", text: "{}" }]);
   });
 });

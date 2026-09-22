@@ -176,5 +176,13 @@ export const MOD_ZIP_CHANNEL = "neo-mod-zip";
  */
 export const BACKUP_CHANNEL = "neo-backup";
 
-/** What the renderer may ask the backup channel to do. */
-export type BackupOp = "name" | "choose" | "forget" | "write";
+/**
+ * What the renderer may ask the backup channel to do. `"list"` (#24, the read
+ * side of ticket #133) answers every `.neochar` file currently in the chosen
+ * folder as `{name, text}` pairs - the same "never the path, only what the
+ * write half already exposes" rule the other ops keep: a directory listing
+ * would otherwise be the one op on this channel that could leak the folder's
+ * real location through a file's own absolute path, so the main process
+ * hands back names relative to the folder, never joined with it.
+ */
+export type BackupOp = "name" | "choose" | "forget" | "write" | "list";

@@ -33,6 +33,7 @@ import {
   MAX_TRANSFER_TEXT_BYTES,
   decodeTransfer,
   encodeTransfer,
+  peekTransferMeta,
   transferFilename,
   type TransferMeta,
 } from "./save-transfer";
@@ -235,6 +236,47 @@ describe("import size limits", () => {
     );
     expect(result.ok).toBe(false);
     expect(result.ok === false && result.why).toContain("save data is larger");
+  });
+});
+
+describe("peekTransferMeta: ticket #24's cheap header read", () => {
+  it("reads the same lineage and meta decodeTransfer would, without touching save bytes", () => {
+    const r = peekTransferMeta(FILE);
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.meta).toEqual(META);
+    expect(r.ok && r.lineage).toBe("lin-grond");
+    expect(r.ok && r.engine).toBe("0.10.0");
+  });
+
+  it("succeeds on a file whose save data decodeTransfer would refuse - it never looks at `save`", () => {
+    /* The whole point: identifying a character costs a JSON.parse, not the
+     * base64 decode and decompression decodeTransfer pays to actually import
+     * one. Garbage save bytes prove peekTransferMeta never reaches for them. */
+    const garbage = JSON.stringify({ ...JSON.parse(FILE), save: "not base64 at all!!" });
+    expect(decodeTransfer(garbage).ok).toBe(false);
+    const r = peekTransferMeta(garbage);
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.meta.name).toBe("Grond");
+  });
+
+  it("refuses the same wrong-kind and newer-version files decodeTransfer refuses, with the same reasons", () => {
+    const notJson = peekTransferMeta("not a file at all");
+    expect(notJson.ok).toBe(false);
+    expect(notJson.ok === false && notJson.why).toContain("not even JSON");
+
+    const wrongKind = peekTransferMeta(JSON.stringify({ version: 1, save: "x" }));
+    expect(wrongKind.ok === false && wrongKind.why).toContain("not a Neo Angband character file");
+
+    const newer = peekTransferMeta(JSON.stringify({ ...JSON.parse(FILE), version: TRANSFER_VERSION + 1 }));
+    expect(newer.ok === false && newer.why).toContain("newer version of the game");
+  });
+
+  it("has no lineage for a file written before that field existed - absent, not refused", () => {
+    const noLineage = JSON.parse(FILE);
+    delete noLineage.lineage;
+    const r = peekTransferMeta(JSON.stringify(noLineage));
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.lineage).toBeUndefined();
   });
 });
 

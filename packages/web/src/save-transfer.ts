@@ -129,14 +129,21 @@ export type TransferResult =
   | { readonly ok: true; readonly file: TransferFile }
   | { readonly ok: false; readonly why: string };
 
+interface EnvelopeOk {
+  readonly ok: true;
+  readonly o: Record<string, unknown>;
+  readonly version: number;
+}
+type EnvelopeResult = EnvelopeOk | { readonly ok: false; readonly why: string };
+
 /**
- * Read a transfer file, or say why it is not one.
- *
- * Never throws, and every refusal names what was wrong with THIS file: the
- * player picked it out of a file dialog, so "invalid" alone leaves them guessing
- * between the wrong file, a truncated download and a version they cannot use.
+ * The checks `decodeTransfer` and `peekTransferMeta` both need before either
+ * one is willing to look at the `meta` or `save` fields: is this even JSON, is
+ * it the RIGHT KIND of file, and is its format one this build can still read.
+ * Factored out so the two do not carry two copies of the same three refusals -
+ * exactly the drift this codebase keeps a rule against.
  */
-export function decodeTransfer(text: string): TransferResult {
+function parseEnvelope(text: string): EnvelopeResult {
   /* The file picker checks the same byte ceiling before it ever calls
    * File.text(). Keep this second check here too: callers other than the DOM
    * picker can hand this decoder a string directly. */
@@ -179,6 +186,56 @@ export function decodeTransfer(text: string): TransferResult {
         `${String(TRANSFER_VERSION)} - it was written by a newer version of the game`,
     };
   }
+  return { ok: true, o, version };
+}
+
+export type TransferPeek =
+  | {
+      readonly ok: true;
+      readonly meta: TransferMeta;
+      readonly engine: string;
+      readonly exportedAt: string;
+      readonly lineage?: string;
+    }
+  | { readonly ok: false; readonly why: string };
+
+/**
+ * Read a transfer file's HEADER only - magic, version, the roster metadata,
+ * and the lineage - without ever touching its `save` field. This is the "offer
+ * what is in the folder" checkpoint's own instrument (#24): identifying which
+ * character a `.neochar` file belongs to costs one `JSON.parse`, not the
+ * base64 decode and `decodeSavedGame` decompression `decodeTransfer` pays for
+ * every file it actually imports. Never throws; every refusal is a sentence,
+ * same contract as `decodeTransfer`.
+ */
+export function peekTransferMeta(text: string): TransferPeek {
+  const envelope = parseEnvelope(text);
+  if (!envelope.ok) return envelope;
+  const meta = readMeta(envelope.o["meta"]);
+  if (!meta) {
+    return { ok: false, why: "that character file's details are missing or malformed" };
+  }
+  const o = envelope.o;
+  return {
+    ok: true,
+    meta,
+    engine: typeof o["engine"] === "string" ? o["engine"] : "unknown",
+    exportedAt: typeof o["exportedAt"] === "string" ? o["exportedAt"] : "",
+    ...(typeof o["lineage"] === "string" && o["lineage"] !== "" ? { lineage: o["lineage"] } : {}),
+  };
+}
+
+/**
+ * Read a transfer file, or say why it is not one.
+ *
+ * Never throws, and every refusal names what was wrong with THIS file: the
+ * player picked it out of a file dialog, so "invalid" alone leaves them guessing
+ * between the wrong file, a truncated download and a version they cannot use.
+ */
+export function decodeTransfer(text: string): TransferResult {
+  const envelope = parseEnvelope(text);
+  if (!envelope.ok) return envelope;
+  const { o, version } = envelope;
   const save = o["save"];
   if (typeof save !== "string" || save.length === 0) {
     return { ok: false, why: "that character file carries no save data" };
