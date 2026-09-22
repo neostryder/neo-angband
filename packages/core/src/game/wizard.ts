@@ -1637,6 +1637,7 @@ export function wizPlayItemAccept(
    * why it cannot be folded into the branch below. */
   objectTouch(obj, {
     ...(obj.artifact ? { onArtifactFound: (): void => state.onArtifactFound?.(obj.artifact!) } : {}),
+    hooks: state.modHooks,
   });
 
   /* (3) L1708-1714. */

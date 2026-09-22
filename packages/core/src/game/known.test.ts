@@ -135,6 +135,21 @@ describe("square_know_pile find-on-sight (object_touch, obj-knowledge.c L971)", 
 
     expect(found).toEqual([]);
   });
+
+  it("fires the mod behaviour seam's artifactIdentified (mod/hooks.ts) through state.modHooks", () => {
+    const pgrid = loc(10, 10);
+    const state = makeState({ playerGrid: pgrid });
+    const seen: unknown[][] = [];
+    state.modHooks = { artifactIdentified: (obj, art) => void seen.push([obj, art]) };
+
+    const obj = artifactObj();
+    floorCarry(state, pgrid, obj);
+    squareKnowPile(state, pgrid);
+    /* Re-touching the same grid must not report the artifact a second time. */
+    squareKnowPile(state, pgrid);
+
+    expect(seen).toEqual([[obj, firstArtifact]]);
+  });
 });
 
 describe("cave_illuminate (cave-map.c L555, runtime)", () => {
@@ -442,6 +457,80 @@ describe("update_mon infravision", () => {
     expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(false);
     /* The cold blood is still learned. */
     expect(getLore(state.lore, mon.race).flags.has(RF.COLD_BLOOD)).toBe(true);
+  });
+});
+
+describe("update_mon fires monsterBecameVisible on the real transition (mod/hooks.ts)", () => {
+  it("fires once, with the live monster, on the unseen-to-seen transition", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    lightAndView(state, mon.grid);
+    const seen: Monster[] = [];
+    state.modHooks = { monsterBecameVisible: (m) => seen.push(m) };
+
+    updateMon(state, mon, true);
+
+    expect(seen).toEqual([mon]);
+  });
+
+  it("does not fire again on a later turn where the monster simply stays visible", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    lightAndView(state, mon.grid);
+    const seen: Monster[] = [];
+    state.modHooks = { monsterBecameVisible: (m) => seen.push(m) };
+
+    updateMon(state, mon, true);
+    updateMon(state, mon, true);
+    updateMon(state, mon, true);
+
+    expect(seen).toHaveLength(1);
+  });
+
+  it("does not fire when the monster never becomes visible", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    /* Out of view, unlit, no telepathy: update_mon's own "flag" stays false. */
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    const seen: Monster[] = [];
+    state.modHooks = { monsterBecameVisible: (m) => seen.push(m) };
+
+    updateMon(state, mon, true);
+
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(false);
+    expect(seen).toEqual([]);
+  });
+
+  it("fires again on a fresh sighting after the monster drops out of view", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    lightAndView(state, mon.grid);
+    const seen: Monster[] = [];
+    state.modHooks = { monsterBecameVisible: (m) => seen.push(m) };
+
+    updateMon(state, mon, true);
+    expect(seen).toHaveLength(1);
+
+    /* Out of view: the flag fades (matches "keeps monster visibility flags in
+     * step with the view" above). Going OUT of view must not fire the hook. */
+    state.chunk.sqinfoOff(mon.grid, SQUARE.SEEN);
+    state.chunk.sqinfoOff(mon.grid, SQUARE.VIEW);
+    updateMon(state, mon, true);
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(false);
+    expect(seen).toHaveLength(1);
+
+    /* Back into view: a second, fresh sighting. */
+    lightAndView(state, mon.grid);
+    updateMon(state, mon, true);
+    expect(seen).toHaveLength(2);
+  });
+
+  it("does nothing when no mod supplies the hook", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const mon = addMon(state, makeRace(), loc(12, 10));
+    lightAndView(state, mon.grid);
+
+    expect(() => updateMon(state, mon, true)).not.toThrow();
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(true);
   });
 });
 

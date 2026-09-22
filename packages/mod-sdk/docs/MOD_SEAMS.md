@@ -213,6 +213,8 @@ document has no test behind it and rots on the next commit.
 | `levelRevisited(chunk, frozenAt, now)` | `all-observe` | `session/game.ts` (persistent-level and single-combat restore paths) | nothing: resume the frozen chunk unchanged |
 | `messageText(raw)` | `chained` | `packages/web/src/main.ts` (the HOST's single message sink, not core) | `?? raw` - show what core was given, warts and all |
 | `optionsChanged(snapshot)` | `all-observe` | `packages/web/src/options.ts` (`notifyOptionsChanged`, at the end of `runOptionsMenu`) | nothing happens; core reads no answer |
+| `monsterBecameVisible(mon)` | `all-observe` | `game/known.ts` (`updateMon`'s "it was previously unseen" branch, reached from `updateMonsters`, `monsterSwap`, and every other `updateMon` call site) | nothing: the visibility flag was already set with no mod loaded |
+| `artifactIdentified(obj, artifact)` | `all-observe` | `obj/known-object.ts` (`objectTouch`'s ASSESSED transition, reached from `pickup.ts`'s `playerPickupAux`, `game/known.ts`'s `squareKnowPile`, and `wizard.ts`'s item-edit path) | nothing: the object was already assessed with no mod loaded |
 
 `optionsChanged` and `levelRevisited` are the notification members: core does
 not ask either a QUESTION. Every other hook's return value changes what the
@@ -222,6 +224,20 @@ order, and none can overrule another. `levelRevisited` passes the live restored
 chunk plus unrounded turn endpoints, so a tracking mod can reproduce the engine's
 world-tick boundary exactly. `optionsChanged` is the host-owned case: it tells a
 mod that the player has finished changing settings.
+
+`monsterBecameVisible` and `artifactIdentified` are the same shape of
+notification, fired from inside core rather than the host. Each carries a live
+reference so a mod can identify the subject without a second lookup:
+`monsterBecameVisible` hands over the `Monster` itself (its `race` and its
+grid), and `artifactIdentified` hands over both the `GameObject` and its
+already-resolved `Artifact` record, rather than an `aidx` a mod would have to
+look up in the artifact registry the way `artifactCommit` requires. Both fire
+on the TRANSITION only: `monsterBecameVisible` on the same "it was previously
+unseen" branch that already increments the race's "sights" lore counter, so it
+fires once per fresh sighting and never on a turn where an already-visible
+monster simply stays visible; `artifactIdentified` on the object's
+`OBJ_NOTICE.ASSESSED` bit flipping from unset to set, which happens once per
+object because that bit is never cleared once it is set.
 
 Three details that are contract, not implementation:
 
@@ -291,8 +307,9 @@ discarded and there is nothing for load order to decide. Per fold:
   read as a lexicographic chain: the last mod's ordering is the primary key and
   earlier mods break only the ties it leaves. Still a total order, and still
   later-wins.
-- **`all-observe`** (`optionsChanged`, `levelRevisited`) runs every contributor in load order and
-  reads no answer, so there is nothing to win.
+- **`all-observe`** (`optionsChanged`, `levelRevisited`, `monsterBecameVisible`,
+  `artifactIdentified`) runs every contributor in load order and reads no
+  answer, so there is nothing to win.
 
 `composeModHooks` returns `undefined` when nothing contributed,
 so the host leaves the field ABSENT rather than storing an empty object. That

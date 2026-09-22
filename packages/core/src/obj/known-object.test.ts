@@ -37,6 +37,7 @@ import {
 } from "../session/save.js";
 import type { SavedPlayer } from "../session/save.js";
 import { ContentIdResolver } from "../mod/ids.js";
+import type { ModHooks } from "../mod/hooks.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -361,6 +362,73 @@ describe("object_touch / object_grab (obj-knowledge.c L960-1013, gap 4.8)", () =
     expect(obj.notice & OBJ_NOTICE.ASSESSED).toBe(OBJ_NOTICE.ASSESSED);
     expect(found).toEqual([art.aidx]);
     expect(known).toEqual([obj]);
+  });
+
+  describe("artifactIdentified (mod/hooks.ts): fires on the real ASSESSED transition", () => {
+    it("fires once, with the live object and its resolved artifact", () => {
+      const art = reg.artifacts.find((a) => a !== null)!;
+      const obj = mkObj(ordinaryKind(() => true));
+      obj.artifact = art;
+      const seen: unknown[][] = [];
+      const hooks: ModHooks = {
+        artifactIdentified: (o, a) => void seen.push([o, a]),
+      };
+
+      objectTouch(obj, { hooks });
+
+      expect(seen).toEqual([[obj, art]]);
+    });
+
+    it("does not fire again when the same object is touched a second and third time", () => {
+      const art = reg.artifacts.find((a) => a !== null)!;
+      const obj = mkObj(ordinaryKind(() => true));
+      obj.artifact = art;
+      const seen: unknown[][] = [];
+      const hooks: ModHooks = {
+        artifactIdentified: (o, a) => void seen.push([o, a]),
+      };
+
+      objectTouch(obj, { hooks });
+      objectTouch(obj, { hooks });
+      objectTouch(obj, { hooks });
+
+      expect(seen).toHaveLength(1);
+    });
+
+    it("does not fire when the object is not an artifact", () => {
+      const obj = mkObj(ordinaryKind(() => true));
+      const seen: unknown[] = [];
+      const hooks: ModHooks = { artifactIdentified: (...args) => void seen.push(args) };
+
+      objectTouch(obj, { hooks });
+
+      expect(seen).toEqual([]);
+    });
+
+    it("does not fire when the object was already ASSESSED before this touch", () => {
+      /* Some other path (store.ts, wizard editing) can set ASSESSED without
+       * going through objectTouch; the transition already happened, so a
+       * later touch through this seam must not report it again. */
+      const art = reg.artifacts.find((a) => a !== null)!;
+      const obj = mkObj(ordinaryKind(() => true));
+      obj.artifact = art;
+      obj.notice |= OBJ_NOTICE.ASSESSED;
+      const seen: unknown[] = [];
+      const hooks: ModHooks = { artifactIdentified: (...args) => void seen.push(args) };
+
+      objectTouch(obj, { hooks });
+
+      expect(seen).toEqual([]);
+    });
+
+    it("does nothing when no hooks are supplied (a disabled mod's patches do not exist)", () => {
+      const art = reg.artifacts.find((a) => a !== null)!;
+      const obj = mkObj(ordinaryKind(() => true));
+      obj.artifact = art;
+
+      expect(() => objectTouch(obj)).not.toThrow();
+      expect(obj.notice & OBJ_NOTICE.ASSESSED).toBe(OBJ_NOTICE.ASSESSED);
+    });
   });
 });
 

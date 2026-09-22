@@ -442,6 +442,31 @@ describe("doAutopickup / playerPickupItem", () => {
     expect(fired).toBe(false);
   });
 
+  it("picking up an artifact fires the mod behaviour seam's artifactIdentified (mod/hooks.ts)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const art = reg.artifacts.find((a) => a?.name === "of Galadriel")!;
+    const obj = underfoot(state, makeObj(TV.LIGHT, 0));
+    obj.artifact = art;
+
+    const seen: unknown[][] = [];
+    state.modHooks = { artifactIdentified: (o, a) => void seen.push([o, a]) };
+    const picked = playerPickupItem(state, null, deps);
+
+    expect(picked).toBe(1);
+    expect(seen).toEqual([[obj, art]]);
+  });
+
+  it("picking up a non-artifact does NOT fire artifactIdentified", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    underfoot(state, makeObj(TV.POTION));
+    const seen: unknown[] = [];
+    state.modHooks = { artifactIdentified: (...args) => void seen.push(args) };
+
+    playerPickupItem(state, null, deps);
+
+    expect(seen).toEqual([]);
+  });
+
   it("routes picked-up ammo into the quiver (refreshInventory / PU_INVEN)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     underfoot(state, makeObj(TV.SHOT));

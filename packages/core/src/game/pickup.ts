@@ -308,7 +308,10 @@ function playerPickupAux(
    * installPickup call that only supplies message hooks (main.ts's "reinstall").
    * (ASSESSED is idempotent, so re-touching an item already seen on the grid via
    * squareKnowPile is harmless.) */
-  objectTouch(obj, { onArtifactFound: () => state.onArtifactFound?.(obj.artifact!) });
+  objectTouch(obj, {
+    onArtifactFound: () => state.onArtifactFound?.(obj.artifact!),
+    hooks: state.modHooks,
+  });
 
   /*
    * Hobbits ID mushrooms on pickup, gnomes ID wands and staffs on pickup

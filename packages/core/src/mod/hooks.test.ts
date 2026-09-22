@@ -20,6 +20,8 @@ import {
 } from "./hooks.js";
 import type { GameState } from "../game/context.js";
 import type { GameObject } from "../obj/object.js";
+import type { Artifact } from "../obj/types.js";
+import type { Monster } from "../mon/monster.js";
 import type { OptionStateData } from "../player/options.js";
 import type { Chunk } from "../world/chunk.js";
 
@@ -31,6 +33,11 @@ const DEPS = {};
 /** Stand-ins for the two stacks a partial merge would combine. */
 const DRAINED = {} as GameObject;
 const RECEIVING = {} as GameObject;
+/** Stand-ins for a monster that just became visible. */
+const MON = {} as Monster;
+/** Stand-ins for an artifact object being assessed for the first time. */
+const TOUCHED_OBJ = {} as GameObject;
+const ARTIFACT = {} as Artifact;
 
 describe("composeModHooks: nothing in, nothing out", () => {
   it("returns undefined for no contributions", () => {
@@ -57,6 +64,8 @@ describe("composeModHooks: nothing in, nothing out", () => {
     expect(composed?.objectListTiebreak).toBeUndefined();
     expect(composed?.projectionRadius).toBeUndefined();
     expect(composed?.shapeLearnObviousFlagsDirectly).toBeUndefined();
+    expect(composed?.monsterBecameVisible).toBeUndefined();
+    expect(composed?.artifactIdentified).toBeUndefined();
   });
 });
 
@@ -326,6 +335,29 @@ describe("notification hooks are observed by every contributor", () => {
     expect(seen).toEqual([
       [CHUNK, 19, 50],
       [CHUNK, 19, 50],
+    ]);
+  });
+
+  it("monsterBecameVisible: observes the same live Monster reference, in load order", () => {
+    const seen: unknown[] = [];
+    const composed = composeModHooks([
+      { monsterBecameVisible: (mon) => void seen.push(mon) },
+      { monsterBecameVisible: (mon) => void seen.push(mon) },
+    ]);
+    composed?.monsterBecameVisible?.(MON);
+    expect(seen).toEqual([MON, MON]);
+  });
+
+  it("artifactIdentified: observes the same live GameObject and Artifact, in load order", () => {
+    const seen: unknown[][] = [];
+    const composed = composeModHooks([
+      { artifactIdentified: (obj, art) => void seen.push([obj, art]) },
+      { artifactIdentified: (obj, art) => void seen.push([obj, art]) },
+    ]);
+    composed?.artifactIdentified?.(TOUCHED_OBJ, ARTIFACT);
+    expect(seen).toEqual([
+      [TOUCHED_OBJ, ARTIFACT],
+      [TOUCHED_OBJ, ARTIFACT],
     ]);
   });
 });
@@ -652,6 +684,16 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
           command: "cast",
         }),
     },
+    monsterBecameVisible: {
+      yes: (log, tag) => ({ monsterBecameVisible: () => void log.push(tag) }),
+      no: (log, tag) => ({ monsterBecameVisible: () => void log.push(tag) }),
+      run: (h) => h.monsterBecameVisible?.(MON),
+    },
+    artifactIdentified: {
+      yes: (log, tag) => ({ artifactIdentified: () => void log.push(tag) }),
+      no: (log, tag) => ({ artifactIdentified: () => void log.push(tag) }),
+      run: (h) => h.artifactIdentified?.(TOUCHED_OBJ, ARTIFACT),
+    },
   };
 
   /** The fold `probe` exhibits, read off composeModHooks' actual behaviour. */
@@ -776,6 +818,16 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
     ).toBeUndefined();
   });
 
+  it("monsterBecameVisible is dropped when its observer throws", () => {
+    const { hooks } = guarded({ monsterBecameVisible: THROWS });
+    expect(hooks.monsterBecameVisible?.(MON)).toBeUndefined();
+  });
+
+  it("artifactIdentified is dropped when its observer throws", () => {
+    const { hooks } = guarded({ artifactIdentified: THROWS });
+    expect(hooks.artifactIdentified?.(TOUCHED_OBJ, ARTIFACT)).toBeUndefined();
+  });
+
   it("messageText returns the RAW message, never an empty one", () => {
     /* The neutral value for a transform is its input. Falling back to "" would
      * delete a line the player needed to read, and nothing downstream could tell
@@ -865,6 +917,8 @@ describe("guardModHooks: it wraps, and does not invent", () => {
     expect(hooks.walkBlockedByDiggable).toBeUndefined();
     expect(hooks.objectListTiebreak).toBeUndefined();
     expect(hooks.shapeLearnObviousFlagsDirectly).toBeUndefined();
+    expect(hooks.monsterBecameVisible).toBeUndefined();
+    expect(hooks.artifactIdentified).toBeUndefined();
   });
 
   it("an empty contribution stays empty, so the fold still returns undefined", () => {

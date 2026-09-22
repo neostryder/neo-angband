@@ -72,6 +72,8 @@
 
 import type { GameState } from "../game/context.js";
 import type { GameObject } from "../obj/object.js";
+import type { Artifact } from "../obj/types.js";
+import type { Monster } from "../mon/monster.js";
 import type { OptionStateData } from "../player/options.js";
 import type { Chunk } from "../world/chunk.js";
 
@@ -415,6 +417,49 @@ export interface ModHooks {
    * player uses.
    */
   abilityGained?: (ability: AbilityGained) => void;
+
+  /**
+   * A monster's MFLAG_VISIBLE flag flips from unset to set (game/known.ts,
+   * updateMon's "it was previously unseen" branch - the same branch that
+   * increments the race's "sights" lore counter - reached from
+   * updateMonsters, monsterSwap and every other updateMon call site).
+   *
+   * A NOTIFICATION: core has already committed the visibility change and does
+   * not read a return value. `mon` is the LIVE Monster, handed over the same
+   * way levelRevisited hands over its live chunk, so a mod can read its race,
+   * grid, and anything else about it without a second lookup through
+   * state.monsters.
+   *
+   * Fires on every FRESH sighting - the same event the "sights" lore counter
+   * counts - not only the very first time this monster has ever been seen,
+   * and it does not fire again on a later turn where an already-visible
+   * monster simply remains visible.
+   *
+   * Serves: a mod wanting first-encounter notifications without polling
+   * monsterListCollect on a timer (neo-angband-mod-qol issue #56).
+   */
+  monsterBecameVisible?: (mon: Monster) => void;
+
+  /**
+   * An object's OBJ_NOTICE.ASSESSED bit flips from unset to set while the
+   * object carries an artifact (obj/known-object.ts, objectTouch's ASSESSED
+   * transition, reached from pickup.ts's playerPickupAux, game/known.ts's
+   * squareKnowPile, and wizard.ts's item-edit path).
+   *
+   * A NOTIFICATION: core has already committed the assessment and does not
+   * read a return value. `obj` is the live GameObject and `artifact` is its
+   * already-resolved Artifact record - handed over together, like
+   * partialStackMerge's two GameObjects, so a mod can name the artifact and
+   * place the find without a second lookup through the artifact registry.
+   *
+   * Fires once per object: ASSESSED is never cleared once set, so re-touching
+   * an already-assessed artifact (standing on its grid again, picking it back
+   * up) does not fire this a second time for that object.
+   *
+   * Serves: a mod wanting to react to an artifact identification without a
+   * second lookup.
+   */
+  artifactIdentified?: (obj: GameObject, artifact: Artifact) => void;
 }
 
 /**
@@ -443,8 +488,9 @@ export interface ModHooks {
  *  - ANY hooks (saveNoiseScent, shapeLearnObviousFlagsDirectly) are disjunctive:
  *    one mod asking for the data is enough, because the data is additive and a
  *    second mod cannot object.
- *  - NOTIFICATION hooks (optionsChanged, levelRevisited, abilityGained) call every contributor
- *    in load order.  There is no answer for a later mod to override.
+ *  - NOTIFICATION hooks (optionsChanged, levelRevisited, abilityGained,
+ *    monsterBecameVisible, artifactIdentified) call every contributor in load
+ *    order.  There is no answer for a later mod to override.
  *
  * WHY THE LAST TWO ARE NOT EXCEPTIONS. "Later wins" answers the question "two
  * mods disagree about one thing - whose answer is used?", and a veto hook is not
@@ -507,6 +553,8 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   messageText: "chained",
   optionsChanged: "all-observe",
   abilityGained: "all-observe",
+  monsterBecameVisible: "all-observe",
+  artifactIdentified: "all-observe",
 };
 
 /**
@@ -694,6 +742,26 @@ export function guardModHooks(
     };
   }
 
+  const monsterVisible = hooks.monsterBecameVisible;
+  if (monsterVisible) {
+    /* Nothing to neutralise: core reads no answer, so the neutral value is
+     * undefined and the guard exists only for the latch and the report. */
+    out.monsterBecameVisible = (mon): void => {
+      guard("monsterBecameVisible", () => monsterVisible(mon), undefined);
+    };
+  }
+
+  const artifactIdentified = hooks.artifactIdentified;
+  if (artifactIdentified) {
+    out.artifactIdentified = (obj, artifact): void => {
+      guard(
+        "artifactIdentified",
+        () => artifactIdentified(obj, artifact),
+        undefined,
+      );
+    };
+  }
+
   return out;
 }
 
@@ -854,6 +922,22 @@ export function composeModHooks(
   if (abilityGained.length > 0) {
     out.abilityGained = (gained): void => {
       for (const fn of abilityGained) fn({ ...gained });
+    };
+  }
+
+  const monsterVisible = list.map((c) => c.monsterBecameVisible).filter(isFn);
+  if (monsterVisible.length > 0) {
+    /* LOAD order, and every one of them is told - a fresh sighting is a fact
+     * every interested mod agrees on, not a question with one right answer. */
+    out.monsterBecameVisible = (mon): void => {
+      for (const fn of monsterVisible) fn(mon);
+    };
+  }
+
+  const artifactIdentified = list.map((c) => c.artifactIdentified).filter(isFn);
+  if (artifactIdentified.length > 0) {
+    out.artifactIdentified = (obj, artifact): void => {
+      for (const fn of artifactIdentified) fn(obj, artifact);
     };
   }
 

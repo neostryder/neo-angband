@@ -648,6 +648,13 @@ export interface ObjectTouchDeps {
    * needs firing here.
    */
   onKnow?(obj: GameObject): void;
+  /**
+   * The mod behaviour seam (mod/hooks.ts), threaded through so this obj-layer
+   * function can fire artifactIdentified without a GameState in scope -
+   * matching MakeDeps.hooks in obj/make.ts. Callers pass their live
+   * state.modHooks.
+   */
+  hooks?: import("../mod/hooks.js").ModHooks | undefined;
 }
 
 /**
@@ -660,8 +667,15 @@ export interface ObjectTouchDeps {
  * demand, so this reduces to: set ASSESSED (which also reveals the artifact
  * name via the shadow's assessed gate), fire the awareness half of
  * player_know_object, then log the artifact. Draws no RNG.
+ *
+ * Also fires the mod behaviour seam's artifactIdentified (mod/hooks.ts) the
+ * first time an artifact-bearing object is assessed - ASSESSED is read
+ * BEFORE it is set below, so a re-touch of an object already assessed (this
+ * bit never clears) does not fire it again.
  */
 export function objectTouch(obj: GameObject, deps: ObjectTouchDeps = {}): void {
+  const wasAssessed = (obj.notice & OBJ_NOTICE.ASSESSED) !== 0;
+
   /* obj->known->artifact = obj->artifact (L963) is subsumed by the shadow's
    * ASSESSED gate (objectKnownShadow L477); marking ASSESSED is enough. */
   obj.notice |= OBJ_NOTICE.ASSESSED; // L964
@@ -671,7 +685,10 @@ export function objectTouch(obj: GameObject, deps: ObjectTouchDeps = {}): void {
   deps.onKnow?.(obj);
 
   /* Log artifacts if found (L970-971). */
-  if (obj.artifact) deps.onArtifactFound?.(obj.artifact.aidx);
+  if (obj.artifact) {
+    deps.onArtifactFound?.(obj.artifact.aidx);
+    if (!wasAssessed) deps.hooks?.artifactIdentified?.(obj, obj.artifact);
+  }
 }
 
 /**

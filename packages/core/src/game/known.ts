@@ -688,6 +688,7 @@ export function squareKnowPile(
         if (!pred || pred(obj)) {
           objectTouch(obj, {
             onArtifactFound: () => state.onArtifactFound?.(obj.artifact!),
+            hooks: state.modHooks,
           });
         }
       }
@@ -893,6 +894,10 @@ function mimickedObjectIgnored(state: GameState, mon: Monster): boolean {
  * from the last calc_bonuses (state.playerState); the blind check reads
  * player->timed[TMD_BLIND] directly. update_mon only READS MFLAG_MARK - the
  * MARK / SHOW detection-fade lives in tickMonsterMarks.
+ *
+ * The MFLAG_VISIBLE transition on a previously-unseen monster also fires the
+ * mod behaviour seam's monsterBecameVisible (mod/hooks.ts), once per fresh
+ * sighting, alongside the existing "sights" lore counter it already updates.
  */
 export function updateMon(
   state: GameState,
@@ -1002,6 +1007,10 @@ export function updateMon(
       /* square_light_spot / PR_HEALTH / PR_MONLIST are presentation (#25). */
       /* Count "fresh" sightings (capped at SHRT_MAX). */
       loreCountU16(lore, "sights");
+      /* The behaviour seam (mod/hooks.ts monsterBecameVisible): notify on
+       * this exact transition, once per fresh sighting, never on a turn where
+       * an already-visible monster merely stays visible. */
+      state.modHooks?.monsterBecameVisible?.(mon);
     }
   } else if (monsterIsVisible(mon)) {
     /* Not visible but was previously seen - treat mimics differently

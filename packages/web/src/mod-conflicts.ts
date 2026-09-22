@@ -284,6 +284,8 @@ function hookDescription(hook: keyof ModHooks): string {
     messageText: "the wording of game messages",
     optionsChanged: "being told when you change your options",
     abilityGained: "being told when you gain a spell or known activation",
+    monsterBecameVisible: "being told when a monster comes into view",
+    artifactIdentified: "being told when an artifact is identified",
   };
   return words[hook];
 }
