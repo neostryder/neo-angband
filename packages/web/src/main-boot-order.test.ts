@@ -263,7 +263,12 @@ describe("main boot order", () => {
   });
 
   it("gives the mod manager the live orphan store, so the stash view has one (#76)", () => {
-    expect(stripped()).toMatch(/orphans:\s*orphanViewDeps\(\(\)\s*=>\s*game\.orphans\)/u);
+    /* Either signature is fine - the live `() => game.orphans` is what the
+    // stash reads, and the setStore callback (when present) is what
+    // viewOrphanStash writes through. */
+    expect(stripped()).toMatch(
+      /orphans:\s*orphanViewDeps\(\(\)\s*=>\s*game\.orphans(?:,\s*\w+)?\)/u,
+    );
   });
 
   it("asks the one-time keep/purge question from the boot chain (#76)", () => {

@@ -71,6 +71,7 @@ import {
   orphanRowLabel,
   orphanStashScreen,
   stashOf,
+  viewOrphanStash,
   type OrphanViewDeps,
 } from "./mod-orphans";
 import { showModUpgrades, showRecommendedMods, type ModUpgradeDeps } from "./mod-browse";
@@ -3700,8 +3701,13 @@ export async function runModManager(
        * this same screen does not rehydrate anything until the reload, but the
        * pack sets behind `availability` can move, and a screen showing a stale
        * "frost is not installed" over a frost that is now installed would be
-       * the one sentence on it a player would act on. */
-      if (deps.orphans) await showTextScreen(term, orphanStashScreen(stashOf(deps.orphans)));
+       * the one sentence on it a player would act on.
+       *
+       * `viewOrphanStash` runs the per-item delete flow when the host has
+       * provided a write callback on `deps.orphans.setStore`; without it the
+       * function falls back to the same one-way display the stash screen used
+       * to be, so an older host does not silently lose the affordance. */
+      if (deps.orphans) await viewOrphanStash(term, deps.orphans);
     } else if (rk.kind === "autosort") {
       if (await autoSortLoadOrder(term, deps)) dirty = true;
     } else if (rk.kind === "download") {

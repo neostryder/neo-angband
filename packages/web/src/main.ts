@@ -323,6 +323,7 @@ import { DEFAULT_AUTHORS_URL, fetchAuthors } from "./mod-authors";
 import { readConsent, writeConsent } from "./mod-consent";
 import { DEFAULT_REGISTRY_URL, fetchRegistry } from "./mod-curated";
 import { discoverMod, type DiscoverEnv } from "./mod-discover";
+import { rawUrl } from "./mod-registry";
 import {
   activeModCode,
   folderPluginManifests,
@@ -341,9 +342,11 @@ import {
   setModRegistries,
   setModDebugDoor,
   setModSubwindowsControl,
+  setModKeyRepeatControl,
   type ModSessionFacts,
 } from "./mod-context";
 import type { ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows } from "./mod-plugin";
+import { createKeyRepeatTracker } from "./key-repeat";
 import { VisualFilterOverlay } from "./visual-filter";
 import { migrateModBags, migrateModBagsAsync } from "./mod-bags";
 import {
@@ -6679,18 +6682,38 @@ async function exitToTitle(): Promise<void> {
  * packs discovery can see, which is the only kind that can own a quarantined
  * entity: quarantine is keyed on content namespaces, and a plugin-shape mod
  * contributes none.
+ *
+ * `setStore` is the per-item permanent-delete write (issue 76): the stash
+ * view computes the next store and the host assigns it, the same split the
+ * one-time keep/purge prompt has always had with `purgeOrphans()`. A forced
+ * save follows the assignment, for the same reason the all-purge prompt
+ * forces one: the deletion has to survive the next boot whether or not
+ * autosave's throttle lets another write through.
  */
-function orphanViewDeps(store: () => OrphanStore | undefined): OrphanViewDeps {
+function orphanViewDeps(
+  store: () => OrphanStore | undefined,
+  setStore: (next: OrphanStore) => void,
+): OrphanViewDeps {
   return {
     store,
     present: () => presentNamespaces(),
     installed: () => new Set(discoverContentModManifests().map((m) => m.id)),
+    setStore,
   };
+}
+
+/** Assign a new orphans store and force it to disk now. */
+function applyOrphanStore(next: OrphanStore): void {
+  game.orphans = next;
+  autosave(true);
 }
 
 /** The stash model over one store, for the boot note and the boot prompt. */
 function orphanStashFor(store: OrphanStore | undefined): OrphanStash {
-  return stashOf(orphanViewDeps(() => store));
+  /* The boot prompt never deletes; the trivial setStore (the host still has
+   * one, so callers can pass it around uniformly) is paired with a read-only
+   * caller that never invokes it. */
+  return stashOf(orphanViewDeps(() => store ?? {}, () => ({})));
 }
 
 /**
@@ -6812,8 +6835,12 @@ async function modManagerDeps(): Promise<ModManagerDeps> {
     modBrowse: modBrowseDeps(),
     /* The stash row and its screen. Read live off the running game, because
      * enabling a mod here does not rehydrate anything until the reload and a
-     * cached read would keep saying so afterwards. */
-    orphans: orphanViewDeps(() => game.orphans),
+     * cached read would keep saying so afterwards. The setStore callback wires
+     * the per-item permanent-delete (issue 76) through `applyOrphanStore`, the
+     * same write mechanism `offerOrphanChoice` uses for the all-purge prompt:
+     * the stash view computes the next store and the host is the only place
+     * that assigns and forces it to disk. */
+    orphans: orphanViewDeps(() => game.orphans, applyOrphanStore),
     isModNoscore: () => game.manifest.modNoscore,
     advanceSaveRatchets: (mod) => {
       game.manifest.determinism = advanceDeterminism(game.manifest.determinism, mod.nondeterministic);
@@ -7409,6 +7436,19 @@ let pumping = false;
  * a later, unrelated key.
  */
 let caretPending = false;
+/**
+ * neo-angband#35's host-side half: whether the keydown the root handler is
+ * about to process below is a genuine OS auto-repeat (or close enough to one
+ * to be indistinguishable) rather than a fresh, deliberate press - see
+ * key-repeat.ts for the two signals that judgment combines. `classify()` runs
+ * at the very top of the root keydown listener, unconditionally, so the
+ * verdict reflects every keydown that reaches this screen regardless of what
+ * it goes on to do. Nothing here changes what a repeat does; this only
+ * exposes the host's own judgment through `ctx.keyRepeat` for a future mod to
+ * build on.
+ */
+const keyRepeatTracker = createKeyRepeatTracker();
+setModKeyRepeatControl(() => keyRepeatTracker.last());
 state.checkInterrupt = (): InterruptResponse => {
   /* The resting arm of the C's gate is answered by driveRest, which owns the
    * rest lifecycle in this port (WP-11) and already yields - and pauses - once
@@ -12204,6 +12244,18 @@ function modBrowseDeps(): ModUpgradeDeps {
     /* The fourth door. Feature-detected off the desktop bridge, so a browser tab gets
      * the file picker and no mods-folder listing rather than a broken row. */
     importZip: zipImportDeps(installEnv, () => readConsent(channelStore()), globalThis),
+    /* The repository door's pre-install summary (mod-preinstall.ts): what the
+     * player has enabled right now, for its conflict and "is this record's
+     * owner enabled" checks. Same lookup the conflicts pane itself uses. */
+    enabledManifests: () => {
+      const enabled = enabledModIds();
+      return discoverContentModManifests().filter((m) => enabled.includes(m.id));
+    },
+    readRepoFile: async (repo, tag, path) => {
+      const res = await fetch(rawUrl(repo, tag, path));
+      if (!res.ok) throw new Error(`${path}: not there (HTTP ${String(res.status)})`);
+      return await res.text();
+    },
     curated: async () => {
       const r = await fetchRegistry(DEFAULT_REGISTRY_URL, net);
       return r.ok ? { registry: r.registry, problem: null } : { registry: null, problem: r.problem };
