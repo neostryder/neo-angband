@@ -12,6 +12,7 @@ import {
   allDropZones,
   applyDrop,
   computeLayout,
+  degradeForComfort,
   dropZoneAt,
   ratioFromPointer,
   resizeSplit,
@@ -88,6 +89,15 @@ export interface SubwindowShellOptions {
    * `deltaRows` scrolls toward newer/later content, negative toward older/earlier.
    */
   onScroll?: (id: string, deltaRows: number) => void;
+  /**
+   * The comfort-degradation pass (neo-angband#275, see subwindow-layout.ts's
+   * `degradeForComfort`) hid one or more panels because the real viewport is
+   * too small to give every enabled panel a legible size. Fired only when the
+   * SET of hidden ids actually changes from the previous paint - never on
+   * every resize tick a viewport settle produces, and never when nothing is
+   * currently hidden.
+   */
+  onDegraded?: (ids: readonly string[]) => void;
 }
 
 const DRAG_THRESHOLD = 6;
@@ -110,7 +120,7 @@ function pointerInHost(host: HTMLElement, event: PointerEvent): { x: number; y: 
 }
 
 export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell {
-  const { host, mainSlot, labels, onTreeChange, onClose, onScroll } = opts;
+  const { host, mainSlot, labels, onTreeChange, onClose, onScroll, onDegraded } = opts;
   host.classList.add("tile-host");
   mainSlot.classList.add("tile-leaf");
   mainSlot.dataset.tile = MAIN_TILE_ID;
@@ -363,6 +373,18 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   let modalActive = false;
   let gameLive = false;
   let lastVisibleIds = new Set<string>([MAIN_TILE_ID]);
+  /* neo-angband#275: the comfort-degradation set as of the last paint, so
+   * onDegraded fires on a real change only - not on every resize tick a
+   * viewport settle produces (main.ts's ResizeObserver-driven `resize` event
+   * can fire several times while a window is being dragged). */
+  let lastDroppedIds: readonly string[] = [];
+
+  function sameIdSet(a: readonly string[], b: readonly string[]): boolean {
+    if (a.length !== b.length) return false;
+    const sortedA = [...a].sort();
+    const sortedB = [...b].sort();
+    return sortedA.every((id, index) => id === sortedB[index]);
+  }
 
   function applyLeafVisibility(): void {
     for (const [id, leaf] of slots) {
@@ -385,7 +407,17 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       clearGutters();
       return;
     }
-    const layout = computeLayout(tree, hostSize(host));
+    const viewport = hostSize(host);
+    /* #275: decide which SMALLER tree to actually render - the real, saved
+     * `tree` (and `currentTree` above) is never mutated by this, so growing
+     * the window back out brings a dropped panel straight back with no
+     * re-enabling needed. */
+    const { tree: visibleTree, dropped } = degradeForComfort(tree, viewport);
+    if (!sameIdSet(dropped, lastDroppedIds)) {
+      lastDroppedIds = dropped;
+      if (dropped.length > 0) onDegraded?.(dropped);
+    }
+    const layout = computeLayout(visibleTree, viewport);
     lastVisibleIds = new Set(layout.tiles.map((tile) => tile.id));
     for (const tile of layout.tiles) {
       const leaf = tile.id === MAIN_TILE_ID ? mainSlot : ensureSlot(tile.id);

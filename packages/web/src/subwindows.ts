@@ -13,6 +13,7 @@ import {
   colorToCss,
   sidebarModel,
   statusLineModel,
+  t,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   Constants,
@@ -205,6 +206,29 @@ export function emptyLayoutTree(): LayoutNode {
 
 export function enabledSubwindowIds(settings: SubwindowSettings): SubwindowId[] {
   return SUBWINDOW_IDS.filter((id) => settings[id]);
+}
+
+/**
+ * neo-angband#275: the one-time notice for when the comfort-degradation pass
+ * (subwindow-layout.ts's `degradeForComfort`, wired in through
+ * subwindow-shell.ts's `onDegraded`) has hidden one or more panels because the
+ * real window is too small to give every enabled panel a legible size. Named,
+ * on the same "say once, never silent" precedent as save-recovery.ts's
+ * `describePackMismatch` - a player who sees a panel vanish should never be
+ * left guessing whether it crashed or was simply not enabled. The caller (see
+ * main.ts's `mountSubwindowShell` wiring) is what makes this a one-time line:
+ * it is only invoked when the collapsed set actually changes, never on every
+ * resize tick.
+ */
+export function describeSubwindowsCollapsed(ids: readonly SubwindowId[]): string {
+  if (ids.length === 0) return "";
+  const labelById = new Map(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.label]));
+  const names = ids.map((id) => labelById.get(id) ?? id).join(", ");
+  return t(
+    "subwindows.note.collapsed",
+    "Not enough room for every panel; hidden for now: {names}. Make the window bigger, or turn a panel off, to bring it back.",
+    { names },
+  );
 }
 
 export function reconcileSubwindowTree(tree: LayoutNode, settings: SubwindowSettings): LayoutNode {

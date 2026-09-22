@@ -539,6 +539,7 @@ import {
   dumpSubwindowLayoutPrefText,
   parseSubwindowStateJson,
   applySubwindowPrefBlock,
+  describeSubwindowsCollapsed,
   dumpSubwindowPrefBlocks,
   readSubwindowDefault,
   readSubwindowState,
@@ -984,6 +985,15 @@ const subwindowShell = mountSubwindowShell({
     if (!panel || !subwindowState.enabled[panelId]) return;
     scrollSubwindow(panel, deltaRows);
     paintSubwindowContent(panelId, panel, displayDeps());
+  },
+  /* neo-angband#275: the comfort-degradation pass hid one or more panels
+   * because the real window is too small to give every enabled panel a
+   * legible size (subwindow-layout.ts's degradeForComfort). subwindow-shell.ts
+   * only calls this when the collapsed set actually changes, so saying it
+   * here is a one-time notice rather than a repeat on every resize tick. */
+  onDegraded: (ids) => {
+    const note = describeSubwindowsCollapsed(ids as SubwindowId[]);
+    if (note) say(note);
   },
 });
 subwindowShell.apply(subwindowState.tree);

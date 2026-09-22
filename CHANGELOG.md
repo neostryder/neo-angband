@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- [Visible] [UI] **Subwindows too small to read comfortably are now hidden instead of staying at an illegible size.** A second, more generous minimum (140px, alongside the existing 96px anti-invisibility floor) decides whether a panel gets to stay: when the enabled panel set cannot all fit above that comfortable minimum in the real viewport, the smallest panel is dropped and its neighbours reflow into the freed space, repeating until everything remaining fits or only one panel is left. A one-time message names whichever panel(s) were hidden. A layout that already fits comfortably today is unaffected (#275).
+
 ## [1.15.0] - 2026-09-20
 
 ### Added

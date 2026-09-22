@@ -60,6 +60,22 @@ export type DropZone =
 export const SPLITTER_PX = 6;
 export const MIN_TILE_PX = 96;
 
+/**
+ * A second, more generous floor used only to decide whether a panel should be
+ * dropped from a cramped layout (neo-angband#275) - never passed to
+ * `splitSizes`, and never changing what `computeLayout` actually renders a
+ * tile at. `MIN_TILE_PX` is an anti-invisibility floor: it stops a panel
+ * collapsing to nothing, but 96px of a term whose own `minCols` floor is 20
+ * (see main.ts's `ensureSubwindowTerm`) forces the term's font-shrink loop
+ * (`fitReflow` in term.ts) most of the way to its own 11px floor, which is
+ * legible only in the sense that pixels are lit. `COMFORTABLE_MIN_PX` is
+ * picked well clear of that: enough margin above `MIN_TILE_PX` that a panel
+ * sitting at or a little above it is not fighting the term's own shrink loop
+ * for every frame. It is not a precise inverse of the font math above - this
+ * is a defensible, documented margin, not a pixel-exact derivation.
+ */
+export const COMFORTABLE_MIN_PX = 140;
+
 export function isSplit(node: LayoutNode): node is SplitNode {
   return node.kind === "split";
 }
@@ -350,6 +366,67 @@ export function pruneTree(node: LayoutNode, keep: ReadonlySet<TileId>): LayoutNo
   if (!first) return second;
   if (!second) return first;
   return { ...node, first, second };
+}
+
+export interface DegradeResult {
+  /** The tree to actually render, with 0 or more leaves pruned out. */
+  tree: LayoutNode;
+  /** The ids removed, in the order they were dropped (smallest first). */
+  dropped: TileId[];
+}
+
+/**
+ * Graceful-degradation pass (neo-angband#275): given the tree a player
+ * actually asked for and the real viewport it is about to be rendered into,
+ * repeatedly drop the smallest leaf until every remaining leaf clears
+ * `COMFORTABLE_MIN_PX` in both dimensions, or only one non-main leaf is left.
+ *
+ * This never touches `splitSizes`'s own clamp - it decides which SMALLER tree
+ * to hand to the ordinary `computeLayout`/`splitSizes` path, so a layout that
+ * already fits comfortably runs this loop once, finds nothing to drop, and
+ * returns the same tree object it was given (a no-op, byte-identical to
+ * calling `computeLayout` directly, per #275's requirement that the common
+ * case never changes).
+ *
+ * "Constrained dimension" is simplified to both: a leaf counts as comfortable
+ * only when its narrower side (`min(w, h)`) already clears the threshold,
+ * rather than guessing width-vs-height per panel id. A saved layout can dock
+ * any panel on any edge via drag-and-drop (subwindow-shell.ts), so a
+ * per-id width-or-height table would silently mis-score a panel a player has
+ * moved off its default edge; `min(w, h)` is right regardless of where a
+ * panel currently sits.
+ *
+ * `MAIN_TILE_ID` is never a drop candidate and never counted against the
+ * "only one left" floor - it is the one tile that always stays, matching
+ * `removeLeaf`'s and `reconcileSubwindowTree`'s own treatment of it.
+ */
+export function degradeForComfort(
+  tree: LayoutNode,
+  viewport: Rect,
+  opts: { splitterPx?: number; minPx?: number; comfortablePx?: number } = {},
+): DegradeResult {
+  const comfortablePx = opts.comfortablePx ?? COMFORTABLE_MIN_PX;
+  const dropped: TileId[] = [];
+  let current = tree;
+  for (;;) {
+    const others = leafIds(current).filter((id) => id !== MAIN_TILE_ID);
+    if (others.length <= 1) break;
+    const { tiles } = computeLayout(current, viewport, opts);
+    let smallest: { id: TileId; size: number } | null = null;
+    for (const tile of tiles) {
+      if (tile.id === MAIN_TILE_ID) continue;
+      const size = Math.min(tile.rect.w, tile.rect.h);
+      if (size >= comfortablePx) continue;
+      if (!smallest || size < smallest.size) smallest = { id: tile.id, size };
+    }
+    if (!smallest) break;
+    const keep = new Set(leafIds(current).filter((id) => id !== smallest!.id));
+    const pruned = pruneTree(current, keep);
+    if (!pruned) break;
+    current = pruned;
+    dropped.push(smallest.id);
+  }
+  return { tree: current, dropped };
 }
 
 export function parseLayoutTree(raw: unknown): LayoutNode | null {

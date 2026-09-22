@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  COMFORTABLE_MIN_PX,
   MAIN_TILE_ID,
   SPLITTER_PX,
   allDropZones,
@@ -7,6 +8,7 @@ import {
   clampRatio,
   computeLayout,
   containsLeaf,
+  degradeForComfort,
   dropZoneAt,
   insertAtEdge,
   leafIds,
@@ -217,5 +219,74 @@ describe("pruneTree and parseLayoutTree", () => {
     expect(parseLayoutTree(JSON.parse(JSON.stringify(tree)))).toEqual(tree);
     expect(parseLayoutTree({ kind: "leaf", id: "messages" })).toBeNull();
     expect(parseLayoutTree({ kind: "split", axis: "v", ratio: 0.5 })).toBeNull();
+  });
+});
+
+describe("degradeForComfort (#275)", () => {
+  it("is a byte-identical no-op when every panel already fits comfortably", () => {
+    const tree = insertAtEdge(mainOnly, "messages", MAIN_TILE_ID, "bottom", 0.2);
+    const result = degradeForComfort(tree, VIEW);
+    expect(result.dropped).toEqual([]);
+    // Same object, not just an equal one: the common case must not even
+    // allocate a new tree.
+    expect(result.tree).toBe(tree);
+    expect(computeLayout(result.tree, VIEW)).toEqual(computeLayout(tree, VIEW));
+  });
+
+  it("prunes the smallest panel(s) until every remaining leaf clears COMFORTABLE_MIN_PX", () => {
+    // Three panels docked to main's right in a viewport narrow enough that at
+    // least one ends up short of the comfortable floor, even though
+    // computeLayout alone (the anti-invisibility floor only) would happily
+    // render all four tiles without complaint.
+    const viewport: Rect = { x: 0, y: 0, w: 340, h: 800 };
+    let tree: LayoutNode = mainOnly;
+    tree = insertAtEdge(tree, "a", MAIN_TILE_ID, "right", 0.3);
+    tree = insertAtEdge(tree, "b", MAIN_TILE_ID, "right", 0.3);
+    tree = insertAtEdge(tree, "c", MAIN_TILE_ID, "right", 0.3);
+
+    const before = computeLayout(tree, viewport);
+    const tooSmallBefore = before.tiles
+      .filter((tile) => tile.id !== MAIN_TILE_ID)
+      .some((tile) => Math.min(tile.rect.w, tile.rect.h) < COMFORTABLE_MIN_PX);
+    expect(tooSmallBefore).toBe(true); // sanity: this viewport is genuinely too small
+
+    const result = degradeForComfort(tree, viewport);
+    expect(result.dropped.length).toBeGreaterThan(0);
+    expect(leafIds(result.tree).sort()).toEqual(
+      leafIds(tree)
+        .filter((id) => !result.dropped.includes(id))
+        .sort(),
+    );
+
+    const after = computeLayout(result.tree, viewport);
+    const remaining = leafIds(result.tree).filter((id) => id !== MAIN_TILE_ID);
+    for (const id of remaining) {
+      const rect = after.tiles.find((tile) => tile.id === id)!.rect;
+      // Either this leaf clears the comfortable floor, or it is the one
+      // panel the "never collapse everything" rule refuses to drop.
+      expect(Math.min(rect.w, rect.h) >= COMFORTABLE_MIN_PX || remaining.length === 1).toBe(true);
+    }
+  });
+
+  it("never drops the last subwindow panel, even in an absurdly tiny viewport", () => {
+    const tiny: Rect = { x: 0, y: 0, w: 60, h: 60 };
+    let tree: LayoutNode = mainOnly;
+    tree = insertAtEdge(tree, "a", MAIN_TILE_ID, "right", 0.3);
+    tree = insertAtEdge(tree, "b", MAIN_TILE_ID, "right", 0.3);
+    tree = insertAtEdge(tree, "c", MAIN_TILE_ID, "right", 0.3);
+    tree = insertAtEdge(tree, "d", MAIN_TILE_ID, "bottom", 0.3);
+
+    const result = degradeForComfort(tree, tiny);
+    const remaining = leafIds(result.tree);
+    // main plus exactly one subwindow panel survives - the floor this pass
+    // refuses to cross regardless of how small the viewport gets.
+    expect(remaining).toContain(MAIN_TILE_ID);
+    expect(remaining).toHaveLength(2);
+    expect(result.dropped).toHaveLength(3);
+
+    // computeLayout on the pruned tree still tiles the viewport exactly as
+    // it always has - this pass never touches splitSizes' own behaviour.
+    const { tiles, splitters } = computeLayout(result.tree, tiny);
+    tiled(tiles, splitters, tiny);
   });
 });
