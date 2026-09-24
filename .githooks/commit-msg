@@ -1,0 +1,29 @@
+#!/bin/sh
+# Refuse a commit whose message names Claude or Anthropic as a co-author or
+# generator of the change.
+#
+# This project discloses AI use in exactly one place, AI_USAGE_POLICY.md -
+# never as an ambient per-commit git trailer. A "Co-Authored-By: Claude" line
+# or a "Generated with Claude Code" footer tells a reader nothing useful and
+# is exactly what a hostile reader screenshots first. See CLAUDE.md, "No
+# commit or PR ever carries an AI-attribution trailer, in any repo, ever."
+#
+# THIS HOOK ALSO GATES THE COMPANION MOD REPOSITORIES, the same mechanism
+# pre-commit and pre-push already use (see those files' own headers): a mod
+# clone needs no copy of this file, just core.hooksPath pointed at this
+# directory.
+#
+# Bypass: git commit --no-verify
+
+MSG_FILE="$1"
+[ -f "$MSG_FILE" ] || exit 0
+
+if grep -qiE '(^|[^a-z-])co-authored-by:.*claude|noreply@anthropic\.com|generated with.*claude code|claude code.*generated' "$MSG_FILE"; then
+  echo "" >&2
+  echo "commit-msg: this message names Claude/Anthropic as a co-author or generator." >&2
+  echo "This project never carries that as a git trailer - see CLAUDE.md." >&2
+  echo "Remove the line and commit again." >&2
+  exit 1
+fi
+
+exit 0
