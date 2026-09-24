@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-09-24
+
 ### Added
 
 - [Internal] [Modding-API] **A mod can now read and paint a monster race's tile art from the active graphics pack.** `ctx.tiles` exposes whether a tileset (rather than ASCII) is the current display mode, whether the active pack assigns a given race a tile at all, and a paint call that composites that tile over a neutral floor exactly as the dungeon view draws a monster standing on open ground. Nothing in core content consumes this; it exists for a mod's own UI, such as a monster portrait drawn outside the dungeon grid. Absent on an older host, so a mod degrades to its own ASCII glyph (#256).
