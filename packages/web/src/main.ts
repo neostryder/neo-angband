@@ -346,9 +346,10 @@ import {
   setModDebugDoor,
   setModSubwindowsControl,
   setModKeyRepeatControl,
+  setModTilesControl,
   type ModSessionFacts,
 } from "./mod-context";
-import type { ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows } from "./mod-plugin";
+import type { ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, ModTiles } from "./mod-plugin";
 import { createKeyRepeatTracker } from "./key-repeat";
 import { VisualFilterOverlay } from "./visual-filter";
 import { migrateModBags, migrateModBagsAsync } from "./mod-bags";
@@ -426,8 +427,8 @@ import {
   routeContextClick,
 } from "./context-menu";
 import type { CaveMenuCtx, MenuEntry, ObjectMenuCtx, PlayerMenuCtx } from "./context-menu";
-import { GlyphTerm, setActiveCellTap } from "./term";
-import type { GridPointerInput, GridSurface, RenderAssetRef } from "./term";
+import { GlyphTerm, paintGlyphTile, setActiveCellTap } from "./term";
+import type { Glyph, GridPointerInput, GridSurface, RenderAssetRef } from "./term";
 import { screenRegions, type ScreenRegions } from "./regions";
 import {
   liveRegionStack,
@@ -1879,6 +1880,15 @@ const tileDeps: TilePrefsDeps = {
   monsters: booted.registries.monsters,
   traps: booted.registries.traps,
 };
+
+/**
+ * neo-angband#256: the neutral background for a monster tile portrait drawn
+ * outside the dungeon grid (the `qol` mod's First Sightings card, via
+ * `ctx.tiles.drawMonster`). FLOOR is upstream's own base terrain code and
+ * every shipped pack assigns it, so this is the same plain ground an ordinary
+ * corridor cell already draws with.
+ */
+const NEUTRAL_FLOOR_FIDX = tileDeps.features.byCodeName("FLOOR").fidx;
 
 /**
  * ANGBAND_SYS (init.c L84, set per front end in main.c L508). The C's values name
@@ -9215,6 +9225,46 @@ const subwindowsControl: ModSubwindows = {
 };
 
 setModSubwindowsControl(subwindowsControl);
+
+/**
+ * neo-angband#256: a monster's tile art under the ACTIVE pack, for a mod
+ * drawing its own portrait outside the dungeon grid (the `qol` mod's First
+ * Sightings card). Reads `mainTileMode` LIVE on every call - the same object
+ * the main view's own render loop reads - rather than a snapshot, so a mod
+ * that keeps a reference across a graphics-mode change sees the new pack
+ * without re-fetching anything.
+ */
+const modTilesControl: ModTiles = {
+  get active(): boolean {
+    return mainTileMode.grafID !== GRAPHICS_NONE;
+  },
+  hasMonsterTile(ridx: number): boolean {
+    const tileMap = mainTileMode.tileMap;
+    return tileMap ? tileForMonster(tileMap, ridx) !== null : false;
+  },
+  drawMonster(ctx2d, ridx, dx, dy, dw, dh): boolean {
+    const tileMap = mainTileMode.tileMap;
+    if (!tileMap) return false;
+    const monsterAtlas = tileForMonster(tileMap, ridx);
+    if (!monsterAtlas) return false;
+    /* (0, 0) is a synthetic position, not a real map coordinate - it exists
+     * only so a loose pack's variant-pool resolution has something
+     * deterministic to key on (see tileDrawFor's own header). */
+    const monsterTile = tileDrawFor(monsterAtlas, 0, 0);
+    if (!monsterTile) return false;
+    const floorAtlas = tileForFeature(tileMap, NEUTRAL_FLOOR_FIDX, LIGHTING.LOS);
+    const bgTile = floorAtlas ? tileDrawFor(floorAtlas, 0, 0) : undefined;
+    const glyph: Glyph = {
+      ch: "",
+      fg: "",
+      ...(bgTile ? { bgTile } : {}),
+      tile: monsterTile,
+    };
+    return paintGlyphTile(ctx2d, glyph, dx, dy, dw, dh);
+  },
+};
+
+setModTilesControl(modTilesControl);
 
 /**
  * verify_panel (ui-output.c L563-670): keep the map offset (panelCam) so the

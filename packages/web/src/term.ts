@@ -406,6 +406,26 @@ export function blitCellAssets(
   return g?.tile ? renderer.draw(ctx, g.tile, px, py, w, h) : false;
 }
 
+/**
+ * The same two-pass blit `blitCellAssets` gives the terminal's own render
+ * loop, minus needing the terminal's private renderer instance - for a caller
+ * painting tile art outside the grid entirely (neo-angband#256's monster-tile
+ * mod seam, `ctx.tiles.drawMonster`). `g.bgTile` (a neutral floor, say) draws
+ * first so `g.tile`'s transparent pixels show ground through it rather than a
+ * flat background colour, exactly as a live dungeon cell draws a monster
+ * standing on open terrain.
+ */
+export function paintGlyphTile(
+  ctx: CanvasRenderingContext2D,
+  g: Glyph | null,
+  px: number,
+  py: number,
+  w: number,
+  h: number,
+): boolean {
+  return blitCellAssets(canvasAssetRenderer, ctx, g, px, py, w, h);
+}
+
 /** Canvas implementation of GridSurface. Canvas-only policy stays in this class. */
 export class GlyphTerm
   implements
