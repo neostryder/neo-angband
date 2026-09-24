@@ -354,6 +354,43 @@ export interface ModSubwindows {
   }): () => void;
 }
 
+/**
+ * Live monster-tile lookup and paint over the currently active graphics pack
+ * (neo-angband#256), for a mod drawing its own monster portrait outside the
+ * dungeon grid - the same terrain-then-foreground blit the map's own render
+ * loop uses, reachable without a canvas of the shell's own.
+ *
+ * Absent during content composition, like `display` and `subwindows`, and
+ * entirely ungated for the same reason theirs is: this is read-only art
+ * already fetched into the page (the active pack's own images), not a
+ * capability over the game or the platform.
+ */
+export interface ModTiles {
+  /** True when a graphics/tileset mode, rather than ASCII, is the current display mode. */
+  readonly active: boolean;
+  /**
+   * Whether the active pack assigns a tile to this monster race (core's
+   * `tileForMonster`). False in ASCII mode, and false for a race the pack has
+   * never heard of - the caller's cue to keep its own ASCII glyph instead.
+   */
+  hasMonsterTile(ridx: number): boolean;
+  /**
+   * Paint a monster race's tile art onto a 2D canvas context at (dx, dy),
+   * scaled to (dw, dh), composited over a neutral floor tile exactly as the
+   * dungeon view draws a monster standing on open ground. Returns true when
+   * art was drawn; false (ASCII mode, no tile for this race, or its art has
+   * not finished loading yet) means the caller should keep its ASCII glyph.
+   */
+  drawMonster(
+    ctx: CanvasRenderingContext2D,
+    ridx: number,
+    dx: number,
+    dy: number,
+    dw: number,
+    dh: number,
+  ): boolean;
+}
+
 /** One binding the calling mod owns in the current keyset. */
 export interface ModKeymapBinding {
   readonly trigger: string;
@@ -520,6 +557,14 @@ export interface ModPluginContext {
    * why this is ungated like the rest of `display`.
    */
   readonly subwindows?: ModSubwindows;
+  /**
+   * Live monster-tile lookup and paint over the active graphics pack
+   * (neo-angband#256), once the web shell has one. Absent during content
+   * composition, and on a front end with no tile subsystem - see
+   * `ModTiles`'s own header for why this is ungated like the rest of
+   * `display` and `subwindows`.
+   */
+  readonly tiles?: ModTiles;
   /**
    * neo-angband#35: the host's own judgment on the most recent root-screen
    * keydown - a genuine key-repeat (the browser's own auto-repeat while a key
