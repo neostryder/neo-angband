@@ -397,6 +397,8 @@ import {
 import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-taint";
 import type { SessionTaint } from "./mod-taint";
 import { runModManager, runModOptionsBrowser, type ModManagerDeps } from "./mods";
+import { DELVE_SYNC_EXT, DELVE_SYNC_PURPOSE } from "./mod-delve-sync";
+import { createHostFolder } from "./host-folder";
 
 /* A menu rewrite is optional mod decoration. Attribute a refusal to its owner,
  * but never turn a screen the player needs into a failed plugin install. */
@@ -6777,6 +6779,10 @@ async function modManagerDeps(): Promise<ModManagerDeps> {
   for (const meta of await installedMods(globalThis)) {
     if (meta.installedByModId !== undefined) installedBy[meta.id] = meta.installedByModId;
   }
+  // The mod-profile sync folder (#158): undefined on an engine with neither
+  // the desktop bridge nor a directory picker, the same "absent means not
+  // here" rule every other optional dep on this object follows.
+  const delveSyncFolder = createHostFolder(DELVE_SYNC_PURPOSE, DELVE_SYNC_EXT);
   return {
     store,
     listCatalog: () =>
@@ -6894,6 +6900,7 @@ async function modManagerDeps(): Promise<ModManagerDeps> {
     requestReload: (opts) => {
       reloadAfterModChange(opts);
     },
+    ...(delveSyncFolder !== undefined ? { delveSync: delveSyncFolder } : {}),
   };
 }
 

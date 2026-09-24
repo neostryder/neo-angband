@@ -164,6 +164,13 @@
       "verdict": "REACHABLE - monster blow effects go through registry:blow (MOD_REACH gaps 9/10); this switch is the fallback path behind it."
     },
     {
+      "file": "packages/web/src/mods.ts",
+      "cases": 12,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "UI - row-action routing in the mod-manager screen, an `if/else if (rk.kind === ...)` chain instead of main.ts's items[idx].action switch pattern. A mod-manager feature added to this menu has no arm to land in (MOD_REACH gap 18/24). Was 9 arms, then 8 when neo-angband#163 removed the profiles branch, 9 again with the stash-view row (#76), 11 with the Save a Delve / Load a Delve rows (#87), and 12 with the mod-profile sync folder row (#158)."
+    },
+    {
       "file": "packages/core/src/mon/lore-file.ts",
       "cases": 11,
       "hasDefault": true,
@@ -190,13 +197,6 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24)."
-    },
-    {
-      "file": "packages/web/src/mods.ts",
-      "cases": 11,
-      "hasDefault": false,
-      "kind": "IF_CHAIN",
-      "verdict": "UI - row-action routing in the mod-manager screen, an `if/else if (rk.kind === ...)` chain instead of main.ts's items[idx].action switch pattern. A mod-manager feature added to this menu has no arm to land in (MOD_REACH gap 18/24). Was 9 arms, then 8 when neo-angband#163 removed the profiles branch, 9 again with the stash-view row (#76), and 11 with the Save a Delve / Load a Delve rows (#87)."
     },
     {
       "file": "packages/core/src/host/args.ts",

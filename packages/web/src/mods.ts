@@ -118,6 +118,15 @@ import {
   type DelveMod,
   type DelvePlanRow,
 } from "./mod-delve";
+import {
+  delveSyncCanAutoApply,
+  delveSyncDeviceLabel,
+  delveSyncLastSeenRevision,
+  loadDelveSyncArrival,
+  markDelveSyncSeen,
+  performDelveSyncWrite,
+} from "./mod-delve-sync";
+import type { HostFolder } from "./host-folder";
 
 const C_ENABLED = UI_GOOD;
 const C_DISABLED = UI_DIM;
@@ -298,6 +307,20 @@ export interface ModManagerDeps {
    * than reading a catalogue compiled into the game.
    */
   modBrowse?: ModUpgradeDeps;
+  /**
+   * The mod-profile SYNC folder (#158) - a player-chosen folder a portable
+   * mod-set snapshot is written to on the "Apply changes and reload"
+   * checkpoint and read back from at menu-open, so a second device (or a
+   * synced-folder tool watching the same path) can offer the newer set.
+   *
+   * Independent of `modFolder` above, which is the mods-SOURCE folder an
+   * engine with no picker of its own asks the player to supply; this is a
+   * destination for a snapshot, wired through `host-folder.ts`'s own
+   * purpose-keyed primitive (`DELVE_SYNC_PURPOSE`), never through
+   * `modFolder`. Absent means "no sync configured for this front end": the
+   * write on Apply and the menu-open arrival check both no-op.
+   */
+  delveSync?: HostFolder;
 }
 
 /**
@@ -1551,7 +1574,11 @@ async function applyModChanges(
     ],
     t("modsScreen.applyPrompt.footer", "[ a/b or tap ]"),
   );
-  if (pick === 0) deps.requestReload(newTiles ? { showGraphics: true } : undefined);
+  if (pick === 0) {
+    /* THE checkpoint (#158): once, here, never per-toggle - see syncDelveOnApply. */
+    await syncDelveOnApply(deps);
+    deps.requestReload(newTiles ? { showGraphics: true } : undefined);
+  }
 }
 
 /**
@@ -3302,6 +3329,89 @@ async function manageModFolder(
   }
 }
 
+/**
+ * "Mod profile sync folder..." (#158): choose, replace, or stop using the
+ * folder this device writes a mod-profile snapshot to on Apply and reads one
+ * back from at menu-open. Simpler than `manageModFolder` above: `HostFolder`
+ * has no separate lapsed-permission/reconnect step of its own (`choose()`
+ * both picks and (re)grants in one call on the browser, and the desktop
+ * bridge has no permission concept to lapse), so there is nothing here to
+ * distinguish from an ordinary first choice.
+ */
+async function manageDelveSyncFolder(
+  term: GridSurface & GridPointerInput,
+  folder: HostFolder,
+  savedName: string | null,
+): Promise<void> {
+  const TITLE = t("modsScreen.delveSyncFolder.title", "Mod profile sync folder");
+  type Row = "pick" | "forget";
+  const items: MenuItem[] = [
+    {
+      label:
+        savedName === null
+          ? t("modsScreen.delveSyncFolder.choose", "Choose a folder...")
+          : t("modsScreen.delveSyncFolder.chooseDifferent", "Choose a different folder..."),
+      color: C_FG,
+      hint: t(
+        "modsScreen.delveSyncFolder.pickHint",
+        "Point two installs at the same folder (a synced drive, say) to share a mod set.",
+      ),
+    },
+  ];
+  const rows: Row[] = ["pick"];
+  if (savedName !== null) {
+    items.push({
+      label: t("modsScreen.delveSyncFolder.stopUsing", 'Stop using "{name}"', { name: savedName }),
+      color: C_DIM,
+      hint: t("modsScreen.delveSyncFolder.stopUsingHint", "Nothing already written there is deleted."),
+    });
+    rows.push("forget");
+  }
+  const pick = await selectFromMenu(
+    term,
+    "core:delve-sync-folder",
+    TITLE,
+    items,
+    t("modsScreen.common.footer.escBack", "[ ESC to go back ]"),
+  );
+  if (pick === null) return;
+  const row = rows[pick];
+  if (row === "pick") {
+    const name = await folder.choose();
+    if (name === null) return; /* cancelled: not a failure, no message */
+    await showTextScreen(term, TITLE, [
+      { text: t("modsScreen.delveSyncFolder.using", 'Using "{name}".', { name }), color: C_ENABLED },
+      { text: "", color: C_FG },
+      {
+        text: t(
+          "modsScreen.delveSyncFolder.usingBody",
+          "Your mod set is written here the next time you apply changes.",
+        ),
+        color: C_FG,
+      },
+    ]);
+    return;
+  }
+  /* forget */
+  await folder.forget();
+  await showTextScreen(term, TITLE, [
+    {
+      text: t("modsScreen.delveSyncFolder.noLongerUsing", 'No longer using "{name}".', {
+        name: savedName ?? "",
+      }),
+      color: C_FG,
+    },
+    { text: "", color: C_FG },
+    {
+      text: t(
+        "modsScreen.delveSyncFolder.noLongerUsingBody",
+        "Nothing already written there is deleted, and it stops being checked for a newer set.",
+      ),
+      color: C_FG,
+    },
+  ]);
+}
+
 /* ------------------------------------------------------------------ *
  * Save a Delve... / Load a Delve... (docs/MOD_PROFILES.md, #87): a portable,
  * shareable snapshot of the enabled mod set, its flag choices, and
@@ -3408,6 +3518,37 @@ async function saveDelveCandidates(
     });
   }
   return out;
+}
+
+/**
+ * Write this install's current mod set to its remembered sync folder (#158),
+ * from the "Apply changes and reload" checkpoint (`applyModChanges`) - never
+ * from a toggle. Reuses `saveDelveCandidates`, the same read Save-a-Delve
+ * itself uses, so the synced snapshot and a manual export never disagree
+ * about what "the current set" means. Never throws and never blocks the
+ * reload it is called from: `deps.delveSync` absent, no folder chosen, or
+ * nothing enabled worth exporting all fall out of `performDelveSyncWrite`
+ * as a plain no-op, and any other failure (a lapsed permission, a full
+ * disk) is swallowed here the same way - sync is opportunistic, and must
+ * never be the reason applying a mod change appears to fail.
+ */
+async function syncDelveOnApply(deps: ModManagerDeps): Promise<void> {
+  if (!deps.delveSync) return;
+  try {
+    const candidates = await saveDelveCandidates(deps);
+    const effectiveEnabled = deps.listCatalog().filter((m) => m.enabled).map((m) => m.id);
+    await performDelveSyncWrite({
+      folder: deps.delveSync,
+      candidates: candidates.map((c) => c.entry),
+      storedEnabled: deps.store.getEnabled(),
+      effectiveEnabled,
+      originDevice: delveSyncDeviceLabel(),
+      engineVersion: ENGINE_VERSION,
+      delveName: t("modsScreen.delve.sync.autoName", "Mod profile sync"),
+    });
+  } catch {
+    /* Opportunistic: a write failure here must never surface as a reload failure. */
+  }
 }
 
 /** "Save a Delve...": name/description, a pre-checked mod checklist, options, then save/copy. */
@@ -3690,42 +3831,61 @@ async function runDelvePreview(
  * the same install/enable path "Install a mod..." already uses, then a
  * result screen. Returns whether anything changed (the caller's `dirty`).
  */
-async function runLoadDelve(term: GridSurface & GridPointerInput, deps: ModManagerDeps): Promise<boolean> {
+async function runLoadDelve(
+  term: GridSurface & GridPointerInput,
+  deps: ModManagerDeps,
+  /**
+   * A Delve's text already in hand - the sync-arrival banner's "Review..."
+   * (#158), which has already read the file from the remembered sync folder
+   * and has nothing left to ask about ITS source. Skips straight past the
+   * "From a file.../Paste text..." choice below; everything after that -
+   * the preview, the merge choice, options, confirm - is unchanged, which is
+   * what makes this "no new wizard" rather than a second one.
+   */
+  preloadedText?: string,
+): Promise<boolean> {
   const TITLE = t("modsScreen.delve.load.title", "Load a Delve...");
   if (!deps.modBrowse) return false;
   const modBrowse = deps.modBrowse;
 
-  const sourcePick = await selectFromMenu(
-    term,
-    "core:load-delve-source",
-    TITLE,
-    [
-      { label: t("modsScreen.delve.load.fromFile", "From a file..."), color: C_FG },
-      { label: t("modsScreen.delve.load.pasteText", "Paste text..."), color: C_FG },
-    ],
-    t("modsScreen.delve.common.footer.abcEsc", "[ a/b or tap, ESC to cancel ]"),
-  );
-  if (sourcePick === null) return false;
-
   let text: string;
-  if (sourcePick === 0) {
-    const picked = await pickTextFile(`${DELVE_EXT},.json,application/json`, DELVE_MAX_TEXT_BYTES);
-    if (picked === null) return false;
-    if ("tooLarge" in picked) {
-      await showTextScreen(term, TITLE, [
-        { text: t("modsScreen.delve.load.tooLarge", "That file is too large to be a Delve."), color: C_DANGER },
-      ]);
-      return false;
-    }
-    text = picked.text;
+  if (preloadedText !== undefined) {
+    text = preloadedText;
   } else {
-    const pasted = await promptPastedText(
+    const sourcePick = await selectFromMenu(
       term,
-      t("modsScreen.delve.load.pastePrompt", "Paste a Delve"),
-      DELVE_MAX_TEXT_BYTES,
+      "core:load-delve-source",
+      TITLE,
+      [
+        { label: t("modsScreen.delve.load.fromFile", "From a file..."), color: C_FG },
+        { label: t("modsScreen.delve.load.pasteText", "Paste text..."), color: C_FG },
+      ],
+      t("modsScreen.delve.common.footer.abcEsc", "[ a/b or tap, ESC to cancel ]"),
     );
-    if (pasted === null) return false;
-    text = pasted;
+    if (sourcePick === null) return false;
+
+    if (sourcePick === 0) {
+      const picked = await pickTextFile(`${DELVE_EXT},.json,application/json`, DELVE_MAX_TEXT_BYTES);
+      if (picked === null) return false;
+      if ("tooLarge" in picked) {
+        await showTextScreen(term, TITLE, [
+          {
+            text: t("modsScreen.delve.load.tooLarge", "That file is too large to be a Delve."),
+            color: C_DANGER,
+          },
+        ]);
+        return false;
+      }
+      text = picked.text;
+    } else {
+      const pasted = await promptPastedText(
+        term,
+        t("modsScreen.delve.load.pastePrompt", "Paste a Delve"),
+        DELVE_MAX_TEXT_BYTES,
+      );
+      if (pasted === null) return false;
+      text = pasted;
+    }
   }
 
   /* Gated on `magic` alone, never the file name or extension - the importer
@@ -3938,6 +4098,110 @@ async function runLoadDelve(term: GridSurface & GridPointerInput, deps: ModManag
 }
 
 /**
+ * Checked once at Mods-menu-open (#158's "boot or Mods-menu-open" - this
+ * front end has no reachable boot hook, so menu-open is the one this build
+ * offers) against this device's remembered sync folder, if any. Never
+ * throws: a folder that fails to read, or nothing there yet, both read as
+ * "nothing to offer" the same way `loadDelveSyncArrival` already does.
+ *
+ * "Apply now" only ever appears when `delveSyncCanAutoApply` says every
+ * named, enabled mod is ALREADY installed here at the exact tag named - the
+ * same reason the write side would have labelled the file informational had
+ * it not been authoritative - so applying it is a LOCAL, no-network
+ * enable/flags write, never a fetch or a version choice. It merges into the
+ * current set rather than replacing it: a one-click action from a banner is
+ * not the place to silently turn other mods off, which is why the full
+ * Load-a-Delve wizard (the "Review..." branch, preloaded with the same
+ * text - no new wizard) is the only path that ever offers Replace.
+ *
+ * Returns whether the caller should return immediately (a reload was
+ * already requested), or whether the ordinary session's own `dirty` flag
+ * should start true (the reviewed Delve changed something but the player
+ * chose "Later" rather than reloading right away).
+ */
+async function offerDelveSyncArrival(
+  term: GridSurface & GridPointerInput,
+  deps: ModManagerDeps,
+): Promise<"reloaded" | "dirty" | "unchanged"> {
+  if (!deps.delveSync) return "unchanged";
+  const lastSeen = delveSyncLastSeenRevision();
+  const arrival = await loadDelveSyncArrival(deps.delveSync, lastSeen);
+  if (arrival.kind !== "newer") return "unchanged";
+  const { file, meta } = arrival;
+
+  const installedTags = new Map(
+    (await installedMods(globalThis)).map((m) => [m.id, m.tag] as const),
+  );
+  const canApply = delveSyncCanAutoApply(file, meta, installedTags);
+
+  const TITLE = t("modsScreen.delve.sync.title", "A newer mod profile was found");
+  const body: ScreenLine[] = [
+    {
+      text: t(
+        "modsScreen.delve.sync.body",
+        "\"{name}\" from {origin} is newer than what this device last saw.",
+        { name: file.name, origin: meta.originDevice },
+      ),
+      color: C_FG,
+    },
+  ];
+  if (meta.enabledSetInformational) {
+    body.push({ text: "", color: C_DIM });
+    body.push({
+      text: t(
+        "modsScreen.delve.sync.informational",
+        "That device's enabled set is managed by an external mod manager there, so this one is for review only.",
+      ),
+      color: C_DIM,
+    });
+  }
+  await showTextScreen(term, TITLE, body);
+
+  const items: MenuItem[] = [
+    ...(canApply ? [{ label: t("modsScreen.delve.sync.apply", "Apply now"), color: C_ENABLED }] : []),
+    { label: t("modsScreen.delve.sync.review", "Review..."), color: C_FG },
+    { label: t("modsScreen.delve.sync.skip", "Skip for now"), color: C_DIM },
+  ];
+  const reviewIndex = canApply ? 1 : 0;
+  const pick = await selectFromMenu(
+    term,
+    "core:delve-sync-arrival",
+    TITLE,
+    items,
+    t("modsScreen.delve.common.footer.abcEsc", "[ a/b or tap, ESC to cancel ]"),
+  );
+
+  if (pick === 0 && canApply) {
+    const catalogById = new Map(deps.listCatalog().map((m) => [m.id, m] as const));
+    for (const entry of file.mods) {
+      if (!entry.enabled) continue;
+      deps.store.setModEnabled(entry.id, true);
+      const catalogMod = catalogById.get(entry.id);
+      if (catalogMod) applyDelveFlags(catalogMod.manifest, entry.id, entry.flags, deps.store);
+    }
+    markDelveSyncSeen(meta.revision);
+    deps.requestReload();
+    return "reloaded";
+  }
+  if (pick === reviewIndex) {
+    /* Re-encoded rather than handed the folder's raw text: `arrival.file` is
+     * already the DECODED, validated object (`loadDelveSyncArrival` went
+     * through `decodeDelve` once already), and `encodeDelve` is the exact
+     * inverse - so `runLoadDelve`'s own `decodeDelve` call sees the identical
+     * Delve, just without the sync envelope's two extra fields riding along. */
+    const changed = await runLoadDelve(term, deps, encodeDelve(file));
+    markDelveSyncSeen(meta.revision);
+    return changed ? "dirty" : "unchanged";
+  }
+  /* "Skip for now", or ESC (null): dismissed without acting. Marked seen
+   * either way - a banner that reappears every single menu-open for a
+   * revision the player already declined is exactly the nagging this
+   * design's "lightweight banner" wording rules out. */
+  markDelveSyncSeen(meta.revision);
+  return "unchanged";
+}
+
+/**
  * Run the mod manager. Loops on the top list (mods + actions) until the user
  * leaves; if changes were made it offers to reload so they take effect.
  */
@@ -3945,7 +4209,9 @@ export async function runModManager(
   term: GridSurface & GridPointerInput,
   deps: ModManagerDeps,
 ): Promise<void> {
-  let dirty = false;
+  const arrivalOutcome = await offerDelveSyncArrival(term, deps);
+  if (arrivalOutcome === "reloaded") return;
+  let dirty = arrivalOutcome === "dirty";
   /* Which tile-contributing mods were already on when this screen opened. Any id
    * that is enabled at the end and absent here was turned ON here, which is
    * exactly when the reboot should land on the Graphics screen - see
@@ -3995,6 +4261,7 @@ export async function runModManager(
       | "folder"
       | "saveDelve"
       | "loadDelve"
+      | "delveSyncFolder"
       | "reload"
       | "done";
     type RowKind = { kind: "mod"; id: string } | { kind: ActionKind };
@@ -4031,6 +4298,10 @@ export async function runModManager(
        * `menuLetter`'s output at all). */
       saveDelve: "8",
       loadDelve: "+",
+      /* A third punctuation tag, for the same reason "+" is one: every digit
+       * is spoken for and a letter would eventually collide with a long
+       * enough mod list (menuLetter's own a-z/A-Z range). */
+      delveSyncFolder: "-",
       reload: "9",
       done: "0",
     };
@@ -4134,6 +4405,28 @@ export async function runModManager(
           : row.lapsed
             ? t("modsScreen.run.folderHintLapsed", "Your browser needs permission again before it will read it.")
             : t("modsScreen.run.folderHintNormal", "Choose another, reconnect, or stop using it."),
+      );
+    }
+    /* The sync folder (#158): where this device writes a mod-profile snapshot
+     * on Apply, and reads one back from at menu-open. Independent of the
+     * mods-SOURCE folder above; offered whenever this front end can supply
+     * one at all (desktop's own bridge, or a browser that can pick a
+     * directory), never gated on `modBrowse` the way Save/Load a Delve are -
+     * choosing a folder needs neither. */
+    const savedSyncFolder = deps.delveSync ? await deps.delveSync.name() : null;
+    if (deps.delveSync) {
+      addAction(
+        savedSyncFolder === null
+          ? t("modsScreen.run.delveSyncChoose", "Mod profile sync folder...")
+          : t("modsScreen.run.delveSyncNamed", 'Mod profile sync folder: "{name}"', {
+              name: savedSyncFolder,
+            }),
+        "delveSyncFolder",
+        savedSyncFolder === null ? C_FG : C_ENABLED,
+        t(
+          "modsScreen.run.delveSyncHint",
+          "A folder this device writes its mod set to on Apply, and checks for a newer one from another device.",
+        ),
       );
     }
     // No pooled "Fixes & tweaks" row: a mod's patches live under that mod
@@ -4467,6 +4760,11 @@ export async function runModManager(
       await runSaveDelve(term, deps);
     } else if (rk.kind === "loadDelve") {
       if (await runLoadDelve(term, deps)) dirty = true;
+    } else if (rk.kind === "delveSyncFolder") {
+      /* Never sets `dirty`: choosing or forgetting a sync destination is a
+       * preference, not a change to the mod set - nothing here warrants the
+       * "Apply changes and reload" prompt. */
+      if (deps.delveSync) await manageDelveSyncFolder(term, deps.delveSync, savedSyncFolder);
     } else if (rk.kind === "reload") {
       deps.requestReload();
       return; // reload takes over

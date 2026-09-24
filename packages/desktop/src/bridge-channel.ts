@@ -152,7 +152,11 @@ export const HOST_SHELL_LIMITS = {
 export const MOD_ZIP_CHANNEL = "neo-mod-zip";
 
 /**
- * Ticket #133's cloud-backup folder (`invoke`).
+ * Ticket #133's cloud-backup folder (`invoke`), generalised into a
+ * purpose-keyed folder primitive (#158): a caller names its own `purpose` and
+ * file `ext` inside `arg`, and gets its own remembered folder, independent of
+ * any other purpose using the same channel. Absent `purpose`/`ext` default to
+ * the original ticket #133 caller's own values, so that caller is unaffected.
  *
  * Exists because `showDirectoryPicker()` does not: verified over CDP against the
  * installed desktop build that the File System Access API's directory picker opens,
@@ -165,7 +169,8 @@ export const MOD_ZIP_CHANNEL = "neo-mod-zip";
  * The chosen PATH never crosses this channel in either direction, on the same
  * argument `MOD_ZIP_CHANNEL` and the updater's `staged` already establish: the
  * main process is the only side that ever holds it, persisted to a small JSON file
- * beside `mods/` so it survives a restart. The renderer only ever sees a display
+ * beside `mods/` so it survives a restart - one file per purpose
+ * (`hostFolderRecordFile`, backup-folder.ts). The renderer only ever sees a display
  * NAME (so it can render "Backing up to X") and `{ok}` booleans - never the real
  * path, which is the same "the mod never learns the folder's real path" property
  * `docs/modding/CLOUD_BACKUP_DESIGN.md`'s capability already promises a plugin, now

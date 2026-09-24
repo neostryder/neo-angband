@@ -9,8 +9,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+  CHARACTER_BACKUP_PURPOSE,
   backupFolderDisplayName,
+  hostFolderRecordFile,
   isBackupFileName,
+  isHostFolderFileName,
   listBackupFiles,
   readBackupFolder,
   writeBackupFolder,
@@ -98,5 +101,53 @@ describe("listBackupFiles: ticket #24's read side", () => {
      * to tolerate. */
     fs.mkdirSync(path.join(base, "Frodo-00112233.neochar"));
     expect(listBackupFiles(base)).toEqual([{ name: "Bilbo-abcdef12.neochar", text: "{}" }]);
+  });
+});
+
+describe("purpose-keying (#158): two callers, two remembered folders", () => {
+  it("the original character-backup purpose keeps the legacy fixed file name", () => {
+    expect(hostFolderRecordFile(CHARACTER_BACKUP_PURPOSE)).toBe("backup-folder.json");
+    expect(hostFolderRecordFile("character-backup")).toBe("backup-folder.json");
+  });
+
+  it("any other purpose gets its own file, named from the purpose", () => {
+    expect(hostFolderRecordFile("mod-profile-sync")).toBe("backup-folder-mod-profile-sync.json");
+  });
+
+  it("a mod-profile-sync folder and a character-backup folder do not collide", () => {
+    writeBackupFolder(base, path.join(base, "Characters"), CHARACTER_BACKUP_PURPOSE);
+    writeBackupFolder(base, path.join(base, "ModSync"), "mod-profile-sync");
+    expect(readBackupFolder(base, CHARACTER_BACKUP_PURPOSE)).toBe(path.join(base, "Characters"));
+    expect(readBackupFolder(base, "mod-profile-sync")).toBe(path.join(base, "ModSync"));
+    /* Forgetting one purpose's folder leaves the other's completely alone. */
+    writeBackupFolder(base, null, "mod-profile-sync");
+    expect(readBackupFolder(base, "mod-profile-sync")).toBeNull();
+    expect(readBackupFolder(base, CHARACTER_BACKUP_PURPOSE)).toBe(path.join(base, "Characters"));
+  });
+
+  it("readBackupFolder/writeBackupFolder default to the original purpose untouched", () => {
+    /* Every existing call site (main.ts, before #158) calls these with no
+     * purpose argument at all - this is the backward-compatibility contract
+     * the generalisation must not break. */
+    writeBackupFolder(base, path.join(base, "Legacy"));
+    expect(readBackupFolder(base)).toBe(path.join(base, "Legacy"));
+    expect(fs.existsSync(path.join(base, "backup-folder.json"))).toBe(true);
+  });
+
+  it("isHostFolderFileName generalises isBackupFileName to an arbitrary extension", () => {
+    expect(isHostFolderFileName("ironman.ndelve", ".ndelve")).toBe(true);
+    expect(isHostFolderFileName("ironman.neochar", ".ndelve")).toBe(false);
+    expect(isHostFolderFileName("../x.ndelve", ".ndelve")).toBe(false);
+    /* The original wrapper is unchanged: still .neochar-only. */
+    expect(isBackupFileName("ironman.ndelve")).toBe(false);
+  });
+
+  it("listBackupFiles reads a purpose's own extension, not .neochar unconditionally", () => {
+    fs.writeFileSync(path.join(base, "ruleset.ndelve"), "{}", "utf8");
+    fs.writeFileSync(path.join(base, "Bilbo-abcdef12.neochar"), "{}", "utf8");
+    expect(listBackupFiles(base, ".ndelve")).toEqual([{ name: "ruleset.ndelve", text: "{}" }]);
+    expect(listBackupFiles(base, ".neochar")).toEqual([
+      { name: "Bilbo-abcdef12.neochar", text: "{}" },
+    ]);
   });
 });

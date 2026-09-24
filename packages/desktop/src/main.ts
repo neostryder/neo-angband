@@ -51,8 +51,9 @@ import {
 } from "./bridge-channel.js";
 import type { BackupOp } from "./bridge-channel.js";
 import {
+  CHARACTER_BACKUP_PURPOSE,
   backupFolderDisplayName,
-  isBackupFileName,
+  isHostFolderFileName,
   listBackupFiles,
   readBackupFolder,
   writeBackupFolder,
@@ -601,18 +602,27 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
 }
 
 /**
- * Ticket #133's cloud-backup folder. See BACKUP_CHANNEL's doc comment
- * (bridge-channel.ts) for why this is a native dialog rather than the browser's
- * `showDirectoryPicker()`.
+ * Ticket #133's cloud-backup folder, now a purpose-keyed primitive (#158). See
+ * BACKUP_CHANNEL's doc comment (bridge-channel.ts) for why this is a native
+ * dialog rather than the browser's `showDirectoryPicker()`.
  *
  * `dialog.showOpenDialog(win, ...)`, not the no-window overload: passing the
  * window makes the native picker modal to it, matching every other dialog this
  * process already opens (`dialog.showMessageBox(win, ...)` at the crash and
  * load-failure sites below).
+ *
+ * `purpose` and `ext` travel inside `arg` (never a new channel argument, so
+ * the channel's own shape - `invoke(op, arg)` - is unchanged) and both
+ * default to the original ticket #133 caller's own values, so an existing
+ * caller that has not been updated to pass them keeps reading and writing
+ * exactly the file it always did.
  */
 function installBackupChannel(): void {
   ipcMain.handle(BACKUP_CHANNEL, async (event, op: unknown, arg: unknown) => {
-    const folder = readBackupFolder(USER_BASE);
+    const a = (arg ?? {}) as { purpose?: unknown; ext?: unknown; name?: unknown; text?: unknown };
+    const purpose = typeof a.purpose === "string" && a.purpose !== "" ? a.purpose : CHARACTER_BACKUP_PURPOSE;
+    const ext = typeof a.ext === "string" && a.ext !== "" ? a.ext : ".neochar";
+    const folder = readBackupFolder(USER_BASE, purpose);
     switch (op as BackupOp) {
       case "name":
         return folder === null ? null : backupFolderDisplayName(folder);
@@ -624,24 +634,24 @@ function installBackupChannel(): void {
           : await dialog.showOpenDialog({ properties: ["openDirectory"] });
         if (result.canceled || result.filePaths.length === 0) return null;
         const chosen = result.filePaths[0] as string;
-        writeBackupFolder(USER_BASE, chosen);
+        writeBackupFolder(USER_BASE, chosen, purpose);
         return backupFolderDisplayName(chosen);
       }
 
       case "forget":
-        writeBackupFolder(USER_BASE, null);
+        writeBackupFolder(USER_BASE, null, purpose);
         return { ok: true };
 
       case "list":
-        /* #24, the read side of #133: every `.neochar` file this build can
+        /* #24, the read side of #133: every file matching `ext` this build can
          * currently read out of the chosen folder, name plus text - the
          * folder's own path never crosses this reply either, matching every
          * other op on this channel. */
-        return folder === null ? [] : listBackupFiles(folder);
+        return folder === null ? [] : listBackupFiles(folder, ext);
 
       case "write": {
-        const { name, text } = (arg ?? {}) as { name?: unknown; text?: unknown };
-        if (!isBackupFileName(name) || typeof text !== "string") {
+        const { name, text } = a;
+        if (!isHostFolderFileName(name, ext) || typeof text !== "string") {
           return { ok: false };
         }
         if (folder === null) return { ok: false };
