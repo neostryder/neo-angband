@@ -1472,6 +1472,87 @@ export function promptText(
 }
 
 /**
+ * A text-entry overlay sized for pasting a large multi-line blob (a Delve
+ * file's pretty-printed JSON, docs/MOD_PROFILES.md) rather than typing a
+ * short line.
+ *
+ * NOT `promptText` PLUS A BIGGER `maxLen`. `pasteLineEdit` (used by both
+ * `promptText` and `promptTextInline`) deliberately keeps only the FIRST
+ * LINE of a paste (`clipboardText.split(/\r\n?|\n/u, 1)[0]`) - correct for
+ * every existing caller, all of which are single-line fields (a character
+ * name, a file name), and wrong for a pretty-printed JSON paste, which is
+ * many lines and would be truncated to its opening `{`. This function keeps
+ * the FULL pasted text verbatim, newlines included - `JSON.parse` does not
+ * care that its input spans multiple lines - without touching
+ * `pasteLineEdit` or any of its other callers.
+ *
+ * Typing is deliberately NOT supported here beyond Backspace-to-clear:
+ * editing a multi-thousand-character blob one keystroke at a time is not a
+ * feature this needs, and rendering raw control characters through the
+ * single-row glyph grid `paintLineEdit` assumes would be actively wrong. The
+ * screen shows a character count instead of the raw buffer, and the return
+ * value is the untouched pasted text.
+ */
+export function promptPastedText(
+  term: GridSurface & GridPointerInput,
+  title: string,
+  maxLen: number,
+  footer = "[ Ctrl-V to paste, Enter to accept, ESC to cancel ]",
+): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
+    let buf = "";
+    const paint = (): void => {
+      const { cols, rows } = term.size();
+      term.clear();
+      term.print(0, HEADER_ROW, title.slice(0, cols - 1), TITLE);
+      const status =
+        buf.length === 0
+          ? "(nothing pasted yet)"
+          : `Pasted ${String(buf.length)} character${buf.length === 1 ? "" : "s"} - Enter to accept.`;
+      term.print(0, BODY_TOP, status.slice(0, cols - 1), FG);
+      term.print(0, rows - 1, footer.slice(0, cols - 1), DIM);
+    };
+    const controls = controlSurface.push({
+      kind: "text",
+      label: title,
+      replies: [cancelAction()],
+      text: { value: "", maxLength: maxLen, submit: (value) => finish(value) },
+    });
+    const finish = (value: string | null): void => {
+      controls.dispose();
+      inputEvents.removeEventListener("keydown", onKey, true);
+      inputEvents.removeEventListener("paste", onPaste, true);
+      resolve(value);
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      if (ev.key === "Escape") {
+        finish(null);
+        return;
+      }
+      if (ev.key === "Enter") {
+        finish(buf.length > 0 ? buf : null);
+        return;
+      }
+      if (ev.key === "Backspace" || ev.key === "Delete") {
+        buf = "";
+        paint();
+      }
+    };
+    const onPaste = (ev: ClipboardEvent): void => {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      buf = (ev.clipboardData?.getData("text") ?? "").slice(0, maxLen);
+      paint();
+    };
+    inputEvents.addEventListener("keydown", onKey, true);
+    inputEvents.addEventListener("paste", onPaste, true);
+    paint();
+  });
+}
+
+/**
  * A digit-only numeric prompt (askfor_aux_numbers, ui-options.c L1026): shows
  * the current value on its own line, accepts only digits/Backspace, Enter
  * confirms (clamped to [min, max]), Escape cancels (resolves null). `subtitle`

@@ -30,7 +30,6 @@ import {
   type ModPluginContext,
   type ModSessionOutcome,
   type ModSubwindows,
-  type ModTiles,
   type ModUi,
   type ModWizard,
   type ReadModResult,
@@ -144,7 +143,6 @@ export function modPluginContext(
   const wizard = wizardFor(id, session);
   const display = displayFor(session);
   const subwindows = subwindowsFor(session);
-  const tiles = tilesFor(session);
   const keyRepeat = keyRepeatFor(session);
   const keymaps = keymapsFor(id, state, session);
   const characterStore = characterStoreFor(id, state, session);
@@ -173,7 +171,6 @@ export function modPluginContext(
     prefs: session.prefs ?? modPrefs(id),
     ...(display ? { display } : {}),
     ...(subwindows ? { subwindows } : {}),
-    ...(tiles ? { tiles } : {}),
     ...(keyRepeat ? { keyRepeat } : {}),
     ...(keymaps ? { keymaps } : {}),
     ...(characterStore ? { characterStore } : {}),
@@ -341,24 +338,6 @@ function subwindowsFor(session: ModSessionFacts): ModSubwindows | undefined {
 /** Install or clear the subwindow geometry/chrome door (boot path and tests). */
 export function setModSubwindowsControl(subwindows: ModSubwindows | undefined): void {
   subwindowsControl = subwindows;
-}
-
-/** The live monster-tile door, latched once the web shell has a tile subsystem. */
-let tilesControl: ModTiles | undefined;
-
-/**
- * `ctx.tiles` is a straight pass-through, like `subwindowsFor` above: every
- * method on `ModTiles` is already ungated (see its own header in
- * mod-plugin.ts), so there is no per-plugin capability check to interpose
- * here.
- */
-function tilesFor(session: ModSessionFacts): ModTiles | undefined {
-  return session.tiles ?? tilesControl;
-}
-
-/** Install or clear the monster-tile lookup/paint door (boot path and tests). */
-export function setModTilesControl(tiles: ModTiles | undefined): void {
-  tilesControl = tiles;
 }
 
 /**
@@ -614,8 +593,6 @@ export interface ModSessionFacts {
   readonly display?: ModDisplay;
   /** Override the subwindow door (tests and alternate front ends). */
   readonly subwindows?: ModSubwindows;
-  /** Override the monster-tile door (tests and alternate front ends). */
-  readonly tiles?: ModTiles;
   /** Override the key-repeat query (tests and alternate front ends). */
   readonly keyRepeat?: () => KeyRepeatVerdict | null;
   /** Override ctx.characterStore directly (tests, and a front end with its own). */

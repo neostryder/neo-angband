@@ -19,10 +19,9 @@ import {
   setModRegistries,
   setModSubwindowsControl,
   setModKeyRepeatControl,
-  setModTilesControl,
 } from "./mod-context";
 import type { ModCharacterStoreControl } from "./mod-context";
-import type { ModCharacterStore, ModDisplay, ModSubwindows, ModTiles } from "./mod-plugin";
+import type { ModCharacterStore, ModDisplay, ModSubwindows } from "./mod-plugin";
 import type { KeyRepeatVerdict } from "./key-repeat";
 import type { CoreRegistries, ModBag } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -119,30 +118,6 @@ describe("modPluginContext session facts", () => {
       expect(registerPrefBlock).toHaveBeenCalledWith("qol-zoom", block);
     } finally {
       setModSubwindowsControl(undefined);
-    }
-  });
-
-  it("publishes the latched tiles door after boot and omits it before boot, fully ungated (#256)", () => {
-    const hasMonsterTile = vi.fn((ridx: number) => ridx === 7);
-    const drawMonster = vi.fn(() => true);
-    const tiles: ModTiles = {
-      active: true,
-      hasMonsterTile,
-      drawMonster,
-    };
-    setModTilesControl(undefined);
-    expect(modPluginContext("qol", {}).tiles).toBeUndefined();
-    setModTilesControl(tiles);
-    try {
-      const ctx = modPluginContext("qol", {});
-      expect(ctx.tiles?.active).toBe(true);
-      expect(ctx.tiles?.hasMonsterTile(7)).toBe(true);
-      expect(hasMonsterTile).toHaveBeenCalledWith(7);
-      const fakeCanvasCtx = {} as CanvasRenderingContext2D;
-      expect(ctx.tiles?.drawMonster(fakeCanvasCtx, 7, 0, 0, 24, 24)).toBe(true);
-      expect(drawMonster).toHaveBeenCalledWith(fakeCanvasCtx, 7, 0, 0, 24, 24);
-    } finally {
-      setModTilesControl(undefined);
     }
   });
 
@@ -696,17 +671,6 @@ describe("ctx.registries - the bound content a mod can ask about", () => {
      * classify() call could feed a tracker no door reads from. */
     expect(MAIN_TS_SOURCE).toMatch(/setModKeyRepeatControl\(\(\) => keyRepeatTracker\.last\(\)\);/u);
     expect(MAIN_TS_SOURCE).toMatch(/keyRepeatTracker\.classify\(ev\);/u);
-  });
-
-  it("main.ts actually latches ctx.tiles onto the live tile-mode state, not a static stand-in (#256)", () => {
-    /* THE SAME CLASS OF CHECK again: a `ctx.tiles` this file's unit tests can
-     * build by hand but no boot path ever installs is indistinguishable from a
-     * seam that always answers undefined. `mainTileMode` is the same object
-     * the main view's own render loop reads, so this also guards against a
-     * frozen snapshot standing in for the live one. */
-    expect(MAIN_TS_SOURCE).toMatch(/setModTilesControl\(modTilesControl\);/u);
-    expect(MAIN_TS_SOURCE).toMatch(/mainTileMode\.grafID !== GRAPHICS_NONE/u);
-    expect(MAIN_TS_SOURCE).toMatch(/tileForMonster\(tileMap, ridx\)/u);
   });
 
   it("main.ts actually latches ctx.characterStore onto the live StartedGame's own bags (#171)", () => {

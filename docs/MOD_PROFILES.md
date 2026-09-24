@@ -1,15 +1,41 @@
 # Shareable mod-set snapshots: exporting and importing a "Delve"
 
-**STATUS: DESIGN, nothing here is built.** This document specifies a feature
-for the game's own mod manager (`packages/web/src/mods.ts` and its supporting
-modules `mod-store.ts`, `mod-install.ts`, `mod-discover.ts`), not any
-individual mod's concern - the same "core is the mod architecture itself"
-carve-out that the rest of the manager already sits in
-(`docs/MODS.md#what-is-core-and-what-is-a-mod`). Read this before starting
-work on it: the fields below are not invented, they are read off the real
-state the manager already tracks, and the sections on version mismatch and
-consent deliberately reuse mechanisms `MOD_COMPATIBILITY.md` and `MODS.md`
-already ratified rather than inventing stricter ones.
+**STATUS: BUILT (#87).** The format (`packages/web/src/mod-delve.ts`), the two
+Mods-menu rows, and everything below about a version mismatch, the
+merge-or-replace choice, and consent staying a preview are implemented in the
+game's own mod manager (`packages/web/src/mods.ts` and its supporting modules
+`mod-store.ts`,
+`mod-install.ts`, `mod-discover.ts`), not any individual mod's concern - the
+same "core is the mod architecture itself" carve-out that the rest of the
+manager already sits in (`docs/MODS.md#what-is-core-and-what-is-a-mod`). The
+fields below are not invented, they are read off the real state the manager
+already tracks, and the sections on version mismatch and consent reuse
+mechanisms `MOD_COMPATIBILITY.md` and `MODS.md` already ratified rather than
+inventing stricter ones.
+
+A few implementation notes for a future reader, where the code and this
+document's original draft parted ways:
+
+- **The flag-choice map is not one read.** `ModStore.getRuleChoices()` alone
+  does not "cover both `PackRule.flag` and `PackSection.flag`" the way the
+  field notes below originally assumed - current `mod-store.ts` keeps rule
+  choices and section choices in two separate stores. Encode/decode therefore
+  read and route both (`delveExportFlags`/`applyDelveFlags`, `mods.ts`), per
+  mod, rather than pooling one flat read regardless of which mod a flag
+  belongs to.
+- **The three option scalars** (`hitpointWarn`, `delayFactor`, `lazymoveDelay`)
+  have no customized-defaults persistence the way the boolean option groups
+  do (`options-file.ts` only ever carries a name->boolean map) and no live
+  `GameState` is reachable from the mod manager's own dependency surface (it
+  opens from the title screen too). They round-trip in the file, but export
+  always writes the table defaults and import does not apply them anywhere -
+  a documented gap rather than a silent one.
+- **"Save to file"** uses the same `downloadUserFile` mechanism
+  `exportCharacter` already uses on both platforms, rather than a new native
+  save-dialog bridge - `CLOUD_BACKUP_DESIGN.md`'s `BACKUP_CHANNEL` was
+  purpose-built for one file kind (cloud-backup writes) and generalising it
+  to an arbitrary "Save As" is the shared `host-folder.ts` primitive #158
+  builds, not something this document's own scope needed to invent early.
 
 ## The gap this closes
 

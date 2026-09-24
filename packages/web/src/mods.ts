@@ -42,6 +42,8 @@
  */
 
 import {
+  promptPastedText,
+  promptText,
   selectFromMenu,
   showTextScreen,
   MENU_REFRESH,
@@ -87,7 +89,35 @@ import {
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { wrapCssRuns } from "./shop";
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_GOOD, UI_BAD } from "./ui-colors";
-import { t } from "@rpgm-tools/neo-angband-core";
+import {
+  DEFAULT_DELAY_FACTOR,
+  DEFAULT_HITPOINT_WARN,
+  DEFAULT_LAZYMOVE_DELAY,
+  ENGINE_VERSION,
+  host,
+  optionsSaveCustom,
+  t,
+} from "@rpgm-tools/neo-angband-core";
+import { customPageDefaults } from "./options";
+import { installedMods } from "./mod-install";
+import { downloadUserFile, pickTextFile } from "./userdir";
+import type { ModOrigin as ConsentOrigin } from "./mod-consent";
+import type { DiscoveredMod } from "./mod-discover";
+import {
+  DELVE_EXT,
+  DELVE_MAX_TEXT_BYTES,
+  buildDelveFile,
+  decodeDelve,
+  delveFilename,
+  encodeDelve,
+  resolveDelveEnabledIds,
+  resolveDelveImportPlan,
+  selectDelveMods,
+  type DelveDiscover,
+  type DelveFile,
+  type DelveMod,
+  type DelvePlanRow,
+} from "./mod-delve";
 
 const C_ENABLED = UI_GOOD;
 const C_DISABLED = UI_DIM;
@@ -3272,6 +3302,641 @@ async function manageModFolder(
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * Save a Delve... / Load a Delve... (docs/MOD_PROFILES.md, #87): a portable,
+ * shareable snapshot of the enabled mod set, its flag choices, and
+ * (optionally) game/birth options.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Every flag name a mod's own manifest declares - a rule's `flag`, or a
+ * section's `flag` (defaulting to its `id`) - the same "one vocabulary for
+ * both" `PackRule`/`PackSection` already share (manifest.ts).
+ */
+function delveFlagNamesFor(manifest: Pick<PackManifest, "rules" | "sections">): Map<string, "rule" | "section"> {
+  const out = new Map<string, "rule" | "section">();
+  for (const rule of manifest.rules ?? []) out.set(rule.flag, "rule");
+  for (const section of manifest.sections ?? []) out.set(section.flag ?? section.id, "section");
+  return out;
+}
+
+/**
+ * A mod's own flag choices, read for export.
+ *
+ * DRIFT FROM THE DESIGN DOC, NOTED HERE RATHER THAN SILENTLY FOLLOWED: the
+ * doc's field table says `ModStore.getRuleChoices()` alone "covers both
+ * PackRule.flag and PackSection.flag... the two vocabularies feed the same
+ * map." Current `mod-store.ts` keeps them in two separate stores instead -
+ * `getRuleChoices()` (flat, `RULE_CHOICES_KEY`) and `getSectionChoices()`
+ * (nested `modId -> sectionId -> boolean`, `SECTION_CHOICES_KEY`) - so this
+ * reads both and folds them into the one flat map the file format wants,
+ * rather than trusting the doc's premise that one read already covers it.
+ */
+function delveExportFlags(
+  manifest: Pick<PackManifest, "rules" | "sections">,
+  modId: string,
+  ruleChoices: Readonly<Record<string, boolean>>,
+  sectionChoicesByMod: Readonly<Record<string, Readonly<Record<string, boolean>>>>,
+): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const rule of manifest.rules ?? []) {
+    if (rule.flag in ruleChoices) out[rule.flag] = ruleChoices[rule.flag] as boolean;
+  }
+  const sectionChoices = sectionChoicesByMod[modId] ?? {};
+  for (const section of manifest.sections ?? []) {
+    if (section.id in sectionChoices) {
+      out[section.flag ?? section.id] = sectionChoices[section.id] as boolean;
+    }
+  }
+  return out;
+}
+
+/**
+ * Apply one mod's Delve flags back, routing each flag to whichever store
+ * currently owns it (see `delveExportFlags`'s own note on why this cannot be
+ * one pooled call regardless of mod, the way the design doc describes it -
+ * the two stores mean a flag's OWNING mod has to be known to apply it
+ * correctly). A flag naming neither a current rule nor a current section
+ * (the mod changed shape since the Delve was made) is left unset rather than
+ * written somewhere inert - the same "apply what is still understood"
+ * degrade-not-refuse spirit the doc's version-mismatch section states.
+ */
+function applyDelveFlags(
+  manifest: Pick<PackManifest, "rules" | "sections">,
+  modId: string,
+  flags: Readonly<Record<string, boolean>>,
+  store: ModStore,
+): void {
+  const owners = delveFlagNamesFor(manifest);
+  for (const [flag, value] of Object.entries(flags)) {
+    const owner = owners.get(flag);
+    if (owner === "rule") store.setRuleChoice(flag, value);
+    else if (owner === "section") store.setSectionChoice(modId, flag, value);
+  }
+}
+
+/** One enabled, installed (repository-sourced) mod, ready to become a Delve entry. */
+async function saveDelveCandidates(
+  deps: ModManagerDeps,
+): Promise<{ readonly mod: CatalogMod; readonly entry: DelveMod }[]> {
+  const catalog = deps.listCatalog().filter((m) => m.enabled && !m.missing && !m.session);
+  const metaById = new Map((await installedMods(globalThis)).map((m) => [m.id, m] as const));
+  const ruleChoices = deps.store.getRuleChoices();
+  const sectionChoicesByMod = deps.store.getSectionChoices();
+  const out: { mod: CatalogMod; entry: DelveMod }[] = [];
+  for (const m of catalog) {
+    /* A mod with no InstalledModMeta record - loaded from a folder, or staged
+     * for this session only - has no repository this build can hand to
+     * another install, so it has nothing to be exported AS: the design's own
+     * field table sources every field from InstalledModMeta plus the
+     * manifest, and a folder mod has neither an entry to read repo/tag from. */
+    const meta = metaById.get(m.id);
+    if (!meta) continue;
+    out.push({
+      mod: m,
+      entry: {
+        id: m.id,
+        name: m.name,
+        repo: meta.repo,
+        tag: meta.tag,
+        version: m.version,
+        ...(meta.sha !== undefined ? { sha: meta.sha } : {}),
+        enabled: true,
+        flags: delveExportFlags(m.manifest, m.id, ruleChoices, sectionChoicesByMod),
+        consents: deps.store.getConsent(m.id),
+      },
+    });
+  }
+  return out;
+}
+
+/** "Save a Delve...": name/description, a pre-checked mod checklist, options, then save/copy. */
+async function runSaveDelve(term: GridSurface & GridPointerInput, deps: ModManagerDeps): Promise<void> {
+  const TITLE = t("modsScreen.delve.save.title", "Save a Delve...");
+  const candidates = await saveDelveCandidates(deps);
+  if (candidates.length === 0) {
+    await showTextScreen(term, TITLE, [
+      {
+        text: t(
+          "modsScreen.delve.save.none",
+          "None of your enabled mods came from a repository, so there is nothing to save yet.",
+        ),
+        color: C_DIM,
+      },
+    ]);
+    return;
+  }
+
+  const name = await promptText(
+    term,
+    t("modsScreen.delve.save.namePrompt", "Name this Delve"),
+    "",
+    60,
+    t("modsScreen.delve.save.nameFooter", "[ type a name, Enter to accept, ESC to cancel ]"),
+  );
+  if (name === null || name.trim() === "") return;
+  const description = await promptText(
+    term,
+    t("modsScreen.delve.save.descPrompt", "Description (optional)"),
+    "",
+    200,
+    t("modsScreen.delve.save.descFooter", "[ type a description, Enter to accept, ESC to skip ]"),
+  );
+
+  const checked = new Set(candidates.map((c) => c.entry.id));
+  let includeGame = false;
+  let includeBirth = false;
+  for (;;) {
+    const items: MenuItem[] = candidates.map((c) => ({
+      label: `${checked.has(c.entry.id) ? "[x]" : "[ ]"} ${c.mod.name} v${c.mod.version}`,
+      color: checked.has(c.entry.id) ? C_ENABLED : C_DIM,
+    }));
+    const gameIndex = items.length;
+    items.push({
+      label: `${includeGame ? "[x]" : "[ ]"} ${t("modsScreen.delve.save.includeGame", "Include my general game options")}`,
+      color: includeGame ? C_ENABLED : C_DIM,
+    });
+    const birthIndex = items.length;
+    items.push({
+      label: `${includeBirth ? "[x]" : "[ ]"} ${t("modsScreen.delve.save.includeBirth", "Include my birth options")}`,
+      color: includeBirth ? C_ENABLED : C_DIM,
+    });
+    const saveIndex = items.length;
+    items.push({ label: t("modsScreen.delve.save.toFile", "Save to file"), color: C_ENABLED });
+    const clipIndex = items.length;
+    items.push({ label: t("modsScreen.delve.save.toClipboard", "Copy to clipboard"), color: C_FG });
+
+    const pick = await selectFromMenu(
+      term,
+      "core:save-delve",
+      TITLE,
+      items,
+      t("modsScreen.delve.common.checklistFooter", "[ Space or Enter toggles/opens a row, ESC cancels ]"),
+    );
+    if (pick === null) return;
+    if (pick < candidates.length) {
+      const id = candidates[pick]?.entry.id;
+      if (id === undefined) continue;
+      if (checked.has(id)) checked.delete(id);
+      else checked.add(id);
+      continue;
+    }
+    if (pick === gameIndex) {
+      includeGame = !includeGame;
+      continue;
+    }
+    if (pick === birthIndex) {
+      includeBirth = !includeBirth;
+      continue;
+    }
+    if (pick !== saveIndex && pick !== clipIndex) continue;
+
+    const selected = selectDelveMods(
+      candidates.map((c) => c.entry),
+      checked,
+    );
+    const file = buildDelveFile({
+      name: name.trim(),
+      ...(description !== null && description.trim() !== "" ? { description: description.trim() } : {}),
+      createdAt: new Date().toISOString(),
+      createdWithEngine: ENGINE_VERSION,
+      mods: selected,
+      ...(includeGame || includeBirth
+        ? {
+            options: {
+              ...(includeBirth ? { birth: customPageDefaults("BIRTH") } : {}),
+              ...(includeGame
+                ? {
+                    game: {
+                      values: customPageDefaults("INTERFACE"),
+                      /* No live GameState is reachable from the mod manager's own
+                       * dependency surface (it opens from the title screen too),
+                       * and there is no customized-defaults persistence for these
+                       * three scalars the way there is for the boolean options
+                       * (options-file.ts only ever carries OptionOpts, a plain
+                       * name->boolean map) - so they travel as the table
+                       * defaults rather than a live character's actual values.
+                       * Noted plainly rather than silently wired to a fake live
+                       * read. */
+                      hitpointWarn: DEFAULT_HITPOINT_WARN,
+                      delayFactor: DEFAULT_DELAY_FACTOR,
+                      lazymoveDelay: DEFAULT_LAZYMOVE_DELAY,
+                    },
+                  }
+                : {}),
+            },
+          }
+        : {}),
+    });
+    const text = encodeDelve(file);
+    const outName = delveFilename(file.name);
+
+    if (pick === saveIndex) {
+      const ok = downloadUserFile(outName, text, "application/json");
+      await showTextScreen(term, TITLE, [
+        ok
+          ? {
+              text: t("modsScreen.delve.save.savedOk", "{name} written to {file}.", {
+                name: file.name,
+                file: outName,
+              }),
+              color: C_ENABLED,
+            }
+          : { text: t("modsScreen.delve.save.savedFail", "This browser refused the download."), color: C_DANGER },
+      ]);
+      return;
+    }
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch {
+      copied = false;
+    }
+    await showTextScreen(term, TITLE, [
+      copied
+        ? {
+            text: t("modsScreen.delve.save.copiedOk", "Copied to your clipboard - paste it wherever you like."),
+            color: C_ENABLED,
+          }
+        : { text: t("modsScreen.delve.save.copiedFail", "Your browser refused clipboard access."), color: C_DANGER },
+    ]);
+    return;
+  }
+}
+
+/** Whether a preview row can ever be part of the accepted set (see the row-state table, docs/MOD_PROFILES.md). */
+function delveRowIncludable(row: DelvePlanRow<DiscoveredMod>): boolean {
+  return row.state === "same-version" || (row.resolution?.ok ?? false);
+}
+
+/** One preview-screen row's label and colour (docs/MOD_PROFILES.md's row-state table). */
+function delvePreviewRowLabel(
+  row: DelvePlanRow<DiscoveredMod>,
+  installedTag: string | null,
+  checked: boolean,
+  updateChoice: "update" | "keep",
+): MenuItem {
+  const label = `${row.entry.name} v${row.entry.version || row.entry.tag}`;
+  const box = `[${checked ? "x" : " "}]`;
+  if (row.state === "same-version") {
+    return {
+      label: `${box} ${label} - ${t("modsScreen.delve.load.rowSame", "already installed, unchanged")}`,
+      color: checked ? C_ENABLED : C_DIM,
+    };
+  }
+  if (!delveRowIncludable(row)) {
+    const reason = row.resolution && !row.resolution.ok ? row.resolution.reason : "";
+    return {
+      label: t("modsScreen.delve.load.rowUnreachable", "{label} - unreachable: {reason}", { label, reason }),
+      color: C_DANGER,
+    };
+  }
+  if (row.state === "different-version") {
+    const to = row.resolution?.ok ? row.resolution.mod.tag : row.entry.tag;
+    return {
+      label: `${box} ${label}: ${t("modsScreen.delve.load.rowDifferent", "installed {from} -> Delve wants {to} ({choice})", {
+        from: installedTag ?? "?",
+        to,
+        choice:
+          updateChoice === "update"
+            ? t("modsScreen.delve.load.update", "update")
+            : t("modsScreen.delve.load.keep", "keep installed"),
+      })}`,
+      color: checked ? C_ENABLED : C_DIM,
+    };
+  }
+  const usedRequested = row.resolution?.ok ? row.resolution.usedRequestedTag : true;
+  const to = row.resolution?.ok ? row.resolution.mod.tag : row.entry.tag;
+  return {
+    label: `${box} ${label}: ${
+      usedRequested
+        ? t("modsScreen.delve.load.rowFetch", "will be fetched at {tag}", { tag: to })
+        : t("modsScreen.delve.load.rowFetchOther", "will be fetched at {tag} (newest this build can run)", {
+            tag: to,
+          })
+    }`,
+    color: checked ? C_ENABLED : C_DIM,
+  };
+}
+
+/** The preview screen: one row per mod, togglable, with a per-row update-or-keep choice. */
+async function runDelvePreview(
+  term: GridSurface & GridPointerInput,
+  file: DelveFile,
+  plan: readonly DelvePlanRow<DiscoveredMod>[],
+  installed: ReadonlyMap<string, string>,
+): Promise<{ readonly accepted: ReadonlySet<string>; readonly updateChoice: ReadonlyMap<string, "update" | "keep"> } | null> {
+  const accepted = new Set<string>(plan.filter(delveRowIncludable).map((r) => r.entry.id));
+  const updateChoice = new Map<string, "update" | "keep">();
+  let cursor = 0;
+  for (;;) {
+    const items: MenuItem[] = plan.map((row) =>
+      delvePreviewRowLabel(
+        row,
+        installed.get(row.entry.id) ?? null,
+        accepted.has(row.entry.id),
+        updateChoice.get(row.entry.id) ?? "update",
+      ),
+    );
+    const continueIndex = items.length;
+    items.push({ label: t("modsScreen.delve.load.previewContinue", "Continue..."), color: C_ENABLED });
+    const pick = await selectFromMenu(
+      term,
+      "core:load-delve-preview",
+      t("modsScreen.delve.load.previewTitle", "{name} - what would happen", {
+        name: file.name || "this Delve",
+      }),
+      items,
+      t(
+        "modsScreen.delve.load.previewFooter",
+        "[ Space includes/excludes a row, u = update or keep an installed version, Enter continues ]",
+      ),
+      {
+        initialCursor: cursor,
+        onHighlight: (i) => {
+          cursor = i;
+        },
+        commands: {
+          " ": (cur) => {
+            const row = plan[cur];
+            if (!row || !delveRowIncludable(row)) return null;
+            const id = row.entry.id;
+            if (accepted.has(id)) accepted.delete(id);
+            else accepted.add(id);
+            return MENU_REFRESH;
+          },
+          u: (cur) => {
+            const row = plan[cur];
+            if (!row || row.state !== "different-version") return null;
+            const id = row.entry.id;
+            updateChoice.set(id, (updateChoice.get(id) ?? "update") === "update" ? "keep" : "update");
+            return MENU_REFRESH;
+          },
+        },
+      },
+    );
+    if (pick === MENU_REFRESH) continue;
+    if (pick === null) return null;
+    if (pick === continueIndex) break;
+  }
+  return { accepted, updateChoice };
+}
+
+/**
+ * "Load a Delve...": from a file or pasted text, gated on `magic` alone; a
+ * preview per mod; a merge-or-replace choice asked once; options checkboxes
+ * off by default even when the file carries them; confirm applies through
+ * the same install/enable path "Install a mod..." already uses, then a
+ * result screen. Returns whether anything changed (the caller's `dirty`).
+ */
+async function runLoadDelve(term: GridSurface & GridPointerInput, deps: ModManagerDeps): Promise<boolean> {
+  const TITLE = t("modsScreen.delve.load.title", "Load a Delve...");
+  if (!deps.modBrowse) return false;
+  const modBrowse = deps.modBrowse;
+
+  const sourcePick = await selectFromMenu(
+    term,
+    "core:load-delve-source",
+    TITLE,
+    [
+      { label: t("modsScreen.delve.load.fromFile", "From a file..."), color: C_FG },
+      { label: t("modsScreen.delve.load.pasteText", "Paste text..."), color: C_FG },
+    ],
+    t("modsScreen.delve.common.footer.abcEsc", "[ a/b or tap, ESC to cancel ]"),
+  );
+  if (sourcePick === null) return false;
+
+  let text: string;
+  if (sourcePick === 0) {
+    const picked = await pickTextFile(`${DELVE_EXT},.json,application/json`, DELVE_MAX_TEXT_BYTES);
+    if (picked === null) return false;
+    if ("tooLarge" in picked) {
+      await showTextScreen(term, TITLE, [
+        { text: t("modsScreen.delve.load.tooLarge", "That file is too large to be a Delve."), color: C_DANGER },
+      ]);
+      return false;
+    }
+    text = picked.text;
+  } else {
+    const pasted = await promptPastedText(
+      term,
+      t("modsScreen.delve.load.pastePrompt", "Paste a Delve"),
+      DELVE_MAX_TEXT_BYTES,
+    );
+    if (pasted === null) return false;
+    text = pasted;
+  }
+
+  /* Gated on `magic` alone, never the file name or extension - the importer
+   * reads content, not names (docs/MOD_PROFILES.md, "File extension"). */
+  const decoded = decodeDelve(text);
+  if (!decoded.ok) {
+    await showTextScreen(term, TITLE, [{ text: decoded.why, color: C_DANGER }]);
+    return false;
+  }
+  const file = decoded.file;
+  if (file.mods.length === 0) {
+    await showTextScreen(term, TITLE, [
+      { text: t("modsScreen.delve.load.empty", "That Delve names no mods to import."), color: C_DIM },
+    ]);
+    return false;
+  }
+
+  const installed = await modBrowse.installed();
+  const discover: DelveDiscover<DiscoveredMod> = async (ref) => {
+    const r = await modBrowse.discover(ref);
+    return r.ok ? { ok: true, mod: r.mod } : { ok: false, problem: r.problem };
+  };
+  const plan = await resolveDelveImportPlan(file.mods, installed, discover);
+
+  const preview = await runDelvePreview(term, file, plan, installed);
+  if (preview === null) return false;
+  const finalRows = plan.filter((r) => preview.accepted.has(r.entry.id));
+  if (finalRows.length === 0) {
+    await showTextScreen(term, TITLE, [
+      { text: t("modsScreen.delve.load.nothingLeft", "Nothing left to import."), color: C_DIM },
+    ]);
+    return false;
+  }
+
+  const mergePick = await selectFromMenu(
+    term,
+    "core:load-delve-merge",
+    t("modsScreen.delve.load.mergeTitle", "How should this apply?"),
+    [
+      {
+        label: t("modsScreen.delve.load.mergeReplace", "Replace my mod set"),
+        color: C_WARN,
+        hint: t(
+          "modsScreen.delve.load.mergeReplaceHint",
+          "Every mod not named in the Delve is turned off, matching it exactly.",
+        ),
+      },
+      {
+        label: t("modsScreen.delve.load.mergeAdd", "Add to my current set"),
+        color: C_FG,
+        hint: t(
+          "modsScreen.delve.load.mergeAddHint",
+          "Only the named mods change; everything else you already run is left alone.",
+        ),
+      },
+    ],
+    t("modsScreen.delve.common.footer.abcEsc", "[ a/b or tap, ESC to cancel ]"),
+  );
+  if (mergePick === null) return false;
+  const replace = mergePick === 0;
+
+  let applyGame = false;
+  let applyBirth = false;
+  if (file.options?.game !== undefined || file.options?.birth !== undefined) {
+    for (;;) {
+      const items: MenuItem[] = [];
+      const gameIndex = file.options.game !== undefined ? items.length : -1;
+      if (file.options.game !== undefined) {
+        items.push({
+          label: `${applyGame ? "[x]" : "[ ]"} ${t(
+            "modsScreen.delve.load.applyGame",
+            "Also apply the general game options in this file",
+          )}`,
+          color: applyGame ? C_ENABLED : C_DIM,
+        });
+      }
+      const birthIndex = file.options.birth !== undefined ? items.length : -1;
+      if (file.options.birth !== undefined) {
+        items.push({
+          label: `${applyBirth ? "[x]" : "[ ]"} ${t(
+            "modsScreen.delve.load.applyBirth",
+            "Also apply the birth options to my next new character",
+          )}`,
+          color: applyBirth ? C_ENABLED : C_DIM,
+        });
+      }
+      const continueIndex = items.length;
+      items.push({ label: t("modsScreen.delve.load.optionsContinue", "Continue..."), color: C_ENABLED });
+      const pick = await selectFromMenu(
+        term,
+        "core:load-delve-options",
+        t("modsScreen.delve.load.optionsTitle", "This Delve also carries options"),
+        items,
+        t("modsScreen.delve.common.checklistFooter", "[ Space or Enter toggles/opens a row, ESC cancels ]"),
+      );
+      if (pick === null) return false;
+      if (pick === gameIndex) {
+        applyGame = !applyGame;
+        continue;
+      }
+      if (pick === birthIndex) {
+        applyBirth = !applyBirth;
+        continue;
+      }
+      if (pick === continueIndex) break;
+    }
+  }
+
+  /* CONFIRM: fetch/update through the same door "Install a mod..." uses -
+   * `deps.modBrowse.install`, which enforces third-party consent itself
+   * (mod-install.ts's `installBlocked`) - then enable through the ordinary
+   * per-mod path (`enableMod`), which is where the PLAIN-LANGUAGE consent
+   * prompt for a plugin's own capabilities lives. Consent is never inherited
+   * from `entry.consents`: that field is read nowhere near a grant, only
+   * carried as preview data on the row above. */
+  const resultLines: ScreenLine[] = [];
+  for (const row of finalRows) {
+    const entry = row.entry;
+    if (row.state === "same-version") {
+      resultLines.push({
+        text: t("modsScreen.delve.load.resultUnchanged", "{name}: already installed, unchanged.", {
+          name: entry.name,
+        }),
+        color: C_FG,
+      });
+      continue;
+    }
+    if (row.state === "different-version" && (preview.updateChoice.get(entry.id) ?? "update") === "keep") {
+      resultLines.push({
+        text: t("modsScreen.delve.load.resultKept", "{name}: kept your installed version.", {
+          name: entry.name,
+        }),
+        color: C_FG,
+      });
+      continue;
+    }
+    if (!row.resolution || !row.resolution.ok) {
+      /* Excluded from `finalRows` by delveRowIncludable unless the player
+       * force-included it before it resolved - defensive, not reachable
+       * through the ordinary preview flow. */
+      resultLines.push({
+        text: t("modsScreen.delve.load.resultUnreachable", "{name}: could not be installed.", {
+          name: entry.name,
+        }),
+        color: C_DANGER,
+      });
+      continue;
+    }
+    const origin: ConsentOrigin = "third-party";
+    const installResult = await modBrowse.install(row.resolution.mod, origin, () => {});
+    if (!installResult.ok) {
+      resultLines.push({ text: `${entry.name}: ${installResult.problem}`, color: C_DANGER });
+      continue;
+    }
+    resultLines.push({
+      text: row.resolution.usedRequestedTag
+        ? t("modsScreen.delve.load.resultInstalled", "{name}: installed at {tag}.", {
+            name: entry.name,
+            tag: installResult.meta.tag,
+          })
+        : t(
+            "modsScreen.delve.load.resultInstalledOther",
+            "{name}: installed at {tag} (the version this build can run).",
+            { name: entry.name, tag: installResult.meta.tag },
+          ),
+      color: C_ENABLED,
+    });
+  }
+
+  await deps.rediscover?.();
+  const currentEnabled = deps.store.getEnabled();
+  const nextEnabled = resolveDelveEnabledIds({
+    currentEnabled,
+    entries: finalRows.map((r) => r.entry),
+    replace,
+  });
+  if (replace) {
+    for (const id of currentEnabled) {
+      if (!nextEnabled.includes(id)) deps.store.setModEnabled(id, false);
+    }
+  }
+  const catalogNow = deps.listCatalog();
+  for (const row of finalRows) {
+    const entry = row.entry;
+    const m = catalogNow.find((x) => x.id === entry.id);
+    if (!m) continue; // could not be installed above; nothing to enable or flag
+    if (!entry.enabled) {
+      deps.store.setModEnabled(entry.id, false);
+    } else if (!m.enabled) {
+      await enableMod(term, deps, m);
+    }
+    applyDelveFlags(m.manifest, entry.id, entry.flags, deps.store);
+  }
+
+  if (applyBirth && file.options?.birth !== undefined) {
+    optionsSaveCustom(host(), file.options.birth, "BIRTH");
+  }
+  if (applyGame && file.options?.game !== undefined) {
+    optionsSaveCustom(host(), file.options.game.values, "INTERFACE");
+  }
+
+  await showTextScreen(
+    term,
+    TITLE,
+    resultLines.length > 0
+      ? resultLines
+      : [{ text: t("modsScreen.delve.load.nothingReport", "Nothing to report."), color: C_DIM }],
+  );
+  return true;
+}
+
 /**
  * Run the mod manager. Loops on the top list (mods + actions) until the user
  * leaves; if changes were made it offers to reload so they take effect.
@@ -3328,6 +3993,8 @@ export async function runModManager(
       | "download"
       | "modupdates"
       | "folder"
+      | "saveDelve"
+      | "loadDelve"
       | "reload"
       | "done";
     type RowKind = { kind: "mod"; id: string } | { kind: ActionKind };
@@ -3353,6 +4020,17 @@ export async function runModManager(
       autosort: "4",
       orphans: "5",
       install: "6",
+      /* Digits 0-9 are what every OTHER action row already uses, deliberately:
+       * `menuLetter` (overlay.ts) hands out positional a-z/A-Z to the mods
+       * ABOVE these rows, and a digit can never collide with that - which is
+       * exactly why every fixed tag here has always been a digit rather than
+       * a mnemonic letter. Only "8" was still free; the second new row uses a
+       * punctuation mark rather than a second letter for the same reason a
+       * letter would eventually collide with a long enough mod list (the
+       * alphabet is only 52 rows deep; a punctuation mark never appears in
+       * `menuLetter`'s output at all). */
+      saveDelve: "8",
+      loadDelve: "+",
       reload: "9",
       done: "0",
     };
@@ -3412,6 +4090,33 @@ export async function runModManager(
         t(
           "modsScreen.run.updatesHint",
           "Asks each installed mod's own repository whether there is a newer version.",
+        ),
+      );
+    }
+    /* Save/Load a Delve (docs/MOD_PROFILES.md, #87): a portable, shareable
+     * snapshot of the enabled mod set. Loading one needs the same
+     * discover/install door "Recommended mods..." uses (a version-mismatch
+     * walk, and the ordinary third-party consent gate on a fresh install),
+     * so it is gated on `deps.modBrowse` the same way those two rows are;
+     * saving needs only the store and is offered alongside it rather than
+     * behind a second, separately-gated condition. */
+    if (deps.modBrowse) {
+      addAction(
+        t("modsScreen.run.saveDelve", "Save a Delve..."),
+        "saveDelve",
+        C_FG,
+        t(
+          "modsScreen.run.saveDelveHint",
+          "Write your mod set, flags, and (optionally) options to a file you can share.",
+        ),
+      );
+      addAction(
+        t("modsScreen.run.loadDelve", "Load a Delve..."),
+        "loadDelve",
+        C_FG,
+        t(
+          "modsScreen.run.loadDelveHint",
+          "Read someone else's mod set, flags, and options from a file or pasted text.",
         ),
       );
     }
@@ -3758,6 +4463,10 @@ export async function runModManager(
       ) {
         dirty = true;
       }
+    } else if (rk.kind === "saveDelve") {
+      await runSaveDelve(term, deps);
+    } else if (rk.kind === "loadDelve") {
+      if (await runLoadDelve(term, deps)) dirty = true;
     } else if (rk.kind === "reload") {
       deps.requestReload();
       return; // reload takes over

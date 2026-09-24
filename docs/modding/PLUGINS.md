@@ -397,43 +397,6 @@ be a lookup: allocate whatever tiles your answers need (with `transform`, during
 the fill) and read the table here. A provider that throws loses that one
 frame's answer and nothing else.
 
-### Reading a monster's tile: `ctx.tiles`
-
-`registry:tiles` above is the WRITE side: supplying art the loaded pack has
-never heard of. `ctx.tiles` is the READ side, for a mod that wants to draw a
-monster's existing tile art somewhere of its own - a portrait in a dialog, a
-sidebar row, anything outside the dungeon grid itself.
-
-```js
-register(host, ctx) {
-  const painted = ctx.tiles?.active && ctx.tiles.hasMonsterTile(race.ridx)
-    ? ctx.tiles.drawMonster(myCanvas.getContext("2d"), race.ridx, 0, 0, 32, 32)
-    : false;
-  if (!painted) drawAsciiGlyphInstead(race);
-}
-```
-
-- **`ctx.tiles.active`** is true when a graphics/tileset mode, rather than
-  ASCII, is the current display mode. False in ASCII mode, always - there is
-  nothing to paint.
-- **`ctx.tiles.hasMonsterTile(ridx)`** answers whether the ACTIVE pack assigns
-  this race a tile at all (core's own `tileForMonster`), without touching a
-  canvas. False in ASCII mode, and false for a race the pack has never drawn -
-  an old pack with no art for content added since, say.
-- **`ctx.tiles.drawMonster(ctx2d, ridx, dx, dy, dw, dh)`** paints the race's
-  tile onto a 2D canvas context you own, at `(dx, dy)` scaled to `(dw, dh)`,
-  composited over a neutral floor tile - the same terrain-then-foreground blit
-  the dungeon view itself draws a monster standing on open ground with.
-  Returns `true` when art was drawn; `false` (ASCII mode, no tile for this
-  race, or its image has not finished loading yet) means fall back to your own
-  ASCII glyph.
-- **Entirely ungated**, the same reasoning `display` and `subwindows` carry:
-  this is read-only art the page already fetched (the active pack's own
-  images), not a capability over the game or the platform.
-- **Absent on an older host.** `ctx.tiles` did not exist before neo-angband#256;
-  guard it with `ctx.tiles?.` and degrade to the ASCII glyph, the same shape
-  every other optional `ctx` door already uses.
-
 ### Engine-wide settings you change through `ctx.core`, not through a hook
 
 A few of the engine's decisions are not taken inside a turn and have no game

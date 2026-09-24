@@ -50,9 +50,9 @@ still calls itself.
 
 ### Added
 
-- [Internal] [Modding-API] **A mod can now read and paint a monster race's tile art from the active graphics pack.** `ctx.tiles` exposes whether a tileset (rather than ASCII) is the current display mode, whether the active pack assigns a given race a tile at all, and a paint call that composites that tile over a neutral floor exactly as the dungeon view draws a monster standing on open ground. Nothing in core content consumes this; it exists for a mod's own UI, such as a monster portrait drawn outside the dungeon grid. Absent on an older host, so a mod degrades to its own ASCII glyph (#256).
+- [Visible] [UI] [Modding-API] **A "Save a Delve..." and "Load a Delve..." row on the Mods screen write and read a portable, shareable snapshot of the enabled mod set.** A Delve (`.ndelve`, plain JSON, gated on its own `magic` marker rather than the file name) carries each mod's id, repository, version and per-mod flag choices - never the resolved value, so it still resolves correctly against a different install of the same mod - plus, optionally, general game options and birth options. Saving offers a checklist of the currently enabled mods (unchecking one drops it from the file entirely) and can save to a file or copy to the clipboard for pasting into a chat message. Loading previews what would happen to each named mod (already installed and unchanged, already installed at a different version with a per-row update-or-keep choice, fetchable from its repository, or unreachable and skipped without failing the rest of the import), asks once whether to replace the current mod set or add to it, and applies through the same install and per-mod consent flow "Install a mod..." already uses - a Delve's own `consents` field is preview information only and never grants anything on its own (#87).
 
-## [1.16.0] - 2026-09-22
+
 
 ### Added
 

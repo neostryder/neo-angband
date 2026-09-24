@@ -92,9 +92,26 @@ function fakeStorage(): Storage {
   } as unknown as Storage;
 }
 
-/** The rows selectFromMenu painted, by their `x) ` tag prefix. */
+/**
+ * The rows selectFromMenu painted, by their `x) ` tag prefix.
+ *
+ * STRIPS THE SCROLL INDICATOR, a legitimate part of the screen this test must
+ * not mistake for label truncation. `selectFromMenu` paints a lone "^" or "v"
+ * at the terminal's very last column (`marginCol = cols - 1`, overlay.ts) when
+ * the list is scrolled or has more rows below - which, at a fixed 24-row
+ * terminal with a real detail pane eating variable vertical space, can start
+ * happening at 80 columns and not at 400 (or the reverse), with nothing wrong
+ * about either row's own text. Left in, the indicator turns the SAME clean
+ * row into two "different" strings across the two widths - one with a large
+ * gap of spaces then "^"/"v", one without - which this file's own truncation
+ * check (`row.startsWith(n)`) misreads as a cut label. Stripped here, once,
+ * rather than taught to every row this can land on.
+ */
 function menuRows(term: FakeTerm): string[] {
-  return term.snapshot().filter((l) => /^\S\)\s/u.test(l));
+  return term
+    .snapshot()
+    .filter((l) => /^\S\)\s/u.test(l))
+    .map((l) => l.replace(/\s{2,}[v^]$/u, ""));
 }
 
 /** The hint line: the row above the footer. */
