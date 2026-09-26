@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-09-26
+
 ### Added
 
 - [Internal] [Modding-API] **A mod can reword help pages, screen legends and prompts through the new `screenText(raw, site)` hook.** It is called once for each line, table cell, caption, title and footer of a screen opened with `showTextScreen`, and for the prompt of `getString`, `getCheck` and the other row-0 prompts. The `site` argument gives the screen id and, for a table cell, its column and the other cells in its row, so a mod can change one cell when another row holds the same text. With no mod installed the text is drawn as before (#282).
