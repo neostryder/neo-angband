@@ -4,11 +4,7 @@
 server that lets an AI client **play Neo Angband**: roll a character, read the
 map, fight, descend, and die permanently.
 
-It is not a debug hatch. Every read goes through core's frozen agent view and
-every write through its act facade, so the server has exactly the reach a
-third-party agent mod has, with no privileged path and no test hook. That is the
-property worth protecting: an AI control surface with a private door into the
-engine would stop being a test of whether the modding API is honest.
+Every read goes through core's frozen agent view and every write through its act facade, so the server has exactly the reach a third-party agent mod has, with no privileged path and no test hook. That keeps it a fair test of the modding API: an AI control surface with a private way into the engine would prove nothing about what a mod can do.
 
 ## Running it
 
@@ -95,54 +91,22 @@ not, both found by driving it rather than by reading it:
   command that was tried and refused. `act` asks the live registry first, so a
   code a mod added still works.
 
-## The gap this exercise found, and where it was actually fixed
+## The blank map, and where it was fixed
 
-Measured on a fresh `startGame` boot, with no host seams wired: of 12740 cells,
-`known` was true for **0** and `inView` for **0**, including the player's own
-square. An agent driving the frozen facade could read its own statistics and see
-monsters, and had **no map at all**.
+On a fresh `startGame` boot with no host seams wired, `known` was true for 0 of 12740 cells and `inView` for 0, including the player's own square. An agent driving the frozen facade could read its own statistics and see monsters, but had no map at all.
 
-The first diagnosis was that `runGameLoop` never refreshes the derived view. That
-was wrong in an instructive way. Core calls `state.updateFov` from about
-twenty-five sites: the level-entry flood, the after-action refresh in
-`player-turn.ts`, every light and terrain effect, and every one of them is `?.`,
-because `updateFov` is a **host seam**. What was missing was not a call. It was a
-**default**: core supplied none, so a host that installed nothing got silence from
-all twenty-five, and this host installed nothing.
+The first guess was that `runGameLoop` never refreshed the derived view, and that was wrong. Core calls `state.updateFov` from about twenty-five places: the level-entry flood, the after-action refresh in `player-turn.ts`, and every light and terrain effect. Every one of those calls uses `?.`, because `updateFov` is a host seam. The missing piece was a default. Core supplied none, so a host that installed nothing got nothing from all twenty-five calls, and this host installed nothing.
 
-`wireGame` now installs one (`packages/core/src/session/game.ts`), so `startGame`,
-`loadGame` and every acting path maintain the view with no host cooperation. Same
-seed, measured again: **19 known, 59 in view, the player's own square known**. This
-package holds no refresh code at all now, and `packages/core/src/session/game.test.ts`
-fails if a bare `startGame` ever comes back blank.
+`wireGame` now installs one (`packages/core/src/session/game.ts`), so `startGame`, `loadGame` and every acting path keep the view up to date without help from the host. With the same seed, the result is now 19 cells known, 59 in view, and the player's own square known. This package holds no refresh code at all now, and `packages/core/src/session/game.test.ts` fails if a bare `startGame` ever comes back blank.
 
-Three things came out with it, none of which a code reading would have offered:
+Three other problems came out with that fix, and reading the code would not have turned up any of them:
 
-- **`no_light` was disabled for every seam-less host.** `noLight` opened with `if
-  (state.updateFov === undefined) return false`, described in its own comment as "a
-  seam guard, not a rule of the game". It existed because SEEN was clear
-  everywhere, which would have made casting and reading permanently impossible. The
-  premise is gone, so the guard is, and spell and scroll rules are upstream's for
-  everyone.
-- **A live crash on arena entry.** `wizLightLevel` refreshed the view immediately,
-  where upstream's `wiz_light` only sets `PU_UPDATE_VIEW` for the next
-  `update_stuff`. On the arena path that ran while `state.chunk` was already the new
-  6x6 level and the player's grid was still the old one: `square out of bounds:
-  75,31`. The web build has always installed a seam, so it was reachable there
-  through `EF_SINGLE_COMBAT`; nothing had driven it.
-- **Both hosts read the wrong field for the UNLIGHT view radius**, passing
-  `chunk.depth` where `cave-view.c:778` reads `p->lev`. There is now one
-  `viewerStateOf` in core and both use it.
+- `no_light` was disabled for every host without seams. `noLight` opened with `if (state.updateFov === undefined) return false`, which its own comment called "a seam guard, not a rule of the game". It existed because SEEN was clear everywhere, which would otherwise have made casting and reading permanently impossible. With that premise gone the guard is gone too, and spell and scroll rules follow upstream for every host.
+- A live crash on arena entry. `wizLightLevel` refreshed the view immediately, whereas upstream's `wiz_light` only sets `PU_UPDATE_VIEW` for the next `update_stuff`. On the arena path that refresh ran while `state.chunk` was already the new 6x6 level but the player's grid was still the old one, which gave `square out of bounds: 75,31`. The web build has always installed a seam, so the crash was reachable there through `EF_SINGLE_COMBAT`; nothing had exercised that path.
+- Both hosts read the wrong field for the UNLIGHT view radius, passing `chunk.depth` where `cave-view.c:778` reads `p->lev`. Core now has a single `viewerStateOf`, and both hosts use it.
 
-Nothing in the repository could have caught the original. Borg's tests run
-against a hand-built fake `AgentView`: the Borg mod repository's `src/harness.ts` says so in
-its own header, so the live perceive path had never been driven by anything but
-the web shell, which refreshes for its own drawing reasons.
-
+Nothing in the repository could have caught the original gap. Borg's tests run against a hand-built fake `AgentView` (the header of `src/harness.ts` in the Borg mod repository says so), so the live perceive path had never been driven by anything except the web shell, which refreshes the view for its own drawing reasons.
 ## What it does not do
-
-Stated rather than left to be discovered:
-
 - **No save or load.** The save format is real and core owns it, but a tool that
   wrote savefiles would be the first thing in this package to touch the
   filesystem, and the save-scum policy makes "load an earlier state" a decision.
@@ -163,19 +127,11 @@ Stated rather than left to be discovered:
   this server, watchable but still not attachable.
 - **One game at a time.** `new_game` replaces the current one.
 
-## Determinism is declared, not hidden
+## Determinism
 
-An AI on the other end of a socket is not a seeded RNG, so the controller
-installs with `nondeterministic: true`, which trips core's one-way save ratchet.
-A character an agent touched is flagged for as long as it exists, and there is no
-option here to turn that off, the same rule the mod system applies to gameplay
-mods.
+An AI client on the other end of a socket is not a seeded RNG, so the controller installs with `nondeterministic: true`, which trips core's one-way save ratchet. A character an agent has touched stays flagged for as long as it exists. There is no option here to turn that off, which is the same rule the mod system applies to gameplay mods.
 
-The seed is still reported, and a seed plus a command list replays exactly: the
-engine is a function of its seed (decision 22), and
-`packages/mcp/src/mcp.test.ts` pins that two hosts at one seed produce identical
-maps.
-
+The seed is still reported, and a seed plus a command list replays exactly, because the engine is a function of its seed. `packages/mcp/src/mcp.test.ts` checks that two hosts at the same seed produce identical maps.
 ## Layout
 
 | File | What it holds |

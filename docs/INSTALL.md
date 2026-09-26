@@ -1,9 +1,6 @@
 # Playing and installing Neo Angband
 
-The point of this page is to get you onto a build **you control**, because that
-is the only kind of build a bug report can be pinned to. Deliberately, no hosted
-demo URL appears here: a hosted copy can change under you between sessions, so
-"it did X" stops being reproducible.
+Play on a build you control, because that is the only kind of build a bug report can be pinned to. No hosted demo URL is given in these instructions: a hosted copy can change under you between sessions, and then "it did X" stops being reproducible.
 
 ## The short answer
 
@@ -23,8 +20,7 @@ dialog it shows you - see [the macOS steps](#macos-blocks-it-first-time) below.
 That is a real trust decision and it is yours to make; if you would rather not,
 build it yourself from section 1, or play in a browser, which asks nothing of you.
 
-**Nothing needs any of the rest of this page.** It is here for the other four
-ways, all of which run the *same* build:
+The download is all you need to play. The sections below cover four other ways to run the same build:
 
 | | Best for | Start at |
 |---|---|---|
@@ -33,9 +29,7 @@ ways, all of which run the *same* build:
 | **Installed PWA** | playing offline on a phone or tablet | [section 3](#3-install-as-a-pwa-offline-any-platform) |
 | **Desktop app (Electron)** | building the packaged app yourself | [section 4](#4-desktop-app-electron) |
 
-The engine, content, saves, and the entire mod framework behave the same on all
-of them. Where a surface genuinely differs, it is called out in the
-[parity matrix](#parity-matrix) rather than left as a hidden gap.
+The engine, content, saves and the entire mod framework behave the same on all of them. Where a surface does differ, the [parity matrix](#parity-matrix) says so.
 
 **Your saves survive an update.** Every change to the save format ships the
 conversion that reads the version before it, and a build that raises the format
@@ -43,17 +37,7 @@ without writing that conversion fails its own tests. A save from a *newer* build
 than the one you are running says so and asks you to update; it is never
 reported as damage, and a save the game cannot open is never overwritten.
 
-**Prerequisites** for everything except the download and the PWA install:
-[Node](https://nodejs.org/)
-22 or newer, and [pnpm](https://pnpm.io/installation) **12**: run
-**`npm install -g @pnpm/exe`** and the `packageManager` field in the root
-`package.json` decides the exact version. The 12 is not advisory: an older pnpm
-cannot upgrade itself into it, because the binary package it fetches
-(`@pnpm/win-x64`) stopped publishing at 11.26.0 while 12.x ships as `@pnpm/exe`.
-Corepack is no longer a route either; Node removed it.
-`npx pnpm@12 <cmd>` works in a pinch without installing anything, and
-[CONTRIBUTING.md](../CONTRIBUTING.md) has the long version. Everything below
-assumes you have cloned the repo and run `pnpm install` once at its root.
+**Prerequisites** for everything except the download and the PWA install: [Node](https://nodejs.org/) 22 or newer, and [pnpm](https://pnpm.io/installation) **12**. Run `npm install -g @pnpm/exe`, and the `packageManager` field in the root `package.json` picks the exact version. Version 12 is required: an older pnpm cannot upgrade itself to it, because the binary package it fetches (`@pnpm/win-x64`) stopped publishing at 11.26.0, while 12.x ships as `@pnpm/exe`. Corepack is no longer an option either, since Node removed it. `npx pnpm@12 <cmd>` works in a pinch without installing anything, and [CONTRIBUTING.md](../CONTRIBUTING.md) has the long version. Everything below assumes you have cloned the repo and run `pnpm install` once at its root.
 
 ---
 
@@ -120,32 +104,16 @@ Notes:
 
 ## Which browser?
 
-**Any current one.** The whole game plays in Firefox, Safari, Chrome and Edge, and
-mods install in all of them. There is no browser this game refuses, and no feature a
-Firefox or Safari player has to do without to play it.
+**Any current one.** The whole game plays in Firefox, Safari, Chrome and Edge, and mods install in all of them. No browser is refused, and Firefox and Safari players do not go without any feature they need to play.
 
-Two things are genuinely Chromium-only, and neither is gameplay:
+Two things need a Chromium browser, and neither is gameplay:
 
-- **Choosing a mods folder on your computer.** Firefox and Safari have no way to hand
-  a directory to a web page - the capability does not exist, so there is no
-  workaround. It matters if you are *writing* a mod or using one that was never
-  published. Downloading a mod needs nothing special and works everywhere, so a
-  player's mod list is not affected.
-- **Installing as an app from the browser.** Desktop Firefox has no PWA install; use
-  a tab (offline caching still works), or the desktop build. Safari on macOS 14+ and
-  iOS installs fine.
+- **Choosing a mods folder on your computer.** Firefox and Safari have no way to hand a directory to a web page, so there is no workaround. This matters only if you are writing a mod or using one that was never published. Downloading a mod works everywhere, so a player's mod list is unaffected.
+- **Installing as an app from the browser.** Desktop Firefox has no PWA install; use a tab (offline caching still works) or the desktop build. Safari on macOS 14+ and iOS installs fine.
 
-**The recommended way to play is the desktop build** (section 4), and not as a fallback for
-anything: it keeps real saves in a real folder, needs no network at all, and is not
-subject to a browser deciding to reclaim its storage. The browser build exists so the
-game is one link away, and so a bug report can be pinned to a build you control.
+**The desktop build (section 4) is the recommended way to play.** It keeps real saves in a real folder, needs no network at all, and is not subject to a browser deciding to reclaim its storage. The browser build exists so the game is one link away, and so a bug report can be pinned to a build you control.
 
-This is measured rather than assumed. The web build's whole browser-API surface is
-`localStorage`, `indexedDB`, `crypto.subtle`, module Workers, `ResizeObserver`,
-`matchMedia`, `structuredClone`, a service worker and a 2D canvas - all of which
-Firefox and Safari have. It deliberately does not use `CompressionStream` (the save
-codec has its own reason, see `packages/web/src/save-codec.ts`), and the only
-File System Access call anywhere is the directory picker named above.
+The web build uses only `localStorage`, `indexedDB`, `crypto.subtle`, module Workers, `ResizeObserver`, `matchMedia`, `structuredClone`, a service worker and a 2D canvas, and Firefox and Safari support all of them. It does not use `CompressionStream` (see `packages/web/src/save-codec.ts` for why), and the only File System Access call is the directory picker mentioned above.
 
 ---
 
@@ -174,19 +142,9 @@ from may be separate save stores** if their origins differ. See
 
 ## 4. Desktop app (Electron)
 
-The desktop build (`packages/desktop`) runs the exact same web bundle in a native
-window - and hands it a **real filesystem and a real command line**. That is the
-difference between it and the browser: same game, more capable host. It is the
-build parity is measured against, because it is the one that can express
-everything upstream does (see [parity/PLATFORM.md](../parity/PLATFORM.md)).
+The desktop build (`packages/desktop`) runs the same web bundle in a native window and gives it a **real filesystem and a real command line**. Parity is measured against this build, because it is the one that can do everything upstream does (see [parity/PLATFORM.md](../parity/PLATFORM.md)).
 
-**It is self-contained by default.** Unzip it anywhere and that folder holds the
-whole game: the program, your settings, your savefiles, your scores, your
-character dumps and your mods. Nothing is written to your user profile, so you can
-move the folder, back it up by copying it, or carry it on a stick. This is
-upstream's own Windows shape - a downloaded Angband has always been `angband.exe`
-with `lib/` beside it - and the one exception is a copy placed by the installer,
-for the reason given under [where your data lives](#where-your-data-lives).
+**It is self-contained by default.** Unzip it anywhere and that folder holds the whole game: the program, your settings, savefiles, scores, character dumps and mods. Nothing is written to your user profile, so you can move the folder, back it up by copying it, or carry it on a USB stick. Upstream's Windows download works the same way (a downloaded Angband has always been `angband.exe` with `lib/` beside it). The one exception is a copy placed by the installer, for the reason given under [where your data lives](#where-your-data-lives).
 
 ### Run it from source
 
@@ -204,8 +162,7 @@ start` launches without rebuilding.
 
 ### Package it
 
-Only needed if you want a build the [Releases](https://github.com/neostryder/neo-angband/releases)
-page does not offer - a platform I do not build, or a change of your own.
+Only needed if you want a build the [Releases](https://github.com/neostryder/neo-angband/releases) page does not offer: a platform that is not built there, or a change of your own.
 
 ```sh
 pnpm --filter @rpgm-tools/neo-angband-desktop dist
@@ -334,14 +291,7 @@ steps above work on Ventura, Sonoma, Sequoia and Tahoe alike.
 **Windows** is the same trade with one click: SmartScreen says *Windows protected
 your PC*, and *More info -> Run anyway* is the way through.
 
-**Why there is no signature.** Notarising a Mac app needs a paid Apple Developer
-identity and a Windows one needs a code-signing certificate; this project has
-neither, and until it does, the honest position is to say exactly what you are
-being asked to trust rather than to hide it. The macOS bundle IS **ad-hoc
-signed** (`codesign --sign -`), which is a different thing: it carries no
-identity and satisfies no Gatekeeper policy, and it is what lets the app run at
-all on Apple Silicon, where an entirely unsigned binary is refused by the kernel
-and reported as *"damaged"*.
+**Why there is no signature.** Notarising a Mac app needs a paid Apple Developer identity, and signing a Windows one needs a code-signing certificate. This project has neither yet, so the steps above spell out what you are being asked to trust. The macOS bundle is **ad-hoc signed** (`codesign --sign -`), which is a different thing: it carries no identity and satisfies no Gatekeeper policy, but it lets the app run at all on Apple Silicon, where the kernel refuses an entirely unsigned binary and reports it as *"damaged"*.
 
 **Apple Silicon: take the arm64 build.** The release page carries both, and the
 x64 one is for Intel Macs. It is not a fallback: Apple is withdrawing Rosetta 2,
@@ -483,8 +433,7 @@ ever moves forward, and an older engine cannot always read a newer save.
 
 ## Parity matrix
 
-The same game everywhere. This table is the honest, per-surface difference list
-- if a row is not called out, it behaves identically.
+The same game everywhere. This table lists the per-surface differences; anything not called out behaves identically.
 
 | Capability | Browser | PWA (installed) | Static self-host | Desktop (Electron) |
 |---|---|---|---|---|
@@ -494,7 +443,7 @@ The same game everywhere. This table is the honest, per-surface difference list
 | Works offline | Only after first load (SW) | Yes | Only after first load (SW) | Yes (always) |
 | Responsive / any viewport | Yes | Yes | Yes | Yes |
 | In-app mod manager | Yes | Yes | Yes | Yes |
-| Mods bundled with the game | **None, by design** (1) | None | None | None |
+| Mods bundled with the game | **None** (1) | None | None | None |
 | Download and install a mod | Yes (2) | Yes (2) | Yes (2) | Yes (2) |
 | Install a mod from a FOLDER | Chrome / Edge only (3) | Chrome / Edge only (3) | Chrome / Edge only (3) | Yes, its own folder (4) |
 | Enable / disable / reorder / consent / profiles | Yes | Yes | Yes | Yes |
@@ -506,79 +455,22 @@ The same game everywhere. This table is the honest, per-surface difference list
 | Accessibility (screen reader, keyboard) | Yes (7) | Yes (7) | Yes (7) | Yes (7) |
 
 Notes:
-1. **The game ships with no mods at all**, and that is the parity mandate in
-   mechanical form: a fresh install is Angband 4.2.6 and nothing else. The
-   first-party mods - `qol`, `bug-fixes`, `feature-restoration`, `linoleum`
-   and `borg` - each live in their own repository and arrive through the same
-   route, and the same verification, as anybody else's. Nothing is
-   second-class, including mine.
-2. The mod manager's **Recommended mods...** row downloads from a mod's own repository
-   at a pinned TAG (never a branch, so what arrives cannot change under you). What
-   gets pinned is the ORIGIN: the first install records which repository the mod came
-   from, and only a copy from that same repository may ever replace it, so an update
-   cannot quietly arrive from somewhere else. Changing where a mod comes from means
-   uninstalling it first, and the game says so rather than doing it for you. The
-   install also records a SHA-256 of every byte that actually arrived, which is what
-   lets the manager answer "has this copy changed since it was installed" later on.
-   **It cannot tell you whether what arrived is what the author published.** There is
-   nothing to compare a first download against, and this build ships no digests of
-   its own, so that is a property the game does not have rather than one it checks
-   quietly. It needs only a network request and the browser's own storage, so it
-   works on **every** browser, and it is the reason no browser is excluded below.
-   Installed mods are read back at boot by the same validator that reads a folder on
-   disk.
-3. **"Choose a mods folder..." is the Chromium-only route**, because Firefox and
-   Safari have no way to hand a directory to a web page - there is no workaround to
-   find, the capability does not exist. It is for developing a mod, or using one that
-   was never published: you pick the folder once (a page may not browse a filesystem
-   uninvited), and the browser may need permission again after a long gap, when the
-   row says `NEEDS RECONNECTING`. Nothing is missing from a Firefox or Safari player's
-   mod list because of note 2.
-4. The desktop build reads mods from its own `mods/` folder, and an external mod
-   manager can deploy into it (`load-order.json` is honoured). It can also install
-   from the catalogue, like every other surface.
-5. A mod folder may ship `plugin.js` and it will be loaded and RUN - from a loopback
-   URL on desktop, a `blob:` from a picked directory, or browser storage for one that
-   was installed. This used to be false: a mod from outside the build was data only,
-   and scripted plugins had to be bundled. Both halves changed, which is what made
-   shipping no bundled mods possible at all.
-6. GitHub Pages and most static hosts cannot send custom headers, so cross-
-   origin isolation is unavailable there. It is never required - the trusted
-   in-process mod tier works on every surface.
-7. The grid auto-scales to any viewport (see below); the game does NOT currently
-   offer a manual text/tile scale control. Browser pinch-zoom is intentionally
-   disabled on the game canvas (the page sets `maximum-scale=1,
-   user-scalable=no`) so a stray pinch cannot blur or misalign the grid - resize
-   the window or use your OS/browser page zoom instead. In Chromium and
-   Firefox this tracks cleanly at any zoom level, since the canvas resizes
-   itself to match. Safari is the exception: it does not report a changed
-   `devicePixelRatio` while zooming, so Safari's own page zoom scales up the
-   already-rendered canvas instead of asking for a sharper one, and can look
-   softer than the same zoom level in Chromium or Firefox.
-8. By default a browser may delete a site's whole storage bucket to reclaim space,
-   without asking - which under this game's terminal-death rule is permanent
-   character loss from a mechanism you never see. So the first time a character save
-   lands, the game asks for **persistent** storage, which is exempt from that.
-   Chromium grants it by engagement (installing the app is the strongest signal,
-   which is why the installed rows read "usually"); Firefox asks you. It is asked
-   for once, never re-nagged, and the character-select screen says where you stand
-   either way. What it does not protect against: *you* clearing browsing data, or a
-   cleanup tool doing it for you - see [What destroys a roster](#what-destroys-a-roster),
-   which is the larger risk of the two and the one an export answers.
+1. **The game ships with no mods at all**, so a fresh install is Angband 4.2.6 and nothing else. The first-party mods (`qol`, `bug-fixes`, `feature-restoration`, `linoleum` and `borg`) each live in their own repository and arrive through the same route, with the same verification, as anybody else's.
+2. The mod manager's **Recommended mods...** row downloads from a mod's own repository at a pinned tag, never a branch, so what arrives cannot change under you. The first install records which repository the mod came from, and only a copy from that same repository may replace it, so an update cannot quietly arrive from somewhere else. To change where a mod comes from, uninstall it first; the game tells you so instead of doing it for you. The install also records a SHA-256 of every byte that arrived, so the manager can later tell whether this copy has changed since it was installed. It cannot tell you whether what arrived is what the author published: there is nothing to compare a first download against, and this build ships no digests of its own. The route needs only a network request and the browser's own storage, so it works in every browser, which is why no browser is excluded below. Installed mods are read back at boot by the same validator that reads a folder on disk.
+3. **"Choose a mods folder..." works only in Chromium browsers**, because Firefox and Safari have no way to hand a directory to a web page, and there is no workaround. It is for developing a mod, or using one that was never published. You pick the folder once (a page may not browse a filesystem uninvited), and after a long gap the browser may need permission again, in which case the row says `NEEDS RECONNECTING`. Because of note 2, a Firefox or Safari player's mod list is not missing anything.
+4. The desktop build reads mods from its own `mods/` folder, and an external mod manager can deploy into it (`load-order.json` is honoured). It can also install from the catalogue, like every other surface.
+5. A mod folder may ship `plugin.js`, and it will be loaded and run: from a loopback URL on desktop, from a `blob:` for a picked directory, or from browser storage for an installed mod. Earlier builds treated a mod from outside the build as data only and required scripted plugins to be bundled. Both of those changed, which is what made it possible to ship no bundled mods.
+6. GitHub Pages and most static hosts cannot send custom headers, so cross-origin isolation is unavailable there. It is never required; the trusted in-process mod tier works on every surface.
+7. The grid auto-scales to any viewport (see below); the game does not currently offer a manual text or tile scale control. Browser pinch-zoom is disabled on the game canvas (the page sets `maximum-scale=1, user-scalable=no`) so a stray pinch cannot blur or misalign the grid; resize the window or use your OS or browser page zoom instead. In Chromium and Firefox this tracks cleanly at any zoom level, because the canvas resizes itself to match. Safari does not report a changed `devicePixelRatio` while zooming, so its page zoom scales up the already-rendered canvas instead of asking for a sharper one, and can look softer than the same zoom level in Chromium or Firefox.
+8. By default a browser may delete a site's whole storage bucket to reclaim space without asking. Because death is permanent in this game, that means losing characters to a mechanism you never see. So the first time a character save lands, the game asks for **persistent** storage, which is exempt. Chromium grants it by engagement (installing the app is the strongest signal, which is why the installed rows say "usually"); Firefox asks you. The game asks once, never asks again, and the character-select screen shows where you stand either way. Persistent storage does not protect against *you* clearing browsing data, or a cleanup tool doing it for you; see [What destroys a roster](#what-destroys-a-roster), which is the larger risk of the two and the one an export answers.
 
 ---
 
 ## Screen and display controls
 
-The main terminal is a **fixed 80 columns x 24 rows**, drawn at the largest whole
-cell size that fits your window and centred, so the surrounding area is
-letterbox. 80x24 is both upstream's default main-window size and its enforced
-minimum (`MIN_COLS_MAIN` / `MIN_ROWS_MAIN`, `reference/src/main-sdl2.c:139`), and
-it is what every Angband screen is laid out against - the status rows, the
-right-aligned inventory, the store columns. The map area inside it works out to
-66x22 in the classic left-sidebar layout, matching the C exactly.
+The main terminal is a **fixed 80 columns x 24 rows**, drawn at the largest whole cell size that fits your window and centred, so the area around it is letterboxed. 80x24 is both upstream's default main-window size and its enforced minimum, and every Angband screen is laid out against it: the status rows, the right-aligned inventory, the store columns. In the classic left-sidebar layout the map area inside it is 66x22, the same as upstream.
 
-Every lever upstream gives a player over the display, and where it is here:
+Where to find each display setting upstream offers:
 
 | Upstream lever | Here |
 |---|---|
@@ -593,10 +485,7 @@ Every lever upstream gives a player over the display, and where it is here:
 | Save/load `.prf` pref files | **Not applicable.** Settings persist in browser storage automatically, so there is nothing to write or read back. |
 | Auto-inscription setup | Present, but reached from the knowledge browser (`~`) rather than from the options menu, where upstream also lists it. |
 
-The two "not yet" rows are the honest remaining display gaps. A screen-rendering
-quality-of-life mod is the intended home for going beyond upstream here (a
-reflow mode already exists behind an opt-in flag in the terminal code); core
-stays on upstream's own defaults.
+The two "not yet" rows are the remaining display gaps. Going beyond upstream here is left to a screen-rendering quality-of-life mod (a reflow mode already exists behind an opt-in flag in the terminal code), and core stays on upstream's own defaults.
 
 ### Saves are per-surface
 

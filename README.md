@@ -196,13 +196,7 @@ that mod exposes, the name a save knows it by, whether it starts on or off, and
 what the mod asks the game for. The mod's own README is the longer account of
 why any of it exists.
 
-**What a mod can do:** change any value in any of the game's data files; add
-items, monsters, artifacts and whole new kinds of item; add or retune spells;
-change how stores behave; generate its own dungeon levels; ship art, sounds and
-fonts; run real code; expose its own settings; and draw the world itself. The
-[measured, honest table](docs/modding/README.md#surface-status-complete-wip-not-yet)
-of what is built today versus what is not is in the modding docs, including the
-parts that are still missing.
+**What a mod can do:** change any value in any of the game's data files; add items, monsters, artifacts and whole new kinds of item; add or retune spells; change how stores behave; generate its own dungeon levels; ship art, sounds and fonts; run real code; expose its own settings; and draw the world itself. The modding docs keep a [table of what is built today and what is still missing](docs/modding/README.md#surface-status-complete-wip-not-yet).
 
 **Vanilla stays vanilla.** With no mods enabled, this is the original game. That
 is the shared baseline everything else layers on top of, and it is what the
@@ -241,17 +235,7 @@ It is **not** bit-exactness, and it is not a claim that the port is perfect. The
 full methodology (what is measured, what deliberately is not, and where the port
 sits against the original) is in **[docs/PARITY.md](docs/PARITY.md)**.
 
-**The randomness itself was measured, not assumed.** A player reported that the
-dungeon "felt" streaky - the RNG's own design still allows exactly that at any
-sample size, so the claim was tested rather than dismissed:
-[issue #39](https://github.com/neostryder/neo-angband/issues/39) ran
-1,000,000-sample batteries across seven draw types and a streak/serial-correlation
-test, comparing this repository's actual RNG code against a from-source compile
-of upstream's own generator. Every goodness-of-fit test passed with room to
-spare, and a 10,000,000-draw hash comparison confirmed the two are bit-for-bit
-identical on the same seed. The chart below is a fresh, independently generated
-sample (not the issue's own numbers) shown against each draw type's expected
-shape - flat for a die roll, the familiar bell for a sum of several:
+A player reported that the dungeon "felt" streaky, and the RNG's design does allow streaks at any sample size, so the report was tested. [Issue #39](https://github.com/neostryder/neo-angband/issues/39) ran 1,000,000-sample batteries across seven draw types plus a streak/serial-correlation test, comparing this repository's RNG code against a from-source compile of upstream's own generator. Every goodness-of-fit test passed with room to spare, and a 10,000,000-draw hash comparison confirmed the two are bit-for-bit identical on the same seed. The chart below is a fresh, independently generated sample (not the issue's own numbers), shown against each draw type's expected shape: flat for a die roll, the familiar bell for a sum of several.
 
 ![RNG uniformity: observed frequency across four draw types over 1,000,000 samples each](docs/img/charts/rng-uniformity.png)
 
@@ -299,37 +283,14 @@ via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Angband.png).
 
 ## Variants
 
-Angband itself branched many times. A few of the better-known variants, and
-what each one is actually known for:
+Angband itself branched many times. A few of the better-known variants, and what each is known for:
 
-- **[FAngband](https://faangband.readthedocs.io/en/latest)** turns Angband into
-  a long-form wilderness campaign rather than a straight dungeon descent: heavy
-  Middle-earth travel, several towns, wilderness regions, mining, and
-  progression through multiple regions before Angband itself.
-- **[ZAngband](https://roguebasin.com/index.php/Zangband)** layers a strong
-  authorial setting on top of the engine - a Zelazny/Amber-inflected world
-  replacing much of the standard Tolkien framing, a broader monster roster, and
-  a more elaborate magic system with strategy-game influences. Less "Angband
-  with additions," more a new setting built on Angband's engine.
-- **[MAngband](https://mangband.org/docs)** makes Angband a persistent,
-  real-time multiplayer game - a shared world with allies and rivals, rather
-  than solo runs. Its distinctive feature is the architecture, not the content.
-- **[ToME](https://www.t-o-m-e.net/history.html)** (Tales of Middle-earth)
-  began as PernAngband, themed around Anne McCaffrey's Pern; a legal dispute
-  over that licensed setting forced the Pern material out and the project
-  redirected into a large, heavily authored Middle-earth RPG - a useful
-  case study in the risk of building a variant's identity on someone else's
-  licensed world.
-- **[FroxComposband](https://github.com/sulkasormi/frogcomposband)** (formerly
-  FrogComposBand) pursues breadth and density: more races, classes, dungeons,
-  objects, monsters, quests, and playstyles than most variants attempt at once,
-  offset by unusually deep in-game help to manage the resulting complexity.
-- **[Sil](https://narsil.readthedocs.io/en/latest/angband-notes.html)**
-  descends from NPPAngband but changes or removes almost every mechanic its own
-  manual lists - no town, no classes or experience levels, a tightly themed
-  First Age campaign built around stealing a Silmaril and escaping rather than
-  killing Morgoth. It reads as its own tactical-roguelike lineage more than
-  another Angband variant.
+- **[FAngband](https://faangband.readthedocs.io/en/latest)** turns Angband into a long-form wilderness campaign instead of a straight dungeon descent: heavy Middle-earth travel, several towns, wilderness regions, mining, and progression through multiple regions before Angband itself.
+- **[ZAngband](https://roguebasin.com/index.php/Zangband)** puts a strong authorial setting on the engine: a world shaped by Zelazny's Amber that replaces much of the standard Tolkien framing, a broader monster roster, and a more elaborate magic system with strategy-game influences. The result is closer to a new setting built on Angband's engine than to Angband with additions.
+- **[MAngband](https://mangband.org/docs)** makes Angband a persistent, real-time multiplayer game: a shared world with allies and rivals instead of solo runs. What sets it apart is its architecture.
+- **[ToME](https://www.t-o-m-e.net/history.html)** (Tales of Middle-earth) began as PernAngband, themed around Anne McCaffrey's Pern. A legal dispute over that licensed setting forced the Pern material out, and the project became a large, heavily authored Middle-earth RPG.
+- **[FroxComposband](https://github.com/sulkasormi/frogcomposband)** (formerly FrogComposBand) goes for breadth and density: more races, classes, dungeons, objects, monsters, quests and playstyles than most variants attempt at once, balanced by unusually deep in-game help for managing the complexity.
+- **[Sil](https://narsil.readthedocs.io/en/latest/angband-notes.html)** descends from NPPAngband but changes or removes almost every mechanic its own manual lists: no town, no classes or experience levels, and a tightly themed First Age campaign built around stealing a Silmaril and escaping rather than killing Morgoth. It reads more like the start of its own tactical-roguelike line than another Angband variant.
 
 ## Reporting a difference
 
@@ -354,7 +315,7 @@ faithfulness rules, and how a fix proves itself.
 
 ## Known rough edges
 
-An honest list, so nobody wastes a report on something already written down:
+These are already known, so there is no need to report them:
 
 - **Some upstream messages are still missing.** The exact set is enumerated with a
   reason for each in `KNOWN_ABSENT`
@@ -367,11 +328,7 @@ An honest list, so nobody wastes a report on something already written down:
   OS windows. `=` then `w` turns each panel on; right-click-drag docks it. See
   [docs/SUBWINDOWS.md](docs/SUBWINDOWS.md) for the full walkthrough, including
   saving your own layout as a personal default.
-- **The mod catalogue is short.** Not a stub: the game bundles nothing, so every
-  mod arrives through *Install a mod...*, which downloads from the mod's own
-  repository at a pinned tag, pins the mod to that repository so nothing from
-  anywhere else can replace it, and records a digest of every byte that arrived so
-  you can ask later whether your copy has changed.
+- **The mod catalogue is short.** The game bundles nothing, so every mod arrives through *Install a mod...*, which downloads from the mod's own repository at a pinned tag, pins the mod to that repository so nothing from anywhere else can replace it, and records a digest of every byte that arrived so you can ask later whether your copy has changed.
 - **The save format can only break on a major version bump**, and even then
   your character comes with it: every format change ships the conversion
   that reads the one before it, and a save the game cannot open is never
@@ -455,10 +412,7 @@ Angband maintainers and three decades of contributors whose work this builds on.
 
 ## Author
 
-Built and maintained by [neostryder](https://github.com/neostryder) at RPGM
-Tools. The first-party mods are by the same author, and none of them is bundled
-with the game: a modding system whose author's own mods take a private path is a
-modding system nobody has actually tested.
+Built and maintained by [neostryder](https://github.com/neostryder) at RPGM Tools. The first-party mods are by the same author, and none of them is bundled with the game, so they install by the same route as anyone else's and exercise the same code.
 
 ## License
 

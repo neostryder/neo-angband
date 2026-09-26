@@ -1,181 +1,51 @@
 # The bug-fix mod (`bug-fixes`)
 
-> **NOT BUNDLED.** The game ships no mods at all; this one lives in
-> [neo-angband-mod-bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes)
-> and installs through the mod manager's *Recommended mods...* row, at a pinned tag.
-> The tag is what stops the download changing under you; the install records a
-> SHA-256 of the bytes that actually arrived, which is what later answers whether
-> the copy on the machine has changed. No digest ships inside the game.
->
-> STATUS: DESIGN OF RECORD + CHANGELOG. This page is the source of truth and
-> public changelog for it. The mod DECLARES its fixes in `manifest.json` under
-> `rules` (flag / title / description / default) and carries each fix's BODY as its
-> own code: `plugin.ts` (the entry point), `stairs.ts`, `strings.ts`. It also ships
-> one `sections` entry, `text-corrections`, whose payload is DATA rather than a
-> hook - `object.json` and `artifact.json` - and which is switchable in the same
-> menu. Nothing in
-> `packages/core/src` holds a `bugfix.*` string, the staircase repair, the
-> duplicate-artifact guard, or the message rewriter - and now nothing in this
-> repository holds the fixes either. Do not install the mod and the code does not
-> exist on your machine.
->
-> Each fix installs one member of `ModHooks`
-> (`packages/core/src/mod/hooks.ts`) - a typed interface of OPTIONAL functions on
-> `GameState.modHooks`. The host slices each enabled mod's resolved flags per mod,
-> calls its entry point once in load order, and folds the results with
-> `composeModHooks`; the in-app **Fixes & tweaks** submenu on this mod's own
-> screen (mod manager -> Bug Fixes) lists each fix and toggles it, rebuilding the
-> composed hooks live.
->
-> This replaced an earlier flag-registry design in which each fix lived in core
-> behind `if (modRuleEnabled(state, "bugfix.x"))`. That was rejected because a
-> flag-gated fix is not excluded from core: core shipped the fix body, was tested
-> on it, and carried the mod's flag name as a literal. `modRuleEnabled` is deleted;
-> `modRules` survives only as the host's record of the player's choices and is
-> opaque to core.
->
-> The MOD is off on a fresh install, and while it is off **its fixes do not
-> exist** - its entry point is never called, no hook is contributed,
-> `GameState.modHooks` stays ABSENT, nothing appears in the menu, and core is
-> byte-identical to 4.2.6. Enabling the mod turns the whole patch set on at once;
-> each fix is then individually switchable, so a player can take the set minus
-> one. See `docs/modding/MOD_SEAMS.md` for the seam contract, the per-hook fold
-> rules, and the full default policy.
->
-> **The menu lists three rules, not one per entry below.** Nine entries below are
-> marked `IMPLEMENTED`. The six legacy per-bug flags were consolidated into three
-> per-CLASS flags on 2026-08-15, which is the standing rule: one toggle
-> per class of fix, never one per atomic fix. The mapping is in the mod's own
-> `renamedRuleFlags`, so a player's saved choice survived the rename. The
-> `text-corrections` section is a fourth switch beside them.
->
-> RE-VERIFIED 2026-07-26. The whole catalogue was re-checked against
-> `4.2.6..upstream/master` (161
-> post-tag commits, inspected locally) and against the port source. **The
-> previous "blocked-on / not yet ported" notes were largely wrong** and have been
-> corrected per entry. Current state of the four `SPECIFIED` entries:
->
-> - **#3 and #11 are READY** - the partial-absorb path and the quiver +
->   inscription recompute are ported; see each entry for the live `file:line`.
-> - **#2 is NOT APPLICABLE** by construction (the port never persists store
->   stock, so there is no load-path re-roll). Its cited SHA was also simply
->   wrong - corrected in the entry.
-> - **#9 stays open as a save/load INVARIANT to test, not a player toggle** -
->   upstream's own fix commit says loading may still perturb RNG state.
->
-> Post-tag sweep: 161 commits classified, 2 already catalogued, 4 newly
-> identified (none warranting a toggle without a port-specific repro), 155
-> excluded as frontend/platform/build/docs/data/refactor/balance.
->
-> RE-SWEPT 2026-08-24. `4.2.6..upstream/master` now holds **174** commits, 12 of
-> them landed after the 2026-07-26 sweep. The four the 2026-07-26 line counts as
-> "newly identified" were never written down, so the count could not be audited
-> and is not recoverable from this page; the twelve since then are classified
-> here instead, and any future sweep NAMES what it finds. Nine are borg, macOS
-> packaging, cmake or compiler-warning commits and are excluded on the same
-> frontend/platform/build grounds as before. The other three are entries 15, 16
-> and 17 below.
->
-> The same pass re-checked every entry that carried a "blocked-on" note against
-> the port as it stands, and **all four of those notes were stale**. The
-> subsystems they named are ported:
->
-> - **#6 and #7 are `NOT APPLICABLE`** by construction. The port's piles are
->   arrays rather than a pointer-linked list, and its message line is derived
->   from the recall buffer rather than kept beside it, so neither upstream defect
->   can be expressed. Each entry names what would reopen it.
-> - **#9 is `INVARIANT`, and is already TESTED** - two tests in
->   `packages/core/src/session/save.test.ts`, not merely a design intention. The
->   2026-07-26 line above calling it "an invariant to test" is satisfied.
-> - **#10 already has the hardening it asks for**: `effectDo` validates every
->   link of the chain and degrades safely, with two tests.
-> - **#11 is REPRODUCED**, so the repro that entry demanded before any gate now
->   exists, along with the arithmetic condition that makes the obvious repro a
->   dud.
->
-> #3 (neostryder/neo-angband#115) and #11 (neostryder/neo-angband#116) each
-> needed a new core seam before the mod could carry them - `partialStackMerge`
-> and `packOverflowVictim` (`packages/core/src/mod/hooks.ts`) - and are now
-> `IMPLEMENTED`, alongside #1 (neostryder/neo-angband#114), which already has
-> its write and display seams under Text and history.
+The bug-fix mod collects fixes for defects in Angband 4.2.6 that the base game keeps on purpose. It is not bundled with the game, since the game ships no mods at all. It lives in [neo-angband-mod-bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes) and installs from the mod manager's *Recommended mods...* row at a pinned tag, so the download cannot change under you. At install the game records a SHA-256 of the bytes it received, and that record is how it can tell later whether the copy on your machine has changed. No digest ships inside the game.
 
+This page is the mod's reference and its public changelog.
+
+The mod is off on a fresh install, and while it is off its fixes do not exist on your machine: its entry point is never called, it contributes no hooks, `GameState.modHooks` stays absent, nothing appears in the menu, and core is byte-identical to 4.2.6. Enabling the mod turns the whole patch set on at once. Each fix can then be switched individually, so you can take the set minus one. See `docs/modding/MOD_SEAMS.md` for the seam contract, the per-hook fold rules and the full default policy.
+
+The mod declares its fixes in `manifest.json` under `rules` (flag, title, description, default) and carries each fix's code itself: `plugin.ts` (the entry point), `stairs.ts` and `strings.ts`. It also ships one `sections` entry, `text-corrections`, whose payload is data rather than a hook (`object.json` and `artifact.json`) and which is switched from the same menu. Nothing in `packages/core/src` holds a `bugfix.*` string, the staircase repair, the duplicate-artifact guard or the message rewriter, and nothing in this repository holds the fixes either. If the mod is not installed, the code is not on your machine.
+
+Each fix installs one member of `ModHooks` (`packages/core/src/mod/hooks.ts`), a typed interface of optional functions on `GameState.modHooks`. The host gives each enabled mod its own slice of the resolved flags, calls its entry point once in load order, and folds the results with `composeModHooks`. The **Fixes & tweaks** submenu on the mod's own screen (mod manager -> Bug Fixes) lists each fix and toggles it, rebuilding the composed hooks live.
+
+Fixes used to live in core behind `if (modRuleEnabled(state, "bugfix.x"))`. A flag-gated fix is still part of core, though: core shipped the fix body, was tested on it, and carried the mod's flag name as a literal, so the fixes moved out. `modRuleEnabled` has been deleted, and `modRules` remains only as the host's record of the player's choices, opaque to core.
+
+The menu lists three rules rather than one per entry below. The nine entries marked `IMPLEMENTED` are grouped into one toggle per class of fix, and the `text-corrections` section is a fourth switch beside them. The three class flags replaced six per-bug flags on 2026-08-15. The mod's `renamedRuleFlags` maps the old names to the new ones, so each player's saved choice carried over.
+
+The catalogue is re-checked against the commits upstream has landed since the tag (`4.2.6..upstream/master`) and against the port source:
+
+- 2026-07-26: 161 post-tag commits, inspected locally. Two were already catalogued, four were newly identified (none warranted a toggle without a port-specific repro), and 155 were excluded as frontend, platform, build, docs, data, refactor or balance changes. Most of the earlier "blocked-on / not yet ported" notes turned out to be wrong and were corrected per entry. #3 and #11 became `READY`, because the partial-absorb path and the quiver and inscription recompute were already ported (each entry gives the live `file:line`). #2 became `NOT APPLICABLE` by construction, because the port never persists store stock and so has no load path that re-rolls it, and its cited SHA was corrected. #9 stayed open as a save/load invariant to test rather than a player toggle, since upstream's own fix commit says loading may still perturb RNG state.
+- 2026-08-24: 174 commits, 12 of them new since the previous sweep. The four commits the 2026-07-26 sweep counted as newly identified were never named, so that count cannot be audited or recovered; the twelve new ones are classified here, and sweeps now name what they find. Nine are borg, macOS packaging, cmake or compiler-warning commits, excluded on the same frontend, platform and build grounds as before. The other three are entries 15, 16 and 17. The same pass found that all four remaining "blocked-on" notes were stale, because the subsystems they named are ported. #6 and #7 are `NOT APPLICABLE` by construction: the port's piles are arrays rather than a pointer-linked list, and its message line is derived from the recall buffer rather than kept beside it, so neither upstream defect can happen, and each entry names what would reopen it. #9 is an `INVARIANT` pinned by two tests in `packages/core/src/session/save.test.ts`, which settles the 2026-07-26 note about an invariant to test. #10 already has the hardening it asks for: `effectDo` validates every link of the chain and degrades safely, with two tests. #11 is reproduced, along with the arithmetic condition that makes the obvious repro fail.
+
+Entries #3 (neostryder/neo-angband#115) and #11 (neostryder/neo-angband#116) each needed a new core seam before the mod could carry them, `partialStackMerge` and `packOverflowVictim` (`packages/core/src/mod/hooks.ts`). Both are now `IMPLEMENTED`, alongside #1 (neostryder/neo-angband#114), whose write and display seams sit under Text and history.
 ## Why this mod exists
 
-The port tracks upstream Angband by TAGGED RELEASE and keeps core faithful to
-the 4.2.6 tag, bugs included (PORT_PLAN.md decisions 2, 23, 24). It does NOT
-cherry-pick post-tag commits, merged PRs, or issue fixes into core, because
-that would make core diverge from the tag and turn every future upstream
-re-sync into a rebase over local patches.
+Core tracks upstream Angband by tagged release and stays faithful to the 4.2.6 tag, bugs included (see `docs/PARITY.md`). It does not cherry-pick post-tag commits, merged PRs or issue fixes, because that would make core diverge from the tag and turn every future upstream re-sync into a rebase over local patches.
 
-Instead, every such fix ships in this single opt-in mod - the model
-players know from the Skyrim / Bethesda unofficial patches. It is a
-`content`-shape pack (docs/MODS.md) that declares its patch flags in
-`manifest.json` and carries their code in its own `plugin.ts`; id `bug-fixes`,
-depending on `core`. The mod is **OFF on a fresh install**, like every mod
-(`DEFAULT_ENABLED_MODS` is `[]`), so an untouched install is faithful,
-buggy-as-shipped 4.2.6 - and while the mod is off, **none of its fixes exist**:
-the host only invokes an ENABLED mod's entry point, so no hook is contributed,
-there is nothing to switch and nothing listed in the menu.
+Those fixes ship in this one opt-in mod instead, much like the unofficial patches players know from Skyrim and other Bethesda games. It is a `content`-shape pack (`docs/MODS.md`) with id `bug-fixes`, depending on `core`; it declares its patch flags in `manifest.json` and carries their code in its own `plugin.ts`. Like every mod it is off on a fresh install (`DEFAULT_ENABLED_MODS` is `[]`), so an untouched install plays as buggy-as-shipped 4.2.6. While the mod is off none of its fixes exist: the host only calls an enabled mod's entry point, so no hook is contributed and there is nothing in the menu to switch.
 
-Enable the mod and you get the whole patch set at once - every fix comes on with
-it. Each fix is then an individual toggle in this mod's Fixes & tweaks submenu, so
-a player who wants the patch set minus one specific fix can opt that one out
-(2026-07-26). Disable the mod again, or switch one
-fix off, and that behaviour is faithful 4.2.6 again. It is authored and maintained by neostryder
-as its own standalone pack, separate from the linoleum tile mod
-(decision 26).
+Enable the mod and every fix comes on with it. Since 2026-07-26 each fix is also its own toggle in the mod's Fixes & tweaks submenu, so you can keep the patch set and opt out of one fix. Disable the mod, or switch one fix off, and that behaviour is faithful 4.2.6 again. neostryder writes and maintains the mod as a standalone pack, separate from the linoleum tile mod.
 
-Balance and subjective changes are NOT bug fixes and do not belong here; they
-live in the QoL mod (decision 18) or their own mod. This page tracks only
-crash, data-corruption, save/load, determinism, and clear logic-error fixes.
-
+Balance and subjective changes are not bug fixes and belong in the QoL mod or a mod of their own. This page tracks only crash, data-corruption, save/load, determinism and clear logic-error fixes.
 ## Referencing rule
 
-Per decision 24, every entry MUST cite, directly and explicitly, the upstream
-issue number, PR number, and commit SHA it derives from. The references below
-were gathered from `angband/angband` on 2026-07-08 and each pinned SHA MUST be
-re-verified against upstream at the time its patch is actually implemented (an
-open PR may gain a different merge commit; an unmerged one-liner may change).
+Every entry cites the upstream issue number, PR number and commit SHA it derives from. The references below were gathered from `angband/angband` on 2026-07-08, and each pinned SHA is re-checked against upstream when its patch is implemented, since an open PR may gain a different merge commit and an unmerged one-liner may change.
 
-Baseline provenance: the port's baseline is the upstream `4.2.6` tag
-(`091bd608ced492a4dc53d59cab17e14a001121c6`, pointing at commit
-`f3082213b73f3e463e3d0d60bff4b00462beae6e`, tagged 2025-12-16). "In baseline"
-below means a fix is an ancestor of that commit and is therefore already
-reproduced by faithful core - it is recorded for the record, not carried by
-this mod.
-
+The port's baseline is the upstream `4.2.6` tag (`091bd608ced492a4dc53d59cab17e14a001121c6`, pointing at commit `f3082213b73f3e463e3d0d60bff4b00462beae6e`, tagged 2025-12-16). "In baseline" below means a fix is an ancestor of that commit, so faithful core already reproduces it; such fixes are listed for reference and are not carried by this mod.
 ## Status legend
 
-- `IMPLEMENTED` - the mod carries this fix: the corrected behaviour is the MOD's
-  own code, installed on one `ModHooks` member when the fix's flag is on. The
-  Implementation note names the mod file, the hook, the core call site the hook
-  serves, and the flag; a vitest control asserts faithful 4.2.6 behaviour with no
-  hook installed.
-- `SPECIFIED` - fix understood and referenced; patch not yet written because
-  the core system it touches is not yet ported (blocked-on noted).
-- `READY` - the core system exists; the patch can be implemented now.
-- `NO UPSTREAM FIX` - a genuine, still-open upstream bug with no accepted fix;
-  carried as a known issue, with an optional mitigation of the mod's own.
-- `NOT APPLICABLE` - the upstream bug cannot occur in the port, because of how
-  the port is built rather than because anything was patched. Nothing to gate
-  and no toggle to offer. Kept on this page anyway: an upstream bug the port
-  cannot express is a fact about the port, and a later change that reintroduced
-  the mechanism would need to know the guarantee used to hold. Each such entry
-  names what would reopen it.
-- `INVARIANT` - a property the port promises and TESTS, where upstream carries
-  an open bug instead. Not a player toggle: switching it off would remove the
-  guarantee rather than restore faithful behaviour. The entry names the tests
-  that defend it, so deleting them has a visible cost.
+- `IMPLEMENTED`: the mod carries the fix. The corrected behaviour is the mod's own code, installed on one `ModHooks` member when the fix's flag is on. The Implementation note names the mod file, the hook, the core call site the hook serves and the flag, and a vitest control asserts faithful 4.2.6 behaviour with no hook installed.
+- `SPECIFIED`: the fix is understood and referenced, but the patch is not written yet because the core system it touches is not ported (the blocker is noted).
+- `READY`: the core system exists and the patch can be written now.
+- `NO UPSTREAM FIX`: a real, still-open upstream bug with no accepted fix, carried as a known issue, optionally with a mitigation of the mod's own.
+- `NOT APPLICABLE`: the upstream bug cannot occur in the port because of how the port is built, not because anything was patched. There is nothing to gate and no toggle to offer. These entries stay on the page because a later change that brought the mechanism back would need to know the guarantee used to hold, and each one names what would reopen it.
+- `INVARIANT`: a property the port promises and tests, where upstream has an open bug. It is not a player toggle, since switching it off would remove the guarantee rather than restore faithful behaviour. The entry names the tests that defend it, so deleting them has a visible cost.
 
-The mod's switches (declared in `neo-angband-mod-bug-fixes/manifest.json`). Each
-declares `default: true`, which means one thing only: ON once this mod is
-enabled. It does not mean on in a fresh install, and it does not mean the flag
-sits in core waiting to be switched - with the mod off the flag is absent
-entirely. Enabling the mod gets you the whole patch set; individual switches are
-then usable under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set
-minus one.
+The mod's switches are declared in `neo-angband-mod-bug-fixes/manifest.json`, each with `default: true`. That default applies once the mod is enabled. It does not turn anything on in a fresh install, and the flag does not sit in core waiting to be switched: with the mod off the flag does not exist. Enabling the mod gets you the whole patch set, and the individual switches are under Mods -> Bug Fixes -> Fixes & tweaks, so you can take the set minus one.
 
-**Three rule flags, one per CLASS of fix:**
+Three rule flags, one per class of fix:
 
 | Flag | Covers |
 |---|---|
@@ -183,22 +53,9 @@ minus one.
 | `bugfix.stateIntegrity` | noise/scent in the save (entry 8, #4605), object-list ordering (entry 4, #4664) and duplicate artifacts (entry 12, #4510) |
 | `bugfix.levelGeneration` | unreachable staircases (entry 13, no upstream issue) |
 
-**Plus one section**, `text-corrections`, which is data rather than a hook: four
-item descriptions that still describe a two-handed weapon rule Angband 4.2
-dropped (the Two-Handed Great Flail, the Pike, the Trident 'of Wrath' and
-Mundwine). Text only; no damage, weight or slot changes. (0.19.0 briefly also
-folded the post-tag "Ossë" spelling correction into the Trident 'of Wrath'
-replacement; retracted in 0.19.1 - that correction cites an accepted upstream
-commit and now ships from the `upstream-catchup` mod instead. See entry 14.)
+The mod also has one section, `text-corrections`, which is data rather than a hook: four item descriptions that still describe a two-handed weapon rule Angband 4.2 dropped (the Two-Handed Great Flail, the Pike, the Trident 'of Wrath' and Mundwine). It changes text only, with no damage, weight or slot changes. Release 0.19.0 briefly folded the post-tag "Ossë" spelling correction into the Trident 'of Wrath' replacement, and 0.19.1 took it out again: that correction cites an accepted upstream commit and now ships from the `upstream-catchup` mod instead (see entry 14).
 
-Six per-bug flags preceded the three: `bugfix.uniqueKillHistory`,
-`bugfix.miscStrings`, `bugfix.noiseScentSave`, `bugfix.objectListOrder`,
-`bugfix.duplicateArtifact` and `bugfix.stairsReachable`. They are retired names
-in the manifest's `renamedRuleFlags`, which is what carried each player's saved
-choice across the rename rather than silently resetting it. Entry notes below
-still name the old flag where it explains which fix is which; the switch a
-player sees is the class flag in the table.
-
+The three class flags replaced six per-bug flags: `bugfix.uniqueKillHistory`, `bugfix.miscStrings`, `bugfix.noiseScentSave`, `bugfix.objectListOrder`, `bugfix.duplicateArtifact` and `bugfix.stairsReachable`. They are listed as retired names in the manifest's `renamedRuleFlags`, which carried each player's saved choice across the rename instead of silently resetting it. Entry notes below still use the old flag name where it helps tell the fixes apart; the switch you see in the menu is the class flag from the table.
 ---
 
 ## Fixes this mod carries
@@ -211,565 +68,135 @@ player sees is the class flag in the table.
 - Problem: `do_cmd_note` expands `/say` and `/me` before `history_add()` copies
   into its 80-byte event field. A long player name plus a full `/say` note loses
   the note tail and its closing quote in persisted history and character dumps.
-- Implementation: under `bugfix.textAndHistory`, the mod's `historyAdd` hook
-  replaces the faithful expanded text with the raw note and marks it for the
-  mod's `historyDisplay` hook. Core persists that marker with the entry, and
-  `screens.ts` uses the display hook through shared history rows for both the
-  history screen and `dump_history` output. No hook preserves the exact 4.2.6
-  expanded-and-truncated entry.
-- Tests: `packages/core/src/mod/hooks.test.ts` covers the conjunctive writable
-  write request and chained display hook; the mod's `plugin.test.ts` saves and
-  reloads a 15-character player name with a 64-character `/say` payload and
-  proves the toggle-on full expansion and toggle-off 79-character truncation.
+- Implementation: under `bugfix.textAndHistory`, the mod's `historyAdd` hook replaces the faithful expanded text with the raw note and marks the entry for the mod's `historyDisplay` hook. Core saves that marker with the entry, and `screens.ts` applies the display hook through shared history rows for both the history screen and `dump_history` output. With no hook, the entry stays exactly as 4.2.6 writes it, expanded and truncated.
+- Tests: `packages/core/src/mod/hooks.test.ts` covers the conjunctive, writable write request and the chained display hook. The mod's `plugin.test.ts` saves and reloads a game with a 15-character player name and a 64-character `/say` payload, and checks the full expansion with the toggle on and the 79-character truncation with it off.
 
 ### 2. Store-charge save-scum exploit (`NOT APPLICABLE`)
 
-- References: issue **#6537** ("Save, exit, reload perturbs RNG state"); fix
-  PR **#6539** ("Plug exploit for charges in store"), merge commit
-  `a7b240980f56a66ece0eb921dcfafcca5754d750` (merged 2026-03-24). NOT in the
-  4.2.6 baseline.
-  > SHA CORRECTED 2026-07-26. This entry previously cited
-  > `4ce58ed04bc18702d445e6aa3f919c5844900f86`, which is a different commit
-  > entirely - "SDL2: better error handling in pui-misc.c", authored 3 minutes
-  > later the same day. The correct commit is `a7b24098`, whose message names
-  > issue #6537 and whose diff touches `src/load.c`, `src/store.c`,
-  > `src/store.h`. Both verified locally against `upstream/master`. This is
-  > exactly the failure the re-verification rule below exists to catch.
-- Problem: re-entering a store after save/reload re-triggered the store's
-  charge-recharge RNG roll on wands/staves, letting a player save-scum charges
-  up toward the maximum in object.txt.
-- Root cause: `rd_stores_aux()` (`src/load.c`) calls `store_carry()` during
-  load, and `store_carry()` rolls the RNG to recharge stackable-charge items.
-- Upstream fix: `store_carry()` gains a `bool maintain` parameter; the
-  recharge-on-carry logic is gated by it. Normal gameplay call sites
-  (`store_create_random`, `store_create_item`, `do_cmd_sell`) pass
-  `maintain = true`; the save loader passes `false`, so loading no longer
-  re-rolls charges.
-- Port relevance: directly reinforces the port's no-save-scum policy
-  (decision 16). This mod applies the loader-side `maintain = false` behavior.
-- Blocked-on: the town/store system AND the save system (neither yet ported).
-- Port status (2026-07-16): DEFERRED - structurally prevented, no gate needed.
-  The port's `storeCarry` (`store/store.ts`) already takes the `maintain`
-  parameter from the fix and gates the charge re-roll on it. More to the point,
-  the port does NOT persist store stock: it is regenerated per town visit
-  (`session/game.ts` `refreshTownStores`) and a reload resumes the exact RNG
-  state (decision 22), so re-entering a store after save/reload reproduces the
-  identical stock and charges. There is no `rd_stores_aux` -> `store_carry`
-  load path to re-roll, so the save-scum this fix targets cannot occur. If a
-  persisted-stock loader is ever added, it must call `storeCarry(... false)`.
+- References: issue **#6537** ("Save, exit, reload perturbs RNG state"); fix PR **#6539** ("Plug exploit for charges in store"), merge commit `a7b240980f56a66ece0eb921dcfafcca5754d750` (merged 2026-03-24). Not in the 4.2.6 baseline.
+  > Corrected 2026-07-26. This entry used to cite `4ce58ed04bc18702d445e6aa3f919c5844900f86`, an unrelated commit ("SDL2: better error handling in pui-misc.c") authored three minutes later the same day. The right commit is `a7b24098`: its message names issue #6537 and its diff touches `src/load.c`, `src/store.c` and `src/store.h`. Both were checked locally against `upstream/master`. The re-verification step in the referencing rule exists to catch errors like this one.
+- Problem: re-entering a store after a save and reload re-ran the store's recharge roll on wands and staves, so a player could save-scum charges up toward the maximum in object.txt.
+- Root cause: `rd_stores_aux()` (`src/load.c`) calls `store_carry()` during load, and `store_carry()` rolls the RNG to recharge stackable-charge items.
+- Upstream fix: `store_carry()` gains a `bool maintain` parameter that gates the recharge-on-carry logic. Normal gameplay call sites (`store_create_random`, `store_create_item`, `do_cmd_sell`) pass `maintain = true` and the save loader passes `false`, so loading no longer re-rolls charges.
+- Port relevance: the fix backs up the port's no-save-scum policy. This mod applies the loader-side `maintain = false` behavior.
+- Blocked-on: the town/store system and the save system (neither yet ported).
+- Port status (2026-07-16): `DEFERRED`, because the port prevents this structurally and needs no gate. The port's `storeCarry` (`store/store.ts`) already takes the fix's `maintain` parameter and gates the charge re-roll on it. More importantly, the port does not persist store stock. Stock is regenerated on each town visit (`session/game.ts`, `refreshTownStores`) and a reload resumes the exact RNG state, so re-entering a store after a save and reload produces the same stock and charges. With no `rd_stores_aux` -> `store_carry` load path, there is nothing to re-roll and the save-scum this fix targets cannot happen. A persisted-stock loader, if one is ever added, has to call `storeCarry(... false)`.
 
 ### 3. Stack-charge scramble on drop/pickup (`IMPLEMENTED`)
 
-- References: residual edge case documented in the thread of issue **#6355**
-  ("Can generate infinite charges on staves/wands", closed COMPLETED via PR
-  **#6356**, merge commit `e0af0e158060a06aa8552bf76a8885be914d3e39`, IN the
-  4.2.6 baseline). The residual case is NOT covered by #6356 and has no PR.
-- Problem: repeatedly dropping and picking up a stack of 40+ charged
-  wands/staves next to a smaller stack of the same kind randomly redistributes
-  charges between the two stacks.
-- Proposed fix (contributor draconisPW, 2025-10-08, never PR'd): in
-  `inven_can_stack_partial()`, add
-  `else if (obj2->number == obj2->kind->base->max_stack) return false;`.
-- Port fix approach: apply the equivalent guard so a partial merge is refused
-  when the SOURCE stack is already full.
-- Port status (2026-07-26, re-verified): **READY**. The previous "DEFERRED /
-  `objectAbsorbPartial` exists but is unused" note is WRONG and is retracted.
-  The partial path IS live: `packages/core/src/game/gear.ts` tests
-  `invenCanStackPartial(...)` and `:852` calls
-  `objectAbsorbPartial(obj2, obj1, mode2, mode1, limits, ORIGIN.MIXED)` inside
-  `combinePack`'s merge loop. That is the one live caller, and it is exactly the
-  precondition the upstream draft guards.
-- **WHICH STACK THE GUARD IS ON, corrected 2026-08-24.** This entry used to say
-  the gated fix "adds the destination-at-`max_stack` refusal", which is wrong
-  twice over. The destination guard is not missing: `inven_can_stack_partial`
-  (`obj-gear.c:1227`) already refuses when the leading stack `obj1` is at
-  `max_stack`, and the port reproduces it line for line at
-  `packages/core/src/game/gear.ts:938`. And it is not what the upstream draft
-  proposes: draconisPW's line tests `obj2`, the SOURCE, so the new refusal is
-  "the stack being drained is itself already full", which the C does not check
-  and the port therefore does not either. Describing it as the destination guard
-  would have sent an implementer to write a line that is already there.
-- Mechanism, traced 2026-08-24 and deterministic rather than random. With the
-  destination holding 5 and the source holding a full 40, `objectAbsorbPartial`
-  (`packages/core/src/obj/object.ts:1265-1269`) computes
-  `difference = maxStack - largest`, which is zero, so `newsz1` and `newsz2`
-  simply SWAP the two counts. `distributeCharges`
-  (`packages/core/src/obj/object.ts:1289`) then moves charges by
-  `trunc(source.pval * amt / source.number)`, and the truncation loses a
-  fraction on every swap. Repeated drop-and-pickup re-runs `combinePack` and so
-  re-runs the swap, which is what the reporter sees as charges wandering between
-  the two stacks. No RNG is drawn on this path, so a gate here is RNG-free.
-- Seam status: core has no `ModHooks` member a mod could refuse this on
-  (`packages/core/src/mod/hooks.ts`), so the fix needs a new seam before the mod
-  can carry it. Tracked as neostryder/neo-angband#115.
-- Implementation: the new `partialStackMerge` hook
-  (`packages/core/src/mod/hooks.ts`), consulted at `combinePack`'s call to
-  `objectAbsorbPartial` (`packages/core/src/game/gear.ts`) - only in the
-  non-quiver branch, matching where the residual defect and draconisPW's
-  proposed guard both live; the quiver's own limits and split-on-overflow
-  arithmetic are untouched. The mod's hook body
-  (`neo-angband-mod-bug-fixes/plugin.ts`) is
-  `(drained) => drained.number !== drained.kind.base.maxStack` - a direct port
-  of draconisPW's proposed line, refusing when the SOURCE stack is already at
-  its per-stack limit. No hook => faithful 4.2.6 proceeds unconditionally,
-  matching upstream's `inven_can_stack_partial`, which has no such check. Flag
-  `bugfix.stateIntegrity`. Fold kind: a VETO hook - conjunctive, first refusal
-  decides, same shape as `artifactCommit`. RNG-FREE, as the hook requires: a
-  pure read of two counts, drawn on the main object stream.
-- Tests: `packages/core/src/game/gear.test.ts` (core's seam: no hook swaps the
-  two stacks' counts exactly as the bug describes; an installed hook refuses
-  and leaves both stacks untouched, in `(drained, receiving)` order) and
-  `neo-angband-mod-bug-fixes/plugin.test.ts` (the mod's predicate against
-  synthetic counts, and against two genuine WAND stacks driving the real
-  `objectAbsorbPartial`).
+- References: a residual edge case documented in the thread of issue **#6355** ("Can generate infinite charges on staves/wands", closed as completed via PR **#6356**, merge commit `e0af0e158060a06aa8552bf76a8885be914d3e39`, in the 4.2.6 baseline). #6356 does not cover the residual case, and no PR does.
+- Problem: repeatedly dropping and picking up a stack of 40+ charged wands or staves next to a smaller stack of the same kind redistributes charges between the two stacks, apparently at random.
+- Proposed fix (contributor draconisPW, 2025-10-08, never submitted as a PR): in `inven_can_stack_partial()`, add `else if (obj2->number == obj2->kind->base->max_stack) return false;`.
+- Port fix approach: apply the equivalent guard, refusing a partial merge when the source stack is already full.
+- Port status (2026-07-26): `READY`. The partial path is live, which corrects an earlier note saying `objectAbsorbPartial` existed but was unused: `packages/core/src/game/gear.ts` tests `invenCanStackPartial(...)` and `:852` calls `objectAbsorbPartial(obj2, obj1, mode2, mode1, limits, ORIGIN.MIXED)` inside `combinePack`'s merge loop. That is the one live caller, and it is the precondition the upstream draft guards.
+- Which stack the guard is on (corrected 2026-08-24): the source. An earlier version of this entry said the fix "adds the destination-at-`max_stack` refusal". The destination guard already exists: `inven_can_stack_partial` (`obj-gear.c:1227`) refuses when the leading stack `obj1` is at `max_stack`, and the port reproduces it line for line at `packages/core/src/game/gear.ts:938`. draconisPW's line tests `obj2`, the source, so the new refusal is "the stack being drained is already full", a case the C does not check and so the port does not either.
+- Mechanism (traced 2026-08-24): the shuffle is deterministic. With the destination holding 5 and the source a full 40, `objectAbsorbPartial` (`packages/core/src/obj/object.ts:1265-1269`) computes `difference = maxStack - largest`, which is zero, so `newsz1` and `newsz2` just swap the two counts. `distributeCharges` (`packages/core/src/obj/object.ts:1289`) then moves charges by `trunc(source.pval * amt / source.number)`, and the truncation loses a fraction on every swap. Each drop and pickup re-runs `combinePack` and so repeats the swap, which is what the reporter saw as charges wandering between the two stacks. No RNG is drawn on this path, so a gate here is RNG-free.
+- Seam status: core had no `ModHooks` member a mod could refuse this on (`packages/core/src/mod/hooks.ts`), so the fix needed a new seam before the mod could carry it. Tracked as neostryder/neo-angband#115.
+- Implementation: the `partialStackMerge` hook (`packages/core/src/mod/hooks.ts`), consulted at `combinePack`'s call to `objectAbsorbPartial` (`packages/core/src/game/gear.ts`). It is consulted only in the non-quiver branch, where both the residual defect and draconisPW's guard live; the quiver's own limits and split-on-overflow arithmetic are untouched. The mod's hook body (`neo-angband-mod-bug-fixes/plugin.ts`) is `(drained) => drained.number !== drained.kind.base.maxStack`, a direct port of draconisPW's line that refuses when the source stack is already at its per-stack limit. With no hook, faithful 4.2.6 proceeds unconditionally, matching upstream's `inven_can_stack_partial`, which has no such check. Flag `bugfix.stateIntegrity`. Fold: `all-must-agree`, a veto in which the first refusal decides, the same shape as `artifactCommit`. The hook is RNG-free, as it is required to be: a pure read of two counts, running on the main object stream.
+- Tests: `packages/core/src/game/gear.test.ts` covers core's seam: with no hook the two stacks' counts swap exactly as the bug describes, and an installed hook refuses and leaves both stacks untouched, called in `(drained, receiving)` order. `neo-angband-mod-bug-fixes/plugin.test.ts` tests the mod's predicate against synthetic counts and against two real wand stacks driving the real `objectAbsorbPartial`.
 
 ### 4. Object list ordering is not a strict total order (`IMPLEMENTED`)
 
-- References: issue **#4664** ("Object list is not always correctly ordered",
-  open). Candidate fix PR **#4668** was CLOSED WITHOUT MERGING (no effect on
-  the repro), so there is no accepted upstream fix.
-- Problem/root cause: `compare_items()` (`src/obj-util.c`) can return 1 for
-  both `(a,b)` and `(b,a)` when both items are unknown, violating the strict
-  weak ordering `qsort()` requires; the list order becomes unstable/wrong.
-- Port fix approach: give the port's comparator a genuine strict weak ordering
-  (stable tiebreak on a total key) so the list is deterministic - and re-derive
-  the true root cause, since #4668 showed the two-unknowns case alone did not
-  explain every report.
-- Implementation: the mod's `objectListTiebreak` hook
-  (`neo-angband-mod-bug-fixes/plugin.ts`), serving core's comparator tiebreak
-  at `packages/core/src/game/obj-list.ts`; flag `bugfix.objectListOrder`.
-  Port status: the port's comparator is already a lexicographic strict weak order
-  and feeds a guaranteed-STABLE `Array.sort`, and it already returns 0 for the
-  two-unknowns case - so the port does not exhibit the qsort instability #4664
-  reports. The hook adds a deterministic geometric total-key tiebreak (dy then
-  dx) after the distance tiebreak, making the order a strict TOTAL order that
-  stays correct even under a non-stable sort. No hook => the faithful
-  distance-only tiebreak (`?? 0`, i.e. leave the entries equal). Tests in
-  `game/obj-list.test.ts` (core's seam: equal-distance distinct entries stay
-  order-equivalent with no hook; an installed hook breaks the tie) and
-  `neo-angband-mod-bug-fixes/plugin.test.ts` (the mod's comparator and its flag
-  gate).
+- References: issue **#4664** ("Object list is not always correctly ordered", open). Candidate fix PR **#4668** was closed without merging because it had no effect on the repro, so there is no accepted upstream fix.
+- Problem and root cause: `compare_items()` (`src/obj-util.c`) can return 1 for both `(a,b)` and `(b,a)` when both items are unknown. That breaks the strict weak ordering `qsort()` requires, and the list order becomes unstable or wrong.
+- Port fix approach: give the port's comparator a real strict weak ordering (a stable tiebreak on a total key) so the list is deterministic, and look again for the true root cause, since #4668 showed the two-unknowns case alone did not explain every report.
+- Implementation: the mod's `objectListTiebreak` hook (`neo-angband-mod-bug-fixes/plugin.ts`), serving core's comparator tiebreak in `packages/core/src/game/obj-list.ts`; flag `bugfix.objectListOrder`. The port's comparator is already a lexicographic strict weak order, it feeds `Array.sort`, which is guaranteed stable, and it already returns 0 for the two-unknowns case, so the port does not show the qsort instability #4664 reports. The hook adds a geometric tiebreak (dy, then dx) after the distance tiebreak, which makes the order a strict total order that stays correct even under a sort that is not stable. With no hook, core keeps the faithful distance-only tiebreak (`?? 0`, leaving the entries equal). Tests are in `game/obj-list.test.ts` (core's seam: equal-distance distinct entries stay order-equivalent with no hook, and an installed hook breaks the tie) and `neo-angband-mod-bug-fixes/plugin.test.ts` (the mod's comparator and its flag gate).
 
 ### 5. Unique monster "returns" in the kill history (`IMPLEMENTED`, partial upstream)
 
-- References: issue **#4245** ("Unique coming back to life?", open). The
-  misleading death MESSAGE was fixed by PR **#6245** (merge commit
-  `11f6811333eafe99717b9be0a12014a70d93a42b`, IN the 4.2.6 baseline), but the
-  PR author states it does NOT fix the multiple-history-entries defect.
-- Problem: a unique can produce multiple "you killed X" history entries via
-  shape-change / projection death paths. Suspected: `monster_can_kill()`
-  checks only current race (not `original_race`) and `monster_change_shape()`
-  overwrites `original_race` without a null-check.
-- Port fix approach: when monster shape-change + death bookkeeping is ported,
-  guard `original_race` and dedupe unique-death history entries.
-- Implementation: the mod's `historyAdd` hook
-  (`neo-angband-mod-bug-fixes/plugin.ts`, a one-line `!entry.duplicate`),
-  serving core's `onPlayerKill` `HIST.SLAY_UNIQUE` write at
-  `packages/core/src/session/game.ts`; flag `bugfix.uniqueKillHistory`. Core
-  computes and passes `duplicate` and holds no opinion about it. The port's
-  `monsterChangeShape` (`game/mon-shape.ts`) already carries the `original_race`
-  null-check upstream's `monster_change_shape` lacks. This fix closes the
-  remaining defect: a lethal blow on a unique whose `race.maxNum` is already 0
-  (an already-dead unique re-reached via a shape-change / projection death path)
-  no longer logs a duplicate "Killed X" entry. No hook => `?? true` => faithful
-  4.2.6 logs one per lethal blow. Tests in `session/game.test.ts` (core's seam:
-  two kills log two entries with no hook; an installed hook suppresses the
-  second) and `neo-angband-mod-bug-fixes/plugin.test.ts` (the mod's predicate
-  and its flag gate).
-  Scope note: this is the ONLY `historyAdd` call site that consults the hook -
-  core's other `historyAdd` writes are not routed through it, which matches the
-  fix's scope but is worth knowing before reusing the hook.
+- References: issue **#4245** ("Unique coming back to life?", open). PR **#6245** (merge commit `11f6811333eafe99717b9be0a12014a70d93a42b`, in the 4.2.6 baseline) fixed the misleading death message, but its author states it does not fix the multiple history entries.
+- Problem: a unique can produce more than one "you killed X" history entry through shape-change or projection death paths. The suspected cause is that `monster_can_kill()` checks only the current race (not `original_race`), and `monster_change_shape()` overwrites `original_race` without a null check.
+- Port fix approach: once monster shape-change and death bookkeeping are ported, guard `original_race` and de-duplicate unique-death history entries.
+- Implementation: the mod's `historyAdd` hook (`neo-angband-mod-bug-fixes/plugin.ts`, a one-line `!entry.duplicate`), serving core's `onPlayerKill` `HIST.SLAY_UNIQUE` write in `packages/core/src/session/game.ts`; flag `bugfix.uniqueKillHistory`. Core computes `duplicate` and passes it along, leaving the decision to the hook. The port's `monsterChangeShape` (`game/mon-shape.ts`) already has the `original_race` null check that upstream's `monster_change_shape` lacks. The fix covers the remaining defect: a lethal blow on a unique whose `race.maxNum` is already 0 (an already-dead unique reached again through a shape-change or projection death path) no longer logs a duplicate "Killed X" entry. With no hook the answer is `?? true`, so faithful 4.2.6 logs one entry per lethal blow. Tests are in `session/game.test.ts` (core's seam: two kills log two entries with no hook, and an installed hook suppresses the second) and `neo-angband-mod-bug-fixes/plugin.test.ts` (the mod's predicate and its flag gate).
+  Scope: this is the only `historyAdd` call site that consults the hook. Core's other `historyAdd` writes do not go through it, which matches the fix's scope but needs checking before the hook is reused elsewhere.
 
 ### 6. Pile integrity failure crash (`NOT APPLICABLE`)
 
-- References: issue **#4225** ("Pile integrity failure crash", open). No fix
-  exists upstream; maintainer notes diagnostics need improving. Likely tied to
-  monster drops outside player LOS.
-- Port relevance: the port's object model should make this class of
-  linked-list corruption structurally impossible (typed stores/handles rather
-  than raw pile pointers). Track as a "cannot reproduce by construction" goal
-  and add an integrity assertion in the object store.
-- Port status (2026-08-24, re-verified): **NOT APPLICABLE** by construction, and
-  the old "Blocked-on: full object-pile / drop system (not yet ported)" note is
-  retracted. The pile and drop system IS ported -
-  `packages/core/src/game/floor.ts` carries `floorPile`, `floorExcise`,
-  `floorCarry`, `dropFindGrid` and `dropNear` - and the goal above turns out to
-  have been met by the shape of the port rather than by any patch.
-  Upstream's defect is a LINKED LIST losing its shape: `obj->next` and
-  `obj->prev` walked by `pile_check_integrity`, which is where a cycle, an
-  orphan or a dangling pointer can appear. The port has no such list. A grid's
-  pile is a plain array (`floor: Map<number, GameObject[]>`,
-  `packages/core/src/game/context.ts:205`), carried gear is a handle table
-  (`store: Map<number, GameObject>` with index arrays,
-  `packages/core/src/game/gear.ts:81`), and `GameObject`
-  (`packages/core/src/obj/types.ts`) has no `next` or `prev` field at all. There
-  are no pile pointers to corrupt, so there is nothing for an integrity
-  assertion to assert and no toggle to offer a player.
-- Kept on this page rather than deleted, for the same reason entry 2 is: an
-  upstream bug that the port cannot express is a fact about the port worth
-  recording, and a future change that reintroduced a pointer-linked pile would
-  need to know this guarantee used to hold.
+- References: issue **#4225** ("Pile integrity failure crash", open). No fix exists upstream; the maintainer notes that diagnostics need improving. It is likely tied to monster drops outside the player's line of sight.
+- Port relevance: the port's object model should make this class of linked-list corruption impossible by construction (typed stores and handles rather than raw pile pointers). Track it as a "cannot reproduce by construction" goal and add an integrity assertion in the object store.
+- Port status (2026-08-24): `NOT APPLICABLE` by construction. The older "Blocked-on: full object-pile / drop system (not yet ported)" note no longer applies: the pile and drop system is ported (`packages/core/src/game/floor.ts` has `floorPile`, `floorExcise`, `floorCarry`, `dropFindGrid` and `dropNear`), and the goal above is met by the shape of the port rather than by a patch. Upstream's defect is a linked list losing its shape: `obj->next` and `obj->prev`, walked by `pile_check_integrity`, are where a cycle, an orphan or a dangling pointer can appear. The port has no such list. A grid's pile is a plain array (`floor: Map<number, GameObject[]>`, `packages/core/src/game/context.ts:205`), carried gear is a handle table (`store: Map<number, GameObject>` with index arrays, `packages/core/src/game/gear.ts:81`), and `GameObject` (`packages/core/src/obj/types.ts`) has no `next` or `prev` field. With no pile pointers to corrupt, an integrity assertion would have nothing to check, and there is no toggle to offer a player.
+- What would reopen this: a change that brought back a pointer-linked pile. Like entry 2, the entry stays on the page so that such a change would know this guarantee used to hold.
 
 ### 7. Missing messages in the main window (`NOT APPLICABLE`)
 
-- References: issue **#3987** ("Missing messages", open, intermittent). A
-  message (e.g. "You have found a trap.") is dropped from the main window
-  while still present in message recall and the sub-window.
-- Port fix approach: when the message-log display is wired, ensure the main
-  window and the recall buffer draw from one source so they cannot diverge.
-- Port status (2026-08-24, re-verified): **NOT APPLICABLE** by construction, and
-  the old "Blocked-on: the message-log display layer" note is retracted. That
-  layer is wired, and the fix approach above describes what it already does.
-  `state.msg` (`packages/web/src/main.ts:2058`) is the single sink every
-  `msg()` and `msgt()` in core and the shell passes through - the same one entry
-  14's `messageText` hook hangs off, which is only sound because there is
-  exactly one. It appends to one `MessageLog`, and the top status line is then
-  DERIVED from that log rather than written beside it (`message =
-  msglog.latest()`, in `say`). The scrollable recall (Ctrl-P,
-  `messageHistoryScreen(msglog)`) reads the same object.
-  So the main window cannot hold a different set of messages from the recall
-  buffer: it holds the last element of it. Upstream's defect needs two stores
-  that can disagree, and the port has one.
-- What would reopen this: any change that gives the status line its own buffer,
-  or a second sink that bypasses `state.msg`. The single-sink property is
-  load-bearing for entry 14 as well, so it is worth stating rather than assuming.
+- References: issue **#3987** ("Missing messages", open, intermittent). A message (for example "You have found a trap.") is dropped from the main window while still present in message recall and the sub-window.
+- Port fix approach: when the message-log display is wired, make the main window and the recall buffer draw from one source so they cannot diverge.
+- Port status (2026-08-24): `NOT APPLICABLE` by construction. The old "Blocked-on: the message-log display layer" note no longer applies; that layer is wired and already does what the fix approach describes. `state.msg` (`packages/web/src/main.ts:2058`) is the single sink that every `msg()` and `msgt()` in core and the shell passes through. It is also the sink entry 14's `messageText` hook hangs off, which only works because there is exactly one. It appends to one `MessageLog`, and the top status line is derived from that log rather than written beside it (`message = msglog.latest()`, in `say`). The scrollable recall (Ctrl-P, `messageHistoryScreen(msglog)`) reads the same object. The main window therefore cannot show a different set of messages from the recall buffer, because what it shows is the last element of that buffer. Upstream's defect needs two stores that can disagree, and the port has one.
+- What would reopen this: any change that gives the status line its own buffer, or a second sink that bypasses `state.msg`. Entry 14 depends on the single sink as well.
 
 ### 8. Noise and scent not saved (`IMPLEMENTED`)
 
-- References: issue **#4605** ("Noise and scent not saved", open). Low
-  severity, genuine determinism gap.
-- **"No upstream fix" expired 2026-08-18.** This entry used to say there was
-  none. Commit `5c45eb9588b8227d4f1b1998e0a627ad7ee11a75` resolves the NOISE
-  half of #4605 upstream, by a different route than this mod takes, and adds
-  level-revisit behaviour the mod has no equivalent for. Entry 17 carries the
-  detail; what matters here is that this fix is no longer ahead of upstream by
-  default and the two designs now have to be compared rather than assumed
-  identical. The scent half of #4605 is still unfixed upstream.
-- Problem: player noise/scent fields are not persisted, so save/reload can
-  change monster tracking behavior versus uninterrupted play.
-- Port fix approach: persist the noise/scent fields in the save block.
-- Implementation: the mod's `saveNoiseScent` hook
-  (`neo-angband-mod-bug-fixes/plugin.ts`, a one-line `true`), serving the
-  live-level snapshot's `includeFlow` argument at
-  `packages/core/src/session/save.ts`; core does the writing and the reading
-  either way, in `packages/core/src/world/chunk.ts`
-  (`snapshotSquares(includeFlow)` / `restoreSquares`, with optional `noise` /
-  `scent` on `ChunkSquaresData`). Flag `bugfix.noiseScentSave`. Fold kind: this is
-  an ANY hook - one mod asking for the data is enough, because the payload is
-  additive and a second mod has nothing to object to.
-  The port models noise/scent as `Chunk` heatmaps
-  (`world/flow.ts`) that faithful core does NOT save (matching 4.2.6). With the
-  flag on they ride the save and restore exactly, so a reload preserves the
-  scent trail instead of starting it empty. The payload is self-describing:
-  a faithful save omits both, so restore leaves them zeroed (rebuilt on the
-  first turn) - back-compatible. The `levelCache` is an in-memory `Chunk`, so
-  its live heatmaps do in fact freeze with a persistent level and are restored
-  unchanged on re-entry; normal `processWorld` does not rebuild them until its
-  next ten-turn tick. That is distinct from saving an in-play level, and is now
-  handled by entry 17's opt-in upstream-catchup rule rather than by extending
-  this save toggle to a second, incompatible policy.
-  Tests in `world/chunk.test.ts` (snapshot/restore round-trip) and
-  `session/save.test.ts` (full save round-trip: heatmaps absent + lost with no
-  hook, present + restored with the hook installed).
-- Note: complements the port's local-determinism guarantee (decision 22).
+- References: issue **#4605** ("Noise and scent not saved", open). Low severity, but a real determinism gap.
+- Upstream status (since 2026-08-18): this entry used to say there was no upstream fix. Commit `5c45eb9588b8227d4f1b1998e0a627ad7ee11a75` now fixes the noise half of #4605 upstream, by a different route than this mod takes, and adds level-revisit behaviour the mod has no equivalent for (entry 17 has the detail). The two fixes are different designs and have to be compared rather than assumed identical. The scent half of #4605 is still unfixed upstream.
+- Problem: the player's noise and scent fields are not saved, so a save and reload can change how monsters track the player compared with uninterrupted play.
+- Port fix approach: save the noise and scent fields in the save block.
+- Implementation: the mod's `saveNoiseScent` hook (`neo-angband-mod-bug-fixes/plugin.ts`, a one-line `true`), serving the `includeFlow` argument of the live-level snapshot in `packages/core/src/session/save.ts`. Core does the writing and reading either way, in `packages/core/src/world/chunk.ts` (`snapshotSquares(includeFlow)` / `restoreSquares`, with optional `noise` / `scent` on `ChunkSquaresData`). Flag `bugfix.noiseScentSave`. Fold: `any-yes`, where one mod asking for the data is enough, because the payload is additive and a second mod has nothing to object to.
+  The port models noise and scent as `Chunk` heatmaps (`world/flow.ts`), which faithful core does not save (matching 4.2.6). With the flag on they are saved and restored exactly, so a reload keeps the scent trail instead of starting it empty. The payload describes itself: a faithful save omits both, so restore leaves them zeroed (rebuilt on the first turn), which keeps older saves loading. The `levelCache` is an in-memory `Chunk`, so its live heatmaps do freeze with a persistent level and come back unchanged on re-entry; normal `processWorld` does not rebuild them until its next ten-turn tick. That is a separate matter from saving an in-play level, and entry 17's opt-in upstream-catchup rule handles it, rather than this save toggle being stretched to a second, incompatible policy.
+  Tests are in `world/chunk.test.ts` (snapshot and restore round-trip) and `session/save.test.ts` (full save round-trip: heatmaps absent and lost with no hook, present and restored with the hook installed).
+- Note: complements the port's local-determinism guarantee.
 
 ### 9. RNG perturbed by loading, general case (`INVARIANT`)
 
-- References: issue **#6537** (open beyond the store-charge exploit of entry 2).
-  Upstream keeps this open as a low-priority loading issue: "loading should
-  not have unexpected side effects on the RNG state".
-- Port relevance: the port persists full RNG state (decision 22) and must
-  guarantee load touches no RNG stream. This is a design invariant for the save
-  system rather than a discrete patch, but is tracked here for provenance.
-- Port status (2026-08-24, re-verified): **SATISFIED AND PINNED**, and the old
-  "Blocked-on: the save system (not yet ported)" note is retracted twice over.
-  The save system is ported (`packages/core/src/session/save.ts`, which entry 8
-  already patches), and the invariant is not merely designed - it is asserted by
-  two tests in `packages/core/src/session/save.test.ts`:
-  - "resumes the exact RNG stream (the anti-save-scum posture)" draws 20 values
-    after a save point, loads the same save twice, and requires both loads to
-    produce that identical sequence. A load that perturbed the stream would move
-    the first draw and fail.
-  - "preserves the RNG stream across a reordered-registry reload" compares
-    `rng.getState()` before the save against the restored game's, on the nose,
-    and additionally proves the guarantee does not depend on content ordering.
-  Upstream keeps #6537 open because it cannot make this promise. The port can,
-  and the tests are what make the claim checkable rather than aspirational.
-- This entry stays as a NAMED INVARIANT, not a toggle. There is nothing for a
-  player to switch: a mod that made loading perturb the RNG would be removing
-  the guarantee, not fixing a bug. Its value is that the two tests above are now
-  known to be the thing defending it, so deleting them has a visible cost.
+- References: issue **#6537** (open beyond the store-charge exploit of entry 2). Upstream keeps it open as a low-priority loading issue: "loading should not have unexpected side effects on the RNG state".
+- Port relevance: the port saves the full RNG state, and loading must not touch any RNG stream. That is an invariant of the save system rather than a discrete patch, tracked here for provenance.
+- Port status (2026-08-24): satisfied and pinned by tests. The save system is ported (`packages/core/src/session/save.ts`, which entry 8 already patches), so the old "Blocked-on: the save system (not yet ported)" note no longer applies, and two tests in `packages/core/src/session/save.test.ts` assert the invariant:
+  - "resumes the exact RNG stream (the anti-save-scum posture)" draws 20 values after a save point, loads the same save twice, and requires both loads to produce the same sequence. A load that disturbed the stream would move the first draw and fail.
+  - "preserves the RNG stream across a reordered-registry reload" compares `rng.getState()` before the save with the restored game's state exactly, and also shows that the guarantee does not depend on content ordering.
+  Upstream keeps #6537 open because it cannot make this promise. The port can, and these two tests check it.
+- It stays a named invariant rather than a toggle. There is nothing for a player to switch: a mod that made loading perturb the RNG would be removing the guarantee, not fixing a bug. Listing it here marks the two tests above as the ones defending it, so deleting them has a visible cost.
 
 ### 10. "Bad effect passed to effect_do()" (`NO UPSTREAM FIX`, hardening present)
 
-- References: issue **#6533** (open, opened 2026-03-07). Triggered by meleeing
-  a vampire with an ego weapon; maintainer could not root-cause it and the save
-  did not reproduce.
-- Port fix approach: the port's effect interpreter should validate effect
-  identifiers at dispatch and fail loudly with context in dev, degrade safely
-  in release. Add a regression pin if a reproducer is ever found.
-- Port status (2026-08-24, re-verified): **the hardening asked for is already
-  present**, so this needs no patch and no toggle. `effectDo`
-  (`packages/core/src/effects/interpreter.ts:461`) tests
-  `isValidEffect(effect)` at the top of EVERY iteration of the chain, not once
-  on entry, and an invalid identifier makes it report
-  "Bad effect passed to effect_do(). Please report this bug." and return false
-  rather than dispatching. That degrades safely by construction: an unhandled
-  index cannot reach a handler. Two tests in
-  `packages/core/src/effects/interpreter.test.ts` pin it - one on an invalid
-  chain, and one on the separate case of a valid upstream code with no
-  registered handler, which is skipped rather than treated as invalid.
-- Deliberately NOT added: extra context in the message. The text is upstream's
-  own, and this mod's standing rule for the `messageText` seam is that a hook
-  may only restate a message, never change what one means (entry 14). Naming the
-  offending effect index on screen would put text in front of a player that
-  upstream never wrote. If a reproducer ever appears, the place for the detail
-  is a dev-mode log or a test, not the message line.
-- What is genuinely still open is upstream's own root cause, which upstream
-  never found and whose save did not reproduce. There is nothing here to port
-  until somebody can trigger it.
+- References: issue **#6533** (open, opened 2026-03-07). Triggered by meleeing a vampire with an ego weapon; the maintainer could not find the root cause and the save did not reproduce it.
+- Port fix approach: the port's effect interpreter should validate effect identifiers at dispatch, failing loudly with context in dev and degrading safely in release. Add a regression pin if a reproducer is ever found.
+- Port status (2026-08-24): the requested hardening is already present, so this needs no patch and no toggle. `effectDo` (`packages/core/src/effects/interpreter.ts:461`) tests `isValidEffect(effect)` at the top of every iteration of the chain, not just on entry. An invalid identifier makes it report "Bad effect passed to effect_do(). Please report this bug." and return false without dispatching, so an unhandled index can never reach a handler. Two tests in `packages/core/src/effects/interpreter.test.ts` pin this: one on an invalid chain, and one on the separate case of a valid upstream code with no registered handler, which is skipped rather than treated as invalid.
+- Not added: extra context in the message. The text is upstream's own, and a `messageText` hook in this mod may only restate a message, never change what it means (entry 14). Showing the offending effect index on screen would put text in front of the player that upstream never wrote. If a reproducer turns up, the detail belongs in a dev-mode log or a test rather than on the message line.
+- Still open: upstream's own root cause, which upstream never found and whose save did not reproduce. There is nothing to port until someone can trigger it.
 
 ### 11. Quiver inscription change triggers pack overflow (`IMPLEMENTED`)
 
-- References: issue **#4666** (open). Related design proposal #6512 (separate
-  tval for throwing items) is unimplemented.
-- Problem: changing an inscription that moves an item out of the quiver, with a
-  full pack, mis-fires `pack_overflow()` and opens a minor no-turn drop
-  exploit.
-- Port status (2026-07-26, re-verified): **READY**, though it needs a repro
-  first. The previous "quiver + inscription commands not yet ported" note is
-  WRONG and is retracted - all three pieces are live: the full recompute is
-  `calcInventory` (`packages/core/src/game/gear.ts`), the inscribe command
-  is `inscribeItem` (`packages/web/src/main.ts`), and the overflow it can
-  mis-fire is `packOverflow` (`packages/core/src/game/obj-cmd.ts`).
-  Sequence before gating: reproduce the mis-fire against those three, THEN add
-  the gate - this one is a suspected mis-fire rather than a proven one, so
-  ordering matters.
-- **REPRODUCED 2026-08-24.** It is no longer suspected. Driven through a real
-  booted game and the real `processPlayer` and `state.overflowPack`, one
-  zero-energy `inscribe` command sheds an item onto the floor:
-  `energyUsed=0`, `totalEnergy` delta 0, and the messages
-  "You re-arrange your quiver." / "Your pack overflows!" / "You drop a Dagger".
-  A real `drop` costs `moveEnergy / 2`, 50 energy
-  (`packages/core/src/game/obj-cmd.ts:1928`), so the exploit turns a 50-energy
-  action into a free one, and `processPlayerCleanup` skips the terrain damage
-  and monster tick as well because the energy is zero.
-- **The arithmetic condition, which is why a naive repro reads as "cannot
-  reproduce".** `packSlotsUsed` (`packages/core/src/game/gear.ts:552-576`)
-  charges the quiver `ceil(quiverAmmo / quiverSlotSize)` pack slots, a throwing
-  item counting `number * thrownQuiverMult`. Live constants are `packSize` 23,
-  `quiverSlotSize` 40, `thrownQuiverMult` 5. Removing a throwing item of
-  weighted cost 5 from a quiver of weighted total `Q` changes pack slots by
-  `1 - (ceil(Q/40) - ceil((Q-5)/40))`. A lone throwing weapon in an otherwise
-  empty quiver frees a whole quiver slot and nets ZERO, so it does not
-  reproduce; it fires only when `ceil(Q/40) == ceil((Q-5)/40)`, for instance
-  `Q = 50` (40 arrows, 5 bolts, one dagger at mult 5). Written down because the
-  obvious repro is a dud.
-- **The mis-fire is worse than the exploit, and is the half to fix first.**
-  `packOverflow(state, 0, ...)` drops `state.gear.inven[length-1]`
-  (`packages/core/src/game/obj-cmd.ts:295-298`), which need not be the item that
-  moved. With a Small wooden chest in the pack - last under `earlierObject`
-  (`packages/core/src/player/calcs.ts:1441-1507`, decreasing tval) - re-inscribing
-  the dagger drops the CHEST and keeps the dagger. For a player that is an item
-  vanishing for no stated reason.
-- Seam status: no existing `ModHooks` member covers the free-command overflow
-  trigger or `packOverflow`'s victim selection, so a seam is needed before a
-  patch. Fits the existing `bugfix.stateIntegrity` class.
-  Tracked as neostryder/neo-angband#116.
-- Implementation: the new `packOverflowVictim` hook
-  (`packages/core/src/mod/hooks.ts`), consulted only on `packOverflow`'s
-  `handle === 0` / upstream-NULL path - `state.overflowPack`
-  (`packages/core/src/session/game.ts`), the safety net `process_player` runs
-  before every command. Core computes `departedQuiver` itself: the one handle
-  `GameState.gear.quiver` held immediately before the recompute that just ran
-  and no longer holds, i.e. whichever item a note-only change (an inscription)
-  just displaced out of the quiver - a fact, the same way `historyAdd` hands
-  over `duplicate`. The mod's hook body
-  (`neo-angband-mod-bug-fixes/plugin.ts`) is `(_state, departedQuiver) =>
-  departedQuiver` - accepting core's redirect is the whole fix. No hook =>
-  faithful 4.2.6 sheds `state.gear.inven[length-1]` unconditionally, which is
-  what let the reproduced Small-wooden-chest mis-fire happen. The free-command
-  half of the problem (`inscribe` spending 0 energy) is upstream's own design,
-  matching `do_cmd_inscribe`, and stays faithful in core; this fix addresses
-  the half entry 11 names as "worse and the one to fix first" - which item gets
-  shed - not the energy cost of the command that can trigger it. Flag
-  `bugfix.stateIntegrity`. Fold kind: a DECISION hook - last-answer, same shape
-  as `walkBlockedByDiggable`, because at most one redirect can be honoured and
-  declining (null) must be free of observable effect. RNG-FREE, as the hook
-  requires: no computation at all, let alone a draw.
-- Tests: `packages/core/src/game/obj-cmd.test.ts` (core's seam: no hook, even
-  with `previousQuiver` supplied, still sheds the naive trailing item; an
-  installed hook redirects to whatever `departedQuiver` names; `departedQuiver`
-  is null when nothing in `previousQuiver` actually left the quiver) and
-  `neo-angband-mod-bug-fixes/plugin.test.ts` (the mod's pass-through, and a
-  genuine overfull-pack game state where the redirected handle - not the naive
-  trailing item - is what actually gets shed).
+- References: issue **#4666** (open). The related design proposal #6512 (a separate tval for throwing items) is not implemented.
+- Problem: with a full pack, changing an inscription so that an item moves out of the quiver mis-fires `pack_overflow()` and opens a minor no-turn drop exploit.
+- Port status (2026-07-26): `READY`, pending a repro. All three pieces are live, which corrects an earlier note saying the quiver and inscription commands were not ported: the full recompute is `calcInventory` (`packages/core/src/game/gear.ts`), the inscribe command is `inscribeItem` (`packages/web/src/main.ts`), and the overflow it can mis-fire is `packOverflow` (`packages/core/src/game/obj-cmd.ts`). The mis-fire was suspected rather than proven at that point, so the plan was to reproduce it against those three before adding any gate.
+- Reproduced 2026-08-24. In a real booted game, going through the real `processPlayer` and `state.overflowPack`, one zero-energy `inscribe` command drops an item on the floor: `energyUsed=0`, `totalEnergy` delta 0, and the messages "You re-arrange your quiver." / "Your pack overflows!" / "You drop a Dagger". A real `drop` costs `moveEnergy / 2`, 50 energy (`packages/core/src/game/obj-cmd.ts:1928`), so the exploit turns a 50-energy action into a free one. Because the energy is zero, `processPlayerCleanup` also skips terrain damage and the monster tick.
+- The arithmetic condition, which is why a naive repro fails: `packSlotsUsed` (`packages/core/src/game/gear.ts:552-576`) charges the quiver `ceil(quiverAmmo / quiverSlotSize)` pack slots, with a throwing item counting `number * thrownQuiverMult`. The live constants are `packSize` 23, `quiverSlotSize` 40 and `thrownQuiverMult` 5. Removing a throwing item of weighted cost 5 from a quiver of weighted total `Q` changes pack slots by `1 - (ceil(Q/40) - ceil((Q-5)/40))`. A lone throwing weapon in an otherwise empty quiver frees a whole quiver slot and nets zero, so it does not reproduce. The mis-fire happens only when `ceil(Q/40) == ceil((Q-5)/40)`, for instance at `Q = 50` (40 arrows, 5 bolts, one dagger at mult 5).
+- The mis-fire is worse than the exploit, and is the half to fix first. `packOverflow(state, 0, ...)` drops `state.gear.inven[length-1]` (`packages/core/src/game/obj-cmd.ts:295-298`), which need not be the item that moved. With a Small wooden chest in the pack (sorted last by `earlierObject`, `packages/core/src/player/calcs.ts:1441-1507`, which orders by decreasing tval), re-inscribing the dagger drops the chest and keeps the dagger. To the player, an item vanishes for no stated reason.
+- Seam status: no existing `ModHooks` member covered the free-command overflow trigger or `packOverflow`'s choice of victim, so the patch needed a seam first. It fits the existing `bugfix.stateIntegrity` class. Tracked as neostryder/neo-angband#116.
+- Implementation: the `packOverflowVictim` hook (`packages/core/src/mod/hooks.ts`), consulted only on `packOverflow`'s `handle === 0` path, which is upstream's NULL path: `state.overflowPack` (`packages/core/src/session/game.ts`), the safety net `process_player` runs before every command. Core computes `departedQuiver` itself. It is the one handle `GameState.gear.quiver` held just before the recompute that just ran and no longer holds, which is whichever item a note-only change such as an inscription just pushed out of the quiver. Core hands this over as a fact, the same way `historyAdd` hands over `duplicate`. The mod's hook body (`neo-angband-mod-bug-fixes/plugin.ts`) is `(_state, departedQuiver) => departedQuiver`; accepting core's redirect is the whole fix. With no hook, faithful 4.2.6 drops `state.gear.inven[length-1]` unconditionally, which is what allowed the reproduced Small wooden chest mis-fire. The free-command half of the problem (`inscribe` spending 0 energy) is upstream's own design, matching `do_cmd_inscribe`, and stays faithful in core. This fix changes which item gets dropped, the half named above as worse and to be fixed first, and leaves the energy cost of the triggering command alone. Flag `bugfix.stateIntegrity`. Fold: `last-answer`, the same shape as `walkBlockedByDiggable`, because at most one redirect can be honoured and declining (null) must have no observable effect. The hook is RNG-free, as it is required to be, and does no computation at all.
+- Tests: `packages/core/src/game/obj-cmd.test.ts` covers core's seam: with no hook, even with `previousQuiver` supplied, it still drops the naive trailing item; an installed hook redirects to whatever `departedQuiver` names; and `departedQuiver` is null when nothing in `previousQuiver` actually left the quiver. `neo-angband-mod-bug-fixes/plugin.test.ts` covers the mod's pass-through, and a real overfull-pack game state in which the redirected handle, rather than the naive trailing item, is what gets dropped.
 
 ### 12. Duplicate artifacts (`IMPLEMENTED`, no upstream fix)
 
-- References: issue **#4510** (open). Maintainer tightened artifact
-  created/uncreated marking in commit `5c799b61a` (2020) but never found the
-  cause; still open.
-- Port fix approach: the port's artifact-generation path can enforce a single
-  source of truth for "this artifact exists", making duplication impossible by
-  construction; optional mitigation is a defensive re-check on creation.
-- Implementation: the mod's `artifactCommit` hook
-  (`neo-angband-mod-bug-fixes/plugin.ts`, a one-line `!alreadyCreated`),
-  serving core's commit branch at `packages/core/src/obj/make.ts`
-  (`makeArtifact`); `MakeDeps` gains an optional `hooks: ModHooks`
-  (`obj/make.ts`), threaded from the LIVE `state.modHooks` at the generation
-  deps in `session/game.ts`, because the pure object layer has no `GameState` in
-  scope. Flag `bugfix.duplicateArtifact`. Fold kind: a VETO hook - conjunctive,
-  first refusal decides. The hook is contractually RNG-FREE (it runs on the main
-  object stream) and this one is a pure read of the created flag core passes in;
-  core refuses BEFORE `copyArtifactData` draws, so the veto changes the outcome
-  without half-drawing.
-  Port status: duplication is already impossible by construction for
-  freshly-selected artifacts - the shared `ArtifactState` (`aup_info[]`, threaded
-  through every `MakeDeps`) is the single source of truth and `make_artifact`
-  already skips any `isCreated` candidate. The fix adds the defensive re-check
-  the design calls for on the one remaining window: an object handed to
-  `make_artifact` that ALREADY carries an artifact whose created-flag is set
-  (the C `!obj->artifact` loop guard skips the scan, so control reaches the
-  commit block) is refused rather than re-committed and re-marked a second time.
-  No hook => faithful 4.2.6 re-commits it. Store generation deps
-  (`allowArtifacts=false`) do not thread the hooks - artifact creation is inert
-  there. Tests in `obj/make.test.ts` (core's seam: an already-created carried
-  artifact is re-committed with no hook; a refusing hook clears it and reports
-  failure) and `neo-angband-mod-bug-fixes/plugin.test.ts` (the mod's predicate
-  and its flag gate).
+- References: issue **#4510** (open). The maintainer tightened artifact created/uncreated marking in commit `5c799b61a` (2020) but never found the cause, and the issue is still open.
+- Port fix approach: the port's artifact-generation path can keep one record of whether each artifact exists, which makes duplication impossible by construction; a defensive re-check on creation is an optional extra.
+- Implementation: the mod's `artifactCommit` hook (`neo-angband-mod-bug-fixes/plugin.ts`, a one-line `!alreadyCreated`), serving core's commit branch in `packages/core/src/obj/make.ts` (`makeArtifact`). `MakeDeps` gains an optional `hooks: ModHooks` (`obj/make.ts`), threaded from the live `state.modHooks` at the generation deps in `session/game.ts`, because the pure object layer has no `GameState` in scope. Flag `bugfix.duplicateArtifact`. Fold: `all-must-agree`, a veto in which the first refusal decides. The hook has to be RNG-free because it runs on the main object stream, and this one is a pure read of the created flag core passes in. Core refuses before `copyArtifactData` draws, so the veto changes the outcome without leaving a half-finished draw.
+  Port status: for freshly selected artifacts, duplication is already impossible by construction. The shared `ArtifactState` (`aup_info[]`, threaded through every `MakeDeps`) is the one record of which artifacts exist, and `make_artifact` already skips any `isCreated` candidate. The fix adds the defensive re-check for the one remaining gap: an object handed to `make_artifact` that already carries an artifact whose created flag is set (the C `!obj->artifact` loop guard skips the scan, so control reaches the commit block) is refused instead of being committed and marked a second time. With no hook, faithful 4.2.6 commits it again. Store generation deps (`allowArtifacts=false`) do not thread the hooks, since artifact creation does nothing there. Tests are in `obj/make.test.ts` (core's seam: an already-created carried artifact is committed again with no hook, and a refusing hook clears it and reports failure) and `neo-angband-mod-bug-fixes/plugin.test.ts` (the mod's predicate and its flag gate).
 
 ### 13. Unreachable staircases (`IMPLEMENTED`, no upstream fix)
 
-- References: none. There is no upstream issue, PR, or commit for this - it is a
-  longstanding property of vanilla generation rather than a reported defect, so
-  the decision-24 referencing rule has nothing to cite. Recorded instead against
-  the reference source itself (all citations below are `reference/src`, the
-  4.2.6 tag) and against the port's own measurement.
-- Problem: a floor can have no staircase the player is able to walk to. Measured
-  on faithful core 2026-08-06 over 15,000 levels (3,000 each at depths 1, 20, 40,
-  50 and 60): **22 stranded levels, 0.15%**, all of them the UP stair, and all 22
-  carrying the mechanism's signature - the sealed stair is `SQUARE_VAULT` and the
-  region it is sealed into is vault to the last grid.
-- **This entry used to read 53 in 520, 10.2%** (depths 1-98, 40 seeds each), with
-  37 of the 53 inside `SQUARE_VAULT`. Both numbers were real and neither described
-  upstream: the non-vault majority was the port's own `build_streamer` predicate
-  bricking up secret doors, since fixed in `gen/cave.ts`, and the same sweep
-  against the old predicate splits 137 stranded into 33 upstream and 104 port
-  defect. A wart kept on purpose has to be re-measured after every generator
-  change, or core ends up defending its own bugs.
-- Root cause, in two halves:
-  - `alloc_stairs` (`gen-util.c:629`) places a stair on any `square_isempty`
-    grid and does **not** exclude vault interiors, while `ensure_connectedness`
-    is called with `allow_vault_disconnect = true` at five of its six sites
-    (`gen-cave.c:1263`, `2828`, `3075`, `3685`, `3945`; only `3456` passes
-    `false`) - the tunneller is explicitly allowed to leave a vault sealed. So a
-    vault it never joined can swallow a staircase, and nothing checks: the only
-    post-build validation `cave_generate` runs is `chunk_validate_objects`
-    (`generate.c:1238`). Note the asymmetry - `find_start`, the player's own
-    spot, *does* exclude vaults; only stairs may land in one.
-  - **The stair counts are asymmetric.** `handle_level_stairs`
-    (`gen-cave.c:943`) takes the counts as parameters, and `classic_gen` passes
-    `rand_range(3, 4)` down stairs against only `rand_range(1, 2)` up
-    (`gen-cave.c:1273`). So one bad roll on the lone up stair strands the floor,
-    while three or four down stairs almost always leave one reachable.
-    `cavern_gen` is slightly kinder, passing `rand_range(1, 3)` down
-    (`gen-cave.c:2183`), which does not change the shape of the problem.
-  - **A third route, and the rarest: a corridor upstream planned and then
-    refused to dig.** `join_region`'s two halves treat vault grids differently
-    (`gen-cave.c:1925`, and the port's `joinRegion` line for line). The search
-    that finds a crossing may *traverse* a vault grid when
-    `allow_vault_disconnect` is set; the walk-back that turns the found path
-    into floor refuses to break one. So a crossing whose only route was through
-    a vault WALL gets recoloured as joined and left physically holed, and an
-    **ordinary** region stays sealed with no vault grid anywhere in it. Observed
-    once in 27,000 generated levels (d40 seed 400792, measured 2026-08-09 under
-    task #148): one refused dig at (94,38) sealed a 385-grid region holding all
-    three of the level's down staircases. This matters to a reader of this
-    document because it is the one stranding shape that does **not** look like
-    upstream's when you inspect the finished level - which is why
-    `notUpstreamStranding` now tests for both routes, and why a stranded region
-    without a vault in it is still not automatically a port defect.
-- Port relevance: none of this is a port defect - `allocStairs` in
-  `packages/core/src/gen/util.ts` is a line-for-line match including the
-  `walls = 3 -> 0` ladder and the absence of a vault test. Faithful core
-  reproduces the wart, per decision 24 and the 2026-07-26 ruling that core
-  must retain all warts of the reference code.
-- Implementation: the mod's `levelGenerated` hook
-  (`neo-angband-mod-bug-fixes/plugin.ts`), whose body is
-  `ensureStairsReachable` in the MOD's own file
-  (`neo-angband-mod-bug-fixes/stairs.ts`) - core carries no staircase
-  repair. It serves core's accept branch inside `cave_generate`'s existing retry
-  loop (`packages/core/src/gen/generate.ts`); `GenDeps` gains an optional
-  `hooks: ModHooks` (`gen/generate.ts`), threaded from the LIVE
-  `state.modHooks` at the generation deps in `session/game.ts` (the same seam
-  entry 12 uses). Flag `bugfix.stairsReachable`. Fold kind: a VETO hook -
-  conjunctive, and note that every contributor still runs after an earlier one has
-  REPAIRED the level, because a second mod's invariant is not satisfied by the
-  first mod's repair; only a refusal short-circuits. Returning false re-rolls the
-  level, the same treatment as a monster-maximum overflow. The hook is
-  contractually RNG-FREE, which is what makes it safe to run on every level. For
-  each
-  direction the level actually HAS a stair in, it floods the region the player
-  can walk (passable + doors, which open, + rubble, which digs; 8-directional,
-  walls excluded so the guarantee is not vacuous) and, if no stair of that
-  direction is reachable, places one in that region - choosing the grid the way
-  `alloc_stairs` does (best wall-adjacency tier 3 -> 0, then closest to the
-  stranded stair), so it surfaces beside the vault that swallowed the original.
-  It goes through core's PUBLIC `placeStairs` (as do `squareIsEmpty`,
-  `squareIsNoStairs`, `squareNumWallsAdjacent`, `FEAT` and `loc` - the same
-  primitives a third-party level mod would reach for), so that helper's own
-  overrides still apply and the fix **cannot** mint a down stair on Morgoth's
-  floor. "Each direction it
-  actually has one" is also what exempts the town and the quest floors with no
-  depth special-casing. Fallback when the walkable region can host nothing else:
-  the player's own grid, which upstream itself uses under `birth_connect_stairs`
-  (`gen-util.c:427-433`); if even that is unavailable the level is rejected and
-  re-rolled like a monster-max overflow (measured re-rolls after the fallback:
-  zero).
-- Determinism: the repair draws NO RNG (asserted by RNG-state equality across
-  the call), so turning the flag on leaves 184 of 200 measured levels
-  bit-identical and changes the other 16 by one grid. It is still a generation
-  change, so a character played with the flag on is not layout-identical to one
-  played without it - the manifest description says so.
-- Tests, split the way the code is:
-  - `packages/core/src/gen/gen.test.ts` keeps the CONTROL that faithful core
-    (no hook) really does strand the measured seeds, so moving the repair back
-    into core fails the suite and says why (the failure message names the mod -
-    `gen.test.ts`).
-  - `neo-angband-mod-bug-fixes/stairs.test.ts` carries the repair's own tests:
-    the invariant across depths, the measured pre-fix failures as named
-    regressions, and mechanical unit tests on a synthetic sealed-pocket level
-    (repair, spot-choice rule, RNG-state equality on both paths, the
-    under-the-player fallback, the refuse-and-re-roll path, the quest guard).
-  - `packages/core/src/session/qol-defaults.test.ts` pins the end-to-end wire -
-    that the session really hands `GameState.modHooks` to `cave_generate` - with
-    a hook whose answer changes the outcome, because an all-neutral stream
-    comparison cannot catch that wire coming loose.
-- History: briefly lived in core as a guarantee (commit
-  `437ad97c3`, 2026-07-25), moved to this mod on 2026-07-26 once upstream was
-  confirmed to genuinely behave this way, and moved OUT of core entirely on
-  2026-07-29 when the flag-registry design was replaced by `ModHooks` (it had
-  still been a core function behind a flag until then). The full write-up is in
-  the private working record (see [../WORKING_RECORD.md](../WORKING_RECORD.md));
-  everything it concluded that a reader needs is in this entry.
+- References: none. No upstream issue, PR or commit exists for this. It is a longstanding property of vanilla level generation rather than a reported defect, so there is nothing to cite under the referencing rule. It is recorded against the reference source instead (all citations below are `reference/src`, the 4.2.6 tag) and against the port's own measurements.
+- Problem: a level can have no staircase the player is able to walk to. On faithful core, 15,000 levels generated on 2026-08-06 (3,000 each at depths 1, 20, 40, 50 and 60) produced **22 stranded levels, 0.15%**. In all 22 the stranded stair was the up stair, and all 22 show the same pattern: the sealed stair is `SQUARE_VAULT`, and the region it is sealed into is vault to the last grid.
+- Earlier figures: this entry used to give 53 stranded in 520, 10.2% (depths 1-98, 40 seeds each), with 37 of the 53 inside `SQUARE_VAULT`. Both numbers were real, but neither described upstream. Most of the non-vault cases came from the port's own `build_streamer` predicate bricking up secret doors, since fixed in `gen/cave.ts`; run against the old predicate, the same sweep splits 137 stranded levels into 33 upstream and 104 port defects. Because core keeps this wart, it is re-measured after every generator change, so that a port defect is not mistaken for upstream behaviour.
+- Root cause, by three routes:
+  - `alloc_stairs` (`gen-util.c:629`) places a stair on any `square_isempty` grid and does not exclude vault interiors, while `ensure_connectedness` is called with `allow_vault_disconnect = true` at five of its six call sites (`gen-cave.c:1263`, `2828`, `3075`, `3685`, `3945`; only `3456` passes `false`), so the tunneller is allowed to leave a vault sealed. A vault the tunneller never joined can therefore swallow a staircase, and nothing checks for it: the only post-build validation `cave_generate` runs is `chunk_validate_objects` (`generate.c:1238`). By contrast, `find_start`, which picks the player's own starting grid, does exclude vaults; only stairs can land in one.
+  - The stair counts are uneven. `handle_level_stairs` (`gen-cave.c:943`) takes the counts as parameters, and `classic_gen` passes `rand_range(3, 4)` down stairs but only `rand_range(1, 2)` up (`gen-cave.c:1273`). One bad roll on a lone up stair strands the level, while three or four down stairs almost always leave one reachable. `cavern_gen` passes `rand_range(1, 3)` down (`gen-cave.c:2183`), which is slightly kinder but has the same problem.
+  - The rarest route is a corridor that generation plans and then refuses to dig. The two halves of `join_region` treat vault grids differently (`gen-cave.c:1925`, and the port's `joinRegion` line for line). When `allow_vault_disconnect` is set, the search that finds a crossing may pass through a vault grid, but the walk-back that turns the found path into floor refuses to break one. A crossing whose only route went through a vault wall is then recoloured as joined without ever being dug, and an ordinary region stays sealed with no vault grid anywhere in it. This was seen once in 27,000 generated levels (d40 seed 400792, measured 2026-08-09 under task #148): one refused dig at (94,38) sealed a 385-grid region holding all three of the level's down staircases. It is the one stranding shape that does not look like upstream's when you inspect the finished level, which is why `notUpstreamStranding` tests for both routes and why a stranded region with no vault in it is not automatically a port defect.
+- Port relevance: none of this is a port defect. `allocStairs` in `packages/core/src/gen/util.ts` matches upstream line for line, including the `walls = 3 -> 0` ladder and the missing vault test. Faithful core reproduces the wart, because core keeps every wart of the reference code.
+- Implementation: the mod's `levelGenerated` hook (`neo-angband-mod-bug-fixes/plugin.ts`), whose body is `ensureStairsReachable` in the mod's own `neo-angband-mod-bug-fixes/stairs.ts`; core carries no staircase repair. It serves core's accept branch inside `cave_generate`'s existing retry loop (`packages/core/src/gen/generate.ts`). `GenDeps` gains an optional `hooks: ModHooks` (`gen/generate.ts`), threaded from the live `state.modHooks` at the generation deps in `session/game.ts` (the same seam entry 12 uses). Flag `bugfix.stairsReachable`. Fold: `all-must-agree`, a veto, with one difference from the others: every contributor still runs after an earlier one has repaired the level, because one mod's repair does not satisfy a second mod's invariant, and only a refusal short-circuits. Returning false re-rolls the level, the same treatment as a monster-maximum overflow. The hook has to be RNG-free, which is what makes it safe to run on every level.
+  For each direction the level actually has a stair in, the repair floods the region the player can walk (passable grids, plus doors, which open, and rubble, which can be dug; 8-directional, with walls excluded so the guarantee means something). If no stair of that direction is reachable, it places one in that region, choosing the grid the way `alloc_stairs` does (best wall-adjacency tier from 3 down to 0, then closest to the stranded stair), so the new stair appears beside the vault that swallowed the original. It goes through core's public `placeStairs`, along with `squareIsEmpty`, `squareIsNoStairs`, `squareNumWallsAdjacent`, `FEAT` and `loc`, the same primitives a third-party level mod would use, so that helper's own overrides still apply and the fix cannot create a down stair on Morgoth's level. Checking only the directions a level already has is also what exempts the town and the quest levels, with no special case for depth. If the walkable region has nowhere else to put a stair, the repair falls back to the player's own grid, which upstream itself uses under `birth_connect_stairs` (`gen-util.c:427-433`). If even that is unavailable, the level is rejected and re-rolled like a monster-maximum overflow (measured re-rolls after the fallback: zero).
+- Determinism: the repair draws no RNG (checked by comparing RNG state before and after the call), so turning the flag on leaves 184 of 200 measured levels bit-identical and changes the other 16 by one grid. It is still a generation change, so a character played with the flag on does not get the same layouts as one played without it, and the manifest description says so.
+- Tests follow the same split as the code:
+  - `packages/core/src/gen/gen.test.ts` keeps the control showing that faithful core (no hook) really does strand the measured seeds, so moving the repair back into core fails the suite, with a failure message that names the mod.
+  - `neo-angband-mod-bug-fixes/stairs.test.ts` holds the repair's own tests: the invariant across depths, the measured pre-fix failures as named regressions, and unit tests on a synthetic sealed-pocket level (repair, spot-choice rule, RNG-state equality on both paths, the under-the-player fallback, the refuse-and-re-roll path, the quest guard).
+  - `packages/core/src/session/qol-defaults.test.ts` pins the end-to-end wiring, that the session really hands `GameState.modHooks` to `cave_generate`, using a hook whose answer changes the outcome, because comparing streams with only neutral hooks cannot catch that wire coming loose.
+- History: the repair briefly lived in core as a guarantee (commit `437ad97c3`, 2026-07-25), moved to this mod on 2026-07-26 once it was confirmed that upstream really behaves this way, and left core entirely on 2026-07-29 when the flag-registry design gave way to `ModHooks` (until then it was still a core function behind a flag). The full write-up is in a private working record ([../WORKING_RECORD.md](../WORKING_RECORD.md) explains what that is); everything a reader needs from it is in this entry.
 
 ### 14. Misc. string fixes (`IMPLEMENTED`, no upstream fix)
 
-- References: none. Upstream does not treat its own message text as defective,
-  so there is no issue, PR or commit to cite under the decision-24 referencing
-  rule. Recorded against `reference/src` and against this port's own
-  measurement, like entry 13.
-- Scope: a single catch-all item covering spelling and extra-space cleanup in
-  message text, filed under one item, 'Misc. string fixes'.
-- Normalization rule: a convention already in majority use should not be
-  'corrected' toward the minority form. Where a sentence break uses double
-  spaces in most cases and single spaces in a few, the minority form is what
-  gets normalized, not the reverse.
-- Problem, as MEASURED rather than assumed - this matters, because a catch-all
-  title invites a pile of unexamined edits. Over the **577** distinct literals
-  `reference/src` hands to `msg` / `msgt` / `get_check` / `get_string` /
-  `get_quantity`:
+- References: none. Upstream does not treat its own message text as defective, so there is no issue, PR or commit to cite. Like entry 13, it is recorded against `reference/src` and against the port's own measurements.
+- Scope: one catch-all item, 'Misc. string fixes', covering spelling and extra-space cleanup in message text.
+- Normalization rule: a convention already used in most places is not 'corrected' toward the minority form. Where a sentence break uses two spaces in most cases and one space in a few, the few are normalized, not the reverse.
+- Problem, counted over the **577** distinct literals `reference/src` hands to `msg` / `msgt` / `get_check` / `get_string` / `get_quantity`. A catch-all title invites a pile of unexamined edits, so every change here rests on these counts:
 
   | sentence break | one space | two spaces |
   | -------------- | --------- | ---------- |
@@ -777,138 +204,38 @@ player sees is the class flag in the table.
   | after `!`      | 3         | 0          |
   | after `?`      | 0         | 0          |
 
-  So upstream is not inconsistent about *wanting* the old two-space convention;
-  it uses it 15 times out of 17 and slips twice. The minority form is what gets
-  normalized, and the direction is UP to the double space. An earlier pass here
-  claimed "38 literals" and collapsed them all to a single space - both the
-  count and the direction were wrong.
-  - **ZERO** misspellings, in two corpora. The message literals above, swept for
-    the usual suspects (recieve, seperate, occured, acheive, neccessary,
-    definately, teh, loosing, and sixteen more - the 24 pairs in `MISSPELLINGS`,
-    `neo-angband-mod-bug-fixes/strings.ts`):
-    none. And the **gamedata descriptions**, which the message census structurally
-    cannot see, swept three ways: the same known-misspelling list (0 hits), doubled
-    words (1 hit, the room *named* "Dot dot dot"), and every post-4.2.6 upstream
-    commit touching `lib/gamedata` (upstream's four description misspellings,
-    `obiterate` / `can can` / `untramelled` / `threshhold`, were fixed by commit
-    `736e4ad0e` in June 2020 and are already correct in the 4.2.6 baseline).
-    The compiled `packages/content/pack/*.json`
-    is the same corpus by construction, and the data-exactness gate keeps it so.
-  - **The third sweep found ONE, and this entry used to say it found none.**
-    Corrected 2026-08-24. The claim was "no spelling fixes at all" among
-    post-4.2.6 commits touching `lib/gamedata`; commit `f1b1626f6` ("Correct
-    spelling of Ossë", `lib/gamedata/artifact.txt`) is exactly that, and it
-    reached upstream on the same day the sweep ran, which is how a correct
-    census became a wrong sentence within a day of being written. It shipped
-    here briefly as 0.19.0, then retracted in 0.19.1: an accepted upstream
-    commit is `upstream-catchup`'s scope, not this mod's, the same rule this
-    entry's own census exists to apply consistently. The correction now ships
-    from the `upstream-catchup` mod instead. The lesson is the one entry 13
-    already records about measurement: a census is true on the day it runs, so
-    it has to name the commit range it swept, and be re-run rather than quoted.
-- The `!` rows are the judgement call: pooled across terminators they are 3
-  minority spellings of one convention, split by terminator they are 3 of 3 and
-  the local majority. Pooled here, because the convention is "two spaces after a
-  sentence" rather than "after a period". Dropping those three rows from
-  `MISC_STRING_CORRECTIONS` is the whole change if that reading is wrong.
-- Fix: `miscStringFix` (`neo-angband-mod-bug-fixes/strings.ts`), installed
-  on the `messageText` hook (`neo-angband-mod-bug-fixes/plugin.ts`) and
-  applied at the host's single message sink (`packages/web/src/main.ts`,
-  `state.msg`) so one hook covers every message core or the shell emits. Fold
-  kind: a TRANSFORM hook - several mods' rewriters chain in load order, each
-  seeing the previous one's output. A hook here may only RESTATE a message;
-  changing what one MEANS would put text on screen upstream never wrote, and no
-  census could see it, because the slot is filled. It is an exact-match table of
-  four rows, NOT a rewrite rule: messages reach the sink already interpolated, so
-  a general `". "` -> `".  "` would rewrite object inscriptions and character
-  names the player typed. A fifth upstream instance ("Non-existent glyph
-  requested. Please report this bug.") has no row because the port has no code
-  path that emits it.
-- Faithful default: with the mod off (or this fix off) the hook is absent and the
-  sink is `?? raw`; with it on it is the identity for any string not in the table,
-  so faithful core's text still reaches the screen byte-for-byte.
-- Not gameplay: no message changes meaning; nothing about play changes.
+  Upstream does follow the old two-space convention after a period: it uses it 15 times out of 17 and slips twice. The minority form is what gets normalized, so the direction is up to the double space. An earlier pass here claimed 38 literals and collapsed them all to a single space; both the count and the direction were wrong.
+  - Misspellings: **zero**, in two corpora. The message literals above were swept for the usual suspects (recieve, seperate, occured, acheive, neccessary, definately, teh, loosing, and sixteen more: the 24 pairs in `MISSPELLINGS`, `neo-angband-mod-bug-fixes/strings.ts`) with no hits. The **gamedata descriptions**, which the message census cannot see, were swept three ways: the same misspelling list (0 hits), doubled words (1 hit, the room *named* "Dot dot dot"), and every post-4.2.6 upstream commit touching `lib/gamedata` (upstream's four description misspellings, `obiterate` / `can can` / `untramelled` / `threshhold`, were fixed by commit `736e4ad0e` in June 2020 and are already correct in the 4.2.6 baseline). The compiled `packages/content/pack/*.json` is the same corpus by construction, and the data-exactness gate keeps it that way.
+  - The third sweep has one hit (corrected 2026-08-24; this entry used to say it found none). Commit `f1b1626f6` ("Correct spelling of Ossë", `lib/gamedata/artifact.txt`) is a post-4.2.6 spelling fix in `lib/gamedata`, and it reached upstream on the same day the sweep ran. It shipped here briefly in 0.19.0 and was withdrawn in 0.19.1, because an accepted upstream commit belongs in `upstream-catchup`, and the census in this entry exists to apply that line consistently. The correction now ships from the `upstream-catchup` mod. A census like this holds only for the commit range it swept, so it names that range and is re-run rather than quoted, the same practice entry 13 follows for its measurements.
+- The `!` rows are a judgement call. Pooled across terminators they are 3 minority spellings of one convention; split by terminator they are 3 of 3 and the local majority. They are pooled here, because the convention is "two spaces after a sentence" rather than "after a period". If that reading is wrong, dropping those three rows from `MISC_STRING_CORRECTIONS` is the whole change.
+- Fix: `miscStringFix` (`neo-angband-mod-bug-fixes/strings.ts`), installed on the `messageText` hook (`neo-angband-mod-bug-fixes/plugin.ts`) and applied at the host's single message sink (`packages/web/src/main.ts`, `state.msg`), so one hook covers every message core or the shell emits. Fold: `chained`; several mods' rewriters run in load order, each seeing the previous one's output. A hook here may only restate a message. Changing what a message means would put text on screen that upstream never wrote, and no census would notice, because the message slot is still filled. It is an exact-match table of four rows rather than a rewrite rule: messages reach the sink already interpolated, so a general `". "` -> `".  "` would also rewrite object inscriptions and character names the player typed. A fifth upstream instance ("Non-existent glyph requested. Please report this bug.") has no row because no code path in the port emits it.
+- Faithful default: with the mod off (or this fix off) the hook is absent and the sink is `?? raw`. With it on, any string not in the table passes through unchanged, so faithful core's text still reaches the screen byte for byte.
+- Not gameplay: no message changes meaning, and nothing about play changes.
 
 ### 15. Blast radius larger than `dam_at_dist` can hold - SHIPPED in the upstream-catchup mod
 
-Fixed upstream by commit `f0f6bd223b6b9faf0072b0ae7ffb34a812b97349`
-("Projections: coerce blast radius to fit what dam_at_dist can handle",
-2026-07-28), not in the 4.2.6 baseline - an accepted upstream commit belongs
-in `upstream-catchup`, not here. The port carried the same gap
-(`packages/core/src/world/project.ts`, `computeProjection`, no clamp on `rad`)
-and it read worse than upstream's: a radius past `maxRange` collects grids the
-damage table has no entry for, so the damage handed to every per-grid handler is
-`undefined` and the first arithmetic done with it is `NaN`, where the C reads
-stale memory instead.
+Fixed upstream by commit `f0f6bd223b6b9faf0072b0ae7ffb34a812b97349` ("Projections: coerce blast radius to fit what dam_at_dist can handle", 2026-07-28), which is not in the 4.2.6 baseline. Accepted upstream commits belong in `upstream-catchup`, so this fix ships there. The port has the same gap (`packages/core/src/world/project.ts`, `computeProjection`, no clamp on `rad`), and in the port it is worse than upstream's: a radius past `maxRange` collects grids the damage table has no entry for, so every per-grid handler receives `undefined` as its damage and the first arithmetic done with it gives `NaN`, where the C reads stale memory instead.
 
-Carried by `upstream-catchup` under `catchup.projections`, on the
-`projectionRadius` hook (`MOD_SEAMS.md`), which core reads in `computeProjection`
-before any geometry is built. Faithful default: with no mod contributing one the
-field is absent and the radius is used exactly as given, which is 4.2.6's own
-behaviour. Tracked as neostryder/neo-angband#117 (relabeled
-`repo:mod-upstream-catchup`).
+`upstream-catchup` carries it under `catchup.projections`, on the `projectionRadius` hook (`MOD_SEAMS.md`), which core reads in `computeProjection` before building any geometry. Faithful default: with no mod contributing a radius, the field is absent and the radius is used exactly as given, which is 4.2.6's own behaviour. Tracked as neostryder/neo-angband#117 (relabeled `repo:mod-upstream-catchup`).
 
 ### 16. Shape flags learned only when equipment already carries them - MOVED to the upstream-catchup mod
 
-Fixed upstream by commit `c8036c51537942a560e3d7f81749c431bbb4701f` ("On
-shape change, learn shape's obvious flags", 2026-07-28), not in the 4.2.6
-baseline - belongs in `upstream-catchup`, not here. Whether the port
-(`packages/core/src/obj/knowledge.ts:802`) reproduces the defect or its rune
-model already sidesteps it has NOT been checked; that verification is the
-next step regardless of which mod eventually ships the fix. Tracked as
-neostryder/neo-angband#118 (relabeled `repo:mod-upstream-catchup`). Not yet
-built.
+Fixed upstream by commit `c8036c51537942a560e3d7f81749c431bbb4701f` ("On shape change, learn shape's obvious flags", 2026-07-28), which is not in the 4.2.6 baseline, so the fix belongs in `upstream-catchup`. Nobody has yet checked whether the port (`packages/core/src/obj/knowledge.ts:802`) reproduces the defect or whether its rune model already avoids it; that check comes next, whichever mod ends up shipping the fix. Tracked as neostryder/neo-angband#118 (relabeled `repo:mod-upstream-catchup`). Not yet built.
 
 ### 17. Noise not restored on reload, and stale flow on level revisit - IMPLEMENTED in the upstream-catchup mod
 
-Fixed upstream by commit `5c45eb9588b8227d4f1b1998e0a627ad7ee11a75`
-("Remember source location for last noise calculation in save file",
-2026-08-18), not in the 4.2.6 baseline, and now carried by the
-`upstream-catchup` mod's off-by-default `catchup.levelRevisitTracking` rule.
-The core `levelRevisited` notification runs for both `levelCache` restoration
-and a return from single combat; without it faithful core resumes the exact
-cached `Chunk` flow arrays. The rule reproduces upstream's `generate.c` order:
-after monster restoration, clear interior noise and age nonzero scent by
-`floor(now / 10) - floor(frozenAt / 10)`, clearing a scent value that would
-overflow `uint16_t`. Thus an out-of-play level can no longer direct a monster
-toward the position the player occupied before leaving, nor retain an
-un-aged scent trail; fresh flow is still made by the next ordinary world tick.
+Fixed upstream by commit `5c45eb9588b8227d4f1b1998e0a627ad7ee11a75` ("Remember source location for last noise calculation in save file", 2026-08-18), which is not in the 4.2.6 baseline. The `upstream-catchup` mod carries it as the off-by-default `catchup.levelRevisitTracking` rule. Core's `levelRevisited` notification runs both when a level is restored from `levelCache` and on return from single combat; without the rule, faithful core resumes the cached `Chunk` flow arrays exactly as they were. The rule follows upstream's `generate.c` order: after monsters are restored, it clears interior noise and ages nonzero scent by `floor(now / 10) - floor(frozenAt / 10)`, clearing any scent value that would overflow `uint16_t`. A level the player has been away from can therefore no longer lead a monster toward where the player stood before leaving, or keep an un-aged scent trail. Fresh flow still comes from the next ordinary world tick.
 
-This is a real gameplay difference, not a cosmetic cache detail: monster AI
-reads the heatmaps before `processWorld`'s next tick, which can be up to nine
-turns after entry. It remains deliberately separate from entry 8's
-`bugfix.stateIntegrity` / `bugfix.noiseScentSave` rule. That rule preserves
-heatmaps across a save/reload; this rule deliberately discards/ages them across
-time spent away, matching upstream. Upstream's source-location save/reload
-design is also different from entry 8's heatmap persistence, so a future
-re-sync must not collapse the toggles.
+This affects gameplay: monster AI reads the heatmaps before `processWorld`'s next tick, which can be up to nine turns after entry. The rule stays separate from entry 8's `bugfix.stateIntegrity` / `bugfix.noiseScentSave` rule. That rule keeps heatmaps across a save and reload, while this one discards or ages them across time spent away, as upstream does. Upstream's save/reload fix stores the noise source location, which is also a different design from entry 8's heatmap persistence, so a future re-sync must keep the two toggles apart.
 
 ---
 
 ## Front-end-only, likely out of scope for a core TS port
 
-- **#5931** macOS crash in `map_info()` (`EXC_BAD_ACCESS`, open). A core redraw
-  path in the C client; the port's renderer is a separate implementation, so
-  this specific crash likely does not carry over. Re-evaluate when the web
-  renderer's map path is stress-tested.
-  - Re-evaluated 2026-08-24, and "likely does not carry over" can be stated
-    more firmly than that. `EXC_BAD_ACCESS` is a bad pointer dereference, and
-    the port has no pointers to get wrong: `map_info`'s object loop is
-    `floorDisplay` (`packages/core/src/game/floor.ts:110`), reading a
-    `GameObject[]` off `state.floor`. An index that would be out of bounds
-    yields `undefined` rather than a fault. So THIS crash cannot occur, and the
-    entry stays only because the surrounding map path is worth watching.
-  - What the map path can still get wrong is agreement between its two halves,
-    and it has: the live path off `state.floor` and the remembered path off
-    `state.known` once disagreed about `multiple_objects`, so a pile in sight
-    drew its top item and turned into the pile glyph the moment it dimmed out
-    of view. `floorDisplay` exists because both halves now call it. That is a
-    divergence bug, not a memory bug, and it is the shape to look for here.
-  - The stress test the entry asks for has still NOT been run. The map path has
-    unit coverage (`packages/web/src/mapview.test.ts`,
-    `world-render-data.test.ts`, `render-background.test.ts`,
-    `level-map-region.node.test.ts`), which is not the same thing. Leaving this
-    open, with the crash ruled out and the real risk named.
+- **#5931** macOS crash in `map_info()` (`EXC_BAD_ACCESS`, open). A core redraw path in the C client. The port's renderer is a separate implementation, so this specific crash likely does not carry over. Re-evaluate when the web renderer's map path is stress-tested.
+  - Re-evaluated 2026-08-24: this crash cannot occur in the port. `EXC_BAD_ACCESS` is a bad pointer dereference, and the port has no pointers to get wrong. `map_info`'s object loop is `floorDisplay` (`packages/core/src/game/floor.ts:110`), which reads a `GameObject[]` off `state.floor`, and an out-of-bounds index yields `undefined` rather than a fault. The entry stays because the surrounding map path is still worth watching.
+  - The map path can still let its two halves disagree, and that has happened once. The live path off `state.floor` and the remembered path off `state.known` disagreed about `multiple_objects`, so a pile in view drew its top item and turned into the pile glyph the moment it dimmed out of view. `floorDisplay` exists so that both halves call the same code. Disagreements of that kind are what to look for in this path.
+  - The stress test has still not been run. The map path has unit coverage (`packages/web/src/mapview.test.ts`, `world-render-data.test.ts`, `render-background.test.ts`, `level-map-region.node.test.ts`), which is a different thing. The entry stays open, with the crash ruled out and the remaining risk named.
 
 ---
 
@@ -942,25 +269,10 @@ this one:
 
 ## The port's own code: what has been moved here
 
-Decision 24 requires any bug the port's own code fixed relative to the tag to be
-moved OUT of core and INTO this mod.
+Any bug the port's own code fixed relative to the tag moves out of core and into this mod.
 
-Audit result (2026-07-08): the only non-faithful shortcut in core was the
-"everything known" rune convention, and it has been REVERTED to faithful (runes
-unknown by default) in commit `7970af462`, not relocated - because a shortcut
-that granted unearned bonuses is not a "fix" players would want as an option.
-The two remaining ledgered divergences (no global RNG singleton; Linoleum
-generated-by header text) are unavoidable port artifacts under decision 23(a),
-not bug fixes.
+An audit on 2026-07-08 found one non-faithful shortcut in core: the "everything known" rune convention. It was reverted to faithful behaviour (runes unknown by default) in commit `7970af462` rather than moved here, because a shortcut that granted unearned bonuses is not a fix players would want as an option. The two other recorded divergences (no global RNG singleton, and Linoleum's generated-by header text) are unavoidable consequences of porting rather than bug fixes.
 
-**Migrated 2026-07-26: entry 13, unreachable staircases.** This is the one and
-only thing that has ever had to make the trip. It was added to core the previous
-day as a guarantee, based on the mistaken assumption that vanilla could not
-strand a floor. Once the reference source showed that it can and does, the
-guarantee was withdrawn: core must retain all warts of the
-reference code; a bug in the port itself belongs in the bug-fixes mod, not here.
+Entry 13, unreachable staircases, moved here on 2026-07-26, and it is the only thing that has ever needed to. It had been added to core the day before as a guarantee, on the mistaken assumption that vanilla could not strand a level. Once the reference source showed that it can and does, the guarantee came out of core, since core keeps every wart of the reference code and a fix for one belongs in this mod.
 
-Precedent worth keeping: a "core must never do X" requirement is only safe to
-implement in core once `reference/src` has been read and confirmed to agree. If
-the reference disagrees, the requirement belongs in a mod, and the finding
-belongs in this file.
+A "core must never do X" guarantee belongs in core only after `reference/src` has been read and shows that upstream never does X. If the reference disagrees, the guarantee belongs in a mod and the finding belongs in this file.

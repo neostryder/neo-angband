@@ -20,11 +20,11 @@ The software is provided as available. It can be changed, unavailable, incompati
 
 ## Mods and third-party material
 
-Mods are separate folders that a player chooses to install into Neo Angband. The seven first-party mods addressed by the companion Terms documents are not bundled into the base game. A repository installation retrieves the selected mod from its public GitHub repository at a tag and stores the retrieved copy locally. The manager records the mod's origin and file hashes so it can report whether a local copy has changed since installation. This is not a guarantee that a first download is safe or that a tag cannot be changed by its repository owner.
+Mods are separate folders that a player chooses to install into Neo Angband. The seven first-party mods, each covered by its own Terms document, are not bundled into the base game. Installing from a repository fetches the selected mod from its public GitHub repository at a tag and keeps the fetched copy locally. The manager records the mod's origin and file hashes so it can report whether the local copy has changed since installation. Those records cannot show that the first download was safe, and a repository owner can still change what a tag points to.
 
-Mods can change game content, behavior, graphics, sounds, fonts, or other game features. A mod can also include executable plugin code. The project does not review, endorse, warrant, or take responsibility for third-party mods, their accuracy, security, licences, content, or compatibility. A player should inspect a mod, its repository, its declared capabilities, and its applicable licence before installation.
+Mods can change game content, behavior, graphics, sounds, fonts, or other features, and a mod can include executable plugin code. The project does not review, endorse, warrant, or take responsibility for third-party mods, including their accuracy, security, licences, content, or compatibility. Before installing a mod, a player should inspect the mod, its repository, its declared capabilities, and its licence.
 
-The mod capability prompt communicates what a mod declares that it will use. It is not a complete technical sandbox for in-process plugin code. A player should not treat a declaration as a guarantee that mod code cannot act outside the listed capability.
+The capability prompt shows what a mod declares it will use. It is not a complete technical sandbox for in-process plugin code, so a declaration does not guarantee that the mod's code stays within the listed capabilities.
 
 Material supplied by a mod author or another rights holder remains subject to its own licence or permission. In particular, art can have terms separate from the Neo Angband code licence.
 

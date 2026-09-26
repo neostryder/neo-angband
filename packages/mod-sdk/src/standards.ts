@@ -207,7 +207,8 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
     title: "Declare id, name, version and shape, and nothing malformed",
     why:
       "These four are what the manager lists and what the loader keys everything by. " +
-      "The check is the game's OWN validator, so this cannot pass here and fail there.",
+      "The check uses the game's own validator, so a manifest that passes here passes " +
+      "at install too.",
     check: (mod) => {
       const m = manifestObject(mod);
       if (m === null) return null; // an earlier rule owns this
@@ -228,14 +229,13 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
     level: "required",
     title: "Say where the mod lives, in `repository`",
     why:
-      "It is the mod's identity across every way of getting it. The game pins an " +
-      "installed mod to the repository it came from and will not let a different one " +
-      "replace it, so a mod that names nowhere can be quietly overwritten by anything " +
-      "that claims its id. It is also the only route by which an update can ever be " +
-      "offered, and the only thing a player has to go and read about the mod. " +
-      "Required of an archive exactly as it is of a checkout: a mod handed over as a " +
-      "zip is the same mod, and it must not be able to arrive knowing less about " +
-      "itself than the same files fetched from a repository would.",
+      "It identifies the mod however it was obtained. The game pins an installed mod to " +
+      "the repository it came from and will not let a different one replace it, so a " +
+      "mod that names no repository can be quietly overwritten by anything claiming its " +
+      "id. It is also the only way an update can ever be offered, and the only place a " +
+      "player can go to read about the mod. Archives need it just as checkouts do: a " +
+      "mod handed over as a zip is the same mod, and it should carry the same " +
+      "information about itself as the files fetched from its repository.",
     check: (mod) => {
       const m = manifestObject(mod);
       if (m === null) return null; // an earlier rule owns this
@@ -261,10 +261,9 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
     title: "Name the author",
     why:
       "The game shows it beside the mod's name, so a player can tell two mods of the " +
-      "same name apart and knows whose work they are about to run. A row with no " +
-      "author is a row that asks somebody to trust nobody in particular. Use the name " +
-      "you want shown - it shares a line with the mod's name and version, so keep it " +
-      "short; anything longer belongs in `description`.",
+      "same name apart and knows whose work they are about to run. Use the name you " +
+      "want shown. It shares a line with the mod's name and version, so keep it short " +
+      "and put anything longer in `description`.",
     check: (mod) => {
       const m = manifestObject(mod);
       if (m === null) return null;
@@ -282,10 +281,9 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
     title: "Declare the engine range the mod was written against",
     why:
       "Without it the mod is offered to every version of the game forever, including " +
-      "the one that changes the thing it depends on. With it, a player is told the " +
-      "mod is too old instead of watching it misbehave. This was advice until it was " +
-      "measured: every mod that had shipped declared one, and the mods that did not " +
-      "were the ones nothing had checked.",
+      "the one that changes something it depends on. With it, a player is told the mod " +
+      "is too old instead of watching it misbehave. Every mod that has shipped declared " +
+      "one, and the mods without one were the ones no check had covered.",
     check: (mod) => {
       const m = manifestObject(mod);
       if (m === null) return null;
@@ -308,12 +306,12 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
     level: "required",
     title: "Request only capabilities the game knows",
     why:
-      "A capability string is the consent surface a player reads and the gate the " +
-      "runtime actually opens. An unrecognized string, or a capability on a pack " +
-      "that cannot execute, is refused when the game loads the plugin - after the " +
-      "player has already installed it. This check is CapabilitySet.fromManifest, " +
-      "the same function the loader calls, so a typo that used to pass here and " +
-      "fail there cannot.",
+      "A capability string is what the player reads before agreeing to install, and it " +
+      "is the gate the runtime opens. An unrecognized string, or a capability on a pack " +
+      "that cannot run code, is refused when the game loads the plugin, which is after " +
+      "the player has already installed it. This check calls " +
+      "CapabilitySet.fromManifest, the same function the loader calls, so a typo cannot " +
+      "pass here and then fail at load.",
     check: (mod) => {
       const m = manifestObject(mod);
       if (m === null) return null;
@@ -340,10 +338,10 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
     level: "required",
     title: `Declare modApi if the mod ships ${PLUGIN_FILE}`,
     why:
-      "The host refuses an incompatible plugin BEFORE importing it, which it can only " +
-      "do from the manifest - a version check inside the module runs after the " +
-      "module's top-level code already has. Without modApi there is nothing to check " +
-      "against, and the mod's code is loaded on faith.",
+      "The host refuses an incompatible plugin before importing it, and it can only do " +
+      "that from the manifest, because a version check inside the module would run " +
+      "after the module's top-level code already had. Without modApi there is nothing " +
+      "to check against, and the mod's code is loaded unchecked.",
     check: (mod) => {
       if (!hasFile(mod, PLUGIN_FILE)) return null;
       const m = manifestObject(mod);
@@ -379,9 +377,9 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
     level: "required",
     title: "Declare committed .zip archives in payload.archives",
     why:
-      "Nothing can tell from a file list whether a .zip is a pack to UNPACK or a file " +
-      "to store as-is - only the manifest can say. An undeclared archive is installed " +
-      "unopened, so the mod is present, listed, enabled, and does nothing.",
+      "Only the manifest can say whether a .zip is a pack to unpack or a file to store " +
+      "as it is; a file list cannot. An undeclared archive is installed unopened, so " +
+      "the mod is present, listed and enabled, and does nothing.",
     check: (mod) => {
       /* Asked of the REPOSITORY, because after unpacking the zips are gone and the
        * question no longer has an answer. This is the rule that had already shipped
@@ -441,7 +439,7 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
     title: "Write a description",
     why:
       "It is the only thing a player has to decide by, since nothing else in the game " +
-      "knows what the mod does. A row with no description is a row nobody installs.",
+      "knows what the mod does.",
     check: (mod) => {
       const m = manifestObject(mod);
       if (m === null) return null;
@@ -517,11 +515,7 @@ export function requirementsMarkdown(): string {
     "",
     "# What a mod must provide",
     "",
-    "Every rule below is CODE, in `packages/mod-sdk/src/standards.ts`. The same",
-    "function that generated this page is the one the game runs when it installs a",
-    "mod, and the one `neo-angband-mod-check` runs for you before you publish. So",
-    "this page cannot fall behind the game: if a rule changes, this text changes with",
-    "it, and a test fails if it does not.",
+    "Every rule below is code in `packages/mod-sdk/src/standards.ts`. The same function generates these docs, runs when the game installs a mod, and runs when `neo-angband-mod-check` checks your mod before you publish. If a rule changes, the text here changes with it, and a test fails if the two ever disagree.",
     "",
     "Check your mod:",
     "",

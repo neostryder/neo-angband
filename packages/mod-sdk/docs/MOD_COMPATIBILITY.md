@@ -1,20 +1,10 @@
 # What an engine release may break, and what it may not
 
-This is the promise a mod author is owed: **which of my mods stop working when
-the game updates, and what do I have to do about it?**
+If you publish mods, you want to know which of them stop working when the game updates, and what you have to do about it.
 
-The short answer, and the target the rest of this document explains:
+> A mod that is pure data should survive engine releases without being republished. A mod that ships code should survive patch and minor releases, and get a release's warning before an ABI change strands it. That ABI includes a named subset of `ctx.core`; the rest of that namespace is an escape hatch.
 
-> A mod that is pure data should survive engine releases without being
-> republished. A mod that ships code should survive patch and minor releases,
-> and get a release's warning before an ABI change strands it. That ABI includes
-> a named subset of `ctx.core`; the rest of that namespace is an escape hatch.
-
-Written down on 2026-08-02, after measuring how the four gates actually behaved.
-Three of the four were stricter than they needed to be, and the fourth did not
-exist. The fourth is `ctx.core`. A named subset of that namespace is part of the
-promise; the rest of it is an escape hatch.
-
+These rules date from 2026-08-02. Before then, three of the four gates below were stricter than they needed to be, and the fourth, `ctx.core`, had no gate at all.
 ## The four things that can strand a mod
 
 | # | Gate | What it judges | On failure |
@@ -22,21 +12,13 @@ promise; the rest of it is an escape hatch.
 | 1 | `engine` | a semver range over `ENGINE_VERSION` | **warns** for data, **refuses** code |
 | 2 | `modApi` | the plugin ABI, an integer | refuses outside the accepted window |
 | 3 | a patch target | one `patches` / `fieldPatches` / `removes` ref | **skips that op**, keeps the mod |
-| 4 | `ctx.core` | a guaranteed name disappearing; any other export a plugin actually calls | the loader still does nothing at load time; a guaranteed name cannot be removed from the engine without an alias or a two-release ABI bump. See below. |
+| 4 | `ctx.core` | a guaranteed name disappearing; any other export a plugin actually calls | nothing happens at load time. A guaranteed name can only be removed from the engine with an alias or a two-release ABI bump; see below. |
 
 ### 1. `engine` is a label on data and a gate on code
 
-`engine` says which builds the author *tested*. Until 2026-08-02 the host read
-that as a demand and refused any pack outside it - so a pack of JSON went dark
-because of a string in its manifest, which is ratified decision 18 ("the engine
-labels, it does not forbid") applied backwards.
+`engine` records which builds the author tested, and for a data pack the game treats it as information only. Until 2026-08-02 the host refused any pack outside its range, so a pack of pure JSON stopped loading over one string in its manifest.
 
-Now the range only **blocks** a pack that ships code, and `modApi` is the signal:
-the manifest already requires it of exactly the packs with a `plugin.js`. Code is
-what genuinely breaks across a release - it calls functions, and a renamed
-function is a crash. A tile pack is data too, on the same reasoning: a stale
-mapping loses individual tiles to the ASCII fallback, which the player can see,
-and that beats a whole tileset going dark.
+The range only blocks a pack that ships code. The game tells the two apart by `modApi`, which the manifest requires of every pack with a `plugin.js` and of no other. Code is what breaks across a release, because it calls functions and a renamed function is a crash. Tile packs count as data: a stale mapping loses individual tiles to the ASCII fallback, which the player can see, and that is better than a whole tileset failing to load.
 
 **What to write.** A minimum, not a caret:
 
@@ -44,216 +26,73 @@ and that beats a whole tileset going dark.
 "engine": ">=0.13.0"
 ```
 
-`^0.13.0` on a `0.x` version means *0.13.x only*, so it excludes 0.14.0 - which
-is how an author accidentally opts into a warning on every minor release. A
-two-sided range is for a mod that genuinely knows it breaks above some version.
-Omitting the field entirely is a reasonable choice for a data pack, and the
-core content pack does exactly that in spirit with `">=0.1.0"`.
+On a `0.x` version, `^0.13.0` means 0.13.x only, so it excludes 0.14.0 and earns the mod a warning on every minor release. Use a two-sided range only when the mod is known to break above some version. A data pack can leave the field out entirely; the core content pack comes close to that with `">=0.1.0"`.
 
 #### A range this build fails is no longer the end of the road
 
-Until 2026-08-21 a code pack whose newest release declared a range this build sits
-outside was simply refused. The row read `will not run on this version` and stopped
-there, even when the same repository still held a release that ran perfectly.
-Installing that older release was possible the whole time by pasting a
-`github.com/owner/repo/tree/<tag>` URL into **Add from a repository address**, so
-what was missing was never the capability. Nothing looked, and nothing said.
+Until 2026-08-21, a code pack whose newest release declared a range outside this build was refused outright. The row read `will not run on this version`, even when the same repository held an older release that would run. You could install that release by pasting a `github.com/owner/repo/tree/<tag>` URL into **Add from a repository address**, but the game never looked for it or mentioned it.
 
-Discovery now walks a repository's tags newest first and offers the newest release
-this build will actually run. What that walk guarantees:
+Discovery now walks a repository's tags newest first and offers the newest release this build will run. The walk follows these rules:
 
-- **The same gate decides.** Each candidate is judged by the loader's own rule, so
-  a version a screen offers is a version load time accepts. There is no second
-  opinion about what "runnable" means: the install screen and *Update installed
-  mods* share the one walk, because two walks would be two chances to disagree.
-- **One manifest read in the ordinary case.** The loop stops at the first candidate
-  it accepts, and the newest release is nearly always that candidate, so a mod that
-  is keeping up costs exactly what it cost before. Manifests are read from
-  `raw.githubusercontent.com`, which is unmetered, rather than from the API, whose
-  sixty requests an hour a screenful of mod rows would spend on nothing but
-  walking.
-- **The walk is bounded at eight versions** (`MAX_VERSIONS_TRIED`). A mod whose
-  last eight releases all want a newer game is telling the player to update the
-  game, and that is what the refusal then says, along with how many releases were
-  tried.
-- **A pinned tag is never walked past.** A player who named a version is owed that
-  version, so a pin that will not run is refused as a pin rather than quietly
-  becoming a different install than the one that was asked for.
-- **A data pack out of range is never walked past either,** because gate 1 lets it
-  load. Its newest release is still the one offered, still carrying the line about
-  the range.
-- **The release that was passed over is named.** A player offered 0.14.4 while the
-  mod's front page shows 0.15.0 would otherwise conclude the game is broken or the
-  listing is stale, when the real answer is that 0.15.0 wants a newer game. The
-  row, the detail pane and the refusal screen all say which newer release was
-  stepped past and why.
-- **"Update the game" is said only when a newer game is what would help.** Gate 1
-  deliberately refuses to say which side is behind, because `>=0.24.0` wants a
-  newer game and `<0.5.0` wants an older one, and a confident instruction would be
-  wrong half the time on the one line a player acts on. A screen that has decided
-  to offer an older release still has to answer the question, so it is answered
-  separately and by probing: `newerGameCouldRun` tries the next nine patches, the
-  next nine minors and the next nine majors above the running version, plus one
-  far-future version for an open upper bound. Where none of those satisfies the
-  range, both versions are named and nothing is advised, which is the same
-  restraint the verdict itself shows.
-- **An update is never offered that the loader would refuse.** *Update installed
-  mods* counts only releases that run here, so a mod already sitting on the newest
-  release this build can run reads as exactly that rather than as out of date, and
-  the number of mods holding a release back for a newer game is shown beside it.
-- **A manifest that could not be read keeps the optimistic answer.** Withholding an
-  update over one failed request would be a claim about a mod made without asking,
-  which is the failure the update screen was rebuilt to avoid. The install path
-  runs the same walk with a live connection and steps back there.
+- **The loader's own rule judges each candidate**, so any version a screen offers is one the loader accepts. The install screen and *Update installed mods* share the same walk, so they cannot disagree about what runs.
+- **Usually only one manifest is read.** The walk stops at the first candidate it accepts, which is nearly always the newest release, so a mod that keeps up costs no more than before. Manifests come from `raw.githubusercontent.com`, which is unmetered, rather than from the GitHub API, whose limit of sixty requests an hour a single screen of mod rows could use up.
+- **The walk stops after eight versions** (`MAX_VERSIONS_TRIED`). If a mod's last eight releases all want a newer game, the refusal tells the player to update the game and says how many releases were tried.
+- **A pinned tag is never walked past.** If the player named a version and it will not run, the pin is refused rather than swapped for a different release.
+- **A data pack out of range is not walked past either,** because gate 1 lets it load. Its newest release is offered, with the warning about the range.
+- **The skipped release is named.** The row, the detail pane and the refusal screen all say which newer release was passed over and why. Without that, a player offered 0.14.4 while the mod's front page shows 0.15.0 would assume the game or the listing is broken, when 0.15.0 simply wants a newer game.
+- **"Update the game" appears only when a newer game would help.** Gate 1 does not say which side is behind, since `>=0.24.0` wants a newer game and `<0.5.0` wants an older one. A screen offering an older release answers that question separately by probing: `newerGameCouldRun` tries the next nine patches, the next nine minors and the next nine majors above the running version, plus one far-future version for an open upper bound. If none of those satisfies the range, the screen names both versions and gives no advice.
+- **No update is offered that the loader would refuse.** *Update installed mods* counts only releases that run on this build, so a mod already on the newest runnable release shows as current rather than out of date. Beside that, the screen shows how many mods have a newer release waiting on a newer game.
+- **If a manifest cannot be read, the update is still offered.** One failed request is no evidence that the release will not run. The install path repeats the walk over a live connection and steps back to an older release there if it needs to.
 
-**What this asks of an author.** A range stricter than the mod needs now costs a
-player the mod's newest release rather than the mod itself. That is a smaller harm
-and still a real one, so a two-sided range should be one that was meant. It also
-means fixing a range in a new release reaches players immediately: the walk finds
-the fixed release without the game having to update first.
-
+**What this means for authors.** A range stricter than the mod needs now costs players your newest release instead of the whole mod. That still hurts, so only write a two-sided range you mean. It also means a corrected range in a new release reaches players straight away, because the walk finds it without the game having to update first.
 ### 2. `modApi` accepts a window
 
 `MOD_API_VERSION` is what this host implements; `MOD_API_MIN` is the oldest it
 still accepts. Everything in between loads, and anything below the current
 version is reported to its author as running on a compatibility path.
 
-Until 2026-08-02 the check was `declared !== MOD_API_VERSION`, so the day the
-number moved, **every mod in existence stopped loading at once** - before any
-author could react, for a change most of them were not affected by.
+Until 2026-08-02 the check was `declared !== MOD_API_VERSION`, so the day the number moved, every mod stopped loading at once, before any author could react and whether or not the change affected them.
 
 **A bump now takes two releases:**
 
-1. Ship the new behaviour. Leave `MOD_API_MIN` where it is. Keep honouring the
-   old contract for plugins that declared the old number - `LoadedModPlugin.api`
-   carries what each one declared, which is what makes that possible. Authors
-   start seeing the deprecation line.
+1. Ship the new behaviour. Leave `MOD_API_MIN` where it is. Keep honouring the old contract for plugins that declared the old number; `LoadedModPlugin.api` carries what each one declared, which is what makes that possible. Authors start seeing the deprecation line.
 2. Raise `MOD_API_MIN`. Delete the old path.
 
-If a change genuinely cannot be conditioned on the declared version, both move
-in one step - and that is a decision to take deliberately, which is the reason
-there are two constants and a test that fails when they stop making sense.
+If a change cannot be conditioned on the declared version, both constants move in one step. A test fails when the two constants stop making sense together.
 
 ### 3. A missing patch target costs the patch, not the mod
 
-A `fieldPatch` at a record that no longer exists used to throw, and the host
-answers a throw by dropping the whole pack. So a mod patching forty monsters
-lost all forty - plus its code, its rules and its tiles - because one of the
-forty had been renamed.
+A `fieldPatch` aimed at a record that no longer exists used to throw, and the host answers a throw by dropping the whole pack. A mod patching forty monsters lost all forty, along with its code, its rules and its tiles, because one of the forty had been renamed.
 
-It is now one reported line on that mod's row, and everything else in the pack
-still applies. The line says the target may have been renamed, because that is
-the likeliest cause and an author who knows they got the ref right will
-otherwise go looking in the wrong place.
+Now it is one reported line on that mod's row, and the rest of the pack still applies. The line suggests the target may have been renamed, since that is the likeliest cause.
 
-This is the same behaviour the *other* half of the composer has had all along:
-20 of core's 44 record files take a "passthrough" merge path that reported and
-carried on, and 24 take a "composable" one that threw. Nobody chose that split;
-it fell out of the shape of core's own records.
+The composer's other merge path always behaved this way. Of core's 44 record files, 20 take a "passthrough" path that reported and carried on, and 24 take a "composable" path that threw. The split was never chosen; it follows from the shape of core's own records.
 
-**A patch that applies cleanly can still name something that is not there,** and
-until 2026-08-20 that was a *worse* outcome than a missing target: the composer
-was satisfied, and the binder threw. A store's `normal` stock table is the case
-that made it ordinary: `append` exists so mod A can stock an item mod B defines,
-tutorial 2 teaches exactly that patch, and disabling mod B left an appended line
-naming nothing. `bindStore` threw `store: unknown sval` from inside `bindCore`,
-which the host runs at module top level, so one line of one shop's stock table
-produced the crash screen and no game.
+A patch can apply cleanly and still name something that does not exist. Until 2026-08-20 that was worse than a missing target, because the composer accepted it and the binder threw. Store stock tables made this common: `append` exists so mod A can stock an item that mod B defines, tutorial 2 teaches exactly that patch, and disabling mod B left an appended line in the `normal` table naming nothing. `bindStore` threw `store: unknown sval` from inside `bindCore`, which the host runs at module top level, so one line in one shop's stock table brought up the crash screen instead of the game.
 
-The rule is now gate 3's rule one layer down: the line is dropped, the mod is
-told on its own row, and the rest of the store, and every other store, is
-untouched. **Core's own data still throws,** and record provenance is what
-separates them: an unresolvable entry in a store no pack has touched is core's
-mistake and fails loudly, which is every store in a modless game.
+Binders now apply gate 3's rule: the line is dropped, the mod is told on its own row, and the rest of that store and every other store are untouched. Core's own data still throws. Record provenance tells the two apart: an unresolvable entry in a store no pack has touched is core's mistake and fails loudly, and in a game with no mods that covers every store.
 
-This now covers every field of a store record a patch can reach. `normal`,
-`always` and `buy` each lose the one entry that resolved to nothing. The
-`store:` entrance feature is a scalar, so there is no entry to drop and nothing
-left of the shop: the record survives with an entrance nothing matches, the shop
-cannot be entered, and the mod is told. It is not removed from the store list,
-because that list is consumed positionally: dropping a record would renumber
-every store after it and move a saved game's stock between shops.
+This covers every field of a store record that a patch can reach. `normal`, `always` and `buy` each lose only the entry that resolved to nothing. The `store:` entrance feature is a scalar, so there is no single entry to drop: the record stays with an entrance that matches nothing, the shop cannot be entered, and the mod is told. The record stays in the store list because that list is read by position, and removing one would renumber every later store and move a saved game's stock between shops.
+The owner list resolves no names, so it has no per-entry miss to drop, but the field can go missing entirely. That is a different failure from the wrong-shape case the composer handles (see "A patch cannot make a field unreadable" below). A `replaces` body on a record a mod owns may drop `owner:` as part of a total conversion, and the composer's shape guard does not restore an absent field, so `owner: undefined` used to reach `rec.owner.map` as a bare `TypeError` naming no pack. The store binder now guards the field itself: a missing or malformed owner list becomes an empty list and is reported against whichever pack is responsible, like every other field on the record (#8).
 
-The owner list resolves no names at all, so there is no per-entry miss to
-refuse the way a stock line has - but the field can still go missing
-*entirely*, which is a different failure than the wrong-shape one the composer
-answers one level up (below). A `replaces` body on a record a mod owns can
-legitimately drop `owner:` as part of a total conversion, and the composer's
-own shape guard deliberately does not restore a field that is simply absent
-(see "A patch cannot make a field unreadable" below) - so `owner: undefined`
-used to reach `rec.owner.map` as a bare `TypeError` naming no pack. The store
-binder now guards the field itself: a missing or malformed owner list is
-dropped to empty and reported against whichever pack is answerable, the same
-way every other field on the record already is (#8).
+**A patch cannot make a field unreadable.** The record check already tested shape on the load path with `field/type`, but that check only reports, because the blueprint it reads is a measurement of core's records and a value outside it can be legal (a mod inventing a new tval is using the mod system as intended). That works for scalar values and fails for lists: every binder reads a list field by iterating it, so a list field holding a string, a number or `null` becomes a `TypeError` inside `bindCore` inside `startGame`, and one field brings up the crash screen. The composer now refuses that one case: the field goes back to what the record had before, the pack is told on its own row, and the rest of the patch applies.
 
-**A patch cannot make a field unreadable.** The composer already checked shape on
-the load path with `field/type` in the record check, but that check reports and
-never refuses, deliberately, because the blueprint it reads is a *measurement* of
-core's records and an unlisted value is legal (a mod inventing a new tval is
-doing something the mod system exists to allow). That is right for a statistic
-and wrong for container-ness: every binder reads a list field by iterating it, so
-a list field holding a string, a number or `null` is a `TypeError` inside
-`bindCore` inside `startGame`: the crash screen, over one field. The composer now
-**refuses exactly that class**: the field is put back to what the record had
-before, the pack is told on its own row, and the rest of the patch lands.
+It leaves two cases alone:
 
-Two things it deliberately does not do, both load-bearing:
+- A scalar of the wrong type is only reported. `weight` as `"40"` is readable, some binders coerce it, and the measurement cannot prove it is wrong.
+- A field the patch removes is not put back. Dropping fields is how a total conversion works: `replaces` swaps the whole record, and a monster rewritten as `{name, hp}` has no `flags`. Restoring the field would undo a supported feature. An absent required field is reported (`field/required`). Refusing a record that the mod itself owns is the binders' job, and the store binder's `owner:` guard above does that where it is reachable today.
 
-- **A scalar written as the wrong scalar stays a finding.** `weight` as `"40"` is
-  readable, some binders coerce it, and the measurement cannot prove otherwise.
-- **A field the patch REMOVES is not put back.** Dropping a field is how a total
-  conversion works: `replaces` swaps the whole record, and a monster rewritten
-  as `{name, hp}` legitimately has no `flags`. Restoring an absent field would
-  silently undo a supported feature. An absent required field is reported
-  (`field/required`), and refusing a record the *mod itself owns* belongs in
-  the binders - the store binder's `owner:` guard above is that case, applied
-  where it is reachable today.
+Egos get the same treatment as stores. An ego's `item:` list names specific base kinds and accepts the same `append`, so it had the same defect and now behaves the same way: the line is dropped, the ego keeps its other candidates, and the mod is told. The core-versus-mod check lives in one shared `fieldOwner` in `packages/core/src/mod/refusal.ts`, so two binders cannot judge the same provenance differently. Any binder that resolves names from a list a mod can append to should use it rather than a rule of its own.
+A pass over every binder (#8) found six more cases of the same shape and fixed them the same way: an artifact's `flags:` and `values:` tokens, a curse's `type:` entries, a monster's `base:` (the whole race, like the artifact's `base-object:`), `friends-base:`, `friends:` and `shape:` (one entry each), and a terrain feature's `mimic:`. Two fields did not need it. An artifact's `act:` resolves the way upstream's `findact` does, silently to nothing, and it does that on core's own data too, so refusing a mod's version would make the same mistake louder for mods than for core. The trap binder resolves no names from an appendable list, only from fixed compiled tables.
 
-**This is not a store-only rule.** An ego's `item:` list names specific base
-kinds and takes the same `append`, so it had the same defect and now gets the
-same answer: the line is dropped, the ego keeps its other candidates, and the
-mod is told. The core-versus-mod decision lives in `packages/core/src/mod/
-refusal.ts`, one `fieldOwner`, shared, precisely so that two binders cannot
-reach different verdicts about the same provenance. A binder that resolves names
-from a list a mod can append to should be reading from there rather than
-inventing its own rule.
-
-A systematic pass over every binder (#8) found six more instances of the same
-shape and closed them the same way: an artifact's `flags:` and `values:`
-tokens, a curse's `type:` entries, a monster's `base:` (the whole race, sized
-like the artifact's `base-object:`), `friends-base:`, `friends:` and `shape:`
-(one entry each), and a terrain feature's `mimic:`. Two fields were audited and
-found not to need it: an artifact's `act:` resolves the same way upstream's own
-`findact` does - silently, to nothing, on core's own data too - so refusing a
-mod's version would make the identical mistake louder than core's; and the trap
-binder resolves no name from an appendable list at all, only fixed compiled
-tables. `composePacks`'s `fieldPatches` loop also reached `applyFieldPatch`
-without going through `refuse()`, so a malformed op (an `append` with `value`
-instead of `values`, say) took down the whole pack, or every installed mod when
-the raw error named none of them; it is now refused the same way a missing
-patch target already was.
-
+`composePacks`'s `fieldPatches` loop also called `applyFieldPatch` without going through `refuse()`, so a malformed op (an `append` with `value` instead of `values`, say) took down the whole pack, or every installed mod when the raw error named none of them. It is now refused the same way a missing patch target is.
 ### 4. `ctx.core` is handed over whole; a named subset of it is guaranteed
 
-`ModPluginContext.core` is the **live core module namespace** - the whole engine,
-1,974 runtime exports, deliberately not a curated slice (decision 18, and
-because a curated list is the thing that drifts). The count is not maintained by
-hand: `packages/core/mod-api-surface.json` is the recorded surface and
-`mod-core-surface.test.ts` fails in BOTH directions against it, so a removal and
-an addition are each a visible diff rather than a number somebody has to
-remember to change here.
+`ModPluginContext.core` is the live core module namespace: the whole engine, 1,974 runtime exports, rather than a curated slice that would drift out of date. `packages/core/mod-api-surface.json` records the surface, and `mod-core-surface.test.ts` fails on any difference in either direction, so every removal and every addition shows up as a diff.
 
-`MOD_API_VERSION` does not version it. It versions the *shape of the plugin
-contract*: the members of `ModPlugin`, what the host passes, when it calls them.
-A core function can be renamed without touching any of that, so the one number a
-mod author checks says nothing about the surface they spend all their time
-calling.
+`MOD_API_VERSION` does not cover this namespace. It versions the plugin contract itself: the members of `ModPlugin`, what the host passes, and when it calls them. A core function can be renamed without changing any of that, so the number a mod author checks says nothing about the functions their plugin calls most.
 
-That width is why the whole namespace cannot carry the compatibility promise: a
-ban on removing any of 1,974 names would freeze the port. First-party plugins
-call 23 of those names at runtime, and those 23 are the part of `ctx.core` the
-promise covers.
-
+The namespace is too wide to promise all of it: forbidding the removal of any of 1,974 names would freeze the port. First-party plugins call 23 of those names at runtime, and those 23 are the part of `ctx.core` that the compatibility promise covers.
 | Export | `typeof` | Called by |
 |---|---|---|
 | `DDGRID` | object | feature-restoration |
@@ -280,80 +119,40 @@ promise covers.
 | `squareNumWallsAdjacent` | function | bug-fixes |
 | `tunnelAux` | function | qol |
 
-qol 7, bug-fixes 6, borg 7, feature-restoration 3, upstream-catchup 1. linoleum
-and forge call none: linoleum reaches the game through `host.tiles` and
-`ctx.registries`; forge holds `ctx.core` and does not read a name from it.
+By mod, qol calls 7 of these, bug-fixes 6, borg 7, feature-restoration 3 and upstream-catchup 1. linoleum and forge call none: linoleum reaches the game through `host.tiles` and `ctx.registries`, and forge holds `ctx.core` without reading a name from it.
 
-`packages/core/mod-core-guaranteed.json` is the list, and
-`mod-core-guaranteed.test.ts` fails if any of those names is missing from the
-live namespace a plugin receives, or if its `typeof` has changed. Removing one
-is a compatibility break: keep the old name as an alias, or take the two-release
-`modApi` path. Updating `mod-api-surface.json` is not enough.
+`packages/core/mod-core-guaranteed.json` holds the list, and `mod-core-guaranteed.test.ts` fails if any of those names is missing from the namespace a plugin receives or its `typeof` has changed. Removing one is a compatibility break that needs either an alias under the old name or the two-release `modApi` path; updating `mod-api-surface.json` alone does not cover it.
+Everything else on `ctx.core` is an escape hatch. A plugin may call it, but a rename or removal of an unguaranteed name can ship in any release, recorded in the table below. Use a seam (`ModHooks`, `ctx.registries`, a capability-gated facade) when one exists; calling an unguaranteed name ties the plugin to that engine release.
 
-**Everything else on `ctx.core` is the escape hatch.** A plugin may call it. A
-rename or removal of an unguaranteed name is recorded in the table below and can
-ship in the same release. Prefer a seam (`ModHooks`, `ctx.registries`, a
-capability-gated facade) when one exists. Reaching past those into an
-unguaranteed name is coupling to that engine release.
+For the rest of the namespace, the only mechanism is the ratchet described above: `packages/core/mod-api-surface.json` records every runtime export, and `mod-core-surface.test.ts` fails when the set changes in either direction.
 
-What exists for the rest of the namespace is not a fence but a **ratchet**:
-`packages/core/mod-api-surface.json` records every runtime export, and
-`mod-core-surface.test.ts` fails when the set changes in either direction.
-
-- A **removal or rename** of an unguaranteed name fails CI with the names, and
-  the fix is either to keep the old name as an alias or to record the break here
-  and take it knowingly. A guaranteed name cannot take that second path.
-- An **addition** also fails, with a one-line fix
-  (`node tools/api-surface.mjs --update`). That is not pedantry: a baseline that
-  tolerated additions would go stale, an export added in one release and removed
-  in the next would never have been recorded, and the removal check would be
-  measuring nothing.
+- A removal or rename of an unguaranteed name fails CI and lists the names. The fix is to keep the old name as an alias, or to record the break in the removals table below and ship it. A guaranteed name cannot take the second route.
+- An addition also fails, and the fix is one command: `node tools/api-surface.mjs --update`. Additions have to be recorded because an export added in one release and removed in the next would otherwise never appear in the baseline, and its removal would go unnoticed.
 
 #### There are two such namespaces now, watched the same way
 
-`ctx.authoring` is the mod SDK's public barrel, 94 runtime exports, handed over
-whole for the same reason `ctx.core` is: a curated subset of an authoring API is
-a second list to maintain, and the first thing that happens to a curated list is
-that it lags the function somebody needs. It is ratchet-only. It is not part of
-the named `ctx.core` subset above.
+`ctx.authoring` is the mod SDK's public barrel, 94 runtime exports, handed over whole for the same reason as `ctx.core`: a curated subset would be a second list to maintain, and it would lag behind whatever function an author needs next. It has the ratchet but no guaranteed subset.
 
-Until it was handed to a plugin, a rename inside the SDK was caught by `tsc -b`
-over this repository, because every consumer of it was in the repository. That
-stops being true the moment a plugin holds the namespace: a plugin ships as built
-JavaScript and resolves no specifier, so the compiler never sees the call. The
-second door therefore arrived carrying the first door's hole, and closes it the
-same way. `packages/mod-sdk/mod-sdk-api-surface.json` is the recorded surface,
-`mod-authoring-surface.test.ts` fails in both directions against it, and
-`node tools/api-surface.mjs` checks and updates both baselines in one run.
+Before plugins received it, a rename inside the SDK was caught by `tsc -b` over this repository, because every consumer was in the repository. A plugin ships as built JavaScript and resolves no specifier, so the compiler never sees its calls. The SDK therefore gets the same ratchet as core: `packages/mod-sdk/mod-sdk-api-surface.json` records the surface, `mod-authoring-surface.test.ts` fails on a change in either direction, and `node tools/api-surface.mjs` checks and updates both baselines in one run.
 
-The SDK barrel is a considered surface rather than everything that happens to be
-exported: `applyFieldPolicy` is deliberately kept out of its `index.ts`, and says
-so in a comment there. A removal from it is recorded in the table below on the
-same terms a core removal is.
+The SDK barrel names its exports one by one instead of re-exporting everything: `applyFieldPolicy` is left out of its `index.ts`, and a comment there says why. A removal from the barrel is recorded in the table below on the same terms as a core removal.
 
 #### Additions, which strand nobody
 
-An added `ctx` field cannot break an existing plugin: it reads what it reads, and
-a name it never mentions cannot change its meaning. So `MOD_API_VERSION` does not
-move for one (its own doc comment says as much), and the additions are recorded
-here for discoverability rather than as a warning.
-
+An added `ctx` field cannot break an existing plugin, because a plugin never reads a name it does not know about. `MOD_API_VERSION` does not move for one (its doc comment says so), and additions are listed here so authors can find them.
 | Version | Field | What it is |
 |---|---|---|
-| unreleased (2026-08-22) | `ctx.authoring` | The mod SDK's public barrel: blueprints, `peersFor`, `suggestFields`, `checkRecords`, `ModProject` and the rest of the authoring stack. Always present, because these are pure functions over data the caller supplies and there is no boot state they wait on. Ungated, on the reasoning `capability-gate-reach.test.ts` already pins for `ctx.core` and `ctx.registries`: nothing here reads game state, nothing mutates a registry, and every name is reachable to anybody who can install the published npm package. |
-| unreleased (2026-08-22) | `ctx.composedRecords` | Every content record the running game was composed from, as JSON, keyed by pack-file stem with no extension. The UNBOUND twin of `ctx.registries`, and the shape the authoring functions above accept: `registries.monsters.races` is bound and carries neither the JSON key names nor the fields that bound to nothing, so a peer table cannot be built from it. Mod-added records are in it on the same terms as core's, each carrying its provenance. Absent during content composition, for the same reason `registries` is. |
-| unreleased (2026-08-22) | `ctx.reloadGame` | The game's own mod-change reload, so a mod that installed something can apply it: every plugin's `uninstall()` runs, the autoplayer hands the keyboard back, the live character is written down, and the session resumes that character instead of landing on the title screen. Behind `mod:install` rather than a capability of its own, because content composes at load and an install a mod cannot follow with a reload leaves the player holding something the process will never load. Not a permission to reload - a plugin reaches `location` with no grant - it is the four steps a mod cannot take for itself. |
-| unreleased (2026-08-22) | `ctx.installMod(...).lines` | A field on both arms of the existing install outcome: the wording the Mods screen itself prints for that same outcome, including one row per unmet requirement and the author's advice under them. Added because a mod built in the game must fail a requirement in the same words a downloaded mod fails in; `problem` is unchanged and remains one whole sentence. |
+| unreleased (2026-08-22) | `ctx.authoring` | The mod SDK's public barrel: blueprints, `peersFor`, `suggestFields`, `checkRecords`, `ModProject` and the rest of the authoring stack. Always present, since these are pure functions over data the caller supplies and need no boot state. Not capability-gated, for the same reasons `capability-gate-reach.test.ts` records for `ctx.core` and `ctx.registries`: nothing here reads game state or mutates a registry, and anyone can get every name by installing the published npm package. |
+| unreleased (2026-08-22) | `ctx.composedRecords` | Every content record the running game was composed from, as JSON, keyed by pack-file stem without the extension. It is the unbound counterpart of `ctx.registries` and the shape the authoring functions above accept. `registries.monsters.races` is bound, so it has neither the JSON key names nor the fields that bound to nothing, and a peer table cannot be built from it. Mod-added records appear on the same terms as core's, each with its provenance. Absent during content composition, for the same reason `registries` is. |
+| unreleased (2026-08-22) | `ctx.reloadGame` | The game's own mod-change reload, so a mod that installed something can apply it: every plugin's `uninstall()` runs, the autoplayer hands the keyboard back, the live character's state is recorded, and the session resumes that character instead of returning to the title screen. It sits behind `mod:install` rather than a capability of its own, because content composes at load, and an install that cannot be followed by a reload leaves the player with something the running game will never load. A plugin can already reach `location` without any grant, so this adds no new power to reload; it performs the four steps a mod cannot take for itself. |
+| unreleased (2026-08-22) | `ctx.installMod(...).lines` | A field on both arms of the existing install outcome: the wording the Mods screen prints for that outcome, including one row per unmet requirement with the author's advice under each. A mod built in the game fails a requirement in the same words as a downloaded mod. `problem` is unchanged and is still one complete sentence. |
 | unreleased (2026-09-01) | `ModRegistryHost.menus.addAction` | A capability-gated additive companion to `menus.register`: a plugin declaring `registry:menu` can add one labelled, namespaced callback row to `core:game-menu`. Existing menu transformers keep their behaviour, and an existing plugin neither calls nor observes the new method, so this is a backward-compatible API addition and does not move `MOD_API_VERSION`. |
 | unreleased (2026-09-05) | `ctx.keymaps.entries`, `.rebind`, and `.remove` | The existing `keymap:write` facade now records an owner for each binding it creates. A mod can enumerate, replace, and remove only its own bindings in the active keyset; it cannot learn, overwrite, or remove player bindings or another mod's. Player keymap edits clear a claim, and the mod-change teardown removes claims that remain, so a disabled mod has no surviving keyboard binding. Existing `bind` remains free-trigger-only, so this is a backward-compatible API addition and does not move `MOD_API_VERSION`. |
-| unreleased (2026-09-02) | API-2 Worker ABI | `modApi: 2` plus `runtime: "worker"` and a mod-relative `workerEntry` selects a dedicated module Worker booted by host code rather than importing `plugin.js` into the renderer. Its independently versioned protocol starts with immutable init data, logs, async preferences, own-asset bytes, bag migration, semantic commands, render-coalesced state and display snapshots, and host-rendered declarative panels. The intended final surface also adds versioned read snapshots, host-cached policies for synchronous paths, async hook decisions with validated patches, declarative registry/content and tile declarations, cached frontend/HUD/region display lists, semantic keymap/debug/wizard/storage operations, and mediated mod lifecycle actions. API-1 is temporarily trusted compatibility code, not a permanent dual-API arrangement; the planned end state is full API-2 cutover for every shipped mod. |
+| unreleased (2026-09-02) | API-2 Worker ABI | `modApi: 2` plus `runtime: "worker"` and a mod-relative `workerEntry` selects a dedicated module Worker booted by host code, instead of importing `plugin.js` into the renderer. Its independently versioned protocol starts with immutable init data, logs, async preferences, own-asset bytes, bag migration, semantic commands, render-coalesced state and display snapshots, and host-rendered declarative panels. The intended final surface also adds versioned read snapshots, host-cached policies for synchronous paths, async hook decisions with validated patches, declarative registry/content and tile declarations, cached frontend/HUD/region display lists, semantic keymap/debug/wizard/storage operations, and mediated mod lifecycle actions. API-1 remains as trusted compatibility code for now; the plan is to move every shipped mod to API-2 rather than keep both APIs permanently. |
 
 #### Removals taken knowingly
 
-Six rows, and they are the shape the mechanism above is for. Four of them are
-one removal: the parse-error limit, which had no counterpart in Angband 4.2.6
-and so had no business in a port. The sixth is the same shape a release later,
-and the first one that had SHIPPED.
+Four of the six rows are one removal: the parse-error limit, which had no counterpart in Angband 4.2.6 and so did not belong in a port. `fillTilesFromKin` is the same kind of removal, and the first of these to have shipped in a release.
 
 | Version | Export | Why | What to use instead |
 |---|---|---|---|
@@ -362,136 +161,35 @@ and the first one that had SHIPPED.
 | unreleased (2026-08-14) | `getParserErrorLimit` | The reader for the above, including a `PARSE_ERROR_LIMIT` environment override that no upstream build has. Removed with its subject (#272). | `prefErrorPolicy()`, which answers with the policy in force - `UPSTREAM_PREF_ERROR_POLICY` unless a mod installed another. It answers a richer question, because one number could not express both "keep reading" and "keep reporting". |
 | unreleased (2026-08-14) | `setParserErrorLimit` | The test seam for the above. Nothing in the game ever called it, and its subject is gone (#272). | `setPrefErrorPolicy(policy \| null)`, which is a real seam rather than a test hook: it is the documented way a mod changes what a bad pref line costs, and `null` restores 4.2.6's behaviour. |
 | unreleased (2026-08-14) | `parseParserErrorLimitEnv` | Parsed `PARSE_ERROR_LIMIT` out of the environment with C's `strtol` rules, so a host could set the cap without owning the rule. There is no cap and no environment variable (#272). | Nothing. A mod that wants its policy configurable owns that decision, and `ctx.prefs` is where a mod keeps a player's answer to it. |
-| 0.23.0 | `fillTilesFromKin` | The port's own rule that a mod-added monster with no tile is drawn with the tile of a race sharing its `base`, and an added object kind with a kind sharing its `tval`. Shipped in 0.22.0 and removed one release later: 4.2.6 has no concept of a record a mod added, so it has no opinion about what one should look like, and "the lowest-index relative's picture" is authored taste rather than ported behaviour. It also made that call on behalf of tile sets the game does not own - a pack drawn in 2003 has no art for content added twenty years later, and a sibling's picture there is a confident lie where a letter was an honest answer. The port adds nothing (#272, again). | The seam it became: `registry:tiles`. A tileset mod registers a filler through `host.tiles.register`, reads what the game is made of through `ctx.registries`, and writes through a door that refuses any tile something else assigned (`TileFill`). `neo-linoleum` 0.15.0 carries exactly the rule that used to be here, applied to linoleum packs only. Its three supporting types went with it (`KinTileDeps`, `KinTileFill`, `KinTileDerivation`); being types, they never appeared in the surface list at all. |
+| 0.23.0 | `fillTilesFromKin` | The port's own rule that a mod-added monster with no tile is drawn with the tile of a race sharing its `base`, and an added object kind with a kind sharing its `tval`. Shipped in 0.22.0 and removed in 0.23.0: 4.2.6 has no concept of a mod-added record and so no opinion about how one should look, and borrowing the lowest-index relative's picture is a style choice rather than ported behaviour. It also made that choice for tile sets the game does not own: a pack drawn in 2003 has no art for content added twenty years later, and a sibling's picture there misleads where a plain letter does not. The port adds nothing (#272). | It became a seam, `registry:tiles`. A tileset mod registers a filler through `host.tiles.register`, reads what the game contains through `ctx.registries`, and writes through `TileFill`, which rejects any tile that something else already assigned. `neo-linoleum` 0.15.0 carries the rule that used to live here, applied to linoleum packs only. Its three supporting types were removed with it (`KinTileDeps`, `KinTileFill`, `KinTileDerivation`); as types, they never appeared in the surface list. |
 
-`parseCustomOptionsText` survives by name but **changed shape** on 2026-08-12: it
-returns `string[]` (the messages) rather than `ParserState[]`, and its fourth
-`errorLimit` parameter is gone, because 4.2.6's reader has no error cap. A plugin
-calling it for its own diagnostics gets a type error at build and a different
-array at runtime. Recorded here rather than aliased: there is no honest alias for
-"the same call now answers a different question."
+`parseCustomOptionsText` keeps its name but changed shape on 2026-08-12. It returns `string[]` (the messages) instead of `ParserState[]`, and its fourth parameter, `errorLimit`, is gone because 4.2.6's reader has no error cap. A plugin calling it for its own diagnostics gets a type error at build and a different array at runtime. There is no alias, because the call now returns different data and an alias could not give back the old result.
 
-`CellView.trap` survives by name but **changed meaning**, unreleased
-(2026-08-21). It used to be "this grid holds any trap record" and it is now
-`square_isdisarmabletrap`: a VISIBLE PLAYER trap that is not already disabled.
+`CellView.trap` keeps its name but changed meaning (unreleased, 2026-08-21). It used to mean "this grid holds any trap record"; it now matches `square_isdisarmabletrap`, a visible player trap that is not already disabled.
 
-Recorded here rather than kept and supplemented with a second field, because the
-old answer was not a different question - it was the wrong answer to this one. The
-trap list is also where a closed door's LOCK lives (`square_set_door_lock`, flagged
-`LOCK | INVISIBLE`), along with a glyph of warding, a web and a decoy. None of
-those is a trap a player can see or the `disarm` command will act on, so a mod
-reading the old field got a locked door presented as something to disarm - and
-`disarm` refuses it without spending a turn, which turns a plausible decision into
-a hang. The old meaning also contradicted the view's own rule, stated on the
-neighbouring `trapGlyph`: a trap the player has not found is not on the screen and
-so is not in the view.
+The field was changed in place, with no second field alongside it, because the old value was simply wrong. The trap list also holds a closed door's lock (`square_set_door_lock`, flagged `LOCK | INVISIBLE`), a glyph of warding, a web and a decoy. None of those is a trap the player can see or that `disarm` will act on, so a mod reading the old field saw a locked door as something to disarm. `disarm` refuses it without spending a turn, so a mod that kept choosing to disarm would hang. The old meaning also broke the rule stated on the neighbouring `trapGlyph`: a trap the player has not found is not on the screen, so it is not in the view.
 
-**What to do about it.** A mod that used `trap` to decide whether to disarm needs
-no change and stops hanging. A mod that used it to ask "is there anything in the
-trap list here" - a map overlay counting glyphs of warding, say - now gets `false`
-for a glyph and needs the trap layer instead: `trapGlyph` is present for exactly
-the traps the player can see, glyph included.
+**What to do about it.** A mod that used `trap` to decide whether to disarm needs no change and no longer hangs. A mod that used it to ask whether anything in the trap list is here (a map overlay counting glyphs of warding, say) now gets `false` for a glyph and should read `trapGlyph` instead, which is present for every trap the player can see, glyphs included.
 
-`ProcessPrefOptions` **changed shape** for the same reason and in the same
-direction (#272, unreleased 2026-08-14): its `errorLimit?: number` is now
-`errorPolicy?: PrefErrorPolicy`. A plugin that called
-`processPrefText(text, deps, sink, { errorLimit: 0 })` gets a type error at
-build, and the fix is `{ errorPolicy: { continueAfterError: true, reportLimit: 0 } }`.
-Not aliased, because the old field could not say what the new one has to: a
-single number conflated "stop applying the file" with "stop collecting errors",
-and the second is the one a player wants bounded. Four names arrived with it:
-`PrefErrorPolicy`, which is a type and so never appears in the surface list, and
-the three runtime exports `UPSTREAM_PREF_ERROR_POLICY`, `prefErrorPolicy()` and
-`setPrefErrorPolicy()`.
+`ProcessPrefOptions` changed shape for the same reason (#272, unreleased 2026-08-14): `errorLimit?: number` is now `errorPolicy?: PrefErrorPolicy`. A plugin that called `processPrefText(text, deps, sink, { errorLimit: 0 })` gets a type error at build, and the fix is `{ errorPolicy: { continueAfterError: true, reportLimit: 0 } }`. There is no alias, because one number mixed up "stop applying the file" with "stop collecting errors", and only the second is something a player wants capped. Four names arrived with it: the type `PrefErrorPolicy`, which as a type never appears in the surface list, and the runtime exports `UPSTREAM_PREF_ERROR_POLICY`, `prefErrorPolicy()` and `setPrefErrorPolicy()`.
+`msgt(sinks, type, text)` keeps its name and signature but no longer touches `sinks.sound` (#239, unreleased 2026-08-13). It used to call both sinks itself; the host's `msg` sink is now `msgt`, so doing both would play the sound twice. Nothing breaks at build time, and the common case is unchanged: a plugin that calls `msgt(ctx.state, "HUNGRY", "...")` still gets the message and the sound, because the state's sink supplies it. The change affects a plugin that binds its own non-sounding `msg` into a `MessageSinks` and relied on `msgt` to call `sound` separately. That plugin now goes quiet, and the fix is to make its sink type-aware with the exported `messageSound(type)`, the same one-line rule `web/src/main.ts` uses. There is no alias, because two functions that differ only in whether they play the sound twice would be worse than one rule.
 
-`msgt(sinks, type, text)` likewise **keeps its name and signature but no longer
-touches `sinks.sound`** (#239, unreleased 2026-08-13). It used to call both
-halves by hand; the host's `msg` sink is now `msgt` itself, so calling both
-would play the sound twice. Nothing breaks at build time and the common case is
-unchanged - a plugin that calls `msgt(ctx.state, "HUNGRY", "...")` still gets
-message *and* sound, because the state's sink supplies it. What changed is a
-plugin that binds its **own** non-sounding `msg` into a `MessageSinks` and
-relied on `msgt` to reach `sound` separately: that now goes quiet, and the fix
-is to make its sink typed-aware with the exported `messageSound(type)`, the same
-one-line rule `web/src/main.ts` uses. Not aliasable: two functions differing only
-in whether they double-fire is worse than one rule.
+In the SDK rather than `ctx.core`, `ParsedCapability` gained a `{ kind: "display"; action: "replace" }` variant (#140, unreleased 2026-08-13), because `ModPlugin.frontend` now requires `display:replace`. Code that builds a capability string is unaffected. A plugin that `switch`es exhaustively over `parseCapability`'s result in TypeScript gets a compile error naming the new arm, which is intended: a mod that shows the capability list in its own UI should learn that a kind exists it does not describe. At runtime the change is additive, and an older build never emits the new variant.
 
-One more shape change, in the SDK rather than in `ctx.core`: `ParsedCapability`
-gained a `{ kind: "display"; action: "replace" }` variant (#140, unreleased
-2026-08-13), because `ModPlugin.frontend` now requires `display:replace`. Nothing
-that *builds* a capability string breaks; what breaks is a plugin that
-`switch`es exhaustively over `parseCapability`'s result in TypeScript, which
-gets a compile error naming the new arm. That is the intended outcome - a mod
-rendering the capability list to its own UI should be told a kind exists that it
-does not describe. Additive at runtime: an older build simply never emits it.
+`ParsedCapability` changed again in the same way: it gained `{ kind: "ui"; region: string; action: "replace" }`, and `ContestedLayer` gained `"hud"` (#253, unreleased 2026-08-13), because `ModPlugin.hud` requires `ui:<region>.replace` and the conflict report now has a slot for each HUD region. An exhaustive `switch` over either type gets a compile error naming the new arm, as intended. `ModPlugin` itself only gained an optional member, so no existing plugin's shape changes.
 
-The same thing happened once more, for the same reason and with the same
-consequence: `ParsedCapability` gained `{ kind: "ui"; region: string; action:
-"replace" }` and `ContestedLayer` gained `"hud"` (#253, unreleased 2026-08-13),
-because `ModPlugin.hud` requires `ui:<region>.replace` and the conflict report
-now has a slot per HUD region. An exhaustive `switch` over either gets a compile
-error naming the new arm, which is the intended outcome. `ModPlugin` itself only
-gained an optional member, so no existing plugin's shape changes.
+Two more SDK additions break nothing and are listed because every shape change is recorded, whether or not it strands anyone. `WorldFrame` and `HudFrame` each gained an optional `stack` (`readonly LiveRegion[] | undefined`), and `LiveRegion` and `RegionLayer` are now exported from the SDK (#261, unreleased 2026-08-14). An optional member on an interface a plugin receives cannot break it, because code that reads a frame still compiles. A host that publishes no stack leaves it `undefined`, and that has its own meaning, so a front end must not treat a missing stack as "nothing is covering me". See [PLUGINS.md](PLUGINS.md#knowing-when-you-are-covered-framestack). The `ParsedCapability` changes above broke exhaustive `switch`es because plugins inspect capabilities; plugins do not switch exhaustively over frames.
+One SDK change removes a name rather than reshaping it: `applyFieldPolicy` is gone from the package index (#285, unreleased 2026-08-15). It became public by accident through `export * from "./fields.js"`, and outside the SDK it was both unusable and dangerous. The function judges a namespace trespass from a `FieldProvenance` map built during composition, and the accessor that builds one (`fieldProvenanceOf`) was never exported. An outside caller could therefore only use the three-argument form, whose defaults are empty maps: it strips undeclared keys, finds no recorded writer for anything, judges no write a trespass, and returns a fault list that looks exactly like a clean pass, so the caller trusts a check that never ran. The two provenance parameters are now required too, so the same mistake is a compile error inside the SDK. Nothing in this repository or the four mod repositories called it, so no author is stranded; the way to apply the rule is `composeContentPacks`, which supplies both maps and always has. `checkUnqualified`, `declaredFields`, `fieldOwner`, `isExtensionKey` and `FIELD_TYPES` are unaffected, and the index now names them explicitly instead of using the wildcard that let `applyFieldPolicy` out.
 
-Two more SDK additions, and this pair breaks nothing at all, recorded because
-the entries above establish that a shape change gets written down whether or not
-it strands anybody, and a page that only lists the painful ones stops being a
-record. `WorldFrame` and `HudFrame` each gained an **optional** `stack`
-(`readonly LiveRegion[] | undefined`), and `LiveRegion` / `RegionLayer` are now
-exported from the SDK (#261, unreleased 2026-08-14). An optional member added to
-an interface a plugin *receives* cannot break a plugin: nothing that reads a
-frame stops compiling, and a host that publishes no stack simply leaves it
-`undefined`, which the seam gives a distinct meaning to on purpose, so a front
-end must not read a missing stack as "nothing is covering me". See
-[PLUGINS.md](PLUGINS.md#knowing-when-you-are-covered-framestack). Note the
-asymmetry with the `ParsedCapability` rows above: those broke exhaustive
-`switch`es because a plugin *inspects* a capability, and nobody exhaustively
-switches over a frame.
-
-One SDK **removal**, and it is the first on this page that removes a name rather
-than reshaping one: `applyFieldPolicy` is gone from the package index (#285,
-unreleased 2026-08-15). It arrived public by accident: the index said
-`export * from "./fields.js"`, and it was unusable and dangerous in the same
-breath. The function judges a namespace trespass from a `FieldProvenance` map
-built during composition, and the accessor that builds one (`fieldProvenanceOf`)
-was never exported. So the only form an outside caller could write was the
-three-argument one, whose defaults are empty maps: it strips undeclared keys,
-finds no recorded writer for anything, judges no write a trespass, and hands back
-a fault list indistinguishable from a clean pass. **A gate that reports success
-while checking nothing is worse than no gate**, because the caller stops looking.
-The two provenance parameters are now required as well, so the same mistake is a
-compile error inside the SDK. Nothing in this repository or in the four mod
-repositories called it, so no author is stranded; the door to the rule is
-`composeContentPacks`, which supplies both maps and always did.
-`checkUnqualified`, `declaredFields`, `fieldOwner`, `isExtensionKey` and
-`FIELD_TYPES` are unaffected, and are now named explicitly rather than swept up
-by a wildcard, which is what let this one out in the first place.
-
-Two **field renames** that the export ratchet cannot see, and that is exactly why
-they are written here (#283, unreleased 2026-08-15). The ratchet compares the set
-of exported NAMES; it says nothing about the shape of what a name hands back. The
-ui-entry config a plugin gets from `buildUiEntryConfig` changed two fields:
+Two field renames are invisible to the export ratchet, which compares only the set of exported names and not the shape of what each one returns (#283, unreleased 2026-08-15). The ui-entry config a plugin gets from `buildUiEntryConfig` changed two fields:
 
 | Was | Now | Why not aliased |
 |---|---|---|
-| `UiEntry.combinerIndex: number` (1-based into core's nine) | `UiEntry.combinerName: string` | The slot was the bug. It is a coordinate into core's own compiled table, so a combiner a mod registers has none, and keeping the index would have frozen the table at nine and made `registry:ui-entry` inert. Keeping BOTH would mean two identities for one thing and a rule about which wins. |
-| `RendererInfo.backendIndex: number` (0..5), `RendererInfo.combinerIndex: number` | `RendererInfo.backendName: string`, `RendererInfo.combinerName: string` | Same reason, and the same fix: read the name. `RendererInfo` is now an exported TYPE as well, which it was not before, and a plugin writing a renderer backend needs to name it. |
+| `UiEntry.combinerIndex: number` (1-based into core's nine) | `UiEntry.combinerName: string` | The index is a position in core's own compiled table, so a combiner a mod registers has none; keeping it would have fixed the table at nine entries and made `registry:ui-entry` useless. Keeping both would give one thing two identities and need a rule about which wins. |
+| `RendererInfo.backendIndex: number` (0..5), `RendererInfo.combinerIndex: number` | `RendererInfo.backendName: string`, `RendererInfo.combinerName: string` | Same reason and same fix: read the name. `RendererInfo` is now also an exported type, which a plugin writing a renderer backend needs in order to name it. |
 
-Nothing else about `UiEntryConfig` moved, and a plugin that only calls
-`characterGrid`, `equipCmpSummary`, `applyRenderer` or `combineValues` is
-unaffected: every one of those gained an OPTIONAL trailing registry argument and
-behaves exactly as before when it is omitted.
-
-**The rest of `ctx.core` is not frozen.** The ratchet makes a break visible in
-this repository before it reaches a player's browser. Nested keys on a
-guaranteed object (`FEAT.MORE`, `TV.SWORD`, `RSF.BR_FIRE`) follow the same
-shape-change recording as the rest of the engine: the promise is the top-level
-name and its `typeof`, not every property behind it. The remaining pressure
-valve is `ModHooks`, which is a closed interface of eight members that the
-bug-fixes mod alone needed six of - if authors keep reaching past it into
-unguaranteed `ctx.core` names, that is the signal to grow the seam or to add a
-name to the guaranteed subset, not to fence the namespace.
-
+Nothing else in `UiEntryConfig` changed. A plugin that only calls `characterGrid`, `equipCmpSummary`, `applyRenderer` or `combineValues` is unaffected: each gained an optional trailing registry argument and behaves as before when it is omitted.
+Outside the guaranteed subset, `ctx.core` can change in any release; the ratchet makes each break visible in this repository before it reaches a player's browser. The guarantee covers a top-level name and its `typeof`, so nested keys on a guaranteed object (`FEAT.MORE`, `TV.SWORD`, `RSF.BR_FIRE`) are recorded like any other shape change. `ModHooks` is a closed interface of eight members, and the bug-fixes mod alone uses six of them. If authors keep calling unguaranteed `ctx.core` names to get past it, the answer is to grow the seam or add names to the guaranteed subset, rather than restricting the namespace.
 ## What is *not* a compatibility mechanism
 
 - **Save data.** A mod's own bag in the player's save is migrated by the mod, via
@@ -502,17 +200,9 @@ name to the guaranteed subset, not to fence the namespace.
 
 ## Who finds out first
 
-The **mod canary** (`.github/workflows/mod-canary.yml`) runs the curated list
-against this build daily and whenever the list changes: every repository in
-`mods/registry.json` is discovered the way the game discovers it, and its manifest
-is put through this build's gates. So an engine release that would strand a
-curated mod shows up here rather than in a player's install - the automated
-equivalent of SMAPI's compatibility list, and the reason a release can be held
-rather than apologised for.
+The **mod canary** (`.github/workflows/mod-canary.yml`) runs the curated list against this build daily and whenever the list changes: every repository in `mods/registry.json` is discovered the way the game discovers it, and its manifest is put through this build's gates. An engine release that would strand a curated mod shows up in the canary rather than in a player's install. It does the job of SMAPI's compatibility list automatically, and it lets a release be held back before it ships.
 
-That covers curated mods only. A mod nobody has listed finds out the same way
-every mod always has, which is why the gates above are built to degrade rather
-than refuse.
+That covers curated mods only. A mod nobody has listed finds out the same way every mod always has, which is why the gates above degrade instead of refusing.
 
 ## Prior art, and where this deliberately differs
 
@@ -529,6 +219,4 @@ than refuse.
   second of those. The first is the shape a core-side rename alias would take if
   one is ever needed; nothing needs it yet, because core's record names are
   upstream Angband's and the parity mandate keeps them still.
-- **NeoForge and Factorio both BLOCK** on a declared incompatibility. This engine
-  does not, per decision 18. An author's declaration is shown with their reason
-  and never overrides the player's setup.
+- **NeoForge and Factorio both block** on a declared incompatibility. This engine does not: an author's declaration is shown with their reason and never overrides the player's setup.

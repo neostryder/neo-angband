@@ -10,11 +10,11 @@ The game does store player-created data locally and makes limited network reques
 
 ## Data stored on the player's device
 
-The browser and PWA build use browser storage for character saves, character metadata such as a chosen character name, score data, settings, selected update channel, enabled-mod choices, and similar game state. Browser session storage and caches support a session and offline operation. Installed mod files and local metadata, including repository origin, tag, hashes, and installation time, are stored in IndexedDB.
+The browser and PWA build use browser storage for character saves, character metadata such as a chosen character name, score data, settings, the selected update channel, enabled-mod choices, and similar game state. Browser session storage and caches support the current session and offline play. Installed mod files and their local metadata (repository origin, tag, hashes, and installation time) are stored in IndexedDB.
 
-The desktop build uses the same browser storage for game data. It also writes logs on the player's device and can create a problem-report file when the player requests one. The report can contain build and device details, enabled mods, character details, and recent log lines. The game does not upload that file. A player decides whether to attach it to an external issue tracker, Discord message, or email.
+The desktop build uses the same browser storage for game data. It also writes logs on the player's device and can create a problem-report file when the player asks for one. The report can contain build and device details, enabled mods, character details, and recent log lines. The game does not upload that file; attaching it to an external issue tracker, Discord message, or email is the player's decision.
 
-The first-party Quality of Life mod can store remembered settings locally. The first-party ModForge mod can store unfinished local mod drafts when its draft-retention setting is enabled. These are local data stores operated through the game, not separate services.
+The first-party Quality of Life mod can store remembered settings locally, and the first-party ModForge mod can store unfinished mod drafts locally when its draft-retention setting is enabled. Both use the game's own local storage and involve no separate service.
 
 Clearing browser storage, resetting a browser profile, deleting the desktop data folder, or using a cleanup tool can delete local game data. The game provides player-initiated character export and import, but does not guarantee recovery of locally deleted data.
 
@@ -26,15 +26,15 @@ A desktop build with updater support requests public release information from Gi
 
 The mod manager requests public GitHub registry, author, tag, tree, manifest, and selected mod-file information when a player uses mod browsing, installation, verification, or update features. The manager retains installed mod files locally so ordinary game startup does not require a mod download.
 
-These requests can disclose ordinary technical request information to the relevant hosting or GitHub service, such as an IP address, browser or application request headers, and the requested public URL. The project source does not add a player account identifier, character name, save content, gameplay record, log content, or problem report to these requests. The relevant hosting and GitHub providers govern their own handling of request data.
+These requests can reveal ordinary technical information to the hosting service or GitHub, such as an IP address, browser or application request headers, and the requested public URL. The game's source does not add a player account identifier, character name, save content, gameplay record, log content, or problem report to them. The hosting and GitHub providers govern their own handling of request data.
 
-The examined program source does not set or read cookies. This statement does not describe cookies or other practices of a browser, hosting provider, GitHub, Discord, or another external service.
+The game's source code does not set or read cookies. Cookies and other practices of a browser, hosting provider, GitHub, Discord, or any other external service fall outside that statement.
 
 ## Mods and external services
 
-The first-party mods covered by this policy do not declare network access and their examined shipped plugin code does not make network requests. A third-party mod is separate code from a separate author. A player should review a third-party mod's source, declarations, licence, and privacy information before installing it.
+The first-party mods covered by this policy do not declare network access, and their shipped plugin code makes no network requests. A third-party mod is separate code from a separate author, so a player should review its source, declarations, licence, and privacy information before installing it.
 
-The core source includes a capability through which a mod can write files to a player-selected folder on supported devices. No first-party mod covered here currently declares or uses that capability. If a future mod writes to a folder monitored by a cloud-sync provider, that provider's terms and privacy practices apply to the copied file.
+The core game includes a capability that lets a mod write files to a folder the player selects, on devices that support it. No first-party mod covered here currently declares or uses that capability. If a future mod writes to a folder watched by a cloud-sync provider, that provider's terms and privacy practices apply to the copied file.
 
 Opening a GitHub, Discord, release, or other external link transfers the player to that service. Any information supplied there is governed by that service's policies and the player's choices.
 

@@ -1,18 +1,8 @@
 # Bundled tile packs - credits and licences
 
-Neo Angband bundles all five of upstream Angband's tile packs - every graphics
-mode in `lib/tiles/list.txt` - so the game can render in graphics mode out of the
-box. Each pack keeps its upstream `.png` atlas and its pref files (`graf-*.prf`
-the attr/char -> tile map, `flvr-*.prf` the flavour map, `xtra-*.prf` the
-extra/overdraw map), copied verbatim from Angband 4.2.6 `lib/tiles/`.
+Neo Angband includes all five of upstream Angband's tile packs, which is every graphics mode listed in `lib/tiles/list.txt`, so graphics mode works out of the box. Each pack keeps its upstream `.png` atlas and its pref files (`graf-*.prf` maps attr/char to tile, `flvr-*.prf` maps flavours, and `xtra-*.prf` holds the extra/overdraw map), copied unchanged from Angband 4.2.6 `lib/tiles/`.
 
-These packs are CORE content, like upstream: `lib/tiles/list.txt` is game data
-parsed by `grafmode.c`, and each frontend builds its Graphics menu straight from
-that catalog (`main-win.c:2897-2905`). They are offered with no mod enabled and no
-mod is needed for them. A `tiles`-shape mod can add a tile set of its own or
-re-skin one of these, and only those rows are tagged with the mod's name in the
-Graphics screen. ASCII is always the default; a tile pack is opt-in (game menu ->
-Graphics, or the `?tiles=<url>&graf=<id>` URL override).
+These packs are core content, as they are upstream, where `lib/tiles/list.txt` is game data parsed by `grafmode.c` and each front end builds its Graphics menu straight from it (`main-win.c:2897-2905`). They are available with no mod enabled. A `tiles`-shape mod can add a tile set of its own or re-skin one of these, and only those rows carry the mod's name on the Graphics screen. ASCII is always the default; a tile pack is opt-in (game menu -> Graphics, or the `?tiles=<url>&graf=<id>` URL override).
 
 ## Packs and their licences
 

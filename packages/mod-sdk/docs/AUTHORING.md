@@ -1,19 +1,12 @@
 # Authoring shortcuts: drafting a record that actually works
 
-Adding a record to a pack has never been the hard part. It is JSON, and
-composition takes it. Adding a record that **works** is the hard part, and it is
-hard in a way no error message reaches:
+Adding a record to a pack is easy: it is JSON, and composition accepts it. Adding a record that works is harder, because the usual mistakes produce no error message:
 
-- an object with no `alloc` is legal, loads cleanly, and never appears in the
-  dungeon;
-- a monster whose `base` is misspelled is legal, loads cleanly, and binds to
-  nothing;
-- a forty-first potion is legal, loads cleanly, and consumes the last unused
-  flavour, so some other potion quietly stops being distinguishable.
+- an object with no `alloc` is legal, loads cleanly, and never appears in the dungeon;
+- a monster whose `base` is misspelled is legal, loads cleanly, and binds to nothing;
+- a forty-first potion is legal, loads cleanly, and uses up the last unused flavour, so some other potion quietly stops being distinguishable.
 
-Nothing in the pipeline can say any of that, because nothing in the pipeline
-knows what a working record looks like. Core's own 3,279 records know, and the
-SDK asks them.
+The pipeline cannot report any of that, because it has no model of what a working record looks like. Core's own 3,279 records are that model, and the SDK compares your drafts against them.
 
 Everything on this page is in `@rpgm-tools/neo-angband-mod-sdk` and needs no
 game running.
@@ -99,16 +92,9 @@ weight = 140  <- the median of the 7 core object records closest to level 20 wit
 
 ### Why "modelled on", not "assembled from defaults"
 
-The first version of this built the shape from how often each field appears
-across the whole file, and produced a sword carrying an `armor` block, because
-59% of core's objects have one. **Field frequency across a file is not a fact
-about any record in it.** So the shape is taken from core's nearest comparable
-record and only the numbers are averaged.
+An earlier version built the shape from how often each field appears across the whole file, and produced a sword with an `armor` block because 59% of core's objects have one. How common a field is across a file says nothing about whether a particular record should have it, so the shape now comes from core's nearest comparable record and only the numbers are averaged.
 
-A model never lends the fields that would confer behaviour or identity:
-`flags`, `values`, `slay`, `brand`, `curse`, `effect`, `act`, `blow`, `spells`,
-`name`, `desc`, `msg`. A template that quietly grants powers hands you an item
-that does things you never asked for and would not think to look for.
+The model never lends the fields that confer behaviour or identity: `flags`, `values`, `slay`, `brand`, `curse`, `effect`, `act`, `blow`, `spells`, `name`, `desc`, `msg`. Copying those would hand you an item that does things you never asked for and would not think to look for.
 
 ---
 
@@ -129,52 +115,33 @@ Every step of `draftRecord` is callable on its own.
 
 ### "What should it cost?"
 
-A price is not derivable from first principles (Angband's costs are hand-set)
-but it **is** derivable from precedent, and precedent is what core's 375 objects
-are. `suggestFields` narrows twice: to the same item type, then to the seven
-records nearest in level. Only numeric fields are suggested; a name, a
-description or a set of flags is a design decision.
+Angband's costs are set by hand, so there is no formula for a price, but core's 375 objects give plenty of precedent. `suggestFields` narrows twice: first to the same item type, then to the seven records nearest in level. It suggests numeric fields only; a name, a description or a set of flags is a design decision.
 
-With no comparable record it falls back to the file-wide median and says so in
-the evidence line, so a weak suggestion is never dressed up as a strong one.
+With no comparable record it falls back to the file-wide median and says so in the evidence line, so you can tell a weak suggestion from a strong one.
 
 ---
 
 ## What `checkRecords` finds
 
-Two arguments, and the split is the whole design:
+`checkRecords` takes two arguments:
 
 ```ts
 checkRecords(subject, all)
 ```
 
-`subject` is what is **reported on**: your records. `all` is what they may
-**resolve against**: core plus every loaded pack. Checking a mod against itself
-would report every reference to core as broken.
+`subject` is the set of records it reports on, meaning yours. `all` is what they may resolve against: core plus every loaded pack. Checking a mod against itself alone would report every reference to core as broken.
 
-Findings are graded, and **nothing here refuses anything**. The refusals live in
-the manifest validator and the declared-field rule, where the rules are the
-engine's own.
+Findings are graded, and `checkRecords` never refuses anything. Refusals happen in the manifest validator and the declared-field rule, which enforce the engine's own rules.
 
 ### It also runs when the GAME loads your mod
 
-Since 2026-08-09 this is not only a build-time tool. `composeContentPacks`, the
-function every host composes through, runs the same check over every pack it
-loads and puts what it finds on that mod's own row in the mod manager, so a
-player who installs your mod from a zip sees the same sentences you do. Three
-differences from `build()`, all deliberate:
+Since 2026-08-09 the check also runs at load time. `composeContentPacks`, the function every host composes through, runs it over every pack it loads and puts the findings on that mod's own row in the mod manager, so a player who installs your mod from a zip sees the same sentences you do. It differs from `build()` in three ways:
 
-- **`warn` and above only.** A `hint` is drafting advice and belongs where you
-  are looking at the draft. On a player's screen dozens of them would bury the
-  one line that matters.
-- **The base game is not reported on.** Core's own data raises warnings against
-  core's own blueprint; those are upstream warts the port keeps on purpose.
-- **A patch is checked as the record it produced**, not as you wrote it, so
-  `{"speed": 120}` is not a record missing twenty fields.
+- Only `warn` and above are shown. A `hint` is drafting advice for when you are looking at the draft, and dozens of them on a player's screen would bury the one line that matters.
+- The base game is not reported on. Core's own data raises warnings against core's own blueprint, and those are upstream warts the port keeps.
+- A patch is checked as the record it produced rather than as you wrote it, so `{"speed": 120}` is not reported as a record missing twenty fields.
 
-The practical consequence: **your `build()` output is what your users will see.**
-If it is clean at `warn`, their mod manager is quiet. There is nothing extra to
-run and nothing to opt into.
+In practice, your users see what your `build()` output shows. If it is clean at `warn`, their mod manager stays quiet, and there is nothing extra to run or opt into.
 
 | Level | Meaning | Examples |
 |---|---|---|
@@ -249,35 +216,19 @@ build.problems;  // composition's own refusals
 build.ok;        // false if anything is at `error`
 ```
 
-Three things it deliberately does:
+- The builder touches no filesystem. `emit()` hands back paths and bytes and leaves the writing to you, so the same builder works from a CLI, from a test and from an in-game editor.
+- It checks the composed result rather than the draft. A patch that breaks a reference is invisible in your own files, because your files do not contain the record it broke.
+- It reports problems instead of throwing. A missing dependency is an `error` finding, not a stack trace.
 
-- **No filesystem.** `emit()` hands back paths and bytes; writing them is yours.
-  The same builder works from a CLI, from a test, and from an in-game editor.
-- **Checks the composed result**, not the draft. A patch that breaks a reference
-  is invisible in your own files, because your files do not contain the record
-  it broke.
-- **Reports instead of throwing.** A missing dependency is an `error` finding,
-  not a stack trace.
-
-`build.ok` ignores warnings on purpose: every warning it can produce is
-something core's own data does somewhere, so a builder that refused on them
-would refuse to build Angband.
+`build.ok` ignores warnings because every warning it can produce is something core's own data does somewhere, so a builder that refused on warnings would refuse to build Angband.
 
 ---
 
 ## What a mod can add a record to: 41 of 44 files
 
-**Measured over the shipped pack**, and it used to be 24. Composition merges a
-file per record when every record has a ref no sibling claims, and it asks
-`packages/mod-sdk/src/record-key.ts` what a ref is, which is `name` for most
-files and something else where upstream's identity is something else.
+That count is taken over the shipped pack; it used to be 24. Composition merges a file record by record when every record has a ref no sibling claims. `packages/mod-sdk/src/record-key.ts` defines what a ref is: `name` for most files, and something else where upstream identifies records another way.
 
-Until 2026-08-08 the test was "a unique `name`", and three files failed it on
-core's own data, because Angband's convention for a greater form is to reuse the
-name with marks: `Acquirement` and `*Acquirement*`, `Little eruption` and
-`Little eruption+`, and `ego_item` ships 23 names twice over. So a mod adding
-one object replaced all 375 of core's, one ego replaced all 107, one vault all
-162. Those were the three files most worth adding to. They now merge per record:
+Until 2026-08-08 the test was "a unique `name`", and three files failed it on core's own data, because Angband names a greater form by reusing the name with marks: `Acquirement` and `*Acquirement*`, `Little eruption` and `Little eruption+`, and `ego_item` ships 23 names twice over. As a result a mod adding one object replaced all 375 of core's, one ego replaced all 107, and one vault all 162, in the three files most worth adding to. They now merge per record:
 
 | File | Records | A mod adding one record... |
 |---|---|---|
@@ -286,83 +237,35 @@ one object replaced all 375 of core's, one ego replaced all 107, one vault all
 | `vault` | 162 | adds one, 163 |
 | `store`, `flavor`, `brand`, `slay`, `object_base`, `trap`, `names`, ... | - | adds one, keyed by whatever upstream keys it by |
 
-**The three that still take a whole file, and why.** `constants` and `visuals`
-are config singletons: their identity *is* the file, the host binds exactly one,
-and "I shipped `constants.json`" means "use mine". `history` has no per-record
-identity at all: a history record is `{chart:{chart,next,roll}, phrase}` and
-every part of that is a value a mod would legitimately change. For those three,
-`ModProject.build` still raises `file/whole-file-replacement` as an `error`,
-because replacing the base game's copy of a file is not something to discover
-from a line in a list.
+`constants`, `visuals` and `history` still take a whole file. `constants` and `visuals` are config singletons: the file is their identity, the host binds exactly one, and shipping `constants.json` means "use mine". `history` has no per-record identity at all: a history record is `{chart:{chart,next,roll}, phrase}`, and a mod could legitimately change any part of it. For those three, `ModProject.build` still raises `file/whole-file-replacement` as an `error`, so an author cannot replace the base game's copy of a file without noticing.
 
 ### What a record is called
 
-Refs did not move. The per-record identity was already what
-`patchFields` / `replace` / `remove` used, so every ref that resolved before
-still resolves:
+Refs did not change. `patchFields`, `replace` and `remove` already used the per-record identity, so every ref that resolved before still resolves:
 
 - `object` is `type + name`, so the Dagger is `core:sword--dagger`;
-- `ego_item` is `name`, plus a `#` discriminator where core ships a name twice,
-  as in `core:of-acid#shot-arrow`;
-- `store` is its `STORE_*` code, `brand` and `slay` their `code`, `flavor` its
-  base tval, and so on.
+- `ego_item` is `name`, plus a `#` discriminator where core ships a name twice, as in `core:of-acid#shot-arrow`;
+- `store` is its `STORE_*` code, `brand` and `slay` their `code`, `flavor` its base tval, and so on.
 
-A record answers to **several** refs: its base key, its discriminated form, and
-the pre-2026-08-08 lossy slug as an alias, so nothing an author wrote against an
-older engine stops working. An alias is dropped where it would shadow a
-*different* record's real name: `*Healing*`'s old ref is plain `Healing`'s
-current one, and a record's own history must not cost another record its name.
+A record answers to several refs: its base key, its discriminated form, and, as an alias, the lossy slug used before 2026-08-08, so refs written against an older engine keep working. An alias is dropped where it would shadow a *different* record's real name. `*Healing*`'s old ref, for example, is plain `Healing`'s current one, and an old alias must not take a name away from another record.
 
-That is **8 of the pack's 19 legacy aliases**, and it depends on core's data
-rather than on the mark. `*Acquirement*` loses its alias, because core ships a
-plain `Acquirement` scroll. `*Destruction*` keeps both of its, as a scroll and
-as a staff, because core ships no plain `Destruction` at all, so there is
-nothing for it to shadow. `of *Slay Orc*` loses its and `of *Slay Animal*` keeps
-its, for the same reason. The full census is asserted row by row in
-`record-key.test.ts`, so the count cannot drift back into prose.
+That drops **8 of the pack's 19 legacy aliases**, and which ones depends on core's data rather than on the mark. `*Acquirement*` loses its alias because core ships a plain `Acquirement` scroll. `*Destruction*` keeps both of its, as a scroll and as a staff, because core has no plain `Destruction` for them to shadow. `of *Slay Orc*` loses its alias and `of *Slay Animal*` keeps its own, for the same reason. `record-key.test.ts` asserts the full census row by row.
 
-None of the 8 cost anybody a working ref: every file carrying a legacy alias is
-one that had *no* per-record addressing before the key table existed.
+None of the 8 breaks a working ref: every file carrying a legacy alias had no per-record addressing before the key table existed.
 
 ### Where a new record lands, and why it matters
 
-At the **end**, after core's. That is not cosmetic. Upstream's `sval` is not a
-field in the data: it is a counter, bumped per object base in file order
-(`parse_object_type`, `reference/src/obj-init.c`), and `kidx` is the position in
-the file. Appended, every one of core's 375 objects keeps its index, name, tval
-and sval, and the new one takes the next free sval of its own base. Prepended,
-every sword in the game would shift by one.
+New records are appended after core's, and the position matters. In upstream, `sval` is a counter rather than a field in the data: it is bumped per object base in file order (`parse_object_type`, `reference/src/obj-init.c`), and `kidx` is the record's position in the file. Appended, every one of core's 375 objects keeps its index, name, tval and sval, and the new object takes the next free sval of its own base. Prepended, every sword in the game would shift by one.
 
-Composition appends because core is pack zero and a mod that declares `core` as
-a dependency loads after it. `packages/web/src/mod-added-record.test.ts` binds
-core's pack with and without one added object and asserts the whole table, not a
-sample. The one thing that does move is the tail of dummy kinds `bindCore`
-creates for special artifacts whose base sval `object.txt` never defines (the
-Phial, the Star, the rings of power); their array index shifts by one and
-nothing depends on it, because a savefile stores a namespaced string `kindId`
-rather than a `kidx`.
+Composition appends because core is pack zero and a mod that declares `core` as a dependency loads after it. `packages/web/src/mod-added-record.test.ts` binds core's pack with and without one added object and asserts the whole table, not a sample. The one thing that does move is the tail of dummy kinds `bindCore` creates for special artifacts whose base sval `object.txt` never defines (the Phial, the Star, the rings of power). Their array index shifts by one, and nothing depends on it, because a savefile stores a namespaced string `kindId` rather than a `kidx`.
 
 ### Your artifact and the `birth_randarts` option
 
-An artifact your mod adds **survives** a character born with random artifacts
-turned on. Every other artifact in the game is redesigned into a different item;
-yours keeps the name, the base object and the numbers you wrote.
+An artifact your mod adds survives a character born with random artifacts turned on. Every other artifact in the game is redesigned into a different item, but yours keeps the name, the base object and the numbers you wrote.
 
-That is measured, in `packages/core/src/obj/randart-mod-artifact.test.ts`, and it
-is worth knowing WHY, because the mechanism is position rather than a rule.
-Upstream's `design_artifact` looks up an artifact's base kind once and its
-skip-the-fixed-artifacts loop never refreshes that lookup, so the moment the loop
-starts on a quest artifact it keeps skipping to the end of the array. Angband's
-two quest artifacts are the last two records in the file, and your records are
-appended after core's, which puts them behind the point where the skipping
-starts. The port reproduces the quirk exactly, because a behavioural wart a
-player can observe is core's to keep.
+`packages/core/src/obj/randart-mod-artifact.test.ts` tests this, and the cause is where your records sit in the file. Upstream's `design_artifact` looks up an artifact's base kind once, and its skip-the-fixed-artifacts loop never refreshes that lookup, so once the loop starts on a quest artifact it keeps skipping to the end of the array. Angband's two quest artifacts are the last two records in the file, and your records are appended after core's, which puts them past the point where the skipping starts. The port reproduces this quirk exactly, since core keeps every behavioural wart a player can observe.
 
-Two consequences for an author. Your artifact is not a random artifact even in a
-random-artifact game, so a player who chose that option to be surprised will
-still meet yours as you designed it. And nothing about that is a guarantee the
-port makes on purpose, so the test above also measures the converse case: if the
-order records are bound in ever changes, it fails and names the reason.
+This has two consequences for you. Your artifact is not randomized even in a random-artifact game, so players who chose that option to be surprised will still meet yours as you designed it. And the port does not promise this behaviour, so the same test also checks the converse: if the order records are bound in ever changes, it fails and names the reason.
 
 ---
 
@@ -540,15 +443,9 @@ translated. Those are worth reporting.
 
 ## Renaming a player-toggleable rule
 
-A rule `flag` is durable PLAYER STATE, not an internal name. The player's answer
-is stored against that exact string in the host's own store, so replacing a flag
-outright orphans their answer: the lookup misses, the rule falls back to its
-declared `default`, and someone who deliberately turned your fix OFF gets it
-back ON without being told. For a bug-fixes mod, whose defaults are all on, that
-is the game quietly re-applying a change they had rejected.
+A rule `flag` is durable player state. The player's choice is stored against that exact string in the host's own store, so replacing a flag outright orphans the choice: the lookup misses, the rule falls back to its declared `default`, and someone who turned your fix off gets it back on without being told. For a bug-fixes mod, whose defaults are all on, that means the game quietly re-applies a change the player had rejected.
 
-So do not simply replace one. Map each retired flag to its current rule under
-`renamedRuleFlags`:
+So instead of simply replacing a flag, map each retired flag to its current rule under `renamedRuleFlags`:
 
 ```json
 "renamedRuleFlags": {
@@ -557,18 +454,9 @@ So do not simply replace one. Map each retired flag to its current rule under
 }
 ```
 
-Every destination must be one of this manifest's current `rules`. The source
-must NOT be: a flag you still declare is live, and consuming its stored choice
-as retired would destroy a setting you are still exposing. Renaming a flag to
-itself is refused for the same reason.
+Every destination must be one of this manifest's current `rules`. A source must not be one: a flag you still declare is live, and treating its stored choice as retired would destroy a setting you still expose. Renaming a flag to itself is refused for the same reason.
 
-The host migrates its saved choices when it loads your enabled mod, before it
-resolves defaults. Where several retired flags become one rule, the result is on
-if ANY of them was on: turning off a fix the player had on would reintroduce a
-bug they had chosen to be rid of, and re-enabling a sibling is the smaller
-surprise: they can still turn the whole rule off. A choice already recorded for
-the current flag wins outright, since it was made against the new release. The
-old entries are then consumed, so loading again changes nothing.
+The host migrates saved choices when it loads your enabled mod, before it resolves defaults. When several retired flags become one rule, the result is on if any of them was on. Turning off a fix the player had on would bring back a bug they chose to be rid of, whereas re-enabling a sibling is the smaller surprise, and they can still turn the whole rule off. A choice already recorded for the current flag wins outright, since it was made against the new release. The old entries are then consumed, so loading again changes nothing.
 
 ---
 
@@ -607,48 +495,11 @@ declared `default` as usual.
 
 ## Front-end groundwork
 
-The host draws through a renderer-neutral `GridSurface`, and its existing canvas
-terminal is merely one implementation. Menus are now declarative front-end data:
-request `registry:menu` and use `host.menus.register("core:game-menu", fn)` to
-rewrite one named menu's rows. The id is stable and never a localized title;
-each row carries a stable id plus `semantic.kind`, optional `semantic.ref`, and
-small scalar `semantic.data`, so an alternative layout works from meaning rather
-than parsing its label. Call `host.menus.handlerFor(id)` before registering when
-you need to wrap a transformer installed by an earlier mod. A failed transform
-is reported and the unmodified menu stays openable.
+The host draws through a renderer-neutral `GridSurface`, and the existing canvas terminal is one implementation of it. Menus are declarative front-end data. Request `registry:menu` and call `host.menus.register("core:game-menu", fn)` to rewrite one named menu's rows. The id is stable and is never a localized title. Each row carries a stable id plus `semantic.kind`, an optional `semantic.ref` and small scalar `semantic.data`, so an alternative layout can work from what a row means instead of parsing its label. If you need to wrap a transformer an earlier mod installed, call `host.menus.handlerFor(id)` before registering. A failed transform is reported, and the unmodified menu still opens.
 
-`ModPlugin.frontend?(ctx)` is now the one map-display slot. The later enabled
-frontend wins, and only that factory is invoked; return a `WorldFrameSink` or
-`undefined` to preserve the glyph terminal. The host invokes the extracted
-world-render-data producer from its actual map repaint and passes the winner a
-frozen, renderer-neutral `WorldFrame` snapshot: grids retain semantic
-terrain, trap, object, monster, and path ids plus seen/remembered/unknown state,
-while the glyph projection is only the current terminal fallback (including its
-terrain-under-foreground tile inputs, even for a path over otherwise bare seen
-terrain). That makes the
-world data ready for an isometric or 3D consumer. TypeScript mods can write
-`import type { WorldFrame, WorldFrameSink } from
-"@rpgm-tools/neo-angband-mod-sdk"`; it is type-only, so it does not violate the
-folder-plugin no-bare-runtime-import rule. Its Phase-4 control
-executes the same producer `main.ts` calls, checks the unmodded glyph sink's
-pre-frame `term.put` tuples, and proves an independently owned host sink
-receives that exact frame in the same call. The Phase-5 disk fixture proves the
-later plugin receives it and an unmodded control preserves glyph painting. The
-snapshot has no mutable player-grid alias, so a frontend can retain a frame
-without retaining live game state.
+`ModPlugin.frontend?(ctx)` is the single map-display slot. The frontend enabled later in load order wins, and only its factory is invoked; return a `WorldFrameSink`, or `undefined` to keep the glyph terminal. The host runs the world-render-data producer from its real map repaint and passes the winning frontend a frozen, renderer-neutral `WorldFrame` snapshot. Grids keep semantic terrain, trap, object, monster and path ids plus seen, remembered or unknown state. The glyph projection is only the current terminal fallback, including its terrain-under-foreground tile inputs, even for a path over otherwise bare seen terrain. The world data is therefore ready for an isometric or 3D consumer. TypeScript mods can write `import type { WorldFrame, WorldFrameSink } from "@rpgm-tools/neo-angband-mod-sdk"`; the import is type-only, so it does not break the folder-plugin rule against bare runtime imports. A control test runs the same producer `main.ts` calls, checks the unmodded glyph sink's pre-frame `term.put` tuples, and confirms that an independently owned host sink receives that exact frame in the same call. A disk fixture confirms that the later plugin receives the frame and that an unmodded control still paints glyphs. The snapshot has no mutable player-grid alias, so a frontend can keep a frame without keeping live game state.
 
-Input follows the same staged rule. `UiInput` is available to host code through
-the one input door and can represent a continuous direction (vector, magnitude,
-angle) without translating it to a keyboard arrow. A plugin declaring
-`keymap:write` receives `ctx.keymaps` during a live game: `bind(trigger, action)`
-claims a free keyboard trigger, `entries()` lists only that mod's claims, and
-`rebind()` and `remove()` operate only on those claims. It cannot inspect,
-replace, or remove player bindings or another mod's bindings. A player edit takes
-ownership back, and host teardown removes bindings still owned by a mod before it
-is disabled or reloaded. `input-door.ts` remains host infrastructure rather than
-a capability. Player keymaps keep precedence over any later input consumer while
-the root owns input; an active modal, score screen, or run interruption continues
-to receive the player's literal key first.
+Input is staged the same way. `UiInput` is available to host code through the single input door and can represent a continuous direction (vector, magnitude, angle) without translating it into a keyboard arrow. A plugin that declares `keymap:write` receives `ctx.keymaps` during a live game: `bind(trigger, action)` claims a free keyboard trigger, `entries()` lists only that mod's claims, and `rebind()` and `remove()` act only on those claims. A mod cannot inspect, replace or remove player bindings or another mod's bindings. A player edit takes ownership back, and when a mod is disabled or reloaded, host teardown first removes any bindings it still owns. `input-door.ts` stays host infrastructure and is not a capability. Player keymaps take precedence over any later input consumer while the root owns input; an active modal, score screen or run interruption still receives the player's literal key first.
 
 ## Knowing which mod a record came from
 

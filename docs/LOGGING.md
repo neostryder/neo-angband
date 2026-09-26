@@ -1,13 +1,8 @@
 # Logs and problem reports
 
-Two things, and they are deliberately separate: a **log**, which the game writes
-whether anyone asked or not, and a **report**, which a player makes on purpose
-and decides who sees.
+The game keeps two separate things: a log, which it writes whether anyone asked for one or not, and a report, which you make on purpose and decide who sees.
 
-**Nothing is uploaded anywhere.** There is no server, no telemetry and no
-consent prompt to get wrong. A report is a file on the player's computer. That is
-a decision rather than an unfinished feature. See *If an uploader is ever added*
-at the bottom, which is short because the bundle was built so it could be.
+Nothing is uploaded anywhere. There is no server, no telemetry and no consent prompt, and a report is a file on your own computer. The report bundle was built so that an uploader could be added later; [If an uploader is ever added](#if-an-uploader-is-ever-added), at the bottom, covers what that would involve.
 
 ## How much a build logs, and why it is not a setting
 
@@ -17,21 +12,11 @@ at the bottom, which is short because the bundle was built so it could be.
 | `0.16.0`, any `0.x` pre-release | `info` | plus what the game is doing |
 | `0.16.1-edge.2`, a per-commit build | `info` | as above |
 
-The level comes from `ENGINE_VERSION`, not from the player's update channel.
-Those look interchangeable and are not: the channel is a preference about which
-builds to *accept next*, and somebody who installed a beta and then chose
-`stable` is still running the beta. Asking the version means the answer cannot
-drift from the thing it describes.
+The level comes from the game's version (`ENGINE_VERSION`), not from your update channel. The channel only decides which builds to accept next: if you installed a beta and then switched to `stable`, you are still running the beta, so the version is the reliable answer.
 
-While the project is `0.x` this returns `info` for everything, which is correct
-and temporary: `stable` selects nothing before `1.0.0` either. Both facts stop
-being true on the same day, by themselves, and `update.test.ts` ties
-`defaultLogLevel` to `defaultChannel` so one cannot move without the other.
+While the project is `0.x`, every build logs at `info`. That is correct for now, because `stable` offers nothing before `1.0.0` either. Both change together on their own at `1.0.0`, and `update.test.ts` ties `defaultLogLevel` to `defaultChannel` so one cannot move without the other.
 
-**To override it:** add `?log=debug` to the address (the thing to say over a
-support conversation: it beats a stored preference, so it works on a machine
-whose settings say otherwise), or press `L` on the report screen, which
-remembers the choice.
+To override it, add `?log=debug` to the address, or press `L` on the report screen, which remembers the choice. The address option is the one to suggest in a support conversation: it beats a stored preference, so it works even on a machine whose settings say otherwise.
 
 ## Where the log goes
 
@@ -54,13 +39,11 @@ than filling somebody's disk quietly.
 
 ## Making a report
 
-Escape menu -> **Report a problem**. The screen lists everything the file will
-contain *before* it writes one, then `D` to describe the problem in up to three
-lines, `ENTER` to write it.
+Open the Escape menu and choose **Report a problem**. The screen lists everything the file will contain before it writes anything. Press `D` to describe the problem in up to three lines, then `ENTER` to write the file.
 
 What goes in:
 
-| | why it earned its place |
+| | why it is included |
 | --- | --- |
 | version and build id | "it happens on 0.16.something" does not identify a build |
 | platform, window size, **device pixel ratio** | a renderer bug existed that was invisible at a ratio of 1 or 2 |
@@ -70,41 +53,20 @@ What goes in:
 | the last 500 log lines | |
 | how many lines fell off the top | "the last 2,000 lines" and "the whole session" are the same file |
 
-**The home directory is removed** from every path, in all three spellings it
-appears in: raw, `file://` URL, and JSON-escaped. The third is the one that
-matters: every path reaches the log through the value describer, which JSON-
-encodes it, so on Windows they all arrive with doubled backslashes and a matcher
-that only knew the first two caught none of them.
+The home directory is removed from every path, in all three forms it can take: raw, as a `file://` URL, and JSON-escaped. The JSON-escaped form is the one that matters, because every path is JSON-encoded on its way into the log. On Windows they all arrive with doubled backslashes, and a matcher that only knew the first two forms caught none of them.
 
-The log *file* keeps the full paths. It is on the player's own machine and it is
-theirs; the report is the artefact handed to a stranger.
+The log file itself keeps the full paths. It stays on your own machine and belongs to you; the report is what you hand to someone else.
 
 ## Where to send it
 
-Once the file is written the screen offers a tracker per project and opens the
-chosen one in the player's real browser. `G` is Neo Angband, `C` is the RPGM
-Tools Discord, and each enabled mod that has a recorded origin takes the next
-digit. Nothing is uploaded: opening a page is not sending a report, and the file
-is still attached by hand.
+Once the file is written, the screen offers a tracker for each project and opens the one you choose in your normal browser. `G` is Neo Angband, `C` is the RPGM Tools Discord, and each enabled mod that has a recorded origin gets the next digit. Nothing is uploaded: opening a page does not send the report, and you still attach the file yourself.
 
-Two rules decide the addresses, and both exist because only one of these projects
-is this one:
+Neo Angband and the mods get different addresses, because only one of those projects is this one:
 
-- **Neo Angband gets `/issues/new/choose`.** Its two templates are known to
-  exist, and choosing between "something is broken" and "does not match Angband"
-  is most of what makes a first report readable.
-- **A mod gets `/issues`, the tracker root.** Whether somebody else's repository
-  has issue templates, or has its tracker open at all, is not knowable from
-  inside the game, so the address that means the same thing in every case is the
-  one used.
+- Neo Angband gets `/issues/new/choose`. Its two templates are known to exist, and choosing between "something is broken" and "does not match Angband" goes a long way toward making a first report readable.
+- A mod gets `/issues`, the tracker root. The game cannot tell from inside whether somebody else's repository has issue templates, or has its tracker open at all, and the root address means the same thing in every case.
 
-A mod's origin is read from its **install record** - the repository
-trust-on-first-use pinned when it was installed, which every later fetch for
-that mod has had to match - and not from the copy of its manifest on disk. Where
-that origin is not a repository the game can address, including a mod imported
-from a file that declared none, the row says **no repository recorded** and
-offers no key rather than guessing at a URL. Every address is printed on the
-screen beneath its row, so nothing opens that the player has not read first.
+A mod's origin comes from its install record, which holds the repository pinned (trust on first use) when the mod was installed, and which every later fetch for that mod has had to match. It does not come from the copy of the manifest on disk. If that origin is not a repository the game can address, including a mod imported from a file that declared none, the row says **no repository recorded** and offers no key instead of guessing at a URL. Every address is printed on the screen beneath its row, so nothing opens before you have seen where it goes.
 
 ## For contributors: writing a log line
 
@@ -129,13 +91,8 @@ per-site disable naming why.
 
 ## If an uploader is ever added
 
-`reportText()` already produces the whole of what one would send, as a single
-string, with the home directory removed. Wiring a destination is a function, not
-a rewrite. Three things would have to be settled first, and none of them is
-technical:
+`reportText()` already produces everything an uploader would send, as a single string with the home directory removed, so adding a destination means writing one function instead of reworking the report. Three questions would need answers first, and none of them is technical:
 
-- where it goes, and who can read it;
-- what the screen says about that, given it currently promises the opposite in
-  two places: the menu row's hint and the screen's second line, both of which
-  are asserted by tests that would have to be deleted deliberately;
-- whether consent is per-report or a setting.
+- where the report goes, and who can read it;
+- what the screen says about that, since it currently promises the opposite in two places (the menu row's hint and the screen's second line), and tests assert both, so those tests would have to be removed on purpose;
+- whether consent is asked per report or set once as a setting.

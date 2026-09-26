@@ -23,28 +23,12 @@ keep it faithful. Read it once before your first change.
 
 ## Prerequisites
 
-- **Node** `>=22` (the `.nvmrc` pins `26` - use it if you run `nvm`). CI runs 26
-  here; the mod repositories run 22, so the `>=22` floor is exercised rather
-  than merely claimed.
-- **pnpm** `12.3.4`, the version in the root `package.json` `packageManager`
-  field. Install it with **`npm install -g @pnpm/exe`**, and let that field
-  decide the version pnpm runs as - pnpm reads it on every run when
-  `manage-package-manager-versions` is enabled, which is its default, so you
-  never track this number by hand.
+- **Node** `>=22` (the `.nvmrc` pins `26`; use it if you run `nvm`). CI runs 26 here and the mod repositories run 22, so the `>=22` floor is tested as well.
+- **pnpm** `12.3.4`, the version in the root `package.json` `packageManager` field. Install it with **`npm install -g @pnpm/exe`** and let that field choose the version: pnpm reads it on every run when `manage-package-manager-versions` is enabled, which is the default, so you never track this number by hand.
 
-  **`corepack enable pnpm` is no longer an option.** Corepack was removed from
-  Node in 25, so it does not exist at all on the pinned 26. Instructions
-  elsewhere that still recommend it predate that removal.
+  `corepack enable pnpm` no longer works. Corepack was removed from Node in 25, so the pinned 26 does not have it, and instructions elsewhere that still recommend it were written before the removal.
 
-  Do not expect `pnpm self-update` to make the jump from a pnpm 10 install.
-  pnpm 10 fetches its own binary from `@pnpm/win-x64`, which stopped publishing
-  at `11.26.0`; the package that carries 12.x is `@pnpm/exe`. A pnpm 10 asked to
-  reach 12 therefore fails with `No matching version found for
-  @pnpm/win-x64@12.3.4`, and an earlier failure of the same kind can leave a
-  half-written copy under `<pnpm home>/.tools` that reports
-  `Failed to switch pnpm to v<version> ... pnpm CLI is missing` on every command
-  afterwards. Deleting that `.tools` directory clears it. `npx pnpm@12.3.4 <cmd>`
-  works in a pinch without installing anything.
+  `pnpm self-update` cannot take a pnpm 10 install to 12. pnpm 10 fetches its own binary from `@pnpm/win-x64`, which stopped publishing at `11.26.0`, while 12.x ships as `@pnpm/exe`, so the attempt fails with `No matching version found for @pnpm/win-x64@12.3.4`. An earlier failure of the same kind can also leave a half-written copy under `<pnpm home>/.tools` that reports `Failed to switch pnpm to v<version> ... pnpm CLI is missing` on every command afterwards; deleting that `.tools` directory clears it. `npx pnpm@12.3.4 <cmd>` works in a pinch without installing anything.
 
 This is a pnpm workspace (`pnpm-workspace.yaml`); all packages live under
 `packages/`.
@@ -272,20 +256,11 @@ patterns in order to test for them - a real hole, stated rather than hidden.
 
 ### The two gates cover different things
 
-`packages/cli/src/private-scan.test.ts` runs the whole-tree scan in CI, and also
-plants deliberately-bad fixtures to prove the detector still bites - a scanner
-broken to always pass would satisfy a clean-tree assertion on its own.
+`packages/cli/src/private-scan.test.ts` runs the whole-tree scan in CI. It also plants known-bad fixtures to check that the detector still fires, since a scanner broken to always pass would satisfy a clean-tree assertion by itself.
 
-But the whole-tree scan asks `git ls-files`, so **a brand-new file is invisible
-to it** until that file is committed - and for a public repository, "committed
-and pushed" is already too late. The `pre-commit` hook reads the staged blobs, so
-it is the only gate that sees a new file in time. Measured, not assumed: a
-fixture naming the private workspace was reported clean by the tree scan and
-caught by the hook, in the same working state. Both were correct.
+The whole-tree scan lists files with `git ls-files`, so it cannot see a brand-new file until that file is committed, and in a public repository a file that has been committed and pushed has already leaked. The `pre-commit` hook reads the staged blobs, which makes it the only gate that sees a new file in time. In one check, a fixture naming the private workspace passed the tree scan and was caught by the hook in the same working state, and each result was correct for what that gate reads.
 
-So neither substitutes for the other. The hook still needs enabling per clone and
-`git commit --no-verify` walks past it; the CI scan is what catches whatever got
-in around it, later.
+Neither gate replaces the other. The hook has to be enabled per clone and `git commit --no-verify` skips it; the CI scan later catches whatever got past it.
 
 ### The mod repositories use this same scanner
 

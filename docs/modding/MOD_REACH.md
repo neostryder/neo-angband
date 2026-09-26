@@ -1,21 +1,12 @@
 # Mod reach: what a mod can actually change today (measured)
 
-> STATUS: MEASUREMENT, not design of record. Every claim below is a grep count or
-> a `file:line` citation taken from the source on 2026-07-29. Where something
-> could not be determined by reading, it says "not determined" and says what would
-> have to be run. Nothing here is rounded up.
+> This page records measurements of the source, not plans. Each claim is a grep count or a `file:line` citation, first taken on 2026-07-29. Where reading the source could not settle a question, the text says "not determined" and names what would have to be run.
 
 ## Why this page exists
 
-The ratified requirement is broad. The game has to be designed for modding: a mod can override code, resources, images and data, the whole game and its systems must be capable of being made over through modding, and the seams have to be built for that rather than retrofitted.
+The target is a game built for modding throughout: a mod can override code, resources, images and data, every system in the game can be remade by a mod, and the seams are designed for that from the start rather than retrofitted.
 
-`docs/MODS.md` describes that target. `docs/modding/README.md` and
-`MOD_LIFECYCLE.md` describe surfaces at different stages of existence. This page
-exists because those pages cannot tell the reader which is which, and because
-this project's governing lesson is that **code review cannot find absence**: a
-capability that was never built reads as done. So the method here is grep counts
-and citations, and the rule is that a seam only a BUNDLED mod or a TEST can reach
-is not a capability - it is called out as such.
+`docs/MODS.md` describes that target. `docs/modding/README.md` and `MOD_LIFECYCLE.md` describe surfaces at different stages of completion, and neither says which is which. The figures below settle that with grep counts and citations, because code review cannot find absence: a capability that was never built reads as done. A seam that only a bundled mod or a test can reach is not counted as a capability, and is marked where it appears.
 
 ## Headline
 
@@ -39,50 +30,17 @@ is not a capability - it is called out as such.
 | An author is TOLD what a new record needs, and what core's comparable records do | **YES** (2026-08-08): `draftRecord` / `checkRecords` / `ModProject`, measured from core's 3,279 records; **37** declared reference edges, each run over the shipped pack (`docs/modding/AUTHORING.md`) |
 | Resource categories a non-bundled mod can supply or override | **7** of 7 (2026-08-09) - tiles (gap 8), then sounds, fonts, pref files, help pages and art (gap 7), then UI strings, which needed an i18n layer to be supplied INTO before the field could honestly exist (gap 14) |
 
-> **The numbers in this table predate 2026-08-08 and are being re-derived row by
-> row, not edited.** The dispatch-point rows above are now DERIVED - `47` and
-> `18` come from `tools/switch-census.json`, which a test regenerates and
-> compares, so a switch cannot be added *or removed* without the denominator
-> moving. The hand-counted "25 enumerated dispatch points" they replaced was
-> the kind of figure that only ever gets smaller. Seven rows of the gap list have now been re-measured; **four
-> had gone stale in the direction that matters** - reporting a capability as
-> missing after it shipped, gap 2 for nine days after phase 2 landed - and one
-> (gap 6) has since been built and closed.
-> **Gap 12 (2026-08-09) is the sharpest instance so far and the tally above does
-> not yet count it**: the row did not merely understate a capability, it said
-> "no such code exists" about a checker that was built, exported and tested. What
-> was missing was its only caller. A row can be wrong about the CODE and not just
-> about the reach, and reading it as a work order would have built a second,
-> weaker copy of what was already there.
-> That ratio is the finding: this page has been under-reporting reach, which is
-> exactly how a plan quietly narrows. Treat any figure here as a lead until
-> its row below carries a re-measured date. The counting method is what needs
-> rebuilding: a census script, so that a new `switch` cannot be added without
-> appearing in the denominator.
+> The numbers in this table were first taken before 2026-08-08 and are being re-derived one row at a time rather than edited in place. The dispatch-point rows are derived: `47` and `18` come from `tools/switch-census.json`, which a test regenerates and compares, so adding or removing a switch moves the denominator. They replace a hand count of "25 enumerated dispatch points", a figure that could only shrink. Seven rows of the gap list have been re-measured so far. Four of them had gone stale by reporting a capability as missing after it shipped (gap 2 did so for nine days after phase 2 landed), and one of them, gap 6, has since been built and closed.
+>
+> Gap 12 (2026-08-09) is not in that tally yet. Its row said "no such code exists" about a checker that was built, exported and tested; what was missing was its only caller. A row can be wrong about the code as well as about the reach, and building from it would have produced a second, weaker copy of the checker.
+>
+> Across these rows the error runs one way: reach has been under-reported. Treat any figure here as a lead until its row below carries a re-measured date. The counting method still needs rebuilding into a census script, so that a new `switch` cannot be added without appearing in the denominator.
 
-What a mod installed from disk can do today, in a release build: **contribute
-gamedata JSON records** (43 of 44 files per record, and every individual record
-of the shipped pack is nameable by some ref), **supply a tile pack** that registers its own Graphics row, **run its own
-code** through `plugin.js` with the engine passed in, and reach the eighteen
-capability-gated registries - including, since 2026-08-08, **its own kind of
-dungeon level** (`registry:profile`) and **its own kind of monster attack**
-(`registry:blow`), and since 2026-08-09 **what its own projection does** to
-terrain, floor items and the player (`registry:projection`) and **what a symbol
-in its own vault means** (`registry:glyph`).
+In a release build, a mod installed from disk can contribute gamedata JSON records (per record in 43 of the 44 files, and every individual record of the shipped pack is nameable by some ref) and supply a tile pack that registers its own Graphics row. Its `plugin.js` runs with the engine passed in and can reach the eighteen capability-gated registries. Since 2026-08-08 those include its own kind of dungeon level (`registry:profile`) and its own kind of monster attack (`registry:blow`); since 2026-08-09 they also cover what its own projection does to terrain, floor items and the player (`registry:projection`) and what a symbol in its own vault means (`registry:glyph`).
 
-The sentence that used to close this paragraph said the problem that remained
-was the game's behaviour living in `switch` statements with nothing to register
-into. As of 2026-08-11 that is no longer true and saying so would be the
-staleness this document keeps warning about: the census carries **0 `CANDIDATE`
-rows**. What remains is not a backlog of closed dispatch but the caution below -
-zero candidates is the end of what the TOOL can see, and a dispatch point that
-never grew to eight cases was never in its field of view.
+Game behaviour living in `switch` statements with nothing to register into is no longer the remaining problem: since 2026-08-11 the census has carried 0 `CANDIDATE` rows. That zero covers only what the census tool can see. A dispatch point that never grew to eight cases was never in its view; see the caution below.
 
-> A correction to this table's own history: the row above previously named
-> `player` as one of the six registry capabilities. There is no `registry:player`
-> - the only occurrence of that string in the tree is a test asserting it is
-> REJECTED. The count reached six only when `profile` was added, seven with
-> `blow`, and eight with `projection`.
+> There is no `registry:player`. The only occurrence of that string in the tree is a test asserting that it is rejected. An earlier version of the table listed `player` among six registry capabilities; the real count reached six when `profile` was added, seven with `blow`, and eight with `projection`.
 
 ---
 
@@ -90,11 +48,7 @@ never grew to eight cases was never in its field of view.
 
 ### The 11 behaviour hooks, and what each can change
 
-`ModHooks` (`packages/core/src/mod/hooks.ts`, the `ModHooks` interface) is a typed
-interface of optional functions on `GameState.modHooks`
-(`packages/core/src/game/context.ts`). See `MOD_SEAMS.md` for the fold rules.
-Call sites are named by file and by the symbol that reads the hook, not by line:
-a line number in a document has no test behind it and rots on the next commit.
+`ModHooks` (`packages/core/src/mod/hooks.ts`, the `ModHooks` interface) is a typed interface of optional functions on `GameState.modHooks` (`packages/core/src/game/context.ts`). See `MOD_SEAMS.md` for the fold rules. Call sites below are named by file and by the symbol that reads the hook rather than by line number, since a line number in a document has no test behind it and goes stale with the next commit.
 
 | Hook | Core call site | What a mod can change with it | What it cannot |
 | --- | --- | --- | --- |
@@ -110,17 +64,11 @@ a line number in a document has no test behind it and rots on the next commit.
 | `messageText` | `packages/web/src/main.ts` (host, not core) | Restate message text | What a message MEANS - restating only, by contract |
 | `optionsChanged` | the options pages, through `GameState.modHooks` | Observe the option state after a change. Folded `all-observe`: every mod's handler runs, none can veto | The option values themselves; it is notification, not interception |
 
-Honest reading of that table: the eleven hooks were each carved for one concrete
-patch. They are correct and they are generic in shape, but their union is not a
-system anyone could "make over the whole game" with. They are nine points, not a
-seam layer.
+Each of the eleven hooks was carved for one concrete patch. They are correct and generic in shape, but together they do not add up to a way to "make over the whole game": they are nine separate points rather than a seam layer.
 
 ### Dispatch tables: the census
 
-Angband is heavily table-driven, so the natural way to override code is to
-replace an entry in a lookup table. Below is every behaviour-dispatch point I
-found, with what a mod can do to it. "Reachable" means a NON-bundled mod; where
-only a bundled mod can reach it, that is stated.
+Angband is heavily table-driven, so the natural way to override code is to replace an entry in a lookup table. The tables below list every behaviour-dispatch point found in the source and what a mod can do to each. "Reachable" means reachable by a mod that is not bundled; where only a bundled mod can reach something, the text says so.
 
 #### Real registries with a `register()` method: 7
 
@@ -144,20 +92,9 @@ The `ActionRegistry` count was measured as 34 distinct literal
 `spell-cmd.ts:291,351`, `pickup.ts:480-481`, `packages/core/src/game/steal.ts:163`, and `packages/core/src/game/trap.ts:754`
 (which re-overrides `disarm`).
 
-All four core registries are reachable through a deps bag rather than being module
-constants - `deps.profiles` / `deps.rooms` at `gen/generate.ts:415,419`,
-`ctx.registry.handlerFor(code)` at `game/effect-attack.ts:613`,
-`processPlayer(state, registry)` at `game/player-turn.ts:772` - and three are
-surfaced on the started game (`session/game.ts:396`, `:403`, `:507`). So the
-plumbing for override genuinely exists.
+All four core registries are reachable through a deps bag rather than being module constants (`deps.profiles` / `deps.rooms` at `gen/generate.ts:415,419`, `ctx.registry.handlerFor(code)` at `game/effect-attack.ts:613`, `processPlayer(state, registry)` at `game/player-turn.ts:772`), and three are exposed on the started game (`session/game.ts:396`, `:403`, `:507`), so the plumbing for override exists.
 
-**Both gaps this paragraph used to name are closed.** `REGISTRY_CAPABILITIES`
-(`packages/core/src/mod/registry-host.ts`) now covers `effect`, `room`,
-`profile`, `blow`, `store`, `command`, `monster`, `projection` and `vocab`: the
-level-generation ARCHITECTURE (which builder runs, which profile is chosen)
-arrived with `registry:profile`, monster blow effects - which had no registry at
-all, only two switches - arrived with `registry:blow`, and the three projection
-sides arrived with `registry:projection`.
+`REGISTRY_CAPABILITIES` (`packages/core/src/mod/registry-host.ts`) covers `effect`, `room`, `profile`, `blow`, `store`, `command`, `monster`, `projection` and `vocab`. Level-generation architecture (which builder runs and which profile is chosen) became reachable with `registry:profile`. Monster blow effects, which had no registry at all and only two switches, became reachable with `registry:blow`, and the three projection sides with `registry:projection`.
 
 #### Index-keyed handler arrays: 2
 
@@ -166,48 +103,15 @@ sides arrived with `registry:projection`.
 | `MONSTER_HANDLERS` (projection -> monster, `project-mon.c`) | `packages/core/src/mon/project-mon.ts:770` | 56 slots, 56 assigned | no (fixed length, `PROJ`-indexed) | **accidentally yes** | accidentally yes |
 | `HANDLERS` (pref-file directives) | `packages/core/src/visuals/prefs.ts:499` | 13 | **yes** (`sound:`, from disk, 2026-08-14) | n/a | n/a |
 
-**SUPERSEDED TWICE. Read this before the paragraph below it.** What follows was
-written when `MONSTER_HANDLERS` was a mutable exported array. It was frozen under
-gap 15 on 2026-08-08 (`Object.freeze` at `project-mon.ts:861`), so the
-"accidental seam" it describes has not existed since; and on 2026-08-14 it became
-a REAL seam, seeded into `MONSTER_HANDLERS_BY_CODE` and reached as
-`host.projections.mon` under the existing `registry:projection` grant, the
-fourth projection side, after feat, obj and player. The historical text is kept
-because the measurement it belongs to was taken at a particular date and
-rewriting it would falsify the record; the row in the current table above is the
-one to believe.
+The next paragraph is historical. It was written when `MONSTER_HANDLERS` was a mutable exported array. The array was frozen under gap 15 on 2026-08-08 (`Object.freeze` at `project-mon.ts:861`), which removed the accidental seam described below. On 2026-08-14 it became a real seam: the handlers are seeded into `MONSTER_HANDLERS_BY_CODE` and reached as `host.projections.mon` under the existing `registry:projection` grant, the fourth projection side after feat, obj and player. The paragraph stays because it records a measurement taken on a particular date; the row in the table above is the current one.
 
-`MONSTER_HANDLERS` is the one accidental override seam in the port: it is
-`export const ... : Array<MonHandler | null>` - `const` binds the reference, the
-array itself is mutable - and it is re-exported publicly
-(`packages/core/src/index.ts:49`). The lookup is a closed module constant
-(`MONSTER_HANDLERS[ctx.type]`, `project-mon.ts:840`), so an assignment would take
-effect. Nothing in the repo does this. It is not a designed capability, it is
-missing readonly-ness, and it should be treated as a defect rather than a
-feature: it is ungated, unordered, un-composable, and invisible to the conflict
-report.
+`MONSTER_HANDLERS` is the one accidental override seam in the port. It is declared `export const ... : Array<MonHandler | null>`, where `const` binds the reference but leaves the array mutable, and it is re-exported publicly (`packages/core/src/index.ts:49`). The lookup reads the module constant directly (`MONSTER_HANDLERS[ctx.type]`, `project-mon.ts:840`), so an assignment would take effect. Nothing in the repo assigns to it. The mutability is a missing `readonly`, not a designed capability, and it should be treated as a defect: the seam is ungated, unordered, cannot compose, and does not appear in the conflict report.
 
 #### Switch-based dispatch, not overridable by anything, at any tier
 
-A `switch` cannot be extended, replaced, or wrapped from outside the function.
-**The list below is no longer the census; `tools/switch-census.json` is.** A
-hand-written inventory of switches only ever gets smaller - converting one to a
-registry gets its row updated, ADDING one gets no row at all, and the list
-quietly stops being a census while still reading like one. Several rows here
-have already gone stale that way. `node tools/switch-census.mjs` counts every
-dispatch point of >= 8 arms in the tree (**38 rows, 513 size labels** as of
-2026-08-15: 34 `SWITCH`, 2 `ARRAY_LOOKUP`, 2 `IF_CHAIN`) and
-`packages/web/src/switch-census.test.ts` fails when the tree and the manifest
-disagree, so a new dispatch cannot arrive unnoticed.
+A `switch` cannot be extended, replaced or wrapped from outside its function. The census is `tools/switch-census.json`, not the hand-written list below. A hand-written list drifts: converting a switch to a registry gets its row updated, but adding a new switch adds no row, and several rows below went stale that way. `node tools/switch-census.mjs` counts every dispatch point of >= 8 arms in the tree (38 rows and 513 size labels as of 2026-08-15: 34 `SWITCH`, 2 `ARRAY_LOOKUP`, 2 `IF_CHAIN`), and `packages/web/src/switch-census.test.ts` fails when the tree and the manifest disagree, so a new dispatch point cannot arrive unnoticed.
 
-**All 38 carry a verdict**, and the distribution is the useful result rather
-than the raw count. This table is derived from `tools/switch-census.json`, and
-it had gone stale exactly the way the paragraph above warns a hand-written
-inventory does - it read `51 switches` and `22 CANDIDATE` until 2026-08-11,
-months after the conversions that emptied the candidate column, and then read
-`34 switches / 463 case labels / UI 12` until 2026-08-15, months after the
-widening that added six rows. A count in prose is not a measurement; re-derive it
-from the JSON before quoting it:
+All 38 rows carry a verdict, and the spread across classes says more than the raw count. The table below is derived from `tools/switch-census.json`, and it went stale too: it read `51 switches` and `22 CANDIDATE` until 2026-08-11, months after the conversions that emptied the candidate column, and then `34 switches / 463 case labels / UI 12` until 2026-08-15, months after the widening that added six rows. Re-derive any count from the JSON before quoting it:
 
 | Class | Rows | What it means for a mod |
 | --- | --- | --- |
@@ -221,11 +125,7 @@ from the JSON before quoting it:
 | `INTERNAL` | 3 | The save format's block union, the mod system's own capability vocabulary and its consent descriptions - all three grow only when core does. |
 | `DEBUG` | 2 | Wizard-mode menus. |
 
-The verdicts live in `tools/switch-census.json` and the class counts are
-asserted in `switch-census.test.ts` against a **closed vocabulary**, because a
-typo'd class (`CANDIDTE - `) would otherwise drop a row out of the candidate
-count without failing anything. Adjudicating the backlog is what produced rows
-26-28 above: three dispatch points this document had never listed.
+The verdicts live in `tools/switch-census.json`, and `switch-census.test.ts` asserts the class counts against a closed vocabulary, so a typo'd class (`CANDIDTE - `) cannot drop a row out of the candidate count without failing the test. Assigning verdicts to the backlog turned up rows 26-28 above, three dispatch points that had not been listed before.
 
 These are the significant ones:
 
@@ -245,80 +145,21 @@ These are the significant ones:
 | ~~UI entry types~~ **now two registries a mod can write** (`UiEntryRegistry`: combiners keyed by `combine:` name, renderer backends keyed by `code:`; `registry:ui-entry`) | `packages/core/src/game/ui-entry.ts` | was 32, then 9 + 6 |
 | web UI context-menu routing | `packages/web/src/main.ts` (6 `switch (items[idx]?.action)` sites) | - |
 
-**Correction, 2026-08-09: `obj/object.ts`'s 74 cases are not naming.** They were
-filed under "object naming / description" from the first census and carried that
-label through four re-measurements. They are `obj-tval.c`'s class predicates -
-`tvalIsUseable`, `tvalHasVariablePower`, `tvalIsWeapon`, `tvalIsArmor`,
-`tvalIsWearable`, `tvalCanHaveFlavor`, `tvalIsBook` - and the failure they cause
-is not a missing word, it is a mod-coined tval answering **false to every question
-core asks about an item class**: its items are not weapons, cannot be worn, cannot
-be flavoured, cannot be browsed as a book, and are priced by the flat-cost path.
-That is the same blind spot as `obj/make.ts` and `obj/value.ts`, so it belongs to
-gap 28 and the three are **one seam**, not two. Only `obj/desc.ts` (34) is
-genuinely naming. Mis-shelving it made the naming gap look twice its size and hid
-the tval gap at a third of its.
+`obj/object.ts`'s 74 cases are not naming (corrected 2026-08-09). The first census filed them under "object naming / description", and the label survived four re-measurements. They are `obj-tval.c`'s class predicates: `tvalIsUseable`, `tvalHasVariablePower`, `tvalIsWeapon`, `tvalIsArmor`, `tvalIsWearable`, `tvalCanHaveFlavor`, `tvalIsBook`. What they break is a mod-coined tval, which answers false to every question core asks about an item class: its items are not weapons, cannot be worn, cannot be flavoured, cannot be browsed as a book, and are priced by the flat-cost path. That is the same blind spot as `obj/make.ts` and `obj/value.ts`, so all three belong to gap 28 as one seam. Only `obj/desc.ts` (34) is naming. Filing the predicates under naming made the naming gap look twice its real size and hid the tval gap at a third of its.
 
-**Second correction, 2026-08-09: the census reported ONE row for `obj/knowledge.ts`
-and the file had six closed decisions.** The row it saw was `modMessage`, 11
-cases on OBJ_MOD. Beside it sat five switches on `rune.variety` (`runeDesc`,
-`playerKnowsRune`, `objectHasRune`, `playerLearnRune`, `runeName`) each under
-the eight-case threshold, and all five keyed on a **closed TypeScript union of
-seven string literals**. A union is a harder closure than a switch: a switch has
-a `default` arm a mod-coined key reaches and fails at, which is at least
-somewhere to stand, while a union refuses the key at the type level so no arm is
-ever reached at all. The census counts neither a union type's existence nor its
-size, at any threshold.
+The census also reported one row for `obj/knowledge.ts` when the file held six closed decisions (found 2026-08-09). The row it saw was `modMessage`, 11 cases on OBJ_MOD. Next to it were five switches on `rune.variety` (`runeDesc`, `playerKnowsRune`, `objectHasRune`, `playerLearnRune`, `runeName`), each under the eight-case threshold, and all five keyed on a closed TypeScript union of seven string literals. A union closes harder than a switch. A mod-coined key at least reaches a switch's `default` arm and fails there; a union rejects the key at the type level, so no arm is reached at all. The census counts neither a union type's existence nor its size, at any threshold.
 
-That is the same lesson as gap 28 (5 switches recorded; 34 predicates and 408
-call sites in the file) in a new shape, on the same day. **The census measures
-SYNTAX; a gap is about REACH.** So the headline's "0 candidates" means the census
-has nothing left to point at, not that the tree has no closed dispatch. A
-one-line `tval === TV.STAFF` and a seven-literal union are both exactly as shut
-to a mod as an eighty-case switch, and this page, not that tool, is where the
-remainder is tracked. Gap row 29 (the 108 raw `tval === TV.X` comparisons) is the
-current example.
+Gap 28 showed the same problem on the same day: the census recorded 5 switches, while the file had 34 predicates and 408 call sites. The census measures syntax, and a gap is a question of reach. The headline's "0 candidates" therefore means the census has nothing left to point at; it says nothing about closed dispatch the census cannot detect. A one-line `tval === TV.STAFF` and a seven-literal union are as closed to a mod as an eighty-case switch, and the gap list further down tracks what the tool cannot see. Gap row 29 (the 108 raw `tval === TV.X` comparisons) is the current example.
 
-**Third instance, 2026-08-14 (#260), and the nastiest of the three, because it
-made the census's denominator drift DOWNWARD with nobody writing it down.** The
-tool asserts that converted files are ABSENT from `switch-census.json`, which
-correctly catches a conversion that was claimed but never made. It could not
-catch a dispatch that was merely RESHAPED: an if/else chain over an enum, or a
-lookup into a module-level const array, is exactly as shut as a switch and
-scored zero. So a file could leave the census by being FIXED or by being
-RESHAPED and the two looked identical. It now counts all three shapes, tagged
-`SWITCH` / `IF_CHAIN` / `ARRAY_LOOKUP`, and the ratchet asserts the difference
-directly: `project-feat.ts` has zero rows of any kind (a real conversion), while
-a merely reshaped file keeps exactly one row under a different kind.
-`ui-entry.ts` was that worked example, and on 2026-08-15 (#283) it became a
-registry, so it left the census a SECOND time, this time meaning it. The ratchet
-now names `host/args.ts` and `target-loop.ts` as the still-reshaped pair, and
-asserts `ui-entry.ts` absent alongside `project-feat.ts`. Row 18 above records
-both halves.
+A third case (#260, 2026-08-14) let the census denominator shrink without anyone recording it. The tool asserts that converted files are absent from `switch-census.json`, which catches a conversion that was claimed but never made. It could not catch a dispatch that was only reshaped: an if/else chain over an enum, or a lookup into a module-level const array, is as closed as a switch and used to score zero, so a file that was fixed and a file that was reshaped both simply left the census. The tool now counts all three shapes, tagged `SWITCH` / `IF_CHAIN` / `ARRAY_LOOKUP`, and the ratchet tells them apart: `project-feat.ts` has zero rows of any kind (a real conversion), while a reshaped file keeps exactly one row under a different kind. `ui-entry.ts` was the reshaped example until 2026-08-15 (#283), when it became a registry and left the census for real. The ratchet now names `host/args.ts` and `target-loop.ts` as the pair still reshaped, and asserts `ui-entry.ts` absent alongside `project-feat.ts`. Row 18 above records both steps.
 
-The other thing gap 16 turned up is a CALLER, not a dispatch. `runeGroupIndex`
-(`packages/web/src/knowledge.ts:545`) grouped runes for the knowledge browser and
-was exhaustive by construction over the closed union, so it needed no `default`.
-Opening the type meant a mod's rune would have been silently DROPPED from that
-screen: learnable, describable and invisible. It now falls into "Other",
-upstream's own catch-all group, where `flag` already lives. Letting a mod NAME
-its own group is gap 9's business, not a second UI seam invented on the way past.
+Gap 16 also turned up a caller that needed changing. `runeGroupIndex` (`packages/web/src/knowledge.ts:545`) groups runes for the knowledge browser and was exhaustive over the closed union, so it had no `default`. Once the type was opened, a mod's rune would have been silently dropped from that screen: learnable and describable, but invisible. It now falls into "Other", upstream's own catch-all group, where `flag` already lives. Letting a mod name its own group belongs to gap 9 rather than to a second UI seam.
 
-Two things stand out. **Monster blows are the clearest gap**: `blow_effects.json`
-has 30 records and a mod can add a 31st, but the behaviour of each is a hardcoded
-switch, so a new blow effect record is data with no handler. (The duplicated
-26-case switch is separately worth knowing about - two bodies of one dispatch that
-agree only by inspection.) **Store behaviour has no table at all**:
-`StoreRegistry` (`packages/core/src/store/bind.ts:129`) is a `BoundStore[]` with
-linear `byFeat` / `byName` scans, and what a store WILL BUY and how it stocks are
-switches.
+Of the switches listed above, monster blows are the clearest gap. `blow_effects.json` has 30 records and a mod can add a 31st, but each one's behaviour is a hardcoded switch, so a new blow effect record is data with no handler. The 26-case switch also exists twice, as two bodies of one dispatch that agree only by inspection. Store behaviour has no table at all: `StoreRegistry` (`packages/core/src/store/bind.ts:129`) is a `BoundStore[]` with linear `byFeat` / `byName` scans, and what a store will buy and how it stocks are switches.
 
 #### Generated `as const` tables: 31 files, none overridable
 
-`packages/core/src/generated/` holds 31 codegen'd tables (from
-`reference/src/list-*.h`, "Do not edit"). All are exported, all `as const`, none
-frozen, none mutated anywhere in the repo, and all are module-level closed
-constants with no deps-bag indirection - so **ADD / OVERRIDE / WRAP is "no" for
-every one**. The largest:
+`packages/core/src/generated/` holds 31 codegen'd tables (from `reference/src/list-*.h`, "Do not edit"). All are exported, all `as const`, none frozen, none mutated anywhere in the repo, and all are module-level closed constants with no deps-bag indirection, so ADD / OVERRIDE / WRAP is "no" for every one. The largest:
 
 | Table | File | Entries |
 | --- | --- | --- |
@@ -337,24 +178,9 @@ every one**. The largest:
 | `ROOM_ENTRIES` / `ROOM` | `generated/rooms.ts:7` | **19** |
 | `DUN_PROFILE_ENTRIES` / `DUN` | `generated/dun-profiles.ts:7` | **9** |
 
-**`PROJ` is the exception, as of 2026-08-08.** The generated table is still
-closed - it is upstream's enum and every value in it is a number the port hard
-codes - but `bindProjections` no longer requires a record's `code` to be in it.
-A code the enum has never heard of is appended after the 56 compiled-in slots,
-in record order, so a mod can add a projection. This was not a missing feature
-but a **crash**: the bind threw `projection: unknown code X`, and composition
-merges `projection.json` per record (keyed by `code`), so the record arrived
-intact and took the game down - the one content change that did.
+`PROJ` has been the exception since 2026-08-08. The generated table is still closed, since it is upstream's enum and the port hard codes every value in it, but `bindProjections` no longer requires a record's `code` to be in it. A code the enum does not know is appended after the 56 compiled-in slots, in record order, so a mod can add a projection. Before that change an unknown code crashed the game: the bind threw `projection: unknown code X`, and because composition merges `projection.json` per record (keyed by `code`), the record arrived intact and took the game down. It was the only content change that did.
 
-Two things are still refused, because they would break core rather than extend
-it: a new projection may not be `type: "element"` (the first 25 slots are
-`list-elements.h` and `el_info[]` is indexed by ELEM value, so a new element
-would be one the player could never resist), and a `code` that is not a plain own
-property of the enum object - `code: "constructor"` previously resolved through
-`Object.prototype` and bound at index `function Object()`, which a mod-supplied
-code is what makes reachable. `world/projection.test.ts` asserts the whole
-compiled-in table is byte-identical with and without an added projection, and
-both refusals, and the control (a pack MISSING a projection still fails).
+Two kinds of projection are still refused, because they would break core rather than extend it. A new projection may not be `type: "element"`: the first 25 slots are `list-elements.h`, and `el_info[]` is indexed by ELEM value, so a new element would be one the player could never resist. A `code` also has to be a plain own property of the enum object. `code: "constructor"` used to resolve through `Object.prototype` and bind at index `function Object()`, and accepting mod-supplied codes is what made that reachable. `world/projection.test.ts` asserts that the whole compiled-in table is byte-identical with and without an added projection, covers both refusals, and keeps the control that a pack missing a projection still fails.
 
 Plus two more closed tables outside `generated/`:
 
@@ -367,31 +193,15 @@ Note the asymmetry with `ActionRegistry`: the LIVE player-command seam is a
 registry a mod can override, but the faithful `cmd.ts` `COMMAND_INFO` table (112
 entries) that the web loop does not drive is a closed constant.
 
-One field of it is separately reachable, and only one: the **verb**. `CommandVerbTable`
-(`packages/core/src/cmd.ts:316`) is seeded per game from `COMMAND_INFO`'s verbs
-and published on `GameState.commandVerbs`; `host.commands.setVerb(code, verb)`
-names a mod's own command so the `!`-inscription confirm reads "Really dance with
-your Potion of Death? " instead of the generic fallback (#284). That is a UI
-string, not an entry: `repeat_allowed`, `can_use_energy` and `auto_repeat_n`
-belong to the closed table and stay there, and `COMMAND_INFO` is still a
-`ReadonlyMap` nothing writes.
+Only one field of it is reachable on its own: the verb. `CommandVerbTable` (`packages/core/src/cmd.ts:316`) is seeded per game from `COMMAND_INFO`'s verbs and published on `GameState.commandVerbs`, and `host.commands.setVerb(code, verb)` names a mod's own command, so the `!`-inscription confirm reads "Really dance with your Potion of Death? " instead of the generic fallback (#284). The verb is a UI string rather than a table entry. `repeat_allowed`, `can_use_energy` and `auto_repeat_n` stay in the closed table, and nothing writes to `COMMAND_INFO`, which is still a `ReadonlyMap`.
 
 #### Web UI tables: none reachable
 
 `packages/web/src` holds roughly 22 named lookup tables. None is reachable from a
 mod, and two are worth naming because they are what a UI mod would want:
 
-- The **keypress -> command** table, `COMMANDS`,
-  `packages/web/src/main.ts:7337` (62 entries, counted over lines 7337-7429;
-  it "mirrors `cmd_lookup` exactly"). It is not exported and it is declared
-  INSIDE the `window.addEventListener("keydown", ...)` callback that opens at
-  `packages/web/src/main.ts:7149`, so it is re-created per keypress and unreachable from outside
-  the closure even to a bundled mod. It is scanned linearly at `packages/web/src/main.ts:7430`.
-- `DEBUG_MENU`, `packages/web/src/wizard.ts:463` (9 categories / 41 items):
-  exported and not `readonly`, so a bundled mod could mutate it. Same
-  accidental-seam caveat as `MONSTER_HANDLERS`. **Both claims are stale:** both
-  were frozen under gap 15 on 2026-08-08 (`deepFreezeMenu` at `packages/web/src/wizard.ts:520`,
-  `Object.freeze` at `project-mon.ts:861`).
+- The keypress -> command table, `COMMANDS`, `packages/web/src/main.ts:7337` (62 entries, counted over lines 7337-7429; it "mirrors `cmd_lookup` exactly"). It is not exported, and it is declared inside the `window.addEventListener("keydown", ...)` callback that opens at `packages/web/src/main.ts:7149`, so it is re-created on every keypress and cannot be reached from outside the closure, even by a bundled mod. It is scanned linearly at `packages/web/src/main.ts:7430`.
+- `DEBUG_MENU`, `packages/web/src/wizard.ts:463` (9 categories / 41 items), was exported and not `readonly`, so a bundled mod could mutate it, the same accidental seam as `MONSTER_HANDLERS`. Both have been frozen since gap 15 on 2026-08-08 (`deepFreezeMenu` at `packages/web/src/wizard.ts:520`, `Object.freeze` at `project-mon.ts:861`).
 - The game menu and death menu are FUNCTIONS that build rows
   (`packages/web/src/game-menu.ts:56`, `:166`), not tables, so there is nothing to
   register into.
@@ -400,12 +210,9 @@ User-editable-but-not-mod-editable: keymaps (`packages/web/src/keymap-store.ts:2
 localStorage) and the colour table (`packages/web/src/colors.ts`, localStorage +
 `.prf`).
 
-#### The denominator, stated so it can be audited
+#### The denominator
 
-The headline "25 named behaviour-dispatch points, 5 mod-reachable" is this list.
-It counts places where the game looks up **what to DO** by key or index -
-deliberately NOT the pure data tables (`OF`, `TV`, `SQUARE`, flag lists), which a
-mod would reach through records, not code.
+The headline "25 named behaviour-dispatch points, 5 mod-reachable" refers to this list. It counts places where the game looks up what to do by key or index. Pure data tables (`OF`, `TV`, `SQUARE`, flag lists) are left out, because a mod reaches those through records rather than code.
 
 | # | Dispatch point | Mod's code can add / override / wrap? |
 | --- | --- | --- |
@@ -440,454 +247,110 @@ mod would reach through records, not code.
 | 8a | `message_type` records -> sound samples (the content-pack door) | **yes** (2026-08-14): samples now bind on the `already` and `refused` paths too, so a pack with no `plugin.js` can re-point MSG_HIT |
 | - | A mod RENAMES one of its own rule flags or sections without silently losing the player's saved choice | **yes** (#280, 2026-08-14): declare `renamedRuleFlags` as retired flag -> current declared rule, or put `renamedSectionFlags` on the current section; the host consumes old choices when it loads the enabled mod. Rule merges OR-fold their sources; section migrations take the first listed explicit source. LISTED, not counted: it is a host/mod-state seam, not a dispatch point, so counting it would inflate the denominator this table exists to measure |
 
-**Row 23 closed through the EXISTING menu registry, not a second input
-registry** (2026-08-14). `commandTable()` keeps the memoised shell rows and
-sends a declarative projection to `registry:menu` as
-`core:keypress-command-table`: stable ordinal id, label, category, original and
-roguelike bindings, control binding. **The `act` closure never crosses that
-boundary.** A transformed known id maps back to its original closure; an
-invented id has no shell action, and rather than resolving to whichever source
-row shares its ordinal, the picker simply asks again. `chooseCommand` now calls
-`selectFromMenu` for its category and command lists, so the registry can
-retitle, reorder and re-tag what the player sees while the faithful
-scrolling-box skin survives as the terminal fallback, and that is what the new
-`terminalPicker` option on `SelectMenuOptions` is for. The no-mod proof extracts
-the real `buildCommandTable` declaration out of `main.ts` by AST and EVALUATES
-it, then checks all 63 labels in order, so it measures the shipped table rather
-than a copy of it. **The row also said 62 commands; the table has 63.**
+Row 23 closed on 2026-08-14 through the existing menu registry; there is no separate input registry. `commandTable()` keeps the memoised shell rows and sends a declarative projection of them to `registry:menu` as `core:keypress-command-table`: a stable ordinal id, label, category, original and roguelike bindings, and control binding. The `act` closure stays on the shell side. A transformed known id maps back to its original closure. An invented id has no shell action, and instead of resolving to whichever source row shares its ordinal, the picker asks again. `chooseCommand` calls `selectFromMenu` for its category and command lists, so the registry can retitle, reorder and re-tag what the player sees, while the faithful scrolling-box skin remains as the terminal fallback through the new `terminalPicker` option on `SelectMenuOptions`. The no-mod test extracts the real `buildCommandTable` declaration from `main.ts` by AST, evaluates it, and checks all 63 labels in order, so it tests the shipped table rather than a copy. The table has 63 commands; the row used to say 62.
 
-**24 yes, 1 half, 2 no, of 27 counted** (re-counted 2026-08-15 against the code,
-row by row; 28 rows are listed and row 25 is struck from the count; see the
-corrections below). Row 22 closed on 2026-08-15 (#281); rows 7, 20, 21 and 8
-closed on 2026-08-14. The tally is re-run when a row moves, which is the whole
-point of the corrections below.
-Row 8a is that same day's second half; it is LISTED rather than counted, because
-it is a door into row 21 rather than a dispatch point of its own, and counting a
-door twice is exactly how this tally drifted before. This is
-a count of the ROWS above, which is the only
-form of the tally anyone can check by reading the column; earlier versions mixed
-rows with merged capabilities and the arithmetic quietly drifted. Every "yes" is
-reachable FROM DISK, so the non-bundled figure is 16/16 of the reachable seams
-rather than 0 - rows 9 and 10 are one capability delivered twice on purpose, two
-bodies of one dispatch, and a registry only one of them consulted would be worse
-than none, and rows 11/12/27 are one capability delivered three times for the
-same reason.
+The tally is 24 yes, 1 half and 2 no, out of 27 counted rows (recounted against the code, row by row, on 2026-08-15). 28 rows are listed and row 25 is struck from the count, as explained below. Row 22 closed on 2026-08-15 (#281), and rows 7, 20, 21 and 8 closed on 2026-08-14. The tally is re-run whenever a row moves. Row 8a, the second half of the same 2026-08-14 change, is listed but not counted, because it is a door into row 21 rather than a dispatch point of its own, and counting it would count one seam twice. The tally counts rows, since that is the only form anyone can check by reading the column; earlier versions mixed rows with merged capabilities and the arithmetic drifted. Every "yes" is reachable from disk, so the non-bundled figure is 16/16 of the reachable seams rather than 0. Rows 9 and 10 are one capability delivered twice, because they are two bodies of one dispatch and a registry consulted by only one of them would be worse than none; rows 11, 12 and 27 are one capability delivered three times for the same reason.
 
-**Row 8 read "no - module-private", and the reason was a stale comment.**
-`sound:` was never module-private: it was ABSENT. Upstream registers
-`parse_prefs_sound` into the same parser as the other fifteen directives
-(`reference/src/ui-prefs.c:1157`); the port dropped it because it had no mixer,
-and the comment justifying that (in `prefs.ts`'s unknown-directive branch)
-claimed the bundled prf files carried `sound:` lines. Measured 2026-08-14: **no
-`.prf` this port ships carries one.** The 447 of them live in
-`reference/lib/customize/sound.prf`, which is a BUILD input to
-`gen-sound-prefs.mjs` and which nothing parses at runtime. So restoring the
-directive is a PORT, not an addition, and the doctrine question never arose.
-The lesson generalises past this row: a census answer inherited from a comment
-is an answer about the comment.
+Row 8 used to read "no - module-private", on the strength of a stale comment. `sound:` was never module-private; it was absent. Upstream registers `parse_prefs_sound` into the same parser as the other fifteen directives (`reference/src/ui-prefs.c:1157`). The port dropped it because it had no mixer, and the comment justifying that, in `prefs.ts`'s unknown-directive branch, claimed the bundled prf files carried `sound:` lines. No `.prf` the port ships carries one (checked 2026-08-14). All 447 such lines live in `reference/lib/customize/sound.prf`, which is a build input to `gen-sound-prefs.mjs` and is never parsed at runtime. Restoring the directive is therefore a port of upstream behaviour, not an addition to it, so the rule that the port adds nothing is not in play.
 
-**The tally above was wrong for five days, in the same file, three lines from
-the table that disproved it.** It read "17 yes, 2 accidental, 9 no". Counting
-the column gives 18 yes. The missing one is row 26, which the paragraph below
-corrects to "yes" and which was then never added back to the arithmetic: the
-correction was written and the sum was not re-run. That is worth more than an
-apology: a hand-maintained tally three lines from its own source data still
-drifted, and the only reason anyone noticed is that the rows were re-read
-against the code on 2026-08-14 rather than against this document.
+For five days the tally read "17 yes, 2 accidental, 9 no" while the column above it counted 18 yes. The missing row was 26, which the paragraph below corrects to "yes"; the correction went in but the sum was not re-run. It was caught on 2026-08-14 only because the rows were re-read against the code rather than against the document.
 
-**Two rows were also mislabelled, and in the direction that invents seams.**
-Rows 7 (`MONSTER_HANDLERS`) and 25 (`DEBUG_MENU`) both read "accidental only,
-exported mutable array". Neither is: `packages/core/src/mon/project-mon.ts:801`
-is `Object.freeze`d behind an IIFE with a comment saying it is deliberately not
-a mod seam, and `packages/web/src/wizard.ts:520` is built by `deepFreezeMenu`.
-Both were shut under gap 15 on 2026-08-08. A stale "no" under-reports the work;
-a stale "accidental" **advertises a seam that does not exist**, and an author
-could have planned a mod against either. They are counted as "no" above, which
-is what they are.
+Rows 7 (`MONSTER_HANDLERS`) and 25 (`DEBUG_MENU`) were also mislabelled, as "accidental only, exported mutable array". Neither is mutable: `packages/core/src/mon/project-mon.ts:801` is `Object.freeze`d behind an IIFE with a comment saying it is deliberately not a mod seam, and `packages/web/src/wizard.ts:520` is built by `deepFreezeMenu`. Both were shut under gap 15 on 2026-08-08. A stale "no" only under-reports, but a stale "accidental" advertises a seam that does not exist, and an author could plan a mod around it. Both rows are counted as "no" above.
 
-**Not re-derived: the "16/16 of the reachable seams" figure below.** It was
-computed when the tally said 17, it counts merged capabilities rather than rows,
-and nobody has worked it out again. It is left as written rather than adjusted
-to match, because a number nudged to agree with a corrected total is worse than
-one openly marked as unverified. See #259.
+The "16/16 of the reachable seams" figure has not been re-derived. It was computed when the tally said 17 and counts merged capabilities rather than rows, so treat it as unverified until it is recomputed (#259).
 
-**Rows 7, 20 and 21 closed on 2026-08-14, and each carried a lesson worth more
-than the row.**
+Rows 7, 20 and 21 closed on 2026-08-14, and each turned up something beyond the row itself.
 
-*Row 21 (`SOUND_PREF_ENTRIES`) was not only a producer problem: it was an
-ORDERING problem, and that half was invisible to inspection.* `installWebSound`
-runs at `packages/web/src/main.ts:8845`; a plugin's `register()` runs at `:10851` (the trusted
-path, inside `installTrusted`) and `:11039` (the folder loop). A registry read
-only at install time would have been read BEFORE every mod that can write to it,
-correct-looking code that works for nobody. That is the second of #159's two
-documented failure modes, and `soundPrefRegistry.onAdd(...)` is what makes the
-engine take later contributions.
+Row 21 (`SOUND_PREF_ENTRIES`) needed a producer, and it also had an ordering problem that reading the code would not show. `installWebSound` runs at `packages/web/src/main.ts:8845`; a plugin's `register()` runs at `:10851` (the trusted path, inside `installTrusted`) and `:11039` (the folder loop). A registry read only at install time would be read before any mod could write to it, which looks correct and works for nobody. That is the second of #159's two documented failure modes, and `soundPrefRegistry.onAdd(...)` is what lets the engine take contributions that arrive later.
 
-> *The three line numbers in that paragraph were `:8821` and `:10985` until
-> 2026-08-14, and re-measuring them at HEAD moved every one.* The LESSON is
-> unchanged and is the part to remember: `installWebSound` still runs first, by
-> roughly two thousand statements, but a `file:line` in prose is the part of
-> this document that rots, and it rots silently. Prefer the ordering claim to
-> the coordinates.
+> The three line numbers in that paragraph were `:8821` and `:10985` until 2026-08-14, and re-measuring at HEAD moved every one. The ordering has not changed: `installWebSound` still runs first, by roughly two thousand statements. Rely on that ordering rather than on the line numbers, which go stale silently.
 
-*Row 20 (`MESSAGE_ENTRIES`) was a crash, not a missing feature.* A `msgt:` naming
-a type core had not heard of threw `PARSE_ERROR_INVALID_MESSAGE` and took the
-whole bind down. `MSG` is now closed as a TABLE and open as a LOOKUP: the same
-split `PROJ` has, so a registered name resolves at index 154 and up and all five
-consumers widen at once. **No save impact, and it was verified rather than
-assumed:** `checkMsgt` returns the NAME, every consumer types it `string`, and
-resolution to a number happens at message time, so nothing a save holds is
-renumbered and disabling the mod cannot corrupt one. That is what made these two
-rows different in kind from row 22, where `RSF` was a bit position that IS
-persisted. **That difference is gone as of #269**; see the row 22 correction
-below.
+Row 20 (`MESSAGE_ENTRIES`) was a crash. A `msgt:` naming a type core did not know threw `PARSE_ERROR_INVALID_MESSAGE` and took the whole bind down. `MSG` is now closed as a table and open as a lookup, the same split `PROJ` has: a registered name resolves at index 154 and up, and all five consumers widen at once. Saves are unaffected. `checkMsgt` returns the name, every consumer types it `string`, and resolution to a number happens at message time, so nothing a save holds is renumbered and disabling the mod cannot corrupt one. That set rows 20 and 21 apart from row 22, where an `RSF` bit position was persisted, until #269 removed the difference (see row 22 below).
 
-*Row 22 (`MON_SPELL_ENTRIES`): the blocker was the SAVE, and it is removed
-(#269, 2026-08-14).* Row 22 stayed "no" while `PROJ`, `MSG` and
-`SOUND_PREF_ENTRIES` opened, and the discriminator was never the table: it was
-that monster lore persisted the player's spell knowledge as RSF **bit
-positions**, so appending a slot renumbered what an existing character already
-held. A message type resolves to a number at message time and nothing a save
-holds indexes it; an `RSF` slot IS the index. Of three options, **(A) was chosen**: convert the persistence, do not append. "Just append to RSF
-now" was rejected outright as silent corruption of existing characters.
+Row 22 (`MON_SPELL_ENTRIES`) was blocked by the save format until #269 (2026-08-14). It stayed "no" while `PROJ`, `MSG` and `SOUND_PREF_ENTRIES` opened, and the table itself was never the reason. Monster lore persisted the player's spell knowledge as `RSF` bit positions, so appending a slot renumbered what an existing character already knew. A message type resolves to a number at message time and nothing in a save indexes it; an `RSF` slot is the index. #269 converts the persistence rather than appending to the table, because appending under the old format would silently corrupt existing characters.
 
-`SavedLore.spellFlags: number[]` (the raw `FlagSet` bytes) is now
-`SavedLore.spellsKnown: string[]` (RSF names), at `SAVE_VERSION` 5 with the
-`V4_TO_V5` step that reads every version-4 savefile. `lore.txt` had been
-name-keyed all along (`writeLoreEntries`), so this is the savefile half catching
-up rather than a new idea. A name cannot be renumbered; a name this build does
-not have is dropped rather than landing on whatever now occupies its old index;
-a build whose table is larger, smaller or reordered reads back exactly what was
-written.
+`SavedLore.spellFlags: number[]` (the raw `FlagSet` bytes) is now `SavedLore.spellsKnown: string[]` (RSF names), at `SAVE_VERSION` 5, with a `V4_TO_V5` step that reads every version-4 savefile. `lore.txt` was already keyed by name (`writeLoreEntries`), so the savefile now matches it. A name cannot be renumbered. A name this build does not have is dropped instead of landing on whatever now occupies its old index, and a build whose table is larger, smaller or reordered reads back exactly what was written.
 
-**The control is what makes this a measurement rather than a claim.**
-`session/lore-spells.test.ts` renumbers the RSF table by inserting one entry and
-reads the same pre-existing knowledge under both schemes: the byte-keyed read
-turns `["BR_FIRE", "HASTE"]` into `["BR_ELEC", "HOLD"]`, and the name-keyed read
-is unmoved. A round-trip test that only exercised the happy path would have
-passed against the shape this removed.
+`session/lore-spells.test.ts` renumbers the RSF table by inserting one entry and reads the same pre-existing knowledge under both schemes. The byte-keyed read turns `["BR_FIRE", "HASTE"]` into `["BR_ELEC", "HOLD"]`; the name-keyed read is unchanged. A round-trip test that only exercised the happy path would have passed against the old format as well, which is why the renumbered control is there.
 
-**#269 left the row "no" and the tally unchanged**: it opened nothing; it
-removed the reason opening was unsafe. Appending to `MON_SPELL_ENTRIES` became
-a question about the table (sizing `RSF_SIZE`, the `create_mon_spell_mask` type
-expressions, the spell effect and message data a new entry would need) and no
-longer a question about whether it eats saved characters. That remaining work
-is what #281 closed.
+Issue #269 on its own left row 22 at "no" and the tally unchanged, because it opened nothing; it removed the reason opening was unsafe. After it, appending to `MON_SPELL_ENTRIES` was a question about the table (sizing `RSF_SIZE`, the `create_mon_spell_mask` type expressions, and the spell effect and message data a new entry needs) rather than about saved characters. #281 closed that remaining work.
 
-*Row 22 (`MON_SPELL_ENTRIES`) is OPEN (#281, 2026-08-15).* The name table from
-step one (`mon/spell-registry.ts`) is wired end to end:
+Row 22 (`MON_SPELL_ENTRIES`) has been open since #281 (2026-08-15). The name table from the first step (`mon/spell-registry.ts`) is wired end to end:
 
-- **Declaration step**: `mon/spell-declarations.ts` / `declareModMonsterSpells`,
-  called from `bindCore` immediately after `declareModMessageTypes` and before
-  `bindMonsters`, with `monSpells.clear()` at the head of each bind so one
-  character's mods cannot leak into the next. `CorePack.monsterSpells` is the
-  pack field (same `unknown[]` shape as `messageTypes`). Ordering is pinned by
-  `mon/spell-declarations.test.ts`.
-- **Four name->index sites** resolve through `spellIndexOf` rather than raw
-  `RSF`: `spellFlagsOn`, `bindSpells`, `bindAltMsgs` in `mon/bind.ts`, and
-  `orSpellFlags` in `gen/gen-monster.ts`.
-- **Live FlagSet sizing**: production reads of the module-captured `RSF_SIZE`
-  const are now `rsfSize()` in `gen/gen-monster.ts`, `mon/bind.ts`,
-  `mon/lore.ts`, `mon/lore-describe.ts`, `mon/lore-file.ts`, `mon/predicate.ts`,
-  `mon/spell.ts`, and `session/save.ts`. Test files that assert a fact about the
-  compiled table still import `RSF_SIZE` deliberately.
-- **`monSpellsOfTypes`** walks mod entries via `monSpells.typeAt` after the
-  compiled prefix, so `innateMask` / `breathOrInnateMask` /
-  `monsterHasNonInnateSpells` see a mod's `RST_` expression.
-- **Lore serializers**: `serializeLoreSpells` / `deserializeLoreSpells` bound
-  on `rsfMax()` and resolve through `spellNameAt` / `spellIndexOf`. A mod spell
-  name round-trips; a name this build does not have is still dropped (#269's
-  contract). Pinned by `session/lore-spells.test.ts`.
-- **End-to-end**: `mon/spell-declarations.test.ts` boots a real pack with one
-  extra `monster_spell` record and a `monsterSpells` declaration through
-  `bindCore`, and checks the race flag bit, the name round-trip, and the
-  `RST_BOLT` mask placement.
+- Declaration step: `mon/spell-declarations.ts` / `declareModMonsterSpells`, called from `bindCore` immediately after `declareModMessageTypes` and before `bindMonsters`, with `monSpells.clear()` at the head of each bind so one character's mods cannot leak into the next. `CorePack.monsterSpells` is the pack field (the same `unknown[]` shape as `messageTypes`). `mon/spell-declarations.test.ts` pins the ordering.
+- Four name->index sites resolve through `spellIndexOf` rather than raw `RSF`: `spellFlagsOn`, `bindSpells` and `bindAltMsgs` in `mon/bind.ts`, and `orSpellFlags` in `gen/gen-monster.ts`.
+- Live FlagSet sizing: production reads of the module-captured `RSF_SIZE` const are now `rsfSize()` in `gen/gen-monster.ts`, `mon/bind.ts`, `mon/lore.ts`, `mon/lore-describe.ts`, `mon/lore-file.ts`, `mon/predicate.ts`, `mon/spell.ts` and `session/save.ts`. Test files that assert a fact about the compiled table still import `RSF_SIZE`.
+- `monSpellsOfTypes` walks mod entries via `monSpells.typeAt` after the compiled prefix, so `innateMask` / `breathOrInnateMask` / `monsterHasNonInnateSpells` see a mod's `RST_` expression.
+- Lore serializers: `serializeLoreSpells` / `deserializeLoreSpells` bound on `rsfMax()` and resolve through `spellNameAt` / `spellIndexOf`. A mod spell name round-trips, and a name this build does not have is still dropped, as #269 specified. `session/lore-spells.test.ts` pins this.
+- End to end: `mon/spell-declarations.test.ts` boots a real pack with one extra `monster_spell` record and a `monsterSpells` declaration through `bindCore`, and checks the race flag bit, the name round-trip and the `RST_BOLT` mask placement.
 
-**The one number to check twice** is where a mod's first spell lands.
-`MON_SPELL_ENTRIES` has 93 rows for 91 spells, because row 0 is `RSF_NONE` and
-row 92 is the `RSF_MAX` end marker, so the first mod slot is **92**, the
-sentinel's own index, not 93. The inverted enum answers `"MAX"` at 92, which is
-why reading `RSF_FLAG_NAMES` by position has to stop at the callers rather than
-be corrected inside them. Both facts are pinned by
-`mon/spell-registry.test.ts`, not left to this paragraph.
+A mod's first spell lands at index 92, which is easy to get wrong. `MON_SPELL_ENTRIES` has 93 rows for 91 spells, because row 0 is `RSF_NONE` and row 92 is the `RSF_MAX` end marker, so the first mod slot is 92, the sentinel's own index, rather than 93. The inverted enum answers `"MAX"` at 92, which is why positional reads of `RSF_FLAG_NAMES` are removed at the callers rather than corrected inside them. `mon/spell-registry.test.ts` pins both facts.
 
-**The same defect one table over is fixed too (#273, 2026-08-14).**
-`SavedLore.flags` (`MON_RACE_FLAG_ENTRIES`, 85); `SavedObject.flags`,
-`SavedPlayer.objKnown.flags` and `SavedMonster.knownPstateFlags`
-(`OBJECT_FLAG_ENTRIES`, 39); `modifiers` (`OBJECT_MODIFIER_ENTRIES` via
-`OBJ_MOD`, 16, and **not** `OBJECT_FLAG_ENTRIES`, as this paragraph previously
-said); and `elInfo` (`ELEMENT_ENTRIES`, 25) all persisted raw positions until
-`SAVE_VERSION` 6. They are names now, with the `V5_TO_V6` step that reads every
-version-5 savefile and a four-way renumber control
-(`session/save-flag-names.test.ts`).
+The same defect in neighbouring tables was fixed in #273 (2026-08-14). `SavedLore.flags` (`MON_RACE_FLAG_ENTRIES`, 85); `SavedObject.flags`, `SavedPlayer.objKnown.flags` and `SavedMonster.knownPstateFlags` (`OBJECT_FLAG_ENTRIES`, 39); `modifiers` (`OBJECT_MODIFIER_ENTRIES` via `OBJ_MOD`, 16, not `OBJECT_FLAG_ENTRIES`); and `elInfo` (`ELEMENT_ENTRIES`, 25) all persisted raw positions until `SAVE_VERSION` 6. They are stored as names now, with a `V5_TO_V6` step that reads every version-5 savefile and a four-way renumber control (`session/save-flag-names.test.ts`).
 
-**And the tally is still unchanged.** None of the four is a counted switch row,
-and the row that does cover them (the 31 generated `as const` tables) never
-gave persistence as its blocker. Its blocker is that every one is a
-module-level closed constant with no deps-bag indirection, and #273 does not
-touch that. Removing a blocker is not opening a seam. What changed is that
-appending to or reordering `RF`, `OF`, `OBJ_MOD` or `ELEM` is now a question
-about the table and no longer a question about whether it eats saved
-characters.
+Issue #273 leaves the tally unchanged. None of the four is a counted switch row, and the section that covers them (the 31 generated `as const` tables) never had persistence as its blocker. Its blocker is that every one is a module-level closed constant with no deps-bag indirection, which #273 does not touch. What #273 changes is that appending to or reordering `RF`, `OF`, `OBJ_MOD` or `ELEM` no longer puts saved characters at risk and is now purely a question about the table.
 
-**Still persisted as positions, and out of #273's scope:** `SavedMonster.mflag`
-(MFLAG), `SavedTrap.flags` (TRF), `SavedMonster.mTimed` (MON_TMD),
-`SavedPlayer.timed` (TMD), `.skills`, the STAT-indexed stat arrays, and the
-square `info` flags in the chunk snapshot. **The sweep found seven more of the
-same kind than the ticket named**: #269's note said the defect was live "one
-table over" and it was live eleven tables over. Recorded here for the same
-reason the previous version of this paragraph was: findable is the point.
+Still persisted as positions, outside #273's scope: `SavedMonster.mflag` (MFLAG), `SavedTrap.flags` (TRF), `SavedMonster.mTimed` (MON_TMD), `SavedPlayer.timed` (TMD), `.skills`, the STAT-indexed stat arrays, and the square `info` flags in the chunk snapshot. The sweep found seven more tables with this defect than the ticket named: #269's note said it was live "one table over", and it was live eleven tables over.
 
-*Row 7 (`MONSTER_HANDLERS`), and the ticket's own description of it was wrong.*
-It said a mod's projection "does literally nothing to a monster". Measured, the
-monster took 34 damage: `project_m`'s driver applies `ctx.dam` whether or not a
-handler ran. What had no way to happen was everything TYPE-SPECIFIC: resistance,
-immunity, scaled damage, fear, stun, confusion, polymorph, teleport, the
-"unaffected" line, obviousness. A mod's projection could only ever be an untyped
-hit for exactly its dice. The corrected claim is narrower and the control that
-proves it is stronger.
+Row 7 (`MONSTER_HANDLERS`): the ticket said a mod's projection "does literally nothing to a monster", but in testing the monster took 34 damage, because `project_m`'s driver applies `ctx.dam` whether or not a handler ran. What a mod's projection could not do was anything type-specific: resistance, immunity, scaled damage, fear, stun, confusion, polymorph, teleport, the "unaffected" line, obviousness. It could only ever be an untyped hit for exactly its dice.
 
-**One gap opened by closing these, now closed (#266), and THE ORDER WAS
-MEASURED.** `registry:message` let a plugin declare a message type, and the only
-door to that facade is the `ModRegistryHost` a host builds for `register()`.
-Wrapping `messageTypes.lookup` and booting a real game with a monster spell
-carrying `msgt: PROBE_FLARE` put the resolution at `mon/bind.ts:609`
-(`checkMsgt`), under `bindMonsters` inside `bindCore` (`session/boot.ts`), under
-`startGame` (`session/game.ts:3042`),
-and `startGame` did not return, it threw `PARSE_ERROR_INVALID_MESSAGE`. Parsing
-`main.ts` puts that call at top-level statement 182 (`const game = bootGame()`)
-and the earliest `register()` at statements 561 and 566, all direct children of
-the module. **384 top-level statements separate the two.** A message type
-declared in `register()` is declared after every record that could have named it.
+Closing these rows opened one more gap, since closed in #266, and the ordering behind it was measured directly. `registry:message` let a plugin declare a message type, but the only way into that facade is the `ModRegistryHost` a host builds for `register()`. Wrapping `messageTypes.lookup` and booting a real game with a monster spell carrying `msgt: PROBE_FLARE` placed the resolution at `mon/bind.ts:609` (`checkMsgt`), under `bindMonsters` inside `bindCore` (`session/boot.ts`), under `startGame` (`session/game.ts:3042`), and `startGame` threw `PARSE_ERROR_INVALID_MESSAGE` instead of returning. Parsing `main.ts` puts that call at top-level statement 182 (`const game = bootGame()`) and the earliest `register()` at statements 561 and 566, all direct children of the module, so 384 top-level statements separate the two. A message type declared in `register()` arrives after every record that could have named it.
 
-Worse than late: for a pack with no `plugin.js` there is no `register()` at all,
-so the capability was **unreachable** rather than merely mistimed, and that is
-most of the packs that want one, because a message type is what a spell or a
-sound pack ships, not what a systems mod ships.
+A pack with no `plugin.js` has no `register()` at all, so for it the capability was unreachable, not just late. That covers most of the packs that want a message type, since spell packs and sound packs ship them and systems mods usually do not.
 
-The answer is the one `bindProjections` already gives. A mod's new `PROJ` code
-works because `projection.json` is pack DATA that arrives through composition,
-not a plugin call, so it exists before the binder asks. Message types now do the
-same: `declareModMessageTypes`
-(`packages/core/src/mod/message-declarations.ts`) appends a pack's
-`message_type` records: name, `sound.prf` key, and the sample list, because a
-content-only sound pack that could name a type and never bind a sample to it
-would be half a capability, after the 154 compiled slots and before
-`bindMonsters` and `bindProjections` run. `MESSAGE_ENTRIES` itself stays
-generated from upstream's `list-message.h`: **core adds nothing.**
+The fix follows `bindProjections`. A mod's new `PROJ` code works because `projection.json` is pack data that arrives through composition rather than through a plugin call, so it exists before the binder asks for it. Message types now work the same way: `declareModMessageTypes` (`packages/core/src/mod/message-declarations.ts`) appends a pack's `message_type` records after the 154 compiled slots and before `bindMonsters` and `bindProjections` run. Each record carries a name, a `sound.prf` key and a sample list; the samples are included because a content-only sound pack that could name a type but never bind a sample to it would have only half the capability. `MESSAGE_ENTRIES` itself is still generated from upstream's `list-message.h`, so core adds nothing.
 
-**No capability gate, deliberately.** `registry:*` gates trusted in-process CODE.
-These are records, and a content pack can already add a projection, a monster, an
-artifact and an ego item with no capability at all; gating one record file and
-not the other twenty would be a fence with no wall attached.
+Message-type records need no capability. `registry:*` gates trusted in-process code, and these are records. A content pack can already add a projection, a monster, an artifact or an ego item with no capability at all, and gating this one record file while the other twenty stay open would protect nothing.
 
-**Nothing in the pass throws.** Every refusal `MessageTypeRegistry` makes is a
-name that already resolves somewhere (a compiled-in `MSG_`, a numeric index, an
-earlier pack's declaration) or one that can never resolve at all, so the record
-naming it binds or fails on its own merits either way, and a message type is
-never what should stop a game from booting. A refused declaration loses one
-message type and reports it.
+The declaration pass never throws. `MessageTypeRegistry` refuses only a name that already resolves somewhere (a compiled-in `MSG_`, a numeric index, an earlier pack's declaration) or one that can never resolve, so any record naming it binds or fails on its own merits, and a message type never stops a game from booting. A refused declaration loses that one message type and reports it.
 
-**Two of these 21 "yes" rows have now been checked for reachability IN PRACTICE
-rather than in principle, and both were defective.** Row 21's registry was
-readable and writable and was read before anything could write to it; #266's
-capability had a door only code could open, in a family whose typical author
-ships no code. That is the measured fact and it is the whole of it: **the other
-19 are not hereby suspect**, because nothing has been measured about them. What
-it does say is that "a registry exists and a mod can call it" is a weaker claim
-than it reads as, and the two checks that were run are the only two that have
-been.
+Two of these 21 "yes" rows have been checked for reachability in practice rather than in principle, and both were defective. Row 21's registry could be read and written, but was read before anything could write to it. #266's capability had a door only code could open, for a kind of pack whose authors usually ship no code. Nothing has been measured about the other 19, so these two results say nothing about them either way. They do show that "a registry exists and a mod can call it" is a weaker claim than it sounds.
 
-**Row 25 is struck from the count, and kept in the table.** `DEBUG_MENU` is the
-wizard-mode menu. `packages/web/src/wizard.ts:508-518` says in the source that the table must
-match the C exactly because parity tests count its letters, `switch-census.json`
-already classes both `wizard.ts` rows as DEBUG, and a mod extends wizard mode
-through the command seam instead. So the "gap" consists entirely of the project
-having deliberately closed a hole it had named, and counting that as an open gap
-dilutes the ones that are real. Struck rather than deleted, because a row that
-vanishes from a denominator is indistinguishable from a row nobody looked at:
-the three finished states are *closed*, *not applicable* and *deliberately
-shut*, and "removed from the table" is not one of them.
+Row 25 stays in the table but is struck from the count. `DEBUG_MENU` is the wizard-mode menu. The source at `packages/web/src/wizard.ts:508-518` says the table must match the C exactly because parity tests count its letters, `switch-census.json` already classes both `wizard.ts` rows as DEBUG, and a mod extends wizard mode through the command seam instead. The row describes a hole that was closed on purpose, and counting it as open would dilute the real gaps. It is struck rather than deleted because a row missing from a denominator looks the same as a row nobody checked. A row finishes as *closed*, *not applicable* or *deliberately shut*; removal from the table is not one of those states.
 
-**Row 23's stated blocker was stale, and the row is much cheaper than it read.**
-It said the command table is "declared INSIDE the keydown callback, re-created
-per keypress, unreachable from outside the closure" at `packages/web/src/main.ts:7337`. That code
-is gone. It is now module-level and memoised: `buildCommandTable` at
-`packages/web/src/main.ts:8104`, `commandTable` at `:8288`, with a header
-comment at `:8095-8102` saying so. The row is still "no", but for a different
-and smaller reason: neither symbol is exported, and `chooseCommand`
-(`command-menu.ts:259`) uses its own `runMenu` rather than the `selectFromMenu`
-choke point, so `registry:menu` does not reach the command browser either. That
-is an export-plus-registry job, not a refactor.
+Row 23's stated blocker was stale. The row said the command table is "declared INSIDE the keydown callback, re-created per keypress, unreachable from outside the closure" at `packages/web/src/main.ts:7337`. That code is gone: the table is now module-level and memoised, with `buildCommandTable` at `packages/web/src/main.ts:8104`, `commandTable` at `:8288`, and a header comment at `:8095-8102` saying so. The row is still "no", for a smaller reason. Neither symbol is exported, and `chooseCommand` (`command-menu.ts:259`) uses its own `runMenu` rather than the `selectFromMenu` choke point, so `registry:menu` does not reach the command browser either. Closing it needs an export and a registry, not a refactor.
 
-**Row 24 was reading as "nothing", and it is half closed.** `registry:menu`
-ships, is capability-gated (`REGISTRY_CAPABILITIES.menu`,
-`packages/core/src/mod/registry-host.ts:166`; `MenuRegistry` at
-`packages/web/src/menu-registry.ts:47`) and reaches all six sites through
-`selectFromMenu`'s stable ids: add, reorder, relabel, retag and remove all work
-today. What does NOT work is attaching BEHAVIOUR to a row a mod invented,
-`overlay.ts:1511-1513` maps the chosen row's stable id back through
-`originalIndex` and returns SILENTLY for a row the transformer invented, while
-the presenter path refuses out loud at `:1805-1810`. Gap 21 further down states
-this correctly, so until now table (a) and the gap list contradicted each other.
+Row 24 is half closed; it used to read as if nothing were reachable. `registry:menu` ships, is capability-gated (`REGISTRY_CAPABILITIES.menu`, `packages/core/src/mod/registry-host.ts:166`; `MenuRegistry` at `packages/web/src/menu-registry.ts:47`), and reaches all six sites through `selectFromMenu`'s stable ids, so adding, reordering, relabelling, retagging and removing rows all work today. Attaching behaviour to a row a mod invented does not. `overlay.ts:1511-1513` maps the chosen row's stable id back through `originalIndex` and returns silently for a row the transformer invented, while the presenter path reports the refusal at `:1805-1810`. Gap 21 further down describes this correctly, so table (a) and the gap list now agree.
 
-**Row 18 was reshaped rather than converted, and that is why the census stopped
-seeing it** (#260). The 32-case switch this row was written about no longer
-exists, and `ui-entry.ts` was absent from `switch-census.json` entirely, which
-read exactly like a conversion until somebody checked. It was not one:
-`COMBINERS` was a 9-entry module const that `combinerLookup` linear-scanned by
-name, and it was as shut to a mod as the switch it replaced. The census now
-counts lookup arrays and if/else chains as well as switches, so this row got a
-successor row.
+Row 18 dropped out of the census because it was reshaped, not converted (#260). The 32-case switch it was written about no longer exists, and `ui-entry.ts` was missing from `switch-census.json` entirely, which looked like a conversion until it was checked. It was not one: `COMBINERS` was a 9-entry module const that `combinerLookup` scanned linearly by name, as closed to a mod as the switch it replaced. The census now counts lookup arrays and if/else chains as well as switches, so the row got a successor row.
 
-**And on 2026-08-15 it was converted for real** (#283). `UiEntryRegistry`
-(`packages/core/src/game/ui-entry-registry.ts`) is two name-keyed tables, nine
-combiners and six renderer backends, built per game in `wireGame`, published on
-`GameState.uiEntry`, and reached by a mod through `registry:ui-entry`. The
-census row is gone the way `project-feat.ts`'s went: zero rows of any of the
-three kinds, asserted in `switch-census.test.ts` rather than claimed here.
+On 2026-08-15 it was converted (#283). `UiEntryRegistry` (`packages/core/src/game/ui-entry-registry.ts`) is two name-keyed tables, nine combiners and six renderer backends, built per game in `wireGame`, published on `GameState.uiEntry`, and reached by a mod through `registry:ui-entry`. The census row is gone the same way `project-feat.ts`'s went, with zero rows of any of the three kinds, and `switch-census.test.ts` asserts that.
 
-Two things about the shape are worth stating, because both were traps:
+Two details of the shape were easy to get wrong:
 
-- **The live key is the NAME, resolved at compute/apply time.** Lookup was
-  always by name at parse, but STORAGE afterwards was by position: a 1-based
-  `combinerIndex` and a 0..5 `backendIndex`, so reordering either core table
-  silently retargeted every built config. Keeping the slot as the long-lived
-  identity would also have frozen core's tables at nine and six and made a
-  post-wire `register()` inert: a registered handler has no slot. `UiEntry`
-  carries `combinerName` and `RendererInfo` carries `backendName` /
-  `combinerName` instead. Neither index was ever written to a save, so nothing
-  under `packages/core/src/save/` reads either field, so this was a code change
-  and not a save migration.
-- **Survival is preserved, not replaced.** A combiner name nothing answers for
-  still resolves to `ABSENT_COMBINER` and a backend name nothing answers for
-  still returns the empty-cell row, which is #271's guarantee. Opening a table is
-  not licence to make a typo fatal again;
-  `ui-entry-unknown-combiner.test.ts` still holds that end.
+- The live key is the name, resolved at compute and apply time. Lookup at parse was always by name, but storage afterwards was by position, a 1-based `combinerIndex` and a 0..5 `backendIndex`, so reordering either core table silently retargeted every built config. Keeping the slot as the long-lived identity would also have frozen core's tables at nine and six entries and made a post-wire `register()` inert, since a registered handler has no slot. `UiEntry` carries `combinerName`, and `RendererInfo` carries `backendName` / `combinerName`, instead. Neither index was ever written to a save and nothing under `packages/core/src/save/` reads either field, so this was a code change rather than a save migration.
+- Unknown names still survive. A combiner name with no handler still resolves to `ABSENT_COMBINER`, and a backend name with no handler still returns the empty-cell row, as #271 guarantees. Opening the table does not make a typo fatal again; `ui-entry-unknown-combiner.test.ts` still covers that.
 
-The proof that a mod can reach it is `ui-entry-registry-wiring.test.ts`, which
-starts a real game, registers through the capability-gated facade AFTER the
-wiring, renders a real `characterGrid` and a real `equipCmpSummary`, and asserts
-the CELL changed, against two controls (core's combiner, and the same pack with
-nothing registered) that agree with each other, so a subject matching either
-would not have counted. It also asserts the ORDERING half: a registration made
-after the config was built still takes effect, which is the failure row 21 made.
+`ui-entry-registry-wiring.test.ts` shows that a mod can reach it. The test starts a real game, registers through the capability-gated facade after the wiring, renders a real `characterGrid` and a real `equipCmpSummary`, and asserts that the cell changed. It compares against two controls that agree with each other (core's combiner, and the same pack with nothing registered), so a result matching either one fails. It also covers ordering: a registration made after the config was built still takes effect, which is where row 21 went wrong.
 
-**Before that it was shut rather than fatal, which was a different row
-entirely** (#271, 2026-08-14). `combinerLookup` returning 0 for an unknown name used to reach
-`combinerFuncs`, which threw `bad combiner index 0`, and the PARSE path never
-threw, so a pack with one typo'd `combine:` line **loaded clean** and then took
-the session down on the first value or render use: the character sheet, or the
-equip-comparison screen. Upstream is no defence for that.
-`ui_entry_combiner_get_funcs` (`reference/src/ui-entry-combiner.c:111-120`) also
-returns 0 and its callers `assert(0)` (`ui-entry.c:694-696`, `:892-894`), which
-under NDEBUG is undefined behaviour, not a diagnostic; the port had converted it
-into an unconditional throw, which is strictly worse for a player. An
-unresolvable index or name now yields `ABSENT_COMBINER` (`:477`),
-`init`/`accum`/`finish`/`vec` all `UI_ENTRY_VALUE_NOT_PRESENT`, so the row reads
-as "nothing here" and the screen still draws. Same answer the projection bind
-reached for an unknown code on 2026-08-09. Six tests hold it
-(`ui-entry-unknown-combiner.test.ts`), the fourth of which rebuilds the shipped
-`ui_entry` records with every `combine:` replaced by a name nothing knows and
-asserts `characterGrid` still returns a full grid. **The row stayed "no" on that
-day:** survival is not reach, `COMBINERS` still had nine names and no mod could
-add a tenth. #283 is what changed the answer, and the survival behaviour above is
-unchanged by it.
+Before #283, an unknown combiner name was fatal, and #271 (2026-08-14) made it merely closed. `combinerLookup` returned 0 for an unknown name, which reached `combinerFuncs`, which threw `bad combiner index 0`. The parse path never threw, so a pack with one typo'd `combine:` line loaded cleanly and then took the session down on the first value or render use: the character sheet, or the equip-comparison screen. Upstream behaves no better here. `ui_entry_combiner_get_funcs` (`reference/src/ui-entry-combiner.c:111-120`) also returns 0 and its callers `assert(0)` (`ui-entry.c:694-696`, `:892-894`), which under NDEBUG is undefined behaviour rather than a diagnostic; the port had turned it into an unconditional throw, which is worse for a player. An unresolvable index or name now yields `ABSENT_COMBINER` (`:477`), with `init`/`accum`/`finish`/`vec` all `UI_ENTRY_VALUE_NOT_PRESENT`, so the row reads as "nothing here" and the screen still draws. The projection bind handles an unknown code the same way (2026-08-09). Six tests cover it (`ui-entry-unknown-combiner.test.ts`); the fourth rebuilds the shipped `ui_entry` records with every `combine:` replaced by a name nothing knows and asserts that `characterGrid` still returns a full grid. The row stayed "no" after #271, because surviving an unknown name is not the same as being reachable: `COMBINERS` still had nine names and no mod could add a tenth. #283 changed that, and left the survival behaviour as it was.
 
-**The renderer half was an edge the widened census could not reach, and it went
-in the same commit.** `applyRenderer` sat beside `COMBINERS` in the same file and
-was a **6**-arm `if (backend === UI_ENTRY_RENDERER.X)` chain, not 8. It was
-exactly as closed to a mod as an 87-case switch and it stayed invisible, because
-dropping the threshold below 8 reopens a false-positive flood: the naive version
-of the detector fired on 122 rows of ordinary control flow, RNG tables and colour
-palettes. So this row was half-derived and half read by hand. The six arms are
-now six `UiEntryBackendRender` functions in `UiEntryRegistry.backends`, keyed by
-the name a renderer record's `code:` field writes. The empty-cell fallthrough
-survives, and is now the answer for a backend name nothing answers for, and the
-renderer-side twin of `ABSENT_COMBINER`. **The tool's limit has not moved**; only
-this instance of it has, and a six-arm chain elsewhere in the tree is still
-invisible to the census.
+The renderer half went in the same commit, even though the widened census could not see it. `applyRenderer` sat beside `COMBINERS` in the same file as a 6-arm `if (backend === UI_ENTRY_RENDERER.X)` chain, below the 8-arm threshold. It was as closed to a mod as an 87-case switch and stayed invisible, because lowering the threshold below 8 floods the census with false positives: a naive version of the detector fired on 122 rows of ordinary control flow, RNG tables and colour palettes. This row was therefore half derived and half read by hand. The six arms are now six `UiEntryBackendRender` functions in `UiEntryRegistry.backends`, keyed by the name a renderer record's `code:` field writes. The empty-cell fallthrough remains as the answer for a backend name nothing answers for, the renderer-side twin of `ABSENT_COMBINER`. The census threshold itself is unchanged, so a six-arm chain elsewhere in the tree is still invisible to it.
 
-**Row 19 is a parity artefact, not a gap a player can observe.** `COMMAND_INFO`
-(`packages/core/src/cmd.ts:165`) is still a `ReadonlyMap`, but `new CommandQueue`
-has NO production caller: the web shell drives `commandBuffer`
-(`packages/web/src/main.ts:6053`) into the `ActionRegistry`, which row 3 already scores yes.
-Extending `COMMAND_INFO` today changes nothing anyone can see. It is NOT struck,
-because `game/display.ts:293` carries PORT_TODO 3.11 pointing at
-`CommandQueue.getNRepeats`: if that lands, the row becomes sharp, and a
-`registry:command` mod's code is silently dropped at `cmd.ts:543-544`
-(`if (!info) return;`) and refused at `:488`. Counted as "no" so that it stays
-visible, and labelled so nobody scopes it as urgent.
+Row 19 is a parity artefact that no player can observe. `COMMAND_INFO` (`packages/core/src/cmd.ts:165`) is still a `ReadonlyMap`, but `new CommandQueue` has no production caller: the web shell drives `commandBuffer` (`packages/web/src/main.ts:6053`) into the `ActionRegistry`, which row 3 already scores yes. Extending `COMMAND_INFO` today changes nothing anyone can see. The row is not struck, because `game/display.ts:293` carries PORT_TODO 3.11 pointing at `CommandQueue.getNRepeats`. If that lands, the row starts to matter: a `registry:command` mod's code would be silently dropped at `cmd.ts:543-544` (`if (!info) return;`) and refused at `:488`. It is counted as "no" so it stays visible, and labelled as a parity artefact so nobody treats it as urgent.
 
-**One field of row 19 WAS observable, and is now closed** (#284). `cmd_verb`
-reads a command's verb, and `get_item_allow` puts it in the "Really %s %s? " an
-inscribed item demands (`game/inscription-confirm.ts:111`), a path the web
-shell absolutely does drive, from `main.ts`'s `allowChosenItem`. Because
-`COMMAND_INFO` is keyed by the closed `CommandCode` union and a mod's code is a
-free string, every such prompt for a mod's command read "Really **do that with**
-your Potion of Death?". `CommandVerbTable` (`cmd.ts:316`) fixes exactly that one
-field and nothing else, and the fix was deliberately NOT a conversion of the
-command table: `CommandQueue` still has no production constructor, the dispatch
-still belongs to `ActionRegistry`, and this row stays "no" for everything but
-the verb.
+One field of row 19 was observable, and #284 closed it. `cmd_verb` reads a command's verb, and `get_item_allow` puts it into the "Really %s %s? " prompt an inscribed item demands (`game/inscription-confirm.ts:111`), a path the web shell does drive, from `main.ts`'s `allowChosenItem`. Because `COMMAND_INFO` is keyed by the closed `CommandCode` union and a mod's code is a free string, every such prompt for a mod's command read "Really do that with your Potion of Death?". `CommandVerbTable` (`cmd.ts:316`) fixes that one field and nothing else; the command table itself is not converted. `CommandQueue` still has no production constructor, dispatch still belongs to `ActionRegistry`, and the row stays "no" for everything but the verb.
 
-**Row 26 was stale for a day, and this is what that looks like.** The glyph
-decoders became a registry on 2026-08-09 and gap row 17 below said so, while
-this row still read "no" - the same document disagreeing with itself, in the
-direction that under-reports the work. It is corrected here rather than quietly:
-`tools/switch-census.json` is the derived denominator precisely because this
-table is maintained by hand, and `switch-census.test.ts` now asserts that
-`gen/room.ts` and the four effect-info files are ABSENT from the census, so a
-conversion cannot be claimed here without having been made in the code.
+Row 26 was stale for a day. The glyph decoders became a registry on 2026-08-09, and gap row 17 below said so while this row still read "no". Because this table is maintained by hand, `tools/switch-census.json` is the derived denominator, and `switch-census.test.ts` now asserts that `gen/room.ts` and the four effect-info files are absent from the census, so a conversion cannot be claimed here unless it was made in the code.
 
 #### The projection family, and the day it spent converted but unreachable
 
-Rows 11, 12 and 27 are the three `project_f` / `project_o` / `project_p` handler
-tables. They became keyed registries on 2026-08-08/09, each with a documented
-override field - and for a day **all three read that field from an object
-nothing ever wrote.** `session/game.ts` built its `ProjectFeatEnv` as
-`{ makeDeps }` and called `makePlayerSideEffects` without `playerHandlers`, so
-the compiled-in table won every time. This document recorded two of the three as
-**yes** on the strength of the field existing, which is the whole failure in one
-sentence: a field a mod cannot set is not a seam a mod can use.
+Rows 11, 12 and 27 are the three `project_f` / `project_o` / `project_p` handler tables. They became keyed registries on 2026-08-08/09, each with a documented override field, but for a day all three read that field from an object nothing ever wrote. `session/game.ts` built its `ProjectFeatEnv` as `{ makeDeps }` and called `makePlayerSideEffects` without `playerHandlers`, so the compiled-in table won every time. Two of the three were recorded here as "yes" because the field existed, although no mod could set it.
 
-The producer landed 2026-08-09 as `registry:projection`
-(`game/projection-handlers.ts`): one `ProjectionHandlerRegistry` per game,
-seeded with core's 69 handlers, published on `GameState.projectionHandlers`, and
-handed to the engine BY IDENTITY - `wireGame` passes the live Maps, so a handler
-installed by a plugin's `register()`, which runs after the wiring, is dispatched
-to on the next projection.
+The producer landed 2026-08-09 as `registry:projection` (`game/projection-handlers.ts`): one `ProjectionHandlerRegistry` per game, seeded with core's 69 handlers, published on `GameState.projectionHandlers`, and handed to the engine by identity. `wireGame` passes the live Maps, so a handler installed by a plugin's `register()`, which runs after the wiring, is dispatched to on the next projection.
 
-**Composition is per CODE, not per table.** A mod calls
-`host.projections.player.set("FIRE", h)`, and `handlerFor(code)` returns whatever
-is installed at that moment - core's, or an earlier mod's - so mod B wraps mod
-A's handler exactly as mod A wraps core's. The override fields are typed as whole
-tables and a whole table cannot compose: the second mod to hand one over would
-discard the first, along with its brand-new projection, silently.
+Composition works per code rather than per table. A mod calls `host.projections.player.set("FIRE", h)`, and `handlerFor(code)` returns whatever is installed at that moment (core's handler, or an earlier mod's), so mod B wraps mod A's handler exactly as mod A wraps core's. The override fields are typed as whole tables, and whole tables cannot compose: the second mod to supply one would silently discard the first, along with any new projection it added.
 
-Proven twice, because "installed" and "consulted" are different claims:
-`mod-code.node.test.ts` loads a mod folder from disk and runs the real
-`projectFeature` over the table it wrote into; `packages/core/src/session/
-projection-registry-wiring.test.ts` starts a real game and fires a real
-projection through `wireGame`'s own `CastContext`, with a control run first that
-watches core's handler do core's job.
+Two tests cover it, because a handler being installed and a handler being consulted are separate facts. `mod-code.node.test.ts` loads a mod folder from disk and runs the real `projectFeature` over the table the mod wrote into. `packages/core/src/session/projection-registry-wiring.test.ts` starts a real game and fires a real projection through `wireGame`'s own `CastContext`, after a control run that checks core's handler still does its job.
 
-Two live defects surfaced from actually using the seam, both of them the same
-shape as the one above - an optional nobody supplied:
+Using the seam turned up two more live defects of the same shape as the one above, an optional dependency nobody supplied:
 
-- `castProjection` handed `project_o` the env WITHOUT the bound projection
-  table, so a mod's own projection could burn terrain and not objects. The
-  terrain hook had been given it; the object hook had not.
-- `PlayerSideDeps.msg` was never supplied by `wireGame`, so **every** message
-  `project_p` prints - thirty-odd lines, plus every timed effect's own message -
-  was dropped in the live game. Every harness that exercised the arms supplied
-  it, and the one caller that matters did not.
+- `castProjection` handed `project_o` the env without the bound projection table, so a mod's own projection could burn terrain but not objects. The terrain hook had been given the table; the object hook had not.
+- `wireGame` never supplied `PlayerSideDeps.msg`, so every message `project_p` prints (thirty-odd lines, plus every timed effect's own message) was dropped in the live game. Every harness that exercised those arms supplied it; the one caller that matters did not.
 
 ### The capability-gated registry host: real code, and who can reach it
 
-`packages/core/src/mod/registry-host.ts` is not a design note. All thirteen facades
-delegate to live objects, the gating throws, the capability grammar validates,
-and the host constructs it for real:
+`packages/core/src/mod/registry-host.ts` is working code. All thirteen facades delegate to live objects, gating throws on a missing capability, the capability grammar is validated, and the host constructs it outside tests:
 
 | Capability | Facade | Delegates to | Line |
 | --- | --- | --- | --- |
@@ -906,119 +369,53 @@ and the host constructs it for real:
 | `registry:tval` | `TvalFacade` (five tables) | `TvalRegistry` (`obj/tval-registry.ts`, module-level) | - |
 | `registry:vocab` | `VocabFacade` | `VocabularyRegistry` | `:231-256` |
 
-- Gating is real: `requireCap` throws `AgentCapabilityError` (`:165`);
-  `requireTarget` throws when the host did not wire that registry (`:177`).
-- The grammar is real and strict:
-  `REGISTRY_RE = /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|ui-entry|glyph|randart|rune|tval|vocab|menu|message)$/`
-  (`packages/mod-sdk/src/capabilities.ts`); an unrecognised capability is a hard
-  error at parse, not a silent no-op.
-- Host wiring is real, not test-only: `packages/web/src/main.ts:8187` constructs
-  it with `{effects, rooms, commands, state, vocab}` and calls
-  `plugin.register(host, ctx)`. Entered via `?trusted=<id>`
-  (`packages/web/src/main.ts:8242-8243`) OR from the persisted enabled-mod set with consent
-  (`packages/web/src/main.ts:8303`).
-- Consent UI is real (`packages/web/src/capability-describe.ts` marks the four
-  system domains `elevated`).
+`requireCap` throws `AgentCapabilityError` when a capability is missing (`:165`), and `requireTarget` throws when the host did not wire that registry (`:177`). The capability grammar is `REGISTRY_RE = /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|ui-entry|glyph|randart|rune|tval|vocab|menu|message)$/` (`packages/mod-sdk/src/capabilities.ts`), and an unrecognised capability is a hard error at parse time rather than a silent no-op. Outside tests, `packages/web/src/main.ts:8187` constructs the host with `{effects, rooms, commands, state, vocab}` and calls `plugin.register(host, ctx)`; it is entered either through `?trusted=<id>` (`packages/web/src/main.ts:8242-8243`) or from the persisted enabled-mod set with consent (`packages/web/src/main.ts:8303`). The consent UI in `packages/web/src/capability-describe.ts` marks the four system domains `elevated`.
 
-> **THE GATE BELOW IS CLOSED. What follows to the end of this section is the
-> BEFORE picture**, kept because the reasoning is still the reason the plugin ABI
-> has the shape it has. The four numbered consequences were all true and are now
-> all false. A mod folder ships `plugin.js` beside `manifest.json`; the host
-> loads it from wherever the folder actually is and calls `hooks(ctx)` and
-> `register(host, ctx)` on it, so a mod installed from a repository or picked
-> from disk reaches the capability-gated registries exactly as a bundled one
-> does. `packages/web/src/mod-plugin.ts` is the contract, `main.ts`'s
-> `activeModCode().plugins` loop is the production caller, and
-> `mod-code.node.test.ts` drives the whole path against real files and a real
-> dynamic import. The shipped `feature-restoration` mod uses it to reach
-> `registry:store` from its own repository. Consequence 4 (the CLI host) has not
-> been re-measured since and should be treated as unverified rather than false.
+> The gate described in the rest of this section is closed. The text below shows how things stood before, kept because that reasoning still explains the shape of the plugin ABI. The four numbered consequences were true then and are false now, except that consequence 4 (the CLI host) has not been re-measured and should be treated as unverified rather than false. A mod folder now ships `plugin.js` beside `manifest.json`, and the host loads it from wherever the folder is and calls `hooks(ctx)` and `register(host, ctx)` on it, so a mod installed from a repository or picked from disk reaches the capability-gated registries exactly as a bundled one does. `packages/web/src/mod-plugin.ts` is the contract, `main.ts`'s `activeModCode().plugins` loop is the production caller, and `mod-code.node.test.ts` drives the whole path against real files and a real dynamic import. The shipped `feature-restoration` mod uses it to reach `registry:store` from its own repository.
 
-**And now the part that matters.** Both code-discovery paths are build-time Vite
-globs over a directory inside the web package:
+Both code-discovery paths are build-time Vite globs over a directory inside the web package:
 
-- trusted plugins: `import.meta.glob("../../../mods/*/trusted.ts")`,
-  `packages/web/src/agents/trusted/discover.ts:19`
-- behaviour hooks: `import.meta.glob("../mods/*/hooks.ts")`,
-  `packages/web/src/mod-hooks.ts:71`
+- trusted plugins: `import.meta.glob("../../../mods/*/trusted.ts")`, `packages/web/src/agents/trusted/discover.ts:19`
+- behaviour hooks: `import.meta.glob("../mods/*/hooks.ts")`, `packages/web/src/mod-hooks.ts:71`
 
-`import.meta.glob` patterns must be static and are resolved and inlined at bundle
-time (acknowledged at `packages/web/src/mod-store.ts:75-79`). Both are then
-filtered by `isShippedMod(id)`, which is `dev || !id.startsWith("demo-")`
-(`packages/web/src/mod-store.ts:81-83`).
+`import.meta.glob` patterns must be static and are resolved and inlined at bundle time (acknowledged at `packages/web/src/mod-store.ts:75-79`). Both are then filtered by `isShippedMod(id)`, which is `dev || !id.startsWith("demo-")` (`packages/web/src/mod-store.ts:81-83`).
 
-Consequences, measured:
+The consequences:
 
-1. **A mod must be a directory inside `packages/web/mods/` at build time to
-   supply ANY code.** There are exactly 6. Only `bug-fixes` and `qol` ship a
-   `hooks.ts`; only `demo-trusted` ships a `trusted.ts`.
-2. **In a release build, `demo-trusted` is dropped from discovery**, so the
-   registry host has **zero non-test callers in production**. This is precisely
-   the pattern the project has been bitten by before: declared, threaded,
-   supplied only by a demo and by tests. The code is genuinely correct and
-   genuinely unreachable by any shipped or third-party mod.
-3. **The disk mod path is DATA-ONLY.** `packages/web/src/disk-packs.ts` models a
-   pack as `{manifest, files}` of parsed JSON (`:51-54`) and binds only `*.json`
-   (`:315-329`); the desktop index is the same (`packages/desktop/src/main.ts:270-283`);
-   the browser picked-folder reader is the same
-   (`packages/web/src/mod-folder.ts:366-368`). There is no dynamic `import()`,
-   no code loading, and no plugin path in any of them.
-4. **The CLI host has no mod path at all**: `packages/cli/src/pack.ts:35-80`
-   reads `packages/content/pack` with `readFileSync` and never calls
-   `composeContentPacks`.
+1. A mod must be a directory inside `packages/web/mods/` at build time to supply any code. There are 6 such directories. Only `bug-fixes` and `qol` ship a `hooks.ts`, and only `demo-trusted` ships a `trusted.ts`.
+2. In a release build `demo-trusted` is dropped from discovery, so the registry host has no non-test callers in production. The project has been caught by this pattern before: a capability declared and threaded through, but supplied only by a demo and by tests. The code is correct, and no shipped or third-party mod can reach it.
+3. The disk mod path carries data only. `packages/web/src/disk-packs.ts` models a pack as `{manifest, files}` of parsed JSON (`:51-54`) and binds only `*.json` (`:315-329`). The desktop index (`packages/desktop/src/main.ts:270-283`) and the browser picked-folder reader (`packages/web/src/mod-folder.ts:366-368`) work the same way. None of the three has a dynamic `import()` or any other way to load code or a plugin.
+4. The CLI host has no mod path: `packages/cli/src/pack.ts:35-80` reads `packages/content/pack` with `readFileSync` and never calls `composeContentPacks`.
 
-Adjacent surfaces that DO exist but are a different tier, so they should not be
-counted toward code override:
+Some adjacent surfaces do exist, but they sit in a different tier and do not count toward code override:
 
-- `command:add` - the UNTRUSTED Worker/sandbox act facade
-  (`packages/core/src/agent/act.ts:36`, `agent/controller.ts:44`). It lets an
-  agent ISSUE commands; it does not change what a command does.
-- `GameState.monsterTurnHook` (`packages/core/src/game/context.ts:686`) is a
-  SINGLE hook, not a table: a mod replaces the top of every monster's turn or
-  nothing. It cannot override one monster's AI, or one spell.
-- `event:<name>` / `state:<domain>.read` / `network:<host>`
-  (`packages/mod-sdk/src/capabilities.ts:63-65`).
-- The event bus (`packages/core/src/events.ts`, 65 event types) - emitted from
-  4 sites in `msg.ts` and 1 in the web host,
-  `packages/web/src/main.ts:1828` (`state.events?.emit("message", ...)`).
-  Observation, not override. The host's other `.emit(` call is
-  `soundEvents.emit("sound", ...)`, a separate emitter rather than the event
-  bus, which is why the count is one and not two (#289 closed).
+- `command:add`, the untrusted Worker/sandbox act facade (`packages/core/src/agent/act.ts:36`, `agent/controller.ts:44`). An agent can issue commands through it, but cannot change what a command does.
+- `GameState.monsterTurnHook` (`packages/core/src/game/context.ts:686`) is one hook rather than a table. A mod either replaces the top of every monster's turn or leaves it alone, and cannot override one monster's AI or one spell.
+- `event:<name>` / `state:<domain>.read` / `network:<host>` (`packages/mod-sdk/src/capabilities.ts:63-65`).
+- The event bus (`packages/core/src/events.ts`, 65 event types), emitted from 4 sites in `msg.ts` and 1 in the web host, `packages/web/src/main.ts:1828` (`state.events?.emit("message", ...)`). A mod can observe it but cannot override anything through it. The host's other `.emit(` call, `soundEvents.emit("sound", ...)`, goes to a separate emitter rather than the event bus, so the web host's count is one (#289 closed).
 
 ---
 
 ## (b) Data
 
-This is the strongest area, and as of 2026-08-08 the numbers carry no asterisk:
-every record of every shipped file is nameable by some ref, and every op either
-takes effect or is reported. The hole this section used to describe - "large and
-silent" - closed in two steps, per-file keys on 2026-07-29 and the 73-record
-residue on 2026-08-08. See gap 2.
+Data is the strongest area. Since 2026-08-08 every record of every shipped file can be named by some ref, and every op either takes effect or is reported. The large, silent hole this section used to describe closed in two steps: per-file keys on 2026-07-29, and the remaining 73 records on 2026-08-08. See gap 2.
 
 ### What a pack may contribute
 
-There is **no allowlist of record types**. A record type is the file stem of any
-`*.json` in the pack folder: `PackContent.files` is
-`Record<string, FileContribution>` (`packages/mod-sdk/src/compose.ts:56-60`),
-iterated blindly at `compose.ts:115`. Discovery is "every `*.json` except the
-manifest" - bundled at `packages/web/src/pack.ts:103-108`, disk at
-`packages/web/src/disk-packs.ts:314-329`. The desktop index builder states it
-outright: "a pack's record files are named after the record type and there is no
-fixed list" (`packages/desktop/src/main.ts:220-222`).
+There is no allowlist of record types. A record type is the file stem of any `*.json` in the pack folder: `PackContent.files` is `Record<string, FileContribution>` (`packages/mod-sdk/src/compose.ts:56-60`), and `compose.ts:115` iterates it without checking the keys. Discovery takes every `*.json` except the manifest, bundled at `packages/web/src/pack.ts:103-108` and on disk at `packages/web/src/disk-packs.ts:314-329`. The desktop index builder's comment says the same: "a pack's record files are named after the record type and there is no fixed list" (`packages/desktop/src/main.ts:220-222`).
 
-Three declarations bound it in practice:
+In practice the set is bounded by three counts:
 
 | Bound | Count | Where |
 | --- | --- | --- |
 | upstream `.txt` gamedata files | **45** | `reference/lib/gamedata/` |
-| the port compiles / ships | **44** | `packages/content/src/specs/index.ts:58-103` (`old_class.txt` deliberately not compiled, `:4-5`) |
+| the port compiles / ships | **44** | `packages/content/src/specs/index.ts:58-103` (`old_class.txt` is not compiled, `:4-5`) |
 | the WEB host actually binds | **44** | `packages/web/src/pack.ts` hands every compiled record file to its core binder, including `chest_trap` and `world` |
 | contributable to the composer but **bound by nothing** (silently inert) | **0** | n/a |
 
-### Add / override / patch / remove: tested against the code, not the docs
+### Add / override / patch / remove
 
-`FileContribution` (`packages/mod-sdk/src/compose.ts:35-54`) supports four ops
-plus field-level ops:
+`FileContribution` (`packages/mod-sdk/src/compose.ts:35-54`) supports four ops plus field-level ops:
 
 | Op | Semantics | Code |
 | --- | --- | --- |
@@ -1028,122 +425,40 @@ plus field-level ops:
 | `removes` | DELETE the record from the composed game | `compose.ts:170-181` |
 | `fieldPatches` | typed ops on dot-paths: `set`, `merge`, `addFlag`, `removeFlag`, `add`, `mul`, `append`, `removeValue` | `FieldOp` `packages/mod-sdk/src/patch.ts:25-40`, `applyFieldPatch` `:87-135`, applied `compose.ts:153-168` |
 
-So the answer to "only ADD, or also OVERRIDE / PATCH / REMOVE" is **all four,
-plus field ops** - genuinely, with a live in-repo example
-(`packages/web/mods/demo-modtest/monster.json:2-8` patches three fields of
-`core:grip-farmer-maggot-s-dog`).
+A mod can add, override, patch and remove, with field ops on top. `packages/web/mods/demo-modtest/monster.json:2-8` is a working in-repo example: it patches three fields of `core:grip-farmer-maggot-s-dog`.
 
-**Same id from two packs: both are kept, not overridden.** Refs are namespaced by
-the CONTRIBUTING pack (`const ref = packRef(pid, name)`, `compose.ts:127`;
-`PackRef = "<pack>:<slug>"`, `packages/mod-sdk/src/manifest.ts:9`), so
-`core:kobold`, `amod:kobold` and `bmod:kobold` are three records. The
-duplicate-rejection branch at `compose.ts:128-130` is scoped to one pack and one
-file and is unreachable across packs. Override happens ONLY through the explicit
-ops above, plus whole-file passthrough where the last provider in load order wins
-the file (`packages/mod-sdk/src/loader.ts:131-138`).
+When two packs add a record with the same id, both records are kept. Refs are namespaced by the contributing pack (`const ref = packRef(pid, name)`, `compose.ts:127`; `PackRef = "<pack>:<slug>"`, `packages/mod-sdk/src/manifest.ts:9`), so `core:kobold`, `amod:kobold` and `bmod:kobold` are three separate records. The duplicate-rejection branch at `compose.ts:128-130` is scoped to one pack and one file, so it never fires across packs. One pack overrides another's record only through the explicit ops above, or through whole-file passthrough, where the last provider in load order wins the file (`packages/mod-sdk/src/loader.ts:131-138`).
 
-**Core is pack zero with no special casing.** `coreLoadedPack()`
-(`packages/web/src/pack.ts:61-69`) makes core a `LoadedPack` identical in shape to
-a mod's; `activePackSet()` is `[core, ...enabled content mods]` (`packages/web/src/pack.ts:308-329`);
-`mayModify` (`compose.ts:94-96`) is the only gate and is
-`ownerPack === m.id || m.dependencies?.[ownerPack] !== undefined` - `"core"` is
-not special-cased anywhere, and `compose.ts:13-17` says so. So a mod declaring
-`"dependencies": { "core": "*" }` can patch, replace, or remove any core record.
-Without the dependency, compose throws (`compose.ts:142-146`).
+Core is pack zero and gets no special treatment. `coreLoadedPack()` (`packages/web/src/pack.ts:61-69`) makes core a `LoadedPack` with the same shape as a mod's, and `activePackSet()` is `[core, ...enabled content mods]` (`packages/web/src/pack.ts:308-329`). The only gate is `mayModify` (`compose.ts:94-96`), which is `ownerPack === m.id || m.dependencies?.[ownerPack] !== undefined`. Nothing special-cases `"core"`, as the comment at `compose.ts:13-17` notes. A mod that declares `"dependencies": { "core": "*" }` can therefore patch, replace or remove any core record, and without that dependency compose throws (`compose.ts:142-146`).
 
 ### The 20-file hole (closed 2026-08-08; it is now a 3-file floor)
 
-Composition happens in two phases. Per-record COMPOSITION requires that every
-contributing pack's `records` have a ref no sibling claims (`recordsComposable`,
-`packages/mod-sdk/src/loader.ts`, asking `recordRefKeys` from `record-key.ts`);
-files that fail that test are classified passthrough and keep whole-file
-`records` semantics.
+Composition happens in two phases. A file composes per record only when every contributing pack's `records` have refs that no sibling record claims (`recordsComposable` in `packages/mod-sdk/src/loader.ts`, which asks `recordRefKeys` from `record-key.ts`). A file that fails that test is classified as passthrough and keeps whole-file `records` semantics.
 
-Measured over the shipped core pack: **41 composable, 3 passthrough**
-(`loader.test.ts`, "the shipped pack", which reads
-`packages/content/pack` and asserts the split by name).
+Over the shipped core pack the split is 41 composable and 3 passthrough. The "the shipped pack" test in `loader.test.ts` reads `packages/content/pack` and asserts the split by name.
 
-- **Composable (41)**: every record file except the three below.
-- **Passthrough / whole-file only (3)**, for two different reasons:
-  - a config SINGLETON, where the file is the identity and the host binds one,
-    so "I shipped this file" means "use mine": `constants`, `visuals`.
-  - no per-record identity at all: `history` - a history record is
-    `{chart:{chart,next,roll}, phrase}` and every part of it is a value a mod
-    would legitimately change. An op against it is REPORTED, not dropped.
+Every record file composes except three, which are whole-file only for two different reasons. `constants` and `visuals` are config singletons: the file is the identity and the host binds one, so shipping the file means "use mine". `history` has no per-record identity at all, because a history record is `{chart:{chart,next,roll}, phrase}` and a mod could want to change any part of it. An op against `history` is reported rather than dropped.
 
-**IT WAS 24 AND 20, AND THE LINE THAT DECIDED IT ASKED FOR A UNIQUE `name`.**
-That single condition is what made `object` (375 records), `ego_item` (107) and
-`vault` (162) unmergeable: all three carry a `name` and core's own data repeats
-it, because Angband's convention for a greater form is the same name with a mark
-(`Acquirement` / `*Acquirement*`) and `ego_item` ships 23 names twice. So a mod
-adding ONE object replaced all 375 - the three files most worth adding to were
-the three a mod could only take over wholesale. Composition now keys by
-`recordRefKeys`, the identity `record-key.ts` already declared and already proved
-unique over the shipped pack, and all three merge per record.
+Before 2026-08-08 the split was 24 and 20, because the composability test asked for a unique `name`. That one condition made `object` (375 records), `ego_item` (107) and `vault` (162) unmergeable. All three carry a `name`, and core's own data repeats names: Angband marks a greater form by reusing the name with a mark (`Acquirement` / `*Acquirement*`), and `ego_item` ships 23 names twice. A mod adding one object therefore replaced all 375, so the three files most worth adding to were the three a mod could only take over wholesale. Composition now keys by `recordRefKeys`, the identity `record-key.ts` already declared and had already shown to be unique over the shipped pack, and all three merge per record.
 
-**No ref that resolved stopped resolving.** For the 19 files that moved out of
-passthrough the refs are the ones `applyPassthroughOps` already used
-(`core:sword--dagger`, `core:of-acid#shot-arrow`, `core:store-general`); for the
-24 that were already composable the key differs from the old `slugify(name)` only
-where a `*` or `+` appears in a name, and the old form is registered as an alias.
-An alias is dropped where it would shadow a DIFFERENT record's primary key -
-`*Healing*`'s legacy ref is plain `Healing`'s.
+Every ref that resolved before still resolves. For the 19 files that moved out of passthrough, the refs are the ones `applyPassthroughOps` already used (`core:sword--dagger`, `core:of-acid#shot-arrow`, `core:store-general`). For the 24 that were already composable, the new key differs from the old `slugify(name)` only where a name contains `*` or `+`, and the old form is registered as an alias. An alias is dropped where it would shadow a different record's primary key: `*Healing*`'s legacy ref is the same as plain `Healing`'s.
 
-**Which is 8 of the pack's 19 legacy aliases, not one** (corrected 2026-08-08:
-this line said "in exactly one case" and the number had never been counted). The
-rule turns on core's data, not on the mark: `*Acquirement*` loses its alias
-because a plain `Acquirement` scroll exists, `*Destruction*` keeps both of its
-because no plain `Destruction` does, `of *Slay Orc*` loses its and
-`of *Slay Animal*` keeps its. The 8 are `*Enchant Armour*`, `*Remove Curse*`,
-`*Acquirement*`, `*Healing*`, `*Enlightenment*`, `of *Slay Orc*`,
-`of *Slay Troll*` and `Little eruption+`, censused row by row in
-`record-key.test.ts`. None of them cost a working ref: every file carrying a
-legacy alias is one that had no per-record addressing at all before the key
-table existed.
+That happens for 8 of the pack's 19 legacy aliases. (An earlier version of this line said "in exactly one case" without counting; corrected 2026-08-08.) Whether an alias survives depends on core's data rather than on the mark: `*Acquirement*` loses its alias because a plain `Acquirement` scroll exists, while `*Destruction*` keeps both of its because no plain `Destruction` does, and `of *Slay Orc*` loses its while `of *Slay Animal*` keeps its. The 8 are `*Enchant Armour*`, `*Remove Curse*`, `*Acquirement*`, `*Healing*`, `*Enlightenment*`, `of *Slay Orc*`, `of *Slay Troll*` and `Little eruption+`, listed row by row in `record-key.test.ts`. None of them cost a working ref, because every file carrying a legacy alias had no per-record addressing at all before the key table existed.
 
-The rule's own reachable case is narrower still, and worth naming because the
-first two tests written for it could not fail: lookup consults the table before
-the alias map, and the alias is skipped anyway when the plain record is declared
-first, which is how core's `object.json` is written. What the rule actually
-prevents is a pack declaring the starred form first whose plain record a later
-pack removes; without it the old ref goes live on the starred record and a patch
-lands on the wrong item. `loader.test.ts` tests that arrangement with a fixture,
-and the control was run.
+The case the rule actually guards is narrower still, and the first two tests written for it could not fail. Lookup consults the key table before the alias map, and the alias is skipped anyway when the plain record is declared first, which is how core's `object.json` is written. The rule matters when a pack declares the starred form first and a later pack removes the plain record: without the rule, the old ref goes live on the starred record and a patch lands on the wrong item. `loader.test.ts` covers that arrangement with a fixture, and its control was run.
 
-**That was the failure mode, and it is closed.** The paragraph here used to read
-"a `patches` entry aimed at a passthrough file is dropped with no error, no
-conflict-report line, and no visible effect", and it stayed on the page after it
-stopped being true - which is how two reviewers came to file the same
-non-existent P1. What is true now:
+An earlier version of this paragraph said "a `patches` entry aimed at a passthrough file is dropped with no error, no conflict-report line, and no visible effect". That stayed on the page after it stopped being true, and two reviewers filed the same non-existent P1 from it. The current behaviour:
 
-- **Whole-file `records` semantics are unchanged for a config singleton**, and
-  deliberately: a mod that ships `constants.json` means "use mine", and the host
-  binds one. `ModProject.build` raises that as an `error`, because replacing the
-  base game's copy of a file is not something to discover from a line in a list.
-- **Per-record ops apply on top**, in load order, keyed by the declared per-file
-  identity in `record-key.ts` - `store` by its `STORE_*` code, `object_base` by
-  tval, `trap` by the `{name,desc}` pair, `constants` by the file - through
-  `composePacks` for the 41, and `applyPassthroughOps` (`loader.ts`) for the 3.
-- **The duplicate-slug half** - the part the old note correctly said nothing
-  addressed - is closed too, in two pieces: `keySlug` keeps the `*` and `+` that
-  `slugify` dropped (which was the whole of `object`'s and `vault`'s problem, and
-  16 of `ego_item`'s), and a declared DISCRIMINATOR separates the names core
-  genuinely repeats (`core:of-acid#shot-arrow-bolt`). Measured over the shipped
-  pack: **0 records that no ref can name**, down from 73.
-- **`history` is the one file with no per-record identity**, on purpose: a
-  history record is `{chart:{chart,next,roll}, phrase}` and every part of that is
-  a value a mod would change. An op against it is REPORTED, not dropped.
+- Whole-file `records` semantics still apply to a config singleton: a mod that ships `constants.json` means "use mine", and the host binds one. `ModProject.build` raises that as an `error`, so an author learns about replacing the base game's copy of the file up front rather than from a line in a list.
+- Per-record ops apply on top, in load order, keyed by the per-file identity declared in `record-key.ts` (`store` by its `STORE_*` code, `object_base` by tval, `trap` by the `{name,desc}` pair, `constants` by the file). `composePacks` applies them for the 41 composable files and `applyPassthroughOps` (`loader.ts`) for the 3 passthrough ones.
+- Duplicate slugs, which the old note correctly said nothing handled, are handled in two pieces. `keySlug` keeps the `*` and `+` that `slugify` dropped, which was all of `object`'s and `vault`'s problem and 16 of `ego_item`'s. A declared discriminator separates the names core really does repeat (`core:of-acid#shot-arrow-bolt`). Over the shipped pack, no record is left that a ref cannot name, down from 73.
+- `history` is the one file with no per-record identity, for the reason given above, and an op against it is reported rather than dropped.
 
-So a mod can now patch a single object, ego item, vault, trap, store, brand,
-slay, object base, projection or constant - and where a ref is genuinely
-ambiguous, the refusal names the refs that are not.
+A mod can now patch a single object, ego item, vault, trap, store, brand, slay, object base, projection or constant. Where a ref is ambiguous, the refusal lists the refs that are not.
 
 ### Data-bound registries a record patch reaches
 
-Because most of the game's content is bound from the pack, a data patch does
-reach a great deal. `bindCore()` (`packages/core/src/session/boot.ts:149-191`)
-builds `CoreRegistries` (`:112-146`, 14 fields) from the composed pack. Record
-counts, from `packages/content/pack/*.json`:
+Most of the game's content is bound from the pack, so a data patch reaches a lot of it. `bindCore()` (`packages/core/src/session/boot.ts:149-191`) builds `CoreRegistries` (`:112-146`, 14 fields) from the composed pack. Record counts from `packages/content/pack/*.json`:
 
 | Content | Records |
 | --- | --- |
@@ -1182,69 +497,20 @@ counts, from `packages/content/pack/*.json`:
 | `realm` (magic realms) | 4 |
 | `quest` | 2 |
 
-That is roughly 3,800 records across ~34 bound tables - a real and substantial
-data surface. The catch, repeated because it is the crux: for 20 of the 44 files
-the only way to touch one record is to replace the file.
+That is roughly 3,800 records across about 34 bound tables. For 20 of the 44 files, though, the only way to touch one record is to replace the file.
 
 ### Validation and failure modes
 
-- **There is no schema validation of records at all.**
-  `packages/mod-sdk/src/index.ts:5` describes content packs as "schema-validated
-  declarative JSON"; grep finds no such code. `validateManifest`
-  (`packages/mod-sdk/src/manifest.ts:128-198`) validates only the MANIFEST. The
-  `FileSpec` machinery in `packages/content/src/records.ts` is compile-time
-  (`.txt` -> `.json`) and never runs on a mod's JSON. (That in-code doc claim is
-  a source comment, not a `docs/` page, so it is reported here rather than
-  edited.)
-- **Compose errors are uncaught at boot.** `packages/web/src/pack.ts:339` is a
-  module-scope `const composed = composeContentPacks(activePacks);` with no
-  `try`. A single stale patch ref in any enabled mod throws `ComposeError` at
-  import time. Whether that surfaces as a usable error or a blank page is **not
-  determined** - it needs a real run with `?mods=<bad>` and the console read.
-- **Binder validation is the only content check, and it throws hard**: ~40
-  `throw new Error` sites in `packages/core/src/obj/bind.ts` (e.g. `:777`
-  unknown tval, `:868` unrecognised brand, `:970` no kind for ego type) and
-  `packages/core/src/mon/bind.ts` (`:729` invalid base, `:755` unrecognised
-  blow, `:472` pain out of bounds). Removing a core record something else
-  references fails here, after compose.
-- **Name-lookup shadowing, with no uniqueness check.** `racesByName` is built
-  with `Map.set` in record order (`packages/core/src/mon/bind.ts:646-650`), so
-  `raceByName("kobold")` returns the LAST record with that name - a mod-added
-  `kobold` silently shadows core's for every `lookup_monster` caller
-  (`mon/bind.ts:712-713`), while both records still exist and both are
-  spawnable.
-- **Provenance is discarded before core sees anything** - the BEFORE picture,
-  closed 2026-08-10; gap 10 in the table below is what replaced it.
-  `packages/mod-sdk/src/loader.ts:126-129` maps `ComposedRecord` -> `r.value`,
-  dropping `owner` and `modifiedBy`. `ContentIdResolver` is then constructed with
-  the default `CORE_NS` at every call site
-  (`packages/core/src/mod/ids.ts:183`; callers `session/game.ts:3226`, `:3312`,
-  `packages/web/src/main.ts:7928`, `:8036`), so **a mod-added monster is saved
-  under the `core:` namespace** - contradicting `ids.ts:10` ("The namespace is
-  the owning pack") and `ids.ts:33`. Worse, `IdTable` disambiguates duplicate
-  localids with an order-dependent `-2` suffix (`ids.ts:142-146`), so a
-  name collision with core makes save ids depend on load order.
-  `docs/modding/README.md`'s claim that "every record in the running game carries
-  provenance ... savefiles embed this" was therefore **not true** for as long as that
-  paragraph stood; the ops and the conflict report existed, the runtime
-  provenance did not reach core. It is true as of 2026-08-10, with the one
-  exception gap 10's closure note names: a patch that RENAMES a core record
-  still moves that record's id.
-- **Load order is not the player's order.** `orderPacks` discards the incoming
-  order (`packages/mod-sdk/src/loader.ts:80-84`) and resolves topologically with a
-  LEXICOGRAPHIC tie-break (`packages/mod-sdk/src/resolve.ts:128-131`, `:142-144`).
-  So between two independent mods patching the same record, `z-mod` always beats
-  `a-mod` - while the conflict report tells the player "z-mod wins - drag to
-  reorder" (`packages/mod-sdk/src/conflicts.ts:208-212`), which cannot change the
-  outcome.
+- No schema validation runs on records. `packages/mod-sdk/src/index.ts:5` describes content packs as "schema-validated declarative JSON", but grep finds no code that does it. `validateManifest` (`packages/mod-sdk/src/manifest.ts:128-198`) checks only the manifest, and the `FileSpec` machinery in `packages/content/src/records.ts` runs at compile time (`.txt` -> `.json`), never on a mod's JSON. The claim in `index.ts` is a source comment rather than a `docs/` page, so it is reported here instead of edited.
+- Compose errors are not caught at boot. `packages/web/src/pack.ts:339` is a module-scope `const composed = composeContentPacks(activePacks);` with no `try`, so one stale patch ref in any enabled mod throws `ComposeError` at import time. Whether the player then sees a usable error or a blank page is not determined; finding out needs a real run with `?mods=<bad>` and a read of the console.
+- Binder validation is the only content check, and it throws: about 40 `throw new Error` sites in `packages/core/src/obj/bind.ts` (for example `:777` unknown tval, `:868` unrecognised brand, `:970` no kind for ego type) and `packages/core/src/mon/bind.ts` (`:729` invalid base, `:755` unrecognised blow, `:472` pain out of bounds). Removing a core record that something else references fails here, after compose.
+- Name lookups shadow without a uniqueness check. `racesByName` is built with `Map.set` in record order (`packages/core/src/mon/bind.ts:646-650`), so `raceByName("kobold")` returns the last record with that name. A mod-added `kobold` silently shadows core's for every `lookup_monster` caller (`mon/bind.ts:712-713`), while both records still exist and both can spawn.
+- Provenance is discarded before core sees anything. This describes the state before 2026-08-10, when gap 10 in the table below replaced it. `packages/mod-sdk/src/loader.ts:126-129` maps `ComposedRecord` -> `r.value`, dropping `owner` and `modifiedBy`. `ContentIdResolver` is then constructed with the default `CORE_NS` at every call site (`packages/core/src/mod/ids.ts:183`; callers `session/game.ts:3226`, `:3312`, `packages/web/src/main.ts:7928`, `:8036`), so a mod-added monster is saved under the `core:` namespace, contradicting `ids.ts:10` ("The namespace is the owning pack") and `ids.ts:33`. `IdTable` also disambiguates duplicate localids with an order-dependent `-2` suffix (`ids.ts:142-146`), so a name collision with core makes save ids depend on load order. `docs/modding/README.md`'s claim that "every record in the running game carries provenance ... savefiles embed this" was untrue for as long as that paragraph stood: the ops and the conflict report existed, but runtime provenance did not reach core. The claim holds as of 2026-08-10, with the one exception gap 10's closure note names: a patch that renames a core record still moves that record's id.
+- Load order does not follow the player's order. `orderPacks` discards the incoming order (`packages/mod-sdk/src/loader.ts:80-84`) and resolves topologically with a lexicographic tie-break (`packages/mod-sdk/src/resolve.ts:128-131`, `:142-144`). Between two independent mods patching the same record, `z-mod` always beats `a-mod`, while the conflict report tells the player "z-mod wins - drag to reorder" (`packages/mod-sdk/src/conflicts.ts:208-212`), and dragging cannot change the outcome.
 
 ### Disk vs bundled data path
 
-Both converge at `packages/web/src/pack.ts:118-124` into one `discoverMods()`
-map, and `packages/web/src/pack.ts:323-326` casts `mod.files` straight to `LoadedPack["files"]`
-with no filtering of `records` / `patches` / `replaces` / `removes` /
-`fieldPatches` - so **a disk mod has identical data expressive power to a bundled
-one.** Divergences worth knowing:
+Both paths converge at `packages/web/src/pack.ts:118-124` into one `discoverMods()` map, and `packages/web/src/pack.ts:323-326` casts `mod.files` straight to `LoadedPack["files"]` without filtering `records` / `patches` / `replaces` / `removes` / `fieldPatches`. A disk mod can therefore do everything with data that a bundled one can. Where the two differ:
 
 | | disk | bundled |
 | --- | --- | --- |
@@ -1268,13 +534,7 @@ one.** Divergences worth knowing:
   (`packages/web/src/linoleum-pack.ts:284`, loaded by `loadLinoleumPack`
   `:422-456`). The render path is engine-agnostic
   (`packages/web/src/main.ts:1074-1128`, `:1141-1149`).
-- The registry of tile modes is CORE, as it should be (this was a ratified
-  correction): `packages/core/src/visuals/grafmode-data.ts`, generated from
-  `lib/tiles/list.txt`, 6 catalog modes; `get_graphics_mode` port at
-  `visuals/grafmode.ts:81-106`. Four packs' art ships
-  (`BUNDLED_TILE_DIRECTORIES`, `packages/web/src/tile-catalog.ts:47-52`);
-  Shockbolt's two modes are filtered out of the menu for licence reasons
-  (`tile-catalog.ts:41-45`, `:99-113`).
+- The registry of tile modes lives in core: `packages/core/src/visuals/grafmode-data.ts`, generated from `lib/tiles/list.txt`, with 6 catalog modes, and the `get_graphics_mode` port at `visuals/grafmode.ts:81-106`. Four packs' art ships (`BUNDLED_TILE_DIRECTORIES`, `packages/web/src/tile-catalog.ts:47-52`), and Shockbolt's two modes are filtered out of the menu for licence reasons (`tile-catalog.ts:41-45`, `:99-113`).
 - A `shape:"tiles"` mod CAN register a tileset: `tilePacks[]` is read by
   `enabledTileModes` (`packages/web/src/tile-mods.ts`) and layered over core by
   `composeTileModes` (`tile-catalog.ts`). A `linoleum`-engine pack may claim a NEW
@@ -1282,45 +542,17 @@ one.** Divergences worth knowing:
   core already knows. Live example:
   `packages/web/mods/linoleum/manifest.json:11-18`.
 
-**RESOLVED 2026-07-30 (gap 8 below).** Both halves of this section's complaint are
-fixed, and both fixes were needed together:
+Resolved 2026-07-30 (gap 8 below). Both halves of the problem described above are fixed, and the two fixes had to land together:
 
-- **Discovery now reads the mods DIRECTORY as well as the bundle glob.**
-  `mergeModSources` (`tile-mods.ts`) merges `diskPacks()` into the bundled glob,
-  first-wins on id collision - the same rule `pack.ts` applies to the same two
-  sources. `discover()` also resolves the enabled set through the one shared reader
-  (`mod-store.readEnabledModIds`), which the tile surface previously did NOT do: it
-  passed no `diskOrder`, so a tiles mod an external manager deployed was composed
-  as content and contributed no Graphics row - enabled by one answer and disabled by
-  the other, in the same launch.
-- **`tilePacks[].path` is now MOD-relative, and both engines take a resolver.** The
-  field used to be a site-root-relative URL base, which only a bundled mod can
-  know: a picked folder has no URL for its files until their bytes are wrapped in a
-  `blob:`, and an installed mod lives in IndexedDB. `PackFileResolver`
-  (`pack-files.ts`) is the seam; `tilePackResolver` composes a mod's source with its
-  `path`; `createTileRenderer`/`loadTilePrefs` and `loadLinoleumPack` all take one,
-  so the field cannot mean one thing per engine.
-- **`tilePacks` is in the validated schema**: `PackTilePack` +
-  `validateTilePacks` (`packages/mod-sdk/src/manifest.ts`), which also refuses the
-  old site-path form of `path` rather than letting it 404 into ASCII in silence.
+- Discovery reads the mods directory as well as the bundle glob. `mergeModSources` (`tile-mods.ts`) merges `diskPacks()` into the bundled glob, with the first one winning on an id collision, which is the rule `pack.ts` applies to the same two sources. `discover()` also resolves the enabled set through the shared reader (`mod-store.readEnabledModIds`). The tile surface used to skip that and passed no `diskOrder`, so a tiles mod deployed by an external manager was composed as content but contributed no Graphics row: enabled by one check and disabled by the other in the same launch.
+- `tilePacks[].path` is relative to the mod, and both engines take a resolver. The field used to be a URL base relative to the site root, which only a bundled mod can know: a picked folder has no URL for its files until their bytes are wrapped in a `blob:`, and an installed mod lives in IndexedDB. `PackFileResolver` (`pack-files.ts`) is the seam, and `tilePackResolver` composes a mod's source with its `path`. `createTileRenderer`/`loadTilePrefs` and `loadLinoleumPack` all take a resolver, so the field means the same thing to both engines.
+- `tilePacks` is in the validated schema: `PackTilePack` and `validateTilePacks` (`packages/mod-sdk/src/manifest.ts`). Validation refuses the old site-path form of `path`, which would otherwise 404 and fall back to ASCII without a word.
 
-Measured, not asserted: `tile-mods.test.ts` registers a Graphics row for a pack
-that is only in the mods directory and proves its art resolves through the report's
-`assetUrl`; `tiles.test.ts` pins the tilesheet engine's two reads (atlas and
-`graf-*.prf` + its `%:` includes) to the same resolver. Eight mutations, each
-failing a named test.
+`tile-mods.test.ts` registers a Graphics row for a pack that exists only in the mods directory and checks that its art resolves through the report's `assetUrl`. `tiles.test.ts` pins the tilesheet engine's two reads (the atlas, and `graf-*.prf` with its `%:` includes) to the same resolver. Eight mutations were tried, and each one fails a named test.
 
-The desktop side of the asymmetry that made this worth fixing first: the shell
-already serves arbitrary pack files over loopback INCLUDING images (MIME table
-`packages/desktop/src/main.ts:145-147` for `.png`/`.svg`/`.ico`, `:150-152` for
-`.wav`/`.mp3`/`.ogg`; `/mods/` route at `:312-314`), and a disk `shape:"tiles"`
-pack was already surfaced in the mod manager by `discoverContentModManifests`
-(`pack.ts`). The bytes were reachable; only the registration was not.
+The desktop shell is why this was worth fixing first. It serves arbitrary pack files over loopback, images included (MIME table `packages/desktop/src/main.ts:145-147` for `.png`/`.svg`/`.ico`, `:150-152` for `.wav`/`.mp3`/`.ogg`; `/mods/` route at `:312-314`), and `discoverContentModManifests` (`pack.ts`) already listed a disk `shape:"tiles"` pack in the mod manager before the fix. The bytes could be reached, and only the registration was missing.
 
-The non-mod escape hatch is `?tiles=<base-url>` + `?graf=<id>`
-(`tiles.ts:178-187`, `packages/web/src/main.ts:1005-1006`), which also exposes the full catalog
-(`tile-catalog.ts:109`). That is a user/URL affordance, not a mod path, and it
-cannot add a grafID.
+Outside the mod system, `?tiles=<base-url>` plus `?graf=<id>` (`tiles.ts:178-187`, `packages/web/src/main.ts:1005-1006`) loads a tile set from a URL and also exposes the full catalog (`tile-catalog.ts:109`). It is meant for a user typing a URL, is not a mod path, and cannot add a grafID.
 
 ### Pref files (`.prf`): parsed fully; mod-suppliable since gap 7
 
@@ -1332,78 +564,29 @@ grammar over an injected `PrefSink`, `:84-90`; writer `prefsSave` `:727`;
 `dumpPrefFile` `:112-126`), resolving against the virtual `ANGBAND_DIR_USER`
 (`packages/web/src/userdir.ts`).
 
-A USER can load one, and since gap 7 a MOD can too: `prefs` is one of the seven
-resource kinds, and `applyPrefText` (`prefs-ui.ts`) runs a mod's `.prf`
-through the same grammar, the same sink and the same deps as a user's, returning
-the errors against the contributing mod's row rather than saying them on a
-message line that does not exist yet at boot. This heading and this sentence said
-"not mod-suppliable" until 2026-08-14, which was stale by gap 7 and is exactly
-the kind of claim a reader would have believed.
+A user can load one, and since gap 7 a mod can too. `prefs` is one of the seven resource kinds, and `applyPrefText` (`prefs-ui.ts`) runs a mod's `.prf` through the same grammar, sink and deps as a user's. Errors are returned against the contributing mod's row, because the message line they would otherwise go to does not exist yet at boot. Until 2026-08-14 this heading and sentence said "not mod-suppliable", which had been stale since gap 7.
 
-`%:` includes ARE followed on that path since #278. They were not, and the
-reason given was that the grammar's `loadFile` is synchronous while a mod's
-files resolve through a resolver that may mint a blob or read IndexedDB - true,
-and not a reason, because the reading can happen BEFORE the parse rather than
-during it, which is what `loadTilePrefs` has always done for a pack's own
-`%:flvr-*.prf`. `preloadPrefIncludes` walks a mod's pref text for `%:` names,
-reads them transitively to the parser's own depth bound, and hands the parse a
-map it can answer synchronously. An include resolves against the DIRECTORY OF
-THE DECLARED RESOURCE, at every depth, so a mod keeps its pref files in one
-folder; a name that does not resolve is a quiet skip, exactly as upstream's
-`parse_prefs_load` discards a nested read (ui-prefs.c L438). The bytes come back
-out of `applyPrefText` with the faults, because the same text is replayed into
-every freshly built tile map (#153) and a replay without them would be the same
-silent skip one function over.
+Since #278, `%:` includes are followed on that path. Before that they were skipped, on the grounds that the grammar's `loadFile` is synchronous while a mod's files resolve through a resolver that may mint a blob or read IndexedDB. The files can be read before the parse instead of during it, though, and `loadTilePrefs` has always done that for a pack's own `%:flvr-*.prf`. `preloadPrefIncludes` walks a mod's pref text for `%:` names, reads them transitively down to the parser's own depth bound, and hands the parse a map it can answer synchronously. An include resolves against the directory of the declared resource at every depth, so a mod can keep its pref files in one folder. A name that does not resolve is skipped quietly, as upstream's `parse_prefs_load` discards a nested read (ui-prefs.c L438). `applyPrefText` returns the included bytes along with the faults, because the same text is replayed into every freshly built tile map (#153), and a replay without the includes would silently skip them all over again.
 
-There is a recorded divergence at `prefs-ui.ts:134-139`: upstream also searches
-`ANGBAND_DIR_CUSTOMIZE` and the graphics mode's directory; the port ships no
-`lib/customize` tree and searches only the user location. Partial exception: a
-TILE pack does supply `.prf` files, which `loadTilePrefs` fetches and follows
-`%:` includes from (`tiles.ts`) - reachable only through the gated tile
-discovery or `?tiles=`.
+`prefs-ui.ts:134-139` records one divergence. Upstream also searches `ANGBAND_DIR_CUSTOMIZE` and the graphics mode's directory, but the port ships no `lib/customize` tree and searches only the user location. The partial exception is a tile pack, whose `.prf` files `loadTilePrefs` fetches along with their `%:` includes (`tiles.ts`); those are reachable only through the gated tile discovery or `?tiles=`.
 
-### Fonts: CLOSED 2026-08-09 (what follows is the BEFORE picture)
+### Fonts: closed 2026-08-09
 
-One hardcoded bitmap font, `FONT_16X24`
-(`packages/web/src/font-16x24.ts:16`, generated from
-`reference/lib/fonts/16x24x.fon`), installed as the terminal default at
-`packages/web/src/term.ts:146`. A constructor escape hatch exists -
-`bitmapFont?: BitmapFontData | null` (`term.ts:176-180`, applied `:192`) - with
-**zero production callers**: the only construction site is
-`new GlyphTerm(canvas)` (`packages/web/src/main.ts:727`), no options object. No `setFont`, no font
-fetch, no `font.prf` (mentioned only as a non-ported upstream file at
-`packages/web/src/launch.ts:33-34`), no manifest field. A mod cannot supply a
-font.
+Before gap 7 there was one hardcoded bitmap font, `FONT_16X24` (`packages/web/src/font-16x24.ts:16`, generated from `reference/lib/fonts/16x24x.fon`), installed as the terminal default at `packages/web/src/term.ts:146`. The constructor had an escape hatch, `bitmapFont?: BitmapFontData | null` (`term.ts:176-180`, applied `:192`), with no production callers: the only construction site is `new GlyphTerm(canvas)` (`packages/web/src/main.ts:727`), with no options object. There was no `setFont`, no font fetch, no manifest field, and no `font.prf` (mentioned only as a non-ported upstream file at `packages/web/src/launch.ts:33-34`), so a mod could not supply a font.
 
-**True until gap 7 closed**, and the escape hatch could not have had a caller:
-the sole construction site is at module scope and a mod's font arrives from a
-fetch. So the terminal grew `setBitmapFont`, which also clears the glyph cache
-(keyed `code:colour`, with no font in the key) and re-runs the layout, since the
-cell size comes from the font. A mod declares a `font` resource and the JSON is
-checked for being structurally a font - cell size in range, one scanline number
-per declared row - before it is installed.
+The escape hatch could never have had a mod as its caller, because the construction site runs at module scope and a mod's font arrives later, from a fetch. Gap 7 added `setBitmapFont` to the terminal instead. It clears the glyph cache (keyed `code:colour`, with no font in the key) and re-runs the layout, since the cell size comes from the font. A mod declares a `font` resource, and before the font is installed its JSON is checked for the structure of a font: a cell size in range, and one scanline number per declared row.
 
-### Sounds: CLOSED 2026-08-09; the subsystem always existed, the door did not
+### Sounds: closed 2026-08-09
 
-Correcting a common assumption: this is present and wired.
+The sound subsystem has always existed and been wired up; before gap 7, mods had no way into it.
 
-- Core (`sound-core.c` port): `packages/core/src/sound/engine.ts` (`SoundEngine`,
-  `playSound` `:268`, `loadPrefs` `:287`, `setHooks` `:185`), `sound/types.ts:61-66`.
-- The `MSG_` -> sound map is generated from `reference/lib/customize/sound.prf`:
-  `packages/core/src/sound/sound-prefs-data.ts` (149 entries), generator
-  `packages/core/scripts/gen-sound-prefs.mjs:18`.
-- Platform half: `packages/web/src/sound.ts` (`createWebSoundHooks` `:64-127`,
-  `HTMLAudioElement`, `.mp3` then `.ogg`; `installWebSound` `:138-152`).
-- Wiring: `packages/web/src/main.ts:7602-7634`, base URL defaults to the bundled
-  pack (`:7619`), gated on `use_sound`, off by default (`:7633-7634`).
-- Assets DO ship: `packages/web/public/sounds/` carries the Dubtrain CC-BY pack.
+- Core (`sound-core.c` port): `packages/core/src/sound/engine.ts` (`SoundEngine`, `playSound` `:268`, `loadPrefs` `:287`, `setHooks` `:185`), `sound/types.ts:61-66`.
+- The `MSG_` -> sound map is generated from `reference/lib/customize/sound.prf`: `packages/core/src/sound/sound-prefs-data.ts` (149 entries), generator `packages/core/scripts/gen-sound-prefs.mjs:18`.
+- Platform half: `packages/web/src/sound.ts` (`createWebSoundHooks` `:64-127`, `HTMLAudioElement`, `.mp3` then `.ogg`; `installWebSound` `:138-152`).
+- Wiring: `packages/web/src/main.ts:7602-7634`, base URL defaults to the bundled pack (`:7619`), gated on `use_sound`, off by default (`:7633-7634`).
+- Assets ship: `packages/web/public/sounds/` carries the Dubtrain CC-BY pack.
 
-A USER can point it elsewhere with `?sounds=<base-url>`. A MOD could not: no
-manifest field, no discovery, no per-mod sound base. **Gap 7 supplied the door
-and nothing else** - `WebSoundOptions.baseUrl` now also takes a function, asked
-per sample load rather than captured at install, because the engine is installed
-at module scope and a mod's pack is a fetch away. Precedence is `?sounds=` (the
-user, now, in this tab) over a mod over the bundled default.
+A user can point it elsewhere with `?sounds=<base-url>`. A mod could not, since there was no manifest field, no discovery and no per-mod sound base. Gap 7 added only the way in: `WebSoundOptions.baseUrl` now also accepts a function, called on each sample load instead of captured at install, because the engine is installed at module scope and a mod's pack arrives later by fetch. `?sounds=` (set by the user, for this tab) takes precedence over a mod, and a mod over the bundled default.
 
 ### Other assets
 
@@ -1417,37 +600,15 @@ user, now, in this tab) over a mod over the bundled default.
 | PWA icons | `packages/web/public/icons/` | no |
 | Mod `screenshots` | declared at `packages/mod-sdk/src/manifest.ts:541`, carried through discovery (`packages/web/src/mod-discover.ts`) and listed by path in the mod detail pane (`packages/web/src/mod-browse.ts`, `browseDetail`) - no in-terminal image preview, since the grid this game draws to only ever paints pre-loaded tileset glyphs into cells, not arbitrary fetched images | n/a |
 
-### Localization: CLOSED 2026-08-09 (what follows is the BEFORE picture)
+### Localization: closed 2026-08-09
 
-No i18n layer exists. `grep -rn "i18n|useTranslation|gettext|navigator.language|Intl\."`
-over `packages/` (excluding `node_modules`) yields two hits, both unrelated
-(`packages/linoleum/src/convert.ts:159`, `:161`, `Intl.Collator` for deterministic
-sort). Every other `locale` hit is `localeCompare`. All UI text is inline TS
-string literals. There is nothing a mod could supply strings through - which is
-also worth noting against the standing "localization everywhere" intent.
+Before gap 14 there was no i18n layer. `grep -rn "i18n|useTranslation|gettext|navigator.language|Intl\."` over `packages/` (excluding `node_modules`) found two hits, both unrelated (`packages/linoleum/src/convert.ts:159`, `:161`, `Intl.Collator` for deterministic sort), and every other `locale` hit was `localeCompare`. All UI text was inline TS string literals, so a mod had nothing to supply strings through, which also fell short of the aim of localizing everything.
 
-**That was accurate and it under-described the problem.** The layer now exists
-(`packages/core/src/i18n/`) and it has two halves, because this game ASSEMBLES
-the words it prints rather than storing them - see gap 14 below for the argument
-and for what a locale can and cannot change. `locale` is the seventh resource
-kind, so a translation arrives through the same door as a sound pack. What is
-NOT done is converting the port's remaining UI literals, which is mechanical
-follow-up rather than a hole in the seam.
+That description was accurate but understated the problem. The layer now exists (`packages/core/src/i18n/`) in two halves, because the game assembles the words it prints instead of storing them whole; gap 14 below explains why, and what a locale can and cannot change. `locale` is the seventh resource kind, so a translation arrives the same way a sound pack does. The port's remaining UI literals are not converted yet, which is mechanical follow-up work and leaves no hole in the seam.
 
-**Net for resources: 6 of 7 categories** (tiles, prefs, fonts, sounds, help, art)
-are reachable by a non-bundled mod as of 2026-08-09. The seventh is UI strings,
-which has nothing to be supplied INTO until an i18n layer exists - gap 14.
+In total, 6 of the 7 resource categories (tiles, prefs, fonts, sounds, help, art) are reachable by a non-bundled mod as of 2026-08-09. The seventh, UI strings, has nothing to be supplied into until an i18n layer exists (gap 14).
 
-This paragraph used to read "1 of 7", and it predicted the shape of the fix:
-"a manifest field, a merge that reads the mods directory as well as the bundle,
-and a resolver so the mod's own bytes are what load". Two of the three were right
-and were reused rather than rebuilt - `discoverMods` is now shared with tile
-discovery instead of copied, and the resolver is the same `PackFileResolver` both
-tile engines take. The third was wrong in the PLURAL: not a manifest field per
-category but one `resources` array with a `kind`, so the merge rule, the version
-gate, the conflict wording and the load-time check are written once for all of
-them. Gap 7 in the table below says what a resource is checked for before it is
-used, and what a failed check costs.
+When this paragraph read "1 of 7", it predicted the fix would need "a manifest field, a merge that reads the mods directory as well as the bundle, and a resolver so the mod's own bytes are what load". Two of those were reused as predicted: `discoverMods` is now shared with tile discovery instead of copied, and the resolver is the same `PackFileResolver` both tile engines take. The manifest field turned out to be one `resources` array with a `kind` rather than a field per category, so the merge rule, the version gate, the conflict wording and the load-time check are each written once for every kind. Gap 7 in the table below covers what a resource is checked for before use and what a failed check costs.
 
 ---
 
@@ -1483,73 +644,30 @@ Ranked by how much of "the whole game can be made over" each one makes moddable.
 
 ### Gap 21 current correction, 2026-09-06
 
-The row above contains historical measurements. The current code-derived record
-is docs/design/PRESENTATION_OWNER_SEAM.md. Its counts replace the old estimates:
-the HUD has 3 separately replaceable regions, the terminal has 33 full-screen
-erase paths plus its 1 compositor repaint, and 40 semantic ScreenView ids are
-modelled. The full-screen erase ratchet derives 31 region-declared paths, 2
-pending prompt paths, and 34 including the compositor in
-packages/web/src/main-regions.test.ts:430 through
-packages/web/src/main-regions.test.ts:433.
+The gap 21 row above holds historical measurements. Current counts, taken from the code, are in `docs/design/PRESENTATION_OWNER_SEAM.md` and replace the row's older estimates: the HUD has 3 separately replaceable regions, the terminal has 33 full-screen erase paths plus 1 compositor repaint, and 40 semantic ScreenView ids are modelled. The full-screen erase ratchet in `packages/web/src/main-regions.test.ts:430-433` derives 31 region-declared paths and 2 pending prompt paths, 34 in all once the compositor is included.
 
-The presentation owner seam is live for the HUD, menus, and ScreenView paths.
-Registry:menu still changes rows and now composes with menu presentation rather
-than replacing it. The two pending prompt paths and screens sharing the
-core:text fallback remain incomplete. The design records the exact surface list,
-the host guarantees, and the compatibility fallback rule.
+The presentation owner seam is live for the HUD, menus and ScreenView paths. `registry:menu` still changes rows, and it now composes with menu presentation instead of replacing it. The two pending prompt paths, and the screens that share the `core:text` fallback, are not finished yet. `PRESENTATION_OWNER_SEAM.md` lists every surface, the host guarantees and the compatibility fallback rule.
 
 ## The goal: every dispatch point in this document becomes moddable
 
-**A correction, recorded 2026-08-08.** An earlier revision of this page argued
-that "hooks or connectors for every conceivable mod" was not achievable and
-should not be the goal, and proposed three metrics *instead of* it. That framing
-was a limitation imposed on the project rather than a decision the project had
-actually made, and it does not stand: the goal is total moddability, not a game
-that can only be modded in the ways it has already been modded.
-
-The ratified position is PORT_PLAN decisions 13-15, the **total moddability
-guarantee**, and it stands. Every gap in the list above is work to be done, not
-a boundary to be documented. This section used to be the boundary; it is now the
-plan.
+The goal is total moddability: every dispatch point this document lists becomes reachable by a mod, including kinds of modding nobody has attempted yet. Each gap in the list above is work still to be done. An earlier revision of this section argued that hooks for every conceivable mod were out of reach and proposed three metrics in place of the goal. That argument no longer applies, and the metrics below serve only to measure progress toward the goal.
 
 ### How "everything is moddable" is made falsifiable
 
-The one sound point in the old argument was that an unmeasurable goal gets
-reported as done without being done. The answer is not to shrink the goal. It is
-to make the goal testable, and the mechanism for that is sample mods: rather than
-narrowing the work to what CI can already test, build sample mods that use every
-seam and write the tests against those.
+The old argument did make one sound point: a goal nobody can measure gets reported as done before it is. Sample mods make this goal testable, because the tests are written against mods that use every seam instead of being narrowed to what CI could already check.
 
-That works because **a sample mod that exercises a seam is a test that fails when
-the seam does not exist.** It cannot pass vacuously, it cannot pass from inside
-the bundle if it is installed from disk, and it is the same artifact a
-third-party author would write - so it proves reach rather than asserting it.
+A sample mod that exercises a seam fails when the seam does not exist, so it cannot pass vacuously. Installed from disk, it cannot lean on the bundle either, and because it is the same kind of artifact a third-party author writes, a passing run shows the seam is reachable from outside.
 
-So each seam lands with a sample mod that uses it, and the sample mods are run
-from disk in CI. `MOD_CANARY=1` already drives the curated registry through
-`discoverMod`, which is the path the game itself uses; this extends that pattern
-to every seam rather than the content path alone.
+Each seam lands with a sample mod that uses it, and CI runs the sample mods from disk. `MOD_CANARY=1` already drives the curated registry through `discoverMod`, the path the game itself uses, and the sample mods extend that from the content path to every seam.
 
 ### The three numbers, as progress measures
 
-These are how progress is reported. They are **not** a replacement for the goal:
+Progress toward the goal is reported with three numbers:
 
-1. **Non-bundled reach = 1.0.** Every seam a bundled mod can reach, a mod
-   installed from the mods folder can also reach. `seams reachable from disk /
-   seams reachable from the bundle`.
-2. **Dispatch coverage.** Denominator is the enumerated dispatch points in this
-   document, kept current by a census script so a new `switch` cannot be added
-   without appearing. Numerator is the ones a mod can add to, override or wrap.
-   **The target is the whole denominator.**
-3. **Zero silent no-ops.** Every mod-facing operation either takes effect or
-   produces a named error the author can see. A seam that quietly ignores a mod
-   costs an author a day and teaches them the engine is not worth their time.
+1. **Non-bundled reach = 1.0.** Every seam a bundled mod can reach, a mod installed from the mods folder can also reach. `seams reachable from disk / seams reachable from the bundle`.
+2. **Dispatch coverage.** The denominator is the dispatch points enumerated in this document, kept current by a census script so a new `switch` cannot be added without appearing. The numerator is the ones a mod can add to, override or wrap, and the target is the whole denominator.
+3. **Zero silent no-ops.** Every mod-facing operation either takes effect or produces a named error the author can see. A seam that quietly ignores a mod can cost an author a day and put them off the engine.
 
-### What this costs, stated honestly
+### What this costs
 
-Each seam is a permanent public contract with a fold rule and a determinism
-obligation, and converting a faithful `switch` into a registry is a real refactor
-that must be proven behaviour-identical. That is the price of the guarantee, and
-it is finite: the denominator above is a list, not an abstraction. Core keeps
-every 4.2.6 wart - a registry changes *who can register*, never what the
-unmodded game does, and the parity harness is what proves it.
+Each seam is a permanent public contract with a fold rule and a determinism obligation, and converting a faithful `switch` into a registry is a real refactor that has to be shown to behave identically. The cost is bounded, because the denominator above is a finite list. Core keeps every 4.2.6 wart: a registry changes who can register a handler while the unmodded game behaves exactly as before, and the parity harness checks that.

@@ -65,34 +65,22 @@ So reading a setting is a plain property lookup. `title` and `description` are
 what the player reads, so write them for a player: say what turning it on does,
 not what it does internally.
 
-The flag name is prefixed with your mod's id by convention, and that convention
-is worth keeping. It is not because `ctx.flags` is shared - the host slices that
-per mod, so you cannot see another mod's toggles and they cannot see yours. It is
-because the player's SAVED choices all live in one flat map, keyed by flag name,
-so two mods that both called a flag `congratulate` would be sharing one stored
-setting.
+The flag name is prefixed with your mod's id by convention, and the convention is worth keeping. `ctx.flags` itself is not shared: the host gives each mod its own slice, so you cannot see another mod's toggles and they cannot see yours. The player's saved choices, though, all live in one flat map keyed by flag name, so two mods that both called a flag `congratulate` would share one stored setting.
 
 ## Where the check goes, and why it matters
 
-Look at where the `if` is. It is in `hooks`, deciding **whether to supply the
-hook at all**, not inside `messageText`, returning `raw` unchanged.
+Look at where the `if` is: in `hooks`, deciding whether to supply the hook at all, rather than inside `messageText` returning `raw` unchanged.
 
-Both look identical to the player. They are not the same thing:
+The two look identical to the player, but they work differently:
 
-- Checking inside the hook means the game calls your function for every
-  message it ever prints, forever, and your function decides to do nothing.
-- Checking around the hook means that when the option is off, you supplied no
-  hook, so the game runs its own untouched path and your mod is not in it at all.
+- Checking inside the hook means the game calls your function for every message it ever prints, forever, and your function decides to do nothing.
+- Checking around the hook means that when the option is off, you supplied no hook, so the game runs its own untouched path and your mod is not in it at all.
 
-The second is the shape to reach for. A disabled option should cost nothing and
-should be indistinguishable from your mod not existing. That is not
-micro-optimisation. It is what makes it *true* that turning something off gives
-you the base game back.
+Use the second. A disabled option should cost nothing and be indistinguishable from your mod not being installed, and checking around the hook is what guarantees that turning the option off gives you the base game back.
 
 ## Default off
 
-`"default": false`, and this is worth stating as a habit rather than a detail:
-**a mod being enabled should not be the same as all of its features being on.**
+Make `"default": false` a habit: enabling a mod should not switch on all of its features.
 
 Someone installs your mod because they want one thing in it. Shipping every
 toggle on means they get five changes they did not ask for and now have to

@@ -1,29 +1,17 @@
 # Mod Lifecycle, Saves, and Composition
 
-> STATUS: RATIFIED 2026-07-08 (PORT_PLAN.md decision 19). Decisions 1, 2, 3, 5,
-> and 6 are confirmed as written, and 4 (the determinism guard) stands with the
-> change recorded in section 4 below: it is a warning and label, not a bar. The
-> uninstall-recovery behaviors in the new section "When a mod's content leaves
-> the game" are ratified alongside them. This page is the design of record; it
-> is not yet fully built. [OPEN] items still need a decision.
+This page covers how mods interact with saves, with installation and with each other. Parts of it are built and parts are not. Where the difference matters the text says which, items still marked `[PROPOSED]` are not built yet, and items marked `[OPEN]` are unresolved. The determinism guard in section 4 is a warning and a label on the save, never a bar to using a mod.
 
-This page answers four questions that decide whether a mod system is
-pleasant or painful:
+It deals with four questions:
 
-1. How is mod content kept out of the way so installing, updating, and
-   uninstalling mods does not break your save?
-2. How do you install a mod - from a git repo today, from a marketplace
-   later - without friction?
+1. How is mod content kept separate, so that installing, updating and uninstalling mods does not break your save?
+2. How do you install a mod (from a git repo today, from a marketplace later) without friction?
 3. How do several mods run together without corrupting each other?
-4. What makes the whole thing ergonomic instead of the usual mod-manager
-   headache?
+4. What keeps all of this from turning into the usual mod-manager headache?
 
-It builds on the vocabulary already in `README.md` (packs, `manifest.json`,
-namespaced ids, `patches`/`replaces`/`removes`, provenance) and the
-ratified pillars in `../MODS.md`.
+It builds on the vocabulary in `README.md` (packs, `manifest.json`, namespaced ids, `patches`/`replaces`/`removes`, provenance) and the principles in `../MODS.md`.
 
 ---
-
 ## 1. Saves that survive mod changes
 
 The single most important rule, from which almost everything else
@@ -64,94 +52,24 @@ is mod-owned.
 
 ### What happens when the mod set changes under a save
 
-Because each mod owns exactly its own namespace, the blast radius of any
-change is that namespace:
+Each mod owns only its own namespace, so a change to the mod set can only affect that namespace:
 
-- Mod ADDED since the save: its namespace was empty in the save; it
-  simply starts contributing. No migration.
-- Mod UPDATED (version changed): the engine hands the mod its own old
-  `mod:<id>` bag and asks it to migrate from its old `saveSchema` to the
-  new one. Declarative content usually needs nothing (ids are stable);
-  scripted mods ship a migration function that touches only their bag.
-  Core never participates.
-- Mod REMOVED (uninstalled): entities that reference the missing mod are
-  [PROPOSED] quarantined, not deleted. They move into an
-  `orphans:<id>@<version>` store inside the save - frozen, inert,
-  removed from active play, but preserved. Reinstall the mod (same major
-  version) and they rehydrate exactly where they were. This is the
-  clean-uninstall guarantee: uninstalling removes a mod's active content
-  without ever corrupting the save.
+- A mod added since the save had an empty namespace in it, so it simply starts contributing. No migration is needed.
+- When a mod is updated to a new version, the engine hands it its own old `mod:<id>` bag and asks it to migrate from its old `saveSchema` to the new one. Declarative content usually needs nothing, since ids are stable, and a scripted mod ships a migration function that touches only its own bag. Core takes no part.
+- When a mod is uninstalled, entities that reference it are [PROPOSED] quarantined rather than deleted. They move into an `orphans:<id>@<version>` store inside the save, where they are frozen, inert and out of active play but preserved. Reinstall the mod (same major version) and they come back exactly where they were. Uninstalling therefore removes a mod's active content without ever corrupting the save.
 
-[DECIDED 2026-07-14, decision 8] Orphan policy: option (a) - on the first
-load after content is orphaned, surface a one-time per-save prompt offering
-"keep frozen" (default) vs "purge N orphaned items permanently". Quarantine
-stays the default and nothing is destroyed without an explicit, counted,
-one-time confirmation. Rejected (b) (auto-purge trivial cosmetic orphans):
-"trivial" and "cosmetic" are not reliably decidable by the engine, and silent
-deletion - even of cosmetics - violates the "nothing a player earned vanishes
-without a trace" guarantee. The prompt is per-save and one-time so it never
-nags; declining leaves everything quarantined and reversible.
+On the first load after content is orphaned, the game shows a one-time prompt for that save offering "keep frozen" (the default) or "purge N orphaned items permanently". Quarantine stays the default, and nothing is destroyed without that explicit, counted confirmation. The prompt appears once per save so it never nags, and declining leaves everything quarantined and reversible. There is no automatic purge, even for orphans that look trivial or cosmetic: the engine cannot reliably tell what counts as either, and silent deletion would break the rule that nothing a player earned vanishes without a trace.
 
-BUILT. The prompt is put once the game screen is live, keeps first, and
-counts what a purge would destroy; dismissing it keeps, because the question
-has been asked and keeping is the only answer that destroys nothing. The
-answer is recorded in `SavedGame.orphansAcknowledged` and forced to disk
-immediately, so neither answer is re-asked and a purge cannot be undone by a
-crash. `orphanPromptDue` and `purgeOrphans`
-(`packages/core/src/mod/orphan-stash.ts`) are the whole of the engine side;
-purging is the only write in the orphan path.
+This is built. The prompt appears once the game screen is live, with "keep" as the first option, and states how much a purge would destroy. Dismissing it counts as keeping, since keeping is the only answer that destroys nothing. The answer is recorded in `SavedGame.orphansAcknowledged` and written to disk immediately, so neither answer is asked for again and a crash cannot undo a purge. The whole engine side is `orphanPromptDue` and `purgeOrphans` (`packages/core/src/mod/orphan-stash.ts`), and purging is the only write anywhere in the orphan path.
+### When a mod's content leaves the game
 
-### When a mod's content leaves the game (RATIFIED, decision 19)
+Quarantine is how orphaned content is stored. The recoveries below are what the player sees on top of it, and they exist so that uninstalling a mod never strands a character or silently destroys anything. They also apply when content is shadowed rather than uninstalled, meaning a later mod in the load order `removes` or `replaces` a record the save depends on.
 
-Quarantine is the storage mechanism; these are the player-facing
-recoveries built on top of it, so uninstalling a mod never strands or
-silently destroys a character. They also fire when content is not
-uninstalled but SHADOWED - a later mod in the load order `removes` or
-`replaces` a record the save depends on.
+- Stranded location. If the character is standing on a level, in a room, or in a whole region that a now-missing mod generated, the load cannot put them there. They are returned safely to the town, which is core parity content and always present, with a message explaining why. The dungeon regenerates from the remaining content as normal on the next descent, so half-loaded mod geometry is never walked.
+- Stranded items. Items whose definition came from the missing mod are neither dropped nor deleted. They are frozen in the `orphans:<id>@<version>` store as inert entries, listed and labelled with their origin mod, and cannot be equipped, used or sold while the mod is absent. Reinstalling the mod puts each one back where it came from: a worn item returns to its equipment slot if that slot is still free, and a carried one returns to the pack. This is built, as part of the orphans store rather than as home stock. The frozen entry records the gear handle and the equipment slots it was taken out of (`packages/core/src/mod/save-blocks.ts`), which is what makes the exact restore possible. While it waits it takes no home slot, no pack slot and no weight, so it costs the player nothing a home slot would have cost, and the stash view below is where it is seen and reclaimed.
+- The stash view. A dedicated screen, reachable at any time, lists everything currently quarantined, whether by uninstall or by another mod's override, grouped by the mod that owns it. Each entry shows what it is, why it is inert ("frost is not installed" / "frost is installed but switched off"), and what would restore it ("install frost again" / "turn frost back on"), so nothing a player earned disappears without a trace they can find. This is built: Mods -> "Set aside by a missing mod", screen id `core:mod-orphans` (`packages/web/src/mod-orphans.ts`), over the read-only model in `packages/core/src/mod/orphan-stash.ts`. The menu row shows the count, and a load that newly freezes something names it on the message line. Quarantine is keyed on whether a namespace is present, so the screen works out the reason from what the host can see now instead of reading a reason from the store. Shadowed entities will reach the same screen by the same route as soon as quarantine produces them, because a shadowed entity's own namespace is present and the screen already has wording for that state.
 
-- Stranded location. If the character is standing on a level, in a room,
-  or in a whole region that a now-missing mod generated, the load cannot
-  place them there. They are returned safely to the TOWN (the canonical
-  always-present safe location, itself core parity content), with a
-  message explaining why. The dungeon regenerates from the surviving
-  content as normal on the next descent; no half-loaded mod geometry is
-  ever walked.
-- Stranded items. Items whose definition came from the missing mod are
-  not dropped and not deleted. They are frozen in the
-  `orphans:<id>@<version>` store as inert entries - listed, labelled with
-  their origin mod, and not equippable, usable or sellable while the mod
-  is absent. Reinstalling the mod puts each one back in the slot it came
-  out of: an item that was worn returns to that equipment slot when the
-  slot is still free, and one that was carried returns to the pack.
-  BUILT, and built AS THE STORE rather than as home stock: the frozen
-  entry records the gear handle and the equipment slots it was
-  quarantined out of (`packages/core/src/mod/save-blocks.ts`), which is
-  what makes the exact restore possible. It occupies no home slot, no
-  pack slot and no weight while it waits, so it costs the player nothing
-  that a home slot would have cost, and the stash view below is where it
-  is seen and reclaimed.
-- The stash view. A dedicated, always-reachable screen lists everything
-  currently quarantined - by uninstall OR by another mod's override -
-  grouped by the mod that owns it, showing what it is, why it is inert
-  ("frost is not installed" / "frost is installed but switched off"), and
-  what would restore it ("install frost again" / "turn frost back on").
-  Nothing a player earned ever vanishes without a trace they can find.
-  BUILT: Mods -> "Set aside by a missing mod", screen id
-  `core:mod-orphans` (`packages/web/src/mod-orphans.ts`), over the
-  read-only model in `packages/core/src/mod/orphan-stash.ts`. The row
-  carries the count, and a load that newly freezes something says so on
-  the message line naming what it was. Quarantine is keyed on namespace
-  PRESENCE, so the screen derives the reason from what the host can see
-  now rather than from a reason the store records; the shadowed case
-  reaches the same screen through the same route as soon as quarantine
-  produces it, because a shadowed entity's own namespace is present and
-  the screen already words that state.
-
-These recoveries are graceful degradation, not gameplay rollback: they
-preserve what the player has against a tooling change, and do not let the
-player undo an in-game outcome, so they sit cleanly beside the
-no-save-scum rule.
-
+These recoveries protect what the player has against a change in their mod setup. They never let the player undo something that happened in play, so they sit alongside the no-save-scum rule without conflicting with it.
 ### Compatibility gating
 
 A save refuses to load only when it genuinely cannot: an incompatible
@@ -191,128 +109,34 @@ a cosmetic pack gone) degrades gracefully via quarantine.
 The `capabilities` list applies only to `shape: plugin` mods and is the
 consent surface (section 4). Content and tile packs request none.
 
-**A grant records what was asked for at the moment it was given, so it can fall
-behind the manifest.** Consent is written when a mod is enabled. A mod that adds
-a capability in a later version and is then updated in place therefore holds a
-grant that is a strict subset of what it now requests, and a plugin whose grant
-does not cover its manifest does not load: `loadPluginPacks` puts it on
-`skipped` rather than `problems`, because a mod the player has switched off
-belongs on that same list and neither is a fault.
+A grant records what the mod asked for at the moment the player gave it, so it can fall behind the manifest. Consent is written when a mod is enabled. If a later version adds a capability and the mod is updated in place, the stored grant covers only part of what the mod now requests, and a plugin whose grant does not cover its manifest does not load. `loadPluginPacks` puts it on `skipped` rather than `problems`, because a mod the player has switched off goes on that same list and neither case is a fault.
 
-This is invisible from everything else on the screen. The row stays enabled, and
-every rule the mod declares still renders and still accepts a click, because the
-options rows are built from manifests rather than from loaded code. Only the
-plugin half is affected; `pack.ts` performs no capability check, so a
-content-and-plugin hybrid short a grant keeps composing its content while its
-code does not run.
+Nothing else on the screen shows this. The row stays enabled, and every rule the mod declares still renders and still accepts a click, because the options rows are built from manifests rather than from loaded code. Only the plugin half is affected: `pack.ts` performs no capability check, so a hybrid content-and-plugin mod that is short a grant keeps composing its content while its code does not run.
 
-The manager therefore treats a grant that has fallen behind as a state with its
-own action rather than as an absence. The row carries the stored grant alongside
-the requested list, the detail pane names the difference and says the code is not
-running, and the mod's own screen offers to allow what is newly asked. Declining
-offers to switch the mod off, so that a mod which is listed as on and is
-contributing nothing is a state the player chose rather than one they cannot see.
+The manager therefore treats an out-of-date grant as its own state, with its own action. The row carries the stored grant alongside the requested list, the detail pane names the difference and says the code is not running, and the mod's own screen offers to allow what is newly requested. Declining offers to switch the mod off, so a mod that is listed as on while contributing nothing is always a state the player chose and can see.
 
-The vocabulary is `command:add`, `event:<name>`, `state:<domain>.read`,
-`network:<host>`, `registry:<domain>`, **`display:replace`** and
-**`ui:<region>.replace`**. The last two are the screen, and they are two grants
-rather than one. `display:replace` is what `ModPlugin.frontend` requires -
-everything the player sees of the dungeon drawn by the mod. `ui:<region>.replace`
-is what `ModPlugin.hud` requires, PER REGION - `ui:messages.replace`,
-`ui:sidebar.replace`, `ui:status.replace`, or `ui:*.replace` for all three - so a
-mod that redraws the vitals does not have to ask for the message line as well,
-and a player consenting is told which part of their screen is changing hands.
+The vocabulary is `command:add`, `event:<name>`, `state:<domain>.read`, `network:<host>`, `registry:<domain>`, `display:replace` and `ui:<region>.replace`. The last two cover the screen, as two separate grants. `display:replace` is what `ModPlugin.frontend` requires: the mod draws everything the player sees of the dungeon. `ui:<region>.replace` is what `ModPlugin.hud` requires, one region at a time (`ui:messages.replace`, `ui:sidebar.replace`, `ui:status.replace`, or `ui:*.replace` for all three). A mod that redraws the vitals therefore does not have to ask for the message line as well, and a player giving consent is told which part of their screen is changing hands.
+Neither screen grant falls under `registry:`, and `registry:*` covers neither of them. An override wildcard grants every named game system, which is a different thing from owning part of the screen. The two screen grants do not cover each other either. There is no `ui:map.replace`, because the dungeon belongs to `display:replace`, and a region answering to two capabilities would have two owners.
 
-Both stand outside `registry:` deliberately, and `registry:*` covers neither: an
-override wildcard grants every named game system, which is not the same thing as
-owning part of the screen. They do not cover each other either. There is no
-`ui:map.replace`, because the dungeon is `display:replace`'s and one region
-answering to two capabilities would be two answers to "who draws this".
+The vocabulary has since grown `ui:region.create`, `ui:panel.mount`, `backup:folder`, `debug:spawn`, `debug:wizard`, `mod:install` and `mod:session`. The header of `packages/mod-sdk/src/capabilities.ts` is the reference list, and [PLUGINS.md](PLUGINS.md) explains what each one does and does not open. Two points about how grants are priced apply to the whole family, so they are covered here.
 
-The vocabulary has since grown `ui:region.create`, `ui:panel.mount`,
-`backup:folder`, `debug:spawn`, `debug:wizard`, `mod:install` and `mod:session`. See
-`packages/mod-sdk/src/capabilities.ts`, whose own header is the reference list,
-and [PLUGINS.md](PLUGINS.md) for what each one is and is not. Two things about the
-family shape are worth reading here rather than there, because both are about how
-a grant is PRICED rather than about what it opens. First, an action is compared as
-well as a kind: `ui:*.replace` carries neither `region.create` nor `panel.mount`,
-and `mod:install` does not carry `mod:session`, because in each pair neither side
-is a superset. `debug:spawn` does not carry `debug:wizard` for the same reason, and
-that comparison was added by the arrival of the second `debug:` action rather than
-in advance of it: with only one action in the family the check read the kind alone,
-which was correct by accident and would have let a mod that asked to conjure one
-monster reach the depth jumps and the acquirement too. Second, a capability's
-consent sentence is what makes it proportionate, so two grants whose sentences
-differ cannot share a string:
-`mod:install` puts a pack in the library switched OFF and the player meets it
-before any of it runs, and `mod:session` switches one on for the rest of the
-session, which is more rather than less.
+First, a grant is compared by action as well as by kind. `ui:*.replace` includes neither `region.create` nor `panel.mount`, and `mod:install` does not include `mod:session`, because in each pair neither side is a superset of the other. `debug:spawn` does not include `debug:wizard` for the same reason. That comparison arrived with the second `debug:` action: while the family had only one action, the check looked at the kind alone, which happened to be correct, but with two actions it would have let a mod that asked to conjure one monster reach the depth jumps and acquirement as well.
 
-The same pricing runs the other way, which is why `mod:install` opens two ctx
-fields rather than one. It carries `ctx.reloadGame` as well as `ctx.installMod`,
-because content composes at load: a grant that installed and could not apply
-would leave the player holding something the running process never loads, and a
-reload is nothing anybody would ask for on its own. Splitting them would have put
-half an act on the consent list, which is the same defect as pricing two acts at
-one line.
+Second, a capability's consent sentence is what tells the player how much it grants, so two grants whose sentences differ cannot share a string. `mod:install` puts a pack in the library switched off, and the player sees it before any of it runs. `mod:session` switches one on for the rest of the session, which grants more.
 
+The same reasoning explains why `mod:install` opens two ctx fields. It carries `ctx.reloadGame` as well as `ctx.installMod`, because content composes at load: a mod that could install a pack but not reload would leave the player holding something the running game never loads, and a reload is not something a mod would ask for on its own. Splitting the two would put half an action on the consent list, which is the same mistake as pricing two actions with one sentence.
 ### A mod that lasts one session
 
-There is a fourth way a mod arrives, alongside the shipped installer, a folder on
-disk, and a zip the player imports: it can be staged for the current browsing
-session only (`packages/web/src/mod-session.ts`). The archive is held in session
-storage rather than IndexedDB, the pack composes on the next reload without
-waiting to be enabled, and closing the game forgets it.
+Besides the shipped installer, a folder on disk and a zip the player imports, a mod can be staged for the current browsing session only (`packages/web/src/mod-session.ts`). The archive is kept in session storage rather than IndexedDB, the pack composes on the next reload without needing to be enabled, and closing the game forgets it.
 
-Everything in this section still applies to it. The manifest is validated, the
-engine range is honoured, the standards inspection runs, the origin is pinned
-against an installed copy of the same id, and the pack goes through the same
-composer in the same load order - a staged copy of an installed id shadows it, and
-the collision is reported. What is different is the lifetime of the ARCHIVE, and
-nothing else: a session pack's records are as real as any while they are loaded,
-and section 4's account of what a capability does and does not fence is unchanged
-by how long the mod is remembered.
+Everything else in this section still applies. The manifest is validated, the engine range is honoured, the standards inspection runs, the origin is pinned against an installed copy of the same id, and the pack goes through the same composer in the same load order. A staged copy of an installed id shadows it, and the collision is reported. Only the lifetime of the archive differs. While they are loaded, a session pack's records are as real as any others, and section 4's account of what a capability does and does not fence applies unchanged.
 
-Two honest limits, both recorded because the phrase "just for this session" does
-not carry them. The lifetime is a convention rather than a boundary - a browser
-restoring a closed or crashed window restores session storage with it - so the
-mitigation is that a session mod is always listed, always marked, and always
-droppable. And a save written while one was loaded stays loadable but is not
-reproducible: entities in the staged namespace are quarantined on the next load,
-which is correct, while a field the pack PATCHED on a core record simply returns
-to its unpatched value, because a patch lives in the composition and not in the
-save. `docs/PLANNED.md` carries the second as open work.
-
+"Just for this session" has two limits. First, the lifetime is a convention rather than a boundary: a browser that restores a closed or crashed window restores session storage with it. To make up for that, a session mod is always listed, always marked and always removable. Second, a save written while a session mod was loaded stays loadable but cannot be reproduced. Entities in the staged namespace are quarantined on the next load, as they should be, while a field the pack patched on a core record simply goes back to its unpatched value, because a patch lives in the composition and not in the save. `docs/PLANNED.md` tracks that second limit as open work.
 ### From a git repository
 
-The heading used to read "(proposed design, not the shipped path)" and step 4
-below used to carry its own `[PROPOSED]`. Step 4, the pre-install summary, is
-now built (issue #23): `mod-preinstall.ts` (`packages/web/src`) reads the
-candidate's own declared content files at its pinned tag and reports what it
-adds, what it patches, replaces or removes - each touched record paired with
-its owning pack and whether that owner is actually enabled right now, rather
-than a claim about a load order nothing has composed yet - alongside its
-capabilities (in `capability-describe.ts`'s own words, not a second copy of
-them), license, and any `conflicts` claim that applies once the candidate
-joins the player's enabled set in either direction (`mod-conflicts.ts`'s
-`declaredConflicts`, reused rather than reimplemented). Size, author and
-screenshots were already shown by discovery (`mod-discover.ts`) before this
-work; the summary carries them alongside the new sections rather than
-duplicating them. `mod-browse.ts`'s `showRepoInstallSummary` is what shows it,
-between pasting a repository address and the existing install action - the
-player confirms or cancels there, and confirming runs the same install path
-(`installOne`) the other doors already use.
+Step 4 below, the pre-install summary, is built (issue #23). `mod-preinstall.ts` (in `packages/web/src`) reads the candidate's own declared content files at its pinned tag and reports what it adds and what it patches, replaces or removes. Each touched record is paired with its owning pack and whether that owner is enabled right now, instead of a guess about a load order that has not been composed yet. The summary also shows the requested capabilities (in `capability-describe.ts`'s own wording, reused rather than copied), the license, and any `conflicts` claim that would apply in either direction once the candidate joins the player's enabled set (`mod-conflicts.ts`'s `declaredConflicts`, also reused). Size, author and screenshots come from discovery (`mod-discover.ts`), which showed them before the summary existed, and the summary includes them alongside its own sections. `mod-browse.ts`'s `showRepoInstallSummary` displays it between pasting a repository address and the install action. The player confirms or cancels there, and confirming runs the same install path (`installOne`) that the other ways of installing use.
 
-Steps 1, 3 and 5 remain `[PROPOSED]`: the shipped installer reads
-`manifest.json` at a TAG and nothing else (no branch head and no bare commit),
-a full schema/dependency-availability check still happens only at the actual
-install rather than ahead of the summary, and an install still appends to the
-load order rather than inserting at a dependency-resolved position. What the
-installer actually does, including how it picks which release to offer and
-what an install pins, is in [MOD_COMPATIBILITY.md](MOD_COMPATIBILITY.md) and
-[../MODS.md](../MODS.md). The numbered list below is kept as the design of
-record for where the rest of the installer is going.
-
+Steps 1, 3 and 5 are still `[PROPOSED]`. The shipped installer reads `manifest.json` at a tag and nothing else (no branch head and no bare commit), the full schema and dependency-availability check still runs only at the actual install rather than before the summary, and an install still appends to the load order rather than inserting at a dependency-resolved position. [MOD_COMPATIBILITY.md](MOD_COMPATIBILITY.md) and [../MODS.md](../MODS.md) describe what the installer does today, including how it picks which release to offer and what an install pins. The numbered list below describes where the rest of the installer is heading.
 The user pastes a repository URL (or picks a ref). The app:
 
 1. [PROPOSED] Resolves a specific ref (tag preferred, else branch head, else
@@ -328,31 +152,10 @@ The user pastes a repository URL (or picks a ref). The app:
    (content-addressed by hash), enables it, and inserts it into the load
    order at the dependency-correct position.
 
-[PROPOSED] Browser reality, stated honestly: a web page cannot speak the
-git protocol or clone arbitrary hosts (CORS, no git transport). "Install
-from git" in the web build means fetching the repository tarball at a
-ref through the host's HTTP API (GitHub/GitLab both expose CORS-friendly
-archive and raw endpoints for public repos). Private or self-hosted
-repos need a user-supplied token or a small optional proxy; this is
-documented, not hidden. The desktop build could clone directly, since it has a
-real filesystem and a real process to run git in. Either way the installer
-consumes the same pack format.
+[PROPOSED] A web page cannot speak the git protocol or clone from arbitrary hosts (CORS, no git transport). In the web build, "install from git" means fetching the repository tarball at a ref through the host's HTTP API; GitHub and GitLab both expose CORS-friendly archive and raw endpoints for public repos. Private or self-hosted repos need a user-supplied token or a small optional proxy, and the documentation says so. The desktop build could clone directly, since it has a real filesystem and a real process to run git in. Either way the installer consumes the same pack format.
+### From a marketplace
 
-### From a marketplace - DECLINED
-
-This section previously proposed a from-scratch, self-hosted marketplace
-serving pre-validated, pre-packaged `.ngpack` bundles (the pack directory,
-zipped, with the manifest and a signed content hash), with browse / search /
-screenshots / ratings in-app. It was never built past this design. Nexus
-Mods integration (tracked separately - see the mod-distribution issues)
-supersedes it: Nexus already provides hosting, browse/search, screenshots
-and ratings at a scale a self-hosted marketplace would take years to reach,
-and building a second, competing one afterward would be duplicate
-infrastructure with a much smaller audience. The manifest fields this
-proposal anticipated (`description`, `screenshots`, `changelog`, `author`,
-`license`, and a hash-based integrity record) were not wasted - they are
-exactly what a Nexus-origin install preview reuses.
-
+There is no self-hosted marketplace and none is planned. An earlier design for one, serving pre-validated, pre-packaged `.ngpack` bundles (the pack directory, zipped, with the manifest and a signed content hash) with in-app browse, search, screenshots and ratings, was never built. Nexus Mods integration (tracked in the mod-distribution issues) takes its place. Nexus already provides hosting, browse and search, screenshots and ratings at a scale a self-hosted marketplace would take years to reach, and a second, competing store would duplicate that infrastructure for a much smaller audience. The manifest fields meant for the marketplace (`description`, `screenshots`, `changelog`, `author`, `license`, and a hash-based integrity record) are the same ones a Nexus-origin install preview uses.
 ### Updating and uninstalling
 
 - Update: the app compares the pinned ref (or marketplace version)
@@ -372,23 +175,14 @@ exactly what a Nexus-origin install preview reuses.
 
 ### Load order and dependency resolution
 
-Enabled mods form an ordered list, and **later in the order wins** on genuine
-conflicts (last-write-wins, the convention players know from Bethesda games).
-That rule is now true of every composition layer; until 2026-08-01 graphics
-modes resolved FIRST-wins, so moving a tiles mod later made it lose while the
-manager's own row promised the opposite (see "One winner rule" below).
+Enabled mods form an ordered list, and later in the order wins on a real conflict (last-write-wins, the convention players know from Bethesda games). Every composition layer follows that rule. Until 2026-08-01 graphics modes resolved first-wins, so moving a tiles mod later made it lose while the manager's own row promised the opposite (see "One winner rule" below).
 
-There are two order-producing functions and the split between them is the
-model in one line:
+Two functions produce an order, and the split between them sums up the model:
 
-- `resolveLoadOrder` **enforces**. It takes the list the player chose and
-  refuses an impossible one - a missing dependency, a hard cycle.
-- `sortModOrder` **proposes**. It takes the same inputs plus everything anyone
-  merely prefers, and answers with an order the player may accept or ignore.
-  It cannot fail.
+- `resolveLoadOrder` enforces. It takes the list the player chose and refuses one that cannot work, such as a missing dependency or a hard cycle.
+- `sortModOrder` proposes. It takes the same inputs plus everything anyone merely prefers, and returns an order the player may accept or ignore. It cannot fail.
 
-`sortModOrder` weighs four tiers, strongest first, and that ranking is the only
-thing deciding which constraint is dropped when they contradict:
+`sortModOrder` weighs four tiers, strongest first, and when constraints contradict, that ranking alone decides which one is dropped:
 
 | Tier | Source | Why it ranks there |
 |---|---|---|
@@ -397,32 +191,13 @@ thing deciding which constraint is dropped when they contradict:
 | `author` | `loadAfter`/`loadBefore`, `prefer-mine`/`prefer-theirs` | A named guess about a named mod |
 | `group` | membership in the shipped `group` order | Nobody wrote it about this pair |
 
-**`loadAfter`/`loadBefore` used to be HARD edges**, which meant two mods each
-claiming priority over the other produced `dependency cycle among packs` and the
-whole set refused to launch - with neither author having done anything
-unreasonable. They are `author`-tier now. On a cycle the sorter drops the
-weakest edge and says which one and why; only an all-hard cycle is reported
-unresolvable, and that is an impossible mod set rather than a disagreement.
-This is the rule LOOT settled on: soft metadata that contradicts hard metadata
-is ignored, not turned into an error neither author can fix.
+`loadAfter` and `loadBefore` used to be hard edges. Two mods that each claimed priority over the other then produced `dependency cycle among packs` and the whole set refused to launch, even though neither author had done anything unreasonable. They are now `author`-tier. On a cycle the sorter drops the weakest edge and says which one and why. Only a cycle made entirely of hard edges is reported as unresolvable, because that mod set is impossible rather than merely disputed. LOOT works the same way: soft metadata that contradicts hard metadata is ignored instead of becoming an error neither author can fix.
 
-**Groups** (`PACK_GROUPS`: framework, overhaul, content, gameplay, tweaks,
-interface, cosmetic, late) let a mod sort correctly against mods that did not
-exist when it was written. Pairwise hints require an author to have heard of the
-other mod, which is why LOOT needs a hand-maintained masterlist and why groups
-are the thing worth borrowing.
+Groups (`PACK_GROUPS`: framework, overhaul, content, gameplay, tweaks, interface, cosmetic, late) let a mod sort correctly against mods that did not exist when it was written. Pairwise hints need the author to have heard of the other mod, which is why LOOT needs a hand-maintained masterlist and why groups are the part worth borrowing.
 
-**Player pins survive re-sorting.** Moving a mod records the pair the player
-reordered (not an absolute index, which stops meaning anything the moment
-another mod is installed) and replays it as a `player`-tier edge. Without this,
-an auto-sort silently undoes the placement the player just made, which teaches
-them never to press it.
+Player pins survive re-sorting. Moving a mod records the pair the player reordered (not an absolute index, which stops meaning anything as soon as another mod is installed) and replays it as a `player`-tier edge. Without this, an auto-sort would silently undo a placement the player just made, and they would soon stop using it.
 
-Determinism is a hard requirement, not a nicety: the resolved order goes into
-the savefile's mod-set fingerprint, so the sort is a pure function of
-(manifests, pins, current order) - no clock, no `Math.random`, and no reliance
-on Set/Map iteration for anything that decides an outcome.
-
+The sort has to be deterministic, because the resolved order goes into the savefile's mod-set fingerprint. It is a pure function of (manifests, pins, current order): no clock, no `Math.random`, and no reliance on Set/Map iteration order for anything that decides an outcome.
 ### What an author may and may not decide
 
 > **An author has total authority over their own mod's contributions, and none
@@ -452,9 +227,7 @@ a conflict list turns into wallpaper.
 
 ### Sections: the parts of a mod
 
-A mod used to be one atom in the load order, which made three ordinary requests
-inexpressible - and they turned out to be the same request. `sections` names the
-parts:
+A mod used to be a single unit in the load order, which made three ordinary requests impossible to express, and all three turned out to need the same thing. `sections` names the parts of a mod:
 
 ```jsonc
 "sections": [
@@ -463,20 +236,11 @@ parts:
 ]
 ```
 
-- **Scope a claim.** `compat[].scope` names the claimant's own sections, so
-  "we clash, but only over the kobold changes" is sayable.
-- **Place part of a mod.** `priority` is a BAND (`first`, `early`, `normal`,
-  `late`, `last`), not a numeric offset: an offset added to a load index means a
-  different neighbour every time the list changes, while every `last` section
-  composes after every `normal` one whatever else is installed. This is Forge's
-  event-priority scheme over a Bethesda-style load order, and it refuses the
-  arms race an integer invites, because there is nothing above `last`.
-- **Switch part off.** One player toggle per section, under that mod.
+- Scoping a claim: `compat[].scope` names the claimant's own sections, so a mod can say "we clash, but only over the kobold changes".
+- Placing part of a mod: `priority` is a band (`first`, `early`, `normal`, `late`, `last`) rather than a numeric offset. An offset added to a load index lands next to a different neighbour every time the list changes, whereas every `last` section composes after every `normal` one whatever else is installed. This is Forge's event-priority scheme applied over a Bethesda-style load order, and since nothing ranks above `last`, authors cannot keep outbidding each other with bigger numbers.
+- Switching part off: each section gets its own player toggle under its mod.
 
-A band yields to a patch target. `priority: "first"` on a section patching
-`core:kobold` is a coherent wish and an impossible position, so the section
-composes at the earliest legal point instead and the report says the band did
-not apply. Soft loses to hard, again.
+A band gives way to a patch target. `priority: "first"` on a section that patches `core:kobold` asks for a position that cannot exist, so the section composes at the earliest legal point instead and the report says the band did not apply, the same way any soft constraint yields to a hard one.
 
 Contributions are attributed by nesting them under the section id:
 
@@ -485,19 +249,11 @@ Contributions are attributed by nesting them under the section id:
   "sections": { "kobold-rebalance": { "fieldPatches": { ... } } } }
 ```
 
-**A disabled section's contributions do not exist.** They are dropped before
-composition rather than composed and overridden - the same rule a disabled mod's
-hooks follow.
+A disabled section's contributions do not exist. They are dropped before composition rather than composed and then overridden, which is the same rule a disabled mod's hooks follow.
 
-Sections also expose a flag to the mod's own `hooks.ts`, so `rules` is exactly
-"a section with a flag and no contributions". `rules` is unchanged and every
-shipped manifest keeps working; the validator refuses a section whose flag a
-rule already declares, so the merged flag map cannot give one name two meanings.
+Sections also expose a flag to the mod's own `hooks.ts`, so a `rules` entry is simply a section with a flag and no contributions. `rules` is unchanged and every shipped manifest keeps working. The validator rejects a section whose flag a rule already declares, so the merged flag map never gives one name two meanings.
 
-**What moves what:** an ordering claim moves a whole MOD; a band moves one PART
-of a mod. An author who needs part of their mod placed differently from the rest
-says so with a band, which needs nobody's agreement.
-
+An ordering claim moves a whole mod, and a band moves one part of it. An author who needs part of their mod placed differently from the rest uses a band, which needs nobody else's agreement.
 ### Additive vs conflicting changes
 
 - Additive (each mod adds new records): namespaced ids keep them
@@ -517,12 +273,9 @@ in coarse whole-record systems.
 
 ### The conflict report, over every layer
 
-The app shows every point where more than one mod contributes, who wins, and -
-crucially - **whether anyone loses at all**.
+The app shows every point where more than one mod contributes, who wins, and whether anyone loses at all.
 
-This used to cover CONTENT RECORDS and nothing else, which was one layer of
-five. The other four resolved in silence, and three of the four discard
-somebody's work:
+The report used to cover content records only, which is one layer out of five. The other four resolved silently, and three of them discard somebody's work:
 
 | Layer | Fold | What used to happen |
 |---|---|---|
@@ -532,133 +285,43 @@ somebody's work:
 | Rule flags | last-wins on a flat namespace | silent; two mods share one toggle |
 | Autoplayer (`controller`) | single slot | silent; the second install wins |
 
-**The fold is part of the answer**, but it is no longer part of the ANSWER TO
-"WHO WINS". Every layer, and every hook, resolves in favour of the mod that
-loads last; what the fold says is whether there was anything for a winner to
-win. Three folds discard a contribution (`last-wins`, `last-answer`,
-`single-slot`) and three combine them (`all-must-agree`, `chained`, `any-yes`),
-and only the first group needs a player to do anything. Pretending the layers
-resolve alike would be the RimWorld trap - XML, then xpath, then C#, each with
-its own effective precedence, so "load order" quietly means three things - but
-so is pretending they resolve DIFFERENTLY when they do not.
+Every layer and every hook now resolves in favour of the mod that loads last, so the fold no longer decides who wins. What it tells you is whether there was anything to win. Three folds discard a contribution (`last-wins`, `last-answer`, `single-slot`) and three combine contributions (`all-must-agree`, `chained`, `any-yes`), and only the first group needs the player to do anything. Treating every layer as if it resolved the same way would be the RimWorld trap, where XML, then xpath, then C# each have their own effective precedence and "load order" quietly means three things. Treating the layers as different where they are not would mislead just as much.
 
-Of the eight behaviour hooks, two are `last-answer` (the earlier mod's rule
-never runs), three `all-must-agree`, one `chained`, one `any-yes`, and one
-`all-observe` (every handler runs and none can veto).
-`MOD_HOOK_FOLDS` lives in core beside `composeModHooks`, keyed by
-`keyof ModHooks` so a hook added to the interface without a fold does not
-compile, and a test in
-`hooks.test.ts` OBSERVES each fold from what the composition actually does
-rather than restating the table - including *which* contributor ran, which is
-the half that can be wrong while the table still looks right.
+Of the eight behaviour hooks, two are `last-answer` (the earlier mod's rule never runs), three `all-must-agree`, one `chained`, one `any-yes`, and one `all-observe` (every handler runs and none can veto). `MOD_HOOK_FOLDS` lives in core beside `composeModHooks` and is keyed by `keyof ModHooks`, so a hook added to the interface without a fold does not compile. A test in `hooks.test.ts` checks each fold against what the composition actually does rather than restating the table, including which contributor ran, since that is the part that can be wrong while the table still looks right.
 
-Every claim is **derived from what a mod actually contributes** - the refs in
-its files, the keys its hooks factory returned, the grafIDs its manifest claims.
-A `touches` declaration in the manifest would have been less code and would go
-stale the first time an author forgot to update it, which is the failure this
-report exists to catch.
+Every claim is derived from what a mod actually contributes: the refs in its files, the keys its hooks factory returned, the grafIDs its manifest claims. A `touches` declaration in the manifest would be less code, but it would go stale the first time an author forgot to update it, and stale declarations are what this report exists to catch.
 
-The pane groups its answer three ways, because they need three different amounts
-of attention: what an author DECLARED (a human wrote a reason), what is
-CONTESTED (somebody's contribution is discarded - the group with a decision in
-it), and what COMBINES (listed so the picture is complete, kept last so it does
-not bury the group above).
+The pane groups its results three ways, by how much attention each needs: what an author declared (a person wrote a reason), what is contested (somebody's contribution is discarded, so there is a choice to make), and what combines (listed so the picture is complete, and kept last so it does not bury the contested group).
 
-A load order that fails validation (unmet dependency, engine mismatch, hard
-cycle) still cannot be launched, and the reason is plain language.
-
+A load order that fails validation (unmet dependency, engine mismatch, hard cycle) still cannot be launched, and the reason is given in plain language.
 ### One winner rule
 
-**The later mod wins. Everywhere. No exceptions.** `mods.ts` ships a live menu
-row reading *"Move later (loads last, wins conflicts)"*, and that row is the
-specification the rest of this section is measured against.
+The later mod wins, on every layer. `mods.ts` ships a live menu row reading *"Move later (loads last, wins conflicts)"*, and the rest of this section is measured against that row.
 
-It was false twice, and the second time was found by re-reading the claim that
-the first fix had made it true:
+The row has been false twice, and the second case turned up while re-checking that the first fix had made it true:
 
-- **2026-08-01.** `composeTileModes` and `enabledTileModes` both gave a
-  contested `grafID` to the FIRST claimant, so moving a tiles mod later made it
-  lose. Silently, and the conflict report could not see it.
-- **2026-08-02.** `walkBlockedByDiggable` and `objectListTiebreak` were
-  `first-answer`: the composed hook walked the contributions in load order and
-  stopped at the first opinion, so the EARLIER mod's rule ran and the later
-  mod's never did. Both are now asked in reverse load order. For the comparator
-  that means the last mod's ordering is the primary key and earlier ones break
-  the ties it leaves - a lexicographic chain, still a total order, and "later
-  wins" for a comparator.
+- 2026-08-01: `composeTileModes` and `enabledTileModes` both gave a contested `grafID` to the first claimant, so moving a tiles mod later made it lose, silently and out of sight of the conflict report.
+- 2026-08-02: `walkBlockedByDiggable` and `objectListTiebreak` were `first-answer`. The composed hook walked the contributions in load order and stopped at the first opinion, so the earlier mod's rule ran and the later mod's never did. Both are now asked in reverse load order. For the comparator, that makes the last mod's ordering the primary key, with earlier mods breaking the ties it leaves: a lexicographic chain that is still a total order, and the comparator's version of "later wins".
 
-Two folds look like exceptions and are not. `all-must-agree` (the veto hooks)
-and `any-yes` are not answering "whose answer is used?" at all: `true` from
-`historyAdd` means "I have nothing to say about this entry", not "I insist it be
-written", so two mods suppressing two different things do not disagree. Making
-those last-wins would let a later mod's silence cancel an earlier mod's rule -
-breaking both mods for a consistency nobody asked for. The invariant that
-actually matters is that **no mod's opinion is ever discarded in favour of an
-earlier one**, and those two discard nothing.
+`all-must-agree` (the veto hooks) and `any-yes` can look like exceptions, but they do not answer "whose answer is used?" at all. `true` from `historyAdd` means "I have nothing to say about this entry", not "I insist it be written", so two mods suppressing two different things are not in disagreement. Making those hooks last-wins would let a later mod's silence cancel an earlier mod's rule, and both mods would break. The rule that matters is that no mod's opinion is ever discarded in favour of an earlier mod's, and these two folds discard nothing.
 
-Two deliberate carve-outs remain, and neither is a load-order question:
+Two cases resolve differently, and neither is a question of load order:
 
-- A contested Graphics row keeps the SLOT the first claimant put it in, so the
-  Graphics menu does not reshuffle when mods are reordered. Only which pack
-  draws it changes - **position, not precedence**.
-- A pack in the mods FOLDER that reuses a compiled-in pack's id loses to the
-  compiled-in one (`mergeModSources`, `discoverMods`). That is **identity, not
-  order**: the two are rival candidates for the same mod rather than two mods
-  in a sequence, and letting a folder silently redefine what an id means would
-  leave the player with no way to see which one they had enabled. In a release
-  build the compiled-in set is EMPTY, so this rule only ever fires in dev,
-  against the `demo-*` framework proofs.
-
+- A contested Graphics row keeps the slot its first claimant put it in, so the Graphics menu does not reshuffle when mods are reordered. Only the pack that draws it changes; the row's position has nothing to do with precedence.
+- A pack in the mods folder that reuses a compiled-in pack's id loses to the compiled-in one (`mergeModSources`, `discoverMods`). This is about identity rather than order: the two are competing candidates for the same mod, not two mods in sequence, and letting a folder quietly redefine what an id means would leave the player unable to tell which one they had enabled. Release builds compile in no packs, so this only ever happens in dev, against the `demo-*` framework proofs.
 ### External managers (Vortex, MO2)
 
-**RATIFIED 2026-07-27.** Integrating with Vortex and the other
-popular mod managers is an explicit goal, and it sets the division of
-labour between them and the game:
+Neo Angband is meant to work alongside Vortex and the other popular mod managers, and the work is divided between them and the game.
 
-- **The game ships rudimentary management only.** Turning a mod on and
-  off, nudging one earlier/later in the order (the existing "Move earlier"
-  / "Move later" rows in `mods.ts`), opting out of one of its patches,
-  seeing what conflicts, applying a saved profile. That is the floor a
-  player needs to run the first-party mods and a handful of others without
-  extra software - not a mod-manager reimplementation.
-- **Advanced management belongs to the mod manager.** Real load-order
-  SORTING above all (rule sets, auto-sort, bulk reordering of a large
-  set), plus deployment/staging, collections and bundles, per-profile
-  installs, update watching, and bulk install/remove. Those are solved
-  problems in Vortex/MO2 and they are what those tools are for; this project does not
-  compete with them and does not grow the in-game UI to match them.
+The game ships basic management only: turning a mod on and off, nudging it earlier or later in the order (the "Move earlier" / "Move later" rows in `mods.ts`), opting out of one of its patches, seeing what conflicts, and applying a saved profile. That is enough to run the first-party mods and a handful of others without extra software, and it is not meant to become a full mod manager.
 
-> **AMENDED 2026-08-01: auto-sort comes back in-game.**
-> The clause above putting load-order SORTING outside the game is revised; the
-> rest of the division of labour stands unchanged. What moved and why:
->
-> The 2026-07-27 division was drawn when sorting meant "a UI for dragging a long
-> list", which is genuinely Vortex/MO2's job. It is not what sorting means once
-> authors can declare compatibility: the inputs (`group`, `compat`,
-> `loadAfter`/`loadBefore`, the player's pins) are all things the ENGINE reads
-> and the external manager cannot see, and resolving them is one deterministic
-> function, not a UI. Leaving it outside would have meant an author could state
-> a preference that nothing in the game could act on.
->
-> So the game gains ONE BUTTON - "Auto-sort load order..." - which proposes an
-> order, shows every suggestion it could not honour, and writes nothing until
-> the player accepts. It is not staging, collections, per-install profiles,
-> update watching or bulk management, and none of those are coming in-game.
-- **The seam is the shared on-disk format, not an API.** A pack is a plain
-  directory / zip with a manifest, so it is filesystem-friendly by
-  construction. A desktop build watches a mod directory that a Vortex or
-  MO2 extension deploys into and honours the explicit enabled-set and
-  order it finds there. One format serves both; there is no fork, and the
-  external tool never needs the game running to do its job.
+Since 2026-08-01 the game also has one "Auto-sort load order..." button. It proposes an order, shows every suggestion it could not honour, and writes nothing until the player accepts. Sorting lives in the game because its inputs (`group`, `compat`, `loadAfter`/`loadBefore`, the player's pins) are all things the engine reads and an external manager cannot see, and resolving them is one deterministic function rather than a UI. Without it, an author could state a preference that nothing in the game could act on.
 
-Consequence for the engine: the ENABLED SET and the LOAD ORDER must both
-be externally authorable, plain-text, and authoritative when present -
-not derived state hidden in `localStorage`. The web build's
-`localStorage` set (`mod-store.ts`) is the browser's stand-in for that
-file, and `?mods=` is already an external override that outranks it, so
-the precedence rule (external order > stored order) is settled; the file
-form lands with the desktop build.
+Advanced management belongs to the mod manager: rule sets and bulk reordering of a large set, deployment and staging, collections and bundles, per-profile installs, update watching, and bulk install and remove. Vortex and MO2 already solve those problems, and none of them are planned for the game.
 
+The two meet at the on-disk format rather than through an API. A pack is a plain directory or zip with a manifest, so filesystem tools handle it naturally. A desktop build watches a mod directory that a Vortex or MO2 extension deploys into, and honours the explicit enabled set and order it finds there. One format serves both, there is no fork, and the external tool never needs the game running to do its job.
+
+For the engine, this means the enabled set and the load order must both be externally authorable, plain text, and authoritative when present, rather than derived state hidden in `localStorage`. In the web build, the `localStorage` set (`mod-store.ts`) stands in for that file, and `?mods=` is already an external override that outranks it, so external order takes precedence over stored order. The file form arrives with the desktop build.
 ---
 
 ## 4. Trust, safety, and determinism
@@ -675,57 +338,14 @@ Three trust tiers, unchanged from MODS.md, made concrete at install:
   and the mod gets nothing it did not request and the user did not
   approve.
 
-Determinism guard (RATIFIED, decisions 19 and 22 - and deliberately
-modest). First, what determinism is NOT here: it is NOT the anti-save-scum
-mechanism. Anti-save-scum comes from the faithful port of the original's
-persisted RNG state (the full `STATE[]`/`Rand_value` in the save, so a
-reload resumes the exact stream and cannot reroll) plus single-save and
-terminal death - see the save-scum policy. That protection rides on saved
-state, not on the run being reproducible from a seed, so it composes with
-mods.
+Determinism guard. Save-scum protection does not depend on determinism. It comes from the faithful port of the original's persisted RNG state (the full `STATE[]`/`Rand_value` is in the save, so a reload resumes the exact stream and cannot reroll) together with a single save and terminal death; see the save-scum policy. Because that protection rests on saved state rather than on replaying a run from a seed, it works with mods.
 
-What the guard IS: a convenience and an honest label. The SDK hands every
-plugin a seeded RNG and, by default, the sandbox withholds the
-nondeterministic sources (wall clock, `Math.random`, ambient network) so an
-author who does nothing special stays deterministic - which keeps the
-unmodded-style "shareable seed" reproducibility working when their mod is
-pure. That reproducibility is a nice-to-have, not a guarantee the game
-depends on.
+The guard itself is a convenience and a label. The SDK hands every plugin a seeded RNG, and by default the sandbox withholds the nondeterministic sources (wall clock, `Math.random`, ambient network), so an author who does nothing special stays deterministic. That keeps the unmodded-style "shareable seed" reproducibility working when their mod is pure. Reproducibility is a nice-to-have, and the game does not depend on it.
 
-Per decision 18, cheaty and nondeterministic mods are allowed and the
-engine does not forbid. A mod that wants nondeterminism (a live-multiplayer
-transport, a wall-clock event, an external AI agent) declares
-`nondeterministic: true` in its manifest. The engine then grants the
-capabilities it asks for and marks any profile containing it as
-"not reproducible / not seed-shareable" - nothing is blocked; the player is
-just told what they are trading away. Note two honest consequences, both
-expected: (a) any add/remove/update of mods mid-run also breaks
-reproducibility-from-seed, because the mod set is part of the seed's inputs;
-(b) a nondeterministic mod re-opens reload-reroll WITHIN its own mechanics
-(those outcomes are not pinned to saved state) - core mechanics stay
-reroll-proof because they draw from the saved seeded stream. An undeclared
-plugin that trips a withheld source gets a clear author-facing error
-pointing at the fix, not a silent divergence.
+Cheaty and nondeterministic mods are allowed, and the engine does not forbid them. A mod that wants nondeterminism (a live-multiplayer transport, a wall-clock event, an external AI agent) declares `nondeterministic: true` in its manifest. The engine then grants the capabilities it asks for and marks any profile containing it as "not reproducible / not seed-shareable". Nothing is blocked; the player is simply told what they are giving up. Two consequences follow. Adding, removing or updating mods mid-run also breaks reproducibility from a seed, because the mod set is one of the seed's inputs. And a nondeterministic mod reopens reload-rerolling within its own mechanics, since those outcomes are not pinned to saved state, while core mechanics stay reroll-proof because they draw from the saved seeded stream. An undeclared plugin that touches a withheld source gets a clear author-facing error pointing at the fix, instead of a silent divergence.
 
-Save determinism mode (core-governed ratchet). The label is not just cosmetic:
-every save carries a determinism mode that CORE owns and enforces regardless
-of which mods are loaded. A save starts DETERMINISTIC; the first time a
-determinism-affecting mod is enabled on it, core flips it to NONDETERMINISTIC.
-The change is IRREVERSIBLE. Removing the mod later does not restore
-deterministic mode - it is a one-way ratchet, so a deterministic (unmodded)
-save cannot be tainted by a mod and then "cleansed" to reclaim its
-reproducibility/anti-scum guarantees. Mods can trigger the flip but can never
-reverse or prevent it. This is why the save block records the exact mod set
-and the mode: the mode travels with the save. See PORT_PLAN.md decision 22.
-
-Gameplay scoring mode (core-governed ratchet). A pack that changes core
-gameplay declares `affectsGameplay: true` in its manifest. On the first enable
-for a save, the UI warns that it will become non-scoring and asks for
-confirmation. If accepted, core sets `modNoscore`. This is separate from the
-determinism ratchet: a mod may be deterministic, nondeterministic,
-gameplay-affecting, both, or neither. `modNoscore` never clears after a mod is
-disabled or removed, and score entry rejects it independently of Angband's
-reference-format-compatible `player.noscore` bitfield.
+Save determinism mode. Core enforces the label: every save carries a determinism mode that core owns, whatever mods are loaded. A save starts deterministic, and the first time a determinism-affecting mod is enabled on it, core switches it to nondeterministic. The switch is permanent. Removing the mod later does not restore deterministic mode, so a deterministic (unmodded) save cannot be tainted by a mod and then cleaned up to reclaim its reproducibility and anti-scum guarantees. Mods can trigger the switch but can never reverse or prevent it. That is why the save block records both the exact mod set and the mode: the mode travels with the save.
+Gameplay scoring mode. A pack that changes core gameplay declares `affectsGameplay: true` in its manifest. The first time it is enabled for a save, the UI warns that the save will become non-scoring and asks for confirmation, and if the player accepts, core sets `modNoscore`. This is separate from the determinism mode: a mod may be deterministic, nondeterministic, gameplay-affecting, both, or neither. Like the determinism mode it only goes one way. `modNoscore` never clears after a mod is disabled or removed, and score entry rejects it independently of Angband's reference-format-compatible `player.noscore` bitfield.
 
 ---
 
@@ -761,105 +381,38 @@ elsewhere. Each known complaint, and the design answer:
   -> The computed diff view: records added, patched, replaced, removed,
   fields touched, and capabilities requested.
 
-### Profiles (a feature players will expect once they have it)
+### Profiles
 
-[PROPOSED] A profile is a named, ordered mod set. A character/save is
-bound to the profile that created it (that is what the manifest block
-records). You can keep a vanilla character and a heavily modded one side
-by side with no cross-contamination, and switch a character's profile
-only through a guarded flow that runs the appropriate migrations or
-quarantine. Profiles are shareable (export/import a small profile file:
-ids, versions, sources, order) so a friend can one-click reproduce your
-setup. Note the deliberate asymmetry with saves: profiles are meant to
-be shared; savefiles are not casually exportable, because the engine's
-determinism plus a shared seed plus a shared profile already reproduces
-a playthrough, and freely exportable saves would undercut the
-no-save-scum guarantee (see save-scum policy).
+[PROPOSED] A profile is a named, ordered mod set. A character's save is bound to the profile that created it, which is what the manifest block records. You can keep a vanilla character and a heavily modded one side by side with no cross-contamination, and a character only changes profile through a guarded flow that runs the appropriate migrations or quarantine. Profiles can be shared by exporting and importing a small profile file (ids, versions, sources, order), so a friend can reproduce your setup in one click. Saves are handled differently: they are not casually exportable, because the engine's determinism plus a shared seed and a shared profile already reproduce a playthrough, and freely exportable saves would undercut the no-save-scum rule (see the save-scum policy).
 
-Why the pre-migration snapshot in section 2 is not save-scumming: it is
-an operational safety net that only ever restores when a migration
-throws, and it is not exposed as a "load an earlier save" command. It
-protects against tool failure, not against the player's own bad luck.
-The no-save-scum rule bars player-facing rollback of gameplay outcomes;
-this is neither player-facing nor a gameplay rollback.
-
+The pre-migration snapshot in section 2 is not save-scumming either. It is an operational safety net that restores only when a migration throws, and it is never offered as a "load an earlier save" command. It guards against a failed tool, never against the player's own bad luck. The no-save-scum rule bars player-facing rollback of gameplay outcomes, and the snapshot is neither player-facing nor a gameplay rollback.
 ### Safe mode
 
-[PROPOSED] If an enabled combination fails to boot, the app offers a
-one-click "start with mods disabled" recovery so a bad mod can never
-brick access to the app or to a save.
+[PROPOSED] If an enabled combination of mods fails to boot, the app offers a one-click "start with mods disabled" recovery, so a bad mod can never lock you out of the app or out of a save.
 
 ---
 
-## 6. Build order (so this is real, not aspirational)
+## 6. Build order
 
-Seams and formats first (they are cheap now and expensive to retrofit),
-UI next, marketplace last:
+Seams and formats come first, because they are cheap now and expensive to retrofit, then UI, and the marketplace last:
 
-1. Now, as the save system and loader land: string-id serialization,
-   the namespaced save blocks and per-mod bags, the field-level patch/
-   merge composer, the load-order + dependency resolver, the capability
-   model, and the conflict-report computation. These are engine seams.
-1b. THE JOINING STEP (added 2026-07-14, see MOD_INTEGRATION_PLAN.md): the
-   engine seams from item 1 must actually be wired into the running game -
-   a loader that resolves + composes the pack set at boot, capability
-   enforcement on the perceive/act facades, the agent controller installed
-   in the host, and the turn loop routed through the event bus. A
-   2026-07-14 audit found item 1's seams are built and tested but have no
-   runtime caller; this is Wave 1 of the integration plan and it precedes
-   the UI below.
-2. Next: the in-app mod manager UI - deliberately rudimentary per the
-   2026-07-27 division of labour (list, enable/disable, a one-step
-   earlier/later nudge, per-patch opt-out, install-from-url, conflict view,
-   capability consent, profiles), plus the one auto-sort button the
-   2026-08-01 amendment above adds. Bulk reordering, staging, collections
-   and update watching stay the external manager's job.
-3. Future release: Nexus Mods integration (a real second pinned origin,
-   not the from-scratch marketplace this item once named - see "From a
-   marketplace" above), the externally-authored enabled-set/order file, and
-   a Vortex/MO2 extension over the shared on-disk format.
+1. Now, as the save system and loader land: string-id serialization, the namespaced save blocks and per-mod bags, the field-level patch/merge composer, the load-order and dependency resolver, the capability model, and the conflict-report computation. These are engine seams.
+1b. Wiring the engine seams from item 1 into the running game: a loader that resolves and composes the pack set at boot, capability enforcement on the perceive/act facades, the agent controller installed in the host, and the turn loop routed through the event bus. As of 2026-07-14 the item 1 seams were built and tested but had no runtime caller. This step comes before the UI below.
+2. Next: the in-app mod manager UI, kept basic to match the split with external managers described above (list, enable/disable, a one-step earlier/later nudge, per-patch opt-out, install-from-url, conflict view, capability consent, profiles), plus the one auto-sort button. Bulk reordering, staging, collections and update watching stay the external manager's job.
+3. Future release: Nexus Mods integration (a real second pinned origin, which replaces the self-hosted marketplace this item once named; see "From a marketplace" above), the externally authored enabled-set/order file, and a Vortex/MO2 extension over the shared on-disk format.
 
-Authors check a pack in CI with `neo-angband-mod-check` (the same rules
-the game enforces at install) and produce a distributable `plugin.js`
-with `neo-angband-mod-build`. Both ship in `@rpgm-tools/neo-angband-mod-sdk`.
-The repo carries sample mods that CI installs and runs.
-
+Authors check a pack in CI with `neo-angband-mod-check` (the same rules the game enforces at install) and produce a distributable `plugin.js` with `neo-angband-mod-build`. Both ship in `@rpgm-tools/neo-angband-mod-sdk`. The repo carries sample mods that CI installs and runs.
 ---
 
-## Decisions (ratified 2026-07-08, PORT_PLAN.md decision 19)
+## Summary
 
-1. String-id (not index) serialization as the load-bearing rule. [DECIDED]
-2. Quarantine (freeze + restore) as the default uninstall behavior, with
-   a one-time keep/purge prompt for orphans. [DECIDED]
-3. Last-in-load-order-wins with field-level patch composition. [DECIDED]
-4. Determinism guard on state-affecting plugins - AS A WARNING AND LABEL
-   WITH AN OPT-OUT, NOT A BAR (cheaty and nondeterministic mods are
-   allowed; see section 4 and PORT_PLAN.md decision 18). [DECIDED, changed]
-5. Profiles bound to saves, profiles shareable but saves not. [DECIDED]
-6. Pre-migration snapshot as operational safety, reconciled with the
-   no-save-scum rule. [DECIDED]
-7. Uninstall recovery: stranded characters return to town, mod items are
-   quarantined and reactivate in the slot they came out of on reinstall,
-   and a stash view surfaces everything quarantined or shadowed. [DECIDED;
-   the stash view and the item surfacing are BUILT, see "When a mod's
-   content leaves the game" above. The item half is the orphans store
-   rather than home stock, because the store records the gear handle and
-   equipment slots an item was taken from and the home has no way to carry
-   those; the effect a home entry was for - visible, labelled, inert,
-   costing no slot - is what the stash view provides. The stranded-location
-   half is not built.]
-8. Orphan policy: quarantine by default with a one-time per-save keep/purge
-   prompt (keep default); no auto-purge. [DECIDED 2026-07-14; BUILT]
-9. Integrate with Vortex and the other popular mod managers, and split the
-   labour with them: the game keeps rudimentary management (enable/disable,
-   per-patch opt-out, a one-step order nudge, conflict report, profiles)
-   and advanced management - load-order sorting above all - is the external
-   manager's job over the shared on-disk pack format. The enabled set and
-   the load order must therefore be externally authorable and authoritative
-   when present. [DECIDED 2026-07-27]
-10. A mod is the unit the player switches; its patches ride with it. A
-   disabled mod's patches DO NOT EXIST (no flag, nothing to toggle,
-   faithful 4.2.6); enabling a mod turns its whole patch set on at once,
-   and each patch is then individually switchable so a player can take the
-   set minus one. `default: true` on a rule means only "on once its own mod
-   is on". [DECIDED 2026-07-26, wording clarified 2026-07-27]
+1. Saves reference content by string id, never by index. Most of the rest of this design follows from that.
+2. Uninstalling quarantines a mod's content (freeze and restore) by default, with a one-time keep/purge prompt for orphans.
+3. The last mod in the load order wins, and patches compose field by field.
+4. The determinism guard on state-affecting plugins is a warning and a label with an opt-out, never a bar. Cheaty and nondeterministic mods are allowed; see section 4.
+5. Profiles are bound to saves. Profiles are shareable and saves are not.
+6. The pre-migration snapshot is an operational safety net, consistent with the no-save-scum rule.
+7. Uninstall recovery: stranded characters return to town, mod items are quarantined and go back to the slot they came out of on reinstall, and a stash view shows everything quarantined or shadowed. The stash view and the item restore are built (see "When a mod's content leaves the game" above); the stranded-location half is not. Items are held in the orphans store rather than as home stock, because the store records the gear handle and equipment slots an item was taken from and the home has no way to carry those. The stash view gives what a home entry would have: visible, labelled, inert, and costing no slot.
+8. Orphans are quarantined by default, with a one-time per-save keep/purge prompt where keep is the default, and nothing is purged automatically. This is built.
+9. The game works with Vortex and the other popular mod managers and splits the work with them. The game keeps basic management (enable/disable, per-patch opt-out, a one-step order nudge, conflict report, profiles), and advanced management, load-order sorting above all, is the external manager's job over the shared on-disk pack format. The enabled set and the load order must therefore be externally authorable and authoritative when present.
+10. A mod is the unit the player switches, and its patches come with it. A disabled mod's patches do not exist (no flag, nothing to toggle, as in 4.2.6). Enabling a mod turns its whole patch set on at once, and each patch can then be switched individually so a player can take the set minus one. `default: true` on a rule means only "on once its own mod is on".

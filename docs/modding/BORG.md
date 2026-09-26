@@ -1,10 +1,6 @@
 # Borg (first-party autoplayer mod)
 
-Borg is Neo Angband's automatic player: a faithful TypeScript port of
-Angband 4.2.6's `borg` that plays the game on its own. It is a MOD, not part of
-core, and it is the completeness proof for the whole mod framework - it drives the
-real game through the same frozen perceive/act agent API any third-party or AI
-agent uses, with no privileged engine access.
+Borg is Neo Angband's automatic player: a faithful TypeScript port of Angband 4.2.6's `borg` that plays the game on its own. It is a mod rather than part of core, and it shows the mod framework can carry a complete autoplayer: it drives the real game through the same frozen perceive/act agent API that any third-party or AI agent uses, with no privileged engine access.
 
 ## Borg's role
 
@@ -13,22 +9,9 @@ It lives in its own repository,
 its own release tags and its own test suite, and it installs through the mod
 manager like any other mod. Nothing about it is compiled into the game.
 
-Borg is the flagship consumer of the agent seam (`AGENT_API_VERSION`, frozen
-at 1.x and add-only, `packages/core/src/agent/types.ts`):
+Borg is the main program built on the agent interface (`AGENT_API_VERSION`, frozen at 1.x and add-only, defined in `packages/core/src/agent/types.ts`). It reads the world only through `AgentView`, a read-only, serializable view, and folds what it can see into its own remembered map, monster list and object list, so it plays under fog of war like a person does instead of reading the game's full state. It acts only through `AgentActions`, the semantic command builders, the same way a human's keypresses would. Every turn it runs the ported `borg_think_dungeon` priority ladder (avoid death, attack, gather, flow, explore, descend), which is the original's logic transcribed with its thresholds intact.
 
-- **PERCEIVE** - it reads the world only through `AgentView` (the read-only,
-  serializable view facade), folding what it can see into its own remembered
-  map, monster list, and object list (a faithful fog-of-war world model, not
-  omniscient state reads).
-- **ACT** - it issues commands only through `AgentActions` (the semantic verb
-  builders), exactly as a human's keypresses would.
-- **DECIDE** - the ported `borg_think_dungeon` priority ladder runs every turn:
-  avoid death, attack, gather, flow, explore, descend - the original's logic,
-  transcribed with its thresholds intact.
-
-It is **deterministic**: its dry-run combat simulations draw from a private RNG,
-so it never perturbs the game's RNG and the save's determinism ratchet stays
-untripped. A Borg run is replayable.
+Borg is deterministic. Its dry-run combat simulations draw from a private random number generator, so it never disturbs the game's own RNG or trips the save's determinism check, and a Borg run can be replayed.
 
 ## Running Borg
 
@@ -40,21 +23,13 @@ Three steps, and the third is separate from the second on purpose.
 2. **Hand it the keyboard.** Press **Ctrl-Z** in play. The host warns twice,
    asks for confirmation, and the Borg takes over from the next turn.
 
-There is deliberately no settings-screen switch for this. Installing a mod and
-giving it the keyboard are different decisions, and the second one is a
-one-shot player action (Ctrl-Z), never a standing toggle a save can carry
-into an unrelated later session. The Borg's own Fixes & tweaks screen carries
-nine other toggles mapped to upstream's `borg_cfg[]` settings, covering risk
-tolerance and the five gear-weighting priorities among others, each defaulting
-to upstream's own value; the mod's own README lists all nine and what each one
-changes. Only one autoplayer can hold the keyboard at a time: if a second mod
-also declares a controller, the host refuses it by name and says which one is
-already playing.
+No settings-screen switch hands over the keyboard. Installing a mod and giving it the keyboard are separate choices, and the second is a one-time action (Ctrl-Z) each time, never a standing toggle that a save could carry into an unrelated later session.
 
-Once the Borg holds the keyboard, its own Fixes & tweaks screen (Mods -> Borg)
-carries an **Autoplayer speed** row: Turbo, Fast, Normal or Slow. Fast, Normal
-and Slow match the debug agent seam's own tiers below; Turbo (10ms) has no
-named equivalent there. It takes effect at once, no reload.
+The Borg's own Fixes & tweaks screen has nine other toggles mapped to upstream's `borg_cfg[]` settings. They cover risk tolerance and the five gear-weighting priorities, among others, and each defaults to upstream's own value. The mod's README lists all nine and what each one changes.
+
+Only one autoplayer can hold the keyboard at a time. If a second mod also declares a controller, the game refuses it by name and says which one is already playing.
+
+While the Borg holds the keyboard, its Fixes & tweaks screen (Mods -> Borg) also has an **Autoplayer speed** row: Turbo, Fast, Normal or Slow. Fast, Normal and Slow match the speeds of the `?agent=` debug option described below; Turbo (10ms) has no named equivalent there. A change takes effect at once, with no reload.
 
 It plays the same on every surface - browser, PWA, static self-host, desktop -
 because it arrives by the same route on all of them.
@@ -75,90 +50,28 @@ pathfinding, the think ladder, combat/defense/escape, item and store decisions -
 is ported behavior-faithfully from `reference/src/borg`, each subsystem carrying
 golden-value tests derived from the C.
 
-Because the frozen `AgentView` is a deliberately minimal contract, a few engine
-internals are supplied to the (trusted, in-process) Borg by the host rather than
-read from the view. Where a datum is not yet wired, the Borg degrades to a
-faithful conservative default rather than guessing:
+`AgentView` is kept minimal, so the game supplies a few engine internals to the Borg directly instead of through the view; the Borg runs trusted and in-process, so it can receive them. Where a piece of data is not yet wired, the Borg falls back to a faithful, conservative default rather than guessing. What is wired today:
 
-- **Monster race data** (blow dice, spell frequency, spell power) is wired from
-  the live monster registry through `makeCoreResolvers`, so danger sensing is
-  exact - and a mod's monsters are read by the same lookup as core's.
-- **Artifact activation identity** and the **in-shop signal** are wired too. The
-  Borg can tell whether a worn item grants a named activation and whether it is
-  charged, by walking the item's artifact, ego or kind back to the `Activation`
-  record that grants it - the same precedence `obj-make.c` applies. It can tell
-  which shop it is standing in, which is what lets the town-flow ladder's
-  shop-interaction steps fire at all.
-- **Hypothetical-loadout power deltas** are wired from 0.25.0. The wear, buy and
-  sell paths all decide by comparing `borg_power` now against `borg_power` with a
-  candidate worn, bought or sold, and none of them had a way to compute the
-  second number: the frozen view describes the gear the character HAS. It now
-  asks the engine, through `view.simulateLoadout`, which re-runs `calc_bonuses`
-  over a hypothetical set of worn objects; the Borg then runs the ported
-  `borg_notice` and `borg_power` over the answer, which is the wield / recompute
-  / revert shape upstream uses. A mod's items are scored on the same terms as
-  core's, because what comes back is ordinary `ItemView`s and the scoring reads
-  their properties rather than their provenance.
+- **Monster race data** (blow dice, spell frequency, spell power) comes from the live monster registry through `makeCoreResolvers`, so danger sensing is exact, and a mod's monsters are read by the same lookup as core's.
+- **Artifact activations** and **which shop it is in** are wired too. The Borg can tell whether a worn item grants a named activation and whether it is charged, by tracing the item's artifact, ego or kind back to the `Activation` record that grants it, in the same order of precedence `obj-make.c` uses. It can also tell which shop it is standing in, which is what lets the town-flow ladder's shop steps fire at all.
+- **Power with a hypothetical loadout** is wired from 0.25.0. The wear, buy and sell decisions all compare `borg_power` now against `borg_power` with a candidate item worn, bought or sold, and none of them had a way to get the second number, because the frozen view describes only the gear the character has. The Borg now asks the engine through `view.simulateLoadout`, which re-runs `calc_bonuses` over a hypothetical set of worn objects, and then runs the ported `borg_notice` and `borg_power` over the answer, the same wield, recompute and revert approach upstream uses. A mod's items are scored on the same terms as core's, because the answer is ordinary `ItemView`s and the scoring reads their properties, not where they came from.
+- **The attack-message table** comes from `registries.monsters.blowMethods`. Upstream builds its `suffix_hit_by` list from the same records at start-up and uses it to recognise that something just hit the borg. Without it, a blow from a monster the Borg cannot see raises no regional fear, and regional fear is the only thing upstream has that stops a borg resting through a beating. A mod's own blow methods are recognised the same way.
+- **Object values and flavour awareness** come from `registries.objects` and `state.isAware`. Upstream prices every object it can see on the floor at its kind's shop value, or at 1 while the flavour is unidentified, and every rung that walks to an object skips anything priced at zero or less. Without prices, the Borg sees a floor of worthless things and collects none of them. A mod's own objects are priced by the same lookup.
 
-- **The attack-message table** is wired from `registries.monsters.blowMethods`.
-  Upstream builds its `suffix_hit_by` list from the same records at start-up, and
-  it is how the borg recognises that something just hit it. Without it a blow
-  from a monster the Borg cannot see raises no regional fear, and regional fear is
-  the only thing upstream has that stops a borg resting through a beating. A mod's
-  own blow method is recognised on the same terms.
-
-- **What an object kind is worth, and whether the character knows the flavour**,
-  from `registries.objects` and `state.isAware`. Upstream prices every object it
-  can see on the floor at its kind's shop value, or at 1 while the flavour is
-  unidentified, and every rung that walks to an object skips anything priced at
-  zero or less. A Borg without the price sees a floor of worthless things and
-  collects none of them. A mod's own object is priced by the same lookup.
-
-The mod declares an engine range rather than degrading: a Borg missing any of the
-above is not a Borg with a feature switched off. Its own `PLANNED.md` is where
-this list is kept current, since the mod ships on its own schedule, and it also
-names what is not ported at all - the detection scheduler is the largest piece.
+The mod declares a supported engine range instead of degrading, because losing any of the above would break the Borg rather than switch off one feature. The mod ships on its own schedule, so its own `PLANNED.md` keeps this list current. It also names what has not been ported at all, of which the detection scheduler is the largest piece.
 
 ## The host answers blocking prompts for an autoplayer
 
-An `AgentController` returns a `PlayerCommand`, and "dismiss this message" is not
-one. Meanwhile the shell has places that block for a keypress: the `-more-` pager
-between two screenfuls of messages, the forced `-more-` a level change puts in
-front of the stair message, the floor-item list on a pile of two or more, the shop
-screen, a yes/no confirm. Each of those raises the modal gate, and the autoplayer
-clock used to skip every tick while it was up - so descending needed a human to
-press a key, and the run stopped there until somebody did.
+An autoplayer's `AgentController` returns a `PlayerCommand`, and "dismiss this message" is not a command. The game, though, has places that wait for a keypress: the `-more-` pager between two screenfuls of messages, the forced `-more-` a level change puts in front of the stair message, the floor-item list on a pile of two or more, the shop screen, and yes/no confirmations. Each of these opens a modal prompt, and the autoplayer clock used to skip every tick while one was open, so taking the stairs needed a human to press a key and the run stopped until somebody did.
 
-**So the host presses the key itself.** While an autoplayer holds the keyboard and
-a modal is open on a live game screen, the pump feeds one ESCAPE through the same
-input door every real keystroke goes through, and logs that it did. That is
-upstream Angband's own mechanism in this shell's terms: its borg installs itself
-as the hook `inkey()` consults for EVERY key the game reads, sees the `-more-` on
-the message line before it thinks about a move at all, and answers it with a space
-(`borg.c:371-388`). A blocking prompt was never something upstream's borg waited
-out.
+Now the game presses the key itself. While an autoplayer holds the keyboard and a modal prompt is open on a live game screen, the game feeds one ESCAPE through the same input path every real keystroke uses, and logs that it did. Upstream Angband's borg works the same way: it installs itself as the hook `inkey()` consults for every key the game reads, sees the `-more-` on the message line before it considers a move at all, and answers it with a space (`borg.c:371-388`). Upstream's borg never waited out a blocking prompt either.
 
-Three things follow, and an author driving a controller should know all three:
+If you write a controller, three consequences matter:
 
-- **ESCAPE, not a per-prompt answer.** Any key satisfies the pager, and ESCAPE is
-  what closes an overlay and reads as "no" at a confirm - which is what upstream's
-  borg answers to "Die?" (`borg-messages-react.c:133`). A controller cannot choose
-  a different answer, and does not need to: a decision the autoplayer should be
-  making arrives as a command it returns, not as a prompt it dismisses.
-- **Nothing is answered before there is a game.** Character creation owns the
-  terminal, and a mod's 120ms clock does not get to answer for the player rolling
-  a character.
-- **The shop screen closes rather than opening.** An autoplayer that steps onto a
-  shop door gets the screen dismissed, because that screen is a UI for a human.
-  Trading is `shopBuy` / `shopSell` / `shopExit` on the act facade.
+- The answer is always ESCAPE. Any key satisfies the pager, and ESCAPE closes an overlay and reads as "no" at a confirmation, which is also what upstream's borg answers to "Die?" (`borg-messages-react.c:133`). A controller cannot choose a different answer and has no need to: a decision the autoplayer should be making reaches it as a command it returns, never as a prompt it dismisses.
+- Nothing is answered before there is a game. Character creation owns the terminal, and a mod's 120ms clock does not answer for the player rolling a character.
+- The shop screen is dismissed. An autoplayer that steps onto a shop door has the screen closed, because that screen is a UI for a human. Trading goes through `shopBuy` / `shopSell` / `shopExit` on the act facade.
 
 ## For mod authors
 
-Borg is the reference implementation for building your own agent: an
-`AgentController` is just `(view, act) => AgentCommand | null`, and a mod offers
-one from `ModPlugin.controller` (see `PLUGINS.md`). The
-`neo-angband-mod-borg` repository is the large worked example;
-`packages/web/src/agents/demo.ts` is the minimal one. A controller requires the
-`command:add` capability in the manifest, because a controller that cannot act is
-not a controller. Because the contract is frozen and capability-gated, the same
-shape runs in-process (like the Borg) or sandboxed in a Web Worker.
+Borg is the reference implementation for building your own agent: an `AgentController` is just `(view, act) => AgentCommand | null`, and a mod offers one from `ModPlugin.controller` (see `PLUGINS.md`). The `neo-angband-mod-borg` repository is the large worked example; `packages/web/src/agents/demo.ts` is the minimal one. A controller needs the `command:add` capability in the manifest, since it has to be able to act. Because the contract is frozen and capability-gated, the same shape runs in-process (like the Borg) or sandboxed in a Web Worker.

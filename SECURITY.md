@@ -18,13 +18,13 @@ Remove unrelated personal data from save files and logs before attaching them.
 
 ## Expected response
 
-An acknowledgement normally arrives within a few days. Triage determines whether the report is reproducible, whether it crosses a security boundary, and which supported versions are affected. Actionable reports receive status updates when material facts change and receive coordinated disclosure timing when a fix is ready.
+An acknowledgement usually arrives within a few days. Triage establishes whether the report reproduces, whether it crosses a security boundary, and which supported versions are affected. Actionable reports get status updates when material facts change, and disclosure timing is coordinated once a fix is ready.
 
-This project has no bug bounty and no response-time SLA. Public credit is available when requested and when disclosure does not expose another person or project without consent.
+The project has no bug bounty and no response-time SLA. Reporters can be credited publicly on request, as long as the disclosure does not expose another person or project without consent.
 
 ## Security boundary
 
-Neo Angband is both the game engine and the host that installs, composes, and loads mods. Its security surface is broader than the surface of any single mod.
+Neo Angband is both the game engine and the host that installs, composes, and loads mods, so its security surface is broader than that of any single mod.
 
 The following inputs are untrusted:
 
@@ -33,11 +33,11 @@ The following inputs are untrusted:
 - Text, names, descriptions, URLs, and other values supplied by mods or players.
 - Network responses used for mod discovery, mod installation, and desktop updates.
 
-A content-only mod is intended to change declared game records. It is not intended to alter JavaScript prototypes, execute script, inject DOM markup, escape its storage namespace, or invoke desktop privileges.
+A content-only mod is meant to change the game records it declares and nothing more. It should not be able to alter JavaScript prototypes, execute script, inject DOM markup, escape its storage namespace, or invoke desktop privileges.
 
-An in-process `plugin.js` is trusted renderer code after the player enables it. Capability declarations describe the supported facade and inform consent, but they do not sandbox an in-process plugin from the live engine, browser APIs, or other ambient renderer facilities. The sandboxed Worker plugin tier is the containment boundary for code that must be technically restricted.
+Once the player enables it, an in-process `plugin.js` is trusted renderer code. Its capability declarations describe the supported facade and inform the player's consent, but they do not sandbox it from the live engine, browser APIs, or other ambient renderer facilities. Code that must be technically restricted belongs in the sandboxed Worker plugin tier, which is the containment boundary.
 
-Even trusted renderer code is not intended to gain arbitrary Node.js or operating-system access, replace the application, escape path-confined host storage, bypass native update authority, or expose preload bridges to remote content. Those controls belong to the desktop main process and preload boundary.
+Trusted renderer code still should not be able to gain arbitrary Node.js or operating-system access, replace the application, escape path-confined host storage, bypass native update authority, or expose preload bridges to remote content. Those controls live in the desktop main process and the preload boundary.
 
 ## Issues that require private reporting
 

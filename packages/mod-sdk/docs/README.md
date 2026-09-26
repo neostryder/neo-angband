@@ -89,127 +89,45 @@ that has not been settled.
 
 ## Contents
 
-- `tutorials/`: **the beginner path** - seven tiny mods, one idea each, each
-  ending in something visible on screen. The finished mod for every tutorial is
-  a real folder under `samples/tutorials/` that gets composed against the real
-  game data on every test run, so a tutorial cannot quietly stop working.
-  Start there if you have not written a mod for this game before.
-- `FEATURE_RESTORATION.md`: bringing back mechanics that later versions of
-  Angband dropped, without changing vanilla - the research rules that keep a
-  restoration honest, and why restoration is the best available test of whether
-  the mod system is real.
-- This page: pack anatomy, manifests, and record composition (live today,
-  backed by `@rpgm-tools/neo-angband-mod-sdk`).
-- `REQUIREMENTS.md`: **exactly what a mod must provide**, and the one page here
-  that cannot go stale - it is GENERATED from the rules the game enforces
-  (`packages/mod-sdk/src/standards.ts`), and a test fails if the two ever
-  disagree. Run those same rules against your own folder before publishing:
-  `npx neo-angband-mod-check path/to/your-mod`. Start here.
-- `AUTHORING.md`: the SHORTCUTS - `draftRecord` fills a new record from core's
-  own comparable records (including its price), `checkRecords` names every way
-  it will silently not work, and `ModProject` assembles a whole mod and composes
-  it through the real pipeline before saying anything. Read this before writing
-  a record by hand.
-- `MOD_LIFECYCLE.md`: how saves stay safe across install/update/
-  uninstall, installing from git (and a future marketplace), multi-mod
-  composition and conflict resolution, uninstall recovery, and the UX
-  principles. RATIFIED (decision 19); not yet fully built.
-- `PLUGINS.md`: shipping CODE in a mod folder, for a mod that a manifest
-  and a few record files cannot express - `plugin.js`, its `hooks(ctx)`/
-  `register(host, ctx)` entry points, and the doors each opens onto a live
-  game.
-- `MOD_SEAMS.md`: the CORE seams a mod reaches through - the `ModHooks`
-  behaviour interface, its per-hook fold rules, and how a patch is turned
-  on. Describes what is built.
-- `REGION_INPUT.md`: how pointer taps, context menus and long-presses route
-  by per-cell region ownership rather than by rectangle. Landed; historical
-  design record.
-- `CLOUD_BACKUP_DESIGN.md`: a player-chosen save-backup folder as a `qol`
-  feature - the two small host seams it needs, and why the trigger is
-  blocked on a seam that does not exist yet even though the engine side is
-  done.
-- `MOD_COMPATIBILITY.md`: what an engine release may and may not break, and
-  what you have to do about it. The four gates that can strand a mod, what
-  to write in `engine`, the two-release rule for an ABI bump, and the honest
-  gap around `ctx.core`. Read this before publishing anything.
-- `MOD_REACH.md`: the MEASURED answer to "how much of the game can a mod
-  actually make over today" - hook count, a census of the port's dispatch
-  tables and which are mod-reachable, what data layering really supports,
-  what resources are overridable, and the gap list. Read this before
-  trusting a capability claim on any other page: this directory contains
-  both design-of-record pages and built-today pages, and the two are not
-  the same thing.
-- **Replacing the whole front end** (an 8/16-bit menu shell, isometric, full 3D,
-  first-person, controller-driven) is a design that has been written down and
-  measured, but **the seams for it do not exist yet**. Two facts from that work
-  are worth knowing here: core is already headless and needs no change for any
-  of it, and what stands in the way is `GlyphTerm`, which is both the surface
-  and the input door. The plan itself is in the private working record (see
-  [../WORKING_RECORD.md](https://github.com/neostryder/neo-angband/blob/master/docs/WORKING_RECORD.md)) because it is a proposal under
-  argument rather than an API anyone can build against.
+- `tutorials/`: **the beginner path**, seven tiny mods with one idea each, each ending in something visible on screen. The finished mod for every tutorial is a real folder under `samples/tutorials/` that is composed against the real game data on every test run, so a tutorial cannot quietly stop working. Start there if you have not written a mod for this game before.
+- `FEATURE_RESTORATION.md`: bringing back mechanics that later versions of Angband dropped, without changing vanilla. It covers the research rules a restoration has to follow and why restoration is the best available test of whether the mod system is real.
+- This page: pack anatomy, manifests, and record composition (live today, backed by `@rpgm-tools/neo-angband-mod-sdk`).
+- `REQUIREMENTS.md`: **exactly what a mod must provide**. It is generated from the rules the game enforces (`packages/mod-sdk/src/standards.ts`), and a test fails if the two ever disagree, so it cannot go stale. Run the same rules against your own folder before publishing: `npx neo-angband-mod-check path/to/your-mod`. Start here.
+- `AUTHORING.md`: the shortcuts. `draftRecord` fills a new record from core's own comparable records (including its price), `checkRecords` names every way a record will silently not work, and `ModProject` assembles a whole mod and composes it through the real pipeline before reporting anything. Read this before writing a record by hand.
+- `MOD_LIFECYCLE.md`: how saves stay safe across install, update and uninstall, installing from git (and a future marketplace), multi-mod composition and conflict resolution, uninstall recovery, and the UX principles. Not yet fully built.
+- `PLUGINS.md`: shipping code in a mod folder, for a mod that a manifest and a few record files cannot express. It covers `plugin.js`, its `hooks(ctx)`/`register(host, ctx)` entry points, and what each one can reach in a live game.
+- `MOD_SEAMS.md`: the core seams a mod reaches through, including the `ModHooks` behaviour interface, its per-hook fold rules, and how a patch is turned on. Everything it describes is built.
+- `REGION_INPUT.md`: how pointer taps, context menus and long-presses route by per-cell region ownership rather than by rectangle. This is built, and the page is kept as a design record.
+- `CLOUD_BACKUP_DESIGN.md`: a player-chosen save-backup folder as a `qol` feature, the two small host seams it needs, and why the trigger is still blocked on a seam that does not exist yet even though the engine side is done.
+- `MOD_COMPATIBILITY.md`: what an engine release may and may not break, and what you have to do about it. It covers the four gates that can strand a mod, what to write in `engine`, the two-release rule for an ABI bump, and the gap around `ctx.core`. Read this before publishing anything.
+- `MOD_REACH.md`: how much of the game a mod can change today, measured. It has the hook count, a census of the port's dispatch tables and which of them a mod can reach, what data layering supports, which resources can be overridden, and the gap list. Check it before trusting a capability claim on any other page, because some pages in this directory describe designs and others describe what is built.
+- **Replacing the whole front end** (an 8/16-bit menu shell, isometric, full 3D, first-person, controller-driven) has a written and measured design, but **the seams for it do not exist yet**. Two findings from that work matter here: core is already headless and needs no change for any of it, and the obstacle is `GlyphTerm`, which is both the drawing surface and the input door. The plan itself is in the private working record (see [../WORKING_RECORD.md](https://github.com/neostryder/neo-angband/blob/master/docs/WORKING_RECORD.md)) because it is still a proposal rather than an API anyone can build against.
 - `docs/LINOLEUM.md`: tile packs and converting the classic tilesets.
-- `BUG_FIXES.md`: the `bug-fixes` mod - its design of record and
-  referenced changelog for upstream crash/corruption/save/determinism fixes
-  that core deliberately does not carry (decision 24). Design of record;
-  patches land with the mod runtime and the systems they touch.
-- `UPSTREAM_CATCHUP_MOD_SCOPE.md`: where a hypothetical "upstream catch-up"
-  mod (post-4.2.6 upstream fixes) would draw its line against `bug-fixes`.
-  Scope of record; no repository or code exists yet.
-- Coming as the engine lands them (P7 deliverables): handler registry
-  catalog (effects, commands, room builders), the sandbox capability
-  reference for scripted plugins, dialog/quest/shop cookbooks, and
-  publishing guidance. Validate and bundle are not in that list:
-  `neo-angband-mod-check` and `neo-angband-mod-build` already ship in
-  `@rpgm-tools/neo-angband-mod-sdk`.
-
+- `BUG_FIXES.md`: the `bug-fixes` mod, with its design and a referenced changelog of upstream crash, corruption, save and determinism fixes that core does not carry. Patches land with the mod runtime and the systems they touch.
+- `UPSTREAM_CATCHUP_MOD_SCOPE.md`: where a hypothetical "upstream catch-up" mod (post-4.2.6 upstream fixes) would draw its line against `bug-fixes`. No repository or code exists yet.
+- Still to come as the engine adds them: a handler registry catalog (effects, commands, room builders), the sandbox capability reference for scripted plugins, dialog, quest and shop cookbooks, and publishing guidance. Validating and bundling are not on that list, because `neo-angband-mod-check` and `neo-angband-mod-build` already ship in `@rpgm-tools/neo-angband-mod-sdk`.
 ## The first-party mods
 
-Seven, **none of them bundled**, all OFF until enabled (see
-`DEFAULT_ENABLED_MODS` - an untouched install is the faithful base game with no mod
-loaded). Each lives in its own repository and arrives through the mod manager's
-*Recommended mods...* row:
+There are seven, **none of them bundled**, and all are off until enabled (see `DEFAULT_ENABLED_MODS`; an untouched install is the faithful base game with no mod loaded). Each lives in its own repository and arrives through the mod manager's *Recommended mods...* row:
 
 | id | shape | where it lives | what it adds |
 | --- | --- | --- | --- |
-| `qol` | content | [own repo](https://github.com/neostryder/neo-angband-mod-qol) | Genuinely new conveniences, currently just auto-dig on walk. Built-in Angband `=` options are NOT here: they ship in core at their upstream defaults. See `QOL.md`. |
-| `bug-fixes` | content | [own repo](https://github.com/neostryder/neo-angband-mod-bug-fixes) | An unofficial patch set for upstream bugs core deliberately keeps. See `BUG_FIXES.md`. |
-| `linoleum` | tiles | [own repo](https://github.com/neostryder/neo-angband-mod-linoleum) | An ALTERNATIVE tile engine: the Linoleum loose-pack format (individual PNGs addressed by readable target maps, plus variant pools). It does NOT supply the game's graphics - all five upstream tile sets (Original / Adam Bolt / David Gervais / Nomad / Shockbolt Dark and Light) are core content (`grafmode.c` / `lib/tiles/list.txt`) and appear in the Graphics screen with no mod enabled. It ships all six converted to loose packs, so you can compare the two engines on identical art. Declare a pack with `{ "grafID": >=100, "engine": "linoleum", "menuname": "...", "path": "..." }` - `engine` names the FORMAT and the mod that ships the six converted packs shares the same id. Since its 0.15.0 it also carries the one rule the GAME used to hold: content a mod added, with no tile anywhere, is drawn from its nearest relative with the colour turned - under its own packs only, through `registry:tiles`. See `docs/LINOLEUM.md`. |
-| `borg` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player, driving the game through the same perceive/act API any third-party automation would use. The whole port lives there, with its own release tags and its own suite, including one that drives the BUILT `plugin.js`. Installing and enabling it does not hand it your character; its "Let the Borg play" toggle does. |
-| `feature-restoration` | content + plugin | [own repo](https://github.com/neostryder/neo-angband-mod-feature-restoration) | Beloved Angband features that a later version quietly dropped, brought back one named toggle at a time, every toggle off by default. `Teleport Other` (content: a `fieldPatches` addition to the Priest, Paladin and Ranger's own books, who lost the spell somewhere between an earlier Angband and 4.2.6 while the Mage and the Rogue kept it) and store discounts (plugin: 4.2.6 dropped the discount roll entirely, so this restoration installs a `registry:store` discount-roll handler instead of patching data that no longer exists). |
-| `forge` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-forge) | An in-game workshop for building other mods without leaving the game: pick an existing record, see its neighbours, change what would have to change, and pack the result up to try in-session, install, or hand off as a file. Early - the workshop's own content is a demonstration fixture until the remaining engine seams land. See `docs/ENGINE_SEAMS.md` in its own repository. |
-| `upstream-catchup` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-upstream-catchup) | Changes upstream Angband accepted after the `4.2.6` tag core is pinned to, cited by SHA, one toggle per CLASS of change and every one off by default. Its first slice is the four post-4.2.6 tile-assignment commits, applied through `registry:tiles` rather than as a `prefs` resource because a mod's pref file is replayed into EVERY tile map and the kind forbids a slot, so nothing could scope it to the one sheet upstream wrote it for. The boundary against `bug-fixes` is a single question: an accepted upstream commit exists, or it does not. This mod expires - a rebaseline onto a newer upstream tag makes every row in it redundant. See `UPSTREAM_CATCHUP_MOD_SCOPE.md`. |
+| `qol` | content | [own repo](https://github.com/neostryder/neo-angband-mod-qol) | New conveniences, currently just auto-dig on walk. Angband's built-in `=` options are not here: they ship in core at their upstream defaults. See `QOL.md`. |
+| `bug-fixes` | content | [own repo](https://github.com/neostryder/neo-angband-mod-bug-fixes) | An unofficial patch set for upstream bugs that core keeps. See `BUG_FIXES.md`. |
+| `linoleum` | tiles | [own repo](https://github.com/neostryder/neo-angband-mod-linoleum) | An alternative tile engine: the Linoleum loose-pack format (individual PNGs addressed by readable target maps, plus variant pools). It does not supply the game's graphics. All five upstream tile sets (Original / Adam Bolt / David Gervais / Nomad / Shockbolt Dark and Light) are core content (`grafmode.c` / `lib/tiles/list.txt`) and appear in the Graphics screen with no mod enabled. This mod ships all six converted to loose packs, so you can compare the two engines on identical art. Declare a pack with `{ "grafID": >=100, "engine": "linoleum", "menuname": "...", "path": "..." }`; `engine` names the format, and the mod that ships the six converted packs has the same id. Since 0.15.0 it also carries a rule the game used to hold: content a mod added, with no tile anywhere, is drawn from its nearest relative with the colour turned, under its own packs only, through `registry:tiles`. See `docs/LINOLEUM.md`. |
+| `borg` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player that drives the game through the same perceive/act API any third-party automation would use. The whole port lives in that repository, with its own release tags and its own test suite, including one that drives the built `plugin.js`. Installing and enabling it does not hand it your character; its "Let the Borg play" toggle does. |
+| `feature-restoration` | content + plugin | [own repo](https://github.com/neostryder/neo-angband-mod-feature-restoration) | Angband features that a later version dropped, brought back one named toggle at a time, every toggle off by default. `Teleport Other` (content: a `fieldPatches` addition to the Priest, Paladin and Ranger's own books, since those classes lost the spell somewhere between an earlier Angband and 4.2.6 while the Mage and the Rogue kept it) and store discounts (plugin: 4.2.6 dropped the discount roll entirely, so this restoration installs a `registry:store` discount-roll handler instead of patching data that no longer exists). |
+| `forge` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-forge) | An in-game workshop for building other mods without leaving the game: pick an existing record, see its neighbours, change what would have to change, and pack the result up to try in-session, install, or hand off as a file. It is early, and the workshop's own content is a demonstration fixture until the remaining engine seams land. See `docs/ENGINE_SEAMS.md` in its own repository. |
+| `upstream-catchup` | plugin | [own repo](https://github.com/neostryder/neo-angband-mod-upstream-catchup) | Changes upstream Angband accepted after the `4.2.6` tag core is pinned to, cited by SHA, with one toggle per class of change and every one off by default. Its first slice is the four post-4.2.6 tile-assignment commits, applied through `registry:tiles` rather than as a `prefs` resource, because a mod's pref file is replayed into every tile map and the kind forbids a slot, so nothing could scope it to the one sheet upstream wrote it for. The boundary against `bug-fixes` is whether an accepted upstream commit exists. This mod expires: a rebaseline onto a newer upstream tag makes every row in it redundant. See `UPSTREAM_CATCHUP_MOD_SCOPE.md`. |
+First-party mods take the same route into the game as anyone else's mod. Bundling the project's own mods would have hidden every defect in the install path behind mods that never used it, and the download route, the folder code loader and the plugin ABI work because no mod is exempt from them. The seven first-party mods are also the reference examples, so read them to learn the seams.
 
-**First-party is not a shortcut.** All seven take the same route into the game as anybody else's mod, and that is on purpose: bundling the author's own mods would have hidden every defect in the install path behind mods that never used it. The download route, the folder code loader and the plugin ABI all work because nothing is exempt from them. What first-party buys is that these seven are also the reference examples - read them to learn the seams.
+Enable one in the in-app mod manager (game menu -> Mods), or with `?mods=qol,bug-fixes,linoleum` for a one-off.
 
-Enable one in the in-app mod manager (game menu -> Mods), or with
-`?mods=qol,bug-fixes,linoleum` for a one-off.
+The mod is the unit you switch, and its patches come with it. While a mod is disabled its patches do not exist: its code is never called, no hook is installed, nothing appears in the menu, and core runs the faithful base game. A mod that changes behaviour does so by default-exporting `ModHooks` from its own `plugin.ts`; core holds one composed `ModHooks` and never learns which mod supplied what (`docs/modding/MOD_SEAMS.md`). Enabling the mod turns its whole patch set on at once, and each patch can then be switched individually on that mod's own screen (Mods -> the mod -> Fixes & tweaks), so you can take the set minus one. That is all `default: true` on a rule means: on once its own mod is on, never on in a fresh install.
 
-**The mod is the unit you switch; its patches ride with it.** While a mod is
-disabled its patches DO NOT EXIST - its code is never called, no hook is
-installed, nothing appears in the menu, and core runs the faithful base game. A mod that
-changes BEHAVIOUR does so by default-exporting `ModHooks` from its own
-`plugin.ts`; core holds one composed `ModHooks` and never learns which mod
-supplied what (`docs/modding/MOD_SEAMS.md`).
-Enabling the mod turns its whole patch set on at once,
-and each patch is then individually switchable on that mod's own screen
-(Mods -> the mod -> Fixes & tweaks), so you can take the set minus one.
-That is all `default: true` on a rule means:
-"on once its own mod is on" - never "on in a fresh install".
+The `demo-*` directories are not shipped mods. They are the framework proofs, one per SDK load path (a content pack that patches a core monster, a sandboxed worker plugin, a trusted in-process plugin), and they keep all three paths exercised in dev and in the test suite. Discovery drops them from release builds (`isShippedMod` in `mod-store.ts`). Since nothing else is bundled, a release build's discovered mod set is empty and a player's mod manager lists exactly what they installed, which `mod-store.test.ts` asserts ("a release build's content catalog is EMPTY").
 
-The `demo-*` directories alongside them are NOT shipped mods. They are the
-framework proofs - one per SDK load path (a content pack that patches a core
-monster, a sandboxed worker plugin, a trusted in-process plugin) - and exist
-so all three paths stay exercised in dev and in the test suite. Discovery
-drops them from release builds (`isShippedMod` in `mod-store.ts`). Since nothing
-else is bundled, a release build's discovered mod set is EMPTY and a player's mod
-manager lists exactly what they installed - which is asserted, not assumed
-(`mod-store.test.ts`, "a release build's content catalog is EMPTY").
-
-One demo does carry its weight beyond being an example: `demo-hooks` is the only
-mod in the build with a `plugin.ts`, so it is what keeps the ModHooks discovery
-path and its guards from going vacuous now that the real mods have left. A glob
-matching nothing passes every assertion about what it matched.
-
+One demo matters beyond being an example. `demo-hooks` is the only mod in the build with a `plugin.ts`, so it keeps the ModHooks discovery path and its guards from going vacuous now that the real mods have left, since a glob that matches nothing would pass every assertion about what it matched.
 ## Pack anatomy
 
 A pack is a directory (or archive) with a manifest and content files:
@@ -327,41 +245,19 @@ declare them in your manifest, and write them namespaced with your mod id.
 }
 ```
 
-The first op retunes a field core owns - the dagger now really rolls 1d5. The
-second adds one core does not, and a plugin reads it back as
-`kind.ext["gore:bleed"]`.
+The first op changes a field core owns, so the dagger now rolls 1d5. The second adds a field core does not have, and a plugin reads it back as `kind.ext["gore:bleed"]`.
 
-**Why namespaced.** Whoever ships first would otherwise take `bleed`, and every
-later mod either collides with it or works around it. Qualifying by your mod id
-makes the collision impossible, and makes deliberate interop possible in the
-same stroke - writing `gore:bleed` from a different mod is unambiguously an
-attempt to extend *gore's* field. It is the same rule the vocabulary registry
-already uses for terms (`gore:luck`), so there is one rule, not two.
+**Why namespaced.** Without a namespace, whichever mod shipped first would take `bleed`, and every later mod would either collide with it or work around it. Qualifying the name with your mod id makes the collision impossible and makes deliberate interop possible: writing `gore:bleed` from a different mod is clearly an attempt to extend *gore's* field. The vocabulary registry already uses the same rule for terms (`gore:luck`).
 
-**Writing another mod's field.** To write `gore:bleed` from a mod other than
-`gore`, declare `gore` in `dependencies` or `optionalDependencies`. Otherwise
-the write is refused, the field is rolled back, and the fault names your mod;
-later edits to that field made from the refused value are rolled back too.
+**Writing another mod's field.** To write `gore:bleed` from a mod other than `gore`, declare `gore` in `dependencies` or `optionalDependencies`. Otherwise the write is refused, the field is rolled back, and the fault names your mod. Later edits to that field made from the refused value are rolled back too.
 
-**Why declared.** A namespaced key that no loaded mod declares is stripped at
-composition and reported by name, and so is one written onto a file the
-declaration does not list, or one whose shape does not match its `type`. The
-declaration costs one manifest line and buys the error message: without it, a
-typo looks exactly like a deliberate new field, so you would see your data
-arrive and conclude the patch worked.
+**Why declared.** A namespaced key that no loaded mod declares is stripped at composition and reported by name, and so is one written onto a file the declaration does not list, or one whose shape does not match its `type`. The declaration costs one manifest line and gets you that error message. Without it, a typo looks exactly like a deliberate new field, so you would see your data arrive and conclude the patch worked.
 
-An *unqualified* key core does not know is not treated as a field at all -
-`atack` is a misspelling of `attack`, not a new attribute - and the game reports
-it with core's nearest real field named.
+An *unqualified* key core does not know is not treated as a field at all (`atack` is a misspelling of `attack`, not a new attribute), and the game reports it with core's nearest real field named.
 
-A dropped field costs the field, not the mod: everything else that patch did
-still applies.
+A dropped field costs only that field: everything else the patch did still applies.
 
-`ext` is absent entirely on an unmodded record, so its presence means a mod put
-something there, and it holds ONLY your keys - core's own fields are never
-copied into it, because a mod reading a pre-bind copy of a field it did not add
-would be reading a value that can disagree with the bound one forever without
-either being wrong. It is frozen, so one mod cannot rewrite what another reads.
+`ext` is absent entirely on an unmodded record, so if it is present, a mod put something there. It holds only mod keys. Core's own fields are never copied into it, because a mod reading a pre-bind copy of a field it did not add would be reading a value that can disagree with the bound one forever without either being wrong. It is frozen, so one mod cannot rewrite what another reads.
 
 `fields` entries take:
 
@@ -371,73 +267,27 @@ either being wrong. It is frozen, so one mod cannot rewrite what another reads.
 | `files` | yes | the record files it may appear on; a misplacement is an error |
 | `type` | no | `string`, `number`, `boolean`, `object`, `array`, or `any` |
 | `label`, `desc` | no | for a mod manager or a character sheet |
+Core never reads `ext`. The game does not know what "bleed" means, so data alone changes nothing, and a mod that adds the field also supplies the behaviour: a `registry:effect` handler for what bleeding does, or a `registry:blow` handler for a monster attack that applies it.
 
-Core never reads `ext`. Data alone changes nothing: the game does not know
-what "bleed" means, so a mod that adds the field also supplies the behaviour -
-a `registry:effect` handler for what bleeding does, or a `registry:blow`
-handler for a monster attack that applies it. Adding the field is what makes
-the data half possible; the plugin is what makes it happen.
+Which keys count as core's is derived from core's own gamedata rather than declared by hand (`packages/core/src/mod/record-keys.ts`, generated and re-derived by its test in both directions), so the boundary cannot drift as the pack grows.
 
-Which keys count as core's is measured from core's own gamedata rather than
-declared (`packages/core/src/mod/record-keys.ts`, generated and re-derived by
-its test in both directions), so the boundary cannot drift as the pack grows.
+> Every record of every shipped file can now be addressed by a ref, except `history`, whose records are `{chart, phrase}` with nothing in them that is not a value a mod would change. An op against `history` is reported, never dropped. Until 2026-07-29 a per-record op aimed at any of the 20 non-name-keyed files was silently dropped, and until 2026-08-08 a further 73 individual records, 61 of `ego_item`'s 107 among them, could not be addressed by any ref at all. `MOD_REACH.md` carries the measurement.
 
-> **The old limitation here is gone, and this note replaces it.** Until
-> 2026-07-29 a per-record op aimed at any of the 20 non-name-keyed files
-> was silently dropped, and until 2026-08-08 a further 73 individual
-> records - 61 of `ego_item`'s 107 among them - were addressable by no
-> ref at all. Both are closed and measured: **every record of every
-> shipped file is now reachable**, except `history`, whose records are
-> `{chart, phrase}` with nothing in them that is not a value a mod would
-> change. An op against `history` is reported, never dropped.
-> `MOD_REACH.md` carries the measurement.
-
-Total conversions are the same mechanism at full throttle: depend on
-`core`, replace or remove what you do not want, add your own world.
-
+Total conversions are the same mechanism at full throttle: depend on `core`, replace or remove what you do not want, and add your own world.
 ### Adding things that do not exist in the base game
 
-Two levels:
+There are two levels:
 
-1. New records of existing types (the JSON above) - pure data, safe by
-   construction, validated against the same schemas core uses.
-2. New capabilities - new effect opcodes, new commands, new room
-   builders, monster-AI overrides, new vocabulary terms. These go
-   through the capability-gated registry host
-   (`packages/core/src/mod/registry-host.ts`), and they require a
-   **TRUSTED in-process** plugin - your mod folder's `plugin.js` - not the
-   sandboxed Worker tier. A Worker is async by construction and cannot
-   supply a handler that runs synchronously with live `rng` / `chunk` /
-   `player` access deep inside the turn. The sandboxed tier keeps the
-   reactive perceive/act/event surface and none of the registries.
-   Trust is explicit: the plugin declares each `registry:*` capability
-   in its manifest and the user consents at install. **Explicit is not
-   the same as enforced**, and the difference is worth knowing before
-   building on it: the capability gates the facade, while the same live
-   registries also arrive ungated through `ctx.core`, `ctx.state` and
-   `ctx.registries`, because a mod is meant to be able to read
-   everything without declaring anything. PLUGINS.md's
-   "What a capability gates, and what it does not" has the table of
-   twins and the reason the boundary is the install rather than the
-   list.
+1. New records of existing types (the JSON above): pure data, safe by construction, and validated against the same schemas core uses.
+2. New capabilities: new effect opcodes, new commands, new room builders, monster-AI overrides, new vocabulary terms. These go through the capability-gated registry host (`packages/core/src/mod/registry-host.ts`), and they need a **trusted in-process** plugin, your mod folder's `plugin.js`, not the sandboxed Worker tier.
 
-> **This limitation is CLOSED, and what follows is what replaced it.** Until the
-> plugin ABI landed, both code paths were build-time Vite globs over
-> `packages/web/mods/`, so only a mod compiled into the web bundle could reach a
-> registry and a mod installed from disk could supply gamedata JSON and nothing
-> else. That is no longer true. A mod folder ships `plugin.js` beside its
-> `manifest.json`, the host loads it from wherever the folder is (a loopback URL
-> on desktop, a rewritten module graph in a browser tab) and calls
-> `register(host, ctx)` on it like any other - `packages/web/src/mod-plugin.ts`
-> is the contract and `main.ts`'s `activeModCode().plugins` loop is the caller.
-> The shipped `feature-restoration` mod reaches `registry:store` this way, from
-> its own repository, through the same install route anyone's mod uses.
+   A Worker is asynchronous by construction, so it cannot supply a handler that runs synchronously with live `rng` / `chunk` / `player` access deep inside the turn. The sandboxed tier keeps the reactive perceive/act/event surface and none of the registries.
+
+   Trust is explicit: the plugin declares each `registry:*` capability in its manifest and the user consents at install. Explicit is not the same as enforced, though. The capability gates the facade, while the same live registries also arrive ungated through `ctx.core`, `ctx.state` and `ctx.registries`, because a mod is meant to be able to read everything without declaring anything. PLUGINS.md's "What a capability gates, and what it does not" has the table of twins and explains why the boundary is the install rather than the list.
+
+> A mod installed from disk can reach the registries. Before the plugin ABI landed, both code paths were build-time Vite globs over `packages/web/mods/`, so only a mod compiled into the web bundle could reach a registry, and a mod installed from disk could supply gamedata JSON and nothing else. Now a mod folder ships `plugin.js` beside its `manifest.json`, and the host loads it from wherever the folder is (a loopback URL on desktop, a rewritten module graph in a browser tab) and calls `register(host, ctx)` on it like any other plugin. `packages/web/src/mod-plugin.ts` is the contract, and `main.ts`'s `activeModCode().plugins` loop is the caller. The shipped `feature-restoration` mod reaches `registry:store` this way, from its own repository, through the same install route anyone's mod uses.
 >
-> What is still true: the registries cover a set of domains, not the whole
-> engine, and most of the port's dispatch tables have no registry at all.
-> `MOD_REACH.md` has the census, and it is the number to check before building
-> on a capability claim.
-
+> The registries still cover a set of domains rather than the whole engine, and most of the port's dispatch tables have no registry at all. `MOD_REACH.md` has the census; check it before building on a capability claim.
 ## Versioning and stability
 
 `@rpgm-tools/neo-angband-mod-sdk` is the versioned surface mod authors build

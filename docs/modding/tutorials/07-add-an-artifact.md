@@ -13,15 +13,9 @@ so it helps to have added one first.
 
 ## What an artifact actually is
 
-This is the whole tutorial, so it is worth getting straight before you type
-anything.
+Get this straight before you type anything, because the rest of the tutorial follows from it.
 
-An artifact is **not** a new kind of item. It is a set of adjustments to an item
-the game already has. "The Leather Shield of the Watchful Eye" is a real leather
-shield, out of the real leather shield entry in `object.json`, with a different
-name, better numbers, and some flags bolted on. That is why the record has a
-field called `base-object` and why almost every other field is a number: you are
-describing the difference, not the thing.
+An artifact is a set of adjustments to an item the game already has, not a new kind of item. "The Leather Shield of the Watchful Eye" is a real leather shield, from the real leather shield entry in `object.json`, with a different name, better numbers and some flags bolted on. That is why the record has a field called `base-object`, and why almost every other field is a number: you are describing the difference, not the thing.
 
 Two consequences follow from that, and they are what makes artifacts feel
 different from tutorial 2:
@@ -99,10 +93,7 @@ Look at `name` again:
 "name": "of the Watchful Eye"
 ```
 
-That is not a mistake and it is not shorthand. An artifact's name is the part
-that goes **after** the base object's name, because the game assembles the full
-name from both halves: `Leather Shield` plus `of the Watchful Eye` gives you *the
-Leather Shield of the Watchful Eye* in the item list.
+An artifact's name is only the part that goes **after** the base object's name, because the game assembles the full name from both halves: `Leather Shield` plus `of the Watchful Eye` gives you *the Leather Shield of the Watchful Eye* in the item list.
 
 This is why artifact names in the base game read the way they do. Look in
 `packages/content/pack/artifact.json` and you will find `of Galadriel`, which
@@ -119,37 +110,16 @@ Leather Shield of the Watchful Eye~*.
 
 ## The one thing that will bite you
 
-**`base-object`.**
+The field to watch is `base-object`. Both halves of it have to name something real:
 
-Both halves of it have to name something real:
+- `tval` is the item type, and it comes from `object_base.json`: `shield`, `sword`, `hard armor`, `light`, `ring`. These are the base game's own strings, not names you choose, and the armour ones use the American spelling, which catches people out.
+- `sval` is the base object's name within that type, from `object.json`, with the `&` and `~` decoration stripped off. The entry reads `"& Leather Shield~"`; you write `"Leather Shield"`.
 
-- `tval` is the item type, and it comes from `object_base.json`. `shield`,
-  `sword`, `hard armor`, `light`, `ring`. Note the American spelling on the
-  armour ones, which catches people, and note that these are the base game's
-  own strings rather than anything you get to choose.
-- `sval` is the base object's name inside that type, from `object.json`, with
-  the `&` and `~` decoration stripped off. The entry reads
-  `"& Leather Shield~"`; you write `"Leather Shield"`.
+If the `tval` is wrong, your artifact is dropped, and the mod manager shows a line naming the record and the reason, so you know what to fix.
 
-Get the `tval` wrong and your artifact is dropped, with a line in the mod
-manager saying which record and why. That is a real answer and you can act on it.
+If the `sval` is wrong, the game does not refuse it. It creates an invisible placeholder base object and builds your artifact on that instead, because that is how the base game's own Phial, Star and Arkenstone work: those three have no ordinary version anywhere in `object.json`. The game needs that behaviour, but it can still tell a misspelling apart: `base-object.sval` is a declared reference, so a typo is reported by name on your mod's row - *base-object.sval names the base object the artifact is built on "lether shield", and no loaded pack defines it in object*. If you miss that report, you get an artifact that generates and equips but whose base is blank: no weight class, none of the base's own behaviour, an item that is somehow not really a shield.
 
-Get the **`sval`** wrong and something sneakier happens: the game does not
-refuse. It creates an invisible placeholder base object for you and builds your
-artifact on that instead, because that is exactly how the base game's own
-Phial, Star and Arkenstone work: those three have no ordinary version anywhere in
-`object.json`. The behaviour is correct and it is load-bearing. It is also
-distinguishable from a misspelling, though, and that is the part worth knowing:
-`base-object.sval` is a declared reference, so a typo is reported by name on your
-mod's row - *base-object.sval names the base object the artifact is built on
-"lether shield", and no loaded pack defines it in object*.
-The symptom is an artifact that generates and equips but whose base is a blank:
-no weight class, none of the base's own behaviour, an item that is somehow not
-really a shield.
-
-So: **copy the `sval` out of `object.json`.** Do not type it from memory. This is
-the one field in this file where a typo produces a working game and a wrong
-item.
+So copy the `sval` out of `object.json` instead of typing it from memory. It is the one field in this file where a typo still gives you a working game, with the wrong item in it.
 
 ## Patching an artifact the game already has
 
@@ -216,10 +186,7 @@ that already activates and change the numbers before writing one from scratch.
 
 ## Sample mod
 
-`samples/tutorials/tutorial-07-add-an-artifact/` in this repository is exactly
-this mod. It is not a copy of the tutorial. It is a mod that gets loaded and
-checked against the real game data on every test run, so if anything on this
-page ever stops being true, the build fails.
+`samples/tutorials/tutorial-07-add-an-artifact/` in this repository is exactly this mod, and it is loaded and checked against the real game data on every test run, so the build fails if the tutorial and the game ever disagree.
 
 **Next:** nothing, this is the last one. What is worth reading after these is
 listed at the end of the [tutorial index](README.md), and
