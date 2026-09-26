@@ -896,8 +896,12 @@ export function charSheetDeps(
  * (get_history / generateHistory, wired through generatePlayer); empty history
  * still renders nothing so a headless / pre-birth character degrades cleanly.
  */
-export function historyBlockLines(state: GameState, cols = 80): ScreenLine[] {
-  const block = historyTextBlock(state);
+export function historyBlockLines(
+  state: GameState,
+  cols = 80,
+  background = state.modHooks?.characterBackground,
+): ScreenLine[] {
+  const block = historyTextBlock(state, background);
   return block === null ? [] : screenBlockLines(block, cols);
 }
 
@@ -915,9 +919,21 @@ export function historyBlockLines(state: GameState, cols = 80): ScreenLine[] {
  * two columns wide of 4.2.6 - `text_out_to_screen` writes a non-space only
  * while `x < wrap - 1`, so its rightmost glyph is at column 70 - and re-flowed
  * the paragraph, which a player can see.
+ *
+ * THE characterBackground SEAM (mod/hooks.ts) is applied here, to the whole
+ * paragraph and before any wrap, because every place the background is shown
+ * (the character sheet, the birth screen and the character dump) is built from
+ * this block. The stored text is never changed, so the save keeps what
+ * get_history produced. `background` defaults to the state's own hook; the
+ * birth preview passes one explicitly, because its throwaway state carries no
+ * hooks.
  */
-function historyTextBlock(state: GameState): ScreenTextBlock | null {
-  const history = state.actor.player.history.trim();
+function historyTextBlock(
+  state: GameState,
+  background = state.modHooks?.characterBackground,
+): ScreenTextBlock | null {
+  const stored = state.actor.player.history;
+  const history = (background ? background(stored) : stored).trim();
   if (!history) return null;
   return {
     kind: "text",

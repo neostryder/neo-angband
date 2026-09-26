@@ -116,6 +116,90 @@ export interface HistoryDisplayEntry {
   readonly expandUserInput?: true;
 }
 
+/**
+ * The facts describe_effect (obj-info.c L2060) branches on when it writes the
+ * opening words of an item's effect description, offered to `effectIntro`.
+ *
+ * Every field is something core has already computed for its own wording; none
+ * is a judgement made for a mod. A post-4.2.6 wording that asks a different
+ * question of the same facts ("may this need a target?") derives its answer
+ * from them.
+ */
+export interface EffectIntro {
+  /**
+   * Which of describe_effect's two openings this is.
+   *
+   * `"unknown"`: the effect is not yet known, so core writes one whole
+   * sentence and stops ("It can be aimed.\n"). `"known"`: core writes the
+   * lead-in to the effect description ("When aimed, it "), and the description
+   * of the effect, or the activation's own text, follows it directly.
+   */
+  readonly effect: "known" | "unknown";
+  /**
+   * The object's class, by the tval tests describe_effect and obj_known_effect
+   * make: `"food"` (tval_is_edible), `"potion"`, `"scroll"`, `"wand"`,
+   * `"staff"`, `"rod"`, or `"other"` for everything else, such as activatable
+   * equipment.
+   */
+  readonly itemClass: "food" | "potion" | "scroll" | "wand" | "staff" | "rod" | "other";
+  /**
+   * obj_known_effect's `aimed`. For a known effect it is effect_aim: the
+   * effect takes a direction. For an unknown effect 4.2.6 sets it for every
+   * wand and every rod, because it cannot tell.
+   */
+  readonly aimed: boolean;
+  /** The object carries an activation (obj->activation). */
+  readonly activation: boolean;
+  /**
+   * The activation has its own description (obj->activation->desc), which
+   * follows the lead-in instead of a generated effect description. Always
+   * false for an unknown effect.
+   */
+  readonly describedActivation: boolean;
+  /** The text core writes: faithful 4.2.6 wording, or the previous mod's. */
+  readonly text: string;
+}
+
+/**
+ * Where one piece of screen text sits, offered to `screenText` beside the text.
+ *
+ * It carries only what a mod needs to match one piece exactly and leave every
+ * other piece alone. Everything here is the text as the screen built it,
+ * before any mod restated it, so a match does not depend on load order.
+ */
+export interface ScreenTextSite {
+  /**
+   * The screen's stable id (`core:help-symbols`, `core:equip-cmp-select-help`),
+   * or `"core:prompt"` for the prompt of a row-0 prompt.
+   */
+  readonly screen: string;
+  /**
+   * Which part of the screen: the `title`, the `footer`, an `action` label, a
+   * table's `caption`, `column` label, `cell`, `empty` state or row `detail`,
+   * a text block's `prose`, a `line` of pre-wrapped rows, or the `prompt`.
+   */
+  readonly part:
+    | "title"
+    | "footer"
+    | "action"
+    | "caption"
+    | "column"
+    | "cell"
+    | "empty"
+    | "detail"
+    | "prose"
+    | "line"
+    | "prompt";
+  /** For a `cell` or `column`: the column's stable key (`desc1`, `glyph2`). */
+  readonly column?: string;
+  /**
+   * For a `cell` or `detail`: every cell of that row by column key, as the
+   * screen built it. This is how a mod tells two cells with the same text
+   * apart.
+   */
+  readonly row?: Readonly<Record<string, string>>;
+}
+
 /** A newly available player ability, named without exposing a mutable game object. */
 export type AbilityGained =
   | {
@@ -384,6 +468,86 @@ export interface ModHooks {
   messageText?: (raw: string) => string;
 
   /**
+   * Screen text drawn outside the message line (the host's screen and prompt
+   * sinks): every text line, prose run, table cell, caption, column label,
+   * title and footer of a full screen shown through showTextScreen, and the
+   * prompt of a row-0 prompt (get_string, get_check, get_com and their kin).
+   * It is the counterpart of messageText for everything messageText cannot
+   * see, which includes the help pages, the equipment-comparison legends and
+   * any prompt a core constant supplies.
+   *
+   * Return the text to show. Faithful core shows what it was given. The hook
+   * receives each piece once, when the host builds the screen or draws the
+   * prompt, and never per frame. A line drawn in several colours arrives run
+   * by run. The same contract as messageText applies: a hook here may only
+   * restate text, never change what it means, and it must return the input
+   * unchanged for any text it does not recognise, because it sees every
+   * screen.
+   *
+   * `site` says where the text sits (see ScreenTextSite). A table cell's text
+   * alone is not always enough to find it: the equipment-comparison selection
+   * help has "move selection one page up" in two rows, and only the "n, PgDn"
+   * row's copy is upstream's typo.
+   *
+   * Serves: the bug-fixes and qol mods' help-page and prompt text corrections.
+   */
+  screenText?: (raw: string, site: ScreenTextSite) => string;
+
+  /**
+   * The character's background, player->history, as assembled at birth from
+   * history.txt's phrases (get_history), immediately before a screen shows it
+   * (the host's character sheet, birth screen and character dump). This is not
+   * the event history that historyAdd and historyDisplay handle.
+   *
+   * Return the text to show. Faithful core shows the stored text unchanged.
+   * The hook receives the whole paragraph before any word wrap, so a phrase
+   * that straddles a line break is still one string. It runs at display time
+   * only: the save and the player keep the text get_history produced, so
+   * disabling the mod shows the original text again. A hook here may only
+   * restate the text, never change what it says about the character.
+   *
+   * Serves: the bug-fixes and qol mods' history.txt spelling and spacing
+   * corrections, which no content patch can reach because history records
+   * have no record key.
+   */
+  characterBackground?: (text: string) => string;
+
+  /**
+   * One fragment of an item description, as object_info writes it into its
+   * textblock (obj/object-info.ts, objectInfo; obj-info.c's object_info_out).
+   * A fragment is what one textblock_append wrote, such as a whole
+   * "Affects your stealth\n" line, a lone "\n", or a coloured number. Reached
+   * from item inspection, object recall, the character dump and spoilers.
+   *
+   * Return the text to write. Faithful core writes the fragment unchanged. A
+   * hook here may only restate the fragment, never change what the item does
+   * or what the player knows about it, and it must return any fragment it
+   * does not recognise unchanged.
+   *
+   * Serves: the upstream-catchup mod's post-4.2.6 description wording
+   * (upstream ad5c8401a, "Affects your %s.").
+   */
+  objectInfoText?: (text: string) => string;
+
+  /**
+   * The opening words of an item's effect description (obj/object-info.ts,
+   * describeEffect; obj-info.c describe_effect L2060), with the facts that
+   * chose them. Runs before objectInfoText sees the finished fragment.
+   *
+   * Return the text to write in their place. Faithful core writes 4.2.6's
+   * wording: "It can be eaten.\n", "It can be drunk.\n", "It can be read.\n",
+   * "It can be aimed.\n" or "It can be activated.\n" for an unknown effect,
+   * and "When activated, it ", "When aimed, it ", "When eaten, it ",
+   * "When quaffed, it " or "When read, it " before a known one. A hook here
+   * may only restate the introduction; it cannot change the effect text that
+   * follows.
+   *
+   * Serves: the upstream-catchup mod's post-4.2.6 effect introductions
+   * (upstream 4153ff6a6, "It requires a target." and "When used, it ").
+   */
+  effectIntro?: (intro: EffectIntro) => string;
+
+  /**
    * The player finished changing their options (the '=' menu closed).
    *
    * A NOTIFICATION: like levelRevisited, it is told a thing that already
@@ -479,7 +643,8 @@ export interface ModHooks {
  *  - ORDERING hooks (objectListTiebreak) chain the same way round: the last
  *    mod's comparator is the primary key and earlier ones break the ties it
  *    leaves, which is a valid total order and is "later wins" for a comparator.
- *  - TRANSFORM hooks (messageText, historyDisplay, projectionRadius) compose in
+ *  - TRANSFORM hooks (messageText, screenText, historyDisplay,
+ *    characterBackground, objectInfoText, effectIntro, projectionRadius) compose in
  *    load order, each seeing the previous one's output - so the last mod still
  *    speaks last and has the final say over the text that reaches the player,
  *    or over the radius the blast is built from.
@@ -551,6 +716,10 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   shapeLearnObviousFlagsDirectly: "any-yes",
   levelRevisited: "all-observe",
   messageText: "chained",
+  screenText: "chained",
+  characterBackground: "chained",
+  objectInfoText: "chained",
+  effectIntro: "chained",
   optionsChanged: "all-observe",
   abilityGained: "all-observe",
   monsterBecameVisible: "all-observe",
@@ -724,6 +893,36 @@ export function guardModHooks(
     /* The raw message, unrestated - never an empty string, which would silently
      * eat a message the player needed to read. */
     out.messageText = (raw): string => guard("messageText", () => text(raw), raw);
+  }
+
+  const screenText = hooks.screenText;
+  if (screenText) {
+    /* The text as given, like messageText: a blank would erase a help line or a
+     * prompt the player has to read to answer it. */
+    out.screenText = (raw, site): string =>
+      guard("screenText", () => screenText(raw, { ...site }), raw);
+  }
+
+  const background = hooks.characterBackground;
+  if (background) {
+    /* The stored background unchanged, which is what core shows with no mod. */
+    out.characterBackground = (text): string =>
+      guard("characterBackground", () => background(text), text);
+  }
+
+  const infoText = hooks.objectInfoText;
+  if (infoText) {
+    /* The fragment unchanged: a throwing restater must not cut lines out of an
+     * item description. */
+    out.objectInfoText = (text): string => guard("objectInfoText", () => infoText(text), text);
+  }
+
+  const intro = hooks.effectIntro;
+  if (intro) {
+    /* The introduction core was about to write. The contributor gets its own
+     * copy, so nothing it does to the object reaches the next mod. */
+    out.effectIntro = (facts): string =>
+      guard("effectIntro", () => intro({ ...facts }), facts.text);
   }
 
   const options = hooks.optionsChanged;
@@ -901,6 +1100,34 @@ export function composeModHooks(
   const text = list.map((c) => c.messageText).filter(isFn);
   if (text.length > 0) {
     out.messageText = (raw): string => text.reduce((s, fn) => fn(s), raw);
+  }
+
+  const screenText = list.map((c) => c.screenText).filter(isFn);
+  if (screenText.length > 0) {
+    /* Every contributor is handed the same site: it names where the text sits
+     * as the screen built it, which an earlier mod's restatement does not move. */
+    out.screenText = (raw, site): string => screenText.reduce((s, fn) => fn(s, site), raw);
+  }
+
+  const background = list.map((c) => c.characterBackground).filter(isFn);
+  if (background.length > 0) {
+    out.characterBackground = (text): string => background.reduce((s, fn) => fn(s), text);
+  }
+
+  const infoText = list.map((c) => c.objectInfoText).filter(isFn);
+  if (infoText.length > 0) {
+    out.objectInfoText = (text): string => infoText.reduce((s, fn) => fn(s), text);
+  }
+
+  const intro = list.map((c) => c.effectIntro).filter(isFn);
+  if (intro.length > 0) {
+    /* LOAD order, each seeing the text the previous one produced, with the
+     * same facts: like historyDisplay, which chains over an entry the same way. */
+    out.effectIntro = (facts): string => {
+      let text = facts.text;
+      for (const fn of intro) text = fn({ ...facts, text });
+      return text;
+    };
   }
 
   const optionsChanged = list.map((c) => c.optionsChanged).filter(isFn);

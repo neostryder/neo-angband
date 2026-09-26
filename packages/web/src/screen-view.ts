@@ -53,9 +53,12 @@
  * rendered by a test with no canvas.
  */
 
-import type { MenuSemantics } from "@rpgm-tools/neo-angband-core";
+import type { MenuSemantics, ScreenTextSite } from "@rpgm-tools/neo-angband-core";
 import type { ScreenLine } from "./overlay";
 import type { PromptRequest } from "./prompt-view";
+
+/** The screenText hook's shape (core mod/hooks.ts): restate one piece of text at its site. */
+export type ScreenTextRestate = (raw: string, site: ScreenTextSite) => string;
 
 /** One coloured segment of text. `color` is CSS; absent means the screen's default. */
 export interface ScreenRun {
@@ -560,6 +563,91 @@ export function linesScreen(title: string, lines: readonly ScreenLine[], footer:
     title,
     footer,
     blocks: [{ kind: "lines", lines }],
+  });
+}
+
+/**
+ * The same view with every piece of its prose passed through `restate`, once,
+ * and frozen again: the host's half of the screenText mod seam (mod/hooks.ts).
+ *
+ * WHAT COUNTS AS TEXT. The title, the footer and the action labels; a table's
+ * caption, column labels, cells, empty-state run and row details; a text
+ * block's runs; and a `lines` block's rows. A row drawn as coloured runs is
+ * restated run by run and its `text` rebuilt from them, so the two cannot
+ * disagree. Each piece is restated whole, so a help-page line or a legend cell
+ * reaches the hook as the exact string the page holds, which is what lets a
+ * mod match it exactly.
+ *
+ * EACH PIECE CARRIES ITS SITE (ScreenTextSite): the screen id, which part it
+ * is, and for a cell its column key and the whole row as built. Two cells with
+ * the same text in different rows are told apart by the row.
+ *
+ * WHAT DOES NOT COUNT. Art blocks, which are pictures, and the facts that are
+ * not prose: ids, keys, tags, hrefs, colours, widths and values. A column's
+ * width stays what the screen declared; a longer restated cell is clamped by
+ * it exactly as a longer original would be.
+ *
+ * Called once when a screen is shown, never per frame, and only when a mod
+ * contributes the hook.
+ */
+export function restateView(view: ScreenView, restate: ScreenTextRestate): ScreenView {
+  const screen = view.id;
+  const say = (text: string, part: ScreenTextSite["part"], extra: Partial<ScreenTextSite> = {}): string =>
+    restate(text, { screen, part, ...extra });
+  const run = (r: ScreenRun, part: ScreenTextSite["part"], extra?: Partial<ScreenTextSite>): ScreenRun => ({
+    ...r,
+    text: say(r.text, part, extra),
+  });
+  const prose = <P extends ScreenProse>(p: P, part: ScreenTextSite["part"], extra?: Partial<ScreenTextSite>): P => ({
+    ...p,
+    paragraphs: p.paragraphs.map((para) => para.map((r) => run(r, part, extra))),
+  });
+  const line = (l: ScreenLine): ScreenLine => {
+    if (l.runs === undefined) return { ...l, text: say(l.text, "line") };
+    const runs = l.runs.map((r) => ({ ...r, text: say(r.text, "line") }));
+    return { ...l, runs, text: runs.map((r) => r.text).join("") };
+  };
+  const block = (b: ScreenBlock): ScreenBlock => {
+    switch (b.kind) {
+      case "table":
+        return {
+          ...b,
+          ...(b.caption === undefined ? {} : { caption: run(b.caption, "caption") }),
+          ...(b.empty === undefined ? {} : { empty: run(b.empty, "empty") }),
+          columns: b.columns.map((c) =>
+            c.label === undefined ? c : { ...c, label: say(c.label, "column", { column: c.key }) },
+          ),
+          rows: b.rows.map((r) => {
+            const built: Record<string, string> = {};
+            for (const [key, cell] of Object.entries(r.cells)) built[key] = cell.text;
+            const row = Object.freeze(built);
+            const cells: Record<string, ScreenCell> = {};
+            for (const [key, cell] of Object.entries(r.cells)) {
+              cells[key] = { ...cell, text: say(cell.text, "cell", { column: key, row }) };
+            }
+            return {
+              ...r,
+              cells,
+              ...(r.detail === undefined ? {} : { detail: prose(r.detail, "detail", { row }) }),
+            };
+          }),
+        };
+      case "text":
+        return prose(b, "prose");
+      case "art":
+        return b;
+      case "lines":
+        return { ...b, lines: b.lines.map(line) };
+    }
+  };
+  return freezeView({
+    ...view,
+    title: say(view.title, "title"),
+    footer: say(view.footer, "footer"),
+    blocks: view.blocks.map(block),
+    ...(view.actions === undefined
+      ? {}
+      : { actions: view.actions.map((a) => ({ ...a, label: say(a.label, "action") })) }),
   });
 }
 

@@ -62,6 +62,10 @@ Game behaviour living in `switch` statements with nothing to register into is no
 | `saveNoiseScent` | `session/save.ts` | Ask for the noise/scent heatmaps in the save | Anything else in the save payload |
 | `levelRevisited` | `session/game.ts`, on persistent-level and single-combat restoration | Update live, level-owned transient state from the exact frozen and resumed turns | Save/load of an in-play level, level generation, or a player/monster turn directly |
 | `messageText` | `packages/web/src/main.ts` (host, not core) | Restate message text | What a message MEANS - restating only, by contract |
+| `screenText` | `packages/web/src/overlay.ts` (host, not core): screens shown through `showTextScreen`, and the row-0 prompt functions | Restate help-page lines, table cells, legends, titles, footers and prompts, matched by screen id, part and row | What the text means; art blocks; menus, which have their own `ui:menu.replace` seam; text drawn by other means than those two paths |
+| `characterBackground` | `packages/web/src/screens.ts` (host, not core): the character sheet, birth screen and character dump | Restate the whole background paragraph before it is wrapped | The stored `player.history` or the save |
+| `objectInfoText` | `obj/object-info.ts`, `objectInfo` | Restate each fragment of an item description | What the item does or what the player knows about it |
+| `effectIntro` | `obj/object-info.ts`, `describeEffect` | Restate the introduction to an effect description, given whether the effect is known, the item class and whether it is aimed or activated | The effect description that follows the introduction |
 | `optionsChanged` | the options pages, through `GameState.modHooks` | Observe the option state after a change. Folded `all-observe`: every mod's handler runs, none can veto | The option values themselves; it is notification, not interception |
 
 Each of the eleven hooks was carved for one concrete patch. They are correct and generic in shape, but together they do not add up to a way to "make over the whole game": they are nine separate points rather than a seam layer.

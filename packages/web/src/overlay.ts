@@ -40,6 +40,7 @@ import {
 } from "./menu-runtime";
 import { linesScreen, screenBodyLines, SCREEN_FOOTER, type ScreenView } from "./screen-view";
 import { ScreenAbandoned, showThroughPresenter } from "./screen-runtime";
+import { restatePrompt, restateScreen } from "./screen-text";
 import { popRegion, pushRegion, regionSurface, type RegionSpec } from "./ui-stack";
 
 /** A single styled line of overlay text. `color` is a CSS color string. */
@@ -198,10 +199,14 @@ export async function showTextScreen(
   footer = SCREEN_FOOTER,
   roguelikeArg = false,
 ): Promise<void> {
-  const view =
+  /* The screenText seam (mod/hooks.ts), applied once here so the presenter and
+   * the faithful terminal are handed the same restated view. With no mod
+   * contributing the hook this is the view as built. */
+  const view = restateScreen(
     typeof titleOrView === "string"
       ? linesScreen(titleOrView, (linesOrRoguelike as readonly ScreenLine[] | undefined) ?? [], footer)
-      : titleOrView;
+      : titleOrView,
+  );
   const roguelike = typeof titleOrView === "string" ? roguelikeArg : ((linesOrRoguelike as boolean | undefined) ?? false);
   const taken = showThroughPresenter(view, screenFault);
   if (taken) {
@@ -881,7 +886,8 @@ export function getRepDir(
     const { cols } = term.size();
     /* prt("Direction or <click> (Escape to cancel)? ", 0, 0) (ui-input.c:1512):
      * prt, not put_str - it is drawn over the live message row. */
-    term.prt(0, 0, "Direction or <click> (Escape to cancel)? ".slice(0, cols - 1), FG);
+    const prompt = restatePrompt("Direction or <click> (Escape to cancel)? ");
+    term.prt(0, 0, prompt.slice(0, cols - 1), FG);
     const controls = controlSurface.push({ kind: "direction", label: "Choose a direction", replies: [...directionActions(), ...(allow5 ? [keyAction("Self", "5")] : []), cancelAction()] });
     const finish = (value: number | null): void => {
       controls.dispose();
@@ -919,9 +925,11 @@ export function getAimDir(
 ): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
     const { cols } = term.size();
-    const prompt = targetOkay
-      ? "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? "
-      : "Direction ('*' or <click> to target, \"'\" for closest, Escape to cancel)? ";
+    const prompt = restatePrompt(
+      targetOkay
+        ? "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? "
+        : "Direction ('*' or <click> to target, \"'\" for closest, Escape to cancel)? ",
+    );
     /* textui_get_aim_dir asks through get_com_ex (ui-input.c:1637), which is
      * `prt(prompt, 0, 0)` at ui-input.c:1427 - over the live message row. */
     term.prt(0, 0, prompt.slice(0, cols - 1), FG);
@@ -960,7 +968,9 @@ export function getAimDir(
  * modifier keydowns (Shift/Ctrl/Alt/Meta) are ignored so a Shift+Y chord is
  * not read as an immediate "no".
  */
-export function getCheck(term: GridSurface & GridPointerInput, prompt: string): Promise<boolean> {
+export function getCheck(term: GridSurface & GridPointerInput, rawPrompt: string): Promise<boolean> {
+  /* The screenText seam sees the caller's prompt, before "[y/n] " is added. */
+  const prompt = restatePrompt(rawPrompt);
   return new Promise<boolean>((resolve) => {
     const { cols } = term.size();
     const buf = `${prompt.slice(0, 70)}[y/n] `;
@@ -1008,6 +1018,19 @@ export function getKeyInline(
   term: GridSurface & GridPointerInput,
   prompt: string,
   col = 0,
+): Promise<string> {
+  return keyInlineShown(term, restatePrompt(prompt), col);
+}
+
+/**
+ * getKeyInline once its prompt has been through the screenText seam. getChar
+ * restates its caller's prompt before adding "[options] ", then comes here, so
+ * no text is restated twice.
+ */
+function keyInlineShown(
+  term: GridSurface & GridPointerInput,
+  prompt: string,
+  col: number,
 ): Promise<string> {
   return new Promise<string>((resolve) => {
     const { cols } = term.size();
@@ -1194,6 +1217,23 @@ export function promptTextInline(
   randomize?: () => string,
   row = 0,
 ): Promise<string | null> {
+  return textInlineShown(term, restatePrompt(prompt), initial, maxLen, randomize, row);
+}
+
+/**
+ * promptTextInline once its prompt has been through the screenText seam. The
+ * answer field starts where the SHOWN prompt ends, as askfor_aux starts at the
+ * cursor prt left, so a restated prompt of a different length still puts the
+ * field right after it.
+ */
+function textInlineShown(
+  term: GridSurface & GridPointerInput,
+  prompt: string,
+  initial: string,
+  maxLen: number,
+  randomize: (() => string) | undefined,
+  row: number,
+): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     const st: LineEdit = { buf: initial, curs: 0 };
     let firsttime = true;
@@ -1284,9 +1324,12 @@ export function getString(
   len = 80,
   row = 0,
 ): Promise<string | null> {
-  const x = prompt.length;
+  /* Restated first, because askfor_aux's 80-column narrowing (L881-882) counts
+   * from where the shown prompt ends. */
+  const shown = restatePrompt(prompt);
+  const x = shown.length;
   const eff = x + len > 80 ? 80 - x : len;
-  return promptTextInline(term, prompt, initial, Math.max(1, eff - 1), undefined, row);
+  return textInlineShown(term, shown, initial, Math.max(1, eff - 1), undefined, row);
 }
 
 /**
@@ -1330,8 +1373,9 @@ export async function getChar(
   options: string,
   fallback = " ",
 ): Promise<string> {
-  const buf = `${prompt.slice(0, 70)}[${options}] `.slice(0, 77);
-  let key = await getKeyInline(term, buf);
+  /* The screenText seam sees the caller's prompt, before "[options] " is added. */
+  const buf = `${restatePrompt(prompt).slice(0, 70)}[${options}] `.slice(0, 77);
+  let key = await keyInlineShown(term, buf, 0);
   /* "Lowercase answer if necessary" (L1318). */
   if (key.length === 1 && key >= "A" && key <= "Z") key = key.toLowerCase();
   if (key.length !== 1 || !options.includes(key)) key = fallback;

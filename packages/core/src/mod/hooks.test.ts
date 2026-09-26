@@ -15,8 +15,10 @@ import {
   composeModHooks,
   guardModHooks,
   MOD_HOOK_FOLDS,
+  type EffectIntro,
   type ModHookFault,
   type ModHooks,
+  type ScreenTextSite,
 } from "./hooks.js";
 import type { GameState } from "../game/context.js";
 import type { GameObject } from "../obj/object.js";
@@ -38,6 +40,22 @@ const MON = {} as Monster;
 /** Stand-ins for an artifact object being assessed for the first time. */
 const TOUCHED_OBJ = {} as GameObject;
 const ARTIFACT = {} as Artifact;
+/** describe_effect's facts for an aimed wand whose effect is known. */
+const INTRO: EffectIntro = {
+  effect: "known",
+  itemClass: "wand",
+  aimed: true,
+  activation: false,
+  describedActivation: false,
+  text: "When aimed, it ",
+};
+/** A help-legend cell, where the row is what tells two identical cells apart. */
+const SITE: ScreenTextSite = {
+  screen: "core:equip-cmp-select-help",
+  part: "cell",
+  column: "desc1",
+  row: { key1: "n, PgDn", desc1: "move selection one page up" },
+};
 
 describe("composeModHooks: nothing in, nothing out", () => {
   it("returns undefined for no contributions", () => {
@@ -66,6 +84,10 @@ describe("composeModHooks: nothing in, nothing out", () => {
     expect(composed?.shapeLearnObviousFlagsDirectly).toBeUndefined();
     expect(composed?.monsterBecameVisible).toBeUndefined();
     expect(composed?.artifactIdentified).toBeUndefined();
+    expect(composed?.screenText).toBeUndefined();
+    expect(composed?.characterBackground).toBeUndefined();
+    expect(composed?.objectInfoText).toBeUndefined();
+    expect(composed?.effectIntro).toBeUndefined();
   });
 });
 
@@ -173,6 +195,77 @@ describe("veto hooks are conjunctive", () => {
 });
 
 describe("transform hooks chain in load order", () => {
+  it("screenText, characterBackground and objectInfoText: each sees the previous one's output", () => {
+    const composed = composeModHooks([
+      { screenText: (s) => `${s}-a`, characterBackground: (s) => `${s}-a`, objectInfoText: (s) => `${s}-a` },
+      { screenText: (s) => `${s}-b`, characterBackground: (s) => `${s}-b`, objectInfoText: (s) => `${s}-b` },
+    ]);
+    expect(composed?.screenText?.("x", SITE)).toBe("x-a-b");
+    expect(composed?.characterBackground?.("x")).toBe("x-a-b");
+    expect(composed?.objectInfoText?.("x")).toBe("x-a-b");
+  });
+
+  it("screenText: every contributor is handed the same site, as the screen built it", () => {
+    const sites: ScreenTextSite[] = [];
+    const composed = composeModHooks([
+      {
+        screenText: (s, site) => {
+          sites.push(site);
+          return site.row?.key1 === "n, PgDn" ? "move selection one page down" : s;
+        },
+      },
+      {
+        screenText: (s, site) => {
+          sites.push(site);
+          return s;
+        },
+      },
+    ]);
+    expect(composed?.screenText?.("move selection one page up", SITE)).toBe(
+      "move selection one page down",
+    );
+    const pgUp: ScreenTextSite = { ...SITE, row: { key1: "p, PgUp", desc1: "move selection one page up" } };
+    expect(composed?.screenText?.("move selection one page up", pgUp)).toBe(
+      "move selection one page up",
+    );
+    expect(sites[0]).toEqual(SITE);
+    expect(sites[1]).toEqual(SITE);
+  });
+
+  it("screenText: a later mod restates what an earlier mod already restated", () => {
+    /* The upstream-catchup and bug-fixes corrections can touch the same help
+     * line; the second must see the first's result, not the original. */
+    const composed = composeModHooks([
+      { screenText: (s) => (s === "etc" ? "etc." : s) },
+      { screenText: (s) => (s === "etc." ? "etc. (fixed)" : s) },
+    ]);
+    expect(composed?.screenText?.("etc", SITE)).toBe("etc. (fixed)");
+    expect(composed?.screenText?.("unrelated", SITE)).toBe("unrelated");
+  });
+
+  it("effectIntro: each sees the text before it and the same facts", () => {
+    const seen: EffectIntro[] = [];
+    const composed = composeModHooks([
+      {
+        effectIntro: (intro) => {
+          seen.push(intro);
+          return intro.aimed ? `It requires a target. ${intro.text}` : intro.text;
+        },
+      },
+      {
+        effectIntro: (intro) => {
+          seen.push(intro);
+          return intro.text.replace("When aimed, it ", "When used, it ");
+        },
+      },
+    ]);
+    expect(composed?.effectIntro?.(INTRO)).toBe("It requires a target. When used, it ");
+    expect(seen.map((i) => i.text)).toEqual(["When aimed, it ", "It requires a target. When aimed, it "]);
+    expect(seen.every((i) => i.itemClass === "wand" && i.aimed && i.effect === "known")).toBe(true);
+    /* The caller's object is not the one a contributor received. */
+    expect(INTRO.text).toBe("When aimed, it ");
+  });
+
   it("messageText: each sees the previous one's output", () => {
     const composed = composeModHooks([
       { messageText: (s) => `${s}-a` },
@@ -689,6 +782,66 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       no: (log, tag) => ({ monsterBecameVisible: () => void log.push(tag) }),
       run: (h) => h.monsterBecameVisible?.(MON),
     },
+    screenText: {
+      yes: (log, tag) => ({
+        screenText: (s) => {
+          log.push(tag);
+          return s + tag;
+        },
+      }),
+      no: (log, tag) => ({
+        screenText: (s) => {
+          log.push(tag);
+          return s;
+        },
+      }),
+      run: (h) => h.screenText?.("x", SITE),
+    },
+    characterBackground: {
+      yes: (log, tag) => ({
+        characterBackground: (s) => {
+          log.push(tag);
+          return s + tag;
+        },
+      }),
+      no: (log, tag) => ({
+        characterBackground: (s) => {
+          log.push(tag);
+          return s;
+        },
+      }),
+      run: (h) => h.characterBackground?.("x"),
+    },
+    objectInfoText: {
+      yes: (log, tag) => ({
+        objectInfoText: (s) => {
+          log.push(tag);
+          return s + tag;
+        },
+      }),
+      no: (log, tag) => ({
+        objectInfoText: (s) => {
+          log.push(tag);
+          return s;
+        },
+      }),
+      run: (h) => h.objectInfoText?.("x"),
+    },
+    effectIntro: {
+      yes: (log, tag) => ({
+        effectIntro: (intro) => {
+          log.push(tag);
+          return intro.text + tag;
+        },
+      }),
+      no: (log, tag) => ({
+        effectIntro: (intro) => {
+          log.push(tag);
+          return intro.text;
+        },
+      }),
+      run: (h) => h.effectIntro?.(INTRO),
+    },
     artifactIdentified: {
       yes: (log, tag) => ({ artifactIdentified: () => void log.push(tag) }),
       no: (log, tag) => ({ artifactIdentified: () => void log.push(tag) }),
@@ -836,6 +989,28 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
     expect(hooks.messageText?.("You feel a sudden chill.")).toBe("You feel a sudden chill.");
   });
 
+  it("screenText shows the text it was given, so a help line or prompt is never blanked", () => {
+    const { hooks } = guarded({ screenText: THROWS });
+    expect(hooks.screenText?.("n, PgDn", SITE)).toBe("n, PgDn");
+  });
+
+  it("characterBackground shows the stored background unchanged", () => {
+    const { hooks } = guarded({ characterBackground: THROWS });
+    expect(hooks.characterBackground?.("You are a well liked child.  ")).toBe(
+      "You are a well liked child.  ",
+    );
+  });
+
+  it("objectInfoText writes the fragment unchanged", () => {
+    const { hooks } = guarded({ objectInfoText: THROWS });
+    expect(hooks.objectInfoText?.("Affects your stealth\n")).toBe("Affects your stealth\n");
+  });
+
+  it("effectIntro writes the introduction core was about to write", () => {
+    const { hooks } = guarded({ effectIntro: THROWS });
+    expect(hooks.effectIntro?.(INTRO)).toBe("When aimed, it ");
+  });
+
   it("projectionRadius returns the radius it was given, not the maximum", () => {
     /* Same rule as messageText, and the alternative is worse than it looks: a
      * throwing hook that answered `maxRange` would silently narrow every blast
@@ -919,6 +1094,10 @@ describe("guardModHooks: it wraps, and does not invent", () => {
     expect(hooks.shapeLearnObviousFlagsDirectly).toBeUndefined();
     expect(hooks.monsterBecameVisible).toBeUndefined();
     expect(hooks.artifactIdentified).toBeUndefined();
+    expect(hooks.screenText).toBeUndefined();
+    expect(hooks.characterBackground).toBeUndefined();
+    expect(hooks.objectInfoText).toBeUndefined();
+    expect(hooks.effectIntro).toBeUndefined();
   });
 
   it("an empty contribution stays empty, so the fold still returns undefined", () => {

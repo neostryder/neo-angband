@@ -48,6 +48,16 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- [Internal] [Modding-API] **A mod can reword help pages, screen legends and prompts through the new `screenText(raw, site)` hook.** It is called once for each line, table cell, caption, title and footer of a screen opened with `showTextScreen`, and for the prompt of `getString`, `getCheck` and the other row-0 prompts. The `site` argument gives the screen id and, for a table cell, its column and the other cells in its row, so a mod can change one cell when another row holds the same text. With no mod installed the text is drawn as before (#282).
+- [Internal] [Modding-API] **A mod can reword the character background with the new `characterBackground(text)` hook.** It gets the whole paragraph assembled from `history.txt` before word wrap, on the character sheet, the birth screen and the character dump. The save keeps the original text, so turning the mod off restores it (#282).
+- [Internal] [Modding-API] **A mod can reword item descriptions with the new `objectInfoText(text)` and `effectIntro(intro)` hooks.** `objectInfoText` gets each fragment the description writes, such as a whole "Affects your stealth" line. `effectIntro` gets the words that open an effect description along with the facts that chose them: the item class, whether the effect is known, whether it needs aiming and whether it comes from an activation (#282).
+
+### Fixed
+
+- [Visible] **Item descriptions use Angband 4.2.6's wording again for "Affects your" lines and for the sentence before an item's effect.** The port had shipped upstream's later wording. A line such as "Affects your stealth" has no full stop again, and an effect opens with "It can be aimed.", "It can be activated.", "When aimed, it" or "When activated, it" where the port wrote "It requires a target.", "It may require a target." or "When used, it". Mods can still show the later wording through `objectInfoText` and `effectIntro` (#282).
+
 ## [1.17.0] - 2026-09-24
 
 ### Added

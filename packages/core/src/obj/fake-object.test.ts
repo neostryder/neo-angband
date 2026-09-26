@@ -250,11 +250,38 @@ describe("object_info_ego (obj-info.c L2402)", () => {
     );
     expect(e, "no of Elvenkind with both a modifier and a resist").toBeTruthy();
     const text = egoText(e!);
-    /* "Affects your stealth." - the EGO bit suppresses the exact magnitude
-     * (describe_stats' suppress_details, obj-info.c L2076). */
-    expect(text).toContain("Affects your stealth.");
+    /* "Affects your stealth" - the EGO bit suppresses the exact magnitude
+     * (describe_stats' suppress_details, obj-info.c L2076). No full stop:
+     * 4.2.6 writes "Affects your %s\n" (obj-info.c:181). */
+    expect(text).toContain("Affects your stealth\n");
+    expect(text).not.toContain("Affects your stealth.");
     expect(text).not.toMatch(/\+\d+ stealth/u);
     expect(text).toMatch(/acid/iu);
+  });
+
+  it("offers each written fragment to the objectInfoText seam, which can restate the line", () => {
+    /* The upstream-catchup correction (upstream ad5c8401a), written the way a mod
+     * would write it: match the whole fragment, leave everything else alone. */
+    const e = reg.egos.find((x) => x.name === "of Elvenkind" && x.modifiers.some((m) => m.dice > 0 || m.base !== 0))!;
+    const seen: string[] = [];
+    state.modHooks = {
+      objectInfoText: (text) => {
+        seen.push(text);
+        const m = /^Affects your (.*)\n$/u.exec(text);
+        return m ? `Affects your ${m[1]}.\n` : text;
+      },
+    };
+    try {
+      const text = egoText(e);
+      expect(text).toContain("Affects your stealth.\n");
+      expect(seen).toContain("Affects your stealth\n");
+      /* Every other fragment passes through unchanged. */
+      delete state.modHooks;
+      const faithful = egoText(e);
+      expect(text).toBe(faithful.replace(/^Affects your (.*)\n/gmu, "Affects your $1.\n"));
+    } finally {
+      delete state.modHooks;
+    }
   });
 
   it("prints the ego's flavour text once, from describe_flavor_text", () => {

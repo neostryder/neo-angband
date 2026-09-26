@@ -165,7 +165,10 @@ describe("objectFakeRecall (desc_obj_fake, ui-knowledge.c L1862)", () => {
     );
     expect(digger, "no Ring of Digging with a dice modifier in the pack").toBeTruthy();
     const text = body(objectFakeRecall(browserDeps(() => true), digger!));
-    expect(text).toContain("Affects your tunneling.");
+    /* 4.2.6 ends this line with no full stop ("Affects your %s\n",
+     * obj-info.c:181); the full stop is post-4.2.6 and belongs to a mod. */
+    expect(text).toMatch(/Affects your tunneling\s*$/mu);
+    expect(text).not.toContain("Affects your tunneling.");
     expect(text).not.toMatch(/[+-]\d+ tunneling/u);
   });
 

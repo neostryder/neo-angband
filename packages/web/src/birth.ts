@@ -164,6 +164,13 @@ export interface BirthDeps {
   properties: readonly PlayerProperty[];
   /** projections[i].name for element index i (the element ability expansion). */
   elementNames: readonly string[];
+  /**
+   * The characterBackground mod seam (mod/hooks.ts) for the preview sheet's
+   * background paragraph. The preview's own GameState is a throwaway with no
+   * hooks, so the shell passes the live one here. Absent shows the background
+   * exactly as get_history produced it.
+   */
+  characterBackground?: (text: string) => string;
 }
 
 export interface BirthOpts {
@@ -1940,7 +1947,7 @@ export async function runBirth(
         key: panel.key,
         lines: panel.lines,
       })),
-      history: historyBlockLines(state, cols),
+      history: historyBlockLines(state, cols, deps.characterBackground),
     };
   };
 

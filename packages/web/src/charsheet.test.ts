@@ -1047,6 +1047,60 @@ describe("showCharacterSheet wide: faithful stat-table columns and colours", () 
 });
 
 /* ------------------------------------------------------------------ */
+/* The characterBackground mod seam (core mod/hooks.ts)                */
+/* ------------------------------------------------------------------ */
+
+describe("characterBackground: the background restated for display, never stored", () => {
+  /* Two history.txt phrases the bug-fixes and qol mods correct: one spelling,
+   * and one that straddles the 72-column wrap, which only a whole-paragraph
+   * hook applied before the wrap can reach as one string. */
+  const STORED =
+    "You are the only child of a Serf. You are a well liked child.  " +
+    "You have blue-gray eyes, straight brown hair, and an average complexion.";
+  const fix = (text: string): string =>
+    text.replace("well liked", "well-liked").replace("blue-gray", "blue-grey");
+
+  it("hands the hook the whole stored paragraph once, before it is wrapped", () => {
+    const { state } = setup(STORED);
+    const seen: string[] = [];
+    state.modHooks = {
+      characterBackground: (text) => {
+        seen.push(text);
+        return fix(text);
+      },
+    };
+    const lines = historyBlockLines(state, 80).map((l) => l.text).join(" ");
+    expect(seen).toEqual([STORED]);
+    expect(lines).toContain("well-liked");
+    expect(lines).toContain("blue-grey");
+    expect(state.actor.player.history).toBe(STORED);
+  });
+
+  it("reaches the character sheet, the dump and the birth preview's explicit hook", () => {
+    const { state, win, term } = setup(STORED);
+    state.modHooks = { characterBackground: fix };
+    void showCharacterSheet(term, state, "Fred");
+    expect(term.snapshot().join("\n")).toContain("well-liked");
+    press(win, "Escape");
+    const dump = buildCharacterDump(state, "Fred", {});
+    expect(dump).toContain("well-liked");
+    expect(dump).toContain("blue-grey");
+    /* The birth screen's preview state carries no hooks; the shell passes one. */
+    delete state.modHooks;
+    expect(historyBlockLines(state, 80, fix).map((l) => l.text).join(" ")).toContain("blue-grey");
+    expect(state.actor.player.history).toBe(STORED);
+  });
+
+  it("shows get_history's text byte for byte when no mod contributes the hook", () => {
+    const { state } = setup(STORED);
+    const faithful = historyBlockLines(state, 80);
+    state.modHooks = { messageText: (s) => s };
+    expect(historyBlockLines(state, 80)).toEqual(faithful);
+    expect(faithful.map((l) => l.text).join(" ")).toContain("well liked");
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* Mode cycling + keys (do_cmd_change_name)                            */
 /* ------------------------------------------------------------------ */
 

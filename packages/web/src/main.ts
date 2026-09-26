@@ -511,6 +511,7 @@ import {
 import { promptRequest } from "./prompt-view";
 import { installRegions } from "./region-runtime";
 import type { ScreenHost, ScreenView } from "./screen-view";
+import { setScreenTextSource } from "./screen-text";
 import { showMonsterList } from "./monster-list";
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
 import { downloadUserFile, pickTextFile, setUserStorage } from "./userdir";
@@ -11644,6 +11645,9 @@ async function maybeBirth(): Promise<BootStep> {
     },
     properties: players.properties,
     elementNames,
+    /* The characterBackground seam, read live from the session's hooks each
+     * time the preview is drawn, since the preview's own state has none. */
+    characterBackground: (text) => state.modHooks?.characterBackground?.(text) ?? text,
   };
   // Birth UI advances the live game stream (ui-birth.c L465/678/696/842 +
   // get_history L746-750): the same Rand that store_reset / seed_randart /
@@ -14759,6 +14763,11 @@ liveHudSink = hudFrameSink(installedHud, reportDisplayFault);
  * ask. Installed into a module-level holder because `selectFromMenu` is called
  * from ~50 sites, and a mod being disabled takes effect on reload anyway. */
 setUiFaultReporter(reportDisplayFault);
+/* The screenText seam (mod/hooks.ts), for screens and row-0 prompts. A getter
+ * rather than the hook itself, so a mod toggled mid-session (which rebuilds
+ * state.modHooks) reaches the next screen without re-wiring. With no mod
+ * contributing it the getter answers undefined and every text stays as built. */
+setScreenTextSource(() => state.modHooks?.screenText);
 setMenuPresenter(
   installMenu([...activeModCode().plugins], displayCandidateContext, reportDisplayFault),
 );

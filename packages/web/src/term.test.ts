@@ -228,7 +228,9 @@ describe("prt census: every converted prompt site (2026-07-29)", () => {
     expect(src).toContain(
       'term.prt(col, 0, prompt.slice(0, Math.max(0, cols - 1 - col)), FG)',
     );
-    expect(src).toContain('term.prt(0, 0, "Direction or <click> (Escape to cancel)? "');
+    /* getRepDir: the prompt passes through the screenText seam first, then goes
+     * out through the same prt call getAimDir uses (asserted above). */
+    expect(src).toContain('restatePrompt("Direction or <click> (Escape to cancel)? ")');
     expect(src).toContain('term.prt(0, row, prompt.slice(0, cols - 1), FG)'); // promptTextInline
     expect(src).toContain('term.prt(0, 0, "File name: ", FG)'); // get_file_text
     expect(src).toContain('term.prt(0, row, "", FG)'); // clearPromptRow = prt("", 0, 0)

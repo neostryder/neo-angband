@@ -64,6 +64,7 @@ import type { ProjectionInfo } from "../world/projection.js";
 import type { RuneEnv } from "./knowledge.js";
 import { OBJ_NOTICE, sustainFlag } from "./knowledge.js";
 import type { KnownDesc } from "./known-object.js";
+import type { EffectIntro, ModHooks } from "../mod/hooks.js";
 import {
   objectEffectIsKnown,
   objectFullyKnown,
@@ -83,6 +84,7 @@ import {
   tvalIsMeleeWeapon,
   tvalIsPotion,
   tvalIsScroll,
+  tvalIsRod,
   tvalIsStaff,
   tvalIsUseable,
   tvalIsWand,
@@ -299,6 +301,12 @@ export interface ObjectInfoDeps {
   effect: ObjectInfoEffectDeps;
   /** object_is_in_store(obj): inspect from a store. Defaults false. */
   inStore?: boolean;
+  /**
+   * The mod text seams this engine calls (mod/hooks.ts objectInfoText and
+   * effectIntro), taken from GameState.modHooks by makeObjectInfoDeps. Absent
+   * means faithful 4.2.6 wording, and so does an absent member.
+   */
+  hooks?: Pick<ModHooks, "objectInfoText" | "effectIntro">;
 }
 
 /* ------------------------------------------------------------------ *
@@ -457,7 +465,11 @@ function describeStats(
       const attr = val > 0 ? COLOUR_L_GREEN : COLOUR_RED;
       tbAppendC(tb, attr, `${plusI(val)} ${desc}.\n`);
     } else if (knownEffect) {
-      tbAppend(tb, `Affects your ${desc}.\n`);
+      /* "Affects your %s\n" (obj-info.c:181), with no full stop: 4.2.6 ends
+       * this one line bare while its "%+i %s.\n" sibling has one. The full
+       * stop is upstream ad5c8401a, after 4.2.6, and reaches a player only
+       * through a mod's objectInfoText hook. */
+      tbAppend(tb, `Affects your ${desc}\n`);
     }
   }
   return true;
@@ -1566,6 +1578,17 @@ function describeEgo(tb: Textblock, ego: EgoItem | null): boolean {
   return something;
 }
 
+/** The tval class describe_effect and obj_known_effect branch on (EffectIntro.itemClass). */
+function effectItemClass(tval: number): EffectIntro["itemClass"] {
+  if (tvalIsEdible(tval)) return "food";
+  if (tvalIsPotion(tval)) return "potion";
+  if (tvalIsScroll(tval)) return "scroll";
+  if (tvalIsWand(tval)) return "wand";
+  if (tvalIsStaff(tval)) return "staff";
+  if (tvalIsRod(tval)) return "rod";
+  return "other";
+}
+
 function describeEffect(
   tb: Textblock,
   deps: ObjectInfoDeps,
@@ -1579,14 +1602,35 @@ function describeEffect(
   const storeConsumable = (deps.inStore ?? false) && tvalIsUseable(obj.tval);
   const known = objectEffectIsKnown(obj, shadow) || storeConsumable;
 
-  /* Effect not known: mouth platitudes. */
+  const itemClass = effectItemClass(obj.tval);
+  const introduce = (intro: Omit<EffectIntro, "itemClass" | "text">, text: string): string => {
+    const hook = deps.hooks?.effectIntro;
+    return hook ? hook({ ...intro, itemClass, text }) : text;
+  };
+
+  /* Effect not known: mouth platitudes (obj-info.c L2076-2090). obj_known_effect
+   * sets `aimed` here for every wand and rod, because it cannot tell
+   * (obj-info.c L2034-2036). */
   if (!known) {
-    if (tvalIsEdible(obj.tval)) tbAppend(tb, "It can be eaten.\n");
-    else if (tvalIsPotion(obj.tval)) tbAppend(tb, "It can be drunk.\n");
-    else if (tvalIsScroll(obj.tval)) tbAppend(tb, "It can be read.\n");
-    else if (tvalIsWand(obj.tval)) tbAppend(tb, "It requires a target. It can be used.");
-    else if (tvalIsStaff(obj.tval)) tbAppend(tb, "It can be used.");
-    else tbAppend(tb, "It may require a target. It can be used.");
+    const aimedUnknown = tvalIsWand(obj.tval) || tvalIsRod(obj.tval);
+    let platitude: string;
+    if (tvalIsEdible(obj.tval)) platitude = "It can be eaten.\n";
+    else if (tvalIsPotion(obj.tval)) platitude = "It can be drunk.\n";
+    else if (tvalIsScroll(obj.tval)) platitude = "It can be read.\n";
+    else if (aimedUnknown) platitude = "It can be aimed.\n";
+    else platitude = "It can be activated.\n";
+    tbAppend(
+      tb,
+      introduce(
+        {
+          effect: "unknown",
+          aimed: aimedUnknown,
+          activation: obj.activation != null,
+          describedActivation: false,
+        },
+        platitude,
+      ),
+    );
     return true;
   }
 
@@ -1602,25 +1646,40 @@ function describeEffect(
       ? 0
       : deps.effect.deviceFailure;
 
+  /* Activations get a special message (obj-info.c L2093-2096). */
   if (obj.activation && obj.activation.desc) {
-    if (aimed) tbAppend(tb, "It requires a target. ");
-    tbAppend(tb, "When used, it ");
+    tbAppend(
+      tb,
+      introduce(
+        { effect: "known", aimed, activation: true, describedActivation: true },
+        "When activated, it ",
+      ),
+    );
     tbAppend(tb, obj.activation.desc);
   } else {
     const level =
       obj.artifact?.level ?? obj.activation?.level ?? obj.kind.level;
     const deviceSkill = deps.currentState.skills[SKILL.DEVICE] ?? 0;
     const boost = Math.max(Math.trunc((deviceSkill - level) / 2), 0);
+    /* obj-info.c L2106-2117: the activation test comes first, then aiming, so
+     * an activatable wand is "activated" and an aimed effect on any other item
+     * is "aimed". */
     let prefix: string;
-    if (tvalIsEdible(obj.tval)) {
-      prefix = aimed ? "It requires a target. When eaten, it " : "When eaten, it ";
-    } else if (tvalIsPotion(obj.tval)) {
-      prefix = aimed ? "It requires a target. When quaffed, it " : "When quaffed, it ";
-    } else if (tvalIsScroll(obj.tval)) {
-      prefix = aimed ? "It requires a target. When read, it " : "When read, it ";
-    } else {
-      prefix = aimed ? "It requires a target. When used, it " : "When used, it ";
-    }
+    if (obj.activation) prefix = "When activated, it ";
+    else if (aimed) prefix = "When aimed, it ";
+    else if (tvalIsEdible(obj.tval)) prefix = "When eaten, it ";
+    else if (tvalIsPotion(obj.tval)) prefix = "When quaffed, it ";
+    else if (tvalIsScroll(obj.tval)) prefix = "When read, it ";
+    else prefix = "When activated, it ";
+    prefix = introduce(
+      {
+        effect: "known",
+        aimed,
+        activation: obj.activation != null,
+        describedActivation: false,
+      },
+      prefix,
+    );
     const tbe = deps.effect.describe(prefix, boost, false);
     if (tbe === null) return false;
     tbAppend(tb, tbe);
@@ -1742,6 +1801,22 @@ function describeFlavorText(
  * upstream object_info().
  */
 export function objectInfo(obj: GameObject, mode: number, deps: ObjectInfoDeps): Textblock {
+  const tb = objectInfoOut(obj, mode, deps);
+  /* The objectInfoText seam (mod/hooks.ts): each fragment one append wrote, in
+   * order, once the whole description exists. Absent, the textblock is returned
+   * as built. A fragment a hook empties is dropped, as tbAppend drops an empty
+   * append. */
+  const restate = deps.hooks?.objectInfoText;
+  if (restate) {
+    tb.runs = tb.runs
+      .map((r) => ({ text: restate(r.text), attr: r.attr }))
+      .filter((r) => r.text.length > 0);
+  }
+  return tb;
+}
+
+/** object_info_out (obj-info.c L2315): the faithful run stream, before any mod text seam. */
+function objectInfoOut(obj: GameObject, mode: number, deps: ObjectInfoDeps): Textblock {
   const tb = tbNew();
   const terse = (mode & OINFO.TERSE) !== 0;
   const subjective = (mode & OINFO.SUBJ) !== 0;

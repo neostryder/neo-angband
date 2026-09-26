@@ -161,6 +161,10 @@ export function makeObjectInfoDeps(
     },
     ...(extras.raceOrigin ? { raceOrigin: extras.raceOrigin } : {}),
     ...(extras.inStore !== undefined ? { inStore: extras.inStore } : {}),
+    /* The mod text seams (objectInfoText, effectIntro). Handed over whole: the
+     * engine reads only those two members, and with no mod loaded the field is
+     * absent and the wording is 4.2.6's. */
+    ...(state.modHooks ? { hooks: state.modHooks } : {}),
   };
   return deps;
 }

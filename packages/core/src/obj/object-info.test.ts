@@ -12,6 +12,7 @@ import { OBJ_NOTICE, playerLearnAllRunes } from "./knowledge.js";
 import { ORIGIN } from "../generated/origins.js";
 import type { GameObject } from "./object.js";
 import type { GameState } from "../game/context.js";
+import type { EffectIntro } from "../mod/hooks.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -165,10 +166,112 @@ describe("objectInfo / object_info_out (obj-info.c L2315)", () => {
     const { state, extras, prep } = boot();
     const wand = prep("stinking cloud", TV.WAND, { origin: ORIGIN.NONE });
     const text = info(state, wand, extras);
-    /* The real effect_describe output, not the platitude fallback. */
-    expect(text).toContain("When used, it");
-    expect(text).not.toBe("It requires a target. It can be used.");
+    /* The real effect_describe output, not the platitude fallback, introduced
+     * the 4.2.6 way (obj-info.c L2108-2109): an aimed effect is "aimed". */
+    expect(text).toContain("When aimed, it ");
+    expect(text).not.toContain("It can be aimed.");
+    expect(text).not.toContain("It requires a target.");
+    expect(text).not.toContain("When used, it");
     expect(text).toMatch(/Your chance of success is \d+\.\d+%/);
+  });
+});
+
+describe("describe_effect's introduction (obj-info.c L2060) and the effectIntro seam", () => {
+  /** An item whose flavour the player has not learned, so its effect is unknown. */
+  function unaware(state: GameState): void {
+    state.isAware = () => false;
+  }
+
+  it("writes 4.2.6's platitudes for an unknown effect", () => {
+    const { state, extras, prep } = boot();
+    const wand = prep("stinking cloud", TV.WAND, { origin: ORIGIN.NONE });
+    const staff = prep("detect evil", TV.STAFF, { origin: ORIGIN.NONE });
+    const potion = prep("cure light wounds", TV.POTION, { origin: ORIGIN.NONE });
+    unaware(state);
+    expect(info(state, wand, extras)).toContain("It can be aimed.\n");
+    expect(info(state, staff, extras)).toContain("It can be activated.\n");
+    expect(info(state, potion, extras)).toContain("It can be drunk.\n");
+    for (const obj of [wand, staff, potion]) {
+      const text = info(state, obj, extras);
+      expect(text).not.toContain("It can be used.");
+      expect(text).not.toContain("require a target");
+    }
+  });
+
+  it("is absent-safe: with no hook the text is byte-identical to an empty hook set", () => {
+    const { state, extras, prep } = boot();
+    const wand = prep("stinking cloud", TV.WAND, { origin: ORIGIN.NONE });
+    const faithful = info(state, wand, extras);
+    state.modHooks = { messageText: (s) => s };
+    expect(info(state, wand, extras)).toBe(faithful);
+  });
+
+  /**
+   * The post-4.2.6 wording (upstream 4153ff6a6), written as a mod would write
+   * it from the facts the seam hands over. It is the proof that those facts are
+   * enough: "It may require a target." needs the item class of an unknown
+   * effect, which 4.2.6's `aimed` alone does not carry.
+   */
+  function catchup(intro: EffectIntro): string {
+    if (intro.effect === "unknown") {
+      switch (intro.itemClass) {
+        case "food":
+        case "potion":
+        case "scroll":
+          return intro.text;
+        case "wand":
+          return "It requires a target. It can be used.";
+        case "staff":
+          return "It can be used.";
+        default:
+          return "It may require a target. It can be used.";
+      }
+    }
+    const target = intro.aimed ? "It requires a target. " : "";
+    if (intro.describedActivation) return `${target}When used, it `;
+    if (intro.itemClass === "food") return `${target}When eaten, it `;
+    if (intro.itemClass === "potion") return `${target}When quaffed, it `;
+    if (intro.itemClass === "scroll") return `${target}When read, it `;
+    return `${target}When used, it `;
+  }
+
+  it("hands a mod the facts it needs to produce upstream's later introductions", () => {
+    const { state, extras, prep } = boot();
+    const seen: EffectIntro[] = [];
+    state.modHooks = {
+      effectIntro: (intro) => {
+        seen.push(intro);
+        return catchup(intro);
+      },
+    };
+    const wand = prep("stinking cloud", TV.WAND, { origin: ORIGIN.NONE });
+    const potion = prep("cure light wounds", TV.POTION, { origin: ORIGIN.NONE });
+    expect(info(state, wand, extras)).toContain("It requires a target. When used, it ");
+    expect(seen.at(-1)).toMatchObject({
+      effect: "known",
+      itemClass: "wand",
+      aimed: true,
+      activation: false,
+      describedActivation: false,
+      text: "When aimed, it ",
+    });
+    expect(info(state, potion, extras)).toContain("When quaffed, it ");
+    expect(seen.at(-1)).toMatchObject({ effect: "known", itemClass: "potion", aimed: false });
+
+    unaware(state);
+    const rod = prep("treasure location", TV.ROD, { origin: ORIGIN.NONE });
+    const staff = prep("detect evil", TV.STAFF, { origin: ORIGIN.NONE });
+    expect(info(state, wand, extras)).toContain("It requires a target. It can be used.");
+    expect(seen.at(-1)).toMatchObject({ effect: "unknown", itemClass: "wand", aimed: true, text: "It can be aimed.\n" });
+    expect(info(state, rod, extras)).toContain("It may require a target. It can be used.");
+    expect(seen.at(-1)).toMatchObject({ effect: "unknown", itemClass: "rod", aimed: true });
+    expect(info(state, staff, extras)).toContain("It can be used.");
+    expect(seen.at(-1)).toMatchObject({
+      effect: "unknown",
+      itemClass: "staff",
+      aimed: false,
+      text: "It can be activated.\n",
+    });
   });
 });
 
