@@ -105,12 +105,7 @@ game stays faithful; anything that adds or changes behavior ships as a **mod**.
 - Conveniences, tweaks, and new systems live as mods - see
   [docs/MODS.md](docs/MODS.md) and the modding guides in
   [docs/modding/](docs/modding/).
-- The first-party mods are the worked examples of this boundary: `qol`
-  (conveniences), `bug-fixes` (opt-in fixes for 4.2.6's own defects),
-  `feature-restoration` (features later Angband versions dropped, brought back
-  as toggles), `linoleum` (an alternative tile engine and six converted tile
-  packs), `borg` (the autoplayer), and `forge` (an in-game workshop for building
-  other mods).
+- The first-party mods are the worked examples of this boundary: `qol` (conveniences), `bug-fixes` (optional fixes for 4.2.6's own defects), `feature-restoration`, shown as Cutting Room Floor (features later Angband versions dropped, plus content upstream wrote but never switched on, brought back as toggles), `linoleum` (an alternative tile engine and six converted tile packs), `borg` (the autoplayer), and `forge` (a workshop inside the game for building other mods).
 - **No mod is bundled into the build.** `mods/registry.json` names mod
   repositories and nothing else; every fact about a mod - its id, version,
   payload and the engine range it supports - comes from that repository's own

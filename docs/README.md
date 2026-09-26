@@ -109,9 +109,7 @@ bundled:
 - [modding/QOL.md](./modding/QOL.md) - `qol`, the quality-of-life mod.
 - [modding/BUG_FIXES.md](./modding/BUG_FIXES.md) - `bug-fixes`, the unofficial
   patch set for upstream defects core deliberately keeps.
-- [modding/FEATURE_RESTORATION.md](./modding/FEATURE_RESTORATION.md) -
-  `feature-restoration`, mechanics later Angband versions dropped, brought back
-  one toggle at a time.
+- [modding/FEATURE_RESTORATION.md](./modding/FEATURE_RESTORATION.md) - `feature-restoration`, shown in the mod manager as Cutting Room Floor. It brings back mechanics later Angband versions dropped, and content upstream wrote but never switched on, one toggle at a time.
 - [modding/BORG.md](./modding/BORG.md) - `borg`, the autoplayer, and how to run
   it.
 

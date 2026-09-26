@@ -182,7 +182,7 @@ the only way to know that route actually works.
 
 | Mod | What it is | Reference |
 | --- | --- | --- |
-| [feature-restoration](https://github.com/neostryder/neo-angband-mod-feature-restoration) | Beloved features that later versions of Angband dropped, brought back one switch at a time | [settings](https://github.com/neostryder/neo-angband-mod-feature-restoration/blob/master/docs/README.md) |
+| [feature-restoration](https://github.com/neostryder/neo-angband-mod-feature-restoration) | Cutting Room Floor. Features later versions of Angband dropped, and content upstream wrote but never switched on, brought back one switch at a time | [settings](https://github.com/neostryder/neo-angband-mod-feature-restoration/blob/master/docs/README.md) |
 | [qol](https://github.com/neostryder/neo-angband-mod-qol) | Quality-of-life conveniences | [settings](https://github.com/neostryder/neo-angband-mod-qol/blob/master/docs/README.md) |
 | [bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes) | Fixes for upstream bugs the base game keeps on purpose | [settings](https://github.com/neostryder/neo-angband-mod-bug-fixes/blob/master/docs/README.md) |
 | [linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) | A second tile engine, and all of Angband's tile sets converted to it | [settings](https://github.com/neostryder/neo-angband-mod-linoleum/blob/master/docs/README.md) |
