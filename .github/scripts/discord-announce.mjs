@@ -43,7 +43,7 @@ const REPO_CONFIG = {
     kind: "mod",
   },
   "neo-angband-mod-feature-restoration": {
-    title: "Feature Restoration",
+    title: "Cutting Room Floor",
     emoji: "\u{1F55B}", // clock face twelve
     color: 0x8e44ad,
     kind: "mod",
