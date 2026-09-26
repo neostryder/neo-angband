@@ -30,6 +30,12 @@ const REPO_CONFIG = {
     color: 0x8b1a1a,
     kind: "game",
   },
+  "neo-angband-mod-anybandui": {
+    title: "AnybandUI",
+    emoji: "🖼️", // framed picture
+    color: 0x5ce1e6,
+    kind: "mod",
+  },
   "neo-angband-mod-borg": {
     title: "Borg",
     emoji: "\u{1F916}", // robot
