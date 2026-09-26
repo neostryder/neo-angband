@@ -54,6 +54,10 @@ still calls itself.
 - [Internal] [Modding-API] **A mod can reword the character background with the new `characterBackground(text)` hook.** It gets the whole paragraph assembled from `history.txt` before word wrap, on the character sheet, the birth screen and the character dump. The save keeps the original text, so turning the mod off restores it (#282).
 - [Internal] [Modding-API] **A mod can reword item descriptions with the new `objectInfoText(text)` and `effectIntro(intro)` hooks.** `objectInfoText` gets each fragment the description writes, such as a whole "Affects your stealth" line. `effectIntro` gets the words that open an effect description along with the facts that chose them: the item class, whether the effect is known, whether it needs aiming and whether it comes from an activation (#282).
 
+### Changed
+
+- [Visible] [Docs] **The README, install guide, mod guides, modding docs and policy pages are reworded for plainer reading, with every fact kept.** Long asides are cut down and sentences are shorter, which takes about 7,600 words out of the docs in total (#278).
+
 ### Fixed
 
 - [Visible] **Item descriptions use Angband 4.2.6's wording again for "Affects your" lines and for the sentence before an item's effect.** The port had shipped upstream's later wording. A line such as "Affects your stealth" has no full stop again, and an effect opens with "It can be aimed.", "It can be activated.", "When aimed, it" or "When activated, it" where the port wrote "It requires a target.", "It may require a target." or "When used, it". Mods can still show the later wording through `objectInfoText` and `effectIntro` (#282).
