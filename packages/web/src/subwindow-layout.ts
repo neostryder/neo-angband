@@ -387,6 +387,8 @@ export interface DropZoneOptions {
   maxPx?: number;
   /** The panel being dragged. The main view never becomes a tab. */
   dragging?: TileId;
+  /** Offer the Tab target. False leaves the whole interior as Swap. */
+  tabs?: boolean;
 }
 
 /**
@@ -395,7 +397,7 @@ export interface DropZoneOptions {
  * one. When the main view is either end of the drop, the whole interior is
  * Swap.
  */
-function centerZones(tile: TileRect, opts: Required<Omit<DropZoneOptions, "dragging">> & { dragging?: TileId | undefined }): DropZone[] {
+function centerZones(tile: TileRect, opts: ResolvedZoneOptions): DropZone[] {
   const { rect } = tile;
   const left = edgeBand(rect, "left", opts.fraction, opts.minPx, opts.maxPx).w;
   const top = edgeBand(rect, "top", opts.fraction, opts.minPx, opts.maxPx).h;
@@ -405,7 +407,7 @@ function centerZones(tile: TileRect, opts: Required<Omit<DropZoneOptions, "dragg
     w: Math.max(0, rect.w - left * 2),
     h: Math.max(0, rect.h - top * 2),
   };
-  if (tile.id === MAIN_TILE_ID || opts.dragging === MAIN_TILE_ID) {
+  if (!opts.tabs || tile.id === MAIN_TILE_ID || opts.dragging === MAIN_TILE_ID) {
     return [{ kind: "swap", id: tile.id, preview: inner }];
   }
   if (inner.w >= inner.h) {
@@ -422,12 +424,15 @@ function centerZones(tile: TileRect, opts: Required<Omit<DropZoneOptions, "dragg
   ];
 }
 
-function zoneOptions(opts: DropZoneOptions): Required<Omit<DropZoneOptions, "dragging">> & { dragging?: TileId | undefined } {
+type ResolvedZoneOptions = Required<Omit<DropZoneOptions, "dragging">> & { dragging?: TileId | undefined };
+
+function zoneOptions(opts: DropZoneOptions): ResolvedZoneOptions {
   return {
     fraction: opts.fraction ?? 0.25,
     minPx: opts.minPx ?? 12,
     maxPx: opts.maxPx ?? 56,
     dragging: opts.dragging,
+    tabs: opts.tabs ?? true,
   };
 }
 

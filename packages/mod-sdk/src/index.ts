@@ -77,6 +77,7 @@ export {
 } from "./json/orphan-saves.js";
 export type { OrphanRecord, OrphanRecords } from "./json/orphan-saves.js";
 export { isSavedGameHeader, savedGameFormat } from "./json/saved-game.js";
+export { windowManagerFormat } from "./json/window-manager.js";
 
 export {
   COMPAT_CLAIMS,

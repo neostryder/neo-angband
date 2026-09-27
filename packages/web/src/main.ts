@@ -573,6 +573,7 @@ import {
   type SubwindowState,
 } from "./subwindows";
 import { mountSubwindowShell } from "./subwindow-shell";
+import { readWmSettings, writeWmSettings, type WmSettings } from "./wm-settings";
 import {
   inventoryScreen,
   equipmentScreen,
@@ -2807,8 +2808,35 @@ function restoreSubwindowLayout(next: SubwindowState): void {
   renderSubwindows();
 }
 
+/* #287: each window-manager feature has its own switch, kept in its own
+ * document so turning one off never touches the arrangement. */
+let wmSettings: WmSettings = readWmSettings(localStorage);
+subwindowShell.setFeatures(wmSettings);
+function setWmFeature(key: keyof WmSettings, enabled: boolean): void {
+  wmSettings = { ...wmSettings, [key]: enabled };
+  writeWmSettings(localStorage, wmSettings);
+  subwindowShell.setFeatures(wmSettings);
+}
+
 const subwindowMenu: SubwindowMenu = {
   choices: SUBWINDOW_CHOICES,
+  features: [
+    {
+      label: t("options.subwindows.featureTabs", "Tabs: drop a panel on another panel to share its space"),
+      enabled: () => wmSettings.tabs,
+      set: (enabled) => setWmFeature("tabs", enabled),
+    },
+    {
+      label: t("options.subwindows.featureFit", "Small windows: fold cramped panels into tabs instead of shrinking them"),
+      enabled: () => wmSettings.fitSmallWindows,
+      set: (enabled) => setWmFeature("fitSmallWindows", enabled),
+    },
+    {
+      label: t("options.subwindows.featureLock", "Lock dividers: keep panel sizes fixed while you play"),
+      enabled: () => wmSettings.lockDividers,
+      set: (enabled) => setWmFeature("lockDividers", enabled),
+    },
+  ],
   mapTiles: mapTileModeMenu,
   enabled: (id) => subwindowState.enabled[id as SubwindowId],
   set: (id, enabled) => {

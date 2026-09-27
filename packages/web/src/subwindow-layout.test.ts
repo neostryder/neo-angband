@@ -184,6 +184,16 @@ describe("dropZoneAt and applyDrop", () => {
     expect(zones).toHaveLength(5 + 6);
   });
 
+  it("offers no Tab target when tabs are switched off (#287)", () => {
+    const tree = insertAtEdge(mainOnly, "inventory", MAIN_TILE_ID, "right", 0.4);
+    const { tiles } = computeLayout(tree, VIEW);
+    const zones = allDropZones(tiles, "messages", { tabs: false });
+    expect(zones.some((zone) => zone.kind === "tab")).toBe(false);
+    const inventory = tiles.find((tile) => tile.id === "inventory")!.rect;
+    const middle = dropZoneAt(tiles, inventory.x + inventory.w * 0.75, inventory.y + inventory.h / 2, { dragging: "messages", tabs: false });
+    expect(middle?.kind).toBe("swap");
+  });
+
   it("splits a panel's interior into Swap and Tab targets that match dropZoneAt (#287)", () => {
     const tree = insertAtEdge(mainOnly, "inventory", MAIN_TILE_ID, "right", 0.4);
     const { tiles } = computeLayout(tree, VIEW);

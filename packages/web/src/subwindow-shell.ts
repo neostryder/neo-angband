@@ -82,7 +82,22 @@ export interface SubwindowShell {
   setGameLive(live: boolean): void;
   /** Filter tiled game content while keeping its host controls legible. */
   setVisualFilter(filter: string | null): void;
+  /**
+   * Turn individual window-manager features on or off (#287). Turning a
+   * feature off never changes the saved arrangement: tab groups that already
+   * exist keep working with tabs off, and no new ones can be made by drag.
+   */
+  setFeatures(features: SubwindowFeatures): void;
   destroy(): void;
+}
+
+export interface SubwindowFeatures {
+  /** Offer the Tab drop target. */
+  readonly tabs: boolean;
+  /** Fold cramped groups into tabs in a small window (fitForComfort). */
+  readonly fitSmallWindows: boolean;
+  /** Keep dividers from being dragged. */
+  readonly lockDividers: boolean;
 }
 
 export interface SubwindowShellOptions {
@@ -287,6 +302,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
    * tree while groups are merged for space, so they rest until the viewport
    * has room again. */
   let dividersLocked = false;
+  let features: SubwindowFeatures = { tabs: true, fitSmallWindows: true, lockDividers: false };
   let drag: {
     id: string;
     pointerId: number;
@@ -490,9 +506,11 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     /* #275, #287: decide which tree to actually render. The saved `tree` (and
      * `currentTree` above) is never changed by this, so growing the window
      * back out separates merged groups again with nothing to undo. */
-    const fitted = fitForComfort(tree, viewport, { prefer: preferredTabs });
+    const fitted = features.fitSmallWindows
+      ? fitForComfort(tree, viewport, { prefer: preferredTabs })
+      : { tree, merged: [] };
     visibleTree = fitted.tree;
-    dividersLocked = fitted.merged.length > 0;
+    dividersLocked = features.lockDividers || fitted.merged.length > 0;
     const key = mergeKey(fitted.merged);
     if (key !== lastMergeKey) {
       lastMergeKey = key;
@@ -530,7 +548,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   function zoneFromEvent(event: PointerEvent, dragging: string): DropZone | null {
     const point = pointerInHost(host, event);
     const { tiles } = computeLayout(visibleTree, hostSize(host));
-    return dropZoneAt(tiles, point.x, point.y, { dragging });
+    return dropZoneAt(tiles, point.x, point.y, { dragging, tabs: features.tabs });
   }
 
   function zoneLabel(zone: DropZone): string {
@@ -601,7 +619,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       drag.active = true;
       host.classList.add("tile-host-dragging");
       const { tiles } = computeLayout(visibleTree, hostSize(host));
-      renderGuides(allDropZones(tiles, drag.id));
+      renderGuides(allDropZones(tiles, drag.id, { tabs: features.tabs }));
     }
     if (drag.active) showPreview(zoneFromEvent(event, drag.id));
   };
@@ -643,7 +661,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
      * otherwise go stale and point at the pre-resize geometry. */
     if (drag?.active) {
       const { tiles } = computeLayout(visibleTree, hostSize(host));
-      renderGuides(allDropZones(tiles, drag.id));
+      renderGuides(allDropZones(tiles, drag.id, { tabs: features.tabs }));
     }
   };
 
@@ -710,6 +728,10 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     setGameLive(live) {
       if (gameLive === live) return;
       gameLive = live;
+      paint(currentTree);
+    },
+    setFeatures(next) {
+      features = { ...next };
       paint(currentTree);
     },
     setVisualFilter(filter) {

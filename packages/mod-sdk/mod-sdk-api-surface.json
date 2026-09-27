@@ -126,6 +126,7 @@
     "utcTimestamp",
     "validateManifest",
     "valuesAtPath",
+    "windowManagerFormat",
     "windowStateFormat"
   ]
 }

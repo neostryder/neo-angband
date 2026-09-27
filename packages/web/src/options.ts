@@ -773,9 +773,18 @@ export interface SidebarModeMenu {
   set: (index: number) => void;
 }
 
+/** One window-manager feature switch shown on the Subwindow setup screen. */
+export interface SubwindowFeatureToggle {
+  label: string;
+  enabled: () => boolean;
+  set: (enabled: boolean) => void;
+}
+
 /** The supported subset of do_cmd_options_win's independent term flags. */
 export interface SubwindowMenu {
   choices: readonly { id: string; label: string }[];
+  /** Window-manager feature switches (#287), listed after the panels. */
+  features?: readonly SubwindowFeatureToggle[];
   enabled: (id: string) => boolean;
   set: (id: string, enabled: boolean) => void;
   mapTiles?: TileModeMenu;
@@ -797,6 +806,10 @@ async function runSubwindowPage(
     const items: MenuItem[] = subwindows.choices.map((choice) => ({
       label: `${subwindows.enabled(choice.id) ? "X" : "."} ${choice.label}`,
     }));
+    const featuresStart = items.length;
+    for (const feature of subwindows.features ?? []) {
+      items.push({ label: `${feature.enabled() ? "X" : "."} ${feature.label}` });
+    }
     const mapTilesIdx = subwindows.mapTiles ? items.length : -1;
     if (subwindows.mapTiles) {
       const tiles = subwindows.mapTiles;
@@ -834,6 +847,11 @@ async function runSubwindowPage(
     const choice = subwindows.choices[idx];
     if (choice) {
       subwindows.set(choice.id, !subwindows.enabled(choice.id));
+      continue;
+    }
+    const feature = idx >= featuresStart ? subwindows.features?.[idx - featuresStart] : undefined;
+    if (feature) {
+      feature.set(!feature.enabled());
       continue;
     }
     let message: string;

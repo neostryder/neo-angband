@@ -55,6 +55,10 @@ The main play view itself never moves, docks, closes or becomes a tab; every oth
 
 Shrink the window far enough and the panels run out of room to stay readable. Rather than squeezing them further, the game folds the most cramped panel into a tab beside the panel closest to it in shape: the monster list joins the item list, and messages join another wide strip along an edge. A message in the log names each pair. Every panel stays one click away, and your arrangement is untouched, so widening the window puts each panel back where it was. The splitters hold still until then.
 
+## Window features
+
+Three rows on the Subwindow setup screen switch parts of the panel system on and off, each on its own. **Tabs** (on by default) offers the Tab target when you drag one panel onto another. **Small windows** (on by default) folds cramped panels into tabs as described above; with it off, panels shrink to their minimum size instead. **Lock dividers** (off by default) stops the splitters from moving, so a finished arrangement cannot be nudged by a stray drag. Turning a switch off never rearranges anything: tabs that already exist keep working with Tabs off, and your saved layout stays as it is.
+
 ## The default arrangement
 
 The first panel you turn on brings a whole prebuilt layout with it, rather
