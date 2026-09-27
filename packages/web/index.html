@@ -210,6 +210,29 @@
         color: #e0e0e6;
         border-bottom-color: #c9a227;
       }
+      .tile-main-grip {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        z-index: 2;
+        width: 18px;
+        height: 18px;
+        padding: 0;
+        border: 1px solid #50505a;
+        border-radius: 3px;
+        background: rgba(24, 24, 30, 0.7);
+        color: #8a8a94;
+        font: 12px/16px sans-serif;
+        cursor: grab;
+        opacity: 0.55;
+      }
+      .tile-main-grip:hover {
+        opacity: 1;
+        color: #e0e0e6;
+      }
+      .tile-main-grip[hidden] {
+        display: none;
+      }
       .tile-gutter-locked,
       .tile-gutter-locked:hover {
         background: #2a2a32;

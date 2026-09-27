@@ -11,7 +11,8 @@
  * tiling window manager, not free-floating OS windows.
  *
  * The main view never joins a group of more than one tab: an inactive tab is
- * hidden, and the dungeon view is never hidden.
+ * hidden, and the dungeon view is never hidden. It can still move: it docks
+ * against another panel's edge or trades places with a panel like any other.
  */
 
 export const MAIN_TILE_ID = "main";
@@ -277,7 +278,9 @@ export function insertAtEdge(
   incomingRatio = 0.3,
 ): LayoutNode {
   if (incomingId === targetId) return tree;
-  const stripped = incomingId === MAIN_TILE_ID ? tree : removeLeaf(tree, incomingId);
+  /* removeLeaf keeps the main view in place for every caller that closes or
+   * prunes panels; a move takes it out so it can land somewhere else. */
+  const stripped = removeFrom(tree, incomingId) ?? tree;
   const path = findPath(stripped, targetId);
   if (!path) return tree;
   const target = nodeAt(stripped, path);
@@ -497,7 +500,10 @@ export function applyDrop(
   if (zone.id === incomingId) return tree;
   if (zone.kind === "swap") return swapLeaves(tree, incomingId, zone.id);
   if (zone.kind === "tab") return tabInto(tree, incomingId, zone.id);
-  return insertAtEdge(tree, incomingId, zone.id, zone.edge, incomingRatio);
+  /* A docked panel takes the smaller share of the split. The dungeon view is
+   * the play area, so when it is the one moving it takes the larger share. */
+  const ratio = incomingId === MAIN_TILE_ID ? 1 - incomingRatio : incomingRatio;
+  return insertAtEdge(tree, incomingId, zone.id, zone.edge, ratio);
 }
 
 export function pruneTree(node: LayoutNode, keep: ReadonlySet<TileId>): LayoutNode | null {

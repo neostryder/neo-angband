@@ -49,7 +49,7 @@ always has a home that fills the available space.
 - **Close a panel from its own title bar**, with the small `x` in its corner -
   the same effect as unchecking it back in Subwindow setup.
 
-The main play view itself never moves, docks, closes or becomes a tab; every other panel arranges around it.
+The dungeon view can move too. Drag the small grip in its top-right corner to dock it against another panel's edge, or drop it in the middle of a panel to trade places with it. It never closes, never hides and never becomes a tab, so the map is always on screen.
 
 ## Small windows
 
@@ -57,7 +57,7 @@ Shrink the window far enough and the panels run out of room to stay readable. Ra
 
 ## Window features
 
-Three rows on the Subwindow setup screen switch parts of the panel system on and off, each on its own. **Tabs** (on by default) offers the Tab target when you drag one panel onto another. **Small windows** (on by default) folds cramped panels into tabs as described above; with it off, panels shrink to their minimum size instead. **Lock dividers** (off by default) stops the splitters from moving, so a finished arrangement cannot be nudged by a stray drag. Turning a switch off never rearranges anything: tabs that already exist keep working with Tabs off, and your saved layout stays as it is.
+Four rows on the Subwindow setup screen switch parts of the panel system on and off, each on its own. **Tabs** (on by default) offers the Tab target when you drag one panel onto another. **Small windows** (on by default) folds cramped panels into tabs as described above; with it off, panels shrink to their minimum size instead. **Lock dividers** (off by default) stops the splitters from moving, so a finished arrangement cannot be nudged by a stray drag. **Move the dungeon view** (on by default) shows the grip in the dungeon view's corner; with it off, the dungeon view stays where it is and other panels can still swap places with it. Turning a switch off never rearranges anything: tabs that already exist keep working with Tabs off, and your saved layout stays as it is.
 
 ## The default arrangement
 

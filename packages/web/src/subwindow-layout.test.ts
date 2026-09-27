@@ -315,6 +315,30 @@ describe("tab groups (#287)", () => {
     expect(groupOf(swapped, "messages")).toEqual({ kind: "leaf", id: "messages" });
   });
 
+  it("moves the main view to another panel's edge without duplicating it", () => {
+    const tree = twoPanels();
+    const moved = insertAtEdge(tree, MAIN_TILE_ID, "equipment", "right", 0.6);
+    expect(leafIds(moved).sort()).toEqual(leafIds(tree).sort());
+    const { tiles, splitters } = computeLayout(moved, VIEW);
+    const main = tiles.find((tile) => tile.id === MAIN_TILE_ID)!.rect;
+    const equipment = tiles.find((tile) => tile.id === "equipment")!.rect;
+    expect(main.x).toBeGreaterThan(equipment.x);
+    tiled(tiles, splitters, VIEW);
+    expect(removeLeaf(moved, MAIN_TILE_ID)).toBe(moved);
+  });
+
+  it("gives the main view the larger share when it is the panel being docked", () => {
+    const tree = twoPanels();
+    const { tiles } = computeLayout(tree, VIEW);
+    const zone = allDropZones(tiles, MAIN_TILE_ID).find((entry) => entry.kind === "dock" && entry.id === "equipment" && entry.edge === "right")!;
+    const moved = applyDrop(tree, MAIN_TILE_ID, zone);
+    const after = computeLayout(moved, VIEW).tiles;
+    const main = after.find((tile) => tile.id === MAIN_TILE_ID)!.rect;
+    const equipment = after.find((tile) => tile.id === "equipment")!.rect;
+    expect(main.w).toBeGreaterThan(equipment.w);
+    expect(allDropZones(tiles, MAIN_TILE_ID).some((entry) => entry.kind === "tab")).toBe(false);
+  });
+
   it("docks a panel beside a whole group, keeping the group intact", () => {
     const grouped = tabInto(twoPanels(), "messages", "equipment");
     const docked = insertAtEdge(grouped, "inventory", "equipment", "top", 0.3);

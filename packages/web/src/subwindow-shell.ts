@@ -98,6 +98,8 @@ export interface SubwindowFeatures {
   readonly fitSmallWindows: boolean;
   /** Keep dividers from being dragged. */
   readonly lockDividers: boolean;
+  /** Show the dungeon view's grip, which drags it to another place. */
+  readonly moveDungeonView: boolean;
 }
 
 export interface SubwindowShellOptions {
@@ -173,6 +175,24 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     if (active instanceof HTMLElement && active !== mainSlot && active.closest(".tile-leaf")) active.blur();
   };
   mainSlot.addEventListener("pointerdown", onMainPointerDown);
+
+  /* #287: the dungeon view has no title bar, and a right-click on it already
+   * opens the grid's context menu or the command wheel, so it moves by a grip
+   * of its own. Either button drags from the grip, since the grip is never
+   * game input. */
+  const mainGrip = document.createElement("button");
+  mainGrip.type = "button";
+  mainGrip.className = "tile-main-grip";
+  mainGrip.textContent = "\u283f";
+  mainGrip.title = "Drag here to move the dungeon view. Drop it on a panel edge to dock beside it, or on Swap to trade places.";
+  mainGrip.setAttribute("aria-label", "Move the dungeon view");
+  mainGrip.hidden = true;
+  mainSlot.appendChild(mainGrip);
+  const onGripContextMenu = (event: Event): void => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  mainGrip.addEventListener("contextmenu", onGripContextMenu);
 
   const slots = new Map<string, HTMLElement>();
   const canvases = new Map<string, HTMLCanvasElement>();
@@ -302,7 +322,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
    * tree while groups are merged for space, so they rest until the viewport
    * has room again. */
   let dividersLocked = false;
-  let features: SubwindowFeatures = { tabs: true, fitSmallWindows: true, lockDividers: false };
+  let features: SubwindowFeatures = { tabs: true, fitSmallWindows: true, lockDividers: false, moveDungeonView: true };
   let drag: {
     id: string;
     pointerId: number;
@@ -496,6 +516,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       // regardless of the persisted tiling tree, since no other panel has
       // anything relevant to show.
       lastVisibleIds = new Set([MAIN_TILE_ID]);
+      mainGrip.hidden = true;
       setRect(mainSlot, hostSize(host));
       if (!mainSlot.isConnected) host.appendChild(mainSlot);
       applyLeafVisibility();
@@ -518,6 +539,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     }
     const layout = computeLayout(visibleTree, viewport);
     lastVisibleIds = new Set(layout.tiles.map((tile) => tile.id));
+    mainGrip.hidden = !features.moveDungeonView || layout.tiles.length < 2;
     for (const tile of layout.tiles) {
       const leaf = tile.id === MAIN_TILE_ID ? mainSlot : ensureSlot(tile.id);
       setRect(leaf, tile.rect);
@@ -578,6 +600,21 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     resize = { path, pointerId: event.pointerId };
     gutter.setPointerCapture(event.pointerId);
   };
+
+  const onGripPointerDown = (event: PointerEvent): void => {
+    if ((event.button !== 0 && event.button !== 2) || !features.moveDungeonView || !gameLive) return;
+    event.preventDefault();
+    event.stopPropagation();
+    drag = {
+      id: MAIN_TILE_ID,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+    };
+    mainGrip.setPointerCapture(event.pointerId);
+  };
+  mainGrip.addEventListener("pointerdown", onGripPointerDown);
 
   const onLeafPointerDown = (event: PointerEvent): void => {
     if (event.button !== 2) return;
@@ -748,6 +785,9 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       window.removeEventListener("resize", onResize);
       host.removeEventListener("focusin", onFocusIn);
       mainSlot.removeEventListener("pointerdown", onMainPointerDown);
+      mainGrip.removeEventListener("pointerdown", onGripPointerDown);
+      mainGrip.removeEventListener("contextmenu", onGripContextMenu);
+      mainGrip.remove();
       for (const leaf of slots.values()) {
         if (leaf === mainSlot) continue;
         leaf.removeEventListener("pointerdown", onLeafPointerDown, true);

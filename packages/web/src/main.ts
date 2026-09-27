@@ -2836,6 +2836,11 @@ const subwindowMenu: SubwindowMenu = {
       enabled: () => wmSettings.lockDividers,
       set: (enabled) => setWmFeature("lockDividers", enabled),
     },
+    {
+      label: t("options.subwindows.featureMoveMain", "Move the dungeon view: show a grip for docking it beside other panels"),
+      enabled: () => wmSettings.moveDungeonView,
+      set: (enabled) => setWmFeature("moveDungeonView", enabled),
+    },
   ],
   mapTiles: mapTileModeMenu,
   enabled: (id) => subwindowState.enabled[id as SubwindowId],
