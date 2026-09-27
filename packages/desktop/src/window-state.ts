@@ -1,12 +1,15 @@
 /**
  * The front end's own window settings, remembered between launches.
  *
+ * The settings live in window.json, a neo-angband/desktop/window-state
+ * document. A window.txt from an older build is read once, rewritten as
+ * window.json, and removed after the new file reads back.
+ *
  * The legacy window.txt follows main-sdl.c's `sdlinit.txt` (load_prefs
  * L4037-4075, save_prefs L4186-4215): a plain `Key = value` file in
- * ANGBAND_DIR_USER holding the things
- * the DISPLAY layer owns rather than the game - upstream keeps `Resolution`,
- * `Fullscreen`, `Graphics`, tile sizes and the per-window geometry there. It is
- * not a savefile and not an option in the game's option screens; a front end's
+ * ANGBAND_DIR_USER holding the things the DISPLAY layer owns rather than the
+ * game - upstream keeps `Resolution`, `Fullscreen`, `Graphics`, tile sizes and
+ * the per-window geometry there. It is not a savefile and not an option in the game's option screens; a front end's
  * window state has never been either.
  *
  * Two upstream front ends are drawn on, because between them they cover what an
@@ -24,8 +27,7 @@
  *     so it is main-win.c that says what must survive a quit.
  *
  * The legacy file is parsed leniently, as upstream parses it: a line is matched
- * by containing the
- * key, and the value is whatever follows the `=`. Every key is independent and
+ * by containing the key, and the value is whatever follows the `=`. Every key is independent and
  * every ABSENT key keeps its default, exactly as main-win.c's
  * `GetPrivateProfileIntA(section, key, <default>, file)` does - so a state file
  * written by an older build still loads. An unreadable or absent file is every
