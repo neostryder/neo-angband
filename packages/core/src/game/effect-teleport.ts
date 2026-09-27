@@ -62,6 +62,7 @@ import type {
   EffectRegistry,
 } from "../effects/interpreter.js";
 import { deleteMonster, monsterSwap, movePlayer } from "./context.js";
+import { emitMotion } from "./resolved-events.js";
 import type { GameState } from "./context.js";
 import { gameEnv } from "./effect-game-env.js";
 import {
@@ -292,11 +293,14 @@ export function chooseTeleportDestination(
 
 /** Move whatever is at `start` (player or monster) to `dest`. */
 function moveOccupant(state: GameState, start: Loc, dest: Loc): void {
-  if (state.chunk.mon(start) < 0) {
+  const occupant = state.chunk.mon(start);
+  if (occupant < 0) {
     movePlayer(state, dest);
   } else {
     monsterSwap(state, start, dest);
   }
+  if (occupant !== 0) emitMotion(state, occupant < 0 ? "player" : occupant,
+    start, dest, "teleport");
 }
 
 /**
@@ -553,6 +557,7 @@ export function teleportPlayerTo(
   /* sound(MSG_TELEPORT) (effect-handler-general.c:2808), the handler's. */
   state.sound?.(MSG.TELEPORT);
   movePlayer(state, land);
+  emitMotion(state, "player", start, land, "teleport");
   tp.onPlayerPostMove?.(true);
   state.chunk.sqinfoOff(land, SQUARE.PROJECT);
 }
@@ -736,6 +741,7 @@ export function teleportPlayer(
   /* sound(MSG_TELEPORT) (effect-handler-general.c:2666, is_player arm). */
   state.sound?.(MSG.TELEPORT);
   movePlayer(state, dest);
+  emitMotion(state, "player", start, dest, "teleport");
   tp.onPlayerPostMove?.(true);
   state.chunk.sqinfoOff(dest, SQUARE.PROJECT);
 }
@@ -759,6 +765,7 @@ export function teleportMonster(
   /* sound(MSG_TPOTHER) (effect-handler-general.c:2666, the !is_player arm). */
   state.sound?.(MSG.TPOTHER);
   monsterSwap(state, start, dest);
+  emitMotion(state, midx, start, dest, "teleport");
   tp.onMonsterPostMove?.(midx);
   state.chunk.sqinfoOff(dest, SQUARE.PROJECT);
 }

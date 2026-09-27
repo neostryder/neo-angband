@@ -30,6 +30,7 @@ import { squareIsSeen } from "../world/view.js";
 import { sourceTrap } from "../effects/interpreter.js";
 import type { GameState, PlayerCommand } from "./context.js";
 import { movePlayer, queueCommandRepeat } from "./context.js";
+import { emitMotion } from "./resolved-events.js";
 import { floorPile } from "./floor.js";
 import { buildObjectEffectChain } from "./obj-cmd.js";
 import type { ObjCmdDeps } from "./obj-cmd.js";
@@ -544,7 +545,9 @@ export function hitTrap(
 
     /* Some traps drop you onto them. */
     if (trap.kind.flags.has(TRF.PIT) && !locEq(state.actor.grid, trap.grid)) {
+      const from = state.actor.grid;
       movePlayer(state, trap.grid);
+      emitMotion(state, "player", from, trap.grid, "teleport");
       state.updateFov?.(state);
     }
 

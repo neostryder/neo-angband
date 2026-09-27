@@ -45,6 +45,7 @@ import type { GameObject } from "../obj/object.js";
 import { ODESC } from "../obj/desc.js";
 import { projectPath } from "../world/project.js";
 import { monsterIsObvious, monsterIsDestroyed, monsterIsVisible } from "../mon/predicate.js";
+import { emitCombatOutcome } from "./resolved-events.js";
 import { getLore } from "../mon/lore.js";
 import { monTakeHit } from "../mon/take-hit.js";
 import { playerClearTimed } from "../player/timed.js";
@@ -222,6 +223,7 @@ function rangedHelper(
       /* Route damage through mon_take_hit so a survivor rolls fear and a kill
        * is handled uniformly (player-attack.c:1191). Death messaging stays
        * explicit here (empty note), matching the port's ranged death lines. */
+      const oldHp = mon.hp;
       const res = monTakeHit(state.rng, mon, dmg, "", {
         ...gameTakeHitHooks(state, mon),
         ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
@@ -229,6 +231,8 @@ function rangedHelper(
           ? { onArenaDeath: (m) => void arenaInterceptDeath(state, m) }
           : {}),
       });
+      emitCombatOutcome(state, "player", mon.midx, "ranged", true,
+        Math.max(0, oldHp - mon.hp), res.died, grid);
       if (res.died) {
         if (!state.arenaLevel) {
           /* "Make sure to flush any monster messages first" (mon-util.c:1046):
@@ -257,9 +261,10 @@ function rangedHelper(
           addMonsterMessage(state, mon, MON_MSG.FLEE_IN_TERROR, true);
         }
       }
+    } else {
+      emitCombatOutcome(state, "player", mon.midx, "ranged", false, 0, false, grid);
     }
-    /* No else: ranged_helper prints nothing on a miss (player-attack.c:1132
-     * has an if(result.success) block and no else branch), R3. */
+    /* A miss has no game message (player-attack.c:1132), R3. */
 
     /* Stop the missile, or reduce its piercing effect (player-attack.c:1198). */
     pierce--;

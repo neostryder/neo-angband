@@ -332,6 +332,10 @@ register(host, ctx) {
 
 `ctx.snapshot()` returns the game at the current input wait as one frozen object, or null before a game exists: `core` (the `AgentView.capture()` parts: turn, player, inventory, equipment, monsters, target, stores, spellbooks), `phase`, `messagePending`, `frame` (the last world frame) and `token`. Send the token back with an action so a stale one can be refused. Parts you have no read capability for are null; the phase and pause use `state:interaction.read` and the frame uses `state:map.read`. See [MOD_SEAMS.md section 4g](MOD_SEAMS.md#4g-ctxsnapshot-and-the-input-token---one-wait-read-whole).
 
+### Watching resolved outcomes: `ctx.events`
+
+Declare `event:combat-outcome`, `event:heal`, or `event:motion` to receive `ctx.events` during a game. Subscribe with `ctx.events.on(name, handler)`; each name needs its own grant. Combat payloads report hit or miss, applied damage, death, and the target grid. Healing reports the restored amount. Motion names a `walk` or `teleport` at the completed move. Every payload includes `seen`, and unseen events still arrive. See [MOD_SEAMS.md section 4k](MOD_SEAMS.md#4l-resolved-combat-healing-and-movement-events).
+
 ### Reading the known level: `ctx.knownLevel()`
 
 Use `ctx.knownLevel()` to draw a map or minimap from every grid the player knows. The frozen result has a token, level id, dimensions and cells with remembered terrain, traps and objects. Declare `state:map.read`; the call returns null without it. The separate `actual` data requires `state:map-actual.read`. See [MOD_SEAMS.md section 4h](MOD_SEAMS.md#4h-ctxknownlevel---the-players-whole-remembered-level).

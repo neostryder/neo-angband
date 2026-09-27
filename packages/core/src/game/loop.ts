@@ -69,6 +69,7 @@ import { processPlayer } from "./player-turn.js";
 import type { ActionRegistry, PlayerTurnResult } from "./player-turn.js";
 import { dungeonGetNextLevel, playerSetRecallDepth } from "./quest.js";
 import { bumpInputRevision } from "../agent/boundary.js";
+import { emitHeal } from "./resolved-events.js";
 
 /** player-util.h regeneration constants (regen factor / base, times 2^16). */
 const PY_REGEN_NORMAL = 197;
@@ -222,6 +223,7 @@ export function playerRegenHp(state: GameState): void {
 
   const hpGain = p.mhp * percent + PY_REGEN_HPBASE;
   playerAdjustHpPrecise(p, hpGain);
+  emitHeal(state, "player", p.chp - oldChp, state.actor.grid);
 
   /* Notice changes. */
   if (oldChp !== p.chp) {
@@ -262,7 +264,9 @@ export function playerRegenMana(state: GameState): void {
 
   /* SP degen heals BGs at double efficiency vs casting. */
   if (spGain < 0 && combatRegen) {
+    const oldHp = p.chp;
     convertManaToHp(p, -spGain * 2);
+    emitHeal(state, "player", p.chp - oldHp, state.actor.grid);
   }
 
   /* Notice changes. */

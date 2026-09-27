@@ -92,6 +92,7 @@ export interface ProjectPlayerSideContext {
 
 /** The consequences the driver defers to the caller. */
 export interface ProjectPlayerHooks {
+  onOutcome?: (damage: number, died: boolean) => void;
   /** msg(). */
   message?: (text: string) => void;
   /** disturb(p). */
@@ -215,7 +216,9 @@ export function projectPlayer(
     if (reduced > 0 && hooks.showDamage) {
       hooks.message?.(`You take ${reduced} damage.`);
     }
+    const oldHp = actor.chp;
     takeHit(actor, reduced, origin.killer, hooks.takeHit);
+    hooks.onOutcome?.(Math.max(0, oldHp - actor.chp), actor.isDead);
   }
 
   /* Handle side effects, possibly including extra damage. */
@@ -234,7 +237,9 @@ export function projectPlayer(
     if (xtra > 0 && hooks.showDamage) {
       hooks.message?.(`You take an extra ${xtra} damage.`);
     }
+    const oldHp = actor.chp;
     takeHit(actor, xtra, origin.killer, hooks.takeHit);
+    hooks.onOutcome?.(Math.max(0, oldHp - actor.chp), actor.isDead);
   }
 
   /* Disturb */

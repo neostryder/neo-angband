@@ -30,6 +30,7 @@ import { monsterScaredByDamage, monsterWake } from "../mon/take-hit.js";
 import { los } from "../world/view.js";
 import { lookupTrap } from "../world/trap.js";
 import { deleteMonster } from "./context.js";
+import { emitCombatOutcome } from "./resolved-events.js";
 import type { GameState } from "./context.js";
 import type { GameEffectEnv } from "./effect-game-env.js";
 import { squareRemoveAllTraps } from "./trap.js";
@@ -167,6 +168,8 @@ export function monTakeNonplayerHit(
 
   /* Hurt the monster. */
   tMon.hp -= dam;
+  emitCombatOutcome(state, env.monCurrent ?? null, tMon.midx, "effect",
+    dam > 0, Math.max(0, dam), tMon.hp < 0, tMon.grid);
 
   if (tMon.hp < 0) {
     /* Shapechanged monsters revert on death. */

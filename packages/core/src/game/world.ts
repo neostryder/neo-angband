@@ -58,6 +58,7 @@ import { gearGet, gearObjectForUse } from "./gear.js";
 import { floorPile } from "./floor.js";
 import { monsterGroupChangeIndex } from "./mon-group.js";
 import { disturb } from "./player-path.js";
+import { emitCombatOutcome } from "./resolved-events.js";
 import { DEFAULT_HITPOINT_WARN } from "./project-cast.js";
 import {
   REST_ALL_POINTS,
@@ -223,11 +224,15 @@ export function applyWorldDamageReduction(state: GameState, dam: number): number
  * DoT source, not just the bloodlust over-exert block.
  */
 export function worldTakeHit(state: GameState, dam: number, killer: string): void {
+  const oldHp = state.actor.player.chp;
   const hooks: TakeHitHooks = {
     rng: state.rng,
     ...(state.world?.takeHitHooks ?? {}),
   };
   takeHit(worldTakeHitTarget(state), dam, killer, hooks);
+  if (dam > 0) emitCombatOutcome(state, null, "player", "effect", true,
+    Math.max(0, oldHp - state.actor.player.chp), state.isDead,
+    state.actor.grid);
 }
 
 /**

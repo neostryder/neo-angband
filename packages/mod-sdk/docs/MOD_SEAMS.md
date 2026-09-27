@@ -475,6 +475,16 @@ const blast = ctx.inspect?.blastArea({ x: 20, y: 12 }, 2);
 
 `projectionPath` and `blastArea` return ordered grids under `state:map.read`. They use the game's projection geometry with remembered terrain and visible monsters. Unknown terrain is treated as open for the preview. A blast reports covered grids only, with no damage estimate. Repeating these reads does not change the saved game, knowledge, turn, command queue, or RNG state.
 
+## 4l. Resolved combat, healing, and movement events
+
+`ctx.events` is present during a game when the mod declares at least one `event:<name>` grant. Subscribe with `ctx.events.on(name, handler)` and remove a handler with `ctx.events.off(name, handler)`. Each subscription checks its own grant. The new names are `combat-outcome`, `heal`, and `motion`; the existing event names and payloads stay the same.
+
+`combat-outcome` reports one resolved melee blow, ranged collision, projection, or damaging effect. Its payload has `attacker` and `target` as `"player"` or a monster index; `attacker` is null when no creature is identified as the source. `kind` is `melee`, `ranged`, `spell`, `effect`, or `trap`. `hit`, `damage`, `died`, and `grid` describe the result after damage is applied. A miss has zero damage. A killing event fires while the monster still occupies its index.
+
+`heal` reports `who`, the hit points actually restored in `amount`, and `grid`. `motion` reports `who`, `from`, `to`, and `kind`. A normal step is `walk`; a teleport, blink, or level-internal displacement is `teleport`. A refused move produces no motion event. Each payload has `seen`, read from the same player field-of-view test as projectile events. Unseen results still fire with `seen: false`.
+
+These events contain copied coordinates and scalar values. They do not carry a live player, monster, or grid object. Core emits them at the resolving code path and does not use a listener's return value. Mods can keep a payload for later animation without retaining game state.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

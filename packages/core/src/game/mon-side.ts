@@ -53,6 +53,7 @@ import { objectPrep } from "../obj/make.js";
 import { ODESC } from "../obj/desc.js";
 import type { MonBlowEnv } from "../combat/mon-melee.js";
 import type { GameState } from "./context.js";
+import { emitCombatOutcome, emitHeal } from "./resolved-events.js";
 import { playerOfHas } from "./context.js";
 import type { PlayerProjActor } from "./project-player.js";
 import { invenDamage } from "./project-obj.js";
@@ -157,6 +158,10 @@ export function makeMonBlowEnv(
     };
 
     return {
+      onOutcome: (hit, damage, died): void => {
+        emitCombatOutcome(state, mon.midx, "player", "melee", hit, damage,
+          died, state.actor.grid);
+      },
       playerGrid(): Loc {
         return state.actor.grid;
       },
@@ -340,6 +345,7 @@ export function makeMonBlowEnv(
           /* Don't heal more than max hp (PR_HEALTH redraw rides #25). */
           const heal = Math.min(rlev * unpower, mon.maxhp - mon.hp);
           mon.hp += heal;
+          emitHeal(state, mon.midx, heal, mon.grid);
           /* "Combine the pack" PN_COMBINE (mon-blows.c:763): the drained stack's
            * charge count changed, so it may now match another. */
           state.actor.player.upkeep.notice |= PN.COMBINE;

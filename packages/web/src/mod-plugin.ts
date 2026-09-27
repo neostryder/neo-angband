@@ -79,6 +79,7 @@
  * lives in mod-context.ts, which no plugin imports. */
 import type {
   AgentController,
+  AgentEventSubscription,
   CoreRegistries,
   ModHooks,
   ModRegistryHost,
@@ -571,6 +572,8 @@ export interface ModPluginContext {
    * has not installed a snapshot source.
    */
   readonly snapshot?: () => InputSnapshot | null;
+  /** Resolved game events, gated by each declared `event:<name>` grant. */
+  readonly events?: AgentEventSubscription;
   /** The whole remembered level at one token; null without map read access. */
   readonly knownLevel?: () => KnownLevelView | null;
   /** Read-pure inspection under the matching state read capability. */

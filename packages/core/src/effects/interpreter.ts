@@ -113,6 +113,8 @@ export interface TimedHost {
 /** The player slot: only what implemented handlers touch, all optional. */
 export interface EffectPlayer {
   hp?: HasHp;
+  /** Report the final restored HP after a healing handler clamps it. */
+  onHeal?: (amount: number) => void;
   mana?: HasMana;
   timed?: TimedHost;
   /** player_apply_damage_reduction. */

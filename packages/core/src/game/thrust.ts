@@ -27,6 +27,7 @@ import { DDGRID_DDD, loc, locSum } from "../loc.js";
 import type { Loc } from "../loc.js";
 import { GET_ANGLE_TO_GRID } from "../world/project.js";
 import { monsterSwap } from "./context.js";
+import { emitMotion } from "./resolved-events.js";
 import type { GameState } from "./context.js";
 
 /** The seams thrust_away needs beyond the GameState. */
@@ -41,7 +42,13 @@ export interface ThrustEnv {
  * traps) are handled inside monsterSwap (mon-util.c:609-672).
  */
 function swapOccupants(state: GameState, g1: Loc, g2: Loc): void {
+  const first = state.chunk.mon(g1);
+  const second = state.chunk.mon(g2);
   monsterSwap(state, g1, g2);
+  if (first !== 0) emitMotion(state, first < 0 ? "player" : first, g1, g2,
+    "teleport");
+  if (second !== 0) emitMotion(state, second < 0 ? "player" : second, g2, g1,
+    "teleport");
 }
 
 /**

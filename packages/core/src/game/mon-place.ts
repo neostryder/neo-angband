@@ -68,6 +68,7 @@ import type { ObjectKind } from "../obj/types.js";
 import { scatterExt } from "../world/scatter.js";
 import { los } from "../world/view.js";
 import { monPop, monsterMax, monsterSwap, squareMonster } from "./context.js";
+import { emitMotion } from "./resolved-events.js";
 import type { GameState } from "./context.js";
 import { trapPredicates } from "./trap.js";
 import { floorCarry } from "./floor.js";
@@ -861,7 +862,9 @@ function callMonster(
   const mon = state.monsters[eligible[choice] as number] as Monster;
 
   /* Swap the monster. */
-  monsterSwap(state, mon.grid, grid);
+  const from = mon.grid;
+  monsterSwap(state, from, grid);
+  emitMotion(state, mon.midx, from, grid, "teleport");
 
   /* Wake it up, make it aware. */
   monsterWake(state.rng, mon, false, 100);

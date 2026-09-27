@@ -37,6 +37,7 @@ import {
 import { newMonProjectContext, runMonsterHandler } from "../mon/project-mon.js";
 import type { MonHandler, MonProjectContext } from "../mon/project-mon.js";
 import { monsterWake, monTakeHit } from "../mon/take-hit.js";
+import { emitCombatOutcome, emitHeal } from "./resolved-events.js";
 import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed.js";
 import type { MonTimedMessageSink } from "../mon/timed.js";
 import { PROJECT } from "../world/project.js";
@@ -118,6 +119,7 @@ export interface ProjectMonsterHooks {
 export interface ProjectMonsterSource {
   /** origin.what == SRC_PLAYER (routes to project_m_player_attack). */
   isPlayer: boolean;
+  isTrap?: boolean;
   /** origin.which.monster for SRC_MONSTER (0 otherwise). */
   monster: number;
   /** origin_get_loc(origin): thrust-away centre. */
@@ -227,6 +229,7 @@ export function projectMonster(
    * With a wired registry the dispatch is by projection CODE, so a mod's own
    * projection - appended past the 56 compiled PROJ slots - reaches a handler
    * at all, and a core code can be replaced or wrapped. */
+  const oldHp = mon.hp;
   runMonsterHandler(
     ctx,
     pctx.monHandlers
@@ -236,6 +239,7 @@ export function projectMonster(
         }
       : {},
   );
+  emitHeal(state, mon.midx, mon.hp - oldHp, mon.grid);
 
   /* PROJ_FORCE thrust happens in the handler upstream, before wake / damage. */
   if (ctx.thrustGridsAway > 0) {
@@ -300,20 +304,32 @@ function playerAttack(
   let died = false;
   let fear = false;
   if (dam) {
+    const oldHp = mon.hp;
     const res = monTakeHit(state.rng, mon, dam, "", {
       ...gameTakeHitHooks(state, mon),
       onKill: (m) => {
         hooks.onKill?.(m);
+        emitCombatOutcome(state, pctx.origin.isPlayer ? "player" : null,
+          mIdx, pctx.origin.isTrap ? "trap" : "spell", true,
+          Math.max(0, oldHp - m.hp), true, m.grid);
         deleteMonster(state, mIdx);
       },
       ...(hooks.becomeAware ? { becomeAware: hooks.becomeAware } : {}),
       /* Single combat: the kill waits for the arena exit. */
       ...(state.arenaLevel
-        ? { onArenaDeath: (m: Monster) => void arenaInterceptDeath(state, m) }
+        ? { onArenaDeath: (m: Monster) => {
+            arenaInterceptDeath(state, m);
+            emitCombatOutcome(state, pctx.origin.isPlayer ? "player" : null,
+              mIdx, pctx.origin.isTrap ? "trap" : "spell", true,
+              Math.max(0, oldHp - m.hp), true, m.grid);
+          } }
         : {}),
     });
     died = res.died;
     fear = res.fear;
+    if (!died) emitCombatOutcome(state, pctx.origin.isPlayer ? "player" : null,
+      mIdx, pctx.origin.isTrap ? "trap" : "spell", true,
+      Math.max(0, oldHp - mon.hp), false, mon.grid);
   }
 
   if (!died) {
@@ -352,7 +368,10 @@ function monsterAttack(
   /* Wake the monster up, don't notice the player. */
   monsterWake(state.rng, mon, false, 0);
 
+  const oldHp = mon.hp;
   mon.hp -= dam;
+  emitCombatOutcome(state, pctx.origin.monster, mIdx, "spell", dam > 0,
+    Math.max(0, oldHp - mon.hp), mon.hp < 0, mon.grid);
 
   if (mon.hp < 0) {
     hooks.revertShape?.(mon);

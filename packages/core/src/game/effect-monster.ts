@@ -30,6 +30,7 @@ import { distance, loc, locEq } from "../loc.js";
 import { monsterIsUnique, monsterIsVisible } from "../mon/predicate.js";
 import { MDESC, MDESC_STANDARD, monsterDesc } from "../mon/desc.js";
 import { monsterWake } from "../mon/take-hit.js";
+import { emitCombatOutcome, emitHeal } from "./resolved-events.js";
 import { MON_TMD_FLG_NOMESSAGE, monClearTimed } from "../mon/timed.js";
 import type { Monster } from "../mon/monster.js";
 import type {
@@ -60,7 +61,11 @@ function hurtPlayer(
   if (reduced > 0 && ctx.env.showDamage) {
     ctx.env.messages?.msg(`You take ${reduced} damage.`);
   }
+  const oldHp = actor.chp;
   takeHit(actor, reduced, killer, env.takeHitHooks);
+  emitCombatOutcome(env.state, ctx.origin.what === "monster" ? ctx.origin.monster : null,
+    "player", "effect", reduced > 0, Math.max(0, oldHp - actor.chp),
+    actor.isDead, env.state.actor.grid);
 }
 
 /** EF_WAKE: wake every sleeping monster near the effect origin. */
@@ -201,6 +206,7 @@ function healMonster(
   const poss = monsterDesc(mon, MDESC.PRO_VIS | MDESC.POSS);
 
   /* Heal some */
+  const oldHp = mon.hp;
   mon.hp += amount;
 
   if (mon.hp >= mon.maxhp) {
@@ -215,6 +221,7 @@ function healMonster(
   } else if (unseenMsg) {
     ctx.env.messages?.msg(`${name} sounds healthier.`);
   }
+  emitHeal(state, mon.midx, mon.hp - oldHp, mon.grid);
 
   /* Cancel fear */
   if ((mon.mTimed[MON_TMD.FEAR] ?? 0) > 0) {

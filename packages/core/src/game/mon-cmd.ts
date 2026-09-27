@@ -42,6 +42,7 @@ import {
 } from "../combat/mon-melee.js";
 import type { GameState, PlayerCommand } from "./context.js";
 import { monsterSwap, squareMonster } from "./context.js";
+import { emitCombatOutcome, emitMotion } from "./resolved-events.js";
 import { doMonSpell } from "./mon-cast.js";
 import type { DoMonSpellDeps } from "./mon-cast.js";
 import { chooseAttackSpell } from "./mon-ranged.js";
@@ -185,14 +186,19 @@ function monsterElementalDamage(
  */
 function applyMonVsMonHit(
   state: GameState,
+  attacker: Monster,
   tMon: Monster,
   damage: number,
   hurtMsg: number,
   dieMsg: number,
 ): boolean {
+  const resolved = (applied: number, died: boolean): void => {
+    emitCombatOutcome(state, attacker.midx, tMon.midx, "melee", true,
+      applied, died, tMon.grid);
+  };
   const deps = getNonplayerHitDeps(state);
   if (deps) {
-    return monTakeNonplayerHit(state, tMon, damage, hurtMsg, dieMsg, deps);
+    return monTakeNonplayerHit(state, tMon, damage, hurtMsg, dieMsg, deps, resolved);
   }
   /* Harness fallback: mon_take_nonplayer_hit without monster_death loot. */
   return monTakeNonplayerHit(state, tMon, damage, hurtMsg, dieMsg, {
@@ -200,7 +206,7 @@ function applyMonVsMonHit(
     reg: null as never,
     floorEnv: {},
     lore: state.lore,
-  });
+  }, resolved);
 }
 
 /**
@@ -435,19 +441,19 @@ export function monsterAttackMonster(
         dieMsg = el.dieMsg;
         if (damage > 0) {
           displayBlowMessageVsMonster(state, method, name, tMon);
-          applyMonVsMonHit(state, tMon, damage, hurtMsg, dieMsg);
+          applyMonVsMonHit(state, mon, tMon, damage, hurtMsg, dieMsg);
         }
       } else if (effectName === "HURT") {
         damage = adjustDamArmor(damage, ac);
         displayBlowMessageVsMonster(state, method, name, tMon);
-        applyMonVsMonHit(state, tMon, damage, hurtMsg, dieMsg);
+        applyMonVsMonHit(state, mon, tMon, damage, hurtMsg, dieMsg);
       } else if (effectName === "SHATTER") {
         /* mon-blows.c L1086-1115. Earthquake is game-state gated only
          * (damage > 23), never wiring-gated: C always calls effect_simple
          * (EF_EARTHQUAKE) at L1098-1101 after a surviving hit. */
         damage = adjustDamArmor(damage, ac);
         displayBlowMessageVsMonster(state, method, name, tMon);
-        if (!applyMonVsMonHit(state, tMon, damage, hurtMsg, dieMsg)) {
+        if (!applyMonVsMonHit(state, mon, tMon, damage, hurtMsg, dieMsg)) {
           if (damage > 23) {
             monVsMonEarthquake(state, mon, Math.trunc(damage / 12), deps);
           }
@@ -465,14 +471,14 @@ export function monsterAttackMonster(
       } else if (effectName === "EAT_ITEM") {
         /* mon-blows.c L847-878: damage then steal_monster_item if alive. */
         displayBlowMessageVsMonster(state, method, name, tMon);
-        if (!applyMonVsMonHit(state, tMon, damage, hurtMsg, dieMsg)) {
+        if (!applyMonVsMonHit(state, mon, tMon, damage, hurtMsg, dieMsg)) {
           monVsMonEatItem(state, mon, tMon);
         }
       } else {
         /* DISENCHANT / DRAIN_CHARGES / EAT_* / LOSE_* / EXP_* / HALLU /
          * BLACK_BREATH / timed: mon-target is damage (+ timed mon status). */
         displayBlowMessageVsMonster(state, method, name, tMon);
-        if (!applyMonVsMonHit(state, tMon, damage, hurtMsg, dieMsg)) {
+        if (!applyMonVsMonHit(state, mon, tMon, damage, hurtMsg, dieMsg)) {
           if (timedKey !== null && state.monsters[tMon.midx]) {
             monIncTimed(state.rng, tMon, timedKey, timedAmount, 0);
           }
@@ -513,6 +519,8 @@ export function monsterAttackMonster(
         if (amt && still) monIncTimed(state.rng, still, MON_TMD.STUN, amt, 0);
       }
     } else {
+      emitCombatOutcome(state, mon.midx, tMon.midx, "melee", false, 0,
+        false, grid);
       /* Visible monster missed monster, so notify if appropriate. */
       if (monsterIsVisible(mon) && method.miss) {
         state.msg?.(`${name} misses ${tName}.`);
@@ -698,7 +706,9 @@ function commandedWalk(
 
   if (hasHit) return true;
   if (canMove) {
-    monsterSwap(state, mon.grid, grid);
+    const from = mon.grid;
+    monsterSwap(state, from, grid);
+    emitMotion(state, mon.midx, from, grid, "walk");
     state.updateFov?.(state);
     return true;
   }

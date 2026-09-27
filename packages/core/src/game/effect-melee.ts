@@ -61,6 +61,7 @@ import {
   squareMonster,
 } from "./context.js";
 import { gameEnv } from "./effect-game-env.js";
+import { emitCombatOutcome, emitMotion } from "./resolved-events.js";
 import type { GameEffectEnv } from "./effect-game-env.js";
 import {
   addMonsterMessage,
@@ -127,6 +128,12 @@ function playerBlow(state: GameState, mon: Monster): boolean {
       /* object_to_hit / object_to_dam / object_weight_one read the curse
        * templates of the weapon active curses (obj-util.c:296-330). */
       curses: state.curses,
+      hooks: {
+        onOutcome: (hit, damage, died): void => {
+          emitCombatOutcome(state, "player", mon.midx, "melee", hit, damage,
+            died, mon.grid);
+        },
+      },
     },
   );
   equipLearnOnMeleeAttack(state.actor.player, state.runeEnv);
@@ -153,12 +160,15 @@ function effectHit(
   note: string,
   showDamage = false,
 ): boolean {
+  const oldHp = mon.hp;
   const result = monTakeHit(state.rng, mon, dam, note, {
     ...gameTakeHitHooks(state, mon),
     /* become_aware: a direct-damage effect (EF_TAP_UNLIFE, EF_CURSE, ...)
      * can reveal a camouflaged target, same as any other hit. */
     ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
   });
+  emitCombatOutcome(state, "player", mon.midx, "effect", dam > 0,
+    Math.max(0, oldHp - mon.hp), result.died, mon.grid);
   if (result.died) {
     if (arenaInterceptDeath(state, mon)) return true;
     /* "Make sure to flush any monster messages first" (mon-util.c:1046): the
@@ -201,11 +211,13 @@ function effectHit(
 function healPlayer(ctx: EffectHandlerContext, amount: number): void {
   const hp = ctx.env.player?.hp;
   if (!hp || hp.chp >= hp.mhp || amount <= 0) return;
+  const oldHp = hp.chp;
   hp.chp += amount;
   if (hp.chp >= hp.mhp) {
     hp.chp = hp.mhp;
     hp.chpFrac = 0;
   }
+  ctx.env.player?.onHeal?.(hp.chp - oldHp);
   if (amount < 5) say(ctx, "You feel a little better.");
   else if (amount < 15) say(ctx, "You feel better.");
   else if (amount < 35) say(ctx, "You feel much better.");
@@ -381,7 +393,9 @@ const handleJUMP_AND_BITE: EffectHandler = (ctx) => {
   state.sound?.(MSG.TELEPORT);
 
   /* Move player (monster_swap + player_handle_post_move). */
+  const from = state.actor.grid;
   movePlayer(state, grid);
+  emitMotion(state, "player", from, grid, "teleport");
   state.updateFov?.(state);
   state.onPlayerMoved?.(state, grid);
 
@@ -459,7 +473,9 @@ const handleMOVE_ATTACK: EffectHandler = (ctx) => {
       if (blocker) playerBlow(state, blocker);
       return false;
     }
+    const from = state.actor.grid;
     movePlayer(state, next);
+    emitMotion(state, "player", from, next, "walk");
     state.updateFov?.(state);
     state.onPlayerMoved?.(state, next);
     moves--;

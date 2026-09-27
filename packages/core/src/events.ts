@@ -63,6 +63,35 @@ export interface MissileEventData {
   x: number;
 }
 
+/** Resolved damage or a missed attack. Monster identities are cave indices. */
+export interface CombatOutcomeEventData {
+  attacker: "player" | number | null;
+  target: "player" | number;
+  kind: "melee" | "ranged" | "spell" | "effect" | "trap";
+  hit: boolean;
+  damage: number;
+  died: boolean;
+  grid: Loc;
+  seen: boolean;
+}
+
+/** Hit points actually restored. */
+export interface HealEventData {
+  who: "player" | number;
+  amount: number;
+  grid: Loc;
+  seen: boolean;
+}
+
+/** A completed step or level-internal teleport. */
+export interface MotionEventData {
+  who: "player" | number;
+  from: Loc;
+  to: Loc;
+  kind: "walk" | "teleport";
+  seen: boolean;
+}
+
 /** EVENT_GEN_ROOM_CHOOSE_SIZE payload. */
 export interface SizeEventData {
   h: number;
@@ -115,6 +144,9 @@ export interface GameEventMap {
   explosion: ExplosionEventData;
   bolt: BoltEventData;
   missile: MissileEventData;
+  "combat-outcome": CombatOutcomeEventData;
+  heal: HealEventData;
+  motion: MotionEventData;
 
   inventory: undefined;
   equipment: undefined;
@@ -166,7 +198,7 @@ export interface GameEventMap {
 
 export type GameEventType = keyof GameEventMap;
 
-/** All event types, in upstream enum order. */
+/** Upstream event order, with resolved seam events beside projectile events. */
 export const GAME_EVENT_TYPES: readonly GameEventType[] = [
   "map",
   "stats",
@@ -192,6 +224,9 @@ export const GAME_EVENT_TYPES: readonly GameEventType[] = [
   "explosion",
   "bolt",
   "missile",
+  "combat-outcome",
+  "heal",
+  "motion",
   "inventory",
   "equipment",
   "itemlist",

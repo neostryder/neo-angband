@@ -98,6 +98,8 @@ export interface PlayerCombatState {
  * drawing its RNG, matching the simplified effect-handler melee paths.
  */
 export interface MeleeEffectHooks {
+  /** Observe a resolved blow before the caller can remove its target. */
+  onOutcome?: (hit: boolean, damage: number, died: boolean) => void;
   /** mon_take_hit hooks (kill / become_aware / cover-tracks / arena death). */
   takeHit?: MonTakeHitHooks;
   /** p->timed[TMD_ATT_CONF] > 0: the confusion-brand side effect is armed. */
@@ -410,6 +412,7 @@ export function pyAttackReal(
   if (!success) {
     /* Small chance of bloodlust side-effects on a miss (player-attack.c L770). */
     if (h?.bloodlust && rng.oneIn(50)) h.overExertScramble?.();
+    h?.onOutcome?.(false, 0, false);
     return {
       hit: false, damage: 0, msg: "MISS", verb: weapon ? "hit" : "punch",
       brand: 0, slay: 0, monsterDied: false, stopAttack: false, fear: false,
@@ -492,8 +495,10 @@ export function pyAttackReal(
 
   /* Damage, check for hp drain, fear and death (player-attack.c L867). */
   const drain = Math.min(mon.hp, dmg);
+  const oldHp = mon.hp;
   const res = monTakeHit(rng, mon, dmg, null, th ?? {});
   const died = res.died;
+  h?.onOutcome?.(true, Math.max(0, oldHp - mon.hp), died);
   let stop = died;
   let fear = res.fear;
 
@@ -580,6 +585,7 @@ function attemptShieldBash(
   deps: ShieldBashDeps,
   takeHit: MonTakeHitHooks,
   moveEnergy: number,
+  onOutcome?: (hit: boolean, damage: number, died: boolean) => void,
 ): ShieldBashResult {
   const none: ShieldBashResult = { died: false, fear: false, energyLost: 0 };
   const shield = deps.shield;
@@ -642,7 +648,9 @@ function attemptShieldBash(
   }
 
   /* Damage, check for fear and death. */
+  const oldHp = mon.hp;
   const res = monTakeHit(rng, mon, bashDam, null, takeHit);
+  onOutcome?.(true, Math.max(0, oldHp - mon.hp), res.died);
   if (res.died) return { died: true, fear: false, energyLost: 0 };
   const fear = res.fear;
 
@@ -712,6 +720,7 @@ export function pyAttack(
   if (h?.shieldBash && monVisible) {
     const bash = attemptShieldBash(
       rng, p, state, weapon, mon, h.shieldBash, h.takeHit ?? {}, moveEnergy,
+      h.onOutcome,
     );
     if (bash.died) {
       /* Monster may die: py_attack returns without any blows. */

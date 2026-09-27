@@ -13,6 +13,8 @@ import type { PlayerCommand } from "../game/context.js";
 import { LOOP_STATUS, runGameLoop } from "../game/loop.js";
 import { targetSetLocation } from "../game/target.js";
 import { loc } from "../loc.js";
+import { GameEvents } from "../events.js";
+import { teleportPlayer } from "../game/effect-teleport.js";
 import { saveGame, startGame } from "../session/game.js";
 import type { GamePack, StartedGame } from "../session/game.js";
 import { inputToken, tokenIsCurrent } from "./boundary.js";
@@ -128,6 +130,39 @@ describe("capture is read-pure", () => {
     expect(snap.inventory).toBeNull();
     expect(snap.monsters).toBeNull();
     expect(snap.targetReadable).toBe(false);
+  });
+});
+
+describe("resolved event subscribers", () => {
+  it("leave a seeded game's save, RNG, and messages byte-identical", () => {
+    const play = (subscribe: boolean): { save: string; rng: string; messages: string } => {
+      const game = newGame();
+      const bus = new GameEvents();
+      game.state.events = bus;
+      const messages: Array<[string, string | number | undefined]> = [];
+      const original = game.state.msg;
+      let motions = 0;
+      game.state.msg = (message, type) => {
+        messages.push([message, type]);
+        original?.(message, type);
+      };
+      if (subscribe) {
+        bus.on("combat-outcome", () => {});
+        bus.on("heal", () => {});
+        bus.on("motion", () => { motions++; });
+      }
+      teleportPlayer(game.state, 10);
+      if (subscribe) expect(motions).toBe(1);
+      feed(game, [{ code: "hold" }, { code: "hold" }]);
+      runGameLoop(game.state, game.registry);
+      runGameLoop(game.state, game.registry);
+      return {
+        save: JSON.stringify(saveGame(game)),
+        rng: JSON.stringify(game.state.rng.getState()),
+        messages: JSON.stringify(messages),
+      };
+    };
+    expect(play(true)).toEqual(play(false));
   });
 });
 

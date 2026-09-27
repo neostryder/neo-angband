@@ -24,13 +24,34 @@ import {
 import type { ModCharacterStoreControl } from "./mod-context";
 import type { ModCharacterStore, ModDisplay, ModSubwindows, ModTiles } from "./mod-plugin";
 import type { KeyRepeatVerdict } from "./key-repeat";
-import type { CoreRegistries, ModBag } from "@rpgm-tools/neo-angband-core";
+import { GameEvents, type CoreRegistries, type GameState, type ModBag } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modPrefs, modPrefsKey } from "./mod-prefs";
 
 const MAIN_TS_SOURCE = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
 
 describe("modPluginContext session facts", () => {
+  it("exposes only granted resolved event subscriptions", () => {
+    const bus = new GameEvents();
+    const state = { events: bus } as GameState;
+    const make = (capabilities: string[]) => CapabilitySet.fromManifest({
+      id: "events-test", name: "Events test", version: "1.0.0", shape: "plugin",
+      facets: ["plugin"], modApi: 1, capabilities,
+    });
+    expect(modPluginContext("plain", {}, state, {}, { capabilities: make([]) }).events)
+      .toBeUndefined();
+    const ctx = modPluginContext("listener", {}, state, {}, {
+      capabilities: make(["event:combat-outcome"]),
+    });
+    const received: number[] = [];
+    ctx.events?.on("combat-outcome", (_type, data) => received.push(data.damage));
+    expect(() => ctx.events?.on("heal", () => {})).toThrow();
+    bus.emit("combat-outcome", {
+      attacker: "player", target: 1, kind: "melee", hit: true,
+      damage: 4, died: false, grid: { x: 1, y: 2 }, seen: true,
+    });
+    expect(received).toEqual([4]);
+  });
   it("exposes prompt replies only with input:prompt.reply", () => {
     const make = (capabilities: string[]) => CapabilitySet.fromManifest({
       id: "prompt-test", name: "Prompt test", version: "1.0.0", shape: "plugin",

@@ -22,6 +22,7 @@
  */
 
 import type { GameEvents } from "../events.js";
+import { emitCombatOutcome, emitHeal } from "./resolved-events.js";
 import type {
   EffectContext,
   EffectMessages,
@@ -219,11 +220,17 @@ export function buildEffectPlayer(
 
   return {
     hp,
+    onHeal: (amount) => emitHeal(state, "player", amount, state.actor.grid),
     mana,
     timed: buildTimedHost(state, deps),
     applyDamageReduction: (dam) =>
       playerApplyDamageReduction(target, reduction, dam),
-    takeHit: (dam, killer) => takeHit(target, dam, killer, deps.takeHitHooks),
+    takeHit: (dam, killer) => {
+      const oldHp = p.chp;
+      takeHit(target, dam, killer, deps.takeHitHooks);
+      if (dam > 0) emitCombatOutcome(state, null, "player", "effect", true,
+        Math.max(0, oldHp - p.chp), state.isDead, state.actor.grid);
+    },
   };
 }
 

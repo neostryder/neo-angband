@@ -49,6 +49,7 @@ import type { LoreStore } from "../mon/lore.js";
 import { getLore, loreTreasure } from "../mon/lore.js";
 import type { GameState } from "./context.js";
 import { deleteMonster } from "./context.js";
+import { emitCombatOutcome } from "./resolved-events.js";
 import { monsterPrimaryGroupSize } from "./mon-group.js";
 import { monsterRevertShape } from "./mon-shape.js";
 import { addMonsterMessage, messagePain } from "./mon-message.js";
@@ -391,6 +392,7 @@ export function monTakeNonplayerHit(
   hurtMsgCode: number,
   dieMsgCode: number,
   deps: NonplayerHitDeps,
+  onResolved?: (damage: number, died: boolean) => void,
 ): boolean {
   const rng: Rng = state.rng;
 
@@ -404,6 +406,7 @@ export function monTakeNonplayerHit(
 
   /* Hurt the monster. */
   tMon.hp -= dam;
+  onResolved?.(Math.max(0, dam), tMon.hp < 0);
 
   if (tMon.hp < 0) {
     /* Shapechanged monsters revert on death. */
@@ -457,5 +460,7 @@ export function monsterTakeTerrainDamage(
     MON_MSG.CATCH_FIRE,
     MON_MSG.DISINTEGRATES,
     deps,
+    (damage, died) => emitCombatOutcome(state, null, mon.midx, "effect",
+      true, damage, died, mon.grid),
   );
 }

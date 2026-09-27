@@ -75,6 +75,7 @@ import { monsterIsVisible } from "../mon/predicate.js";
 import { MDESC, MDESC_STANDARD, monsterDesc } from "../mon/desc.js";
 import { featIsTrapHolding } from "../world/chunk.js";
 import { squareIsView } from "../world/view.js";
+import { emitHeal } from "./resolved-events.js";
 import { lookupTrap } from "../world/trap.js";
 import type { GameState } from "./context.js";
 import { playerOfHas } from "./context.js";
@@ -603,8 +604,10 @@ const handleDRAIN_MANA: EffectHandler = (ctx) => {
 
   /* Heal the monster. */
   if (isMonster && mon && mon.hp < mon.maxhp) {
+    const oldHp = mon.hp;
     mon.hp += 6 * drain;
     if (mon.hp > mon.maxhp) mon.hp = mon.maxhp;
+    emitHeal(state, mon.midx, mon.hp - oldHp, mon.grid);
     if (monsterIsVisible(mon)) {
       say(ctx, `${monsterDesc(mon, MDESC_STANDARD)} appears healthier.`);
     }

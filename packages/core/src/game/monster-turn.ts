@@ -157,6 +157,7 @@ import {
   squareMonster,
 } from "./context.js";
 import { disturb } from "./player-path.js";
+import { emitMotion } from "./resolved-events.js";
 import { floorExcise, floorPile } from "./floor.js";
 import { describeObject } from "./describe.js";
 import { ODESC } from "../obj/desc.js";
@@ -1243,7 +1244,10 @@ function monsterTurnTryPush(
       deleteMonster(state, victim.midx);
     }
   }
-  monsterSwap(state, mon.grid, next);
+  const from = mon.grid;
+  monsterSwap(state, from, next);
+  emitMotion(state, mon.midx, from, next, "walk");
+  if (victim && !killOk) emitMotion(state, victim.midx, next, from, "walk");
   return true;
 }
 
@@ -1607,7 +1611,9 @@ export function monsterTurn(mon: Monster, state: GameState): void {
     if (squareMonster(state, next)) {
       didSomething = monsterTurnTryPush(mon, state, next);
     } else {
-      monsterSwap(state, mon.grid, next);
+      const from = mon.grid;
+      monsterSwap(state, from, next);
+      emitMotion(state, mon.midx, from, next, "walk");
       didSomething = true;
     }
 

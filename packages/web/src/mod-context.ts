@@ -148,6 +148,10 @@ export function modPluginContext(
   const display = displayFor(session);
   const subwindows = subwindowsFor(session);
   const snapshot = snapshotFor(session);
+  const events = state?.events && session.capabilities &&
+    neoCore.GAME_EVENT_TYPES.some((type) => session.capabilities?.has(`event:${type}`))
+    ? neoCore.subscribeEvents(state.events, session.capabilities)
+    : undefined;
   const knownLevel = knownLevelFor(session);
   const inspect = inspectFor(session);
   const intent = intentFor(session);
@@ -181,6 +185,7 @@ export function modPluginContext(
     ...(display ? { display } : {}),
     ...(subwindows ? { subwindows } : {}),
     ...(snapshot ? { snapshot } : {}),
+    ...(events ? { events } : {}),
     ...(knownLevel ? { knownLevel } : {}),
     ...(inspect ? { inspect } : {}),
     ...(intent ? { intent } : {}),

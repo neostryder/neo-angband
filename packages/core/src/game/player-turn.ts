@@ -80,6 +80,7 @@ import {
   tickMonsterNiceAndMark,
 } from "./known.js";
 import { squareIsSeen } from "../world/view.js";
+import { emitCombatOutcome, emitHeal, emitMotion } from "./resolved-events.js";
 import { playerConfuseDir } from "./obj-cmd.js";
 import { disturb } from "./player-path.js";
 import { playerAdjustManaPrecise } from "./loop.js";
@@ -188,6 +189,9 @@ export function buildMeleeHooks(state: GameState, mon: Monster): MeleeEffectHook
   const grid = mon.grid;
 
   const hooks: MeleeEffectHooks = {
+    onOutcome: (hit, damage, died): void => {
+      emitCombatOutcome(state, "player", mon.midx, "melee", hit, damage, died, mon.grid);
+    },
     takeHit: {
       ...gameTakeHitHooks(state, mon),
       ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
@@ -210,6 +214,7 @@ export function buildMeleeHooks(state: GameState, mon: Monster): MeleeEffectHook
     /* Vampiric drain (player-attack.c:877-881). */
     attVamp: (p.timed[TMD.ATT_VAMP] ?? 0) > 0,
     healPlayer: (amount): void => {
+      const oldHp = p.chp;
       if (deps.healHp) {
         deps.healHp(amount);
         return;
@@ -225,6 +230,7 @@ export function buildMeleeHooks(state: GameState, mon: Monster): MeleeEffectHook
       else if (amount < 15) state.msg?.("You feel better.");
       else if (amount < 35) state.msg?.("You feel much better.");
       else state.msg?.("You feel very good.");
+      emitHeal(state, "player", p.chp - oldHp, state.actor.grid);
     },
     /* Bloodlust over-exertion (player-attack.c:770-774, 871-874). */
     bloodlust: (p.timed[TMD.BLOODLUST] ?? 0) > 0,
@@ -673,7 +679,9 @@ export function walkAction(state: GameState, cmd: PlayerCommand): number {
     return 0;
   }
 
+  const from = state.actor.grid;
   movePlayer(state, next);
+  emitMotion(state, "player", from, next, "walk");
   if (state.updateFov) state.updateFov(state);
   search(state); /* player_handle_post_move (player-util.c:1633-1634). */
 

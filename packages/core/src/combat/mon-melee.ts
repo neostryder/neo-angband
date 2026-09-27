@@ -105,6 +105,7 @@ export interface MonMeleeAttack {
  * game/mon-side.ts (makeMonBlowEnv), bound to the attacking monster.
  */
 export interface MonBlowEnv {
+  onOutcome?: (hit: boolean, damage: number, died: boolean) => void;
   /** p->grid, read to detect the "player moved" mid-loop break. */
   playerGrid(): Loc;
   /** player_apply_damage_reduction(p, dam): the HP actually taken. */
@@ -1242,6 +1243,7 @@ export function monMeleeAttack(
       checkHit(rng, chanceOfMonsterHit(mon, mon.race.level, blow.effect.power), def);
 
     if (!hit) {
+      env?.onOutcome?.(false, 0, false);
       /* Visible monster missed the player: announce it (mon-attack.c L718). No
        * RNG is drawn; unseen monsters and no-miss methods stay silent. */
       if (env && env.monVisible && blow.method.miss) {
@@ -1323,6 +1325,7 @@ export function monMeleeAttack(
     const blowSide: BlowSideEffect[] = [];
 
     if (env) {
+      const oldHp = defender.chp;
       const res = resolveBlowEffectLive(effectName, blowCtx, env, opts.blowEffects);
       contextDamage = res.contextDamage;
       dealtDamage = res.reducedDamage;
@@ -1330,6 +1333,7 @@ export function monMeleeAttack(
       if (res.blinked) blinked = true;
       if (dealtDamage > 0) totalDamage += dealtDamage;
       if (env.playerDied) playerDied = true;
+      env.onOutcome?.(true, Math.max(0, oldHp - defender.chp), env.playerDied);
     } else {
       const res = resolveBlowEffect(effectName, blowCtx, opts.blowEffects);
       contextDamage = res.hpDamage;

@@ -38,6 +38,7 @@ import { DIR_TARGET } from "../effects/interpreter.js";
 import { DDGRID, DDGRID_DDD, loc, locEq, locSum } from "../loc.js";
 import type { Loc } from "../loc.js";
 import { monsterIsVisible } from "../mon/predicate.js";
+import { emitCombatOutcome } from "./resolved-events.js";
 import { MDESC_DIED_FROM, monsterDesc } from "../mon/desc.js";
 import { PROJECT, project } from "../world/project.js";
 import type {
@@ -308,6 +309,7 @@ export function castProjection(
     projections: cctx.projections,
     origin: {
       isPlayer: source.isPlayer,
+      ...(source.isTrap ? { isTrap: true } : {}),
       monster: source.monster,
       grid: source.grid,
       charm: source.charm ?? false,
@@ -351,6 +353,12 @@ export function castProjection(
      * before drawing RNG (equipLearn* aside), so default play is unchanged. */
     hooks: {
       ...(hooks.player ?? {}),
+      onOutcome: (damage: number, died: boolean): void => {
+        emitCombatOutcome(state,
+          source.isPlayer ? "player" : source.isMonster ? source.monster : null,
+          "player", source.isTrap ? "trap" : "spell", true, damage, died,
+          state.actor.grid);
+      },
       ...(source.isMonster && source.monster > 0
         ? {
             smartLearn: (typ: number): void => {

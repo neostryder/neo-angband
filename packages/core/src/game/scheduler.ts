@@ -22,6 +22,7 @@ import { monsterIsMimicking } from "../mon/predicate.js";
 import { turnEnergy } from "./energy.js";
 import type { GameState } from "./context.js";
 import { updateMonsterDistances } from "./context.js";
+import { emitHeal } from "./resolved-events.js";
 import { monDecTimed, monsterEffectLevel } from "../mon/timed.js";
 import { getNonplayerHitDeps, monsterTakeTerrainDamage } from "./mon-death.js";
 import {
@@ -60,7 +61,9 @@ export function restoreMonsters(state: GameState, numTurns: number): void {
     if (!mon) continue;
 
     /* Regenerate. */
+    const oldHp = mon.hp;
     regenMonster(mon, Math.trunc(numTurns / 100));
+    emitHeal(state, mon.midx, mon.hp - oldHp, mon.grid);
 
     /* Handle timed effects. */
     const statusRed = Math.trunc(
@@ -109,7 +112,11 @@ export function processMonsters(state: GameState, minimumEnergy: number): void {
     const moving = mon.energy >= state.z.moveEnergy;
     mon.mflag.on(MFLAG.HANDLED);
 
-    if (regen) regenMonster(mon, 1);
+    if (regen) {
+      const oldHp = mon.hp;
+      regenMonster(mon, 1);
+      emitHeal(state, mon.midx, mon.hp - oldHp, mon.grid);
+    }
 
     mon.energy += turnEnergy(netSpeed(mon), state.z.moveEnergy);
 

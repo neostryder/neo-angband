@@ -48,6 +48,7 @@ import {
   monsterTargetMonster,
 } from "./effect-mon-origin.js";
 import type { GameState } from "./context.js";
+import { emitCombatOutcome, emitMotion } from "./resolved-events.js";
 import { squareIsEmptyLive } from "./mon-place.js";
 import {
   deleteMonster,
@@ -736,7 +737,9 @@ const handleEARTHQUAKE: EffectHandler = (ctx) => {
       say(ctx, hurtMsg);
 
       /* Move player (monster_swap into an open grid + post-move). */
+      const from = state.actor.grid;
       movePlayer(state, safeGrid);
+      emitMotion(state, "player", from, safeGrid, "teleport");
       env.teleport?.onPlayerPostMove?.(true);
     }
   }
@@ -791,6 +794,8 @@ const handleEARTHQUAKE: EffectHandler = (ctx) => {
 
       /* Apply damage directly */
       mon.hp -= mDam;
+      emitCombatOutcome(state, ctx.origin.what === "monster" ? ctx.origin.monster : null,
+        mon.midx, "effect", true, mDam, mon.hp < 0, mon.grid);
 
       /* display_dam (effect-handler-attack.c:1524/1546): OPT show_damage
        * selects the _show_damage form of each message. add_monster_message
@@ -812,7 +817,10 @@ const handleEARTHQUAKE: EffectHandler = (ctx) => {
           addMonsterMessage(state, mon, MON_MSG.QUAKE_HURT, false);
         }
         /* Escape from the rock */
-        if (safeGrids) monsterSwap(state, grid, safeGrid);
+        if (safeGrids) {
+          monsterSwap(state, grid, safeGrid);
+          emitMotion(state, mon.midx, grid, safeGrid, "teleport");
+        }
       }
     }
   }

@@ -138,11 +138,13 @@ const handleHEAL_HP: EffectHandler = (context) => {
   if (num <= 0) return true;
 
   /* Gain hitpoints, enforce maximum */
+  const oldHp = hp.chp;
   hp.chp += num;
   if (hp.chp >= hp.mhp) {
     hp.chp = hp.mhp;
     hp.chpFrac = 0;
   }
+  context.env.player?.onHeal?.(hp.chp - oldHp);
 
   /* Print a nice message */
   if (num < 5) msg(context, "You feel a little better.");

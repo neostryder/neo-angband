@@ -30,6 +30,7 @@ import { isDaytime } from "./world.js";
 import type { GameState } from "./context.js";
 import { squareIsEmptyLive } from "./mon-place.js";
 import { deleteMonster, monsterSwap, squareIsPlayer, squareMonster } from "./context.js";
+import { emitMotion } from "./resolved-events.js";
 import { dropNear, floorExcise, floorPile, floorCarry } from "./floor.js";
 import { scatterExt } from "../world/scatter.js";
 import type { GameObject } from "../obj/object.js";
@@ -157,6 +158,7 @@ function pushMimic(state: GameState, grid: Loc, obj: GameObject): void {
     if (newgrid && floorCarry(state, newgrid, obj)) {
       /* Move the monster and give it the object back. */
       monsterSwap(state, grid, newgrid);
+      emitMotion(state, mimic.midx, grid, newgrid, "teleport");
       mimic.mimickedObj = 1;
       return;
     }
