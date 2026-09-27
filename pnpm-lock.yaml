@@ -176,6 +176,9 @@ importers:
 
   packages/linoleum:
     dependencies:
+      '@rpgm-tools/neo-angband-mod-sdk':
+        specifier: workspace:*
+        version: link:../mod-sdk
       pngjs:
         specifier: ^7.0.0
         version: 7.0.0

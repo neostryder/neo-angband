@@ -56,7 +56,7 @@ export enum FileType {
  * ones the game WRITES to, which is exactly the set a browser cannot provide.
  */
 export enum HostDir {
-  /** ANGBAND_DIR_USER: dumps, pref files, lore.txt, spoilers, the dev logs. */
+  /** ANGBAND_DIR_USER: dumps, pref files, lore.json, spoilers, the dev logs. */
   USER = "user",
   /** ANGBAND_DIR_SAVE: one savefile per character. */
   SAVE = "save",

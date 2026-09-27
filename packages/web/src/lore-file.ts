@@ -21,8 +21,19 @@
  * close_game. A throttled tail autosave does not rewrite it.
  */
 
-import { applyLoreFile, parseLoreFile, writeLoreEntries, LORE_FILE } from "@rpgm-tools/neo-angband-core";
+import {
+  applyLoreFile,
+  parseLoreFile,
+  writeLoreEntries,
+  loreFileFromDocument,
+  legacyLoreDocument,
+  LORE_FILE,
+  LEGACY_LORE_FILE,
+  HostDir,
+  host,
+} from "@rpgm-tools/neo-angband-core";
 import type { LoreStore, MonsterRace } from "@rpgm-tools/neo-angband-core";
+import { loreFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 
 import { userRead, userTextLinesToFile, userPath } from "./user-io";
 import { log } from "./logging";
@@ -34,6 +45,18 @@ import { log } from "./logging";
  * monsters this build does not have (a mod switched off since the last save) is
  * reported rather than being taken for an empty file.
  */
+function reportLore(path: string, res: ReturnType<typeof applyLoreFile>): void {
+  log.info(
+    "lore",
+    `${res.applied} race(s) from ${path}` +
+      (res.ignored ? `, ${res.ignored} drop/friends/mimic line(s) not modelled` : "") +
+      (res.unknownRaces.length
+        ? `, ${res.unknownRaces.length} for monster(s) this build does not have (${res.unknownRaces.slice(0, 5).join(", ")})`
+        : ""),
+  );
+  for (const line of res.bad.slice(0, 10)) log.warn("lore", `unreadable line: ${line}`);
+}
+
 export function loadLoreFile(races: readonly MonsterRace[], store: LoreStore): void {
   let text: string | null;
   try {
@@ -44,21 +67,41 @@ export function loadLoreFile(races: readonly MonsterRace[], store: LoreStore): v
     log.warn("lore", "could not read the monster memory file", err);
     return;
   }
-  if (text === null) return; /* "No monster lore file found" (mon-init.c:2585). */
+  if (text !== null) {
+    const parsed = parseDocument(text, loreFormat);
+    /* Corrupt or future: leave the stored document alone and keep the save's lore. */
+    if (!parsed.ok) {
+      log.warn("lore", `could not read ${userPath(LORE_FILE)}`);
+      return;
+    }
+    try {
+      reportLore(userPath(LORE_FILE), applyLoreFile(races, store, loreFileFromDocument(parsed.data)));
+    } catch (err) {
+      log.warn("lore", "could not apply the monster memory file", err);
+    }
+    return;
+  }
+
+  let legacy: string | null;
+  try {
+    legacy = userRead(LEGACY_LORE_FILE);
+  } catch (err) {
+    log.warn("lore", "could not read the monster memory file", err);
+    return;
+  }
+  if (legacy === null) return; /* "No monster lore file found" (mon-init.c:2585). */
 
   try {
-    const res = applyLoreFile(races, store, parseLoreFile(text));
-    log.info(
-      "lore",
-      `${res.applied} race(s) from ${userPath(LORE_FILE)}` +
-        (res.ignored ? `, ${res.ignored} drop/friends/mimic line(s) not modelled` : "") +
-        (res.unknownRaces.length
-          ? `, ${res.unknownRaces.length} for monster(s) this build does not have (${res.unknownRaces.slice(0, 5).join(", ")})`
-          : ""),
-    );
-    /* A line the parser could not read is a bug in the writer or a corrupted
-     * file, and either way naming it is the only way it gets fixed. */
-    for (const line of res.bad.slice(0, 10)) log.warn("lore", `unreadable line: ${line}`);
+    const fromText = parseLoreFile(legacy);
+    const written = serializeDocument(loreFormat, legacyLoreDocument(fromText));
+    if (userTextLinesToFile(LORE_FILE, written) === 0) {
+      const back = userRead(LORE_FILE);
+      const check = back === null ? null : parseDocument(back, loreFormat);
+      if (check?.ok) {
+        reportLore(userPath(LORE_FILE), applyLoreFile(races, store, loreFileFromDocument(check.data)));
+        host().remove(HostDir.USER, LEGACY_LORE_FILE);
+      }
+    }
   } catch (err) {
     log.warn("lore", "could not apply the monster memory file", err);
   }
@@ -74,6 +117,8 @@ export function loadLoreFile(races: readonly MonsterRace[], store: LoreStore): v
  */
 export function saveLoreFile(races: readonly MonsterRace[], store: LoreStore): boolean {
   try {
+    const existing = userRead(LORE_FILE);
+    if (existing !== null && !parseDocument(existing, loreFormat).ok) return false;
     return userTextLinesToFile(LORE_FILE, writeLoreEntries(races, store)) === 0;
   } catch (err) {
     log.warn("lore", "could not write the monster memory file", err);

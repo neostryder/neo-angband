@@ -12,12 +12,9 @@
  * Engine two is this one. A loose pack is a DIRECTORY of individual PNGs plus
  * readable text maps, addressed by name instead of by pixel coordinate:
  *
- *   manifest.txt          pack:<id>:<display>, format:png, resolution:<n>,
- *                         map:targets|families|pools|tall:<relative path>
- *   maps/targets.txt      target:<type>:<selector>:asset|family|pool:<value>
- *   maps/pools.txt        pool:<id>:selection:stable|index, pool:<id>:member:<asset>
- *   maps/families.txt     family:<id>:asset:<asset> (+ effect metadata)
- *   maps/tall.txt         tall:<asset>, the double-height (overdraw) assets
+ *   pack.json             neo-angband/linoleum/pack: id, resolution, targets,
+ *                         families, pools and tall assets
+ *   tile-map.json         neo-angband/linoleum/tile-map: the pref selectors
  *   images/<res>/<asset>.png
  *
  * The point of the format is authoring: a set can be edited one file at a time,
@@ -69,7 +66,7 @@
  * #243 found this one was still never told it had any, because the flag was
  * computed from the core graphics catalog and a pack contributed by a mod holds
  * a grafID the catalog has never heard of. The answer now comes from the pack
- * itself (maps/tall.txt, isTall below), which is the only authority that can
+ * itself (pack.json tall, isTall below), which is the only authority that can
  * speak for a pack the game does not ship.
  *
  * Nothing here can crash the game: every parse and fetch failure returns null
@@ -78,16 +75,13 @@
  */
 
 import { parseTilePrefsInto, TileMap } from "@rpgm-tools/neo-angband-core";
+import { linoleumPackFormat, parseDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import { tileRegistry } from "./tile-registry";
 import type { TilePrefsDeps, TileTransform } from "@rpgm-tools/neo-angband-core";
 // Deliberately the `targets` subpath, not the package root: the root also
 // exports the converter, which imports node:fs and must never reach a browser
 // bundle. This subpath is pure format code (its md5 is portable - md5.ts).
-import {
-  parsePoolsFile,
-  parseTargetsFile,
-  selectPoolMember,
-} from "@rpgm-tools/neo-angband-linoleum/targets";
+import { selectPoolMember } from "@rpgm-tools/neo-angband-linoleum/targets";
 import type { PoolDefinition, TargetRule } from "@rpgm-tools/neo-angband-linoleum/targets";
 import type { PackFileResolver } from "./pack-files";
 import type { ModPrefText, TileBlitter, TileCode } from "./tiles";
@@ -273,6 +267,8 @@ export interface LinoleumFamilyEffect {
 export interface LinoleumFamily {
   asset: string;
   effect?: LinoleumFamilyEffect;
+  /** Authored selection rule. The renderer does not consult it. */
+  selection?: "stable" | "index";
 }
 
 type LinoleumFamilies = ReadonlyMap<string, LinoleumFamily | string>;
@@ -282,6 +278,7 @@ interface UnfinishedFamily {
   glowAlpha?: number;
   tint?: LinoleumTint;
   pulse?: LinoleumPulse;
+  selection?: "stable" | "index";
 }
 
 /** Parse one alpha byte, accepting the 0-1 spelling older hand-authored packs use. */
@@ -358,6 +355,8 @@ export function parseFamiliesFile(text: string): Map<string, LinoleumFamily> {
     const family = unfinished.get(id) ?? {};
     if (field === "asset") {
       family.asset = value;
+    } else if (field === "selection" && (value === "stable" || value === "index")) {
+      family.selection = value;
     } else if (field === "glow-alpha") {
       const glowAlpha = parseAlpha(value);
       if (glowAlpha !== null) family.glowAlpha = glowAlpha;
@@ -379,6 +378,7 @@ export function parseFamiliesFile(text: string): Map<string, LinoleumFamily> {
     if (family.pulse !== undefined) effect.pulse = family.pulse;
     out.set(id, {
       asset: family.asset,
+      ...(family.selection === undefined ? {} : { selection: family.selection }),
       ...(Object.keys(effect).length === 0 ? {} : { effect }),
     });
   }
@@ -1120,10 +1120,10 @@ async function readPackText(
 }
 
 /**
- * Load a loose pack through a file resolver: manifest.txt, then the text maps it
- * names, then the index built off core's pref parser. Returns null when the
- * pack is absent or unreadable, which leaves the game in ASCII exactly as a
- * missing tilesheet does.
+ * Load a loose pack through a file resolver: pack.json, then the index built
+ * off core's pref parser. Returns null when the pack is absent or unreadable,
+ * which leaves the game in ASCII exactly as a missing tilesheet does. A
+ * document that fails to parse is left as it is.
  *
  * Takes a resolver rather than a base URL so the same loader serves a pack served
  * from the site, a pack in a folder the player picked, and a pack installed from
@@ -1247,35 +1247,45 @@ export async function loadLinoleumPack(input: {
   modPrefTexts?: readonly ModPrefText[];
   applyRestoredItemArt?: (map: TileMap) => void | Promise<void>;
 }): Promise<LinoleumPack | null> {
-  const manifestText = await readPackText(input.resolve, "manifest.txt");
-  if (manifestText === null) return null;
-  const manifest = parseLinoleumManifest(manifestText);
-  if (manifest === null) return null;
-
-  const targetsPath = manifest.maps.get("targets");
-  if (targetsPath === undefined) return null;
-  const targetsText = await readPackText(input.resolve, targetsPath);
-  if (targetsText === null) return null;
-  const rules: TargetRule[] = parseTargetsFile(targetsText);
-
-  const poolsPath = manifest.maps.get("pools");
-  const poolsText =
-    poolsPath === undefined ? null : await readPackText(input.resolve, poolsPath);
-  const pools: PoolDefinition[] = poolsText === null ? [] : parsePoolsFile(poolsText);
-
-  const familiesPath = manifest.maps.get("families");
-  const familiesText =
-    familiesPath === undefined ? null : await readPackText(input.resolve, familiesPath);
-  const families =
-    familiesText === null ? new Map<string, LinoleumFamily>() : parseFamiliesFile(familiesText);
-
-  /* Absent in every pack converted before 2026-08-13 and in every pack whose
-   * source mode has no overdraw band, so a missing file is ordinary rather than
-   * a failure: the set is empty and nothing overdraws. */
-  const tallPath = manifest.maps.get("tall");
-  const tallText =
-    tallPath === undefined ? null : await readPackText(input.resolve, tallPath);
-  const tall = tallText === null ? new Set<string>() : parseTallFile(tallText);
+  const packText = await readPackText(input.resolve, "pack.json");
+  if (packText === null) return null;
+  const parsed = parseDocument(packText, linoleumPackFormat);
+  /* A corrupt or future document stays on disk. ASCII for this session. */
+  if (!parsed.ok) return null;
+  const data = parsed.data;
+  const manifest: LinoleumManifest = {
+    packId: data.packId,
+    displayName: data.displayName,
+    format: data.imageFormat,
+    resolution: data.resolution,
+    maps: new Map(),
+  };
+  const rules: TargetRule[] = data.targets.map((rule) => ({
+    type: rule.type,
+    selector: rule.selector,
+    kind: rule.kind,
+    value: rule.value,
+  }));
+  const pools: PoolDefinition[] = (data.pools ?? []).map((pool) => ({
+    poolId: pool.id,
+    selection: pool.selection,
+    members: [...pool.members],
+  }));
+  const families = new Map<string, LinoleumFamily>();
+  for (const family of data.families ?? []) {
+    const effect: LinoleumFamilyEffect = {};
+    if (family.glowAlpha !== undefined) effect.glowAlpha = family.glowAlpha;
+    if (family.tint !== undefined) effect.tint = family.tint;
+    if (family.pulse !== undefined) effect.pulse = family.pulse;
+    families.set(family.id, {
+      asset: family.asset,
+      ...(family.selection === undefined ? {} : { selection: family.selection }),
+      ...(Object.keys(effect).length === 0 ? {} : { effect }),
+    });
+  }
+  /* Omitted when the pack has no overdraw, which is the same answer as an
+   * empty set: nothing is tall. */
+  const tall = new Set(data.tall ?? []);
 
   const index = buildLinoleumIndex({ rules, pools, families, tall, deps: input.deps });
   for (const mod of input.modPrefTexts ?? []) {

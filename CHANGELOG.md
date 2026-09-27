@@ -69,6 +69,10 @@ still calls itself.
 - [Visible] [UI] **Open the Mods screen from the title screen before creating a character.** Install, enable and order mods there; applying changes reloads the title and birth screens with the new mod set (#286).
 - [Internal] [Modding-API] **A mod can read one input wait whole with `ctx.snapshot()`.** It returns the player, pack, equipment, monsters, target, stores and spellbooks from one moment, with the shell's phase, whether a "-more-" pause holds input, and the last map frame, under a token that changes only when the game does. `AgentView.capture()` and `inputToken()` give the core half, and `tokenIsCurrent()` checks a token against the game as it stands now. Reading changes no game state or RNG (#285).
 
+### Changed
+
+- [Visible] [Save-Compat] **Custom option defaults, monster memory, random-artifact exports, and Linoleum packs are JSON documents.** `customized_birth_options.txt`, `customized_interface_options.txt`, `lore.txt`, and `randart.txt` convert once on first read and are removed after the new file reads back. A Linoleum pack is `pack.json` plus `tile-map.json`; a pack cached in the browser in the old text form converts once. A document that does not parse stays where it is, and that session uses the defaults for that file. (#288)
+
 ## [1.18.0] - 2026-09-26
 
 ### Added

@@ -123,7 +123,7 @@ All 38 rows carry a verdict, and the spread across classes says more than the ra
 | `UI` | 14 | Menu-action and keypress routing; rows 23/24 above own them as a class. |
 | `REACHABLE` | 6 | Already behind a registry - the arm is core's registered handler, which a mod wraps through `handlerFor`. |
 | `HOST` | 4 | Host wiring: CLI flags and the host RPC. Not game content. |
-| `PARSER` | 3 | Grammars: the dice syntax and `lore.txt` directives. Deliberately closed - a mod changing dice syntax invalidates every record in every pack. |
+| `PARSER` | 3 | Grammars: the dice syntax and the legacy `lore.txt` directives. Deliberately closed - a mod changing dice syntax invalidates every record in every pack. |
 | `LOCALIZATION` | 3 | Index-to-string tables. Row 14 of the gap list replaces the strings wholesale; converting the switch would not help. |
 | `CONTROL FLOW` | 3 | Numeric buckets and geometry. Not dispatch at all. |
 | `INTERNAL` | 3 | The save format's block union, the mod system's own capability vocabulary and its consent descriptions - all three grow only when core does. |
@@ -273,7 +273,7 @@ Row 20 (`MESSAGE_ENTRIES`) was a crash. A `msgt:` naming a type core did not kno
 
 Row 22 (`MON_SPELL_ENTRIES`) was blocked by the save format until #269 (2026-08-14). It stayed "no" while `PROJ`, `MSG` and `SOUND_PREF_ENTRIES` opened, and the table itself was never the reason. Monster lore persisted the player's spell knowledge as `RSF` bit positions, so appending a slot renumbered what an existing character already knew. A message type resolves to a number at message time and nothing in a save indexes it; an `RSF` slot is the index. #269 converts the persistence rather than appending to the table, because appending under the old format would silently corrupt existing characters.
 
-`SavedLore.spellFlags: number[]` (the raw `FlagSet` bytes) is now `SavedLore.spellsKnown: string[]` (RSF names), at `SAVE_VERSION` 5, with a `V4_TO_V5` step that reads every version-4 savefile. `lore.txt` was already keyed by name (`writeLoreEntries`), so the savefile now matches it. A name cannot be renumbered. A name this build does not have is dropped instead of landing on whatever now occupies its old index, and a build whose table is larger, smaller or reordered reads back exactly what was written.
+`SavedLore.spellFlags: number[]` (the raw `FlagSet` bytes) is now `SavedLore.spellsKnown: string[]` (RSF names), at `SAVE_VERSION` 5, with a `V4_TO_V5` step that reads every version-4 savefile. Both the earlier `lore.txt` and the current `lore.json` are keyed by name, so the savefile matches them. A name cannot be renumbered. A name this build does not have is dropped instead of landing on whatever now occupies its old index, and a build whose table is larger, smaller or reordered reads back exactly what was written.
 
 `session/lore-spells.test.ts` renumbers the RSF table by inserting one entry and reads the same pre-existing knowledge under both schemes. The byte-keyed read turns `["BR_FIRE", "HASTE"]` into `["BR_ELEC", "HOLD"]`; the name-keyed read is unchanged. A round-trip test that only exercised the happy path would have passed against the old format as well, which is why the renumbered control is there.
 

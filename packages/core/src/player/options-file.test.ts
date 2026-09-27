@@ -11,6 +11,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { customOptionsFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 
 import { OPTION_ENTRIES } from "../generated/options.js";
 import { FileMode, HostDir, NULL_HOST } from "../host/io.js";
@@ -21,6 +22,7 @@ import {
   optionsRestoreCustom,
   optionsRestoreMaintainer,
   optionsSaveCustom,
+  legacyCustomOptionsFileName,
   optionsSaveCustomText,
   optionTypeName,
   parseCustomOptionsText,
@@ -48,6 +50,7 @@ function memHost(
       files.set(name, text);
       return "ok";
     },
+    remove: (_dir, name) => files.delete(name),
   };
 }
 
@@ -56,6 +59,12 @@ function tableDefaults(): OptionOpts {
   const out: OptionOpts = {};
   for (const e of OPTION_ENTRIES) out[e.name] = e.normal;
   return out;
+}
+
+function legacyCustomOptionsText(opts: Readonly<OptionOpts>, page: string): string {
+  return OPTION_ENTRIES.filter((entry) => entry.type === page)
+    .map((entry) => `# ${entry.description}\noption:${entry.name}:${opts[entry.name] ? "yes" : "no"}\n`)
+    .join("");
 }
 
 /**
@@ -78,45 +87,42 @@ describe("option_type_name (option.c:42-73)", () => {
   });
 
   it("builds the file name option.c strnfmts twice (:177, :232)", () => {
-    expect(customOptionsFileName("BIRTH")).toBe("customized_birth_options.txt");
-    expect(customOptionsFileName("INTERFACE")).toBe("customized_interface_options.txt");
+    expect(customOptionsFileName("BIRTH")).toBe("customized_birth_options.json");
+    expect(customOptionsFileName("INTERFACE")).toBe("customized_interface_options.json");
   });
 });
 
 describe("options_save_custom (option.c:171-215)", () => {
-  it("writes the three header lines verbatim", () => {
+  it("writes a byte-stable custom-options document for that page", () => {
     const text = optionsSaveCustomText(tableDefaults(), "INTERFACE");
-    const lines = text.split("\n");
-    expect(lines[0]).toBe("# These are customized defaults for the interface options.");
-    expect(lines[1]).toBe(
-      '# All lines begin with "option:" followed by the internal option name.',
-    );
-    expect(lines[2]).toBe(
-      "# After the name is a colon followed by yes or no for the option's state.",
-    );
-  });
-
-  it("writes description-then-option for every option ON THAT PAGE, in table order", () => {
-    const opts = tableDefaults();
-    const text = optionsSaveCustomText(opts, "CHEAT");
-    const cheats = OPTION_ENTRIES.filter((e) => e.type === "CHEAT");
-    /* Fixture guard: an empty page would make every assertion below vacuous. */
-    expect(cheats.length).toBeGreaterThan(0);
-
-    const body = text.split("\n").slice(3).filter((l) => l.length > 0);
-    expect(body).toEqual(
-      cheats.flatMap((e) => [`# ${e.description}`, `option:${e.name}:${e.normal ? "yes" : "no"}`]),
-    );
-    /* And nothing from another page leaked in. */
+    const parsed = parseDocument(text, customOptionsFormat);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.data.page).toBe("interface");
+    expect(serializeDocument(customOptionsFormat, parsed.data)).toBe(text);
+    expect(text.endsWith("\n")).toBe(true);
     expect(text).not.toContain("birth_");
   });
 
-  it("writes yes/no from the VALUE, not from the table default", () => {
+  it("writes every option ON THAT PAGE, in table order", () => {
+    const opts = tableDefaults();
+    const parsed = parseDocument(optionsSaveCustomText(opts, "CHEAT"), customOptionsFormat);
+    const cheats = OPTION_ENTRIES.filter((e) => e.type === "CHEAT" && e.name.length > 0);
+    expect(cheats.length).toBeGreaterThan(0);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.data.options.map((option) => option.name)).toEqual(cheats.map((entry) => entry.name));
+    expect(parsed.data.options.map((option) => option.enabled)).toEqual(cheats.map((entry) => entry.normal));
+  });
+
+  it("writes the value, not the table default", () => {
     const opts = tableDefaults();
     const first = OPTION_ENTRIES.find((e) => e.type === "INTERFACE")!;
     opts[first.name] = !first.normal;
-    const text = optionsSaveCustomText(opts, "INTERFACE");
-    expect(text).toContain(`option:${first.name}:${first.normal ? "no" : "yes"}`);
+    const parsed = parseDocument(optionsSaveCustomText(opts, "INTERFACE"), customOptionsFormat);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.data.options.find((option) => option.name === first.name)?.enabled).toBe(!first.normal);
   });
 
   it("ends every line with a newline, including the last (file_putf '\\n')", () => {
@@ -135,7 +141,7 @@ describe("options_save_custom (option.c:171-215)", () => {
     expect(optionsSaveCustom(io, tableDefaults(), "BIRTH")).toBe(true);
     expect(seen).toEqual({
       dir: HostDir.USER,
-      name: "customized_birth_options.txt",
+      name: "customized_birth_options.json",
       mode: FileMode.WRITE,
     });
   });
@@ -194,7 +200,7 @@ describe("the read loop of options_restore_custom (option.c:292-331)", () => {
   });
 
   it("skips blank lines and # comments, including the header it writes", () => {
-    const written = optionsSaveCustomText(tableDefaults(), "INTERFACE");
+    const written = legacyCustomOptionsText(tableDefaults(), "INTERFACE");
     expect(parse(written).msgs).toEqual([]);
     expect(parse("\n   \n\t\n# a comment\n   # indented comment\n").msgs).toEqual([]);
   });
@@ -202,7 +208,7 @@ describe("the read loop of options_restore_custom (option.c:292-331)", () => {
   it("round-trips its own writer", () => {
     const source = tableDefaults();
     for (const e of IFACE) source[e.name] = !e.normal;
-    const { opts, msgs } = parse(optionsSaveCustomText(source, "INTERFACE"));
+    const { opts, msgs } = parse(legacyCustomOptionsText(source, "INTERFACE"));
     expect(msgs).toEqual([]);
     for (const e of IFACE) expect(opts[e.name], e.name).toBe(!e.normal);
   });
@@ -398,7 +404,7 @@ describe("options_restore_custom (option.c:225-333)", () => {
     const io = memHost(
       new Map([
         [
-          customOptionsFileName("INTERFACE"),
+          legacyCustomOptionsFileName("INTERFACE"),
           `option:garbage:yes\noption:${target.name}:yes\n`,
         ],
       ]),
@@ -412,6 +418,21 @@ describe("options_restore_custom (option.c:225-333)", () => {
     expect(logged).toEqual([
       "Unrecognized option at line 1 of the customized interface options.",
     ]);
+    expect(io.files.has(legacyCustomOptionsFileName("INTERFACE"))).toBe(false);
+    const document = parseDocument(io.files.get(customOptionsFileName("INTERFACE")), customOptionsFormat);
+    expect(document.ok && document.data.options.find((option) => option.name === target.name)?.enabled).toBe(true);
+  });
+
+  it("keeps a corrupt or future document and uses this session's defaults", () => {
+    for (const text of ["{broken", '{"format":"neo-angband/player/custom-options","schemaVersion":99,"data":{}}']) {
+      const name = customOptionsFileName("INTERFACE");
+      const io = memHost(new Map([[name, text]]));
+      const opts = tableDefaults();
+      expect(optionsRestoreCustom(io, opts, "INTERFACE")).toBe(true);
+      expect(opts).toEqual(tableDefaults());
+      expect(optionsSaveCustom(io, opts, "INTERFACE")).toBe(false);
+      expect(io.files.get(name)).toBe(text);
+    }
   });
 
   it("says nothing at all when the sink is omitted", () => {

@@ -39,6 +39,11 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 /** C function name -> why the port defines it and never uses it. */
 const KNOWN_UNUSED: Record<string, readonly string[]> = {
+  "retired export: randart.json serializes modifiers and elements as JSON fields":
+    [
+      "write_mods",
+      "write_elements",
+    ],
   "renamed: the port does this work under another name; the same-named export is a leftover":
     [
       /* mon-place.ts:224 calls createDrop for exactly this, at exactly

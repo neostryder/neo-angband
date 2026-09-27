@@ -43,6 +43,14 @@ export type {
   ValidationResult,
   Validator,
 } from "./json/index.js";
+export { customOptionsFormat } from "./json/custom-options.js";
+export { loreFormat } from "./json/lore.js";
+export {
+  linoleumInventoryFormat,
+  linoleumPackFormat,
+  linoleumTileMapFormat,
+} from "./json/linoleum.js";
+export { randartFormat } from "./json/randart.js";
 export { windowStateFormat } from "./json/window-state.js";
 export {
   ACTIVE_STORAGE_KEY,

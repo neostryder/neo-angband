@@ -143,6 +143,16 @@ describe("manifest", () => {
       withSource([{ grafID: 101, engine: "linoleum", path: "old", tilesheet: source }]),
     );
     expect(value.tilePacks?.[0]?.tilesheet).toEqual(source);
+    const jsonSource = {
+      key: source.key,
+      packId: source.packId,
+      displayName: source.displayName,
+      cacheKey: source.cacheKey,
+      image: source.image,
+      tileMap: "source/tile-map.json",
+      resolution: source.resolution,
+    };
+    expect(validateManifest(withSource([{ grafID: 101, engine: "linoleum", path: "old", tilesheet: jsonSource }])).tilePacks?.[0]?.tilesheet).toEqual(jsonSource);
     expect(() =>
       validateManifest(withSource([{ grafID: 101, tilesheet: { ...source, image: "../8x8.png" } }])),
     ).toThrow(/tilesheet files/);
