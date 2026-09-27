@@ -5,9 +5,11 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { startGame, tokenIsCurrent } from "@rpgm-tools/neo-angband-core";
+import { createAgentView, startGame, tokenIsCurrent } from "@rpgm-tools/neo-angband-core";
+import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { GamePack } from "@rpgm-tools/neo-angband-core";
-import { buildInputSnapshot, type InputSnapshotSource } from "./input-snapshot";
+import { buildInputSnapshot, buildKnownLevel, type InputSnapshotSource } from "./input-snapshot";
+import { modPluginContext } from "./mod-context";
 import type { WorldFrame } from "./world-view";
 
 
@@ -72,6 +74,7 @@ function source(over: Partial<InputSnapshotSource> = {}): InputSnapshotSource {
     phase: () => "play",
     messagePending: () => false,
     frame: () => null,
+    knownLevel: (granted) => createAgentView(game.state, undefined, {}, granted).knownLevel!(),
     ...over,
   };
 }
@@ -81,6 +84,21 @@ function caps(...granted: string[]) {
 }
 
 describe("buildInputSnapshot", () => {
+  it("reads the bulk level only with map access", () => {
+    expect(buildKnownLevel(source(), caps("state:player.read"))).toBeNull();
+    expect(buildKnownLevel(source(), caps("state:map.read"))?.cells.length).toBeGreaterThan(0);
+  });
+
+  it("returns null from the mod context without map access", () => {
+    const capabilities = CapabilitySet.fromManifest({
+      id: "known-level-test", name: "Known level test", version: "1.0.0",
+      shape: "plugin", facets: ["plugin"], modApi: 1, capabilities: [],
+    });
+    const ctx = modPluginContext("known-level-test", {}, game.state, {}, {
+      snapshotSource: source(), capabilities,
+    });
+    expect(ctx.knownLevel?.()).toBeNull();
+  });
   it("is null before a game exists", () => {
     expect(buildInputSnapshot(source({ state: () => undefined }), undefined)).toBeNull();
   });

@@ -2595,6 +2595,7 @@ function makeChangeLevel(
   return (depth: number): void => {
     /* A new level is a new input boundary (agent/boundary.ts). */
     bumpInputRevision(state);
+    state.levelSerial = (state.levelSerial ?? 0) + 1;
     /* Consume the pending arrival-stair request (create_up_stair /
      * create_down_stair) exactly once, on every path - the equivalent of
      * player_place clearing the flags (player-util.c:1585-1586). Only a fresh

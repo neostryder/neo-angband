@@ -16,7 +16,7 @@ import * as neoCore from "@rpgm-tools/neo-angband-core";
  * plugin imports. mod-plugin.ts keeps its SDK imports type-only. */
 import * as neoAuthoring from "@rpgm-tools/neo-angband-mod-sdk";
 import { log } from "./logging";
-import type { CoreRegistries, GameState, ModBag } from "@rpgm-tools/neo-angband-core";
+import type { CoreRegistries, GameState, KnownLevelView, ModBag } from "@rpgm-tools/neo-angband-core";
 import {
   IN_PROCESS_MOD_API_VERSION,
   type BackupFolder,
@@ -36,7 +36,7 @@ import {
   type ReadModResult,
 } from "./mod-plugin";
 import type { KeyRepeatVerdict } from "./key-repeat";
-import { buildInputSnapshot, type InputSnapshot, type InputSnapshotSource } from "./input-snapshot";
+import { buildInputSnapshot, buildKnownLevel, type InputSnapshot, type InputSnapshotSource } from "./input-snapshot";
 import { VISUAL_FILTER_CAPABILITY } from "./visual-filter";
 import { diskPacks } from "./disk-packs";
 import { modPrefs, type ModPrefs } from "./mod-prefs";
@@ -146,6 +146,7 @@ export function modPluginContext(
   const display = displayFor(session);
   const subwindows = subwindowsFor(session);
   const snapshot = snapshotFor(session);
+  const knownLevel = knownLevelFor(session);
   const tiles = tilesFor(session);
   const keyRepeat = keyRepeatFor(session);
   const keymaps = keymapsFor(id, state, session);
@@ -176,6 +177,7 @@ export function modPluginContext(
     ...(display ? { display } : {}),
     ...(subwindows ? { subwindows } : {}),
     ...(snapshot ? { snapshot } : {}),
+    ...(knownLevel ? { knownLevel } : {}),
     ...(tiles ? { tiles } : {}),
     ...(keyRepeat ? { keyRepeat } : {}),
     ...(keymaps ? { keymaps } : {}),
@@ -356,6 +358,12 @@ function snapshotFor(session: ModSessionFacts): (() => InputSnapshot | null) | u
   if (!source) return undefined;
   const caps = session.capabilities;
   return () => buildInputSnapshot(source, caps);
+}
+
+function knownLevelFor(session: ModSessionFacts): (() => KnownLevelView | null) | undefined {
+  const source = session.snapshotSource ?? snapshotSource;
+  if (!source) return undefined;
+  return () => buildKnownLevel(source, session.capabilities);
 }
 
 /** Install or clear the input-snapshot source (boot path and tests). */

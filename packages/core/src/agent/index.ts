@@ -43,6 +43,15 @@ export {
   tokenIsCurrent,
 } from "./boundary.js";
 export type { CoreSnapshot, InputToken } from "./boundary.js";
+export { captureKnownLevel } from "./known-level.js";
+export type {
+  KnownLevelView,
+  KnownLevelCell,
+  RememberedCell,
+  RememberedObject,
+  ActualCell,
+  TrapView,
+} from "./known-level.js";
 export { itemView, playerViewFor } from "./entity-views.js";
 export type { PlayerViewDerived } from "./entity-views.js";
 export { simulateLoadout } from "./loadout.js";

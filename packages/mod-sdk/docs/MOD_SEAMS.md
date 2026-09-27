@@ -394,6 +394,23 @@ if (snap && snap.phase === "play") {
 
 The map cells and the message log are not in the core capture. The map has its own bulk read, and `messages()` drains a per-decision buffer, so a capture that called it would change what the next decision sees. `prompt` is reserved for the typed prompt descriptor and is null until that seam lands.
 
+## 4h. `ctx.knownLevel()` - the player's whole remembered level
+
+`ctx.knownLevel()` returns the grids the player knows, ordered by row. Its token identifies the current input wait. Its level id changes when the game changes levels, while turns on one level leave the id alone. The result also gives the depth and map dimensions. Call it separately from `ctx.snapshot()`, which stays small.
+
+```js
+const level = ctx.knownLevel?.();
+if (level) {
+  for (const cell of level.cells) drawRememberedCell(cell.x, cell.y, cell.remembered);
+}
+```
+
+Each cell has a `visible` flag and a `remembered` value. Terrain comes from `knownFeat`; the object list comes from `knownPile`. A sensed object tells the mod whether it is money, without identifying its kind. The kind of a seen object stays in memory when the real floor changes. Trap knowledge in this port is the visible flag on a live trap record; removing that record also removes the trap from this read.
+
+`state:map.read` grants this read. Without it, the core accessor throws `AgentCapabilityError` and the context call returns null. A mod with `state:map-actual.read` also gets `actual` on each cell: real terrain, traps, floor objects as `ItemView` values, and the monster index. Other mods receive no `actual` field. The `state:*.read` wildcard grants both domains. Trusted core code can call `captureKnownLevel` directly.
+
+The read does not change the game or use the RNG, including while the character hallucinates. Its token matches `ctx.snapshot().token` when both calls occur at the same input wait.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

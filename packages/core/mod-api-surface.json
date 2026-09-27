@@ -613,6 +613,7 @@
     "calcUnlockingChance",
     "canAct",
     "captureCoreSnapshot",
+    "captureKnownLevel",
     "castAlter",
     "castArc",
     "castBall",

@@ -583,6 +583,8 @@ export interface AgentView {
   /** One map cell, or null when out of bounds. */
   cell(x: number, y: number): CellView | null;
   mapBounds(): { width: number; height: number };
+  /** The player's whole known level, read separately from the small capture. */
+  knownLevel?(): import("./known-level.js").KnownLevelView | null;
   /** The carried pack (non-equipped gear), in pack order. */
   inventory(): ItemView[];
   /** Worn equipment by body slot; null for an empty slot. */

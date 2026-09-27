@@ -35,6 +35,7 @@ import { squareIsDisarmableTrap } from "../game/trap.js";
 import { itemView, playerViewFor } from "./entity-views.js";
 import { simulateLoadout } from "./loadout.js";
 import { captureCoreSnapshot, inputToken } from "./boundary.js";
+import { captureKnownLevel } from "./known-level.js";
 import { AGENT_API_VERSION, AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types.js";
 import type {
   AgentCapabilities,
@@ -316,6 +317,11 @@ export function createAgentView(
       width: state.chunk.width,
       height: state.chunk.height,
     })),
+    knownLevel: gateRead(caps, D.map, () => captureKnownLevel(
+      state,
+      deps,
+      !caps || caps.has("state:map-actual.read") || caps.has("state:*.read"),
+    )),
     inventory: gateRead(caps, D.inventory, () => {
       const out: ItemView[] = [];
       for (const handle of state.gear.pack) {

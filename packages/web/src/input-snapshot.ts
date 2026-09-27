@@ -29,6 +29,7 @@ import type {
   CoreSnapshot,
   GameState,
   InputToken,
+  KnownLevelView,
 } from "@rpgm-tools/neo-angband-core";
 import { snapshotWorldFrame } from "./world-view";
 import type { WorldFrame } from "./world-view";
@@ -79,6 +80,8 @@ export interface InputSnapshotSource {
   messagePending(): boolean;
   /** The last produced frame, live; this module copies it. */
   frame(): WorldFrame | null;
+  /** Read the whole known level independently of the small snapshot. */
+  knownLevel(caps: AgentCapabilities | undefined): KnownLevelView | null;
 }
 
 function grants(caps: AgentCapabilities | undefined, cap: string): boolean {
@@ -107,4 +110,13 @@ export function buildInputSnapshot(
     core,
     frame: live ? snapshotWorldFrame(live) : null,
   });
+}
+
+/** Read the bulk map with the same capability set as the core capture. */
+export function buildKnownLevel(
+  source: InputSnapshotSource,
+  caps: AgentCapabilities | undefined,
+): KnownLevelView | null {
+  if (!source.state() || !grants(caps, MAP_READ_CAPABILITY)) return null;
+  return source.knownLevel(caps);
 }

@@ -64,6 +64,7 @@ import {
   squareIsBelievedWall,
   knownFeat,
   knownObject,
+  createAgentView,
   type KnownObjectMemory,
   loc,
   MFLAG,
@@ -9248,6 +9249,15 @@ setModSubwindowsControl(subwindowsControl);
  * one - the same precedence ModDisplay's `mode` uses. */
 setModSnapshotSource({
   state: () => state,
+  knownLevel: (caps) => createAgentView(state, undefined, {
+    resolver: new ContentIdResolver({
+      objects: booted.registries.objects,
+      playerRaces: players.races,
+      playerClasses: players.classes,
+    }),
+    reg: booted.registries.objects,
+    glyphs: glyphs.agentGlyphs(),
+  }, caps).knownLevel!(),
   viewDeps: () => ({
     resolver: new ContentIdResolver({
       objects: booted.registries.objects,

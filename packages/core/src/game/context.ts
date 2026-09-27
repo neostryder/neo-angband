@@ -663,6 +663,8 @@ export interface GameState {
    * a new epoch.
    */
   inputRevision?: number;
+  /** Changes only when the current level changes. Not saved. */
+  levelSerial?: number;
   /**
    * check_for_player_interrupt's keyboard poll (ui-game.c:645), hosted. Called
    * from the loop at upstream's EVENT_CHECK_INTERRUPT site while a run, a
