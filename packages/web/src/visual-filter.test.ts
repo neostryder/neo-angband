@@ -13,7 +13,7 @@
  * approach term-seams.test.ts uses for GlyphTerm's own canvas.
  */
 import { describe, expect, it, vi } from "vitest";
-import { VISUAL_FILTER_CAPABILITY, VisualFilterOverlay } from "./visual-filter";
+import { VISUAL_FILTER_CAPABILITY, VisualFilterOverlay, applyScopedVisualFilter } from "./visual-filter";
 
 interface StubCanvas {
   width: number;
@@ -64,6 +64,24 @@ function makeOverlay(source: StubCanvas): {
 describe("VISUAL_FILTER_CAPABILITY", () => {
   it("is the display:filter capability id", () => {
     expect(VISUAL_FILTER_CAPABILITY).toBe("display:filter");
+  });
+});
+
+describe("filter scope", () => {
+  it("keeps the old canvas-only call and clears panels when switching back", () => {
+    const canvas = { setFilter: vi.fn() };
+    const panels = vi.fn();
+    const subwindows = vi.fn();
+    const targets = { canvas, panels, subwindows };
+    applyScopedVisualFilter("blur(2px)", { scope: "game" }, targets);
+    expect(panels).toHaveBeenLastCalledWith("blur(2px)");
+    expect(subwindows).toHaveBeenLastCalledWith("blur(2px)");
+    applyScopedVisualFilter("contrast(2)", undefined, targets);
+    expect(canvas.setFilter).toHaveBeenLastCalledWith("contrast(2)");
+    expect(panels).toHaveBeenLastCalledWith(null);
+    expect(subwindows).toHaveBeenLastCalledWith(null);
+    applyScopedVisualFilter(null, undefined, targets);
+    expect(canvas.setFilter).toHaveBeenLastCalledWith(null);
   });
 });
 

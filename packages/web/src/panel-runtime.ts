@@ -174,6 +174,8 @@ interface LivePanel {
   readonly id: string;
   /** The host's own element. The mod is never handed this. */
   readonly container: HTMLElement;
+  /** The mod's visual subtree, apart from the host's close control. */
+  readonly mount: HTMLElement;
   /** Whether it took the screen, which decides Escape and the pointer. */
   readonly modal: boolean;
   /** Removes the visual-viewport listeners installed for this container. */
@@ -183,6 +185,14 @@ interface LivePanel {
 
 /** Open panels, topmost last. Module-level, because there is one page. */
 const panels: LivePanel[] = [];
+
+/** A new panel inherits the current game-wide filter at mount time. */
+let panelVisualFilter: string | null = null;
+
+export function setModPanelVisualFilter(filter: string | null): void {
+  panelVisualFilter = filter;
+  for (const panel of panels) panel.mount.style.filter = filter ?? "";
+}
 
 /** Mod id to the earliest time it may open another panel. */
 const cooldowns = new Map<string, number>();
@@ -347,6 +357,7 @@ export function closeAllModPanels(): number {
 /** Let the layer accept panels again (tests; a real page is torn down once). */
 export function resetModPanels(): void {
   closeAllModPanels();
+  setModPanelVisualFilter(null);
   cooldowns.clear();
   revoked = false;
 }
@@ -583,6 +594,7 @@ function mountPanel(
     position: "absolute",
     inset: "0",
   } satisfies Partial<CSSStyleDeclaration>);
+  mount.style.filter = panelVisualFilter ?? "";
   /* CLOSED. The mod holds the root it is handed; nobody else can pick a panel's
    * contents out of `element.shadowRoot` and read what is being typed into
    * somebody else's form. A small real difference, and not a boundary - see the
@@ -601,6 +613,7 @@ function mountPanel(
     modId,
     id,
     container,
+    mount,
     modal,
     stopViewport,
     finish: () => {

@@ -265,7 +265,7 @@ export interface ModDisplaySnapshot {
  * animation. A mod supplies those policies and uses this surface to apply the
  * resulting whole-cell grid, camera, map window, sidebar reservation, tile
  * sampling choice, and (with the separately consented display:filter capability)
- * a post-processing filter on the terminal canvas.
+ * a post-processing filter on the terminal canvas or game panels.
  */
 export interface ModDisplay {
   snapshot(): ModDisplaySnapshot;
@@ -292,8 +292,8 @@ export interface ModDisplay {
    * exactly as upstream draws them.
    */
   setMonsterListColorKey(enabled: boolean): void;
-  /** Apply a CSS filter to the terminal canvas, or clear the current filter. */
-  setVisualFilter(filter: string | null): void;
+  /** Apply a CSS filter to the canvas or the game's panels; null clears both. */
+  setVisualFilter(filter: string | null, options?: { readonly scope?: "canvas" | "game" }): void;
   repaint(): void;
 }
 

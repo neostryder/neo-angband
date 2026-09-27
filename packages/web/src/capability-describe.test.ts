@@ -66,6 +66,7 @@ describe("describeCapability", () => {
     expect(describeCapability("network:*").text).toMatch(/ANY host/i);
     expect(describeCapability("display:filter")).toMatchObject({ elevated: false });
     expect(describeCapability("display:filter").text).toMatch(/post-processing filter/i);
+    expect(describeCapability("display:filter").text).toMatch(/canvas and panels/i);
   });
 
   it("gives mod:install and mod:session DIFFERENT sentences, and neither is padding", () => {

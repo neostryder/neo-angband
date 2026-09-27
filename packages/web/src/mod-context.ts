@@ -308,8 +308,8 @@ let displayControl: ModDisplay | undefined;
 
 /**
  * The display geometry door is available to every in-process plugin, but the
- * final canvas appearance is a separately declared player-facing change. Keep
- * that one method on a per-plugin facade so the same live canvas can be safely
+ * final game appearance is a separately declared player-facing change. Keep
+ * that one method on a per-plugin facade so the same live display can be safely
  * handed to more than one plugin without one mod borrowing another's grant.
  */
 function displayFor(session: ModSessionFacts): ModDisplay | undefined {
@@ -328,12 +328,13 @@ function displayFor(session: ModSessionFacts): ModDisplay | undefined {
     setStoreSelectionDescription: (enabled) => display.setStoreSelectionDescription(enabled),
     setQuiverItemization: (enabled) => display.setQuiverItemization(enabled),
     setMonsterListColorKey: (enabled) => display.setMonsterListColorKey(enabled),
-    setVisualFilter: (filter) => {
+    setVisualFilter: (filter, options) => {
       if (!session.capabilities) {
         throw new Error(`this plugin needs capability "${VISUAL_FILTER_CAPABILITY}"; no capability set was supplied`);
       }
       session.capabilities.check(VISUAL_FILTER_CAPABILITY);
-      display.setVisualFilter(filter);
+      if (options === undefined) display.setVisualFilter(filter);
+      else display.setVisualFilter(filter, options);
     },
     repaint: () => display.repaint(),
   };

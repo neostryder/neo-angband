@@ -79,6 +79,18 @@ describe("teardownModPlugins", () => {
     expect(out.released).toBeNull();
   });
 
+  it("clears the visual filter after uninstall and before the reload save", () => {
+    const order: string[] = [];
+    teardownModPlugins({
+      plugins: [target("filtered", order)],
+      controller: null,
+      closePanels: () => { order.push("panels"); return 1; },
+      clearVisualFilter: () => { order.push("filter"); },
+    });
+    expect(order).toEqual(["filtered", "panels", "filter"]);
+    expect(requestReloadBody()).toContain("clearVisualFilter: () => displayControl.setVisualFilter(null)");
+  });
+
   it("skips a plugin that declares no uninstall", () => {
     /* The member is optional and most mods will never want it; a host that
      * called through on undefined would turn "I have no teardown" into a crash

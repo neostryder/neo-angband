@@ -360,7 +360,7 @@ import { createModSaves } from "./saves-facade";
 import type { InputSnapshotSource } from "./input-snapshot";
 import type { ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, ModTiles } from "./mod-plugin";
 import { createKeyRepeatTracker } from "./key-repeat";
-import { VisualFilterOverlay } from "./visual-filter";
+import { VisualFilterOverlay, applyScopedVisualFilter } from "./visual-filter";
 import { migrateModBags, migrateModBagsAsync } from "./mod-bags";
 import {
   folderPickingSupported,
@@ -402,6 +402,7 @@ import {
   closeAllModPanels,
   installPanelKeyboardOwner,
   revokeModPanels,
+  setModPanelVisualFilter,
   setPanelGameSurface,
 } from "./panel-runtime";
 import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-taint";
@@ -1031,6 +1032,31 @@ const term = new GlyphTerm(canvas, { boundsElement: gameView });
  * visual-filter.ts. Created lazily; a player who never turns a filter on
  * never creates the overlay's canvas. */
 const visualFilterOverlay = new VisualFilterOverlay(canvas);
+let requestedVisualFilter: { filter: string | null; scope: "canvas" | "game" } = {
+  filter: null,
+  scope: "canvas",
+};
+let systemScreenDepth = 0;
+function refreshVisualFilter(): void {
+  const filter = systemScreenDepth > 0 ? null : requestedVisualFilter.filter;
+  applyScopedVisualFilter(filter, { scope: requestedVisualFilter.scope }, {
+    canvas: visualFilterOverlay,
+    panels: setModPanelVisualFilter,
+    subwindows: (value) => subwindowShell.setVisualFilter(value),
+  });
+}
+
+/** The mod manager draws consent and fault notices on the terminal canvas. */
+async function withUnfilteredSystemScreen<T>(run: () => Promise<T>): Promise<T> {
+  systemScreenDepth++;
+  refreshVisualFilter();
+  try {
+    return await run();
+  } finally {
+    systemScreenDepth--;
+    refreshVisualFilter();
+  }
+}
 term.onRepaint(() => visualFilterOverlay.sync());
 /* THE PANEL LAYER, wired here rather than beside the mod boot, because both of
  * these are about the page and neither depends on a game existing. A mod's DOM
@@ -7011,11 +7037,13 @@ async function openModManager(opts?: { resume?: boolean }): Promise<void> {
     deps.requestReload = (reloadOpts) =>
       reloadAfterModChange({ ...reloadOpts, resume: false });
   }
-  await runModManager(term, deps, opts?.resume === false ? { fromTitle: true } : undefined);
+  await withUnfilteredSystemScreen(() =>
+    runModManager(term, deps, opts?.resume === false ? { fromTitle: true } : undefined));
 }
 
 async function openModOptions(): Promise<void> {
-  await runModOptionsBrowser(term, await modManagerDeps());
+  const deps = await modManagerDeps();
+  await withUnfilteredSystemScreen(() => runModOptionsBrowser(term, deps));
 }
 
 /**
@@ -9232,8 +9260,9 @@ const displayControl: ModDisplay = {
   setMonsterListColorKey(enabled) {
     monsterListColorKey = enabled;
   },
-  setVisualFilter(filter) {
-    visualFilterOverlay.setFilter(filter);
+  setVisualFilter(filter, options) {
+    requestedVisualFilter = { filter, scope: options?.scope ?? "canvas" };
+    refreshVisualFilter();
   },
   repaint() {
     if (levelMapActive) levelMapRepaint?.();
@@ -12196,6 +12225,7 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
     controller: installedController,
     revokePanels: revokeModPanels,
     closePanels: closeAllModPanels,
+    clearVisualFilter: () => displayControl.setVisualFilter(null),
     releaseKeymaps: releaseModKeymaps,
   });
   for (const worker of workerPlugins.values()) worker.teardown();

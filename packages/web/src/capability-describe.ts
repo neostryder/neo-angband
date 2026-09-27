@@ -196,7 +196,7 @@ export function describeCapability(cap: string): CapabilityDescription {
       if (parsed.action === "filter") {
         return {
           cap,
-          text: "Apply a visual post-processing filter to the game's terminal canvas",
+          text: "Apply a visual post-processing filter to the game's terminal canvas and panels",
           elevated: false,
         };
       }

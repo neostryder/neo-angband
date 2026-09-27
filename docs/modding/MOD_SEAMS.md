@@ -493,6 +493,20 @@ A plugin with `saves:manage` receives `ctx.saves` at the title and during play. 
 
 The facade uses the roster's configured storage in the browser and Electron. The grant is elevated because a deleted save cannot be restored.
 
+## 4n. Filtering the whole game viewport
+
+`ctx.display.setVisualFilter(filter, { scope: "game" })` applies a CSS filter to the terminal canvas, tiled subwindow content, and every mod panel's content, including panels opened after the call. The call still requires `display:filter`. Omitting the options keeps the previous canvas-only behavior. Pass `null` to clear both scopes; mod teardown also clears the filter before a changed mod set reloads.
+
+```js
+ctx.display?.setVisualFilter("saturate(0.4) blur(1px)", { scope: "game" });
+// Later:
+ctx.display?.setVisualFilter(null);
+```
+
+The canvas uses its existing alpha-enabled overlay because a CSS filter on the opaque terminal canvas does not composite in Chromium. Panel content and tiled subwindow content use CSS filters on their DOM elements. This is the same host path in a browser and Electron. The filter does not cover the accessibility live regions, touch controls, panel close buttons, tiled subwindow controls, crash and safe-mode notices, or the mod manager's capability consent and fault screens. The host pauses canvas filtering while the mod manager is open, then restores the requested filter when it closes.
+
+A filter on panel content also affects text fields, their caret, and their focus ring. Strong blur or low contrast can make them hard to read and edit; use a legible filter for panels that accept input. Escape and the host's close button remain available even when panel content is hard to read.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

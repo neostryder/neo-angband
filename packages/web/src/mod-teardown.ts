@@ -80,6 +80,8 @@ export interface ModTeardownDeps {
    * behind it.
    */
   readonly closePanels?: () => number;
+  /** Clear game-wide and canvas filters before the page reloads. */
+  readonly clearVisualFilter?: () => void;
   /** Remove keymaps still owned by each departing plugin, after its uninstall. */
   readonly releaseKeymaps?: (id: string) => void;
 }
@@ -167,6 +169,12 @@ export function teardownModPlugins(deps: ModTeardownDeps): ModTeardownResult {
     panelsClosed = deps.closePanels?.() ?? 0;
   } catch (err) {
     log.error("mods", `closing mod panels failed:`, err);
+  }
+
+  try {
+    deps.clearVisualFilter?.();
+  } catch (err) {
+    log.error("mods", `clearing the visual filter failed:`, err);
   }
 
   let released: string | null = null;

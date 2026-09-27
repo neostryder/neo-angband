@@ -73,6 +73,8 @@ export interface SubwindowShell {
    * tiled layout.
    */
   setGameLive(live: boolean): void;
+  /** Filter tiled game content while keeping its host controls legible. */
+  setVisualFilter(filter: string | null): void;
   destroy(): void;
 }
 
@@ -101,6 +103,14 @@ export interface SubwindowShellOptions {
 }
 
 const DRAG_THRESHOLD = 6;
+
+/** Leave the close button and mod controls outside the filtered content. */
+export function filterSubwindowContent(leaf: HTMLElement, filter: string | null): void {
+  for (const selector of [".tile-drag-handle", ".tile-title-label", ".tile-body"]) {
+    const content = leaf.querySelector<HTMLElement>(selector);
+    if (content) content.style.filter = filter ?? "";
+  }
+}
 
 function setRect(el: HTMLElement, rect: Rect): void {
   el.style.position = "absolute";
@@ -153,6 +163,11 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   const panelControls = new Map<string, Map<string, SubwindowControlSpec>>();
   const panelSelects = new Map<string, SubwindowSelectSpec>();
   const controlsContainers = new Map<string, HTMLElement>();
+  let visualFilter: string | null = null;
+
+  function filterSlot(leaf: HTMLElement): void {
+    filterSubwindowContent(leaf, visualFilter);
+  }
   let focusedId: string | null = null;
   const removeKeyboardOwner = addControlDomOwner({
     owns: (event) => event.target instanceof Element && host.contains(event.target)
@@ -348,6 +363,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     body.appendChild(canvas);
     leaf.appendChild(title);
     leaf.appendChild(body);
+    filterSlot(leaf);
     bindLeafDrag(leaf);
     host.appendChild(leaf);
     slots.set(id, leaf);
@@ -617,6 +633,12 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       if (gameLive === live) return;
       gameLive = live;
       paint(currentTree);
+    },
+    setVisualFilter(filter) {
+      visualFilter = filter;
+      for (const [id, leaf] of slots) {
+        if (id !== MAIN_TILE_ID) filterSlot(leaf);
+      }
     },
     destroy() {
       removeKeyboardOwner();

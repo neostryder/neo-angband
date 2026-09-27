@@ -207,11 +207,12 @@
  *                             superset of the other and `grantCovers` compares the
  *                             action, so one consent cannot buy both.
  *  - "display:filter"      - apply a post-processing filter to the game's rendered
+ *                             canvas and panel content. It is deliberately
+ *                             separate from display:replace: changing the
+ *                             appearance of the faithful renderer is not taking
+ *                             ownership of it.
  *  - "input:prompt.reply"  - answer the game's current typed prompt through its
  *                             existing input handler. No wildcard covers it.
- *                             terminal canvas. It is deliberately separate from
- *                             display:replace: changing the appearance of the
- *                             faithful renderer is not taking ownership of it.
  *  - "ui:panel.mount"      - draw with real HTML instead of the character grid: a
  *                             panel of the mod's own, mounted on the page above
  *                             the game. A THIRD "ui:" action, and the reason it is

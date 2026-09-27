@@ -1,5 +1,21 @@
-/** The explicit consent a mod needs before it changes final canvas pixels. */
+/** The explicit consent a mod needs before it filters game pixels or panels. */
 export const VISUAL_FILTER_CAPABILITY = "display:filter";
+
+/** Route one filter choice to the canvas and the optional game panel layers. */
+export function applyScopedVisualFilter(
+  filter: string | null,
+  options: { readonly scope?: "canvas" | "game" } | undefined,
+  targets: {
+    readonly canvas: Pick<VisualFilterOverlay, "setFilter">;
+    readonly panels: (filter: string | null) => void;
+    readonly subwindows: (filter: string | null) => void;
+  },
+): void {
+  targets.canvas.setFilter(filter);
+  const panelFilter = filter !== null && options?.scope === "game" ? filter : null;
+  targets.panels(panelFilter);
+  targets.subwindows(panelFilter);
+}
 
 /** Produces the overlay canvas element. Overridable so this stays testable off-DOM. */
 export type VisualFilterCanvasFactory = () => HTMLCanvasElement;

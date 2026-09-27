@@ -14,7 +14,8 @@
  * conditional on something the mod controls.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { applyScopedVisualFilter } from "./visual-filter";
 import {
   MAX_OPEN_PANELS,
   PLAYER_CLOSE_COOLDOWN_MS,
@@ -25,6 +26,7 @@ import {
   resetModPanels,
   revokeModPanels,
   setPanelGameSurface,
+  setModPanelVisualFilter,
 } from "./panel-runtime";
 
 /* --- the smallest document a panel can be mounted into -------------------- */
@@ -206,6 +208,38 @@ afterEach(() => {
 });
 
 describe("openPanel", () => {
+  it("filters an open or later panel's content but leaves system controls clear", () => {
+    installDom();
+    const liveRegion = node("div");
+    const touchBar = node("div");
+    const crashNotice = node("div");
+    const consentNotice = node("div");
+    body.appendChild(liveRegion);
+    body.appendChild(touchBar);
+    body.appendChild(crashNotice);
+    body.appendChild(consentNotice);
+    const first = createModUi("builder").openPanel({ id: "first", modal: true });
+    const canvas = { setFilter: vi.fn() };
+    const subwindows = vi.fn();
+    const targets = { canvas, panels: setModPanelVisualFilter, subwindows };
+    applyScopedVisualFilter("blur(2px)", { scope: "game" }, targets);
+    expect(canvas.setFilter).toHaveBeenCalledWith("blur(2px)");
+    expect(subwindows).toHaveBeenCalledWith("blur(2px)");
+    const second = createModUi("builder").openPanel({ id: "second", modal: true });
+    for (const panel of [first, second]) {
+      const container = containerOf(panel.id);
+      expect(container?.children[0]?.style.filter).toBe("blur(2px)");
+      expect(container?.style.filter).toBeUndefined();
+      expect(container?.children[1]?.style.filter).toBeUndefined();
+    }
+    for (const system of [liveRegion, touchBar, crashNotice, consentNotice]) {
+      expect(system.style.filter).toBeUndefined();
+    }
+    applyScopedVisualFilter(null, undefined, targets);
+    expect(containerOf(first.id)?.children[0]?.style.filter).toBe("");
+    expect(containerOf(second.id)?.children[0]?.style.filter).toBe("");
+  });
+
   it("hands the mod a shadow root inside a container the mod never gets", () => {
     installDom();
     const panel = createModUi("builder").openPanel({ id: "editor", modal: true });

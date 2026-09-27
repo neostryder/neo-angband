@@ -230,6 +230,13 @@ describe("modPluginContext session facts", () => {
     modPluginContext("filtered-display", {}, undefined, {}, { display, capabilities: withFilter })
       .display?.setVisualFilter("contrast(1.5)");
     expect(setVisualFilter).toHaveBeenCalledWith("contrast(1.5)");
+    expect(() =>
+      modPluginContext("plain-display", {}, undefined, {}, { display, capabilities: without })
+        .display?.setVisualFilter("blur(2px)", { scope: "game" }),
+    ).toThrow(/display:filter/);
+    modPluginContext("filtered-display", {}, undefined, {}, { display, capabilities: withFilter })
+      .display?.setVisualFilter("blur(2px)", { scope: "game" });
+    expect(setVisualFilter).toHaveBeenLastCalledWith("blur(2px)", { scope: "game" });
   });
 
   it("forwards the full-detail map choice through the display facade", () => {

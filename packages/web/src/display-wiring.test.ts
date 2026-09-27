@@ -112,7 +112,7 @@ describe("displayDeps", () => {
  */
 describe("the visual-filter overlay wiring", () => {
   it("routes setVisualFilter through the overlay, not through canvas.style.filter", () => {
-    expect(src).toContain("visualFilterOverlay.setFilter(filter)");
+    expect(src).toContain("applyScopedVisualFilter(filter, { scope: requestedVisualFilter.scope }");
     // The old, broken direct assignment must not come back.
     expect(src).not.toMatch(/canvas\.style\.filter\s*=/u);
     expect(src).not.toContain("setCanvasVisualFilter");
@@ -125,6 +125,13 @@ describe("the visual-filter overlay wiring", () => {
 
   it("feeds the overlay from the terminal's own repaint hook, so every frame is mirrored", () => {
     expect(src).toContain("term.onRepaint(() => visualFilterOverlay.sync())");
+  });
+
+  it("suspends canvas filtering around host consent and fault screens", () => {
+    expect(src).toContain("systemScreenDepth > 0 ? null : requestedVisualFilter.filter");
+    expect(src).toContain("withUnfilteredSystemScreen(() =>");
+    expect(src).toContain("runModManager(term, deps");
+    expect(src).toContain("withUnfilteredSystemScreen(() => runModOptionsBrowser(term, deps))");
   });
 });
 

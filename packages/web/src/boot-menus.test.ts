@@ -146,7 +146,8 @@ describe("title Mods uses the play manager with a title reload", () => {
   it("opens the same manager without requiring a loaded character", () => {
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
-    expect(manager).toContain("await runModManager(term, deps, opts?.resume === false ? { fromTitle: true } : undefined)");
+    expect(manager).toContain("await withUnfilteredSystemScreen(() =>");
+    expect(manager).toContain("runModManager(term, deps, opts?.resume === false ? { fromTitle: true } : undefined)");
     expect(manager).not.toContain("resumedActive");
     expect(manager).not.toContain("attachedSlot");
     expect(stripComments(MAIN)).toMatch(/if \(!id\) return true;\s*try \{/u);

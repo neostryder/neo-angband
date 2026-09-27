@@ -334,11 +334,15 @@ register(host, ctx) {
 
 ### Watching resolved outcomes: `ctx.events`
 
-Declare `event:combat-outcome`, `event:heal`, or `event:motion` to receive `ctx.events` during a game. Subscribe with `ctx.events.on(name, handler)`; each name needs its own grant. Combat payloads report hit or miss, applied damage, death, and the target grid. Healing reports the restored amount. Motion names a `walk` or `teleport` at the completed move. Every payload includes `seen`, and unseen events still arrive. See [MOD_SEAMS.md section 4k](MOD_SEAMS.md#4l-resolved-combat-healing-and-movement-events).
+Declare `event:combat-outcome`, `event:heal`, or `event:motion` to receive `ctx.events` during a game. Subscribe with `ctx.events.on(name, handler)`; each name needs its own grant. Combat payloads report hit or miss, applied damage, death, and the target grid. Healing reports the restored amount. Motion names a `walk` or `teleport` at the completed move. Every payload includes `seen`, and unseen events still arrive. See [MOD_SEAMS.md section 4l](MOD_SEAMS.md#4l-resolved-combat-healing-and-movement-events).
 
 ### Managing characters: `ctx.saves`
 
-Declare `saves:manage` for a replacement title screen that lists, loads, renames or deletes characters. `ctx.saves` is absent without that elevated grant. The methods and their refusal results are described in [MOD_SEAMS.md section 4k](MOD_SEAMS.md#4m-ctxsaves---the-host-character-roster).
+Declare `saves:manage` for a replacement title screen that lists, loads, renames or deletes characters. `ctx.saves` is absent without that elevated grant. The methods and their refusal results are described in [MOD_SEAMS.md section 4m](MOD_SEAMS.md#4m-ctxsaves---the-host-character-roster).
+
+### Filtering panels with the canvas
+
+Declare `display:filter` to call `ctx.display.setVisualFilter(filter, { scope: "game" })`. This covers the terminal canvas, tiled subwindows, and mod panel content. Omit the options for the previous canvas-only behavior, or pass `null` to clear the filter. Strong filters can make panel text fields and their caret hard to read. Host recovery controls and capability consent remain clear. See [MOD_SEAMS.md section 4n](MOD_SEAMS.md#4n-filtering-the-whole-game-viewport).
 
 ### Reading the known level: `ctx.knownLevel()`
 
