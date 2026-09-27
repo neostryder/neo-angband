@@ -490,7 +490,7 @@ try {
     return {
       url: location.href,
       canvas: c ? { w: c.width, h: c.height, cw: c.clientWidth, ch: c.clientHeight } : null,
-      graf: localStorage.getItem("neo-angband:graf"),
+      graf: JSON.parse(localStorage.getItem("neo-angband:settings") ?? "null")?.data?.tileMode ?? null,
       devHook: typeof window.__neo,
       tallProbe: window.__tallProbe ?? null,
     };

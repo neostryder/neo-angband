@@ -46,6 +46,7 @@
  */
 
 import { compareSemver } from "@rpgm-tools/neo-angband-mod-sdk";
+import { readSetting, writeSetting, type SettingsWriter } from "./settings-store";
 
 /** The repository releases are cut from. */
 export const UPDATE_REPO = "neostryder/neo-angband";
@@ -187,9 +188,6 @@ export function defaultChannel(current: string): UpdateChannel {
   return major === "0" ? "beta" : "stable";
 }
 
-/** Where the player's choice is kept. */
-export const CHANNEL_KEY = "neo-angband:update-channel";
-
 function isChannel(v: unknown): v is UpdateChannel {
   return typeof v === "string" && (UPDATE_CHANNELS as readonly string[]).includes(v);
 }
@@ -197,7 +195,7 @@ function isChannel(v: unknown): v is UpdateChannel {
 /** The stored channel, or the default for this version. Never throws. */
 export function readChannel(store: Pick<Storage, "getItem"> | null, current: string): UpdateChannel {
   try {
-    const raw = store?.getItem(CHANNEL_KEY);
+    const raw = readSetting(store, "updateChannel");
     if (isChannel(raw)) return raw;
   } catch {
     /* Storage can throw outright in a locked-down browser. */
@@ -206,12 +204,8 @@ export function readChannel(store: Pick<Storage, "getItem"> | null, current: str
 }
 
 /** Remember the player's choice. A failure here costs the preference, nothing else. */
-export function writeChannel(store: Pick<Storage, "setItem"> | null, channel: UpdateChannel): void {
-  try {
-    store?.setItem(CHANNEL_KEY, channel);
-  } catch {
-    /* ignored */
-  }
+export function writeChannel(store: SettingsWriter | null, channel: UpdateChannel): void {
+  writeSetting(store, "updateChannel", channel);
 }
 
 /** Which build a machine needs. Mirrors process.platform / process.arch. */

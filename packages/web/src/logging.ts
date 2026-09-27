@@ -23,9 +23,7 @@
 import { createLog, defaultLogLevel, isLogLevel } from "@rpgm-tools/neo-angband-core/log";
 import type { Log, LogLevel, LogRecord } from "@rpgm-tools/neo-angband-core/log";
 import { ENGINE_VERSION } from "@rpgm-tools/neo-angband-core";
-
-/** Where an override is remembered between launches. */
-export const LOG_LEVEL_KEY = "neo-angband:log-level";
+import { readSetting, writeSetting } from "./settings-store";
 
 /** The query parameter that beats everything, for a one-off diagnosis. */
 export const LOG_LEVEL_PARAM = "log";
@@ -58,7 +56,7 @@ export function chooseLevel(args: {
 }
 
 /** localStorage, or null where a browser refuses it outright. */
-function levelStore(): Pick<Storage, "getItem" | "setItem"> | null {
+function levelStore(): Storage | null {
   try {
     return window.localStorage;
   } catch {
@@ -68,7 +66,7 @@ function levelStore(): Pick<Storage, "getItem" | "setItem"> | null {
 
 function storedLevel(): string | null {
   try {
-    return levelStore()?.getItem(LOG_LEVEL_KEY) ?? null;
+    return readSetting(levelStore(), "logLevel") ?? null;
   } catch {
     return null;
   }
@@ -100,11 +98,8 @@ export const log: Log = createLog({
 /** Change the level and remember it. Takes effect on the next record. */
 export function setLogLevel(level: LogLevel): void {
   log.setLevel(level);
-  try {
-    levelStore()?.setItem(LOG_LEVEL_KEY, level);
-  } catch {
-    /* The preference is lost, the level still changed for this session. */
-  }
+  /* A failed write loses the preference; the level still changed for this session. */
+  writeSetting(levelStore(), "logLevel", level);
 }
 
 /**

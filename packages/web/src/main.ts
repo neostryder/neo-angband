@@ -810,6 +810,7 @@ import {
 } from "./mod-backup";
 import { decideImport } from "./transfer-gate";
 import { storageLines, type StorageTone } from "./storage-page";
+import { convertLegacySettings, readSetting, writeSetting } from "./settings-store";
 
 // PWA freshness: silently reload onto a newly deployed build (a ratified
 // browser-shell necessity, D2). Page chrome, independent of the game, so it
@@ -2006,7 +2007,6 @@ const displayRandint1 = (n: number): number => state.rng.randint1(n);
 // (tiles.ts - one atlas PNG addressed by row/column, what every upstream pack
 // is), and LOOSE PACKS (linoleum-pack.ts - a directory of named PNGs with
 // variant pools, which a mod can add). Core modes are always tilesheets.
-const TILE_MODE_KEY = "neo-angband:graf";
 
 /** buildid (buildid.c:37 = VERSION_NAME " " VERSION_STRING), for dump headers. */
 const BUILD_ID = `Neo Angband ${PARITY_BASELINE}`;
@@ -2076,6 +2076,11 @@ const glyphs = new GlyphTable({
   traps: booted.registries.traps,
   flavors: booted.registries.objects.flavors,
 });
+try {
+  convertLegacySettings(localStorage);
+} catch {
+  /* Storage denied outright: every setting keeps its default for this session. */
+}
 convertStoredUserPrefFiles({
   glyphs,
   deps: {
@@ -2107,7 +2112,7 @@ consumeStoredAutoinscriptions(glyphs, {
 function readTileMode(): number {
   const fromUrl = Number(params.get("graf"));
   if (fromUrl) return fromUrl;
-  const stored = Number(localStorage.getItem(TILE_MODE_KEY));
+  const stored = readSetting(localStorage, "tileMode") ?? 0;
   return Number.isFinite(stored) && stored > 0 ? stored : GRAPHICS_NONE;
 }
 
@@ -2216,11 +2221,7 @@ async function applyTileMode(
 ): Promise<void> {
   const request = graphics.begin(grafID);
   if (persist) {
-    if (grafID && grafID !== GRAPHICS_NONE) {
-      localStorage.setItem(TILE_MODE_KEY, String(grafID));
-    } else {
-      localStorage.removeItem(TILE_MODE_KEY);
-    }
+    writeSetting(localStorage, "tileMode", grafID && grafID !== GRAPHICS_NONE ? grafID : undefined);
   }
   const entry =
     grafID && grafID !== GRAPHICS_NONE
@@ -2520,12 +2521,11 @@ async function applyMapTileMode(grafID: number): Promise<void> {
 // to a pref file, not the savefile). Left = the classic 13-column status
 // column; Top = a one-line vitals header over a full-width map; None = no
 // vitals furniture at all. viewport() reads this to pick the layout.
-const SIDEBAR_MODE_KEY = "neo-angband:sidebar-mode";
 const SIDEBAR_MODES = ["Left", "Top", "None"] as const; // SIDEBAR_LEFT/TOP/NONE
 type SidebarLayout = "left" | "top" | "none";
 
 function readSidebarMode(): number {
-  const stored = Number(localStorage.getItem(SIDEBAR_MODE_KEY));
+  const stored = readSetting(localStorage, "sidebarMode") ?? 0;
   return Number.isInteger(stored) && stored >= 0 && stored < SIDEBAR_MODES.length
     ? stored
     : 0; // default SIDEBAR_LEFT
@@ -2538,8 +2538,7 @@ const sidebarModeMenu: SidebarModeMenu = {
   set: (index: number) => {
     const n = SIDEBAR_MODES.length;
     sidebarMode = ((index % n) + n) % n;
-    if (sidebarMode === 0) localStorage.removeItem(SIDEBAR_MODE_KEY);
-    else localStorage.setItem(SIDEBAR_MODE_KEY, String(sidebarMode));
+    writeSetting(localStorage, "sidebarMode", sidebarMode === 0 ? undefined : sidebarMode);
     render();
   },
 };
