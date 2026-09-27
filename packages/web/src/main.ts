@@ -643,7 +643,6 @@ import {
   writeSlot,
   markDead,
   deleteSlot,
-  renameSlot,
   newCharId,
   lineageOf,
   listDeaths,
@@ -6506,16 +6505,9 @@ setModSavesControl(createModSaves({
   namePinned: argForceName,
   confirmDelete: (meta) => openModal(() => confirmDelete(term, meta, true)),
   deleteSlot,
-  rename: (id, name) => {
-    if (attachedSlot() === id) {
-      return renamePlayer(name)
-        ? { ok: true }
-        : { ok: false, reason: "The character could not be saved." };
-    }
-    return renameSlot(id, name)
-      ? { ok: true }
-      : { ok: false, reason: "The character could not be renamed." };
-  },
+  rename: (_id, name) => renamePlayer(name)
+    ? { ok: true }
+    : { ok: false, reason: "The character could not be saved." },
   load: async (id) => {
     if (!readSlotSave(id)) return { ok: false, reason: "This character has no save to load." };
     if (await refusedAsPlayedElsewhere(id)) {

@@ -50,9 +50,9 @@ still calls itself.
 
 ### Added
 
-- [Internal] [Modding-API] **Mods can inspect the player's known items, monsters, spells, item choices, and aiming geometry.** `AgentView` and optional `ctx.inspect` return frozen, input-token-stamped answers from the game's own formatters and projection helpers under matching state read capabilities. Repeated reads leave game state and RNG unchanged. (#285)
+- [Internal] [Modding-API] **Mods can read the game's own inspection answers.** `ctx.inspect` and `AgentView` return an item's description, a monster's recall, a spell's details, the items a command would offer, and aiming paths, each stamped with the current input token. Answers cover only what the player knows, need the matching state read grant, and leave game state and RNG unchanged. (#285)
 - [Internal] [Modding-API] **Resolved combat, healing, and movement events expose outcomes to interface mods.** Core emits copied hit, miss, damage, death, restored HP, and typed walk or teleport facts at their resolving paths, with a visibility flag; web mods subscribe through `ctx.events` using individual `event:<name>` grants. (#285)
-- [Internal] [Modding-API] **Mods can manage characters from their own title screens.** The elevated `saves:manage` grant exposes frozen roster entries and routes load, rename and confirmed deletion through the host's character paths. (#285)
+- [Internal] [Modding-API] **Mods can manage characters from their own title screens.** The `saves:manage` grant exposes frozen roster entries and routes load, rename and confirmed deletion through the host's character paths; only the character in play can be renamed. (#285)
 
 - [Internal] [Modding-API] **Mods can filter panel content with the terminal canvas.** The optional `scope: "game"` on `ctx.display.setVisualFilter` covers mod panels and tiled subwindows under the existing `display:filter` grant. The default remains canvas-only, while host recovery and consent screens stay clear. (#285)
 - [Internal] [Modding-API] **Mods can read the player's known level in one call.** `ctx.knownLevel()` returns frozen cells with remembered terrain and objects; real contents require `state:map-actual.read` (#285).

@@ -220,12 +220,6 @@ export function upsertMeta(meta: CharMeta): boolean {
   return writeRoster(list);
 }
 
-/** Rename roster metadata without touching the character's save bytes. */
-export function renameSlot(id: string, name: string): boolean {
-  const meta = getMeta(id);
-  return meta !== null && upsertMeta({ ...meta, name });
-}
-
 /**
  * Which character to OFFER on the next launch, and nothing more than that.
  *

@@ -1,11 +1,11 @@
 /** Read-pure answers from the game's inspection and selection code. */
-import { FEAT, OF, SQUARE } from "../generated/index.js";
+import { FEAT, OF } from "../generated/index.js";
 import type { EffectRecordJson } from "../obj/types.js";
 import type { GameState } from "../game/context.js";
 import { knownDescOf } from "../game/describe.js";
 import { USE_MODE, floorPile, scanItems } from "../game/floor.js";
 import { gearGet } from "../game/gear.js";
-import { squareIsKnown, knownFeat } from "../game/known.js";
+import { knownFeat, knownFloorObject, squareIsKnown } from "../game/known.js";
 import { objectInfoTextblock } from "../game/object-inspect.js";
 import { objCanRefill, objCanThrow, objCanWear, objHasInscrip, objIsActivatable, objectUseCode } from "../game/obj-cmd.js";
 import { makeSpellChanceEnv, playerCanCast } from "../game/spell-cmd.js";
@@ -125,9 +125,13 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
     inspectItem: gate(caps, "inventory", (ref: number | { floor: { x: number; y: number; index: number } }): InspectResult | null => {
       const obj = typeof ref === "number" ? gearGet(state.gear, ref) :
         state.chunk.inBounds(ref.floor) ? state.floor.get(ref.floor.y * state.chunk.width + ref.floor.x)?.[ref.floor.index] : undefined;
-      if (!obj || (typeof ref !== "number" &&
-        !state.chunk.sqinfoHas(ref.floor, SQUARE.VIEW) &&
-        (ref.floor.x !== state.actor.grid.x || ref.floor.y !== state.actor.grid.y))) return null;
+      /* A floor object answers only when the player remembers that exact
+       * object; a sensed "something is here" memory does not name it. */
+      if (!obj) return null;
+      if (typeof ref !== "number") {
+        const known = knownFloorObject(state, ref.floor, obj);
+        if (!known || known.sensed) return null;
+      }
       const extras = deps.inspect?.objectInfo;
       if (!extras) return null;
       const title = objectDesc(obj, ODESC.PREFIX | ODESC.FULL, state.actor.player, state.runeEnv, knownDescOf(state, true), undefined, state.chestTraps);
@@ -138,7 +142,8 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
       const race = deps.inspect?.races?.[raceIndex];
       const lore = state.lore.get(raceIndex);
       const loreDeps = deps.inspect?.loreDeps;
-      if (!race || !lore || !loreDeps) return null;
+      /* Recall covers races the player has met, as the knowledge menu does. */
+      if (!race || !lore || !loreDeps || !(lore.sights > 0 || lore.allKnown)) return null;
       const text = loreDescription(race, lore, loreDeps()).map((run) => run.text).join("");
       return freeze({ token: at(), title: race.name, text });
     }),

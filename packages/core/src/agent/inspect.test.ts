@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { FEAT, MFLAG } from "../generated/index.js";
 import { gearAdd } from "../game/gear.js";
+import { objectSeeAt } from "../game/known.js";
 import { objectInfoTextblock } from "../game/object-inspect.js";
 import { loreDescription } from "../mon/lore-describe.js";
 import { newMonsterLore } from "../mon/lore.js";
@@ -129,7 +130,7 @@ describe("inspection reads", () => {
     const floorKey = state.actor.grid.y * state.chunk.width + state.actor.grid.x;
     state.floor.set(floorKey, [floorObj, ...(state.floor.get(floorKey) ?? [])]);
     const race = game.booted.registries.monsters.races.find((r) => r && r.ridx > 0)!;
-    state.lore.set(race.ridx, newMonsterLore(race));
+    state.lore.set(race.ridx, { ...newMonsterLore(race), sights: 1 });
     const caster = game.players.classes.find((cls) => cls.magic.totalSpells > 0)!;
     state.actor.player.cls = caster;
     state.actor.player.csp = 0;
@@ -163,6 +164,25 @@ describe("inspection reads", () => {
     const before = fingerprint(game);
     for (let i = 0; i < 5; i++) expect(view.monsterRecall!(index)).toBeNull();
     expect(fingerprint(game)).toBe(before);
+  });
+
+  it("answers only for floor objects the player remembers and races the player has met", () => {
+    const game = newGame();
+    const state = game.state;
+    const potion = game.booted.registries.objects.kinds.find((kind) => tvalIsPotion(kind.tval))!;
+    const floorObj = objectPrep(state.rng, game.booted.registries.objects, game.booted.registries.constants, potion, 1, "minimise");
+    const grid = { x: state.actor.grid.x, y: state.actor.grid.y };
+    const floorKey = grid.y * state.chunk.width + grid.x;
+    state.floor.set(floorKey, [floorObj, ...(state.floor.get(floorKey) ?? [])]);
+    const race = game.booted.registries.monsters.races.find((r) => r && r.ridx > 0 && !state.lore.has(r.ridx))!;
+    state.lore.set(race.ridx, newMonsterLore(race));
+    const view = viewFor(game).view;
+    expect(view.inspectItem!({ floor: { ...grid, index: 0 } })).toBeNull();
+    expect(view.monsterRecall!(race.ridx)).toBeNull();
+    objectSeeAt(state, grid, floorObj);
+    state.lore.set(race.ridx, { ...newMonsterLore(race), sights: 1 });
+    expect(view.inspectItem!({ floor: { ...grid, index: 0 } })?.title).toBeTruthy();
+    expect(view.monsterRecall!(race.ridx)?.title).toBe(race.name);
   });
 
   it("uses remembered walls and visible monsters for previews", () => {

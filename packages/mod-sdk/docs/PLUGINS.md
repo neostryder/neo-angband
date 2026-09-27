@@ -338,7 +338,7 @@ Declare `event:combat-outcome`, `event:heal`, or `event:motion` to receive `ctx.
 
 ### Managing characters: `ctx.saves`
 
-Declare `saves:manage` for a replacement title screen that lists, loads, renames or deletes characters. `ctx.saves` is absent without that elevated grant. The methods and their refusal results are described in [MOD_SEAMS.md section 4m](MOD_SEAMS.md#4m-ctxsaves---the-host-character-roster).
+Declare `saves:manage` for a replacement title screen that lists, loads, renames or deletes characters. `ctx.saves` is absent without that grant. The methods and their refusal results are described in [MOD_SEAMS.md section 4m](MOD_SEAMS.md#4m-ctxsaves---the-host-character-roster).
 
 ### Filtering panels with the canvas
 

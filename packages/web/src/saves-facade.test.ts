@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { createModSaves, type SavesDoorDeps } from "./saves-facade";
 import { modPluginContext } from "./mod-context";
-import { deleteSlot, listRoster, renameSlot, setRosterStorage, type CharMeta } from "./roster";
+import { deleteSlot, listRoster, setRosterStorage, type CharMeta } from "./roster";
 
 const alice: CharMeta = {
   id: "alice", name: "Alice", race: "Human", cls: "Mage", sex: "",
@@ -23,9 +23,7 @@ function deps(over: Partial<SavesDoorDeps> = {}): SavesDoorDeps {
   return {
     listRoster: vi.fn(listRoster),
     load: vi.fn(async () => ({ ok: true as const })),
-    rename: vi.fn((id, name) => renameSlot(id, name)
-      ? { ok: true as const }
-      : { ok: false as const, reason: "Storage failed." }),
+    rename: vi.fn(() => ({ ok: true as const })),
     confirmDelete: vi.fn(async () => true),
     deleteSlot: vi.fn(deleteSlot),
     activeSlot: vi.fn(() => null),
@@ -63,17 +61,17 @@ describe("mod saves facade", () => {
     expect(door.load).toHaveBeenCalledTimes(1);
   });
 
-  it("uses the roster rename path without writing save bytes", async () => {
+  it("renames only the character in play, through the game's own rename", async () => {
     const backing = storage();
     setRosterStorage(backing);
     backing.setItem("neo-angband-roster", JSON.stringify([alice]));
-    backing.setItem("neo-angband-save:alice", "unchanged");
-    const door = deps();
+    const idle = deps();
+    expect(await createModSaves(idle).rename("alice", "New")).toMatchObject({ ok: false });
+    expect(idle.rename).not.toHaveBeenCalled();
+    const door = deps({ activeSlot: vi.fn(() => "alice") });
     const saves = createModSaves(door);
     expect(await saves.rename("alice", "  New  ")).toEqual({ ok: true });
     expect(door.rename).toHaveBeenCalledExactlyOnceWith("alice", "New");
-    expect(listRoster()[0]?.name).toBe("New");
-    expect(backing.getItem("neo-angband-save:alice")).toBe("unchanged");
     expect(await saves.rename("alice", " ")).toMatchObject({ ok: false });
     expect(door.rename).toHaveBeenCalledTimes(1);
   });

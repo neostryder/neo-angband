@@ -52,6 +52,9 @@ export function createModSaves(deps: SavesDoorDeps): ModSaves {
         const meta = find(id);
         if (!meta) return refused("Character not found.");
         if (deps.namePinned()) return refused("You are not allowed to change your name!");
+        /* The roster row is rebuilt from the loaded character on every save,
+         * so only the character in play can be renamed and keep the name. */
+        if (deps.activeSlot() !== id) return refused("Load this character to rename it.");
         const name = acceptedCharacterName(entered);
         if (name === null) return refused("Enter a name of 1 to 15 characters.");
         return deps.rename(id, name);

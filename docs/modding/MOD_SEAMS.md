@@ -469,7 +469,7 @@ const path = ctx.inspect?.projectionPath({ x: 20, y: 12 });
 const blast = ctx.inspect?.blastArea({ x: 20, y: 12 }, 2);
 ```
 
-`inspectItem` accepts a carried or worn handle, or `{ floor: { x, y, index } }`. It returns the title and body from `object_desc` and `object_info`, including the effect description, under `state:inventory.read`. `monsterRecall` returns the player's existing lore text under `state:monsters.read`, or null when the race has no recorded lore. Neither read marks a kind or ego as seen or creates a lore record.
+`inspectItem` accepts a carried or worn handle, or `{ floor: { x, y, index } }`. It returns the title and body from `object_desc` and `object_info`, including the effect description, under `state:inventory.read`. A floor object answers only when the player remembers that object; a grid the player has merely sensed returns null. `monsterRecall` returns the player's existing lore text under `state:monsters.read`, or null for a race the player has not seen, as in the knowledge menu. Neither read marks a kind or ego as seen or creates a lore record.
 
 `spellInfo` returns the spell's description, required level, mana cost, live failure chance, and `canCastNow` under `state:spells.read`. Low mana raises the failure chance but still permits the game's over-exertion cast path. `itemTester` lists carried, worn, quivered, and local floor references accepted by the named item command under `state:inventory.read`. Its command codes are `inspect`, `wield`, `takeoff`, `drop`, `inscribe`, `uninscribe`, `activate`, `use-staff`, `aim-wand`, `zap-rod`, `eat`, `quaff`, `read`, `refill`, `cast`, `study`, `browse`, `fire`, `throw`, `use`, and `ignore`.
 
@@ -489,9 +489,9 @@ These events contain copied coordinates and scalar values. They do not carry a l
 
 A plugin with `saves:manage` receives `ctx.saves` at the title and during play. `list()` reads the character picker's roster in the same order. Its frozen entries contain the slot id, name, race, class, level, depth, death status and last-save time in epoch milliseconds. Every call returns `ok` or a refusal with a `reason`.
 
-`load(id)` uses the character picker's resume route, including the other-window check and the reload that decodes the save and checks compatibility. `rename(id, name)` follows the character sheet's rules: it trims a nonblank name of at most 15 characters and refuses a name pinned by the host. It changes only roster metadata for an inactive slot; the attached character uses the sheet's save callback. `delete(id)` refuses the character attached to this page and opens the host's confirmation before deleting. A mod menu presenter cannot answer that confirmation.
+`load(id)` uses the character picker's resume route, including the other-window check and the reload that decodes the save and checks compatibility. `rename(id, name)` follows the character sheet's rules: it trims a nonblank name of at most 15 characters and refuses a name pinned by the host. Only the character in play can be renamed, through the character sheet's own rename. Any other slot returns a refusal, because the roster row is rebuilt from the loaded character each time it saves. `delete(id)` refuses the character attached to this page and opens the host's confirmation before deleting. A mod menu presenter cannot answer that confirmation.
 
-The facade uses the roster's configured storage in the browser and Electron. The grant is elevated because a deleted save cannot be restored.
+The facade uses the roster's configured storage in the browser and Electron. Its consent description carries the power flag, because a deleted save cannot be restored.
 
 ## 4n. Filtering the whole game viewport
 
