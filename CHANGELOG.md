@@ -51,6 +51,7 @@ still calls itself.
 ## [1.19.0] - 2026-09-27
 
 ### Added
+- [Visible] [UI] **AnybandUI is on the recommended mods list.** It adds a mouse-first interface ported from Wurli Monkhaven's AnybandUI frontend, and each of its features starts off until you choose it.
 - [Internal] [Modding-API] **Mods can declare numbers the player sets on the Mods screen.** A manifest's `settings` gives each one a range, a step, a default and an optional unit and parent switch. The row steps with Left and Right, and the mod reads the value from `ctx.settings`, which stays in range and can tell the mod when it changes (#295).
 - [Internal] [Modding-API] **Interface mods can act on floor objects and read more of what the game shows.** Object commands and pickup take `args.floor`, and floor items carry a pile index and an item key. Item views add the inventory name and the ignore mark. Store quantity prompts list the total for every amount and the price confirmation carries its price. The snapshot reports the store rows for the quiver and equipment, message repeat counts and colours, and the rest mode with the length asked for. The command catalogue names each command, and blast previews take a breath's arc. Text and spell prompts accept a cancel reply (#294).
 - [Internal] [Modding-API] **Interface mods can read richer map, item, spell, store and character state.** Frozen input snapshots and inspections expose quiver and floor items, stable item keys, slot names, spell study facts, stock inspection, blast metadata, store quotes, message history, rest activity and roster lineage events. The intent catalogue, grid look, click modifiers, ignore rules and rest interruption use existing game paths. (#291)
@@ -97,6 +98,7 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] [UI] **The Mods screen no longer says that turning a mod on turns all its switches on.** It says how many are on by default and what turning the mod on will ask. For a mod that is already on, it points to the mod's own page.
 - [Visible] [UI] **Subwindows stay in place when a mod tints the display.** A colour or CRT effect used to shift each subwindow's picture off its panel by the panel's own offset, which left the panel blank.
 - [Visible] [UI] **A mod's panel shows its content from the top.** The panel's unused text canvas used to fill the panel's whole height and push the mod's content out of sight.
 - [Visible] [Modding-API] **A mod's spell or item use that names no direction asks the game's own questions first.** The player picks the direction, confirms a spell cast with too little mana, and chooses any item the effect targets, just as with the keyboard. Before, the spell or device fired at the current target, and with no target set the mana or the charge was spent on nothing.

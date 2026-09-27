@@ -755,21 +755,36 @@ export function rowDetail(
 
   const below: ScreenLine[] = [];
   const ruleCount = m.manifest.rules?.length ?? 0;
+  /* What turning the mod on does depends on each rule's own default, so the
+   * line counts them rather than assuming every rule starts on. */
+  const startOn = m.manifest.rules?.filter((rule) => rule.default).length ?? 0;
   if (ruleCount > 0) {
     below.push({ text: "", color: C_FG });
     below.push(
       ...wrapped(
         m.enabled
           ? t(
-              "modsScreen.detail.rules.enabled",
-              "Makes {count, plural, one {# separate change} other {# separate changes}}, all on. Open the mod to switch any one off.",
+              "modsScreen.detail.rules.enabledAny",
+              "Makes {count, plural, one {# separate change} other {# separate changes}}. Open the mod to switch any one on or off.",
               { count: ruleCount },
             )
-          : t(
-              "modsScreen.detail.rules.disabled",
-              "Makes {count, plural, one {# separate change} other {# separate changes}}. None of them happen while it is off; turning it on turns all of them on.",
-              { count: ruleCount },
-            ),
+          : startOn === ruleCount
+            ? t(
+                "modsScreen.detail.rules.disabledAllOn",
+                "Makes {count, plural, one {# separate change} other {# separate changes}}, all on by default. Turning the mod on asks whether to use the defaults, pick your own, or use none.",
+                { count: ruleCount },
+              )
+            : startOn === 0
+              ? t(
+                  "modsScreen.detail.rules.disabledAllOff",
+                  "Makes {count, plural, one {# separate change} other {# separate changes}}, all off by default. Turning the mod on asks whether to pick the ones you want or use none.",
+                  { count: ruleCount },
+                )
+              : t(
+                  "modsScreen.detail.rules.disabledSome",
+                  "Makes {count, plural, one {# separate change} other {# separate changes}}, {on} of them on by default. Turning the mod on asks whether to use the defaults, pick your own, or use none.",
+                  { count: ruleCount, on: startOn },
+                ),
         w,
         m.enabled ? C_ENABLED : C_DIM,
       ),

@@ -217,3 +217,32 @@ describe("a mod installed by another mod says so", () => {
     expect(text).not.toContain("Installed by");
   });
 });
+
+describe("the switch count says what turning the mod on does", () => {
+  const withRules = (defaults: readonly boolean[], enabled = false): string => {
+    const m = mod({ enabled, manifest: { ...mod().manifest,
+      rules: defaults.map((on, i) => ({ flag: `a.r${i}`, title: "t", description: "d", default: on })),
+    } as CatalogMod["manifest"] });
+    return rowDetail(m, 200).map((l) => l.text).join(" ");
+  };
+
+  it("does not offer defaults when every switch starts off", () => {
+    const text = withRules([false, false, false]);
+    expect(text).toContain("Makes 3 separate changes, all off by default.");
+    expect(text).not.toContain("use the defaults");
+  });
+
+  it("counts the switches that start on when only some do", () => {
+    expect(withRules([true, false, true])).toContain("Makes 3 separate changes, 2 of them on by default.");
+  });
+
+  it("says so when every switch starts on", () => {
+    expect(withRules([true, true])).toContain("Makes 2 separate changes, all on by default.");
+  });
+
+  it("claims nothing about which are on once the mod is on", () => {
+    const text = withRules([false, true], true);
+    expect(text).toContain("Open the mod to switch any one on or off.");
+    expect(text).not.toContain("all on");
+  });
+});
