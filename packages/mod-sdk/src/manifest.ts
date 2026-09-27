@@ -128,6 +128,48 @@ export interface PackRule {
   requiresReload?: boolean;
 }
 
+/** One number on the Mods screen, such as an effect strength from 0 to 100. The mod reads it with `ctx.settings.get(id)`. */
+export interface PackSetting {
+  /** Must not repeat another setting's id or any rule flag. */
+  id: string;
+  /** The row label. */
+  title: string;
+  /** Shown in the detail panel. */
+  description: string;
+  min: number;
+  max: number;
+  /** Left and Right move the value by this much. */
+  step: number;
+  /** Must be min plus a whole number of steps. */
+  default: number;
+  /** Printed right after the number: "%" gives 60%, " ms" gives 60 ms. */
+  unit?: string;
+  /** Hide the row unless this rule flag is on. */
+  parent?: string;
+  /** Set this when the mod reads the value only at load time. */
+  requiresReload?: boolean;
+}
+
+/** Counts the digits after the point, so 0.1 + 0.2 comes out as 0.3. */
+function decimalsOf(value: number): number {
+  const text = String(value);
+  const dot = text.indexOf(".");
+  return dot < 0 ? 0 : text.length - dot - 1;
+}
+
+/**
+ * The number `ctx.settings` reports. A missing or non-numeric stored value gives
+ * the default; anything else is pulled into the range and rounded to a step.
+ */
+export function resolveSettingValue(setting: PackSetting, stored: unknown): number {
+  const raw = typeof stored === "number" && Number.isFinite(stored) ? stored : setting.default;
+  const clamped = Math.min(setting.max, Math.max(setting.min, raw));
+  let snapped = setting.min + Math.round((clamped - setting.min) / setting.step) * setting.step;
+  if (snapped > setting.max) snapped -= setting.step;
+  const places = Math.max(decimalsOf(setting.min), decimalsOf(setting.step));
+  return Number(snapped.toFixed(places));
+}
+
 /**
  * ONE NAMED PART OF A MOD - the unit an author can prioritise, a player can
  * switch off, and a compatibility claim can point at.
@@ -517,6 +559,8 @@ export interface PackManifest {
    * GameState.modRules as save state. Absent for a pack with nothing to toggle.
    */
   rules?: PackRule[];
+  /** See PackSetting. */
+  settings?: PackSetting[];
   /** Rule or section flags whose current boolean values other plugins may read. */
   publicFlags?: string[];
   /**
@@ -759,6 +803,7 @@ export function validateManifest(value: unknown): PackManifest {
     throw new ManifestError(`manifest ${id}: affectsGameplay must be a boolean`);
   }
   const ruleFlags = validateRules(m["rules"], id);
+  validateSettings(m["settings"], id, ruleFlags);
   validateRenamedRuleFlags(m["renamedRuleFlags"], id, ruleFlags);
   const sectionIds = validateSections(m["sections"], id, ruleFlags);
   if (m["publicFlags"] !== undefined) {
@@ -847,6 +892,56 @@ function validateRules(value: unknown, id: string): Set<string> {
     }
   }
   return seen;
+}
+
+/** Throws ManifestError for the first bad entry in `settings`. */
+function validateSettings(value: unknown, id: string, ruleFlags: ReadonlySet<string>): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    throw new ManifestError(`manifest ${id}: settings must be an array`);
+  }
+  const seen = new Set<string>();
+  const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new ManifestError(`manifest ${id}: each setting must be an object`);
+    }
+    const r = entry as Record<string, unknown>;
+    const sid = r["id"];
+    if (typeof sid !== "string" || sid.length === 0) {
+      throw new ManifestError(`manifest ${id}: setting id must be a non-empty string`);
+    }
+    if (seen.has(sid) || ruleFlags.has(sid)) {
+      throw new ManifestError(`manifest ${id}: setting id ${sid} is already used by another setting or a rule`);
+    }
+    seen.add(sid);
+    if (typeof r["title"] !== "string" || r["title"].length === 0) {
+      throw new ManifestError(`manifest ${id}: setting ${sid} title must be a non-empty string`);
+    }
+    if (typeof r["description"] !== "string") {
+      throw new ManifestError(`manifest ${id}: setting ${sid} description must be a string`);
+    }
+    const { min, max, step } = r;
+    if (!finite(min) || !finite(max) || !finite(step) || !finite(r["default"])) {
+      throw new ManifestError(`manifest ${id}: setting ${sid} min, max, step and default must be finite numbers`);
+    }
+    if (!(min < max) || !(step > 0)) {
+      throw new ManifestError(`manifest ${id}: setting ${sid} needs min below max and a step above 0`);
+    }
+    const declared = r as unknown as PackSetting;
+    if (resolveSettingValue(declared, declared.default) !== declared.default) {
+      throw new ManifestError(`manifest ${id}: setting ${sid} default must lie between min and max on a step`);
+    }
+    if (r["unit"] !== undefined && typeof r["unit"] !== "string") {
+      throw new ManifestError(`manifest ${id}: setting ${sid} unit must be a string`);
+    }
+    if (r["parent"] !== undefined && (typeof r["parent"] !== "string" || !ruleFlags.has(r["parent"]))) {
+      throw new ManifestError(`manifest ${id}: setting ${sid} parent must name one of this manifest's rules`);
+    }
+    if (r["requiresReload"] !== undefined && typeof r["requiresReload"] !== "boolean") {
+      throw new ManifestError(`manifest ${id}: setting ${sid} requiresReload must be a boolean`);
+    }
+  }
 }
 
 /**

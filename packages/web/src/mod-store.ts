@@ -32,12 +32,22 @@
  * ?trusted= still override for one-off testing, per pack.ts / main.ts.)
  */
 
-import { modStateFormat, type ModState, type PackManifest, type SortPin } from "@rpgm-tools/neo-angband-mod-sdk";
+import {
+  modSettingValuesFormat,
+  modStateFormat,
+  parseDocument,
+  serializeDocument,
+  type ModState,
+  type PackManifest,
+  type SortPin,
+} from "@rpgm-tools/neo-angband-mod-sdk";
 import { fieldDocument, legacyJson, type LegacyField } from "./field-document";
 import { readSetting, writeSetting } from "./settings-store";
 
 /** Where the mod manager's state is kept, one `neo-angband/web/mod-state` document per profile (#288). */
 export const MOD_STATE_STORAGE_KEY = "neo-angband:mod-state";
+/** Where setting values live. They stay out of MOD_STATE_STORAGE_KEY on purpose; json/mod-settings.ts says why. */
+export const MOD_SETTINGS_STORAGE_KEY = "neo-angband:mod-settings";
 /* The pump rate for a mod's autoplayer (ModPlugin.controller), player-set
  * beside the mod's own rule row that turns the controller on at all. */
 
@@ -780,6 +790,35 @@ export class ModStore {
     if (id in all) {
       delete all[id];
       writeField(this.storage, "consents", all);
+    }
+  }
+
+  /* --- Setting values (numeric mod settings) ------------------------ */
+
+  /** Setting values by mod id, then setting id. A missing entry means the player never moved it. Clamping happens on read, in ctx.settings. */
+  getSettingValues(): Record<string, Record<string, number>> {
+    try {
+      const raw = this.storage?.getItem(MOD_SETTINGS_STORAGE_KEY) ?? null;
+      if (raw === null) return {};
+      const parsed = parseDocument(raw, modSettingValuesFormat);
+      if (!parsed.ok) return {};
+      const out: Record<string, Record<string, number>> = {};
+      for (const [modId, values] of Object.entries(parsed.data.values ?? {})) out[modId] = { ...values };
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  /** Save one value. NaN and Infinity are ignored. */
+  setSettingValue(modId: string, settingId: string, value: number): void {
+    if (!Number.isFinite(value)) return;
+    const all = this.getSettingValues();
+    all[modId] = { ...(all[modId] ?? {}), [settingId]: value };
+    try {
+      this.storage?.setItem(MOD_SETTINGS_STORAGE_KEY, serializeDocument(modSettingValuesFormat, { values: all }, { compact: true }));
+    } catch {
+      /* Full or blocked storage: the new value is lost when the page closes. */
     }
   }
 

@@ -386,7 +386,7 @@ import {
 import type { PrefsUiCtx } from "./prefs-ui";
 import { applyPrefText } from "./prefs-ui";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
-import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, discoverContentModManifests, presentNamespaces, presentPackDigests, prefetchInstalledPackDigests, diskPackStatus, enabledModIds, composedRecords } from "./pack";
+import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, loadEnabledModSettings, discoverContentModManifests, presentNamespaces, presentPackDigests, prefetchInstalledPackDigests, diskPackStatus, enabledModIds, composedRecords } from "./pack";
 import { liveConflictLines } from "./mod-conflicts";
 import { composedObjects, hasFacet, resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
@@ -665,6 +665,7 @@ import {
 } from "./knowledge";
 import { createModKnowledge, type KnowledgeSources } from "./knowledge-read";
 import { buildRunReport, createRunReports } from "./run-report";
+import { notifyModSettingChanged, setModSettingSource } from "./mod-settings-values";
 import {
   buildRuneList,
   type Artifact,
@@ -6899,6 +6900,13 @@ setModDebugDoor({ wizard: wizardCtx, confirm: confirmDebugGate });
 setModOptionsAfterChange(() => autosave(true));
 setModKnowledgeSource(() => createModKnowledge(modKnowledgeSources(), () => state?.rng));
 setModRunReports(runReports);
+/* The enabled set is fixed for the page's life (a change reloads), so the
+ * declarations are read once; the player's values are read through the store. */
+const modSettingDecls = loadEnabledModSettings();
+setModSettingSource({
+  declared: (modId) => modSettingDecls.get(modId) ?? [],
+  stored: (modId) => defaultModStore().getSettingValues()[modId] ?? {},
+}, reportDisplayFault);
 setModSavesControl(createModSaves({
   onChange: onRosterChange,
   listRoster,
@@ -7407,6 +7415,7 @@ async function modManagerDeps(): Promise<ModManagerDeps> {
         installedControllerSpeed?.(speed);
       },
     },
+    applySettingLive: (modId, settingId) => notifyModSettingChanged(modId, settingId),
     applyRuleLive: (flag, on) => {
       /* modRules is now only the RECORD of the player's choice - core never
        * branches on it - so writing it alone was a SILENT NO-OP for all seven

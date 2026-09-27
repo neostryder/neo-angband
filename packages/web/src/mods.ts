@@ -81,9 +81,11 @@ import { modUpgradeRowLabel } from "./mod-refresh";
 import type { ConflictReportLines } from "./mod-conflicts";
 import {
   resolveSectionState,
+  resolveSettingValue,
   sortModOrder,
   type ContestedSlot,
   type PackManifest,
+  type PackSetting,
   type RecordConflict,
   type SortResult,
 } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -258,6 +260,8 @@ export interface ModManagerDeps {
    * (the choice still persists and applies on next start).
    */
   applyRuleLive?: (flag: string, on: boolean) => void;
+  /** Tell a running mod that one of its settings changed; absent when no game is running. */
+  applySettingLive?: (modId: string, settingId: string) => void;
   /**
    * The player-facing speed control for a mod's autoplayer (ModPlugin.controller).
    * Absent while no game is running; `activeId`
@@ -2288,12 +2292,22 @@ async function manageModOptions(
           readonly on: boolean;
           readonly needs: string | null;
         }
-      | { readonly kind: "speed"; readonly mod: CatalogMod; readonly autoplayer: NonNullable<ModManagerDeps["autoplayer"]> };
+      | { readonly kind: "speed"; readonly mod: CatalogMod; readonly autoplayer: NonNullable<ModManagerDeps["autoplayer"]> }
+      | { readonly kind: "setting"; readonly mod: CatalogMod; readonly setting: PackSetting; readonly value: number };
     const options: Option[] = [];
     const decls = (deps.ruleDecls ?? ((): ModRuleDecl[] => []))();
+    const choicesNow = deps.store.getRuleChoices();
+    const storedSettings = deps.store.getSettingValues();
     for (const m of enabled) {
-      for (const decl of decls.filter((d) => d.modId === m.id)) {
+      const own = decls.filter((d) => d.modId === m.id);
+      for (const decl of own) {
         options.push({ kind: "rule", mod: m, decl });
+      }
+      for (const setting of m.manifest.settings ?? []) {
+        /* A setting under a rule shows only while that rule is on. */
+        const parent = setting.parent === undefined ? undefined : own.find((d) => d.rule.flag === setting.parent);
+        if (parent && !(choicesNow[parent.rule.flag] ?? parent.rule.default)) continue;
+        options.push({ kind: "setting", mod: m, setting, value: resolveSettingValue(setting, storedSettings[m.id]?.[setting.id]) });
       }
     }
     for (const m of enabled) {
@@ -2349,24 +2363,45 @@ async function manageModOptions(
           ...(option.needs === null ? {} : { disabled: true }),
         };
       }
+      if (option.kind === "setting") {
+        return {
+          label: `${prefix(option.mod)}    ${option.setting.title}: < ${option.value}${option.setting.unit ?? ""} >`,
+          color: C_FG,
+        };
+      }
       return {
         label: `${prefix(option.mod)}Autoplayer speed: ${autoplayerSpeedLabel(option.autoplayer.getSpeed())}`,
         color: C_FG,
       };
     });
+    /* Left and Right step a setting row; any other row keeps the keys inert.
+     * Enter, Space and a click step up and wrap, so a mouse alone can reach
+     * every value. */
+    let settingStep = 0;
+    const hasSetting = options.some((option) => option.kind === "setting");
+    const stepKey = (dir: number) => (cur: number): number | null => {
+      if (options[cur]?.kind !== "setting") return null;
+      settingStep = dir;
+      return cur;
+    };
 
     const pick = await selectFromMenu(
       term,
       "core:mod-options",
       title,
       items,
-      t("modsScreen.options.footer", "[ Space or Enter changes a setting; ESC to go back ]"),
+      hasSetting
+        ? t("modsScreen.options.footerNumbers", "[ Space or Enter changes a setting; Left and Right adjust a number; ESC to go back ]")
+        : t("modsScreen.options.footer", "[ Space or Enter changes a setting; ESC to go back ]"),
       {
         initialCursor: cursor,
         onHighlight: (i) => {
           cursor = i;
         },
-        commands: { " ": (cur) => (options[cur]?.kind === "section" && options[cur]?.needs !== null ? null : cur) },
+        commands: {
+          " ": (cur) => (options[cur]?.kind === "section" && options[cur]?.needs !== null ? null : cur),
+          ...(hasSetting ? { ArrowLeft: stepKey(-1), ArrowRight: stepKey(1) } : {}),
+        },
         detail: (i) => modOptionDetail(options[i], ruleChoices, term.size().cols),
         detailToggleKey: "?",
         detailInitiallyShown: true,
@@ -2380,6 +2415,17 @@ async function manageModOptions(
       deps.store.setRuleChoice(option.decl.rule.flag, !on);
       if (option.decl.rule.requiresReload) changed = true;
       else deps.applyRuleLive?.(option.decl.rule.flag, !on);
+    } else if (option.kind === "setting") {
+      const { setting } = option;
+      const dir = settingStep;
+      settingStep = 0;
+      const next = dir === 0
+        ? (option.value >= setting.max ? setting.min : resolveSettingValue(setting, option.value + setting.step))
+        : resolveSettingValue(setting, option.value + dir * setting.step);
+      if (next === option.value) continue;
+      deps.store.setSettingValue(option.mod.id, setting.id, next);
+      if (setting.requiresReload) changed = true;
+      else deps.applySettingLive?.(option.mod.id, setting.id);
     } else if (option.kind === "section") {
       if (option.needs !== null) continue;
       deps.store.setSectionChoice(option.mod.id, option.section.id, !option.on);
@@ -2409,6 +2455,7 @@ function modOptionDetail(
         readonly mod: CatalogMod;
         readonly autoplayer: NonNullable<ModManagerDeps["autoplayer"]>;
       }
+    | { readonly kind: "setting"; readonly mod: CatalogMod; readonly setting: PackSetting; readonly value: number }
     | undefined,
   ruleChoices: Readonly<Record<string, boolean>>,
   cols: number,
@@ -2431,6 +2478,31 @@ function modOptionDetail(
             ? "This is a behavioural fix or tweak. Changing it takes effect after a reload."
             : "This is a behavioural fix or tweak. It takes effect at once while this mod is enabled.",
         ),
+        cols - 1,
+        C_DIM,
+      ),
+    ];
+  }
+  if (option.kind === "setting") {
+    const { setting } = option;
+    const unit = setting.unit ?? "";
+    return [
+      { text: setting.title, color: C_TITLE },
+      { text: `${option.value}${unit}  -  ${option.mod.name}`, color: C_FG },
+      { text: "", color: C_FG },
+      ...wrapped(setting.description, cols - 1),
+      { text: "", color: C_FG },
+      ...wrapped(
+        t("modsScreen.options.settingNote", "Left and Right change it by {step}{unit}, from {min}{unit} to {max}{unit}. Enter or a click raises it one step, and after {max}{unit} it goes back to {min}{unit}.", {
+          step: String(setting.step), unit, min: String(setting.min), max: String(setting.max),
+        }),
+        cols - 1,
+        C_DIM,
+      ),
+      ...wrapped(
+        setting.requiresReload
+          ? t("modsScreen.options.settingReloadNote", "A change takes effect after a reload.")
+          : t("modsScreen.options.settingLiveNote", "A change takes effect at once."),
         cols - 1,
         C_DIM,
       ),

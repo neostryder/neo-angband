@@ -637,6 +637,14 @@ The draft changes only through the game's rules. `chooseRace` and `chooseClass` 
 
 `ctx.saves.create()` starts character creation from a mod, as the title screen's new character does, and the page reloads into it. `create({ like })` sets the previous character first, so `usePrevious` and the name default start from it. A run report's `birth` field has the shape `like` takes, which is how a graveyard offers a new character like a dead one. The dead character itself stays dead.
 
+## 4y. Numeric settings
+
+A mod can declare numbers the player sets on the Mods screen, such as an effect's strength or a delay. They go under a top-level `settings` key in `manifest.json`, not inside `rules`, so an engine from before this seam drops the key and shows the mod's switches as before. Each entry has an `id`, a `title` and a `description`, then `min`, `max`, `step` and `default`, and optionally `unit`, `parent` and `requiresReload`. The id must differ from every rule flag in the manifest. The default must lie on a step between `min` and `max`, and `parent` must name one of the manifest's rules.
+
+On the Mods screen a setting is a row under its mod's switches, such as `CRT strength: < 60% >`. Left and Right move it one step and stop at either end. Enter, Space or a click raises it one step, and past `max` it goes back to `min`, so a mouse alone reaches every value. A setting with a `parent` shows only while that rule is on. The values are stored per profile in their own JSON document, `neo-angband/web/mod-settings`, and a value is kept when its mod is turned off.
+
+`ctx.settings` is present for a mod whose manifest declares at least one setting. `get(id)` and `all()` return the values clamped to the declared range and rounded to the nearest step, whatever the stored value says, so a mod that narrows a range in a later version still reads a value inside it. `onChange(listener)` calls `listener(id, value)` when the player changes a setting, and returns a function that stops it. A setting marked `requiresReload` changes nothing until the game reloads, so it fires no change and the manager offers its reload prompt. `resolveSettingValue(setting, value)` in the SDK does the same clamping for a mod's own tests.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

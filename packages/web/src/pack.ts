@@ -33,6 +33,7 @@ import type {
   LoadedPack,
   PackContent,
   PackManifest,
+  PackSetting,
   RecordConflict,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ConflictRow } from "./mod-conflicts";
@@ -400,6 +401,7 @@ export function modManifest(raw: unknown): PackManifest {
     ...(m.nondeterministic !== undefined ? { nondeterministic: m.nondeterministic } : {}),
     ...(m.affectsGameplay !== undefined ? { affectsGameplay: m.affectsGameplay } : {}),
     ...(m.rules ? { rules: m.rules } : {}),
+    ...(m.settings ? { settings: m.settings } : {}),
     ...(m.publicFlags ? { publicFlags: m.publicFlags } : {}),
     ...(m.renamedRuleFlags ? { renamedRuleFlags: m.renamedRuleFlags } : {}),
     /* THE COMPATIBILITY FIELDS, and this allowlist is exactly where they would
@@ -1027,6 +1029,18 @@ export function loadEnabledModRuleDecls(): ModRuleDecl[] {
     for (const rule of manifest.rules ?? []) {
       out.push({ modId: manifest.id, modName: manifest.name, rule });
     }
+  }
+  return out;
+}
+
+/** modId -> the numeric settings its manifest declares, for enabled mods that declare any. */
+export function loadEnabledModSettings(): Map<string, readonly PackSetting[]> {
+  const mods = discoverMods();
+  const out = new Map<string, readonly PackSetting[]>();
+  for (const id of enabledModIds()) {
+    const mod = mods.get(id);
+    const settings = mod ? modManifest(mod.manifest).settings : undefined;
+    if (settings?.length) out.set(id, settings);
   }
   return out;
 }

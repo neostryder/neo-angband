@@ -63,6 +63,7 @@ import { createModReader, READ_CAPABILITY, type ReadDoorDeps } from "./mod-read-
 import { createModDebug, SPAWN_CAPABILITY, type DebugDoorDeps } from "./spawn-runtime";
 import { createModWizard, WIZARD_CAPABILITY, type WizardDoorDeps } from "./wizard-runtime";
 import { createModKeymaps, KEYMAP_WRITE_CAPABILITY } from "./macro-runtime";
+import { modSettingsFor } from "./mod-settings-values";
 import type { CapabilitySet, ComposedRecords } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /**
@@ -169,6 +170,7 @@ export function modPluginContext(
   const options = optionsFor(state, session);
   const keybindings = keybindingsFor(state, session);
   const knowledge = knowledgeFor(state, session);
+  const settings = modSettingsFor(id);
   const characterStore = characterStoreFor(id, state, session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
@@ -181,6 +183,7 @@ export function modPluginContext(
     api: IN_PROCESS_MOD_API_VERSION,
     engine: neoCore.ENGINE_VERSION,
     flags: Object.freeze({ ...flags }),
+    ...(settings ? { settings } : {}),
     core: neoCore as unknown as ModCoreApi,
     /* Unconditional, unlike every optional field below it. The SDK is a module
      * this host already imported, so there is no boot state it waits on and no

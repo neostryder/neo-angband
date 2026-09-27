@@ -97,6 +97,7 @@ import type { InputSnapshot } from "./input-snapshot";
 import type { ModInspect } from "./input-snapshot";
 import type { KnownLevelView } from "@rpgm-tools/neo-angband-core";
 import type { ModIntent } from "./intent-gate";
+import type { ModSettingsRead } from "./mod-settings-values";
 import type { ModPrompt } from "./prompt-view";
 import type {
   ComposedRecords,
@@ -481,6 +482,11 @@ export interface ModPluginContext {
    * mod cannot read or act on another mod's toggles.
    */
   readonly flags: Readonly<Record<string, boolean>>;
+  /**
+   * THIS mod's numeric settings from its manifest's `settings`, as the player set
+   * them on the Mods screen. Present only when the manifest declares at least one.
+   */
+  readonly settings?: ModSettingsRead;
   /**
    * The live core namespace: the same module instance the game runs on. This is
    * the engine API, entire - not a curated subset. See the header.

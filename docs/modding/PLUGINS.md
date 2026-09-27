@@ -96,6 +96,28 @@ simply ships no `plugin.js` - so a plugin whose only member is `frontend`, or
 as code of its own: a plugin that can only migrate a bag it never writes has
 nothing to migrate.
 
+## Numbers the player sets
+
+A switch is a rule. For a number, such as how strong an effect is, declare a setting in `manifest.json` and read it from `ctx.settings`:
+
+```json
+"rules": [{ "flag": "fx.crt", "title": "CRT effect", "description": "Scanlines over the map.", "default": true }],
+"settings": [{
+  "id": "crtStrength", "title": "CRT strength", "description": "How strong the scanlines are.",
+  "min": 0, "max": 100, "step": 5, "default": 60, "unit": "%", "parent": "fx.crt"
+}]
+```
+
+```js
+hud(ctx) {
+  let strength = ctx.settings?.get("crtStrength") ?? 60;
+  ctx.settings?.onChange((id, value) => { if (id === "crtStrength") strength = value; });
+  // draw the scanlines at strength / 100
+}
+```
+
+The value is always inside the range and on a step, so the code never checks it. `ctx.settings` is undefined on an engine without the seam, which is why the example falls back to the default. See [MOD_SEAMS.md section 4y](MOD_SEAMS.md#4y-numeric-settings) for the row on the Mods screen and reload behaviour.
+
 ## Your own saved data, and changing its shape
 
 You may keep whatever JSON you like in the player's save, under your mod's id.

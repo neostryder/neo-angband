@@ -508,6 +508,60 @@ describe("feature onboarding when a mod is switched on", () => {
   });
 });
 
+describe("numeric mod settings", () => {
+  it("steps a setting with Left and Right, wraps on Enter, and hides it while its rule is off", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80, 24);
+    const store = new ModStore(fakeStorage());
+    store.setModEnabled("fx", true);
+    const requestReload = vi.fn();
+    const applySettingLive = vi.fn();
+    const rule = { flag: "fx.crt", title: "CRT effect", description: "Scanlines.", default: true };
+    const setting = {
+      id: "crtStrength", title: "CRT strength", description: "How strong the scanlines are.",
+      min: 0, max: 100, step: 5, default: 95, unit: "%", parent: "fx.crt",
+    };
+    const mod = { ...manifest("fx", "Effects"), rules: [rule], settings: [setting] };
+    const done = runModOptionsBrowser(term, {
+      ...makeDeps(store, requestReload, [mod]),
+      ruleDecls: () => [{ modId: "fx", modName: "Effects", rule }],
+      applySettingLive,
+    });
+
+    await flush();
+    press(win, "Enter"); // All mods -> the rule and its setting
+    await flush();
+    expect(term.snapshot().join("\n")).toContain("CRT strength: < 95% >");
+    press(win, "ArrowDown");
+    await flush();
+    press(win, "ArrowRight");
+    await flush();
+    expect(store.getSettingValues().fx?.crtStrength).toBe(100);
+    expect(applySettingLive).toHaveBeenCalledWith("fx", "crtStrength");
+    press(win, "ArrowRight"); // already at the top: nothing changes
+    await flush();
+    expect(applySettingLive).toHaveBeenCalledTimes(1);
+    press(win, "Enter"); // Enter past the top wraps to the bottom
+    await flush();
+    expect(store.getSettingValues().fx?.crtStrength).toBe(0);
+    press(win, "ArrowLeft"); // already at the bottom
+    await flush();
+    expect(store.getSettingValues().fx?.crtStrength).toBe(0);
+    press(win, "ArrowUp");
+    await flush();
+    press(win, " "); // turn the rule off; its setting row goes
+    await flush();
+    expect(term.snapshot().join("\n")).not.toContain("CRT strength");
+    press(win, "Escape");
+    await flush();
+    press(win, "Escape");
+    const result = await raceTimeout(done);
+    expect(result.timedOut, "the options browser did not return").toBe(false);
+    expect(requestReload).not.toHaveBeenCalled();
+  });
+});
+
 describe("rule application modes", () => {
   it("records a register-side rule and asks for a reload without applying it live", async () => {
     const win = makeFakeWindow();

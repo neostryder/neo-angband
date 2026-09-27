@@ -8,6 +8,7 @@ import { soundMappingFormat } from "./sound-mappings.js";
 import { subwindowLayoutFormat } from "./subwindow-layout.js";
 import { visualOverrideFormat } from "./visual-overrides.js";
 import { modStateFormat } from "./mod-state.js";
+import { modSettingValuesFormat } from "./mod-settings.js";
 import { profilesFormat } from "./profiles.js";
 import { settingsFormat } from "./settings.js";
 import { windowStateFormat } from "./window-state.js";
@@ -24,6 +25,7 @@ void [
   visualOverrideFormat,
   settingsFormat,
   modStateFormat,
+  modSettingValuesFormat,
   profilesFormat,
 ];
 

@@ -134,6 +134,7 @@ describe("modManifest copies every PackManifest field", () => {
     fields: [{ name: "bleed", files: ["object"], type: "object" }],
     modApi: 1,
     rules: [{ flag: "f", title: "t", description: "d", default: true }],
+    settings: [{ id: "n", title: "N", description: "d", min: 0, max: 100, step: 5, default: 50 }],
     sections: [{ id: "s", title: "S" }],
     compat: [{ with: "runes", claim: "conflicts", because: "why" }],
     tilePacks: [{ grafID: 2 }],
@@ -171,5 +172,6 @@ describe("modManifest copies every PackManifest field", () => {
     expect(out.group).toBeUndefined();
     expect(out.compat).toBeUndefined();
     expect(out.rules).toBeUndefined();
+    expect(out.settings).toBeUndefined();
   });
 });
