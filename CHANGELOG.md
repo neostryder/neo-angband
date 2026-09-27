@@ -48,10 +48,6 @@ still calls itself.
 
 ## [Unreleased]
 
-### Changed
-
-- [Visible] [Save-Compat] **A character export is a plain JSON document.** A `.neochar` file holds the character and the save as readable JSON. An older character file still imports, and a save from before this change still loads. (#288)
-
 ### Added
 
 - [Visible] [UI] **Subwindow panels can share one space as tabs.** Dropping a panel on the new Tab target in the middle of another panel adds it as a tab, and a tab strip in the title bar switches between them. A window too small for every panel now folds the most cramped panel into a tab beside the panel closest to it in shape instead of hiding it, and separates them again when there is room. (#287)
@@ -71,6 +67,8 @@ still calls itself.
 
 ### Changed
 
+- [Visible] [UI] **The title screen calls Neo Angband a faithful but moddable port of Angband, meant to be playable almost anywhere.** The line under the logo used to describe it by its programming language.
+- [Visible] [Save-Compat] **A character export is a plain JSON document.** A `.neochar` file holds the character and the save as readable JSON. An older character file still imports, and a save from before this change still loads. (#288)
 - [Visible] [Save-Compat] **Saved option defaults, monster memory, random-artifact exports and Linoleum tile packs are stored as JSON.** Your existing files convert the first time the game reads them, and the old copies are removed once the new ones read back correctly. A tile pack already saved in your browser converts the same way. If a file cannot be read, it is left untouched and the game uses the defaults for that session. (#288)
 
 ## [1.18.0] - 2026-09-26

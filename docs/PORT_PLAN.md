@@ -11,10 +11,7 @@ here first.
 
 ## What this is
 
-Neo Angband is a modern TypeScript port of [Angband](https://github.com/angband/angband),
-holding strongly to its roots: full feature parity with the original, verified
-statistically, plus a small set of deliberate enhancements. The focus is
-randomization, exploration, and replayability.
+Neo Angband is a faithful but moddable port of [Angband](https://github.com/angband/angband), meant to be playable almost anywhere. With no mods on, it plays like Angband 4.2.6, and statistical parity runs check that against the original. A small set of deliberate enhancements sits on top, aimed at randomization, exploration, and replayability.
 
 The original C tree lives intact and buildable under `reference/` (parity
 baseline: the `4.2.6` release tag). It is the golden-master oracle the port is

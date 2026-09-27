@@ -2,7 +2,7 @@
   "name": "neo-angband",
   "version": "1.18.0",
   "private": true,
-  "description": "Modern TypeScript port of Angband: web-first, moddable, replayability-focused",
+  "description": "A faithful but moddable port of Angband 4.2.6, meant to be playable almost anywhere.",
   "author": "neostryder (RPGM Tools)",
   "license": "GPL-2.0-only",
   "packageManager": "pnpm@12.3.4",
