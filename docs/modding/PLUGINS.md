@@ -328,6 +328,10 @@ register(host, ctx) {
   guard it with `ctx.tiles?.` and degrade to the ASCII glyph, the same shape
   every other optional `ctx` door already uses.
 
+### Reading one input wait: `ctx.snapshot()`
+
+`ctx.snapshot()` returns the game at the current input wait as one frozen object, or null before a game exists: `core` (the `AgentView.capture()` parts: turn, player, inventory, equipment, monsters, target, stores, spellbooks), `phase`, `messagePending`, `frame` (the last world frame) and `token`. Send the token back with an action so a stale one can be refused. Parts you have no read capability for are null; the phase and pause use `state:interaction.read` and the frame uses `state:map.read`. See [MOD_SEAMS.md section 4g](MOD_SEAMS.md#4g-ctxsnapshot-and-the-input-token---one-wait-read-whole).
+
 ### Engine-wide settings you change through `ctx.core`, not through a hook
 
 A few engine decisions are not made inside a turn and have no game state to hang a hook on. Those are exposed as a module-level policy you set once, from `hooks(ctx)`, which is the earliest point your code runs: before `startGame`, and before boot reads anything.

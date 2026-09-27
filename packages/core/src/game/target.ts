@@ -38,6 +38,7 @@ import type { GameState } from "./context.js";
 import { monsterAt, squareMonster } from "./context.js";
 import { knownPile, squareIsInteresting } from "./known.js";
 import { squareIsVisibleTrap } from "./trap.js";
+import { bumpInputRevision } from "../agent/boundary.js";
 
 /** Bit flags for target_get_monsters / target_set_closest (target.h). */
 export const TARGET = {
@@ -160,6 +161,7 @@ export function targetSetMonster(
   state: GameState,
   mon: Monster | null,
 ): boolean {
+  bumpInputRevision(state);
   const t = state.target;
   if (mon && targetAble(state, mon)) {
     t.set = true;
@@ -179,6 +181,7 @@ export function targetSetMonster(
 
 /** target_set_location (L180): target a legal (fully in-bounds) grid. */
 export function targetSetLocation(state: GameState, grid: Loc): void {
+  bumpInputRevision(state);
   const t = state.target;
   if (state.chunk.inBoundsFully(grid)) {
     t.set = true;

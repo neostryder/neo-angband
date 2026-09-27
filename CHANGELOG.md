@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- [Internal] [Modding-API] **A mod can read one input wait whole with `ctx.snapshot()`.** It returns the player, pack, equipment, monsters, target, stores and spellbooks from one moment, with the shell's phase, whether a "-more-" pause holds input, and the last map frame, under a token that changes only when the game does. `AgentView.capture()` and `inputToken()` give the core half, and `tokenIsCurrent()` checks a token against the game as it stands now. Reading changes no game state or RNG (#285).
+
 ## [1.18.0] - 2026-09-26
 
 ### Added

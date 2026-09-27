@@ -293,7 +293,7 @@ import {
   type HallucinationPresence,
   type ResolvedGlyph,
 } from "./world-render-data";
-import type { WorldLayer } from "./world-view";
+import type { WorldFrame, WorldLayer } from "./world-view";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { initLaunchArgsFromHost } from "./launch";
 import {
@@ -340,6 +340,7 @@ import {
   setModCharacterStoreControl,
   setModComposedRecords,
   setModDisplayControl,
+  setModSnapshotSource,
   setModInstallDoor,
   setModReadDoor,
   setModRegistries,
@@ -2441,6 +2442,13 @@ let liveHudSink: HudFrameSink = hudFrameSink(coreHudSlot, reportDisplayFault);
 // central message sink; routing it here means command/effect messages surface
 // without each call site knowing about the shell.
 const msglog = new MessageLog();
+/**
+ * What ctx.snapshot() reports beside the core capture (input-snapshot.ts): the
+ * last world frame render() produced, and whether a "-more-" pause is holding
+ * input right now. Both are written in exactly one place each.
+ */
+let lastWorldFrame: WorldFrame | null = null;
+let morePending = false;
 /**
  * The port's `message_column`, expressed as a cursor rather than a column: the
  * first raw message event that has NOT yet been flushed past a "-more-". Reset
@@ -9227,6 +9235,37 @@ const subwindowsControl: ModSubwindows = {
 
 setModSubwindowsControl(subwindowsControl);
 
+/* ctx.snapshot()'s host half (input-snapshot.ts). The phase order matters:
+ * a "-more-" pause runs inside openModal, so it is tested before modalDepth, and
+ * a shop is its own modal, so storeModalActive is tested before the generic
+ * one - the same precedence ModDisplay's `mode` uses. */
+setModSnapshotSource({
+  state: () => state,
+  viewDeps: () => ({
+    resolver: new ContentIdResolver({
+      objects: booted.registries.objects,
+      playerRaces: players.races,
+      playerClasses: players.classes,
+    }),
+    reg: booted.registries.objects,
+    glyphs: glyphs.agentGlyphs(),
+  }),
+  phase: () =>
+    !gameScreenLive
+      ? "pregame"
+      : state.isDead
+        ? "dead"
+        : morePending
+          ? "more"
+          : storeModalActive
+            ? "store"
+            : modalDepth > 0
+              ? "modal"
+              : "play",
+  messagePending: () => morePending,
+  frame: () => lastWorldFrame,
+});
+
 /**
  * neo-angband#256: a monster's tile art under the ACTIVE pack, for a mod
  * drawing its own portrait outside the dungeon grid (the `qol` mod's First
@@ -9438,6 +9477,7 @@ function render(targeting?: TargetingOverlay, monstersOverride?: Map<number, Mon
     playerGlyph: playerMapGlyph,
     playerTerrain: ({ x, y }) => terrainGlyph(x, y, LIGHTING.LOS),
   }, liveWorldSink);
+  lastWorldFrame = frame;
 
   if (frame.player && import.meta.env.DEV) lastPlayerCell = frame.player.screen;
 
@@ -9736,7 +9776,12 @@ async function pumpMessages(preLen: number, force = false): Promise<void> {
         // prompt sits one column after the message text, which now starts at
         // col 0 (REND-5), so no sidebar offset.
         term.print(page.length + 1, 0, "-more-", MORE_COLOR);
-        await waitAnyKey();
+        morePending = true;
+        try {
+          await waitAnyKey();
+        } finally {
+          morePending = false;
+        }
       }
     }
   });

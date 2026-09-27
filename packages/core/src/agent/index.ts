@@ -36,6 +36,13 @@ export type {
   TargetView,
 } from "./types.js";
 export { createAgentView } from "./perceive.js";
+export {
+  bumpInputRevision,
+  captureCoreSnapshot,
+  inputToken,
+  tokenIsCurrent,
+} from "./boundary.js";
+export type { CoreSnapshot, InputToken } from "./boundary.js";
 export { itemView, playerViewFor } from "./entity-views.js";
 export type { PlayerViewDerived } from "./entity-views.js";
 export { simulateLoadout } from "./loadout.js";

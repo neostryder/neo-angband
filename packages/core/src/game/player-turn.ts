@@ -1072,6 +1072,7 @@ export function processPlayer(
         ? state.cmdQueue.shift()!
         : state.nextCommand();
     if (!cmd) return { needsInput: true, energyUsed: 0 };
+    state.commandsTaken = (state.commandsTaken ?? 0) + 1;
 
     /* While TMD_COMMAND runs, the player's commands drive the commanded
      * monster instead (cmd-core.c L333 swaps the command list). */

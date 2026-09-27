@@ -652,6 +652,18 @@ export interface GameState {
   /** cmdq_pop: the next queued player command, or null when input is needed. */
   nextCommand: () => PlayerCommand | null;
   /**
+   * How many player commands processPlayer has taken, from cmdq or nextCommand.
+   * Not saved. runGameLoop compares it across a call to tell whether the call
+   * changed anything (agent/boundary.ts).
+   */
+  commandsTaken?: number;
+  /**
+   * The input-boundary revision (agent/boundary.ts): raised wherever the game
+   * changes between two input waits. Not saved; a loaded game starts at 0 under
+   * a new epoch.
+   */
+  inputRevision?: number;
+  /**
    * check_for_player_interrupt's keyboard poll (ui-game.c:645), hosted. Called
    * from the loop at upstream's EVENT_CHECK_INTERRUPT site while a run, a
    * repeated command or a rest is driving the game - see

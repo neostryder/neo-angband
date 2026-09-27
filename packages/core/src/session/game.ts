@@ -47,6 +47,7 @@ import { playerExpGain, playerKillExp } from "../player/exp.js";
 import type { ExpDeps } from "../player/exp.js";
 import { historyAdd, historyFindArtifact, historyLoseArtifact } from "../player/history.js";
 import { artifactHistoryName, historyStamp } from "../game/history.js";
+import { bumpInputRevision } from "../agent/boundary.js";
 import {
   makePlayerSideEffects,
   makeIncCheckHooks,
@@ -2592,6 +2593,8 @@ function makeChangeLevel(
   let inArena = opts.inArena ?? false;
 
   return (depth: number): void => {
+    /* A new level is a new input boundary (agent/boundary.ts). */
+    bumpInputRevision(state);
     /* Consume the pending arrival-stair request (create_up_stair /
      * create_down_stair) exactly once, on every path - the equivalent of
      * player_place clearing the flags (player-util.c:1585-1586). Only a fresh

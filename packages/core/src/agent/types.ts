@@ -616,6 +616,20 @@ export interface AgentView {
    * Capability: `state:player.read`.
    */
   simulateLoadout?(change: LoadoutChange): LoadoutSimulation | null;
+  /**
+   * The token for the current input wait (agent/boundary.ts). It changes when a
+   * command is taken, the turn advances, the level changes or the target is
+   * set, and only then. Hand it back with an action so the game can refuse one
+   * chosen against a state that has since moved on. Optional because a view
+   * built by something other than createAgentView may not track waits.
+   */
+  inputToken?(): import("./boundary.js").InputToken;
+  /**
+   * Every readable part of the game at this moment as one deep-frozen capture
+   * stamped with the current token (agent/boundary.ts). Parts the caller has no
+   * read capability for are null. Reading it changes nothing.
+   */
+  capture?(): import("./boundary.js").CoreSnapshot;
 }
 
 /**

@@ -372,6 +372,28 @@ ctx.wizard.grantExperience(50000);
 - **`catalogue()` is the one method readable before `sandbox()`.** Listing is only reading, and deciding what to test is how a player decides whether to detach at all; a browser that filled in only after they agreed would ask them to agree to something they cannot see. Each entry carries `from`, the pack that added the record, absent for the base game's own records. That lets a browser put a mod author's own content first without keeping its own list of what vanilla contains.
 - **The game chooses placement and there are no coordinates**, on the same terms as `debug:spawn`.
 
+## 4g. `ctx.snapshot()` and the input token - one wait, read whole
+
+Every other read is its own call. A mod that draws the player from `view.player()`, the pack from `view.inventory()` and the map from the last frame cannot tell whether the three describe the same moment, and a mod that sends an action back cannot tell whether the game it chose against is still the game that will receive it. An interface that replaces the whole screen needs both answers.
+
+```js
+const snap = ctx.snapshot();          // null before a game exists
+if (snap && snap.phase === "play") {
+  drawHud(snap.core.player);          // every part is from the same wait
+  drawPack(snap.core.inventory);
+  drawMap(snap.frame);                // the frame the map was painted from
+  remember(snap.token);               // hand this back with an action
+}
+```
+
+- **The token moves only when the game does.** Core raises the revision when `runGameLoop` takes a command or advances the turn, when a level change completes, and when the target is set. A host that re-enters the loop while it waits for a key does not age a token it has given out. `tokenIsCurrent(state, token)` compares it with the game as it stands now; a token from a different game never matches, even after a load, because each game carries its own epoch.
+- **Reading changes nothing.** `AgentView.capture()` and `ctx.snapshot()` write no game state, no knowledge and no RNG stream. `boundary.test.ts` saves the whole game with `saveGame` and records the RNG state, the turn and the command queue, reads five times, and checks that none of it moved.
+- **Each part is gated like the read it comes from.** A part whose `state:<domain>.read` the mod was not granted is null rather than an error. The phase and the message pause need `state:interaction.read`; the frame needs `state:map.read`.
+- **The phase says who owns input.** `pregame` (title, roster, birth), `play`, `store`, `more` (a "-more-" pause is holding input), `modal` (any other full-screen takeover) and `dead`. `messagePending` is true exactly while a "-more-" pause waits.
+- **Everything is a copy.** The core parts are a structured clone, deep-frozen; the frame goes through `snapshotWorldFrame`, the same ownership cut the front-end seam makes. A mod can keep a snapshot as long as it likes without holding a live object.
+
+The map cells and the message log are not in the core capture. The map has its own bulk read, and `messages()` drains a per-decision buffer, so a capture that called it would change what the next decision sees. `prompt` is reserved for the typed prompt descriptor and is null until that seam lands.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

@@ -34,6 +34,7 @@ import { priceItem } from "../store/price.js";
 import { squareIsDisarmableTrap } from "../game/trap.js";
 import { itemView, playerViewFor } from "./entity-views.js";
 import { simulateLoadout } from "./loadout.js";
+import { captureCoreSnapshot, inputToken } from "./boundary.js";
 import { AGENT_API_VERSION, AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types.js";
 import type {
   AgentCapabilities,
@@ -303,7 +304,7 @@ export function createAgentView(
   caps?: AgentCapabilities,
 ): AgentView {
   const D = AGENT_STATE_DOMAINS;
-  return {
+  const view: AgentView = {
     apiVersion: AGENT_API_VERSION,
     turn: gateRead(caps, D.turn, () => state.turn),
     player: gateRead(caps, D.player, () => playerViewFor(state, deps)),
@@ -355,4 +356,11 @@ export function createAgentView(
         simulateLoadout(state, change, { viewDeps: deps }),
     ),
   };
+  /* Assigned after the literal so `capture` reads through the gated accessors
+   * above rather than around them: a caller without a domain's capability gets
+   * null for that part, never the data. The token itself reveals nothing and is
+   * not gated. */
+  view.inputToken = () => inputToken(state);
+  view.capture = () => captureCoreSnapshot(state, view);
+  return view;
 }

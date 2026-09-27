@@ -36,6 +36,7 @@ import {
   type ReadModResult,
 } from "./mod-plugin";
 import type { KeyRepeatVerdict } from "./key-repeat";
+import { buildInputSnapshot, type InputSnapshot, type InputSnapshotSource } from "./input-snapshot";
 import { VISUAL_FILTER_CAPABILITY } from "./visual-filter";
 import { diskPacks } from "./disk-packs";
 import { modPrefs, type ModPrefs } from "./mod-prefs";
@@ -144,6 +145,7 @@ export function modPluginContext(
   const wizard = wizardFor(id, session);
   const display = displayFor(session);
   const subwindows = subwindowsFor(session);
+  const snapshot = snapshotFor(session);
   const tiles = tilesFor(session);
   const keyRepeat = keyRepeatFor(session);
   const keymaps = keymapsFor(id, state, session);
@@ -173,6 +175,7 @@ export function modPluginContext(
     prefs: session.prefs ?? modPrefs(id),
     ...(display ? { display } : {}),
     ...(subwindows ? { subwindows } : {}),
+    ...(snapshot ? { snapshot } : {}),
     ...(tiles ? { tiles } : {}),
     ...(keyRepeat ? { keyRepeat } : {}),
     ...(keymaps ? { keymaps } : {}),
@@ -336,6 +339,28 @@ let subwindowsControl: ModSubwindows | undefined;
  */
 function subwindowsFor(session: ModSessionFacts): ModSubwindows | undefined {
   return session.subwindows ?? subwindowsControl;
+}
+
+/** The live input-snapshot source, latched by the boot path once the shell exists. */
+let snapshotSource: InputSnapshotSource | undefined;
+
+/**
+ * `ctx.snapshot`: present once a source is latched. Ungated as a door, like
+ * `display`, because every part it returns is gated by its own read capability
+ * inside buildInputSnapshot. `session.capabilities` is absent at most call sites
+ * today (see its own comment), and absent means the trusted in-process grant,
+ * the same reading createAgentView gives an undefined capability set.
+ */
+function snapshotFor(session: ModSessionFacts): (() => InputSnapshot | null) | undefined {
+  const source = session.snapshotSource ?? snapshotSource;
+  if (!source) return undefined;
+  const caps = session.capabilities;
+  return () => buildInputSnapshot(source, caps);
+}
+
+/** Install or clear the input-snapshot source (boot path and tests). */
+export function setModSnapshotSource(source: InputSnapshotSource | undefined): void {
+  snapshotSource = source;
 }
 
 /** Install or clear the subwindow geometry/chrome door (boot path and tests). */
@@ -614,6 +639,8 @@ export interface ModSessionFacts {
   readonly display?: ModDisplay;
   /** Override the subwindow door (tests and alternate front ends). */
   readonly subwindows?: ModSubwindows;
+  /** Override the input-snapshot source (tests and alternate front ends). */
+  readonly snapshotSource?: InputSnapshotSource;
   /** Override the monster-tile door (tests and alternate front ends). */
   readonly tiles?: ModTiles;
   /** Override the key-repeat query (tests and alternate front ends). */

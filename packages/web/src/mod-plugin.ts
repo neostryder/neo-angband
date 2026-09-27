@@ -92,6 +92,7 @@ import type { ModPrefs } from "./mod-prefs";
  * that actually talks to GitHub. */
 import type { DiscoveredMod } from "./mod-discover";
 import type { KeyRepeatVerdict } from "./key-repeat";
+import type { InputSnapshot } from "./input-snapshot";
 import type {
   ComposedRecords,
   HudOwnership,
@@ -557,6 +558,15 @@ export interface ModPluginContext {
    * why this is ungated like the rest of `display`.
    */
   readonly subwindows?: ModSubwindows;
+  /**
+   * One input wait, whole: the frozen core capture, the shell's phase, whether
+   * a "-more-" pause holds input, and the last world frame, under one token
+   * (input-snapshot.ts). Null before a game exists. Each part is null unless its
+   * `state:<domain>.read` is granted; the phase and pause use
+   * `state:interaction.read`, the frame `state:map.read`. Absent when the host
+   * has not installed a snapshot source.
+   */
+  readonly snapshot?: () => InputSnapshot | null;
   /**
    * Live monster-tile lookup and paint over the active graphics pack
    * (neo-angband#256), once the web shell has one. Absent during content

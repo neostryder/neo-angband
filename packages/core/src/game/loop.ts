@@ -68,6 +68,7 @@ import { disturb } from "./player-path.js";
 import { processPlayer } from "./player-turn.js";
 import type { ActionRegistry, PlayerTurnResult } from "./player-turn.js";
 import { dungeonGetNextLevel, playerSetRecallDepth } from "./quest.js";
+import { bumpInputRevision } from "../agent/boundary.js";
 
 /** player-util.h regeneration constants (regen factor / base, times 2^16). */
 const PY_REGEN_NORMAL = 197;
@@ -654,8 +655,25 @@ function playerTurnsWhileEnergised(
 /**
  * run_game_loop: advance until the player must act, dies, or a level change is
  * requested. Deterministic under the seeded state.rng.
+ *
+ * A call that took a command or advanced the turn raises the input-boundary
+ * revision (agent/boundary.ts), so a token captured at the previous wait no
+ * longer matches. A call that returned with nothing taken leaves it alone.
  */
 export function runGameLoop(
+  state: GameState,
+  registry: ActionRegistry,
+): LoopStatus {
+  const turnBefore = state.turn;
+  const takenBefore = state.commandsTaken ?? 0;
+  const status = runGameLoopInner(state, registry);
+  if (state.turn !== turnBefore || (state.commandsTaken ?? 0) !== takenBefore) {
+    bumpInputRevision(state);
+  }
+  return status;
+}
+
+function runGameLoopInner(
   state: GameState,
   registry: ActionRegistry,
 ): LoopStatus {
