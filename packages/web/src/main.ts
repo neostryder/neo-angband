@@ -352,6 +352,7 @@ import {
   setModSavesControl,
   setModOptionsAfterChange,
   setModKnowledgeSource,
+  setModRunReports,
   setModIntentGate,
   setModInstallDoor,
   setModReadDoor,
@@ -660,6 +661,7 @@ import {
   type FakeRecallDeps,
 } from "./knowledge";
 import { createModKnowledge, type KnowledgeSources } from "./knowledge-read";
+import { buildRunReport, createRunReports } from "./run-report";
 import {
   buildRuneList,
   type Artifact,
@@ -2647,6 +2649,8 @@ let liveHudSink: HudFrameSink = hudFrameSink(coreHudSlot, reportDisplayFault);
 // central message sink; routing it here means command/effect messages surface
 // without each call site knowing about the shell.
 const msglog = new MessageLog();
+/** The run report ctx.character.onRunEnd delivers; see run-report.ts. */
+const runReports = createRunReports();
 /**
  * What ctx.snapshot() reports beside the core capture (input-snapshot.ts): the
  * last world frame render() produced, and whether a "-more-" pause is holding
@@ -6888,6 +6892,7 @@ setModDebugDoor({ wizard: wizardCtx, confirm: confirmDebugGate });
  * options menu does. */
 setModOptionsAfterChange(() => autosave(true));
 setModKnowledgeSource(() => createModKnowledge(modKnowledgeSources(), () => state?.rng));
+setModRunReports(runReports);
 setModSavesControl(createModSaves({
   onChange: onRosterChange,
   listRoster,
@@ -10986,6 +10991,9 @@ function continueAdvance(
      * here before. */
     if (reincarnateAutoplayer()) return;
     dead = true;
+    /* The run report names the character by its key, which comes from the
+     * attached slot, and the slot is detached just below. */
+    const runKey = modSnapshotSource.characterKey?.() ?? null;
     // Death is terminal (decision 16): the character's slot becomes a
     // tombstone - its save bytes are dropped so it can never be resumed, but
     // its record stays in the roster for the memorial. Clearing the active id
@@ -11067,6 +11075,22 @@ function continueAdvance(
                   )
                 : t("main.score.not-registered-retired", "Score not registered due to retiring."),
       );
+    }
+    /* ctx.character.onRunEnd: after the death knowledge revealed the gear and
+     * the score table was written, before the tombstone. A failure here costs a
+     * mod its post-mortem, never the player their tombstone. */
+    try {
+      runReports.publish(buildRunReport({
+        state,
+        view: createAgentView(state, undefined, modSnapshotSource.viewDeps()),
+        messages: msglog.all(),
+        key: runKey,
+        sheet: modSnapshotSource.characterSheet?.() ?? null,
+        scored: outcome.entered,
+        endedAt: Date.now(),
+      }));
+    } catch (error) {
+      console.error("run report failed", error);
     }
     // death_screen (ui-death.c L374): the winner crown + tombstone first, then
     // the death menu (whose "View scores" opens the Hall of Fame). Escape

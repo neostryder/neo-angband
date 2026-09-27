@@ -13,6 +13,7 @@
 import { createModOptions, type ModOptions } from "./mod-options";
 import { createModKeybindings, type ModKeybindings } from "./mod-keybindings";
 import type { ModKnowledge } from "./knowledge-read";
+import { characterHistory, type RunReport, type RunReports } from "./run-report";
 import * as neoCore from "@rpgm-tools/neo-angband-core";
 /* The SDK as a VALUE, for the same reason core is one here and only here: this
  * is the module that hands a live namespace to a plugin, and it is the module no
@@ -228,6 +229,11 @@ export function modPluginContext(
             return sheet ? deepFreezeSheet(sheet) : null;
           },
         } : {}),
+        history: () => characterHistory(state),
+        ...(runReports ? {
+          runReport: () => runReports!.last(),
+          onRunEnd: (listener: (report: RunReport) => void) => runReports!.onEnd(listener),
+        } : {}),
       }) } : {}),
     ...(keymaps ? { keymaps } : {}),
     ...(knowledge ? { knowledge } : {}),
@@ -270,6 +276,12 @@ export function modPluginContext(
 /** The host's save-after-change hook for `ctx.options`, latched at boot (main.ts autosave). */
 let optionsAfterChange: (() => void) | undefined;
 let knowledgeSource: (() => ModKnowledge) | undefined;
+let runReports: RunReports | undefined;
+
+/** Install or clear the run reports behind `ctx.character.runReport` (boot path and tests). */
+export function setModRunReports(reports: RunReports | undefined): void {
+  runReports = reports;
+}
 
 /** Install or clear the source behind `ctx.knowledge` (boot path and tests). */
 export function setModKnowledgeSource(source: (() => ModKnowledge) | undefined): void {

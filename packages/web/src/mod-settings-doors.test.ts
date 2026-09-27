@@ -6,7 +6,8 @@ import { createModOptions } from "./mod-options";
 import { createModKeybindings } from "./mod-keybindings";
 import { clearKeymaps, keymapAdd, keymapFind, keymapOwner, keymapSetOwner } from "./keymap-store";
 import { createModKnowledge } from "./knowledge-read";
-import { modPluginContext, setModKnowledgeSource } from "./mod-context";
+import { modPluginContext, setModKnowledgeSource, setModRunReports } from "./mod-context";
+import { createRunReports } from "./run-report";
 
 function stateWith(options = new OptionState()): GameState {
   return { options, modHooks: {} } as unknown as GameState;
@@ -143,5 +144,26 @@ describe("ctx.knowledge", () => {
     expect(ctx(["state:*.read"], stateWith()).knowledge).toBe(door);
     expect(ctx(["state:player.read"], stateWith()).knowledge).toBeUndefined();
     expect(ctx(["state:knowledge.read"]).knowledge).toBeUndefined();
+  });
+});
+
+describe("ctx.character run journal", () => {
+  afterEach(() => setModRunReports(undefined));
+
+  it("offers history always and the run report once the host installs it", () => {
+    const state = { ...stateWith(), actor: { player: { hist: [], fullName: "" } } } as unknown as GameState;
+    const source = { state: () => state, characterKey: () => "k", viewDeps: () => ({}) } as never;
+    const caps = CapabilitySet.fromManifest({ id: "m", name: "M", version: "1.0.0", shape: "plugin", capabilities: ["state:player.read"] } as never);
+    const ctx = () => modPluginContext("m", {}, state, {}, { capabilities: caps, snapshotSource: source });
+    expect(ctx().character?.history()).toEqual([]);
+    expect(ctx().character?.runReport).toBeUndefined();
+
+    const reports = createRunReports();
+    setModRunReports(reports);
+    const heard = vi.fn();
+    ctx().character!.onRunEnd!(heard);
+    reports.publish({ outcome: "death" } as never);
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(ctx().character!.runReport!()).toEqual({ outcome: "death" });
   });
 });

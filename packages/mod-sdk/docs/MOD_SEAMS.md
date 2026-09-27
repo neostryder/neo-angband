@@ -610,6 +610,14 @@ Each call reads the live game, so a monster page gains lines as the character le
 
 Reading a page changes nothing. The artifact recall builds its sample object from the game's random stream, as upstream's does, so opening that page in the game's own browser moves the stream. A mod's read puts the stream back exactly as it was, so drawing a knowledge tab cannot change the next level.
 
+## 4w. Run journal and end-of-run report
+
+`ctx.character.history()`, under `state:player.read`, is the character's history as data, oldest first: the same entries the character history screen and the character dump show. Each entry has a `kind` (`birth`, `level`, `unique`, `artifact`, `artifact-unknown`, `note`, `import` or `other`), its text, the turn, the dungeon level and character level it was recorded at, and `lost` for an artifact the character no longer has. Regaining a drained level adds another `level` entry, as it does in Angband, so a timeline that shows each level once keeps the first.
+
+Angband's history has no entry for reaching a new dungeon level, and the port adds none, because that would change the character dump. A mod that wants depth milestones records them itself from the `dungeonlevel` event, stored under `ctx.character.key()`.
+
+`ctx.character.onRunEnd(listener)` calls the listener once when a character dies or retires, after every item has been identified and the score table written, and before the tombstone. The report says whether the run ended in death, victory or retirement, and names the cause. It carries the character's name, race, class and levels, the deepest and final dungeon level, gold, the final turn, the score and whether the score table accepted it. It also has the full history, the last 40 messages, the character sheet, and every item worn, carried or left in the home, with its location, quantity and inspect text. `ctx.character.runReport()` returns the same report to a mod that loads later. It lasts until the page reloads, and starting a new character reloads it, so a mod that keeps a graveyard of past runs stores each report when `onRunEnd` fires.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

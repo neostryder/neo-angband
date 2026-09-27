@@ -380,6 +380,8 @@ The snapshot's monsters mark uniques and quest guardians, and the player view ad
 A menu mod can read the character sheet as data with `ctx.character.sheet()`, rename any saved character, read and change the game's options with `ctx.options`, and edit the player's keymaps with `ctx.keybindings`. See [MOD_SEAMS.md section 4u](MOD_SEAMS.md#4u-character-sheet-saves-options-and-keymaps).
 
 A mod can draw its own knowledge browser with `ctx.knowledge`: the categories, their known entries, and each entry's recall page. See [MOD_SEAMS.md section 4v](MOD_SEAMS.md#4v-knowledge-browser).
+
+A mod can draw a run journal from `ctx.character.history()` and a post-mortem from the report `ctx.character.onRunEnd` delivers. See [MOD_SEAMS.md section 4w](MOD_SEAMS.md#4w-run-journal-and-end-of-run-report).
 ### Answering the open prompt
 
 With `state:interaction.read`, `ctx.snapshot().prompt` describes the question currently holding input. A mod with `input:prompt.reply` also receives `ctx.prompt.reply(promptId, answer)`, which sends a typed answer through the game's existing handler. Invalid or stale replies leave the question open and return a reason. See [MOD_SEAMS.md section 4j](MOD_SEAMS.md#4j-typed-prompts-and-replies) for the kinds and answers.

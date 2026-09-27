@@ -69,6 +69,7 @@ import {
   HIST,
   histHas,
   historyGetList,
+  type HistoryInfo,
   loreDescription,
   monsterListCollect,
   monsterListSort,
@@ -1885,6 +1886,25 @@ const HIST_KNOWN_GOLD = UI_GOLD;
  * its apostrophe, and the note two columns further on. No gap before the depth and
  * two before the note is exactly the layout `gap` exists to express.
  */
+/**
+ * One history entry's text as the player history screen shows it. This row
+ * text feeds history_display, dump_history (via historyLines) and a mod's
+ * `ctx.character.history()`, so a display hook reaches all three. Faithful
+ * entries have no marker or hook and keep their event text byte-for-byte.
+ */
+export function historyEntryNote(state: GameState, e: HistoryInfo): string {
+  return (
+    state.modHooks?.historyDisplay?.(
+      {
+        what: e.event,
+        type: e.type,
+        ...(e.expandUserInput === true ? { expandUserInput: true } : {}),
+      },
+      state.actor.player.fullName,
+    ) ?? e.event
+  );
+}
+
 /** A FUNCTION, not a constant: see `statColumns`'s comment on why. */
 function playerHistoryColumns(): readonly ScreenColumn[] {
   return [
@@ -1912,19 +1932,7 @@ export function playerHistoryScreen(
         rows: list.map((e) => {
           const lost = histHas(e.type, HIST.ARTIFACT_LOST);
           const known = histHas(e.type, HIST.ARTIFACT_KNOWN);
-          /* This one row model feeds both history_display and dump_history via
-           * historyLines(), so a display hook reaches the terminal and the
-           * character dump alike.  Faithful entries have no marker or hook and
-           * keep their event text byte-for-byte. */
-          const note =
-            state.modHooks?.historyDisplay?.(
-              {
-                what: e.event,
-                type: e.type,
-                ...(e.expandUserInput === true ? { expandUserInput: true } : {}),
-              },
-              state.actor.player.fullName,
-            ) ?? e.event;
+          const note = historyEntryNote(state, e);
           return {
             color: lost ? DIM : known ? HIST_KNOWN_GOLD : FG,
             /* clev never reaches the terminal's three fields, and is exactly the

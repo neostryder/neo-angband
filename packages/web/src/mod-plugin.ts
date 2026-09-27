@@ -655,6 +655,12 @@ export interface ModPluginContext {
   readonly character?: {
     key(): string | null;
     sheet?(): import("./charsheet").CharacterSheetData | null;
+    /** Angband's own player history, oldest first: the run journal (run-report.ts). */
+    history(): readonly import("./run-report").CharacterHistoryEntry[];
+    /** The report for the run that ended on this page, or null. Starting a new character reloads the page, so store it from `onRunEnd` to keep it. */
+    runReport?(): import("./run-report").RunReport | null;
+    /** Called once when a run ends, before the tombstone. Returns an unsubscribe. */
+    onRunEnd?(listener: (report: import("./run-report").RunReport) => void): () => void;
   };
   /**
    * Manage this mod's keymaps in the player's current keyset. Present only when
