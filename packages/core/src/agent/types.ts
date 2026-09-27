@@ -38,7 +38,7 @@ import type { ObjectInfoExtras } from "../game/object-inspect.js";
 import type { MonsterRace } from "../mon/types.js";
 import type { LoreDeps } from "../mon/lore-describe.js";
 import type { ProjectionInfo } from "../world/projection.js";
-import type { GridInspectResult, InspectResult, ItemTesterResult, SpellInspectResult } from "./inspect.js";
+import type { GridInspectResult, InspectResult, ItemRulesResult, ItemTesterResult, SpellInspectResult, TileActionsResult, TravelPathResult } from "./inspect.js";
 
 /**
  * The frozen agent-API version (ratified 2026-07-14). Add-only from here: a new
@@ -649,6 +649,12 @@ export interface AgentView {
   projectionPath?(to: { x: number; y: number }): GridInspectResult;
   /** Ball grids through remembered terrain. */
   blastArea?(to: { x: number; y: number }, radius: number): GridInspectResult;
+  /** The travel command's walking route over the remembered map. */
+  travelPath?(to: { x: number; y: number }): TravelPathResult | null;
+  /** Registered command codes eligible at one remembered grid. */
+  tileActions?(to: { x: number; y: number }): TileActionsResult;
+  /** Learned ignore and auto-inscription settings. */
+  itemRules?(): ItemRulesResult;
 }
 
 /**
@@ -691,6 +697,8 @@ export interface AgentViewDeps {
     races: readonly MonsterRace[];
     loreDeps: () => LoreDeps;
     projections: readonly ProjectionInfo[];
+    /** The command's door-lock predicate uses the bound trap kinds. */
+    trapDeps?: import("../game/trap.js").TrapDeps;
   };
   /** Enables kindId / raceId / featCode namespaced-id fields. */
   resolver?: ContentIdResolver;

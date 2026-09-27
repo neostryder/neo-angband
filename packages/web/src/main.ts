@@ -356,6 +356,7 @@ import {
   type ModSessionFacts,
 } from "./mod-context";
 import { createIntentGate } from "./intent-gate";
+import { applyMapMargin } from "./map-margin";
 import { createModSaves } from "./saves-facade";
 import type { InputSnapshotSource } from "./input-snapshot";
 import type { ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, ModTiles } from "./mod-plugin";
@@ -8931,6 +8932,7 @@ async function showLevelMapForShell(): Promise<void> {
 
 const SIDEBAR_W = 13; // classic Angband status column width.
 let displaySidebarExtent: { columns: number; topRows: number } | null = null;
+let displayMapMargin: import("./map-margin").MapMargin | null = null;
 
 /** Display seams the engine model needs beyond GameState (timed-effect names,
  * so the status line can label Poisoned/Afraid/Fed etc). Options the web does
@@ -9114,8 +9116,8 @@ function viewport(focus?: Loc): {
   const compact = layout !== "left";
   const sidebarWidth = displaySidebarExtent?.columns ?? SIDEBAR_W;
   const sidebarTopRows = displaySidebarExtent?.topRows ?? 1;
-  const mapOriginX = layout === "left" ? sidebarWidth : 0;
-  const mapTop = layout === "top" ? 1 + sidebarTopRows : 1;
+  let mapOriginX = layout === "left" ? sidebarWidth : 0;
+  let mapTop = layout === "top" ? 1 + sidebarTopRows : 1;
   // SCREEN_WID reserves the rightmost column (ui-term.h: (wid - COL_MAP - 1)),
   // so the visible map is 66 cols in Left mode / 79 in Top/None, matching C.
   let mapCols = cols - mapOriginX - 1;
@@ -9124,6 +9126,11 @@ function viewport(focus?: Loc): {
     if (mapCols > 2 && mapCols % 2 !== 0) mapCols -= 1;
     if (mapRows > 2 && mapRows % 2 !== 0) mapRows -= 1;
   }
+  const reserved = applyMapMargin({ x: mapOriginX, y: mapTop, width: mapCols, height: mapRows }, displayMapMargin);
+  mapOriginX = reserved.x;
+  mapTop = reserved.y;
+  mapCols = reserved.width;
+  mapRows = reserved.height;
   let camX: number, camY: number;
   if (locateCam) {
     // 'L' locate: report the panned sector top-left (change_panel).
@@ -9298,6 +9305,12 @@ const displayControl: ModDisplay = {
       : null;
     renderBackground();
   },
+  setMapMargin(margin) {
+    displayMapMargin = margin
+      ? { edge: margin.edge, cells: Number.isFinite(margin.cells) ? Math.max(0, Math.min(4, Math.floor(margin.cells))) : 0 }
+      : null;
+    renderBackground();
+  },
   setTileScaling(mode) {
     setTileScalingMode(mode);
     term.invalidate();
@@ -9417,6 +9430,7 @@ const modSnapshotSource: InputSnapshotSource = {
       races: booted.registries.monsters.races,
       loreDeps: recallDeps,
       projections: booted.registries.projections ?? [],
+      ...(game.wizardBundles.trapDeps ? { trapDeps: game.wizardBundles.trapDeps } : {}),
     },
   }),
   phase: () =>
@@ -12285,6 +12299,7 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
     revokePanels: revokeModPanels,
     closePanels: closeAllModPanels,
     clearVisualFilter: () => displayControl.setVisualFilter(null),
+    clearMapMargin: () => displayControl.setMapMargin?.(null),
     releaseKeymaps: releaseModKeymaps,
   });
   for (const worker of workerPlugins.values()) worker.teardown();

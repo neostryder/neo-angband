@@ -13,6 +13,7 @@
 
 import {
   describeObject,
+  objectKindName,
   gearGet,
   characterPanels,
   statTable,
@@ -1960,14 +1961,6 @@ export function historyLines(state: GameState): ScreenLine[] {
  * before ever identifying the flavour), while the unaware row shows the
  * flavour text if one is assigned and the kind is not yet aware.
  */
-function objectKindName(state: GameState, kind: ObjectKind, easyKnow: boolean): string {
-  const trueAware = state.isAware ? state.isAware(kind) : true;
-  if (!easyKnow && !trueAware && (state.hasFlavor?.(kind) ?? false)) {
-    return state.flavorText?.(kind) ?? "";
-  }
-  return kind.name;
-}
-
 /**
  * quality_menu / quality_display (ui-options.c L1630/L1539): one row per
  * ITYPE_* (1..26; ITYPE_NONE is skipped), "<type name padded to 30> :

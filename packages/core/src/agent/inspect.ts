@@ -1,11 +1,15 @@
 /** Read-pure answers from the game's inspection and selection code. */
-import { FEAT, OF } from "../generated/index.js";
+import { FEAT, IGNORE_TYPE_ENTRIES, OF, TF, TMD } from "../generated/index.js";
+import { DDGRID } from "../loc.js";
 import type { EffectRecordJson } from "../obj/types.js";
 import type { GameState } from "../game/context.js";
-import { knownDescOf } from "../game/describe.js";
+import { knownDescOf, objectKindName } from "../game/describe.js";
 import { USE_MODE, floorPile, scanItems } from "../game/floor.js";
 import { gearGet } from "../game/gear.js";
-import { knownFeat, knownFloorObject, squareIsKnown } from "../game/known.js";
+import { knownFeat, knownFloorObject, knownIsClosedDoor, knownIsDiggable, knownIsOpenDoor, squareIsKnown } from "../game/known.js";
+import { squareIsDisarmableTrap } from "../game/trap.js";
+import { findPath } from "../game/player-path.js";
+import { squareIsUnlockedDoor } from "../game/cave-cmd.js";
 import { objectInfoTextblock } from "../game/object-inspect.js";
 import { objCanRefill, objCanThrow, objCanWear, objHasInscrip, objIsActivatable, objectUseCode } from "../game/obj-cmd.js";
 import { makeSpellChanceEnv, playerCanCast } from "../game/spell-cmd.js";
@@ -14,13 +18,14 @@ import { spellDamageSummary } from "../effects/effect-info.js";
 import { loreDescription } from "../mon/lore-describe.js";
 import { monsterIsVisible } from "../mon/predicate.js";
 import { ODESC, objectDesc } from "../obj/desc.js";
+import { QUALITY_VALUE_NAMES, ITYPE_MAX, egoHasIgnoreType } from "../obj/ignore.js";
 import type { GameObject } from "../obj/object.js";
 import {
   tvalIsEdible, tvalIsPotion,
   tvalIsRod, tvalIsScroll, tvalIsStaff, tvalIsWand,
 } from "../obj/object.js";
 import { PY_SPELL, objCanBrowse, objCanCastFrom, objCanStudy, playerObjectToBook, spellByIndex, spellChance, spellOkayToCast } from "../player/spell.js";
-import { Chunk } from "../world/chunk.js";
+import { Chunk, featIsPassable } from "../world/chunk.js";
 import { PROJECT, computeProjection, projectPath } from "../world/project.js";
 import { inputToken } from "./boundary.js";
 import { AgentCapabilityError } from "./types.js";
@@ -50,6 +55,23 @@ export interface ItemTesterResult {
 export interface GridInspectResult {
   readonly token: ReturnType<typeof inputToken>;
   readonly grids: readonly { readonly x: number; readonly y: number }[];
+}
+
+export interface TravelPathResult {
+  readonly token: ReturnType<typeof inputToken>;
+  readonly grids: readonly { readonly x: number; readonly y: number }[];
+}
+
+export interface TileActionsResult {
+  readonly token: ReturnType<typeof inputToken>;
+  readonly codes: readonly string[];
+}
+
+export interface ItemRulesResult {
+  readonly token: ReturnType<typeof inputToken>;
+  readonly kinds: readonly { readonly kidx: number; readonly name: string; readonly ignoreAware: boolean; readonly ignoreUnaware: boolean; readonly noteAware: string | null; readonly noteUnaware: string | null }[];
+  readonly quality: readonly { readonly itype: number; readonly name: string; readonly threshold: number; readonly thresholdName: string }[];
+  readonly egos: readonly { readonly eidx: number; readonly name: string; readonly itype: number; readonly ignored: boolean }[];
 }
 
 function freeze<T>(value: T): T {
@@ -194,6 +216,62 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
       const grids = computeProjection(knownChunk(state), { origin: state.actor.grid, finish: to, rad: radius,
         typ: 0, flg: PROJECT.INFO | PROJECT.STOP | PROJECT.KILL, maxRange: state.z.maxRange, dam: 0 }).grids;
       return freeze({ token: at(), grids });
+    }),
+    travelPath: gate(caps, "map", (to: { x: number; y: number }): TravelPathResult | null => {
+      if (!valid(to) || !squareIsKnown(state, to) || (state.actor.player.timed[TMD.CONFUSED] ?? 0) > 0) return null;
+      /* find_path reads chunk predicates; give it the remembered features,
+       * while its own distance and tie-breaking code chooses the route. */
+      const path = findPath({ ...state, chunk: knownChunk(state) }, state.actor.grid, to);
+      if (path.length < 0) return null;
+      const grids: { x: number; y: number }[] = [];
+      let { x, y } = state.actor.grid;
+      for (let i = path.length - 1; i >= 0; i--) {
+        const step = DDGRID[path.steps[i]!]!;
+        x += step.x;
+        y += step.y;
+        grids.push({ x, y });
+      }
+      return freeze({ token: at(), grids });
+    }),
+    tileActions: gate(caps, "map", (to: { x: number; y: number }): TileActionsResult => {
+      const codes: string[] = [];
+      if (!valid(to) || !squareIsKnown(state, to)) return freeze({ token: at(), codes });
+      const from = state.actor.grid;
+      const here = to.x === from.x && to.y === from.y;
+      const adjacent = !here && Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) === 1;
+      const feat = knownFeat(state, to);
+      const features = state.chunk.features;
+      if (adjacent) {
+        if (knownIsDiggable(state, to) || (knownIsClosedDoor(state, to) && !features.featHas(feat, TF.PERMANENT))) codes.push("tunnel");
+        if (knownIsClosedDoor(state, to)) codes.push("open");
+        if (knownIsOpenDoor(state, to)) codes.push("close");
+        if (squareIsDisarmableTrap(state, to) || (knownIsClosedDoor(state, to) && squareIsUnlockedDoor(state, to, deps.inspect?.trapDeps))) codes.push("disarm");
+        /* A walk into a monster is the registered melee command. */
+        if (featIsPassable(features, feat)) codes.push("walk");
+      }
+      if (here) {
+        if (features.featHas(feat, TF.UPSTAIR) && !(state.options?.get("birth_force_descend") ?? false)) codes.push("ascend");
+        if (features.featHas(feat, TF.DOWNSTAIR) && (state.levelTopology ? state.levelTopology.canTravel(state.chunk.depth, 1) : state.chunk.depth < state.z.maxDepth - 1)) codes.push("descend");
+        if (floorPile(state, to).length > 0) codes.push("pickup");
+      }
+      return freeze({ token: at(), codes });
+    }),
+    itemRules: gate(caps, "inventory", (): ItemRulesResult => {
+      const reg = deps.reg;
+      const kinds = (reg?.kinds ?? []).filter((kind) => kind && (state.isAware?.(kind) ?? true) && (state.everseen?.kindSeen(kind) ?? false))
+        .map((kind) => ({ kidx: kind.kidx, name: objectKindName(state, kind, true),
+          ignoreAware: state.ignore.kindIsIgnoredAware(kind.kidx), ignoreUnaware: state.ignore.kindIsIgnoredUnaware(kind.kidx),
+          noteAware: state.autoinscribe?.get(kind.kidx, true) ?? null, noteUnaware: state.autoinscribe?.get(kind.kidx, false) ?? null }));
+      const quality = Array.from({ length: ITYPE_MAX - 1 }, (_, index) => {
+        const itype = index + 1;
+        const threshold = state.ignore.level[itype] ?? 0;
+        return { itype, name: IGNORE_TYPE_ENTRIES[itype]?.description ?? "", threshold,
+          thresholdName: QUALITY_VALUE_NAMES[threshold] ?? QUALITY_VALUE_NAMES[0]! };
+      });
+      const egos = (reg?.egos ?? []).filter((ego) => ego && (state.everseen?.egoSeen(ego) ?? false))
+        .flatMap((ego) => quality.filter(({ itype }) => egoHasIgnoreType(ego, itype, reg!.kinds))
+          .map(({ itype }) => ({ eidx: ego.eidx, name: ego.name, itype, ignored: state.ignore.egoIsIgnored(ego.eidx, itype) })));
+      return freeze({ token: at(), kinds, quality, egos });
     }),
   };
 }

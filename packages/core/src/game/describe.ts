@@ -11,7 +11,17 @@ import type { ObjectKnownView } from "../obj/ignore.js";
 import type { KnownDesc } from "../obj/known-object.js";
 import { objectFullyKnown, objectKnownShadow } from "../obj/known-object.js";
 import type { GameObject } from "../obj/object.js";
+import type { ObjectKind } from "../obj/types.js";
 import type { GameState } from "./context.js";
+
+/** object_kind_name (obj-desc.c L48), as used by the ignore kind menu. */
+export function objectKindName(state: GameState, kind: ObjectKind, easyKnow: boolean): string {
+  const aware = state.isAware ? state.isAware(kind) : true;
+  if (!easyKnow && !aware && (state.hasFlavor?.(kind) ?? false)) {
+    return state.flavorText?.(kind) ?? "";
+  }
+  return kind.name;
+}
 
 /** Build the flavour-awareness view object_desc needs from the game state. */
 /** Omit only the upstream everseen writes for an inspection preview. */

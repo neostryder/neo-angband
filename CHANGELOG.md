@@ -50,6 +50,8 @@ still calls itself.
 
 ### Added
 
+- [Internal] [Modding-API] **Interface mods can read travel routes, grid actions, and item rules.** Frozen inspect answers use the game's pathfinder, remembered terrain, and learned ignore settings; a display margin keeps whole map cells clear for mod controls. (#289)
+
 - [Visible] [UI] **Subwindow panels can share one space as tabs.** Dropping a panel on the new Tab target in the middle of another panel adds it as a tab, and a tab strip in the title bar switches between them. A window too small for every panel now folds the most cramped panel into a tab beside the panel closest to it in shape instead of hiding it, and separates them again when there is room. (#287)
 - [Visible] [UI] **Each part of the subwindow manager has its own switch.** The Subwindow setup screen turns tabs, small-window folding, divider locking and fit to content on or off one at a time, and none of them changes a saved arrangement. Fit to content gives a panel that asks for a set height that height until you drag its divider; double-clicking the divider hands the size back. (#287)
 - [Visible] [UI] **The dungeon view can be moved like any other panel.** A grip in its top-right corner drags it to another panel's edge or swaps it with a panel, and a switch on the Subwindow setup screen hides the grip. It never closes, hides or becomes a tab. (#287)

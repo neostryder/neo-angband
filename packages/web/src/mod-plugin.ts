@@ -275,6 +275,8 @@ export interface ModDisplay {
   setCamera(origin: { readonly x: number; readonly y: number } | null): void;
   setMapView(view: ModMapView | null): void;
   setSidebarExtent(extent: { readonly columns: number; readonly topRows: number } | null): void;
+  /** Reserve whole cells beside the main map for mod-owned controls. */
+  setMapMargin?(margin: { readonly edge: "top" | "right" | "bottom" | "left"; readonly cells: number } | null): void;
   setTileScaling(mode: "auto" | "crisp"): void;
   /** Choose the full-detail map picture instead of the compressed ASCII miniature. */
   setFullMapOverview(enabled: boolean): void;

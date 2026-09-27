@@ -467,6 +467,9 @@ const spell = ctx.inspect?.spellInfo(spellIndex);
 const choices = ctx.inspect?.itemTester("quaff");
 const path = ctx.inspect?.projectionPath({ x: 20, y: 12 });
 const blast = ctx.inspect?.blastArea({ x: 20, y: 12 }, 2);
+const travel = ctx.inspect?.travelPath({ x: 20, y: 12 });
+const actions = ctx.inspect?.tileActions({ x: 20, y: 12 });
+const rules = ctx.inspect?.itemRules();
 ```
 
 `inspectItem` accepts a carried or worn handle, or `{ floor: { x, y, index } }`. It returns the title and body from `object_desc` and `object_info`, including the effect description, under `state:inventory.read`. A floor object answers only when the player remembers that object; a grid the player has merely sensed returns null. `monsterRecall` returns the player's existing lore text under `state:monsters.read`, or null for a race the player has not seen, as in the knowledge menu. Neither read marks a kind or ego as seen or creates a lore record.
@@ -474,6 +477,10 @@ const blast = ctx.inspect?.blastArea({ x: 20, y: 12 }, 2);
 `spellInfo` returns the spell's description, required level, mana cost, live failure chance, and `canCastNow` under `state:spells.read`. Low mana raises the failure chance but still permits the game's over-exertion cast path. `itemTester` lists carried, worn, quivered, and local floor references accepted by the named item command under `state:inventory.read`. Its command codes are `inspect`, `wield`, `takeoff`, `drop`, `inscribe`, `uninscribe`, `activate`, `use-staff`, `aim-wand`, `zap-rod`, `eat`, `quaff`, `read`, `refill`, `cast`, `study`, `browse`, `fire`, `throw`, `use`, and `ignore`.
 
 `projectionPath` and `blastArea` return ordered grids under `state:map.read`. They use the game's projection geometry with remembered terrain and visible monsters. Unknown terrain is treated as open for the preview. A blast reports covered grids only, with no damage estimate. Repeating these reads does not change the saved game, knowledge, turn, command queue, or RNG state.
+
+`travelPath` uses the travel command's `findPath` over remembered terrain and returns steps in walking order, excluding the player's grid. It returns null for an unknown or unreachable destination and while the player is confused. `tileActions` returns accepted command codes in `codes` for a remembered grid under `state:map.read`. Adjacent terrain may offer `tunnel`, `open`, `close`, `disarm`, or `walk`; the player's grid may offer `ascend`, `descend`, or `pickup`. The host accepts `ascend` and `descend` for stairs. Melee uses `walk` toward an adjacent monster because there is no separate `attack` command code. An action still needs the appropriate direction or other arguments when passed to `ctx.intent.submit()`.
+
+`itemRules` reads the player's learned kind flags, quality thresholds, ego rules, and aware and unaware kind auto-inscriptions under `state:inventory.read`. Kind rows contain `kidx`, `name`, `ignoreAware`, `ignoreUnaware`, `noteAware`, and `noteUnaware`. Quality rows contain `itype`, `name`, `threshold`, and `thresholdName`; ego rows contain `eidx`, `name`, `itype`, and `ignored`. Unseen kinds and egos are omitted. These reads return frozen results with the current input token and leave the saved game, knowledge, turn, command queue, and RNG unchanged.
 
 ## 4l. Resolved combat, healing, and movement events
 
@@ -506,6 +513,16 @@ ctx.display?.setVisualFilter(null);
 The canvas uses its existing alpha-enabled overlay because a CSS filter on the opaque terminal canvas does not composite in Chromium. Panel content and tiled subwindow content use CSS filters on their DOM elements. This is the same host path in a browser and Electron. The filter does not cover the accessibility live regions, touch controls, panel close buttons, tiled subwindow controls, crash and safe-mode notices, or the mod manager's capability consent and fault screens. The host pauses canvas filtering while the mod manager is open, then restores the requested filter when it closes.
 
 A filter on panel content also affects text fields, their caret, and their focus ring. Strong blur or low contrast can make them hard to read and edit; use a legible filter for panels that accept input. Escape and the host's close button remain available even when panel content is hard to read.
+
+## 4o. Reserving a map margin
+
+`ctx.display.setMapMargin({ edge, cells })` reserves up to four whole cells along the top, right, bottom, or left edge of the main map. The host shrinks the map viewport and reports its new rectangle through `ctx.display.snapshot().regions`, leaving the strip clear for a mod to draw controls. The strip is clamped further when the map is narrow so at least four cells remain on that axis. Pass `null` to restore the full map viewport. Mod teardown clears the margin before reload. The method uses the same ungated display geometry access as `setSidebarExtent`.
+
+```js
+ctx.display?.setMapMargin?.({ edge: "right", cells: 3 });
+// Later:
+ctx.display?.setMapMargin?.(null);
+```
 
 ## 5. Doors that are exported but deliberately closed
 
