@@ -36,6 +36,20 @@ const tileId: Validator<LayoutTileId> = {
 };
 const subwindowId = json.enum(SUBWINDOW_LAYOUT_IDS);
 
+export interface FloatRectData {
+  id: LayoutTileId;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface RememberedPlaceData {
+  dock?: LayoutNodeData;
+  float?: Omit<FloatRectData, "id">;
+  last: "dock" | "float";
+}
+
 export type LayoutTileId = "main" | (typeof SUBWINDOW_LAYOUT_IDS)[number] | `${string}:${string}`;
 
 /**
@@ -115,12 +129,27 @@ export const layoutNode: Validator<LayoutNodeData> = {
   },
 };
 
+const fraction = json.finiteNumber;
+const floatGeometry = json.object({ x: fraction, y: fraction, width: fraction, height: fraction });
+const floatEntry = json.object({ id: tileId, x: fraction, y: fraction, width: fraction, height: fraction });
+const place = json.object({
+  dock: json.optional(layoutNode),
+  float: json.optional(floatGeometry),
+  last: json.enum(["dock", "float"] as const),
+});
 const validator = json.object({
   enabled: json.map(json.boolean, subwindowId),
   tree: layoutNode,
   mapTileMode: nonNegativeInt,
   modBlocks: json.optional(json.map(json.string)),
+  floats: json.optional(json.array(floatEntry)),
+  places: json.optional(json.map(place, tileId)),
 });
+
+function validGeometry(rect: { x: number; y: number; width: number; height: number }): boolean {
+  return rect.x >= 0 && rect.y >= 0 && rect.width > 0 && rect.height > 0 &&
+    rect.x <= 1 && rect.y <= 1 && rect.width <= 1 && rect.height <= 1;
+}
 
 function collectLeaves(node: LayoutNodeData, ids: string[]): void {
   if (node.kind === "leaf") ids.push(...(node.tabs ?? [node.id]));
@@ -138,6 +167,27 @@ const layoutValidator: typeof validator = {
     collectLeaves(result.value.tree, leaves);
     if (!leaves.includes("main") || new Set(leaves).size !== leaves.length) {
       return { ok: false, issues: [{ path: `${path}["tree"]`, message: "expected one main tile and no duplicate tiles" }] };
+    }
+    const ids = new Set(leaves);
+    for (const [index, entry] of (result.value.floats ?? []).entries()) {
+      if (entry.id === "main" || ids.has(entry.id) || !validGeometry(entry)) {
+        return { ok: false, issues: [{ path: `${path}["floats"][${index}]`, message: "expected a unique non-main float with fractions from 0 to 1" }] };
+      }
+      ids.add(entry.id);
+    }
+    for (const [id, remembered] of Object.entries(result.value.places ?? {})) {
+      if (id === "main" || remembered.float && !validGeometry(remembered.float) ||
+        remembered.last === "float" && !remembered.float ||
+        remembered.last === "dock" && !remembered.dock) {
+        return { ok: false, issues: [{ path: `${path}["places"][${JSON.stringify(id)}]`, message: "invalid remembered panel place" }] };
+      }
+      if (remembered.dock) {
+        const dockIds: string[] = [];
+        collectLeaves(remembered.dock, dockIds);
+        if (!dockIds.includes("main") || !dockIds.includes(id) || new Set(dockIds).size !== dockIds.length) {
+          return { ok: false, issues: [{ path: `${path}["places"][${JSON.stringify(id)}]["dock"]`, message: "invalid remembered dock tree" }] };
+        }
+      }
     }
     return result;
   },

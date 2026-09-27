@@ -14,6 +14,7 @@ export interface WmSettings {
   readonly lockDividers: boolean;
   readonly moveDungeonView: boolean;
   readonly fitToContent: boolean;
+  readonly floatingWindows: boolean;
 }
 
 export const DEFAULT_WM_SETTINGS: WmSettings = Object.freeze({
@@ -22,6 +23,7 @@ export const DEFAULT_WM_SETTINGS: WmSettings = Object.freeze({
   lockDividers: false,
   moveDungeonView: true,
   fitToContent: true,
+  floatingWindows: true,
 });
 
 /** An absent, unreadable or future-version document reads as the defaults. */
@@ -30,7 +32,7 @@ export function readWmSettings(storage: Pick<Storage, "getItem">): WmSettings {
     const raw = storage.getItem(WM_SETTINGS_STORAGE_KEY);
     if (raw === null) return DEFAULT_WM_SETTINGS;
     const result = parseDocument(raw, windowManagerFormat);
-    return result.ok ? Object.freeze({ ...result.data }) : DEFAULT_WM_SETTINGS;
+    return result.ok ? Object.freeze({ ...DEFAULT_WM_SETTINGS, ...result.data }) : DEFAULT_WM_SETTINGS;
   } catch {
     return DEFAULT_WM_SETTINGS;
   }

@@ -556,6 +556,10 @@ Typing in a focused editable field inside the panel goes to that field through t
 
 Each mod's display setters keep its own last request. The most recent live request controls the grid, camera, full map view, tile scaling, map overview, sidebar extent, map margin, or visual filter. Clearing a nullable request removes that mod's value; `setTileScaling(null)` restores the default automatic sampler and `setFullMapOverview(null)` restores the default overview when no earlier request remains. `getGrid()`, `getCamera()`, `getMapView()`, `getTileScaling()`, `getFullMapOverview()`, `getSidebarExtent()`, `getMapMargin()`, and `getVisualFilter()` report the value in force. Mod teardown removes every request from that mod and restores the next most recent request for each setter.
 
+## 4r. Floating panel positions and recovery
+
+The host's Subwindow setup can move a registered panel into a floating window inside the game viewport. The panel keeps the same slot, shadow root, controls, minimum size and input behavior. Its title bar can move it onto the same dock, swap and tab drop zones as a docked panel. Closing and showing it again restores its floating rectangle; Dock returns it to its last docked place or `preferredPlacement` if that place is unavailable. A saved float whose mod is not loaded shows the same named placeholder as a docked panel. The Floating windows switch temporarily renders floats at their remembered docked places without erasing their saved rectangles. No new capability or `ctx.ui` field is required.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

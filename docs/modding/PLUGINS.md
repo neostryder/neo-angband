@@ -350,6 +350,8 @@ Declare `saves:manage` for a replacement title screen that lists, loads, renames
 
 Declare `ui:panel.mount` to offer a panel in Subwindow setup with `ctx.ui.registerPanelKind(spec)`. Its `mount` function draws into the slot's shadow root. Use the returned function during mod cleanup to unregister the kind. See [MOD_SEAMS.md section 4p](MOD_SEAMS.md#4p-ctxuiregisterpanelkind---a-mod-panel-in-the-tiled-layout) for the host handle and saved layout behavior.
 
+The host can float the same registered panel inside the game viewport and restore its last docked or floating place when it is shown again. A missing mod leaves a named placeholder in either place. See [MOD_SEAMS.md section 4r](MOD_SEAMS.md#4r-floating-panel-positions-and-recovery).
+
 ### Filtering panels with the canvas
 
 Declare `display:filter` to call `ctx.display.setVisualFilter(filter, { scope: "game" })`. This covers the terminal canvas, tiled subwindows, and mod panel content. Omit the options for the previous canvas-only behavior, or pass `null` to clear the filter. Strong filters can make panel text fields and their caret hard to read. Host recovery controls and capability consent remain clear. See [MOD_SEAMS.md section 4n](MOD_SEAMS.md#4n-filtering-the-whole-game-viewport).
