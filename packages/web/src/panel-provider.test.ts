@@ -49,7 +49,7 @@ describe("tiled panel providers", () => {
   it("shows a missing mod placeholder and fills the same slot on registration", () => {
     const page = setup();
     const slot = page.shell.slot("sample:editor")!;
-    expect(slot.textContent).toContain("The panel's mod (sample) is not loaded.");
+    expect(slot.textContent).toContain("This panel's mod, sample, is not loaded.");
     const mount = vi.fn();
     const unregister = registerPanelKind("sample", { kind: "editor", label: "Editor", mount });
     expect(mount).toHaveBeenCalledOnce();

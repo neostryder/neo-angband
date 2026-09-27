@@ -1,6 +1,7 @@
 /** Host-owned tiled DOM panels. The saved tree carries identity, not mod code. */
 import type { PanelKindSpec, PanelMount } from "./mod-plugin";
 import { SUBWINDOW_LAYOUT_IDS } from "@rpgm-tools/neo-angband-mod-sdk";
+import { t } from "@rpgm-tools/neo-angband-core";
 import { addTiledPanelRoot } from "./input-door";
 import { leafIds, removeLeaf, selectTab, type LayoutNode } from "./subwindow-layout";
 import type { SubwindowShell } from "./subwindow-shell";
@@ -117,10 +118,10 @@ export function bindPanelProviders(host: PanelProviderHost): () => void {
         const box = document.createElement("div");
         box.className = "tile-panel-placeholder";
         const message = document.createElement("p");
-        message.textContent = `The panel's mod (${id.split(":")[0]}) is not loaded.`;
+        message.textContent = t("subwindows.placeholder.missingMod", "This panel's mod, {mod}, is not loaded.", { mod: id.split(":")[0] ?? id });
         const remove = document.createElement("button");
         remove.type = "button";
-        remove.textContent = "Remove";
+        remove.textContent = t("subwindows.placeholder.remove", "Remove");
         remove.addEventListener("click", () => {
           host.forgetPanel?.(id);
           host.changeTree(removeLeaf(host.tree(), id));
