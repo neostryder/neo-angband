@@ -405,7 +405,7 @@ if (level) {
 }
 ```
 
-Each cell has a `visible` flag and a `remembered` value. Terrain comes from `knownFeat`; the object list comes from `knownPile`. A sensed object tells the mod whether it is money, without identifying its kind. The kind of a seen object stays in memory when the real floor changes. Trap knowledge in this port is the visible flag on a live trap record; removing that record also removes the trap from this read.
+Each cell has a `visible` flag and a `remembered` value. Terrain comes from `knownFeat`; the object list comes from `knownPile`. A sensed object tells the mod whether it is money, without identifying its kind. A seen object of a flavoured kind the player has not identified carries its item class and flavour (`aware: false`, `tval`, `flavorIndex`, `flavorText`) and no kind, the same way the map draws it with the flavour glyph; once the player is aware of the kind, it carries `aware: true` and `kindIndex`. The kind of a seen object stays in memory when the real floor changes. Trap knowledge in this port is the visible flag on a live trap record; removing that record also removes the trap from this read.
 
 `state:map.read` grants this read. Without it, the core accessor throws `AgentCapabilityError` and the context call returns null. A mod with `state:map-actual.read` also gets `actual` on each cell: real terrain, traps, floor objects as `ItemView` values, and the monster index. Other mods receive no `actual` field. The `state:*.read` wildcard grants both domains. Trusted core code can call `captureKnownLevel` directly.
 

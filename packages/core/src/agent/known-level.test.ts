@@ -176,6 +176,29 @@ describe("known level", () => {
     expect(cell.actual?.objects).toEqual([]);
   });
 
+  it("names an unaware flavoured kind by its flavour, never by its kind", () => {
+    const game = newGame();
+    const grid = gridAwayFromPlayer(game);
+    const { state } = game;
+    state.floor.set(grid.y * state.chunk.width + grid.x, [floorObject(game)]);
+    squareMemorize(state, grid);
+    squareKnowPile(state, grid);
+    const view = createAgentView(state, undefined, {}, caps("state:map.read"));
+    const objectAt = () =>
+      view.knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)!.remembered.objects[0]!;
+    /* The session's own flavour seams, pinned so the test does not depend on
+     * which kind the seeded character happens to carry. */
+    state.isAware = () => false;
+    state.hasFlavor = () => true;
+    state.flavorGlyph = () => ({ fidx: 7, text: "Smoky", attr: "w", char: "!" });
+    const unaware = objectAt();
+    expect(unaware).toMatchObject({ sensed: false, aware: false, flavorIndex: 7, flavorText: "Smoky" });
+    expect(unaware).not.toHaveProperty("kindIndex");
+    state.isAware = () => true;
+    expect(objectAt()).toMatchObject({ sensed: false, aware: true });
+    expect(objectAt()).toHaveProperty("kindIndex");
+  });
+
   it("changes level id only with a level change", () => {
     const game = newGame();
     const view = createAgentView(game.state);

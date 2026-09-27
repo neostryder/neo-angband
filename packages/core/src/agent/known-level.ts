@@ -16,9 +16,27 @@ export interface TrapView {
 }
 
 /** A shadow-pile entry. Sensed objects reveal only money versus other items. */
+/**
+ * One remembered object, as the player can tell it apart. A flavoured kind the
+ * player is not aware of is reported by its flavour and item class only, the
+ * way upstream draws it (object_kind_char's use_flavor_glyph): its kind index
+ * would name the potion or scroll the player has not identified.
+ */
 export type RememberedObject =
   | { readonly sensed: true; readonly money: boolean }
-  | { readonly sensed: false; readonly kindIndex: number; readonly kindId?: string };
+  | {
+      readonly sensed: false;
+      readonly aware: true;
+      readonly kindIndex: number;
+      readonly kindId?: string;
+    }
+  | {
+      readonly sensed: false;
+      readonly aware: false;
+      readonly tval: number;
+      readonly flavorIndex: number;
+      readonly flavorText: string;
+    };
 
 export interface RememberedCell {
   readonly feat: number;
@@ -84,10 +102,24 @@ export function captureKnownLevel(
           if (entry.sensed) {
             return { sensed: true, money: tvalIsMoney(entry.obj.tval) };
           }
-          const kindIndex = entry.obj.kind.kidx;
+          const kind = entry.obj.kind;
+          const aware = state.isAware ? state.isAware(kind) : true;
+          const flavor =
+            !aware && state.hasFlavor?.(kind) ? state.flavorGlyph?.(kind) : undefined;
+          if (flavor) {
+            return {
+              sensed: false,
+              aware: false,
+              tval: entry.obj.tval,
+              flavorIndex: flavor.fidx,
+              flavorText: flavor.text,
+            };
+          }
+          const kindIndex = kind.kidx;
           const kindId = deps.resolver?.kindIdOrNull(kindIndex);
           return {
             sensed: false,
+            aware: true,
             kindIndex,
             ...(kindId ? { kindId } : {}),
           };
