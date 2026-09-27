@@ -91,17 +91,6 @@ describe("teardownModPlugins", () => {
     expect(requestReloadBody()).toContain("clearVisualFilter: () => displayControl.setVisualFilter(null)");
   });
 
-  it("clears the map margin after uninstall", () => {
-    const order: string[] = [];
-    teardownModPlugins({
-      plugins: [target("map", order)],
-      controller: null,
-      clearMapMargin: () => { order.push("margin"); },
-    });
-    expect(order).toEqual(["map", "margin"]);
-    expect(requestReloadBody()).toContain("clearMapMargin: () => displayControl.setMapMargin?.(null)");
-  });
-
   it("skips a plugin that declares no uninstall", () => {
     /* The member is optional and most mods will never want it; a host that
      * called through on undefined would turn "I have no teardown" into a crash

@@ -322,7 +322,6 @@ function displayFor(session: ModSessionFacts): ModDisplay | undefined {
     setCamera: (origin) => display.setCamera(origin),
     setMapView: (view) => display.setMapView(view),
     setSidebarExtent: (extent) => display.setSidebarExtent(extent),
-    ...(display.setMapMargin ? { setMapMargin: (margin: Parameters<NonNullable<ModDisplay["setMapMargin"]>>[0]) => display.setMapMargin!(margin) } : {}),
     setTileScaling: (mode) => display.setTileScaling(mode),
     setFullMapOverview: (enabled) => display.setFullMapOverview(enabled),
     setStoreItemNameEllipsis: (enabled) => display.setStoreItemNameEllipsis(enabled),

@@ -82,8 +82,6 @@ export interface ModTeardownDeps {
   readonly closePanels?: () => number;
   /** Clear game-wide and canvas filters before the page reloads. */
   readonly clearVisualFilter?: () => void;
-  /** Restore the host's full main map rectangle before reload. */
-  readonly clearMapMargin?: () => void;
   /** Remove keymaps still owned by each departing plugin, after its uninstall. */
   readonly releaseKeymaps?: (id: string) => void;
 }
@@ -177,11 +175,6 @@ export function teardownModPlugins(deps: ModTeardownDeps): ModTeardownResult {
     deps.clearVisualFilter?.();
   } catch (err) {
     log.error("mods", `clearing the visual filter failed:`, err);
-  }
-  try {
-    deps.clearMapMargin?.();
-  } catch (err) {
-    log.error("mods", `clearing the map margin failed:`, err);
   }
 
   let released: string | null = null;

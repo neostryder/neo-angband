@@ -22,10 +22,21 @@ export const SUBWINDOW_LAYOUT_IDS = [
   "player-topbar",
 ] as const;
 
-const tileId = json.enum(["main", ...SUBWINDOW_LAYOUT_IDS] as const);
+const nativeTileId = json.enum(["main", ...SUBWINDOW_LAYOUT_IDS] as const);
+const modTilePattern = /^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$/;
+const tileId: Validator<LayoutTileId> = {
+  validate(value, path = "$") {
+    const native = nativeTileId.validate(value, path);
+    if (native.ok) return native;
+    if (typeof value === "string" && modTilePattern.test(value) && !value.startsWith("core:")) {
+      return { ok: true, value: value as LayoutTileId };
+    }
+    return { ok: false, issues: [{ path, message: "expected a native or mod panel id" }] };
+  },
+};
 const subwindowId = json.enum(SUBWINDOW_LAYOUT_IDS);
 
-export type LayoutTileId = "main" | (typeof SUBWINDOW_LAYOUT_IDS)[number];
+export type LayoutTileId = "main" | (typeof SUBWINDOW_LAYOUT_IDS)[number] | `${string}:${string}`;
 
 /**
  * A leaf is a tab group: `id` is the panel it shows, and `tabs`, when there is

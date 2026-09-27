@@ -275,8 +275,6 @@ export interface ModDisplay {
   setCamera(origin: { readonly x: number; readonly y: number } | null): void;
   setMapView(view: ModMapView | null): void;
   setSidebarExtent(extent: { readonly columns: number; readonly topRows: number } | null): void;
-  /** Reserve whole cells beside the main map for mod-owned controls. */
-  setMapMargin?(margin: { readonly edge: "top" | "right" | "bottom" | "left"; readonly cells: number } | null): void;
   setTileScaling(mode: "auto" | "crisp"): void;
   /** Choose the full-detail map picture instead of the compressed ASCII miniature. */
   setFullMapOverview(enabled: boolean): void;
@@ -997,8 +995,34 @@ export interface ModUi {
    * returned a dead handle would hide them.
    */
   openPanel(spec: ModPanelSpec): ModPanel;
+  /** Register a persistent tiled panel kind for this mod. */
+  registerPanelKind(spec: PanelKindSpec): () => void;
   /** THIS mod's open panels, topmost last. Never another mod's. */
   readonly openPanels: readonly string[];
+}
+
+export interface PanelKindSpec {
+  readonly kind: string;
+  readonly label: string;
+  readonly tab?: string;
+  readonly minSize?: Readonly<{ width: number; height: number }>;
+  readonly preferredPlacement?:
+    | Readonly<{ kind: "dock"; target: string; edge: "left" | "right" | "top" | "bottom" }>
+    | Readonly<{ kind: "tab"; target: string }>;
+  readonly fitHeight?: number;
+  mount(host: PanelMount): void | (() => void);
+}
+
+export interface PanelMount {
+  readonly id: string;
+  readonly root: ShadowRoot;
+  readonly bounds: Readonly<{ width: number; height: number }>;
+  readonly active: boolean;
+  readonly focused: boolean;
+  onStateChange(listener: (state: Readonly<{ bounds: Readonly<{ width: number; height: number }>; active: boolean; focused: boolean }>) => void): () => void;
+  requestFocus(): void;
+  requestClose(): void;
+  setFitHeight(px: number | null): void;
 }
 
 /**

@@ -34,9 +34,6 @@ import type {
   GridInspectResult,
   InspectResult,
   ItemTesterResult,
-  ItemRulesResult,
-  TileActionsResult,
-  TravelPathResult,
   SpellInspectResult,
 } from "@rpgm-tools/neo-angband-core";
 import { snapshotWorldFrame } from "./world-view";
@@ -139,9 +136,6 @@ export interface ModInspect {
   itemTester(code: string): ItemTesterResult | null;
   projectionPath(to: { x: number; y: number }): GridInspectResult | null;
   blastArea(to: { x: number; y: number }, radius: number): GridInspectResult | null;
-  travelPath(to: { x: number; y: number }): TravelPathResult | null;
-  tileActions(to: { x: number; y: number }): TileActionsResult | null;
-  itemRules(): ItemRulesResult | null;
 }
 
 export function buildInspect(
@@ -160,8 +154,5 @@ export function buildInspect(
     itemTester: (code) => view()?.itemTester?.(code) ?? null,
     projectionPath: (to) => view()?.projectionPath?.(to) ?? null,
     blastArea: (to, radius) => view()?.blastArea?.(to, radius) ?? null,
-    travelPath: (to) => view()?.travelPath?.(to) ?? null,
-    tileActions: (to) => view()?.tileActions?.(to) ?? null,
-    itemRules: () => view()?.itemRules?.() ?? null,
   } satisfies ModInspect);
 }

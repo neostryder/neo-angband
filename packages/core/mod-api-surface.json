@@ -1356,7 +1356,6 @@
     "objectIsKnownArtifact",
     "objectKindAttrChar",
     "objectKindGlyph",
-    "objectKindName",
     "objectKnownShadow",
     "objectKnownView",
     "objectLearnOnWield",

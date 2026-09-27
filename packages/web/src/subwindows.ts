@@ -247,7 +247,7 @@ export function describeSubwindowsMerged(merges: readonly { id: string; into: st
 
 export function reconcileSubwindowTree(tree: LayoutNode, settings: SubwindowSettings): LayoutNode {
   const enabled = enabledSubwindowIds(settings);
-  const keep = new Set<string>([MAIN_TILE_ID, ...enabled]);
+  const keep = new Set<string>([MAIN_TILE_ID, ...enabled, ...leafIds(tree).filter((id) => /^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$/.test(id) && !id.startsWith("core:"))]);
   let next = pruneTree(tree, keep) ?? emptyLayoutTree();
   for (const id of enabled) {
     if (containsLeaf(next, id)) continue;

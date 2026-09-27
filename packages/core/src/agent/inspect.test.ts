@@ -11,7 +11,6 @@ import { objectPrep } from "../obj/make.js";
 import { tvalIsPotion } from "../obj/object.js";
 import { spellByIndex, spellChance } from "../player/spell.js";
 import { makeSpellChanceEnv } from "../game/spell-cmd.js";
-import { floorPile } from "../game/floor.js";
 import { saveGame, startGame } from "../session/game.js";
 import type { GamePack, StartedGame } from "../session/game.js";
 import { AgentCapabilityError } from "./types.js";
@@ -102,7 +101,7 @@ function viewFor(game: StartedGame, caps?: { has(cap: string): boolean }) {
     projections: game.booted.registries.projections ?? [],
     constants: game.booted.registries.constants,
   };
-  return { view: createAgentView(state, undefined, { reg: game.booted.registries.objects, inspect: {
+  return { view: createAgentView(state, undefined, { inspect: {
     objectInfo,
     races: game.booted.registries.monsters.races,
     loreDeps,
@@ -154,9 +153,6 @@ describe("inspection reads", () => {
       expect(view.itemTester!("ignore").items).toContainEqual({ handle: quiverHandle });
       view.projectionPath!(to);
       view.blastArea!(to, 2);
-      view.travelPath!(to);
-      view.tileActions!(to);
-      view.itemRules!();
     }
     expect(fingerprint(game)).toBe(before);
   });
@@ -222,84 +218,5 @@ describe("inspection reads", () => {
     expect(() => view.itemTester!("quaff")).toThrow(AgentCapabilityError);
     expect(() => view.projectionPath!({ x: 1, y: 1 })).toThrow(AgentCapabilityError);
     expect(() => view.blastArea!({ x: 1, y: 1 }, 2)).toThrow(AgentCapabilityError);
-    expect(() => view.travelPath!({ x: 1, y: 1 })).toThrow(AgentCapabilityError);
-    expect(() => view.tileActions!({ x: 1, y: 1 })).toThrow(AgentCapabilityError);
-    expect(() => view.itemRules!()).toThrow(AgentCapabilityError);
-  });
-
-  it("reports the travel command's remembered route without changing the game", () => {
-    const game = newGame();
-    const state = game.state;
-    const from = state.actor.grid;
-    const to = { x: from.x + 3, y: from.y };
-    for (let x = from.x + 1; x <= to.x; x++) state.known.feat[from.y * state.chunk.width + x] = FEAT.FLOOR;
-    const view = viewFor(game).view;
-    const before = fingerprint(game);
-    for (let i = 0; i < 5; i++) {
-      const path = view.travelPath!(to)!;
-      expect(path.token).toEqual(view.inputToken!());
-      expect(Object.isFrozen(path.grids)).toBe(true);
-      expect(Math.max(Math.abs(path.grids[0]!.x - from.x), Math.abs(path.grids[0]!.y - from.y))).toBe(1);
-      expect(path.grids.at(-1)).toEqual(to);
-      expect(view.travelPath!({ x: from.x + 4, y: from.y })).toBeNull();
-    }
-    expect(fingerprint(game)).toBe(before);
-  });
-
-  it("uses remembered terrain and the command codes for adjacent grid actions", () => {
-    const game = newGame();
-    const state = game.state;
-    const from = state.actor.grid;
-    const next = { x: from.x + 1, y: from.y };
-    const index = next.y * state.chunk.width + next.x;
-    state.known.feat[index] = FEAT.CLOSED;
-    state.chunk.setFeat(next, FEAT.CLOSED);
-    const view = viewFor(game).view;
-    const before = fingerprint(game);
-    for (let i = 0; i < 5; i++) {
-      const actions = view.tileActions!(next);
-      expect(Object.isFrozen(actions.codes)).toBe(true);
-      expect(actions.codes).toContain("open");
-      expect(actions.codes).not.toContain("walk");
-      expect(actions.codes).not.toContain("attack");
-      expect(view.tileActions!(from).codes).not.toContain("open");
-    }
-    expect(fingerprint(game)).toBe(before);
-    state.known.feat[index] = FEAT.FLOOR;
-    state.chunk.setFeat(next, FEAT.FLOOR);
-    const kind = game.booted.registries.objects.kinds.find((entry) => tvalIsPotion(entry.tval))!;
-    const obj = objectPrep(state.rng, game.booted.registries.objects, game.booted.registries.constants, kind, 1, "minimise");
-    state.floor.set(index, [obj]);
-    expect(view.tileActions!(next).codes).toContain("walk");
-    expect(view.tileActions!(next).codes).not.toContain("pickup");
-    state.floor.set(from.y * state.chunk.width + from.x, [obj]);
-    expect(floorPile(state, from)).toContain(obj);
-    expect(view.tileActions!(from).codes).toContain("pickup");
-    state.chunk.setFeat(from, FEAT.LESS);
-    state.known.feat[from.y * state.chunk.width + from.x] = FEAT.LESS;
-    expect(view.tileActions!(from).codes).toContain("ascend");
-    expect(view.tileActions!(from).codes).not.toContain("descend");
-    state.chunk.setFeat(from, FEAT.MORE);
-    state.known.feat[from.y * state.chunk.width + from.x] = FEAT.MORE;
-    expect(view.tileActions!(from).codes).toContain("descend");
-  });
-
-  it("reads learned ignore and auto-inscription rules after the existing kind toggle", () => {
-    const game = newGame();
-    const state = game.state;
-    const kind = game.booted.registries.objects.kinds.find((entry) => (state.isAware?.(entry) ?? false) && entry.name)!;
-    state.everseen!.markKind(kind);
-    state.ignore.kindToggleAware(kind.kidx);
-    state.autoinscribe!.set(kind.kidx, "@m1", true);
-    state.autoinscribe!.set(kind.kidx, "@m2", false);
-    const view = viewFor(game).view;
-    const before = fingerprint(game);
-    for (let i = 0; i < 5; i++) {
-      const rules = view.itemRules!();
-      expect(Object.isFrozen(rules.kinds)).toBe(true);
-      expect(rules.kinds.find((row) => row.kidx === kind.kidx)).toMatchObject({ ignoreAware: true, noteAware: "@m1", noteUnaware: "@m2" });
-      expect(rules.quality).toHaveLength(26);
-    }
-    expect(fingerprint(game)).toBe(before);
   });
 });
