@@ -377,6 +377,43 @@ export function insertAtEdge(
   return replaceAt(stripped, path, splitOnEdge(target, incoming, edge, incomingRatio));
 }
 
+function groupCount(node: LayoutNode): number {
+  return node.kind === "leaf" ? 1 : groupCount(node.first) + groupCount(node.second);
+}
+
+/**
+ * Open a panel on one side of the main view without shrinking the main view
+ * again for every panel (#297). When panels already sit on that side, the new
+ * one joins the nearest of them at the far end, taking an equal share of their
+ * space. Only the first panel on a side splits the main view, with
+ * `incomingRatio` as its share. Dragging a panel onto the main view's edge
+ * still uses `insertAtEdge`, which puts it exactly where it was dropped.
+ */
+export function dockBesideMain(
+  tree: LayoutNode,
+  incomingId: TileId,
+  edge: DockEdge,
+  incomingRatio = 0.3,
+): LayoutNode {
+  if (incomingId === MAIN_TILE_ID) return tree;
+  const stripped = removeFrom(tree, incomingId) ?? tree;
+  const mainPath = findPath(stripped, MAIN_TILE_ID);
+  if (!mainPath) return tree;
+  const axis: SplitAxis = edge === "left" || edge === "right" ? "v" : "h";
+  const mainStep = edge === "right" || edge === "bottom" ? 0 : 1;
+  for (let depth = mainPath.length - 1; depth >= 0; depth--) {
+    const splitPath = mainPath.slice(0, depth);
+    const node = nodeAt(stripped, splitPath);
+    if (node?.kind !== "split" || node.axis !== axis || mainPath[depth] !== mainStep) continue;
+    const sidePath = [...splitPath, mainStep === 0 ? 1 : 0];
+    const side = mainStep === 0 ? node.second : node.first;
+    const along: DockEdge = axis === "v" ? "bottom" : "right";
+    const incoming: LeafNode = { kind: "leaf", id: incomingId };
+    return replaceAt(stripped, sidePath, splitOnEdge(side, incoming, along, 1 / (groupCount(side) + 1)));
+  }
+  return insertAtEdge(stripped, incomingId, MAIN_TILE_ID, edge, incomingRatio);
+}
+
 function mapIds(node: LayoutNode, map: (id: TileId) => TileId): LayoutNode {
   if (node.kind === "leaf") return makeGroup(groupTabs(node).map(map), map(node.id));
   return { ...node, first: mapIds(node.first, map), second: mapIds(node.second, map) };

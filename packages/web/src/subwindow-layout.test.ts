@@ -8,6 +8,7 @@ import {
   clampRatio,
   computeLayout,
   containsLeaf,
+  dockBesideMain,
   dropZoneAt,
   fitForComfort,
   groupTabs,
@@ -112,6 +113,49 @@ describe("insertAtEdge and removeLeaf", () => {
   it("refuses to remove the main view", () => {
     const tree = insertAtEdge(mainOnly, "items", MAIN_TILE_ID, "left", 0.2);
     expect(removeLeaf(tree, MAIN_TILE_ID)).toEqual(tree);
+  });
+});
+
+describe("dockBesideMain (#297)", () => {
+  const mainWidth = (tree: LayoutNode): number =>
+    computeLayout(tree, VIEW).tiles.find((tile) => tile.id === MAIN_TILE_ID)!.rect.w;
+
+  it("splits the main view once per side, however many panels join that side", () => {
+    let tree: LayoutNode = mainOnly;
+    for (const id of ["a:one", "a:two", "a:three", "a:four", "a:five"]) tree = dockBesideMain(tree, id, "right", 0.3);
+    const { tiles, splitters } = computeLayout(tree, VIEW);
+    tiled(tiles, splitters, VIEW);
+    expect(mainWidth(tree)).toBe(mainWidth(dockBesideMain(mainOnly, "a:one", "right", 0.3)));
+    const column = tiles.filter((tile) => tile.id !== MAIN_TILE_ID);
+    expect(new Set(column.map((tile) => tile.rect.x)).size).toBe(1);
+    const heights = column.map((tile) => tile.rect.h);
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(2 * SPLITTER_PX);
+  });
+
+  it("lines panels up along a top or bottom row", () => {
+    const tree = dockBesideMain(dockBesideMain(mainOnly, "a:one", "bottom", 0.25), "a:two", "bottom", 0.25);
+    const { tiles } = computeLayout(tree, VIEW);
+    const one = tiles.find((tile) => tile.id === "a:one")!.rect;
+    const two = tiles.find((tile) => tile.id === "a:two")!.rect;
+    expect(two.y).toBe(one.y);
+    expect(two.x).toBeGreaterThan(one.x);
+  });
+
+  it("joins the panels nearest the main view on that side", () => {
+    const tree = dockBesideMain(insertAtEdge(mainOnly, "a:left", MAIN_TILE_ID, "left", 0.3), "a:right", "right", 0.3);
+    const joined = dockBesideMain(tree, "a:more", "left", 0.3);
+    const { tiles } = computeLayout(joined, VIEW);
+    const left = tiles.find((tile) => tile.id === "a:left")!.rect;
+    const more = tiles.find((tile) => tile.id === "a:more")!.rect;
+    expect(more.x).toBe(left.x);
+    expect(more.y).toBeGreaterThan(left.y);
+    expect(mainWidth(joined)).toBe(mainWidth(tree));
+  });
+
+  it("moves a panel that is already in the tree instead of duplicating it", () => {
+    const tree = dockBesideMain(dockBesideMain(mainOnly, "a:one", "right", 0.3), "a:two", "right", 0.3);
+    const moved = dockBesideMain(tree, "a:one", "right", 0.3);
+    expect(leafIds(moved).sort()).toEqual(["a:one", "a:two", MAIN_TILE_ID].sort());
   });
 });
 

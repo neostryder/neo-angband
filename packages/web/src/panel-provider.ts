@@ -64,6 +64,12 @@ export interface PanelProviderHost {
   forgetPanel?(id: string): void;
   closePanel?(id: string): void;
   removePanel?(id: string): void;
+  /**
+   * A kind was registered and its panel is not on screen (#296). Called once
+   * per registration, so a panel the player closes stays closed until its
+   * kind is registered again. The host decides whether to open it.
+   */
+  offerPanel?(id: string): void;
 }
 
 /** Bind once to the game shell; registrations may arrive before or after it. */
@@ -71,6 +77,7 @@ export function bindPanelProviders(host: PanelProviderHost): () => void {
   const mounted = new Map<string, Mounted>();
   const placeholders = new Map<string, HTMLElement>();
   const hinted = new Set<string>();
+  const offered = new Set<string>();
   let syncing = false;
   let again = false;
 
@@ -99,6 +106,12 @@ export function bindPanelProviders(host: PanelProviderHost): () => void {
   }
 
   function syncOnce(): void {
+    for (const id of offered) if (!kinds.has(id)) offered.delete(id);
+    for (const id of kinds.keys()) {
+      if (offered.has(id)) continue;
+      offered.add(id);
+      if (!leafIds(host.tree()).includes(id) && !host.shell.floatingIds().includes(id)) host.offerPanel?.(id);
+    }
     const tree = host.tree();
     const ids = new Set([...leafIds(tree), ...host.shell.floatingIds()].filter((id) => id.includes(":")));
     for (const id of hinted) if (!ids.has(id) || !kinds.has(id)) {

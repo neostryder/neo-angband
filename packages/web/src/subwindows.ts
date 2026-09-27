@@ -48,7 +48,7 @@ import { UI_DIM, UI_TEXT } from "./ui-colors";
 import {
   MAIN_TILE_ID,
   containsLeaf,
-  insertAtEdge,
+  dockBesideMain,
   leafIds,
   parseLayoutTree,
   pruneTree,
@@ -259,8 +259,7 @@ export function reconcileSubwindowTree(tree: LayoutNode, settings: SubwindowSett
     if (containsLeaf(next, id)) continue;
     const saved = places[id]?.dock;
     const dock = DEFAULT_DOCK[id];
-    next = saved ? restoreDockPlace(next, id, saved) ?? insertAtEdge(next, id, MAIN_TILE_ID, dock.edge, dock.ratio)
-      : insertAtEdge(next, id, MAIN_TILE_ID, dock.edge, dock.ratio);
+    next = (saved ? restoreDockPlace(next, id, saved) : null) ?? dockBesideMain(next, id, dock.edge, dock.ratio);
   }
   return next;
 }
@@ -271,7 +270,7 @@ export function treeForSettings(settings: SubwindowSettings): LayoutNode {
 
 export function standardDock(tree: LayoutNode, id: SubwindowId): LayoutNode {
   const dock = DEFAULT_DOCK[id];
-  return insertAtEdge(tree, id, MAIN_TILE_ID, dock.edge, dock.ratio);
+  return dockBesideMain(tree, id, dock.edge, dock.ratio);
 }
 
 export function rememberDockTree(state: SubwindowState, tree: LayoutNode): SubwindowState {

@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Changed
+- [Visible] [UI] **A mod's panels open when you first turn it on.** Each one opens where the mod places it, and a panel you close stays closed until you add it again from Subwindow setup (#296).
+- [Visible] [UI] **Panels opened beside the dungeon view no longer shrink it each time.** A new panel on a side that already has panels joins them and shares their space, so only the first panel on each side takes room from the map (#297).
+
 ## [1.19.0] - 2026-09-27
 
 ### Added

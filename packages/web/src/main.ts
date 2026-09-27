@@ -590,7 +590,7 @@ import {
 } from "./subwindows";
 import { mountSubwindowShell } from "./subwindow-shell";
 import { bindPanelProviders, panelKinds, syncPanelProviders, unregisterAllPanelKinds } from "./panel-provider";
-import { applyDrop, containsLeaf, insertAtEdge, removeLeaf, restoreDockPlace, swapLeaves, tabInto, type LayoutNode } from "./subwindow-layout";
+import { applyDrop, containsLeaf, dockBesideMain, insertAtEdge, removeLeaf, restoreDockPlace, swapLeaves, tabInto, type LayoutNode } from "./subwindow-layout";
 import { readWmSettings, writeWmSettings, type WmSettings } from "./wm-settings";
 import {
   inventoryScreen,
@@ -1086,10 +1086,7 @@ const subwindowShell = mountSubwindowShell({
     else if (saved) tree = restoreDockPlace(tree, id, saved) ?? tree;
     if (!containsLeaf(tree, id)) {
       const native = SUBWINDOW_CHOICES.find((choice) => choice.id === id);
-      const preferred = panelKinds().find((kind) => kind.id === id)?.spec.preferredPlacement;
-      tree = native ? standardDock(tree, native.id) : preferred && containsLeaf(tree, preferred.target)
-        ? preferred.kind === "tab" ? tabInto(tree, id, preferred.target) : insertAtEdge(tree, id, preferred.target, preferred.edge)
-        : insertAtEdge(tree, id, "main", "right");
+      tree = native ? standardDock(tree, native.id) : placeModPanel(tree, id);
     }
     subwindowState = rememberDockTree({ ...subwindowState, floats,
       places: { ...subwindowState.places, [id]: { ...subwindowState.places?.[id],
@@ -1107,11 +1104,7 @@ const subwindowShell = mountSubwindowShell({
   },
   dockFallback: (tree, id) => {
     const native = SUBWINDOW_CHOICES.find((choice) => choice.id === id);
-    if (native) return standardDock(tree, native.id);
-    const preferred = panelKinds().find((kind) => kind.id === id)?.spec.preferredPlacement;
-    if (preferred && containsLeaf(tree, preferred.target)) return preferred.kind === "tab"
-      ? tabInto(tree, id, preferred.target) : insertAtEdge(tree, id, preferred.target, preferred.edge);
-    return insertAtEdge(tree, id, "main", "right");
+    return native ? standardDock(tree, native.id) : placeModPanel(tree, id);
   },
   onViewChange: () => syncPanelProviders(),
   /* A panel's own close [x] (neo-angband#246): the same live-disable path the
@@ -1152,6 +1145,13 @@ const panelProviderHost = {
   tree: () => subwindowState.tree,
   forgetPanel: (id: string) => lastModTrees.delete(id),
   closePanel: (id: string) => setModPanelEnabledLive(id, false),
+  /* #296: a mod's panel opens the first time its kind is registered. A
+   * remembered place means the player has placed or closed it before, and
+   * that choice stands. */
+  offerPanel: (id: string) => {
+    if (subwindowState.places?.[id]) return;
+    setModPanelEnabledLive(id, true);
+  },
   removePanel: (id: string) => {
     const { [id]: _forgotten, ...places } = subwindowState.places ?? {};
     void _forgotten;
@@ -3023,6 +3023,20 @@ function setSubwindowEnabledLive(id: SubwindowId, enabled: boolean): void {
 
 const lastModTrees = new Map<string, LayoutNode>();
 
+/**
+ * Where a mod's panel opens when the player has no saved place for it: its
+ * declared placement, or beside the main view on the right. A panel docked
+ * against the main view joins the panels already on that side (#297).
+ */
+function placeModPanel(tree: LayoutNode, id: string): LayoutNode {
+  const preferred = panelKinds().find((kind) => kind.id === id)?.spec.preferredPlacement;
+  if (!preferred || !containsLeaf(tree, preferred.target)) return dockBesideMain(tree, id, "right");
+  if (preferred.kind === "tab") return tabInto(tree, id, preferred.target);
+  return preferred.target === "main"
+    ? dockBesideMain(tree, id, preferred.edge)
+    : insertAtEdge(tree, id, preferred.target, preferred.edge);
+}
+
 function setModPanelEnabledLive(id: string, enabled: boolean): void {
   const entry = panelKinds().find((kind) => kind.id === id);
   if (enabled && !entry) return;
@@ -3035,13 +3049,7 @@ function setModPanelEnabledLive(id: string, enabled: boolean): void {
       floats.push({ id, ...places[id].float });
     } else {
     const saved = places[id]?.dock ?? lastModTrees.get(id) ?? readSubwindowDefault(localStorage)?.tree;
-    const placed = saved ? restoreDockPlace(tree, id, saved) : null;
-    const preferred = entry?.spec.preferredPlacement;
-    tree = placed ?? (preferred && containsLeaf(tree, preferred.target)
-      ? preferred.kind === "tab"
-        ? tabInto(tree, id, preferred.target)
-        : insertAtEdge(tree, id, preferred.target, preferred.edge)
-      : insertAtEdge(tree, id, "main", "right"));
+    tree = (saved ? restoreDockPlace(tree, id, saved) : null) ?? placeModPanel(tree, id);
     }
   } else {
     const floating = floats.find((item) => item.id === id);

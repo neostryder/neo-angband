@@ -11,7 +11,7 @@ const main: LayoutNode = { kind: "leaf", id: "main" };
 const withPanel: LayoutNode = { kind: "split", axis: "v", ratio: 0.7,
   first: main, second: { kind: "leaf", id: "sample:editor" } };
 
-function setup(initial: LayoutNode = withPanel) {
+function setup(initial: LayoutNode = withPanel, offerPanel?: (id: string) => void) {
   document.body.innerHTML = '<div id="host"><div id="main"><canvas></canvas></div></div>';
   const host = document.getElementById("host")!;
   const mainSlot = document.getElementById("main")!;
@@ -25,6 +25,7 @@ function setup(initial: LayoutNode = withPanel) {
   shell.apply(tree);
   const unbind = bindPanelProviders({ shell, tree: () => tree,
     changeTree(next) { tree = next; shell.apply(tree); },
+    ...(offerPanel ? { offerPanel } : {}),
   });
   shell.setGameLive(true);
   return { shell, tree: () => tree, change(next: LayoutNode) { tree = next; shell.apply(tree); },
@@ -58,6 +59,21 @@ describe("tiled panel providers", () => {
     expect(slot.textContent).toContain("not loaded");
     slot.querySelector<HTMLButtonElement>(".tile-panel-placeholder button")!.click();
     expect(containsLeaf(page.tree(), "sample:editor")).toBe(false);
+    page.close();
+  });
+
+  it("offers a newly registered kind once, and not one already on screen (#296)", () => {
+    const offerPanel = vi.fn();
+    const page = setup(withPanel, offerPanel);
+    registerPanelKind("sample", { kind: "editor", label: "Editor", mount: vi.fn() });
+    expect(offerPanel).not.toHaveBeenCalled();
+    const unregister = registerPanelKind("sample", { kind: "quickbar", label: "Quickbar", mount: vi.fn() });
+    expect(offerPanel).toHaveBeenCalledExactlyOnceWith("sample:quickbar");
+    syncPanelProviders();
+    expect(offerPanel).toHaveBeenCalledOnce();
+    unregister();
+    registerPanelKind("sample", { kind: "quickbar", label: "Quickbar", mount: vi.fn() });
+    expect(offerPanel).toHaveBeenCalledTimes(2);
     page.close();
   });
 

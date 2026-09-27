@@ -30,7 +30,7 @@ one row per available panel:
 Pressing `Enter` on a row toggles that panel on or off immediately - no reload
 needed. An `X` marks a panel that is currently on, a `.` marks one that is off.
 
-Mods that provide panels add rows below the built-in panels. A panel stays in its saved place when its mod is not loaded and shows the mod's name with a Remove button. Loading the mod fills that place again; Remove takes the panel out of the layout.
+Mods that provide panels add rows below the built-in panels. A panel stays in its saved place when its mod is not loaded and shows the mod's name with a Remove button. Loading the mod fills that place again; Remove takes the panel out of the layout. A mod's panel opens by itself the first time the mod or the feature that provides it is turned on. Close it and it stays closed until you turn it back on here.
 
 A new install opens with the panels of "The default arrangement" below, built around a large main view. Turn off any you do not want. A layout with every panel off stays that way the next time you start the game.
 
@@ -48,7 +48,7 @@ Panels can fill docked spaces or float above them inside the game viewport. Floa
   the same effect as unchecking it back in Subwindow setup.
 - **Float a panel: click Float in its title bar.** Drag the floating panel by its title bar, resize it from its lower-right grip, or click Dock to return it to its last docked place. Drag its title bar onto a dock zone to dock, swap or add it as a tab.
 
-Turning a panel off and on again restores its last floating or docked place. A panel with no saved place uses its standard dock. A disabled mod leaves a named placeholder in a floating panel as it does in a docked panel.
+Turning a panel off and on again restores its last floating or docked place. A panel with no saved place uses its standard dock. If other panels already sit on that side of the dungeon view, the new one joins them and shares their space, so the dungeon view keeps its size. A disabled mod leaves a named placeholder in a floating panel as it does in a docked panel.
 
 The dungeon view can move too. Drag the small grip in its top-right corner to dock it against another panel's edge, or drop it in the middle of a panel to trade places with it. It never closes, hides, floats or becomes a tab, so the map is always on screen.
 
