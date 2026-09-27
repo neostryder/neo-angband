@@ -77,6 +77,10 @@ still calls itself.
 - [Visible] [Save-Compat] **A character export is a plain JSON document.** A `.neochar` file holds the character and the save as readable JSON. An older character file still imports, and a save from before this change still loads. (#288)
 - [Visible] [Save-Compat] **Saved option defaults, monster memory, random-artifact exports and Linoleum tile packs are stored as JSON.** Your existing files convert the first time the game reads them, and the old copies are removed once the new ones read back correctly. A tile pack already saved in your browser converts the same way. If a file cannot be read, it is left untouched and the game uses the defaults for that session. (#288)
 
+### Fixed
+
+- [Visible] [UI] **Installing an update on Windows no longer opens a console window.** The script that swaps in the new version runs hidden, and the game still reopens on screen when it finishes. (#292)
+
 ## [1.18.0] - 2026-09-26
 
 ### Added
