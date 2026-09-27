@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 
+- [Internal] [Modding-API] **Interface mods can read travel routes, grid actions, and item rules.** Frozen inspect answers use the game's pathfinder, remembered terrain, and learned ignore settings; a display margin keeps whole map cells clear for mod controls. (#289)
 - [Internal] [Modding-API] **Mods can provide panels for the tiled subwindow layout.** `ctx.ui.registerPanelKind` adds a host-mounted shadow-root panel under `ui:panel.mount`, with saved placement, tabs, state updates, cleanup and a placeholder when its mod is not loaded. (#287)
 
 - [Visible] [UI] **Subwindow panels can share one space as tabs.** Dropping a panel on the new Tab target in the middle of another panel adds it as a tab, and a tab strip in the title bar switches between them. A window too small for every panel now folds the most cramped panel into a tab beside the panel closest to it in shape instead of hiding it, and separates them again when there is room. (#287)
