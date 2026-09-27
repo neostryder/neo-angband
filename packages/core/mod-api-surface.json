@@ -530,6 +530,7 @@
     "applyMagicWeapon",
     "applyRenderer",
     "applyRestoredItemArt",
+    "arcDiameter",
     "arenaInterceptDeath",
     "artifactGenName",
     "artifactHistoryName",

@@ -73,6 +73,7 @@ import {
   describeObject,
   objectInfoTextblock,
   gearGet,
+  objectIsInQuiver,
   buildLoreColorState,
   spellColorFor,
   blowColorFor,
@@ -756,7 +757,7 @@ import {
   applyIgnoreItemChoice,
   IGNORE_ACTION,
 } from "./ignore-menu";
-import { QUALITY_VALUE_NAMES, objectCopyAmt, bumpInputRevision, ballRadius, breathRadius } from "@rpgm-tools/neo-angband-core";
+import { objectCopyAmt, bumpInputRevision, ballRadius, breathRadius } from "@rpgm-tools/neo-angband-core";
 import type { Store } from "@rpgm-tools/neo-angband-core";
 import { helpLinesFromText, runHelp, setModHelpPages } from "./help";
 import {
@@ -6016,7 +6017,7 @@ async function chooseTarget(): Promise<boolean> {
 // '*'/<click> opens the interactive target loop; "'" targets the closest
 // monster; 5/t/0/. use the current target. Re-prompts (bell) if the player
 // backs out of the picker or asks for a target with none set/available.
-let pendingBlast: { radius: number; element: string; wallsStop: boolean } | null = null;
+let pendingBlast: { radius: number; arc?: number; element: string; wallsStop: boolean } | null = null;
 
 function blastFromEffect(chain: Effect | null | undefined): typeof pendingBlast {
   for (let effect = chain; effect; effect = effect.next) {
@@ -6027,7 +6028,10 @@ function blastFromEffect(chain: Effect | null | undefined): typeof pendingBlast 
     const element = game.booted.registries.projections?.[effect.subtype]?.name ??
       ELEMENT_ENTRIES[effect.subtype]?.name ??
       PROJECTION_ENTRIES[effect.subtype - ELEMENT_ENTRIES.length]?.name ?? "UNKNOWN";
-    return { radius, element, wallsStop: true };
+    /* effect_handler_BREATH widens any cone narrower than 20 degrees to 20. */
+    return effect.index === EF.BREATH
+      ? { radius, arc: Math.max(effect.other ?? 0, 20), element, wallsStop: true }
+      : { radius, element, wallsStop: true };
   }
   return null;
 }
@@ -9669,8 +9673,9 @@ const displayControl: ModDisplay = {
   setSidebarExtent(extent) {
     displaySidebarExtent = extent
       ? {
-          columns: Math.max(6, Math.min(32, Math.floor(extent.columns))),
-          topRows: Math.max(1, Math.min(4, Math.floor(extent.topRows))),
+          /* Zero is allowed, for a mod that shows the character card in its own pane. */
+          columns: Math.max(0, Math.min(32, Math.floor(extent.columns))),
+          topRows: Math.max(0, Math.min(4, Math.floor(extent.topRows))),
         }
       : null;
     renderBackground();
@@ -9829,6 +9834,8 @@ const modSnapshotSource: InputSnapshotSource = {
     }),
     reg: booted.registries.objects,
     glyphs: glyphs.agentGlyphs(),
+    describe: (obj: GameObject) => objectName(state, obj),
+    ignored: (obj: GameObject) => state.isIgnored?.(obj) ?? false,
     inspect: {
       objectInfo: inspectExtras,
       races: booted.registries.monsters.races,
@@ -9851,17 +9858,25 @@ const modSnapshotSource: InputSnapshotSource = {
               ? "modal"
               : "play",
   messagePending: () => morePending,
-  messages: () => msglog.all().map((entry) => entry.text),
+  messages: () => msglog.all(),
   storeStatus: () => {
     const store = storeModalActive ? storeAtPlayer() : null;
     if (!store) return null;
     return { feat: store.feat, ready: currentPrompt() === null && storeIntentReceiver !== null,
       noSelling: state.options?.get("birth_no_selling") ?? false,
-      inventory: state.gear.pack.flatMap((handle) => {
+      /* shop-sell takes worn items too. gear.pack still holds the quiver's handles. */
+      inventory: [
+        ...state.gear.pack.map((handle) => ({
+          handle,
+          location: objectIsInQuiver(state.gear, handle) ? "quiver" as const : "pack" as const,
+        })),
+        ...state.actor.player.equipment.filter((handle) => handle > 0)
+          .map((handle) => ({ handle, location: "equipment" as const })),
+      ].flatMap(({ handle, location }) => {
         const obj = gearGet(state.gear, handle);
         if (!obj) return [];
         const eligible = game.willBuy(store, obj);
-        return [{ handle, eligible, price: eligible && store.feat !== FEAT.HOME
+        return [{ handle, location, eligible, price: eligible && store.feat !== FEAT.HOME
           ? game.price(store, objectCopyAmt(obj, 1), true, 1) : null }];
       }) };
   },
@@ -9929,8 +9944,8 @@ setModIntentGate(createIntentGate({
     const rows = createAgentView(state, undefined, modSnapshotSource.viewDeps()).itemRules!();
     if (!Number.isSafeInteger(index) || index < 0) return false;
     if (rule === "quality") {
-      if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value >= QUALITY_VALUE_NAMES.length ||
-          !rows.quality.some((row) => row.itype === index)) return false;
+      const row = rows.quality.find((entry) => entry.itype === index);
+      if (!row || typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value >= row.levels.length) return false;
       state.ignore.level[index] = value;
     } else if (rule === "ego") {
       if (typeof value !== "boolean" || !Number.isSafeInteger(itype) ||
@@ -10472,13 +10487,15 @@ async function pumpMessages(preLen: number, force = false): Promise<void> {
     for (let i = 0; i < pages.length; i++) {
       const page = pages[i] ?? "";
       message = page;
+      /* Set before render(). The HUD sections are presented from this render,
+       * and nothing repaints them again until the pause ends. */
+      morePending = i < prompts;
       render();
       if (i < prompts) {
         // msg_flush(message_column + split + 1) (ui-input.c L575): the -more-
         // prompt sits one column after the message text, which now starts at
         // col 0 (REND-5), so no sidebar offset.
         term.print(page.length + 1, 0, "-more-", MORE_COLOR);
-        morePending = true;
         try {
           await waitAnyKey();
         } finally {

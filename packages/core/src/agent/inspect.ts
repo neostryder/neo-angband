@@ -18,7 +18,8 @@ import { spellDamageSummary } from "../effects/effect-info.js";
 import { loreDescription } from "../mon/lore-describe.js";
 import { monsterIsVisible } from "../mon/predicate.js";
 import { ODESC, objectDesc } from "../obj/desc.js";
-import { QUALITY_VALUE_NAMES, ITYPE_MAX, egoHasIgnoreType } from "../obj/ignore.js";
+import { IGNORE, QUALITY_VALUE_NAMES, ITYPE_MAX, egoHasIgnoreType } from "../obj/ignore.js";
+import { ITYPE } from "../generated/ignore-types.js";
 import type { GameObject } from "../obj/object.js";
 import {
   tvalIsEdible, tvalIsPotion,
@@ -27,6 +28,7 @@ import {
 import { PY_SPELL, objCanBrowse, objCanCastFrom, objCanStudy, playerObjectToBook, spellByIndex, spellChance, spellOkayToCast } from "../player/spell.js";
 import { Chunk, featIsPassable } from "../world/chunk.js";
 import { PROJECT, computeProjection, projectPath } from "../world/project.js";
+import { arcDiameter } from "../game/project-cast.js";
 import { inputToken } from "./boundary.js";
 import { simulateLoadout } from "./loadout.js";
 import { AgentCapabilityError } from "./types.js";
@@ -72,6 +74,8 @@ export interface GridInspectResult {
 
 export interface BlastAreaResult extends GridInspectResult {
   readonly radius: number;
+  /** A breath's cone width in degrees; null for a ball. */
+  readonly arc: number | null;
   readonly element: string | null;
   readonly wallsStop: boolean;
 }
@@ -111,7 +115,8 @@ export interface TerrainCatalogueResult {
 export interface ItemRulesResult {
   readonly token: ReturnType<typeof inputToken>;
   readonly kinds: readonly { readonly kidx: number; readonly name: string; readonly ignoreAware: boolean; readonly ignoreUnaware: boolean; readonly noteAware: string | null; readonly noteUnaware: string | null }[];
-  readonly quality: readonly { readonly itype: number; readonly name: string; readonly threshold: number; readonly thresholdName: string }[];
+  /** `levels` names the thresholds the game's quality menu offers for the type, by value. */
+  readonly quality: readonly { readonly itype: number; readonly name: string; readonly threshold: number; readonly thresholdName: string; readonly levels: readonly string[] }[];
   readonly egos: readonly { readonly eidx: number; readonly name: string; readonly itype: number; readonly ignored: boolean }[];
 }
 
@@ -286,11 +291,19 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
       const grids = valid(to) ? projectPath(knownChunk(state), state.z.maxRange, state.actor.grid, to, PROJECT.INFO | PROJECT.STOP) : [];
       return freeze({ token: at(), grids });
     }),
-    blastArea: gate(caps, "map", (to: { x: number; y: number }, radius: number): BlastAreaResult => {
-      const metadata = { radius, element: deps.inspect?.activeBlast?.()?.element ?? null, wallsStop: true };
+    blastArea: gate(caps, "map", (to: { x: number; y: number }, radius: number, arc?: number): BlastAreaResult => {
+      const active = deps.inspect?.activeBlast?.();
+      /* An explicit arc wins; otherwise the effect being aimed decides, so a
+       * breath previews as its cone. 0 asks for a ball. */
+      const degrees = arc !== undefined ? (Number.isSafeInteger(arc) && arc > 0 ? Math.max(arc, 20) : null) : (active?.arc ?? null);
+      const metadata = { radius, arc: degrees, element: active?.element ?? null, wallsStop: true };
       if (!valid(to) || !Number.isSafeInteger(radius) || radius < 1) return freeze({ token: at(), grids: [], ...metadata });
+      /* effect_handler_BREATH's projection: PROJECT_ARC with the cone's width
+       * and a source diameter of 4, widened as the cone narrows. */
       const grids = computeProjection(knownChunk(state), { origin: state.actor.grid, finish: to, rad: radius,
-        typ: 0, flg: PROJECT.INFO | PROJECT.STOP | PROJECT.KILL, maxRange: state.z.maxRange, dam: 0 }).grids;
+        typ: 0, flg: PROJECT.INFO | PROJECT.STOP | PROJECT.KILL | (degrees !== null ? PROJECT.ARC : 0),
+        maxRange: state.z.maxRange, dam: 0,
+        ...(degrees !== null ? { degreesOfArc: degrees, diameterOfSource: arcDiameter(4, degrees) } : {}) }).grids;
       return freeze({ token: at(), grids, ...metadata });
     }),
     travelPath: gate(caps, "map", (to: { x: number; y: number }): TravelPathResult | null => {
@@ -361,8 +374,11 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
       const quality = Array.from({ length: ITYPE_MAX - 1 }, (_, index) => {
         const itype = index + 1;
         const threshold = state.ignore.level[itype] ?? 0;
+        /* quality_action (ui-options.c): rings and amulets stop at "bad". */
+        const levelCount = itype === ITYPE.RING || itype === ITYPE.AMULET ? IGNORE.BAD + 1 : IGNORE.MAX;
         return { itype, name: IGNORE_TYPE_ENTRIES[itype]?.description ?? "", threshold,
-          thresholdName: QUALITY_VALUE_NAMES[threshold] ?? QUALITY_VALUE_NAMES[0]! };
+          thresholdName: QUALITY_VALUE_NAMES[threshold] ?? QUALITY_VALUE_NAMES[0]!,
+          levels: QUALITY_VALUE_NAMES.slice(0, levelCount) };
       });
       const egos = (reg?.egos ?? []).filter((ego) => ego && (state.everseen?.egoSeen(ego) ?? false))
         .flatMap((ego) => quality.filter(({ itype }) => egoHasIgnoreType(ego, itype, reg!.kinds))

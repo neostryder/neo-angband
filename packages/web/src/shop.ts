@@ -452,7 +452,7 @@ function storeConfirm(
       if (ev.key === "Escape" || ev.key === "n" || ev.key === "N") return finish(false);
       finish(true);
     };
-    const wait = openPrompt({ kind: "confirm", label: prompt }, (answer) => {
+    const wait = openPrompt({ kind: "confirm", label: prompt, ...(price !== undefined ? { price } : {}) }, (answer) => {
       if (typeof answer === "object" && answer.action === "cancel") {
         finish(false);
         return { accepted: true };

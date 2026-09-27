@@ -360,7 +360,11 @@ export function createAgentView(
     ),
     floorItems: gateRead(caps, D.floor, (x: number, y: number) => {
       const pile = state.floor.get(y * state.chunk.width + x) ?? [];
-      return pile.map((obj) => itemView(0, obj, state, deps));
+      /* A floor object has no handle, so it is named by where it lies. The
+       * index is the one a command's args.floor takes for the pile under the
+       * player, and the key changes when the pile does. */
+      return pile.map((obj, index) =>
+        ({ ...itemView(0, obj, state, deps), itemKey: `floor:${x},${y}:${index}`, floorIndex: index }));
     }),
     target: gateRead(caps, D.target, (): TargetView | null => {
       const t = state.target;

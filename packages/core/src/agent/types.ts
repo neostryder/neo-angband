@@ -34,6 +34,7 @@ import type { GameConstants, PlayerCommand } from "../game/context.js";
 import type { ContentIdResolver } from "../mod/ids.js";
 import type { ObjRegistry } from "../obj/bind.js";
 import type { ObjectKind } from "../obj/types.js";
+import type { GameObject } from "../obj/object.js";
 import type { ObjectInfoExtras } from "../game/object-inspect.js";
 import type { MonsterRace } from "../mon/types.js";
 import type { LoreDeps } from "../mon/lore-describe.js";
@@ -418,6 +419,16 @@ export interface ItemView {
   activation: boolean;
   timeout: number;
   inscription: string | null;
+  /** A floor object's place in the pile under its grid, as a command's `args.floor` takes it. */
+  floorIndex?: number;
+  /**
+   * The name the inventory shows (object_desc with its article and every detail
+   * the player knows), present when the host supplies `describe`. `label` stays
+   * the kind's raw name.
+   */
+  name?: string;
+  /** Whether the game ignores this object now (ignore_item_ok), present when the host supplies `ignored`. */
+  ignored?: boolean;
   /** Namespaced kind id, when a ContentIdResolver dep is supplied. */
   kindId?: string;
   /** objectValue for this stack, when a registry dep is supplied. */
@@ -691,7 +702,7 @@ export interface AgentView {
   /** Path through remembered terrain, stopping at visible monsters. */
   projectionPath?(to: { x: number; y: number }): GridInspectResult;
   /** Ball grids through remembered terrain. */
-  blastArea?(to: { x: number; y: number }, radius: number): BlastAreaResult;
+  blastArea?(to: { x: number; y: number }, radius: number, arc?: number): BlastAreaResult;
   /** The travel command's walking route over the remembered map. */
   travelPath?(to: { x: number; y: number }): TravelPathResult | null;
   /** Registered command codes eligible at one remembered grid. */
@@ -742,7 +753,7 @@ export interface AgentViewDeps {
     races: readonly MonsterRace[];
     loreDeps: () => LoreDeps;
     projections: readonly ProjectionInfo[];
-    activeBlast?: () => { readonly radius: number; readonly element: string; readonly wallsStop: boolean } | null;
+    activeBlast?: () => { readonly radius: number; readonly arc?: number; readonly element: string; readonly wallsStop: boolean } | null;
     /** The command's door-lock predicate uses the bound trap kinds. */
     trapDeps?: import("../game/trap.js").TrapDeps;
   };
@@ -761,6 +772,10 @@ export interface AgentViewDeps {
   reg?: ObjRegistry;
   /** object_flavor_is_aware(kind), for object value/price dispatch. */
   aware?: (kind: ObjectKind) => boolean;
+  /** object_desc for an ItemView's `name`; absent, views carry no name. */
+  describe?: (obj: GameObject) => string;
+  /** ignore_item_ok for an ItemView's `ignored`; absent, views carry no ignore mark. */
+  ignored?: (obj: GameObject) => boolean;
   /** OPT(player, birth_no_selling), for store buy pricing. */
   noSelling?: boolean;
   /**

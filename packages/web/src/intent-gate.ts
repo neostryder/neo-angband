@@ -1,8 +1,10 @@
 /** Submit a mod's player intent through the host's ordinary input path. */
 import {
+  cmdVerb,
   createAgentActions,
   bumpInputRevision,
   disturb,
+  floorPile,
   inputToken,
   targetAble,
   tokenIsCurrent,
@@ -33,7 +35,7 @@ export interface IntentResult {
 
 export interface ModIntent {
   submit(token: InputToken, intent: PlayerIntent): IntentResult;
-  catalogue?(): Readonly<{ token: InputToken; commands: readonly Readonly<{ code: string; args: string; phase: "play" | "store" }>[]; intents: readonly Readonly<{ kind: string; args: string }>[] }>;
+  catalogue?(): Readonly<{ token: InputToken; commands: readonly Readonly<{ code: string; verb: string | null; args: string; phase: "play" | "store" }>[]; intents: readonly Readonly<{ kind: string; args: string }>[] }>;
 }
 
 export interface IntentGateDeps {
@@ -49,6 +51,14 @@ export interface IntentGateDeps {
 }
 
 const STORE_CODES = new Set(["shop-buy", "shop-sell", "shop-exit"]);
+/** Action codes whose command in cmd_verb's table is spelled differently. */
+const VERB_CODES: Readonly<Record<string, string>> = {
+  "aim-wand": "use-wand",
+  "zap-rod": "use-rod",
+  read: "read-scroll",
+  "shop-buy": "buy",
+  "shop-sell": "sell",
+};
 const DIRECTION_CODES = new Set([
   "walk", "jump", "run", "open", "close", "disarm", "lock", "tunnel",
   "alter", "steal",
@@ -60,7 +70,7 @@ const HANDLE_CODES = new Set([
 ]);
 const FLOOR_ITEM_CODES = new Set([
   "quaff", "read", "eat", "wield", "aim-wand", "zap-rod", "use-staff",
-  "activate", "throw", "refill", "inscribe", "uninscribe",
+  "activate", "throw", "refill", "inscribe", "uninscribe", "pickup",
 ]);
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -102,6 +112,7 @@ function validCommand(command: unknown): command is AgentCommand {
   }
   if (command.code === "cast" && (!integer(args?.spell) || args.spell < 0)) return false;
   if (command.code === "study" && !integer(args?.handle)) return false;
+  if (args?.floor !== undefined && (!FLOOR_ITEM_CODES.has(command.code) || !integer(args.floor) || args.floor < 0)) return false;
   if (command.code === "shop-buy" && (!integer(args?.index) || args.index < 0)) return false;
   if (command.code === "look" && args !== undefined &&
       (Object.keys(args).length !== 2 || !integer(args.x) || !integer(args.y))) return false;
@@ -119,14 +130,21 @@ export function createIntentGate(deps: IntentGateDeps): ModIntent {
   return {
     catalogue() {
       const commands = deps.registry.codes().map((code) => Object.freeze({ code,
+        /* cmd_verb: the game's own name for the command, lower case, as it says
+         * it mid-sentence. A mod's command has the verb it set with setVerb. */
+        verb: cmdVerb(VERB_CODES[code] ?? code, deps.state.commandVerbs) ?? cmdVerb(code, deps.state.commandVerbs),
         phase: (STORE_CODES.has(code) ? "store" : "play") as "store" | "play",
         args: DIRECTION_CODES.has(code) ? "dir: 1..9" :
           code === "shop-sell" ? "args: {handle: integer, quantity?: positive integer (ignored)}" :
+            FLOOR_ITEM_CODES.has(code) && HANDLE_CODES.has(code)
+              ? "args: {handle: integer OR floor: nonnegative integer, quantity?: positive integer}" :
             HANDLE_CODES.has(code) ? "args: {handle: integer, quantity?: positive integer}" :
+              code === "pickup" ? "args?: {floor: nonnegative integer}" :
               code === "shop-buy" ? "args: {index: nonnegative integer, quantity?: positive integer (ignored)}" :
               code === "cast" ? "args: {spell: nonnegative integer}" :
                 code === "rest" ? "args?: {count: integer}" :
                   code === "pathfind" ? "args: {dest: {x: integer, y: integer}}" :
+                  code === "study" ? "args: {handle: integer, spell?: nonnegative integer}" :
                     code === "look" ? "args?: {x: integer, y: integer}" :
                       "args?: plain object",
       }));
@@ -190,9 +208,8 @@ export function createIntentGate(deps: IntentGateDeps): ModIntent {
             Object.keys(modifiers).some((key) => !["shift", "ctrl"].includes(key)) ||
             Object.values(modifiers).some((value) => typeof value !== "boolean"))) return reject("malformed modifiers");
         if (modifiers?.ctrl) {
-          if (phase !== "play" || !state.chunk.inBoundsFully({ x: intent.x, y: intent.y })) {
-            return reject("malformed target location");
-          }
+          if (phase !== "play") return reject("input is not in play phase");
+          if (!state.chunk.inBoundsFully({ x: intent.x, y: intent.y })) return reject("malformed target location");
           createAgentActions(state).setTargetLocation(intent.x, intent.y);
           return { accepted: true };
         }
@@ -215,6 +232,10 @@ export function createIntentGate(deps: IntentGateDeps): ModIntent {
       if (phase === "play" && STORE_CODES.has(command.code)) return reject("store is not open");
       if (!registry.has(command.code)) return reject("unknown command code");
       if (!validCommand(command)) return reject("malformed command arguments");
+      const floor = command.args?.floor;
+      if (typeof floor === "number" && floor >= floorPile(state, state.actor.grid).length) {
+        return reject("no object at that floor index");
+      }
       if (command.code === "pathfind" &&
           !state.chunk.inBounds(command.args!.dest as { x: number; y: number })) {
         return reject("malformed travel destination");

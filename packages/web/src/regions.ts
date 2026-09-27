@@ -212,7 +212,7 @@ export function screenRegions(
       : layout.sidebar === "top"
         ? region(
             "sidebar",
-            { col: 0, row: 1, cols, rows: Math.max(1, layout.sidebarTopRows ?? 1) },
+            { col: 0, row: 1, cols, rows: Math.max(0, layout.sidebarTopRows ?? 1) },
             metrics,
           )
         : /* None: the player turned the vitals furniture off entirely. */

@@ -5,7 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { AgentCapabilityError, createAgentView, MFLAG, saveGame, startGame, tokenIsCurrent } from "@rpgm-tools/neo-angband-core";
+import { AgentCapabilityError, createAgentView, MFLAG, REST_COMPLETE, REST_SOME_POINTS, saveGame, startGame, tokenIsCurrent } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { GamePack } from "@rpgm-tools/neo-angband-core";
 import { buildInputSnapshot, buildKnownLevel, type InputSnapshotSource } from "./input-snapshot";
@@ -87,8 +87,22 @@ function caps(...granted: string[]) {
 }
 
 describe("buildInputSnapshot", () => {
+  it("names the rest mode and keeps the requested length of a timed rest", () => {
+    const readRest = () => buildInputSnapshot(source(), caps("state:interaction.read"))!.resting;
+    try {
+      game.state.resting = { count: 30, turnsRested: 20 };
+      expect(readRest()).toEqual({ active: true, mode: "turns", turnsRequested: 50, turnsRemaining: 30, turnsRested: 20 });
+      game.state.resting = { count: REST_COMPLETE, turnsRested: 4 };
+      expect(readRest()).toEqual({ active: true, mode: "complete", turnsRequested: null, turnsRemaining: null, turnsRested: 4 });
+      game.state.resting = { count: REST_SOME_POINTS, turnsRested: 0 };
+      expect(readRest()?.mode).toBe("some-points");
+    } finally {
+      delete game.state.resting;
+    }
+  });
+
   it("gates and freezes rest, message, store and active blast reads", () => {
-    const sourceWithReads = source({ messages: () => ["One", "Two"],
+    const sourceWithReads = source({ messages: () => [{ text: "One", count: 1 }, { text: "Two", count: 3, color: "#fff" }],
       storeStatus: () => ({ feat: 9, ready: true, noSelling: false,
         inventory: [{ handle: 1, eligible: true, price: 12 }] }),
       activeBlast: () => ({ radius: 3, element: "FIRE", wallsStop: true }),
@@ -98,11 +112,12 @@ describe("buildInputSnapshot", () => {
     for (let i = 0; i < 5; i++) {
       const snap = buildInputSnapshot(sourceWithReads,
         caps("state:interaction.read", "state:messages.read", "state:stores.read", "state:inventory.read", "state:map.read"))!;
-      expect(snap.messages).toEqual({ token: snap.token, entries: ["One", "Two"] });
+      expect(snap.messages).toEqual({ token: snap.token, entries: ["One", "Two"],
+        log: [{ text: "One", count: 1 }, { text: "Two", count: 3, color: "#fff" }] });
       expect(snap.storeStatus).toMatchObject({ token: snap.token, feat: 9, ready: true,
         inventory: [{ handle: 1, price: 12 }] });
       expect(snap.activeBlast).toEqual({ token: snap.token, radius: 3, element: "FIRE", wallsStop: true });
-      expect(snap.resting).toEqual({ active: false, mode: null, turnsRemaining: null });
+      expect(snap.resting).toEqual({ active: false, mode: null, turnsRequested: null, turnsRemaining: null, turnsRested: null });
       expect(Object.isFrozen(snap.messages?.entries)).toBe(true);
       expect(Object.isFrozen(snap.storeStatus?.inventory[0])).toBe(true);
       expect(Object.isFrozen(snap.activeBlast)).toBe(true);

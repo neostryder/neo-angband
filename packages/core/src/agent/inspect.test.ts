@@ -12,6 +12,8 @@ import { tvalIsPotion } from "../obj/object.js";
 import { spellByIndex, spellChance } from "../player/spell.js";
 import { makeSpellChanceEnv } from "../game/spell-cmd.js";
 import { floorPile } from "../game/floor.js";
+import { IGNORE, QUALITY_VALUE_NAMES } from "../obj/ignore.js";
+import { ITYPE } from "../generated/ignore-types.js";
 import { saveGame, startGame } from "../session/game.js";
 import type { GamePack, StartedGame } from "../session/game.js";
 import { AgentCapabilityError } from "./types.js";
@@ -170,6 +172,26 @@ describe("inspection reads", () => {
     expect(fingerprint(game)).toBe(before);
   });
 
+  it("keys floor objects by grid and pile index, and names them when the host can", () => {
+    const game = newGame();
+    const state = game.state;
+    const potion = game.booted.registries.objects.kinds.find((kind) => tvalIsPotion(kind.tval))!;
+    const grid = { x: state.actor.grid.x, y: state.actor.grid.y };
+    const floorKey = grid.y * state.chunk.width + grid.x;
+    const objs = [0, 1].map(() => objectPrep(state.rng, game.booted.registries.objects, game.booted.registries.constants, potion, 1, "minimise"));
+    state.floor.set(floorKey, objs);
+    const bare = createAgentView(state).floorItems(grid.x, grid.y);
+    expect(bare.map((item) => [item.itemKey, item.floorIndex])).toEqual([
+      [`floor:${grid.x},${grid.y}:0`, 0], [`floor:${grid.x},${grid.y}:1`, 1]]);
+    expect(bare[0]).not.toHaveProperty("name");
+    expect(bare[0]).not.toHaveProperty("ignored");
+    const named = createAgentView(state, undefined, {
+      describe: (obj) => `a ${obj.kind.name}`,
+      ignored: (obj) => obj === objs[1],
+    }).floorItems(grid.x, grid.y);
+    expect(named.map((item) => [item.name, item.ignored])).toEqual([[`a ${potion.name}`, false], [`a ${potion.name}`, true]]);
+  });
+
   it("answers only for floor objects the player remembers and races the player has met", () => {
     const game = newGame();
     const state = game.state;
@@ -268,6 +290,21 @@ describe("inspection reads", () => {
     expect(() => inventoryOnly.inspectItem!({ store: storeIndex, index: 0 })).toThrow(AgentCapabilityError);
   });
 
+  it("previews a breath as its cone rather than a ball (#294)", () => {
+    const game = newGame();
+    const state = game.state;
+    const view = viewFor(game).view;
+    const to = { x: state.actor.grid.x + 4, y: state.actor.grid.y };
+    const ball = view.blastArea!(to, 4, 0);
+    const cone = view.blastArea!(to, 4, 30);
+    expect(ball.arc).toBeNull();
+    expect(cone.arc).toBe(30);
+    expect(cone.grids).not.toEqual(ball.grids);
+    /* A cone opens away from the breather, so nothing behind it is caught. */
+    for (const grid of cone.grids) expect(grid.x).toBeGreaterThanOrEqual(state.actor.grid.x);
+    expect(view.blastArea!(to, 4, 5).arc).toBe(20);
+  });
+
   it("reports the travel command's remembered route without changing the game", () => {
     const game = newGame();
     const state = game.state;
@@ -340,6 +377,9 @@ describe("inspection reads", () => {
       expect(Object.isFrozen(rules.kinds)).toBe(true);
       expect(rules.kinds.find((row) => row.kidx === kind.kidx)).toMatchObject({ ignoreAware: true, noteAware: "@m1", noteUnaware: "@m2" });
       expect(rules.quality).toHaveLength(26);
+      expect(rules.quality.find((row) => row.itype === ITYPE.RING)?.levels).toEqual(["no ignore", "bad"]);
+      expect(rules.quality.find((row) => row.itype === ITYPE.AMULET)?.levels).toHaveLength(2);
+      expect(rules.quality.find((row) => row.itype === ITYPE.SHARP)?.levels).toEqual(QUALITY_VALUE_NAMES.slice(0, IGNORE.MAX));
     }
     expect(fingerprint(game)).toBe(before);
   });

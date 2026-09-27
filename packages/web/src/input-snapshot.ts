@@ -44,6 +44,7 @@ import type {
   TravelPathResult,
   SpellInspectResult,
 } from "@rpgm-tools/neo-angband-core";
+import { REST_ALL_POINTS, REST_COMPLETE, REST_SOME_POINTS } from "@rpgm-tools/neo-angband-core";
 import { snapshotWorldFrame } from "./world-view";
 import type { WorldFrame } from "./world-view";
 import type { PromptDescriptor } from "./prompt-view";
@@ -83,12 +84,31 @@ export interface InputSnapshot {
   readonly phase: InteractionPhase | null;
   /** Whether a "-more-" pause holds input. Null without `state:interaction.read`. */
   readonly messagePending: boolean | null;
-  /** The live player_resting count; null without interaction read access. */
-  readonly resting: Readonly<{ active: boolean; mode: number | null; turnsRemaining: number | null }> | null;
+  /**
+   * The current rest; null without interaction read access. `mode` is "turns"
+   * for a timed rest or the condition a special rest waits for; `turnsRequested`
+   * is the length a timed rest was asked to run.
+   */
+  readonly resting: Readonly<{
+    active: boolean;
+    mode: RestMode | null;
+    turnsRequested: number | null;
+    turnsRemaining: number | null;
+    turnsRested: number | null;
+  }> | null;
   /** Message history without consuming the agent's per-decision stream. */
-  readonly messages: Readonly<{ token: InputToken; entries: readonly string[] }> | null;
-  readonly storeStatus: Readonly<{ token: InputToken; feat: number; ready: boolean; noSelling: boolean; inventory: readonly Readonly<{ handle: number; eligible: boolean; price: number | null }>[] }> | null;
-  readonly activeBlast: Readonly<{ token: InputToken; radius: number; element: string; wallsStop: boolean }> | null;
+  /**
+   * The message history, oldest first. `entries` is the text alone; `log`
+   * carries each entry's repeat count and colour as the message history shows
+   * them. Reading it does not drain the log.
+   */
+  readonly messages: Readonly<{
+    token: InputToken;
+    entries: readonly string[];
+    log: readonly Readonly<{ text: string; count: number; color?: string }>[];
+  }> | null;
+  readonly storeStatus: Readonly<{ token: InputToken; feat: number; ready: boolean; noSelling: boolean; inventory: readonly Readonly<{ handle: number; location?: "pack" | "quiver" | "equipment"; eligible: boolean; price: number | null }>[] }> | null;
+  readonly activeBlast: Readonly<{ token: InputToken; radius: number; arc?: number; element: string; wallsStop: boolean }> | null;
   /** The open question, or null without `state:interaction.read`. */
   readonly prompt: PromptDescriptor | null;
   /** What the game knows at this wait (agent/boundary.ts). */
@@ -109,11 +129,11 @@ export interface InputSnapshotSource {
   viewDeps(): AgentViewDeps;
   phase(): InteractionPhase;
   messagePending(): boolean;
-  messages?(): readonly string[];
+  messages?(): readonly Readonly<{ text: string; count: number; color?: string }>[];
   storeStatus?(): Omit<NonNullable<InputSnapshot["storeStatus"]>, "token"> | null;
   characterKey?(): string | null;
   characterSheet?(): import("./charsheet").CharacterSheetData | null;
-  activeBlast?(): { readonly radius: number; readonly element: string; readonly wallsStop: boolean } | null;
+  activeBlast?(): { readonly radius: number; readonly arc?: number; readonly element: string; readonly wallsStop: boolean } | null;
   prompt(): PromptDescriptor | null;
   /** The last produced frame, live; this module copies it. */
   frame(): WorldFrame | null;
@@ -144,11 +164,20 @@ export function buildInputSnapshot(
     driver: frozenDriver(source.driver?.() ?? { kind: "player" }),
     phase: interaction ? source.phase() : null,
     messagePending: interaction ? source.messagePending() : null,
-    resting: interaction ? Object.freeze({ active: !!state.resting,
-      mode: state.resting?.count ?? null,
-      turnsRemaining: state.resting && state.resting.count > 0 ? state.resting.count : null }) : null,
+    resting: interaction ? restingView(state.resting) : null,
     messages: grants(caps, "state:messages.read") && source.messages
-      ? Object.freeze({ token: core.token, entries: Object.freeze([...source.messages()]) }) : null,
+      ? (() => {
+        const log = source.messages!().map((m) => Object.freeze({
+          text: m.text,
+          count: m.count,
+          ...(m.color === undefined ? {} : { color: m.color }),
+        }));
+        return Object.freeze({
+          token: core.token,
+          entries: Object.freeze(log.map((m) => m.text)),
+          log: Object.freeze(log),
+        });
+      })() : null,
     storeStatus: grants(caps, "state:stores.read") && grants(caps, "state:inventory.read")
       && source.storeStatus ? (() => {
         const status = source.storeStatus!();
@@ -182,7 +211,7 @@ export interface ModInspect {
   spellInfo(spellIndex: number): SpellInspectResult | null;
   itemTester(code: string): ItemTesterResult | null;
   projectionPath(to: { x: number; y: number }): GridInspectResult | null;
-  blastArea(to: { x: number; y: number }, radius: number): BlastAreaResult | null;
+  blastArea(to: { x: number; y: number }, radius: number, arc?: number): BlastAreaResult | null;
   travelPath(to: { x: number; y: number }): TravelPathResult | null;
   tileActions(to: { x: number; y: number }): TileActionsResult | null;
   itemRules(): ItemRulesResult | null;
@@ -206,10 +235,36 @@ export function buildInspect(
     spellInfo: (spellIndex) => view()?.spellInfo?.(spellIndex) ?? null,
     itemTester: (code) => view()?.itemTester?.(code) ?? null,
     projectionPath: (to) => view()?.projectionPath?.(to) ?? null,
-    blastArea: (to, radius) => view()?.blastArea?.(to, radius) ?? null,
+    blastArea: (to, radius, arc) => view()?.blastArea?.(to, radius, arc) ?? null,
     travelPath: (to) => view()?.travelPath?.(to) ?? null,
     tileActions: (to) => view()?.tileActions?.(to) ?? null,
     itemRules: () => view()?.itemRules?.() ?? null,
     terrainCatalogue: () => view()?.terrainCatalogue?.() ?? null,
   } satisfies ModInspect);
+}
+
+/** What a rest runs until: a turn count, or one of the three conditions `R` offers. */
+export type RestMode = "turns" | "complete" | "all-points" | "some-points";
+
+const SPECIAL_REST_MODES: ReadonlyMap<number, RestMode> = new Map([
+  [REST_COMPLETE, "complete"],
+  [REST_ALL_POINTS, "all-points"],
+  [REST_SOME_POINTS, "some-points"],
+]);
+
+function restingView(resting: { count: number; turnsRested: number } | undefined): InputSnapshot["resting"] {
+  if (!resting) {
+    return Object.freeze({ active: false, mode: null, turnsRequested: null, turnsRemaining: null, turnsRested: null });
+  }
+  const special = SPECIAL_REST_MODES.get(resting.count);
+  const timed = special === undefined && resting.count > 0;
+  return Object.freeze({
+    active: true,
+    mode: special ?? (timed ? "turns" : null),
+    /* One state.resting record lives for the whole timed rest, so the turns
+     * already rested plus the turns left is the length the rest was given. */
+    turnsRequested: timed ? resting.turnsRested + resting.count : null,
+    turnsRemaining: timed ? resting.count : null,
+    turnsRested: resting.turnsRested,
+  });
 }

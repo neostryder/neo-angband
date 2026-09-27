@@ -1269,6 +1269,11 @@ function textInlineShown(
     let firsttime = true;
     let composing = false;
     const x = prompt.length;
+    /* The price of every quantity the prompt accepts, so a mod replying with a
+     * number can show its total before it answers. */
+    const totals = quantityMax !== undefined && pricing
+      ? Array.from({ length: quantityMax + 1 }, (_, quantity) => pricing.total(quantity))
+      : undefined;
     const paint = (): void => {
       if (quantityMax !== undefined && pricing) {
         const parsed = Number.parseInt(st.buf, 10);
@@ -1276,7 +1281,7 @@ function textInlineShown(
           Math.max(0, Math.min(quantityMax, Number.isFinite(parsed) ? parsed : 0));
         wait.update({ kind: "quantity", label: prompt, min: 0, max: quantityMax,
           defaultValue: 1, unitPrice: pricing.unitPrice,
-          totalPrice: pricing.total(quantity), gold: pricing.gold });
+          totalPrice: pricing.total(quantity), ...(totals ? { totals } : {}), gold: pricing.gold });
       }
       const { cols } = term.size();
       /* The caller's own `prt(prompt, row, 0)` (e.g. ui-input.c:1153, :1189,
@@ -1340,13 +1345,17 @@ function textInlineShown(
     const wait = quantityMax === undefined
       ? openPrompt({ kind: "text", label: prompt, maxLength: maxLen, defaultValue: initial,
         ...(tag ? { tag } : {}) }, (answer) => {
+        if (typeof answer === "object" && answer.action === "cancel") {
+          finish(null);
+          return { accepted: true };
+        }
         if (typeof answer !== "string" || answer.length > maxLen || /[\r\n]/u.test(answer))
           return { accepted: false, reason: "invalid text" };
         finish(answer);
         return { accepted: true };
       })
       : openPrompt({ kind: "quantity", label: prompt, min: 0, max: quantityMax, defaultValue: 1,
-        ...(pricing ? { unitPrice: pricing.unitPrice, totalPrice: pricing.total(1), gold: pricing.gold } : {}) }, (answer) => {
+        ...(pricing ? { unitPrice: pricing.unitPrice, totalPrice: pricing.total(1), ...(totals ? { totals } : {}), gold: pricing.gold } : {}) }, (answer) => {
         if (typeof answer === "object" && answer.action === "cancel") {
           finish(null);
           return { accepted: true };
@@ -1571,6 +1580,10 @@ export function promptText(
       composing = false;
     };
     const wait = openPrompt({ kind: "text", label: title, maxLength: maxLen, defaultValue: initial }, (answer) => {
+      if (typeof answer === "object" && answer.action === "cancel") {
+        finish(null);
+        return { accepted: true };
+      }
       if (typeof answer !== "string" || answer.length > maxLen || /[\r\n]/u.test(answer))
         return { accepted: false, reason: "invalid text" };
       finish(answer);
@@ -1661,6 +1674,10 @@ export function promptPastedText(
       paint();
     };
     const wait = openPrompt({ kind: "text", label: title, maxLength: maxLen, defaultValue: "" }, (answer) => {
+      if (typeof answer === "object" && answer.action === "cancel") {
+        finish(null);
+        return { accepted: true };
+      }
       if (typeof answer !== "string" || answer.length === 0 || answer.length > maxLen)
         return { accepted: false, reason: "invalid pasted text" };
       finish(answer);
@@ -2330,6 +2347,10 @@ export function selectFromMenu(
     };
     const spellWait = extra?.promptSpellChoices && !extra.browseOnly
       ? openPrompt({ kind: "spell", label: title, choices: extra.promptSpellChoices }, (answer) => {
+        if (typeof answer === "object" && answer.action === "cancel") {
+          finish(null);
+          return { accepted: true };
+        }
         if (typeof answer !== "number" || !Number.isInteger(answer))
           return { accepted: false, reason: "expected spell index" };
         const source = extra.promptSpellChoices!.findIndex((choice) => choice.index === answer);

@@ -44,6 +44,19 @@ describe("typed prompt replies", () => {
     expect(await keyboard).toBe(true);
   });
 
+  it("takes a cancel reply on a text prompt, and prices every quantity (#294)", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const textDone = promptText(makeTerm(), "Name", "", 8);
+    expect(modPrompt.reply(currentPrompt()!.promptId, { action: "cancel" })).toEqual({ accepted: true });
+    expect(await textDone).toBeNull();
+    const qtyDone = getQuantity(makeTerm(80), null, 3, { unitPrice: 10, gold: 100, total: (q) => q * 10 - (q > 1 ? 1 : 0) });
+    const qtyPrompt = currentPrompt();
+    expect(qtyPrompt).toMatchObject({ kind: "quantity", unitPrice: 10, totalPrice: 10, totals: [0, 10, 19, 29] });
+    expect(modPrompt.reply(qtyPrompt!.promptId, { action: "cancel" })).toEqual({ accepted: true });
+    expect(await qtyDone).toBe(0);
+  });
+
   it("answers text and quantity waits with their advertised limits", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;

@@ -401,6 +401,24 @@ describe("doAutopickup / playerPickupItem", () => {
     expect(state.actor.energy).toBe(startEnergy - result.energyUsed);
   });
 
+  it("the registered pickup command takes the object args.floor names", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    underfoot(state, makeObj(TV.POTION));
+    underfoot(state, makeObj(TV.SCROLL));
+    const pile = floorPile(state, loc(5, 5));
+    const wanted = pile[1]!;
+    const other = pile[0]!;
+    const registry = createDefaultRegistry();
+    installPickup(state, registry, deps);
+
+    let sent = false;
+    state.nextCommand = (): { code: string; args: { floor: number } } | null =>
+      sent ? null : ((sent = true), { code: "pickup", args: { floor: 1 } });
+    processPlayer(state, registry);
+    expect(floorPile(state, loc(5, 5))).toEqual([other]);
+    expect(wanted.grid).toBeNull();
+  });
+
   it("stepping onto a pile auto-collects gold (walk wiring)", () => {
     const state = makeState({ playerGrid: loc(5, 5) });
     floorCarry(state, loc(6, 5), makeGold(75));

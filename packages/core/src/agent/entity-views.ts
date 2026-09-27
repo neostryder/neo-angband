@@ -153,6 +153,8 @@ export function itemView(
     timeout: obj.timeout,
     inscription: obj.note ?? null,
   };
+  if (deps.describe) view.name = deps.describe(obj);
+  if (deps.ignored) view.ignored = deps.ignored(obj);
   if (deps.resolver) {
     const kindId = deps.resolver.kindIdOrNull(obj.kind.kidx);
     if (kindId !== null) view.kindId = kindId;

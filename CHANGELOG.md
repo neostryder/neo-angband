@@ -49,6 +49,7 @@ still calls itself.
 ## [Unreleased]
 
 ### Added
+- [Internal] [Modding-API] **Interface mods can act on floor objects and read more of what the game shows.** Object commands and pickup take `args.floor`, and floor items carry a pile index and an item key. Item views add the inventory name and the ignore mark. Store quantity prompts list the total for every amount and the price confirmation carries its price. The snapshot reports the store rows for the quiver and equipment, message repeat counts and colours, and the rest mode with the length asked for. The command catalogue names each command, and blast previews take a breath's arc. Text and spell prompts accept a cancel reply (#294).
 - [Internal] [Modding-API] **Interface mods can read richer map, item, spell, store and character state.** Frozen input snapshots and inspections expose quiver and floor items, stable item keys, slot names, spell study facts, stock inspection, blast metadata, store quotes, message history, rest activity and roster lineage events. The intent catalogue, grid look, click modifiers, ignore rules and rest interruption use existing game paths. (#291)
 - [Internal] [Modding-API] **Mods can run character creation.** With `ui:birth.replace`, a mod's `birth(ctx)` presenter gets each character creation as a draft it edits through the game's own point-buy, roller, name and background rules, then accepts or cancels. `ctx.saves.create()` starts creation from the title, optionally from a previous character. (#291)
 - [Internal] [Modding-API] **Mods can read the run journal and an end-of-run report.** `ctx.character.history()` returns the character's history as data, and `ctx.character.onRunEnd` delivers one report when a character dies or retires, with the cause, the score, the final belongings, the last messages and the character sheet. (#291)
@@ -89,6 +90,7 @@ still calls itself.
 
 ### Fixed
 
+- [Internal] [Modding-API] **A mod's quality rule for rings and amulets stops at "bad", as the game's own quality menu does.** A mod can also give the whole sidebar back to the map with a zero sidebar size. A Ctrl travel intent outside play is refused for the phase rather than as a bad grid (#294).
 - [Internal] [Modding-API] **A mod's monster list holds only the monsters the player can perceive.** `ctx.snapshot().core.monsters` used to include every monster on the level. It now matches the game's own monster list, so detected and telepathically sensed monsters appear, and unseen monsters and mimics posing as objects do not. (#293)
 - [Visible] [UI] **Installing an update on Windows no longer opens a console window.** The script that swaps in the new version runs hidden, and the game still reopens on screen when it finishes. (#292)
 - [Internal] [Modding-API] **Store intents now ask the store's quantity and price questions before trading.** Mods answer or cancel the typed prompts, while core agent callers with an explicit quantity keep their direct transaction path. (#291)

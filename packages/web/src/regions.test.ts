@@ -83,6 +83,15 @@ describe("screenRegions", () => {
     expect(r.status?.cells).toEqual({ col: 0, row: 23, cols: 79, rows: 1 });
   });
 
+  it("gives the map the whole column or header when a mod asks for zero (#294)", () => {
+    const left = screenRegions({ ...LEFT, sidebarWidth: 0, mapOriginX: 0, mapCols: 79 });
+    expect(left.sidebar?.cells).toEqual({ col: 0, row: 1, cols: 0, rows: 23 });
+    expect(left.map.cells).toEqual({ col: 0, row: 1, cols: 79, rows: 22 });
+    const top = screenRegions({ ...TOP, sidebarTopRows: 0, mapTop: 1, mapRows: 22 });
+    expect(top.sidebar?.cells.rows).toBe(0);
+    expect(top.map.cells).toEqual({ col: 0, row: 1, cols: 79, rows: 22 });
+  });
+
   it("reports no sidebar at all when the player has turned it off", () => {
     /* Absent, not empty. A front end asking "is there a sidebar" gets an answer
      * rather than a zero-sized rectangle it has to interpret. */

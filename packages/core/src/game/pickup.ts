@@ -524,7 +524,15 @@ export function installPickup(
     if (picked > 0) deps.refreshInventory?.();
     return pickupEnergy(s, picked);
   };
-  registry.register("pickup", (s) => pickedThen(s, playerPickupItem(s, null, deps)));
+  /* do_cmd_pickup (cmd-pickup.c) reads an optional "item" argument and picks
+   * up that object instead of offering the menu. Here it is args.floor, an
+   * index into the pile under the player, as the object commands take it. */
+  registry.register("pickup", (s, cmd) => {
+    const floor = cmd.args?.["floor"];
+    const obj = typeof floor === "number" ? floorPile(s, s.actor.grid)[floor] ?? null : null;
+    if (typeof floor === "number" && !obj) return 0;
+    return pickedThen(s, playerPickupItem(s, obj, deps));
+  });
   registry.register("autopickup", (s) => pickedThen(s, doAutopickup(s, deps)));
   state.autoPickup = (s): number => pickedThen(s, doAutopickup(s, deps));
 }

@@ -532,7 +532,7 @@ export function castAlter(
 }
 
 /** diameter_of_source for an arc/breath of the given width (arc.c geometry). */
-function arcDiameter(baseDiameter: number, degreesOfArc: number): number {
+export function arcDiameter(baseDiameter: number, degreesOfArc: number): number {
   let d = baseDiameter;
   if (degreesOfArc < 60) d = Math.trunc((d * 60) / degreesOfArc);
   return d > 25 ? 25 : d;

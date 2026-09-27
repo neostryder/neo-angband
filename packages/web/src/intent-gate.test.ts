@@ -125,6 +125,25 @@ describe("player intent gate", () => {
       expect(Object.isFrozen(catalogue.commands)).toBe(true);
       expect(Object.isFrozen(catalogue.commands[0])).toBe(true);
     }
+    /* cmd_verb names each command, including the codes spelled differently. */
+    const verbs = Object.fromEntries(gate.catalogue!().commands.map((entry) => [entry.code, entry.verb]));
+    expect(verbs.quaff).toBe("quaff");
+    expect(verbs["aim-wand"]).toBe("aim");
+    expect(verbs["shop-sell"]).toBe("sell");
+    const argsOf = Object.fromEntries(gate.catalogue!().commands.map((entry) => [entry.code, entry.args]));
+    expect(argsOf.quaff).toContain("floor: nonnegative integer");
+    expect(argsOf.drop).not.toContain("floor");
+    expect(argsOf.pickup).toBe("args?: {floor: nonnegative integer}");
+    const studyOnly = createIntentGate({ state: game.state, registry: { has: () => true, codes: () => ["study"] },
+      push: () => {}, advance: () => {}, snapshotSource: { phase: () => "play", prompt: () => null } });
+    expect(studyOnly.catalogue!().commands[0]).toMatchObject({
+      code: "study", verb: "study", args: "args: {handle: integer, spell?: nonnegative integer}",
+    });
+    phase = "store";
+    const { x: tx, y: ty } = knownNeighbor(game);
+    expect(gate.submit(inputToken(game.state), { kind: "travel", x: tx, y: ty, modifiers: { ctrl: true } }))
+      .toEqual({ accepted: false, reason: "input is not in play phase" });
+    phase = "play";
     expect(fingerprint(game)).toBe(before);
     const { x, y } = knownNeighbor(game);
     expect(gate.submit(inputToken(game.state), { kind: "command", command: { code: "look", args: { x, y } } }).accepted).toBe(true);
@@ -264,6 +283,9 @@ describe("player intent gate", () => {
       [{ kind: "target", x: -1, y: 1 }, () => undefined],
       [{ kind: "target", midx: -1 }, () => undefined],
       [{ kind: "command", command: { code: "shop-buy", args: { index: 0 } } }, () => undefined],
+      [{ kind: "command", command: { code: "quaff", args: { floor: -1 } } }, () => undefined],
+      [{ kind: "command", command: { code: "hold", args: { floor: 0 } } }, () => undefined],
+      [{ kind: "command", command: { code: "pickup", args: { floor: 99 } } }, () => undefined],
     ];
     for (const [intent, setup] of cases) {
       setup();

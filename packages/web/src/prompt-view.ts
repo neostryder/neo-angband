@@ -49,8 +49,8 @@ import type { RegionCells } from "./regions";
 /** The live question at an input wait. PromptRequest remains the presenter ABI. */
 export type PromptDescriptor =
   | { readonly kind: "ack"; readonly promptId: number; readonly label: string; readonly tag: "more" }
-  | { readonly kind: "confirm"; readonly promptId: number; readonly label: string }
-  | { readonly kind: "quantity"; readonly promptId: number; readonly label: string; readonly min: number; readonly max: number; readonly defaultValue: number; readonly unitPrice?: number; readonly totalPrice?: number; readonly gold?: number }
+  | { readonly kind: "confirm"; readonly promptId: number; readonly label: string; readonly price?: number }
+  | { readonly kind: "quantity"; readonly promptId: number; readonly label: string; readonly min: number; readonly max: number; readonly defaultValue: number; readonly unitPrice?: number; readonly totalPrice?: number; readonly totals?: readonly number[]; readonly gold?: number }
   | { readonly kind: "text"; readonly promptId: number; readonly label: string; readonly maxLength: number; readonly defaultValue: string; readonly tag?: "rest" }
   | { readonly kind: "direction"; readonly promptId: number; readonly label: string; readonly targetAllowed: boolean }
   | { readonly kind: "item"; readonly promptId: number; readonly label: string; readonly choices: readonly { readonly handle: number; readonly label: string; readonly letter: string }[]; readonly tabs: Readonly<{ floor: boolean; quiver: boolean; equipment: boolean }> }
