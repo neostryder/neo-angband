@@ -11225,7 +11225,7 @@ function continueAdvance(
         endedAt: Date.now(),
       }));
     } catch (error) {
-      console.error("run report failed", error);
+      log.error("report", "run report failed", error);
     }
     // death_screen (ui-death.c L374): the winner crown + tombstone first, then
     // the death menu (whose "View scores" opens the Hall of Fame). Escape

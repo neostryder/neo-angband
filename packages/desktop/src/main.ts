@@ -391,7 +391,7 @@ function readLoadOrder(): readonly string[] {
     if (envelope.format !== undefined) {
       const result = parseDocument(parsed, loadOrderFormat);
       if (!result.ok) {
-        console.warn(`invalid load-order.json: ${result.issues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`);
+        mainLog("warn", "mods", `invalid load-order.json: ${result.issues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`);
         return [];
       }
       order = result.data.order;

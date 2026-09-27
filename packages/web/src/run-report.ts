@@ -27,6 +27,7 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import type { CharacterSheetData } from "./charsheet";
 import type { LoggedMessage } from "./messages";
+import { log } from "./logging";
 import { historyEntryNote } from "./screens";
 
 export type HistoryKind =
@@ -223,7 +224,7 @@ export function createRunReports() {
         try {
           listener(report);
         } catch (error) {
-          console.error("run report listener failed", error);
+          log.error("report", "run report listener failed", error);
         }
       }
     },

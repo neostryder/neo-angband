@@ -10,6 +10,7 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import { loadGamePack } from "./pack";
 import { buildRunReport, characterHistory, createRunReports, RUN_REPORT_MESSAGES } from "./run-report";
+import { log } from "./logging";
 import { MessageLog } from "./messages";
 
 const { state, booted } = startGame(loadGamePack(), { seed: 99, depth: 3 });
@@ -146,7 +147,7 @@ describe("createRunReports", () => {
     const reports = createRunReports();
     expect(reports.last()).toBeNull();
     const seen = vi.fn();
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = vi.spyOn(log, "error").mockImplementation(() => {});
     reports.onEnd(() => {
       throw new Error("broken mod");
     });
