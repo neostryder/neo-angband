@@ -390,10 +390,11 @@ import {
   resolveEnabledIds,
   resolveModRules,
   setModStorage,
+  convertLegacyModState,
   FIRST_PARTY_MOD_IDS,
   type AutoplayerSpeed,
 } from "./mod-store";
-import { defaultProfileStore } from "./profiles";
+import { convertLegacyProfiles, defaultProfileStore } from "./profiles";
 import { scopedStorage, type ScopedStorage } from "./profile-scope";
 import { runProfileScreen } from "./profile-ui";
 import { modPrefs, setPrefsStorage } from "./mod-prefs";
@@ -866,6 +867,11 @@ setHost(desktopBridge ? makeDesktopHost(desktopBridge) : new BrowserHost());
 // nothing at all - scopedStorage returns the real storage unwrapped - so an
 // existing install needs no migration: its data already lives at the plain
 // keys these consumers have always used.
+try {
+  convertLegacyProfiles(localStorage);
+} catch {
+  /* Storage denied outright: the default profile is the only one this session. */
+}
 const profileStore = defaultProfileStore();
 // The RAW storage, unscoped - what the (P)rofile screen copies from/clears
 // through when creating or removing a profile. Kept apart from
@@ -881,6 +887,7 @@ try {
   scopedGameStorage = null; // no localStorage at all (private mode / no DOM)
 }
 setModStorage(scopedGameStorage);
+if (scopedGameStorage) convertLegacyModState(scopedGameStorage);
 setRosterStorage(scopedGameStorage);
 setUserStorage(scopedGameStorage);
 setPrefsStorage(scopedGameStorage);
@@ -1210,7 +1217,7 @@ const depth = depthParam !== null && depthParam !== "" ? Number(depthParam) : 0;
 
 /**
  * The recovery action has to disable the EFFECTIVE set, not merely empty
- * neo:enabledMods. A deployed folder's load-order.json is unioned back in on
+ * the mod state's enabled list. A deployed folder's load-order.json is unioned back in on
  * the next boot unless every enabled id also has an explicit off choice; staged
  * session mods are forced on, so they must be dropped too. A URL ?mods= override
  * has the same precedence and is removed before reloading.
@@ -14888,7 +14895,7 @@ if (trustedId) installTrusted(trustedId);
 
 // W2.4: install every mod the player enabled in the manager whose capabilities
 // they consented to. Content mods take effect through pack.ts (composed at load
-// from the same neo:enabledMods key); this is the plugin half - a persisted,
+// from the same enabled list in the mod-state document); this is the plugin half - a persisted,
 // consented enable installs the plugin at boot without a URL param. A plugin
 // enabled but not yet consented is skipped (the manager gates consent on enable,
 // but this second-checks so a hand-edited store can never bypass it).

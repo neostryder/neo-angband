@@ -2,10 +2,15 @@
  * Mod-manager persistence + catalog (W2.4).
  *
  * This owns the durable state the in-app mod manager reads and writes:
- * - the ENABLED set (which mods are on), keyed "neo:enabledMods" - the same
- *   localStorage key + JSON string[] schema pack.ts reads at composition time,
- *   so writing it here and reloading is what actually turns a content mod on.
- * - per-mod CONSENT (which capabilities the user approved), "neo:modConsents".
+ * - the ENABLED set (which mods are on) - the same list pack.ts reads through
+ *   readEnabledModIds at composition time, so writing it here and reloading is
+ *   what actually turns a content mod on.
+ * - per-mod CONSENT (which capabilities the user approved).
+ *
+ * Both live, with the player's choices, pins and section choices, in one
+ * `neo-angband/web/mod-state` document per profile (MOD_STATE_STORAGE_KEY).
+ * Each field replaced an older `neo:` key, which is still read until the
+ * boot-time conversion moves it in.
  *
  * There used to also be named PROFILES here (a saved enabled-set + consents,
  * "neo:modProfiles") - a player could snapshot and reapply a mod loadout by
@@ -27,21 +32,12 @@
  * ?trusted= still override for one-off testing, per pack.ts / main.ts.)
  */
 
-import type { PackManifest, SortPin } from "@rpgm-tools/neo-angband-mod-sdk";
+import { modStateFormat, type ModState, type PackManifest, type SortPin } from "@rpgm-tools/neo-angband-mod-sdk";
+import { fieldDocument, legacyJson, type LegacyField } from "./field-document";
 import { readSetting, writeSetting } from "./settings-store";
 
-const ENABLED_KEY = "neo:enabledMods";
-/* Explicit per-mod decisions, distinct from the resulting enabled SET: an entry
- * here means the player said so, and outranks an external manager's deployment. */
-const CHOICE_KEY = "neo:modChoices";
-const CONSENT_KEY = "neo:modConsents";
-const RULE_CHOICES_KEY = "neo:modRuleChoices";
-/* The player's own placements, which outrank every author's ordering suggestion
- * and survive an auto-sort (see ModStore.getPins). */
-const PINS_KEY = "neo:modPins";
-/* Per-mod, per-section on/off - the general form of a rule choice, for the named
- * parts of a mod (PackSection). */
-const SECTION_CHOICES_KEY = "neo:modSectionChoices";
+/** Where the mod manager's state is kept, one `neo-angband/web/mod-state` document per profile (#288). */
+export const MOD_STATE_STORAGE_KEY = "neo-angband:mod-state";
 /* The pump rate for a mod's autoplayer (ModPlugin.controller), player-set
  * beside the mod's own rule row that turns the controller on at all. */
 
@@ -57,6 +53,72 @@ export type AutoplayerSpeed = "turbo" | "fast" | "normal" | "slow";
 /** A list of strings from untrusted JSON, dropping anything else. */
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** A map of booleans from untrusted JSON, dropping any entry that is not one. */
+function booleans(value: unknown): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  if (isRecord(value)) for (const [k, v] of Object.entries(value)) if (typeof v === "boolean") out[k] = v;
+  return out;
+}
+
+/** An older build's key, which held bare JSON; its value is cleaned the way the getters clean it. */
+function legacyKey<V>(key: string, clean: (value: unknown) => V): LegacyField<V> {
+  const raw = legacyJson<unknown>(key);
+  return { key, parse: (text) => {
+    const value = raw.parse(text);
+    return value === undefined ? undefined : clean(value);
+  } };
+}
+
+/**
+ * Each field replaces one older key. Choices are explicit per-mod decisions,
+ * distinct from the resulting enabled set: an entry means the player said so,
+ * and outranks an external manager's deployment. Pins are the player's own
+ * placements, which outrank every author's ordering suggestion and survive an
+ * auto-sort (see ModStore.getPins). Section choices are per-mod, per-section
+ * on and off, the general form of a rule choice for the named parts of a mod
+ * (PackSection).
+ */
+const modState = fieldDocument<ModState>({
+  format: modStateFormat,
+  storageKey: MOD_STATE_STORAGE_KEY,
+  empty: {},
+  legacy: {
+    enabled: legacyKey("neo:enabledMods", strings),
+    choices: legacyKey("neo:modChoices", booleans),
+    consents: legacyKey("neo:modConsents", (value) => {
+      const out: Record<string, string[]> = {};
+      if (isRecord(value)) for (const [k, v] of Object.entries(value)) if (Array.isArray(v)) out[k] = strings(v);
+      return out;
+    }),
+    ruleChoices: legacyKey("neo:modRuleChoices", booleans),
+    pins: legacyKey("neo:modPins", (value) => {
+      const out: Record<string, { after?: string[]; before?: string[] }> = {};
+      if (!isRecord(value)) return out;
+      for (const [k, v] of Object.entries(value)) {
+        if (!isRecord(v)) continue;
+        const after = strings(v.after);
+        const before = strings(v.before);
+        out[k] = { ...(after.length ? { after } : {}), ...(before.length ? { before } : {}) };
+      }
+      return out;
+    }),
+    sectionChoices: legacyKey("neo:modSectionChoices", (value) => {
+      const out: Record<string, Record<string, boolean>> = {};
+      if (isRecord(value)) for (const [k, v] of Object.entries(value)) out[k] = booleans(v);
+      return out;
+    }),
+  },
+});
+
+/** Move every mod-manager value still under its old key into the document, once per profile. */
+export function convertLegacyModState(storage: StorageLike): void {
+  modState.convert(storage);
 }
 
 /**
@@ -318,32 +380,12 @@ export function readEnabledModIds(input: {
   } catch {
     /* no location (non-browser host) */
   }
-  let stored: string[] | null = null;
-  try {
-    const raw = modStorage()?.getItem(ENABLED_KEY) ?? null;
-    if (raw !== null) {
-      const arr = JSON.parse(raw) as unknown;
-      if (Array.isArray(arr)) {
-        stored = arr.filter((s): s is string => typeof s === "string");
-      }
-    }
-  } catch {
-    /* no localStorage, or a corrupt value: treat as no saved set */
-  }
-  const choices: Record<string, boolean> = {};
-  try {
-    const raw = modStorage()?.getItem(CHOICE_KEY) ?? null;
-    if (raw !== null) {
-      const obj = JSON.parse(raw) as unknown;
-      if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
-        for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-          if (typeof v === "boolean") choices[k] = v;
-        }
-      }
-    }
-  } catch {
-    /* no localStorage */
-  }
+  /* Each read is already cleaned: a stored document is validated, and an older
+   * key is filtered the way the getters filter it. */
+  const store = modStorage();
+  const saved = modState.read(store, "enabled");
+  const stored: string[] | null = saved === undefined ? null : [...saved];
+  const choices: Record<string, boolean> = { ...modState.read(store, "choices") };
   return resolveEnabledIds({
     url,
     stored,
@@ -436,24 +478,13 @@ export interface CatalogMod {
   installedByModId?: string;
 }
 
-function readJson<T>(storage: StorageLike | null, key: string, fallback: T): T {
-  if (!storage) return fallback;
-  try {
-    const raw = storage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
+function readField<K extends keyof ModState>(storage: StorageLike | null, name: K, fallback: NonNullable<ModState[K]>): NonNullable<ModState[K]> {
+  return modState.read(storage, name) ?? fallback;
 }
 
-function writeJson(storage: StorageLike | null, key: string, value: unknown): void {
-  if (!storage) return;
-  try {
-    storage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* storage unavailable / full: degrade silently, like roster.ts */
-  }
+/* Storage unavailable or full: degrade silently, like roster.ts. */
+function writeField<K extends keyof ModState>(storage: StorageLike | null, name: K, value: ModState[K]): void {
+  modState.write(storage, name, value);
 }
 
 /**
@@ -467,7 +498,7 @@ export class ModStore {
   /* --- Enabled set --------------------------------------------------- */
 
   getEnabled(): string[] {
-    const arr = readJson<unknown>(this.storage, ENABLED_KEY, []);
+    const arr = readField(this.storage, "enabled", []);
     return Array.isArray(arr)
       ? arr.filter((s): s is string => typeof s === "string")
       : [];
@@ -479,12 +510,7 @@ export class ModStore {
    * array). Tolerates a null/failing storage (treated as absent).
    */
   hasStoredEnabled(): boolean {
-    if (!this.storage) return false;
-    try {
-      return this.storage.getItem(ENABLED_KEY) !== null;
-    } catch {
-      return false;
-    }
+    return modState.has(this.storage, "enabled");
   }
 
   setEnabled(ids: readonly string[]): void {
@@ -497,7 +523,7 @@ export class ModStore {
         out.push(id);
       }
     }
-    writeJson(this.storage, ENABLED_KEY, out);
+    writeField(this.storage, "enabled", out);
   }
 
   isEnabled(id: string): boolean {
@@ -530,7 +556,7 @@ export class ModStore {
    * decide - which is the whole point of the Vortex/MO2 division of labour.
    */
   getModChoices(): Record<string, boolean> {
-    const obj = readJson<Record<string, unknown>>(this.storage, CHOICE_KEY, {});
+    const obj = readField(this.storage, "choices", {});
     const out: Record<string, boolean> = {};
     for (const [id, v] of Object.entries(obj)) {
       if (typeof v === "boolean") out[id] = v;
@@ -539,14 +565,14 @@ export class ModStore {
   }
 
   setModChoice(id: string, on: boolean): void {
-    writeJson(this.storage, CHOICE_KEY, { ...this.getModChoices(), [id]: on });
+    writeField(this.storage, "choices", { ...this.getModChoices(), [id]: on });
   }
 
   /** Forget the player's decision, handing the mod back to the disk order. */
   clearModChoice(id: string): void {
     const next = this.getModChoices();
     delete next[id];
-    writeJson(this.storage, CHOICE_KEY, next);
+    writeField(this.storage, "choices", next);
   }
 
   /**
@@ -586,7 +612,7 @@ export class ModStore {
    * others has made three decisions, and a sort should honour all of them.
    */
   getPins(): SortPin[] {
-    const obj = readJson<Record<string, unknown>>(this.storage, PINS_KEY, {});
+    const obj = readField(this.storage, "pins", {});
     const out: SortPin[] = [];
     for (const [id, raw] of Object.entries(obj)) {
       const v = raw as { after?: unknown; before?: unknown } | null;
@@ -605,12 +631,8 @@ export class ModStore {
   /** Record that the player put `id` before/after `other`. */
   pinAgainst(id: string, other: string, side: "before" | "after"): void {
     if (id === other) return;
-    const obj = readJson<Record<string, { after?: string[]; before?: string[] }>>(
-      this.storage,
-      PINS_KEY,
-      {},
-    );
-    const entry = obj[id] ?? {};
+    const obj = { ...readField(this.storage, "pins", {}) };
+    const entry: { after?: string[]; before?: string[] } = { ...obj[id] };
     const list = new Set(entry[side] ?? []);
     list.add(other);
     /* The opposite side for the same pair is now stale - the player has changed
@@ -620,16 +642,16 @@ export class ModStore {
     entry[opposite] = (entry[opposite] ?? []).filter((x) => x !== other);
     entry[side] = [...list];
     /* And the mirror on the OTHER mod's entry, for the same reason. */
-    const otherEntry = obj[other] ?? {};
+    const otherEntry: { after?: string[]; before?: string[] } = { ...obj[other] };
     otherEntry[side] = (otherEntry[side] ?? []).filter((x) => x !== id);
     obj[id] = entry;
     obj[other] = otherEntry;
-    writeJson(this.storage, PINS_KEY, obj);
+    writeField(this.storage, "pins", obj);
   }
 
   /** Forget every pin, so the next sort is the authors' answer alone. */
   clearPins(): void {
-    writeJson(this.storage, PINS_KEY, {});
+    writeField(this.storage, "pins", {});
   }
 
   /* --- Section choices ------------------------------------------------ */
@@ -644,7 +666,7 @@ export class ModStore {
    * conflict report now has to warn about.
    */
   getSectionChoices(): Record<string, Record<string, boolean>> {
-    const obj = readJson<Record<string, unknown>>(this.storage, SECTION_CHOICES_KEY, {});
+    const obj = readField(this.storage, "sectionChoices", {});
     const out: Record<string, Record<string, boolean>> = {};
     for (const [modId, raw] of Object.entries(obj)) {
       if (typeof raw !== "object" || raw === null) continue;
@@ -661,7 +683,7 @@ export class ModStore {
   setSectionChoice(modId: string, sectionId: string, on: boolean): void {
     const all = this.getSectionChoices();
     all[modId] = { ...(all[modId] ?? {}), [sectionId]: on };
-    writeJson(this.storage, SECTION_CHOICES_KEY, all);
+    writeField(this.storage, "sectionChoices", all);
   }
 
   /**
@@ -715,14 +737,14 @@ export class ModStore {
       }
     }
 
-    if (sectionsChanged) writeJson(this.storage, SECTION_CHOICES_KEY, sections);
-    if (rulesChanged) writeJson(this.storage, RULE_CHOICES_KEY, rules);
+    if (sectionsChanged) writeField(this.storage, "sectionChoices", sections);
+    if (rulesChanged) writeField(this.storage, "ruleChoices", rules);
   }
 
   /* --- Consent ------------------------------------------------------- */
 
   getConsents(): Record<string, string[]> {
-    const obj = readJson<Record<string, unknown>>(this.storage, CONSENT_KEY, {});
+    const obj = readField(this.storage, "consents", {});
     const out: Record<string, string[]> = {};
     for (const [id, caps] of Object.entries(obj)) {
       if (Array.isArray(caps)) {
@@ -735,7 +757,7 @@ export class ModStore {
   getConsent(id: string): string[] {
     /* A SESSION GRANT COUNTS AND IS NOT STORED. A mod staged for this session only
      * (mod-session.ts) was consented to for this session only, so the grant lives
-     * beside the staged archive rather than in `neo:modConsents` - otherwise
+     * beside the staged archive rather than in the stored consents - otherwise
      * testing somebody's mod once would leave a standing grant for an id that is
      * not installed, and the player would never see the row it belongs to.
      *
@@ -749,7 +771,7 @@ export class ModStore {
   setConsent(id: string, caps: readonly string[]): void {
     const all = this.getConsents();
     all[id] = [...caps];
-    writeJson(this.storage, CONSENT_KEY, all);
+    writeField(this.storage, "consents", all);
   }
 
   /** Drop a mod's consent entirely (e.g. on remove). */
@@ -757,7 +779,7 @@ export class ModStore {
     const all = this.getConsents();
     if (id in all) {
       delete all[id];
-      writeJson(this.storage, CONSENT_KEY, all);
+      writeField(this.storage, "consents", all);
     }
   }
 
@@ -779,7 +801,7 @@ export class ModStore {
    * all (see DEFAULT_ENABLED_MODS), so an untouched install applies no rules.
    */
   getRuleChoices(): Record<string, boolean> {
-    const obj = readJson<Record<string, unknown>>(this.storage, RULE_CHOICES_KEY, {});
+    const obj = readField(this.storage, "ruleChoices", {});
     const out: Record<string, boolean> = {};
     for (const [flag, v] of Object.entries(obj)) {
       if (typeof v === "boolean") out[flag] = v;
@@ -791,7 +813,7 @@ export class ModStore {
   setRuleChoice(flag: string, on: boolean): void {
     const all = this.getRuleChoices();
     all[flag] = on;
-    writeJson(this.storage, RULE_CHOICES_KEY, all);
+    writeField(this.storage, "ruleChoices", all);
   }
 
   /**
@@ -824,7 +846,7 @@ export class ModStore {
     for (const [newFlag, choice] of Object.entries(folded)) {
       choices[newFlag] = choice;
     }
-    if (changed) writeJson(this.storage, RULE_CHOICES_KEY, choices);
+    if (changed) writeField(this.storage, "ruleChoices", choices);
   }
 
   /* --- Autoplayer speed ----------------------------------------------- */

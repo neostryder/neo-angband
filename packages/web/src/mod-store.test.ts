@@ -23,6 +23,7 @@ import {
   RENAMED_MOD_IDS,
   migrateModIdKeys,
   migrateModIds,
+  MOD_STATE_STORAGE_KEY,
   type StorageLike,
 } from "./mod-store";
 import { confirmGameplayNoscore, needsGameplayNoscoreWarning } from "./mods";
@@ -43,10 +44,12 @@ function manifest(id: string, over: Partial<PackManifest> = {}): PackManifest {
 }
 
 describe("ModStore - enabled set", () => {
-  it("writes the enabled key with the pack.ts JSON-array schema", () => {
+  it("writes the enabled list into the mod-state document", () => {
     const s = fakeStorage();
     new ModStore(s).setEnabled(["a", "b"]);
-    expect(JSON.parse(s.map.get("neo:enabledMods")!)).toEqual(["a", "b"]);
+    const doc = JSON.parse(s.map.get(MOD_STATE_STORAGE_KEY)!) as { format: string; data: { enabled: string[] } };
+    expect(doc.format).toBe("neo-angband/web/mod-state");
+    expect(doc.data.enabled).toEqual(["a", "b"]);
   });
 
   it("toggles, de-dupes, and preserves order", () => {
@@ -633,6 +636,8 @@ describe("a mod's patches exist only while its mod is enabled", () => {
       );
       const folded = resolveModRules(loadEnabledModRuleDecls(), defaultModStore().getRuleChoices());
 
+      /* A fresh older-build key again, so the document the first load wrote goes. */
+      localStorage.removeItem(MOD_STATE_STORAGE_KEY);
       localStorage.setItem(
         "neo:modRuleChoices",
         JSON.stringify({ [oldA]: true, [newFlag]: false }),

@@ -110,7 +110,7 @@ export interface SessionMod {
    * Held here rather than in the persistent consent store on purpose: a grant made
    * to test something must not become a standing grant for an id the player never
    * installed. `setSessionConsents` is how the loader sees these without
-   * `neo:modConsents` ever being written.
+   * the mod-state document's consents ever being written.
    */
   readonly granted: readonly string[];
   /**
@@ -347,7 +347,7 @@ function manifestCapabilities(
  * the install door refuses would teach an author that a passing test means nothing.
  *
  * `granted` is what the player agreed this mod may do, for this session. It is
- * stored beside the archive and never in `neo:modConsents`.
+ * stored beside the archive and never in the mod-state document.
  *
  * `contentOnly` refuses an archive that ships code. It is what the mod-facing door
  * passes (session-runtime.ts) and what the player's own door does not: a mod

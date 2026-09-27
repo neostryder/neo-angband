@@ -96,6 +96,10 @@ export type { OrphanRecord, OrphanRecords } from "./json/orphan-saves.js";
 export { isSavedGameHeader, savedGameFormat } from "./json/saved-game.js";
 export { windowManagerFormat } from "./json/window-manager.js";
 export { settingsFormat } from "./json/settings.js";
+export { modStateFormat } from "./json/mod-state.js";
+export type { ModState } from "./json/mod-state.js";
+export { profilesFormat } from "./json/profiles.js";
+export type { ProfileIndex } from "./json/profiles.js";
 export type { Settings } from "./json/settings.js";
 
 export {

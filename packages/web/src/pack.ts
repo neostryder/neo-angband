@@ -91,7 +91,7 @@ function coreLoadedPack(): LoadedPack {
 
 /* ------------------------------------------------------------------ *
  * Mods (W1.3): bundled packs under packages/web/mods/<id>/, disabled by
- * default. Enable with ?mods=a,b (wins) or localStorage neo:enabledMods.
+ * default. Enable with ?mods=a,b (wins) or the enabled list in the mod-state document.
  * The full mod-manager UI (enable/reorder/consent) is W2.4.
  * ------------------------------------------------------------------ */
 

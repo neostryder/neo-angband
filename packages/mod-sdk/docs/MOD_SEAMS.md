@@ -175,7 +175,7 @@ A mod does not run code to flip a flag, and core never sees a flag name. Flags s
 
 1. The mod declares its patches in `manifest.json` under `rules`, each an entry of `{ "flag": "qol.autoDig", "title": "...", "description": "...", "default": true }`. A rule that changes one-time plugin setup, such as code in `register()`, also declares `"requiresReload": true`, and its choice takes effect after the manager reloads the game instead of live.
 2. `packages/web/src/pack.ts` `loadEnabledModRuleDecls()` gathers the `rules` of every enabled mod, in load order.
-3. `packages/web/src/mod-store.ts` `resolveModRules(decls, choices)` computes the effective map: for each declared rule, `choices[flag] ?? rule.default`. The player's choices come from each mod's **Fixes & tweaks** submenu and persist in `localStorage` (`neo:modRuleChoices`). They are a client setting, like the enabled-mod set, and are not part of the savefile.
+3. `packages/web/src/mod-store.ts` `resolveModRules(decls, choices)` computes the effective map: for each declared rule, `choices[flag] ?? rule.default`. The player's choices come from each mod's **Fixes & tweaks** submenu and persist in `localStorage`, in the `ruleChoices` field of the profile's `neo-angband/web/mod-state` document. They are a client setting, like the enabled-mod set, and are not part of the savefile.
 4. `packages/web/src/mod-hooks.ts` `resolveModRuleFlagsByMod()` slices that map per mod. `activeModHooks()` then calls each enabled mod's entry point once, in load order, with only that mod's own flags, and folds the results with `composeModHooks`.
 5. `packages/web/src/main.ts` passes the composed object to `startGame` / `loadGame` as `opts.modHooks`.
 

@@ -77,9 +77,11 @@ export const SLOT_PREFIX = "neo-angband-save:";
 
 /**
  * Key prefixes this game owns. Anything else in the origin - a devtools key, an
- * extension's key - is left where it is.
+ * extension's key - is left where it is. `neo-angband:` covers the JSON
+ * documents that replaced the older `neo:` keys (#288), such as the settings,
+ * mod state and profile index.
  */
-const OWNED = ["neo-angband-", "neo:"];
+const OWNED = ["neo-angband-", "neo-angband:", "neo:"];
 
 function isOwned(key: string): boolean {
   return OWNED.some((p) => key.startsWith(p));

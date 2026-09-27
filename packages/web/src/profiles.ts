@@ -22,6 +22,9 @@
  * until a second one exists."
  */
 
+import { profilesFormat, type ProfileIndex } from "@rpgm-tools/neo-angband-mod-sdk";
+
+import { fieldDocument, legacyJson } from "./field-document";
 import { clearScopedStorage, copyScopedStorage, type ScopedStorage } from "./profile-scope";
 
 /** The Storage subset this module needs; a real Storage satisfies it. */
@@ -43,28 +46,46 @@ interface StoredProfile {
   createdAt: number;
 }
 
-const NAMED_KEY = "neo:profiles";
-const DEFAULT_NAME_KEY = "neo:profiles:defaultName";
-const ACTIVE_KEY = "neo:activeProfile";
+/** Where the profile index is kept: one `neo-angband/web/profiles` document, never profile-scoped (#288). */
+export const PROFILES_STORAGE_KEY = "neo-angband:profiles";
 
-function readJson<T>(storage: ProfileStorage | null, key: string, fallback: T): T {
-  if (!storage) return fallback;
-  try {
-    const raw = storage.getItem(key);
-    if (raw === null) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
+/** An older build's key holding a bare JSON string, or null for "none". */
+function legacyString(key: string) {
+  const raw = legacyJson<unknown>(key);
+  return { key, parse: (text: string) => {
+    const value = raw.parse(text);
+    return typeof value === "string" ? value : undefined;
+  } };
 }
 
-function writeJson(storage: ProfileStorage | null, key: string, value: unknown): void {
-  if (!storage) return;
-  try {
-    storage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* storage unavailable / full: degrade silently, like roster.ts */
-  }
+const profiles = fieldDocument<ProfileIndex>({
+  format: profilesFormat,
+  storageKey: PROFILES_STORAGE_KEY,
+  empty: { named: {} },
+  legacy: {
+    named: {
+      key: "neo:profiles",
+      parse(text) {
+        const value = legacyJson<unknown>("neo:profiles").parse(text);
+        if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+        const out: Record<string, StoredProfile> = {};
+        for (const [id, entry] of Object.entries(value as Record<string, unknown>)) {
+          const p = entry as Partial<StoredProfile> | null;
+          if (typeof p?.name === "string" && typeof p.createdAt === "number" && Number.isFinite(p.createdAt)) {
+            out[id] = { name: p.name, createdAt: p.createdAt };
+          }
+        }
+        return out;
+      },
+    },
+    defaultName: legacyString("neo:profiles:defaultName"),
+    active: legacyString("neo:activeProfile"),
+  },
+});
+
+/** Move the profile index out of its older keys, once, at boot. */
+export function convertLegacyProfiles(storage: ProfileStorage): void {
+  profiles.convert(storage);
 }
 
 /**
@@ -77,12 +98,12 @@ export class ProfileStore {
   constructor(private readonly storage: ProfileStorage | null) {}
 
   private namedProfiles(): Record<string, StoredProfile> {
-    return readJson<Record<string, StoredProfile>>(this.storage, NAMED_KEY, {});
+    return { ...profiles.read(this.storage, "named") };
   }
 
   /** Every profile, the default first, in creation order. */
   list(): ProfileMeta[] {
-    const defaultName = readJson<string | null>(this.storage, DEFAULT_NAME_KEY, null);
+    const defaultName = (profiles.read(this.storage, "defaultName") ?? null);
     const named = Object.entries(this.namedProfiles())
       .map(([id, p]): ProfileMeta => ({ id, name: p.name, createdAt: p.createdAt }))
       .sort((a, b) => a.createdAt - b.createdAt);
@@ -91,7 +112,7 @@ export class ProfileStore {
 
   /** Whether the default profile has ever been given a name of its own. */
   isDefaultNamed(): boolean {
-    return readJson<string | null>(this.storage, DEFAULT_NAME_KEY, null) !== null;
+    return (profiles.read(this.storage, "defaultName") ?? null) !== null;
   }
 
   /** Whether any named (non-default) profile exists at all. */
@@ -101,7 +122,7 @@ export class ProfileStore {
 
   /** The active profile id, or `null` for the default. */
   activeId(): string | null {
-    return readJson<string | null>(this.storage, ACTIVE_KEY, null);
+    return profiles.read(this.storage, "active") ?? null;
   }
 
   isDefaultActive(): boolean {
@@ -110,7 +131,7 @@ export class ProfileStore {
 
   /** Just the metadata switch - the caller reloads to actually apply the new scope. */
   switchTo(id: string | null): void {
-    writeJson(this.storage, ACTIVE_KEY, id);
+    profiles.write(this.storage, "active", id ?? undefined);
   }
 
   /**
@@ -128,7 +149,7 @@ export class ProfileStore {
     const id = crypto.randomUUID();
     const all = this.namedProfiles();
     all[id] = { name, createdAt: Date.now() };
-    writeJson(this.storage, NAMED_KEY, all);
+    profiles.write(this.storage, "named", all);
     if (opts?.copyFrom !== undefined && opts.realStorage) {
       copyScopedStorage(opts.realStorage, opts.copyFrom, id);
     }
@@ -138,14 +159,14 @@ export class ProfileStore {
   /** Rename a profile; `id: null` names the default. No-op for an unknown named id. */
   rename(id: string | null, name: string): void {
     if (id === null) {
-      writeJson(this.storage, DEFAULT_NAME_KEY, name);
+      profiles.write(this.storage, "defaultName", name);
       return;
     }
     const all = this.namedProfiles();
     const existing = all[id];
     if (!existing) return;
     all[id] = { ...existing, name };
-    writeJson(this.storage, NAMED_KEY, all);
+    profiles.write(this.storage, "named", all);
   }
 
   /**
@@ -162,7 +183,7 @@ export class ProfileStore {
     const all = this.namedProfiles();
     if (!(id in all)) return;
     delete all[id];
-    writeJson(this.storage, NAMED_KEY, all);
+    profiles.write(this.storage, "named", all);
     clearScopedStorage(realStorage, id);
     if (this.activeId() === id) this.switchTo(null);
   }

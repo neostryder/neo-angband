@@ -104,6 +104,7 @@ describe("stranded-origin merge", () => {
         "neo-angband-save:a": "AAA",
         "neo:enabledMods": '["qol"]',
         "neo-angband-birth": '{"name":"Frodo"}',
+        "neo-angband:mod-state": '{"format":"neo-angband/web/mod-state","schemaVersion":1,"data":{}}',
         __agwt_rt: "not ours",
       },
     };
@@ -111,6 +112,7 @@ describe("stranded-origin merge", () => {
 
     expect(plan.writes["neo:enabledMods"]).toBeUndefined();
     expect(plan.writes["neo-angband-birth"]).toBe('{"name":"Frodo"}');
+    expect(plan.writes["neo-angband:mod-state"]).toBe('{"format":"neo-angband/web/mod-state","schemaVersion":1,"data":{}}');
     expect(plan.writes).not.toHaveProperty("__agwt_rt");
   });
 
