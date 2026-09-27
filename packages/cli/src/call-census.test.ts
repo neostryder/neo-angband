@@ -54,6 +54,9 @@ const KNOWN_UNUSED: Record<string, readonly string[]> = {
        * pathfind_direction_to has one caller and the port reaches the same
        * result through motionDir. */
       "pathfind_direction_to",
+      /* User preferences are serialized as JSON documents by the SDK. The
+       * old core pref writer remains for parity tests, not runtime exports. */
+      "prefs_save",
     ],
 
   "reduced: the port models this area with a flatter structure, and the faithful helper waits on the fuller one (documented in known.ts:6-12 and ledgered)":

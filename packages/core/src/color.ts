@@ -42,6 +42,54 @@ export const MAX_COLORS = 32;
 export const BASIC_COLORS = 29;
 
 /**
+ * Palette-document ids, one per angband_color_table row, in index order.
+ *
+ * The names are the table's own names in kebab-case. Shade has no name in
+ * z-color.c, and rows 29-31 are the unused tail. The mod SDK's color-table
+ * format repeats this list; the two have to stay identical because a saved
+ * document names rows rather than trusting their position alone.
+ */
+export const COLOR_PREF_IDS: readonly string[] = [
+  "dark",
+  "white",
+  "slate",
+  "orange",
+  "red",
+  "green",
+  "blue",
+  "umber",
+  "light-dark",
+  "light-slate",
+  "light-purple",
+  "yellow",
+  "light-red",
+  "light-green",
+  "light-blue",
+  "light-umber",
+  "purple",
+  "violet",
+  "teal",
+  "mud",
+  "light-yellow",
+  "magenta-pink",
+  "light-teal",
+  "light-violet",
+  "light-pink",
+  "mustard",
+  "blue-slate",
+  "deep-light-blue",
+  "shade",
+  "unused-29",
+  "unused-30",
+  "unused-31",
+];
+
+/** The palette-document id for one colour index, or a generated id past the table. */
+export function colorPrefId(index: number): string {
+  return COLOR_PREF_IDS[index] ?? `unused-${index}`;
+}
+
+/**
  * Column indices into ColorInfo.translate, matching z-color.h's
  * ATTR_* defines (MAX_ATTR = 9). The column order mirrors the
  * "full mono vga blind lighter darker highlight metallic misc"

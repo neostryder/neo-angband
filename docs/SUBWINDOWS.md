@@ -84,11 +84,7 @@ separate from the *shipped* default arrangement described above - your own
 saved default, once you make one, takes priority whenever a fresh panel needs
 somewhere to go.
 
-**Save subwindow setup to pref file**, near the top of the main Options Menu
-(alongside the other pref-file commands, not inside Subwindow setup itself),
-exports the whole arrangement to a file instead of your browser's storage -
-useful for carrying a layout between installs, or between the browser build
-and the desktop app. **Load a user pref file** reads one back in.
+**Export subwindow layout** in the main Options Menu saves the arrangement as a JSON document named `<character>-subwindows.json`. The document includes registered mod blocks. **Import preferences** reads the document back in, which lets a layout move between installs or between the browser and desktop builds.
 
 ## The map panel's own graphics setting
 
@@ -101,5 +97,5 @@ choice is also reachable as a dropdown right in the map panel's own title bar.
 Because the two are independent settings, any combination works: ASCII in the
 main view with a tile pack in the map panel, tiles in the main view with ASCII
 in the map panel, or the same choice in both. The map panel's graphics choice
-travels with your saved default and with a pref-file export, the same as
+travels with your saved default and with a JSON layout export, the same as
 everything else on this page.

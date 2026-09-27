@@ -1052,17 +1052,17 @@ export async function runOptionsMenu(
   }
   if (prefs) {
     items.push(
-      { label: t("options.menu.dumpSubwindow", "Save subwindow setup to pref file"), tag: "s" },
-      { label: t("options.menu.dumpAutoinsc", "Save autoinscriptions to pref file"), tag: "t" },
-      { label: t("options.menu.dumpCharScreen", "Save char screen options to pref file"), tag: "u" },
-      { label: t("options.menu.loadPrefFile", "Load a user pref file"), tag: "p" },
+      { label: t("options.menu.dumpSubwindow", "Export subwindow layout"), tag: "s" },
+      { label: t("options.menu.dumpAutoinsc", "Export autoinscriptions"), tag: "t" },
+      { label: t("options.menu.dumpCharScreen", "Export character screen options"), tag: "u" },
+      { label: t("options.menu.loadPrefFile", "Import preferences"), tag: "p" },
     );
   }
   items.push(
     { label: t("options.menu.keymaps", "Edit keymaps (advanced)"), tag: "e" },
     { label: t("options.menu.colours", "Edit colours (advanced)"), tag: "c" },
   );
-  if (prefs) items.push({ label: t("options.menu.visuals", "Save visuals (advanced)"), tag: "v" });
+  if (prefs) items.push({ label: t("options.menu.visuals", "Visual graphics (advanced)"), tag: "v" });
   // Derive the hint from the live rows so it can never drift out of sync.
   const tagHint = items.map((i) => i.tag).join("/");
   /* Every row below can change an option, including the pref-file loader, so the

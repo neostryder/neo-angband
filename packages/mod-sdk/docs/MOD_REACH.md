@@ -558,21 +558,15 @@ The desktop shell is why this was worth fixing first. It serves arbitrary pack f
 
 Outside the mod system, `?tiles=<base-url>` plus `?graf=<id>` (`tiles.ts:178-187`, `packages/web/src/main.ts:1005-1006`) loads a tile set from a URL and also exposes the full catalog (`tile-catalog.ts:109`). It is meant for a user typing a URL, is not a mod path, and cannot add a grafID.
 
-### Pref files (`.prf`): parsed fully; mod-suppliable since gap 7
+### Mod pref resources (`.prf`): parsed fully since gap 7
 
-The `ui-prefs.c` grammar is ported: `packages/core/src/visuals/prefs.ts` (one
-grammar over an injected `PrefSink`, `:84-90`; writer `prefsSave` `:727`;
-`parseTilePrefsInto` `:969`), plus `visuals/tile-prefs.ts` and
-`visuals/glyph-table.ts`. The UI is `packages/web/src/prefs-ui.ts`
-(`processPrefFile` `:141-161`, "Load a user pref file" `:170-188`,
-`dumpPrefFile` `:112-126`), resolving against the virtual `ANGBAND_DIR_USER`
-(`packages/web/src/userdir.ts`).
+The `ui-prefs.c` grammar remains in `packages/core/src/visuals/prefs.ts` for mod resources and tile mappings. The player preference UI in `packages/web/src/prefs-ui.ts` exports and imports JSON documents. Stored user `.prf` files convert through `packages/web/src/pref-documents.ts` and are removed after their new documents read back.
 
-A user can load one, and since gap 7 a mod can too. `prefs` is one of the seven resource kinds, and `applyPrefText` (`prefs-ui.ts`) runs a mod's `.prf` through the same grammar, sink and deps as a user's. Errors are returned against the contributing mod's row, because the message line they would otherwise go to does not exist yet at boot. Until 2026-08-14 this heading and sentence said "not mod-suppliable", which had been stale since gap 7.
+`prefs` is one of the seven mod resource kinds, and `applyPrefText` (`prefs-ui.ts`) runs a mod's `.prf` through the core grammar. Errors are returned against the contributing mod's row because the message line does not exist yet at boot. The player UI no longer loads these files directly.
 
 Since #278, `%:` includes are followed on that path. Before that they were skipped, on the grounds that the grammar's `loadFile` is synchronous while a mod's files resolve through a resolver that may mint a blob or read IndexedDB. The files can be read before the parse instead of during it, though, and `loadTilePrefs` has always done that for a pack's own `%:flvr-*.prf`. `preloadPrefIncludes` walks a mod's pref text for `%:` names, reads them transitively down to the parser's own depth bound, and hands the parse a map it can answer synchronously. An include resolves against the directory of the declared resource at every depth, so a mod can keep its pref files in one folder. A name that does not resolve is skipped quietly, as upstream's `parse_prefs_load` discards a nested read (ui-prefs.c L438). `applyPrefText` returns the included bytes along with the faults, because the same text is replayed into every freshly built tile map (#153), and a replay without the includes would silently skip them all over again.
 
-`prefs-ui.ts:134-139` records one divergence. Upstream also searches `ANGBAND_DIR_CUSTOMIZE` and the graphics mode's directory, but the port ships no `lib/customize` tree and searches only the user location. The partial exception is a tile pack, whose `.prf` files `loadTilePrefs` fetches along with their `%:` includes (`tiles.ts`); those are reachable only through the gated tile discovery or `?tiles=`.
+The port ships no `lib/customize` tree. A tile pack's `.prf` files still reach `loadTilePrefs` with their `%:` includes (`tiles.ts`); those files belong to the tile-pack conversion.
 
 ### Fonts: closed 2026-08-09
 
@@ -598,9 +592,9 @@ A user can point it elsewhere with `?sounds=<base-url>`. A mod could not, since 
 | --- | --- | --- |
 | Splash / title art (`news.txt`) | inlined as a TS constant, `packages/web/src/news.ts:31` (+ overdrawn "Neo" `:58-76`); not fetched | no |
 | Help (`lib/help/*.txt`) | NOT fetched or bundled - transcribed into inline TS data, keyset for keyset, and checked line by line against `reference/lib/help/*.txt` by `help.test.ts` | yes, `help` resource (gap 7) |
-| Keymaps | localStorage `neo-angband:keymaps`, edited in game (`packages/web/src/keymap-store.ts:1-26`); upstream's pref-file keymaps are not read from a file | no (user only) |
-| Colour table | in-game RGB editor -> localStorage (`packages/web/src/colors.ts:1-35`); also writable by a loaded `.prf` | no (user only) |
-| User files (dumps, `.prf`) | real virtual `ANGBAND_DIR_USER`, `packages/web/src/userdir.ts:1-35` | no |
+| Keymaps | JSON document in localStorage `neo-angband:keymaps`, edited in game; old keymap tables and owners convert on first read | no (user only) |
+| Colour table | JSON document in localStorage `neo-angband:colors`, edited in game; old tuple arrays and stored user `.prf` content convert on first read | no (user only) |
+| User files (dumps, JSON preferences) | real virtual `ANGBAND_DIR_USER`, `packages/web/src/userdir.ts` | no |
 | PWA icons | `packages/web/public/icons/` | no |
 | Mod `screenshots` | declared at `packages/mod-sdk/src/manifest.ts:541`, carried through discovery (`packages/web/src/mod-discover.ts`) and listed by path in the mod detail pane (`packages/web/src/mod-browse.ts`, `browseDetail`) - no in-terminal image preview, since the grid this game draws to only ever paints pre-loaded tileset glyphs into cells, not arbitrary fetched images | n/a |
 

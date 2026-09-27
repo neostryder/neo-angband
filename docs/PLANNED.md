@@ -78,9 +78,7 @@ its own panel, with right-click docking and splitter resize around the main
 view. All panels still start off; enabling the Term-1 through Term-7 types
 places them in a canonical tiling of upstream's default assignment.
 
-Remaining: the arbitrary eight-term flag matrix and assignment of multiple
-flags to one term, `window:` pref-file loading and dumping, and the `^E`
-inventory/equipment flip. Tracked as issue #191.
+Remaining: the arbitrary eight-term flag matrix, assignment of multiple flags to one term, and the `^E` inventory/equipment flip. Layouts now export and import as JSON documents. Tracked as issue #191.
 
 ---
 
@@ -158,8 +156,7 @@ documents. Recorded here so the next audit does not repeat the reading:
   over the existing set, so a term the pref file never mentions keeps its prior
   flags. The message, inventory, monster-list, and item-list terms persist four
   named switches, not the arbitrary per-term matrix this hook merges.
-  `packages/core/src/visuals/prefs.ts` (`parseWindow`) keeps the full grammar,
-  while applying and dumping those flags remains in the subwindow worklist above.
+  `packages/core/src/visuals/prefs.ts` (`parseWindow`) keeps the legacy grammar for conversion and mod resources. Mapping those flags into the JSON subwindow layout remains in the subwindow worklist above.
 
 Tracked as issue #1.
 

@@ -1,6 +1,6 @@
 # Borg (first-party autoplayer mod)
 
-Borg is Neo Angband's automatic player: a faithful port of Angband 4.2.6's `borg` that plays the game on its own. It is a mod rather than part of core, and it shows the mod framework can carry a complete autoplayer: it drives the real game through the same frozen perceive/act agent API that any third-party or AI agent uses, with no privileged engine access.
+Borg is Neo Angband's automatic player: a faithful TypeScript port of Angband 4.2.6's `borg` that plays the game on its own. It is a mod rather than part of core, and it shows the mod framework can carry a complete autoplayer: it drives the real game through the same frozen perceive/act agent API that any third-party or AI agent uses, with no privileged engine access.
 
 ## Borg's role
 

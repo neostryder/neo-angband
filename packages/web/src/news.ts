@@ -141,7 +141,7 @@ const DISCORD_URL = "https://discord.gg/YegtwbHTBQ";
 /** The project information shown below core or mod-provided title art. */
 export const PROJECT_INFORMATION: readonly TitleLine[] = [
   {
-    markup: "A faithful but moddable port of Angband, meant to be playable almost anywhere.",
+    markup: "TypeScript port of Angband with general-purpose mod loading.",
     centred: true,
   },
   { markup: "", centred: true },

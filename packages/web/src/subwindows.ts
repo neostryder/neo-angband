@@ -15,6 +15,7 @@ import {
   statusLineModel,
   t,
 } from "@rpgm-tools/neo-angband-core";
+import { parseDocument, serializeDocument, subwindowLayoutFormat } from "@rpgm-tools/neo-angband-mod-sdk";
 import type {
   Constants,
   DisplayDeps,
@@ -42,6 +43,7 @@ import {
 import { screenBodyLines } from "./screen-view";
 import type { GridSurface } from "./term";
 import type { ScreenLine } from "./overlay";
+import { looksLikeEnvelope, readStoredDocument, writeStoredDocument } from "./json-storage";
 import { UI_DIM, UI_TEXT } from "./ui-colors";
 import {
   MAIN_TILE_ID,
@@ -76,18 +78,12 @@ export interface SubwindowState {
   tree: LayoutNode;
   /** Independent dungeon-map grafID; absent in older layouts means ASCII. */
   mapTileMode?: number;
+  /** Opaque payloads retained for mods that are not currently installed. */
+  modBlocks?: Record<string, string>;
 }
 
 export const SUBWINDOW_STORAGE_KEY = "neo-angband:subwindows";
 export const SUBWINDOW_DEFAULT_STORAGE_KEY = "neo-angband:subwindows:default";
-
-/**
- * neo-subwindows (#238): the pref-file directive that carries this state as
- * one JSON payload. Not an upstream directive - see prefs.ts's PrefSink.
- * subwindowLayout doc comment for why the BSP tree needs a directive of its
- * own rather than reusing upstream's window:i:j:v grammar.
- */
-export const SUBWINDOW_PREF_DIRECTIVE = "neo-subwindows";
 
 /**
  * `label` is upstream's own window-flag name (ui-init.c window_flag_desc) and
@@ -275,126 +271,251 @@ function parseMapTileMode(raw: unknown): number {
   return typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0 ? raw : 0;
 }
 
-export function readSubwindowState(storage: Pick<Storage, "getItem">): SubwindowState {
+interface LayoutDocument {
+  enabled: Record<string, boolean>;
+  tree: LayoutNode;
+  mapTileMode: number;
+  modBlocks?: Record<string, string>;
+}
+
+function stateFromDocument(data: LayoutDocument): SubwindowState {
+  const enabled = parseEnabled(data.enabled);
+  const tree = parseLayoutTree(data.tree) ?? treeForSettings(enabled);
+  return {
+    enabled,
+    tree: reconcileSubwindowTree(tree, enabled),
+    mapTileMode: parseMapTileMode(data.mapTileMode),
+    ...(data.modBlocks ? { modBlocks: data.modBlocks } : {}),
+  };
+}
+
+function documentFromState(state: SubwindowState, modBlocks?: Record<string, string>): LayoutDocument {
+  const enabled: Record<string, boolean> = {};
+  for (const id of SUBWINDOW_IDS) enabled[id] = state.enabled[id];
+  const document: LayoutDocument = {
+    enabled,
+    tree: state.tree,
+    mapTileMode: parseMapTileMode(state.mapTileMode),
+  };
+  if (modBlocks && Object.keys(modBlocks).length > 0) document.modBlocks = modBlocks;
+  return document;
+}
+
+/** The previous `v: 2` object, or the flat boolean map that came before it. */
+function legacyLayout(raw: string): LayoutDocument | null {
+  let parsed: unknown;
   try {
-    const raw = storage.getItem(SUBWINDOW_STORAGE_KEY);
-    if (raw === null) {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const record = parsed as { v?: unknown } & Partial<Record<string, unknown>>;
+  if (record.v === 2) {
+    const enabled = parseEnabled(
+      record.enabled && typeof record.enabled === "object"
+        ? (record.enabled as Partial<Record<string, unknown>>)
+        : record,
+    );
+    const tree = parseLayoutTree(record.tree) ?? treeForSettings(enabled);
+    return documentFromState({
+      enabled,
+      tree: reconcileSubwindowTree(tree, enabled),
+      mapTileMode: parseMapTileMode(record.mapTileMode),
+    });
+  }
+  if (!SUBWINDOW_IDS.some((id) => typeof record[id] === "boolean")) return null;
+  const enabled = parseEnabled(record);
+  return documentFromState({ enabled, tree: treeForSettings(enabled) });
+}
+
+function storedModBlocks(storage: Pick<Storage, "getItem">, key: string): Record<string, string> | undefined {
+  try {
+    const raw = storage.getItem(key);
+    if (!raw || !looksLikeEnvelope(raw)) return undefined;
+    const parsed = parseDocument(raw, subwindowLayoutFormat);
+    return parsed.ok ? parsed.data.modBlocks : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function mergedModBlocks(
+  storage: Pick<Storage, "getItem">,
+  key: string,
+  seed?: Readonly<Record<string, string>>,
+): Record<string, string> | undefined {
+  const merged: Record<string, string> = seed ? { ...seed } : { ...storedModBlocks(storage, key) };
+  for (const [name, block] of subwindowPrefBlocks) {
+    try {
+      const text = block.serialize();
+      if (text === null) delete merged[name];
+      else merged[name] = text;
+    } catch {
+      /* A failing mod leaves its prior payload intact. */
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+/** The JSON object a `neo-subwindows` line used to carry, before that line was retired. */
+export function stateFromLayoutPayload(json: string): SubwindowState | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json) as unknown;
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const record = parsed as Partial<Record<string, unknown>>;
+  const enabled = parseEnabled(
+    record.enabled && typeof record.enabled === "object"
+      ? (record.enabled as Partial<Record<string, unknown>>)
+      : {},
+  );
+  const tree = parseLayoutTree(record.tree);
+  if (!tree) return null;
+  return {
+    enabled,
+    tree: reconcileSubwindowTree(tree, enabled),
+    mapTileMode: parseMapTileMode(record.mapTileMode),
+  };
+}
+
+/** Write a layout, including mod-block payloads lifted out of an old preferences file. */
+export function saveLayoutWithBlocks(state: SubwindowState | null, blocks: Readonly<Record<string, string>>): boolean {
+  const base = state ?? { enabled: blankSettings(), tree: emptyLayoutTree(), mapTileMode: 0 };
+  const modBlocks = Object.keys(blocks).length > 0 ? { ...blocks } : undefined;
+  try {
+    return writeStoredDocument(
+      localStorage,
+      SUBWINDOW_STORAGE_KEY,
+      subwindowLayoutFormat,
+      documentFromState(base, modBlocks),
+    ) !== null;
+  } catch {
+    return false;
+  }
+}
+
+export function readSubwindowState(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">): SubwindowState {
+  try {
+    const read = readStoredDocument(storage, SUBWINDOW_STORAGE_KEY, subwindowLayoutFormat, legacyLayout);
+    if (!read.data) {
       const enabled = blankSettings();
       return { enabled, tree: emptyLayoutTree() };
     }
-    const parsed = JSON.parse(raw) as { v?: unknown } & Partial<Record<string, unknown>>;
-    if (parsed.v === 2) {
-      const enabled = parseEnabled(
-        parsed.enabled && typeof parsed.enabled === "object"
-          ? (parsed.enabled as Partial<Record<string, unknown>>)
-          : parsed,
-      );
-      const tree = parseLayoutTree(parsed.tree);
-      return {
-        enabled,
-        tree: reconcileSubwindowTree(tree ?? treeForSettings(enabled), enabled),
-        mapTileMode: parseMapTileMode(parsed.mapTileMode),
-      };
-    }
-    const enabled = parseEnabled(parsed);
-    return { enabled, tree: treeForSettings(enabled) };
+    const state = stateFromDocument(read.data);
+    if (read.data.modBlocks) applyStoredModBlocks(read.data.modBlocks);
+    return state;
   } catch {
     const enabled = blankSettings();
     return { enabled, tree: emptyLayoutTree() };
   }
 }
 
+type LayoutStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
 /** Read only the supported booleans; malformed or older data is harmless. */
-export function readSubwindowSettings(storage: Pick<Storage, "getItem">): SubwindowSettings {
+export function readSubwindowSettings(storage: LayoutStorage): SubwindowSettings {
   return readSubwindowState(storage).enabled;
 }
 
-export function writeSubwindowState(
-  storage: Pick<Storage, "setItem" | "removeItem">,
-  state: SubwindowState,
-): void {
-  if (!Object.values(state.enabled).some(Boolean) && !state.mapTileMode) {
+export function writeSubwindowState(storage: LayoutStorage, state: SubwindowState): void {
+  const modBlocks = mergedModBlocks(storage, SUBWINDOW_STORAGE_KEY, state.modBlocks);
+  const empty = !Object.values(state.enabled).some(Boolean) && !parseMapTileMode(state.mapTileMode) && !modBlocks;
+  if (empty) {
+    try {
+      const raw = storage.getItem(SUBWINDOW_STORAGE_KEY);
+      if (raw && looksLikeEnvelope(raw)) {
+        const parsed = parseDocument(raw, subwindowLayoutFormat);
+        if (!parsed.ok) return;
+      }
+    } catch {
+      return;
+    }
     storage.removeItem(SUBWINDOW_STORAGE_KEY);
     return;
   }
-  storage.setItem(SUBWINDOW_STORAGE_KEY, serializeSubwindowState(state));
-}
-
-function serializeSubwindowState(state: SubwindowState): string {
-  return JSON.stringify({
-    v: 2,
-    enabled: state.enabled,
-    tree: state.tree,
-    mapTileMode: parseMapTileMode(state.mapTileMode),
-  });
+  writeStoredDocument(
+    storage,
+    SUBWINDOW_STORAGE_KEY,
+    subwindowLayoutFormat,
+    documentFromState(state, modBlocks),
+  );
 }
 
 /** A missing, unreadable, or malformed personal default leaves the live layout intact. */
-export function readSubwindowDefault(storage: Pick<Storage, "getItem">): SubwindowState | null {
+export function readSubwindowDefault(storage: LayoutStorage): SubwindowState | null {
   try {
-    const raw = storage.getItem(SUBWINDOW_DEFAULT_STORAGE_KEY);
-    return raw === null ? null : parseSubwindowStateJson(raw);
+    const read = readStoredDocument(
+      storage,
+      SUBWINDOW_DEFAULT_STORAGE_KEY,
+      subwindowLayoutFormat,
+      legacyLayout,
+    );
+    return read.data ? stateFromDocument(read.data) : null;
   } catch {
     return null;
   }
 }
 
 /** Preserve an all-disabled layout as a saved default, too. */
-export function writeSubwindowDefault(
-  storage: Pick<Storage, "setItem">,
-  state: SubwindowState,
-): boolean {
+export function writeSubwindowDefault(storage: LayoutStorage, state: SubwindowState): boolean {
   try {
-    storage.setItem(SUBWINDOW_DEFAULT_STORAGE_KEY, serializeSubwindowState(state));
-    return true;
+    const modBlocks = mergedModBlocks(storage, SUBWINDOW_STORAGE_KEY, state.modBlocks);
+    return writeStoredDocument(
+      storage,
+      SUBWINDOW_DEFAULT_STORAGE_KEY,
+      subwindowLayoutFormat,
+      documentFromState(state, modBlocks),
+    ) !== null;
   } catch {
     return false;
   }
 }
 
 /** Persist the display setting outside the character save, like window flags. */
-export function writeSubwindowSettings(
-  storage: Pick<Storage, "setItem" | "removeItem">,
-  settings: SubwindowSettings,
-): void {
+export function writeSubwindowSettings(storage: LayoutStorage, settings: SubwindowSettings): void {
   writeSubwindowState(storage, { enabled: settings, tree: treeForSettings(settings) });
 }
 
 /**
- * neo-subwindows (#238): serialise the tiling tree plus which panels are
- * enabled as one pref-file line, so an arrangement can be carried between
- * installs (hosted vs local, or one machine to another) via the same
- * "save subwindow setup to pref file" flow upstream uses for window flags.
+ * The layout document a player can download. Registered mod blocks are
+ * included; a block whose serialize() returns null is left out.
  */
-export function dumpSubwindowLayoutPrefText(state: SubwindowState): string {
-  const payload = JSON.stringify({
-    enabled: state.enabled, tree: state.tree, mapTileMode: parseMapTileMode(state.mapTileMode),
-  });
-  return `${SUBWINDOW_PREF_DIRECTIVE}:${payload}\n`;
+export function serializeSubwindowDocument(state: SubwindowState): string {
+  let blocks: Record<string, string> | undefined;
+  try {
+    blocks = mergedModBlocks(localStorage, SUBWINDOW_STORAGE_KEY, state.modBlocks);
+  } catch {
+    blocks = { ...state.modBlocks, ...liveModBlocks() };
+  }
+  return serializeDocument(subwindowLayoutFormat, documentFromState(state, blocks));
+}
+
+function liveModBlocks(): Record<string, string> | undefined {
+  const merged: Record<string, string> = {};
+  for (const [name, block] of subwindowPrefBlocks) {
+    try {
+      const text = block.serialize();
+      if (text !== null) merged[name] = text;
+    } catch {
+      /* An unrelated mod cannot block a layout export. */
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 /**
- * neo-subwindows (#238): the inverse of dumpSubwindowLayoutPrefText. Returns
- * null on anything malformed - a bad or foreign pref file must never corrupt
- * the live layout, only fail to change it.
+ * Read a layout document. Returns null when the text is not this document,
+ * so a damaged file cannot replace the layout on screen.
  */
-export function parseSubwindowStateJson(json: string): SubwindowState | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(json);
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object") return null;
-  const record = parsed as Partial<Record<string, unknown>>;
-  const tree = parseLayoutTree(record.tree);
-  if (!tree) return null;
-  const enabled = parseEnabled(
-    record.enabled && typeof record.enabled === "object"
-      ? (record.enabled as Partial<Record<string, unknown>>)
-      : {},
-  );
-  return { enabled, tree: reconcileSubwindowTree(tree, enabled), mapTileMode: parseMapTileMode(record.mapTileMode) };
+export function parseSubwindowDocument(text: string): (SubwindowState & { modBlocks?: Record<string, string> }) | null {
+  const parsed = parseDocument(text, subwindowLayoutFormat);
+  if (!parsed.ok) return null;
+  const state = stateFromDocument(parsed.data);
+  return parsed.data.modBlocks ? { ...state, modBlocks: parsed.data.modBlocks } : state;
 }
 
 export function setSubwindowEnabled(state: SubwindowState, id: SubwindowId, enabled: boolean): SubwindowState {
@@ -403,13 +524,10 @@ export function setSubwindowEnabled(state: SubwindowState, id: SubwindowId, enab
 }
 
 /**
- * A mod's own named block of pref-file content, carried alongside (never
- * inside) `neo-subwindows`'s own JSON (neo-angband#262). `serialize` returns
- * this block's current text, or null to leave it out of a dump entirely (a
- * mod with nothing worth saving right now); `parse` is its inverse and
- * returns null for anything malformed, the same contract
- * parseSubwindowStateJson already keeps; `apply` is called only with a value
- * `parse` itself accepted.
+ * A mod's named block of layout data. The payload is an opaque string kept
+ * on the layout document under the block's name. `serialize` returns null
+ * when the mod has nothing to store. `parse` returns null for a payload it
+ * rejects, and `apply` runs only with a value `parse` accepted.
  */
 export interface SubwindowPrefBlock<T = unknown> {
   serialize(): string | null;
@@ -427,36 +545,35 @@ const subwindowPrefBlocks = new Map<string, SubwindowPrefBlock>();
  * change) is the ordinary case, not a collision to guard against. Returns an
  * unregister function that is a no-op once superseded by a later
  * registration under the same name.
+ *
+ * If the stored layout already has a payload for this name, it is applied
+ * now. Registration often happens after the layout was read.
  */
 export function registerSubwindowPrefBlock<T>(name: string, block: SubwindowPrefBlock<T>): () => void {
   subwindowPrefBlocks.set(name, block as SubwindowPrefBlock);
+  try {
+    const raw = localStorage.getItem(SUBWINDOW_STORAGE_KEY);
+    if (raw && looksLikeEnvelope(raw)) {
+      const parsed = parseDocument(raw, subwindowLayoutFormat);
+      const payload = parsed.ok ? parsed.data.modBlocks?.[name] : undefined;
+      if (payload !== undefined) applySubwindowPrefBlock(name, payload);
+    }
+  } catch {
+    /* Storage is absent in some tests, and a missing layout is not an error. */
+  }
   return () => {
     if (subwindowPrefBlocks.get(name) === block) subwindowPrefBlocks.delete(name);
   };
 }
 
-/**
- * Every registered block's own `mod-block:<name>:<payload>` line, one per
- * block whose serialize() returned non-null text - appended alongside
- * dumpSubwindowLayoutPrefText's own line rather than folded into its JSON,
- * so a change here can never touch that parser (#262).
- */
-export function dumpSubwindowPrefBlocks(): string {
-  let out = "";
-  for (const [name, block] of subwindowPrefBlocks) {
-    const text = block.serialize();
-    if (text === null) continue;
-    out += `mod-block:${name}:${text}\n`;
-  }
-  return out;
+/** Apply every stored mod block. An unknown name or a rejected payload is skipped. */
+export function applyStoredModBlocks(blocks: Readonly<Record<string, string>>): void {
+  for (const [name, payload] of Object.entries(blocks)) applySubwindowPrefBlock(name, payload);
 }
 
 /**
- * The inverse of dumpSubwindowPrefBlocks for one already-split `mod-block`
- * line. An unregistered name (that block's owning mod is not installed, or
- * not enabled, on this machine) or a payload the block's own parser rejects
- * is a silent no-op, exactly like an unrecognised pref directive - neither
- * can reach, or alter, core's own subwindow state (#262).
+ * Apply one block payload. An unregistered name, or a payload the block's
+ * parser rejects, is a silent no-op and cannot change the tiling tree.
  */
 export function applySubwindowPrefBlock(name: string, payload: string): void {
   const block = subwindowPrefBlocks.get(name);
@@ -468,7 +585,11 @@ export function applySubwindowPrefBlock(name: string, payload: string): void {
     return;
   }
   if (value === null) return;
-  block.apply(value);
+  try {
+    block.apply(value);
+  } catch {
+    /* A bad mod payload cannot stop the layout from loading. */
+  }
 }
 
 interface ColoredChar {

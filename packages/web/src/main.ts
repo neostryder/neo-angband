@@ -556,11 +556,10 @@ import {
   paintPlayerExtraSubwindow,
   paintPlayerTopbarSubwindow,
   paintStatusSubwindow,
-  dumpSubwindowLayoutPrefText,
-  parseSubwindowStateJson,
-  applySubwindowPrefBlock,
+  parseSubwindowDocument,
+  serializeSubwindowDocument,
   describeSubwindowsMerged,
-  dumpSubwindowPrefBlocks,
+  applyStoredModBlocks,
   readSubwindowDefault,
   readSubwindowState,
   registerSubwindowPrefBlock,
@@ -724,6 +723,7 @@ import type { CommandCategory } from "./command-menu";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu, SubwindowMenu } from "./options";
 import { loadColorPrefs, saveColorPrefs } from "./colors";
+import { applyStoredEntryRenderers, applyVisualDocument, consumeStoredAutoinscriptions, convertStoredUserPrefFiles } from "./pref-documents";
 import {
   dispatchUiInput,
   inputEvents,
@@ -1979,6 +1979,32 @@ const glyphs = new GlyphTable({
   traps: booted.registries.traps,
   flavors: booted.registries.objects.flavors,
 });
+convertStoredUserPrefFiles({
+  glyphs,
+  deps: {
+    features: booted.registries.features,
+    objects: booted.registries.objects,
+    monsters: booted.registries.monsters,
+    traps: booted.registries.traps,
+  },
+  applyLayout: (next) => restoreSubwindowLayout(next),
+});
+applyVisualDocument(glyphs, {
+  features: booted.registries.features,
+  objects: booted.registries.objects,
+  monsters: booted.registries.monsters,
+  traps: booted.registries.traps,
+}, {
+  messageColor: (index, color) => state.messages?.colorDefine(index, color),
+});
+consumeStoredAutoinscriptions(glyphs, {
+  features: booted.registries.features,
+  objects: booted.registries.objects,
+  monsters: booted.registries.monsters,
+  traps: booted.registries.traps,
+}, {
+  addAutoinscription: (index, text) => state.autoinscribe?.set(index, text, true),
+});
 
 /** The persisted/URL-selected graphics mode id (GRAPHICS_NONE = ASCII). */
 function readTileMode(): number {
@@ -2790,16 +2816,18 @@ function setSubwindowEnabledLive(id: SubwindowId, enabled: boolean): void {
 /**
  * neo-subwindows (#238): a loaded pref file supplied a whole arrangement -
  * which panels are open and the BSP tree they are tiled into. Malformed or
- * absent JSON is a silent no-op (parseSubwindowStateJson returns null),
+ * absent JSON is a silent no-op (parseSubwindowDocument returns null),
  * exactly like every other pref line a foreign or damaged file might carry.
  */
-function applyLoadedSubwindowLayout(json: string): void {
-  const next = parseSubwindowStateJson(json);
+function applyLoadedSubwindowLayout(text: string): void {
+  const next = parseSubwindowDocument(text);
   if (!next) return;
+  if (next.modBlocks) applyStoredModBlocks(next.modBlocks);
   restoreSubwindowLayout(next);
 }
 
 function restoreSubwindowLayout(next: SubwindowState): void {
+  if (next.modBlocks) applyStoredModBlocks(next.modBlocks);
   writeSubwindowState(localStorage, next);
   subwindowState = next;
   void applyMapTileMode(next.mapTileMode ?? GRAPHICS_NONE);
@@ -3289,6 +3317,17 @@ const inspectExtras: ObjectInfoExtras = {
  * loaded once for the equip-cmp screen (equipCmpSummary memoises the built
  * UiEntryConfig itself, keyed on this same object). */
 const uiEntryPacks = loadUiEntryPacks();
+applyStoredEntryRenderers({
+  entryRenderer: (name, colors, labelColors, symbols) => {
+    uiEntryRendererCustomize(
+      buildUiEntryConfig(uiEntryPacks, state.uiEntry),
+      name,
+      colors,
+      labelColors,
+      symbols,
+    );
+  },
+});
 
 /** Deps showEquipCmp needs: the ui_entry packs, the same object-info extras the
  * Inspect command uses (item comparison textblocks), and the character name for
@@ -3360,32 +3399,17 @@ function prefsUiCtx(): PrefsUiCtx {
           symbols,
         );
       },
-      /* window: the port is one terminal, so a subwindow flag has no target -
-       * see options.ts on the dropped 'w' row. keymap-input is deliberately
-       * absent too: the port's keymaps live in keymap-store.ts's own persisted
-       * store, which the keymap editor writes; letting a pref file write them
-       * would need that store's user/default split, which it does not have. */
-      /* neo-subwindows (#238): the web shell's own BSP tiling tree - see
-       * dumpSubwindowLayout below for the matching dump half. */
-      subwindowLayout: (json) => applyLoadedSubwindowLayout(json),
-      /* mod-block (#262): a mod-registered named pref-file block, kept
-       * entirely separate from subwindowLayout above so a malformed or
-       * unrecognised one can never reach - or be mistaken for - core's own
-       * tiling state. See dumpModBlocks below for the matching dump half. */
-      modBlock: (name, payload) => applySubwindowPrefBlock(name, payload),
+      /* window: the port is one terminal, so a subwindow flag has no target.
+       * Keymaps, colours, the layout and mod blocks are JSON documents, not
+       * pref lines. */
     },
     afterLoad: () => {
       /* Term_xtra(TERM_XTRA_REACT) + Term_redraw_all (ui-options.c L866-867). */
       saveColorPrefs();
       render();
     },
-    /* neo-subwindows (#238): appended to core's optionDump() banner by
-     * dumpWindowSettings (prefs-ui.ts), so "Dump window settings" carries the
-     * tiling tree too and an arrangement can be ported between installs. */
-    dumpSubwindowLayout: () => dumpSubwindowLayoutPrefText(subwindowState),
-    /* mod-block (#262): every mod-registered block's own line, appended
-     * alongside dumpSubwindowLayout's rather than folded into it. */
-    dumpModBlocks: () => dumpSubwindowPrefBlocks(),
+    layoutDocument: () => serializeSubwindowDocument(subwindowState),
+    applyLayoutDocument: (text) => applyLoadedSubwindowLayout(text),
   };
 }
 

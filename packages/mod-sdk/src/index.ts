@@ -52,6 +52,15 @@ export {
 } from "./json/linoleum.js";
 export { randartFormat } from "./json/randart.js";
 export { windowStateFormat } from "./json/window-state.js";
+export { keymapFormat } from "./json/keymaps.js";
+export { GAMEPAD_ROLE_IDS, gamepadBindingsFormat, gamepadTarget } from "./json/gamepad-bindings.js";
+export { COLOR_PREF_IDS, colorTableFormat } from "./json/color-table.js";
+export { layoutNode, SUBWINDOW_LAYOUT_IDS, subwindowLayoutFormat } from "./json/subwindow-layout.js";
+export type { LayoutNodeData, LayoutTileId } from "./json/subwindow-layout.js";
+export { visualOverrideFormat } from "./json/visual-overrides.js";
+export { soundMappingFormat } from "./json/sound-mappings.js";
+export { autoinscriptionFormat } from "./json/autoinscriptions.js";
+export { entryRendererFormat } from "./json/entry-renderers.js";
 export {
   ACTIVE_STORAGE_KEY,
   activeSlotFormat,

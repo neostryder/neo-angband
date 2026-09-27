@@ -28,6 +28,14 @@ import type {
   SoundHooks,
   Randint0,
 } from "@rpgm-tools/neo-angband-core";
+import { storedSoundMappings } from "./pref-documents";
+
+let activeSoundEngine: SoundEngine | null = null;
+
+/** Apply a newly imported sound document to the engine in this tab. */
+export function applyStoredSoundMappings(): void {
+  activeSoundEngine?.loadPrefs(storedSoundMappings());
+}
 
 /** Per-sample platform data: the prepared HTMLAudioElement, if any. */
 interface WebPlatData {
@@ -178,6 +186,11 @@ export function installWebSound(
    * forces a reload when a mod is enabled or disabled, which is the same reason
    * a module-level registry is legitimate elsewhere. */
   engine.loadPrefs(allSoundPrefEntries());
+  engine.loadPrefs(storedSoundMappings());
+  activeSoundEngine = engine;
+  engine.onClose(() => {
+    if (activeSoundEngine === engine) activeSoundEngine = null;
+  });
   /* AND subscribe, because this install runs at module scope (main.ts:8821) and
    * a plugin's register() runs ~2,100 lines later (main.ts:10985). Reading the
    * registry once here would have read it before every mod that can write to
