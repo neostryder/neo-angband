@@ -73,6 +73,20 @@
       "verdict": "LOCALIZATION - likert() buckets a ratio into a rating string. The bucket boundaries are upstream behaviour; only the strings are mod-facing, via gap 14."
     },
     {
+      "file": "packages/mod-sdk/src/capabilities.ts",
+      "cases": 18,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - capability grants are host-owned consent vocabulary. input:intent (#285) is a documented grant kind, not a mod-extensible capability."
+    },
+    {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 18,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. A mod cannot insert an unreviewed consent category. input:intent (#285) names the new player-action grant."
+    },
+    {
       "file": "packages/core/src/obj/object.ts",
       "cases": 17,
       "hasDefault": true,
@@ -80,23 +94,9 @@
       "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
     },
     {
-      "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 17,
-      "hasDefault": false,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - capability grants are host-owned consent vocabulary. mod:read (#172) is a new documented grant kind, not a mod-extensible capability."
-    },
-    {
       "file": "packages/web/src/capability-describe.ts",
       "cases": 17,
       "hasDefault": true,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. A mod cannot insert an unreviewed consent category. mod:read (#172) is the newest entry."
-    },
-    {
-      "file": "packages/web/src/capability-describe.ts",
-      "cases": 17,
-      "hasDefault": false,
       "kind": "SWITCH",
       "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. A mod cannot insert an unreviewed consent category. mod:read (#172) is the newest entry."
     },
@@ -206,6 +206,13 @@
       "verdict": "HOST - command-line option letters. Host wiring, not game content."
     },
     {
+      "file": "packages/mod-sdk/src/capabilities.ts",
+      "cases": 10,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "INTERNAL - parsing recognizes the closed capability grammar owned by the mod SDK. input:intent (#285) is a documented token, not a game behavior branch a mod can add at runtime."
+    },
+    {
       "file": "packages/web/src/mod-orphans.ts",
       "cases": 10,
       "hasDefault": false,
@@ -232,13 +239,6 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "LOCALIZATION - skill_index_to_name. Index to display string; gap 14 owns the strings."
-    },
-    {
-      "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 9,
-      "hasDefault": false,
-      "kind": "IF_CHAIN",
-      "verdict": "INTERNAL - parsing recognizes the closed capability grammar owned by the mod SDK. mod:read is a new documented token, not a game behavior branch that a mod must be able to add at runtime."
     },
     {
       "file": "packages/web/src/birth.ts",

@@ -121,6 +121,14 @@ describe("buildInputSnapshot", () => {
     expect(snap.core.inventory).toBeNull();
   });
 
+  it("reads an open prompt from the source with the interaction grant", () => {
+    const open = source({ prompt: () => ({ kind: "item" }) });
+    const prompt = buildInputSnapshot(open, caps("state:interaction.read"))!.prompt;
+    expect(prompt).toEqual({ kind: "item" });
+    expect(Object.isFrozen(prompt)).toBe(true);
+    expect(buildInputSnapshot(open, caps("state:player.read"))!.prompt).toBeNull();
+  });
+
   it("copies the frame, and withholds it without state:map.read", () => {
     const frame: WorldFrame = {
       viewport: {

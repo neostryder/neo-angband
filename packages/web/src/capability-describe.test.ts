@@ -57,6 +57,8 @@ describe("describeCapability", () => {
       text: "Add new player commands",
       elevated: false,
     });
+    expect(describeCapability("input:intent")).toMatchObject({ elevated: true });
+    expect(describeCapability("input:intent").text).toMatch(/character's behalf/);
     expect(describeCapability("event:turn")).toMatchObject({ elevated: false });
     expect(describeCapability("state:player.read")).toMatchObject({ elevated: false });
     expect(describeCapability("state:*.read")).toMatchObject({ elevated: true });

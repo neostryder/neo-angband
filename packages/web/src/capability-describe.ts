@@ -160,6 +160,12 @@ export function describeCapability(cap: string): CapabilityDescription {
   switch (parsed.kind) {
     case "command":
       return { cap, text: "Add new player commands", elevated: false };
+    case "input":
+      return {
+        cap,
+        text: "Act on your character's behalf with the same commands your own keys use",
+        elevated: true,
+      };
     case "event":
       return { cap, text: `Observe the "${parsed.name}" game event`, elevated: false };
     case "state":

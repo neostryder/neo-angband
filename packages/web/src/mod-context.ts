@@ -37,6 +37,7 @@ import {
 } from "./mod-plugin";
 import type { KeyRepeatVerdict } from "./key-repeat";
 import { buildInputSnapshot, buildKnownLevel, type InputSnapshot, type InputSnapshotSource } from "./input-snapshot";
+import { INTENT_CAPABILITY, type ModIntent } from "./intent-gate";
 import { VISUAL_FILTER_CAPABILITY } from "./visual-filter";
 import { diskPacks } from "./disk-packs";
 import { modPrefs, type ModPrefs } from "./mod-prefs";
@@ -147,6 +148,7 @@ export function modPluginContext(
   const subwindows = subwindowsFor(session);
   const snapshot = snapshotFor(session);
   const knownLevel = knownLevelFor(session);
+  const intent = intentFor(session);
   const tiles = tilesFor(session);
   const keyRepeat = keyRepeatFor(session);
   const keymaps = keymapsFor(id, state, session);
@@ -178,6 +180,7 @@ export function modPluginContext(
     ...(subwindows ? { subwindows } : {}),
     ...(snapshot ? { snapshot } : {}),
     ...(knownLevel ? { knownLevel } : {}),
+    ...(intent ? { intent } : {}),
     ...(tiles ? { tiles } : {}),
     ...(keyRepeat ? { keyRepeat } : {}),
     ...(keymaps ? { keymaps } : {}),
@@ -369,6 +372,19 @@ function knownLevelFor(session: ModSessionFacts): (() => KnownLevelView | null) 
 /** Install or clear the input-snapshot source (boot path and tests). */
 export function setModSnapshotSource(source: InputSnapshotSource | undefined): void {
   snapshotSource = source;
+}
+
+/** The live player-intent gate, latched beside the snapshot source. */
+let intentGate: ModIntent | undefined;
+
+function intentFor(session: ModSessionFacts): ModIntent | undefined {
+  if (!session.capabilities?.has(INTENT_CAPABILITY)) return undefined;
+  return session.intentGate ?? intentGate;
+}
+
+/** Install or clear the player-intent gate (boot path and tests). */
+export function setModIntentGate(gate: ModIntent | undefined): void {
+  intentGate = gate;
 }
 
 /** Install or clear the subwindow geometry/chrome door (boot path and tests). */
@@ -649,6 +665,8 @@ export interface ModSessionFacts {
   readonly subwindows?: ModSubwindows;
   /** Override the input-snapshot source (tests and alternate front ends). */
   readonly snapshotSource?: InputSnapshotSource;
+  /** Override the player-intent gate (tests and alternate front ends). */
+  readonly intentGate?: ModIntent;
   /** Override the monster-tile door (tests and alternate front ends). */
   readonly tiles?: ModTiles;
   /** Override the key-repeat query (tests and alternate front ends). */

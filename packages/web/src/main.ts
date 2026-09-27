@@ -342,6 +342,7 @@ import {
   setModComposedRecords,
   setModDisplayControl,
   setModSnapshotSource,
+  setModIntentGate,
   setModInstallDoor,
   setModReadDoor,
   setModRegistries,
@@ -351,6 +352,8 @@ import {
   setModTilesControl,
   type ModSessionFacts,
 } from "./mod-context";
+import { createIntentGate } from "./intent-gate";
+import type { InputSnapshotSource } from "./input-snapshot";
 import type { ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, ModTiles } from "./mod-plugin";
 import { createKeyRepeatTracker } from "./key-repeat";
 import { VisualFilterOverlay } from "./visual-filter";
@@ -9247,7 +9250,7 @@ setModSubwindowsControl(subwindowsControl);
  * a "-more-" pause runs inside openModal, so it is tested before modalDepth, and
  * a shop is its own modal, so storeModalActive is tested before the generic
  * one - the same precedence ModDisplay's `mode` uses. */
-setModSnapshotSource({
+const modSnapshotSource: InputSnapshotSource = {
   state: () => state,
   knownLevel: (caps) => createAgentView(state, undefined, {
     resolver: new ContentIdResolver({
@@ -9281,7 +9284,15 @@ setModSnapshotSource({
               : "play",
   messagePending: () => morePending,
   frame: () => lastWorldFrame,
-});
+};
+setModSnapshotSource(modSnapshotSource);
+setModIntentGate(createIntentGate({
+  state,
+  registry,
+  snapshotSource: modSnapshotSource,
+  push: (command) => { commandBuffer.push(command); },
+  advance: () => advance(),
+}));
 
 /**
  * neo-angband#256: a monster's tile art under the ACTIVE pack, for a mod

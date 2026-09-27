@@ -59,8 +59,8 @@ export interface InputSnapshot {
   readonly phase: InteractionPhase | null;
   /** Whether a "-more-" pause holds input. Null without `state:interaction.read`. */
   readonly messagePending: boolean | null;
-  /** Reserved for the typed prompt descriptor; null until that seam lands. */
-  readonly prompt: null;
+  /** The open prompt, once the typed prompt seam supplies it. */
+  readonly prompt: unknown | null;
   /** What the game knows at this wait (agent/boundary.ts). */
   readonly core: CoreSnapshot;
   /**
@@ -77,6 +77,8 @@ export interface InputSnapshotSource {
   /** The view deps the host builds its own agent views with. */
   viewDeps(): AgentViewDeps;
   phase(): InteractionPhase;
+  /** The open prompt, when the host has a prompt source. */
+  prompt?(): unknown | null;
   messagePending(): boolean;
   /** The last produced frame, live; this module copies it. */
   frame(): WorldFrame | null;
@@ -86,6 +88,18 @@ export interface InputSnapshotSource {
 
 function grants(caps: AgentCapabilities | undefined, cap: string): boolean {
   return !caps || caps.has(cap) || caps.has(ANY_READ_CAPABILITY);
+}
+
+function frozenPrompt(value: unknown): unknown {
+  if (value == null) return null;
+  const copy: unknown = structuredClone(value);
+  const freeze = (part: unknown): void => {
+    if (!part || typeof part !== "object" || Object.isFrozen(part)) return;
+    Object.freeze(part);
+    for (const child of Object.values(part)) freeze(child);
+  };
+  freeze(copy);
+  return copy;
 }
 
 /**
@@ -106,7 +120,7 @@ export function buildInputSnapshot(
     token: core.token,
     phase: interaction ? source.phase() : null,
     messagePending: interaction ? source.messagePending() : null,
-    prompt: null,
+    prompt: interaction ? frozenPrompt(source.prompt?.() ?? null) : null,
     core,
     frame: live ? snapshotWorldFrame(live) : null,
   });

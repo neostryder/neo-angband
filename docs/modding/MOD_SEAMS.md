@@ -410,6 +410,35 @@ Each cell has a `visible` flag and a `remembered` value. Terrain comes from `kno
 `state:map.read` grants this read. Without it, the core accessor throws `AgentCapabilityError` and the context call returns null. A mod with `state:map-actual.read` also gets `actual` on each cell: real terrain, traps, floor objects as `ItemView` values, and the monster index. Other mods receive no `actual` field. The `state:*.read` wildcard grants both domains. Trusted core code can call `captureKnownLevel` directly.
 
 The read does not change the game or use the RNG, including while the character hallucinates. Its token matches `ctx.snapshot().token` when both calls occur at the same input wait.
+## 4i. `ctx.intent.submit()` - act at the current input wait
+
+A plugin that declares `input:intent` receives `ctx.intent`. The grant tells the player that the mod can act on the character's behalf with the same commands as the player's keys. `submit(token, intent)` returns `{ accepted: true }` or `{ accepted: false, reason }`. A rejected intent changes no game state, command queue, turn or RNG stream.
+
+Pass the token from `ctx.snapshot()` with each intent. The host rejects an old token, an open prompt, a blocked phase, an unknown command code or malformed arguments before it takes an action. Ordinary commands require `play`; `shop-buy`, `shop-sell` and `shop-exit` require `store`. The prompt check reads the snapshot source, where the prompt stays null until the typed prompt seam supplies it.
+
+```js
+const snap = ctx.snapshot?.();
+if (snap?.phase === "play") {
+  ctx.intent?.submit(snap.token, { kind: "command", command: { code: "walk", dir: 6 } });
+  // Or: { kind: "travel", x: 12, y: 8 }
+  // Or: { kind: "target", midx: 3 } / { kind: "target", x: 12, y: 8 }
+}
+```
+
+The command arm accepts any code already in the action registry and passes its existing handler arguments through. Where core has an `AgentActions` builder, its command shape is the guide: `move(6)` gives `{ code: "walk", dir: 6 }`, and `drop(handle, 2)` gives `{ code: "drop", args: { handle, quantity: 2 } }`. Travel queues the existing `pathfind` command with `{ dest: { x, y } }`. Commands enter the host's keypress buffer and call the same `advance()` function. Target intents call the existing target setters directly, change the token and pass no turn. This path does not install a controller or mark the character as autoplayed.
+
+Compound actions belong to the mod. To walk to an item and pick it up, submit travel, wait for the next input wait, read a fresh snapshot, check the player's grid and item, then submit pickup with the new token. The same sequence works for walking beside a wall and sending `tunnel` with a direction.
+
+```js
+const first = ctx.snapshot();
+const sent = ctx.intent.submit(first.token, { kind: "travel", x: itemX, y: itemY });
+// At the next input wait, after the mod checks the item is still there:
+const next = ctx.snapshot();
+if (sent.accepted && next?.phase === "play" &&
+    next.core.player?.grid.x === itemX && next.core.player.grid.y === itemY) {
+  ctx.intent.submit(next.token, { kind: "command", command: { code: "pickup" } });
+}
+```
 
 ## 5. Doors that are exported but deliberately closed
 

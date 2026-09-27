@@ -251,6 +251,7 @@ export class CapabilityError extends Error {}
 /** A capability string parsed into its structured form. */
 export type ParsedCapability =
   | { kind: "command"; action: "add" }
+  | { kind: "input"; action: "intent" }
   | { kind: "event"; name: string }
   | { kind: "state"; domain: string; access: "read" }
   | { kind: "network"; host: string }
@@ -349,6 +350,9 @@ const REGISTRY_RE =
 export function parseCapability(cap: string): ParsedCapability {
   if (cap === "command:add") {
     return { kind: "command", action: "add" };
+  }
+  if (cap === "input:intent") {
+    return { kind: "input", action: "intent" };
   }
   /* NOT a registry domain, deliberately. A registry:* grant means "override
    * one named game system among many"; this one means "everything the player
@@ -467,6 +471,8 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
   switch (request.kind) {
     case "command":
       return grant.kind === "command";
+    case "input":
+      return grant.kind === "input" && grant.action === request.action;
     case "event":
       return grant.kind === "event" && grant.name === request.name;
     case "state":

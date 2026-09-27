@@ -28,6 +28,12 @@ function manifest(
 }
 
 describe("parseCapability: valid forms", () => {
+  it("parses input:intent as its own grant", () => {
+    expect(parseCapability("input:intent")).toEqual({ kind: "input", action: "intent" });
+    expect(() => parseCapability("input:*")).toThrow(CapabilityError);
+    const set = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["command:add"] }));
+    expect(set.has("input:intent")).toBe(false);
+  });
   it("parses command:add", () => {
     expect(parseCapability("command:add")).toEqual({
       kind: "command",
