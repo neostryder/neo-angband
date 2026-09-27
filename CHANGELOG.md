@@ -71,7 +71,7 @@ still calls itself.
 
 ### Changed
 
-- [Visible] [Save-Compat] **Custom option defaults, monster memory, random-artifact exports, and Linoleum packs are JSON documents.** `customized_birth_options.txt`, `customized_interface_options.txt`, `lore.txt`, and `randart.txt` convert once on first read and are removed after the new file reads back. A Linoleum pack is `pack.json` plus `tile-map.json`; a pack cached in the browser in the old text form converts once. A document that does not parse stays where it is, and that session uses the defaults for that file. (#288)
+- [Visible] [Save-Compat] **Saved option defaults, monster memory, random-artifact exports and Linoleum tile packs are stored as JSON.** Your existing files convert the first time the game reads them, and the old copies are removed once the new ones read back correctly. A tile pack already saved in your browser converts the same way. If a file cannot be read, it is left untouched and the game uses the defaults for that session. (#288)
 
 ## [1.18.0] - 2026-09-26
 
