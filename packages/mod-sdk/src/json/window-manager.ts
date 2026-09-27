@@ -14,6 +14,8 @@ const validator = json.object({
   lockDividers: json.boolean,
   /** The dungeon view shows a grip that drags it to another place. */
   moveDungeonView: json.boolean,
+  /** A panel that asks for a content height gets it until its divider is dragged. */
+  fitToContent: json.boolean,
 });
 
 export const windowManagerFormat = defineFormat({
@@ -25,5 +27,6 @@ export const windowManagerFormat = defineFormat({
     fitSmallWindows: true,
     lockDividers: false,
     moveDungeonView: true,
+    fitToContent: true,
   },
 });

@@ -2841,6 +2841,11 @@ const subwindowMenu: SubwindowMenu = {
       enabled: () => wmSettings.moveDungeonView,
       set: (enabled) => setWmFeature("moveDungeonView", enabled),
     },
+    {
+      label: t("options.subwindows.featureContentFit", "Fit to content: a panel that asks for a height gets it until you drag its divider"),
+      enabled: () => wmSettings.fitToContent,
+      set: (enabled) => setWmFeature("fitToContent", enabled),
+    },
   ],
   mapTiles: mapTileModeMenu,
   enabled: (id) => subwindowState.enabled[id as SubwindowId],

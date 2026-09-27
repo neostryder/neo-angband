@@ -13,6 +13,7 @@ export interface WmSettings {
   readonly fitSmallWindows: boolean;
   readonly lockDividers: boolean;
   readonly moveDungeonView: boolean;
+  readonly fitToContent: boolean;
 }
 
 export const DEFAULT_WM_SETTINGS: WmSettings = Object.freeze({
@@ -20,6 +21,7 @@ export const DEFAULT_WM_SETTINGS: WmSettings = Object.freeze({
   fitSmallWindows: true,
   lockDividers: false,
   moveDungeonView: true,
+  fitToContent: true,
 });
 
 /** An absent, unreadable or future-version document reads as the defaults. */

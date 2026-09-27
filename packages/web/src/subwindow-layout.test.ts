@@ -21,6 +21,7 @@ import {
   selectTab,
   swapLeaves,
   tabInto,
+  unsizeSplit,
   type LayoutNode,
   type LeafNode,
   type Rect,
@@ -111,6 +112,47 @@ describe("insertAtEdge and removeLeaf", () => {
   it("refuses to remove the main view", () => {
     const tree = insertAtEdge(mainOnly, "items", MAIN_TILE_ID, "left", 0.2);
     expect(removeLeaf(tree, MAIN_TILE_ID)).toEqual(tree);
+  });
+});
+
+describe("fit to content", () => {
+  const stacked = (): LayoutNode => insertAtEdge(mainOnly, "messages", MAIN_TILE_ID, "bottom", 0.3);
+  const messagesHeight = (tree: LayoutNode, fit?: Map<string, number>): number =>
+    computeLayout(tree, VIEW, fit ? { fit } : {}).tiles.find((tile) => tile.id === "messages")!.rect.h;
+
+  it("gives a panel the height it asks for", () => {
+    const fit = new Map([["messages", 150]]);
+    expect(messagesHeight(stacked(), fit)).toBe(150);
+    const after = computeLayout(stacked(), VIEW, { fit });
+    tiled(after.tiles, after.splitters, VIEW);
+  });
+
+  it("keeps the request inside the usual minimum sizes", () => {
+    expect(messagesHeight(stacked(), new Map([["messages", 5]]))).toBeGreaterThanOrEqual(96);
+    const big = messagesHeight(stacked(), new Map([["messages", 5000]]));
+    expect(VIEW.h - SPLITTER_PX - big).toBeGreaterThanOrEqual(96);
+  });
+
+  it("stops applying once the player drags the divider, and resumes after unsizeSplit", () => {
+    const fit = new Map([["messages", 150]]);
+    const dragged = resizeSplit(stacked(), [], 0.5);
+    expect(dragged.kind === "split" && dragged.sized).toBe(true);
+    expect(messagesHeight(dragged, fit)).toBe(messagesHeight(dragged));
+    expect(messagesHeight(unsizeSplit(dragged, []), fit)).toBe(150);
+  });
+
+  it("ignores side-by-side splits, the main view and tabs that are not shown", () => {
+    const beside = insertAtEdge(mainOnly, "messages", MAIN_TILE_ID, "right", 0.3);
+    const fit = new Map([["messages", 150], [MAIN_TILE_ID, 150]]);
+    expect(computeLayout(beside, VIEW, { fit })).toEqual(computeLayout(beside, VIEW));
+    const hidden = selectTab(tabInto(insertAtEdge(stacked(), "items", "messages", "right", 0.5), "items", "messages"), "items");
+    expect(computeLayout(hidden, VIEW, { fit: new Map([["messages", 150]]) })).toEqual(computeLayout(hidden, VIEW));
+  });
+
+  it("keeps the dragged mark through a save and load", () => {
+    const dragged = resizeSplit(stacked(), [], 0.5);
+    expect(parseLayoutTree(JSON.parse(JSON.stringify(dragged)))).toEqual(dragged);
+    expect(parseLayoutTree(JSON.parse(JSON.stringify(stacked())))).toEqual(stacked());
   });
 });
 

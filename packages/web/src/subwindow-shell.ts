@@ -22,6 +22,7 @@ import {
   ratioFromPointer,
   resizeSplit,
   selectTab,
+  unsizeSplit,
   type ComfortMerge,
   type DropZone,
   type LayoutNode,
@@ -88,6 +89,12 @@ export interface SubwindowShell {
    * exist keep working with tabs off, and no new ones can be made by drag.
    */
   setFeatures(features: SubwindowFeatures): void;
+  /**
+   * Ask for a height, in CSS pixels, that fits a panel's content (#287), or
+   * pass null to withdraw the request. The request moves a stacked divider
+   * next to the panel until the player drags that divider.
+   */
+  setFitHeight(id: string, height: number | null): void;
   destroy(): void;
 }
 
@@ -100,6 +107,8 @@ export interface SubwindowFeatures {
   readonly lockDividers: boolean;
   /** Show the dungeon view's grip, which drags it to another place. */
   readonly moveDungeonView: boolean;
+  /** Size panels that ask for a content height to that height. */
+  readonly fitToContent: boolean;
 }
 
 export interface SubwindowShellOptions {
@@ -322,7 +331,16 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
    * tree while groups are merged for space, so they rest until the viewport
    * has room again. */
   let dividersLocked = false;
-  let features: SubwindowFeatures = { tabs: true, fitSmallWindows: true, lockDividers: false, moveDungeonView: true };
+  let features: SubwindowFeatures = {
+    tabs: true,
+    fitSmallWindows: true,
+    lockDividers: false,
+    moveDungeonView: true,
+    fitToContent: true,
+  };
+  const fitHeights = new Map<string, number>();
+  const layoutOf = (layoutTree: LayoutNode, viewport: Rect) =>
+    computeLayout(layoutTree, viewport, features.fitToContent ? { fit: fitHeights } : {});
   let drag: {
     id: string;
     pointerId: number;
@@ -537,7 +555,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       lastMergeKey = key;
       if (fitted.merged.length > 0) onMerged?.(fitted.merged);
     }
-    const layout = computeLayout(visibleTree, viewport);
+    const layout = layoutOf(visibleTree, viewport);
     lastVisibleIds = new Set(layout.tiles.map((tile) => tile.id));
     mainGrip.hidden = !features.moveDungeonView || layout.tiles.length < 2;
     for (const tile of layout.tiles) {
@@ -562,6 +580,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       }
       setRect(gutter, splitter.rect);
       gutter.addEventListener("pointerdown", onGutterPointerDown);
+      gutter.addEventListener("dblclick", onGutterDoubleClick);
       host.appendChild(gutter);
       gutters.push(gutter);
     }
@@ -569,7 +588,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
 
   function zoneFromEvent(event: PointerEvent, dragging: string): DropZone | null {
     const point = pointerInHost(host, event);
-    const { tiles } = computeLayout(visibleTree, hostSize(host));
+    const { tiles } = layoutOf(visibleTree, hostSize(host));
     return dropZoneAt(tiles, point.x, point.y, { dragging, tabs: features.tabs });
   }
 
@@ -599,6 +618,23 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       .map((part) => Number(part));
     resize = { path, pointerId: event.pointerId };
     gutter.setPointerCapture(event.pointerId);
+  };
+
+  /* #287: a double-click hands a dragged divider back to the panel's
+   * fit-to-content height. A divider with no fitted panel beside it is
+   * unaffected apart from forgetting that it was dragged. */
+  const onGutterDoubleClick = (event: MouseEvent): void => {
+    if (dividersLocked) return;
+    const gutter = event.currentTarget;
+    if (!(gutter instanceof HTMLElement)) return;
+    const path = (gutter.dataset.path ?? "")
+      .split(".")
+      .filter((part) => part.length > 0)
+      .map((part) => Number(part));
+    const next = unsizeSplit(currentTree, path);
+    if (next === currentTree) return;
+    paint(next);
+    onTreeChange(next);
   };
 
   const onGripPointerDown = (event: PointerEvent): void => {
@@ -639,7 +675,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
 
   const onPointerMove = (event: PointerEvent): void => {
     if (resize && event.pointerId === resize.pointerId) {
-      const { splitters } = computeLayout(currentTree, hostSize(host));
+      const { splitters } = layoutOf(currentTree, hostSize(host));
       const splitter = splitters.find(
         (entry) => entry.path.join(".") === resize!.path.join("."),
       );
@@ -655,7 +691,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     if (!drag.active && dx * dx + dy * dy >= DRAG_THRESHOLD * DRAG_THRESHOLD) {
       drag.active = true;
       host.classList.add("tile-host-dragging");
-      const { tiles } = computeLayout(visibleTree, hostSize(host));
+      const { tiles } = layoutOf(visibleTree, hostSize(host));
       renderGuides(allDropZones(tiles, drag.id, { tabs: features.tabs }));
     }
     if (drag.active) showPreview(zoneFromEvent(event, drag.id));
@@ -697,7 +733,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
      * (rendered once at drag-start, not recomputed per pointer move) would
      * otherwise go stale and point at the pre-resize geometry. */
     if (drag?.active) {
-      const { tiles } = computeLayout(visibleTree, hostSize(host));
+      const { tiles } = layoutOf(visibleTree, hostSize(host));
       renderGuides(allDropZones(tiles, drag.id, { tabs: features.tabs }));
     }
   };
@@ -770,6 +806,18 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     setFeatures(next) {
       features = { ...next };
       paint(currentTree);
+    },
+    setFitHeight(id, height) {
+      const had = fitHeights.get(id);
+      if (height === null || !Number.isFinite(height) || height <= 0) {
+        if (had === undefined) return;
+        fitHeights.delete(id);
+      } else {
+        const px = Math.round(height);
+        if (had === px) return;
+        fitHeights.set(id, px);
+      }
+      if (features.fitToContent) paint(currentTree);
     },
     setVisualFilter(filter) {
       visualFilter = filter;

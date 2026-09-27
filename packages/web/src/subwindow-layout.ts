@@ -25,6 +25,11 @@ export interface SplitNode {
   kind: "split";
   axis: SplitAxis;
   ratio: number;
+  /**
+   * The player dragged this divider, so a panel's fit-to-content height no
+   * longer moves it (#287). Double-clicking the divider clears it.
+   */
+  sized?: true;
   first: LayoutNode;
   second: LayoutNode;
 }
@@ -147,17 +152,49 @@ function splitSizes(
   return [first, inner - first];
 }
 
+export interface LayoutOptions {
+  splitterPx?: number;
+  minPx?: number;
+  /**
+   * Heights in CSS pixels that panels ask for to fit their content (#287),
+   * keyed by panel id. A request applies when the panel is the active tab of
+   * one side of a stacked split whose divider the player has not dragged.
+   */
+  fit?: ReadonlyMap<TileId, number>;
+}
+
 export function computeLayout(
   tree: LayoutNode,
   viewport: Rect,
-  opts: { splitterPx?: number; minPx?: number } = {},
+  opts: LayoutOptions = {},
 ): LayoutRects {
   const splitterPx = opts.splitterPx ?? SPLITTER_PX;
   const minPx = opts.minPx ?? MIN_TILE_PX;
   const tiles: TileRect[] = [];
   const splitters: SplitterRect[] = [];
-  walk(tree, viewport, [], splitterPx, minPx, tiles, splitters);
+  walk(tree, viewport, [], splitterPx, minPx, opts.fit, tiles, splitters);
   return { tiles, splitters };
+}
+
+/**
+ * The ratio that gives a fitted panel its requested height, or the saved
+ * ratio when no request applies. The result is kept inside the same minimum
+ * sizes as a dragged divider.
+ */
+function fittedRatio(node: SplitNode, height: number, splitterPx: number, fit?: ReadonlyMap<TileId, number>): number {
+  if (!fit || fit.size === 0 || node.sized) return node.ratio;
+  const inner = height - splitterPx;
+  if (inner <= 0) return node.ratio;
+  const want = (child: LayoutNode): number | undefined => {
+    if (child.kind !== "leaf" || child.id === MAIN_TILE_ID) return undefined;
+    const px = fit.get(child.id);
+    return px !== undefined && Number.isFinite(px) && px > 0 ? px : undefined;
+  };
+  const first = want(node.first);
+  if (first !== undefined) return clampRatio(first / inner);
+  const second = want(node.second);
+  if (second !== undefined) return clampRatio(1 - second / inner);
+  return node.ratio;
 }
 
 function walk(
@@ -166,6 +203,7 @@ function walk(
   path: readonly number[],
   splitterPx: number,
   minPx: number,
+  fit: ReadonlyMap<TileId, number> | undefined,
   tiles: TileRect[],
   splitters: SplitterRect[],
 ): void {
@@ -185,11 +223,12 @@ function walk(
       h: rect.h,
     };
     splitters.push({ axis: "v", path, rect: gutter, parent: rect });
-    walk(node.first, firstRect, [...path, 0], splitterPx, minPx, tiles, splitters);
-    walk(node.second, secondRect, [...path, 1], splitterPx, minPx, tiles, splitters);
+    walk(node.first, firstRect, [...path, 0], splitterPx, minPx, fit, tiles, splitters);
+    walk(node.second, secondRect, [...path, 1], splitterPx, minPx, fit, tiles, splitters);
     return;
   }
-  const [firstH, secondH] = splitSizes(rect.h, node.ratio, splitterPx, minPx);
+  const ratio = fittedRatio(node, rect.h, splitterPx, fit);
+  const [firstH, secondH] = splitSizes(rect.h, ratio, splitterPx, minPx);
   const firstRect = { x: rect.x, y: rect.y, w: rect.w, h: firstH };
   const gutter = { x: rect.x, y: rect.y + firstH, w: rect.w, h: splitterPx };
   const secondRect = {
@@ -199,8 +238,8 @@ function walk(
     h: secondH,
   };
   splitters.push({ axis: "h", path, rect: gutter, parent: rect });
-  walk(node.first, firstRect, [...path, 0], splitterPx, minPx, tiles, splitters);
-  walk(node.second, secondRect, [...path, 1], splitterPx, minPx, tiles, splitters);
+  walk(node.first, firstRect, [...path, 0], splitterPx, minPx, fit, tiles, splitters);
+  walk(node.second, secondRect, [...path, 1], splitterPx, minPx, fit, tiles, splitters);
 }
 
 function replaceAt(
@@ -349,7 +388,15 @@ export function resizeSplit(
 ): LayoutNode {
   const node = nodeAt(tree, path);
   if (!node || node.kind !== "split") return tree;
-  return replaceAt(tree, path, { ...node, ratio: clampRatio(ratio) });
+  return replaceAt(tree, path, { ...node, ratio: clampRatio(ratio), sized: true });
+}
+
+/** Hand a dragged divider back to fit-to-content sizing. */
+export function unsizeSplit(tree: LayoutNode, path: readonly number[]): LayoutNode {
+  const node = nodeAt(tree, path);
+  if (!node || node.kind !== "split" || !node.sized) return tree;
+  const { sized: _sized, ...rest } = node;
+  return replaceAt(tree, path, rest);
 }
 
 export function ratioFromPointer(
@@ -651,13 +698,15 @@ function parseNode(raw: unknown): LayoutNode | null {
     const first = parseNode(rec.first);
     const second = parseNode(rec.second);
     if (!first || !second) return null;
-    return {
+    const split: SplitNode = {
       kind: "split",
       axis: rec.axis,
       ratio: clampRatio(typeof rec.ratio === "number" ? rec.ratio : 0.5),
       first,
       second,
     };
+    if (rec.sized === true) split.sized = true;
+    return split;
   }
   return null;
 }
