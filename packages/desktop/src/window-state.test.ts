@@ -24,6 +24,7 @@ import {
   MIN_HEIGHT,
   MIN_VISIBLE,
   MIN_WIDTH,
+  LEGACY_WINDOW_FILE,
   WINDOW_FILE,
   onSomeDisplay,
   readWindowState,
@@ -61,6 +62,38 @@ describe("window state (main-sdl.c sdlinit.txt + main-win.c's window keys)", () 
     };
     writeWindowState(dir, state);
     expect(readWindowState(dir)).toEqual(state);
+    expect(fs.existsSync(path.join(dir, LEGACY_WINDOW_FILE))).toBe(false);
+    expect(fs.readFileSync(path.join(dir, WINDOW_FILE), "utf8")).toBe(
+      '{\n  "format": "neo-angband/desktop/window-state",\n  "schemaVersion": 1,\n  "data": {\n    "fullscreen": true,\n    "maximized": false,\n    "width": 1600,\n    "height": 900,\n    "position": {\n      "x": 120,\n      "y": -340\n    }\n  }\n}\n',
+    );
+  });
+
+  it("converts the old file once and removes it after reading the JSON back", () => {
+    const dir = tmp();
+    fs.writeFileSync(path.join(dir, LEGACY_WINDOW_FILE), "Resolution = 1440x900\nMaximized = 1\n");
+    const expected = { ...DEFAULTS, width: 1440, height: 900, maximized: true };
+    expect(readWindowState(dir)).toEqual(expected);
+    expect(fs.existsSync(path.join(dir, LEGACY_WINDOW_FILE))).toBe(false);
+    expect(readWindowState(dir)).toEqual(expected);
+    writeWindowState(dir, expected);
+    expect(fs.existsSync(path.join(dir, LEGACY_WINDOW_FILE))).toBe(false);
+  });
+
+  it("uses defaults for corrupt JSON without consulting the old file", () => {
+    const dir = tmp();
+    fs.writeFileSync(path.join(dir, WINDOW_FILE), "{broken");
+    fs.writeFileSync(path.join(dir, LEGACY_WINDOW_FILE), "Fullscreen = 1\n");
+    expect(readWindowState(dir)).toEqual(DEFAULTS);
+    expect(fs.existsSync(path.join(dir, LEGACY_WINDOW_FILE))).toBe(true);
+  });
+
+  it("does not rewrite a future window document", () => {
+    const dir = tmp();
+    const future = '{"format":"neo-angband/desktop/window-state","schemaVersion":2,"data":{}}\n';
+    fs.writeFileSync(path.join(dir, WINDOW_FILE), future);
+    expect(readWindowState(dir)).toEqual(DEFAULTS);
+    writeWindowState(dir, DEFAULTS);
+    expect(fs.readFileSync(path.join(dir, WINDOW_FILE), "utf8")).toBe(future);
   });
 
   it("round-trips maximised on its own", () => {
@@ -114,7 +147,7 @@ describe("window state (main-sdl.c sdlinit.txt + main-win.c's window keys)", () 
       position: { x: 10.5, y: -20.5 },
     });
     const text = fs.readFileSync(path.join(dir, WINDOW_FILE), "utf8");
-    expect(text).toContain("Resolution = 1201x800");
+    expect(text).toContain('"width": 1201');
     expect(text).not.toMatch(/\d\.\d/);
     expect(readWindowState(dir).position).toEqual({ x: 11, y: -20 });
   });
@@ -122,7 +155,7 @@ describe("window state (main-sdl.c sdlinit.txt + main-win.c's window keys)", () 
   it("reads upstream's own spacing and ignores comments", () => {
     const dir = tmp();
     fs.writeFileSync(
-      path.join(dir, WINDOW_FILE),
+      path.join(dir, LEGACY_WINDOW_FILE),
       "# a comment\nResolution = 1440x900\nFullscreen = 0\nGraphics = 0\nMaximized = 1\n",
     );
     expect(readWindowState(dir)).toEqual({
@@ -146,7 +179,7 @@ describe("window state (main-sdl.c sdlinit.txt + main-win.c's window keys)", () 
     for (const [name, text, expected] of cases) {
       it(name, () => {
         const dir = tmp();
-        fs.writeFileSync(path.join(dir, WINDOW_FILE), text);
+        fs.writeFileSync(path.join(dir, LEGACY_WINDOW_FILE), text);
         expect(readWindowState(dir)).toEqual({ ...DEFAULTS, ...expected });
       });
     }
@@ -155,7 +188,7 @@ describe("window state (main-sdl.c sdlinit.txt + main-win.c's window keys)", () 
       /* The exact bytes the shipped build wrote. */
       const dir = tmp();
       fs.writeFileSync(
-        path.join(dir, WINDOW_FILE),
+        path.join(dir, LEGACY_WINDOW_FILE),
         "# Neo Angband window settings (main-sdl.c's sdlinit.txt).\nFullscreen = 1\n",
       );
       expect(readWindowState(dir)).toEqual({ ...DEFAULTS, fullscreen: true });
@@ -165,7 +198,7 @@ describe("window state (main-sdl.c sdlinit.txt + main-win.c's window keys)", () 
   it("treats an unparseable value as the default rather than throwing", () => {
     const dir = tmp();
     fs.writeFileSync(
-      path.join(dir, WINDOW_FILE),
+      path.join(dir, LEGACY_WINDOW_FILE),
       "Fullscreen = yes please\nMaximized = maybe\nResolution = big\nPositionX = left\n",
     );
     expect(readWindowState(dir)).toEqual(DEFAULTS);
@@ -174,14 +207,14 @@ describe("window state (main-sdl.c sdlinit.txt + main-win.c's window keys)", () 
   it("treats half a position as no position", () => {
     /* An x with no y would put the window somewhere the player never left it. */
     const dir = tmp();
-    fs.writeFileSync(path.join(dir, WINDOW_FILE), "PositionX = 300\n");
+    fs.writeFileSync(path.join(dir, LEGACY_WINDOW_FILE), "PositionX = 300\n");
     expect(readWindowState(dir).position).toBeNull();
   });
 
   it("survives outright garbage", () => {
     const dir = tmp();
     fs.writeFileSync(
-      path.join(dir, WINDOW_FILE),
+      path.join(dir, LEGACY_WINDOW_FILE),
       "\u0000\u0001binary junk\n====\n= 1\nno equals sign at all\n#\n",
     );
     expect(readWindowState(dir)).toEqual(DEFAULTS);
@@ -189,7 +222,7 @@ describe("window state (main-sdl.c sdlinit.txt + main-win.c's window keys)", () 
 
   it("clamps a too-small size, as load_prefs does (L4178-4179)", () => {
     const dir = tmp();
-    fs.writeFileSync(path.join(dir, WINDOW_FILE), "Resolution = 80x24\n");
+    fs.writeFileSync(path.join(dir, LEGACY_WINDOW_FILE), "Resolution = 80x24\n");
     expect(readWindowState(dir)).toMatchObject({ width: MIN_WIDTH, height: MIN_HEIGHT });
   });
 
@@ -202,13 +235,13 @@ describe("window state (main-sdl.c sdlinit.txt + main-win.c's window keys)", () 
      * file cannot go on carrying a size that has no effect. */
     it("refuses an out-of-int32 size from a hand-edited file", () => {
       const dir = tmp();
-      fs.writeFileSync(path.join(dir, WINDOW_FILE), "Resolution = 2147483648x800\n");
+      fs.writeFileSync(path.join(dir, LEGACY_WINDOW_FILE), "Resolution = 2147483648x800\n");
       expect(readWindowState(dir)).toMatchObject({ width: MAX_WIDTH, height: 800 });
     });
 
     it("refuses an absurd height too", () => {
       const dir = tmp();
-      fs.writeFileSync(path.join(dir, WINDOW_FILE), "Resolution = 1200x99999999\n");
+      fs.writeFileSync(path.join(dir, LEGACY_WINDOW_FILE), "Resolution = 1200x99999999\n");
       expect(readWindowState(dir)).toMatchObject({ width: 1200, height: MAX_HEIGHT });
     });
 
@@ -216,13 +249,13 @@ describe("window state (main-sdl.c sdlinit.txt + main-win.c's window keys)", () 
       const dir = tmp();
       writeWindowState(dir, { ...DEFAULTS, width: 2 ** 40, height: 2 ** 40 });
       expect(fs.readFileSync(path.join(dir, WINDOW_FILE), "utf8")).toContain(
-        `Resolution = ${MAX_WIDTH}x${MAX_HEIGHT}`,
+        `"width": ${MAX_WIDTH}`,
       );
     });
 
     it("keeps a size that is merely large but real", () => {
       const dir = tmp();
-      fs.writeFileSync(path.join(dir, WINDOW_FILE), "Resolution = 3491x2328\n");
+      fs.writeFileSync(path.join(dir, LEGACY_WINDOW_FILE), "Resolution = 3491x2328\n");
       expect(readWindowState(dir)).toMatchObject({ width: 3491, height: 2328 });
     });
   });
@@ -236,19 +269,19 @@ describe("window state (main-sdl.c sdlinit.txt + main-win.c's window keys)", () 
       const dir = tmp();
       writeWindowState(dir, { ...DEFAULTS, fullscreen: true, maximized: true });
       const text = fs.readFileSync(path.join(dir, WINDOW_FILE), "utf8");
-      expect(text).toContain("Fullscreen = 1");
-      expect(text).toContain("Maximized = 0");
+      expect(text).toContain('"fullscreen": true');
+      expect(text).toContain('"maximized": false');
     });
 
     it("is refused on the way in, so a hand-edited file cannot produce it", () => {
       const dir = tmp();
-      fs.writeFileSync(path.join(dir, WINDOW_FILE), "Fullscreen = 1\nMaximized = 1\n");
+      fs.writeFileSync(path.join(dir, LEGACY_WINDOW_FILE), "Fullscreen = 1\nMaximized = 1\n");
       expect(readWindowState(dir)).toMatchObject({ fullscreen: true, maximized: false });
     });
 
     it("leaves maximised alone when there is no fullscreen to lose it to", () => {
       const dir = tmp();
-      fs.writeFileSync(path.join(dir, WINDOW_FILE), "Fullscreen = 0\nMaximized = 1\n");
+      fs.writeFileSync(path.join(dir, LEGACY_WINDOW_FILE), "Fullscreen = 0\nMaximized = 1\n");
       expect(readWindowState(dir)).toMatchObject({ fullscreen: false, maximized: true });
     });
   });

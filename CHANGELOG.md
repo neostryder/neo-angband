@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 
+- [Internal] [Modding-API] **JSON documents share a schema registry and canonical writer.** The mod SDK validates envelopes and scalar values, migrates older versions, and serializes stable output; desktop window placement now converts `window.txt` to `window.json` on first read. (#288)
 - [Internal] [Modding-API] **Mods can read the game's own inspection answers.** `ctx.inspect` and `AgentView` return an item's description, a monster's recall, a spell's details, the items a command would offer, and aiming paths, each stamped with the current input token. Answers cover only what the player knows, need the matching state read grant, and leave game state and RNG unchanged. (#285)
 - [Internal] [Modding-API] **Resolved combat, healing, and movement events expose outcomes to interface mods.** Core emits copied hit, miss, damage, death, restored HP, and typed walk or teleport facts at their resolving paths, with a visibility flag; web mods subscribe through `ctx.events` using individual `event:<name>` grants. (#285)
 - [Internal] [Modding-API] **Mods can manage characters from their own title screens.** The `saves:manage` grant exposes frozen roster entries and routes load, rename and confirmed deletion through the host's character paths; only the character in play can be renamed. (#285)

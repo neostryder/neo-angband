@@ -156,6 +156,9 @@ importers:
       '@rpgm-tools/neo-angband-core':
         specifier: workspace:*
         version: link:../core
+      '@rpgm-tools/neo-angband-mod-sdk':
+        specifier: workspace:*
+        version: link:../mod-sdk
     devDependencies:
       electron:
         specifier: ^43.2.0

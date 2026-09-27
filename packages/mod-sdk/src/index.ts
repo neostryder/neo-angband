@@ -22,6 +22,30 @@
  */
 
 export {
+  color,
+  defineFormat,
+  DocumentValidationError,
+  json,
+  keyInput,
+  listFormats,
+  parseDocument,
+  serializeDocument,
+  utcTimestamp,
+} from "./json/index.js";
+export type {
+  DocumentResult,
+  FormatDefinition,
+  FormatTag,
+  Infer,
+  Migration,
+  OptionalValidator,
+  ValidationIssue,
+  ValidationResult,
+  Validator,
+} from "./json/index.js";
+export { windowStateFormat } from "./json/window-state.js";
+
+export {
   COMPAT_CLAIMS,
   DEFAULT_PACK_GROUP,
   hasFacet,

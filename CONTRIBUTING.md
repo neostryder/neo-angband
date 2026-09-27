@@ -33,6 +33,8 @@ keep it faithful. Read it once before your first change.
 This is a pnpm workspace (`pnpm-workspace.yaml`); all packages live under
 `packages/`.
 
+Changes to data files, preferences, or exports use the envelope and serializer in [JSON document style](docs/JSON_STYLE.md).
+
 ## Setup and core commands
 
 ```sh

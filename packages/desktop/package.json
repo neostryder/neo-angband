@@ -26,7 +26,8 @@
   },
   "dependencies": {
     "@rpgm-tools/neo-angband-cli": "workspace:*",
-    "@rpgm-tools/neo-angband-core": "workspace:*"
+    "@rpgm-tools/neo-angband-core": "workspace:*",
+    "@rpgm-tools/neo-angband-mod-sdk": "workspace:*"
   },
   "devDependencies": {
     "electron": "^43.2.0",

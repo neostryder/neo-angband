@@ -19,6 +19,8 @@ This directory is the modding SDK documentation set. It grows with the
 engine; each page documents surfaces that exist and are tested. For the
 overall design and the moddable-surface matrix, read `docs/MODS.md`.
 
+Mod-authored JSON documents use the same envelope as desktop window state. See [JSON document style](../JSON_STYLE.md) for validators, serialization, and migrations.
+
 **Just want to install one?** That is
 [three keypresses](../MODS.md#getting-a-mod-in-one-paragraph), not this page.
 

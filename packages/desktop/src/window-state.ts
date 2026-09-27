@@ -1,8 +1,9 @@
 /**
  * The front end's own window settings, remembered between launches.
  *
- * This is main-sdl.c's `sdlinit.txt` (load_prefs L4037-4075, save_prefs
- * L4186-4215): a plain `Key = value` file in ANGBAND_DIR_USER holding the things
+ * The legacy window.txt follows main-sdl.c's `sdlinit.txt` (load_prefs
+ * L4037-4075, save_prefs L4186-4215): a plain `Key = value` file in
+ * ANGBAND_DIR_USER holding the things
  * the DISPLAY layer owns rather than the game - upstream keeps `Resolution`,
  * `Fullscreen`, `Graphics`, tile sizes and the per-window geometry there. It is
  * not a savefile and not an option in the game's option screens; a front end's
@@ -22,7 +23,8 @@
  *     Electron window is - it can be moved, resized, maximised or full-screened -
  *     so it is main-win.c that says what must survive a quit.
  *
- * Parsed leniently, as upstream parses it: a line is matched by containing the
+ * The legacy file is parsed leniently, as upstream parses it: a line is matched
+ * by containing the
  * key, and the value is whatever follows the `=`. Every key is independent and
  * every ABSENT key keeps its default, exactly as main-win.c's
  * `GetPrivateProfileIntA(section, key, <default>, file)` does - so a state file
@@ -47,9 +49,11 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parseDocument, serializeDocument, windowStateFormat } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** Named for the front end, as each of upstream's front ends names its own. */
-export const WINDOW_FILE = "window.txt";
+export const WINDOW_FILE = "window.json";
+export const LEGACY_WINDOW_FILE = "window.txt";
 
 /**
  * The window a player gets who has never resized one.
@@ -164,17 +168,38 @@ function intOrNull(s: string): number | null {
 
 /** Into a range a real window can hold. L4178-4179 for the floor; MAX_* for the ceiling. */
 function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(Math.round(value), min), max);
+  return Number.isFinite(value) ? Math.min(Math.max(Math.round(value), min), max) : min;
 }
 
 export function readWindowState(userDir: string): WindowState {
+  const currentPath = path.join(userDir, WINDOW_FILE);
+  if (fs.existsSync(currentPath)) {
+    try {
+      const result = parseDocument(fs.readFileSync(currentPath, "utf8"), windowStateFormat);
+      return result.ok ? coherent(result.data) : DEFAULTS;
+    } catch {
+      return DEFAULTS;
+    }
+  }
+
   let text: string;
   try {
-    text = fs.readFileSync(path.join(userDir, WINDOW_FILE), "utf8");
+    text = fs.readFileSync(path.join(userDir, LEGACY_WINDOW_FILE), "utf8");
   } catch {
     return DEFAULTS;
   }
+  const state = readLegacyWindowState(text);
+  writeWindowState(userDir, state);
+  try {
+    const result = parseDocument(fs.readFileSync(currentPath, "utf8"), windowStateFormat);
+    if (result.ok) fs.rmSync(path.join(userDir, LEGACY_WINDOW_FILE));
+  } catch {
+    /* A failed conversion leaves the old file for the next launch. */
+  }
+  return state;
+}
 
+function readLegacyWindowState(text: string): WindowState {
   let { fullscreen, maximized, width, height } = DEFAULTS;
   let x: number | null = null;
   let y: number | null = null;
@@ -236,21 +261,22 @@ export function writeWindowState(userDir: string, raw: WindowState): void {
   /* Not trusted any more than the file is: a caller can be wrong too, and the
    * window's own events are where the fullscreen/maximised pair came from. */
   const state = coherent(raw);
+  const destination = path.join(userDir, WINDOW_FILE);
+  let temporary = "";
   try {
     fs.mkdirSync(userDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(userDir, WINDOW_FILE),
-      `# Neo Angband window settings (main-sdl.c's sdlinit.txt).\n` +
-        `Resolution = ${state.width}x${state.height}\n` +
-        `Fullscreen = ${state.fullscreen ? 1 : 0}\n` +
-        `Maximized = ${state.maximized ? 1 : 0}\n` +
-        (state.position === null
-          ? ""
-          : `PositionX = ${state.position.x}\nPositionY = ${state.position.y}\n`),
-      "utf8",
-    );
+    if (fs.existsSync(destination)) {
+      const existing = parseDocument(fs.readFileSync(destination, "utf8"), windowStateFormat);
+      if (!existing.ok && existing.issues.some((issue) => issue.message === "future schema version")) return;
+    }
+    temporary = `${destination}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+    fs.writeFileSync(temporary, serializeDocument(windowStateFormat, state), "utf8");
+    fs.renameSync(temporary, destination);
   } catch {
     /* best effort: window state is a convenience, not the player's data. */
+    if (temporary) {
+      try { fs.rmSync(temporary); } catch { /* A failed cleanup has no state to recover. */ }
+    }
   }
 }
 
