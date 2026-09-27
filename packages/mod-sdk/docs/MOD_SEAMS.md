@@ -548,6 +548,10 @@ The host owns the slot, tab strip, close control and saved position. `mount` run
 
 Typing in a focused editable field inside the panel goes to that field through the single input door. A native display panel keeps game keys available. Escape closes the top overlay panel first, then leaves a focused tiled mod panel for the game. The layout editor and game modals keep their input while open.
 
+## 4q. Floating panel positions and recovery
+
+The host's Subwindow setup can move a registered panel into a floating window inside the game viewport. The panel keeps the same slot, shadow root, controls, minimum size and input behavior. Its title bar can move it onto the same dock, swap and tab drop zones as a docked panel. Closing and showing it again restores its floating rectangle; Dock returns it to its last docked place or `preferredPlacement` if that place is unavailable. A saved float whose mod is not loaded shows the same named placeholder as a docked panel. The Floating windows switch temporarily renders floats at their remembered docked places without erasing their saved rectangles. No new capability or `ctx.ui` field is required.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

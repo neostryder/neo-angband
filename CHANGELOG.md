@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 
+- [Visible] [UI] **Subwindows can float inside the game viewport.** Float and Dock controls move panels between floating windows and remembered docked places; a switch can show floats docked without losing their positions, and hidden panels return to their last place. (#287)
 - [Internal] [Modding-API] **Interface mods can read travel routes, grid actions, and item rules.** Frozen inspect answers use the game's pathfinder, remembered terrain, and learned ignore settings; a display margin keeps whole map cells clear for mod controls. (#289)
 - [Internal] [Modding-API] **Mods can provide panels for the tiled subwindow layout.** `ctx.ui.registerPanelKind` adds a host-mounted shadow-root panel under `ui:panel.mount`, with saved placement, tabs, state updates, cleanup and a placeholder when its mod is not loaded. (#287)
 

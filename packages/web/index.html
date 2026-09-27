@@ -93,6 +93,42 @@
       .tile-close:hover {
         color: #e0e0e6;
       }
+      .tile-float-action,
+      .tile-dock-action {
+        border: 0;
+        background: transparent;
+        color: #c0c0c8;
+        font: 11px sans-serif;
+        cursor: pointer;
+        padding: 0 3px;
+      }
+      .tile-float-action[hidden],
+      .tile-dock-action[hidden] {
+        display: none;
+      }
+      .tile-floating {
+        box-shadow: 0 4px 18px #000a;
+        border: 1px solid #6a6a78;
+        box-sizing: border-box;
+      }
+      .tile-floating .tile-title {
+        cursor: move;
+        touch-action: none;
+      }
+      .tile-float-resize {
+        display: none;
+      }
+      .tile-floating .tile-float-resize {
+        display: block;
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        width: 14px;
+        height: 14px;
+        cursor: nwse-resize;
+        touch-action: none;
+        background: linear-gradient(135deg, transparent 50%, #a0a0aa 50%);
+      }
       .tile-controls {
         flex: none;
         display: flex;
@@ -145,14 +181,14 @@
       }
       .tile-drop-preview {
         position: absolute;
-        z-index: 4;
+        z-index: 1001;
         pointer-events: none;
         background: rgba(201, 162, 39, 0.28);
         outline: 1px solid #c9a227;
       }
       .tile-drop-guide {
         position: absolute;
-        z-index: 3;
+        z-index: 1000;
         pointer-events: none;
       }
       .tile-drop-guide[data-kind="dock"] {

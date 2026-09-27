@@ -566,6 +566,8 @@ import {
   registerSubwindowPrefBlock,
   scrollSubwindow,
   setSubwindowEnabled,
+  rememberDockTree,
+  standardDock,
   SUBWINDOW_CHOICES,
   writeSubwindowState,
   writeSubwindowDefault,
@@ -574,7 +576,7 @@ import {
 } from "./subwindows";
 import { mountSubwindowShell } from "./subwindow-shell";
 import { bindPanelProviders, panelKinds, syncPanelProviders, unregisterAllPanelKinds } from "./panel-provider";
-import { containsLeaf, insertAtEdge, leafIds, removeLeaf, tabInto, type LayoutNode } from "./subwindow-layout";
+import { applyDrop, containsLeaf, insertAtEdge, removeLeaf, restoreDockPlace, swapLeaves, tabInto, type LayoutNode } from "./subwindow-layout";
 import { readWmSettings, writeWmSettings, type WmSettings } from "./wm-settings";
 import {
   inventoryScreen,
@@ -995,10 +997,66 @@ const subwindowShell = mountSubwindowShell({
   labels: Object.fromEntries(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.label])),
   tabLabels: Object.fromEntries(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.tab])),
   onTreeChange: (tree) => {
-    subwindowState = { ...subwindowState, tree };
+    subwindowState = rememberDockTree(subwindowState, tree);
     writeSubwindowState(localStorage, subwindowState);
     applySubwindowLayout();
     renderSubwindows();
+  },
+  onFloat: (id, rect) => {
+    if (id === "main" || !containsLeaf(subwindowState.tree, id)) return;
+    const places = { ...subwindowState.places,
+      [id]: { ...subwindowState.places?.[id], dock: subwindowState.tree,
+        float: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, last: "float" as const } };
+    subwindowState = { ...subwindowState, tree: removeLeaf(subwindowState.tree, id),
+      floats: [...subwindowState.floats ?? [], rect], places };
+    writeSubwindowState(localStorage, subwindowState);
+    applySubwindowLayout();
+    renderSubwindows();
+  },
+  onDockFloat: (id, zone) => {
+    const floating = subwindowState.floats?.find((entry) => entry.id === id);
+    if (!floating || id === "main") return;
+    const floats = (subwindowState.floats ?? []).filter((entry) => entry.id !== id);
+    const saved = subwindowState.places?.[id]?.dock;
+    let tree = subwindowState.tree;
+    if (zone?.kind === "swap") {
+      const withIncoming = saved ? restoreDockPlace(tree, id, saved) : null;
+      tree = withIncoming ?? insertAtEdge(tree, id, zone.id, "right");
+      tree = swapLeaves(tree, id, zone.id);
+      if (zone.id !== "main") {
+        tree = removeLeaf(tree, zone.id);
+        floats.push({ ...floating, id: zone.id });
+      }
+    } else if (zone) tree = applyDrop(tree, id, zone);
+    else if (saved) tree = restoreDockPlace(tree, id, saved) ?? tree;
+    if (!containsLeaf(tree, id)) {
+      const native = SUBWINDOW_CHOICES.find((choice) => choice.id === id);
+      const preferred = panelKinds().find((kind) => kind.id === id)?.spec.preferredPlacement;
+      tree = native ? standardDock(tree, native.id) : preferred && containsLeaf(tree, preferred.target)
+        ? preferred.kind === "tab" ? tabInto(tree, id, preferred.target) : insertAtEdge(tree, id, preferred.target, preferred.edge)
+        : insertAtEdge(tree, id, "main", "right");
+    }
+    subwindowState = rememberDockTree({ ...subwindowState, floats,
+      places: { ...subwindowState.places, [id]: { ...subwindowState.places?.[id],
+        float: { x: floating.x, y: floating.y, width: floating.width, height: floating.height }, last: "dock" as const } } }, tree);
+    writeSubwindowState(localStorage, subwindowState);
+    applySubwindowLayout();
+    renderSubwindows();
+  },
+  onFloatsChange: (floats) => {
+    const places = { ...subwindowState.places };
+    for (const entry of floats) places[entry.id] = { ...places[entry.id],
+      float: { x: entry.x, y: entry.y, width: entry.width, height: entry.height }, last: "float" };
+    subwindowState = { ...subwindowState, floats, places };
+    writeSubwindowState(localStorage, subwindowState);
+  },
+  dockFallback: (tree, id) => {
+    const native = SUBWINDOW_CHOICES.find((choice) => choice.id === id);
+    if (native) return standardDock(tree, native.id);
+    const preferred = panelKinds().find((kind) => kind.id === id)?.spec.preferredPlacement;
+    if (preferred && containsLeaf(tree, preferred.target)) return preferred.kind === "tab"
+      ? tabInto(tree, id, preferred.target) : insertAtEdge(tree, id, preferred.target, preferred.edge);
+    return insertAtEdge(tree, id, "main", "right");
   },
   onViewChange: () => syncPanelProviders(),
   /* A panel's own close [x] (neo-angband#246): the same live-disable path the
@@ -1033,13 +1091,23 @@ const subwindowShell = mountSubwindowShell({
     if (note) say(note);
   },
 });
-subwindowShell.apply(subwindowState.tree);
+subwindowShell.apply(subwindowState.tree, subwindowState.floats, subwindowState.places);
 const panelProviderHost = {
   shell: subwindowShell,
   tree: () => subwindowState.tree,
   forgetPanel: (id: string) => lastModTrees.delete(id),
+  closePanel: (id: string) => setModPanelEnabledLive(id, false),
+  removePanel: (id: string) => {
+    const { [id]: _forgotten, ...places } = subwindowState.places ?? {};
+    void _forgotten;
+    subwindowState = { ...subwindowState, tree: removeLeaf(subwindowState.tree, id),
+      floats: (subwindowState.floats ?? []).filter((entry) => entry.id !== id), places };
+    writeSubwindowState(localStorage, subwindowState);
+    applySubwindowLayout();
+    renderSubwindows();
+  },
   changeTree: (tree: LayoutNode) => {
-    subwindowState = { ...subwindowState, tree };
+    subwindowState = rememberDockTree(subwindowState, tree);
     writeSubwindowState(localStorage, subwindowState);
     applySubwindowLayout();
     renderSubwindows();
@@ -2765,7 +2833,7 @@ function trackObjectRecall(title: string, tb: Textblock): void {
 }
 
 function applySubwindowLayout(): void {
-  subwindowShell.apply(subwindowState.tree);
+  subwindowShell.apply(subwindowState.tree, subwindowState.floats, subwindowState.places);
   for (const choice of SUBWINDOW_CHOICES) {
     if (subwindowState.enabled[choice.id]) ensureSubwindowTerm(choice.id);
   }
@@ -2839,50 +2907,40 @@ function setSubwindowEnabledLive(id: SubwindowId, enabled: boolean): void {
 
 const lastModTrees = new Map<string, LayoutNode>();
 
-function placeModPanel(tree: LayoutNode, id: string, saved: LayoutNode): LayoutNode | null {
-  function find(node: LayoutNode): LayoutNode | null {
-    if (node.kind === "leaf") {
-      if (!(node.tabs ?? [node.id]).includes(id)) return null;
-      const neighbor = (node.tabs ?? [node.id]).find((tab) => tab !== id && containsLeaf(tree, tab));
-      return neighbor ? tabInto(tree, id, neighbor) : null;
-    }
-    const inFirst = containsLeaf(node.first, id);
-    const inSecond = containsLeaf(node.second, id);
-    if (inFirst || inSecond) {
-      const nested = find(inFirst ? node.first : node.second);
-      if (nested) return nested;
-      const other = inFirst ? node.second : node.first;
-      const target = leafIds(other).find((candidate) => containsLeaf(tree, candidate));
-      if (target) {
-        const edge = node.axis === "v" ? (inFirst ? "left" : "right") : (inFirst ? "top" : "bottom");
-        return insertAtEdge(tree, id, target, edge, inFirst ? node.ratio : 1 - node.ratio);
-      }
-    }
-    return null;
-  }
-  return containsLeaf(saved, id) ? find(saved) : null;
-}
-
 function setModPanelEnabledLive(id: string, enabled: boolean): void {
   const entry = panelKinds().find((kind) => kind.id === id);
   if (enabled && !entry) return;
   let tree = subwindowState.tree;
+  let floats = [...subwindowState.floats ?? []];
+  const places = { ...subwindowState.places };
   if (enabled) {
-    if (containsLeaf(tree, id)) return;
-    const saved = lastModTrees.get(id) ?? readSubwindowDefault(localStorage)?.tree;
-    const placed = saved ? placeModPanel(tree, id, saved) : null;
+    if (containsLeaf(tree, id) || floats.some((entry) => entry.id === id)) return;
+    if (places[id]?.last === "float" && places[id]?.float) {
+      floats.push({ id, ...places[id].float });
+    } else {
+    const saved = places[id]?.dock ?? lastModTrees.get(id) ?? readSubwindowDefault(localStorage)?.tree;
+    const placed = saved ? restoreDockPlace(tree, id, saved) : null;
     const preferred = entry?.spec.preferredPlacement;
     tree = placed ?? (preferred && containsLeaf(tree, preferred.target)
       ? preferred.kind === "tab"
         ? tabInto(tree, id, preferred.target)
         : insertAtEdge(tree, id, preferred.target, preferred.edge)
       : insertAtEdge(tree, id, "main", "right"));
+    }
   } else {
-    if (!containsLeaf(tree, id)) return;
-    lastModTrees.set(id, tree);
-    tree = removeLeaf(tree, id);
+    const floating = floats.find((item) => item.id === id);
+    if (floating) {
+      places[id] = { ...places[id], float: { x: floating.x, y: floating.y,
+        width: floating.width, height: floating.height }, last: "float" };
+      floats = floats.filter((item) => item.id !== id);
+    } else {
+      if (!containsLeaf(tree, id)) return;
+      lastModTrees.set(id, tree);
+      places[id] = { ...places[id], dock: tree, last: "dock" };
+      tree = removeLeaf(tree, id);
+    }
   }
-  subwindowState = { ...subwindowState, tree };
+  subwindowState = { ...subwindowState, tree, floats, places };
   writeSubwindowState(localStorage, subwindowState);
   applySubwindowLayout();
   renderSubwindows();
@@ -2949,9 +3007,15 @@ const subwindowMenu: SubwindowMenu = {
       enabled: () => wmSettings.fitToContent,
       set: (enabled) => setWmFeature("fitToContent", enabled),
     },
+    {
+      label: t("options.subwindows.featureFloating", "Floating windows: move panels above the tiled layout inside the game"),
+      enabled: () => wmSettings.floatingWindows,
+      set: (enabled) => setWmFeature("floatingWindows", enabled),
+    },
   ],
   mapTiles: mapTileModeMenu,
-  enabled: (id) => id.includes(":") ? containsLeaf(subwindowState.tree, id) : subwindowState.enabled[id as SubwindowId],
+  enabled: (id) => id.includes(":") ? containsLeaf(subwindowState.tree, id) ||
+    !!subwindowState.floats?.some((entry) => entry.id === id) : subwindowState.enabled[id as SubwindowId],
   set: (id, enabled) => {
     if (id.includes(":")) { setModPanelEnabledLive(id, enabled); return; }
     if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
