@@ -146,7 +146,11 @@ importers:
 
   packages/content: {}
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      '@rpgm-tools/neo-angband-mod-sdk':
+        specifier: workspace:*
+        version: link:../mod-sdk
 
   packages/desktop:
     dependencies:

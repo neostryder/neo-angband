@@ -1285,6 +1285,16 @@ async function recoverStrandedOrigins(
   }
 
   const plan = planOriginMerge(await readOriginStorage(stablePort), sources, dead);
+  if (plan.blocked) {
+    /* An unreadable storage document stays on disk. Marking source origins
+     * handled would leave their records where nothing looks again. */
+    mainLog(
+      "error",
+      "recovery",
+      "a character storage document could not be read, so abandoned origins were left in place",
+    );
+    return;
+  }
   const modPlan = planModMerge(await readOriginModIds(stablePort), modSources);
   /* BEFORE any origin can be marked handled. Marking is what makes a tombstone
    * unreadable forever, so the ledger has to have the ids first or the marker can
@@ -1307,7 +1317,7 @@ async function recoverStrandedOrigins(
     return;
   }
 
-  const failed = await writeOriginStorage(stablePort, plan.writes, plan.removes);
+  const failed = await writeOriginStorage(stablePort, plan.writes);
   /* Mods carried in the same pass, and their failures are keys as far as handledPorts
    * is concerned: a mod that did not land leaves the only copy in the source origin,
    * so marking that origin handled would strand it exactly as a refused save key
@@ -1317,18 +1327,6 @@ async function recoverStrandedOrigins(
   /* NOT logged here. The read-back below can still move a mod from brought-over to
    * failed, and a log line written before it would contradict the dialog the player is
    * about to read - see the log next to `modLines`. */
-  if (plan.removes.length > 0) {
-    /* Worth a line of its own: it is the one thing here that destroys bytes, and
-     * a player who finds a character gone deserves to be able to read why. */
-    mainLog(
-      "info",
-      "recovery",
-      `dropped ${String(plan.removes.length)} resumable save(s) for characters another ` +
-        "origin records as dead (decision 16: death is permanent)",
-      { removed: plan.removes },
-    );
-  }
-
   /* Read it BACK before believing it. setItem returning true means Chromium
    * accepted the value, not that the value is in the database; the marker written
    * below says "these origins have been dealt with" and would then be a lie that
@@ -1342,7 +1340,28 @@ async function recoverStrandedOrigins(
     /* Not fatal: the read-back below is the actual gate. */
   }
   const after = await readOriginStorage(stablePort);
-  const missing = Object.keys(plan.writes).filter((k) => !(k in after));
+  const missing = Object.keys(plan.writes).filter((k) => after[k] !== plan.writes[k]);
+  if (failed.length === 0 && missing.length === 0 && plan.removes.length > 0) {
+    failed.push(...await writeOriginStorage(stablePort, {}, plan.removes));
+    try {
+      await session.defaultSession.flushStorageData();
+    } catch {
+      /* The read-back below remains the gate. */
+    }
+    const afterRemoval = await readOriginStorage(stablePort);
+    for (const key of plan.removes) {
+      if (key in afterRemoval && !failed.includes(key)) missing.push(key);
+    }
+    if (failed.length === 0 && missing.length === 0) {
+      mainLog(
+        "info",
+        "recovery",
+        `dropped ${String(plan.removes.length)} resumable save(s) for characters another ` +
+          "origin records as dead (decision 16: death is permanent)",
+        { removed: plan.removes },
+      );
+    }
+  }
   /* The same read-back for mods, by metadata key rather than by comparing bytes: a mod
    * is megabytes and re-reading every one to diff it would cost more than it proves.
    * The key is what makes a mod installed, and its absence is what the durable failure

@@ -46,7 +46,7 @@ The name also stays clear of every term the codebase already uses: `pack`/`PackM
 The feature is called a **Delve**. It is familiar dungeon-crawl vocabulary, so nobody has to learn a new word, but it is not an actual Angband or roguelike mechanic, so it cannot be mistaken for upstream content the way Grimoire or rune could. It reads naturally everywhere the feature appears: a menu row ("Save a Delve...", "Load a Delve..."), a file name (`ironman-race.ndelve`), and a Discord message ("here's my Delve for the Borg race channel"). The rest of this document uses **Delve**, and nothing in the format or the mechanisms depends on the word.
 ## The file format
 
-A Delve is one JSON object. `formatVersion` is separate from the engine version and from every mod's version, because the format will change on its own schedule (new option groups, new mod fields). `TRANSFER_VERSION` is kept separate for the same reason in `.neochar` character-transfer files (`packages/web/src/save-transfer.ts:47-51`), and a Delve uses that same `magic` + `version` shape instead of a third way of saying what kind of file this is and which revision of its shape it uses.
+A Delve is one JSON object. Its `formatVersion` tracks the file's fields independently of engine and mod versions. Import checks the `magic` kind marker before reading those fields.
 
 ```json
 {
@@ -103,7 +103,7 @@ A Delve is one JSON object. `formatVersion` is separate from the engine version 
 Field notes:
 
 - **`magic`** identifies the kind of file and is what import checks, not the file extension (see "File extension" below). A file with a wrong or missing `magic` is refused before anything else is read, the same way `readTransfer` works (`save-transfer.ts:142-145`).
-- **`formatVersion`** goes up only when an older reader would misread a newer file (the rule `TRANSFER_VERSION`'s own comment states, `save-transfer.ts:47`), not on every additive change. An importer that meets a `formatVersion` it does not recognize still imports what it can, as long as the top-level shape parses (see "Version mismatch" below). This is gate 1 of `MOD_COMPATIBILITY.md` ("the engine labels, it does not forbid") applied to the Delve's own version number instead of a mod's.
+- **`formatVersion`** increases when an older Neo Angband build would misread a newer Delve. A new optional field that old builds can skip does not require a new version. The importer accepts an unknown version when the top-level shape parses (see "Version mismatch" below).
 - **`name`** and **`description`** are the human-readable label. They appear on the import preview screen and are not relied on anywhere else.
 - **`createdWithEngine`** is informational only, like a mod's own `engine` range, which is a label and never a gate. It never blocks an import; it lets the preview screen say "made on 0.20.0" the way a mod's row says which builds it was tested against.
 - **`mods`** is a list in the exporting player's order, so an import that replaces the enabled set (see below) can also propose the same load order, although load order is only ever a proposal (`docs/modding/MOD_LIFECYCLE.md` section 3).

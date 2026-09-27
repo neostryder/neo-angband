@@ -44,6 +44,39 @@ export type {
   Validator,
 } from "./json/index.js";
 export { windowStateFormat } from "./json/window-state.js";
+export {
+  ACTIVE_STORAGE_KEY,
+  activeSlotFormat,
+  activeSlotFromLegacy,
+  LEGACY_ACTIVE_STORAGE_KEY,
+} from "./json/active-slot.js";
+export type { ActiveSlot } from "./json/active-slot.js";
+export { characterExportFormat } from "./json/character-export.js";
+export type { CharacterExport, CharacterExportMeta } from "./json/character-export.js";
+export { characterFromLegacy, epochFromTimestamp, timestampFromEpoch } from "./json/character-record.js";
+export type { CharacterRecord } from "./json/character-record.js";
+export {
+  LEGACY_ROSTER_STORAGE_KEY,
+  ROSTER_STORAGE_KEY,
+  rosterFormat,
+  rosterFromLegacy,
+} from "./json/character-roster.js";
+export type { CharacterRoster } from "./json/character-roster.js";
+export {
+  DEATHS_STORAGE_KEY,
+  deathRecordsFormat,
+  deathsFromLegacy,
+  LEGACY_DEATHS_STORAGE_KEY,
+} from "./json/death-records.js";
+export type { DeathRecordDocument, DeathRecords } from "./json/death-records.js";
+export {
+  LEGACY_ORPHAN_STORAGE_KEY,
+  ORPHAN_STORAGE_KEY,
+  orphanSavesFormat,
+  orphansFromLegacy,
+} from "./json/orphan-saves.js";
+export type { OrphanRecord, OrphanRecords } from "./json/orphan-saves.js";
+export { isSavedGameHeader, savedGameFormat } from "./json/saved-game.js";
 
 export {
   COMPAT_CLAIMS,

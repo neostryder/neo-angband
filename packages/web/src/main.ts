@@ -1391,6 +1391,9 @@ function bootGame(): ReturnType<typeof startGame> {
            * their character is corrupt may well delete it. */
           loadedNote = `Save written by a newer version (${decoded.unknownCodec}); update to load it.`;
           keepSaveUntouched();
+        } else if (decoded.futureSchema) {
+          loadedNote = "This character's save is from a newer Neo Angband. Update, then open the character again.";
+          keepSaveUntouched();
         } else if (decoded.save) {
           // Faithful: a clean resume shows no "welcome" line (the original just
           // restores the game). Only a failed integrity check - a web-storage

@@ -409,18 +409,7 @@ character this machine has not met, and offer it - never import it silently,
 and never through a second import path, since a second implementation of the
 anti-scum gate is a second place for that gate to be gotten wrong.
 
-**`BackupFolder` gains `list()`.** Both platform implementations
-(`mod-backup.ts`) can now answer every `.neochar` file currently readable in
-the chosen folder, each identified by a cheap peek at its JSON header - never
-a full decode, never a base64 unpack of the save bytes it carries.
-`save-transfer.ts`'s `peekTransferMeta` is that peek: the same magic/version
-checks `decodeTransfer` runs, factored into a shared `parseEnvelope` so the two
-never drift, stopping short of ever touching the `save` field. On desktop,
-`BACKUP_CHANNEL`'s `"list"` op reads the folder in the main process
-(`backup-folder.ts`'s `listBackupFiles`) and returns `{name, text}` pairs - the
-folder's own path never crosses the bridge here either, matching every other
-op on this channel. On the browser tab, the directory handle's own
-`values()` async iteration reads each `.neochar` file's text directly.
+**`BackupFolder` gains `list()`.** Both platform implementations (`mod-backup.ts`) list readable `.neochar` files in the chosen folder. `save-transfer.ts`'s `peekTransferMeta` parses each file and checks its metadata without decompressing the save. It also recognizes older character files without decoding their base64 save bytes. On desktop, `BACKUP_CHANNEL`'s `"list"` operation reads the folder in the main process (`backup-folder.ts`'s `listBackupFiles`) and returns `{name, text}` pairs. The folder path stays in the main process. In a browser tab, the directory handle's `values()` iteration reads each file's text.
 
 **The checkpoint is host code, not mod code, and runs once per game launch.**
 `register(host, ctx)` and `hooks(ctx)` both require a live game (see this
