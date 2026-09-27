@@ -129,6 +129,36 @@ describe("bootMenus is one loop that walks back up to the title", () => {
     expect(body).toMatch(/canReturnToTitle = !params\.get\("agent"\)/u);
     expect(body).toMatch(/if \(!canReturnToTitle\) return;/u);
   });
+
+  it("opens Mods from the title and returns there when the manager returns", () => {
+    expect(body).toMatch(
+      /if \(choice === "mods"\) \{\s*await openModal\(\(\) => openModManager\(\{ resume: false \}\)\);\s*continue;\s*\}/u,
+    );
+    expect(body.indexOf('choice === "mods"')).toBeLessThan(body.indexOf('choice === "new"'));
+  });
+});
+
+describe("title Mods uses the play manager with a title reload", () => {
+  const start = MAIN.indexOf("async function openModManager(");
+  const end = MAIN.indexOf("async function openModOptions(", start);
+  const manager = stripComments(MAIN.slice(start, end));
+
+  it("opens the same manager without requiring a loaded character", () => {
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(manager).toContain("await runModManager(term, deps, opts?.resume === false ? { fromTitle: true } : undefined)");
+    expect(manager).not.toContain("resumedActive");
+    expect(manager).not.toContain("attachedSlot");
+    expect(stripComments(MAIN)).toMatch(/if \(!id\) return true;\s*try \{/u);
+  });
+
+  it("reloads changes to the title while leaving the play call unchanged", () => {
+    expect(manager).toMatch(
+      /if \(opts\?\.resume === false\) \{\s*deps\.requestReload = \(reloadOpts\) =>\s*reloadAfterModChange\(\{ \.\.\.reloadOpts, resume: false \}\);\s*\}/u,
+    );
+    const gameMenu = stripComments(functionBody(MAIN, "gameMenuOnce"));
+    expect(gameMenu).toContain("await openModManager()");
+  });
 });
 
 describe("the character picker really produces a back action", () => {

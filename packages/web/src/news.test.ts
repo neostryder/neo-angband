@@ -70,14 +70,13 @@ describe("news title screen markup (news.txt {colour}...{/})", () => {
  * including a bare Shift, and on a click anywhere.
  */
 describe("title screen keys (main-win.c File menu)", () => {
-  /* The upstream File-menu rows. `canInstall: false` keeps this block about the
-   * four rows that ARE ported; the fifth is not upstream's and is covered on its
-   * own below. */
+  /* `canInstall: false` keeps this block focused on the rows available in both
+   * shells. The conditional Install and Update rows are covered below. */
   const ALL = { canLoad: true, canOpen: true, canQuit: true, canInstall: false, canUpdate: false, updateReady: false };
 
-  it("offers Profile / New / Open / Resume / Quit, Profile first", () => {
-    expect(titleRows(ALL).map((r) => r.choice)).toEqual(["profile", "new", "open", "load", "quit"]);
-    expect(titleRows(ALL).map((r) => r.key)).toEqual(["p", "n", "o", "r", "q"]);
+  it("offers Profile / New / Open / Resume / Mods / Quit, Profile first", () => {
+    expect(titleRows(ALL).map((r) => r.choice)).toEqual(["profile", "new", "open", "load", "mods", "quit"]);
+    expect(titleRows(ALL).map((r) => r.key)).toEqual(["p", "n", "o", "r", "m", "q"]);
   });
 
   it("maps each row's letter, in either case", () => {
@@ -86,11 +85,26 @@ describe("title screen keys (main-win.c File menu)", () => {
       ["n", "new"],
       ["o", "open"],
       ["r", "load"],
+      ["m", "mods"],
       ["q", "quit"],
     ] as const) {
       expect(titleKeyChoice(key, titleRows(ALL), false)).toBe(want);
       expect(titleKeyChoice(key.toUpperCase(), titleRows(ALL), false)).toBe(want);
     }
+  });
+
+  it("keeps Mods enabled between Resume and Install, even before a character exists", () => {
+    const rows = titleRows({
+      ...ALL,
+      canLoad: false,
+      canOpen: false,
+      canInstall: true,
+    });
+    expect(rows.map((r) => r.choice)).toEqual([
+      "profile", "new", "open", "load", "mods", "install", "quit",
+    ]);
+    expect(rows[4]).toEqual({ choice: "mods", key: "m", label: "(M)ods", enabled: true });
+    expect(titleKeyChoice("m", rows, false)).toBe("mods");
   });
 
   // main-win.c:4453-4455: KTRL('N') is New, KTRL('O') is Open, KTRL('X') is Exit.
@@ -128,7 +142,7 @@ describe("title screen keys (main-win.c File menu)", () => {
       canInstall: false,
       canUpdate: false, updateReady: false,
     });
-    expect(none.filter((r) => r.enabled).map((r) => r.choice)).toEqual(["profile", "new"]);
+    expect(none.filter((r) => r.enabled).map((r) => r.choice)).toEqual(["profile", "new", "mods"]);
     expect(titleKeyChoice("r", none, false)).toBeNull();
     expect(titleKeyChoice("o", none, false)).toBeNull();
     expect(titleKeyChoice("q", none, false)).toBeNull();
@@ -138,11 +152,12 @@ describe("title screen keys (main-win.c File menu)", () => {
      * it is not a File-menu row at all, so EnableMenuItem never greys it. */
     expect(titleKeyChoice("n", none, false)).toBe("new");
     expect(titleKeyChoice("p", none, false)).toBe("profile");
+    expect(titleKeyChoice("m", none, false)).toBe("mods");
   });
 
   it("lays the rows out centred, in order, without overlapping", () => {
     const spans = titleRowSpans(titleRows(ALL), 80);
-    expect(spans.map((s) => s.row.choice)).toEqual(["profile", "new", "open", "load", "quit"]);
+    expect(spans.map((s) => s.row.choice)).toEqual(["profile", "new", "open", "load", "mods", "quit"]);
     for (let i = 1; i < spans.length; i++) {
       expect(spans[i]!.start).toBeGreaterThan(spans[i - 1]!.end);
     }
@@ -517,12 +532,11 @@ describe("title screen project information", () => {
 });
 
 /*
- * The one row that is not upstream's.
+ * The conditional Install row.
  *
- * Every other title row maps to a File-menu item, and a row that does not apply
- * is GREYED because that is what EnableMenuItem does. This one has no File-menu
- * counterpart at all, so it is ABSENT under the desktop shell rather than greyed:
- * a permanent dead row there would be advertising something that is not coming.
+ * Unlike Profile and Mods, this host row is not available on every shell. It
+ * has no File-menu counterpart, so it is ABSENT under the desktop shell rather
+ * than greyed: a dead row there would advertise something that is not coming.
  */
 describe("the (I)nstall row", () => {
   const WEB = { canLoad: true, canOpen: true, canQuit: true, canInstall: true, canUpdate: false, updateReady: false };
@@ -533,6 +547,7 @@ describe("the (I)nstall row", () => {
       "new",
       "open",
       "load",
+      "mods",
       "install",
       "quit",
     ]);
@@ -565,6 +580,7 @@ describe("the (I)nstall row", () => {
       "new",
       "open",
       "load",
+      "mods",
       "install",
       "quit",
     ]);
@@ -588,6 +604,7 @@ describe("the (U)pdate row", () => {
       "new",
       "open",
       "load",
+      "mods",
       "update",
       "quit",
     ]);
@@ -606,14 +623,14 @@ describe("the (U)pdate row", () => {
     expect(titleRows(READY).at(-1)?.choice).toBe("quit");
   });
 
-  it("EVERY row still fits 80 columns with all seven present", () => {
+  it("EVERY row still fits 80 columns with all eight present", () => {
     /* THE DEFECT THIS PREVENTS: the prompt is one line printed left to right and
      * clipped at `cols`, so an overflow eats the LAST row - (Q)uit. Nothing
-     * would look broken; the screen would just stop offering a way out. Seven
-     * rows (Profile always present, plus Install and Update) need more columns
-     * than the old fixed three-space gap allows. */
+     * would look broken; the screen would just stop offering a way out. Eight
+     * rows (Profile and Mods always present, plus Install and Update) need more
+     * columns than the old fixed three-space gap allows. */
     const all = titleRows({ ...READY, canInstall: true });
-    expect(all).toHaveLength(7);
+    expect(all).toHaveLength(8);
     const spans = titleRowSpans(all, 80);
     expect(spans.at(-1)!.row.choice).toBe("quit");
     expect(spans.at(-1)!.end).toBeLessThan(80);

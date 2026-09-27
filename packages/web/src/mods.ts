@@ -1538,23 +1538,22 @@ async function enableRecommendedMods(
 }
 
 /**
- * Offer the existing one reload decision at the point a combined first install
- * finishes. Reload remains optional: "Later" leaves the recorded enablement in
- * place for a normal future reload. Returning here rather than repainting the
- * source and manager menus is safe because the player has already seen the
- * install outcome and can reopen either list at any time.
+ * Apply a changed set when the manager closes. From play, offer the existing
+ * reload decision; "Later" keeps the changes for a future reload. At the title,
+ * reload at once so the next title and birth screens use the new mod set.
  */
 async function applyModChanges(
   term: GridSurface & GridPointerInput,
   deps: ModManagerDeps,
   tileModsAtEntry: ReadonlySet<string>,
+  reloadNow = false,
 ): Promise<void> {
   /* A newly-enabled tiles mod contributes Graphics rows and nothing else, so
    * say so here and open that screen after the reload. Without this the player
    * enables a tile mod, reloads, sees an unchanged ASCII map, and concludes the
    * mod is broken - which is what happened. */
   const newTiles = [...enabledTileModIds(deps)].some((id) => !tileModsAtEntry.has(id));
-  const pick = await selectFromMenu(
+  const pick = reloadNow ? 0 : await selectFromMenu(
     term,
     "core:mod-apply",
     newTiles
@@ -4208,6 +4207,7 @@ async function offerDelveSyncArrival(
 export async function runModManager(
   term: GridSurface & GridPointerInput,
   deps: ModManagerDeps,
+  opts?: { fromTitle?: boolean },
 ): Promise<void> {
   const arrivalOutcome = await offerDelveSyncArrival(term, deps);
   if (arrivalOutcome === "reloaded") return;
@@ -4508,7 +4508,9 @@ export async function runModManager(
       t("modsScreen.common.done", "Done"),
       "done",
       C_DIM,
-      t("modsScreen.run.doneHint", "Close this and go back to the game."),
+      opts?.fromTitle
+        ? t("modsScreen.run.doneHintTitle", "Close this and go back to the title screen.")
+        : t("modsScreen.run.doneHint", "Close this and go back to the game."),
     );
 
     // A live ?mods= override outranks the store for this session, so the boxes
@@ -4771,7 +4773,7 @@ export async function runModManager(
     }
   }
 
-  if (dirty) await applyModChanges(term, deps, tileModsAtEntry);
+  if (dirty) await applyModChanges(term, deps, tileModsAtEntry, opts?.fromTitle);
 }
 
 /**

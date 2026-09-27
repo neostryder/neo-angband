@@ -182,6 +182,7 @@ function open(
   mods: CatalogManifest[],
   extraDeps: Partial<ModManagerDeps> = {},
   store: ModStore = new ModStore(fakeStorage()),
+  opts?: { fromTitle?: boolean },
 ): {
   win: FakeWindow;
   term: FakeTerm;
@@ -193,7 +194,7 @@ function open(
   (globalThis as { window?: unknown }).window = win;
   const term = makeTerm(80, 24);
   const requestReload = vi.fn();
-  const done = runModManager(term, { ...makeDeps(store, requestReload, mods), ...extraDeps });
+  const done = runModManager(term, { ...makeDeps(store, requestReload, mods), ...extraDeps }, opts);
   return { win, term, store, requestReload, done };
 }
 
@@ -260,6 +261,33 @@ describe("leaving the mod manager untouched never offers to reload", () => {
     await flush();
     press(win, "Escape"); // Done
     await done;
+  });
+});
+
+describe("title visits apply changes before returning", () => {
+  const title = { fromTitle: true };
+
+  it("returns without reloading when nothing changed", async () => {
+    const { win, done, requestReload } = open(
+      [manifest("qol", "Quality of Life")], {}, undefined, title,
+    );
+    await flush();
+    press(win, "Escape");
+    expect((await raceTimeout(done)).timedOut).toBe(false);
+    expect(requestReload).not.toHaveBeenCalled();
+  });
+
+  it("reloads a changed mod set on exit without a second prompt", async () => {
+    const { win, done, requestReload, store } = open(
+      [manifest("qol", "Quality of Life")], {}, undefined, title,
+    );
+    await flush();
+    press(win, " ");
+    await flush();
+    press(win, "Escape");
+    expect((await raceTimeout(done)).timedOut).toBe(false);
+    expect(store.isEnabled("qol")).toBe(true);
+    expect(requestReload).toHaveBeenCalledTimes(1);
   });
 });
 

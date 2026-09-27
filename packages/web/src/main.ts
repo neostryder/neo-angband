@@ -6923,8 +6923,15 @@ async function modManagerDeps(): Promise<ModManagerDeps> {
   };
 }
 
-async function openModManager(): Promise<void> {
-  await runModManager(term, await modManagerDeps());
+async function openModManager(opts?: { resume?: boolean }): Promise<void> {
+  const deps = await modManagerDeps();
+  if (opts?.resume === false) {
+    /* Every apply route in the manager uses this callback. A title visit must
+     * recompose mods before showing the title and birth screens again. */
+    deps.requestReload = (reloadOpts) =>
+      reloadAfterModChange({ ...reloadOpts, resume: false });
+  }
+  await runModManager(term, deps, opts?.resume === false ? { fromTitle: true } : undefined);
 }
 
 async function openModOptions(): Promise<void> {
@@ -13791,6 +13798,10 @@ async function bootMenus(): Promise<void> {
           reload: () => reloadAfterModChange({ resume: false }),
         }),
       );
+      continue;
+    }
+    if (choice === "mods") {
+      await openModal(() => openModManager({ resume: false }));
       continue;
     }
     if (choice === "install") {

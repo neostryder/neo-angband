@@ -10,7 +10,7 @@ Neo Angband is built to be modded: the base game is itself a pack, loaded throug
 
 ## Getting a mod, in one paragraph
 
-Press `Escape`, choose **Mods**, choose **Recommended mods...**, pick one, then choose **Install and enable**. The game fetches the mod from its own repository at a release tag, picking the newest release this build can run, which is not always the newest release there is. It checks the mod against the requirements every mod has to meet and records a digest of every byte that arrived, so it can tell you later whether the copy on your machine has changed. Then choose the reload it offers. That is all: you need no folder, account or extra tool.
+Choose **Mods** on the title screen, then choose **Recommended mods...**, pick one, and choose **Install and enable**. The Mods screen is also available from the in-game Escape menu. The game fetches the mod from its own repository at a release tag, picking the newest release this build can run, which is not always the newest release there is. It checks the mod against the requirements every mod has to meet and records a digest of every byte that arrived, so it can tell you later whether the copy on your machine has changed. Leaving the Mods screen reloads the game if you changed a mod at the title. From play, choose the reload it offers. That is all: you need no folder, account or extra tool.
 
 The recommended list holds only repository addresses. Names, versions, descriptions and compatibility all come from each mod when the screen opens, so a mod can release an update without waiting for a new version of the game, and the game makes no claims of its own about what a mod contains.
 

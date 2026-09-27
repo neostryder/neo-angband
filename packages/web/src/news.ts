@@ -294,7 +294,7 @@ export function titleLines(): readonly TitleLine[] {
  * FIRST rather than in File-menu order, because with more than one profile it is
  * the row that decides which profile's roster every other row below it acts on.
  */
-export type TitleChoice = "profile" | "new" | "open" | "load" | "quit" | "install" | "update";
+export type TitleChoice = "profile" | "new" | "open" | "load" | "mods" | "quit" | "install" | "update";
 
 /** Which title rows are live, mirroring main-win.c's EnableMenuItem calls. */
 export interface TitleOptions {
@@ -354,7 +354,7 @@ interface TitleRow {
  * order - New, Open, [Save], Exit. "(R)esume" takes the Save slot, which is
  * greyed at the splash upstream (main-win.c:2962 disables IDM_FILE_SAVE and
  * only :2982 re-enables it in a running game). Labels are short: an 80-column
- * prompt line already has to fit up to seven rows (see ROW_GAPS below).
+ * prompt line already has to fit up to eight rows (see ROW_GAPS below).
  */
 export function titleRows(opts: TitleOptions): TitleRow[] {
   const rows: TitleRow[] = [
@@ -372,6 +372,7 @@ export function titleRows(opts: TitleOptions): TitleRow[] {
       label: t("news.title.resume", "(R)esume"),
       enabled: opts.canLoad,
     },
+    { choice: "mods", key: "m", label: t("news.title.mods", "(M)ods"), enabled: true },
   ];
   /* Before Quit, because Quit is last in the File menu and this is not a File
    * menu item at all - putting it after Quit would read as though upstream had
@@ -494,7 +495,7 @@ export function titleLinkSpanAt(
  * It has to be able to shrink. The prompt is ONE line (main-win.c:5476), (P)rofile
  * is always present, and the rest of the row set is not fixed: a browser that can
  * install offers (I)nstall, and any shell can offer (U)pdate, so the worst case is
- * seven rows - which needs more columns than three-space gaps leave in an
+ * eight rows - which needs more columns than three-space gaps leave in an
  * 80-column term.
  *
  * The failure mode if it did not shrink is the one worth naming: the line is
