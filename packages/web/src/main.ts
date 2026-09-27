@@ -578,6 +578,8 @@ import {
   type SubwindowState,
 } from "./subwindows";
 import { mountSubwindowShell } from "./subwindow-shell";
+import { bindPanelProviders, panelKinds, syncPanelProviders, unregisterAllPanelKinds } from "./panel-provider";
+import { containsLeaf, insertAtEdge, leafIds, removeLeaf, tabInto, type LayoutNode } from "./subwindow-layout";
 import { readWmSettings, writeWmSettings, type WmSettings } from "./wm-settings";
 import {
   inventoryScreen,
@@ -1003,9 +1005,14 @@ const subwindowShell = mountSubwindowShell({
     applySubwindowLayout();
     renderSubwindows();
   },
+  onViewChange: () => syncPanelProviders(),
   /* A panel's own close [x] (neo-angband#246): the same live-disable path the
    * Interface Options subwindow checklist already uses. */
   onClose: (id) => {
+    if (id.includes(":")) {
+      setModPanelEnabledLive(id, false);
+      return;
+    }
     if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
     setSubwindowEnabledLive(id as SubwindowId, false);
   },
@@ -1032,6 +1039,22 @@ const subwindowShell = mountSubwindowShell({
   },
 });
 subwindowShell.apply(subwindowState.tree);
+const panelProviderHost = {
+  shell: subwindowShell,
+  tree: () => subwindowState.tree,
+  forgetPanel: (id: string) => lastModTrees.delete(id),
+  changeTree: (tree: LayoutNode) => {
+    subwindowState = { ...subwindowState, tree };
+    writeSubwindowState(localStorage, subwindowState);
+    applySubwindowLayout();
+    renderSubwindows();
+  },
+};
+let unbindPanelProviders = bindPanelProviders(panelProviderHost);
+window.addEventListener("pagehide", () => unbindPanelProviders());
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) unbindPanelProviders = bindPanelProviders(panelProviderHost);
+});
 const term = new GlyphTerm(canvas, { boundsElement: gameView });
 /* neo-angband#184: #game's own `filter` style is a no-op (its 2d context is
  * `alpha: false`, and Chromium does not composite CSS filters through that
@@ -2819,6 +2842,57 @@ function setSubwindowEnabledLive(id: SubwindowId, enabled: boolean): void {
   renderSubwindows();
 }
 
+const lastModTrees = new Map<string, LayoutNode>();
+
+function placeModPanel(tree: LayoutNode, id: string, saved: LayoutNode): LayoutNode | null {
+  function find(node: LayoutNode): LayoutNode | null {
+    if (node.kind === "leaf") {
+      if (!(node.tabs ?? [node.id]).includes(id)) return null;
+      const neighbor = (node.tabs ?? [node.id]).find((tab) => tab !== id && containsLeaf(tree, tab));
+      return neighbor ? tabInto(tree, id, neighbor) : null;
+    }
+    const inFirst = containsLeaf(node.first, id);
+    const inSecond = containsLeaf(node.second, id);
+    if (inFirst || inSecond) {
+      const nested = find(inFirst ? node.first : node.second);
+      if (nested) return nested;
+      const other = inFirst ? node.second : node.first;
+      const target = leafIds(other).find((candidate) => containsLeaf(tree, candidate));
+      if (target) {
+        const edge = node.axis === "v" ? (inFirst ? "left" : "right") : (inFirst ? "top" : "bottom");
+        return insertAtEdge(tree, id, target, edge, inFirst ? node.ratio : 1 - node.ratio);
+      }
+    }
+    return null;
+  }
+  return containsLeaf(saved, id) ? find(saved) : null;
+}
+
+function setModPanelEnabledLive(id: string, enabled: boolean): void {
+  const entry = panelKinds().find((kind) => kind.id === id);
+  if (enabled && !entry) return;
+  let tree = subwindowState.tree;
+  if (enabled) {
+    if (containsLeaf(tree, id)) return;
+    const saved = lastModTrees.get(id) ?? readSubwindowDefault(localStorage)?.tree;
+    const placed = saved ? placeModPanel(tree, id, saved) : null;
+    const preferred = entry?.spec.preferredPlacement;
+    tree = placed ?? (preferred && containsLeaf(tree, preferred.target)
+      ? preferred.kind === "tab"
+        ? tabInto(tree, id, preferred.target)
+        : insertAtEdge(tree, id, preferred.target, preferred.edge)
+      : insertAtEdge(tree, id, "main", "right"));
+  } else {
+    if (!containsLeaf(tree, id)) return;
+    lastModTrees.set(id, tree);
+    tree = removeLeaf(tree, id);
+  }
+  subwindowState = { ...subwindowState, tree };
+  writeSubwindowState(localStorage, subwindowState);
+  applySubwindowLayout();
+  renderSubwindows();
+}
+
 /**
  * neo-subwindows (#238): a loaded pref file supplied a whole arrangement -
  * which panels are open and the BSP tree they are tiled into. Malformed or
@@ -2853,7 +2927,7 @@ function setWmFeature(key: keyof WmSettings, enabled: boolean): void {
 }
 
 const subwindowMenu: SubwindowMenu = {
-  choices: SUBWINDOW_CHOICES,
+  get choices() { return [...SUBWINDOW_CHOICES, ...panelKinds().map(({ id, spec }) => ({ id, label: spec.label }))]; },
   features: [
     {
       label: t("options.subwindows.featureTabs", "Tabs: drop a panel on another panel to share its space"),
@@ -2882,8 +2956,9 @@ const subwindowMenu: SubwindowMenu = {
     },
   ],
   mapTiles: mapTileModeMenu,
-  enabled: (id) => subwindowState.enabled[id as SubwindowId],
+  enabled: (id) => id.includes(":") ? containsLeaf(subwindowState.tree, id) : subwindowState.enabled[id as SubwindowId],
   set: (id, enabled) => {
+    if (id.includes(":")) { setModPanelEnabledLive(id, enabled); return; }
     if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
     setSubwindowEnabledLive(id as SubwindowId, enabled);
   },
@@ -12352,7 +12427,11 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
     plugins: activeModCode().plugins,
     controller: installedController,
     revokePanels: revokeModPanels,
-    closePanels: closeAllModPanels,
+    closePanels: () => {
+      unbindPanelProviders();
+      unregisterAllPanelKinds();
+      return closeAllModPanels();
+    },
     clearDisplayValues: clearModDisplayValues,
     clearVisualFilter: () => displayControl.setVisualFilter(null),
     clearMapMargin: () => displayControl.setMapMargin?.(null),

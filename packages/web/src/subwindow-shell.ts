@@ -19,6 +19,7 @@ import {
   computeLayout,
   dropZoneAt,
   fitForComfort,
+  leafIds,
   ratioFromPointer,
   resizeSplit,
   selectTab,
@@ -28,7 +29,7 @@ import {
   type LayoutNode,
   type Rect,
 } from "./subwindow-layout";
-import { addControlDomOwner } from "./input-door";
+import { addControlDomOwner, blurTiledPanelFocus, setTiledPanelInputBlocked } from "./input-door";
 
 /** One mod-owned chrome control (neo-angband#241), rendered between the title label and the close button. */
 export interface SubwindowControlSpec {
@@ -95,6 +96,8 @@ export interface SubwindowShell {
    * next to the panel until the player drags that divider.
    */
   setFitHeight(id: string, height: number | null): void;
+  setPanelLabel(id: string, label: string, tab?: string): void;
+  setPanelMinSize(id: string, size: Readonly<{ width: number; height: number }> | null): void;
   destroy(): void;
 }
 
@@ -118,6 +121,7 @@ export interface SubwindowShellOptions {
   /** Short names for tab strips; a panel without one uses its label. */
   tabLabels?: Readonly<Record<string, string>>;
   onTreeChange: (tree: LayoutNode) => void;
+  onViewChange?: () => void;
   /** A panel's own close [x] was clicked (neo-angband#246); never fired for the main tile. */
   onClose?: (id: string) => void;
   /**
@@ -165,7 +169,9 @@ function pointerInHost(host: HTMLElement, event: PointerEvent): { x: number; y: 
 }
 
 export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell {
-  const { host, mainSlot, labels, tabLabels, onTreeChange, onClose, onScroll, onMerged } = opts;
+  const { host, mainSlot, onTreeChange, onClose, onScroll, onMerged } = opts;
+  const labels = { ...opts.labels };
+  const tabLabels = { ...opts.tabLabels };
   host.classList.add("tile-host");
   mainSlot.classList.add("tile-leaf");
   mainSlot.dataset.tile = MAIN_TILE_ID;
@@ -180,8 +186,11 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
    * pointerdown clears it without adding a focus stop of its own.
    */
   const onMainPointerDown = (): void => {
+    blurTiledPanelFocus();
     const active = document.activeElement;
     if (active instanceof HTMLElement && active !== mainSlot && active.closest(".tile-leaf")) active.blur();
+    focusedId = null;
+    opts.onViewChange?.();
   };
   mainSlot.addEventListener("pointerdown", onMainPointerDown);
 
@@ -339,8 +348,9 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     fitToContent: true,
   };
   const fitHeights = new Map<string, number>();
+  const minSizes = new Map<string, Readonly<{ width: number; height: number }>>();
   const layoutOf = (layoutTree: LayoutNode, viewport: Rect) =>
-    computeLayout(layoutTree, viewport, features.fitToContent ? { fit: fitHeights } : {});
+    computeLayout(layoutTree, viewport, { minSizes, ...(features.fitToContent ? { fit: fitHeights } : {}) });
   let drag: {
     id: string;
     pointerId: number;
@@ -539,6 +549,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       if (!mainSlot.isConnected) host.appendChild(mainSlot);
       applyLeafVisibility();
       clearGutters();
+      opts.onViewChange?.();
       return;
     }
     const viewport = hostSize(host);
@@ -557,6 +568,9 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     }
     const layout = layoutOf(visibleTree, viewport);
     lastVisibleIds = new Set(layout.tiles.map((tile) => tile.id));
+    for (const id of leafIds(tree)) {
+      if (id.includes(":")) ensureSlot(id);
+    }
     mainGrip.hidden = !features.moveDungeonView || layout.tiles.length < 2;
     for (const tile of layout.tiles) {
       const leaf = tile.id === MAIN_TILE_ID ? mainSlot : ensureSlot(tile.id);
@@ -584,6 +598,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       host.appendChild(gutter);
       gutters.push(gutter);
     }
+    opts.onViewChange?.();
   }
 
   function zoneFromEvent(event: PointerEvent, dragging: string): DropZone | null {
@@ -750,13 +765,14 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     const leaf = target instanceof Element ? target.closest(".tile-leaf") : null;
     const id = leaf instanceof HTMLElement ? leaf.dataset.tile : undefined;
     focusedId = id && id !== MAIN_TILE_ID ? id : null;
+    opts.onViewChange?.();
   };
 
   window.addEventListener("pointermove", onPointerMove);
   window.addEventListener("pointerup", onPointerUp);
   window.addEventListener("pointercancel", onPointerUp);
   window.addEventListener("resize", onResize);
-  host.addEventListener("focusin", onFocusIn);
+  document.addEventListener("focusin", onFocusIn);
 
   return {
     apply(tree) {
@@ -796,6 +812,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     },
     setModalActive(active) {
       modalActive = active;
+      setTiledPanelInputBlocked(active);
       for (const gutter of gutters) gutter.hidden = modalActive;
     },
     setGameLive(live) {
@@ -819,6 +836,31 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       }
       if (features.fitToContent) paint(currentTree);
     },
+    setPanelLabel(id, label, tab) {
+      if (labels[id] === label && tabLabels[id] === (tab ?? label)) return;
+      labels[id] = label;
+      tabLabels[id] = tab ?? label;
+      const slot = slots.get(id);
+      if (slot) {
+        slot.setAttribute("aria-label", label);
+        const title = slot.querySelector(".tile-title-label");
+        if (title) title.textContent = label;
+        const close = slot.querySelector(".tile-close");
+        if (close) {
+          close.setAttribute("aria-label", `Close ${label}`);
+          close.setAttribute("title", `Close ${label}`);
+        }
+      }
+      paint(currentTree);
+    },
+    setPanelMinSize(id, size) {
+      const normalized = size ? { width: Math.min(800, Math.max(96, size.width)), height: Math.min(600, Math.max(96, size.height)) } : null;
+      const before = minSizes.get(id);
+      if (before?.width === normalized?.width && before?.height === normalized?.height) return;
+      if (normalized) minSizes.set(id, normalized);
+      else minSizes.delete(id);
+      paint(currentTree);
+    },
     setVisualFilter(filter) {
       visualFilter = filter;
       for (const [id, leaf] of slots) {
@@ -831,7 +873,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
       window.removeEventListener("resize", onResize);
-      host.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusin", onFocusIn);
       mainSlot.removeEventListener("pointerdown", onMainPointerDown);
       mainGrip.removeEventListener("pointerdown", onGripPointerDown);
       mainGrip.removeEventListener("contextmenu", onGripContextMenu);

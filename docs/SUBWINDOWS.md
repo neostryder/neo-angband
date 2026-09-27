@@ -30,6 +30,8 @@ one row per available panel:
 Pressing `Enter` on a row toggles that panel on or off immediately - no reload
 needed. An `X` marks a panel that is currently on, a `.` marks one that is off.
 
+Mods that provide panels add rows below the built-in panels. A panel stays in its saved place when its mod is not loaded and shows the mod's name with a Remove button. Loading the mod fills that place again; Remove takes the panel out of the layout.
+
 A new install opens with the panels of "The default arrangement" below, built around a large main view. Turn off any you do not want. A layout with every panel off stays that way the next time you start the game.
 
 ## Rearranging panels

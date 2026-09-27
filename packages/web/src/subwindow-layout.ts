@@ -139,22 +139,24 @@ function splitSizes(
   parent: number,
   ratio: number,
   splitter: number,
-  min: number,
+  firstMin: number,
+  secondMin = firstMin,
 ): [number, number] {
   const inner = Math.max(0, parent - splitter);
   if (inner <= 0) return [0, 0];
-  if (inner < min * 2) {
+  if (inner < firstMin + secondMin) {
     const first = Math.floor(inner / 2);
     return [first, inner - first];
   }
   let first = Math.round(inner * clampRatio(ratio));
-  first = Math.max(min, Math.min(inner - min, first));
+  first = Math.max(firstMin, Math.min(inner - secondMin, first));
   return [first, inner - first];
 }
 
 export interface LayoutOptions {
   splitterPx?: number;
   minPx?: number;
+  minSizes?: ReadonlyMap<TileId, Readonly<{ width: number; height: number }>>;
   /**
    * Heights in CSS pixels that panels ask for to fit their content (#287),
    * keyed by panel id. A request applies when the panel is the active tab of
@@ -172,7 +174,7 @@ export function computeLayout(
   const minPx = opts.minPx ?? MIN_TILE_PX;
   const tiles: TileRect[] = [];
   const splitters: SplitterRect[] = [];
-  walk(tree, viewport, [], splitterPx, minPx, opts.fit, tiles, splitters);
+  walk(tree, viewport, [], splitterPx, minPx, opts.fit, opts.minSizes, tiles, splitters);
   return { tiles, splitters };
 }
 
@@ -204,6 +206,7 @@ function walk(
   splitterPx: number,
   minPx: number,
   fit: ReadonlyMap<TileId, number> | undefined,
+  minSizes: ReadonlyMap<TileId, Readonly<{ width: number; height: number }>> | undefined,
   tiles: TileRect[],
   splitters: SplitterRect[],
 ): void {
@@ -213,7 +216,9 @@ function walk(
     return;
   }
   if (node.axis === "v") {
-    const [firstW, secondW] = splitSizes(rect.w, node.ratio, splitterPx, minPx);
+    const [firstW, secondW] = splitSizes(rect.w, node.ratio, splitterPx,
+      minimum(node.first, "width", minPx, splitterPx, minSizes),
+      minimum(node.second, "width", minPx, splitterPx, minSizes));
     const firstRect = { x: rect.x, y: rect.y, w: firstW, h: rect.h };
     const gutter = { x: rect.x + firstW, y: rect.y, w: splitterPx, h: rect.h };
     const secondRect = {
@@ -223,12 +228,14 @@ function walk(
       h: rect.h,
     };
     splitters.push({ axis: "v", path, rect: gutter, parent: rect });
-    walk(node.first, firstRect, [...path, 0], splitterPx, minPx, fit, tiles, splitters);
-    walk(node.second, secondRect, [...path, 1], splitterPx, minPx, fit, tiles, splitters);
+    walk(node.first, firstRect, [...path, 0], splitterPx, minPx, fit, minSizes, tiles, splitters);
+    walk(node.second, secondRect, [...path, 1], splitterPx, minPx, fit, minSizes, tiles, splitters);
     return;
   }
   const ratio = fittedRatio(node, rect.h, splitterPx, fit);
-  const [firstH, secondH] = splitSizes(rect.h, ratio, splitterPx, minPx);
+  const [firstH, secondH] = splitSizes(rect.h, ratio, splitterPx,
+    minimum(node.first, "height", minPx, splitterPx, minSizes),
+    minimum(node.second, "height", minPx, splitterPx, minSizes));
   const firstRect = { x: rect.x, y: rect.y, w: rect.w, h: firstH };
   const gutter = { x: rect.x, y: rect.y + firstH, w: rect.w, h: splitterPx };
   const secondRect = {
@@ -238,8 +245,17 @@ function walk(
     h: secondH,
   };
   splitters.push({ axis: "h", path, rect: gutter, parent: rect });
-  walk(node.first, firstRect, [...path, 0], splitterPx, minPx, fit, tiles, splitters);
-  walk(node.second, secondRect, [...path, 1], splitterPx, minPx, fit, tiles, splitters);
+  walk(node.first, firstRect, [...path, 0], splitterPx, minPx, fit, minSizes, tiles, splitters);
+  walk(node.second, secondRect, [...path, 1], splitterPx, minPx, fit, minSizes, tiles, splitters);
+}
+
+function minimum(node: LayoutNode, axis: "width" | "height", floor: number, splitter: number,
+  hints: ReadonlyMap<TileId, Readonly<{ width: number; height: number }>> | undefined): number {
+  if (node.kind === "leaf") return Math.max(floor, ...groupTabs(node).map((id) => hints?.get(id)?.[axis] ?? floor));
+  const first = minimum(node.first, axis, floor, splitter, hints);
+  const second = minimum(node.second, axis, floor, splitter, hints);
+  return (axis === "width" && node.axis === "v") || (axis === "height" && node.axis === "h")
+    ? first + second + splitter : Math.max(first, second);
 }
 
 function replaceAt(
