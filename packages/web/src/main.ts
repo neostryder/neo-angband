@@ -559,7 +559,7 @@ import {
   dumpSubwindowLayoutPrefText,
   parseSubwindowStateJson,
   applySubwindowPrefBlock,
-  describeSubwindowsCollapsed,
+  describeSubwindowsMerged,
   dumpSubwindowPrefBlocks,
   readSubwindowDefault,
   readSubwindowState,
@@ -989,6 +989,7 @@ const subwindowShell = mountSubwindowShell({
   host: gameLayout,
   mainSlot: gameView,
   labels: Object.fromEntries(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.label])),
+  tabLabels: Object.fromEntries(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.tab])),
   onTreeChange: (tree) => {
     subwindowState = { ...subwindowState, tree };
     writeSubwindowState(localStorage, subwindowState);
@@ -1012,13 +1013,14 @@ const subwindowShell = mountSubwindowShell({
     scrollSubwindow(panel, deltaRows);
     paintSubwindowContent(panelId, panel, displayDeps());
   },
-  /* neo-angband#275: the comfort-degradation pass hid one or more panels
-   * because the real window is too small to give every enabled panel a
-   * legible size (subwindow-layout.ts's degradeForComfort). subwindow-shell.ts
-   * only calls this when the collapsed set actually changes, so saying it
-   * here is a one-time notice rather than a repeat on every resize tick. */
-  onDegraded: (ids) => {
-    const note = describeSubwindowsCollapsed(ids as SubwindowId[]);
+  /* neo-angband#275, #287: the small-viewport pass merged one or more panels
+   * into others as tabs because the real window is too small to give every
+   * group a legible size (subwindow-layout.ts's fitForComfort).
+   * subwindow-shell.ts only calls this when the set of merges actually
+   * changes, so saying it here is a one-time notice rather than a repeat on
+   * every resize tick. */
+  onMerged: (merges) => {
+    const note = describeSubwindowsMerged(merges);
     if (note) say(note);
   },
 });

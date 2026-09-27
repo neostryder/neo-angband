@@ -89,21 +89,27 @@ export const SUBWINDOW_DEFAULT_STORAGE_KEY = "neo-angband:subwindows:default";
  */
 export const SUBWINDOW_PREF_DIRECTIVE = "neo-subwindows";
 
-export const SUBWINDOW_CHOICES: readonly { id: SubwindowId; label: string }[] = [
-  { id: "inventory", label: "Display inven/equip" },
-  { id: "equipment", label: "Display equip/inven" },
-  { id: "player-basic", label: "Display player (basic)" },
-  { id: "player-extra", label: "Display player (extra)" },
-  { id: "player-compact", label: "Display player (compact)" },
-  { id: "map", label: "Display dungeon map" },
-  { id: "messages", label: "Display messages" },
-  { id: "overhead", label: "Display overhead view" },
-  { id: "monster-recall", label: "Display monster recall" },
-  { id: "object-recall", label: "Display object recall" },
-  { id: "monsters", label: "Display monster list" },
-  { id: "status", label: "Display status" },
-  { id: "items", label: "Display item list" },
-  { id: "player-topbar", label: "Display player (topbar)" },
+/**
+ * `label` is upstream's own window-flag name (ui-init.c window_flag_desc) and
+ * titles the panel. `tab` is the short name a tab strip and the small-viewport
+ * notice use, where every label starting with "Display" would truncate to the
+ * same word.
+ */
+export const SUBWINDOW_CHOICES: readonly { id: SubwindowId; label: string; tab: string }[] = [
+  { id: "inventory", label: "Display inven/equip", tab: "Inventory" },
+  { id: "equipment", label: "Display equip/inven", tab: "Equipment" },
+  { id: "player-basic", label: "Display player (basic)", tab: "Player" },
+  { id: "player-extra", label: "Display player (extra)", tab: "Player (extra)" },
+  { id: "player-compact", label: "Display player (compact)", tab: "Player (compact)" },
+  { id: "map", label: "Display dungeon map", tab: "Map" },
+  { id: "messages", label: "Display messages", tab: "Messages" },
+  { id: "overhead", label: "Display overhead view", tab: "Overhead" },
+  { id: "monster-recall", label: "Display monster recall", tab: "Monster recall" },
+  { id: "object-recall", label: "Display object recall", tab: "Object recall" },
+  { id: "monsters", label: "Display monster list", tab: "Monsters" },
+  { id: "status", label: "Display status", tab: "Status" },
+  { id: "items", label: "Display item list", tab: "Items" },
+  { id: "player-topbar", label: "Display player (topbar)", tab: "Player (top bar)" },
 ];
 
 const SUBWINDOW_IDS: readonly SubwindowId[] = SUBWINDOW_CHOICES.map((choice) => choice.id);
@@ -220,14 +226,20 @@ export function enabledSubwindowIds(settings: SubwindowSettings): SubwindowId[] 
  * it is only invoked when the collapsed set actually changes, never on every
  * resize tick.
  */
-export function describeSubwindowsCollapsed(ids: readonly SubwindowId[]): string {
-  if (ids.length === 0) return "";
-  const labelById = new Map(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.label]));
-  const names = ids.map((id) => labelById.get(id) ?? id).join(", ");
+/** The one-time notice for panels the small-viewport pass merged as tabs. */
+export function describeSubwindowsMerged(merges: readonly { id: string; into: string }[]): string {
+  if (merges.length === 0) return "";
+  const labelById = new Map<string, string>(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.tab]));
+  const label = (id: string): string => labelById.get(id) ?? id;
+  const pairs = merges.map((merge) => t(
+    "subwindows.note.mergedPair",
+    "{panel} with {other}",
+    { panel: label(merge.id), other: label(merge.into) },
+  )).join(", ");
   return t(
-    "subwindows.note.collapsed",
-    "Not enough room for every panel; hidden for now: {names}. Make the window bigger, or turn a panel off, to bring it back.",
-    { names },
+    "subwindows.note.merged",
+    "The window is too small to show every panel side by side, so some now share a space as tabs: {pairs}. They separate again when the window has room.",
+    { pairs },
   );
 }
 

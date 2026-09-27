@@ -160,10 +160,60 @@
         outline: 1px solid rgba(201, 162, 39, 0.45);
         outline-offset: -1px;
       }
-      .tile-drop-guide[data-kind="swap"] {
+      .tile-drop-guide[data-kind="swap"],
+      .tile-drop-guide[data-kind="tab"] {
         background: transparent;
         outline: 1px dashed rgba(201, 162, 39, 0.35);
         outline-offset: -1px;
+      }
+      .tile-drop-guide[data-kind="swap"],
+      .tile-drop-guide[data-kind="tab"],
+      .tile-drop-preview {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(232, 214, 160, 0.85);
+        font: 12px sans-serif;
+        overflow: hidden;
+      }
+      .tile-tabs {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: stretch;
+        gap: 2px;
+        overflow: hidden;
+        height: 19px;
+      }
+      .tile-tabs[hidden] {
+        display: none;
+      }
+      .tile-tab {
+        flex: 0 1 auto;
+        min-width: 32px;
+        max-width: 160px;
+        padding: 0 8px;
+        border: none;
+        border-bottom: 2px solid transparent;
+        background: transparent;
+        color: #8a8a94;
+        font: 12px/17px sans-serif;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        cursor: pointer;
+      }
+      .tile-tab:hover {
+        color: #e0e0e6;
+      }
+      .tile-tab[aria-selected="true"] {
+        color: #e0e0e6;
+        border-bottom-color: #c9a227;
+      }
+      .tile-gutter-locked,
+      .tile-gutter-locked:hover {
+        background: #2a2a32;
+        pointer-events: none;
       }
       .tile-host-dragging,
       .tile-host-dragging * {

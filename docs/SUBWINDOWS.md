@@ -40,12 +40,8 @@ described in "The default arrangement" below, built around a large main view.
 Panels tile the window - there is no floating or overlapping, and every panel
 always has a home that fills the available space.
 
-- **Move a panel: right-click and drag it.** Left-click is reserved for
-  ordinary game input and for focusing a panel, so dragging always uses the
-  right mouse button. While dragging, every other panel outlines the places it
-  could accept the drop: a center zone that **swaps** the two panels' places,
-  and four edge zones that **dock** the dragged panel against that edge,
-  splitting that panel's space to make room. Release over the zone you want.
+- **Move a panel: right-click and drag it.** Left-click is reserved for ordinary game input and for focusing a panel, so dragging always uses the right mouse button. While dragging, every other panel outlines the places it could accept the drop. The four edge zones **dock** the dragged panel against that edge, splitting that panel's space to make room. The middle of a panel holds two labeled targets: **Swap** trades the two panels' places, and **Tab** adds the dragged panel to that panel's space as a tab. Release over the zone you want.
+- **Switch tabs: click a tab.** A space holding more than one panel shows a row of tabs in its title bar in place of the panel name. Clicking a tab shows that panel, and right-click-dragging a tab moves that one panel out of the group. Closing the shown panel shows the next tab.
 - **Resize a panel: drag the thin bar between two panels** (the splitter). It
   turns the cursor into a resize arrow when you hover it. No panel can be
   resized down to nothing - each keeps a small minimum size, so a splitter
@@ -53,8 +49,11 @@ always has a home that fills the available space.
 - **Close a panel from its own title bar**, with the small `x` in its corner -
   the same effect as unchecking it back in Subwindow setup.
 
-The main play view itself never moves, docks, or closes; every other panel
-arranges around it.
+The main play view itself never moves, docks, closes or becomes a tab; every other panel arranges around it.
+
+## Small windows
+
+Shrink the window far enough and the panels run out of room to stay readable. Rather than squeezing them further, the game folds the most cramped panel into a tab beside the panel closest to it in shape: the monster list joins the item list, and messages join another wide strip along an edge. A message in the log names each pair. Every panel stays one click away, and your arrangement is untouched, so widening the window puts each panel back where it was. The splitters hold still until then.
 
 ## The default arrangement
 

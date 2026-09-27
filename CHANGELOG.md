@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 
+- [Visible] [UI] **Subwindow panels can share one space as tabs.** Dropping a panel on the new Tab target in the middle of another panel adds it as a tab, and a tab strip in the title bar switches between them. A window too small for every panel now folds the most cramped panel into a tab beside the panel closest to it in shape instead of hiding it, and separates them again when there is room. (#287)
 - [Internal] [Modding-API] **JSON documents share a schema registry and canonical writer.** The mod SDK validates envelopes and scalar values, migrates older versions, and serializes stable output; desktop window placement now converts `window.txt` to `window.json` on first read. (#288)
 - [Internal] [Modding-API] **Mods can read the game's own inspection answers.** `ctx.inspect` and `AgentView` return an item's description, a monster's recall, a spell's details, the items a command would offer, and aiming paths, each stamped with the current input token. Answers cover only what the player knows, need the matching state read grant, and leave game state and RNG unchanged. (#285)
 - [Internal] [Modding-API] **Resolved combat, healing, and movement events expose outcomes to interface mods.** Core emits copied hit, miss, damage, death, restored HP, and typed walk or teleport facts at their resolving paths, with a visibility flag; web mods subscribe through `ctx.events` using individual `event:<name>` grants. (#285)

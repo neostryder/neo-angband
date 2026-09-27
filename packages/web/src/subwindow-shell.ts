@@ -1,21 +1,28 @@
 /**
- * DOM host for the BSP tiling tree: absolute tiles, splitter drags, and
- * right-click docking. The algorithm is in subwindow-layout.ts; this file
- * only applies rectangles and pointer events.
+ * DOM host for the BSP tiling tree: absolute tiles, tab strips, splitter
+ * drags, and right-click docking. The algorithm is in subwindow-layout.ts;
+ * this file only applies rectangles and pointer events.
+ *
+ * Every panel keeps its own slot and canvas. A tab group shows its active
+ * panel's slot, with the group's tab strip in that slot's title bar, and
+ * hides the slots of its other panels.
  *
  * Left-click stays reserved for game input. The main view is not a docking
  * source - its right-click already opens the command wheel.
  */
 
 import {
+  DROP_ZONE_LABELS,
   MAIN_TILE_ID,
   allDropZones,
   applyDrop,
   computeLayout,
-  degradeForComfort,
   dropZoneAt,
+  fitForComfort,
   ratioFromPointer,
   resizeSplit,
+  selectTab,
+  type ComfortMerge,
   type DropZone,
   type LayoutNode,
   type Rect,
@@ -82,6 +89,8 @@ export interface SubwindowShellOptions {
   host: HTMLElement;
   mainSlot: HTMLElement;
   labels: Readonly<Record<string, string>>;
+  /** Short names for tab strips; a panel without one uses its label. */
+  tabLabels?: Readonly<Record<string, string>>;
   onTreeChange: (tree: LayoutNode) => void;
   /** A panel's own close [x] was clicked (neo-angband#246); never fired for the main tile. */
   onClose?: (id: string) => void;
@@ -92,21 +101,21 @@ export interface SubwindowShellOptions {
    */
   onScroll?: (id: string, deltaRows: number) => void;
   /**
-   * The comfort-degradation pass (neo-angband#275, see subwindow-layout.ts's
-   * `degradeForComfort`) hid one or more panels because the real viewport is
-   * too small to give every enabled panel a legible size. Fired only when the
-   * SET of hidden ids actually changes from the previous paint - never on
-   * every resize tick a viewport settle produces, and never when nothing is
-   * currently hidden.
+   * The small-viewport pass (neo-angband#275, #287; see subwindow-layout.ts's
+   * `fitForComfort`) merged one or more groups into others as tabs because
+   * the real viewport is too small to give every group a legible size. Fired
+   * only when the set of merges actually changes from the previous paint -
+   * never on every resize tick a viewport settle produces, and never when
+   * nothing is merged.
    */
-  onDegraded?: (ids: readonly string[]) => void;
+  onMerged?: (merges: readonly ComfortMerge[]) => void;
 }
 
 const DRAG_THRESHOLD = 6;
 
 /** Leave the close button and mod controls outside the filtered content. */
 export function filterSubwindowContent(leaf: HTMLElement, filter: string | null): void {
-  for (const selector of [".tile-drag-handle", ".tile-title-label", ".tile-body"]) {
+  for (const selector of [".tile-drag-handle", ".tile-title-label", ".tile-tabs", ".tile-body"]) {
     const content = leaf.querySelector<HTMLElement>(selector);
     if (content) content.style.filter = filter ?? "";
   }
@@ -130,7 +139,7 @@ function pointerInHost(host: HTMLElement, event: PointerEvent): { x: number; y: 
 }
 
 export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell {
-  const { host, mainSlot, labels, onTreeChange, onClose, onScroll, onDegraded } = opts;
+  const { host, mainSlot, labels, tabLabels, onTreeChange, onClose, onScroll, onMerged } = opts;
   host.classList.add("tile-host");
   mainSlot.classList.add("tile-leaf");
   mainSlot.dataset.tile = MAIN_TILE_ID;
@@ -231,6 +240,14 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   }
 
   let currentTree: LayoutNode = { kind: "leaf", id: MAIN_TILE_ID };
+  /* The tree actually on screen: `currentTree` after the small-viewport pass.
+   * Drop zones, guides and dividers are measured against this one, because
+   * it is the geometry the player sees. */
+  let visibleTree: LayoutNode = currentTree;
+  /* Tabs the player picked, most recent first. A merged group exists only on
+   * screen, so its active tab cannot live in the saved tree; this list keeps
+   * a choice made inside one across repaints. */
+  let preferredTabs: string[] = [];
   const gutters: HTMLElement[] = [];
   const preview = document.createElement("div");
   preview.className = "tile-drop-preview";
@@ -258,6 +275,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       const guide = document.createElement("div");
       guide.className = "tile-drop-guide";
       guide.dataset.kind = zone.kind;
+      guide.textContent = zoneLabel(zone);
       setRect(guide, zone.preview);
       host.appendChild(guide);
       guides.push(guide);
@@ -265,6 +283,10 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   }
 
   let resize: { path: readonly number[]; pointerId: number } | null = null;
+  /* Dividers follow the saved tree's paths, which differ from the on-screen
+   * tree while groups are merged for space, so they rest until the viewport
+   * has room again. */
+  let dividersLocked = false;
   let drag: {
     id: string;
     pointerId: number;
@@ -293,6 +315,44 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
    * deltaY values already close to 1-3, where the floor below still rounds up
    * to at least one row rather than getting lost to integer division.
    */
+  function selectPanelTab(id: string): void {
+    preferredTabs = [id, ...preferredTabs.filter((entry) => entry !== id)].slice(0, 16);
+    const next = selectTab(currentTree, id);
+    const changed = next !== currentTree;
+    paint(next);
+    if (changed) onTreeChange(next);
+  }
+
+  function renderTabs(leaf: HTMLElement, tabs: readonly string[] | undefined, active: string): void {
+    const strip = leaf.querySelector<HTMLElement>(".tile-tabs");
+    const label = leaf.querySelector<HTMLElement>(".tile-title-label");
+    if (!strip || !label) return;
+    if (!tabs || tabs.length < 2) {
+      strip.hidden = true;
+      strip.replaceChildren();
+      label.hidden = false;
+      return;
+    }
+    label.hidden = true;
+    strip.hidden = false;
+    strip.replaceChildren();
+    for (const tab of tabs) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "tile-tab";
+      button.dataset.tab = tab;
+      button.setAttribute("role", "tab");
+      button.setAttribute("aria-selected", tab === active ? "true" : "false");
+      button.textContent = tabLabels?.[tab] ?? labels[tab] ?? tab;
+      button.title = labels[tab] ?? tab;
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        selectPanelTab(tab);
+      });
+      strip.appendChild(button);
+    }
+  }
+
   const onLeafWheel = (event: WheelEvent): void => {
     if (!onScroll) return;
     const leaf = event.currentTarget;
@@ -325,7 +385,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
      * tooltip appears over the title bar and body alike; the close button and
      * any mod control below still carry their own, more specific title and
      * take precedence over this one where they overlap it. */
-    leaf.title = "Right-click and drag to move this panel.";
+    leaf.title = "Right-click and drag to move this panel. Drop it on the Tab target to add it as a tab.";
     const title = document.createElement("div");
     title.className = "tile-title";
     const handle = document.createElement("span");
@@ -335,6 +395,10 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     const label = document.createElement("span");
     label.className = "tile-title-label";
     label.textContent = labels[id] ?? id;
+    const tabs = document.createElement("span");
+    tabs.className = "tile-tabs";
+    tabs.setAttribute("role", "tablist");
+    tabs.hidden = true;
     const controls = document.createElement("span");
     controls.className = "tile-controls";
     controlsContainers.set(id, controls);
@@ -354,6 +418,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     });
     title.appendChild(handle);
     title.appendChild(label);
+    title.appendChild(tabs);
     title.appendChild(controls);
     title.appendChild(close);
     const body = document.createElement("div");
@@ -389,17 +454,14 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   let modalActive = false;
   let gameLive = false;
   let lastVisibleIds = new Set<string>([MAIN_TILE_ID]);
-  /* neo-angband#275: the comfort-degradation set as of the last paint, so
-   * onDegraded fires on a real change only - not on every resize tick a
-   * viewport settle produces (main.ts's ResizeObserver-driven `resize` event
-   * can fire several times while a window is being dragged). */
-  let lastDroppedIds: readonly string[] = [];
+  /* neo-angband#275: the merges as of the last paint, so onMerged fires on a
+   * real change only - not on every resize tick a viewport settle produces
+   * (main.ts's ResizeObserver-driven `resize` event can fire several times
+   * while a window is being dragged). */
+  let lastMergeKey = "";
 
-  function sameIdSet(a: readonly string[], b: readonly string[]): boolean {
-    if (a.length !== b.length) return false;
-    const sortedA = [...a].sort();
-    const sortedB = [...b].sort();
-    return sortedA.every((id, index) => id === sortedB[index]);
+  function mergeKey(merges: readonly ComfortMerge[]): string {
+    return merges.map((merge) => `${merge.id}>${merge.into}`).sort().join("|");
   }
 
   function applyLeafVisibility(): void {
@@ -411,6 +473,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
 
   function paint(tree: LayoutNode): void {
     currentTree = tree;
+    visibleTree = tree;
     if (!gameLive) {
       // #260: no game exists yet (the title screen, Open/Update/Profile,
       // character creation) - the main view takes the WHOLE host rect
@@ -424,14 +487,16 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       return;
     }
     const viewport = hostSize(host);
-    /* #275: decide which SMALLER tree to actually render - the real, saved
-     * `tree` (and `currentTree` above) is never mutated by this, so growing
-     * the window back out brings a dropped panel straight back with no
-     * re-enabling needed. */
-    const { tree: visibleTree, dropped } = degradeForComfort(tree, viewport);
-    if (!sameIdSet(dropped, lastDroppedIds)) {
-      lastDroppedIds = dropped;
-      if (dropped.length > 0) onDegraded?.(dropped);
+    /* #275, #287: decide which tree to actually render. The saved `tree` (and
+     * `currentTree` above) is never changed by this, so growing the window
+     * back out separates merged groups again with nothing to undo. */
+    const fitted = fitForComfort(tree, viewport, { prefer: preferredTabs });
+    visibleTree = fitted.tree;
+    dividersLocked = fitted.merged.length > 0;
+    const key = mergeKey(fitted.merged);
+    if (key !== lastMergeKey) {
+      lastMergeKey = key;
+      if (fitted.merged.length > 0) onMerged?.(fitted.merged);
     }
     const layout = computeLayout(visibleTree, viewport);
     lastVisibleIds = new Set(layout.tiles.map((tile) => tile.id));
@@ -439,6 +504,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       const leaf = tile.id === MAIN_TILE_ID ? mainSlot : ensureSlot(tile.id);
       setRect(leaf, tile.rect);
       if (!leaf.isConnected) host.appendChild(leaf);
+      if (tile.id !== MAIN_TILE_ID) renderTabs(leaf, tile.tabs, tile.id);
     }
     applyLeafVisibility();
     clearGutters();
@@ -450,6 +516,10 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       gutter.setAttribute("role", "separator");
       gutter.style.cursor = splitter.axis === "v" ? "col-resize" : "row-resize";
       gutter.hidden = modalActive;
+      if (dividersLocked) {
+        gutter.classList.add("tile-gutter-locked");
+        gutter.style.cursor = "";
+      }
       setRect(gutter, splitter.rect);
       gutter.addEventListener("pointerdown", onGutterPointerDown);
       host.appendChild(gutter);
@@ -457,10 +527,14 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     }
   }
 
-  function zoneFromEvent(event: PointerEvent): DropZone | null {
+  function zoneFromEvent(event: PointerEvent, dragging: string): DropZone | null {
     const point = pointerInHost(host, event);
-    const { tiles } = computeLayout(currentTree, hostSize(host));
-    return dropZoneAt(tiles, point.x, point.y);
+    const { tiles } = computeLayout(visibleTree, hostSize(host));
+    return dropZoneAt(tiles, point.x, point.y, { dragging });
+  }
+
+  function zoneLabel(zone: DropZone): string {
+    return zone.kind === "dock" ? "" : DROP_ZONE_LABELS[zone.kind];
   }
 
   function showPreview(zone: DropZone | null): void {
@@ -470,11 +544,12 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     }
     preview.hidden = false;
     preview.dataset.kind = zone.kind;
+    preview.textContent = zoneLabel(zone);
     setRect(preview, zone.preview);
   }
 
   const onGutterPointerDown = (event: PointerEvent): void => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || dividersLocked) return;
     const gutter = event.currentTarget;
     if (!(gutter instanceof HTMLElement)) return;
     event.preventDefault();
@@ -491,7 +566,10 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     if (event.target instanceof Element && event.target.closest(".tile-controls, .tile-close")) return;
     const leaf = event.currentTarget;
     if (!(leaf instanceof HTMLElement)) return;
-    const id = leaf.dataset.tile;
+    /* A right-drag that starts on a tab moves that tab's panel, not the one
+     * the group is showing. */
+    const tab = event.target instanceof Element ? event.target.closest<HTMLElement>(".tile-tab") : null;
+    const id = tab?.dataset.tab ?? leaf.dataset.tile;
     if (!id || id === MAIN_TILE_ID) return;
     event.preventDefault();
     drag = {
@@ -522,10 +600,10 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     if (!drag.active && dx * dx + dy * dy >= DRAG_THRESHOLD * DRAG_THRESHOLD) {
       drag.active = true;
       host.classList.add("tile-host-dragging");
-      const { tiles } = computeLayout(currentTree, hostSize(host));
+      const { tiles } = computeLayout(visibleTree, hostSize(host));
       renderGuides(allDropZones(tiles, drag.id));
     }
-    if (drag.active) showPreview(zoneFromEvent(event));
+    if (drag.active) showPreview(zoneFromEvent(event, drag.id));
   };
 
   const onPointerUp = (event: PointerEvent): void => {
@@ -542,7 +620,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     preview.hidden = true;
     clearGuides();
     if (!wasActive) return;
-    const zone = zoneFromEvent(event);
+    const zone = zoneFromEvent(event, incoming);
     if (!zone || zone.id === incoming) return;
     const next = applyDrop(currentTree, incoming, zone);
     paint(next);
@@ -564,7 +642,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
      * (rendered once at drag-start, not recomputed per pointer move) would
      * otherwise go stale and point at the pre-resize geometry. */
     if (drag?.active) {
-      const { tiles } = computeLayout(currentTree, hostSize(host));
+      const { tiles } = computeLayout(visibleTree, hostSize(host));
       renderGuides(allDropZones(tiles, drag.id));
     }
   };
