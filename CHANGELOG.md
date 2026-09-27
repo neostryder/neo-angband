@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-09-27
+
 ### Added
 - [Internal] [Modding-API] **Mods can declare numbers the player sets on the Mods screen.** A manifest's `settings` gives each one a range, a step, a default and an optional unit and parent switch. The row steps with Left and Right, and the mod reads the value from `ctx.settings`, which stays in range and can tell the mod when it changes (#295).
 - [Internal] [Modding-API] **Interface mods can act on floor objects and read more of what the game shows.** Object commands and pickup take `args.floor`, and floor items carry a pile index and an item key. Item views add the inventory name and the ignore mark. Store quantity prompts list the total for every amount and the price confirmation carries its price. The snapshot reports the store rows for the quiver and equipment, message repeat counts and colours, and the rest mode with the length asked for. The command catalogue names each command, and blast previews take a breath's arc. Text and spell prompts accept a cancel reply (#294).
