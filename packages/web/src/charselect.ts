@@ -100,7 +100,11 @@ function charHint(c: CharMeta, now: number): string {
  * the storage, so there is no file to remove by hand - the reason this screen
  * has a delete at all when upstream, with a savefile directory, does not).
  */
-async function confirmDelete(term: GridSurface & GridPointerInput, c: CharMeta): Promise<boolean> {
+export async function confirmDelete(
+  term: GridSurface & GridPointerInput,
+  c: CharMeta,
+  hostOnly = false,
+): Promise<boolean> {
   const who = t("charselect.delete.who", "{name} the {race} {cls}, level {level}", {
     name: c.name || unnamedPlaceholder(),
     race: c.race,
@@ -125,6 +129,7 @@ async function confirmDelete(term: GridSurface & GridPointerInput, c: CharMeta):
     [{ label: keep }, { label: drop }],
     t("charselect.delete.footer", "[ ESC to go back ]"),
     {
+      hostOnly,
       ...(c.alive
         ? {
             subtitle: t(

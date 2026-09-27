@@ -336,6 +336,10 @@ register(host, ctx) {
 
 Declare `event:combat-outcome`, `event:heal`, or `event:motion` to receive `ctx.events` during a game. Subscribe with `ctx.events.on(name, handler)`; each name needs its own grant. Combat payloads report hit or miss, applied damage, death, and the target grid. Healing reports the restored amount. Motion names a `walk` or `teleport` at the completed move. Every payload includes `seen`, and unseen events still arrive. See [MOD_SEAMS.md section 4k](MOD_SEAMS.md#4l-resolved-combat-healing-and-movement-events).
 
+### Managing characters: `ctx.saves`
+
+Declare `saves:manage` for a replacement title screen that lists, loads, renames or deletes characters. `ctx.saves` is absent without that elevated grant. The methods and their refusal results are described in [MOD_SEAMS.md section 4k](MOD_SEAMS.md#4m-ctxsaves---the-host-character-roster).
+
 ### Reading the known level: `ctx.knownLevel()`
 
 Use `ctx.knownLevel()` to draw a map or minimap from every grid the player knows. The frozen result has a token, level id, dimensions and cells with remembered terrain, traps and objects. Declare `state:map.read`; the call returns null without it. The separate `actual` data requires `state:map-actual.read`. See [MOD_SEAMS.md section 4h](MOD_SEAMS.md#4h-ctxknownlevel---the-players-whole-remembered-level).

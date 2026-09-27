@@ -485,6 +485,14 @@ const blast = ctx.inspect?.blastArea({ x: 20, y: 12 }, 2);
 
 These events contain copied coordinates and scalar values. They do not carry a live player, monster, or grid object. Core emits them at the resolving code path and does not use a listener's return value. Mods can keep a payload for later animation without retaining game state.
 
+## 4m. `ctx.saves` - the host character roster
+
+A plugin with `saves:manage` receives `ctx.saves` at the title and during play. `list()` reads the character picker's roster in the same order. Its frozen entries contain the slot id, name, race, class, level, depth, death status and last-save time in epoch milliseconds. Every call returns `ok` or a refusal with a `reason`.
+
+`load(id)` uses the character picker's resume route, including the other-window check and the reload that decodes the save and checks compatibility. `rename(id, name)` follows the character sheet's rules: it trims a nonblank name of at most 15 characters and refuses a name pinned by the host. It changes only roster metadata for an inactive slot; the attached character uses the sheet's save callback. `delete(id)` refuses the character attached to this page and opens the host's confirmation before deleting. A mod menu presenter cannot answer that confirmation.
+
+The facade uses the roster's configured storage in the browser and Electron. The grant is elevated because a deleted save cannot be restored.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

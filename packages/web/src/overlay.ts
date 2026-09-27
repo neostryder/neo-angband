@@ -1800,6 +1800,8 @@ export interface MenuItem extends Omit<MenuTransformRow, "id" | "semantic"> {
  * ESC exits.
  */
 export interface SelectMenuOptions {
+  /** Keep a destructive host confirmation on the host's own menu. */
+  hostOnly?: boolean;
   /** Spell values supplied by bookSpellMenu, the same source as the visible rows. */
   promptSpellChoices?: Extract<PromptDescriptor, { kind: "spell" }>["choices"];
   /** Item handles aligned with the game's own rows, including floor slot aliases. */
@@ -2024,7 +2026,7 @@ export function selectFromMenu(
     id: item.id ?? `${id}:row:${index}`,
     semantic: item.semantic ?? { kind: "choice", ref: index },
   }));
-  const items = (declared ? menuRegistry.transform(id, originalRows) : originalRows) as readonly MenuItem[];
+  const items = (declared && !extra?.hostOnly ? menuRegistry.transform(id, originalRows) : originalRows) as readonly MenuItem[];
   const originalIndex = new Map(originalRows.map((row, index) => [row.id, index]));
   const displayedFooter = footer ?? "[ a-z to choose, ESC to cancel ]";
   /* The terminal's own way of asking, unchanged, as a function - so a mod that
@@ -2539,7 +2541,7 @@ export function selectFromMenu(
     });
   };
 
-  if (currentMenuPresenter() === null) return askTerminal();
+  if (extra?.hostOnly || currentMenuPresenter() === null) return askTerminal();
   return askThroughPresenter({
     question: buildMenuQuestion({
       id,

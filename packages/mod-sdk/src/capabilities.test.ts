@@ -28,6 +28,18 @@ function manifest(
 }
 
 describe("parseCapability: valid forms", () => {
+  it("keeps saves:manage separate from other grants", () => {
+    expect(parseCapability("saves:manage")).toEqual({ kind: "saves", action: "manage" });
+    expect(() => parseCapability("saves:*")).toThrow(CapabilityError);
+    const other = CapabilitySet.fromManifest(manifest("plugin", {
+      capabilities: ["state:*.read", "ui:*.replace", "mod:install"],
+    }));
+    expect(other.has("saves:manage")).toBe(false);
+    const manager = CapabilitySet.fromManifest(manifest("plugin", {
+      capabilities: ["saves:manage"],
+    }));
+    expect(manager.has("saves:manage")).toBe(true);
+  });
   it("parses input:intent as its own grant", () => {
     expect(parseCapability("input:intent")).toEqual({ kind: "input", action: "intent" });
     expect(() => parseCapability("input:*")).toThrow(CapabilityError);

@@ -615,6 +615,8 @@ export interface ModPluginContext {
    * stale repeat is a separate, later change.
    */
   readonly keyRepeat?: () => KeyRepeatVerdict | null;
+  /** Manage roster slots after declaring `saves:manage`, including at the title. */
+  readonly saves?: ModSaves;
   /**
    * Manage this mod's keymaps in the player's current keyset. Present only when
    * the mod declared `keymap:write` and the player consented. `bind()` never
@@ -1354,6 +1356,32 @@ export type ModCoreApi = typeof import("@rpgm-tools/neo-angband-core");
  * thing that drifts from what the package actually exports.
  */
 export type ModAuthoringApi = typeof import("@rpgm-tools/neo-angband-mod-sdk");
+
+/** The roster fields the character picker already displays. */
+export interface SaveEntry {
+  readonly id: string;
+  readonly name: string;
+  readonly race: string;
+  readonly cls: string;
+  readonly level: number;
+  readonly depth: number;
+  readonly dead: boolean;
+  /** Epoch milliseconds of the last save. */
+  readonly lastPlayed: number;
+}
+
+export type SaveResult = { readonly ok: true } | { readonly ok: false; readonly reason: string };
+export type SaveListResult =
+  | { readonly ok: true; readonly entries: readonly SaveEntry[] }
+  | { readonly ok: false; readonly reason: string };
+
+/** The host's character roster and the same actions offered by its picker. */
+export interface ModSaves {
+  list(): Promise<SaveListResult>;
+  load(id: string): Promise<SaveResult>;
+  rename(id: string, name: string): Promise<SaveResult>;
+  delete(id: string): Promise<SaveResult>;
+}
 
 /** A mod's code. Both members optional: a plugin may do either job, or both. */
 export interface ModPlugin {

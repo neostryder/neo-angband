@@ -297,7 +297,7 @@ import {
 } from "./world-render-data";
 import type { WorldFrame, WorldLayer } from "./world-view";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
-import { initLaunchArgsFromHost } from "./launch";
+import { argForceName, initLaunchArgsFromHost } from "./launch";
 import {
   combineDiskReports,
   diskPacks,
@@ -344,6 +344,7 @@ import {
   setModComposedRecords,
   setModDisplayControl,
   setModSnapshotSource,
+  setModSavesControl,
   setModIntentGate,
   setModInstallDoor,
   setModReadDoor,
@@ -355,6 +356,7 @@ import {
   type ModSessionFacts,
 } from "./mod-context";
 import { createIntentGate } from "./intent-gate";
+import { createModSaves } from "./saves-facade";
 import type { InputSnapshotSource } from "./input-snapshot";
 import type { ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, ModTiles } from "./mod-plugin";
 import { createKeyRepeatTracker } from "./key-repeat";
@@ -624,7 +626,7 @@ import {
   type ObjectRecallDeps,
   type FakeRecallDeps,
 } from "./knowledge";
-import { runCharacterSelect } from "./charselect";
+import { confirmDelete, runCharacterSelect } from "./charselect";
 import {
   durabilityNotice,
   ensureDurableStorage,
@@ -640,6 +642,7 @@ import {
   writeSlot,
   markDead,
   deleteSlot,
+  renameSlot,
   newCharId,
   lineageOf,
   listDeaths,
@@ -1786,9 +1789,9 @@ if (bootedNew && !birthPending && !needsSelect) {
 
 /** do_cmd_change_name's rename side effect: the new name flows into the
  * roster metadata via the next save (metaFromState reads playerName). */
-function renamePlayer(n: string): void {
+function renamePlayer(n: string): boolean {
   playerName = n;
-  persistSave();
+  return persistSave();
 }
 
 /**
@@ -6467,6 +6470,39 @@ function wizardCtx(): WizardUiCtx {
  * commands mark your character", and the whole value of this door over what a
  * plugin can already reach through `ctx.core` is that the answer stays one. */
 setModDebugDoor({ wizard: wizardCtx, confirm: confirmDebugGate });
+
+/* The title builds mod contexts before play begins. The roster and its menu
+ * routes are already available here, so the same door works at title and in
+ * play on both storage-backed front ends. */
+setModSavesControl(createModSaves({
+  listRoster,
+  activeSlot: attachedSlot,
+  namePinned: argForceName,
+  confirmDelete: (meta) => openModal(() => confirmDelete(term, meta, true)),
+  deleteSlot,
+  rename: (id, name) => {
+    if (attachedSlot() === id) {
+      return renamePlayer(name)
+        ? { ok: true }
+        : { ok: false, reason: "The character could not be saved." };
+    }
+    return renameSlot(id, name)
+      ? { ok: true }
+      : { ok: false, reason: "The character could not be renamed." };
+  },
+  load: async (id) => {
+    if (!readSlotSave(id)) return { ok: false, reason: "This character has no save to load." };
+    if (await refusedAsPlayedElsewhere(id)) {
+      return { ok: false, reason: "This character is open in another window." };
+    }
+    if (attachedSlot() && !persistSave()) {
+      return { ok: false, reason: "The current character could not be saved." };
+    }
+    detachSlot();
+    resumeSelected(id);
+    return { ok: true };
+  },
+}));
 
 /** The roster metadata for the current character, drawn from the live game. */
 function metaFromState(id: string): CharMeta {

@@ -29,6 +29,7 @@ import {
   type ModKeymaps,
   type ModPluginContext,
   type ModSessionOutcome,
+  type ModSaves,
   type ModSubwindows,
   type ModTiles,
   type ModUi,
@@ -157,6 +158,7 @@ export function modPluginContext(
   const intent = intentFor(session);
   const tiles = tilesFor(session);
   const keyRepeat = keyRepeatFor(session);
+  const saves = savesFor(session);
   const keymaps = keymapsFor(id, state, session);
   const characterStore = characterStoreFor(id, state, session);
   /* `session.registries` first so a test can supply its own without booting a
@@ -192,6 +194,7 @@ export function modPluginContext(
     ...(session.capabilities?.has("input:prompt.reply") ? { prompt: modPrompt } : {}),
     ...(tiles ? { tiles } : {}),
     ...(keyRepeat ? { keyRepeat } : {}),
+    ...(saves ? { saves } : {}),
     ...(keymaps ? { keymaps } : {}),
     ...(characterStore ? { characterStore } : {}),
     /* Defaults FALSE, which is the safe way round: a mod that seeds something
@@ -389,6 +392,18 @@ function inspectFor(session: ModSessionFacts): ModInspect | undefined {
 /** Install or clear the input-snapshot source (boot path and tests). */
 export function setModSnapshotSource(source: InputSnapshotSource | undefined): void {
   snapshotSource = source;
+}
+
+let savesControl: ModSaves | undefined;
+
+function savesFor(session: ModSessionFacts): ModSaves | undefined {
+  if (!session.capabilities?.has("saves:manage")) return undefined;
+  return session.saves ?? savesControl;
+}
+
+/** Install the host roster door before any title screen plugin runs. */
+export function setModSavesControl(saves: ModSaves | undefined): void {
+  savesControl = saves;
 }
 
 /** The live player-intent gate, latched beside the snapshot source. */
@@ -688,6 +703,8 @@ export interface ModSessionFacts {
   readonly tiles?: ModTiles;
   /** Override the key-repeat query (tests and alternate front ends). */
   readonly keyRepeat?: () => KeyRepeatVerdict | null;
+  /** Override the saves door in tests. */
+  readonly saves?: ModSaves;
   /** Override ctx.characterStore directly (tests, and a front end with its own). */
   readonly characterStore?: ModCharacterStore;
   /**

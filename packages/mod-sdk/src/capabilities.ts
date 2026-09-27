@@ -270,7 +270,8 @@ export type ParsedCapability =
   | { kind: "policy"; action: "install" }
   | { kind: "hook"; action: "respond" }
   | { kind: "registry-declaration"; action: "declare" }
-  | { kind: "ui-region"; action: "write" };
+  | { kind: "ui-region"; action: "write" }
+  | { kind: "saves"; action: "manage" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 /**
@@ -358,6 +359,7 @@ export function parseCapability(cap: string): ParsedCapability {
     return { kind: "input", action: "intent" };
   }
   if (cap === "input:prompt.reply") return { kind: "input-prompt", action: "reply" };
+  if (cap === "saves:manage") return { kind: "saves", action: "manage" };
   /* NOT a registry domain, deliberately. A registry:* grant means "override
    * one named game system among many"; this one means "everything the player
    * sees of the dungeon is drawn by this mod." It is the display OWNER, so it
@@ -479,6 +481,8 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
       return grant.kind === "input" && grant.action === request.action;
     case "input-prompt":
       return grant.kind === "input-prompt";
+    case "saves":
+      return grant.kind === "saves";
     case "event":
       return grant.kind === "event" && grant.name === request.name;
     case "state":

@@ -243,6 +243,12 @@ function renamePrompt(): string {
   return t("charsheet.prompt.rename", "Enter your character's name");
 }
 
+/** The name accepted by do_cmd_change_name after its 15-character prompt. */
+export function acceptedCharacterName(entered: string): string | null {
+  if (entered.length > 15 || /[\r\n]/u.test(entered)) return null;
+  return entered.trim() || null;
+}
+
 /**
  * `get_file`'s own prompt (get_file_text, ui-input.c:1359 -> get_string(
  * "File name: ")), without its separator. ui-player.c:1269 is the call site
@@ -861,8 +867,9 @@ export function showCharacterSheet(
       return;
     }
     const entered = await promptText(term, renamePrompt(), curName);
-    if (entered !== null && entered.trim()) {
-      curName = entered.trim();
+    const name = entered === null ? null : acceptedCharacterName(entered);
+    if (name !== null) {
+      curName = name;
       opts.onRename?.(curName);
     }
   };
