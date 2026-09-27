@@ -72,6 +72,7 @@ still calls itself.
 
 ### Changed
 
+- [Internal] [Modding-API] **A mod's `prefs` resource is a JSON preference document.** Visual overrides, colours, sounds, auto-inscriptions, entry renderers and keymaps apply for the session, through the same grammar and tile replay as before, and never change the player's saved preferences. A `.prf` path fails manifest validation. (#288)
 - [Visible] [UI] **A new install opens with the default subwindow arrangement.** The first launch shows the panels of the shipped Loth.prf layout around the main view instead of the game view alone. A layout with every panel turned off now stays that way between launches. If you had every panel off before this version, the default arrangement appears once; turn the panels off again and that choice sticks. (#287)
 - [Visible] [UI] **The title screen calls Neo Angband a faithful but moddable port of Angband, meant to be playable almost anywhere.** The line under the logo used to describe it by its programming language.
 - [Visible] [Save-Compat] **A character export is a plain JSON document.** A `.neochar` file holds the character and the save as readable JSON. An older character file still imports, and a save from before this change still loads. (#288)

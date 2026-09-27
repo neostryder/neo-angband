@@ -9,7 +9,7 @@ The five categories
 
   sound   a directory of samples, played by the engine that already existed
   font    a bitmap font the terminal draws every cell from
-  prefs   a .prf file, in the grammar upstream's own pref files use
+  prefs   a JSON preference document, such as colours or glyphs
   help    a page like this one
   art     the title screen
 
@@ -20,8 +20,8 @@ mod installed from a repository, which lives in the browser's database.
 
 What happens when one of them is wrong
 
-  Nothing is taken away except the resource itself. A pref file that will not
-  parse costs you that pref file. It does not cost you the mod's records, its
+  Nothing is taken away except the resource itself. A preference document
+  that will not load costs you that document. It does not cost you the mod's records, its
   sound pack, or the game.
 
   And it is never silent. Whatever could not be used is written on this mod's

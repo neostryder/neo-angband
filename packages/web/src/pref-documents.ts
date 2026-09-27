@@ -20,6 +20,7 @@ import {
   visualOverrideFormat,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
+  COLOR_TABLE,
   glyphTableSink,
   HostDir,
   host,
@@ -34,7 +35,7 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import { saveColorPrefs } from "./colors";
 import { looksLikeEnvelope, readStoredDocument, writeStoredDocument } from "./json-storage";
-import { installKeymapDocument, keymapAdd, keymapModeFor, saveKeymapPrefs } from "./keymap-store";
+import { encodeActionToken, installKeymapDocument, keymapAdd, keymapModeFor, saveKeymapPrefs } from "./keymap-store";
 import {
   parseSubwindowDocument,
   saveLayoutWithBlocks,
@@ -266,6 +267,70 @@ function visualLines(data: VisualData): string {
   for (const row of data.projections ?? []) {
     const motion = row.motion === "static" ? "static" : row.motion.slice(4);
     lines.push(`GF:${row.types.join("|")}:${motion}:${row.color}:${row.glyph.codePointAt(0) ?? 0}`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * A mod's JSON preference resource as pref-grammar text (#288).
+ *
+ * A mod resource is transient: applied on every load, gone when the mod is off,
+ * and never written into the player's own stored documents. Rendering the
+ * document back into the directive lines its fields came from lets it run
+ * through `applyPrefText` exactly as a `.prf` resource did, including the
+ * replay of tile directives on a fresh graphics map. Returns null for a
+ * document this path does not take (a subwindow layout, an unknown format) or
+ * one that does not validate.
+ */
+export function modPreferenceText(text: string): string | null {
+  let tag = "";
+  try {
+    const value = JSON.parse(text) as { format?: unknown };
+    tag = typeof value.format === "string" ? value.format : "";
+  } catch {
+    return null;
+  }
+  const lines: string[] = [];
+  if (tag === visualOverrideFormat.format) {
+    const parsed = parseDocument(text, visualOverrideFormat);
+    if (!parsed.ok) return null;
+    const body = visualLines(parsed.data);
+    if (body) lines.push(body);
+    /* parse_message takes a numeric message name, and a colour by its name. */
+    for (const row of parsed.data.messages ?? []) {
+      lines.push(`message:${row.message}:${COLOR_TABLE[row.color]?.name ?? "White"}`);
+    }
+  } else if (tag === colorTableFormat.format) {
+    const parsed = parseDocument(text, colorTableFormat);
+    if (!parsed.ok) return null;
+    parsed.data.colors.forEach((row, index) => {
+      lines.push(`color:${index}:${row.kv}:${row.color.red}:${row.color.green}:${row.color.blue}`);
+    });
+  } else if (tag === soundMappingFormat.format) {
+    const parsed = parseDocument(text, soundMappingFormat);
+    if (!parsed.ok) return null;
+    for (const row of parsed.data.mappings) lines.push(`sound:${row.message}:${row.samples.join(" ")}`);
+  } else if (tag === autoinscriptionFormat.format) {
+    const parsed = parseDocument(text, autoinscriptionFormat);
+    if (!parsed.ok) return null;
+    for (const row of parsed.data.notes) lines.push(`inscribe:${row.tval}:${row.sval}:${row.text}`);
+  } else if (tag === entryRendererFormat.format) {
+    const parsed = parseDocument(text, entryRendererFormat);
+    if (!parsed.ok) return null;
+    for (const row of parsed.data.renderers) {
+      lines.push(`entry-renderer:${row.name}:${row.colors}:${row.labelColors}:${row.symbols}`);
+    }
+  } else if (tag === keymapFormat.format) {
+    const parsed = parseDocument(text, keymapFormat);
+    if (!parsed.ok) return null;
+    /* keymap-act fills the parser's buffer and keymap-input consumes it, the
+     * same pairing upstream's keymap dump writes. KEYMAP_MODE_ORIG is 0. */
+    for (const row of parsed.data.bindings) {
+      lines.push(`keymap-act:${row.action.map((step) => encodeActionToken(step.key)).join("")}`);
+      lines.push(`keymap-input:${row.mode === "orig" ? 0 : 1}:${row.trigger.key}`);
+    }
+  } else {
+    return null;
   }
   return lines.join("\n");
 }

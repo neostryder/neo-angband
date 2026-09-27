@@ -733,7 +733,7 @@ import type { CommandCategory } from "./command-menu";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu, SubwindowMenu } from "./options";
 import { loadColorPrefs, saveColorPrefs } from "./colors";
-import { applyStoredEntryRenderers, applyVisualDocument, consumeStoredAutoinscriptions, convertStoredUserPrefFiles } from "./pref-documents";
+import { applyStoredEntryRenderers, applyVisualDocument, consumeStoredAutoinscriptions, convertStoredUserPrefFiles, modPreferenceText } from "./pref-documents";
 import {
   dispatchUiInput,
   inputEvents,
@@ -14296,10 +14296,16 @@ async function applyModResources(): Promise<void> {
   const splash = await modArtLines("splash");
   setSplashArt(splash);
 
-  /* PREF FILES ACCUMULATE, in load order - a `.prf` is a list of assignments and
-   * layering them is what upstream's own pref pipeline does. Applied after the
-   * font because a pref file may set glyphs the font has to already be able to
-   * draw. */
+  /* PREFERENCE RESOURCES ACCUMULATE, in load order: each is a list of
+   * assignments, and layering them is what upstream's own pref pipeline does.
+   * Applied after the font because a resource may set glyphs the font has to
+   * already be able to draw.
+   *
+   * A resource is one JSON preference document (#288). It is rendered back to
+   * the directive lines its fields came from and applied through the same
+   * transient path the retired `.prf` resources used, so it never touches the
+   * player's stored documents and its tile directives replay on a fresh
+   * graphics map. JSON has no includes, so nothing is resolved beside it. */
   const ctx = prefsUiCtx();
   const nextTilePrefTexts: ModPrefText[] = [];
   for (const pref of modPrefResources()) {
@@ -14310,26 +14316,15 @@ async function applyModResources(): Promise<void> {
     try {
       const res = await fetch(url);
       if (!res.ok) continue;
-      const text = await res.text();
-      /* `%:` INCLUDES RESOLVE BESIDE THE INCLUDING RESOURCE (#278), which is the
-       * mod-folder reading of upstream's flat directory search: a pack's
-       * `%:flvr-x.prf` sits next to its `graf-x.prf`, and `loadTilePrefs` has
-       * always resolved one against the other's directory. Every include of
-       * every depth is resolved against the declared resource's directory, so a
-       * mod lays its pref files out in one folder rather than reasoning about
-       * which file asked. */
-      const dir = pref.resource.path.replace(/[^/]*$/u, "");
-      const applied = await applyPrefText(
-        ctx,
-        text,
-        pref.resource.path,
-        async (name) => {
-          const at = await resolve(`${dir}${name}`);
-          if (at === null) return null;
-          const r = await fetch(at);
-          return r.ok ? await r.text() : null;
-        },
-      );
+      const text = modPreferenceText(await res.text());
+      if (text === null) {
+        reportModFault(
+          pref.modId,
+          `preference file "${pref.resource.path}" is in a format this version does not read`,
+        );
+        continue;
+      }
+      const applied = await applyPrefText(ctx, text, pref.resource.path, async () => null);
       /* Keep the exact bytes that reach the GlyphTable - and the include bytes
        * with them - so every fresh graphics map can replay the tile directives
        * without resolving the mod again. */

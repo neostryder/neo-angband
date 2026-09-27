@@ -48,6 +48,7 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import type { LocaleBundle } from "@rpgm-tools/neo-angband-core";
 import { loadGamePack } from "./pack";
+import { modPreferenceText } from "./pref-documents";
 import {
   bitmapFontComplaint,
   inventoryOf,
@@ -183,17 +184,16 @@ describe("the bundled demo mod, read from the tree", () => {
     expect(markup.some((m) => m.includes("$VERSION"))).toBe(false);
   });
 
-  it("has a pref file the REAL ui-prefs.c grammar parses with no errors", () => {
-    /* THE CHECK THAT EARNS ITS KEEP HERE. The first draft of this file used
-     * `feat:open floor:torch:w:.` - a feature NAME where the grammar wants its
-     * CODE, and colour letters where it wants numbers - and every line of it
-     * would have failed silently on a player's machine. A .prf is the one
-     * resource whose contents this project owns a parser for, so there is no
-     * excuse for shipping one nothing has parsed.
+  it("has a preference document the REAL ui-prefs.c grammar applies with no errors", () => {
+    /* THE CHECK THAT EARNS ITS KEEP HERE. A preference document is rendered
+     * back to directive lines and run through the game's own grammar, so a
+     * feature NAME where the grammar wants its CODE would fail silently on a
+     * player's machine. Nothing ships that nothing has applied.
      *
      * The real registries, from the real content pack, because `FLOOR` has to
      * resolve to a feature index and a stub would resolve anything. */
-    const text = readFileSync(join(MODS_DIR, DEMO, "prefs/demo.prf"), "utf8");
+    const text = modPreferenceText(readFileSync(join(MODS_DIR, DEMO, "prefs/demo.json"), "utf8"));
+    expect(text).not.toBeNull();
     const reg = bindCore(loadGamePack());
     const table = new GlyphTable({
       features: reg.features.allFeatures(),
@@ -203,7 +203,7 @@ describe("the bundled demo mod, read from the tree", () => {
       flavors: reg.objects.flavors,
     });
     const errors = processPrefText(
-      text,
+      text!,
       {
         features: reg.features,
         objects: reg.objects,
