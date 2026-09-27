@@ -618,6 +618,14 @@ Angband's history has no entry for reaching a new dungeon level, and the port ad
 
 `ctx.character.onRunEnd(listener)` calls the listener once when a character dies or retires, after every item has been identified and the score table written, and before the tombstone. The report says whether the run ended in death, victory or retirement, and names the cause. It carries the character's name, race, class and levels, the deepest and final dungeon level, gold, the final turn, the score and whether the score table accepted it. It also has the full history, the last 40 messages, the character sheet, and every item worn, carried or left in the home, with its location, quantity and inspect text. `ctx.character.runReport()` returns the same report to a mod that loads later. It lasts until the page reloads, and starting a new character reloads it, so a mod that keeps a graveyard of past runs stores each report when `onRunEnd` fires.
 
+## 4x. Character creation
+
+`birth(ctx)`, under `ui:birth.replace`, lets a mod run character creation in place of the game's birth screens. Each time the game is about to show them, the presenter's `show(session)` is offered a `ModBirthSession`. Returning true takes that creation, and anything else lets the game show its own screens. The session's `catalogue()` lists the races and classes with their stat adjustments, hit die, experience factor, infravision, skills, magic realms and abilities, plus the point budget, the name limit and the previous character. `draft()` is the character so far with a preview: the birth screen's stat rows and its five character panels.
+
+The draft changes only through the game's rules. `chooseRace` and `chooseClass` reset the stats to that pair's suggested spread, as the birth menus do. `buy`, `sell`, `suggest` and `reset` are point-buy. `roll` and `previousRoll` are the standard roller. The draft also covers the name, a random name, the background, the birth options and `usePrevious`. Rolls, backgrounds and random names come from the same random stream the birth screens use. `accept()` starts the game with the same choice those screens return, and `cancel()` goes back to the title.
+
+`ctx.saves.create()` starts character creation from a mod, as the title screen's new character does, and the page reloads into it. `create({ like })` sets the previous character first, so `usePrevious` and the name default start from it. A run report's `birth` field has the shape `like` takes, which is how a graveyard offers a new character like a dead one. The dead character itself stays dead.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

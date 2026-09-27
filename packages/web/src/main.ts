@@ -299,7 +299,9 @@ import {
 } from "./world-render-data";
 import type { WorldFrame, WorldLayer } from "./world-view";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
-import { argForceName, initLaunchArgsFromHost } from "./launch";
+import { argForceName, argName, initLaunchArgsFromHost } from "./launch";
+import { createBirthSession } from "./birth-session";
+import { installBirth, offerBirth, setBirthPresenter } from "./birth-runtime";
 import {
   combineDiskReports,
   diskPacks,
@@ -769,7 +771,7 @@ import {
 import { readStoredLocale } from "./locale-store";
 import { chooseCommand, groupCommands, keyForKeyset, transformKeypressCommandTable } from "./command-menu";
 import type { CommandCategory } from "./command-menu";
-import { runOptionsMenu, runTileModePage } from "./options";
+import { customPageDefaults, runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu, SubwindowMenu } from "./options";
 import { loadColorPrefs, saveColorPrefs } from "./colors";
 import { applyStoredEntryRenderers, applyVisualDocument, consumeStoredAutoinscriptions, convertStoredUserPrefFiles, modPreferenceText } from "./pref-documents";
@@ -6904,6 +6906,28 @@ setModSavesControl(createModSaves({
     ? { ok: true }
     : { ok: false, reason: "The character could not be saved." },
   renameStored: (id, name) => renameStoredSlot(id, name),
+  /* The title's new character, from a mod. `like` becomes the stored previous
+   * character, the record the quickstart and the name suffix read. */
+  create: (like) => {
+    if (attachedSlot() && !dead && !persistSave()) {
+      return { ok: false, reason: "The current character could not be saved." };
+    }
+    if (like) {
+      try {
+        const record: StoredBirth = {
+          raceName: like.race,
+          className: like.cls,
+          name: like.name ?? "",
+          ...(like.stats && like.stats.length === 5 ? { stats: [...like.stats] } : {}),
+        };
+        localStorage.setItem(BIRTH_KEY, JSON.stringify(record));
+      } catch {
+        /* storage disabled: creation starts without a previous character */
+      }
+    }
+    newGame();
+    return { ok: true };
+  },
   load: async (id) => {
     if (!readSlotSave(id)) return { ok: false, reason: "This character has no save to load." };
     if (await refusedAsPlayedElsewhere(id)) {
@@ -12428,7 +12452,31 @@ async function maybeBirth(): Promise<BootStep> {
     //
     // quickstart_allowed (ui-birth.c): offer the quick-start stage only when a
     // previous character's choices exist to reuse.
-    const choice = await runBirth(term, players.races, players.classes, {
+    /* A mod that owns character creation (ui:birth.replace) is offered it
+     * first, with the same rules, stream, previous character and options the
+     * terminal screens below would use. Declining falls through to them. */
+    const modBirth = createBirthSession({
+      races: players.races,
+      classes: players.classes,
+      deps: birthDeps,
+      rng: state.rng,
+      quickstart: birthChoice
+        ? {
+            raceName: birthChoice.raceName,
+            className: birthChoice.className,
+            ...(birthChoice.stats && birthChoice.stats.length === 5 ? { stats: birthChoice.stats } : {}),
+          }
+        : null,
+      ...(birthChoice?.name ? { previousName: birthChoice.name } : {}),
+      birthOptions: { ...customPageDefaults("BIRTH"), ...(birthChoice?.birthOptions ?? {}) },
+      randomName: () => playerRandomName(state.rng, tolkienNameProbs()),
+      pinnedName: argForceName() && argName() !== "" ? argName() : null,
+      msg: (text) => say(text),
+    });
+    const offered = offerBirth(modBirth.session, modBirth.outcome);
+    const choice = offered
+      ? await offered
+      : await runBirth(term, players.races, players.classes, {
         // ui-birth.c draws random race/class/*/@/roller from the main game RNG.
         rng: state.rng,
         quickstart: birthChoice
@@ -15529,6 +15577,13 @@ setMenuPresenter(
  * a document of blocks, so an inventory can be drawn as sprites. */
 setScreenPresenter(
   installScreen([...activeModCode().plugins], displayCandidateContext, reportDisplayFault),
+);
+
+/* CHARACTER CREATION (ui:birth.replace): one presenter, offered each birth
+ * before the game's own screens, and declining costs nothing. */
+setBirthPresenter(
+  installBirth([...activeModCode().plugins], displayCandidateContext, reportDisplayFault),
+  reportDisplayFault,
 );
 
 /* THE REGIONS - furniture of a mod's OWN, rather than any of the game's changing

@@ -84,7 +84,11 @@ describe('the pre-game menus answer "back", not null/false', () => {
      * not be left. It is the single line that made ESC a dead end. */
     const body = stripComments(functionBody(MAIN, "maybeBirth"));
     expect(body).not.toMatch(/while \(!choice\)/u);
-    expect(body).toMatch(/const choice = await runBirth\(/u);
+    /* A mod's character creation is offered first and settles the same choice,
+     * so the terminal birth is one arm of that expression rather than its own
+     * statement. Either way a first-stage back is answered "back". */
+    expect(body).toMatch(/await runBirth\(/u);
+    expect(body).toMatch(/if \(!choice\) return "back";/u);
   });
 
   it("startNewCharacter is awaited so birth's 'back' can reach bootMenus", () => {

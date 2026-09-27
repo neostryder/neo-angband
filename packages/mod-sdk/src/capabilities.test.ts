@@ -559,6 +559,14 @@ describe("CapabilitySet: has / check", () => {
     expect(set.has("display:replace")).toBe(false);
   });
 
+  it("ui:birth.replace names character creation, and the ui wildcard covers it", () => {
+    const own = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["ui:birth.replace"] }));
+    expect(own.has("ui:birth.replace")).toBe(true);
+    expect(own.has("ui:screen.replace")).toBe(false);
+    const wild = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["ui:*.replace"] }));
+    expect(wild.has("ui:birth.replace")).toBe(true);
+  });
+
   it("the map and the HUD are two consents, in BOTH directions", () => {
     /* Taking the dungeon is not taking the vitals, and taking the whole
      * interface is not taking the dungeon. A mod that wants both says both. */

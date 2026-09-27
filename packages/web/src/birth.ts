@@ -588,7 +588,7 @@ type PreviewGameState = Required<Pick<GameState, "turn" | "playerState" | "runeE
  * usable GameState" describe block in birth.test.ts) - this is narrower than
  * that test, not a replacement for it.
  */
-function previewState(player: Player, ps: PlayerState): GameState {
+export function previewState(player: Player, ps: PlayerState): GameState {
   const combat = toCombatState(ps);
   /* The declared `: PreviewGameState` annotation (not `satisfies`) is load-
    * bearing: `satisfies` checks the literal against PreviewGameState but
@@ -637,7 +637,7 @@ function previewState(player: Player, ps: PlayerState): GameState {
  * explicitly (no stat RNG), and the real character's ahw/history are rolled from
  * the game seed at startGame - the preview only illustrates them.
  */
-const PREVIEW_SEED = 0x50524556; // "PREV"
+export const PREVIEW_SEED = 0x50524556; // "PREV"
 
 /**
  * Birth roller / point-buy layout (ui-birth.c point_based_start L1074-1086,

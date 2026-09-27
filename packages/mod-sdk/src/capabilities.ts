@@ -286,10 +286,11 @@ const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
  * to ask. One grant rather than one per menu id, because ~50 capability strings
  * would be a consent list nobody could read (`menu-runtime.ts` states the whole
  * argument). `screen` is the same bargain for the full-screen views - the
- * inventory listing, the character sheet, the knowledge browser. `ui:*.replace`
- * covers them all, as it covers the regions.
+ * inventory listing, the character sheet, the knowledge browser. `birth` is
+ * character creation, the birth screens from race choice to the final confirm.
+ * `ui:*.replace` covers them all, as it covers the regions.
  */
-const UI_RE = /^ui:(\*|messages|sidebar|status|menu|screen)\.replace$/;
+const UI_RE = /^ui:(\*|messages|sidebar|status|menu|screen|birth)\.replace$/;
 /**
  * `ui:region.create` - ADD a rectangle of your own to the screen, rather than
  * take one of the game's.

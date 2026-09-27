@@ -866,6 +866,32 @@ reason a floating menu does.
 the equipment and the quiver as item cards, lays the recall pages out into a
 panel of its own width by measuring them, and declines every other screen.
 
+## `birth(ctx)`: run character creation your own way
+
+`birth(ctx)` hands a mod character creation, from the race choice to the start of play. It needs `ui:birth.replace` (or `ui:*.replace`).
+
+```js
+birth(ctx) {
+  return {
+    show(session) {
+      const { races, classes } = session.catalogue();
+      openWizard({
+        races,
+        classes,
+        draft: () => session.draft(),        // stats, name, background, preview
+        pick: (race, cls) => { session.chooseRace(race); session.chooseClass(cls); },
+        buy: (stat) => session.buy(stat),
+        start: () => session.accept(),       // the page reloads into the new character
+        back: () => session.cancel(),        // back to the title screen
+      });
+      return true;                           // take it; return undefined to decline
+    },
+  };
+}
+```
+
+Every change goes through the game's own rules and answers `{ ok: true }` or `{ ok: false, reason }`, so the wizard never computes point costs or suggested stats itself. Keep calling `draft()` after each change: it is the character as the game would start it, with the preview built the way the birth screen builds it. See [MOD_SEAMS.md section 4x](MOD_SEAMS.md#4x-character-creation) for the full session.
+
 ## `regions(ctx)`: put furniture of your own on the screen
 
 `regions(ctx)` is the fifth owner seam, and the only one with no winner. The other four each decide who gets something, because the map, a HUD region, the menu seam and the screen seam are each a single thing that two mods cannot both have. Regions work differently: when two mods both declare one, they do not compete. They are two pieces of furniture that coexist, each at its own band, in load order. Load order matters here only in the ordinary sense that, within a band, the later-loaded region draws on top.

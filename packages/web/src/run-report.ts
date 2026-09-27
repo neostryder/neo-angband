@@ -92,6 +92,8 @@ export interface RunReport {
   readonly messages: readonly { readonly text: string; readonly count: number; readonly color?: string }[];
   readonly belongings: readonly RunBelonging[];
   readonly sheet: CharacterSheetData | null;
+  /** The character's birth choices, for `ctx.saves.create({ like: report.birth })`. */
+  readonly birth: { readonly race: string; readonly cls: string; readonly name: string; readonly stats: readonly number[] };
 }
 
 /** How many of the final messages a report keeps. */
@@ -201,6 +203,7 @@ export function buildRunReport(input: RunReportInput): RunReport {
     })),
     belongings,
     sheet: input.sheet,
+    birth: { race: p.race.name, cls: p.cls.name, name: p.fullName, stats: p.statBirth.slice(0, 5) },
   });
 }
 

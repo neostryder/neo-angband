@@ -120,6 +120,18 @@ describe("mod saves facade", () => {
     expect(confirmed.deleteSlot).toHaveBeenCalledExactlyOnceWith("alice");
   });
 
+  it("starts creation through the host, passing a character to start from", async () => {
+    const create = vi.fn(() => ({ ok: true as const }));
+    const saves = createModSaves(deps({ create }));
+    expect(await saves.create!()).toEqual({ ok: true });
+    expect(create).toHaveBeenLastCalledWith(undefined);
+    const like = { race: "Dwarf", cls: "Priest", name: "Gimli", stats: [17, 10, 16, 12, 17] };
+    expect(await saves.create!({ like })).toEqual({ ok: true });
+    expect(create).toHaveBeenLastCalledWith(like);
+    expect(await saves.create!({ like: { race: "Dwarf" } as never })).toMatchObject({ ok: false });
+    expect(createModSaves(deps()).create).toBeUndefined();
+  });
+
   it("is absent without saves:manage, including before a game exists", () => {
     const make = (capabilities: string[]) => CapabilitySet.fromManifest({
       id: "saves-test", name: "Saves test", version: "1.0.0", shape: "plugin",

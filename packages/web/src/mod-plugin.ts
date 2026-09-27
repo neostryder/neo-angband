@@ -1454,6 +1454,15 @@ export interface ModSaves {
   load(id: string): Promise<SaveResult>;
   rename(id: string, name: string): Promise<SaveResult>;
   delete(id: string): Promise<SaveResult>;
+  /**
+   * Start character creation, as the title screen's new character does. The
+   * page reloads into the birth screens, or into a `birth` presenter. With
+   * `like`, that character becomes the previous one creation offers to reuse:
+   * pass a run report's `birth` for "a new character like this one".
+   */
+  create?(options?: {
+    readonly like?: { readonly race: string; readonly cls: string; readonly name?: string; readonly stats?: readonly number[] };
+  }): Promise<SaveResult>;
 }
 
 /** A mod's code. Both members optional: a plugin may do either job, or both. */
@@ -1654,6 +1663,20 @@ export interface ModPlugin {
    */
   screen?(ctx: ModPluginContext): ScreenPresenter | undefined;
   /**
+   * Show character creation your own way: a step-by-step wizard with a live
+   * preview, in place of the game's birth screens. Requires `ui:birth.replace`
+   * (or "ui:*.replace").
+   *
+   * Your presenter is offered each character creation as a `ModBirthSession`
+   * (birth-session.ts), which carries the races, classes and birth options as
+   * data and a draft you edit through the game's own rules: point-buy, the
+   * standard roller, name, background and the previous character. Return true
+   * from `show` to take it, and end it with the session's `accept()` or
+   * `cancel()`. Return anything else to let the game show its own screens.
+   * Throwing from `show` costs you the seam for the rest of the session.
+   */
+  birth?(ctx: ModPluginContext): import("./birth-runtime").BirthPresenter | undefined;
+  /**
    * Put furniture of your OWN on the screen: a carried-weight readout, a compass,
    * a threat meter - a rectangle beside the game's, not instead of it.
    *
@@ -1764,6 +1787,9 @@ export function validateModPlugin(
   if (p.regions !== undefined && typeof p.regions !== "function") {
     return "plugin.js: regions is not a function";
   }
+  if (p.birth !== undefined && typeof p.birth !== "function") {
+    return "plugin.js: birth is not a function";
+  }
   if (p.uninstall !== undefined && typeof p.uninstall !== "function") {
     return "plugin.js: uninstall is not a function";
   }
@@ -1775,7 +1801,8 @@ export function validateModPlugin(
     p.hud === undefined &&
     p.menu === undefined &&
     p.screen === undefined &&
-    p.regions === undefined
+    p.regions === undefined &&
+    p.birth === undefined
   ) {
     /* A plugin that does none of these is almost certainly a mistake - a mod
      * with no code at all simply ships no plugin.js - and saying so beats
@@ -1789,7 +1816,7 @@ export function validateModPlugin(
      * still NOT widened to include migrateBag: a plugin whose only member is a bag migrator
      * changes nothing about the game and would silently do nothing on a fresh
      * save, which is the same mistake wearing a newer field name. */
-    return "plugin.js declares no hooks, register, controller, frontend, hud, menu, screen or regions, so it would do nothing";
+    return "plugin.js declares no hooks, register, controller, frontend, hud, menu, screen, regions or birth, so it would do nothing";
   }
   return null;
 }

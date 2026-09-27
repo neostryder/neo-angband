@@ -394,6 +394,10 @@ function uiRegionText(region: string): string {
        * browser - the full-screen views. Same bargain as `menu`, and the same
        * reason for naming what changes rather than a rectangle. */
       return "full screens - your inventory, character sheet and the rest";
+    case "birth":
+      /* Character creation: the race, class, stats, name and background
+       * choices, drawn and driven by the mod, through the game's own rules. */
+      return "character creation screens";
     default:
       return `"${region}" part of the interface`;
   }

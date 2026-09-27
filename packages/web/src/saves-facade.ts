@@ -15,7 +15,11 @@ export interface SavesDoorDeps {
   deleteSlot(id: string): void;
   activeSlot(): string | null;
   namePinned(): boolean;
+  /** Start character creation, seeding the previous character from `like` when given. */
+  create?(like: CreateLike | undefined): SaveResult;
 }
+
+export type CreateLike = NonNullable<Parameters<NonNullable<ModSaves["create"]>>[0]>["like"];
 
 const refused = (reason: string): SaveResult => ({ ok: false, reason });
 const listRefused = (reason: string): SaveListResult => ({ ok: false, reason });
@@ -67,6 +71,19 @@ export function createModSaves(deps: SavesDoorDeps): ModSaves {
         return refused("The character could not be renamed.");
       }
     },
+    ...(deps.create ? {
+      async create(options?: Parameters<NonNullable<ModSaves["create"]>>[0]) {
+        try {
+          const like = options?.like;
+          if (like !== undefined && (typeof like.race !== "string" || typeof like.cls !== "string")) {
+            return refused("A character to start from needs a race and a class.");
+          }
+          return deps.create!(like);
+        } catch {
+          return refused("Character creation could not be started.");
+        }
+      },
+    } : {}),
     async delete(id: string) {
       try {
         const meta = find(id);
