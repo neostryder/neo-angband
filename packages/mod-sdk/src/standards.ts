@@ -36,7 +36,7 @@
  */
 
 import { CapabilitySet } from "./capabilities.js";
-import { ManifestError, hasFacet, validateManifest, type PackManifest } from "./manifest.js";
+import { ManifestError, hasFacet, manifestFields, validateManifest, type PackManifest } from "./manifest.js";
 import { compareSemver, satisfies } from "./semver.js";
 
 /** The file a mod's code lives in, when it has any. */
@@ -150,9 +150,7 @@ function manifestObject(mod: ModUnderTest): Record<string, unknown> | null {
   if (mod.manifestText === null) return null;
   try {
     const v: unknown = JSON.parse(mod.manifestText);
-    return typeof v === "object" && v !== null && !Array.isArray(v)
-      ? (v as Record<string, unknown>)
-      : null;
+    return manifestFields(v) ?? null;
   } catch {
     return null;
   }

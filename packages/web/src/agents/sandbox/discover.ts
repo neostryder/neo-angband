@@ -12,7 +12,7 @@
  * manager UI (enable/consent/reorder) is W2.4.
  */
 
-import { hasFacet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import { hasFacet, manifestFields, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { log } from "../../logging";
 import { isShippedMod } from "../../mod-store";
 
@@ -44,7 +44,7 @@ export interface DiscoveredPlugin {
 }
 
 function toManifest(raw: unknown): PackManifest {
-  const m = raw as Partial<PackManifest> & { id?: string };
+  const m = (manifestFields(raw) ?? {}) as Partial<PackManifest> & { id?: string };
   return {
     id: m.id ?? "plugin",
     name: m.name ?? m.id ?? "plugin",

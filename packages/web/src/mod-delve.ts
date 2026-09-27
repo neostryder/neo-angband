@@ -128,7 +128,7 @@ export function buildDelveFile(input: {
 
 /** Pretty-printed JSON: this is a file a human may open, paste, or read in Discord. */
 export function encodeDelve(file: DelveFile): string {
-  return `${JSON.stringify(file, null, 2)}\n`;
+  return `${JSON.stringify({ format: "neo-angband/mod/delve", schemaVersion: 1, data: file }, null, 2)}\n`;
 }
 
 /** A filename a player will recognise later, safe on every filesystem. */
@@ -176,7 +176,13 @@ export function decodeDelve(text: string): DelveDecodeResult {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     return { ok: false, why: "that is not a Delve" };
   }
-  const o = raw as Record<string, unknown>;
+  const root = raw as Record<string, unknown>;
+  const o = root["format"] === "neo-angband/mod/delve"
+    ? root["data"] as Record<string, unknown>
+    : root;
+  if (o === null || typeof o !== "object" || Array.isArray(o)) {
+    return { ok: false, why: "that Delve document has no object data" };
+  }
   if (o["magic"] !== DELVE_MAGIC) {
     return { ok: false, why: "that is not a Neo Angband Delve" };
   }

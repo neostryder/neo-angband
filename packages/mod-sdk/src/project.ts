@@ -181,7 +181,7 @@ export class ModProject {
       files: Record<string, unknown>;
     };
     const out: EmittedFile[] = [
-      { path: "manifest.json", contents: `${JSON.stringify(this.manifest(), null, 2)}\n` },
+      { path: "manifest.json", contents: `${JSON.stringify({ format: "neo-angband/mod/manifest", schemaVersion: 1, data: this.manifest() }, null, 2)}\n` },
     ];
     for (const file of Object.keys(pack.files).sort()) {
       out.push({

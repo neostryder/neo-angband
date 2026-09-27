@@ -26,7 +26,7 @@
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 
-import { MOD_REQUIREMENTS, checkMod, requirementsMarkdown } from "../dist/index.js";
+import { MOD_REQUIREMENTS, checkMod, manifestFields, requirementsMarkdown } from "../dist/index.js";
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(name);
@@ -125,7 +125,7 @@ try {
 
 let declared;
 try {
-  declared = manifestText === null ? undefined : JSON.parse(manifestText).payload;
+  declared = manifestText === null ? undefined : manifestFields(JSON.parse(manifestText))?.payload;
 } catch {
   /* manifest-json reports this. */
 }

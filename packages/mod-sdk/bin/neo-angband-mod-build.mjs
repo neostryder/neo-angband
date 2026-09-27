@@ -155,7 +155,8 @@ note(`${check ? "checking" : "building"} ${targets.length}: ${targets.map((t) =>
 /** The manifest's own id, or null when there is no readable manifest. */
 function readManifestId(dir) {
   try {
-    const id = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")).id;
+    const manifest = manifestFields(JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")));
+    const id = manifest?.id;
     return typeof id === "string" && id !== "" ? id : null;
   } catch {
     return null;

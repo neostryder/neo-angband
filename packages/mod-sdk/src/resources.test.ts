@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import {
   ART_SLOTS,
   chooseResources,
+  localeFileComplaint,
   RESOURCE_KIND_NAMES,
   RESOURCE_KINDS,
   resourceComplaint,
@@ -77,6 +78,21 @@ describe("a well-formed declaration is accepted", () => {
       shape: "content",
     });
     expect(m.resources).toBeUndefined();
+  });
+});
+
+describe("locale documents", () => {
+  it("accepts a strict envelope and reports malformed document fields", () => {
+    expect(localeFileComplaint({
+      format: "neo-angband/mod/locale",
+      schemaVersion: 1,
+      data: { tag: "fr", messages: { "ui.quit": "Quitter" } },
+    }, "locale.json")).toBeNull();
+    expect(localeFileComplaint({
+      format: "neo-angband/mod/locale",
+      schemaVersion: 1,
+      data: { tag: "fr", messages: { "ui.quit": "Quitter" }, extra: true },
+    }, "locale.json")).toContain("unknown field");
   });
 });
 

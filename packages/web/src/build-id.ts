@@ -61,7 +61,14 @@ export function isStampedBuild(id: string = WEB_BUILD_ID): boolean {
 export function isStale(mine: string, theirs: unknown): boolean {
   if (!isStampedBuild(mine)) return false;
   if (theirs === null || typeof theirs !== "object") return false;
-  const id = (theirs as Record<string, unknown>)["buildId"];
+  const object = theirs as Record<string, unknown>;
+  if (object["format"] !== undefined &&
+      (object["format"] !== "neo-angband/web/build-id" || object["schemaVersion"] !== 1 ||
+       Object.keys(object).some((key) => !["format", "schemaVersion", "data"].includes(key)))) return false;
+  const data = object["format"] === "neo-angband/web/build-id"
+    ? object["data"] as Record<string, unknown> | undefined
+    : object;
+  const id = data?.["buildId"];
   if (typeof id !== "string" || id === "" || id === "dev") return false;
   return id !== mine;
 }

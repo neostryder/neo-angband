@@ -244,3 +244,15 @@ describe("a stale desktop shell", () => {
     expect(h.apply).not.toHaveBeenCalled();
   });
 });
+
+describe("web build identifier documents", () => {
+  it("reads both document and older bare values", () => {
+    expect(isStale("build-a", { format: "neo-angband/web/build-id", schemaVersion: 1, data: { buildId: "build-b" } })).toBe(true);
+    expect(isStale("build-a", { buildId: "build-b" })).toBe(true);
+  });
+
+  it("refuses malformed or future documents", () => {
+    expect(isStale("build-a", { format: "neo-angband/web/build-id", schemaVersion: 2, data: { buildId: "build-b" } })).toBe(false);
+    expect(isStale("build-a", { format: "neo-angband/web/build-id", schemaVersion: 1, data: { buildId: 2 } })).toBe(false);
+  });
+});

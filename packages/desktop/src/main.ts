@@ -35,6 +35,7 @@ import {
   serveRawFs,
 } from "@rpgm-tools/neo-angband-core/host";
 import { NodeRawFs } from "@rpgm-tools/neo-angband-cli/host-node";
+import { loadOrderFormat } from "@rpgm-tools/neo-angband-mod-sdk";
 import { LAUNCH_MODULES } from "./modules.js";
 import { agentQuery } from "./agent-mode.js";
 import {
@@ -385,7 +386,18 @@ function readLoadOrder(): readonly string[] {
     const raw = fs.readFileSync(path.join(MODS_DIR, LOAD_ORDER_FILE), "utf8");
     const parsed: unknown = JSON.parse(raw);
     if (parsed === null || typeof parsed !== "object") return [];
-    const order = (parsed as { order?: unknown }).order;
+    const envelope = parsed as { format?: unknown; schemaVersion?: unknown; data?: unknown };
+    let order: unknown;
+    if (envelope.format !== undefined) {
+      const result = parseDocument(parsed, loadOrderFormat);
+      if (!result.ok) {
+        console.warn(`invalid load-order.json: ${result.issues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`);
+        return [];
+      }
+      order = result.data.order;
+    } else {
+      order = (parsed as { order?: unknown }).order;
+    }
     if (!Array.isArray(order)) return [];
     return order.filter((v): v is string => typeof v === "string");
   } catch {

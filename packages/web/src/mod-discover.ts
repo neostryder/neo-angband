@@ -19,6 +19,7 @@ import { engineAllows, engineProblem, type GateableManifest } from "./mod-engine
 import {
   COMPAT_CLAIMS,
   newerGameCouldRun,
+  manifestFields,
   type CompatClaim,
   type PackCompat,
 } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -408,7 +409,7 @@ async function readManifestFacts(
   }
   let manifest: Record<string, unknown>;
   try {
-    manifest = JSON.parse(text) as Record<string, unknown>;
+    manifest = manifestFields(JSON.parse(text)) ?? {};
   } catch (e) {
     return { ok: false, problem: `manifest.json at ${tag} is not valid JSON (${why(e)})` };
   }
@@ -464,7 +465,7 @@ async function readManifestFacts(
 /**
  * A manifest's `compat` array (PackCompat[]), filtered to entries with a usable
  * shape rather than validated - a malformed entry is a real install's problem
- * (validateManifest, mod-sdk) to refuse, not discovery's to throw over. Mirrors
+ * (validateManifest, manifestFields, mod-sdk) to refuse, not discovery's to throw over. Mirrors
  * validateCompat's field checks (manifest.ts) without the throw.
  */
 function readDeclaredCompat(value: unknown): readonly PackCompat[] {

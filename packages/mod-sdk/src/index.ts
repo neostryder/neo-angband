@@ -97,6 +97,10 @@ export { isSavedGameHeader, savedGameFormat } from "./json/saved-game.js";
 export { windowManagerFormat } from "./json/window-manager.js";
 export { settingsFormat } from "./json/settings.js";
 export { highScoresFormat, birthChoiceFormat, reloadStateFormat, loopbackPortFormat, mergedOriginsFormat, deathLedgerFormat, installedMarkerFormat, backupFolderFormat } from "./json/local-state.js";
+export { loadOrderFormat } from "./json/load-order.js";
+export { buildIdFormat } from "./json/build-id.js";
+export { modFontFormat, modLocaleFormat } from "./json/mod-resources.js";
+export { installedModFormat } from "./json/installed-mod.js";
 export { modStateFormat } from "./json/mod-state.js";
 export type { ModState } from "./json/mod-state.js";
 export { modSettingValuesFormat } from "./json/mod-settings.js";
@@ -109,6 +113,7 @@ export {
   COMPAT_CLAIMS,
   DEFAULT_PACK_GROUP,
   hasFacet,
+  manifestFields,
   PACK_GROUPS,
   PACK_SHAPES,
   ManifestError,

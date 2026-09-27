@@ -270,6 +270,13 @@ const MANIFEST = JSON.stringify({
 });
 const PLUGIN = "export default { api: 1, hooks: () => ({}) };";
 
+/** A stored metadata record's fields; records are neo-angband/web/installed-mod documents. */
+function storedMeta(stores: Map<string, Map<string, unknown>>, id: string): Record<string, unknown> | undefined {
+  const record = stores.get(STORE_MOD_META)?.get(id) as { format?: string; data?: Record<string, unknown> } | undefined;
+  expect(record?.format).toBe("neo-angband/web/installed-mod");
+  return record?.data;
+}
+
 async function envFor(
   files: Record<string, Uint8Array>,
   opts: { idb?: IDBFactory; missing?: string[] } = {},
@@ -352,13 +359,24 @@ describe("installing from a repository: what lands", () => {
       "demo/manifest.json",
       "demo/plugin.js",
     ]);
-    expect(stores.get(STORE_MOD_META)?.get("demo")).toMatchObject({
+    expect(storedMeta(stores, "demo")).toMatchObject({
       id: "demo",
       name: "Demo",
       repo: "neostryder/neo-angband-mod-demo",
       tag: "v1.0.0",
       installedAt: "2026-07-30T00:00:00.000Z",
     });
+  });
+
+  it("rewrites a record from before the document form the first time it is read", async () => {
+    const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
+    const { env, stores } = await envFor(files);
+    expect((await installModFromRepo(discovered(FILES), null, env)).ok).toBe(true);
+    const bare = storedMeta(stores, "demo")!;
+    stores.get(STORE_MOD_META)!.set("demo", bare);
+    const listed = await installedMods(env.scope);
+    expect(listed.map((m) => m.id)).toEqual(["demo"]);
+    expect(storedMeta(stores, "demo")).toEqual(bare);
   });
 
   it("does not write a sha key when discovery could not learn one", async () => {
@@ -372,7 +390,7 @@ describe("installing from a repository: what lands", () => {
     const r = await installModFromRepo(discovered(FILES), null, env);
 
     expect(r.ok).toBe(true);
-    const meta = stores.get(STORE_MOD_META)?.get("demo");
+    const meta = storedMeta(stores, "demo");
     expect(meta && typeof meta === "object" && "sha" in meta).toBe(false);
   });
 
@@ -386,7 +404,7 @@ describe("installing from a repository: what lands", () => {
     );
 
     expect(r.ok).toBe(true);
-    expect(stores.get(STORE_MOD_META)?.get("demo")).toMatchObject({
+    expect(storedMeta(stores, "demo")).toMatchObject({
       sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     });
   });
@@ -901,10 +919,7 @@ describe("installed mods, read back", () => {
     made.stores.get(STORE_MODS)?.delete("bug-fixes/manifest.json");
     const second = await installedMods({ indexedDB: made.factory });
     expect(second[0]?.name).toBe("Bug Fixes");
-    const stored = made.stores.get(STORE_MOD_META)?.get("bug-fixes") as {
-      name?: string;
-    };
-    expect(stored.name).toBe("Bug Fixes");
+    expect(storedMeta(made.stores, "bug-fixes")?.name).toBe("Bug Fixes");
   });
 
   it("leaves a missing name alone when the installed manifest cannot supply one", async () => {

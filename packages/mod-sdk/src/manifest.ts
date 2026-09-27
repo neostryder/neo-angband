@@ -660,12 +660,27 @@ const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 export class ManifestError extends Error {}
 
+/** Return manifest fields from a supported document or a bare manifest. */
+export function manifestFields(raw: unknown): Record<string, unknown> | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+  const root = raw as Record<string, unknown>;
+  if (root["format"] !== "neo-angband/mod/manifest") return root;
+  if (root["schemaVersion"] !== 1 || Object.keys(root).some((key) => !["format", "schemaVersion", "data"].includes(key))) return undefined;
+  const data = root["data"];
+  return typeof data === "object" && data !== null && !Array.isArray(data)
+    ? (data as Record<string, unknown>)
+    : undefined;
+}
+
 /** Validate a parsed manifest object; throws ManifestError. */
 export function validateManifest(value: unknown): PackManifest {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new ManifestError("manifest must be an object");
+  const m = manifestFields(value);
+  if (!m) {
+    const wrapped = typeof value === "object" && value !== null && (value as { format?: unknown }).format === "neo-angband/mod/manifest";
+    throw new ManifestError(wrapped
+      ? "manifest document has an unsupported schema version, an unknown envelope field or no data object"
+      : "manifest must be an object or a supported manifest document");
   }
-  const m = value as Record<string, unknown>;
   if (typeof m["id"] !== "string" || !ID_RE.test(m["id"])) {
     throw new ManifestError(
       `manifest id must be lowercase kebab-case: ${String(m["id"])}`,

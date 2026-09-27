@@ -55,7 +55,11 @@ export interface DelveSyncFile {
 
 /** Serialise a Delve plus its sync envelope. Still a plain Delve to any other reader. */
 export function encodeDelveSync(file: DelveFile, meta: DelveSyncMeta): string {
-  return `${JSON.stringify({ ...file, ...meta }, null, 2)}\n`;
+  return `${JSON.stringify({
+    format: "neo-angband/mod/delve",
+    schemaVersion: 1,
+    data: { ...file, ...meta },
+  }, null, 2)}\n`;
 }
 
 /**
@@ -76,7 +80,10 @@ export function decodeDelveSync(text: string): { file: DelveFile; meta: DelveSyn
     return { file: decoded.file, meta: null };
   }
   if (raw === null || typeof raw !== "object") return { file: decoded.file, meta: null };
-  const o = raw as Record<string, unknown>;
+  const root = raw as Record<string, unknown>;
+  const o = root["format"] === "neo-angband/mod/delve"
+    ? root["data"] as Record<string, unknown>
+    : root;
   const revision = o["revision"];
   const originDevice = o["originDevice"];
   const informational = o["enabledSetInformational"];

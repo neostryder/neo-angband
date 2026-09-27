@@ -1,3 +1,6 @@
+import { modLocaleFormat } from "./json/mod-resources.js";
+import { parseDocument } from "./json/index.js";
+
 /**
  * What a mod may supply BESIDES records, code and tiles - and whether the
  * machine it landed on can actually use it.
@@ -441,7 +444,18 @@ export function localeFileComplaint(value: unknown, path: string): string | null
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return `locale "${path}" is not a JSON object`;
   }
-  const b = value as Record<string, unknown>;
+  const root = value as Record<string, unknown>;
+  let b = root;
+  if (root["format"] !== undefined) {
+    const document = parseDocument(value, modLocaleFormat);
+    if (!document.ok) {
+      return `locale "${path}" document is invalid: ${document.issues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`;
+    }
+    b = document.data;
+  }
+  if (b === null || typeof b !== "object" || Array.isArray(b)) {
+    return `locale "${path}" document data is not an object`;
+  }
   const tag = b["tag"];
   if (typeof tag !== "string" || !/^[A-Za-z]{2,8}(-[A-Za-z0-9]{2,8})*$/u.test(tag)) {
     return (
@@ -478,6 +492,10 @@ export function localeFileComplaint(value: unknown, path: string): string | null
  * as German.
  */
 export function localeFileTag(value: unknown): string | null {
-  const tag = (value as { tag?: unknown } | null)?.tag;
+  const root = value as Record<string, unknown> | null;
+  const b = root?.["format"] === "neo-angband/mod/locale"
+    ? root["data"] as Record<string, unknown> | undefined
+    : root;
+  const tag = b?.["tag"];
   return typeof tag === "string" ? tag : null;
 }

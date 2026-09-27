@@ -74,7 +74,7 @@ import { installFailureLines, installOutcomeLines } from "./mod-browse";
 import { readModZip, type ZipRead } from "./mod-zip";
 import { sessionSurvivesReload, stageSessionMod } from "./mod-session";
 import type { ModInstallOutcome, ModSessionOutcome } from "./mod-plugin";
-import type { Finding } from "@rpgm-tools/neo-angband-mod-sdk";
+import { manifestFields, type Finding } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** What a mod must hold in its manifest before it may install another mod. */
 export const INSTALL_CAPABILITY = "mod:install";
@@ -175,10 +175,8 @@ function manifestCapabilities(
   const entry = files.find(([path]) => path.toLowerCase() === "manifest.json");
   if (!entry) return [];
   try {
-    const parsed = JSON.parse(new TextDecoder().decode(entry[1])) as {
-      readonly capabilities?: unknown;
-    };
-    const caps = parsed.capabilities;
+    const parsed = manifestFields(JSON.parse(new TextDecoder().decode(entry[1])));
+    const caps = parsed?.["capabilities"];
     if (!Array.isArray(caps)) return [];
     return caps.map((cap) => String(cap));
   } catch {

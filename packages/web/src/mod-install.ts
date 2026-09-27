@@ -58,7 +58,7 @@ import {
   idbPut,
   openDb,
 } from "./idb";
-import { checkMod, githubRepo, type Finding } from "@rpgm-tools/neo-angband-mod-sdk";
+import { checkMod, githubRepo, installedModFormat, manifestFields, parseDocument, type Finding } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installBlocked, type ModOrigin } from "./mod-consent";
 import { buildModuleGraph } from "./mod-modules";
 import type { DiscoveredMod } from "./mod-discover";
@@ -332,8 +332,9 @@ function manifestDisplayName(files: ReadonlyArray<readonly [string, Uint8Array]>
   if (text === null) return null;
   try {
     const parsed: unknown = JSON.parse(text);
-    if (parsed === null || typeof parsed !== "object") return null;
-    const name = (parsed as Record<string, unknown>)["name"];
+    const fields = manifestFields(parsed);
+    if (!fields) return null;
+    const name = fields["name"];
     return typeof name === "string" && name.trim() !== "" ? name : null;
   } catch {
     return null;
@@ -425,7 +426,7 @@ async function storeMod(
         del: stale,
         put: files.map(([path, bytes]) => [`${mod.id}/${path}`, bytes] as const),
       },
-      { store: STORE_MOD_META, put: [[mod.id, meta] as const] },
+      { store: STORE_MOD_META, put: [[mod.id, metaRecord(meta)] as const] },
     ]);
     if (!swapped) {
       /* Reported, not swallowed. The usual cause is the storage quota, and a mod that
@@ -762,7 +763,7 @@ async function healInstalledName(
   const name = manifestDisplayName([["manifest.json", bytes]]);
   if (name === null) return meta;
   const healed: InstalledModMeta = { ...meta, name };
-  await idbPut(db, STORE_MOD_META, meta.id, healed);
+  await idbPut(db, STORE_MOD_META, meta.id, metaRecord(healed));
   return healed;
 }
 
@@ -774,8 +775,12 @@ export async function installedMods(
   if (!db) return [];
   const out: InstalledModMeta[] = [];
   for (const id of await idbKeys(db, STORE_MOD_META)) {
-    const meta = asMeta(await idbGet(db, STORE_MOD_META, id));
-    if (meta) out.push(await healInstalledName(db, meta));
+    const stored = await idbGet(db, STORE_MOD_META, id);
+    const meta = asMeta(stored);
+    if (!meta) continue;
+    /* A record from before the document form is rewritten once, in place. */
+    if (!isMetaDocument(stored)) await idbPut(db, STORE_MOD_META, id, metaRecord(meta));
+    out.push(await healInstalledName(db, meta));
   }
   const scrubbed = await scrubRenamedGhosts(out, scope);
   /* Sorted by id so the manager's list, and any test of it, is stable: IndexedDB key
@@ -841,7 +846,20 @@ export async function uninstallMod(
   return await idbDeletePrefix(db, STORE_MODS, `${id}/`);
 }
 
+/** The stored form of a record: a neo-angband/web/installed-mod document. */
+function metaRecord(meta: InstalledModMeta): unknown {
+  return { format: installedModFormat.format, schemaVersion: installedModFormat.schemaVersion, data: meta };
+}
+
+function isMetaDocument(v: unknown): boolean {
+  return v !== null && typeof v === "object" && (v as { format?: unknown }).format === installedModFormat.format;
+}
+
 function asMeta(v: unknown): InstalledModMeta | null {
+  if (isMetaDocument(v)) {
+    const parsed = parseDocument(v, installedModFormat);
+    return parsed.ok ? asMeta(parsed.data) : null;
+  }
   if (v === null || typeof v !== "object") return null;
   const m = v as Partial<InstalledModMeta>;
   if (typeof m.id !== "string" || m.id === "") return null;

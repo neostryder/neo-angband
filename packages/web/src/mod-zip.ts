@@ -1,3 +1,4 @@
+import { manifestFields } from "@rpgm-tools/neo-angband-mod-sdk";
 /**
  * Reading a mod out of a .zip the player handed the game.
  *
@@ -159,9 +160,10 @@ function manifestNames(bytes: Uint8Array): ManifestNames {
   } catch {
     return none;
   }
-  if (parsed === null || typeof parsed !== "object") return none;
+  const fields = manifestFields(parsed);
+  if (!fields) return none;
   const str = (k: string): string | null => {
-    const v = (parsed as Record<string, unknown>)[k];
+    const v = fields[k];
     return typeof v === "string" && v !== "" ? v : null;
   };
   return { id: str("id"), version: str("version"), repository: str("repository") };

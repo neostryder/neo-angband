@@ -49,6 +49,7 @@ import {
   type ModDirEntry,
   type ModDirSource,
 } from "./disk-packs";
+import { manifestFields } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installBlocked } from "./mod-consent";
 import { archiveFaults, importedOrigin, installedMods, sha256Hex } from "./mod-install";
 import { buildModuleGraph } from "./mod-modules";
@@ -322,10 +323,7 @@ function manifestCapabilities(
   const entry = files.find(([path]) => path.toLowerCase() === "manifest.json");
   if (!entry) return [];
   try {
-    const parsed = JSON.parse(new TextDecoder().decode(entry[1])) as {
-      readonly capabilities?: unknown;
-    };
-    const caps = parsed.capabilities;
+    const caps = manifestFields(JSON.parse(new TextDecoder().decode(entry[1])))?.["capabilities"];
     if (!Array.isArray(caps)) return [];
     return caps.map((cap) => String(cap));
   } catch {

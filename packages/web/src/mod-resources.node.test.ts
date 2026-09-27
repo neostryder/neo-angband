@@ -237,10 +237,11 @@ describe("the bundled demo mod, read from the tree", () => {
     );
     expect(localeFileComplaint(raw, "locales/en-XA.json")).toBeNull();
     expect(localeFileTag(raw)).toBe("en-XA");
+    const bundle = (raw as { data: LocaleBundle }).data;
 
     const before = helpIndexLabels();
     expect(before).toContain("Available commands");
-    registerLocale(raw as LocaleBundle);
+    registerLocale(bundle);
     setLocale("en-XA");
     const after = helpIndexLabels();
     expect(after).not.toContain("Available commands");

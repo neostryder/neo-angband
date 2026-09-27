@@ -128,7 +128,7 @@ An installed copy keeps the same `mods/` folder under the OS user directory
 instead; either way the mod manager's "Where mods come from" row names the exact
 path. See [INSTALL.md](INSTALL.md#where-your-data-lives).
 
-`manifest.json` is validated on load. Every other `.json` at the top level of the folder is a record contribution named after its record type, and `plugin.js`, if present, is code the host loads and runs. Nothing else is involved, so a mod's repository root is itself a mod folder, and the first-party mods are developed, tested and released without being converted into anything else.
+`manifest.json` is validated on load. New SDK-generated manifests use the `neo-angband/mod/manifest` JSON document envelope; existing bare manifests remain supported for published mods. Every other `.json` at the top level of the folder is a record contribution named after its record type, and `plugin.js`, if present, is code the host loads and runs. Nothing else is involved, so a mod's repository root is itself a mod folder, and the first-party mods are developed, tested and released without being converted into anything else.
 
 `load-order.json` belongs to the external mod manager rather than the game. Its shape is `{ "order": ["mod-a", "mod-b"] }`. As with an active-plugin list in Vortex or MO2, a listed pack is loaded, and it loads in the listed position. This is the deploy target that the division of labour below assumes.
 

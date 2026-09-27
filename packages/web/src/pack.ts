@@ -25,6 +25,7 @@ import {
   composeDroppingBroken,
   computeConflictReport,
   hasFacet,
+  manifestFields,
   resolveLoadOrder,
   resolveSectionState,
   sectionFlag,
@@ -368,7 +369,7 @@ export function modManifestFor(id: string): PackManifest | undefined {
 }
 
 export function modManifest(raw: unknown): PackManifest {
-  const m = raw as Partial<PackManifest> & { id?: string };
+  const m = (manifestFields(raw) ?? {}) as Partial<PackManifest> & { id?: string };
   return {
     id: m.id ?? "mod",
     name: m.name ?? m.id ?? "mod",

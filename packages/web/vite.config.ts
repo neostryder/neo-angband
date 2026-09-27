@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import type { Plugin } from "vite";
 import type { PluginContext } from "rollup";
 import { VitePWA } from "vite-plugin-pwa";
+import { serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /**
  * Which build this is, stamped into the bundle AND written beside index.html.
@@ -35,7 +36,7 @@ function buildIdFile(): Plugin {
       this.emitFile({
         type: "asset",
         fileName: "build-id.json",
-        source: `${JSON.stringify({ buildId: BUILD_ID }, null, 2)}\n`,
+        source: serializeDocument("neo-angband/web/build-id", { buildId: BUILD_ID }),
       });
     },
   };

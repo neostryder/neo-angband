@@ -37,6 +37,7 @@ import {
 import { STORE_HANDLES, idbDelete, idbGet, idbPut, openDb } from "./idb";
 import { buildModuleGraph } from "./mod-modules";
 import { assetMime, sortPackFiles } from "./pack-files";
+import { loadOrderFormat, parseDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /* ------------------------------------------------------------------ *
  * The File System Access API, declared structurally.
@@ -382,7 +383,17 @@ export function folderModSource(handle: FsDirHandle): ModDirSource {
       const file = await findFile(handle, LOAD_ORDER);
       if (!file) return [];
       const parsed = JSON.parse(await (await file.getFile()).text()) as unknown;
-      const order = (parsed as { order?: unknown })?.order;
+      const envelope = parsed as { format?: unknown; data?: unknown } | null;
+      let order: unknown;
+      if (envelope?.format !== undefined) {
+        const result = parseDocument(parsed, loadOrderFormat);
+        if (!result.ok) {
+          throw new Error(`invalid load-order.json: ${result.issues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`);
+        }
+        order = result.data.order;
+      } else {
+        order = (parsed as { order?: unknown })?.order;
+      }
       return Array.isArray(order)
         ? order.filter((x): x is string => typeof x === "string")
         : [];

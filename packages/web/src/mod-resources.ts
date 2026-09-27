@@ -53,6 +53,8 @@ import {
   extensionOf,
   localeFileComplaint,
   localeFileTag,
+  modFontFormat,
+  parseDocument,
   RESOURCE_KINDS,
   resourceComplaint,
   type ContributedResource,
@@ -358,7 +360,14 @@ export async function verifyResource(
       return `supplies ${spec.describe} "${resource.path}" that is not valid JSON (${message(e)})`;
     }
     if (resource.kind === "font") {
-      const complaint = bitmapFontComplaint(parsed);
+      const fontData = (parsed as { format?: string; data?: unknown }).format === "neo-angband/mod/font"
+        ? (parsed as { data: unknown }).data
+        : parsed;
+      if ((parsed as { format?: unknown }).format !== undefined) {
+        const document = parseDocument(parsed, modFontFormat);
+        if (!document.ok) return `font document "${resource.path}" is invalid: ${document.issues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`;
+      }
+      const complaint = bitmapFontComplaint(fontData);
       if (complaint !== null) {
         return (
           `supplies a font "${resource.path}" that ${complaint} - this terminal draws ` +
@@ -537,11 +546,15 @@ export async function modFontData(): Promise<BitmapFontData | null> {
     const res = await fetch(url);
     if (!res.ok) return null;
     const parsed: unknown = await res.json();
+    const data = parsed !== null && typeof parsed === "object" &&
+      (parsed as { format?: unknown }).format === "neo-angband/mod/font"
+      ? (parsed as { data: unknown }).data
+      : parsed;
     /* CHECKED AGAIN, at the point of use. Verification ran at boot against the
      * same bytes, so this should never fire - but "should never fire" is exactly
      * the claim that decays, and the cost of being wrong is a screen of garbage
      * rather than a message. */
-    return bitmapFontComplaint(parsed) === null ? (parsed as BitmapFontData) : null;
+    return bitmapFontComplaint(data) === null ? (data as BitmapFontData) : null;
   } catch {
     return null;
   }

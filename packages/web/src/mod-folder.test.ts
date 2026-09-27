@@ -395,6 +395,27 @@ describe("reading a mods folder", () => {
     expect(problemLines(r.problems)).toEqual(['load-order.json lists "ghost", which is not installed']);
   });
 
+  it("reads the load-order document and reports malformed envelope data", async () => {
+    const handle = dirHandle("mods", {
+      "load-order.json": JSON.stringify({
+        format: "neo-angband/mod/load-order",
+        schemaVersion: 1,
+        data: { order: ["b-mod", "a-mod"] },
+      }),
+      "a-mod": { "manifest.json": MANIFEST("a-mod") },
+      "b-mod": { "manifest.json": MANIFEST("b-mod") },
+    });
+    const r = await readModDir(folderModSource(handle));
+    expect(r.order).toEqual(["b-mod", "a-mod"]);
+
+    const malformed = dirHandle("mods", {
+      "load-order.json": JSON.stringify({ format: "neo-angband/mod/load-order", schemaVersion: 1, data: { order: [4] } }),
+      "a-mod": { "manifest.json": MANIFEST("a-mod") },
+    });
+    const refused = await readModDir(folderModSource(malformed));
+    expect(problemLines(refused.problems)[0]).toContain("invalid load-order.json");
+  });
+
   it("keeps the packs when load-order.json is corrupt", async () => {
     const handle = dirHandle("mods", {
       "load-order.json": "{ this is not json",

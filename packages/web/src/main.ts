@@ -14807,7 +14807,12 @@ async function applyModResources(): Promise<void> {
     try {
       const res = await fetch(url);
       if (!res.ok) continue;
-      registerLocale((await res.json()) as LocaleBundle);
+      const parsed: unknown = await res.json();
+      const bundle = parsed !== null && typeof parsed === "object" &&
+        (parsed as { format?: unknown }).format === "neo-angband/mod/locale"
+        ? (parsed as { data: LocaleBundle }).data
+        : parsed as LocaleBundle;
+      registerLocale(bundle);
     } catch (e) {
       reportModFault(
         locale.modId,

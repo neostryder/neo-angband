@@ -46,7 +46,7 @@
 
 import { getGraphicsMode, GRAPHICS_NONE } from "@rpgm-tools/neo-angband-core";
 import type { RestoredItemArt } from "@rpgm-tools/neo-angband-core";
-import type { LinoleumTilesheetSource } from "@rpgm-tools/neo-angband-mod-sdk";
+import { manifestFields, type LinoleumTilesheetSource } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   diskPacks,
   sessionPacks,
@@ -378,7 +378,9 @@ export function mergeModSources(input: {
   bundled: ReadonlyMap<string, unknown>;
   disk: DiskPackReport;
 }): DiscoveredMods {
-  const manifests = new Map<string, unknown>(input.bundled);
+  /* Unwrapped here, so every reader of the map sees the manifest fields whether
+   * the file is a bare manifest or a neo-angband/mod/manifest document. */
+  const manifests = new Map<string, unknown>([...input.bundled].map(([id, raw]) => [id, manifestFields(raw) ?? raw]));
   const sources = new Map<string, ModAssetSource>();
   for (const id of input.bundled.keys()) {
     sources.set(id, { kind: "bundle", base: BUNDLED_MODS_BASE });

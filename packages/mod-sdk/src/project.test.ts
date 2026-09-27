@@ -70,6 +70,12 @@ describe("a mod project", () => {
     expect(() => modProject({ ...MANIFEST, id: "" })).toThrow(ManifestError);
   });
 
+  it("reads both published manifests and the SDK document form", () => {
+    expect(modProject(MANIFEST).manifest()).toEqual(MANIFEST);
+    expect(modProject({ format: "neo-angband/mod/manifest", schemaVersion: 1, data: MANIFEST }).manifest()).toEqual(MANIFEST);
+    expect(() => modProject({ format: "neo-angband/mod/manifest", schemaVersion: 2, data: MANIFEST })).toThrow(/schema version/u);
+  });
+
   it("emits a mod folder: manifest.json plus one file per record file", () => {
     const files = modProject(MANIFEST)
       .add("monster", { name: "sludge fiend", base: "icky thing" })
@@ -86,9 +92,16 @@ describe("a mod project", () => {
       type: "object",
     });
     expect(p.qualify("sludge")).toBe("sludge:sludge");
-    const manifest = JSON.parse(p.emit()[0]?.contents ?? "{}") as {
+    const document = JSON.parse(p.emit()[0]?.contents ?? "{}") as {
+      format: string;
+      schemaVersion: number;
+      data: {
       fields?: { name: string }[];
+      };
     };
+    expect(document.format).toBe("neo-angband/mod/manifest");
+    expect(document.schemaVersion).toBe(1);
+    const manifest = document.data;
     expect(manifest.fields?.map((f) => f.name)).toEqual(["sludge"]);
   });
 
