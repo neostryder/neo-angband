@@ -392,7 +392,7 @@ if (snap && snap.phase === "play") {
 - **The phase says who owns input.** `pregame` (title, roster, birth), `play`, `store`, `more` (a "-more-" pause is holding input), `modal` (any other full-screen takeover) and `dead`. `messagePending` is true exactly while a "-more-" pause waits.
 - **Everything is a copy.** The core parts are a structured clone, deep-frozen; the frame goes through `snapshotWorldFrame`, the same ownership cut the front-end seam makes. A mod can keep a snapshot as long as it likes without holding a live object.
 
-The map cells and the message log are not in the core capture. The map has its own bulk read, and `messages()` drains a per-decision buffer, so a capture that called it would change what the next decision sees. `prompt` is reserved for the typed prompt descriptor and is null until that seam lands.
+The map cells and the message log are not in the core capture. The map has its own bulk read, and `messages()` drains a per-decision buffer, so a capture that called it would change what the next decision sees. The open question is in `prompt` when `state:interaction.read` is granted.
 
 ## 4h. `ctx.knownLevel()` - the player's whole remembered level
 
@@ -414,7 +414,7 @@ The read does not change the game or use the RNG, including while the character 
 
 A plugin that declares `input:intent` receives `ctx.intent`. The grant tells the player that the mod can act on the character's behalf with the same commands as the player's keys. `submit(token, intent)` returns `{ accepted: true }` or `{ accepted: false, reason }`. A rejected intent changes no game state, command queue, turn or RNG stream.
 
-Pass the token from `ctx.snapshot()` with each intent. The host rejects an old token, an open prompt, a blocked phase, an unknown command code or malformed arguments before it takes an action. Ordinary commands require `play`; `shop-buy`, `shop-sell` and `shop-exit` require `store`. The prompt check reads the snapshot source, where the prompt stays null until the typed prompt seam supplies it.
+Pass the token from `ctx.snapshot()` with each intent. The host rejects an old token, an open prompt, a blocked phase, an unknown command code or malformed arguments before it takes an action. Ordinary commands require `play`; `shop-buy`, `shop-sell` and `shop-exit` require `store`. The prompt check reads the same open prompt `ctx.snapshot().prompt` reports (section 4j).
 
 ```js
 const snap = ctx.snapshot?.();
@@ -439,6 +439,22 @@ if (sent.accepted && next?.phase === "play" &&
   ctx.intent.submit(next.token, { kind: "command", command: { code: "pickup" } });
 }
 ```
+
+## 4j. Typed prompts and replies
+
+`ctx.snapshot().prompt` reports the question currently holding input. Each descriptor has a session-unique `promptId`, a `kind`, and the game's own label. The kinds are `confirm`, `quantity`, `text`, `direction`, `item`, `spell`, and `target`. Quantity and text carry their limits and defaults. Direction reports whether the current target is allowed. Item choices carry the item handle, label, and selection letter, with available floor, quiver, and equipment tabs. A negative item handle names a floor pile index for this prompt only: `-(index + 1)`. Spell choices carry the class-wide spell index, name, level, mana cost, failure chance, and current castability. Target reports the current grid, interesting candidates in browsing order, and the projection path to the cursor. The descriptor closes when the game's wait ends.
+
+```js
+const question = ctx.snapshot()?.prompt;
+if (question?.kind === "confirm") {
+  const result = ctx.prompt?.reply(question.promptId, true);
+  if (!result?.accepted) showReason(result?.reason);
+}
+```
+
+`ctx.prompt` exists only with `input:prompt.reply`. Replies use the same selection or finish handlers as the terminal. A stale ID, a value of the wrong type, or an unavailable choice returns `{ accepted: false, reason }` and leaves the wait open. Target replies accept `{ action: "move", x, y }` or `{ action: "next" }`, `{ action: "previous" }`, `{ action: "toggle" }`, `{ action: "select" }`, and `{ action: "cancel" }`. Each target cursor update gets a new ID, so a reply based on an earlier grid is stale. A reply does not consume a turn by itself; the resumed game command decides what happens next.
+
+The seam covers the shared confirmation, quantity, text, direction, item, and spell waits, the store's confirmation, the pasted-text editor, and the main targeting loop. Other one-key waits, arbitrary menus, and custom modal loops still use their own input handlers and have no typed descriptor. A menu supplied by another mod's presenter is answered by that presenter, outside the host terminal wait.
 
 ## 5. Doors that are exported but deliberately closed
 

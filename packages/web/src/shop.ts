@@ -47,6 +47,7 @@ import {
 import type { GameObject, StartedGame, Store, EarlierObjectOpts } from "@rpgm-tools/neo-angband-core";
 import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
 import { getQuantity, itemSelect, screenRegionSpec } from "./overlay";
+import { openPrompt } from "./prompt-wait";
 import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import { objectColor, objectName, packMenu, quiverMenu } from "./screens";
 import { UI_TEXT, UI_DIM, UI_CURSOR, UI_CURSOR_DISABLED, UI_GOOD } from "./ui-colors";
@@ -424,6 +425,7 @@ function storeConfirm(
     }
     term.prt(0, 0, prompt.slice(0, cols - 1), UI_TEXT);
     const finish = (value: boolean): void => {
+      wait.close();
       inputEvents.removeEventListener("keydown", onKey, true);
       resolve(value);
     };
@@ -436,6 +438,11 @@ function storeConfirm(
       if (ev.key === "Escape" || ev.key === "n" || ev.key === "N") return finish(false);
       finish(true);
     };
+    const wait = openPrompt({ kind: "confirm", label: prompt }, (answer) => {
+      if (typeof answer !== "boolean") return { accepted: false, reason: "expected boolean" };
+      finish(answer);
+      return { accepted: true };
+    });
     inputEvents.addEventListener("keydown", onKey, true);
   });
 }
@@ -1127,8 +1134,8 @@ export async function runStore(
     const inven = packMenu(game.state);
     const quiver = quiverMenu(game.state);
     const sources = [
-      { label: t("shop.inspect.inven", "Inven"), items: inven.items },
-      { label: t("shop.inspect.quiver", "Quiver"), items: quiver.items },
+      { label: t("shop.inspect.inven", "Inven"), items: inven.items, kind: "inven" as const },
+      { label: t("shop.inspect.quiver", "Quiver"), items: quiver.items, kind: "quiver" as const },
     ].filter((s) => s.items.length > 0);
     const handleLists = [inven.handles, quiver.handles].filter((h) => h.length > 0);
     if (sources.length === 0) {
@@ -1143,6 +1150,7 @@ export async function runStore(
       undefined,
       undefined,
       game.state.options?.get("rogue_like_commands") ?? false,
+      handleLists,
     );
     if (chosen === null) return;
     const handle = handleLists[chosen.source]?.[chosen.index];

@@ -326,6 +326,7 @@ import { readConsent, writeConsent } from "./mod-consent";
 import { DEFAULT_REGISTRY_URL, fetchRegistry } from "./mod-curated";
 import { discoverMod, type DiscoverEnv } from "./mod-discover";
 import { rawUrl } from "./mod-registry";
+import { currentPrompt, openPrompt } from "./prompt-wait";
 import {
   activeModCode,
   folderPluginManifests,
@@ -3073,6 +3074,7 @@ async function selectItemFrom(
     cmdKey,
     bell,
     state.options?.get("rogue_like_commands") ?? false,
+    refs.map((source) => source.map((ref) => "handle" in ref ? ref.handle : -(ref.floor + 1))),
   );
   if (chosen === null) return null;
   const ref = refs[chosen.source]?.[chosen.index] ?? null;
@@ -3179,6 +3181,7 @@ async function storeSellPick(
     itemCmdKey("drop"),
     () => state.sound?.(MSG.BELL),
     state.options?.get("rogue_like_commands") ?? false,
+    refs.map((source) => source.map((ref) => "handle" in ref ? ref.handle : -(ref.floor + 1))),
   );
   if (chosen === null) return { kind: "cancel" };
   const ref = refs[chosen.source]?.[chosen.index];
@@ -3532,7 +3535,9 @@ async function runContextMenuCave(grid: Loc, adjacent: boolean): Promise<void> {
         say(t("main.item.no-usable", "You have no usable items."));
         break;
       }
-      const useIdx = await selectFromMenu(term, "core:context-use-item", "Use which item? ", items);
+      const useIdx = await selectFromMenu(term, "core:context-use-item", "Use which item? ", items, undefined, {
+        promptItemHandles: handles,
+      });
       if (useIdx === null) break;
       const useHandle = handles[useIdx];
       if (useHandle === undefined) break;
@@ -4230,6 +4235,7 @@ async function activateItem(): Promise<void> {
   }
   const idx = await selectFromMenu(term, "core:activate-item", "Activate which item? ", items, undefined, {
     inscripCmdKey: itemCmdKey("activate"),
+    promptItemHandles: handles,
   });
   if (idx === null) return;
   const handle = handles[idx];
@@ -4616,6 +4622,7 @@ async function chooseBook(
   // book's letter (or ESC) exactly as in the original.
   const idx = await selectFromMenu(term, "core:spell-book", `${verb} which book?`, items, undefined, {
     inscripCmdKey: cmdCode ? itemCmdKey(cmdCode) : undefined,
+    promptItemHandles: handles,
     /* item_menu draws a box over the level, it does not blank it (ui-object.c
      * L1198-1215). Casting a spell was clearing the terminal and printing a list
      * on an empty screen, so the one thing a player wants while choosing what to
@@ -4652,7 +4659,7 @@ async function castSpell(): Promise<void> {
   if (handle === null) return;
   const bookObj = gearGet(state.gear, handle);
   if (!bookObj) return;
-  const { items, sidx } = bookSpellMenu(state, bookObj, "cast");
+  const { items, sidx, choices } = bookSpellMenu(state, bookObj, "cast");
   if (items.every((it) => it.disabled)) {
     say(t("main.spell.none-castable", "That book has no spells that you can cast."));
     return;
@@ -4669,6 +4676,7 @@ async function castSpell(): Promise<void> {
     "[ ESC to cancel ]",
     {
       subtitle: SPELL_HEADER,
+      promptSpellChoices: choices,
       detail: (i, availableCols) =>
         spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, availableCols ?? term.size().cols),
       detailToggleKey: "?",
@@ -4752,7 +4760,7 @@ async function studySpell(): Promise<void> {
   if (player.cls.pflags.has(PF.CHOOSE_SPELLS)) {
     const bookObj = gearGet(state.gear, handle);
     if (!bookObj) return;
-    const { items, sidx } = bookSpellMenu(state, bookObj, "study");
+    const { items, sidx, choices } = bookSpellMenu(state, bookObj, "study");
     if (items.every((it) => it.disabled)) {
       say(t("main.study.book-empty", "That book has no spells that you can learn."));
       return;
@@ -4767,6 +4775,7 @@ async function studySpell(): Promise<void> {
       "[ ESC to cancel ]",
       {
         subtitle: SPELL_HEADER,
+        promptSpellChoices: choices,
         detail: (i, availableCols) =>
           spellBrowseLines(state, sidx[i] ?? -1, inspectExtras.projections, availableCols ?? term.size().cols),
         detailToggleKey: "?",
@@ -5411,6 +5420,7 @@ function runTargetLoop(
     // paint()'s own describeLookGrid call (aux_monster only ever names an
     // obvious monster), so 'r' knows what to recall without recomputing it.
     let lastMon: Monster | null = null;
+    let firstTargetPaint = true;
 
     const paint = (): void => {
       const cur = currentLoopGrid(ui, targets);
@@ -5424,6 +5434,16 @@ function runTargetLoop(
       );
       const { text, mon } = describeLookGrid(state, cur, mode);
       lastMon = mon;
+      const descriptor = {
+        kind: "target", label: mode & TARGET.LOOK ? "Look" : "Target",
+        mode: useInterestingLoopMode(ui, targets) ? "interesting" : "free",
+        cursor: { x: cur.x, y: cur.y },
+        candidates: targets.map((grid) => ({ x: grid.x, y: grid.y })),
+        path: path.map((grid) => ({ x: grid.x, y: grid.y })),
+      } as const;
+      if (firstTargetPaint) wait.update(descriptor);
+      else wait.refresh(descriptor);
+      firstTargetPaint = false;
       controls.update({
         kind: "target", label: mode & TARGET.LOOK ? "Look" : "Target", detail: text,
         replies: [...directionActions(), keyAction("Select target", "t", false, "accept"),
@@ -5446,6 +5466,7 @@ function runTargetLoop(
     };
 
     const finish = (): void => {
+      wait.close();
       controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       canvas.removeEventListener("pointerdown", onTap);
@@ -5506,8 +5527,22 @@ function runTargetLoop(
         paint();
         return;
       }
-      ui = { ...ui, x: grid.x, y: grid.y, showInteresting: false };
+      moveCursor(grid.x, grid.y);
+    };
+
+    const moveCursor = (x: number, y: number): void => {
+      ui = { ...ui, x, y, showInteresting: false };
       paint();
+    };
+
+    const stepKey = (key: string, rejectBell = false): boolean => {
+      const step = stepTargetLoop(state, targets, ui, key, rogueLike);
+      if (step.bell && rejectBell) return false;
+      ui = step.ui;
+      if (step.bell) state.sound?.(MSG.BELL);
+      if (step.done) finish();
+      else paint();
+      return true;
     };
 
     const onKey = (ev: KeyboardEvent): void => {
@@ -5522,15 +5557,35 @@ function runTargetLoop(
         openRecall(mon);
         return;
       }
-      const step = stepTargetLoop(state, targets, ui, ev.key, rogueLike);
-      ui = step.ui;
-      if (step.bell) state.sound?.(MSG.BELL);
-      if (step.done) {
-        finish();
-        return;
-      }
-      paint();
+      stepKey(ev.key);
     };
+
+    const wait = openPrompt({
+      kind: "target", label: mode & TARGET.LOOK ? "Look" : "Target",
+      mode: useInterestingLoopMode(ui, targets) ? "interesting" : "free",
+      cursor: { x: ui.x, y: ui.y }, candidates: [], path: [],
+    }, (answer) => {
+      if (typeof answer !== "object" || answer === null || !("action" in answer))
+        return { accepted: false, reason: "expected target action" };
+      if (answer.action === "move") {
+        if (!Number.isInteger(answer.x) || !Number.isInteger(answer.y) ||
+          !state.chunk.inBoundsFully(loc(answer.x, answer.y)))
+          return { accepted: false, reason: "grid out of bounds" };
+        moveCursor(answer.x, answer.y);
+      } else if (answer.action === "next" || answer.action === "previous") {
+        if (!useInterestingLoopMode(ui, targets))
+          return { accepted: false, reason: "no interesting candidates" };
+        stepKey(answer.action === "next" ? "+" : "-");
+      } else if (answer.action === "toggle") {
+        if (!useInterestingLoopMode(ui, targets) && targets.length === 0)
+          return { accepted: false, reason: "no interesting candidates" };
+        stepKey(useInterestingLoopMode(ui, targets) ? "o" : "m");
+      } else if (answer.action === "select") {
+        if (!stepKey("t", true)) return { accepted: false, reason: "target unavailable" };
+      } else if (answer.action === "cancel") stepKey("Escape");
+      else return { accepted: false, reason: "unknown target action" };
+      return { accepted: true };
+    });
 
     inputEvents.addEventListener("keydown", onKey, true);
     canvas.addEventListener("pointerdown", onTap);
@@ -7367,7 +7422,9 @@ async function pickupCmd(): Promise<void> {
   let target = canPickup[0] ?? null;
   if (canPickup.length > 1) {
     const items = canPickup.map((o) => ({ label: objectName(state, o), color: UI_TEXT }));
-    const idx = await selectFromMenu(term, "core:pickup", "Get which item?", items);
+    const idx = await selectFromMenu(term, "core:pickup", "Get which item?", items, undefined, {
+      promptItemHandles: canPickup.map((obj) => -(floorPile(state, grid).indexOf(obj) + 1)),
+    });
     if (idx === null) return;
     pendingPickupChoice = canPickup[idx] ?? null;
     target = pendingPickupChoice;
@@ -7678,6 +7735,7 @@ async function useGenericCmd(): Promise<void> {
   }
   const idx = await selectFromMenu(term, "core:use-item", "Use which item? ", rows, undefined, {
     inscripCmdKey: itemCmdKey("use"),
+    promptItemHandles: picks.map((pick) => pick.handle),
   });
   if (idx === null) return;
   const pick = picks[idx];
@@ -9283,6 +9341,7 @@ const modSnapshotSource: InputSnapshotSource = {
               ? "modal"
               : "play",
   messagePending: () => morePending,
+  prompt: () => currentPrompt(),
   frame: () => lastWorldFrame,
 };
 setModSnapshotSource(modSnapshotSource);
@@ -14668,7 +14727,7 @@ publishWorkerModels = (force = false): void => {
                 folderRuleFlags.get(loaded.id) ?? {},
                 state,
                 modOwnFiles(loaded.data),
-                sessionFacts,
+                { ...sessionFacts, capabilities: CapabilitySet.fromManifest(loaded.manifest) },
               ),
             ) as JsonValue
         : undefined,
@@ -15080,7 +15139,7 @@ for (const loaded of activeModCode().plugins) {
         folderRuleFlags.get(loaded.id) ?? {},
         state,
         modOwnFiles(loaded.data),
-        sessionFacts,
+        { ...sessionFacts, capabilities: CapabilitySet.fromManifest(loaded.manifest) },
       ),
     );
     /* undefined is a decline: a mod that has never been handed the keyboard

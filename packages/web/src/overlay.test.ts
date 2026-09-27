@@ -8,10 +8,12 @@ import {
   showTextScreen,
   promptNumber,
   promptText,
+  promptPastedText,
   promptTextInline,
   getRepDir,
   getAimDir,
   getCheck,
+  getQuantity,
   getKeyInline,
   inscripTagRow,
   AIM_STAR,
@@ -20,6 +22,110 @@ import {
 import type { MenuItem, ItemMenuSource, ScreenLine } from "./overlay";
 import type { GlyphTerm } from "./term";
 import type { GraphicsOverview, Overview } from "./mapview";
+import { currentPrompt, modPrompt } from "./prompt-wait";
+
+describe("typed prompt replies", () => {
+  afterEach(() => { delete (globalThis as { window?: unknown }).window; });
+
+  it("confirms through the same finish path and rejects a wrong answer", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const done = getCheck(makeTerm(), "Proceed?");
+    const prompt = currentPrompt();
+    expect(prompt).toMatchObject({ kind: "confirm", label: "Proceed?" });
+    expect(modPrompt.reply(prompt!.promptId, "yes").accepted).toBe(false);
+    expect(currentPrompt()).toBe(prompt);
+    expect(modPrompt.reply(prompt!.promptId, true)).toEqual({ accepted: true });
+    expect(await done).toBe(true);
+    expect(currentPrompt()?.promptId).not.toBe(prompt!.promptId);
+    expect(modPrompt.reply(prompt!.promptId, false).accepted).toBe(false);
+    const keyboard = getCheck(makeTerm(), "Proceed?");
+    press(win, "y");
+    expect(await keyboard).toBe(true);
+  });
+
+  it("answers text and quantity waits with their advertised limits", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const textDone = promptText(makeTerm(), "Name", "", 8);
+    const textPrompt = currentPrompt();
+    expect(textPrompt).toMatchObject({ kind: "text", maxLength: 8, defaultValue: "" });
+    expect(modPrompt.reply(textPrompt!.promptId, "a long name").accepted).toBe(false);
+    expect(currentPrompt()).toBe(textPrompt);
+    expect(modPrompt.reply(textPrompt!.promptId, "Mira").accepted).toBe(true);
+    expect(await textDone).toBe("Mira");
+    const qtyDone = getQuantity(makeTerm(80), null, 12);
+    const qtyPrompt = currentPrompt();
+    expect(qtyPrompt).toMatchObject({ kind: "quantity", min: 0, max: 12, defaultValue: 1 });
+    expect(modPrompt.reply(qtyPrompt!.promptId, 13).accepted).toBe(false);
+    expect(modPrompt.reply(qtyPrompt!.promptId, 7).accepted).toBe(true);
+    expect(await qtyDone).toBe(7);
+    const narrow = getQuantity(makeTerm(80), "Q".repeat(79), 30);
+    const narrowPrompt = currentPrompt();
+    expect(modPrompt.reply(narrowPrompt!.promptId, 12).accepted).toBe(false);
+    expect(modPrompt.reply(narrowPrompt!.promptId, 30).accepted).toBe(true);
+    expect(await narrow).toBe(30);
+    const numberDone = promptNumber(makeTerm(), "Delay", 2, 0, 99);
+    const numberPrompt = currentPrompt();
+    expect(numberPrompt).toMatchObject({ kind: "quantity", max: 99, defaultValue: 2 });
+    expect(modPrompt.reply(numberPrompt!.promptId, 42).accepted).toBe(true);
+    expect(await numberDone).toBe(42);
+    const keyboard = promptNumber(makeTerm(), "Delay", 2, 0, 99);
+    press(win, "4"); press(win, "2"); press(win, "Enter");
+    expect(await keyboard).toBe(42);
+    const pasted = promptPastedText(makeTerm(), "Import records", 20);
+    const pastedPrompt = currentPrompt();
+    expect(pastedPrompt).toMatchObject({ kind: "text", maxLength: 20 });
+    expect(modPrompt.reply(pastedPrompt!.promptId, "one\ntwo").accepted).toBe(true);
+    expect(await pasted).toBe("one\ntwo");
+  });
+
+  it("answers aim direction and item and spell choices", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const aim = getAimDir(makeTerm(80), true);
+    const aimPrompt = currentPrompt();
+    expect(aimPrompt).toMatchObject({ kind: "direction", targetAllowed: true });
+    expect(modPrompt.reply(aimPrompt!.promptId, "target").accepted).toBe(true);
+    expect(await aim).toBe(5);
+    const repeatDir = getRepDir(makeTerm(80));
+    const repeatPrompt = currentPrompt();
+    expect(repeatPrompt).toMatchObject({ kind: "direction", targetAllowed: false });
+    expect(modPrompt.reply(repeatPrompt!.promptId, 5).accepted).toBe(false);
+    expect(modPrompt.reply(repeatPrompt!.promptId, 8).accepted).toBe(true);
+    expect(await repeatDir).toBe(8);
+    const sources: ItemMenuSource[] = [
+      { label: "Inven", kind: "inven", items: [{ label: "Potion", tag: "a" }] },
+      { label: "Equip", kind: "equip", items: [{ label: "Sword", tag: "b" }] },
+    ];
+    const item = itemSelect(makeTerm(), "Use which item?", sources, 0, undefined, undefined, false, [[11], [22]]);
+    const itemPrompt = currentPrompt();
+    expect(itemPrompt).toMatchObject({ kind: "item", tabs: { equipment: true, quiver: false, floor: false } });
+    expect(modPrompt.reply(itemPrompt!.promptId, 99).accepted).toBe(false);
+    expect(modPrompt.reply(itemPrompt!.promptId, 22).accepted).toBe(true);
+    expect(await item).toEqual({ source: 1, index: 0 });
+    const spell = selectFromMenu(makeTerm(), "core:cast-spell", "Cast which spell?", [
+      { label: "Magic Missile" }, { label: "Unavailable", disabled: true },
+    ], undefined, { promptSpellChoices: [
+      { index: 4, name: "Magic Missile", level: 1, mana: 1, fail: 7, castable: true },
+      { index: 5, name: "Unavailable", level: 9, mana: 9, fail: 95, castable: false },
+    ] });
+    const spellPrompt = currentPrompt();
+    expect(spellPrompt).toMatchObject({ kind: "spell", choices: [{ index: 4 }, { index: 5 }] });
+    expect(modPrompt.reply(spellPrompt!.promptId, 5).accepted).toBe(false);
+    expect(modPrompt.reply(spellPrompt!.promptId, 4).accepted).toBe(true);
+    expect(await spell).toBe(0);
+    const book = selectFromMenu(makeTerm(), "core:spell-book", "Cast which book?", [
+      { label: "Beginner's Handbook" }, { label: "Arcane Manual" },
+    ], undefined, { promptItemHandles: [31, 32] });
+    const bookPrompt = currentPrompt();
+    expect(bookPrompt).toMatchObject({ kind: "item", choices: [
+      { handle: 31, letter: "a" }, { handle: 32, letter: "b" },
+    ] });
+    expect(modPrompt.reply(bookPrompt!.promptId, 32).accepted).toBe(true);
+    expect(await book).toBe(1);
+  });
+});
 
 // showTextScreen/selectFromMenu/getRepDir already exercise this repo's
 // keydown-listener modal pattern end to end (see help.test.ts); showLevelMap

@@ -166,6 +166,8 @@ export function describeCapability(cap: string): CapabilityDescription {
         text: "Act on your character's behalf with the same commands your own keys use",
         elevated: true,
       };
+    case "input-prompt":
+      return { cap, text: "Answer the game's current question through its input handler", elevated: true };
     case "event":
       return { cap, text: `Observe the "${parsed.name}" game event`, elevated: false };
     case "state":

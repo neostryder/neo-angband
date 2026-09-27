@@ -338,6 +338,9 @@ Use `ctx.knownLevel()` to draw a map or minimap from every grid the player knows
 ### Acting at one input wait: `ctx.intent.submit()`
 
 Declare `input:intent` to receive `ctx.intent`. Pass the current `ctx.snapshot()` token with a command, travel destination or target. The host rejects stale or blocked actions with a reason; accepted commands use the same buffer and game loop as a keypress, while target setters change no turn. For a compound action, send travel, wait for the next input wait, inspect a new snapshot and send the follow-up command. See [MOD_SEAMS.md section 4i](MOD_SEAMS.md#4i-ctxintentsubmit---act-at-the-current-input-wait).
+### Answering the open prompt
+
+With `state:interaction.read`, `ctx.snapshot().prompt` describes the question currently holding input. A mod with `input:prompt.reply` also receives `ctx.prompt.reply(promptId, answer)`, which sends a typed answer through the game's existing handler. Invalid or stale replies leave the question open and return a reason. See [MOD_SEAMS.md section 4j](MOD_SEAMS.md#4j-typed-prompts-and-replies) for the kinds and answers.
 
 ### Engine-wide settings you change through `ctx.core`, not through a hook
 

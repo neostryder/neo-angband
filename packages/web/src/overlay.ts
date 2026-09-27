@@ -16,6 +16,8 @@ import { controlSurface, cancelAction, keyAction, directionActions } from "./con
  */
 
 import { inputEvents } from "./input-door";
+import { openPrompt } from "./prompt-wait";
+import type { PromptDescriptor } from "./prompt-view";
 import { userExists, userPath } from "./user-io";
 import { argForceName } from "./launch";
 import { localTimestampSuffix } from "./timestamp";
@@ -890,6 +892,7 @@ export function getRepDir(
     term.prt(0, 0, prompt.slice(0, cols - 1), FG);
     const controls = controlSurface.push({ kind: "direction", label: "Choose a direction", replies: [...directionActions(), ...(allow5 ? [keyAction("Self", "5")] : []), cancelAction()] });
     const finish = (value: number | null): void => {
+      wait.close();
       controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
@@ -906,6 +909,12 @@ export function getRepDir(
       if (dir === 5 && !allow5) return finish(null); // "5 is equivalent to escape"
       finish(dir);
     };
+    const wait = openPrompt({ kind: "direction", label: prompt, targetAllowed: false }, (answer) => {
+      if (typeof answer !== "number" || !Number.isInteger(answer) || answer < 1 || answer > 9 || (answer === 5 && !allow5))
+        return { accepted: false, reason: "invalid direction" };
+      finish(answer);
+      return { accepted: true };
+    });
     inputEvents.addEventListener("keydown", onKey, true);
   });
 }
@@ -935,6 +944,7 @@ export function getAimDir(
     term.prt(0, 0, prompt.slice(0, cols - 1), FG);
     const controls = controlSurface.push({ kind: "direction", label: "Aim", replies: [...directionActions(), keyAction("Choose target", "*"), keyAction("Closest", "'"), ...(targetOkay ? [keyAction("Current target", "5")] : []), cancelAction()] });
     const finish = (value: number | null): void => {
+      wait.close();
       controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
@@ -956,6 +966,16 @@ export function getAimDir(
       if (dir === 0 || dir === 5) return; // bell(): 5 handled above
       finish(dir);
     };
+    const wait = openPrompt({ kind: "direction", label: prompt, targetAllowed: targetOkay }, (answer) => {
+      if (answer === "target") {
+        if (!targetOkay) return { accepted: false, reason: "no current target" };
+        finish(5);
+      } else if (typeof answer === "number" && Number.isInteger(answer) &&
+        ([1, 2, 3, 4, 6, 7, 8, 9, AIM_STAR, AIM_CLOSEST] as number[]).includes(answer)) {
+        finish(answer);
+      } else return { accepted: false, reason: "invalid direction" };
+      return { accepted: true };
+    });
     inputEvents.addEventListener("keydown", onKey, true);
   });
 }
@@ -980,6 +1000,7 @@ export function getCheck(term: GridSurface & GridPointerInput, rawPrompt: string
     term.prt(0, 0, buf.slice(0, cols - 1), FG);
     const controls = controlSurface.push({ kind: "check", label: prompt, replies: [keyAction("Yes", "y"), keyAction("No", "n"), cancelAction()] });
     const finish = (value: boolean): void => {
+      wait.close();
       controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       clearPromptRow(term);
@@ -993,6 +1014,11 @@ export function getCheck(term: GridSurface & GridPointerInput, rawPrompt: string
       ev.stopImmediatePropagation();
       finish(ev.key === "y" || ev.key === "Y");
     };
+    const wait = openPrompt({ kind: "confirm", label: prompt }, (answer) => {
+      if (typeof answer !== "boolean") return { accepted: false, reason: "expected boolean" };
+      finish(answer);
+      return { accepted: true };
+    });
     inputEvents.addEventListener("keydown", onKey, true);
   });
 }
@@ -1233,6 +1259,7 @@ function textInlineShown(
   maxLen: number,
   randomize: (() => string) | undefined,
   row: number,
+  quantityMax?: number,
 ): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     const st: LineEdit = { buf: initial, curs: 0 };
@@ -1252,6 +1279,7 @@ function textInlineShown(
       text: { value: initial, maxLength: maxLen, submit: (value) => finish(value) },
     });
     const finish = (value: string | null): void => {
+      wait.close();
       controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       inputEvents.removeEventListener("paste", onPaste, true);
@@ -1298,6 +1326,20 @@ function textInlineShown(
     const onCompositionEnd = (): void => {
       composing = false;
     };
+    const wait = quantityMax === undefined
+      ? openPrompt({ kind: "text", label: prompt, maxLength: maxLen, defaultValue: initial }, (answer) => {
+        if (typeof answer !== "string" || answer.length > maxLen || /[\r\n]/u.test(answer))
+          return { accepted: false, reason: "invalid text" };
+        finish(answer);
+        return { accepted: true };
+      })
+      : openPrompt({ kind: "quantity", label: prompt, min: 0, max: quantityMax, defaultValue: 1 }, (answer) => {
+        if (typeof answer !== "number" || !Number.isInteger(answer) || answer < 0 || answer > quantityMax ||
+          (answer !== quantityMax && String(answer).length > maxLen))
+          return { accepted: false, reason: "quantity out of range" };
+        finish(String(answer));
+        return { accepted: true };
+      });
     inputEvents.addEventListener("keydown", onKey, true);
     inputEvents.addEventListener("paste", onPaste, true);
     inputEvents.addEventListener("compositionstart", onCompositionStart, true);
@@ -1349,7 +1391,9 @@ export async function getQuantity(
 ): Promise<number> {
   if (max === 1) return 1;
   const label = prompt ?? `Quantity (0-${max}, *=all): `;
-  const s = await getString(term, label, "1", 7);
+  const shown = restatePrompt(label);
+  const eff = shown.length + 7 > 80 ? 80 - shown.length : 7;
+  const s = await textInlineShown(term, shown, "1", Math.max(1, eff - 1), undefined, 0, max);
   if (s === null) return 0;
   /* atoi: leading digits, 0 for anything unparseable. */
   const parsed = Number.parseInt(s, 10);
@@ -1455,6 +1499,7 @@ export function promptText(
       text: { value: initial, maxLength: maxLen, submit: (value) => finish(value) },
     });
     const finish = (value: string | null): void => {
+      wait.close();
       controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       inputEvents.removeEventListener("paste", onPaste, true);
@@ -1507,6 +1552,12 @@ export function promptText(
     const onCompositionEnd = (): void => {
       composing = false;
     };
+    const wait = openPrompt({ kind: "text", label: title, maxLength: maxLen, defaultValue: initial }, (answer) => {
+      if (typeof answer !== "string" || answer.length > maxLen || /[\r\n]/u.test(answer))
+        return { accepted: false, reason: "invalid text" };
+      finish(answer);
+      return { accepted: true };
+    });
     inputEvents.addEventListener("keydown", onKey, true);
     inputEvents.addEventListener("paste", onPaste, true);
     inputEvents.addEventListener("compositionstart", onCompositionStart, true);
@@ -1563,6 +1614,7 @@ export function promptPastedText(
       text: { value: "", maxLength: maxLen, submit: (value) => finish(value) },
     });
     const finish = (value: string | null): void => {
+      wait.close();
       controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       inputEvents.removeEventListener("paste", onPaste, true);
@@ -1590,6 +1642,12 @@ export function promptPastedText(
       buf = (ev.clipboardData?.getData("text") ?? "").slice(0, maxLen);
       paint();
     };
+    const wait = openPrompt({ kind: "text", label: title, maxLength: maxLen, defaultValue: "" }, (answer) => {
+      if (typeof answer !== "string" || answer.length === 0 || answer.length > maxLen)
+        return { accepted: false, reason: "invalid pasted text" };
+      finish(answer);
+      return { accepted: true };
+    });
     inputEvents.addEventListener("keydown", onKey, true);
     inputEvents.addEventListener("paste", onPaste, true);
     paint();
@@ -1645,6 +1703,7 @@ export function promptNumber(
       } },
     });
     const finish = (value: number | null): void => {
+      wait.close();
       controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       inputEvents.removeEventListener("compositionstart", onCompositionStart, true);
@@ -1681,6 +1740,12 @@ export function promptNumber(
     const onCompositionEnd = (): void => {
       composing = false;
     };
+    const wait = openPrompt({ kind: "quantity", label: title, min, max, defaultValue: current }, (answer) => {
+      if (typeof answer !== "number" || !Number.isInteger(answer) || answer < min || answer > max || String(answer).length > maxLen)
+        return { accepted: false, reason: "quantity out of range" };
+      finish(answer);
+      return { accepted: true };
+    });
     inputEvents.addEventListener("keydown", onKey, true);
     inputEvents.addEventListener("compositionstart", onCompositionStart, true);
     inputEvents.addEventListener("compositionend", onCompositionEnd, true);
@@ -1735,6 +1800,10 @@ export interface MenuItem extends Omit<MenuTransformRow, "id" | "semantic"> {
  * ESC exits.
  */
 export interface SelectMenuOptions {
+  /** Spell values supplied by bookSpellMenu, the same source as the visible rows. */
+  promptSpellChoices?: Extract<PromptDescriptor, { kind: "spell" }>["choices"];
+  /** Item handles aligned with the game's own rows, including floor slot aliases. */
+  promptItemHandles?: readonly number[];
   /**
    * The terminal's faithful skin for a menu whose content still travels through
    * this selector. It receives already-transformed rows and resolves their
@@ -2186,6 +2255,8 @@ export function selectFromMenu(
       if (!boxed) term.print(0, rows - 1, (extra?.footer ?? displayedFooter).slice(0, cols - 1), DIM);
     };
     const finish = (value: number | null): void => {
+      spellWait?.close();
+      itemWait?.close();
       controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
@@ -2237,6 +2308,37 @@ export function selectFromMenu(
       }
       finish(source);
     };
+    const spellWait = extra?.promptSpellChoices && !extra.browseOnly
+      ? openPrompt({ kind: "spell", label: title, choices: extra.promptSpellChoices }, (answer) => {
+        if (typeof answer !== "number" || !Number.isInteger(answer))
+          return { accepted: false, reason: "expected spell index" };
+        const source = extra.promptSpellChoices!.findIndex((choice) => choice.index === answer);
+        const i = items.findIndex((row) => originalIndex.get(row.id ?? "") === source);
+        if (i < 0 || items[i]?.disabled || actionRunning)
+          return { accepted: false, reason: "spell unavailable" };
+        pick(i);
+        return { accepted: true };
+      }) : null;
+    const itemWait = extra?.promptItemHandles && !extra.browseOnly
+      ? openPrompt({
+        kind: "item", label: title,
+        choices: originalRows.flatMap((row, index) => {
+          const handle = extra.promptItemHandles?.[index];
+          return handle === undefined ? [] : [{
+            handle, label: row.label, letter: row.tag ?? menuLetter(index),
+          }];
+        }),
+        tabs: { floor: false, quiver: false, equipment: false },
+      }, (answer) => {
+        if (typeof answer !== "number" || !Number.isInteger(answer))
+          return { accepted: false, reason: "expected item handle" };
+        const source = extra.promptItemHandles!.indexOf(answer);
+        const i = items.findIndex((row) => originalIndex.get(row.id ?? "") === source);
+        if (i < 0 || items[i]?.disabled || actionRunning)
+          return { accepted: false, reason: "item unavailable" };
+        pick(i);
+        return { accepted: true };
+      }) : null;
     const commands = extra?.commands;
     /**
      * One row along, skipping unselectable rows - and WRAPPING at both ends when
@@ -2732,6 +2834,8 @@ export function itemSelect(
   bell?: () => void,
   /** The live rogue_like_commands option; see menuNav. Defaults false. */
   roguelike = false,
+  /** Handles from the game's item tester; negative values name floor slots. */
+  handles?: readonly (readonly number[])[],
 ): Promise<{ source: number; index: number } | null> {
   const handle = pushRegion(screenRegionSpec(), host.size());
   const term = regionSurface(host, handle.cells);
@@ -2798,6 +2902,7 @@ export function itemSelect(
     };
 
     const finish = (value: { source: number; index: number } | null): void => {
+      wait?.close();
       controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
@@ -2834,6 +2939,30 @@ export function itemSelect(
         switchTo("Inven");
       else switchTo("Equip");
     };
+    const wait = handles ? openPrompt({
+      kind: "item", label: prompt,
+      choices: sources.flatMap((source, sourceIndex) => source.items.flatMap((item, index) => {
+        const handle = handles[sourceIndex]?.[index];
+        return handle === undefined ? [] : [{ handle, label: item.label, letter: sourceTag(source, index) }];
+      })),
+      tabs: {
+        floor: sources.some((source) => source.kind === "floor"),
+        quiver: sources.some((source) => source.kind === "quiver"),
+        equipment: sources.some((source) => source.kind === "equip"),
+      },
+    }, (answer) => {
+      if (typeof answer !== "number" || !Number.isInteger(answer))
+        return { accepted: false, reason: "expected item handle" };
+      for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex++) {
+        const index = handles[sourceIndex]?.indexOf(answer) ?? -1;
+        if (index < 0) continue;
+        if (sources[sourceIndex]?.items[index]?.disabled) break;
+        if (cur !== sourceIndex) switchTo(sources[sourceIndex]!.label);
+        pick(index);
+        return { accepted: true };
+      }
+      return { accepted: false, reason: "item unavailable" };
+    }) : null;
 
     const onKey = (ev: KeyboardEvent): void => {
       ev.preventDefault();

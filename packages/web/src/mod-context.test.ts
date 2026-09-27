@@ -31,6 +31,16 @@ import { modPrefs, modPrefsKey } from "./mod-prefs";
 const MAIN_TS_SOURCE = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
 
 describe("modPluginContext session facts", () => {
+  it("exposes prompt replies only with input:prompt.reply", () => {
+    const make = (capabilities: string[]) => CapabilitySet.fromManifest({
+      id: "prompt-test", name: "Prompt test", version: "1.0.0", shape: "plugin",
+      facets: ["plugin"], modApi: 1, capabilities,
+    });
+    const without = make([]);
+    const withReply = make(["input:prompt.reply"]);
+    expect(modPluginContext("plain", {}, undefined, {}, { capabilities: without }).prompt).toBeUndefined();
+    expect(modPluginContext("replier", {}, undefined, {}, { capabilities: withReply }).prompt?.reply).toBeTypeOf("function");
+  });
   it("defaults newCharacter to false, the answer that changes nothing", () => {
     /* A caller that forgets must not make a mod seed a character who already
      * lived a life. The safe default is the one that does nothing. */

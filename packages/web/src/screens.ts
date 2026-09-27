@@ -110,6 +110,7 @@ import type {
   Constants,
 } from "@rpgm-tools/neo-angband-core";
 import type { ScreenLine, MenuItem } from "./overlay";
+import type { PromptDescriptor } from "./prompt-view";
 /* TYPE-ONLY, and deliberately: `updateScreen` and `reportScreen` read two fields
  * off these views to decide which actions the page offers, and a runtime import
  * would drag the updater and the log into every module that draws a screen. */
@@ -1301,11 +1302,12 @@ export function bookSpellMenu(
   state: GameState,
   bookObj: GameObject,
   mode: "cast" | "study",
-): { items: MenuItem[]; sidx: number[] } {
+): { items: MenuItem[]; sidx: number[]; choices: Extract<PromptDescriptor, { kind: "spell" }>["choices"] } {
   const player = state.actor.player;
   const statInd = state.statInd ?? [];
   const items: MenuItem[] = [];
   const sidx: number[] = [];
+  const choices: { index: number; name: string; level: number; mana: number; fail: number; castable: boolean }[] = [];
   /* Same SpellChanceEnv the cast path uses, so the shown fail rate includes
      the OF_AFRAID and Necromancer PF_UNLIGHT penalties (ui-spell.c uses the
      same spell_chance for display and cast). */
@@ -1332,6 +1334,7 @@ export function bookSpellMenu(
     const { comment, attr, illegible } = spellStateDisplay(player, spell, idx, info);
     const disabled =
       mode === "cast" ? !spellOkayToCast(player, idx) : !spellOkayToStudy(player, idx);
+    const failChance = spellChance(player, statInd, idx, chanceEnv);
     let label: string;
     if (illegible) {
       label = t("screens.spell.illegible", "(illegible)");
@@ -1339,13 +1342,14 @@ export function bookSpellMenu(
       const name = spell.name.padEnd(30).slice(0, 30);
       const lv = String(spell.level).padStart(2);
       const mana = String(spell.mana).padStart(4);
-      const fail = String(spellChance(player, statInd, idx, chanceEnv)).padStart(3);
+      const fail = String(failChance).padStart(3);
       label = `${name}${lv} ${mana} ${fail}%${comment}`;
     }
     items.push({ label, disabled, color: colorToCss(attr) });
     sidx.push(idx);
+    choices.push({ index: idx, name: spell.name, level: spell.level, mana: spell.mana, fail: failChance, castable: spellOkayToCast(player, idx) });
   }
-  return { items, sidx };
+  return { items, sidx, choices };
 }
 
 /**

@@ -38,6 +38,7 @@ import {
 import type { KeyRepeatVerdict } from "./key-repeat";
 import { buildInputSnapshot, buildKnownLevel, type InputSnapshot, type InputSnapshotSource } from "./input-snapshot";
 import { INTENT_CAPABILITY, type ModIntent } from "./intent-gate";
+import { modPrompt } from "./prompt-wait";
 import { VISUAL_FILTER_CAPABILITY } from "./visual-filter";
 import { diskPacks } from "./disk-packs";
 import { modPrefs, type ModPrefs } from "./mod-prefs";
@@ -181,6 +182,7 @@ export function modPluginContext(
     ...(snapshot ? { snapshot } : {}),
     ...(knownLevel ? { knownLevel } : {}),
     ...(intent ? { intent } : {}),
+    ...(session.capabilities?.has("input:prompt.reply") ? { prompt: modPrompt } : {}),
     ...(tiles ? { tiles } : {}),
     ...(keyRepeat ? { keyRepeat } : {}),
     ...(keymaps ? { keymaps } : {}),

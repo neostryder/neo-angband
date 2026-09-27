@@ -19,6 +19,7 @@ import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modPluginContext } from "./mod-context";
 import { createIntentGate, type PlayerIntent } from "./intent-gate";
 import type { InteractionPhase } from "./input-snapshot";
+import type { PromptDescriptor } from "./prompt-view";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(readFileSync(new URL(`../../content/pack/${name}.json`, import.meta.url), "utf8")) as T;
@@ -68,7 +69,7 @@ function fingerprint(game: StartedGame): string {
 function harness(game: StartedGame) {
   const buffer: PlayerCommand[] = [];
   let phase: InteractionPhase = "play";
-  let prompt: unknown = null;
+  let prompt: PromptDescriptor | null = null;
   let advances = 0;
   game.state.nextCommand = () => buffer.shift() ?? null;
   const gate = createIntentGate({
@@ -81,7 +82,7 @@ function harness(game: StartedGame) {
   return {
     gate, buffer,
     setPhase: (value: InteractionPhase) => { phase = value; },
-    setPrompt: (value: unknown) => { prompt = value; },
+    setPrompt: (value: PromptDescriptor | null) => { prompt = value; },
     advances: () => advances,
   };
 }
@@ -105,7 +106,7 @@ describe("player intent gate", () => {
     const before = fingerprint(game);
     const cases: [PlayerIntent, () => void][] = [
       [{ kind: "command", command: { code: "hold" } }, () => h.setPhase("modal")],
-      [{ kind: "command", command: { code: "hold" } }, () => { h.setPhase("play"); h.setPrompt({ type: "item" }); }],
+      [{ kind: "command", command: { code: "hold" } }, () => { h.setPhase("play"); h.setPrompt({ kind: "confirm", promptId: 1, label: "Really?" }); }],
       [{ kind: "command", command: { code: "does-not-exist" } }, () => h.setPrompt(null)],
       [{ kind: "command", command: { code: "walk", dir: 42 } }, () => undefined],
       [{ kind: "command", command: { code: "pathfind", args: { dest: { x: "bad", y: 1 } } } }, () => undefined],

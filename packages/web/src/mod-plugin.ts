@@ -95,6 +95,7 @@ import type { KeyRepeatVerdict } from "./key-repeat";
 import type { InputSnapshot } from "./input-snapshot";
 import type { KnownLevelView } from "@rpgm-tools/neo-angband-core";
 import type { ModIntent } from "./intent-gate";
+import type { ModPrompt } from "./prompt-view";
 import type {
   ComposedRecords,
   HudOwnership,
@@ -574,6 +575,8 @@ export interface ModPluginContext {
   /** Submit a validated player action at the current input wait. Present only
    * with `input:intent` and a live host gate. This does not install a controller. */
   readonly intent?: ModIntent;
+  /** Answer the currently open typed prompt, when input:prompt.reply is granted. */
+  readonly prompt?: ModPrompt;
   /**
    * Live monster-tile lookup and paint over the active graphics pack
    * (neo-angband#256), once the web shell has one. Absent during content

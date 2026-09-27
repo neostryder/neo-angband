@@ -207,6 +207,8 @@
  *                             superset of the other and `grantCovers` compares the
  *                             action, so one consent cannot buy both.
  *  - "display:filter"      - apply a post-processing filter to the game's rendered
+ *  - "input:prompt.reply"  - answer the game's current typed prompt through its
+ *                             existing input handler. No wildcard covers it.
  *                             terminal canvas. It is deliberately separate from
  *                             display:replace: changing the appearance of the
  *                             faithful renderer is not taking ownership of it.
@@ -252,6 +254,7 @@ export class CapabilityError extends Error {}
 export type ParsedCapability =
   | { kind: "command"; action: "add" }
   | { kind: "input"; action: "intent" }
+  | { kind: "input-prompt"; action: "reply" }
   | { kind: "event"; name: string }
   | { kind: "state"; domain: string; access: "read" }
   | { kind: "network"; host: string }
@@ -354,6 +357,7 @@ export function parseCapability(cap: string): ParsedCapability {
   if (cap === "input:intent") {
     return { kind: "input", action: "intent" };
   }
+  if (cap === "input:prompt.reply") return { kind: "input-prompt", action: "reply" };
   /* NOT a registry domain, deliberately. A registry:* grant means "override
    * one named game system among many"; this one means "everything the player
    * sees of the dungeon is drawn by this mod." It is the display OWNER, so it
@@ -473,6 +477,8 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
       return grant.kind === "command";
     case "input":
       return grant.kind === "input" && grant.action === request.action;
+    case "input-prompt":
+      return grant.kind === "input-prompt";
     case "event":
       return grant.kind === "event" && grant.name === request.name;
     case "state":

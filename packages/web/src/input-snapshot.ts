@@ -14,7 +14,7 @@
  * mod's own capability set, so each part is null unless its
  * `state:<domain>.read` is granted, exactly as for any other read. The host
  * parts use two domains of their own: `state:interaction.read` for the phase,
- * the message pause and (later) the open prompt, and `state:map.read` for the
+ * the message pause and the open prompt, and `state:map.read` for the
  * frame, the same domain that already covers map cells.
  *
  * PURE with respect to the game: nothing here writes game state, knowledge or
@@ -33,6 +33,7 @@ import type {
 } from "@rpgm-tools/neo-angband-core";
 import { snapshotWorldFrame } from "./world-view";
 import type { WorldFrame } from "./world-view";
+import type { PromptDescriptor } from "./prompt-view";
 
 /** The capability for the host-side parts of a snapshot. */
 export const INTERACTION_READ_CAPABILITY = "state:interaction.read";
@@ -59,8 +60,8 @@ export interface InputSnapshot {
   readonly phase: InteractionPhase | null;
   /** Whether a "-more-" pause holds input. Null without `state:interaction.read`. */
   readonly messagePending: boolean | null;
-  /** The open prompt, once the typed prompt seam supplies it. */
-  readonly prompt: unknown | null;
+  /** The open question, or null without `state:interaction.read`. */
+  readonly prompt: PromptDescriptor | null;
   /** What the game knows at this wait (agent/boundary.ts). */
   readonly core: CoreSnapshot;
   /**
@@ -77,9 +78,8 @@ export interface InputSnapshotSource {
   /** The view deps the host builds its own agent views with. */
   viewDeps(): AgentViewDeps;
   phase(): InteractionPhase;
-  /** The open prompt, when the host has a prompt source. */
-  prompt?(): unknown | null;
   messagePending(): boolean;
+  prompt(): PromptDescriptor | null;
   /** The last produced frame, live; this module copies it. */
   frame(): WorldFrame | null;
   /** Read the whole known level independently of the small snapshot. */
@@ -88,18 +88,6 @@ export interface InputSnapshotSource {
 
 function grants(caps: AgentCapabilities | undefined, cap: string): boolean {
   return !caps || caps.has(cap) || caps.has(ANY_READ_CAPABILITY);
-}
-
-function frozenPrompt(value: unknown): unknown {
-  if (value == null) return null;
-  const copy: unknown = structuredClone(value);
-  const freeze = (part: unknown): void => {
-    if (!part || typeof part !== "object" || Object.isFrozen(part)) return;
-    Object.freeze(part);
-    for (const child of Object.values(part)) freeze(child);
-  };
-  freeze(copy);
-  return copy;
 }
 
 /**
@@ -120,7 +108,7 @@ export function buildInputSnapshot(
     token: core.token,
     phase: interaction ? source.phase() : null,
     messagePending: interaction ? source.messagePending() : null,
-    prompt: interaction ? frozenPrompt(source.prompt?.() ?? null) : null,
+    prompt: interaction ? source.prompt() : null,
     core,
     frame: live ? snapshotWorldFrame(live) : null,
   });

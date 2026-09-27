@@ -5,12 +5,14 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { createAgentView, startGame, tokenIsCurrent } from "@rpgm-tools/neo-angband-core";
+import { createAgentView, saveGame, startGame, tokenIsCurrent } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { GamePack } from "@rpgm-tools/neo-angband-core";
 import { buildInputSnapshot, buildKnownLevel, type InputSnapshotSource } from "./input-snapshot";
 import { modPluginContext } from "./mod-context";
 import type { WorldFrame } from "./world-view";
+import type { PromptDescriptor } from "./prompt-view";
+import { currentPrompt, modPrompt, openPrompt } from "./prompt-wait";
 
 
 function loadJson<T>(name: string): T {
@@ -73,6 +75,7 @@ function source(over: Partial<InputSnapshotSource> = {}): InputSnapshotSource {
     viewDeps: () => ({}),
     phase: () => "play",
     messagePending: () => false,
+    prompt: () => null,
     frame: () => null,
     knownLevel: (granted) => createAgentView(game.state, undefined, {}, granted).knownLevel!(),
     ...over,
@@ -122,9 +125,10 @@ describe("buildInputSnapshot", () => {
   });
 
   it("reads an open prompt from the source with the interaction grant", () => {
-    const open = source({ prompt: () => ({ kind: "item" }) });
+    const descriptor: PromptDescriptor = Object.freeze({ kind: "confirm", promptId: 1, label: "Really?" });
+    const open = source({ prompt: () => descriptor });
     const prompt = buildInputSnapshot(open, caps("state:interaction.read"))!.prompt;
-    expect(prompt).toEqual({ kind: "item" });
+    expect(prompt).toBe(descriptor);
     expect(Object.isFrozen(prompt)).toBe(true);
     expect(buildInputSnapshot(open, caps("state:player.read"))!.prompt).toBeNull();
   });
@@ -147,8 +151,58 @@ describe("buildInputSnapshot", () => {
   });
 
   it("changes no game state, RNG or turn when read repeatedly", () => {
-    const before = JSON.stringify({ rng: game.state.rng.getState(), turn: game.state.turn });
-    for (let i = 0; i < 5; i++) buildInputSnapshot(source(), undefined);
-    expect(JSON.stringify({ rng: game.state.rng.getState(), turn: game.state.turn })).toBe(before);
+    const wait = openPrompt({ kind: "confirm", label: "Continue?" }, () => ({ accepted: true }));
+    const fingerprint = () => JSON.stringify({
+      save: saveGame(game), rng: game.state.rng.getState(),
+      turn: game.state.turn, cmdQueue: game.state.cmdQueue ?? [],
+    });
+    try {
+      const before = fingerprint();
+      for (let i = 0; i < 5; i++) {
+        expect(buildInputSnapshot(source({ prompt: currentPrompt }), caps("state:interaction.read"))?.prompt?.promptId).toBe(wait.promptId);
+        currentPrompt();
+      }
+      expect(fingerprint()).toBe(before);
+      expect(buildInputSnapshot(source({ prompt: currentPrompt }), caps("state:player.read"))?.prompt).toBeNull();
+    } finally {
+      wait.close();
+    }
+  });
+
+  it("rejects invalid and stale replies without changing the open wait", () => {
+    let answer: boolean | null = null;
+    const wait = openPrompt({ kind: "confirm", label: "Continue?" }, (value) => {
+      if (typeof value !== "boolean") return { accepted: false, reason: "expected boolean" };
+      answer = value;
+      return { accepted: true };
+    });
+    try {
+      const before = currentPrompt();
+      expect(modPrompt.reply(wait.promptId - 1, true).accepted).toBe(false);
+      expect(modPrompt.reply(wait.promptId, "yes").accepted).toBe(false);
+      expect(currentPrompt()).toBe(before);
+      expect(answer).toBeNull();
+      expect(modPrompt.reply(wait.promptId, true)).toEqual({ accepted: true });
+      expect(answer).toBe(true);
+    } finally {
+      wait.close();
+    }
+    expect(modPrompt.reply(wait.promptId, false).accepted).toBe(false);
+  });
+
+  it("publishes and clears a target descriptor while the cursor changes", () => {
+    const descriptor = {
+      kind: "target" as const, label: "Target", mode: "interesting" as const,
+      cursor: { x: 2, y: 3 }, candidates: [{ x: 2, y: 3 }], path: [{ x: 1, y: 2 }],
+    };
+    const wait = openPrompt(descriptor, () => ({ accepted: true }));
+    try {
+      expect(currentPrompt()).toMatchObject(descriptor);
+      wait.refresh({ ...descriptor, mode: "free", cursor: { x: 4, y: 5 } });
+      expect(currentPrompt()).toMatchObject({ kind: "target", mode: "free", cursor: { x: 4, y: 5 } });
+      expect(currentPrompt()?.promptId).toBeGreaterThan(wait.promptId);
+      expect(modPrompt.reply(wait.promptId, { action: "select" }).accepted).toBe(false);
+    } finally { wait.close(); }
+    expect(currentPrompt()?.promptId).not.toBe(wait.promptId);
   });
 });

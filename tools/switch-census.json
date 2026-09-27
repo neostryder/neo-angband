@@ -45,6 +45,20 @@
       "verdict": "INTERNAL - ENTRIES, the MCP server's own frozen tool vocabulary; dispatchTool looks a call up by name via ENTRIES.find(...). Adding an MCP tool is a protocol change to the 19-tool frozen API, not something a mod does."
     },
     {
+      "file": "packages/mod-sdk/src/capabilities.ts",
+      "cases": 19,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - capability grants are host-owned consent vocabulary. input:intent and input:prompt.reply (#285) are documented grant kinds, not mod-extensible capabilities."
+    },
+    {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 19,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. A mod cannot insert an unreviewed consent category. input:intent and input:prompt.reply (#285) name the new player-action and prompt-reply grants."
+    },
+    {
       "file": "packages/web/src/main.ts",
       "cases": 19,
       "hasDefault": true,
@@ -71,20 +85,6 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "LOCALIZATION - likert() buckets a ratio into a rating string. The bucket boundaries are upstream behaviour; only the strings are mod-facing, via gap 14."
-    },
-    {
-      "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 18,
-      "hasDefault": false,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - capability grants are host-owned consent vocabulary. input:intent (#285) is a documented grant kind, not a mod-extensible capability."
-    },
-    {
-      "file": "packages/web/src/capability-describe.ts",
-      "cases": 18,
-      "hasDefault": false,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. A mod cannot insert an unreviewed consent category. input:intent (#285) names the new player-action grant."
     },
     {
       "file": "packages/core/src/obj/object.ts",
@@ -206,13 +206,6 @@
       "verdict": "HOST - command-line option letters. Host wiring, not game content."
     },
     {
-      "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 10,
-      "hasDefault": false,
-      "kind": "IF_CHAIN",
-      "verdict": "INTERNAL - parsing recognizes the closed capability grammar owned by the mod SDK. input:intent (#285) is a documented token, not a game behavior branch a mod can add at runtime."
-    },
-    {
       "file": "packages/web/src/mod-orphans.ts",
       "cases": 10,
       "hasDefault": false,
@@ -316,6 +309,13 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
+    },
+    {
+      "file": "packages/mod-sdk/src/capabilities.ts",
+      "cases": 8,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "INTERNAL - parsing recognizes the closed capability grammar owned by the mod SDK. input:intent and input:prompt.reply (#285) are documented tokens, not game behavior branches a mod can add at runtime."
     },
     {
       "file": "packages/mod-sdk/src/patch.ts",
