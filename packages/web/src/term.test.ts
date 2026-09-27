@@ -261,11 +261,11 @@ describe("prt census: every converted prompt site (2026-07-29)", () => {
     expect(src).not.toContain("padEnd(cols - 1)");
   });
 
-  it("the JSON export screen's prt(\"\", row - 1, 0) really erases", () => {
+  it("the pref-file screens' prt(\"\", row - 1, 0) really erases", () => {
     const src = WEB("prefs-ui.ts");
     /* ui-options.c:53 and :1211. print("", ...) drew nothing, so the call was a
      * no-op and the row above the heading was never cleared. */
-    expect(src.match(/term\.prt\(0, row - 1, ""/gu)?.length).toBe(1);
+    expect(src.match(/term\.prt\(0, row - 1, ""/gu)?.length).toBe(2);
     expect(src).not.toContain('term.print(0, row - 1, ""');
   });
 

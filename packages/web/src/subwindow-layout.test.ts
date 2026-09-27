@@ -8,8 +8,9 @@ import {
   clampRatio,
   computeLayout,
   containsLeaf,
-  degradeForComfort,
   dropZoneAt,
+  fitForComfort,
+  groupTabs,
   insertAtEdge,
   leafIds,
   parseLayoutTree,
@@ -17,8 +18,12 @@ import {
   ratioFromPointer,
   removeLeaf,
   resizeSplit,
+  selectTab,
   swapLeaves,
+  tabInto,
+  unsizeSplit,
   type LayoutNode,
+  type LeafNode,
   type Rect,
   type TileRect,
 } from "./subwindow-layout";
@@ -110,6 +115,47 @@ describe("insertAtEdge and removeLeaf", () => {
   });
 });
 
+describe("fit to content", () => {
+  const stacked = (): LayoutNode => insertAtEdge(mainOnly, "messages", MAIN_TILE_ID, "bottom", 0.3);
+  const messagesHeight = (tree: LayoutNode, fit?: Map<string, number>): number =>
+    computeLayout(tree, VIEW, fit ? { fit } : {}).tiles.find((tile) => tile.id === "messages")!.rect.h;
+
+  it("gives a panel the height it asks for", () => {
+    const fit = new Map([["messages", 150]]);
+    expect(messagesHeight(stacked(), fit)).toBe(150);
+    const after = computeLayout(stacked(), VIEW, { fit });
+    tiled(after.tiles, after.splitters, VIEW);
+  });
+
+  it("keeps the request inside the usual minimum sizes", () => {
+    expect(messagesHeight(stacked(), new Map([["messages", 5]]))).toBeGreaterThanOrEqual(96);
+    const big = messagesHeight(stacked(), new Map([["messages", 5000]]));
+    expect(VIEW.h - SPLITTER_PX - big).toBeGreaterThanOrEqual(96);
+  });
+
+  it("stops applying once the player drags the divider, and resumes after unsizeSplit", () => {
+    const fit = new Map([["messages", 150]]);
+    const dragged = resizeSplit(stacked(), [], 0.5);
+    expect(dragged.kind === "split" && dragged.sized).toBe(true);
+    expect(messagesHeight(dragged, fit)).toBe(messagesHeight(dragged));
+    expect(messagesHeight(unsizeSplit(dragged, []), fit)).toBe(150);
+  });
+
+  it("ignores side-by-side splits, the main view and tabs that are not shown", () => {
+    const beside = insertAtEdge(mainOnly, "messages", MAIN_TILE_ID, "right", 0.3);
+    const fit = new Map([["messages", 150], [MAIN_TILE_ID, 150]]);
+    expect(computeLayout(beside, VIEW, { fit })).toEqual(computeLayout(beside, VIEW));
+    const hidden = selectTab(tabInto(insertAtEdge(stacked(), "items", "messages", "right", 0.5), "items", "messages"), "items");
+    expect(computeLayout(hidden, VIEW, { fit: new Map([["messages", 150]]) })).toEqual(computeLayout(hidden, VIEW));
+  });
+
+  it("keeps the dragged mark through a save and load", () => {
+    const dragged = resizeSplit(stacked(), [], 0.5);
+    expect(parseLayoutTree(JSON.parse(JSON.stringify(dragged)))).toEqual(dragged);
+    expect(parseLayoutTree(JSON.parse(JSON.stringify(stacked())))).toEqual(stacked());
+  });
+});
+
 describe("resizeSplit", () => {
   it("changes both children's sizes and keeps the viewport covered", () => {
     const tree = insertAtEdge(mainOnly, "messages", MAIN_TILE_ID, "bottom", 0.25);
@@ -160,7 +206,7 @@ describe("dropZoneAt and applyDrop", () => {
     expect(containsLeaf(afterTree, "messages")).toBe(true);
   });
 
-  it("lists a swap plus all four dock zones for every tile except the excluded one (#249)", () => {
+  it("lists the center targets plus all four dock zones for every tile except the excluded one (#249, #287)", () => {
     let tree = insertAtEdge(mainOnly, "messages", MAIN_TILE_ID, "bottom", 0.2);
     tree = insertAtEdge(tree, "inventory", MAIN_TILE_ID, "right", 0.3);
     const { tiles } = computeLayout(tree, VIEW);
@@ -174,7 +220,33 @@ describe("dropZoneAt and applyDrop", () => {
         ).toHaveLength(1);
       }
     }
-    expect(zones).toHaveLength(2 * 5);
+    // The main view never takes a panel as a tab, so only inventory has one.
+    expect(zones.filter((zone) => zone.kind === "tab" && zone.id === "inventory")).toHaveLength(1);
+    expect(zones.filter((zone) => zone.kind === "tab" && zone.id === MAIN_TILE_ID)).toHaveLength(0);
+    expect(zones).toHaveLength(5 + 6);
+  });
+
+  it("offers no Tab target when tabs are switched off (#287)", () => {
+    const tree = insertAtEdge(mainOnly, "inventory", MAIN_TILE_ID, "right", 0.4);
+    const { tiles } = computeLayout(tree, VIEW);
+    const zones = allDropZones(tiles, "messages", { tabs: false });
+    expect(zones.some((zone) => zone.kind === "tab")).toBe(false);
+    const inventory = tiles.find((tile) => tile.id === "inventory")!.rect;
+    const middle = dropZoneAt(tiles, inventory.x + inventory.w * 0.75, inventory.y + inventory.h / 2, { dragging: "messages", tabs: false });
+    expect(middle?.kind).toBe("swap");
+  });
+
+  it("splits a panel's interior into Swap and Tab targets that match dropZoneAt (#287)", () => {
+    const tree = insertAtEdge(mainOnly, "inventory", MAIN_TILE_ID, "right", 0.4);
+    const { tiles } = computeLayout(tree, VIEW);
+    const zones = allDropZones(tiles, "messages");
+    const swap = zones.find((zone) => zone.kind === "swap" && zone.id === "inventory")!;
+    const tab = zones.find((zone) => zone.kind === "tab" && zone.id === "inventory")!;
+    expect(overlap(swap.preview, tab.preview)).toBe(0);
+    const inSwap = dropZoneAt(tiles, swap.preview.x + swap.preview.w / 2, swap.preview.y + swap.preview.h / 2, { dragging: "messages" });
+    const inTab = dropZoneAt(tiles, tab.preview.x + tab.preview.w / 2, tab.preview.y + tab.preview.h / 2, { dragging: "messages" });
+    expect(inSwap).toEqual(swap);
+    expect(inTab).toEqual(tab);
   });
 
   it("matches dropZoneAt's own geometry for the same tile and edge", () => {
@@ -222,22 +294,135 @@ describe("pruneTree and parseLayoutTree", () => {
   });
 });
 
-describe("degradeForComfort (#275)", () => {
+describe("tab groups (#287)", () => {
+  function twoPanels(): LayoutNode {
+    let tree = insertAtEdge(mainOnly, "equipment", MAIN_TILE_ID, "right", 0.3);
+    tree = insertAtEdge(tree, "messages", MAIN_TILE_ID, "bottom", 0.2);
+    return tree;
+  }
+
+  function groupOf(tree: LayoutNode, id: string): LeafNode {
+    const find = (node: LayoutNode): LeafNode | null => {
+      if (node.kind === "leaf") return groupTabs(node).includes(id) ? node : null;
+      return find(node.first) ?? find(node.second);
+    };
+    return find(tree)!;
+  }
+
+  it("adds a panel to another panel's group as the shown tab", () => {
+    const tree = tabInto(twoPanels(), "messages", "equipment");
+    expect(groupOf(tree, "equipment")).toEqual({ kind: "leaf", id: "messages", tabs: ["equipment", "messages"] });
+    const { tiles, splitters } = computeLayout(tree, VIEW);
+    expect(tiles.map((tile) => tile.id).sort()).toEqual([MAIN_TILE_ID, "messages"]);
+    expect(tiles.find((tile) => tile.id === "messages")?.tabs).toEqual(["equipment", "messages"]);
+    tiled(tiles, splitters, VIEW);
+    expect(leafIds(tree).sort()).toEqual(["equipment", MAIN_TILE_ID, "messages"].sort());
+  });
+
+  it("switches the shown tab without moving anything", () => {
+    const grouped = tabInto(twoPanels(), "messages", "equipment");
+    const selected = selectTab(grouped, "equipment");
+    expect(groupOf(selected, "messages").id).toBe("equipment");
+    expect(computeLayout(selected, VIEW).tiles.find((tile) => tile.id === "equipment")!.rect)
+      .toEqual(computeLayout(grouped, VIEW).tiles.find((tile) => tile.id === "messages")!.rect);
+    expect(selectTab(selected, "equipment")).toBe(selected);
+  });
+
+  it("keeps the rest of a group when one tab is removed, and shows the next tab", () => {
+    let tree = tabInto(twoPanels(), "messages", "equipment");
+    tree = insertAtEdge(tree, "inventory", MAIN_TILE_ID, "left", 0.3);
+    tree = tabInto(tree, "inventory", "equipment");
+    expect(groupTabs(groupOf(tree, "equipment"))).toEqual(["equipment", "messages", "inventory"]);
+    const removed = removeLeaf(tree, "inventory");
+    expect(groupOf(removed, "equipment")).toEqual({ kind: "leaf", id: "messages", tabs: ["equipment", "messages"] });
+    const single = removeLeaf(removed, "messages");
+    expect(groupOf(single, "equipment")).toEqual({ kind: "leaf", id: "equipment" });
+  });
+
+  it("never puts the main view in a group of tabs", () => {
+    const grouped = tabInto(twoPanels(), "messages", "equipment");
+    expect(tabInto(grouped, MAIN_TILE_ID, "equipment")).toBe(grouped);
+    expect(tabInto(grouped, "equipment", MAIN_TILE_ID)).toBe(grouped);
+    expect(swapLeaves(grouped, MAIN_TILE_ID, "equipment")).toBe(grouped);
+    expect(parseLayoutTree({ kind: "split", axis: "v", ratio: 0.5,
+      first: { kind: "leaf", id: MAIN_TILE_ID, tabs: [MAIN_TILE_ID, "map"] },
+      second: { kind: "leaf", id: "x" } })).toBeNull();
+  });
+
+  it("swaps a grouped panel into another panel's place and the other into the group", () => {
+    let tree = tabInto(twoPanels(), "messages", "equipment");
+    tree = insertAtEdge(tree, "inventory", MAIN_TILE_ID, "left", 0.3);
+    const swapped = swapLeaves(tree, "messages", "inventory");
+    expect(groupTabs(groupOf(swapped, "equipment"))).toEqual(["equipment", "inventory"]);
+    expect(groupOf(swapped, "messages")).toEqual({ kind: "leaf", id: "messages" });
+  });
+
+  it("moves the main view to another panel's edge without duplicating it", () => {
+    const tree = twoPanels();
+    const moved = insertAtEdge(tree, MAIN_TILE_ID, "equipment", "right", 0.6);
+    expect(leafIds(moved).sort()).toEqual(leafIds(tree).sort());
+    const { tiles, splitters } = computeLayout(moved, VIEW);
+    const main = tiles.find((tile) => tile.id === MAIN_TILE_ID)!.rect;
+    const equipment = tiles.find((tile) => tile.id === "equipment")!.rect;
+    expect(main.x).toBeGreaterThan(equipment.x);
+    tiled(tiles, splitters, VIEW);
+    expect(removeLeaf(moved, MAIN_TILE_ID)).toBe(moved);
+  });
+
+  it("gives the main view the larger share when it is the panel being docked", () => {
+    const tree = twoPanels();
+    const { tiles } = computeLayout(tree, VIEW);
+    const zone = allDropZones(tiles, MAIN_TILE_ID).find((entry) => entry.kind === "dock" && entry.id === "equipment" && entry.edge === "right")!;
+    const moved = applyDrop(tree, MAIN_TILE_ID, zone);
+    const after = computeLayout(moved, VIEW).tiles;
+    const main = after.find((tile) => tile.id === MAIN_TILE_ID)!.rect;
+    const equipment = after.find((tile) => tile.id === "equipment")!.rect;
+    expect(main.w).toBeGreaterThan(equipment.w);
+    expect(allDropZones(tiles, MAIN_TILE_ID).some((entry) => entry.kind === "tab")).toBe(false);
+  });
+
+  it("docks a panel beside a whole group, keeping the group intact", () => {
+    const grouped = tabInto(twoPanels(), "messages", "equipment");
+    const docked = insertAtEdge(grouped, "inventory", "equipment", "top", 0.3);
+    expect(groupTabs(groupOf(docked, "equipment"))).toEqual(["equipment", "messages"]);
+    expect(containsLeaf(docked, "inventory")).toBe(true);
+  });
+
+  it("drops the Tab target's panel into the group through applyDrop", () => {
+    const tree = twoPanels();
+    const { tiles } = computeLayout(tree, VIEW);
+    const zone = allDropZones(tiles, "messages").find((entry) => entry.kind === "tab" && entry.id === "equipment")!;
+    expect(applyDrop(tree, "messages", zone)).toEqual(tabInto(tree, "messages", "equipment"));
+  });
+
+  it("prunes disabled panels out of a group", () => {
+    const grouped = tabInto(twoPanels(), "messages", "equipment");
+    const pruned = pruneTree(grouped, new Set([MAIN_TILE_ID, "equipment"]))!;
+    expect(groupOf(pruned, "equipment")).toEqual({ kind: "leaf", id: "equipment" });
+  });
+
+  it("round-trips a group through JSON and loads a saved tree from before groups", () => {
+    const grouped = tabInto(twoPanels(), "messages", "equipment");
+    expect(parseLayoutTree(JSON.parse(JSON.stringify(grouped)))).toEqual(grouped);
+    const legacy = JSON.parse(JSON.stringify(twoPanels()));
+    expect(parseLayoutTree(legacy)).toEqual(twoPanels());
+    expect(parseLayoutTree({ kind: "split", axis: "v", ratio: 0.5,
+      first: { kind: "leaf", id: MAIN_TILE_ID },
+      second: { kind: "leaf", id: "a", tabs: ["b", "c"] } })).toBeNull();
+  });
+});
+
+describe("fitForComfort (#275, #287)", () => {
   it("is a byte-identical no-op when every panel already fits comfortably", () => {
     const tree = insertAtEdge(mainOnly, "messages", MAIN_TILE_ID, "bottom", 0.2);
-    const result = degradeForComfort(tree, VIEW);
-    expect(result.dropped).toEqual([]);
+    const result = fitForComfort(tree, VIEW);
+    expect(result.merged).toEqual([]);
     // Same object, not just an equal one: the common case must not even
     // allocate a new tree.
     expect(result.tree).toBe(tree);
-    expect(computeLayout(result.tree, VIEW)).toEqual(computeLayout(tree, VIEW));
   });
 
-  it("prunes the smallest panel(s) until every remaining leaf clears COMFORTABLE_MIN_PX", () => {
-    // Three panels docked to main's right in a viewport narrow enough that at
-    // least one ends up short of the comfortable floor, even though
-    // computeLayout alone (the anti-invisibility floor only) would happily
-    // render all four tiles without complaint.
+  it("merges cramped groups as tabs until every group clears COMFORTABLE_MIN_PX, hiding no panel", () => {
     const viewport: Rect = { x: 0, y: 0, w: 340, h: 800 };
     let tree: LayoutNode = mainOnly;
     tree = insertAtEdge(tree, "a", MAIN_TILE_ID, "right", 0.3);
@@ -250,25 +435,48 @@ describe("degradeForComfort (#275)", () => {
       .some((tile) => Math.min(tile.rect.w, tile.rect.h) < COMFORTABLE_MIN_PX);
     expect(tooSmallBefore).toBe(true); // sanity: this viewport is genuinely too small
 
-    const result = degradeForComfort(tree, viewport);
-    expect(result.dropped.length).toBeGreaterThan(0);
-    expect(leafIds(result.tree).sort()).toEqual(
-      leafIds(tree)
-        .filter((id) => !result.dropped.includes(id))
-        .sort(),
-    );
+    const result = fitForComfort(tree, viewport);
+    expect(result.merged.length).toBeGreaterThan(0);
+    // Every panel is still in the tree; merging moves panels, it never hides them.
+    expect(leafIds(result.tree).sort()).toEqual(leafIds(tree).sort());
 
     const after = computeLayout(result.tree, viewport);
-    const remaining = leafIds(result.tree).filter((id) => id !== MAIN_TILE_ID);
-    for (const id of remaining) {
-      const rect = after.tiles.find((tile) => tile.id === id)!.rect;
-      // Either this leaf clears the comfortable floor, or it is the one
-      // panel the "never collapse everything" rule refuses to drop.
-      expect(Math.min(rect.w, rect.h) >= COMFORTABLE_MIN_PX || remaining.length === 1).toBe(true);
+    const groups = after.tiles.filter((tile) => tile.id !== MAIN_TILE_ID);
+    for (const tile of groups) {
+      expect(Math.min(tile.rect.w, tile.rect.h) >= COMFORTABLE_MIN_PX || groups.length === 1).toBe(true);
     }
+    tiled(after.tiles, after.splitters, viewport);
   });
 
-  it("never drops the last subwindow panel, even in an absurdly tiny viewport", () => {
+  it("merges into the open group closest in shape", () => {
+    // Two tall panels on the right and one wide panel along the bottom. In a
+    // cramped window the thinner tall panel joins the other tall one.
+    const viewport: Rect = { x: 0, y: 0, w: 700, h: 600 };
+    let tree: LayoutNode = mainOnly;
+    tree = insertAtEdge(tree, "wide", MAIN_TILE_ID, "bottom", 0.34);
+    tree = insertAtEdge(tree, "tall-a", MAIN_TILE_ID, "right", 0.3);
+    tree = insertAtEdge(tree, "tall-b", "tall-a", "right", 0.3);
+    const result = fitForComfort(tree, viewport);
+    expect(result.merged.length).toBeGreaterThan(0);
+    const first = result.merged[0]!;
+    expect(first.id.startsWith("tall-")).toBe(true);
+    expect(first.into.startsWith("tall-")).toBe(true);
+  });
+
+  it("keeps a tab chosen inside a merged group", () => {
+    const viewport: Rect = { x: 0, y: 0, w: 340, h: 800 };
+    let tree: LayoutNode = mainOnly;
+    tree = insertAtEdge(tree, "a", MAIN_TILE_ID, "right", 0.3);
+    tree = insertAtEdge(tree, "b", MAIN_TILE_ID, "right", 0.3);
+    const plain = fitForComfort(tree, viewport);
+    expect(plain.merged).toHaveLength(1);
+    const { into, id } = plain.merged[0]!;
+    const preferred = fitForComfort(tree, viewport, { prefer: [id] });
+    expect(computeLayout(preferred.tree, viewport).tiles.some((tile) => tile.id === id)).toBe(true);
+    expect(computeLayout(plain.tree, viewport).tiles.some((tile) => tile.id === into)).toBe(true);
+  });
+
+  it("stops at one group beside the main view, even in an absurdly tiny viewport", () => {
     const tiny: Rect = { x: 0, y: 0, w: 60, h: 60 };
     let tree: LayoutNode = mainOnly;
     tree = insertAtEdge(tree, "a", MAIN_TILE_ID, "right", 0.3);
@@ -276,17 +484,12 @@ describe("degradeForComfort (#275)", () => {
     tree = insertAtEdge(tree, "c", MAIN_TILE_ID, "right", 0.3);
     tree = insertAtEdge(tree, "d", MAIN_TILE_ID, "bottom", 0.3);
 
-    const result = degradeForComfort(tree, tiny);
-    const remaining = leafIds(result.tree);
-    // main plus exactly one subwindow panel survives - the floor this pass
-    // refuses to cross regardless of how small the viewport gets.
-    expect(remaining).toContain(MAIN_TILE_ID);
-    expect(remaining).toHaveLength(2);
-    expect(result.dropped).toHaveLength(3);
-
-    // computeLayout on the pruned tree still tiles the viewport exactly as
-    // it always has - this pass never touches splitSizes' own behaviour.
+    const result = fitForComfort(tree, tiny);
     const { tiles, splitters } = computeLayout(result.tree, tiny);
+    expect(tiles.map((tile) => tile.id)).toContain(MAIN_TILE_ID);
+    expect(tiles).toHaveLength(2);
+    expect(result.merged).toHaveLength(3);
+    expect(leafIds(result.tree).sort()).toEqual(leafIds(tree).sort());
     tiled(tiles, splitters, tiny);
   });
 });

@@ -142,6 +142,28 @@ export interface PrefSink {
   colorTable?(idx: number, k: number, r: number, g: number, b: number): void;
   /** parse_prefs_window: the subwindow flag set finish_parse_prefs applies. */
   windowFlag?(window: number, flag: number, value: number): void;
+  /**
+   * neo-subwindows (#238): the web shell's BSP subwindow tiling tree, as a JSON
+   * payload. NOT part of upstream's grammar - this port's tiling tree has no
+   * upstream analog (window:i:j:v addresses a fixed term/flag pair, not an
+   * arbitrary nested layout), so it is a new directive rather than a divergent
+   * reading of an existing one. An unrecognised directive is a silent no-op
+   * (see the HANDLERS dispatch below), so a sink that does not implement this
+   * simply ignores the line, exactly like every other optional PrefSink member.
+   */
+  subwindowLayout?(json: string): void;
+  /**
+   * mod-block (no upstream original, neo-angband#262): a mod-registered named
+   * block of pref-file content, carried as its OWN directive so a malformed
+   * or unrecognised block can never reach, or be mistaken for, any of core's
+   * own directives - `neo-subwindows` included. `name` says which registered
+   * block this line belongs to; the rest of the line is that block's own
+   * payload, opaque to this parser exactly the way neo-subwindows's JSON
+   * payload is. An unrecognised name is exactly as silent as an unrecognised
+   * directive (see the HANDLERS dispatch below) - it just means the block's
+   * owning mod is not installed, or not enabled, on this machine.
+   */
+  modBlock?(name: string, payload: string): void;
   /** parse_prefs_entry_renderer -> ui_entry_renderer_customize. */
   entryRenderer?(
     name: string,
@@ -516,6 +538,30 @@ const parseWindow: Handler = (fields, sink) => {
   return null;
 };
 
+/**
+ * neo-subwindows (#238, no upstream original): the whole line's tail is one
+ * JSON payload, so it is reassembled with `:` rather than read as fields -
+ * `line.split(":")` in the caller already split on every colon the JSON
+ * payload itself contains (object syntax is full of them), and `fields.join(":")`
+ * is the exact inverse of that split for everything after the directive.
+ */
+const parseSubwindowLayout: Handler = (fields, sink) => {
+  sink.subwindowLayout?.(fields.join(":"));
+  return null;
+};
+
+/**
+ * mod-block (neo-angband#262): `name` is the first field, and the rest of the
+ * line - colons included - is that block's own opaque payload, reassembled
+ * the same way parseSubwindowLayout reassembles its JSON.
+ */
+const parseModBlock: Handler = (fields, sink) => {
+  const name = fields[0];
+  if (name === undefined) return PARSE_ERROR.MISSING_FIELD;
+  sink.modBlock?.(name, fields.slice(1).join(":"));
+  return null;
+};
+
 /** parse_prefs_entry_renderer (ui-prefs.c L1085-1122). */
 const parseEntryRenderer: Handler = (fields, sink) => {
   const name = fields[0];
@@ -544,6 +590,8 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
   color: parseColor,
   window: parseWindow,
   "entry-renderer": parseEntryRenderer,
+  "neo-subwindows": parseSubwindowLayout,
+  "mod-block": parseModBlock,
 };
 
 /* ------------------------------------------------------------------------
@@ -1142,8 +1190,10 @@ export function dumpUiEntryRenderers(deps: DumpDeps): string {
  * tiled into an arbitrary BSP tree, which has no term index or flag bit to
  * enumerate here. It returns the header alone, always - the tiling tree
  * itself is a web-shell concept (subwindows.ts) with no core representation,
- * The tiled layout is a JSON document in the web shell, not a block of
- * window lines, so this function still returns the header alone.
+ * so the "Save subwindow setup to pref file" call site composes this
+ * header with its own serialized section afterward (dumpSubwindowLayoutPrefText,
+ * subwindows.ts; PrefsUiCtx.dumpSubwindowLayout, prefs-ui.ts) rather than this
+ * function growing a dependency on web-shell state. #238.
  */
 export function optionDump(): string {
   return "# Options\n\n";

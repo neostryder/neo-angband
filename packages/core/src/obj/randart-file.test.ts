@@ -18,7 +18,8 @@ import { bindConstants } from "../constants.js";
 import { bindProjections } from "../world/projection.js";
 import type { ProjectionRecordJson } from "../world/projection.js";
 import { doRandart } from "./randart.js";
-import { RANDART_TXT } from "./randart-file.js";
+import { parseDocument, randartFormat, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
+import { RANDART_JSON, RANDART_TXT, readRandartExport } from "./randart-file.js";
 import type { ObjPackJson } from "./types.js";
 
 function loadJson<T>(name: string): T {
@@ -72,64 +73,89 @@ function run(seed: number, createFile: boolean): Map<string, string> {
   return files;
 }
 
-describe("randart.txt (PORT_TODO 5.5)", () => {
+describe("randart.json (PORT_TODO 5.5)", () => {
   const files = run(0x5eed, true);
-  const txt = files.get(RANDART_TXT) ?? "";
-  const records = txt.split(/\n(?=name:)/).slice(1);
+  const txt = files.get(RANDART_JSON) ?? "";
+  const parsed = parseDocument(txt, randartFormat);
 
   it("is written at all, and only when asked", () => {
-    /* The other half of the seam: createFile false must leave no file behind,
-     * or "it writes randart.txt" would be true of every caller. */
-    expect(txt.length).toBeGreaterThan(1000);
-    expect(run(0x5eed, false).has(RANDART_TXT)).toBe(false);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.data.artifacts.length).toBeGreaterThan(50);
+    expect(run(0x5eed, false).has(RANDART_JSON)).toBe(false);
   });
 
-  it("names the seed in C's %08lx form", () => {
-    expect(txt.startsWith("# Artifact file for random artifacts with seed ")).toBe(
-      true,
-    );
-    expect(txt).toContain("seed 00005eed\n");
+  it("names the seed as the unsigned value the generator was given", () => {
+    expect(parsed.ok && parsed.data.seed).toBe(0x5eed);
   });
 
-  it("writes one record per artifact, each with the required keys", () => {
-    expect(records.length).toBeGreaterThan(50);
-    for (const rec of records.slice(0, 20)) {
-      for (const key of ["base-object:", "level:", "weight:", "cost:", "alloc:"]) {
-        expect(rec, key).toContain(key);
+  it("writes the fields a record needs", () => {
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    for (const art of parsed.data.artifacts.slice(0, 20)) {
+      expect(art.baseTval.length).toBeGreaterThan(0);
+      expect(Number.isInteger(art.level)).toBe(true);
+      expect(Number.isInteger(art.weight)).toBe(true);
+      expect(Number.isInteger(art.cost)).toBe(true);
+      expect(Number.isInteger(art.allocProb)).toBe(true);
+      expect(Number.isInteger(art.attackDice)).toBe(true);
+    }
+  });
+
+  it("emits an activation's name and time together, or neither", () => {
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    for (const art of parsed.data.artifacts) {
+      if (art.activation !== undefined) {
+        expect(art.activation.name.length).toBeGreaterThan(0);
+        expect(Number.isInteger(art.activation.base)).toBe(true);
       }
-      /* alloc: is "prob:min to max" - the space-separated form the parser
-       * expects, not a third colon. */
-      expect(rec).toMatch(/\nalloc:\d+:\d+ to \d+\n/);
-      /* attack: is "DdS:toh:tod". */
-      expect(rec).toMatch(/\nattack:\d+d\d+:-?\d+:-?\d+\n/);
     }
   });
 
-  it("emits act: and time: together, or neither", () => {
-    for (const rec of records) {
-      expect(rec.includes("\nact:"), rec.slice(0, 40)).toBe(
-        rec.includes("\ntime:"),
-      );
-    }
-  });
-
-  it("uses brand and slay CODES, and curse NAMES, as the parser reads them", () => {
-    /* A brand written by name ("acid brand") would look right in a diff and
-     * fail to parse; upstream writes brands[j].code and curses[j].name, which
-     * are different fields with different conventions. */
-    const brands = [...txt.matchAll(/\nbrand:(.+)/g)].map((m) => m[1]!);
-    const slays = [...txt.matchAll(/\nslay:(.+)/g)].map((m) => m[1]!);
+  it("uses brand and slay codes, and curse names", () => {
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const brands = parsed.data.artifacts.flatMap((art) => art.brands ?? []);
+    const slays = parsed.data.artifacts.flatMap((art) => art.slays ?? []);
+    const curses = parsed.data.artifacts.flatMap((art) => art.curses ?? []);
     expect(brands.length + slays.length).toBeGreaterThan(0);
-    for (const code of [...brands, ...slays]) {
-      expect(code, code).toMatch(/^[A-Z0-9_]+$/);
-    }
-    for (const m of txt.matchAll(/\ncurse:([^:]+):(-?\d+)/g)) {
-      expect(m[1], m[1]).toMatch(/[a-z]/);
-    }
+    for (const code of [...brands, ...slays]) expect(code).toMatch(/^[A-Z0-9_]+$/);
+    for (const curse of curses) expect(curse.name).toMatch(/[a-z]/);
   });
 
   it("is reproducible from the seed", () => {
-    expect(run(0x5eed, true).get(RANDART_TXT)).toBe(txt);
-    expect(run(0x5eee, true).get(RANDART_TXT)).not.toBe(txt);
+    expect(run(0x5eed, true).get(RANDART_JSON)).toBe(txt);
+    expect(run(0x5eee, true).get(RANDART_JSON)).not.toBe(txt);
+  });
+
+  it("round-trips the export byte-stably", () => {
+    expect(parsed.ok && serializeDocument(randartFormat, parsed.data)).toBe(txt);
+  });
+
+  it("converts an old export once and keeps corrupt new documents", () => {
+    const files = new Map<string, string>([[RANDART_TXT, [
+      "# Artifact file for random artifacts with seed 00005eed",
+      "name:of Power",
+      "base-object:sword:long sword",
+      "level:20", "weight:30", "cost:1000", "alloc:10:1 to 100",
+      "attack:2d6:5:5", "armor:0:0", "desc:A sword.",
+    ].join("\n")]]);
+    const io = {
+      ...NULL_HOST,
+      exists: (_dir: HostDir, name: string) => files.has(name),
+      read: (_dir: HostDir, name: string) => files.get(name) ?? null,
+      write: (_dir: HostDir, name: string, body: string) => { files.set(name, body); return "ok" as WriteOutcome; },
+      remove: (_dir: HostDir, name: string) => files.delete(name),
+    } as HostIo;
+    expect(readRandartExport(io)?.seed).toBe(0x5eed);
+    expect(files.has(RANDART_TXT)).toBe(false);
+    const converted = files.get(RANDART_JSON)!;
+    expect(parseDocument(converted, randartFormat).ok).toBe(true);
+    for (const bad of ["{broken", '{"format":"neo-angband/object/randart","schemaVersion":99,"data":{}}']) {
+      files.set(RANDART_JSON, bad);
+      expect(readRandartExport(io)).toBeNull();
+      expect(files.get(RANDART_JSON)).toBe(bad);
+    }
   });
 });

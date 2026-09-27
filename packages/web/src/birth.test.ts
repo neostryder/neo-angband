@@ -477,7 +477,7 @@ describe("runBirth: faithful menu appearance (ui-birth.c menus)", () => {
    */
   it("navigates the race list with j/k under the roguelike keyset (issue #127)", async () => {
     setHost(memHost(new Map([
-      ["customized_interface_options.txt", optionsSaveCustomText({ rogue_like_commands: true }, "INTERFACE")],
+      ["customized_interface_options.json", optionsSaveCustomText({ rogue_like_commands: true }, "INTERFACE")],
     ])));
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;
@@ -938,7 +938,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
 
   it("the birth-options editor OPENS ON the player's customised defaults", async () => {
     /* PORT_TODO 5.3, and the point of the whole row: options_init_defaults
-     * restores OP_BIRTH from customized_birth_options.txt in player_init
+     * restores OP_BIRTH from customized_birth_options.json in player_init
      * (option.c:198), long before any stage runs, so what a previous character
      * saved with 's' is what this one's '=' screen shows. Without the seeding
      * the editor opens on the table every time and 's' writes a file nothing
@@ -947,7 +947,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     const inverted: Record<string, boolean> = {};
     for (const e of OPTION_ENTRIES) if (e.type === "BIRTH") inverted[e.name] = !e.normal;
     setHost(memHost(new Map([
-      ["customized_birth_options.txt", optionsSaveCustomText(inverted, "BIRTH")],
+      ["customized_birth_options.json", optionsSaveCustomText(inverted, "BIRTH")],
     ])));
 
     const win = makeFakeWindow();
@@ -975,7 +975,7 @@ describe("runBirth: quickstart stage (quickstart_allowed)", () => {
     const first = OPTION_ENTRIES.find((e) => e.type === "BIRTH")!;
     const inverted: Record<string, boolean> = { [first.name]: !first.normal };
     setHost(memHost(new Map([
-      ["customized_birth_options.txt", optionsSaveCustomText(inverted, "BIRTH")],
+      ["customized_birth_options.json", optionsSaveCustomText(inverted, "BIRTH")],
     ])));
 
     const win = makeFakeWindow();
@@ -1395,7 +1395,7 @@ describe("runBirth: '?' opens help and returns to the same screen", () => {
    */
   it("shows the ROGUELIKE command summary when that keyset is the customised default", async () => {
     setHost(memHost(new Map([
-      ["customized_interface_options.txt", optionsSaveCustomText({ rogue_like_commands: true }, "INTERFACE")],
+      ["customized_interface_options.json", optionsSaveCustomText({ rogue_like_commands: true }, "INTERFACE")],
     ])));
 
     const win = makeFakeWindow();

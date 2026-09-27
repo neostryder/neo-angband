@@ -77,7 +77,8 @@
 
 import { FileMode, FileType, HostDir, host } from "../host/io.js";
 import type { HostIo } from "../host/io.js";
-import { RANDART_TXT, writeRandartFile } from "./randart-file.js";
+import { RANDART_JSON, RANDART_TXT, writeRandartFile } from "./randart-file.js";
+import { parseDocument, randartFormat } from "@rpgm-tools/neo-angband-mod-sdk";
 import { randartLog, randartLogf, setRandartLog } from "./randart-log.js";
 import { KF, TV } from "../generated/index.js";
 import { Rng } from "../rng.js";
@@ -629,7 +630,7 @@ export function doRandart(
   constants: Constants,
   randartSeed: number,
   /**
-   * do_randart's `create_file` (obj-randart.c:3154). True writes randart.txt
+   * do_randart's `create_file` (obj-randart.c:3154). True writes randart.json
    * beside randart.log; upstream passes true from birth, from loading a save
    * and from the spoiler generator, and false from the statistics harnesses.
    *
@@ -748,15 +749,35 @@ export function doRandart(
      * file is a courtesy; losing the character over it is not.
      */
     if (createFile) {
-      const outcome = io.write(
-        HostDir.USER,
-        RANDART_TXT,
-        writeRandartFile(reg, generated, randartSeed),
-        FileMode.WRITE,
-        FileType.TEXT,
-      );
-      if (outcome !== "ok") {
-        onLogError?.(`Error - can't close ${RANDART_TXT}.`);
+      let body: string;
+      try {
+        const existing = io.read(HostDir.USER, RANDART_JSON);
+        if (existing !== null && !parseDocument(existing, randartFormat).ok) {
+          onLogError?.(`Error - can't read ${RANDART_JSON}.`);
+          body = "";
+        } else {
+          body = writeRandartFile(reg, generated, randartSeed);
+        }
+      } catch {
+        onLogError?.(`Error - can't close ${RANDART_JSON}.`);
+        body = "";
+      }
+      if (body.length > 0) {
+        const outcome = io.write(
+          HostDir.USER,
+          RANDART_JSON,
+          body,
+          FileMode.WRITE,
+          FileType.TEXT,
+        );
+        if (outcome !== "ok") {
+          onLogError?.(`Error - can't close ${RANDART_JSON}.`);
+        } else {
+          const back = io.read(HostDir.USER, RANDART_JSON);
+          if (back !== null && parseDocument(back, randartFormat).ok) {
+            io.remove(HostDir.USER, RANDART_TXT);
+          }
+        }
       }
     }
   }

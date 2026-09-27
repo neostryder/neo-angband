@@ -73,7 +73,13 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "@rpgm-tools/neo-angband-mod-sdk": "workspace:*"
+  },
   "scripts": {
     "build": "tsc"
+  },
+  "dependencies": {
+    "@rpgm-tools/neo-angband-mod-sdk": "workspace:*"
   }
 }

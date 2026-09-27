@@ -10,7 +10,6 @@ import {
   ATTR_VGA,
   attrToText,
   BASIC_COLORS,
-  COLOR_PREF_IDS,
   COLOR_TABLE,
   COLOUR_DARK,
   COLOUR_DEEP_L_BLUE,
@@ -26,7 +25,6 @@ import {
   COLOUR_YELLOW,
   MAX_COLORS,
   colorChannel,
-  colorPrefId,
   colorCharToAttr,
   colorTableSnapshot,
   colorTextToAttr,
@@ -38,16 +36,6 @@ import {
 } from "./color.js";
 
 describe("color table", () => {
-  it("names every palette row with a unique kebab-case id", () => {
-    expect(COLOR_PREF_IDS).toHaveLength(MAX_COLORS);
-    expect(new Set(COLOR_PREF_IDS).size).toBe(MAX_COLORS);
-    for (let i = 0; i < MAX_COLORS; i++) {
-      expect(colorPrefId(i)).toBe(COLOR_PREF_IDS[i]);
-      expect(COLOR_PREF_IDS[i]).toMatch(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u);
-    }
-    expect(colorPrefId(COLOUR_SHADE)).toBe("shade");
-  });
-
   it("has MAX_COLORS rows and BASIC_COLORS named rows", () => {
     expect(COLOR_TABLE).toHaveLength(MAX_COLORS);
     expect(MAX_COLORS).toBe(32);

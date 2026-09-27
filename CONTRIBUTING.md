@@ -1,6 +1,6 @@
 # Contributing to Neo Angband
 
-Neo Angband is a modern TypeScript port of Angband 4.2.6. Thanks for helping.
+Neo Angband is a faithful but moddable port of Angband 4.2.6, meant to be playable almost anywhere. Most of the code is TypeScript, but code in any language that compiles to JavaScript or WebAssembly can go into the codebase or ship in a mod. Thanks for helping.
 This page is the short version of how the project is built and the rules that
 keep it faithful. Read it once before your first change.
 

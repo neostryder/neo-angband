@@ -429,7 +429,7 @@ describe("title screen project information", () => {
     const lines = titleLines();
     const ridge = lines.findLastIndex((l) => strip(l.markup).includes("^"));
     expect(lines.slice(ridge + 1).map((line) => line.markup)).toEqual([
-      "TypeScript port of Angband with general-purpose mod loading.",
+      "A faithful but moddable port of Angband, meant to be playable almost anywhere.",
       "",
       "Docs and quick start: https://angband.rpgm.world/docs",
       "GitHub: https://github.com/neostryder/neo-angband",

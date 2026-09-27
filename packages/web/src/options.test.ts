@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach, vi } from "vitest";
 import { HostDir, NULL_HOST, OptionState, Rng, setHost } from "@rpgm-tools/neo-angband-core";
 import type { GameState, HostIo } from "@rpgm-tools/neo-angband-core";
+import { customOptionsFormat, parseDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import { runOptionsMenu, runTileModePage } from "./options";
 import {
   SUBWINDOW_CHOICES,
@@ -463,9 +464,8 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     expect(term.snapshot().join("\n")).toContain("Save changes before leaving?");
     press(win, "y"); // save
     await tick();
-    expect(files.get("customized_interface_options.txt")).toContain(
-      "option:rogue_like_commands:yes",
-    );
+    const saved = parseDocument(files.get("customized_interface_options.json"), customOptionsFormat);
+    expect(saved.ok && saved.data.options.find((option) => option.name === "rogue_like_commands")?.enabled).toBe(true);
     press(win, "Escape"); // back at the top menu now; exit
     await tick();
     press(win, "Escape");
@@ -515,9 +515,10 @@ describe("runOptionsMenu (do_cmd_options, '=')", () => {
     press(win, "s");
     await tick();
 
-    const text = files.get("customized_interface_options.txt");
+    const text = files.get("customized_interface_options.json");
     expect(text).toBeDefined();
-    expect(text).toContain("option:rogue_like_commands:yes");
+    const saved = parseDocument(text, customOptionsFormat);
+    expect(saved.ok && saved.data.options.find((option) => option.name === "rogue_like_commands")?.enabled).toBe(true);
     /* get_com's exact literal (ui-options.c L171). Snapshot BEFORE the
      * dismissing key, because finishing the prompt erases row 0. */
     expect(term.snapshot().join("\n")).toContain(

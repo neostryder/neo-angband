@@ -396,7 +396,7 @@ ever moves forward, and an older engine cannot always read a newer save.
 - **Offline and native by default** - no browser, no address bar; launches like
   any installed app.
 - **Real files.** Upstream's writable tree exists for real, so the things that
-  are a file in the original are a file here: JSON preference exports you can
+  are a file in the original are a file here: `.prf` preference dumps you can
   open in an editor, character dumps, screen dumps, the score file. In the
   browser those live in a virtual directory inside browser storage.
 - **A command line.** `main.c`'s switches reach the game, which the browser has
@@ -481,8 +481,8 @@ Where to find each display setting upstream offers:
 | Keymaps, colours | `=` -> **Edit keymaps** / **Edit colours** |
 | **Resize the main window for a bigger map** | **Not yet.** The grid stays 80x24 and scales; it does not grow into a larger window. |
 | **Big-tile multiplier** (`tile_width` / `tile_height`) | **Not yet.** Both are fixed at 1, so tiles are one cell each. |
-| **Subwindows** (messages, inventory, equipment, player, map, recall, lists, status) | `=` -> **Subwindow setup**. Each content type is its own tiled panel around the main view: right-click-drag to dock, drag a splitter to resize. All start off. Combining several flags in one term and the `^E` inventory/equipment flip remain planned. |
-| Export/import preferences | `=` -> **Export subwindow layout** or **Import preferences**. Other preference menus export their own JSON documents. Existing user `.prf` files convert when the game starts. |
+| **Subwindows** (messages, inventory, equipment, player, map, recall, lists, status) | `=` -> **Subwindow setup**. Each content type is its own tiled panel around the main view: right-click-drag to dock, drag a splitter to resize. All start off. Combining several flags in one term, the `^E` inventory/equipment flip, and pref-file window geometry remain planned. |
+| Save/load `.prf` pref files | **Not applicable.** Settings persist in browser storage automatically, so there is nothing to write or read back. |
 | Auto-inscription setup | Present, but reached from the knowledge browser (`~`) rather than from the options menu, where upstream also lists it. |
 
 The two "not yet" rows are the remaining display gaps. Going beyond upstream here is left to a screen-rendering quality-of-life mod (a reflow mode already exists behind an opt-in flag in the terminal code), and core stays on upstream's own defaults.

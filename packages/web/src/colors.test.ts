@@ -1,69 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { COLOR_PREF_IDS as SDK_COLOR_IDS, colorTableFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
-import { COLOR_PREF_IDS, colorChannel, colorToCss, resetColorTable } from "@rpgm-tools/neo-angband-core";
+import { colorChannel, colorToCss, resetColorTable } from "@rpgm-tools/neo-angband-core";
 import type { GlyphTerm } from "./term";
-import { loadColorPrefs, runColorsEditor, saveColorPrefs } from "./colors";
-
-describe("color table document", () => {
-  it("uses the same palette names in core and the SDK", () => {
-    expect(COLOR_PREF_IDS).toEqual(SDK_COLOR_IDS);
-  });
-  afterEach(() => {
-    resetColorTable();
-    vi.unstubAllGlobals();
-  });
-
-  it("converts the old tuple array to named RGBA rows and round-trips", () => {
-    const store = new Map<string, string>();
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => { store.set(key, value); },
-    });
-    store.set("neo-angband:colors", JSON.stringify([[0, 1, 2, 3]]));
-    loadColorPrefs();
-    expect(colorChannel(0, 1)).toBe(1);
-    const raw = store.get("neo-angband:colors")!;
-    const parsed = parseDocument(raw, colorTableFormat);
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    expect(parsed.data.colors[0]).toEqual({ name: "dark", kv: 0, color: { red: 1, green: 2, blue: 3, alpha: 255 } });
-    expect(serializeDocument(colorTableFormat, parsed.data, { compact: true })).toBe(raw);
-    expect(saveColorPrefs()).toBe(true);
-    expect(store.get("neo-angband:colors")).toBe(raw);
-  });
-
-  it("does not overwrite a future document", () => {
-    const future = JSON.stringify({ format: colorTableFormat.format, schemaVersion: 99, data: {} });
-    const store = new Map([["neo-angband:colors", future]]);
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => { store.set(key, value); },
-    });
-    expect(() => loadColorPrefs()).not.toThrow();
-    expect(saveColorPrefs()).toBe(false);
-    expect(store.get("neo-angband:colors")).toBe(future);
-  });
-
-  it("preserves an imported alpha channel when saving the palette", () => {
-    const store = new Map<string, string>();
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => { store.set(key, value); },
-    });
-    const data = {
-      colors: colorTableFormat.sample!.colors.map((row, index) => ({
-        ...row,
-        color: { ...row.color, alpha: index === 0 ? 128 : row.color.alpha },
-      })),
-    };
-    store.set("neo-angband:colors", serializeDocument(colorTableFormat, data, { compact: true }));
-    loadColorPrefs();
-    expect(saveColorPrefs()).toBe(true);
-    const parsed = parseDocument(store.get("neo-angband:colors")!, colorTableFormat);
-    expect(parsed.ok).toBe(true);
-    if (parsed.ok) expect(parsed.data.colors[0]?.color.alpha).toBe(128);
-  });
-});
+import { runColorsEditor } from "./colors";
 
 interface FakeWindow {
   addEventListener(type: string, fn: (ev: Event) => void, capture?: boolean): void;

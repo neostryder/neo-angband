@@ -40,12 +40,8 @@ described in "The default arrangement" below, built around a large main view.
 Panels tile the window - there is no floating or overlapping, and every panel
 always has a home that fills the available space.
 
-- **Move a panel: right-click and drag it.** Left-click is reserved for
-  ordinary game input and for focusing a panel, so dragging always uses the
-  right mouse button. While dragging, every other panel outlines the places it
-  could accept the drop: a center zone that **swaps** the two panels' places,
-  and four edge zones that **dock** the dragged panel against that edge,
-  splitting that panel's space to make room. Release over the zone you want.
+- **Move a panel: right-click and drag it.** Left-click is reserved for ordinary game input and for focusing a panel, so dragging always uses the right mouse button. While dragging, every other panel outlines the places it could accept the drop. The four edge zones **dock** the dragged panel against that edge, splitting that panel's space to make room. The middle of a panel holds two labeled targets: **Swap** trades the two panels' places, and **Tab** adds the dragged panel to that panel's space as a tab. Release over the zone you want.
+- **Switch tabs: click a tab.** A space holding more than one panel shows a row of tabs in its title bar in place of the panel name. Clicking a tab shows that panel, and right-click-dragging a tab moves that one panel out of the group. Closing the shown panel shows the next tab.
 - **Resize a panel: drag the thin bar between two panels** (the splitter). It
   turns the cursor into a resize arrow when you hover it. No panel can be
   resized down to nothing - each keeps a small minimum size, so a splitter
@@ -53,8 +49,15 @@ always has a home that fills the available space.
 - **Close a panel from its own title bar**, with the small `x` in its corner -
   the same effect as unchecking it back in Subwindow setup.
 
-The main play view itself never moves, docks, or closes; every other panel
-arranges around it.
+The dungeon view can move too. Drag the small grip in its top-right corner to dock it against another panel's edge, or drop it in the middle of a panel to trade places with it. It never closes, never hides and never becomes a tab, so the map is always on screen.
+
+## Small windows
+
+Shrink the window far enough and the panels run out of room to stay readable. Rather than squeezing them further, the game folds the most cramped panel into a tab beside the panel closest to it in shape: the monster list joins the item list, and messages join another wide strip along an edge. A message in the log names each pair. Every panel stays one click away, and your arrangement is untouched, so widening the window puts each panel back where it was. The splitters hold still until then.
+
+## Window features
+
+Five rows on the Subwindow setup screen switch parts of the panel system on and off, each on its own. **Tabs** (on by default) offers the Tab target when you drag one panel onto another. **Small windows** (on by default) folds cramped panels into tabs as described above; with it off, panels shrink to their minimum size instead. **Lock dividers** (off by default) stops the splitters from moving, so a finished arrangement cannot be nudged by a stray drag. **Move the dungeon view** (on by default) shows the grip in the dungeon view's corner; with it off, the dungeon view stays where it is and other panels can still swap places with it. **Fit to content** (on by default) gives a panel that asks for a set height, such as a mod's quickbar, that height when it sits above or below another panel. Drag its divider to pick your own size instead, and double-click the divider to hand the size back to the panel. Turning a switch off never rearranges anything: tabs that already exist keep working with Tabs off, and your saved layout stays as it is.
 
 ## The default arrangement
 
@@ -81,7 +84,11 @@ separate from the *shipped* default arrangement described above - your own
 saved default, once you make one, takes priority whenever a fresh panel needs
 somewhere to go.
 
-**Export subwindow layout** in the main Options Menu saves the arrangement as a JSON document named `<character>-subwindows.json`. The document includes registered mod blocks. **Import preferences** reads the document back in, which lets a layout move between installs or between the browser and desktop builds.
+**Save subwindow setup to pref file**, near the top of the main Options Menu
+(alongside the other pref-file commands, not inside Subwindow setup itself),
+exports the whole arrangement to a file instead of your browser's storage -
+useful for carrying a layout between installs, or between the browser build
+and the desktop app. **Load a user pref file** reads one back in.
 
 ## The map panel's own graphics setting
 
@@ -94,5 +101,5 @@ choice is also reachable as a dropdown right in the map panel's own title bar.
 Because the two are independent settings, any combination works: ASCII in the
 main view with a tile pack in the map panel, tiles in the main view with ASCII
 in the map panel, or the same choice in both. The map panel's graphics choice
-travels with your saved default and with a JSON layout export, the same as
+travels with your saved default and with a pref-file export, the same as
 everything else on this page.

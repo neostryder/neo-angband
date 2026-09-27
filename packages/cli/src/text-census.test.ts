@@ -42,8 +42,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 /** Literal -> why it is absent. Keys are the C literal, verbatim. */
 const KNOWN_ABSENT: Record<string, readonly string[]> = {
-  "host-io: grafmode.txt is compiled into TypeScript at build time, and the user preference importer reads JSON documents. Neither runtime path opens that upstream text file":
-    ["Cannot open '%s'."],
   /* The option-file trio left this list on 2026-08-12, by being PORTED: #149
    * rewrote player/options-file.ts to 4.2.6's hand-rolled read loop, so all
    * three msg() lines are core's now and options-file.test.ts checks them

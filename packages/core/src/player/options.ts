@@ -58,7 +58,7 @@ export type OptionValues = Record<string, boolean>;
  * character starts able to sell to stores without visiting the birth options
  * page first. Applied wherever a default option set is built - here and in
  * options-file.ts's optionsInitDefaults - so both paths agree. A player's own
- * customized_birth_options.txt (or an explicit birth choice) still overrides
+ * customized_birth_options.json (or an explicit birth choice) still overrides
  * it, exactly as it would any other option.
  */
 export const DEFAULT_OVERRIDES: Partial<Record<OptionName, boolean>> = {

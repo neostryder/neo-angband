@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import { parseDocument, serializeDocument, subwindowLayoutFormat } from "@rpgm-tools/neo-angband-mod-sdk";
 import { COLOUR_RED, colorToCss } from "@rpgm-tools/neo-angband-core";
 import { MessageLog } from "./messages";
 import {
   MessageSubwindowPainter,
   applySubwindowPrefBlock,
   canonicalSubwindowTree,
+  dumpSubwindowLayoutPrefText,
+  dumpSubwindowPrefBlocks,
   paintOverviewSubwindow,
   paintSubwindowLines,
-  parseSubwindowDocument,
-  serializeSubwindowDocument,
+  parseSubwindowStateJson,
   playerCompactLines,
   playerTopbarLines,
   readSubwindowSettings,
@@ -19,6 +19,7 @@ import {
   scrollSubwindow,
   setSubwindowEnabled,
   statusSubwindowLines,
+  SUBWINDOW_PREF_DIRECTIVE,
   SUBWINDOW_STORAGE_KEY,
   SUBWINDOW_DEFAULT_STORAGE_KEY,
   treeForSettings,
@@ -101,7 +102,8 @@ describe("subwindow settings", () => {
     const closed = setSubwindowEnabled(state, "map", false);
     writeSubwindowState(storage, closed);
     expect(readSubwindowState(storage).mapTileMode).toBe(3);
-    const restored = parseSubwindowDocument(serializeSubwindowDocument(closed));
+    const pref = dumpSubwindowLayoutPrefText(closed);
+    const restored = parseSubwindowStateJson(pref.slice(SUBWINDOW_PREF_DIRECTIVE.length + 1));
     expect(restored?.mapTileMode).toBe(3);
     expect(restored?.enabled.map).toBe(false);
   });
@@ -111,7 +113,7 @@ describe("subwindow settings", () => {
     const data = { v: 2, enabled: { ...allOff, map: true }, tree: treeForSettings(allOff), mapTileMode: value };
     storage.setItem(SUBWINDOW_STORAGE_KEY, JSON.stringify(data));
     expect(readSubwindowState(storage).mapTileMode).toBe(0);
-    expect(parseSubwindowDocument(JSON.stringify(data))).toBeNull();
+    expect(parseSubwindowStateJson(JSON.stringify(data))?.mapTileMode).toBe(0);
   });
 
   it("defaults to the unchanged single-window layout and survives storage", () => {
@@ -145,23 +147,6 @@ describe("subwindow settings", () => {
     const covered = tiles.reduce((sum, tile) => sum + tile.rect.w * tile.rect.h, 0)
       + splitters.reduce((sum, splitter) => sum + splitter.rect.w * splitter.rect.h, 0);
     expect(covered).toBe(1200 * 800);
-    const raw = storage.getItem(SUBWINDOW_STORAGE_KEY)!;
-    const parsed = parseDocument(raw, subwindowLayoutFormat);
-    expect(parsed.ok).toBe(true);
-    if (parsed.ok) expect(serializeDocument(subwindowLayoutFormat, parsed.data, { compact: true })).toBe(raw);
-  });
-
-  it("converts a v2 layout once and preserves a future document", () => {
-    const storage = memoryStorage();
-    const enabled = { ...allOff, messages: true };
-    storage.setItem(SUBWINDOW_STORAGE_KEY, JSON.stringify({ v: 2, enabled, tree: treeForSettings(enabled), mapTileMode: 3 }));
-    expect(readSubwindowState(storage).mapTileMode).toBe(3);
-    expect(parseDocument(storage.getItem(SUBWINDOW_STORAGE_KEY)!, subwindowLayoutFormat).ok).toBe(true);
-    const future = JSON.stringify({ format: subwindowLayoutFormat.format, schemaVersion: 99, data: {} });
-    storage.setItem(SUBWINDOW_STORAGE_KEY, future);
-    expect(readSubwindowState(storage).enabled).toEqual(allOff);
-    writeSubwindowState(storage, { enabled, tree: treeForSettings(enabled), mapTileMode: 0 });
-    expect(storage.getItem(SUBWINDOW_STORAGE_KEY)).toBe(future);
   });
 
   it("inserts a newly enabled panel into the tree and removes it again", () => {
@@ -177,16 +162,6 @@ describe("subwindow settings", () => {
 });
 
 describe("personal subwindow default (#236)", () => {
-  it("keeps named mod blocks in the personal default and in its export", () => {
-    const storage = memoryStorage();
-    const state = readSubwindowState(storage);
-    const withBlock = { ...state, modBlocks: { "missing-mod": "saved:payload" } };
-    expect(writeSubwindowDefault(storage, withBlock)).toBe(true);
-    const saved = readSubwindowDefault(storage);
-    expect(saved?.modBlocks).toEqual({ "missing-mod": "saved:payload" });
-    const exported = parseSubwindowDocument(serializeSubwindowDocument(saved!));
-    expect(exported?.modBlocks).toEqual({ "missing-mod": "saved:payload" });
-  });
   it("snapshots the current tree independently of subsequent live layout changes", () => {
     const storage = memoryStorage();
     const live = setSubwindowEnabled(readSubwindowState(storage), "messages", true);
@@ -244,54 +219,46 @@ describe("personal subwindow default (#236)", () => {
     const storage = {
       getItem: () => { throw new Error("Storage unavailable"); },
       setItem: () => { throw new Error("Quota exceeded"); },
-      removeItem: () => { throw new Error("Storage unavailable"); },
     };
     expect(readSubwindowDefault(storage)).toBeNull();
     expect(writeSubwindowDefault(storage, readSubwindowState(memoryStorage()))).toBe(false);
   });
 });
 
-describe("subwindow layout document", () => {
-  it("round-trips the enabled set and the tree", () => {
+describe("neo-subwindows pref-file serialisation (#238)", () => {
+  it("dumps and re-parses the same enabled set and tree", () => {
     const enabled = { ...allOff, messages: true, inventory: true, items: true };
-    const state = { enabled, tree: treeForSettings(enabled), mapTileMode: 0 };
-    const text = serializeSubwindowDocument(state);
-    expect(text.endsWith("\n")).toBe(true);
-    const roundTrip = parseSubwindowDocument(text);
+    const state = { enabled, tree: treeForSettings(enabled) };
+    const line = dumpSubwindowLayoutPrefText(state);
+    expect(line.startsWith(`${SUBWINDOW_PREF_DIRECTIVE}:`)).toBe(true);
+    expect(line.endsWith("\n")).toBe(true);
+    const json = line.slice(`${SUBWINDOW_PREF_DIRECTIVE}:`.length, -1);
+    const roundTrip = parseSubwindowStateJson(json);
     expect(roundTrip).not.toBeNull();
     expect(roundTrip!.enabled).toEqual(enabled);
     expect(leafIds(roundTrip!.tree).sort()).toEqual(leafIds(state.tree).sort());
-    expect(serializeSubwindowDocument(roundTrip!)).toBe(text);
   });
 
   it("returns null for malformed JSON rather than throwing", () => {
-    expect(parseSubwindowDocument("{not json")).toBeNull();
+    expect(parseSubwindowStateJson("{not json")).toBeNull();
   });
 
   it("returns null when the tree is missing the main tile", () => {
-    const text = serializeSubwindowDocument({
-      enabled: allOff,
-      tree: { kind: "leaf", id: MAIN_TILE_ID },
-      mapTileMode: 0,
-    }).replace('"main"', '"messages"');
-    expect(parseSubwindowDocument(text)).toBeNull();
+    expect(
+      parseSubwindowStateJson(JSON.stringify({ enabled: allOff, tree: { kind: "leaf", id: "messages" } })),
+    ).toBeNull();
   });
 
-  it("defaults a missing panel to false and rejects an unknown panel id", () => {
-    const text = serializeSubwindowDocument({
-      enabled: { ...allOff, messages: true },
+  it("ignores unknown ids and defaults missing ones to false when reading enabled", () => {
+    const json = JSON.stringify({
+      enabled: { messages: true, "not-a-real-id": true },
       tree: { kind: "leaf", id: MAIN_TILE_ID },
-      mapTileMode: 0,
     });
-    const parsed = JSON.parse(text) as { data: { enabled: Record<string, boolean> } };
-    delete parsed.data.enabled.inventory;
-    const state = parseSubwindowDocument(JSON.stringify(parsed));
+    const state = parseSubwindowStateJson(json);
     expect(state).not.toBeNull();
     expect(state!.enabled.messages).toBe(true);
     expect(state!.enabled.inventory).toBe(false);
     expect(containsLeaf(state!.tree, "messages")).toBe(true);
-    parsed.data.enabled["not-a-real-id"] = true;
-    expect(parseSubwindowDocument(JSON.stringify(parsed))).toBeNull();
   });
 });
 
@@ -519,7 +486,7 @@ describe("tiled panel scroll (#258)", () => {
 });
 
 describe("mod-registered subwindow pref blocks (#262)", () => {
-  it("carries a registered block inside the layout document and omits one whose serialize() returns null", () => {
+  it("dumps a registered block's own mod-block line, and omits one whose serialize() returns null", () => {
     const unregisterA = registerSubwindowPrefBlock("qol-zoom", {
       serialize: () => "8:10:12",
       parse: (text) => text,
@@ -531,12 +498,7 @@ describe("mod-registered subwindow pref blocks (#262)", () => {
       apply: () => undefined,
     });
     try {
-      const parsed = parseSubwindowDocument(serializeSubwindowDocument({
-        enabled: allOff,
-        tree: { kind: "leaf", id: MAIN_TILE_ID },
-        mapTileMode: 0,
-      }));
-      expect(parsed?.modBlocks).toEqual({ "qol-zoom": "8:10:12" });
+      expect(dumpSubwindowPrefBlocks()).toBe("mod-block:qol-zoom:8:10:12\n");
     } finally {
       unregisterA();
       unregisterB();

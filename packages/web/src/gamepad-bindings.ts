@@ -26,18 +26,10 @@
  * only questions that matter: how many buttons, how many axes, and does the
  * browser recognise the arrangement.
  */
-import {
-  GAMEPAD_ROLE_IDS,
-  gamepadBindingsFormat,
-  type Infer,
-  keyInput,
-} from "@rpgm-tools/neo-angband-mod-sdk";
 import type { PadCapabilities } from "./gamepad-device";
 import { STANDARD_BUTTON } from "./gamepad-device";
 import type { DeadZone } from "./gamepad-analog";
 import { DEFAULT_DEAD_ZONE } from "./gamepad-analog";
-import { looksLikeEnvelope, readStoredDocument, writeStoredDocument } from "./json-storage";
-import { keyInputFromToken } from "./keymap-store";
 
 /** Adapter-owned inputs. Everything else is a game command or a literal key. */
 export type GamepadRole =
@@ -51,7 +43,9 @@ export type GamepadRole =
   | "page-next"
   | "legend";
 
-export const GAMEPAD_ROLES: readonly GamepadRole[] = GAMEPAD_ROLE_IDS;
+export const GAMEPAD_ROLES: readonly GamepadRole[] = [
+  "confirm", "cancel", "commands", "layer", "stop", "wait", "page-prev", "page-next", "legend",
+];
 
 export const ROLE_LABEL: Record<GamepadRole, string> = {
   confirm: "Confirm",
@@ -197,23 +191,7 @@ export function defaultBindings(capabilities: PadCapabilities): GamepadBindings 
 
 const STORAGE_KEY = "neo-angband:gamepad-bindings";
 
-type StoredTarget =
-  | { kind: "role"; role: GamepadRole }
-  | { kind: "command"; command: string }
-  | { kind: "key"; key: Infer<typeof keyInput> };
-
-interface StoredPad {
-  signature: string;
-  buttons: { index: number; target: StoredTarget }[];
-  layer: { index: number; target: StoredTarget }[];
-  deadZone: { inner: number; outer: number };
-}
-
-interface StoredDocument {
-  pads: StoredPad[];
-}
-
-interface LegacyPad {
+interface StoredBindings {
   readonly buttons?: Record<string, string>;
   readonly layer?: Record<string, string>;
   readonly deadZone?: { inner?: number; outer?: number };
@@ -225,87 +203,16 @@ function isTarget(value: unknown): value is BindingTarget {
       || (value.startsWith("role:") && (GAMEPAD_ROLES as readonly string[]).includes(value.slice(5))));
 }
 
-function targetFromLegacy(value: string): StoredTarget | null {
-  if (!isTarget(value)) return null;
-  if (value.startsWith("role:")) {
-    const role = value.slice(5);
-    if (!(GAMEPAD_ROLES as readonly string[]).includes(role)) return null;
-    return { kind: "role", role: role as GamepadRole };
-  }
-  if (value.startsWith("cmd:")) {
-    const command = value.slice(4);
-    return command.length > 0 ? { kind: "command", command } : null;
-  }
-  const key = keyInputFromToken(value.slice(4));
-  return key ? { kind: "key", key } : null;
-}
-
-function legacyToTargetMap(source: Record<string, string> | undefined): { index: number; target: StoredTarget }[] {
-  const rows: { index: number; target: StoredTarget }[] = [];
+function readMap(source: Record<string, string> | undefined): Record<number, BindingTarget> {
+  const out: Record<number, BindingTarget> = {};
   for (const [key, value] of Object.entries(source ?? {})) {
     const index = Number(key);
-    const target = targetFromLegacy(value);
-    if (Number.isInteger(index) && index >= 0 && target) rows.push({ index, target });
+    if (Number.isInteger(index) && index >= 0 && isTarget(value)) out[index] = value;
   }
-  rows.sort((a, b) => a.index - b.index);
-  return rows;
-}
-
-function rowsToTargets(rows: readonly { index: number; target: StoredTarget }[]): Record<number, BindingTarget> {
-  const out: Record<number, BindingTarget> = {};
-  for (const row of rows) out[row.index] = targetToLegacy(row.target);
   return out;
 }
 
-function targetToLegacy(target: StoredTarget): BindingTarget {
-  if (target.kind === "role") return `role:${target.role}`;
-  if (target.kind === "command") return `cmd:${target.command}`;
-  return `key:${target.key.key}`;
-}
-
-function padFromBindings(signature: string, bindings: GamepadBindings, previous?: StoredPad): StoredPad {
-  const rows = (map: Readonly<Record<number, BindingTarget>>, old: StoredPad["buttons"] | undefined) => Object.entries(map)
-    .map(([index, target]) => {
-      const prior = old?.find((row) => row.index === Number(index));
-      const typed = prior && targetToLegacy(prior.target) === target ? prior.target : targetFromLegacy(target);
-      return typed ? { index: Number(index), target: typed } : null;
-    })
-    .filter((row): row is { index: number; target: StoredTarget } => row !== null)
-    .sort((a, b) => a.index - b.index);
-  return {
-    signature,
-    buttons: rows(bindings.buttons, previous?.buttons),
-    layer: rows(bindings.layer, previous?.layer),
-    deadZone: bindings.deadZone,
-  };
-}
-
-function legacyDocument(raw: string): StoredDocument | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-  const pads: StoredPad[] = [];
-  for (const [signature, value] of Object.entries(parsed as Record<string, LegacyPad>)) {
-    if (!value || typeof value !== "object") continue;
-    pads.push({
-      signature,
-      buttons: legacyToTargetMap(value.buttons),
-      layer: legacyToTargetMap(value.layer),
-      deadZone: clampZone(value.deadZone),
-    });
-  }
-  return { pads };
-}
-
-function readMap(source: readonly { index: number; target: StoredTarget }[] | undefined): Record<number, BindingTarget> {
-  return rowsToTargets(source ?? []);
-}
-
-function clampZone(zone: { inner?: number; outer?: number } | undefined): DeadZone {
+function clampZone(zone: StoredBindings["deadZone"]): DeadZone {
   const inner = typeof zone?.inner === "number" ? Math.min(0.9, Math.max(0, zone.inner)) : DEFAULT_DEAD_ZONE.inner;
   const outer = typeof zone?.outer === "number" ? Math.min(1, Math.max(inner + 0.05, zone.outer)) : DEFAULT_DEAD_ZONE.outer;
   return { inner, outer };
@@ -329,26 +236,15 @@ function storage(): StorageLike | undefined {
  * up a working default for the rest. Storing the whole layout would have frozen
  * their pad at the layout that existed the day they touched the screen.
  */
-function documentFromStorage(store: StorageLike): StoredDocument | null {
-  const raw = store.getItem(STORAGE_KEY);
-  if (raw === null) return { pads: [] };
-  if (looksLikeEnvelope(raw)) {
-    const read = readStoredDocument(store, STORAGE_KEY, gamepadBindingsFormat, () => null);
-    if (read.blocked || !read.data) return null;
-    return read.data;
-  }
-  const read = readStoredDocument(store, STORAGE_KEY, gamepadBindingsFormat, legacyDocument);
-  return read.data;
-}
-
 export function loadBindings(signature: string, capabilities: PadCapabilities): GamepadBindings {
   const base = defaultBindings(capabilities);
   const store = storage();
   if (!store) return base;
   try {
-    const document = documentFromStorage(store);
-    if (!document) return base;
-    const saved = document.pads.find((pad) => pad.signature === signature);
+    const raw = store.getItem(STORAGE_KEY);
+    if (!raw) return base;
+    const parsed = JSON.parse(raw) as Record<string, StoredBindings> | null;
+    const saved = parsed?.[signature];
     if (!saved) return base;
     return {
       buttons: { ...base.buttons, ...readMap(saved.buttons) },
@@ -366,18 +262,14 @@ export function saveBindings(signature: string, bindings: GamepadBindings): void
   if (!store) return;
   try {
     const raw = store.getItem(STORAGE_KEY);
-    if (raw !== null && looksLikeEnvelope(raw)) {
-      const read = readStoredDocument(store, STORAGE_KEY, gamepadBindingsFormat, () => null);
-      if (read.blocked || !read.data) return;
-      const pads = read.data.pads.filter((pad) => pad.signature !== signature);
-      pads.push(padFromBindings(signature, bindings, read.data.pads.find((pad) => pad.signature === signature)));
-      writeStoredDocument(store, STORAGE_KEY, gamepadBindingsFormat, { pads });
-      return;
-    }
-    const legacy = raw === null ? { pads: [] } : legacyDocument(raw) ?? { pads: [] };
-    const pads = legacy.pads.filter((pad) => pad.signature !== signature);
-    pads.push(padFromBindings(signature, bindings, legacy.pads.find((pad) => pad.signature === signature)));
-    writeStoredDocument(store, STORAGE_KEY, gamepadBindingsFormat, { pads });
+    const parsed = (raw ? JSON.parse(raw) : null) as Record<string, StoredBindings> | null;
+    const all: Record<string, StoredBindings> = parsed && typeof parsed === "object" ? parsed : {};
+    all[signature] = {
+      buttons: Object.fromEntries(Object.entries(bindings.buttons)),
+      layer: Object.fromEntries(Object.entries(bindings.layer)),
+      deadZone: bindings.deadZone,
+    };
+    store.setItem(STORAGE_KEY, JSON.stringify(all));
   } catch {
     /* A pad that cannot save its layout still plays with the one in memory. */
   }

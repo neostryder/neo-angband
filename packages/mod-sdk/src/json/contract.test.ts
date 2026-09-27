@@ -1,25 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { autoinscriptionFormat } from "./autoinscriptions.js";
-import { colorTableFormat } from "./color-table.js";
-import { entryRendererFormat } from "./entry-renderers.js";
-import { gamepadBindingsFormat } from "./gamepad-bindings.js";
-import { keymapFormat } from "./keymaps.js";
-import { soundMappingFormat } from "./sound-mappings.js";
-import { subwindowLayoutFormat } from "./subwindow-layout.js";
-import { visualOverrideFormat } from "./visual-overrides.js";
 import { windowStateFormat } from "./window-state.js";
 import { color, defineFormat, json, keyInput, listFormats, parseDocument, serializeDocument, utcTimestamp } from "./index.js";
-
-void [
-  autoinscriptionFormat,
-  colorTableFormat,
-  entryRendererFormat,
-  gamepadBindingsFormat,
-  keymapFormat,
-  soundMappingFormat,
-  subwindowLayoutFormat,
-  visualOverrideFormat,
-];
 
 defineFormat({
   format: "neo-angband/test/migration-chain",

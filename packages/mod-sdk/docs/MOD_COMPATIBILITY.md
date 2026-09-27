@@ -131,7 +131,7 @@ For the rest of the namespace, the only mechanism is the ratchet described above
 
 #### There are two such namespaces now, watched the same way
 
-`ctx.authoring` is the mod SDK's public barrel, 94 runtime exports, handed over whole for the same reason as `ctx.core`: a curated subset would be a second list to maintain, and it would lag behind whatever function an author needs next. It has the ratchet but no guaranteed subset.
+`ctx.authoring` is the mod SDK's public barrel, handed over whole for the same reason as `ctx.core`: a hand-picked subset would be a second list to maintain, and it would lag behind whatever function an author needs next. It has the ratchet but no guaranteed subset.
 
 Before plugins received it, a rename inside the SDK was caught by `tsc -b` over this repository, because every consumer was in the repository. A plugin ships as built JavaScript and resolves no specifier, so the compiler never sees its calls. The SDK therefore gets the same ratchet as core: `packages/mod-sdk/mod-sdk-api-surface.json` records the surface, `mod-authoring-surface.test.ts` fails on a change in either direction, and `node tools/api-surface.mjs` checks and updates both baselines in one run.
 

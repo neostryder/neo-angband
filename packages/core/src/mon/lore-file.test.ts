@@ -16,6 +16,7 @@
  *     which is the whole reason the file exists.
  */
 
+import { loreFormat, parseDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import { writeFlags } from "../datafile.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -32,6 +33,7 @@ import {
   RF_FLAG_NAMES,
   RSF_FLAG_NAMES,
   applyLoreFile,
+  loreFileFromDocument,
   parseLoreFile,
   writeLoreEntries,
 } from "./lore-file.js";
@@ -151,7 +153,8 @@ function storeWith(race: MonsterRace, edit: (l: ReturnType<typeof newMonsterLore
 describe("write_lore_entries (mon-lore.c:1743-1893)", () => {
   it("skips a race that has never been seen and is not fully known", () => {
     const race = fakeRace(3, "kobold");
-    expect(writeLoreEntries([race], storeWith(race, () => undefined))).toBe("");
+    const parsed = parseDocument(writeLoreEntries([race], storeWith(race, () => undefined)), loreFormat);
+    expect(parsed.ok && parsed.data.races).toEqual([]);
   });
 
   it("writes name and the seven counts, in upstream's order", () => {
@@ -165,9 +168,17 @@ describe("write_lore_entries (mon-lore.c:1743-1893)", () => {
       l.castInnate = 5;
       l.castSpell = 6;
     });
-    expect(writeLoreEntries([race], store)).toBe(
-      "name:kobold\ncounts:4:1:9:2:3:5:6\n\n",
-    );
+    const parsed = parseDocument(writeLoreEntries([race], store), loreFormat);
+    expect(parsed.ok && parsed.data.races[0]).toMatchObject({
+      name: "kobold",
+      sights: 4,
+      deaths: 1,
+      tkills: 9,
+      wake: 2,
+      ignore: 3,
+      castInnate: 5,
+      castSpell: 6,
+    });
   });
 
   it("does NOT write pkills or thefts", () => {
@@ -190,13 +201,13 @@ describe("write_lore_entries (mon-lore.c:1743-1893)", () => {
     const seen = storeWith(race, (l) => {
       l.sights = 1;
     });
-    expect(writeLoreEntries([race], seen)).not.toContain("base:");
+    expect(writeLoreEntries([race], seen)).not.toContain("\"base\"");
 
     const known = storeWith(race, (l) => {
       l.sights = 1;
       l.allKnown = true;
     });
-    expect(writeLoreEntries([race], known)).toContain("base:kobold\n");
+    expect(writeLoreEntries([race], known)).toContain("\"base\": \"kobold\"");
   });
 
   it("intersects the spell flags with the race's, mutating the lore (L1802)", () => {
@@ -211,7 +222,7 @@ describe("write_lore_entries (mon-lore.c:1743-1893)", () => {
       l.spellFlags.on(RSF.ARROW); /* the race does not have it */
     });
     const out = writeLoreEntries([race], store);
-    expect(out).toContain("spells:SHRIEK\n");
+    expect(out).toContain("\"SHRIEK\"");
     expect(out).not.toContain("ARROW");
     expect(store.get(3)?.spellFlags.has(RSF.ARROW)).toBe(false);
   });
@@ -267,7 +278,10 @@ describe("lore_parser (mon-init.c:2544-2580)", () => {
       l.tkills = 9;
       l.flags.on(RF.UNIQUE);
     });
-    const parsed = parseLoreFile(writeLoreEntries([race], store));
+    const document = parseDocument(writeLoreEntries([race], store), loreFormat);
+    expect(document.ok).toBe(true);
+    if (!document.ok) return;
+    const parsed = loreFileFromDocument(document.data);
     const e = parsed.entries.get("kobold");
     expect(e?.sights).toBe(4);
     expect(e?.tkills).toBe(9);

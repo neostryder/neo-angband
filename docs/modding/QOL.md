@@ -40,7 +40,7 @@ Ported from neostryder's Angband fork (the `do_cmd_movement_tunnel_test` / `move
 - Tests: `packages/core/src/game/auto-dig.test.ts` (core's seam: a bump with no hook, and the returned energy honoured, zero included) and `neo-angband-mod-qol/plugin.test.ts` (the mod's own behaviour and its flag gate).
 ### `qol.rememberSettings` - Remember my settings (on with the mod, from v0.13.0)
 
-Angband keeps a character's options inside that character's save and nowhere else, so they die with the character and every new life begins by setting them all again. Neo Angband stores exported preferences as JSON documents, but its character options still belong to each save. This mod carries selected options into a new character.
+Angband keeps a character's options inside that character's save and nowhere else, so they die with the character and every new life begins by setting them all again. Upstream's answer is the pref file (`s` / `r` in the options menu), which the player has to know about and remember to write. Core keeps that as it is, and the convenience lives here.
 
 Change anything in `=`, and the next character you create starts with it. A character loaded from a save is never touched: a save keeps the settings it was saved with, so changing a setting on one character cannot reach another.
 

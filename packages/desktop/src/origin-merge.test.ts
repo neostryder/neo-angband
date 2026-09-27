@@ -7,8 +7,21 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { ROSTER_KEY, handledPorts, planOriginMerge } from "./origin-merge.js";
-import type { OriginSnapshot } from "./origin-merge.js";
+import { ACTIVE_DOCUMENT_KEY, ROSTER_DOCUMENT_KEY, ROSTER_KEY, handledPorts, planOriginMerge } from "./origin-merge.js";
+import type { MergePlan, OriginSnapshot } from "./origin-merge.js";
+
+function writtenCharacters(plan: MergePlan): { id?: string; name?: string; alive?: boolean }[] {
+  const raw = plan.writes[ROSTER_DOCUMENT_KEY];
+  if (raw === undefined) return [];
+  const document = JSON.parse(raw) as { data: { characters: { id?: string; name?: string; alive?: boolean }[] } };
+  return document.data.characters;
+}
+
+function writtenActive(plan: MergePlan): string | undefined {
+  const raw = plan.writes[ACTIVE_DOCUMENT_KEY];
+  if (raw === undefined) return undefined;
+  return (JSON.parse(raw) as { data: { activeSlotId: string } }).data.activeSlotId;
+}
 
 /** `turn` defaults to 1: a character that has been played at least a moment. */
 function meta(id: string, name: string, updatedAt: number, alive = true, turn = 1) {
@@ -32,7 +45,7 @@ describe("stranded-origin merge", () => {
     expect(plan.recovered.map((r) => r.name).sort()).toEqual(["Frodo", "Merry", "Sam"]);
     expect(plan.writes["neo-angband-save:a"]).toBe("AAA");
     expect(plan.writes["neo-angband-save:c"]).toBe("CCC");
-    expect(JSON.parse(plan.writes[ROSTER_KEY]!)).toHaveLength(3);
+    expect(writtenCharacters(plan)).toHaveLength(3);
   });
 
   it("does nothing when there is nothing to bring back", () => {
@@ -42,6 +55,7 @@ describe("stranded-origin merge", () => {
       deaths: [],
       recovered: [],
       skippedUnplayed: [],
+      blocked: false,
     });
   });
 
@@ -69,7 +83,7 @@ describe("stranded-origin merge", () => {
     /* Metadata alone would put a row on the character-select screen that cannot
      * be resumed - worse than not offering it. */
     const plan = planOriginMerge({}, [origin(61806, [meta("a", "Frodo", 300)])]);
-    expect(plan).toEqual({ writes: {}, removes: [], deaths: [], recovered: [], skippedUnplayed: [] });
+    expect(plan).toEqual({ writes: {}, removes: [], deaths: [], recovered: [], skippedUnplayed: [], blocked: false });
   });
 
   it("does bring back a tombstone, which legitimately has no bytes", () => {
@@ -78,7 +92,7 @@ describe("stranded-origin merge", () => {
       { id: "a", name: "Frodo", fromPort: 61806, hasSave: false },
     ]);
     expect(plan.skippedUnplayed).toEqual([]);
-    expect(JSON.parse(plan.writes[ROSTER_KEY]!)[0].alive).toBe(false);
+    expect(writtenCharacters(plan)[0]?.alive).toBe(false);
   });
 
   it("fills in other owned settings only where the target has none", () => {
@@ -108,6 +122,7 @@ describe("stranded-origin merge", () => {
     /* Exactly the newest origin in the real install: an active id and no roster. */
     const plan = planOriginMerge({}, [src, origin(61806, [meta("a", "Frodo", 1)], { a: "AAA" })]);
     expect(plan.writes["neo-angband-active"]).toBeUndefined();
+    expect(writtenActive(plan)).toBeUndefined();
     expect(plan.recovered).toHaveLength(1);
   });
 
@@ -120,16 +135,26 @@ describe("stranded-origin merge", () => {
         "neo-angband-save:a": "AAA",
       },
     };
-    expect(planOriginMerge({}, [src]).writes["neo-angband-active"]).toBe("a");
+    expect(writtenActive(planOriginMerge({}, [src]))).toBe("a");
   });
 
-  it("survives unparseable rosters on either side", () => {
+  it("leaves origins eligible when a roster on either side cannot be read", () => {
     const plan = planOriginMerge({ [ROSTER_KEY]: "{not json" }, [
       { port: 1, entries: { [ROSTER_KEY]: "also not json" } },
       origin(61806, [meta("a", "Frodo", 300)], { a: "AAA" }),
     ]);
-    expect(plan.recovered).toHaveLength(1);
-    expect(JSON.parse(plan.writes[ROSTER_KEY]!)).toHaveLength(1);
+    expect(plan.blocked).toBe(true);
+    expect(plan.writes).toEqual({});
+    expect(plan.removes).toEqual([]);
+  });
+
+  it("does not mark a source handled when its new roster is from the future", () => {
+    const plan = planOriginMerge({}, [{ port: 61806, entries: {
+      [ROSTER_DOCUMENT_KEY]: JSON.stringify({ format: "neo-angband/web/character-roster", schemaVersion: 2, data: { characters: [] } }),
+      "neo-angband-save:a": "AAA",
+    } }]);
+    expect(plan.blocked).toBe(true);
+    expect(plan.writes).toEqual({});
   });
 
   it("leaves a birth abandoned at turn 0 where it is, and says so", () => {
@@ -146,7 +171,7 @@ describe("stranded-origin merge", () => {
     expect(plan.skippedUnplayed.map((r) => r.name)).toEqual(["Litholor"]);
     expect(plan.writes["neo-angband-save:a"]).toBeUndefined();
     expect(plan.writes["neo-angband-save:b"]).toBe("BBB");
-    expect(JSON.parse(plan.writes[ROSTER_KEY]!)).toHaveLength(1);
+    expect(writtenCharacters(plan)).toHaveLength(1);
   });
 
   it("treats a missing turn as unplayed rather than guessing", () => {
@@ -206,7 +231,7 @@ describe("death is absorbing across origins (decision 16)", () => {
     expect(plan.removes).toContain("neo-angband-save:a");
     /* And the pointer that would have resumed it, so the next boot does not try. */
     expect(plan.removes).toContain("neo-angband-active");
-    expect(JSON.parse(plan.writes[ROSTER_KEY] ?? "[]")).toEqual([
+    expect(writtenCharacters(plan)).toEqual([
       expect.objectContaining({ id: "a", alive: false }),
     ]);
   });
@@ -217,7 +242,7 @@ describe("death is absorbing across origins (decision 16)", () => {
      * nothing at all. */
     const target = { [ROSTER_KEY]: JSON.stringify([meta("a", "Frodo", 100)]) };
     const plan = planOriginMerge(target, [origin(45872, [meta("a", "Frodo", 9000, false)])]);
-    const roster = JSON.parse(plan.writes[ROSTER_KEY] ?? "[]") as { name: string }[];
+    const roster = writtenCharacters(plan);
     expect(roster).toHaveLength(1);
     expect(roster[0]?.name).toBe("Frodo");
   });
@@ -283,7 +308,7 @@ describe("the death ledger outlives the handled-origin marker", () => {
     };
     const plan = planOriginMerge(target, [], ["a"]);
     expect(plan.removes).toContain("neo-angband-save:a");
-    expect(JSON.parse(plan.writes[ROSTER_KEY] ?? "[]")).toEqual([
+    expect(writtenCharacters(plan)).toEqual([
       expect.objectContaining({ id: "a", alive: false }),
     ]);
   });
@@ -318,7 +343,7 @@ describe("burying the wrong character", () => {
     const plan = planOriginMerge(target, [origin(45872, [meta("a", "Boromir", 9000, false)])]);
     expect(plan.removes).toEqual([]);
     /* And the living row is left living. */
-    const roster = JSON.parse(plan.writes[ROSTER_KEY] ?? "[]") as { alive?: boolean }[];
+    const roster = writtenCharacters(plan);
     if (roster.length > 0) expect(roster[0]?.alive).not.toBe(false);
   });
 

@@ -2,11 +2,8 @@
  * datafile.c's WRITERS - the half of the data-file layer that emits a record
  * rather than parsing one (parser.c covers the reading side).
  *
- * These exist because two very different features need to round-trip game data
- * back out through the same grammar the .txt files use: mon-lore.c's "dump
- * monster knowledge" and obj-randart.c's optional randart.txt. Upstream shares
- * one implementation between them, so the port does too - writeFlags used to
- * live in mon/lore-file.ts, which made obj/ reach into mon/ for it.
+ * These helpers preserve the upstream text grammar for parity checks. Runtime
+ * lore and random-artifact exports use JSON documents instead.
  *
  * Each writer returns a string instead of taking a file handle: HostIo.write is
  * a whole-file call, so the callers assemble their document and write once.

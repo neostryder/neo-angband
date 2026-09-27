@@ -39,6 +39,8 @@
  * still loads.
  */
 
+import { loreFormat, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { Infer } from "@rpgm-tools/neo-angband-mod-sdk";
 import { writeFlags } from "../datafile.js";
 /**
  * writeFlags used to be DEFINED here and is on the pinned ctx.core surface
@@ -97,11 +99,33 @@ const RSF_NAMES = RSF_FLAG_NAMES;
  * what the next save contains, so it is reproduced (core keeps the C's warts;
  * fixes go in the bug-fixes mod).
  */
-export function writeLoreEntries(
-  races: readonly MonsterRace[],
-  store: LoreStore,
-): string {
-  let out = "";
+type LoreData = Infer<(typeof loreFormat)["validator"]>;
+
+function listedFlags(
+  flags: FlagSet,
+  size: number,
+  names: readonly (string | undefined)[],
+): string[] {
+  const out: string[] = [];
+  for (let flag = flags.next(1); flag > 0 && flag < size * 8; flag = flags.next(flag + 1)) {
+    const name = names[flag];
+    if (name === undefined || name.length === 0) break;
+    out.push(name);
+  }
+  return out;
+}
+
+/**
+ * write_lore_entries (mon-lore.c:1743-1893): one record per race the player
+ * has seen or fully knows, in race index order.
+ *
+ * `rsf_inter(lore->spell_flags, race->spell_flags)` at L1802 MUTATES the lore
+ * record as a side effect of writing the file - a wart, but a wart that changes
+ * what the next save contains, so it is reproduced (core keeps the C's warts;
+ * fixes go in the bug-fixes mod).
+ */
+export function loreDocument(races: readonly MonsterRace[], store: LoreStore): LoreData {
+  const records: LoreData["races"] = [];
 
   for (const race of races) {
     /* "Ignore non-existent or unseen monsters" (L1755-1757). */
@@ -110,37 +134,111 @@ export function writeLoreEntries(
     if (!lore) continue;
     if (!lore.sights && !lore.allKnown) continue;
 
-    out += `name:${race.name}\n`;
-
-    /* "Output base if we're remembering everything" (L1760-1762). */
-    if (lore.allKnown) out += `base:${race.base.name}\n`;
-
-    out += `counts:${lore.sights}:${lore.deaths}:${lore.tkills}:${lore.wake}:${lore.ignore}:${lore.castInnate}:${lore.castSpell}\n`;
-
-    /* Blows, up to mon_blows_max (L1768-1795). */
+    const blows: NonNullable<LoreData["races"][number]["blows"]> = [];
     for (let n = 0; n < race.blows.length; n++) {
       if (!lore.blowKnown[n] && !lore.allKnown) continue;
       const blow = race.blows[n];
       if (!blow?.method) continue;
+      const seen = lore.blowTimesSeen[n] ?? 0;
+      if (seen <= 0) continue;
       const rv = blow.dice?.randomValue() ?? { base: 0, dice: 0, sides: 0, mBonus: 0 };
-      out += `blow:${blow.method.name}`;
-      out += `:${blow.effect.name}`;
-      out += `:${rv.base}+${rv.dice}d${rv.sides}M${rv.mBonus}`;
-      out += `:${lore.blowTimesSeen[n] ?? 0}`;
-      out += `:${n}`;
-      out += "\n";
+      const method = blow.method.name;
+      const effect = blow.effect.name;
+      blows.push({
+        index: n,
+        seen,
+        ...(method.length > 0 ? { method } : {}),
+        ...(effect.length > 0 ? { effect } : {}),
+        damage: `${rv.base}+${rv.dice}d${rv.sides}M${rv.mBonus}`,
+      });
     }
 
-    out += writeFlags("flags:", lore.flags, RF_SIZE, RF_NAMES);
-
-    /* rsf_inter, in place, then the spell line (L1802-1805). */
+    /* rsf_inter, in place, then the spell list (L1802-1805). */
     lore.spellFlags.inter(race.spellFlags);
-    out += writeFlags("spells:", lore.spellFlags, rsfSize(), RSF_NAMES);
-
-    out += "\n";
+    const flags = listedFlags(lore.flags, RF_SIZE, RF_NAMES);
+    const spells = listedFlags(lore.spellFlags, rsfSize(), RSF_NAMES);
+    const base = race.base.name;
+    records.push({
+      name: race.name,
+      allKnown: lore.allKnown,
+      ...(lore.allKnown && base.length > 0 ? { base } : {}),
+      sights: lore.sights,
+      deaths: lore.deaths,
+      tkills: lore.tkills,
+      wake: lore.wake,
+      ignore: lore.ignore,
+      castInnate: lore.castInnate,
+      castSpell: lore.castSpell,
+      ...(blows.length === 0 ? {} : { blows }),
+      ...(flags.length === 0 ? {} : { flags }),
+      ...(spells.length === 0 ? {} : { spells }),
+    });
   }
 
-  return out;
+  return { races: records };
+}
+
+/** The lore document as the file writes it. */
+export function writeLoreEntries(races: readonly MonsterRace[], store: LoreStore): string {
+  return serializeDocument(loreFormat, loreDocument(races, store));
+}
+
+/**
+ * The JSON document for a lore.txt parse. Blow method text is not in the
+ * parse result, so a converted blow keeps the index and the times seen.
+ */
+export function legacyLoreDocument(parsed: LoreFileParse): LoreData {
+  return {
+    races: [...parsed.entries.entries()].map(([name, entry]) => {
+      const blows = [...entry.blowTimesSeen.entries()]
+        .filter(([, seen]) => seen > 0)
+        .map(([index, seen]) => ({ index, seen }));
+      const flags = listedFlags(entry.flags, RF_SIZE, RF_NAMES);
+      const spells = listedFlags(entry.spellFlags, rsfSize(), RSF_NAMES);
+      return {
+        name,
+        allKnown: entry.allKnown,
+        sights: entry.sights,
+        deaths: entry.deaths,
+        tkills: entry.tkills,
+        wake: entry.wake,
+        ignore: entry.ignore,
+        castInnate: entry.castInnate,
+        castSpell: entry.castSpell,
+        ...(blows.length === 0 ? {} : { blows }),
+        ...(flags.length === 0 ? {} : { flags }),
+        ...(spells.length === 0 ? {} : { spells }),
+      };
+    }),
+  };
+}
+
+/** A parsed document, in the shape applyLoreFile already consumes. */
+export function loreFileFromDocument(data: LoreData): LoreFileParse {
+  const entries = new Map<string, LoreFileEntry>();
+  for (const race of data.races) {
+    const flags = new FlagSet(RF_SIZE);
+    const spellFlags = new FlagSet(rsfSize());
+    if (race.allKnown) flagSetall(flags.bits);
+    if (race.flags !== undefined) grabFlags(race.flags.join(" | "), flags, RF_NAMES);
+    if (race.spells !== undefined) grabFlags(race.spells.join(" | "), spellFlags, RSF_NAMES);
+    const blowTimesSeen = new Map<number, number>();
+    for (const blow of race.blows ?? []) blowTimesSeen.set(blow.index, blow.seen);
+    entries.set(race.name, {
+      sights: race.sights,
+      deaths: race.deaths,
+      tkills: race.tkills,
+      wake: race.wake,
+      ignore: race.ignore,
+      castInnate: race.castInnate,
+      castSpell: race.castSpell,
+      allKnown: race.allKnown,
+      blowTimesSeen,
+      flags,
+      spellFlags,
+    });
+  }
+  return { entries, ignored: 0, bad: [] };
 }
 
 /** The fields lore.txt carries, for one race. Everything else stays as it was. */
@@ -371,5 +469,6 @@ export function applyLoreFile(
   return { applied, unknownRaces, ignored: parsed.ignored, bad: parsed.bad };
 }
 
-/** The name lore_save is called with (ui-game.c:1090). */
-export const LORE_FILE = "lore.txt";
+/** The name lore_save is called with. Older builds used lore.txt. */
+export const LORE_FILE = "lore.json";
+export const LEGACY_LORE_FILE = "lore.txt";

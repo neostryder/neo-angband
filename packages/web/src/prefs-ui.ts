@@ -1,44 +1,58 @@
-/** JSON preference export and import screens, plus the mod pref resource bridge. */
+/**
+ * The pref-file screens, ported from reference/src/ui-options.c (Angband
+ * 4.2.6): `get_pref_path` / `dump_pref_file` (L44-98),
+ * `do_cmd_pref_file_hack` (L1202-1241), the visuals menu (`do_cmd_visuals`
+ * and visual_menu_items[], L765-852) and the colours menu's own three rows
+ * (color_events[], L988-993).
+ *
+ * These were the rows the options menu used to excuse away. The blocker was
+ * never the browser: it was that the port had no user directory (now
+ * userdir.ts) and no runtime x_attr/x_char layer for the four "Save ...
+ * attr/chars" rows to serialise (now core's GlyphTable). The format itself -
+ * prefs_save, remove_old_dump and the dump_* writers - lives in core
+ * (visuals/prefs.ts) because the CLI needs it too; this module is only the
+ * prompts, the file layer and the messages.
+ *
+ * The file layer is the virtual ANGBAND_DIR_USER: upstream writes
+ * path_build(ANGBAND_DIR_USER, ftmp) and later READS the same path back, which
+ * is exactly what a Downloads-folder-only sink could not do.
+ */
 
-import { autoinscriptionFormat, entryRendererFormat, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
+  dumpAutoinscriptions,
+  dumpColors,
+  dumpFeatures,
+  dumpFlavors,
+  dumpMonsters,
+  dumpObjects,
+  dumpUiEntryRenderers,
   glyphTableSink,
-  objectShortName,
+  optionDump,
   playerSafeName,
   prefErrorMessage,
+  prefsSave,
   processPrefText,
   t,
-  tvalFindName,
 } from "@rpgm-tools/neo-angband-core";
 import { HostDir, host } from "@rpgm-tools/neo-angband-core";
 import type { DumpDeps, GlyphTable, PrefDeps, PrefSink } from "@rpgm-tools/neo-angband-core";
-import { loadColorPrefs } from "./colors";
-import { exportColorDocument } from "./colors";
-import { exportUserFile } from "./user-io";
-import {
-  clearVisualDocument,
-  exportVisualSection,
-  importPreferenceDocument,
-} from "./pref-documents";
 import { getCheck, getString, selectFromMenu, screenRegionSpec } from "./overlay";
-import { pickTextFile } from "./userdir";
 import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import { argForceName } from "./launch";
 import type { MenuItem } from "./overlay";
 import type { GridPointerInput, GridSurface } from "./term";
 import { UI_TEXT } from "./ui-colors";
-import { applyStoredSoundMappings } from "./sound";
 
 /** What the pref screens need from the running game. */
 export interface PrefsUiCtx {
   term: GridSurface & GridPointerInput;
   /** msg() + EVENT_MESSAGE_FLUSH. */
   say: (text: string) => void;
-  /** Player name used for the default JSON export filenames. */
+  /** player->full_name, for the default `<name>.prf` filename. */
   playerName: () => string;
   /** The live x_attr/x_char tables the visuals dumps serialise. */
   glyphs: GlyphTable;
-  /** Registries a visual document or mod pref resource resolves names against. */
+  /** Registries a pref line resolves names against. */
   prefDeps: PrefDeps;
   /** Gamedata + live table a dump writer walks. */
   dumpDeps: () => DumpDeps;
@@ -46,14 +60,26 @@ export interface PrefsUiCtx {
   extraSink?: Partial<PrefSink>;
   /** Repaint after a load changed colours (Term_xtra REACT + redraw_all). */
   afterLoad?: () => void;
-  /** The current subwindow layout as a JSON document, including mod blocks. */
-  layoutDocument?: () => string;
-  /** Apply a layout document the player imported. A bad document does nothing. */
-  applyLayoutDocument?: (text: string) => void;
+  /**
+   * neo-subwindows (#238): the web shell's BSP tiling tree, as a
+   * `neo-subwindows:<json>` pref line. Core's optionDump() stays upstream-only
+   * (a bare "# Options" banner) because the tiling tree is a web-shell concept
+   * with no core representation; dumpWindowSettings below appends this text
+   * to that banner instead of core growing a web dependency.
+   */
+  dumpSubwindowLayout?: () => string;
+  /**
+   * neo-angband#262: every `mod-block:<name>:<payload>` line a mod has
+   * registered via `ctx.subwindows.registerPrefBlock`, appended to the same
+   * "Dump window settings" banner alongside dumpSubwindowLayout's own line -
+   * kept separate from it so a malformed or unrecognised mod block can never
+   * touch core's own tiling state either on dump or on a later load.
+   */
+  dumpModBlocks?: () => string;
 }
 
 /**
- * The JSON export file layer, over whatever host is installed.
+ * prefs_save's file layer, over whatever host is installed.
  *
  * This goes through core's HostIo rather than straight at the virtual user
  * directory so the pref screens are host-agnostic: on the desktop build the
@@ -62,19 +88,23 @@ export interface PrefsUiCtx {
  * front end must not be the thing that decides what a file IS.
  */
 const IO = {
+  read: (path: string): string | null => host().read(HostDir.USER, path),
   write: (path: string, text: string): boolean =>
     host().write(HostDir.USER, path, text) === "ok",
 };
 
 /**
- * A full-screen JSON export prompt with a filesystem-safe default name.
+ * get_pref_path (ui-options.c L44-79): a full-screen prompt showing
+ * "<what> to a pref file" and a "File: " row, defaulting to the
+ * filesystem-safe player name with `.prf` appended. Returns the filename, or
+ * null on ESC.
  *
  * Under arg_force_name (L65-69) the name is not typed: the host has pinned it,
  * so the same default is offered as "Confirm writing to %s? " and the player
  * either takes it or cancels. Reachable via main.c's `-f`, so only on a front
  * end with a command line - the web build has no argv and always asks.
  */
-async function getJsonPath(ctx: PrefsUiCtx, what: string, fileName: string, row: number): Promise<string | null> {
+async function getPrefPath(ctx: PrefsUiCtx, what: string, row: number): Promise<string | null> {
   const { term: host } = ctx;
   const handle = pushRegion(screenRegionSpec(), host.size());
   const term = regionSurface(host, handle.cells);
@@ -83,8 +113,9 @@ async function getJsonPath(ctx: PrefsUiCtx, what: string, fileName: string, row:
   /* prt("", row - 1, 0) (ui-options.c:53) is an ERASE of that row; print("") drew
    * nothing at all, so the call was a no-op. */
   if (row > 0) term.prt(0, row - 1, "", UI_TEXT);
-  term.prt(0, row, t("prefsUi.pathPrompt", "{what} to a JSON file", { what }), UI_TEXT);
-  const ftmp = fileName;
+  term.prt(0, row, t("prefsUi.pathPrompt", "{what} to a pref file", { what }), UI_TEXT); // prt (ui-options.c:55)
+  /* player_safe_name(..., true) strips the Roman-numeral suffix (player.c:389). */
+  const ftmp = `${playerSafeName(ctx.playerName(), 80, true)}.prf`;
   if (argForceName()) {
     return (await getCheck(term, t("prefsUi.confirmWrite", "Confirm writing to {ftmp}? ", { ftmp })))
       ? ftmp
@@ -92,17 +123,14 @@ async function getJsonPath(ctx: PrefsUiCtx, what: string, fileName: string, row:
   }
   /* prt("File: ", row + 2, 0) then askfor_aux(ftmp, sizeof ftmp) - which draws
    * where that prt left the cursor, so the answer echoes on row + 2. */
-  const requested = await getString(term, t("prefsUi.fileLabel", "File: "), ftmp, 80, row + 2);
-  if (requested === null) return null;
-  if (requested.toLowerCase().endsWith(".json")) return requested;
-  return `${requested.replace(/\.prf$/iu, "")}.json`;
+  return getString(term, t("prefsUi.fileLabel", "File: "), ftmp, 80, row + 2);
   } finally {
     popRegion(handle);
   }
 }
 
 /**
- * Ask for the JSON path, save, and report.
+ * dump_pref_file (ui-options.c L81-98): ask for the path, save, and report.
  * The message names the title's text AFTER its first space
  * (`strstr(title, " ") + 1`), so "Save monster attr/chars" reports
  * "Saved monster attr/chars.".
@@ -116,27 +144,77 @@ async function getJsonPath(ctx: PrefsUiCtx, what: string, fileName: string, row:
  * own fragility carried over, not a new one, and it stays undocumented risk
  * rather than a rewrite until this function's shape can move.
  */
-function preferenceFileName(ctx: PrefsUiCtx, suffix: string): string {
-  return `${playerSafeName(ctx.playerName(), 80, true)}-${suffix}.json`;
-}
-
 export async function dumpPrefFile(
   ctx: PrefsUiCtx,
   dump: () => string,
   title: string,
   row: number,
-  fileName?: string,
 ): Promise<void> {
-  const name = await getJsonPath(ctx, title, fileName ?? preferenceFileName(ctx, "preferences"), row);
+  const name = await getPrefPath(ctx, title, row);
   if (name === null) return;
   const shortTitle = title.slice(title.indexOf(" ") + 1);
-  const text = dump();
-  if (IO.write(name, text)) {
-    exportUserFile(name, text, "application/json");
+  if (prefsSave(IO, name, dump, title)) {
     ctx.say(t("prefsUi.saved", "Saved {shortTitle}.", { shortTitle }));
   } else {
     ctx.say(t("prefsUi.saveFailed", "Failed to save {shortTitle}.", { shortTitle }));
   }
+}
+
+/**
+ * process_pref_file_named (ui-prefs.c L1212-1262) against the user directory:
+ * read, parse, print every parse error, and report a missing file. Returns
+ * false when the file is absent (upstream's PARSE_ERROR_INTERNAL, L1219) or one
+ * of ITS OWN lines failed, which is what do_cmd_pref_file_hack turns into
+ * "Failed to load '%s'!". A line that failed inside a `%:` include does not
+ * make it false - see the two comments in the body, and #275.
+ *
+ * DIVERGENCE (measured): upstream's process_pref_file also searches
+ * ANGBAND_DIR_CUSTOMIZE and the active graphics mode's directory, then layers
+ * the user copy on top (L1264-1349). The port ships no lib/customize tree - a
+ * default pref file there would be build data, and the port's equivalents
+ * (default keymaps, the bundled graf prefs) are loaded by their own subsystems -
+ * so only the user location is searched here.
+ */
+export function processPrefFile(
+  ctx: PrefsUiCtx,
+  name: string,
+  quiet = false,
+): boolean {
+  const io = host();
+  const text = io.read(HostDir.USER, name);
+  if (text === null) {
+    if (!quiet) {
+      ctx.say(
+        t("prefsUi.cannotOpen", "Cannot open ''{path}''.", {
+          path: io.displayPath(HostDir.USER, name),
+        }),
+      );
+    }
+    return false;
+  }
+  const sink = glyphTableSink(ctx.glyphs, {
+    /* The nested `%:file` include resolves against the same directory. */
+    loadFile: (n) => io.read(HostDir.USER, n),
+    ...ctx.extraSink,
+  });
+  const errors = processPrefText(text, ctx.prefDeps, sink);
+  /* Both `%:`-include divergences, closed together (#275). An error raised
+   * inside an included file is named by the INCLUDE's path, because upstream's
+   * print_error runs inside the nested process_pref_file_named; and the file's
+   * own name is what the display path is built from, so the include's name is
+   * resolved the same way rather than printed raw. */
+  for (const e of errors) {
+    const at = io.displayPath(HostDir.USER, e.fromInclude ?? name);
+    ctx.say(prefErrorMessage(at, e.fromInclude === undefined ? e : { ...e, fromInclude: at }));
+  }
+  ctx.afterLoad?.();
+  /* AND AN INCLUDE'S ERROR DOES NOT FAIL THIS FILE. `parse_prefs_load` discards
+   * the nested read - `(void)process_pref_file(file, true, d->user)`, ui-prefs.c
+   * L438 - and returns PARSE_ERROR_NONE, so `process_pref_file_named`'s
+   * `return e == PARSE_ERROR_NONE` (L1240) is about this file's OWN lines. The
+   * errors are still collected and still said above; only the failure changes,
+   * which is the half that is easy to "fix" by throwing them away. */
+  return !errors.some((e) => e.fromInclude === undefined);
 }
 
 /**
@@ -235,7 +313,8 @@ export interface AppliedPrefText {
  * Apply pref-file TEXT that did not come from the user directory - a mod's
  * `prefs` resource (MOD_REACH gap 7).
  *
- * The core parser still handles mod resources and tile mappings.
+ * The same grammar, the same sink and the same deps as `processPrefFile`: one
+ * parse loop, which is the rule this file has held since the parser was ported.
  * What differs is where the bytes came from and what happens to the errors -
  * they are RETURNED rather than said, because these are applied during boot,
  * before there is a message line to say them on, and they belong on the
@@ -258,7 +337,7 @@ export interface AppliedPrefText {
  * resource whose `resolve` is null before it gets this far.
  *
  * An include whose name does not resolve is still a quiet skip, because that is
- * what upstream does. Errors
+ * what upstream does and what `processPrefFile` does two functions up. Errors
  * raised by the LINES of an include are returned like any other, named by the
  * include rather than by this file - `prefErrorMessage` reads `fromInclude`
  * (#275).
@@ -286,33 +365,37 @@ export async function applyPrefText(
   return { faults: errors.map((e) => prefErrorMessage(source, e)), includes };
 }
 
-/** Pick a JSON preferences file and apply the document it names. */
-export async function importPreferences(ctx: PrefsUiCtx): Promise<void> {
-  let picked: Awaited<ReturnType<typeof pickTextFile>>;
+/**
+ * do_cmd_pref_file_hack (ui-options.c L1202-1241): the "Command: Load a user
+ * pref file" screen, its "File: " prompt, and the two outcome messages.
+ *
+ * arg_force_name (L1222-1225) replaces the prompt with a confirmation here too,
+ * for the same reason: the host chose the name.
+ */
+export async function loadPrefFileHack(ctx: PrefsUiCtx, row: number): Promise<void> {
+  const { term: host } = ctx;
+  const handle = pushRegion(screenRegionSpec(), host.size());
+  const term = regionSurface(host, handle.cells);
   try {
-    picked = await pickTextFile(".json,application/json");
-  } catch {
-    ctx.say(t("prefsUi.loadFailed", "Failed to load ''{name}''!", { name: "preferences.json" }));
-    return;
+  term.clear();
+  /* prt("", row - 1, 0) (ui-options.c:1211) - an erase, not a no-op print(""). */
+  if (row > 0) term.prt(0, row - 1, "", UI_TEXT);
+  term.prt(0, row, t("prefsUi.loadTitle", "Command: Load a user pref file"), UI_TEXT); // prt (ui-options.c:1213)
+  const ftmp = `${playerSafeName(ctx.playerName(), 80, true)}.prf`;
+  const name = argForceName()
+    ? (await getCheck(term, t("prefsUi.confirmLoad", "Confirm loading {ftmp}? ", { ftmp })))
+      ? ftmp
+      : null
+    : await getString(term, t("prefsUi.fileLabel", "File: "), ftmp, 80, row + 2);
+  if (name === null) return;
+  if (!processPrefFile(ctx, name)) {
+    ctx.say(t("prefsUi.loadFailed", "Failed to load ''{name}''!", { name }));
+  } else {
+    ctx.say(t("prefsUi.loaded", "Loaded ''{name}''.", { name }));
   }
-  if (picked === null) return;
-  if ("tooLarge" in picked) {
-    ctx.say(t("prefsUi.loadFailed", "Failed to load ''{name}''!", { name: picked.name }));
-    return;
+  } finally {
+    popRegion(handle);
   }
-  const result = importPreferenceDocument(picked.text, {
-    glyphs: ctx.glyphs,
-    deps: ctx.prefDeps,
-    ...(ctx.extraSink ? { extra: ctx.extraSink } : {}),
-    applyLayout: () => ctx.applyLayoutDocument?.(picked.text),
-    applyColors: () => {
-      loadColorPrefs();
-      ctx.afterLoad?.();
-    },
-    applySounds: applyStoredSoundMappings,
-  });
-  if (result === "applied") ctx.say(t("prefsUi.loaded", "Loaded ''{name}''.", { name: picked.name }));
-  else ctx.say(t("prefsUi.loadFailed", "Failed to load ''{name}''!", { name: picked.name }));
 }
 
 /**
@@ -327,11 +410,11 @@ export async function importPreferences(ctx: PrefsUiCtx): Promise<void> {
  */
 function visualRows(): readonly string[] {
   return [
-    t("prefsUi.visuals.loadPrefFile", "Import visual graphics"),
-    t("prefsUi.visuals.saveMonster", "Export monster graphics"),
-    t("prefsUi.visuals.saveObject", "Export object graphics"),
-    t("prefsUi.visuals.saveFeature", "Export terrain graphics"),
-    t("prefsUi.visuals.saveFlavor", "Export flavor graphics"),
+    t("prefsUi.visuals.loadPrefFile", "Load a user pref file"),
+    t("prefsUi.visuals.saveMonster", "Save monster attr/chars"),
+    t("prefsUi.visuals.saveObject", "Save object attr/chars"),
+    t("prefsUi.visuals.saveFeature", "Save feature attr/chars"),
+    t("prefsUi.visuals.saveFlavor", "Save flavor attr/chars"),
     t("prefsUi.visuals.reset", "Reset visuals"),
   ];
 }
@@ -354,26 +437,26 @@ export async function runVisualsMenu(ctx: PrefsUiCtx, title: string): Promise<vo
     const row = rows[idx];
     switch (idx) {
       case 0:
-        await importPreferences(ctx);
+        await loadPrefFileHack(ctx, 15);
         break;
       case 1:
-        await dumpPrefFile(ctx, () => exportVisualSection(ctx.glyphs, ctx.dumpDeps(), "monsters"), row!, 15, preferenceFileName(ctx, "monsters"));
+        await dumpPrefFile(ctx, () => dumpMonsters(ctx.dumpDeps()), row!, 15);
         break;
       case 2:
-        await dumpPrefFile(ctx, () => exportVisualSection(ctx.glyphs, ctx.dumpDeps(), "objects"), row!, 15, preferenceFileName(ctx, "objects"));
+        await dumpPrefFile(ctx, () => dumpObjects(ctx.dumpDeps()), row!, 15);
         break;
       case 3:
-        await dumpPrefFile(ctx, () => exportVisualSection(ctx.glyphs, ctx.dumpDeps(), "features"), row!, 15, preferenceFileName(ctx, "terrain"));
+        await dumpPrefFile(ctx, () => dumpFeatures(ctx.dumpDeps()), row!, 15);
         break;
       case 4:
-        await dumpPrefFile(ctx, () => exportVisualSection(ctx.glyphs, ctx.dumpDeps(), "flavors"), row!, 15, preferenceFileName(ctx, "flavors"));
+        await dumpPrefFile(ctx, () => dumpFlavors(ctx.dumpDeps()), row!, 15);
         break;
       case 5:
         /* visuals_reset (L806-813): reset_visuals(true) then the message. The
-         * tile pipeline keeps its own map, so this only clears the ASCII
-         * overrides and the document that would put them back next launch. */
+         * `true` half re-loads the active graphics pref, which in this port is
+         * the tile pipeline's own job and already survives the reset (the
+         * TileMap is a separate table). */
         ctx.glyphs.reset();
-        clearVisualDocument();
         ctx.say(t("prefsUi.visuals.resetDone", "Visual attr/char tables reset."));
         ctx.afterLoad?.();
         break;
@@ -391,9 +474,9 @@ export async function runColorsMenu(
   title: string,
   modify: () => Promise<void>,
 ): Promise<void> {
-  const dumpColorsLabel = t("prefsUi.colors.dumpColors", "Export colors");
+  const dumpColorsLabel = t("prefsUi.colors.dumpColors", "Dump colors");
   const items: MenuItem[] = [
-    { label: t("prefsUi.colors.loadPrefFile", "Import colors") },
+    { label: t("prefsUi.colors.loadPrefFile", "Load a user pref file") },
     { label: dumpColorsLabel },
     { label: t("prefsUi.colors.modify", "Modify colors") },
   ];
@@ -407,78 +490,48 @@ export async function runColorsMenu(
     );
     if (idx === null) return;
     if (idx === 0) {
-      await importPreferences(ctx);
+      /* colors_pref_load (L859-869): the load, then a full redraw. */
+      await loadPrefFileHack(ctx, 8);
       ctx.afterLoad?.();
     } else if (idx === 1) {
-      await dumpPrefFile(
-        ctx,
-        () => exportColorDocument(),
-        dumpColorsLabel,
-        15,
-        preferenceFileName(ctx, "colors"),
-      );
+      await dumpPrefFile(ctx, () => dumpColors(), dumpColorsLabel, 15);
     } else {
       await modify();
     }
   }
 }
 
-/** The subwindow layout document, downloaded as JSON. */
+/** do_dump_options (ui-options.c L1247-1251): the subwindow flag dump. */
 export function dumpWindowSettings(ctx: PrefsUiCtx): Promise<void> {
   return dumpPrefFile(
     ctx,
-    () => ctx.layoutDocument?.() ?? "",
-    t("prefsUi.dumpWindowSettings", "Export subwindow layout"),
+    () => optionDump() + (ctx.dumpSubwindowLayout?.() ?? "") + (ctx.dumpModBlocks?.() ?? ""),
+    t("prefsUi.dumpWindowSettings", "Dump window settings"),
     20,
-    preferenceFileName(ctx, "subwindows"),
   );
 }
 
-/** Aware autoinscriptions as a JSON document. */
+/** do_dump_autoinsc (ui-options.c L1254-1258). */
 export function dumpAutoinscriptionsRow(ctx: PrefsUiCtx): Promise<void> {
   return dumpPrefFile(
     ctx,
-    () => autoinscriptionDocument(ctx),
-    t("prefsUi.dumpAutoinscriptions", "Export autoinscriptions"),
+    () => dumpAutoinscriptions(ctx.dumpDeps()),
+    t("prefsUi.dumpAutoinscriptions", "Dump autoinscriptions"),
     20,
-    preferenceFileName(ctx, "autoinscriptions"),
   );
 }
 
-/** Character-screen renderer rows as a JSON document. */
+/** do_dump_charscreen_opt (ui-options.c L1261-1265). */
 export function dumpCharScreenOptions(ctx: PrefsUiCtx): Promise<void> {
   return dumpPrefFile(
     ctx,
-    () => entryRendererDocument(ctx),
-    t("prefsUi.dumpCharScreenOptions", "Export character screen options"),
+    () => dumpUiEntryRenderers(ctx.dumpDeps()),
+    t("prefsUi.dumpCharScreenOptions", "Dump char screen options"),
     20,
-    preferenceFileName(ctx, "character-screen"),
   );
 }
 
-/** The '=' -> 'p' row: pick a JSON preferences file and apply it. */
+/** options_load_pref_file (ui-options.c L1268-1272): the '=' -> 'p' row. */
 export function loadUserPrefFileRow(ctx: PrefsUiCtx): Promise<void> {
-  return importPreferences(ctx);
-}
-
-function autoinscriptionDocument(ctx: PrefsUiCtx): string {
-  const notes = [];
-  const deps = ctx.dumpDeps();
-  for (const kind of deps.objects.kinds) {
-    if (!kind.name || !kind.tval) continue;
-    const text = deps.autoinscription?.(kind.kidx) ?? null;
-    if (text === null) continue;
-    notes.push({ tval: tvalFindName(kind.tval), sval: objectShortName(kind.name), text });
-  }
-  return serializeDocument(autoinscriptionFormat, { notes });
-}
-
-function entryRendererDocument(ctx: PrefsUiCtx): string {
-  const renderers = (ctx.dumpDeps().entryRenderers ?? []).map((row) => ({
-    name: row.name,
-    colors: row.colors,
-    labelColors: row.labelColors,
-    symbols: row.symbols,
-  }));
-  return serializeDocument(entryRendererFormat, { renderers });
+  return loadPrefFileHack(ctx, 20);
 }

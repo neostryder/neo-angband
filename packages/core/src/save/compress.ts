@@ -20,8 +20,8 @@
  * (the chunk grids and the known-map arrays are enormously repetitive), turning
  * 521 KiB into 22 KiB and the ceiling from ~9 characters into hundreds.
  *
- * WHY A SEAM RATHER THAN A COMPRESSOR IN CORE. `packages/core` has zero runtime
- * dependencies and stays environment-neutral, and the two things that can
+ * WHY A SEAM RATHER THAN A COMPRESSOR IN CORE. The engine stays
+ * environment-neutral, and the two things that can
  * actually deflate bytes are split by environment: Node has `zlib.gzipSync`,
  * browsers have `CompressionStream` - which is ASYNC, and the save path is
  * synchronous all the way down because `z-file.c` is (see host/io.ts). So core

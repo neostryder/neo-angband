@@ -37,6 +37,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@rpgm-tools/neo-angband-mod-sdk": "workspace:*",
     "pngjs": "^7.0.0"
   },
   "devDependencies": {

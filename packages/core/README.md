@@ -1,7 +1,6 @@
 # @rpgm-tools/neo-angband-core
 
-The headless game engine behind [Neo Angband](https://github.com/neostryder/neo-angband),
-a TypeScript port of [Angband](https://angband.github.io/angband/) 4.2.6.
+The headless game engine behind [Neo Angband](https://github.com/neostryder/neo-angband), a faithful but moddable port of [Angband](https://angband.github.io/angband/) 4.2.6, meant to be playable almost anywhere.
 
 No renderer, no input, no DOM, no filesystem: rules, world, entities, effects,
 generation and the save format, as plain modules. Runs in Node and in a browser.

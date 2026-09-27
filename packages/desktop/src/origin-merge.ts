@@ -22,6 +22,31 @@
  * invented; and only the game's own keys are touched.
  */
 
+import {
+  ACTIVE_STORAGE_KEY,
+  activeSlotFormat,
+  activeSlotFromLegacy,
+  characterFromLegacy,
+  DEATHS_STORAGE_KEY,
+  deathRecordsFormat,
+  deathsFromLegacy,
+  epochFromTimestamp,
+  LEGACY_ACTIVE_STORAGE_KEY,
+  LEGACY_DEATHS_STORAGE_KEY,
+  LEGACY_ORPHAN_STORAGE_KEY,
+  LEGACY_ROSTER_STORAGE_KEY,
+  ORPHAN_STORAGE_KEY,
+  orphanSavesFormat,
+  orphansFromLegacy,
+  parseDocument,
+  ROSTER_STORAGE_KEY,
+  rosterFormat,
+  rosterFromLegacy,
+  serializeDocument,
+  type CharacterRecord,
+  type FormatDefinition,
+} from "@rpgm-tools/neo-angband-mod-sdk";
+
 /** One key/value pair set, as read from (or to be written to) an origin. */
 export type OriginEntries = Readonly<Record<string, string>>;
 
@@ -40,8 +65,14 @@ interface Meta {
   turn?: number;
 }
 
-export const ROSTER_KEY = "neo-angband-roster";
-export const ACTIVE_KEY = "neo-angband-active";
+/** Previous roster key. Abandoned origins still store a bare array under it. */
+export const ROSTER_KEY = LEGACY_ROSTER_STORAGE_KEY;
+/** Previous active-slot key. The value is a raw slot id. */
+export const ACTIVE_KEY = LEGACY_ACTIVE_STORAGE_KEY;
+/** Roster document written by a merge. */
+export const ROSTER_DOCUMENT_KEY = ROSTER_STORAGE_KEY;
+/** Active-slot document written by a merge. */
+export const ACTIVE_DOCUMENT_KEY = ACTIVE_STORAGE_KEY;
 export const SLOT_PREFIX = "neo-angband-save:";
 
 /**
@@ -87,6 +118,8 @@ export interface MergePlan {
   readonly deaths: readonly string[];
   /** Characters this brings back, for the report the player is shown. */
   readonly recovered: readonly RecoveredChar[];
+  /** A storage document cannot be read, so source origins must stay eligible. */
+  readonly blocked: boolean;
   /**
    * Living characters left where they were because they had never been played -
    * births abandoned at turn 0. Reported rather than hidden: their bytes are NOT
@@ -134,17 +167,43 @@ export function handledPorts(
   return [...all];
 }
 
-function parseRoster(raw: string | undefined): Meta[] {
+function documentToMeta(row: CharacterRecord): Meta {
+  const { updatedAt, ...rest } = row;
+  return { ...rest, updatedAt: epochFromTimestamp(updatedAt) };
+}
+
+function legacyRows(raw: string | undefined): Meta[] {
   if (raw === undefined) return [];
-  try {
-    const list = JSON.parse(raw) as unknown;
-    if (!Array.isArray(list)) return [];
-    return list.filter(
-      (m): m is Meta => typeof m === "object" && m !== null && typeof (m as Meta).id === "string",
-    );
-  } catch {
-    return [];
+  const roster = rosterFromLegacy(raw);
+  return roster ? roster.characters.map(documentToMeta) : [];
+}
+
+/** Rows from the document key when it parses, otherwise from the previous array. */
+function rosterRows(entries: OriginEntries): Meta[] {
+  const current = entries[ROSTER_DOCUMENT_KEY];
+  if (current !== undefined) {
+    const parsed = parseDocument(current, rosterFormat);
+    return parsed.ok ? parsed.data.characters.map(documentToMeta) : [];
   }
+  return legacyRows(entries[ROSTER_KEY]);
+}
+
+/** The roster document is present and this build cannot read it. */
+function stateBlocked(entries: OriginEntries): boolean {
+  const documents = [
+    [ROSTER_STORAGE_KEY, LEGACY_ROSTER_STORAGE_KEY, rosterFormat, rosterFromLegacy],
+    [ACTIVE_STORAGE_KEY, LEGACY_ACTIVE_STORAGE_KEY, activeSlotFormat, activeSlotFromLegacy],
+    [DEATHS_STORAGE_KEY, LEGACY_DEATHS_STORAGE_KEY, deathRecordsFormat, deathsFromLegacy],
+    [ORPHAN_STORAGE_KEY, LEGACY_ORPHAN_STORAGE_KEY, orphanSavesFormat, orphansFromLegacy],
+  ] as const;
+  for (const [key, oldKey, format, fromLegacy] of documents) {
+    if (entries[key] !== undefined) {
+      if (!parseDocument(entries[key], format.format).ok) return true;
+    } else if (entries[oldKey] !== undefined && fromLegacy(entries[oldKey]) === null) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function stamp(m: Meta): number {
@@ -193,10 +252,7 @@ export function buriedIds(
    * planOriginMerge. */
   const buried = new Map<string, string | null>();
   for (const id of knownDead) if (!buried.has(id)) buried.set(id, null);
-  for (const roster of [
-    parseRoster(target[ROSTER_KEY]),
-    ...sources.map((s) => parseRoster(s.entries[ROSTER_KEY])),
-  ]) {
+  for (const roster of [rosterRows(target), ...sources.map((s) => rosterRows(s.entries))]) {
     /* `=== false` and nothing looser. A row where `alive` is missing, or is the
      * string "false", or 0, or null, is not a tombstone - the game writes a
      * boolean, and guessing at anything else would delete a living character on
@@ -229,7 +285,18 @@ export function planOriginMerge(
   /* The target's own characters are the baseline and are never displaced by an
    * older copy of themselves. */
   const merged = new Map<string, Meta>();
-  for (const m of parseRoster(target[ROSTER_KEY])) merged.set(m.id, m);
+  if (stateBlocked(target) || sources.some((source) => stateBlocked(source.entries))) {
+    return {
+      writes: {},
+      removes: [],
+      deaths: [...buriedIds(target, sources, knownDead).keys()],
+      recovered: [],
+      skippedUnplayed: [],
+      blocked: true,
+    };
+  }
+
+  for (const m of rosterRows(target)) merged.set(m.id, m);
 
   /* Every id a tombstone anywhere settles, decided before a single byte is
    * imported or kept. See buriedIds. */
@@ -280,7 +347,7 @@ export function planOriginMerge(
   }
 
   for (const src of sources) {
-    for (const m of parseRoster(src.entries[ROSTER_KEY])) {
+    for (const m of rosterRows(src.entries)) {
       const isBuried = buried.has(m.id);
       const existing = merged.get(m.id);
       /* A buried id the target already knows about needs nothing from any source:
@@ -324,42 +391,128 @@ export function planOriginMerge(
      * so settings the player has since chosen in the new origin stand. */
     for (const [key, value] of Object.entries(src.entries)) {
       if (!isOwned(key)) continue;
-      if (key === ROSTER_KEY || key.startsWith(SLOT_PREFIX)) continue;
+      if (
+        key === ROSTER_KEY ||
+        key === ROSTER_DOCUMENT_KEY ||
+        key === ACTIVE_KEY ||
+        key === ACTIVE_DOCUMENT_KEY ||
+        key === LEGACY_DEATHS_STORAGE_KEY ||
+        key === DEATHS_STORAGE_KEY ||
+        key === LEGACY_ORPHAN_STORAGE_KEY ||
+        key === ORPHAN_STORAGE_KEY ||
+        key.startsWith(SLOT_PREFIX)
+      ) {
+        continue;
+      }
       if (key in target || key in writes) continue;
       writes[key] = value;
     }
+    carryRecords(target, writes, src.entries, DEATHS_STORAGE_KEY, LEGACY_DEATHS_STORAGE_KEY, deathRecordsFormat, deathsFromLegacy);
+    carryRecords(target, writes, src.entries, ORPHAN_STORAGE_KEY, LEGACY_ORPHAN_STORAGE_KEY, orphanSavesFormat, orphansFromLegacy);
   }
 
+  const carried = carriedActiveId(target, sources);
+  const activeUseful = carried !== null && merged.has(carried) && !buried.has(carried);
   if (
     recovered.length === 0 &&
     Object.keys(writes).length === 0 &&
     removes.length === 0 &&
-    !flipped
+    !flipped &&
+    !activeUseful
   ) {
-    return { writes: {}, removes: [], deaths: [...buried.keys()], recovered: [], skippedUnplayed };
+    return {
+      writes: {},
+      removes: [],
+      deaths: [...buried.keys()],
+      recovered: [],
+      skippedUnplayed,
+      blocked: false,
+    };
   }
 
   /* Only rewrite the roster when it actually gained something - or when a burial
    * changed a row in it, which is a change the id set cannot see. */
-  const targetIds = new Set(parseRoster(target[ROSTER_KEY]).map((m) => m.id));
+  const targetIds = new Set(rosterRows(target).map((m) => m.id));
   const changed =
     merged.size !== targetIds.size || [...merged.keys()].some((id) => !targetIds.has(id));
   if (changed || recovered.length > 0 || removes.length > 0 || flipped) {
-    writes[ROSTER_KEY] = JSON.stringify([...merged.values()]);
+    const characters = [];
+    for (const row of merged.values()) {
+      const record = characterFromLegacy(row);
+      if (record) characters.push(record);
+    }
+    writes[ROSTER_DOCUMENT_KEY] = serializeDocument(rosterFormat, { characters }, { compact: true });
   }
 
   /* An active pointer is only useful if it names a character that now exists, and
    * never a buried one: resuming would load bytes that are about to be gone. */
-  const active = writes[ACTIVE_KEY];
-  if (active !== undefined && (!merged.has(active) || buried.has(active))) {
-    delete writes[ACTIVE_KEY];
+  if (activeUseful && carried !== null) {
+    writes[ACTIVE_DOCUMENT_KEY] = serializeDocument(
+      activeSlotFormat,
+      { activeSlotId: carried },
+      { compact: true },
+    );
   }
-  /* Removed rather than blanked: getActiveId reads the raw item, so "" would be a
-   * falsy-but-present pointer and setActiveId(null) itself removes the key. */
-  const targetActive = target[ACTIVE_KEY];
-  if (targetActive !== undefined && buried.has(targetActive) && !removes.includes(ACTIVE_KEY)) {
-    removes.push(ACTIVE_KEY);
+  /* Removed rather than blanked: getActiveId treats a missing key as no offer. */
+  const targetActive = readActiveId(target);
+  if (targetActive !== null && buried.has(targetActive)) {
+    if (target[ACTIVE_DOCUMENT_KEY] !== undefined && !removes.includes(ACTIVE_DOCUMENT_KEY)) {
+      removes.push(ACTIVE_DOCUMENT_KEY);
+    }
+    if (target[ACTIVE_KEY] !== undefined && !removes.includes(ACTIVE_KEY)) {
+      removes.push(ACTIVE_KEY);
+    }
   }
 
-  return { writes, removes, deaths: [...buried.keys()], recovered, skippedUnplayed };
+  return { writes, removes, deaths: [...buried.keys()], recovered, skippedUnplayed, blocked: false };
+}
+
+function readActiveId(entries: OriginEntries): string | null {
+  const current = entries[ACTIVE_DOCUMENT_KEY];
+  if (current !== undefined) {
+    const parsed = parseDocument(current, activeSlotFormat);
+    return parsed.ok ? parsed.data.activeSlotId : null;
+  }
+  const legacy = entries[ACTIVE_KEY];
+  if (legacy === undefined) return null;
+  const slot = activeSlotFromLegacy(legacy);
+  return slot?.activeSlotId ?? null;
+}
+
+/**
+ * The active id to copy in, when the target has none. The target's own pointer
+ * is left for the game to convert; this only fills a target that has neither key.
+ */
+function carriedActiveId(target: OriginEntries, sources: readonly OriginSnapshot[]): string | null {
+  if (target[ACTIVE_DOCUMENT_KEY] !== undefined || target[ACTIVE_KEY] !== undefined) return null;
+  for (const src of sources) {
+    const id = readActiveId(src.entries);
+    if (id !== null) return id;
+  }
+  return null;
+}
+
+function carryRecords<T>(
+  target: OriginEntries,
+  writes: Record<string, string>,
+  source: OriginEntries,
+  key: string,
+  legacyKey: string,
+  format: FormatDefinition<T>,
+  fromLegacy: (raw: string) => T | null,
+): void {
+  if (key in target || key in writes || legacyKey in target) return;
+  const current = source[key];
+  if (current !== undefined) {
+    const parsed = parseDocument(current, format);
+    if (parsed.ok) {
+      writes[key] = serializeDocument(format, parsed.data, { compact: true });
+    }
+    return;
+  }
+  const legacy = source[legacyKey];
+  if (legacy === undefined) return;
+  const data = fromLegacy(legacy);
+  if (data === null) return;
+  writes[key] = serializeDocument(format, data, { compact: true });
 }

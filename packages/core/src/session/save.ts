@@ -136,6 +136,12 @@ import {
 } from "../save/integrity.js";
 import type { SaveIntegrity } from "../save/integrity.js";
 import { applyCodec, findCodec, stripCodec } from "../save/compress.js";
+import {
+  isSavedGameHeader,
+  parseDocument,
+  savedGameFormat,
+  serializeDocument,
+} from "@rpgm-tools/neo-angband-mod-sdk";
 import type { SaveCodec } from "../save/compress.js";
 import type { ContentIdResolver } from "../mod/ids.js";
 import {
@@ -3099,14 +3105,18 @@ export function deserializeLevelCache(
  * ORDER: JSON -> codec -> stamp. The digest therefore covers the bytes that are
  * actually stored, and the trailer stays findable without running a decompressor
  * first - which matters because an unknown codec must still be diagnosable.
- * Passing no codec writes the bare JSON every earlier build wrote.
+ * Passing no codec writes the uncompressed document every earlier build wrote,
+ * now inside the saved-game envelope. A bare SavedGame from an older build
+ * still loads; the next save writes the envelope.
  */
 export function encodeSavedGame(
   save: SavedGame,
   provider: SaveIntegrity = fnv1aIntegrity,
   codec?: SaveCodec,
 ): Uint8Array {
-  const json = new TextEncoder().encode(JSON.stringify(save));
+  const json = new TextEncoder().encode(
+    serializeDocument(savedGameFormat.format, save, { compact: true }),
+  );
   return stampSavefile(codec ? applyCodec(json, codec) : json, provider);
 }
 
@@ -3128,6 +3138,11 @@ export interface DecodedSave {
   unknownCodec?: string;
   /** The save payload did not decompress, parse, or meet the minimum save shape. */
   malformed?: boolean;
+  /**
+   * The envelope names a schema version this build does not read. The bytes
+   * are a newer save, not a damaged one, and must be left in place.
+   */
+  futureSchema?: boolean;
 }
 
 /**
@@ -3168,6 +3183,21 @@ export function decodeSavedGame(
   } catch {
     return { ...base, save: null, malformed: true };
   }
+  if (isRecord(raw) && typeof raw["format"] === "string") {
+    if (raw["format"] !== savedGameFormat.format) {
+      return { ...base, save: null, malformed: true };
+    }
+    const parsed = parseDocument(raw, savedGameFormat);
+    if (!parsed.ok) {
+      const future = parsed.issues.some((issue) => issue.message === "future schema version");
+      return future
+        ? { ...base, save: null, futureSchema: true }
+        : { ...base, save: null, malformed: true };
+    }
+    if (!hasSaveHeader(parsed.data)) return { ...base, save: null, malformed: true };
+    return { ...base, save: parsed.data as SavedGame };
+  }
+  /* A save written before the envelope: the next encodeSavedGame writes the new shape. */
   if (!hasSaveHeader(raw)) return { ...base, save: null, malformed: true };
   return { ...base, save: raw };
 }
@@ -3178,21 +3208,7 @@ export function decodeSavedGame(
  * old saves too; detailed field compatibility belongs to the migration path.
  */
 function hasSaveHeader(value: unknown): value is SavedGame {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const save = value as Record<string, unknown>;
-  return (
-    typeof save["version"] === "number" &&
-    Number.isInteger(save["version"]) &&
-    isRecord(save["player"]) &&
-    isRecord(save["actor"]) &&
-    isRecord(save["gear"]) &&
-    isRecord(save["rng"]) &&
-    typeof save["turn"] === "number" &&
-    Number.isFinite(save["turn"]) &&
-    typeof save["playing"] === "boolean" &&
-    typeof save["isDead"] === "boolean" &&
-    isRecord(save["flavor"])
-  );
+  return isSavedGameHeader(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

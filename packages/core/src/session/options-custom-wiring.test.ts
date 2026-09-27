@@ -141,7 +141,7 @@ describe("options_init_defaults reaches a booted character (PORT_TODO 5.3)", () 
   });
 
   it("a customised INTERFACE file changes what a new character starts with", () => {
-    const game = boot(new Map([["customized_interface_options.txt", invertedFile("INTERFACE")]]));
+    const game = boot(new Map([["customized_interface_options.json", invertedFile("INTERFACE")]]));
     expect(opts(game).get(IFACE.name)).toBe(!IFACE.normal);
     /* And only that page moved. */
     for (const e of OPTION_ENTRIES) {
@@ -153,7 +153,7 @@ describe("options_init_defaults reaches a booted character (PORT_TODO 5.3)", () 
     /* birthValue() is the immutable record the score screen and the save read.
      * A file that only moved the live value would leave the character's birth
      * options saying something different from how it was actually generated. */
-    const game = boot(new Map([["customized_birth_options.txt", invertedFile("BIRTH")]]));
+    const game = boot(new Map([["customized_birth_options.json", invertedFile("BIRTH")]]));
     expect(opts(game).get(BIRTH.name)).toBe(!BIRTH.normal);
     expect(opts(game).birthValue(BIRTH.name)).toBe(!BIRTH.normal);
   });
@@ -161,7 +161,7 @@ describe("options_init_defaults reaches a booted character (PORT_TODO 5.3)", () 
   it("an explicit birth CHOICE still beats the customised file", () => {
     /* options_init_defaults runs in player_init, long before the birth screen
      * writes anything, so the choice is applied last and wins. */
-    const game = boot(new Map([["customized_birth_options.txt", invertedFile("BIRTH")]]), {
+    const game = boot(new Map([["customized_birth_options.json", invertedFile("BIRTH")]]), {
       [BIRTH.name]: BIRTH.normal,
     });
     expect(opts(game).get(BIRTH.name)).toBe(BIRTH.normal);
@@ -171,7 +171,7 @@ describe("options_init_defaults reaches a booted character (PORT_TODO 5.3)", () 
   it("a customised CHEAT file is IGNORED: init restores only BIRTH and INTERFACE", () => {
     /* option.c L198-199 names those two pages and no others. This is the
      * assertion that would fail if someone 'helpfully' looped every page. */
-    const game = boot(new Map([["customized_cheat_options.txt", invertedFile("CHEAT")]]));
+    const game = boot(new Map([["customized_cheat_options.json", invertedFile("CHEAT")]]));
     expect(opts(game).get(CHEAT.name)).toBe(CHEAT.normal);
   });
 
@@ -186,7 +186,7 @@ describe("options_init_defaults reaches a booted character (PORT_TODO 5.3)", () 
   });
 
   it("the two scalars keep their post-file defaults (option.c L201, L204)", () => {
-    const game = boot(new Map([["customized_interface_options.txt", invertedFile("INTERFACE")]]));
+    const game = boot(new Map([["customized_interface_options.json", invertedFile("INTERFACE")]]));
     expect(opts(game).delayFactor).toBe(40);
     expect(opts(game).hitpointWarn).toBe(3);
   });
