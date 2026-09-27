@@ -158,6 +158,38 @@ describe("player intent gate", () => {
     expect(gate.submit(inputToken(game.state), { kind: "stop-resting" }).accepted).toBe(true);
     expect(game.state.resting).toBeUndefined();
   });
+  it("hands a cast that names no direction to the game's own cast flow", () => {
+    const game = newGame();
+    const buffer: PlayerCommand[] = [];
+    const cast: number[] = [];
+    const gate = createIntentGate({ state: game.state, registry: game.registry,
+      push: (command) => { buffer.push(command); }, advance: () => {},
+      snapshotSource: { phase: () => "play", prompt: () => null },
+      castSpell: (spell) => { cast.push(spell); return true; } });
+    expect(gate.submit(inputToken(game.state), { kind: "command", command: { code: "cast", args: { spell: 0 } } }).accepted).toBe(true);
+    expect(cast).toEqual([0]);
+    expect(buffer).toEqual([]);
+    expect(gate.submit(inputToken(game.state), { kind: "command", command: { code: "cast", args: { spell: 0, dir: 2 } } }).accepted).toBe(true);
+    expect(cast).toEqual([0]);
+    expect(buffer).toEqual([{ code: "cast", args: { spell: 0, dir: 2 } }]);
+  });
+
+  it("hands an item use that names no direction to the game's own use flow", () => {
+    const game = newGame();
+    const buffer: PlayerCommand[] = [];
+    const used: [string, unknown][] = [];
+    const gate = createIntentGate({ state: game.state, registry: game.registry,
+      push: (command) => { buffer.push(command); }, advance: () => {},
+      snapshotSource: { phase: () => "play", prompt: () => null },
+      useItem: (code, ref) => { used.push([code, ref]); return true; } });
+    const handle = game.state.gear.pack[0]!;
+    expect(gate.submit(inputToken(game.state), { kind: "command", command: { code: "quaff", args: { handle } } }).accepted).toBe(true);
+    expect(used).toEqual([["quaff", { handle }]]);
+    expect(buffer).toEqual([]);
+    expect(gate.submit(inputToken(game.state), { kind: "command", command: { code: "drop", args: { handle } } }).accepted).toBe(true);
+    expect(buffer.map((command) => command.code)).toEqual(["drop"]);
+  });
+
   it("routes mod store trades through quantity and confirmation while explicit core quantities stay direct", async () => {
     const storePack: GamePack = { ...pack, store: records("store") };
     const game = startGame(storePack, { seed: 4242, depth: 0 });

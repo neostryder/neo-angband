@@ -5041,7 +5041,23 @@ async function castSpell(): Promise<void> {
   if (pick === null) return;
   const spell = sidx[pick];
   if (spell === undefined) return;
+  await castChosenSpell(spell, verb, noun);
+}
+
+/**
+ * The cast after a spell is chosen: the low-mana question, the aim prompt, any
+ * item or symbol the spell targets, then the cast itself. The keyboard reaches
+ * it through the book and spell menus, and a mod's cast intent that names no
+ * direction reaches it directly.
+ */
+async function castChosenSpell(spell: number, verb?: string, noun?: string): Promise<void> {
+  const player = state.actor.player;
   const spellData = spellByIndex(player.cls, spell);
+  if (verb === undefined || noun === undefined) {
+    const realm = spellData ? player.cls.magic.books[spellData.bidx]?.realm : undefined;
+    verb ??= realm?.verb ?? "cast";
+    noun ??= realm?.spellNoun ?? "spell";
+  }
   /* Verify "dangerous" spells (cmd-obj.c:1139-1152): if the spell costs more
    * mana than the player has, warn and confirm; ESC/no aborts with no turn. */
   if (spellData && spellData.mana > player.csp) {
@@ -9997,6 +10013,14 @@ setModIntentGate(createIntentGate({
   },
   lookAt: (at) => {
     void openModal(() => runTargetLoop(TARGET.LOOK, true, at?.x, at?.y));
+  },
+  castSpell: (spell) => {
+    void openModal(() => castChosenSpell(spell));
+    return true;
+  },
+  useItem: (code, ref) => {
+    void openModal(() => dispatchItemRef(code, ref));
+    return true;
   },
   itemAction: (intent) => {
     if (intent.kind === "ignore" || intent.kind === "unignore") {

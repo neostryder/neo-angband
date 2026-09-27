@@ -47,10 +47,25 @@ export interface IntentGateDeps {
   /** The live store screen's own purchase and sale flow. */
   readonly storeCommand?: (command: AgentCommand) => boolean;
   readonly lookAt?: (at?: Readonly<{ x: number; y: number }>) => void;
+  /**
+   * The game's own cast flow for a chosen spell, for a cast intent that names
+   * no direction: the low-mana question, the aim prompt and any item target,
+   * then the cast. Without it such a cast aims at the current target.
+   */
+  readonly castSpell?: (spell: number) => boolean;
+  /**
+   * The game's own flow for using a chosen item, for a use intent that names
+   * no direction: the aim prompt when the item needs one and any item its
+   * effect targets, then the command. Without it such a use aims at the
+   * current target.
+   */
+  readonly useItem?: (code: string, ref: Readonly<{ handle: number } | { floor: number }>) => boolean;
   readonly itemAction?: (intent: Extract<PlayerIntent, { kind: "ignore" | "unignore" | "item-rule" }>) => boolean;
 }
 
 const STORE_CODES = new Set(["shop-buy", "shop-sell", "shop-exit"]);
+/** Item uses whose effect may ask for a direction or a target item first. */
+const USE_CODES = new Set(["read", "quaff", "eat", "use-staff", "aim-wand", "zap-rod", "activate"]);
 /** Action codes whose command in cmd_verb's table is spelled differently. */
 const VERB_CODES: Readonly<Record<string, string>> = {
   "aim-wand": "use-wand",
@@ -245,6 +260,16 @@ export function createIntentGate(deps: IntentGateDeps): ModIntent {
         if (at && !state.chunk.inBoundsFully(at)) return reject("malformed look location");
         deps.lookAt(at);
         return { accepted: true };
+      }
+      if (command.code === "cast" && command.args?.dir === undefined && deps.castSpell) {
+        return deps.castSpell(command.args!.spell as number)
+          ? { accepted: true }
+          : reject("cannot cast right now");
+      }
+      if (USE_CODES.has(command.code) && command.args?.dir === undefined && deps.useItem) {
+        const args = command.args!;
+        const ref = typeof args.floor === "number" ? { floor: args.floor } : { handle: args.handle as number };
+        return deps.useItem(command.code, ref) ? { accepted: true } : reject("cannot use that item right now");
       }
       if (command.code === "shop-buy" || command.code === "shop-sell") {
         return deps.storeCommand?.(command)

@@ -162,12 +162,20 @@
         position: absolute;
         inset: 20px 0 0 0;
       }
+      .tile-body > * {
+        filter: var(--tile-content-filter, none);
+      }
       .tile-body canvas,
       .subwindow-slot canvas {
         display: block;
         width: 100%;
         height: 100%;
         image-rendering: pixelated;
+      }
+      /* A mod pane hides its terminal canvas, and the display rule above would
+         otherwise keep it in the flow at the pane's full height. */
+      .tile-body canvas[hidden] {
+        display: none;
       }
       .tile-gutter {
         position: absolute;

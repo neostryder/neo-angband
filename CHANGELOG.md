@@ -95,6 +95,9 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] [UI] **Subwindows stay in place when a mod tints the display.** A colour or CRT effect used to shift each subwindow's picture off its panel by the panel's own offset, which left the panel blank.
+- [Visible] [UI] **A mod's panel shows its content from the top.** The panel's unused text canvas used to fill the panel's whole height and push the mod's content out of sight.
+- [Visible] [Modding-API] **A mod's spell or item use that names no direction asks the game's own questions first.** The player picks the direction, confirms a spell cast with too little mana, and chooses any item the effect targets, just as with the keyboard. Before, the spell or device fired at the current target, and with no target set the mana or the charge was spent on nothing.
 - [Internal] [Modding-API] **A mod's quality rule for rings and amulets stops at "bad", as the game's own quality menu does.** A mod can also give the whole sidebar back to the map with a zero sidebar size. A Ctrl travel intent outside play is refused for the phase rather than as a bad grid (#294).
 - [Internal] [Modding-API] **A mod's monster list holds only the monsters the player can perceive.** `ctx.snapshot().core.monsters` used to include every monster on the level. It now matches the game's own monster list, so detected and telepathically sensed monsters appear, and unseen monsters and mimics posing as objects do not. (#293)
 - [Visible] [UI] **Installing an update on Windows no longer opens a console window.** The script that swaps in the new version runs hidden, and the game still reopens on screen when it finishes. (#292)

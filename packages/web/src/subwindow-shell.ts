@@ -155,12 +155,26 @@ export interface SubwindowShellOptions {
 
 const DRAG_THRESHOLD = 6;
 
-/** Leave the close button and mod controls outside the filtered content. */
+/** The custom property index.html applies as a filter to each child of a panel body. */
+export const SUBWINDOW_CONTENT_FILTER = "--tile-content-filter";
+
+/**
+ * Leave the close button and mod controls outside the filtered content.
+ *
+ * The body is filtered through its children rather than itself. A panel's
+ * terminal canvas is position: fixed in viewport coordinates, and a filter on
+ * an ancestor becomes the containing block for fixed descendants, which moves
+ * the canvas by the body's own offset and off the panel.
+ */
 export function filterSubwindowContent(leaf: HTMLElement, filter: string | null): void {
-  for (const selector of [".tile-drag-handle", ".tile-title-label", ".tile-tabs", ".tile-body"]) {
+  for (const selector of [".tile-drag-handle", ".tile-title-label", ".tile-tabs"]) {
     const content = leaf.querySelector<HTMLElement>(selector);
     if (content) content.style.filter = filter ?? "";
   }
+  const body = leaf.querySelector<HTMLElement>(".tile-body");
+  if (!body) return;
+  if (filter) body.style.setProperty(SUBWINDOW_CONTENT_FILTER, filter);
+  else body.style.removeProperty(SUBWINDOW_CONTENT_FILTER);
 }
 
 function setRect(el: HTMLElement, rect: Rect): void {
