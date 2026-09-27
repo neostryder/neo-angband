@@ -75,8 +75,7 @@ while still claiming a tap.
 
 The tiled subwindow shell now offers every non-Borg PW_* content type, each in
 its own panel, with right-click docking and splitter resize around the main
-view. All panels still start off; enabling the Term-1 through Term-7 types
-places them in a canonical tiling of upstream's default assignment.
+view. A new install opens with the canonical tiling of the shipped Loth.prf arrangement.
 
 Remaining: the arbitrary eight-term flag matrix, assignment of multiple flags to one term, and the `^E` inventory/equipment flip. Layouts now export and import as JSON documents. Tracked as issue #191.
 

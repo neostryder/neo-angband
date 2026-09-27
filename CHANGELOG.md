@@ -67,6 +67,7 @@ still calls itself.
 
 ### Changed
 
+- [Visible] [UI] **A new install opens with the default subwindow arrangement.** The first launch shows the panels of the shipped Loth.prf layout around the main view instead of the game view alone. A layout with every panel turned off now stays that way between launches. If you had every panel off before this version, the default arrangement appears once; turn the panels off again and that choice sticks. (#287)
 - [Visible] [UI] **The title screen calls Neo Angband a faithful but moddable port of Angband, meant to be playable almost anywhere.** The line under the logo used to describe it by its programming language.
 - [Visible] [Save-Compat] **A character export is a plain JSON document.** A `.neochar` file holds the character and the save as readable JSON. An older character file still imports, and a save from before this change still loads. (#288)
 - [Visible] [Save-Compat] **Saved option defaults, monster memory, random-artifact exports and Linoleum tile packs are stored as JSON.** Your existing files convert the first time the game reads them, and the old copies are removed once the new ones read back correctly. A tile pack already saved in your browser converts the same way. If a file cannot be read, it is left untouched and the game uses the defaults for that session. (#288)

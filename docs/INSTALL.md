@@ -481,7 +481,7 @@ Where to find each display setting upstream offers:
 | Keymaps, colours | `=` -> **Edit keymaps** / **Edit colours** |
 | **Resize the main window for a bigger map** | **Not yet.** The grid stays 80x24 and scales; it does not grow into a larger window. |
 | **Big-tile multiplier** (`tile_width` / `tile_height`) | **Not yet.** Both are fixed at 1, so tiles are one cell each. |
-| **Subwindows** (messages, inventory, equipment, player, map, recall, lists, status) | `=` -> **Subwindow setup**. Each content type is its own tiled panel around the main view: right-click-drag to dock, drag a splitter to resize. All start off. Combining several flags in one term and the `^E` inventory/equipment flip remain planned. |
+| **Subwindows** (messages, inventory, equipment, player, map, recall, lists, status) | `=` -> **Subwindow setup**. Each content type is its own tiled panel around the main view: right-click-drag to dock, drag a splitter to resize. A new install opens with the default arrangement. Combining several flags in one term and the `^E` inventory/equipment flip remain planned. |
 | Export/import preferences | `=` -> **Export subwindow layout** or **Import preferences**. Other preference menus export their own JSON documents. Existing user `.prf` files convert when the game starts. |
 | Auto-inscription setup | Present, but reached from the knowledge browser (`~`) rather than from the options menu, where upstream also lists it. |
 

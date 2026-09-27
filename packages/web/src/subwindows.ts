@@ -49,6 +49,7 @@ import {
   MAIN_TILE_ID,
   containsLeaf,
   insertAtEdge,
+  leafIds,
   parseLayoutTree,
   pruneTree,
   type DockEdge,
@@ -206,23 +207,28 @@ export function emptyLayoutTree(): LayoutNode {
   return { kind: "leaf", id: MAIN_TILE_ID };
 }
 
+/**
+ * What a new install opens with (#287): every panel of the shipped Loth.prf
+ * arrangement, tiled as `canonicalSubwindowTree` places them.
+ */
+export function firstLaunchSubwindowState(): SubwindowState {
+  const tree = canonicalSubwindowTree();
+  const enabled = blankSettings();
+  for (const id of leafIds(tree)) {
+    if (id !== MAIN_TILE_ID) enabled[id as SubwindowId] = true;
+  }
+  return { enabled, tree };
+}
+
 export function enabledSubwindowIds(settings: SubwindowSettings): SubwindowId[] {
   return SUBWINDOW_IDS.filter((id) => settings[id]);
 }
 
 /**
- * neo-angband#275: the one-time notice for when the comfort-degradation pass
- * (subwindow-layout.ts's `degradeForComfort`, wired in through
- * subwindow-shell.ts's `onDegraded`) has hidden one or more panels because the
- * real window is too small to give every enabled panel a legible size. Named,
- * on the same "say once, never silent" precedent as save-recovery.ts's
- * `describePackMismatch` - a player who sees a panel vanish should never be
- * left guessing whether it crashed or was simply not enabled. The caller (see
- * main.ts's `mountSubwindowShell` wiring) is what makes this a one-time line:
- * it is only invoked when the collapsed set actually changes, never on every
- * resize tick.
+ * The notice for panels the small-viewport pass merged as tabs (#275, #287).
+ * The shell reports only when the merged set changes, so a resize does not
+ * repeat it.
  */
-/** The one-time notice for panels the small-viewport pass merged as tabs. */
 export function describeSubwindowsMerged(merges: readonly { id: string; into: string }[]): string {
   if (merges.length === 0) return "";
   const labelById = new Map<string, string>(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.tab]));
@@ -400,6 +406,10 @@ export function saveLayoutWithBlocks(state: SubwindowState | null, blocks: Reado
 
 export function readSubwindowState(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">): SubwindowState {
   try {
+    /* Nothing stored at all means a new install, which opens with the default
+     * arrangement. A stored layout with every panel off is still a layout, so
+     * that choice survives the next launch. */
+    if (storage.getItem(SUBWINDOW_STORAGE_KEY) === null) return firstLaunchSubwindowState();
     const read = readStoredDocument(storage, SUBWINDOW_STORAGE_KEY, subwindowLayoutFormat, legacyLayout);
     if (!read.data) {
       const enabled = blankSettings();
@@ -423,20 +433,6 @@ export function readSubwindowSettings(storage: LayoutStorage): SubwindowSettings
 
 export function writeSubwindowState(storage: LayoutStorage, state: SubwindowState): void {
   const modBlocks = mergedModBlocks(storage, SUBWINDOW_STORAGE_KEY, state.modBlocks);
-  const empty = !Object.values(state.enabled).some(Boolean) && !parseMapTileMode(state.mapTileMode) && !modBlocks;
-  if (empty) {
-    try {
-      const raw = storage.getItem(SUBWINDOW_STORAGE_KEY);
-      if (raw && looksLikeEnvelope(raw)) {
-        const parsed = parseDocument(raw, subwindowLayoutFormat);
-        if (!parsed.ok) return;
-      }
-    } catch {
-      return;
-    }
-    storage.removeItem(SUBWINDOW_STORAGE_KEY);
-    return;
-  }
   writeStoredDocument(
     storage,
     SUBWINDOW_STORAGE_KEY,

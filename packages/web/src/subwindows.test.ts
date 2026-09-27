@@ -6,6 +6,8 @@ import {
   MessageSubwindowPainter,
   applySubwindowPrefBlock,
   canonicalSubwindowTree,
+  enabledSubwindowIds,
+  firstLaunchSubwindowState,
   paintOverviewSubwindow,
   paintSubwindowLines,
   parseSubwindowDocument,
@@ -114,16 +116,20 @@ describe("subwindow settings", () => {
     expect(parseSubwindowDocument(JSON.stringify(data))).toBeNull();
   });
 
-  it("defaults to the unchanged single-window layout and survives storage", () => {
+  it("opens a new install with the default arrangement and keeps a layout with every panel off (#287)", () => {
     const storage = memoryStorage();
-    expect(readSubwindowSettings(storage)).toEqual(allOff);
+    const first = readSubwindowState(storage);
+    expect(first).toEqual(firstLaunchSubwindowState());
+    expect(first.tree).toEqual(canonicalSubwindowTree());
+    expect(enabledSubwindowIds(first.enabled).sort()).toEqual(leafIds(canonicalSubwindowTree()).filter((id) => id !== MAIN_TILE_ID).sort());
     const enabled = { ...allOff, messages: true, inventory: true, items: true };
     writeSubwindowState(storage, { enabled, tree: treeForSettings(enabled) });
     expect(readSubwindowSettings(storage)).toEqual(enabled);
     const roundTrip = readSubwindowState(storage);
     expect(leafIds(roundTrip.tree).sort()).toEqual(["inventory", "items", "messages", MAIN_TILE_ID].sort());
     writeSubwindowState(storage, { enabled: allOff, tree: { kind: "leaf", id: MAIN_TILE_ID } });
-    expect(storage.values.has(SUBWINDOW_STORAGE_KEY)).toBe(false);
+    expect(storage.values.has(SUBWINDOW_STORAGE_KEY)).toBe(true);
+    expect(readSubwindowSettings(storage)).toEqual(allOff);
   });
 
   it("migrates the previous four-boolean store into a tiled tree", () => {
@@ -165,7 +171,7 @@ describe("subwindow settings", () => {
   });
 
   it("inserts a newly enabled panel into the tree and removes it again", () => {
-    let state = readSubwindowState(memoryStorage());
+    let state: SubwindowState = { enabled: allOff, tree: { kind: "leaf", id: MAIN_TILE_ID } };
     state = setSubwindowEnabled(state, "messages", true);
     expect(state.enabled.messages).toBe(true);
     expect(containsLeaf(state.tree, "messages")).toBe(true);
@@ -217,13 +223,13 @@ describe("personal subwindow default (#236)", () => {
 
   it("preserves and restores a default with every panel disabled", () => {
     const storage = memoryStorage();
-    const empty = readSubwindowState(storage);
+    const empty = { enabled: allOff, tree: { kind: "leaf", id: MAIN_TILE_ID } } as const;
     expect(writeSubwindowDefault(storage, empty)).toBe(true);
     writeSubwindowState(storage, setSubwindowEnabled(empty, "messages", true));
     const saved = readSubwindowDefault(storage);
     expect(saved).toEqual({ ...empty, mapTileMode: 0 });
     writeSubwindowState(storage, saved!);
-    expect(storage.getItem(SUBWINDOW_STORAGE_KEY)).toBeNull();
+    expect(readSubwindowSettings(storage)).toEqual(allOff);
     expect(readSubwindowDefault(storage)).toEqual({ ...empty, mapTileMode: 0 });
   });
 

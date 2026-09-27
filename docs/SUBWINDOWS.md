@@ -30,10 +30,7 @@ one row per available panel:
 Pressing `Enter` on a row toggles that panel on or off immediately - no reload
 needed. An `X` marks a panel that is currently on, a `.` marks one that is off.
 
-Nothing is on by default until you turn something on: a fresh install, or a
-panel you have never touched, starts exactly like the single-window game
-always has. Turning on your first panel places the whole set of panels
-described in "The default arrangement" below, built around a large main view.
+A new install opens with the panels of "The default arrangement" below, built around a large main view. Turn off any you do not want. A layout with every panel off stays that way the next time you start the game.
 
 ## Rearranging panels
 
@@ -61,13 +58,7 @@ Five rows on the Subwindow setup screen switch parts of the panel system on and 
 
 ## The default arrangement
 
-The first panel you turn on brings a whole prebuilt layout with it, rather
-than placing just that one panel alone: the character sheet and
-inventory/equipment down the left side, the map beside the main view along the
-top, and the monster list, item list, messages, and monster/object recall
-tiled underneath. A panel with no earlier place of its own docks to a sensible
-default edge instead of stacking. Turning a panel back off, then on again,
-returns it to that same default spot unless you have moved it.
+The default arrangement follows the shipped Loth.prf layout: the character sheet and inventory/equipment down the left side, the map beside the main view along the top, the monster list, item list, messages, and monster/object recall tiled underneath, and the second character sheet page in a narrow column on the right. A panel with no earlier place of its own docks to a sensible default edge instead of stacking. Turning a panel back off, then on again, returns it to that same default spot unless you have moved it.
 
 ## Making an arrangement stick
 
