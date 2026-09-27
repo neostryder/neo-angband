@@ -351,6 +351,7 @@ import {
   setModSnapshotSource,
   setModSavesControl,
   setModOptionsAfterChange,
+  setModKnowledgeSource,
   setModIntentGate,
   setModInstallDoor,
   setModReadDoor,
@@ -638,9 +639,37 @@ import {
   showShapeKnowledge,
   showArtifactKnowledge,
   showMonsterKnowledge as showMonsterKnowledgeBrowser,
+  objectKnowledgeGroups,
+  objectFakeRecall,
+  runeKnowledgeGroups,
+  runeRecallScreen,
+  artifactKnowledgeTitle,
+  artifactKnowledgeGroups,
+  artifactFakeRecall,
+  egoKnowledgeGroups,
+  egoFakeRecall,
+  monsterKnowledgeRows,
+  featureKnowledgeGroups,
+  featureRecallScreen,
+  trapKnowledgeGroups,
+  trapRecallScreen,
+  shapeKnowledgeRows,
+  shapeRecallScreen,
+  type ArtifactKnowledgeDeps,
   type ObjectRecallDeps,
   type FakeRecallDeps,
 } from "./knowledge";
+import { createModKnowledge, type KnowledgeSources } from "./knowledge-read";
+import {
+  buildRuneList,
+  type Artifact,
+  type EgoItem,
+  type Feature,
+  type Rune,
+  type Shape,
+  type ShapeLoreEnv,
+  type TrapKind,
+} from "@rpgm-tools/neo-angband-core";
 import { confirmDelete, runCharacterSelect } from "./charselect";
 import {
   durabilityNotice,
@@ -5368,6 +5397,169 @@ function* allWorldObjects(): Iterable<GameObject> {
   }
 }
 
+/* The live handles desc_obj_fake / object_info_ego need to run object_info on
+ * a throwaway object. Built fresh per browse so a knowledge screen opened
+ * after the player's state moved on describes the state it is looking at. */
+function fakeRecallDeps(): FakeRecallDeps {
+  return {
+    state,
+    reg: booted.registries.objects,
+    constants: booted.registries.constants,
+    player: state.actor.player,
+    inspectExtras,
+    runeEnv: state.runeEnv,
+  };
+}
+
+/* textui_browse_object_knowledge (ui-knowledge.c L2062): everseen ||
+ * flavoured kinds. kindName is object_kind_name (obj-desc.c L48), never
+ * leaking an unidentified flavoured kind's real name. The recall is
+ * desc_obj_fake's object_info(OINFO_FAKE) body (ui-knowledge.c L1889). */
+function objectKnowledgeDeps(): ObjectRecallDeps {
+  return {
+    isAware: (k) => game.flavor.isAware(k),
+    wasTried: (k) => game.flavor.wasTried(k),
+    everseen: (k) => game.everseen.kindSeen(k),
+    hasFlavor: (k) => state.hasFlavor?.(k) ?? false,
+    kindName: (k, aware) =>
+      !aware && (state.hasFlavor?.(k) ?? false)
+        ? (state.flavorText?.(k) ?? "")
+        : k.name.replace(/[~&]/g, " ").trim(),
+    recall: fakeRecallDeps(),
+  };
+}
+
+/* do_cmd_knowledge_artifacts (ui-knowledge.c L1663). The exact
+ * artifact_is_known gate (L1687): created AND no live unidentified copy. */
+function artifactKnowledgeDeps(): ArtifactKnowledgeDeps {
+  return {
+    state,
+    reg: booted.registries.objects,
+    constants: booted.registries.constants,
+    player: state.actor.player,
+    artState:
+      state.artifacts ?? new ArtifactState(booted.registries.objects.artifacts.length),
+    inspectExtras,
+    runeEnv: state.runeEnv,
+    exact: {
+      worldObjects: () => allWorldObjects(),
+      isCreated: (aidx: number) => state.artifacts?.isCreated(aidx) ?? false,
+      wizard: wizardMode,
+    },
+    seedRandart: game.randartSeed,
+  };
+}
+
+/* do_cmd_knowledge_shapechange (ui-knowledge.c L3063). makeShapeLoreEnv
+ * rather than an object literal: the three table fields are trivial and the
+ * two tails are not, and hand-assembly is exactly what left
+ * shape_lore_append_change_effects and shape_lore_append_triggering_spells off
+ * the page (PORT_TODO 3.21). */
+function shapeKnowledgeEnv(): ShapeLoreEnv {
+  return makeShapeLoreEnv(state, {
+    properties: booted.registries.objects.properties,
+    playerAbilities: players.properties
+      .filter((pr) => pr.type === "player" && pr.code)
+      .map((pr) => ({
+        index: (PF as Record<string, number>)[pr.code!]!,
+        desc: pr.desc,
+      })),
+    classes: players.classes,
+    bookKindName: (tvalIdx, sval) =>
+      booted.registries.objects.lookupKind(tvalIdx, sval)?.name ?? null,
+    inspect: inspectExtras,
+  });
+}
+
+/**
+ * `ctx.knowledge`'s sources: each knowledge menu category through the same
+ * builder and recall the menu below uses, with no inscribe keys and no
+ * monster-recall tracking, since a mod's read is not the player opening a page.
+ */
+function modKnowledgeSources(): KnowledgeSources {
+  const objects = booted.registries.objects;
+  const runeIndex = (rune: Rune): number => buildRuneList(state.runeEnv).findIndex((r) => r.name === rune.name && r.variety === rune.variety);
+  const sources = {
+    objects: {
+      groups: () => ({
+        title: t("knowledge.objects.title", "known objects"),
+        groups: objectKnowledgeGroups(objects.kinds, objects.bases, objectKnowledgeDeps()),
+      }),
+      key: (kind: ObjectKind) => String(kind.kidx),
+      recall: (kind: ObjectKind) => objectFakeRecall(objectKnowledgeDeps(), kind),
+    },
+    runes: {
+      groups: () =>
+        runeKnowledgeGroups(buildRuneList(state.runeEnv), state.actor.player, (i) => state.runeNotes?.get(i)),
+      key: (rune: Rune) => String(runeIndex(rune)),
+      recall: (rune: Rune) => runeRecallScreen(rune, state.runeEnv),
+    },
+    artifacts: {
+      groups: () => {
+        const deps = artifactKnowledgeDeps();
+        return {
+          title: artifactKnowledgeTitle(deps),
+          groups: artifactKnowledgeGroups(objects.artifacts, objects.bases, deps.player, deps.artState, deps.exact),
+        };
+      },
+      key: (art: Artifact) => String(art.aidx),
+      recall: (art: Artifact) => artifactFakeRecall(artifactKnowledgeDeps(), art),
+    },
+    egos: {
+      groups: () => ({
+        title: t("knowledge.ego.title", "ego items"),
+        groups: egoKnowledgeGroups(objects.egos, objects.kinds, objects.bases, game.everseen),
+      }),
+      key: (ego: EgoItem, group: string) => `${ego.eidx}:${group}`,
+      recall: (ego: EgoItem, group: string) => egoFakeRecall(fakeRecallDeps(), ego, group),
+    },
+    monsters: {
+      groups: () => {
+        const views = monsterKnowledgeGroupViews(
+          booted.registries.monsters.races,
+          state.lore,
+          booted.registries.monsterCategories,
+        );
+        const { groups } = monsterKnowledgeRows(views, state.options?.get("purple_uniques") ?? false);
+        return { title: t("knowledge.monster.title", "monsters"), groups };
+      },
+      key: (row: { race: MonsterRace }) => String(row.race.ridx),
+      recall: (row: { race: MonsterRace }) =>
+        monsterRecallScreen(row.race, getLore(state.lore, row.race), recallDeps()),
+    },
+    features: {
+      groups: () => ({
+        title: t("knowledge.features.title", "features"),
+        groups: featureKnowledgeGroups(booted.registries.features),
+      }),
+      key: (feat: Feature) => String(feat.fidx),
+      recall: (feat: Feature) => featureRecallScreen(feat),
+    },
+    ...(booted.registries.traps ? {
+      traps: {
+        groups: () => ({
+          title: t("knowledge.traps.title", "traps"),
+          groups: trapKnowledgeGroups(booted.registries.traps ?? []),
+        }),
+        key: (trap: TrapKind) => String(trap.tidx),
+        recall: (trap: TrapKind) => trapRecallScreen(trap),
+      },
+    } : {}),
+    shapes: {
+      groups: () => ({
+        title: t("knowledge.shapes.title", "shapes"),
+        groups: [{
+          name: t("knowledge.shapes.groupName", "Shapes"),
+          rows: shapeKnowledgeRows(players.shapes).map((shape) => ({ label: shape.name, color: UI_TEXT, member: shape })),
+        }],
+      }),
+      key: (shape: Shape) => shape.name,
+      recall: (shape: Shape) => shapeRecallScreen(shape, shapeKnowledgeEnv()),
+    },
+  };
+  return sources as unknown as KnowledgeSources;
+}
+
 async function openKnowledgeMenu(): Promise<void> {
   const p = state.actor.player;
   // The live rogue_like_commands option; every browser below shares it so j/k
@@ -5387,32 +5579,11 @@ async function openKnowledgeMenu(): Promise<void> {
   const monKnown =
     knownMonsterEntries(booted.registries.monsters.races, state.lore).length > 0;
   const egoKnown = booted.registries.objects.egos.some((e) => game.everseen.egoSeen(e));
-  /* The live handles desc_obj_fake / object_info_ego need to run object_info on
-   * a throwaway object. Built fresh per browse so a knowledge screen opened
-   * after the player's state moved on describes the state it is looking at. */
-  const fakeRecallDeps = (): FakeRecallDeps => ({
-    state,
-    reg: booted.registries.objects,
-    constants: booted.registries.constants,
-    player: p,
-    inspectExtras,
-    runeEnv: state.runeEnv,
-  });
 
   // Pre-store block (pre_store_actions[], ui-knowledge.c:3487-3496).
   add("Display object knowledge", async () => {
-    // textui_browse_object_knowledge (ui-knowledge.c L2062): everseen ||
-    // flavoured kinds. kindName is object_kind_name (obj-desc.c L48), never
-    // leaking an unidentified flavoured kind's real name.
     const objDeps: ObjectRecallDeps = {
-      isAware: (k) => game.flavor.isAware(k),
-      wasTried: (k) => game.flavor.wasTried(k),
-      everseen: (k) => game.everseen.kindSeen(k),
-      hasFlavor: (k) => state.hasFlavor?.(k) ?? false,
-      kindName: (k, aware) =>
-        !aware && (state.hasFlavor?.(k) ?? false)
-          ? (state.flavorText?.(k) ?? "")
-          : k.name.replace(/[~&]/g, " ").trim(),
+      ...objectKnowledgeDeps(),
       // `{` inside the browser (o_xtra_act, ui-knowledge.c:1999-2061): "Inscribe with: "
       // sets/updates the kind's autoinscription (empty clears). Default note is
       // get_autoinscription(k, k->aware); the write is add_autoinscription with
@@ -5431,8 +5602,6 @@ async function openKnowledgeMenu(): Promise<void> {
         if (text === null) return; // ESC: leave the kind's note unchanged
         registry.set(k.kidx, text, aware);
       },
-      // desc_obj_fake's object_info(OINFO_FAKE) body (ui-knowledge.c L1889).
-      recall: fakeRecallDeps(),
     };
     await showObjectKnowledge(
       term,
@@ -5458,24 +5627,7 @@ async function openKnowledgeMenu(): Promise<void> {
     ),
   );
   add("Display artifact knowledge", () =>
-    // do_cmd_knowledge_artifacts (ui-knowledge.c L1663). The exact
-    // artifact_is_known gate (L1687): created AND no live unidentified copy.
-    showArtifactKnowledge(term, {
-      state,
-      reg: booted.registries.objects,
-      constants: booted.registries.constants,
-      player: p,
-      artState:
-        state.artifacts ?? new ArtifactState(booted.registries.objects.artifacts.length),
-      inspectExtras,
-      runeEnv: state.runeEnv,
-      exact: {
-        worldObjects: () => allWorldObjects(),
-        isCreated: (aidx: number) => state.artifacts?.isCreated(aidx) ?? false,
-        wizard: wizardMode,
-      },
-      seedRandart: game.randartSeed,
-    }),
+    showArtifactKnowledge(term, artifactKnowledgeDeps()),
   );
   add(
     "Display ego item knowledge",
@@ -5502,25 +5654,7 @@ async function openKnowledgeMenu(): Promise<void> {
     }
   });
   add("Display shapechange effects", () => {
-    // do_cmd_knowledge_shapechange (ui-knowledge.c L3063).
-    /* makeShapeLoreEnv rather than an object literal: the three table fields
-     * are trivial and the two tails are not, and hand-assembly here is exactly
-     * what left shape_lore_append_change_effects and
-     * shape_lore_append_triggering_spells off the page (PORT_TODO 3.21). */
-    const shapeEnv = makeShapeLoreEnv(state, {
-      properties: booted.registries.objects.properties,
-      playerAbilities: players.properties
-        .filter((pr) => pr.type === "player" && pr.code)
-        .map((pr) => ({
-          index: (PF as Record<string, number>)[pr.code!]!,
-          desc: pr.desc,
-        })),
-      classes: players.classes,
-      bookKindName: (tvalIdx, sval) =>
-        booted.registries.objects.lookupKind(tvalIdx, sval)?.name ?? null,
-      inspect: inspectExtras,
-    });
-    return showShapeKnowledge(term, players.shapes, shapeEnv, roguelike);
+    return showShapeKnowledge(term, players.shapes, shapeKnowledgeEnv(), roguelike);
   });
 
   // Per-store block (reset_main_knowledge_menu, ui-knowledge.c:3483-3598): "Display <store>'s contents",
@@ -6753,6 +6887,7 @@ setModDebugDoor({ wizard: wizardCtx, confirm: confirmDebugGate });
 /* ctx.options saves the game after a mod changes an option, as closing the
  * options menu does. */
 setModOptionsAfterChange(() => autosave(true));
+setModKnowledgeSource(() => createModKnowledge(modKnowledgeSources(), () => state?.rng));
 setModSavesControl(createModSaves({
   onChange: onRosterChange,
   listRoster,

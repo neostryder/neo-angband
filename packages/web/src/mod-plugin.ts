@@ -639,6 +639,12 @@ export interface ModPluginContext {
   readonly options?: import("./mod-options").ModOptions;
   /** The player's keymap editor for the current keyset, under `keymap:edit` (mod-keybindings.ts). */
   readonly keybindings?: import("./mod-keybindings").ModKeybindings;
+  /**
+   * The knowledge menu's contents, under `state:knowledge.read`: each category's
+   * known members as the game groups them, and each one's recall page as a
+   * `ScreenView` (knowledge-read.ts). Reading a page changes nothing in the game.
+   */
+  readonly knowledge?: import("./knowledge-read").ModKnowledge;
   /** Manage roster slots after declaring `saves:manage`, including at the title. */
   readonly saves?: ModSaves;
   /**

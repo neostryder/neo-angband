@@ -602,6 +602,14 @@ The `bolt` and `explosion` events (`event:bolt` and `event:explosion`) name thei
 
 `ctx.keybindings`, under `keymap:edit`, is the player's keymap editor for the current keyset. `list()` returns every binding with the mod that created it, if any; `set()` binds or replaces a trigger and `remove()` drops one, and both save at once. A binding set here belongs to the player even when it replaces one a mod made with `ctx.keymaps`, so that mod no longer removes it. `capture()` resolves with the next key the player presses that a keymap can use, or null for Escape, and the game never acts on that key. `keymap:write` does not cover `keymap:edit`.
 
+## 4v. Knowledge browser
+
+`ctx.knowledge`, under `state:knowledge.read`, is the knowledge menu as data. `categories()` names the eight browsers (objects, runes, artifacts, egos, monsters, features, traps and shapes) with each one's title and how many entries it lists. `list(category)` returns the known members in the game's own groups and order, each with an `id`, its name, its colour and the extra fields the game prints beside it, such as a rune's note or a monster's symbol, kills and "Full" column. `recall(category, id)` returns that entry's recall page, the same `ScreenView` the game shows, or null for an entry the player does not know yet.
+
+Each call reads the live game, so a monster page gains lines as the character learns more about it. Read it again after the snapshot changes rather than keeping an old copy. An ego id includes its group, because an ego appears once for each kind of item it can be found on.
+
+Reading a page changes nothing. The artifact recall builds its sample object from the game's random stream, as upstream's does, so opening that page in the game's own browser moves the stream. A mod's read puts the stream back exactly as it was, so drawing a knowledge tab cannot change the next level.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

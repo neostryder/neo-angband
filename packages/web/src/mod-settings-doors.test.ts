@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OptionState } from "@rpgm-tools/neo-angband-core";
+import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { GameState } from "@rpgm-tools/neo-angband-core";
 import { createModOptions } from "./mod-options";
 import { createModKeybindings } from "./mod-keybindings";
 import { clearKeymaps, keymapAdd, keymapFind, keymapOwner, keymapSetOwner } from "./keymap-store";
+import { createModKnowledge } from "./knowledge-read";
+import { modPluginContext, setModKnowledgeSource } from "./mod-context";
 
 function stateWith(options = new OptionState()): GameState {
   return { options, modHooks: {} } as unknown as GameState;
@@ -125,5 +128,20 @@ describe("ctx.keybindings", () => {
     expect(await stale).toBeNull();
     press(win, "g");
     expect(await fresh).toBe("g");
+  });
+});
+
+describe("ctx.knowledge", () => {
+  afterEach(() => setModKnowledgeSource(undefined));
+
+  it("is present only with state:knowledge.read or state:*.read, and only in a game", () => {
+    const door = createModKnowledge({}, () => undefined);
+    setModKnowledgeSource(() => door);
+    const ctx = (caps: string[], state?: GameState) =>
+      modPluginContext("m", {}, state, {}, { capabilities: CapabilitySet.fromManifest({ id: "m", name: "M", version: "1.0.0", shape: "plugin", capabilities: caps } as never) });
+    expect(ctx(["state:knowledge.read"], stateWith()).knowledge).toBe(door);
+    expect(ctx(["state:*.read"], stateWith()).knowledge).toBe(door);
+    expect(ctx(["state:player.read"], stateWith()).knowledge).toBeUndefined();
+    expect(ctx(["state:knowledge.read"]).knowledge).toBeUndefined();
   });
 });

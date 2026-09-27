@@ -41,6 +41,7 @@ import {
   type ArtifactKnowledgeDeps,
 } from "./knowledge";
 import { screenBodyLines, MODELLED_SCREENS, type ScreenView } from "./screen-view";
+import { createModKnowledge, type KnowledgeSources } from "./knowledge-read";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -405,5 +406,31 @@ describe("the knowledge browser gave up its model in step 5b-iv/v", () => {
     expect(screenBodyLines(view, 80).map((l) => l.text).join(" ")).toContain(
       "Like all shapes",
     );
+  });
+});
+
+describe("ctx.knowledge recall (knowledge-read.ts)", () => {
+  /* The same cursed artifact whose recall advances the game RNG above, read
+   * through the mod door instead: the page is the one the game shows, and the
+   * stream is where it was before the read. */
+  it("reads the artifact page the game shows and leaves the game RNG alone", () => {
+    const cursed = reg.artifacts.find((a) => a && (a.curses?.length ?? 0) > 0)!;
+    const deps = (): ArtifactKnowledgeDeps => ({
+      ...recallDeps(),
+      artState: { isFound: () => false } as unknown as ArtifactKnowledgeDeps["artState"],
+    });
+    const knowledge = createModKnowledge({
+      artifacts: {
+        groups: () => ({ title: "artifacts", groups: [{ name: "Weapons", rows: [{ label: cursed.name, color: "#fff", member: cursed }] }] }),
+        key: (art: typeof cursed) => String(art.aidx),
+        recall: (art: typeof cursed) => artifactFakeRecall(deps(), art),
+      },
+    } as unknown as KnowledgeSources, () => state.rng);
+
+    const before = JSON.stringify(state.rng.getState());
+    const view = knowledge.recall("artifacts", String(cursed.aidx))!;
+    expect(JSON.stringify(state.rng.getState())).toBe(before);
+    expect(view.id).toBe("core:artifact-recall");
+    expect(screenBodyLines(view, 80).length).toBeGreaterThan(0);
   });
 });

@@ -1176,6 +1176,19 @@ export function artifactFakeRecall(
  * from artifactKnowledgeGroups; the recall is the full faithful object_info
  * dump (artifactFakeRecall).
  */
+/**
+ * The artifact browser's title: "artifacts", or under birth_randarts the seed
+ * the set was generated from (do_cmd_knowledge_artifacts L1756).
+ */
+export function artifactKnowledgeTitle(deps: Pick<ArtifactKnowledgeDeps, "state" | "seedRandart">): string {
+  const seed = deps.seedRandart ?? 0;
+  return deps.state.options?.get("birth_randarts") && deps.seedRandart !== undefined
+    ? t("knowledge.artifacts.titleSeeded", "artifacts (seed {seed})", {
+        seed: (seed >>> 0).toString(16).padStart(8, "0"),
+      })
+    : t("knowledge.artifacts.title", "artifacts");
+}
+
 export async function showArtifactKnowledge(
   term: GridSurface & GridPointerInput,
   deps: ArtifactKnowledgeDeps,
@@ -1187,13 +1200,7 @@ export async function showArtifactKnowledge(
     deps.artState,
     deps.exact,
   );
-  const seed = deps.seedRandart ?? 0;
-  const title =
-    deps.state.options?.get("birth_randarts") && deps.seedRandart !== undefined
-      ? t("knowledge.artifacts.titleSeeded", "artifacts (seed {seed})", {
-          seed: (seed >>> 0).toString(16).padStart(8, "0"),
-        })
-      : t("knowledge.artifacts.title", "artifacts");
+  const title = artifactKnowledgeTitle(deps);
   const roguelike = deps.state.options?.get("rogue_like_commands") ?? false;
   await runGroupedBrowser(
     term,
@@ -1617,31 +1624,15 @@ export function monsterSummaryLine(
 }
 
 /**
- * do_cmd_knowledge_monsters' browser (ui-knowledge.c L1309-1378). The thematic
- * ui_knowledge.txt categories on the left, their members on the right with
- * display_monster's Sym / Kills / Full columns and mon_summary underneath.
- *
- * It goes through runGroupedBrowser like every other knowledge screen. It used
- * to have a renderer of its own, in main.ts, which is why it was the one
- * knowledge screen with no "Group" label, no `=` rule and no `|` divider, and
- * why its group column could be narrower than the eight columns
- * display_knowledge floors g_name_len at. The two extra things it needs -
- * `otherfields` and `summary` - are seams display_knowledge already has and the
- * port had simply never carried, since monsters are the only caller that passes
- * either.
- *
- * `purpleUniques` is display_monster's OPT(player, purple_uniques) branch
- * (`:1188-1194`), which recolours a unique's SYMBOL violet - not its name; the
- * name takes the cursor colour like every other row.
+ * The monster browser's rows: display_monster's name plus its Sym / Kills / Full
+ * cells (ui-knowledge.c:1188-1213), and `tkills` summed once per race for
+ * mon_summary. Shared by the browser below and the mod knowledge read, so the
+ * two can never disagree about what a row says.
  */
-export async function showMonsterKnowledge(
-  term: GridSurface & GridPointerInput,
+export function monsterKnowledgeRows(
   views: readonly { name: string; rows: readonly { race: MonsterRace; lore: MonsterLore }[] }[],
   purpleUniques: boolean,
-  recall: (row: { race: MonsterRace; lore: MonsterLore }) => Promise<void>,
-  /** The live rogue_like_commands option; see menuNav. Defaults false. */
-  roguelike = false,
-): Promise<void> {
+): { groups: KnowledgeGroup<{ race: MonsterRace; lore: MonsterLore }>[]; total: number } {
   const seen = new Set<number>();
   let total = 0;
   for (const v of views) {
@@ -1680,6 +1671,36 @@ export async function showMonsterKnowledge(
       };
     }),
   }));
+  return { groups, total };
+}
+
+/**
+ * do_cmd_knowledge_monsters' browser (ui-knowledge.c L1309-1378). The thematic
+ * ui_knowledge.txt categories on the left, their members on the right with
+ * display_monster's Sym / Kills / Full columns and mon_summary underneath.
+ *
+ * It goes through runGroupedBrowser like every other knowledge screen. It used
+ * to have a renderer of its own, in main.ts, which is why it was the one
+ * knowledge screen with no "Group" label, no `=` rule and no `|` divider, and
+ * why its group column could be narrower than the eight columns
+ * display_knowledge floors g_name_len at. The two extra things it needs -
+ * `otherfields` and `summary` - are seams display_knowledge already has and the
+ * port had simply never carried, since monsters are the only caller that passes
+ * either.
+ *
+ * `purpleUniques` is display_monster's OPT(player, purple_uniques) branch
+ * (`:1188-1194`), which recolours a unique's SYMBOL violet - not its name; the
+ * name takes the cursor colour like every other row.
+ */
+export async function showMonsterKnowledge(
+  term: GridSurface & GridPointerInput,
+  views: readonly { name: string; rows: readonly { race: MonsterRace; lore: MonsterLore }[] }[],
+  purpleUniques: boolean,
+  recall: (row: { race: MonsterRace; lore: MonsterLore }) => Promise<void>,
+  /** The live rogue_like_commands option; see menuNav. Defaults false. */
+  roguelike = false,
+): Promise<void> {
+  const { groups, total } = monsterKnowledgeRows(views, purpleUniques);
 
   await runGroupedBrowser(
     term,

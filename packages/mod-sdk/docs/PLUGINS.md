@@ -378,6 +378,8 @@ Declare `input:intent` to receive `ctx.intent`. Pass the current `ctx.snapshot()
 The snapshot's monsters mark uniques and quest guardians, and the player view adds the low hit point threshold and the recall and descent timers. Remembered floor objects carry a glow class, `ctx.inspect.terrainCatalogue()` lists terrain with its stairs and fire flags, and the bolt and explosion events name their element. See [MOD_SEAMS.md section 4t](MOD_SEAMS.md#4t-reads-for-visual-effects).
 
 A menu mod can read the character sheet as data with `ctx.character.sheet()`, rename any saved character, read and change the game's options with `ctx.options`, and edit the player's keymaps with `ctx.keybindings`. See [MOD_SEAMS.md section 4u](MOD_SEAMS.md#4u-character-sheet-saves-options-and-keymaps).
+
+A mod can draw its own knowledge browser with `ctx.knowledge`: the categories, their known entries, and each entry's recall page. See [MOD_SEAMS.md section 4v](MOD_SEAMS.md#4v-knowledge-browser).
 ### Answering the open prompt
 
 With `state:interaction.read`, `ctx.snapshot().prompt` describes the question currently holding input. A mod with `input:prompt.reply` also receives `ctx.prompt.reply(promptId, answer)`, which sends a typed answer through the game's existing handler. Invalid or stale replies leave the question open and return a reason. See [MOD_SEAMS.md section 4j](MOD_SEAMS.md#4j-typed-prompts-and-replies) for the kinds and answers.

@@ -12,6 +12,7 @@
 
 import { createModOptions, type ModOptions } from "./mod-options";
 import { createModKeybindings, type ModKeybindings } from "./mod-keybindings";
+import type { ModKnowledge } from "./knowledge-read";
 import * as neoCore from "@rpgm-tools/neo-angband-core";
 /* The SDK as a VALUE, for the same reason core is one here and only here: this
  * is the module that hands a live namespace to a plugin, and it is the module no
@@ -166,6 +167,7 @@ export function modPluginContext(
   const keymaps = keymapsFor(id, state, session);
   const options = optionsFor(state, session);
   const keybindings = keybindingsFor(state, session);
+  const knowledge = knowledgeFor(state, session);
   const characterStore = characterStoreFor(id, state, session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
@@ -228,6 +230,7 @@ export function modPluginContext(
         } : {}),
       }) } : {}),
     ...(keymaps ? { keymaps } : {}),
+    ...(knowledge ? { knowledge } : {}),
     ...(options ? { options } : {}),
     ...(keybindings ? { keybindings } : {}),
     ...(characterStore ? { characterStore } : {}),
@@ -266,6 +269,18 @@ export function modPluginContext(
 /** `ctx.keymaps` is meaningful only during a live game and with its own consent. */
 /** The host's save-after-change hook for `ctx.options`, latched at boot (main.ts autosave). */
 let optionsAfterChange: (() => void) | undefined;
+let knowledgeSource: (() => ModKnowledge) | undefined;
+
+/** Install or clear the source behind `ctx.knowledge` (boot path and tests). */
+export function setModKnowledgeSource(source: (() => ModKnowledge) | undefined): void {
+  knowledgeSource = source;
+}
+
+function knowledgeFor(state: GameState | undefined, session: ModSessionFacts): ModKnowledge | undefined {
+  const caps = session.capabilities;
+  if (!state || !knowledgeSource || !caps || !(caps.has("state:knowledge.read") || caps.has("state:*.read"))) return undefined;
+  return knowledgeSource();
+}
 
 export function setModOptionsAfterChange(after: (() => void) | undefined): void {
   optionsAfterChange = after;
