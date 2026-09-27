@@ -117,48 +117,6 @@ export interface DomKeyboardOwner {
 let domKeyboardOwner: DomKeyboardOwner | undefined;
 
 const controlDomOwners = new Set<DomKeyboardOwner>();
-const tiledPanelRoots = new Set<ShadowRoot>();
-let tiledPanelInputBlocked = false;
-
-/** A tiled provider owns typing only while one of its editable fields has focus. */
-export function addTiledPanelRoot(root: ShadowRoot): () => void {
-  tiledPanelRoots.add(root);
-  return () => tiledPanelRoots.delete(root);
-}
-
-export function setTiledPanelInputBlocked(blocked: boolean): void {
-  tiledPanelInputBlocked = blocked;
-}
-
-export function blurTiledPanelFocus(): void {
-  for (const root of tiledPanelRoots) {
-    if (root.activeElement instanceof HTMLElement) root.activeElement.blur();
-  }
-}
-
-const tiledPanelOwner: DomKeyboardOwner = {
-  owns(event) {
-    if (tiledPanelInputBlocked) return false;
-    return [...tiledPanelRoots].some((root) => {
-      const focused = root.activeElement;
-      return event.composedPath().includes(root.host) && focused instanceof Element &&
-        (focused.matches("input, textarea, select") ||
-          focused.closest("[contenteditable]:not([contenteditable='false'])") !== null);
-    });
-  },
-  escape(event) {
-    if (event.repeat || event.isComposing || !event.isTrusted || tiledPanelInputBlocked) return false;
-    for (const root of tiledPanelRoots) {
-      if (root.activeElement instanceof HTMLElement) {
-        blurTiledPanelFocus();
-        const host = root.host;
-        if (host instanceof HTMLElement) host.blur();
-        return true;
-      }
-    }
-    return false;
-  },
-};
 
 /** Add a shell control field without replacing a mod panel's keyboard owner. */
 export function addControlDomOwner(owner: DomKeyboardOwner): () => void {
@@ -333,7 +291,7 @@ function offAuxiliary(
   if (index >= 0) auxiliaryEntries.splice(index, 1);
 }
 
-export function installBrowserAdapter(target: KeyTarget): void {
+function installBrowserAdapter(target: KeyTarget): void {
   if (browserWindow === target) return;
   if (browserWindow) {
     browserWindow.removeEventListener("keydown", browserKeydown, true);
@@ -354,7 +312,7 @@ export function installBrowserAdapter(target: KeyTarget): void {
   browserWindow = target;
 }
 
-export function browserKeydown(event: Event): void {
+function browserKeydown(event: Event): void {
   const key = event as KeyboardEvent;
   if (
     autoplayerInterruptOwner?.active() &&
@@ -364,7 +322,7 @@ export function browserKeydown(event: Event): void {
     autoplayerInterruptOwner.interrupt();
     return;
   }
-  for (const owner of [domKeyboardOwner, ...controlDomOwners, tiledPanelOwner]) {
+  for (const owner of [domKeyboardOwner, ...controlDomOwners]) {
     if (!owner) continue;
     /* ESCAPE FIRST, and asked whether or not the mounted DOM would have claimed
      * this key. `preventDefault` only when it was actually consumed: an owner
@@ -386,17 +344,17 @@ export function browserKeydown(event: Event): void {
 }
 
 function browserPaste(event: Event): void {
-  if ([...controlDomOwners, tiledPanelOwner].some((owner) => owner.owns(event as KeyboardEvent))) return;
+  if ([...controlDomOwners].some((owner) => owner.owns(event as KeyboardEvent))) return;
   deliverAuxiliary("paste", event);
 }
 
 function browserCompositionStart(event: Event): void {
-  if ([...controlDomOwners, tiledPanelOwner].some((owner) => owner.owns(event as KeyboardEvent))) return;
+  if ([...controlDomOwners].some((owner) => owner.owns(event as KeyboardEvent))) return;
   deliverAuxiliary("compositionstart", event);
 }
 
 function browserCompositionEnd(event: Event): void {
-  if ([...controlDomOwners, tiledPanelOwner].some((owner) => owner.owns(event as KeyboardEvent))) return;
+  if ([...controlDomOwners].some((owner) => owner.owns(event as KeyboardEvent))) return;
   deliverAuxiliary("compositionend", event);
 }
 
@@ -503,8 +461,6 @@ export function clearInputDoor(): void {
   keymapResolverOptions = undefined;
   domKeyboardOwner = undefined;
   controlDomOwners.clear();
-  tiledPanelRoots.clear();
-  tiledPanelInputBlocked = false;
   autoplayerInterruptOwner = undefined;
   nextSequence = 1;
   if (browserWindow) {

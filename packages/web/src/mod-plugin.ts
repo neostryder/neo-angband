@@ -272,14 +272,21 @@ export interface ModDisplay {
   /** Subscribe ahead of the shell's ordinary and modal key owners. */
   onKey(listener: (event: KeyboardEvent) => void): () => void;
   setGrid(request: ModDisplayGridRequest | null): void;
+  getGrid(): ModDisplayGridRequest | null;
   setCamera(origin: { readonly x: number; readonly y: number } | null): void;
+  getCamera(): { readonly x: number; readonly y: number } | null;
   setMapView(view: ModMapView | null): void;
+  getMapView(): ModMapView | null;
   setSidebarExtent(extent: { readonly columns: number; readonly topRows: number } | null): void;
+  getSidebarExtent(): { readonly columns: number; readonly topRows: number } | null;
   /** Reserve whole cells beside the main map for mod-owned controls. */
   setMapMargin?(margin: { readonly edge: "top" | "right" | "bottom" | "left"; readonly cells: number } | null): void;
-  setTileScaling(mode: "auto" | "crisp"): void;
+  getMapMargin?(): { readonly edge: "top" | "right" | "bottom" | "left"; readonly cells: number } | null;
+  setTileScaling(mode: "auto" | "crisp" | null): void;
+  getTileScaling(): "auto" | "crisp";
   /** Choose the full-detail map picture instead of the compressed ASCII miniature. */
-  setFullMapOverview(enabled: boolean): void;
+  setFullMapOverview(enabled: boolean | null): void;
+  getFullMapOverview(): boolean;
   /** Show a trailing ellipsis for store item names that exceed their column. */
   setStoreItemNameEllipsis(enabled: boolean): void;
   /** Show the selected store item's full description on the message line. */
@@ -296,6 +303,7 @@ export interface ModDisplay {
   setMonsterListColorKey(enabled: boolean): void;
   /** Apply a CSS filter to the canvas or the game's panels; null clears both. */
   setVisualFilter(filter: string | null, options?: { readonly scope?: "canvas" | "game" }): void;
+  getVisualFilter(): { readonly filter: string; readonly scope: "canvas" | "game" } | null;
   repaint(): void;
 }
 
@@ -574,6 +582,12 @@ export interface ModPluginContext {
    * has not installed a snapshot source.
    */
   readonly snapshot?: () => InputSnapshot | null;
+  /** The current keyboard owner, read from the host's installed controller. */
+  readonly driver?: () => import("./input-snapshot").InputDriver;
+  /** Publish status only while this mod owns the installed controller. */
+  readonly controller?: { setStatus(status: { readonly label?: string; readonly reason?: string }): void } | undefined;
+  /** Enabled and loaded mods, limited to manifest-declared public flags. */
+  readonly mods?: () => readonly { readonly id: string; readonly version: string; readonly flags?: Readonly<Record<string, boolean>> }[];
   /** Resolved game events, gated by each declared `event:<name>` grant. */
   readonly events?: AgentEventSubscription;
   /** The whole remembered level at one token; null without map read access. */
@@ -997,34 +1011,8 @@ export interface ModUi {
    * returned a dead handle would hide them.
    */
   openPanel(spec: ModPanelSpec): ModPanel;
-  /** Register a persistent tiled panel kind for this mod. */
-  registerPanelKind(spec: PanelKindSpec): () => void;
   /** THIS mod's open panels, topmost last. Never another mod's. */
   readonly openPanels: readonly string[];
-}
-
-export interface PanelKindSpec {
-  readonly kind: string;
-  readonly label: string;
-  readonly tab?: string;
-  readonly minSize?: Readonly<{ width: number; height: number }>;
-  readonly preferredPlacement?:
-    | Readonly<{ kind: "dock"; target: string; edge: "left" | "right" | "top" | "bottom" }>
-    | Readonly<{ kind: "tab"; target: string }>;
-  readonly fitHeight?: number;
-  mount(host: PanelMount): void | (() => void);
-}
-
-export interface PanelMount {
-  readonly id: string;
-  readonly root: ShadowRoot;
-  readonly bounds: Readonly<{ width: number; height: number }>;
-  readonly active: boolean;
-  readonly focused: boolean;
-  onStateChange(listener: (state: Readonly<{ bounds: Readonly<{ width: number; height: number }>; active: boolean; focused: boolean }>) => void): () => void;
-  requestFocus(): void;
-  requestClose(): void;
-  setFitHeight(px: number | null): void;
 }
 
 /**

@@ -61,9 +61,19 @@ const ANY_READ_CAPABILITY = "state:*.read";
  */
 export type InteractionPhase = "pregame" | "play" | "store" | "more" | "modal" | "dead";
 
+export type InputDriver =
+  | { readonly kind: "player" }
+  | { readonly kind: "controller"; readonly owner: string; readonly label?: string; readonly reason?: string };
+
+export function frozenDriver(driver: InputDriver): InputDriver {
+  return Object.freeze({ ...driver });
+}
+
 export interface InputSnapshot {
   /** The core token; the same value `core.token` carries. */
   readonly token: InputToken;
+  /** The host's current keyboard owner, independent of read capabilities. */
+  readonly driver: InputDriver;
   /** Null when `state:interaction.read` is not granted. */
   readonly phase: InteractionPhase | null;
   /** Whether a "-more-" pause holds input. Null without `state:interaction.read`. */
@@ -83,6 +93,7 @@ export interface InputSnapshot {
 export interface InputSnapshotSource {
   /** The live game, or undefined before one exists. */
   state(): GameState | undefined;
+  driver?(): InputDriver;
   /** The view deps the host builds its own agent views with. */
   viewDeps(): AgentViewDeps;
   phase(): InteractionPhase;
@@ -114,6 +125,7 @@ export function buildInputSnapshot(
   const live = grants(caps, MAP_READ_CAPABILITY) ? source.frame() : null;
   return Object.freeze({
     token: core.token,
+    driver: frozenDriver(source.driver?.() ?? { kind: "player" }),
     phase: interaction ? source.phase() : null,
     messagePending: interaction ? source.messagePending() : null,
     prompt: interaction ? source.prompt() : null,

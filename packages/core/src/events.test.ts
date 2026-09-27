@@ -4,8 +4,8 @@ import type { GameEventType } from "./events.js";
 
 describe("GameEvents", () => {
   it("covers upstream and resolved event types exactly once", () => {
-    // 65 upstream events plus three resolved seam events.
-    expect(GAME_EVENT_TYPES).toHaveLength(68);
+    // 65 upstream events plus four seam events.
+    expect(GAME_EVENT_TYPES).toHaveLength(69);
     expect(new Set(GAME_EVENT_TYPES).size).toBe(GAME_EVENT_TYPES.length);
     expect(GAME_EVENT_TYPES[0]).toBe("map");
     expect(GAME_EVENT_TYPES[GAME_EVENT_TYPES.length - 1]).toBe("end");

@@ -517,6 +517,8 @@ export interface PackManifest {
    * GameState.modRules as save state. Absent for a pack with nothing to toggle.
    */
   rules?: PackRule[];
+  /** Rule or section flags whose current boolean values other plugins may read. */
+  publicFlags?: string[];
   /**
    * A rule flag this pack used to declare -> its current `rules` flag. The host
    * consumes an old saved player choice when it loads the enabled pack, folding
@@ -759,6 +761,15 @@ export function validateManifest(value: unknown): PackManifest {
   const ruleFlags = validateRules(m["rules"], id);
   validateRenamedRuleFlags(m["renamedRuleFlags"], id, ruleFlags);
   const sectionIds = validateSections(m["sections"], id, ruleFlags);
+  if (m["publicFlags"] !== undefined) {
+    const flags = m["publicFlags"];
+    const declared = new Set(ruleFlags);
+    for (const section of (m["sections"] ?? []) as PackSection[]) declared.add(section.flag ?? section.id);
+    if (!Array.isArray(flags) || flags.some((flag) => typeof flag !== "string" || !declared.has(flag)) ||
+        new Set(flags).size !== flags.length) {
+      throw new ManifestError(`manifest ${id}: publicFlags must list distinct declared rule or section flags`);
+    }
+  }
   validateGroup(m["group"], id);
   validateCompat(m["compat"], id, sectionIds);
   validateTilePacks(m["tilePacks"], id);

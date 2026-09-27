@@ -181,7 +181,7 @@ What `ctx` carries:
 | `installMod` | `(bytes) => Promise<{ok, id, version, lines} \| {ok, problem, lines}>`, installing a content mod from the bytes of an archive. Present only when your manifest declared `mod:install`. Code is refused, and what you install arrives switched off: the player enables it, and a mod takes effect on reload. `lines` is the wording the Mods screen prints for the same outcome, per-requirement rows included, so print it instead of writing your own wording for the same result |
 | `reloadGame` | `() => Promise<void>`, the game's own mod-change reload: every plugin's `uninstall()` runs, the autoplayer's keyboard is handed back, the live character is written down, and the session resumes on that character. Present on the same terms as `installMod`, because an install does nothing until the game reloads. It is not a permission (a plugin can reach `location` regardless), but `location.reload()` skips all four steps, and the third one is the player's progress |
 | `loadModForSession` | `(bytes) => Promise<{ok, id, version, survivesReload} \| {ok, problem}>`, loading a content mod for this session only. Present only when your manifest declared `mod:session`. Code is refused on the same terms. The mod is on from the next reload without waiting to be switched on, and the archive is forgotten when the game closes, but what it did to a character is not, so tell the player that |
-| `ui` | `{ openPanel(spec), registerPanelKind(spec), openPanels }`, panels of real HTML instead of character cells. Present only when your manifest declared `ui:panel.mount`; absent everywhere else, so test for it. See `MOD_SEAMS.md` sections 4b and 4p. Escape belongs to the player, and a non-modal `openPanel` container takes no pointer events |
+| `ui` | `{ openPanel(spec), openPanels }`, panels of real HTML instead of character cells. Present only when your manifest declared `ui:panel.mount`; absent everywhere else, so test for it. See `MOD_SEAMS.md` section 4b. The two things that catch most authors out are that Escape belongs to the player and that a non-modal panel's container takes no pointer events |
 | `keyRepeat` | `() => { isRepeat, reportedRepeat, intervalMs, ageMs } \| null`, the host's own classification of the most recent root-screen keydown as a key-repeat or a fresh press. Ungated, like `subwindows`; `null` until the root handler has classified a keydown this session. Read-only for now: nothing suppresses or changes a command based on it yet (#35) |
 | `characterStore` | `{ get(), set(value) }`, this mod's own live per-character storage: the same save bag `migrateBag` migrates, read and written during play instead of only at mod-load time. Scoped by mod id like `prefs`, and ungated. Present only once there is a live character. A write is stamped with your manifest's current `saveSchema` (0 if you declare none), which is the number `migrateBag` reads back on a later load (#171) |
 
@@ -334,6 +334,10 @@ register(host, ctx) {
 
 `ctx.inspect.travelPath()` previews the travel command's walking route, `tileActions()` lists command codes for a remembered grid, and `itemRules()` reads learned ignore and auto-inscription settings. The map reads need `state:map.read`; item rules need `state:inventory.read`. Each answer is frozen and stamped with the input token. `ctx.display.setMapMargin()` reserves a clear strip beside the main map and needs no added capability. See [MOD_SEAMS.md section 4k](MOD_SEAMS.md#4k-ctxinspect---read-the-games-own-inspection-answers) and [section 4o](MOD_SEAMS.md#4o-reserving-a-map-margin).
 
+### Working beside controllers and other mods
+
+`ctx.snapshot().driver` and `ctx.driver()` name the current keyboard owner. A controller mod can publish a task label and reason through `ctx.controller.setStatus()`, and mods with `event:driver-changed` can listen for changes. `ctx.mods()` lists enabled, loaded mods and only the rule or section flags each manifest declares in `publicFlags`. Display setters keep a value per mod, restore an earlier value when the current owner clears or unloads, and expose getters for the value in force. See [MOD_SEAMS.md section 4p](MOD_SEAMS.md#4p-controller-ownership-public-mods-and-display-requests).
+
 ### Watching resolved outcomes: `ctx.events`
 
 Declare `event:combat-outcome`, `event:heal`, or `event:motion` to receive `ctx.events` during a game. Subscribe with `ctx.events.on(name, handler)`; each name needs its own grant. Combat payloads report hit or miss, applied damage, death, and the target grid. Healing reports the restored amount. Motion names a `walk` or `teleport` at the completed move. Every payload includes `seen`, and unseen events still arrive. See [MOD_SEAMS.md section 4l](MOD_SEAMS.md#4l-resolved-combat-healing-and-movement-events).
@@ -341,12 +345,6 @@ Declare `event:combat-outcome`, `event:heal`, or `event:motion` to receive `ctx.
 ### Managing characters: `ctx.saves`
 
 Declare `saves:manage` for a replacement title screen that lists, loads, renames or deletes characters. `ctx.saves` is absent without that grant. The methods and their refusal results are described in [MOD_SEAMS.md section 4m](MOD_SEAMS.md#4m-ctxsaves---the-host-character-roster).
-
-### Tiled panels beside `openPanel`
-
-Declare `ui:panel.mount` to offer a panel in Subwindow setup with `ctx.ui.registerPanelKind(spec)`. Its `mount` function draws into the slot's shadow root. Use the returned function during mod cleanup to unregister the kind. See [MOD_SEAMS.md section 4p](MOD_SEAMS.md#4p-ctxuiregisterpanelkind---a-mod-panel-in-the-tiled-layout) for the host handle and saved layout behavior.
-
-The host can float the same registered panel inside the game viewport and restore its last docked or floating place when it is shown again. A missing mod leaves a named placeholder in either place. See [MOD_SEAMS.md section 4q](MOD_SEAMS.md#4q-floating-panel-positions-and-recovery).
 
 ### Filtering panels with the canvas
 

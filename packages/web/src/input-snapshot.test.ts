@@ -129,6 +129,15 @@ describe("buildInputSnapshot", () => {
     expect(snap.messagePending).toBe(true);
     expect(snap.prompt).toBeNull();
     expect(Object.isFrozen(snap)).toBe(true);
+    expect(snap.driver).toEqual({ kind: "player" });
+    expect(Object.isFrozen(snap.driver)).toBe(true);
+  });
+
+  it("reads controller status without an interaction capability", () => {
+    const snap = buildInputSnapshot(source({ driver: () => ({ kind: "controller", owner: "squire", label: "Errand", reason: "Restocking" }) }), caps())!;
+    expect(snap.driver).toEqual({ kind: "controller", owner: "squire", label: "Errand", reason: "Restocking" });
+    expect(Object.isFrozen(snap.driver)).toBe(true);
+    expect(snap.phase).toBeNull();
   });
 
   it("withholds the phase and pause without state:interaction.read", () => {

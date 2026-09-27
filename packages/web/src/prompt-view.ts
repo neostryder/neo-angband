@@ -57,7 +57,7 @@ export type PromptDescriptor =
   | { readonly kind: "target"; readonly promptId: number; readonly label: string; readonly mode: "interesting" | "free"; readonly cursor: Readonly<{ x: number; y: number }>; readonly candidates: readonly Readonly<{ x: number; y: number }>[]; readonly path: readonly Readonly<{ x: number; y: number }>[] };
 
 export type PromptAnswer = boolean | number | string | Readonly<{ action: "move"; x: number; y: number }> | Readonly<{ action: "next" | "previous" | "toggle" | "select" | "cancel" }>;
-export interface PromptReplyResult { readonly accepted: boolean; readonly reason?: string }
+export interface PromptReplyResult { readonly accepted: boolean; readonly reason?: string; readonly code?: "controller-owned" }
 export interface ModPrompt { reply(promptId: number, answer: PromptAnswer): PromptReplyResult }
 
 /**

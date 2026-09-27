@@ -524,33 +524,13 @@ ctx.display?.setMapMargin?.({ edge: "right", cells: 3 });
 ctx.display?.setMapMargin?.(null);
 ```
 
-## 4p. `ctx.ui.registerPanelKind` - a mod panel in the tiled layout
+## 4p. Controller ownership, public mods, and display requests
 
-`ctx.ui.registerPanelKind(spec)` adds a persistent panel kind to Subwindow setup under the existing `ui:panel.mount` grant. The host forms its layout ID from the mod ID and `spec.kind`, such as `sample:quickbar`. The spec supplies a label, an optional short tab label, minimum size and preferred dock or tab placement, an optional fit height in CSS pixels, and `mount(host)`. Registration returns an unregister function. `ctx.ui.openPanel` keeps its separate overlay and modal behavior.
+`ctx.snapshot().driver` and `ctx.driver()` read the host's current input owner without another capability. They return a frozen player value or a controller value with its owner id. A bundled core controller uses `core:<id>`; an installed mod controller uses its mod id. `ctx.controller` exists only while that mod owns the active controller. Its `setStatus({ label, reason })` publishes optional text about the current task. The host emits `driver-changed` on the game event stream when ownership or status changes. A listener declares `event:driver-changed`. Both `ctx.intent.submit()` and `ctx.prompt.reply()` return `code: "controller-owned"` and a reason naming the owner when another controller holds input, even when the caller checked an earlier snapshot.
 
-```js
-const unregister = ctx.ui.registerPanelKind({
-  kind: "quickbar", label: "Quickbar", tab: "Bar", fitHeight: 48,
-  preferredPlacement: { kind: "dock", target: "main", edge: "bottom" },
-  mount(host) {
-    const button = document.createElement("button");
-    button.textContent = "Use item";
-    host.root.appendChild(button);
-    const stop = host.onStateChange(({ active }) => {
-      button.hidden = !active;
-    });
-    return () => stop();
-  },
-});
-```
+`ctx.mods()` returns a frozen list of enabled, loaded mods in enabled order. Each row contains the manifest id and version. A manifest may declare `publicFlags` as a list of its own declared rule or section flags; only those current boolean values appear in the optional frozen `flags` map. Private flags, save bags, and preferences never appear. The list changes after the host's mod-change reload applies the enabled set.
 
-The host owns the slot, tab strip, close control and saved position. `mount` runs when the panel first becomes visible and receives a closed shadow root inside the slot body. The host handle exposes `id`, `root`, `bounds`, `active`, `focused`, `onStateChange(listener)`, `requestFocus()`, `requestClose()` and `setFitHeight(px | null)`. An inactive tab stays mounted. Removing the panel, unregistering its kind or tearing down the page calls its cleanup. A saved panel whose mod is not loaded keeps its place as a named placeholder with a Remove button; registration in the same session fills that slot.
-
-Typing in a focused editable field inside the panel goes to that field through the single input door. A native display panel keeps game keys available. Escape closes the top overlay panel first, then leaves a focused tiled mod panel for the game. The layout editor and game modals keep their input while open.
-
-## 4q. Floating panel positions and recovery
-
-The host's Subwindow setup can move a registered panel into a floating window inside the game viewport. The panel keeps the same slot, shadow root, controls, minimum size and input behavior. Its title bar can move it onto the same dock, swap and tab drop zones as a docked panel. Closing and showing it again restores its floating rectangle; Dock returns it to its last docked place or `preferredPlacement` if that place is unavailable. A saved float whose mod is not loaded shows the same named placeholder as a docked panel. The Floating windows switch temporarily renders floats at their remembered docked places without erasing their saved rectangles. No new capability or `ctx.ui` field is required.
+Each mod's display setters keep its own last request. The most recent live request controls the grid, camera, full map view, tile scaling, map overview, sidebar extent, map margin, or visual filter. Clearing a nullable request removes that mod's value; `setTileScaling(null)` restores the default automatic sampler and `setFullMapOverview(null)` restores the default overview when no earlier request remains. `getGrid()`, `getCamera()`, `getMapView()`, `getTileScaling()`, `getFullMapOverview()`, `getSidebarExtent()`, `getMapMargin()`, and `getVisualFilter()` report the value in force. Mod teardown removes every request from that mod and restores the next most recent request for each setter.
 
 ## 5. Doors that are exported but deliberately closed
 

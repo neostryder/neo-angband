@@ -646,6 +646,17 @@ export class GlyphTerm
     for (const listener of this.sizeListeners) listener(size);
   }
 
+  /** Current whole-cell request, or null for the fixed terminal grid. */
+  getReflow(): GridReflowOptions | null {
+    if (!this.options.reflow) return null;
+    return {
+      cellHeight: this.options.fontPx,
+      minCols: this.options.minCols,
+      minRows: this.options.minRows,
+      snapViewportToEven: this.options.snapViewportToEven ?? false,
+    };
+  }
+
   /** Whether the active reflow owner asked the shell for even map dimensions. */
   snapsViewportToEven(): boolean {
     return this.options.reflow && (this.options.snapViewportToEven ?? false);

@@ -13,19 +13,19 @@ function memory(): Pick<Storage, "getItem" | "setItem"> & { values: Map<string, 
 describe("window-manager settings", () => {
   it("reads the defaults when nothing is stored", () => {
     expect(readWmSettings(memory())).toEqual(DEFAULT_WM_SETTINGS);
-    expect(DEFAULT_WM_SETTINGS).toEqual({ tabs: true, fitSmallWindows: true, lockDividers: false, moveDungeonView: true, fitToContent: true, floatingWindows: true });
+    expect(DEFAULT_WM_SETTINGS).toEqual({ tabs: true, fitSmallWindows: true, lockDividers: false, moveDungeonView: true, fitToContent: true });
   });
 
   it("round-trips through a house JSON document", () => {
     const storage = memory();
-    expect(writeWmSettings(storage, { tabs: false, fitSmallWindows: true, lockDividers: true, moveDungeonView: false, fitToContent: false, floatingWindows: false })).toBe(true);
+    expect(writeWmSettings(storage, { tabs: false, fitSmallWindows: true, lockDividers: true, moveDungeonView: false, fitToContent: false })).toBe(true);
     const raw = JSON.parse(storage.values.get(WM_SETTINGS_STORAGE_KEY)!) as Record<string, unknown>;
     expect(raw).toEqual({
       format: "neo-angband/web/window-manager",
       schemaVersion: 1,
-      data: { tabs: false, fitSmallWindows: true, lockDividers: true, moveDungeonView: false, fitToContent: false, floatingWindows: false },
+      data: { tabs: false, fitSmallWindows: true, lockDividers: true, moveDungeonView: false, fitToContent: false },
     });
-    expect(readWmSettings(storage)).toEqual({ tabs: false, fitSmallWindows: true, lockDividers: true, moveDungeonView: false, fitToContent: false, floatingWindows: false });
+    expect(readWmSettings(storage)).toEqual({ tabs: false, fitSmallWindows: true, lockDividers: true, moveDungeonView: false, fitToContent: false });
   });
 
   it("falls back to the defaults for a corrupt document without throwing", () => {

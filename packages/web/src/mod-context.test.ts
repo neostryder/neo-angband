@@ -20,6 +20,8 @@ import {
   setModSubwindowsControl,
   setModKeyRepeatControl,
   setModTilesControl,
+  setModDriverControl,
+  setModListControl,
 } from "./mod-context";
 import type { ModCharacterStoreControl } from "./mod-context";
 import type { ModCharacterStore, ModDisplay, ModSubwindows, ModTiles } from "./mod-plugin";
@@ -31,6 +33,73 @@ import { modPrefs, modPrefsKey } from "./mod-prefs";
 const MAIN_TS_SOURCE = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
 
 describe("modPluginContext session facts", () => {
+  it("reports the active driver, publishes status, and refuses another owner's input", () => {
+    const bus = new GameEvents();
+    let driver = { kind: "player" } as import("./input-snapshot").InputDriver;
+    const statuses: string[] = [];
+    setModDriverControl({
+      current: () => driver,
+      setStatus: (id, status) => {
+        if (driver.kind !== "controller" || driver.owner !== id) throw new Error("wrong owner");
+        driver = { ...driver, ...status };
+        statuses.push(status.label ?? "");
+        bus.emit("driver-changed", driver);
+      },
+    });
+    try {
+      const capabilities = CapabilitySet.fromManifest({
+        id: "interface", name: "Interface", version: "1.0.0", shape: "plugin",
+        modApi: 1, capabilities: ["input:intent", "input:prompt.reply", "event:driver-changed"],
+      });
+      const ctx = modPluginContext("interface", {}, { events: bus } as GameState, {}, {
+        capabilities, intentGate: { submit: () => ({ accepted: true }) },
+      });
+      const heard: import("./input-snapshot").InputDriver[] = [];
+      ctx.events?.on("driver-changed", (_type, event) => heard.push(event));
+      expect(ctx.driver?.()).toEqual({ kind: "player" });
+      expect(Object.isFrozen(ctx.driver?.())).toBe(true);
+      expect(ctx.controller).toBeUndefined();
+      driver = { kind: "controller", owner: "core:borg" };
+      bus.emit("driver-changed", driver);
+      expect(ctx.driver?.()).toEqual({ kind: "controller", owner: "core:borg" });
+      expect(ctx.intent?.submit({} as never, { kind: "command", command: { code: "walk", dir: 6 } })).toEqual({
+        accepted: false, code: "controller-owned", reason: "input is owned by controller core:borg",
+      });
+      expect(ctx.prompt?.reply(1, true)).toEqual({
+        accepted: false, code: "controller-owned", reason: "input is owned by controller core:borg",
+      });
+      driver = { kind: "controller", owner: "interface" };
+      bus.emit("driver-changed", driver);
+      ctx.controller?.setStatus({ label: "Walking to the shop", reason: "Need supplies" });
+      expect(ctx.driver?.()).toEqual({ kind: "controller", owner: "interface", label: "Walking to the shop", reason: "Need supplies" });
+      expect(statuses).toEqual(["Walking to the shop"]);
+      expect(heard).toHaveLength(3);
+      driver = { kind: "player" };
+      expect(ctx.controller).toBeUndefined();
+    } finally {
+      setModDriverControl(undefined);
+    }
+  });
+
+  it("lists only enabled loaded mods and public flags as frozen copies", () => {
+    let loaded = [{ id: "interface", version: "1.0.0" }, {
+      id: "qol", version: "2.0.0", flags: { "qol.autoDig": true },
+    }];
+    setModListControl(() => loaded);
+    try {
+      const ctx = modPluginContext("interface", {});
+      const first = ctx.mods?.();
+      expect(first).toEqual(loaded);
+      expect(Object.isFrozen(first)).toBe(true);
+      expect(Object.isFrozen(first?.[1])).toBe(true);
+      expect(Object.isFrozen(first?.[1]?.flags)).toBe(true);
+      loaded = [{ id: "interface", version: "1.0.0" }];
+      expect(ctx.mods?.()).toEqual(loaded);
+      expect(first).toHaveLength(2);
+    } finally {
+      setModListControl(undefined);
+    }
+  });
   it("exposes only granted resolved event subscriptions", () => {
     const bus = new GameEvents();
     const state = { events: bus } as GameState;

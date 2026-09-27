@@ -87,6 +87,10 @@ try {
 A single mod may declare several of these as **facets**; `packFacets` is what
 reads them.
 
+### Public rule flags
+
+A manifest may list declared rule or section flags in `publicFlags`, such as `"publicFlags": ["qol.autoDig"]`. The validator rejects unknown or repeated names. The host shows only these current boolean values in `ctx.mods()`; all other settings remain private.
+
 ## Related
 
 - [`@rpgm-tools/neo-angband-core`](https://www.npmjs.com/package/@rpgm-tools/neo-angband-core): the engine itself

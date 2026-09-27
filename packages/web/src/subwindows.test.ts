@@ -17,7 +17,6 @@ import {
   readSubwindowSettings,
   readSubwindowState,
   readSubwindowDefault,
-  reconcileSubwindowTree,
   registerSubwindowPrefBlock,
   scrollSubwindow,
   setSubwindowEnabled,
@@ -34,32 +33,6 @@ import { computeLayout, containsLeaf, leafIds, MAIN_TILE_ID } from "./subwindow-
 import type { GridSurface } from "./term";
 import type { Overview } from "./mapview";
 import { buildOverview } from "./mapview";
-
-describe("mod panel layout ids", () => {
-  const document = (id: string, tabs?: string[]) => ({
-    enabled: { ...Object.fromEntries([
-      "inventory", "equipment", "player-basic", "player-extra", "player-compact", "map", "messages",
-      "overhead", "monster-recall", "object-recall", "monsters", "status", "items", "player-topbar",
-    ].map((name) => [name, false])) },
-    tree: { kind: "split", axis: "v", ratio: 0.7,
-      first: { kind: "leaf", id: "main" }, second: { kind: "leaf", id, ...(tabs ? { tabs } : {}) } },
-    mapTileMode: 0,
-  });
-
-  it("accepts a mod id and keeps it through native reconciliation", () => {
-    const parsed = subwindowLayoutFormat.validator.validate(document("my-mod:quickbar"));
-    expect(parsed.ok).toBe(true);
-    if (parsed.ok) expect(containsLeaf(reconcileSubwindowTree(parsed.value.tree, parsed.value.enabled as SubwindowSettings), "my-mod:quickbar")).toBe(true);
-  });
-
-  it("rejects malformed ids, duplicates, and main in a group", () => {
-    for (const id of ["Bad:panel", "my-mod:", "core:fake", "my_mod:panel"]) {
-      expect(subwindowLayoutFormat.validator.validate(document(id)).ok).toBe(false);
-    }
-    expect(subwindowLayoutFormat.validator.validate(document("my-mod:panel", ["my-mod:panel", "my-mod:panel"])).ok).toBe(false);
-    expect(subwindowLayoutFormat.validator.validate(document("my-mod:panel", ["my-mod:panel", "main"])).ok).toBe(false);
-  });
-});
 
 function recordingTerm(cols: number, rows: number): GridSurface & {
   text(): string[];

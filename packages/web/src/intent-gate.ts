@@ -22,6 +22,7 @@ export type PlayerIntent =
 export interface IntentResult {
   readonly accepted: boolean;
   readonly reason?: string;
+  readonly code?: "controller-owned";
 }
 
 export interface ModIntent {

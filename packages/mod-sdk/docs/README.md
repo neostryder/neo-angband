@@ -164,6 +164,7 @@ my-frost-pack/
 - `dependencies`: packs that must load before yours. Declaring a
   dependency is also a permission: you may only patch, replace, or
   remove records owned by packs you declare here.
+- `publicFlags`: optional names from this manifest's `rules` or `sections`. The host includes only these current boolean flags in `ctx.mods()` for other plugins. Missing and repeated names are refused; other settings stay private.
 - Load order is resolved deterministically (dependencies first,
   alphabetical ties), so the same pack set composes identically on
   every machine. Cycles and missing dependencies fail loudly at load.

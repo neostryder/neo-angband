@@ -343,6 +343,9 @@ import {
   setModCharacterStoreControl,
   setModComposedRecords,
   setModDisplayControl,
+  clearModDisplayValues,
+  setModDriverControl,
+  setModListControl,
   setModSnapshotSource,
   setModSavesControl,
   setModIntentGate,
@@ -356,9 +359,10 @@ import {
   type ModSessionFacts,
 } from "./mod-context";
 import { createIntentGate } from "./intent-gate";
+import { publicModList } from "./mod-list";
 import { applyMapMargin } from "./map-margin";
 import { createModSaves } from "./saves-facade";
-import type { InputSnapshotSource } from "./input-snapshot";
+import { frozenDriver, type InputDriver, type InputSnapshotSource } from "./input-snapshot";
 import type { ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, ModTiles } from "./mod-plugin";
 import { createKeyRepeatTracker } from "./key-repeat";
 import { VisualFilterOverlay, applyScopedVisualFilter } from "./visual-filter";
@@ -468,6 +472,7 @@ import {
   discoverEnabledTileModes,
   isTile,
   loadTilePrefs,
+  getTileScalingMode,
   setTileScalingMode,
   tileCode,
   type ModPrefText,
@@ -566,8 +571,6 @@ import {
   registerSubwindowPrefBlock,
   scrollSubwindow,
   setSubwindowEnabled,
-  rememberDockTree,
-  standardDock,
   SUBWINDOW_CHOICES,
   writeSubwindowState,
   writeSubwindowDefault,
@@ -575,8 +578,6 @@ import {
   type SubwindowState,
 } from "./subwindows";
 import { mountSubwindowShell } from "./subwindow-shell";
-import { bindPanelProviders, panelKinds, syncPanelProviders, unregisterAllPanelKinds } from "./panel-provider";
-import { applyDrop, containsLeaf, insertAtEdge, removeLeaf, restoreDockPlace, swapLeaves, tabInto, type LayoutNode } from "./subwindow-layout";
 import { readWmSettings, writeWmSettings, type WmSettings } from "./wm-settings";
 import {
   inventoryScreen,
@@ -997,75 +998,14 @@ const subwindowShell = mountSubwindowShell({
   labels: Object.fromEntries(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.label])),
   tabLabels: Object.fromEntries(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.tab])),
   onTreeChange: (tree) => {
-    subwindowState = rememberDockTree(subwindowState, tree);
+    subwindowState = { ...subwindowState, tree };
     writeSubwindowState(localStorage, subwindowState);
     applySubwindowLayout();
     renderSubwindows();
   },
-  onFloat: (id, rect) => {
-    if (id === "main" || !containsLeaf(subwindowState.tree, id)) return;
-    const places = { ...subwindowState.places,
-      [id]: { ...subwindowState.places?.[id], dock: subwindowState.tree,
-        float: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, last: "float" as const } };
-    subwindowState = { ...subwindowState, tree: removeLeaf(subwindowState.tree, id),
-      floats: [...subwindowState.floats ?? [], rect], places };
-    writeSubwindowState(localStorage, subwindowState);
-    applySubwindowLayout();
-    renderSubwindows();
-  },
-  onDockFloat: (id, zone) => {
-    const floating = subwindowState.floats?.find((entry) => entry.id === id);
-    if (!floating || id === "main") return;
-    const floats = (subwindowState.floats ?? []).filter((entry) => entry.id !== id);
-    const saved = subwindowState.places?.[id]?.dock;
-    let tree = subwindowState.tree;
-    if (zone?.kind === "swap") {
-      const withIncoming = saved ? restoreDockPlace(tree, id, saved) : null;
-      tree = withIncoming ?? insertAtEdge(tree, id, zone.id, "right");
-      tree = swapLeaves(tree, id, zone.id);
-      if (zone.id !== "main") {
-        tree = removeLeaf(tree, zone.id);
-        floats.push({ ...floating, id: zone.id });
-      }
-    } else if (zone) tree = applyDrop(tree, id, zone);
-    else if (saved) tree = restoreDockPlace(tree, id, saved) ?? tree;
-    if (!containsLeaf(tree, id)) {
-      const native = SUBWINDOW_CHOICES.find((choice) => choice.id === id);
-      const preferred = panelKinds().find((kind) => kind.id === id)?.spec.preferredPlacement;
-      tree = native ? standardDock(tree, native.id) : preferred && containsLeaf(tree, preferred.target)
-        ? preferred.kind === "tab" ? tabInto(tree, id, preferred.target) : insertAtEdge(tree, id, preferred.target, preferred.edge)
-        : insertAtEdge(tree, id, "main", "right");
-    }
-    subwindowState = rememberDockTree({ ...subwindowState, floats,
-      places: { ...subwindowState.places, [id]: { ...subwindowState.places?.[id],
-        float: { x: floating.x, y: floating.y, width: floating.width, height: floating.height }, last: "dock" as const } } }, tree);
-    writeSubwindowState(localStorage, subwindowState);
-    applySubwindowLayout();
-    renderSubwindows();
-  },
-  onFloatsChange: (floats) => {
-    const places = { ...subwindowState.places };
-    for (const entry of floats) places[entry.id] = { ...places[entry.id],
-      float: { x: entry.x, y: entry.y, width: entry.width, height: entry.height }, last: "float" };
-    subwindowState = { ...subwindowState, floats, places };
-    writeSubwindowState(localStorage, subwindowState);
-  },
-  dockFallback: (tree, id) => {
-    const native = SUBWINDOW_CHOICES.find((choice) => choice.id === id);
-    if (native) return standardDock(tree, native.id);
-    const preferred = panelKinds().find((kind) => kind.id === id)?.spec.preferredPlacement;
-    if (preferred && containsLeaf(tree, preferred.target)) return preferred.kind === "tab"
-      ? tabInto(tree, id, preferred.target) : insertAtEdge(tree, id, preferred.target, preferred.edge);
-    return insertAtEdge(tree, id, "main", "right");
-  },
-  onViewChange: () => syncPanelProviders(),
   /* A panel's own close [x] (neo-angband#246): the same live-disable path the
    * Interface Options subwindow checklist already uses. */
   onClose: (id) => {
-    if (id.includes(":")) {
-      setModPanelEnabledLive(id, false);
-      return;
-    }
     if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
     setSubwindowEnabledLive(id as SubwindowId, false);
   },
@@ -1091,33 +1031,7 @@ const subwindowShell = mountSubwindowShell({
     if (note) say(note);
   },
 });
-subwindowShell.apply(subwindowState.tree, subwindowState.floats, subwindowState.places);
-const panelProviderHost = {
-  shell: subwindowShell,
-  tree: () => subwindowState.tree,
-  forgetPanel: (id: string) => lastModTrees.delete(id),
-  closePanel: (id: string) => setModPanelEnabledLive(id, false),
-  removePanel: (id: string) => {
-    const { [id]: _forgotten, ...places } = subwindowState.places ?? {};
-    void _forgotten;
-    subwindowState = { ...subwindowState, tree: removeLeaf(subwindowState.tree, id),
-      floats: (subwindowState.floats ?? []).filter((entry) => entry.id !== id), places };
-    writeSubwindowState(localStorage, subwindowState);
-    applySubwindowLayout();
-    renderSubwindows();
-  },
-  changeTree: (tree: LayoutNode) => {
-    subwindowState = rememberDockTree(subwindowState, tree);
-    writeSubwindowState(localStorage, subwindowState);
-    applySubwindowLayout();
-    renderSubwindows();
-  },
-};
-let unbindPanelProviders = bindPanelProviders(panelProviderHost);
-window.addEventListener("pagehide", () => unbindPanelProviders());
-window.addEventListener("pageshow", (event) => {
-  if (event.persisted) unbindPanelProviders = bindPanelProviders(panelProviderHost);
-});
+subwindowShell.apply(subwindowState.tree);
 const term = new GlyphTerm(canvas, { boundsElement: gameView });
 /* neo-angband#184: #game's own `filter` style is a no-op (its 2d context is
  * `alpha: false`, and Chromium does not composite CSS filters through that
@@ -2833,7 +2747,7 @@ function trackObjectRecall(title: string, tb: Textblock): void {
 }
 
 function applySubwindowLayout(): void {
-  subwindowShell.apply(subwindowState.tree, subwindowState.floats, subwindowState.places);
+  subwindowShell.apply(subwindowState.tree);
   for (const choice of SUBWINDOW_CHOICES) {
     if (subwindowState.enabled[choice.id]) ensureSubwindowTerm(choice.id);
   }
@@ -2905,47 +2819,6 @@ function setSubwindowEnabledLive(id: SubwindowId, enabled: boolean): void {
   renderSubwindows();
 }
 
-const lastModTrees = new Map<string, LayoutNode>();
-
-function setModPanelEnabledLive(id: string, enabled: boolean): void {
-  const entry = panelKinds().find((kind) => kind.id === id);
-  if (enabled && !entry) return;
-  let tree = subwindowState.tree;
-  let floats = [...subwindowState.floats ?? []];
-  const places = { ...subwindowState.places };
-  if (enabled) {
-    if (containsLeaf(tree, id) || floats.some((entry) => entry.id === id)) return;
-    if (places[id]?.last === "float" && places[id]?.float) {
-      floats.push({ id, ...places[id].float });
-    } else {
-    const saved = places[id]?.dock ?? lastModTrees.get(id) ?? readSubwindowDefault(localStorage)?.tree;
-    const placed = saved ? restoreDockPlace(tree, id, saved) : null;
-    const preferred = entry?.spec.preferredPlacement;
-    tree = placed ?? (preferred && containsLeaf(tree, preferred.target)
-      ? preferred.kind === "tab"
-        ? tabInto(tree, id, preferred.target)
-        : insertAtEdge(tree, id, preferred.target, preferred.edge)
-      : insertAtEdge(tree, id, "main", "right"));
-    }
-  } else {
-    const floating = floats.find((item) => item.id === id);
-    if (floating) {
-      places[id] = { ...places[id], float: { x: floating.x, y: floating.y,
-        width: floating.width, height: floating.height }, last: "float" };
-      floats = floats.filter((item) => item.id !== id);
-    } else {
-      if (!containsLeaf(tree, id)) return;
-      lastModTrees.set(id, tree);
-      places[id] = { ...places[id], dock: tree, last: "dock" };
-      tree = removeLeaf(tree, id);
-    }
-  }
-  subwindowState = { ...subwindowState, tree, floats, places };
-  writeSubwindowState(localStorage, subwindowState);
-  applySubwindowLayout();
-  renderSubwindows();
-}
-
 /**
  * neo-subwindows (#238): a loaded pref file supplied a whole arrangement -
  * which panels are open and the BSP tree they are tiled into. Malformed or
@@ -2980,7 +2853,7 @@ function setWmFeature(key: keyof WmSettings, enabled: boolean): void {
 }
 
 const subwindowMenu: SubwindowMenu = {
-  get choices() { return [...SUBWINDOW_CHOICES, ...panelKinds().map(({ id, spec }) => ({ id, label: spec.label }))]; },
+  choices: SUBWINDOW_CHOICES,
   features: [
     {
       label: t("options.subwindows.featureTabs", "Tabs: drop a panel on another panel to share its space"),
@@ -3007,17 +2880,10 @@ const subwindowMenu: SubwindowMenu = {
       enabled: () => wmSettings.fitToContent,
       set: (enabled) => setWmFeature("fitToContent", enabled),
     },
-    {
-      label: t("options.subwindows.featureFloating", "Floating windows: move panels above the tiled layout inside the game"),
-      enabled: () => wmSettings.floatingWindows,
-      set: (enabled) => setWmFeature("floatingWindows", enabled),
-    },
   ],
   mapTiles: mapTileModeMenu,
-  enabled: (id) => id.includes(":") ? containsLeaf(subwindowState.tree, id) ||
-    !!subwindowState.floats?.some((entry) => entry.id === id) : subwindowState.enabled[id as SubwindowId],
+  enabled: (id) => subwindowState.enabled[id as SubwindowId],
   set: (id, enabled) => {
-    if (id.includes(":")) { setModPanelEnabledLive(id, enabled); return; }
     if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
     setSubwindowEnabledLive(id as SubwindowId, enabled);
   },
@@ -9410,6 +9276,7 @@ const displayControl: ModDisplay = {
     term.setReflow(request);
     if (levelMapActive) levelMapRepaint?.();
   },
+  getGrid() { return term.getReflow(); },
   setCamera(origin) {
     if (levelMapActive) return;
     if (origin === null) {
@@ -9423,6 +9290,7 @@ const displayControl: ModDisplay = {
     }
     renderBackground();
   },
+  getCamera() { return panelCamPinned && panelCam ? { x: panelCam.x, y: panelCam.y } : null; },
   setMapView(view) {
     if (!levelMapActive) return;
     if (view === null) {
@@ -9435,6 +9303,7 @@ const displayControl: ModDisplay = {
     }
     levelMapRepaint?.();
   },
+  getMapView() { return levelMapView ? { origin: { x: levelMapView.x, y: levelMapView.y }, size: { width: levelMapView.width, height: levelMapView.height } } : null; },
   setSidebarExtent(extent) {
     displaySidebarExtent = extent
       ? {
@@ -9444,21 +9313,25 @@ const displayControl: ModDisplay = {
       : null;
     renderBackground();
   },
+  getSidebarExtent() { return displaySidebarExtent ? { ...displaySidebarExtent } : null; },
   setMapMargin(margin) {
     displayMapMargin = margin
       ? { edge: margin.edge, cells: Number.isFinite(margin.cells) ? Math.max(0, Math.min(4, Math.floor(margin.cells))) : 0 }
       : null;
     renderBackground();
   },
+  getMapMargin() { return displayMapMargin ? { ...displayMapMargin } : null; },
   setTileScaling(mode) {
-    setTileScalingMode(mode);
+    setTileScalingMode(mode ?? "auto");
     term.invalidate();
     if (levelMapActive) levelMapRepaint?.();
   },
+  getTileScaling() { return getTileScalingMode(); },
   setFullMapOverview(enabled) {
-    fullMapOverview = enabled;
+    fullMapOverview = enabled ?? false;
     if (levelMapActive) levelMapRepaint?.();
   },
+  getFullMapOverview() { return fullMapOverview; },
   setStoreItemNameEllipsis(enabled) {
     storeItemNameEllipsis = enabled;
   },
@@ -9475,6 +9348,7 @@ const displayControl: ModDisplay = {
     requestedVisualFilter = { filter, scope: options?.scope ?? "canvas" };
     refreshVisualFilter();
   },
+  getVisualFilter() { return requestedVisualFilter.filter ? { ...requestedVisualFilter, filter: requestedVisualFilter.filter } : null; },
   repaint() {
     if (levelMapActive) levelMapRepaint?.();
     else renderBackground();
@@ -9541,12 +9415,25 @@ const subwindowsControl: ModSubwindows = {
 
 setModSubwindowsControl(subwindowsControl);
 
+/**
+ * The one autoplayer slot (ModPlugin.controller). Null while the human has the
+ * keyboard. A single slot rather than a set because installController swaps a
+ * single state.nextCommand: two of them is not "two autoplayers", it is one
+ * autoplayer and one mod that thinks it is running and is not.
+ */
+let installedController: { id: string; session: AgentSession; status?: { readonly label?: string; readonly reason?: string } } | null = null;
+let coreAgentSession: AgentSession | null = null;
+const installedPluginIds = new Set<string>();
+const agentId = params.get("agent");
+const agentMake = agentId ? DEMO_AGENTS[agentId] : undefined;
+
 /* ctx.snapshot()'s host half (input-snapshot.ts). The phase order matters:
  * a "-more-" pause runs inside openModal, so it is tested before modalDepth, and
  * a shop is its own modal, so storeModalActive is tested before the generic
  * one - the same precedence ModDisplay's `mode` uses. */
 const modSnapshotSource: InputSnapshotSource = {
   state: () => state,
+  driver: () => currentInputDriver(),
   knownLevel: (caps) => createAgentView(state, undefined, {
     resolver: new ContentIdResolver({
       objects: booted.registries.objects,
@@ -9589,6 +9476,35 @@ const modSnapshotSource: InputSnapshotSource = {
   frame: () => lastWorldFrame,
 };
 setModSnapshotSource(modSnapshotSource);
+setModDriverControl({
+  current: () => currentInputDriver(),
+  setStatus: (id, status) => {
+    if (installedController?.id !== id) throw new Error(`controller status requires active owner ${id}`);
+    if (status.label !== undefined && typeof status.label !== "string") throw new TypeError("controller label must be a string");
+    if (status.reason !== undefined && typeof status.reason !== "string") throw new TypeError("controller reason must be a string");
+    if (installedController.status?.label === status.label && installedController.status?.reason === status.reason) return;
+    installedController.status = {
+      ...(status.label !== undefined ? { label: status.label } : {}),
+      ...(status.reason !== undefined ? { reason: status.reason } : {}),
+    };
+    state.events?.emit("driver-changed", frozenDriver(currentInputDriver()));
+  },
+});
+const loadedModOrder = enabledModIds();
+setModListControl(() => {
+  const code = activeModCode();
+  const manifests = new Map([...discoverContentModManifests(), ...code.plugins.map((loaded) => loaded.manifest),
+    ...code.workers.map((loaded) => loaded.manifest),
+    ...[...discoverPlugins().values(), ...discoverTrustedPlugins().values()]
+      .filter((entry) => installedPluginIds.has(entry.manifest.id)).map((entry) => entry.manifest)]
+    .map((manifest) => [manifest.id, manifest]));
+  const present = presentNamespaces();
+  const loaded = new Set([...present, ...code.plugins.map((plugin) => plugin.id),
+    ...code.workers.map((worker) => worker.id),
+    ...installedPluginIds,
+    ...[...manifests.values()].filter((manifest) => manifest.shape === "tiles").map((manifest) => manifest.id)]);
+  return publicModList(loadedModOrder, manifests, loaded, resolveModRuleFlagsByMod());
+});
 setModIntentGate(createIntentGate({
   state,
   registry,
@@ -12436,17 +12352,15 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
     plugins: activeModCode().plugins,
     controller: installedController,
     revokePanels: revokeModPanels,
-    closePanels: () => {
-      unbindPanelProviders();
-      unregisterAllPanelKinds();
-      return closeAllModPanels();
-    },
+    closePanels: closeAllModPanels,
+    clearDisplayValues: clearModDisplayValues,
     clearVisualFilter: () => displayControl.setVisualFilter(null),
     clearMapMargin: () => displayControl.setMapMargin?.(null),
     releaseKeymaps: releaseModKeymaps,
   });
   for (const worker of workerPlugins.values()) worker.teardown();
   installedController = null;
+  state.events?.emit("driver-changed", frozenDriver(currentInputDriver()));
   installedControllerSpeed = null;
   stopInstalledController = null;
   /* A candidate still waiting on the confirm gate below (#125) does not
@@ -14380,8 +14294,6 @@ void applyModResources()
 // otherwise pull nextCommand until null and never return with an always-acting
 // agent); the tick interval is the agent's configurable speed. Ticks wait out
 // birth / menus / death (modalDepth, dead).
-const agentId = params.get("agent");
-const agentMake = agentId ? DEMO_AGENTS[agentId] : undefined;
 if (agentId && agentMake) {
   const base: AgentController = agentMake();
   const resolver = new ContentIdResolver({
@@ -14404,12 +14316,13 @@ if (agentId && agentMake) {
     armed = false;
     return base(view, act);
   };
-  installController(state, latched, {
+  coreAgentSession = installController(state, latched, {
     capabilities: caps,
     /* glyphs: the live x_char table (agent API 1.1.0) - an agent that draws a
      * map should draw the player's map, pref-file overrides and all. */
     viewDeps: { resolver, reg: booted.registries.objects, glyphs: glyphs.agentGlyphs() },
   });
+  state.events?.emit("driver-changed", frozenDriver(currentInputDriver()));
   // Event hook (W1.6): the same agent subscribes to the game event bus through
   // the capability-gated seam - proving mods can REACT to events, not only
   // perceive/act. event:message / event:sound are granted above.
@@ -14493,15 +14406,13 @@ if (agentId && agentMake) {
 // executes the pending command (host.ts).
 // Tracks which plugin ids are already installed (URL param wins) so the
 // persisted-enable pass (W2.4) does not double-install one.
-const installedPluginIds = new Set<string>();
-
-/**
- * The one autoplayer slot (ModPlugin.controller). Null while the human has the
- * keyboard. A single slot rather than a set because installController swaps a
- * single state.nextCommand: two of them is not "two autoplayers", it is one
- * autoplayer and one mod that thinks it is running and is not.
- */
-let installedController: { id: string; session: AgentSession } | null = null;
+function currentInputDriver(): InputDriver {
+  if (installedController) return {
+    kind: "controller", owner: installedController.id, ...installedController.status,
+  };
+  if (coreAgentSession && agentId) return { kind: "controller", owner: `core:${agentId}` };
+  return { kind: "player" };
+}
 
 /**
  * Re-paces the live autoplayer pump to a newly chosen speed tier, when one is
@@ -15263,6 +15174,7 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, controller: AgentContr
     capabilities: CapabilitySet.fromManifest(loaded.manifest),
   });
   installedController = { id: loaded.id, session };
+  state.events?.emit("driver-changed", frozenDriver(currentInputDriver()));
   /* Mark the savefile (do_cmd_try_borg, cmd-misc.c:128-140): a character an
    * autoplayer took over is not a character that earned its result, and the bit
    * is what the score gate reads at death (score.c:268, the "Score not
@@ -15347,6 +15259,7 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, controller: AgentContr
       reportModFault(id, `could not be released from the keyboard: ${faultMessage(err)}`);
     }
     installedController = null;
+    state.events?.emit("driver-changed", frozenDriver(currentInputDriver()));
     installedControllerSpeed = null;
     stopInstalledController = null;
     hideAutoplayerBanner();

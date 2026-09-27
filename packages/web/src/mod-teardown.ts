@@ -84,6 +84,8 @@ export interface ModTeardownDeps {
   readonly clearVisualFilter?: () => void;
   /** Restore the host's full main map rectangle before reload. */
   readonly clearMapMargin?: () => void;
+  /** Remove this mod's display requests after its own uninstall has run. */
+  readonly clearDisplayValues?: (id: string) => void;
   /** Remove keymaps still owned by each departing plugin, after its uninstall. */
   readonly releaseKeymaps?: (id: string) => void;
 }
@@ -153,6 +155,11 @@ export function teardownModPlugins(deps: ModTeardownDeps): ModTeardownResult {
         );
         log.error(`mod:${loaded.id}`, `uninstall() failed:`, err);
       }
+    }
+    try {
+      deps.clearDisplayValues?.(loaded.id);
+    } catch (err) {
+      log.error(`mod:${loaded.id}`, "removing owned display values failed:", err);
     }
     try {
       deps.releaseKeymaps?.(loaded.id);

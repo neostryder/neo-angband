@@ -25,6 +25,13 @@ function refusal(fn: () => unknown): string {
 }
 
 describe("rule application", () => {
+  it("allows only distinct declared rule flags to be public", () => {
+    const rules = [{ flag: "frost.safe", title: "Safe", description: "Safe mode.", default: true }];
+    expect(validateManifest(manifest({ rules, publicFlags: ["frost.safe"] })).publicFlags).toEqual(["frost.safe"]);
+    expect(validateManifest(manifest({ sections: [{ id: "map", title: "Map", flag: "frost.map" }], publicFlags: ["frost.map"] })).publicFlags).toEqual(["frost.map"]);
+    expect(refusal(() => validateManifest(manifest({ rules, publicFlags: ["frost.private"] })))).toMatch(/publicFlags/);
+    expect(refusal(() => validateManifest(manifest({ rules, publicFlags: ["frost.safe", "frost.safe"] })))).toMatch(/publicFlags/);
+  });
   it("accepts a register-side rule that requires a reload", () => {
     expect(
       validateManifest(

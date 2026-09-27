@@ -147,6 +147,7 @@ export interface GameEventMap {
   "combat-outcome": CombatOutcomeEventData;
   heal: HealEventData;
   motion: MotionEventData;
+  "driver-changed": { readonly kind: "player" } | { readonly kind: "controller"; readonly owner: string; readonly label?: string; readonly reason?: string };
 
   inventory: undefined;
   equipment: undefined;
@@ -227,6 +228,7 @@ export const GAME_EVENT_TYPES: readonly GameEventType[] = [
   "combat-outcome",
   "heal",
   "motion",
+  "driver-changed",
   "inventory",
   "equipment",
   "itemlist",

@@ -106,7 +106,6 @@
 
 import type { ModPanel, ModPanelSpec, ModUi } from "./mod-plugin";
 import { setDomKeyboardOwner, type DomKeyboardOwner } from "./input-door";
-import { registerPanelKind } from "./panel-provider";
 
 /** What a mod must hold in its manifest before it may mount DOM of its own. */
 export const PANEL_CAPABILITY = "ui:panel.mount";
@@ -501,7 +500,6 @@ export function createModUi(
 ): ModUi {
   return {
     openPanel: (spec: ModPanelSpec): ModPanel => mountPanel(modId, spec, doc),
-    registerPanelKind: (spec) => registerPanelKind(modId, spec),
     get openPanels(): readonly string[] {
       return openPanelsFor(modId);
     },

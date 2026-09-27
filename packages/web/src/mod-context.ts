@@ -41,6 +41,8 @@ import { buildInputSnapshot, buildKnownLevel, buildInspect, type InputSnapshot, 
 import { INTENT_CAPABILITY, type ModIntent } from "./intent-gate";
 import { modPrompt } from "./prompt-wait";
 import { VISUAL_FILTER_CAPABILITY } from "./visual-filter";
+import { createDisplayOwnership } from "./display-ownership";
+import { frozenDriver, type InputDriver } from "./input-snapshot";
 import { diskPacks } from "./disk-packs";
 import { modPrefs, type ModPrefs } from "./mod-prefs";
 import { createBackupFolder } from "./mod-backup";
@@ -146,7 +148,7 @@ export function modPluginContext(
   const readMod = readModFor(session);
   const debug = debugFor(id, session);
   const wizard = wizardFor(id, session);
-  const display = displayFor(session);
+  const display = displayFor(id, session);
   const subwindows = subwindowsFor(session);
   const snapshot = snapshotFor(session);
   const events = state?.events && session.capabilities &&
@@ -155,7 +157,7 @@ export function modPluginContext(
     : undefined;
   const knownLevel = knownLevelFor(session);
   const inspect = inspectFor(session);
-  const intent = intentFor(session);
+  const intent = intentFor(id, session);
   const tiles = tilesFor(session);
   const keyRepeat = keyRepeatFor(session);
   const saves = savesFor(session);
@@ -187,11 +189,26 @@ export function modPluginContext(
     ...(display ? { display } : {}),
     ...(subwindows ? { subwindows } : {}),
     ...(snapshot ? { snapshot } : {}),
+    ...(driverControl ? {
+      driver: () => frozenDriver(driverControl!.current()),
+    } : {}),
+    ...(modsControl ? { mods: () => Object.freeze(modsControl!().map((mod) => Object.freeze({
+      id: mod.id, version: mod.version,
+      ...(mod.flags ? { flags: Object.freeze({ ...mod.flags }) } : {}),
+    }))) } : {}),
     ...(events ? { events } : {}),
     ...(knownLevel ? { knownLevel } : {}),
     ...(inspect ? { inspect } : {}),
     ...(intent ? { intent } : {}),
-    ...(session.capabilities?.has("input:prompt.reply") ? { prompt: modPrompt } : {}),
+    ...(session.capabilities?.has("input:prompt.reply") ? { prompt: {
+      reply: (promptId: number, answer: Parameters<typeof modPrompt.reply>[1]) => {
+        const owner = driverControl?.current();
+        if (owner?.kind === "controller" && owner.owner !== id) {
+          return { accepted: false, code: "controller-owned", reason: `input is owned by controller ${owner.owner}` };
+        }
+        return modPrompt.reply(promptId, answer);
+      },
+    } } : {}),
     ...(tiles ? { tiles } : {}),
     ...(keyRepeat ? { keyRepeat } : {}),
     ...(saves ? { saves } : {}),
@@ -217,6 +234,15 @@ export function modPluginContext(
     ...(registries ? { registries } : {}),
     ...(records ? { composedRecords: records } : {}),
   };
+  if (driverControl) Object.defineProperty(context, "controller", {
+    enumerable: true,
+    get() {
+      const current = driverControl?.current();
+      return current?.kind === "controller" && current.owner === id
+        ? Object.freeze({ setStatus: (status: { readonly label?: string; readonly reason?: string }) => driverControl?.setStatus(id, status) })
+        : undefined;
+    },
+  });
   return Object.freeze(context);
 }
 
@@ -305,6 +331,7 @@ export function setModCharacterStoreControl(control: ModCharacterStoreControl | 
 
 /** The live display door, latched after the shell has constructed its surface. */
 let displayControl: ModDisplay | undefined;
+let displayOwnership: ReturnType<typeof createDisplayOwnership> | undefined;
 
 /**
  * The display geometry door is available to every in-process plugin, but the
@@ -312,19 +339,25 @@ let displayControl: ModDisplay | undefined;
  * that one method on a per-plugin facade so the same live display can be safely
  * handed to more than one plugin without one mod borrowing another's grant.
  */
-function displayFor(session: ModSessionFacts): ModDisplay | undefined {
-  const display = session.display ?? displayControl;
+function displayFor(id: string, session: ModSessionFacts): ModDisplay | undefined {
+  const display = session.display ?? displayOwnership?.forMod(id) ?? displayControl;
   if (!display) return undefined;
   const facade: ModDisplay = {
     snapshot: () => display.snapshot(),
     onKey: (listener) => display.onKey(listener),
     setGrid: (request) => display.setGrid(request),
+    getGrid: () => display.getGrid?.() ?? null,
     setCamera: (origin) => display.setCamera(origin),
+    getCamera: () => display.getCamera?.() ?? null,
     setMapView: (view) => display.setMapView(view),
+    getMapView: () => display.getMapView?.() ?? null,
     setSidebarExtent: (extent) => display.setSidebarExtent(extent),
-    ...(display.setMapMargin ? { setMapMargin: (margin: Parameters<NonNullable<ModDisplay["setMapMargin"]>>[0]) => display.setMapMargin!(margin) } : {}),
+    getSidebarExtent: () => display.getSidebarExtent?.() ?? null,
+    ...(display.setMapMargin ? { setMapMargin: (margin: Parameters<NonNullable<ModDisplay["setMapMargin"]>>[0]) => display.setMapMargin!(margin), getMapMargin: () => display.getMapMargin?.() ?? null } : {}),
     setTileScaling: (mode) => display.setTileScaling(mode),
+    getTileScaling: () => display.getTileScaling?.() ?? "auto",
     setFullMapOverview: (enabled) => display.setFullMapOverview(enabled),
+    getFullMapOverview: () => display.getFullMapOverview?.() ?? false,
     setStoreItemNameEllipsis: (enabled) => display.setStoreItemNameEllipsis(enabled),
     setStoreSelectionDescription: (enabled) => display.setStoreSelectionDescription(enabled),
     setQuiverItemization: (enabled) => display.setQuiverItemization(enabled),
@@ -337,6 +370,7 @@ function displayFor(session: ModSessionFacts): ModDisplay | undefined {
       if (options === undefined) display.setVisualFilter(filter);
       else display.setVisualFilter(filter, options);
     },
+    getVisualFilter: () => display.getVisualFilter?.() ?? null,
     repaint: () => display.repaint(),
   };
   return Object.freeze(facade);
@@ -345,6 +379,27 @@ function displayFor(session: ModSessionFacts): ModDisplay | undefined {
 /** Install or clear the geometry-only display door (boot path and tests). */
 export function setModDisplayControl(display: ModDisplay | undefined): void {
   displayControl = display;
+  displayOwnership = display ? createDisplayOwnership(display) : undefined;
+}
+
+export function clearModDisplayValues(id: string): void {
+  displayOwnership?.clear(id);
+}
+
+export interface ModDriverControl {
+  current(): InputDriver;
+  setStatus(id: string, status: { readonly label?: string; readonly reason?: string }): void;
+}
+
+let driverControl: ModDriverControl | undefined;
+export function setModDriverControl(control: ModDriverControl | undefined): void {
+  driverControl = control;
+}
+
+type PublicMod = { readonly id: string; readonly version: string; readonly flags?: Readonly<Record<string, boolean>> };
+let modsControl: (() => readonly PublicMod[]) | undefined;
+export function setModListControl(control: (() => readonly PublicMod[]) | undefined): void {
+  modsControl = control;
 }
 
 /** The live subwindow door, latched after the shell has mounted its tiling host. */
@@ -411,9 +466,18 @@ export function setModSavesControl(saves: ModSaves | undefined): void {
 /** The live player-intent gate, latched beside the snapshot source. */
 let intentGate: ModIntent | undefined;
 
-function intentFor(session: ModSessionFacts): ModIntent | undefined {
+function intentFor(id: string, session: ModSessionFacts): ModIntent | undefined {
   if (!session.capabilities?.has(INTENT_CAPABILITY)) return undefined;
-  return session.intentGate ?? intentGate;
+  const gate = session.intentGate ?? intentGate;
+  if (!gate) return undefined;
+  if (!driverControl) return gate;
+  return { submit: (token, intent) => {
+    const owner = driverControl?.current();
+    if (owner?.kind === "controller" && owner.owner !== id) {
+      return { accepted: false, code: "controller-owned", reason: `input is owned by controller ${owner.owner}` };
+    }
+    return gate.submit(token, intent);
+  } };
 }
 
 /** Install or clear the player-intent gate (boot path and tests). */
