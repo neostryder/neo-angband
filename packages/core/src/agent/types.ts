@@ -34,6 +34,11 @@ import type { GameConstants, PlayerCommand } from "../game/context.js";
 import type { ContentIdResolver } from "../mod/ids.js";
 import type { ObjRegistry } from "../obj/bind.js";
 import type { ObjectKind } from "../obj/types.js";
+import type { ObjectInfoExtras } from "../game/object-inspect.js";
+import type { MonsterRace } from "../mon/types.js";
+import type { LoreDeps } from "../mon/lore-describe.js";
+import type { ProjectionInfo } from "../world/projection.js";
+import type { GridInspectResult, InspectResult, ItemTesterResult, SpellInspectResult } from "./inspect.js";
 
 /**
  * The frozen agent-API version (ratified 2026-07-14). Add-only from here: a new
@@ -632,6 +637,18 @@ export interface AgentView {
    * read capability for are null. Reading it changes nothing.
    */
   capture?(): import("./boundary.js").CoreSnapshot;
+  /** Player-facing object inspection, without learning or changing the game. */
+  inspectItem?(ref: number | { floor: { x: number; y: number; index: number } }): InspectResult | null;
+  /** The player's existing recall for a race; null if no lore is recorded. */
+  monsterRecall?(raceIndex: number): InspectResult | null;
+  /** The live spell description and casting status. */
+  spellInfo?(spellIndex: number): SpellInspectResult | null;
+  /** Item references accepted by the command's picker. */
+  itemTester?(code: string): ItemTesterResult;
+  /** Path through remembered terrain, stopping at visible monsters. */
+  projectionPath?(to: { x: number; y: number }): GridInspectResult;
+  /** Ball grids through remembered terrain. */
+  blastArea?(to: { x: number; y: number }, radius: number): GridInspectResult;
 }
 
 /**
@@ -668,6 +685,13 @@ export interface AgentGlyphSource {
 }
 
 export interface AgentViewDeps {
+  /** The host's bound inspection data, shared with its own inspect screens. */
+  inspect?: {
+    objectInfo: ObjectInfoExtras;
+    races: readonly MonsterRace[];
+    loreDeps: () => LoreDeps;
+    projections: readonly ProjectionInfo[];
+  };
   /** Enables kindId / raceId / featCode namespaced-id fields. */
   resolver?: ContentIdResolver;
   /**

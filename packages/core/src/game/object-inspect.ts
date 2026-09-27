@@ -78,6 +78,7 @@ export function makeObjectInfoDeps(
   state: GameState,
   obj: GameObject,
   extras: ObjectInfoExtras,
+  readOnly = false,
 ): ObjectInfoDeps {
   const player = state.actor.player;
   const timedEffects = state.world?.timedTable ?? [];
@@ -93,7 +94,9 @@ export function makeObjectInfoDeps(
     calcBonuses(player, {
       equipment: equipObjects,
       timedEffects,
-      update: true,
+      /* A preview has no live derived state only in a worldless harness. The
+       * ordinary screen keeps update=true; inspection reads skip its writes. */
+      update: !readOnly,
       depth: state.chunk.depth,
       isDaytime: daytime,
     });
@@ -134,7 +137,7 @@ export function makeObjectInfoDeps(
     temp: state.tempBrandSlay,
     player,
     env: state.runeEnv,
-    known: knownDescOf(state),
+    known: knownDescOf(state, readOnly),
     projections: extras.projections,
     z: {
       fuelLamp: extras.constants.fuelLamp,
@@ -174,6 +177,7 @@ export function objectInfoTextblock(
   state: GameState,
   obj: GameObject,
   extras: ObjectInfoExtras,
+  readOnly = false,
 ): Textblock {
-  return objectInfo(obj, OINFO.SUBJ, makeObjectInfoDeps(state, obj, extras));
+  return objectInfo(obj, OINFO.SUBJ, makeObjectInfoDeps(state, obj, extras, readOnly));
 }

@@ -456,6 +456,25 @@ if (question?.kind === "confirm") {
 
 The seam covers the shared confirmation, quantity, text, direction, item, and spell waits, the store's confirmation, the pasted-text editor, and the main targeting loop. Other one-key waits, arbitrary menus, and custom modal loops still use their own input handlers and have no typed descriptor. A menu supplied by another mod's presenter is answered by that presenter, outside the host terminal wait.
 
+## 4k. `ctx.inspect` - read the game's own inspection answers
+
+`ctx.inspect` is present when a mod has at least one of `state:inventory.read`, `state:monsters.read`, `state:spells.read`, or `state:map.read`. Its methods also exist on core `AgentView`. Each result carries the current input token and is frozen. A method throws `AgentCapabilityError` when its own domain is not granted.
+
+```js
+const item = ctx.inspect?.inspectItem(handle);
+const recall = ctx.inspect?.monsterRecall(raceIndex);
+const spell = ctx.inspect?.spellInfo(spellIndex);
+const choices = ctx.inspect?.itemTester("quaff");
+const path = ctx.inspect?.projectionPath({ x: 20, y: 12 });
+const blast = ctx.inspect?.blastArea({ x: 20, y: 12 }, 2);
+```
+
+`inspectItem` accepts a carried or worn handle, or `{ floor: { x, y, index } }`. It returns the title and body from `object_desc` and `object_info`, including the effect description, under `state:inventory.read`. `monsterRecall` returns the player's existing lore text under `state:monsters.read`, or null when the race has no recorded lore. Neither read marks a kind or ego as seen or creates a lore record.
+
+`spellInfo` returns the spell's description, required level, mana cost, live failure chance, and `canCastNow` under `state:spells.read`. Low mana raises the failure chance but still permits the game's over-exertion cast path. `itemTester` lists carried, worn, quivered, and local floor references accepted by the named item command under `state:inventory.read`. Its command codes are `inspect`, `wield`, `takeoff`, `drop`, `inscribe`, `uninscribe`, `activate`, `use-staff`, `aim-wand`, `zap-rod`, `eat`, `quaff`, `read`, `refill`, `cast`, `study`, `browse`, `fire`, `throw`, `use`, and `ignore`.
+
+`projectionPath` and `blastArea` return ordered grids under `state:map.read`. They use the game's projection geometry with remembered terrain and visible monsters. Unknown terrain is treated as open for the preview. A blast reports covered grids only, with no damage estimate. Repeating these reads does not change the saved game, knowledge, turn, command queue, or RNG state.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

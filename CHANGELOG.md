@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 
+- [Internal] [Modding-API] **Mods can inspect the player's known items, monsters, spells, item choices, and aiming geometry.** `AgentView` and optional `ctx.inspect` return frozen, input-token-stamped answers from the game's own formatters and projection helpers under matching state read capabilities. Repeated reads leave game state and RNG unchanged. (#285)
 - [Internal] [Modding-API] **Mods can read the player's known level in one call.** `ctx.knownLevel()` returns frozen cells with remembered terrain and objects; real contents require `state:map-actual.read` (#285).
 - [Internal] [Modding-API] **A mod can submit player actions with `ctx.intent.submit()`.** The `input:intent` grant exposes validated commands, travel and targeting at the current snapshot token through the game's existing input path without marking the character as autoplayed. Rejected actions leave game state unchanged. (#285)
 - [Internal] [Modding-API] **Mods can read and answer the game's open prompts.** The input snapshot reports typed confirmation, quantity, text, direction, item, spell, and target waits under `state:interaction.read`; `input:prompt.reply` grants an optional context method that validates an answer and sends it through the existing handler (#285).

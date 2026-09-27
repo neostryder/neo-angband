@@ -36,6 +36,7 @@ import { itemView, playerViewFor } from "./entity-views.js";
 import { simulateLoadout } from "./loadout.js";
 import { captureCoreSnapshot, inputToken } from "./boundary.js";
 import { captureKnownLevel } from "./known-level.js";
+import { createInspectView } from "./inspect.js";
 import { AGENT_API_VERSION, AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types.js";
 import type {
   AgentCapabilities,
@@ -368,5 +369,6 @@ export function createAgentView(
    * not gated. */
   view.inputToken = () => inputToken(state);
   view.capture = () => captureCoreSnapshot(state, view);
+  Object.assign(view, createInspectView(state, deps, caps));
   return view;
 }

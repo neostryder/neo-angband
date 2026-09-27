@@ -98,13 +98,14 @@ import {
   wieldRingChoice,
   wieldSlot,
   wieldTakeoffConfirm,
-  tvalIsMeleeWeapon,
   tvalIsLight,
   objCanRefill,
   objectEffect,
   objectWeightOne,
   objCanWear,
   objIsActivatable,
+  objCanThrow,
+  objectUseCode,
   objCanBrowse,
   objCanCastFrom,
   objCanStudy,
@@ -4922,25 +4923,9 @@ async function fireCmd(): Promise<void> {
  * wielded weapon and pulls a floor item as needed.
  */
 async function throwCmd(): Promise<void> {
-  const player = state.actor.player;
-  const equipped = new Set<number>(
-    player.equipment.filter((h): h is number => !!h),
-  );
-  // Reverse-map object identity to gear handle so the tester can tell an
-  // equipped weapon from a pack/quiver/floor item.
-  const handleOf = new Map<GameObject, number>();
-  for (const [h, o] of state.gear.store) handleOf.set(o, h);
-  const canThrow = (o: GameObject): boolean => {
-    const h = handleOf.get(o);
-    const isEquipped = h !== undefined && equipped.has(h);
-    // obj_can_throw: not equipped, or an equipped melee weapon that is not stuck
-    // (obj_can_takeoff = !OF_STICKY, obj-util.c:795).
-    if (!isEquipped) return true;
-    return tvalIsMeleeWeapon(o.tval) && !(o.flags?.has(OF.STICKY) ?? false);
-  };
   const ref = await selectItemFrom(
     "Throw which item?",
-    canThrow,
+    (o) => objCanThrow(state, o),
     /* USE_EQUIP | USE_QUIVER | USE_INVEN | USE_FLOOR (player-attack.c:1388). The
      * quiver was missing: its comment claimed the inventory pass covered it,
      * which stopped being true when the quiver became its own command_wrk list
@@ -7679,40 +7664,16 @@ async function repeatLastCommand(): Promise<void> {
  * item). This is the single generic verb the original keyset binds to 'U'.
  */
 async function useGenericCmd(): Promise<void> {
-  /* do_cmd_use's dispatch order, cmd-obj.c:961-996. Ammo and refillables are
-   * part of it: obj_is_useable (obj-util.c:867-879) admits ammo matching
-   * ammo_tval, anything with an object_effect, and obj_can_refill's flasks, so
-   * 'U' offers those too - the port used to list only the six device and
-   * consumable tvals. */
-  const codeFor = (o: GameObject): string | null => {
-    if (tvalIsAmmo(o.tval)) {
-      return o.tval === state.actor.combat.ammoTval ? "fire" : null;
-    }
-    if (tvalIsPotion(o.tval)) return "quaff";
-    if (tvalIsEdible(o.tval)) return "eat";
-    if (tvalIsRod(o.tval)) return "zap-rod";
-    if (tvalIsWand(o.tval)) return "aim-wand";
-    if (tvalIsStaff(o.tval)) return "use-staff";
-    if (tvalIsScroll(o.tval)) return "read";
-    if (objCanRefill(state, o)) return "refill";
-    /* obj_is_activatable but NOT equipped: upstream offers it and then says
-     * so (cmd-obj.c:993). "unequipped-activatable" is not a command code -
-     * dispatch below turns it into that message. */
-    if (objIsActivatable(o)) return "unequipped-activatable";
-    /* object_effect but none of the above: obj_is_useable still admits it, and
-     * do_cmd_use's final else says so (cmd-obj.c:996). */
-    if (objectEffect(o)) return "unusable-now";
-    return null;
-  };
+  /* The same command classification drives this picker and itemTester. */
   const rows: MenuItem[] = [];
   const picks: { code: string; handle: number }[] = [];
   // Usable pack items (devices + consumables), then worn activatables. The
   // faithful obj_can_use tester (cmd-obj.c) admits exactly these.
-  const { items, handles } = packMenu(state, (o) => codeFor(o) !== null);
+  const { items, handles } = packMenu(state, (o) => objectUseCode(state, o) !== null);
   for (let i = 0; i < items.length; i++) {
     const handle = handles[i];
     const obj = handle === undefined ? null : gearGet(state.gear, handle);
-    const code = obj ? codeFor(obj) : null;
+    const code = obj ? objectUseCode(state, obj) : null;
     if (handle === undefined || !obj || !code) continue;
     rows.push(items[i]!);
     picks.push({ code, handle });
@@ -9327,6 +9288,12 @@ const modSnapshotSource: InputSnapshotSource = {
     }),
     reg: booted.registries.objects,
     glyphs: glyphs.agentGlyphs(),
+    inspect: {
+      objectInfo: inspectExtras,
+      races: booted.registries.monsters.races,
+      loreDeps: recallDeps,
+      projections: booted.registries.projections ?? [],
+    },
   }),
   phase: () =>
     !gameScreenLive

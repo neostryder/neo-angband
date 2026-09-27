@@ -38,6 +38,7 @@ import type { EffectRecordJson, ObjectKind } from "../obj/types.js";
 import type { GameObject, StackLimits } from "../obj/object.js";
 import {
   objectPackTotal,
+  tvalIsAmmo,
   tvalIsEdible,
   tvalIsFuel,
   tvalIsLauncher,
@@ -801,6 +802,31 @@ export function objIsActivatable(obj: GameObject): boolean {
   if (!tvalIsWearable(obj.tval)) return false;
   const effect = objectEffect(obj);
   return effect !== null && effect.length > 0;
+}
+
+/** obj_can_throw (obj-util.c L803), shared by the picker and inspection. */
+export function objCanThrow(state: GameState, obj: GameObject): boolean {
+  const worn = state.actor.player.equipment.some(
+    (handle) => handle && gearGet(state.gear, handle) === obj,
+  );
+  return !worn || (tvalIsMeleeWeapon(obj.tval) && !obj.flags.has(OF.STICKY));
+}
+
+/** do_cmd_use's item eligibility and dispatch order (cmd-obj.c L961-996). */
+export function objectUseCode(state: GameState, obj: GameObject): string | null {
+  if (tvalIsAmmo(obj.tval)) {
+    return obj.tval === state.actor.combat.ammoTval ? "fire" : null;
+  }
+  if (tvalIsPotion(obj.tval)) return "quaff";
+  if (tvalIsEdible(obj.tval)) return "eat";
+  if (tvalIsRod(obj.tval)) return "zap-rod";
+  if (tvalIsWand(obj.tval)) return "aim-wand";
+  if (tvalIsStaff(obj.tval)) return "use-staff";
+  if (tvalIsScroll(obj.tval)) return "read";
+  if (objCanRefill(state, obj)) return "refill";
+  if (objIsActivatable(obj)) return "unequipped-activatable";
+  if (objectEffect(obj)) return "unusable-now";
+  return null;
 }
 
 /**

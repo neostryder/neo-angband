@@ -5,7 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { createAgentView, saveGame, startGame, tokenIsCurrent } from "@rpgm-tools/neo-angband-core";
+import { AgentCapabilityError, createAgentView, saveGame, startGame, tokenIsCurrent } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { GamePack } from "@rpgm-tools/neo-angband-core";
 import { buildInputSnapshot, buildKnownLevel, type InputSnapshotSource } from "./input-snapshot";
@@ -87,6 +87,21 @@ function caps(...granted: string[]) {
 }
 
 describe("buildInputSnapshot", () => {
+  it("offers ctx.inspect only to a mod with a matching read grant", () => {
+    const manifest = (capabilities: string[]) => CapabilitySet.fromManifest({
+      id: "inspect-test", name: "Inspect test", version: "1.0.0",
+      shape: "plugin", facets: ["plugin"], modApi: 1, capabilities,
+    });
+    const without = modPluginContext("inspect-test", {}, game.state, {}, {
+      snapshotSource: source(), capabilities: manifest([]),
+    });
+    expect(without.inspect).toBeUndefined();
+    const withMap = modPluginContext("inspect-test", {}, game.state, {}, {
+      snapshotSource: source(), capabilities: manifest(["state:map.read"]),
+    });
+    expect(withMap.inspect?.projectionPath({ x: 1, y: 1 })?.token).toEqual(withMap.snapshot?.()?.token);
+    expect(() => withMap.inspect?.inspectItem(1)).toThrow(AgentCapabilityError);
+  });
   it("reads the bulk level only with map access", () => {
     expect(buildKnownLevel(source(), caps("state:player.read"))).toBeNull();
     expect(buildKnownLevel(source(), caps("state:map.read"))?.cells.length).toBeGreaterThan(0);

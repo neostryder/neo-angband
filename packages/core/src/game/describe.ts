@@ -14,7 +14,8 @@ import type { GameObject } from "../obj/object.js";
 import type { GameState } from "./context.js";
 
 /** Build the flavour-awareness view object_desc needs from the game state. */
-export function knownDescOf(state: GameState): KnownDesc {
+/** Omit only the upstream everseen writes for an inspection preview. */
+export function knownDescOf(state: GameState, readOnly = false): KnownDesc {
   return {
     isAware: (kind) => (state.isAware ? state.isAware(kind) : false),
     /* object_flavor_was_tried (obj-knowledge.c:2257), the "{tried}" marker at
@@ -43,7 +44,7 @@ export function knownDescOf(state: GameState): KnownDesc {
     /* kind->everseen / ego->everseen (obj-desc.c L633-637): a live describe of
      * an item whose name the player knows marks it seen for the object/ego
      * knowledge browsers. Pure Set insert, no RNG. Absent (worldless) = no-op. */
-    ...(state.everseen
+    ...(state.everseen && !readOnly
       ? {
           markKindSeen: (kind) => state.everseen!.markKind(kind),
           markEgoSeen: (ego) => state.everseen!.markEgo(ego),

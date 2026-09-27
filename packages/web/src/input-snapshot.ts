@@ -30,6 +30,11 @@ import type {
   GameState,
   InputToken,
   KnownLevelView,
+  AgentView,
+  GridInspectResult,
+  InspectResult,
+  ItemTesterResult,
+  SpellInspectResult,
 } from "@rpgm-tools/neo-angband-core";
 import { snapshotWorldFrame } from "./world-view";
 import type { WorldFrame } from "./world-view";
@@ -121,4 +126,33 @@ export function buildKnownLevel(
 ): KnownLevelView | null {
   if (!source.state() || !grants(caps, MAP_READ_CAPABILITY)) return null;
   return source.knownLevel(caps);
+}
+
+/** Inspection methods from a view built for the calling mod. */
+export interface ModInspect {
+  inspectItem(ref: number | { floor: { x: number; y: number; index: number } }): InspectResult | null;
+  monsterRecall(raceIndex: number): InspectResult | null;
+  spellInfo(spellIndex: number): SpellInspectResult | null;
+  itemTester(code: string): ItemTesterResult | null;
+  projectionPath(to: { x: number; y: number }): GridInspectResult | null;
+  blastArea(to: { x: number; y: number }, radius: number): GridInspectResult | null;
+}
+
+export function buildInspect(
+  source: InputSnapshotSource,
+  caps: AgentCapabilities | undefined,
+): ModInspect {
+  const view = (): AgentView | null => {
+    const state = source.state();
+    if (!state) return null;
+    return createAgentView(state, undefined, source.viewDeps(), caps);
+  };
+  return Object.freeze({
+    inspectItem: (ref) => view()?.inspectItem?.(ref) ?? null,
+    monsterRecall: (raceIndex) => view()?.monsterRecall?.(raceIndex) ?? null,
+    spellInfo: (spellIndex) => view()?.spellInfo?.(spellIndex) ?? null,
+    itemTester: (code) => view()?.itemTester?.(code) ?? null,
+    projectionPath: (to) => view()?.projectionPath?.(to) ?? null,
+    blastArea: (to, radius) => view()?.blastArea?.(to, radius) ?? null,
+  } satisfies ModInspect);
 }

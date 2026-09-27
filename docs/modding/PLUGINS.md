@@ -335,6 +335,10 @@ register(host, ctx) {
 ### Reading the known level: `ctx.knownLevel()`
 
 Use `ctx.knownLevel()` to draw a map or minimap from every grid the player knows. The frozen result has a token, level id, dimensions and cells with remembered terrain, traps and objects. Declare `state:map.read`; the call returns null without it. The separate `actual` data requires `state:map-actual.read`. See [MOD_SEAMS.md section 4h](MOD_SEAMS.md#4h-ctxknownlevel---the-players-whole-remembered-level).
+### Inspecting items, monsters, spells, and aiming
+
+`ctx.inspect` reads item inspection, monster recall, spell details, item picker eligibility, projection paths, and ball areas from the game's own helpers. Each result is frozen and stamped with the current input token. Declare the matching `state:inventory.read`, `state:monsters.read`, `state:spells.read`, or `state:map.read` capability. See [MOD_SEAMS.md section 4k](MOD_SEAMS.md#4k-ctxinspect---read-the-games-own-inspection-answers).
+
 ### Acting at one input wait: `ctx.intent.submit()`
 
 Declare `input:intent` to receive `ctx.intent`. Pass the current `ctx.snapshot()` token with a command, travel destination or target. The host rejects stale or blocked actions with a reason; accepted commands use the same buffer and game loop as a keypress, while target setters change no turn. For a compound action, send travel, wait for the next input wait, inspect a new snapshot and send the follow-up command. See [MOD_SEAMS.md section 4i](MOD_SEAMS.md#4i-ctxintentsubmit---act-at-the-current-input-wait).

@@ -36,7 +36,7 @@ import {
   type ReadModResult,
 } from "./mod-plugin";
 import type { KeyRepeatVerdict } from "./key-repeat";
-import { buildInputSnapshot, buildKnownLevel, type InputSnapshot, type InputSnapshotSource } from "./input-snapshot";
+import { buildInputSnapshot, buildKnownLevel, buildInspect, type InputSnapshot, type InputSnapshotSource, type ModInspect } from "./input-snapshot";
 import { INTENT_CAPABILITY, type ModIntent } from "./intent-gate";
 import { modPrompt } from "./prompt-wait";
 import { VISUAL_FILTER_CAPABILITY } from "./visual-filter";
@@ -149,6 +149,7 @@ export function modPluginContext(
   const subwindows = subwindowsFor(session);
   const snapshot = snapshotFor(session);
   const knownLevel = knownLevelFor(session);
+  const inspect = inspectFor(session);
   const intent = intentFor(session);
   const tiles = tilesFor(session);
   const keyRepeat = keyRepeatFor(session);
@@ -181,6 +182,7 @@ export function modPluginContext(
     ...(subwindows ? { subwindows } : {}),
     ...(snapshot ? { snapshot } : {}),
     ...(knownLevel ? { knownLevel } : {}),
+    ...(inspect ? { inspect } : {}),
     ...(intent ? { intent } : {}),
     ...(session.capabilities?.has("input:prompt.reply") ? { prompt: modPrompt } : {}),
     ...(tiles ? { tiles } : {}),
@@ -369,6 +371,14 @@ function knownLevelFor(session: ModSessionFacts): (() => KnownLevelView | null) 
   const source = session.snapshotSource ?? snapshotSource;
   if (!source) return undefined;
   return () => buildKnownLevel(source, session.capabilities);
+}
+
+function inspectFor(session: ModSessionFacts): ModInspect | undefined {
+  const source = session.snapshotSource ?? snapshotSource;
+  if (!source) return undefined;
+  const caps = session.capabilities;
+  if (caps && !caps.has("state:*.read") && !["inventory", "monsters", "spells", "map"].some((domain) => caps.has(`state:${domain}.read`))) return undefined;
+  return buildInspect(source, caps);
 }
 
 /** Install or clear the input-snapshot source (boot path and tests). */

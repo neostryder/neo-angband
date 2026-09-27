@@ -1,0 +1,202 @@
+/** Seeded inspection reads must leave the entire saved game unchanged. */
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { FEAT, MFLAG } from "../generated/index.js";
+import { gearAdd } from "../game/gear.js";
+import { objectInfoTextblock } from "../game/object-inspect.js";
+import { loreDescription } from "../mon/lore-describe.js";
+import { newMonsterLore } from "../mon/lore.js";
+import { objectPrep } from "../obj/make.js";
+import { tvalIsPotion } from "../obj/object.js";
+import { spellByIndex, spellChance } from "../player/spell.js";
+import { makeSpellChanceEnv } from "../game/spell-cmd.js";
+import { saveGame, startGame } from "../session/game.js";
+import type { GamePack, StartedGame } from "../session/game.js";
+import { AgentCapabilityError } from "./types.js";
+import { createAgentView } from "./perceive.js";
+
+function loadJson<T>(name: string): T {
+  return JSON.parse(
+    readFileSync(
+      new URL(`../../../content/pack/${name}.json`, import.meta.url),
+      "utf8",
+    ),
+  ) as T;
+}
+
+function loadRecords<T>(name: string): T[] {
+  return loadJson<{ records: T[] }>(name).records;
+}
+
+const pack: GamePack = {
+  /* store.json is here because one arm of LoadoutItemRef addresses a SHOP's
+     stock, and a pack with no shops cannot exercise it. */
+  store: loadRecords("store"),
+  constants: loadJson("constants"),
+  terrain: loadRecords("terrain"),
+  roomTemplates: loadRecords("room_template"),
+  vaults: loadRecords("vault"),
+  dungeonProfiles: loadRecords("dungeon_profile"),
+  obj: {
+    objectBase: loadJson("object_base"),
+    object: loadJson("object"),
+    egoItem: loadJson("ego_item"),
+    artifact: loadJson("artifact"),
+    curse: loadJson("curse"),
+    brand: loadJson("brand"),
+    slay: loadJson("slay"),
+    activation: loadJson("activation"),
+    objectProperty: loadJson("object_property"),
+    flavor: loadJson("flavor"),
+  } as GamePack["obj"],
+  mon: {
+    pain: loadRecords("pain"),
+    blowMethods: loadRecords("blow_methods"),
+    blowEffects: loadRecords("blow_effects"),
+    monsterSpells: loadRecords("monster_spell"),
+    monsterBases: loadRecords("monster_base"),
+    monsters: loadRecords("monster"),
+    summons: loadRecords("summon"),
+    pits: loadRecords("pit"),
+  },
+  player: {
+    races: loadRecords("p_race"),
+    classes: loadRecords("class"),
+    properties: loadRecords("player_property"),
+    timed: loadRecords("player_timed"),
+    shapes: loadRecords("shape"),
+    bodies: loadRecords("body"),
+    history: loadRecords("history"),
+    realms: loadRecords("realm"),
+  },
+};
+
+function newGame(): StartedGame {
+  return startGame(pack, { seed: 4242, depth: 1 });
+}
+/** Everything a read must not change, as one comparable value. */
+function fingerprint(game: StartedGame): string {
+  return JSON.stringify({
+    save: saveGame(game),
+    rng: game.state.rng.getState(),
+    turn: game.state.turn,
+    cmdQueue: game.state.cmdQueue ?? [],
+  });
+}
+
+function viewFor(game: StartedGame, caps?: { has(cap: string): boolean }) {
+  const state = game.state;
+  const player = state.actor.player;
+  const loreDeps = () => ({
+    playerLevel: player.lev,
+    playerMaxDepth: player.maxDepth,
+    playerSpeed: state.actor.speed,
+    effectiveSpeed: false,
+    purpleUniques: false,
+    spells: game.booted.registries.monsters.spells,
+    breathProjection: (i: number) => game.booted.registries.projections?.[i],
+  });
+  const objectInfo = {
+    projections: game.booted.registries.projections ?? [],
+    constants: game.booted.registries.constants,
+  };
+  return { view: createAgentView(state, undefined, { inspect: {
+    objectInfo,
+    races: game.booted.registries.monsters.races,
+    loreDeps,
+    projections: game.booted.registries.projections ?? [],
+  } }, caps), loreDeps, objectInfo };
+}
+
+describe("inspection reads", () => {
+  it("repeats item, recall, spell, tester and map reads without a state change", () => {
+    const game = newGame();
+    const state = game.state;
+    const potion = game.booted.registries.objects.kinds.find((kind) => tvalIsPotion(kind.tval));
+    expect(potion).toBeDefined();
+    expect(state.isAware?.(potion!)).toBe(false);
+    const obj = objectPrep(state.rng, game.booted.registries.objects, game.booted.registries.constants, potion!, 1, "minimise");
+    const handle = gearAdd(state.gear, obj);
+    state.gear.pack.push(handle);
+    state.gear.inven ??= [];
+    state.gear.inven.push(handle);
+    const quivered = objectPrep(state.rng, game.booted.registries.objects, game.booted.registries.constants, potion!, 1, "minimise");
+    const quiverHandle = gearAdd(state.gear, quivered);
+    state.gear.pack.push(quiverHandle);
+    state.gear.quiver ??= [];
+    state.gear.quiver.push(quiverHandle);
+    const floorObj = objectPrep(state.rng, game.booted.registries.objects, game.booted.registries.constants, potion!, 1, "minimise");
+    const floorKey = state.actor.grid.y * state.chunk.width + state.actor.grid.x;
+    state.floor.set(floorKey, [floorObj, ...(state.floor.get(floorKey) ?? [])]);
+    const race = game.booted.registries.monsters.races.find((r) => r && r.ridx > 0)!;
+    state.lore.set(race.ridx, newMonsterLore(race));
+    const caster = game.players.classes.find((cls) => cls.magic.totalSpells > 0)!;
+    state.actor.player.cls = caster;
+    state.actor.player.csp = 0;
+    const spellIndex = caster.magic.books[0]!.spells[0]!.sidx;
+    expect(spellByIndex(caster, spellIndex)!.mana).toBeGreaterThan(0);
+    const { view, loreDeps, objectInfo } = viewFor(game);
+    const to = { x: state.actor.grid.x + 3, y: state.actor.grid.y };
+    const before = fingerprint(game);
+    for (let i = 0; i < 5; i++) {
+      const item = view.inspectItem!(handle)!;
+      expect(item.text).toBe(objectInfoTextblock(state, obj, objectInfo, true).runs.map((run) => run.text).join(""));
+      expect(Object.isFrozen(item)).toBe(true);
+      const recall = view.monsterRecall!(race.ridx)!;
+      expect(recall.text).toBe(loreDescription(race, state.lore.get(race.ridx)!, loreDeps()).map((run) => run.text).join(""));
+      expect(view.spellInfo!(spellIndex)?.failChance).toBe(spellChance(state.actor.player, state.statInd ?? [], spellIndex, makeSpellChanceEnv(state)));
+      expect(view.spellInfo!(spellIndex)?.description).toBe(spellByIndex(caster, spellIndex)!.text);
+      expect(view.itemTester!("quaff").items).toContainEqual({ handle });
+      expect(view.itemTester!("quaff").items).toContainEqual({ floor: { ...state.actor.grid, index: 0 } });
+      expect(view.itemTester!("quaff").items).not.toContainEqual({ handle: quiverHandle });
+      expect(view.itemTester!("ignore").items).toContainEqual({ handle: quiverHandle });
+      view.projectionPath!(to);
+      view.blastArea!(to, 2);
+    }
+    expect(fingerprint(game)).toBe(before);
+  });
+
+  it("does not create lore for an unseen race", () => {
+    const game = newGame();
+    const index = game.booted.registries.monsters.races.findIndex((race) => race && !game.state.lore.has(race.ridx));
+    const view = viewFor(game).view;
+    const before = fingerprint(game);
+    for (let i = 0; i < 5; i++) expect(view.monsterRecall!(index)).toBeNull();
+    expect(fingerprint(game)).toBe(before);
+  });
+
+  it("uses remembered walls and visible monsters for previews", () => {
+    const game = newGame();
+    const state = game.state;
+    const from = state.actor.grid;
+    const wall = { x: from.x + 1, y: from.y };
+    const to = { x: from.x + 3, y: from.y };
+    state.known.feat[wall.y * state.chunk.width + wall.x] = FEAT.GRANITE;
+    const view = viewFor(game).view;
+    const before = fingerprint(game);
+    for (let i = 0; i < 5; i++) {
+      expect(view.projectionPath!(to).grids.at(-1)).toEqual(wall);
+      expect(view.blastArea!(to, 2).grids).not.toContainEqual(to);
+    }
+    expect(fingerprint(game)).toBe(before);
+    state.known.feat[wall.y * state.chunk.width + wall.x] = FEAT.FLOOR;
+    const mon = state.monsters.find((m) => m && m.midx > 0);
+    expect(mon).toBeDefined();
+    mon!.mflag.on(MFLAG.VISIBLE);
+    state.chunk.setMon(wall, mon!.midx);
+    const blocked = fingerprint(game);
+    for (let i = 0; i < 5; i++) expect(view.projectionPath!(to).grids.at(-1)).toEqual(wall);
+    expect(fingerprint(game)).toBe(blocked);
+  });
+
+  it("checks each domain before reading", () => {
+    const game = newGame();
+    const view = viewFor(game, { has: () => false }).view;
+    expect(() => view.inspectItem!(1)).toThrow(AgentCapabilityError);
+    expect(() => view.monsterRecall!(1)).toThrow(AgentCapabilityError);
+    expect(() => view.spellInfo!(0)).toThrow(AgentCapabilityError);
+    expect(() => view.itemTester!("quaff")).toThrow(AgentCapabilityError);
+    expect(() => view.projectionPath!({ x: 1, y: 1 })).toThrow(AgentCapabilityError);
+    expect(() => view.blastArea!({ x: 1, y: 1 }, 2)).toThrow(AgentCapabilityError);
+  });
+});

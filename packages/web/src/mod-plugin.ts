@@ -93,6 +93,7 @@ import type { ModPrefs } from "./mod-prefs";
 import type { DiscoveredMod } from "./mod-discover";
 import type { KeyRepeatVerdict } from "./key-repeat";
 import type { InputSnapshot } from "./input-snapshot";
+import type { ModInspect } from "./input-snapshot";
 import type { KnownLevelView } from "@rpgm-tools/neo-angband-core";
 import type { ModIntent } from "./intent-gate";
 import type { ModPrompt } from "./prompt-view";
@@ -572,6 +573,8 @@ export interface ModPluginContext {
   readonly snapshot?: () => InputSnapshot | null;
   /** The whole remembered level at one token; null without map read access. */
   readonly knownLevel?: () => KnownLevelView | null;
+  /** Read-pure inspection under the matching state read capability. */
+  readonly inspect?: ModInspect;
   /** Submit a validated player action at the current input wait. Present only
    * with `input:intent` and a live host gate. This does not install a controller. */
   readonly intent?: ModIntent;
