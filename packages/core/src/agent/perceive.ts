@@ -19,6 +19,7 @@ import {
   MON_RACE_FLAG_ENTRIES,
   MON_SPELL_ENTRIES,
   MON_TMD,
+  RF,
   SQUARE,
   TRF,
 } from "../generated/index.js";
@@ -80,6 +81,8 @@ function spellFlagCodes(flags: FlagSet): string[] {
 
 function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
   const out: MonsterView[] = [];
+  const quests = state.actor.player.quests;
+  const finalRace = quests.length > 0 ? quests[quests.length - 1]!.race : -1;
   for (let i = 1; i < state.monsters.length; i++) {
     const m = state.monsters[i];
     if (!m) continue;
@@ -101,6 +104,9 @@ function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
        * "poisoned" as a timed status in 4.2.6); always false. */
       poisoned: false,
       raceFlags: raceFlagCodes(m.race.flags),
+      unique: m.race.flags.has(RF.UNIQUE),
+      questGuardian: quests.some((q) => q.race === m.race.ridx),
+      finalGuardian: m.race.ridx === finalRace,
       spellFlags: spellFlagCodes(m.race.spellFlags),
     };
     if (deps.resolver) {

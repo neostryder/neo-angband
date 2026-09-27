@@ -4,7 +4,10 @@ import { SQUARE, TRF } from "../generated/index.js";
 import type { GameState } from "../game/context.js";
 import { knownFeat, knownPile, squareIsKnown } from "../game/known.js";
 import { squareTrap } from "../game/trap.js";
-import { tvalIsMoney } from "../obj/object.js";
+import { tvalIsMoney, type GameObject } from "../obj/object.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
+import { objectIsKnownArtifact, objectKnownShadow, objectRunesKnownUpstream } from "../obj/known-object.js";
+import { knownDescOf } from "../game/describe.js";
 import { inputToken } from "./boundary.js";
 import type { InputToken } from "./boundary.js";
 import { itemView } from "./entity-views.js";
@@ -29,6 +32,7 @@ export type RememberedObject =
       readonly aware: true;
       readonly kindIndex: number;
       readonly kindId?: string;
+      readonly aura?: ObjectAura;
     }
   | {
       readonly sensed: false;
@@ -36,7 +40,29 @@ export type RememberedObject =
       readonly tval: number;
       readonly flavorIndex: number;
       readonly flavorText: string;
+      readonly aura?: ObjectAura;
     };
+
+/**
+ * What the player can already read on a remembered object's name, as a glow
+ * class: `cursed` for a known curse (the "{cursed}" marker), `artifact` for an
+ * object known to be an artifact, `rune` for an assessed object with a rune the
+ * player has not learned (the "{??}" marker). One class per object, in that
+ * order of precedence; absent when none applies. It is read from the player's
+ * knowledge of the object, so it tells a mod nothing the item list does not.
+ */
+export type ObjectAura = "cursed" | "artifact" | "rune";
+
+function objectAura(state: GameState, obj: GameObject): ObjectAura | undefined {
+  const p = state.actor.player;
+  const shadow = objectKnownShadow(obj, p, state.runeEnv, knownDescOf(state, true));
+  if (shadow.curses) return "cursed";
+  if (objectIsKnownArtifact(shadow)) return "artifact";
+  if ((shadow.notice & OBJ_NOTICE.ASSESSED) !== 0 && !objectRunesKnownUpstream(obj, shadow, p, state.runeEnv)) {
+    return "rune";
+  }
+  return undefined;
+}
 
 export interface RememberedCell {
   readonly feat: number;
@@ -104,6 +130,7 @@ export function captureKnownLevel(
           }
           const kind = entry.obj.kind;
           const aware = state.isAware ? state.isAware(kind) : true;
+          const aura = objectAura(state, entry.obj);
           const flavor =
             !aware && state.hasFlavor?.(kind) ? state.flavorGlyph?.(kind) : undefined;
           if (flavor) {
@@ -113,6 +140,7 @@ export function captureKnownLevel(
               tval: entry.obj.tval,
               flavorIndex: flavor.fidx,
               flavorText: flavor.text,
+              ...(aura ? { aura } : {}),
             };
           }
           const kindIndex = kind.kidx;
@@ -122,6 +150,7 @@ export function captureKnownLevel(
             aware: true,
             kindIndex,
             ...(kindId ? { kindId } : {}),
+            ...(aura ? { aura } : {}),
           };
         }),
       };

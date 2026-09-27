@@ -55,7 +55,7 @@ export type {
 export { itemView, playerViewFor } from "./entity-views.js";
 export type { PlayerViewDerived } from "./entity-views.js";
 export { simulateLoadout } from "./loadout.js";
-export type { BlastAreaResult, BookItemResult, GridInspectResult, InspectResult, ItemRulesResult, ItemTesterResult, LoadoutSlotsResult, SpellInspectResult, TileActionsResult, TravelPathResult } from "./inspect.js";
+export type { BlastAreaResult, BookItemResult, GridInspectResult, InspectResult, ItemRulesResult, ItemTesterResult, LoadoutSlotsResult, SpellInspectResult, TerrainCatalogueResult, TerrainFeatureView, TileActionsResult, TravelPathResult } from "./inspect.js";
 export type { LoadoutDerive, LoadoutSimOptions } from "./loadout.js";
 export { createAgentActions } from "./act.js";
 export { AgentCapabilityError, installController } from "./controller.js";

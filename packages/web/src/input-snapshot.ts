@@ -37,6 +37,7 @@ import type {
   InspectResult,
   ItemTesterResult,
   ItemRulesResult,
+  TerrainCatalogueResult,
   LoadoutSlotsResult,
   LoadoutItemRef,
   TileActionsResult,
@@ -184,6 +185,7 @@ export interface ModInspect {
   travelPath(to: { x: number; y: number }): TravelPathResult | null;
   tileActions(to: { x: number; y: number }): TileActionsResult | null;
   itemRules(): ItemRulesResult | null;
+  terrainCatalogue(): TerrainCatalogueResult | null;
 }
 
 export function buildInspect(
@@ -207,5 +209,6 @@ export function buildInspect(
     travelPath: (to) => view()?.travelPath?.(to) ?? null,
     tileActions: (to) => view()?.tileActions?.(to) ?? null,
     itemRules: () => view()?.itemRules?.() ?? null,
+    terrainCatalogue: () => view()?.terrainCatalogue?.() ?? null,
   } satisfies ModInspect);
 }

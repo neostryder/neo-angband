@@ -580,6 +580,18 @@ The host's Subwindow setup can move a registered panel into a floating window in
 
 Under `state:messages.read`, `ctx.snapshot().messages.entries` copies `msglog.all()` in order and carries the current input token. It leaves `AgentView.messages()`'s per-decision buffer untouched, so a panel can redraw its log without taking messages away from a controller. The pager's `ack` prompt from section 4j is available only while its `-more-` wait holds input.
 
+## 4t. Reads for visual effects
+
+`MonsterView` in `ctx.snapshot().core.monsters` carries `unique` (RF_UNIQUE), `questGuardian` and `finalGuardian`. A quest guardian is the race of one of the character's quests. The final guardian guards the last quest, the one whose kill wins the game, which is Morgoth in the shipped quest.txt. Both flags follow the quest table, so a mod that changes the quests moves them too. `id` is the level-local monster index an animation can key on.
+
+`PlayerView` carries `hpWarning`, the low hit point threshold in hit points: `trunc(maxHp * hitpoint_warn / 10)`, or 0 when the warning is off. The warning applies while `hp` is below it. `recall` and `descent` are the turns left on Word of Recall and Deep Descent, and 0 when neither is active. `dead` turns true the moment the character dies, before the fatal message is acknowledged, so a death effect can start there instead of reading hit points, which bloodlust can take below zero.
+
+A remembered object in `ctx.knownLevel()` may carry `aura`: `cursed` for a known curse, `artifact` for an object known to be an artifact, or `rune` for an assessed object with a rune the player has not learned. These match the `{cursed}` and `{??}` markers and the artifact name that the item list already shows. An object has at most one aura, taken in that order.
+
+`ctx.inspect.terrainCatalogue()`, under `state:map.read`, returns every bound terrain feature with its index, code, name and terrain flag codes, plus `stairs` (`"up"`, `"down"` or null), `fiery` and `passable`. The index matches `CellView.feat` and the known level's `feat`.
+
+The `bolt` and `explosion` events (`event:bolt` and `event:explosion`) name their projection in `element`, such as `FIRE` or `COLD`, beside the numeric `projType`. An explosion also reports `arc` for a breath or cone, and `radius`, the farthest affected distance from its centre. The `motion` event in section 4l already marks a blink or teleport with `kind: "teleport"`.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

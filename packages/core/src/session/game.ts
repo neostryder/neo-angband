@@ -120,6 +120,7 @@ import {
 } from "../game/known.js";
 import { squareIsView, updateView } from "../world/view.js";
 import { PROJECT } from "../world/project.js";
+import { PROJ } from "../generated/projections.js";
 import { PY_EXERT, compactMonsters, isDaytime, playerOverExert } from "../game/world.js";
 import { restoreMonsters } from "../game/scheduler.js";
 import {
@@ -671,6 +672,15 @@ interface WiredGame {
  * notice mask to raise a bit in - and nothing ever read the boolean, which is
  * PORT_TODO 2.5. It raises the real bit now.
  */
+/** Projection index to its projection.txt name, for the bolt and explosion events mods read. */
+const PROJECTION_NAMES: ReadonlyMap<number, string> = new Map(
+  Object.entries(PROJ).map(([name, index]) => [index, name]),
+);
+
+function projectionName(typ: number): string {
+  return PROJECTION_NAMES.get(typ) ?? "";
+}
+
 function flavorAwareDeps(state: GameState): FlavorAwareDeps {
   return {
     isIgnoredUnaware: (kidx) => state.ignore.kindIsIgnoredUnaware(kidx),
@@ -1766,6 +1776,7 @@ function wireGame(
         onBolt: (step, typ, beam): void => {
           state.events?.emit("bolt", {
             projType: typ,
+            element: projectionName(typ),
             drawing: false,
             seen: squareIsView(state.chunk, step.to),
             beam,
@@ -1780,6 +1791,9 @@ function wireGame(
           const hide = (proj.flg & PROJECT.HIDE) !== 0;
           state.events?.emit("explosion", {
             projType: typ,
+            element: projectionName(typ),
+            arc: (proj.flg & PROJECT.ARC) !== 0,
+            radius: proj.distanceToGrid.reduce((a, b) => Math.max(a, b), 0),
             numGrids: proj.grids.length,
             distanceToGrid: proj.distanceToGrid,
             drawing: false,

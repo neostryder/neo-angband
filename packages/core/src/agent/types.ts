@@ -38,7 +38,7 @@ import type { ObjectInfoExtras } from "../game/object-inspect.js";
 import type { MonsterRace } from "../mon/types.js";
 import type { LoreDeps } from "../mon/lore-describe.js";
 import type { ProjectionInfo } from "../world/projection.js";
-import type { BlastAreaResult, BookItemResult, GridInspectResult, InspectResult, ItemRulesResult, ItemTesterResult, LoadoutSlotsResult, SpellInspectResult, TileActionsResult, TravelPathResult } from "./inspect.js";
+import type { BlastAreaResult, BookItemResult, GridInspectResult, InspectResult, ItemRulesResult, ItemTesterResult, LoadoutSlotsResult, SpellInspectResult, TerrainCatalogueResult, TileActionsResult, TravelPathResult } from "./inspect.js";
 
 /**
  * The frozen agent-API version (ratified 2026-07-14). Add-only from here: a new
@@ -201,8 +201,24 @@ export interface PlayerView {
   light: number;
   grid: { x: number; y: number };
   status: PlayerStatusView;
+  /**
+   * `state.isDead`, set by take_hit the moment the player dies, before the fatal
+   * message is acknowledged and the tombstone is shown. A death animation keys on
+   * this rather than on hit points, since bloodlust lets hit points go negative.
+   */
   dead: boolean;
   winner: boolean;
+  /**
+   * The low hit point warning threshold in hit points:
+   * `trunc(maxHp * hitpoint_warn / 10)`, where `hitpoint_warn` is the option in
+   * tenths (0 to 9). The warning applies while `hp` is strictly below it, and 0
+   * means the warning is off.
+   */
+  hpWarning: number;
+  /** Turns left on an active Word of Recall (`word_recall`), 0 when none is active. */
+  recall: number;
+  /** Turns left on an active Deep Descent (`deep_descent`), 0 when none is active. */
+  descent: number;
   /** Namespaced player-race id, when a ContentIdResolver with player races is supplied. */
   playerRaceId?: string;
   /** Namespaced player-class id, when a ContentIdResolver with player classes is supplied. */
@@ -257,6 +273,16 @@ export interface MonsterView {
   poisoned: boolean;
   /** RF_* codes from race->flags. */
   raceFlags: string[];
+  /** RF_UNIQUE. */
+  unique: boolean;
+  /** The race guards one of the character's quests (quest.txt). */
+  questGuardian: boolean;
+  /**
+   * The race guards the character's LAST quest, whose death wins the game:
+   * Morgoth in the shipped quest.txt. Read from the quest table rather than a
+   * name, so a mod that changes the quests moves the flag with them.
+   */
+  finalGuardian: boolean;
   /** RSF_* codes from race->spellFlags. */
   spellFlags: string[];
   /** Namespaced race id, when a ContentIdResolver dep is supplied. */
@@ -672,6 +698,8 @@ export interface AgentView {
   tileActions?(to: { x: number; y: number }): TileActionsResult;
   /** Learned ignore and auto-inscription settings. */
   itemRules?(): ItemRulesResult;
+  /** Every bound terrain feature with its flags, for a renderer that styles terrain. */
+  terrainCatalogue?(): TerrainCatalogueResult;
 }
 
 /**

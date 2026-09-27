@@ -35,6 +35,12 @@ export interface BirthPointsEventData {
 /** EVENT_EXPLOSION payload. */
 export interface ExplosionEventData {
   projType: number;
+  /** The projection's name from projection.txt, such as "FIRE" or "MISSILE". */
+  element: string;
+  /** PROJECT_ARC: a breath or cone rather than a ball. */
+  arc: boolean;
+  /** The farthest affected distance from the centre, 0 for a single grid. */
+  radius: number;
   numGrids: number;
   distanceToGrid: readonly number[];
   drawing: boolean;
@@ -46,6 +52,8 @@ export interface ExplosionEventData {
 /** EVENT_BOLT payload. */
 export interface BoltEventData {
   projType: number;
+  /** The projection's name from projection.txt, such as "FIRE" or "MISSILE". */
+  element: string;
   drawing: boolean;
   seen: boolean;
   beam: boolean;

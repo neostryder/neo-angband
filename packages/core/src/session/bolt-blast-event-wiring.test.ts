@@ -105,6 +105,7 @@ describe("wireGame supplies cast.hooks.onBolt / onBlast", () => {
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({
       projType: PROJ.FIRE,
+      element: "FIRE",
       drawing: false,
       seen: true,
       beam: false,
@@ -141,7 +142,33 @@ describe("wireGame supplies cast.hooks.onBolt / onBlast", () => {
     expect(seen[0]!.playerSeesGrid).toEqual([true]);
     expect(seen[0]!.blastGrid).toEqual([grid]);
     expect(seen[0]!.projType).toBe(PROJ.FIRE);
+    expect(seen[0]!.element).toBe("FIRE");
+    expect(seen[0]!.arc).toBe(false);
+    expect(seen[0]!.radius).toBe(0);
     expect(seen[0]!.drawing).toBe(false);
+  });
+
+  it("onBlast names a breath's element, marks it an arc and reports its reach", () => {
+    const game = started(6104);
+    const cast = game.wizardBundles.effect!.cast!;
+    const events = new GameEvents();
+    game.state.events = events;
+    const seen: ExplosionEventData[] = [];
+    events.on("explosion", (_type, data) => seen.push(data));
+
+    const grid = game.state.actor.grid;
+    const far = loc(grid.x + 1, grid.y);
+    const proj: Projection = {
+      flg: PROJECT.ARC | PROJECT.PLAY,
+      centre: grid,
+      pathGrids: [],
+      bolts: [],
+      grids: [grid, far],
+      distanceToGrid: [0, 3],
+      damAtDist: [],
+    };
+    cast.hooks!.onBlast!(proj, PROJ.COLD);
+    expect(seen[0]).toMatchObject({ projType: PROJ.COLD, element: "COLD", arc: true, radius: 3 });
   });
 
   it("onBlast reads blind live, off the player's own timed state", () => {

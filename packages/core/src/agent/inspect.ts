@@ -1,5 +1,5 @@
 /** Read-pure answers from the game's inspection and selection code. */
-import { FEAT, IGNORE_TYPE_ENTRIES, OF, TF, TMD } from "../generated/index.js";
+import { FEAT, IGNORE_TYPE_ENTRIES, OF, TERRAIN_FLAG_ENTRIES, TF, TMD } from "../generated/index.js";
 import { DDGRID } from "../loc.js";
 import type { EffectRecordJson } from "../obj/types.js";
 import type { GameState } from "../game/context.js";
@@ -84,6 +84,28 @@ export interface TravelPathResult {
 export interface TileActionsResult {
   readonly token: ReturnType<typeof inputToken>;
   readonly codes: readonly string[];
+}
+
+/** One terrain feature from terrain.txt, as a renderer needs it. */
+export interface TerrainFeatureView {
+  /** The FEAT_* index that `CellView.feat` and the known level carry. */
+  readonly index: number;
+  /** The list-terrain.h code, such as "FLOOR" or "LAVA". */
+  readonly code: string;
+  readonly name: string;
+  /** Terrain flag codes (TF_*), such as "PASSABLE" or "FIERY". */
+  readonly flags: readonly string[];
+  /** "up" for TF_UPSTAIR, "down" for TF_DOWNSTAIR, otherwise null. */
+  readonly stairs: "up" | "down" | null;
+  /** TF_FIERY: the terrain burns, as lava does. */
+  readonly fiery: boolean;
+  readonly passable: boolean;
+}
+
+/** Every bound terrain feature, in index order. It does not change during a game. */
+export interface TerrainCatalogueResult {
+  readonly token: ReturnType<typeof inputToken>;
+  readonly features: readonly TerrainFeatureView[];
 }
 
 export interface ItemRulesResult {
@@ -309,6 +331,26 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
         if (floorPile(state, to).length > 0) codes.push("pickup");
       }
       return freeze({ token: at(), codes });
+    }),
+    terrainCatalogue: gate(caps, "map", (): TerrainCatalogueResult => {
+      const features = state.chunk.features;
+      const list = features.allFeatures().filter((f) => f && f.code).map((f): TerrainFeatureView => {
+        const flags: string[] = [];
+        for (const flag of f.flags) {
+          const entry = TERRAIN_FLAG_ENTRIES[flag];
+          if (entry && flag !== TF.NONE) flags.push(entry.name);
+        }
+        return {
+          index: f.fidx,
+          code: f.code,
+          name: f.name,
+          flags,
+          stairs: f.flags.has(TF.UPSTAIR) ? "up" : f.flags.has(TF.DOWNSTAIR) ? "down" : null,
+          fiery: f.flags.has(TF.FIERY),
+          passable: f.flags.has(TF.PASSABLE),
+        };
+      });
+      return freeze({ token: at(), features: list });
     }),
     itemRules: gate(caps, "inventory", (): ItemRulesResult => {
       const reg = deps.reg;

@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 - [Internal] [Modding-API] **Interface mods can read richer map, item, spell, store and character state.** Frozen input snapshots and inspections expose quiver and floor items, stable item keys, slot names, spell study facts, stock inspection, blast metadata, store quotes, message history, rest activity and roster lineage events. The intent catalogue, grid look, click modifiers, ignore rules and rest interruption use existing game paths. (#291)
+- [Internal] [Modding-API] **Mods can read what visual effects need.** Monsters in the snapshot mark uniques and quest guardians, and the player view adds the low hit point threshold and the recall and descent timers. Remembered floor objects carry a glow class that matches their `{cursed}` and `{??}` markers, `ctx.inspect.terrainCatalogue()` lists terrain with its stairs and fire flags, and the bolt and explosion events name their element. (#291)
 
 - [Internal] [Modding-API] **Mods can read the current controller and enabled peers.** Frozen driver and public mod reads, controller status events, input ownership refusals, and per-mod display setter restoration let interface mods coexist with other controllers and display mods. (#290)
 
