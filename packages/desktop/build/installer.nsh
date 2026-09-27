@@ -19,19 +19,20 @@
 ; the folder that explains where the savefiles went.
 
 !macro customInstall
-  FileOpen $0 "$INSTDIR\installed.txt" w
-  FileWrite $0 "This copy of Neo Angband was put here by its installer.$\r$\n"
-  FileWrite $0 "$\r$\n"
-  FileWrite $0 "Because this folder is deleted when you uninstall, the game keeps$\r$\n"
-  FileWrite $0 "your savefiles, settings and mods somewhere safer:$\r$\n"
-  FileWrite $0 "$\r$\n"
-  FileWrite $0 "    %APPDATA%\Neo Angband$\r$\n"
-  FileWrite $0 "$\r$\n"
-  FileWrite $0 "To make this copy self-contained instead, create a folder named$\r$\n"
-  FileWrite $0 "data next to the executable and the game will use it.$\r$\n"
+  ; A neo-angband/desktop/installed-marker document; data-dir.test.ts parses it.
+  FileOpen $0 "$INSTDIR\installed.json" w
+  FileWrite $0 '{$\n'
+  FileWrite $0 '  "format": "neo-angband/desktop/installed-marker",$\n'
+  FileWrite $0 '  "schemaVersion": 1,$\n'
+  FileWrite $0 '  "data": {$\n'
+  FileWrite $0 '    "installed": true,$\n'
+  FileWrite $0 '    "note": "This copy of Neo Angband was put here by its installer. Uninstalling deletes this folder, so the game keeps your savefiles, settings and mods in %APPDATA%\\Neo Angband instead. To keep everything in this folder, create a folder named data next to the executable."$\n'
+  FileWrite $0 '  }$\n'
+  FileWrite $0 '}$\n'
   FileClose $0
 !macroend
 
 !macro customUnInstall
   Delete "$INSTDIR\installed.txt"
+  Delete "$INSTDIR\installed.json"
 !macroend

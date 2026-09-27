@@ -16,11 +16,14 @@ import * as path from "node:path";
 import {
   DATA_ENV_VAR,
   INSTALLED_MARKER,
+  INSTALLED_NOTE,
+  LEGACY_INSTALLED_MARKER,
   LEGACY_PORTABLE_MARKER,
   PORTABLE_MARKER,
   checkWritable,
   resolveDataBase,
 } from "./data-dir.js";
+import { installedMarkerFormat, parseDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 
 const EXE_DIR = path.resolve("/apps/neo-angband");
 const USER_DATA = path.resolve("/users/somebody/AppData/Roaming/Neo Angband");
@@ -238,8 +241,10 @@ describe("resolveDataBase", () => {
       expect(real(tmp, true)).toBe("folder");
 
       /* ...until the installer says it owns the folder. */
-      fs.writeFileSync(path.join(tmp, INSTALLED_MARKER), "installed");
+      fs.writeFileSync(path.join(tmp, LEGACY_INSTALLED_MARKER), "installed");
       expect(real(tmp, true)).toBe("user");
+      expect(fs.existsSync(path.join(tmp, INSTALLED_MARKER))).toBe(true);
+      expect(fs.existsSync(path.join(tmp, LEGACY_INSTALLED_MARKER))).toBe(false);
 
       /* A DIRECTORY named installed.txt is not the installer's marker. */
       fs.unlinkSync(path.join(tmp, INSTALLED_MARKER));
@@ -320,5 +325,16 @@ describe("checkWritable", () => {
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the installer's marker", () => {
+  it("is a valid installed-marker document carrying the same note the game writes", () => {
+    const nsis = fs.readFileSync(new URL("../build/installer.nsh", import.meta.url), "utf8");
+    const install = nsis.slice(nsis.indexOf("!macro customInstall"), nsis.indexOf("!macroend"));
+    const text = [...install.matchAll(/FileWrite \$0 '(.*)'/gu)].map((m) => m[1]!.replace(/\$\\n/gu, "\n")).join("");
+    const parsed = parseDocument(text, installedMarkerFormat);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.data).toEqual({ installed: true, note: INSTALLED_NOTE });
   });
 });

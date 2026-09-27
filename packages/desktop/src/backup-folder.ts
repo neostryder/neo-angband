@@ -24,6 +24,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { backupFolderFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** The file this module persists the chosen folder's path in, beside `mods/`. */
 export const BACKUP_FOLDER_FILE = "backup-folder.json";
@@ -80,10 +81,16 @@ export function readBackupFolder(
 ): string | null {
   try {
     const raw = fs.readFileSync(path.join(userBase, hostFolderRecordFile(purpose)), "utf8");
+    const document = parseDocument(raw, backupFolderFormat);
+    if (document.ok) return document.data.path.length > 0 ? document.data.path : null;
     const parsed: unknown = JSON.parse(raw);
     if (parsed === null || typeof parsed !== "object") return null;
     const p = (parsed as { path?: unknown }).path;
-    return typeof p === "string" && p.length > 0 ? p : null;
+    if (typeof p !== "string" || p.length === 0) return null;
+    const encoded = serializeDocument(backupFolderFormat, { path: p });
+    fs.writeFileSync(path.join(userBase, hostFolderRecordFile(purpose)), encoded, "utf8");
+    const checked = parseDocument(fs.readFileSync(path.join(userBase, hostFolderRecordFile(purpose)), "utf8"), backupFolderFormat);
+    return checked.ok ? checked.data.path : null;
   } catch {
     /* absent, unreadable, or not JSON: no folder chosen yet. Not an error - the
      * fault table's own first row. */
@@ -107,7 +114,10 @@ export function writeBackupFolder(
     return;
   }
   fs.mkdirSync(userBase, { recursive: true });
-  fs.writeFileSync(file, JSON.stringify({ path: folderPath }), "utf8");
+  const encoded = serializeDocument(backupFolderFormat, { path: folderPath });
+  fs.writeFileSync(file, encoded, "utf8");
+  const checked = parseDocument(fs.readFileSync(file, "utf8"), backupFolderFormat);
+  if (!checked.ok) return;
 }
 
 /** The display name for a chosen folder: its basename, never the full path. */

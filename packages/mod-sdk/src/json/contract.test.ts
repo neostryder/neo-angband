@@ -12,6 +12,7 @@ import { modSettingValuesFormat } from "./mod-settings.js";
 import { profilesFormat } from "./profiles.js";
 import { settingsFormat } from "./settings.js";
 import { windowStateFormat } from "./window-state.js";
+import { highScoresFormat, birthChoiceFormat, reloadStateFormat, loopbackPortFormat, mergedOriginsFormat, deathLedgerFormat, installedMarkerFormat, backupFolderFormat } from "./local-state.js";
 import { color, defineFormat, json, keyInput, listFormats, parseDocument, serializeDocument, utcTimestamp } from "./index.js";
 
 void [
@@ -23,6 +24,8 @@ void [
   soundMappingFormat,
   subwindowLayoutFormat,
   visualOverrideFormat,
+  highScoresFormat, birthChoiceFormat, reloadStateFormat, loopbackPortFormat,
+  mergedOriginsFormat, deathLedgerFormat, installedMarkerFormat, backupFolderFormat,
   settingsFormat,
   modStateFormat,
   modSettingValuesFormat,

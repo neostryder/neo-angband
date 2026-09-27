@@ -239,7 +239,7 @@ base directory. Which one depends on how you launched it, in this order:
 Only three things reach step 5, and each of them wants to:
 
 - **A copy the installer placed.** Uninstalling deletes the install directory, and
-  your characters must not be inside it. The installer leaves an `installed.txt`
+  your characters must not be inside it. The installer leaves an `installed.json`
   saying so and naming where the data went; delete nothing else if you want to
   keep playing.
 - **A folder the OS will not let the game write to** - dragged into Program Files,

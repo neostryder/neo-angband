@@ -17,6 +17,7 @@ import { describe, expect, it } from "vitest";
 import { createLocalStorageScoreStore } from "./score";
 import type { ScoreStorage } from "./score";
 import type { HighScore } from "@rpgm-tools/neo-angband-core";
+import { highScoresFormat, parseDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 
 const KEY = "t-scores";
 const CUR = KEY;
@@ -90,6 +91,22 @@ function make(storage: ScoreStorage): { msgs: string[]; store: ReturnType<typeof
 }
 
 describe("highscore_write, ported (score.c L98-176)", () => {
+  it("converts the old score array once and drops malformed legacy data safely", () => {
+    const legacyKey = "neo-angband-scores";
+    const documentKey = "neo-angband:web:high-scores";
+    const old = fakeStorage({ [legacyKey]: JSON.stringify([score(20), score(10)]) });
+    const store = createLocalStorageScoreStore(undefined, { storage: old });
+    expect(store.read().map((s) => s.pts)).toEqual([20, 10]);
+    const parsed = parseDocument(old.data.get(documentKey) ?? "", highScoresFormat);
+    expect(parsed.ok && parsed.data.scores).toEqual([score(20), score(10)]);
+    expect(old.data.has(legacyKey)).toBe(false);
+
+    const malformed = fakeStorage({ [legacyKey]: "not json" });
+    expect(() => createLocalStorageScoreStore(undefined, { storage: malformed }).read()).not.toThrow();
+    expect(malformed.data.has(documentKey)).toBe(false);
+    expect(malformed.data.has(legacyKey)).toBe(false);
+  });
+
   it("writes through scores.new and rotates the old table into place", () => {
     const fs = fakeStorage({ [CUR]: JSON.stringify([score(10)]) });
     const { msgs, store } = make(fs);

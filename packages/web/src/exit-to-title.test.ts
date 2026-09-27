@@ -98,8 +98,8 @@ describe("exitToTitle", () => {
   it("CLEARS the skip-the-title keys rather than setting them", () => {
     // switchCharacter/newGame/resumeSelected set SKIP_TITLE because they are
     // continuations. Exiting is the opposite: the next load must show the title.
-    expect(body).toMatch(/sessionStorage\.removeItem\(SKIP_TITLE_KEY\)/);
-    expect(body).toMatch(/sessionStorage\.removeItem\(BIRTH_DONE_KEY\)/);
+    expect(body).toMatch(/reloadStorage\.removeItem\(SKIP_TITLE_KEY\)/);
+    expect(body).toMatch(/reloadStorage\.removeItem\(BIRTH_DONE_KEY\)/);
     expect(body).not.toMatch(/setItem/);
   });
 

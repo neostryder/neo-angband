@@ -58,6 +58,16 @@ describe("the persisted folder record", () => {
     );
   });
 
+  it("converts the previous pointer and drops malformed legacy pointers", () => {
+    const file = path.join(base, "backup-folder.json");
+    fs.writeFileSync(file, JSON.stringify({ path: path.join(base, "Old") }), "utf8");
+    expect(readBackupFolder(base)).toBe(path.join(base, "Old"));
+    expect(fs.readFileSync(file, "utf8")).toContain('"format": "neo-angband/desktop/backup-folder"');
+    fs.writeFileSync(file, "{broken", "utf8");
+    expect(() => readBackupFolder(base)).not.toThrow();
+    expect(readBackupFolder(base)).toBeNull();
+  });
+
   it("forgetting clears it, and forgetting twice is not an error", () => {
     writeBackupFolder(base, path.join(base, "x"));
     writeBackupFolder(base, null);

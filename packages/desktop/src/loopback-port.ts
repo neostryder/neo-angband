@@ -61,12 +61,14 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { loopbackPortFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** Overrides everything, and is remembered once used. */
 export const PORT_ENV = "NEO_ANGBAND_PORT";
 
 /** Where the choice is remembered, under the ANGBAND_DIR_USER tree. */
-export const PORT_FILE = "loopback-port.txt";
+export const PORT_FILE = "loopback-port.json";
+export const LEGACY_PORT_FILE = "loopback-port.txt";
 
 /**
  * The port a fresh install takes.
@@ -237,7 +239,18 @@ export function resolveLoopbackPort(inputs: PortInputs): PortChoice {
   const fromEnv = parsePort(inputs.env[PORT_ENV] ?? null);
   if (fromEnv !== null) return { port: fromEnv, source: "env", known, mayMove: false };
 
-  const fromFile = parsePort(readFile(path.join(inputs.userDir, PORT_FILE)));
+  const filePath = path.join(inputs.userDir, PORT_FILE);
+  let fromFile: number | null = null;
+  const current = readFile(filePath);
+  if (current !== null) { const parsed = parseDocument(current, loopbackPortFormat); if (parsed.ok) fromFile = parsePort(String(parsed.data.port)); }
+  else {
+    const legacyPath = path.join(inputs.userDir, LEGACY_PORT_FILE);
+    const legacy = readFile(legacyPath);
+    fromFile = parsePort(legacy);
+    if (fromFile !== null) {
+      try { fs.mkdirSync(inputs.userDir, { recursive: true }); fs.writeFileSync(filePath, serializeDocument(loopbackPortFormat, { port: fromFile }), "utf8"); const check = parseDocument(readFile(filePath) ?? "", loopbackPortFormat); if (check.ok) fs.rmSync(legacyPath); } catch { /* retain legacy value */ }
+    } else { try { fs.rmSync(legacyPath); } catch { /* absent or unreadable */ } }
+  }
   if (fromFile !== null) return { port: fromFile, source: "file", known, mayMove: true };
 
   return { port: DEFAULT_PORT, source: "default", known, mayMove: true };
@@ -255,7 +268,7 @@ export function resolveLoopbackPort(inputs: PortInputs): PortChoice {
 export function rememberLoopbackPort(userDir: string, port: number): void {
   try {
     fs.mkdirSync(userDir, { recursive: true });
-    fs.writeFileSync(path.join(userDir, PORT_FILE), `${port}\n`, "utf8");
+    fs.writeFileSync(path.join(userDir, PORT_FILE), serializeDocument(loopbackPortFormat, { port }), "utf8");
   } catch {
     /* best effort */
   }

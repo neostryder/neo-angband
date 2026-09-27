@@ -45,6 +45,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { installedMarkerFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** The directory name that holds everything the game writes. */
 export const PORTABLE_MARKER = "data";
@@ -75,7 +76,23 @@ export const DATA_ENV_VAR = "NEO_ANGBAND_DATA";
  * other way round - an unzipped folder wrongly judged "installed" - would scatter
  * data into the user profile after the player deliberately chose a portable copy.
  */
-export const INSTALLED_MARKER = "installed.txt";
+export const INSTALLED_MARKER = "installed.json";
+export const LEGACY_INSTALLED_MARKER = "installed.txt";
+/** The note in the marker, for whoever opens the folder. build/installer.nsh writes the same text. */
+export const INSTALLED_NOTE =
+  "This copy of Neo Angband was put here by its installer. Uninstalling deletes this folder, so the game keeps your savefiles, settings and mods in %APPDATA%\\Neo Angband instead. To keep everything in this folder, create a folder named data next to the executable.";
+
+function hasInstalledMarker(dir: string, isFile: (p: string) => boolean): boolean {
+  const current = path.join(dir, INSTALLED_MARKER);
+  if (isFile(current)) { try { return parseDocument(fs.readFileSync(current, "utf8"), installedMarkerFormat).ok; } catch { return true; } }
+  const legacy = path.join(dir, LEGACY_INSTALLED_MARKER);
+  if (!isFile(legacy)) return false;
+  try {
+    fs.writeFileSync(current, serializeDocument(installedMarkerFormat, { installed: true, note: INSTALLED_NOTE }), "utf8");
+    if (parseDocument(fs.readFileSync(current, "utf8"), installedMarkerFormat).ok) fs.rmSync(legacy);
+  } catch { return true; }
+  return true;
+}
 
 /**
  * Why the base is what it is. Reported to the player rather than kept secret:
@@ -213,7 +230,7 @@ export function resolveDataBase(inputs: DataBaseInputs): DataBaseChoice {
   if (
     inputs.packaged &&
     inputs.platform !== "darwin" &&
-    !isFile(path.join(inputs.exeDir, INSTALLED_MARKER)) &&
+    !hasInstalledMarker(inputs.exeDir, isFile) &&
     isWritable(inputs.exeDir)
   ) {
     return { base: beside, kind: "folder", portable: true };

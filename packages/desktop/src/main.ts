@@ -96,6 +96,7 @@ import type { ModRecord, ModSnapshot } from "./mod-origin-merge.js";
 import { ORIGIN_PROBE_ROUTE, planRequest } from "./routes.js";
 import type { OriginSnapshot } from "./origin-merge.js";
 import { readWindowState, startPlacement, writeWindowState } from "./window-state.js";
+import { mergedOriginsFormat, deathLedgerFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /**
  * Where the renderer bundle is, which differs between a checkout and a package.
@@ -921,17 +922,24 @@ let DIR_OVERRIDES: Readonly<Partial<Record<HostDir, string>>> = {};
  * ------------------------------------------------------------------ */
 
 /** Records which abandoned origins have already been dealt with. */
-const MERGED_FILE = "origins-merged.txt";
+const MERGED_FILE = "origins-merged.json";
+const LEGACY_MERGED_FILE = "origins-merged.txt";
 
 function mergedPorts(userDir: string): Set<number> {
   try {
-    const raw = fs.readFileSync(path.join(userDir, MERGED_FILE), "utf8");
-    return new Set(
+    const file = path.join(userDir, MERGED_FILE);
+    if (fs.existsSync(file)) { const parsed = parseDocument(fs.readFileSync(file, "utf8"), mergedOriginsFormat); return new Set(parsed.ok ? parsed.data.ports : []); }
+    const oldFile = path.join(userDir, LEGACY_MERGED_FILE);
+    const raw = fs.readFileSync(oldFile, "utf8");
+    const ports = [...new Set(
       raw
         .split(/\s+/)
         .map((s) => Number.parseInt(s, 10))
         .filter((n) => Number.isInteger(n)),
-    );
+    )];
+    fs.writeFileSync(file, serializeDocument(mergedOriginsFormat, { ports }), "utf8");
+    if (parseDocument(fs.readFileSync(file, "utf8"), mergedOriginsFormat).ok) fs.rmSync(oldFile);
+    return new Set(ports);
   } catch {
     return new Set();
   }
@@ -940,7 +948,7 @@ function mergedPorts(userDir: string): Set<number> {
 function rememberMergedPorts(userDir: string, ports: Iterable<number>): void {
   try {
     fs.mkdirSync(userDir, { recursive: true });
-    fs.writeFileSync(path.join(userDir, MERGED_FILE), `${[...ports].join("\n")}\n`, "utf8");
+    fs.writeFileSync(path.join(userDir, MERGED_FILE), serializeDocument(mergedOriginsFormat, { ports: [...ports] }), "utf8");
   } catch {
     /* best effort: the worst case is harvesting the same origin again next time,
      * which the merge rules make a no-op. */
@@ -960,12 +968,19 @@ function rememberMergedPorts(userDir: string, ports: Iterable<number>): void {
  * Ids only. No names, no turns, nothing a player would mind being written down,
  * and nothing that could be used to reconstruct a character.
  */
-const DEATHS_FILE = "deaths.txt";
+const DEATHS_FILE = "deaths.json";
+const LEGACY_DEATHS_FILE = "deaths.txt";
 
 function knownDeaths(userDir: string): Set<string> {
   try {
-    const raw = fs.readFileSync(path.join(userDir, DEATHS_FILE), "utf8");
-    return new Set(raw.split(/\s+/).filter((s) => s !== ""));
+    const file = path.join(userDir, DEATHS_FILE);
+    if (fs.existsSync(file)) { const parsed = parseDocument(fs.readFileSync(file, "utf8"), deathLedgerFormat); return new Set(parsed.ok ? parsed.data.ids : []); }
+    const oldFile = path.join(userDir, LEGACY_DEATHS_FILE);
+    const raw = fs.readFileSync(oldFile, "utf8");
+    const ids = [...new Set(raw.split(/\s+/).filter((s) => s !== ""))];
+    fs.writeFileSync(file, serializeDocument(deathLedgerFormat, { ids }), "utf8");
+    if (parseDocument(fs.readFileSync(file, "utf8"), deathLedgerFormat).ok) fs.rmSync(oldFile);
+    return new Set(ids);
   } catch {
     return new Set();
   }
@@ -984,7 +999,7 @@ function rememberDeaths(userDir: string, ids: Iterable<string>): void {
   if (!added) return;
   try {
     fs.mkdirSync(userDir, { recursive: true });
-    fs.writeFileSync(path.join(userDir, DEATHS_FILE), `${[...all].join("\n")}\n`, "utf8");
+    fs.writeFileSync(path.join(userDir, DEATHS_FILE), serializeDocument(deathLedgerFormat, { ids: [...all] }), "utf8");
   } catch {
     /* Best effort, and the failure is visible in the log below rather than here:
      * losing this file costs the burial rule its memory, not a character. */

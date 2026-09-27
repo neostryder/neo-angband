@@ -115,8 +115,8 @@ describe("the boot-time install loop no longer installs unconditionally", () => 
     const loopAt = NO_COMMENTS.indexOf("for (const loaded of activeModCode().plugins) {", at);
     expect(loopAt).toBeGreaterThan(at);
     const setup = NO_COMMENTS.slice(at, loopAt);
-    expect(setup).toMatch(/sessionStorage\.getItem\(AUTOPLAYER_JUST_CONFIRMED_KEY\)/u);
-    expect(setup).toMatch(/sessionStorage\.removeItem\(AUTOPLAYER_JUST_CONFIRMED_KEY\)/u);
+    expect(setup).toMatch(/reloadStorage\.getItem\(AUTOPLAYER_JUST_CONFIRMED_KEY\)/u);
+    expect(setup).toMatch(/reloadStorage\.removeItem\(AUTOPLAYER_JUST_CONFIRMED_KEY\)/u);
   });
 
   it("holds an unconfirmed candidate instead of installing it", () => {
@@ -237,7 +237,7 @@ describe("activateAutoplayerCmd (Ctrl-Z) marks the save before reloading", () =>
      * gave ten seconds ago on this exact click. */
     const body = cmdBody();
     const armAt = body.indexOf(
-      "sessionStorage.setItem(AUTOPLAYER_JUST_CONFIRMED_KEY, modId)",
+      "reloadStorage.setItem(AUTOPLAYER_JUST_CONFIRMED_KEY, modId)",
     );
     const reloadAt = body.indexOf("reloadAfterModChange({ resume: true })");
     expect(armAt, "activateAutoplayerCmd arms the one-shot flag").toBeGreaterThan(-1);

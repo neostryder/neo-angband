@@ -385,7 +385,7 @@ import {
 } from "./mod-folder";
 import type { PrefsUiCtx } from "./prefs-ui";
 import { applyPrefText } from "./prefs-ui";
-import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
+import { CapabilitySet, birthChoiceFormat, parseDocument, serializeDocument, reloadStateFormat } from "@rpgm-tools/neo-angband-mod-sdk";
 import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, loadEnabledModSettings, discoverContentModManifests, presentNamespaces, presentPackDigests, prefetchInstalledPackDigests, diskPackStatus, enabledModIds, composedRecords } from "./pack";
 import { liveConflictLines } from "./mod-conflicts";
 import { composedObjects, hasFacet, resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -1328,6 +1328,7 @@ const FORCE_NEW_KEY = "neo-angband-force-new";
 // defaults. A sessionStorage flag marks "birth already done this load" so the
 // post-birth reload does not reopen the birth screen.
 const BIRTH_KEY = "neo-angband-birth";
+const BIRTH_DOCUMENT_KEY = "neo-angband:web:birth-choice";
 const BIRTH_DONE_KEY = "neo-angband-birth-done";
 // Post-birth RNG snapshot: ui-birth.c advances the live state.rng (* / @ / roller /
 // get_history); the reload that rebuilds the character restores this state so
@@ -1384,14 +1385,74 @@ interface StoredBirth {
    * as startGame optionOverrides so they freeze into the new character. */
   birthOptions?: Record<string, boolean>;
 }
+function writeBirthChoice(choice: StoredBirth): void {
+  const text = serializeDocument(birthChoiceFormat, { choice });
+  localStorage.setItem(BIRTH_DOCUMENT_KEY, text);
+  if (localStorage.getItem(BIRTH_DOCUMENT_KEY) === text) localStorage.removeItem(BIRTH_KEY);
+}
 function readBirthChoice(): StoredBirth | null {
   try {
+    const current = localStorage.getItem(BIRTH_DOCUMENT_KEY);
+    if (current) {
+      const parsed = parseDocument(current, birthChoiceFormat);
+      return parsed.ok ? parsed.data.choice as StoredBirth : null;
+    }
     const raw = localStorage.getItem(BIRTH_KEY);
-    return raw ? (JSON.parse(raw) as StoredBirth) : null;
+    if (!raw) return null;
+    const old = JSON.parse(raw) as StoredBirth;
+    if (typeof old.raceName !== "string" || typeof old.className !== "string" || typeof old.name !== "string") {
+      localStorage.removeItem(BIRTH_KEY);
+      return null;
+    }
+    writeBirthChoice(old);
+    return old;
   } catch {
     return null;
   }
 }
+const RELOAD_DOCUMENT_KEY = "neo-angband:web:reload-state";
+
+/* The flags a page leaves for the next load (skip the title, force a new game,
+ * the birth RNG), kept as one session document. Session storage is optional,
+ * so every failure here reads as "no flag". */
+function readReloadValues(): Record<string, string> | null {
+  const raw = sessionStorage.getItem(RELOAD_DOCUMENT_KEY);
+  if (raw === null) return null;
+  const parsed = parseDocument(raw, reloadStateFormat);
+  return parsed.ok ? { ...parsed.data.values } : {};
+}
+
+function writeReloadValues(values: Record<string, string>, legacyKey: string): void {
+  const encoded = serializeDocument(reloadStateFormat, { values });
+  sessionStorage.setItem(RELOAD_DOCUMENT_KEY, encoded);
+  if (sessionStorage.getItem(RELOAD_DOCUMENT_KEY) === encoded) sessionStorage.removeItem(legacyKey);
+}
+
+const reloadStorage = {
+  getItem(key: string): string | null {
+    try {
+      const values = readReloadValues();
+      if (values) return values[key] ?? null;
+      const legacy = sessionStorage.getItem(key);
+      if (legacy !== null) this.setItem(key, legacy);
+      return legacy;
+    } catch {
+      return null;
+    }
+  },
+  setItem(key: string, value: string): void {
+    try {
+      writeReloadValues({ ...(readReloadValues() ?? {}), [key]: value }, key);
+    } catch { /* the flag is lost; the next load behaves as a fresh one */ }
+  },
+  removeItem(key: string): void {
+    try {
+      const values = readReloadValues() ?? {};
+      delete values[key];
+      writeReloadValues(values, key);
+    } catch { /* nothing to remove */ }
+  },
+};
 function bytesToB64(bytes: Uint8Array): string {
   let bin = "";
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -1476,7 +1537,7 @@ function activeModRules(): Record<string, boolean> {
 function isContinuation(): boolean {
   if (params.get("agent")) return true;
   try {
-    return sessionStorage.getItem(SKIP_TITLE_KEY) === "1";
+    return reloadStorage.getItem(SKIP_TITLE_KEY) === "1";
   } catch {
     return false;
   }
@@ -1510,8 +1571,8 @@ function bootGame(): ReturnType<typeof startGame> {
   // action. Otherwise resume the active character so a refresh continues it.
   let forcedNew = params.has("new") || params.has("seed");
   try {
-    if (sessionStorage.getItem(FORCE_NEW_KEY) === "1") forcedNew = true;
-    sessionStorage.removeItem(FORCE_NEW_KEY);
+    if (reloadStorage.getItem(FORCE_NEW_KEY) === "1") forcedNew = true;
+    reloadStorage.removeItem(FORCE_NEW_KEY);
   } catch {
     /* sessionStorage unavailable: fall through to the query-param decision. */
   }
@@ -1659,10 +1720,10 @@ function bootGame(): ReturnType<typeof startGame> {
   // before level gen). Absent, start from seed as a normal new game.
   let birthRngState: ReturnType<Rng["getState"]> | undefined;
   try {
-    const raw = sessionStorage.getItem(BIRTH_RNG_KEY);
+    const raw = reloadStorage.getItem(BIRTH_RNG_KEY);
     if (raw) {
       birthRngState = JSON.parse(raw) as ReturnType<Rng["getState"]>;
-      sessionStorage.removeItem(BIRTH_RNG_KEY);
+      reloadStorage.removeItem(BIRTH_RNG_KEY);
     }
   } catch {
     /* storage disabled or corrupt: fall through to seed */
@@ -1921,7 +1982,7 @@ const tolkienNameProbs = ((): (() => ReturnType<typeof buildProb> | null) => {
 const birthPending = ((): boolean => {
   if (!bootedNew) return false;
   try {
-    return sessionStorage.getItem(BIRTH_DONE_KEY) !== "1";
+    return reloadStorage.getItem(BIRTH_DONE_KEY) !== "1";
   } catch {
     return true;
   }
@@ -1959,7 +2020,7 @@ if (bootedNew && !birthPending && !needsSelect) {
       stats: p.statBirth.slice(0, 5),
       ...(prev?.roller ? { roller: prev.roller } : {}),
     };
-    localStorage.setItem(BIRTH_KEY, JSON.stringify(record));
+    writeBirthChoice(record);
   } catch {
     /* storage disabled: quickstart simply falls back to regeneration */
   }
@@ -6827,8 +6888,8 @@ function wizardCtx(): WizardUiCtx {
     quitNoSave: async (): Promise<void> => {
       if (desktopQuit()) return;
       try {
-        sessionStorage.removeItem(SKIP_TITLE_KEY);
-        sessionStorage.removeItem(BIRTH_DONE_KEY);
+        reloadStorage.removeItem(SKIP_TITLE_KEY);
+        reloadStorage.removeItem(BIRTH_DONE_KEY);
       } catch {
         /* storage disabled: boot then reads nothing and shows the title anyway */
       }
@@ -6932,7 +6993,7 @@ setModSavesControl(createModSaves({
           name: like.name ?? "",
           ...(like.stats && like.stats.length === 5 ? { stats: [...like.stats] } : {}),
         };
-        localStorage.setItem(BIRTH_KEY, JSON.stringify(record));
+        writeBirthChoice(record);
       } catch {
         /* storage disabled: creation starts without a previous character */
       }
@@ -7167,8 +7228,8 @@ function newGame(): void {
   setActiveId(newCharId()); // a fresh slot so the new character does not
   // overwrite any existing one
   try {
-    sessionStorage.setItem(FORCE_NEW_KEY, "1");
-    sessionStorage.setItem(SKIP_TITLE_KEY, "1"); // already past the title
+    reloadStorage.setItem(FORCE_NEW_KEY, "1");
+    reloadStorage.setItem(SKIP_TITLE_KEY, "1"); // already past the title
   } catch {
     /* ignore storage errors; the reload below still starts fresh via ?new */
   }
@@ -7186,7 +7247,7 @@ function switchCharacter(): void {
   detachSlot();
   setActiveId(null); // boot finds no active character -> shows the select screen
   try {
-    sessionStorage.setItem(SKIP_TITLE_KEY, "1"); // already past the title
+    reloadStorage.setItem(SKIP_TITLE_KEY, "1"); // already past the title
   } catch {
     /* storage disabled: the title simply shows again, which is harmless */
   }
@@ -7264,8 +7325,8 @@ async function exitToTitle(): Promise<void> {
   try {
     // Next boot is a genuine launch, not a continuation, so BOTH skip-the-title
     // flags have to be clear or the title would be skipped on the way out.
-    sessionStorage.removeItem(SKIP_TITLE_KEY);
-    sessionStorage.removeItem(BIRTH_DONE_KEY);
+    reloadStorage.removeItem(SKIP_TITLE_KEY);
+    reloadStorage.removeItem(BIRTH_DONE_KEY);
   } catch {
     /* storage disabled: boot then has nothing to read, so the title shows */
   }
@@ -12419,8 +12480,8 @@ async function maybeBirth(): Promise<BootStep> {
   }
   let justBirthed = false;
   try {
-    justBirthed = sessionStorage.getItem(BIRTH_DONE_KEY) === "1";
-    sessionStorage.removeItem(BIRTH_DONE_KEY);
+    justBirthed = reloadStorage.getItem(BIRTH_DONE_KEY) === "1";
+    reloadStorage.removeItem(BIRTH_DONE_KEY);
   } catch {
     /* sessionStorage unavailable: fall through and show birth. */
   }
@@ -12547,12 +12608,12 @@ async function maybeBirth(): Promise<BootStep> {
      * the pre-game flow ESC does not back out of, and that is the C's choice. */
     if (!choice) return "back";
     try {
-      localStorage.setItem(BIRTH_KEY, JSON.stringify(choice));
-      sessionStorage.setItem(BIRTH_DONE_KEY, "1");
-      sessionStorage.setItem(FORCE_NEW_KEY, "1");
+      writeBirthChoice(choice);
+      reloadStorage.setItem(BIRTH_DONE_KEY, "1");
+      reloadStorage.setItem(FORCE_NEW_KEY, "1");
       // Persist the advanced stream so the post-birth reload's startGame
       // continues from this position (store_reset / seeds / level gen).
-      sessionStorage.setItem(BIRTH_RNG_KEY, JSON.stringify(state.rng.getState()));
+      reloadStorage.setItem(BIRTH_RNG_KEY, JSON.stringify(state.rng.getState()));
     } catch {
       /* storage disabled: the reload still starts a fresh game via ?new */
     }
@@ -12600,7 +12661,7 @@ async function refusedAsPlayedElsewhere(id: string): Promise<boolean> {
 function resumeSelected(id: string): void {
   setActiveId(id);
   try {
-    sessionStorage.setItem(SKIP_TITLE_KEY, "1"); // already past the title
+    reloadStorage.setItem(SKIP_TITLE_KEY, "1"); // already past the title
   } catch {
     /* storage disabled: the title simply shows again, which is harmless */
   }
@@ -12654,11 +12715,11 @@ async function updateOfferSoon(): Promise<UpdateCheck> {
 async function maybeTitle(): Promise<TitleChoice | null> {
   if (params.get("agent")) return null;
   try {
-    if (sessionStorage.getItem(SKIP_TITLE_KEY) === "1") {
-      sessionStorage.removeItem(SKIP_TITLE_KEY);
+    if (reloadStorage.getItem(SKIP_TITLE_KEY) === "1") {
+      reloadStorage.removeItem(SKIP_TITLE_KEY);
       return null;
     }
-    if (sessionStorage.getItem(BIRTH_DONE_KEY) === "1") return null; // post-birth rebuild
+    if (reloadStorage.getItem(BIRTH_DONE_KEY) === "1") return null; // post-birth rebuild
   } catch {
     /* sessionStorage unavailable: fall through and show the title */
   }
@@ -12906,8 +12967,8 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
   installedFrontend = coreFrontendSlot;
   try {
     autosave(true); // keep the live hero before the page re-composes
-    if (opts?.resume !== false) sessionStorage.setItem(SKIP_TITLE_KEY, "1");
-    if (opts?.showGraphics) sessionStorage.setItem(SHOW_GRAPHICS_KEY, "1");
+    if (opts?.resume !== false) reloadStorage.setItem(SKIP_TITLE_KEY, "1");
+    if (opts?.showGraphics) reloadStorage.setItem(SHOW_GRAPHICS_KEY, "1");
   } catch {
     /* best-effort */
   }
@@ -12974,7 +13035,7 @@ async function activateAutoplayerCmd(modId: string): Promise<void> {
    * reload where consent was JUST given, would be a pointless double prompt.
    * Every other boot still asks; see the install loop below. */
   try {
-    sessionStorage.setItem(AUTOPLAYER_JUST_CONFIRMED_KEY, modId);
+    reloadStorage.setItem(AUTOPLAYER_JUST_CONFIRMED_KEY, modId);
   } catch {
     /* best-effort; worst case this one reload asks again, which is safe */
   }
@@ -14633,8 +14694,8 @@ async function bootMenus(): Promise<void> {
  */
 async function maybeShowGraphics(): Promise<void> {
   try {
-    if (sessionStorage.getItem(SHOW_GRAPHICS_KEY) !== "1") return;
-    sessionStorage.removeItem(SHOW_GRAPHICS_KEY);
+    if (reloadStorage.getItem(SHOW_GRAPHICS_KEY) !== "1") return;
+    reloadStorage.removeItem(SHOW_GRAPHICS_KEY);
   } catch {
     return; /* no sessionStorage: nothing was ever set */
   }
@@ -15811,8 +15872,8 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, controller: AgentContr
  * happens to be first in the list next time. */
 let justConfirmedAutoplayerId: string | null = null;
 try {
-  justConfirmedAutoplayerId = sessionStorage.getItem(AUTOPLAYER_JUST_CONFIRMED_KEY);
-  sessionStorage.removeItem(AUTOPLAYER_JUST_CONFIRMED_KEY);
+  justConfirmedAutoplayerId = reloadStorage.getItem(AUTOPLAYER_JUST_CONFIRMED_KEY);
+  reloadStorage.removeItem(AUTOPLAYER_JUST_CONFIRMED_KEY);
 } catch {
   /* best-effort; worst case this boot asks, which is the safe direction */
 }

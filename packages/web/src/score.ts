@@ -41,6 +41,7 @@ import type {
   BuildScoreDeps,
 } from "@rpgm-tools/neo-angband-core";
 import type { GridPointerInput, GridSurface } from "./term";
+import { highScoresFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** The Storage subset the score store uses (localStorage in the browser). */
 export interface ScoreStorage {
@@ -98,7 +99,8 @@ export function createLocalStorageScoreStore(
   const store: ScoreStorage | null = deps.storage ?? safeLocalStorage();
   const msg = deps.msg ?? ((): void => undefined);
 
-  const CUR = key;
+  const LEGACY = key;
+  const CUR = key === "neo-angband-scores" ? "neo-angband:web:high-scores" : key;
   const NEW = `${key}.new`;
   const OLD = `${key}.old`;
   const LOK = `${key}.lok`;
@@ -145,7 +147,20 @@ export function createLocalStorageScoreStore(
 
   return {
     read(): HighScore[] {
-      const raw = get(CUR);
+      let raw = get(CUR);
+      if (raw === null) {
+        raw = get(LEGACY);
+        if (raw !== null && LEGACY !== CUR) {
+          try {
+            const old = JSON.parse(raw) as unknown;
+            const rows = Array.isArray(old) ? old.filter((r): r is HighScore => typeof r === "object" && r !== null && typeof (r as HighScore).what === "string") : [];
+            const migrated = highscoreRegularize(rows).scores.slice(0, MAX_HISCORES);
+            const encoded = serializeDocument(highScoresFormat, { scores: migrated }, { compact: true });
+            if (put(CUR, encoded) && get(CUR) === encoded) drop(LEGACY);
+            raw = encoded;
+          } catch { drop(LEGACY); return []; }
+        }
+      }
       if (!raw) return [];
       let parsed: unknown;
       try {
@@ -153,6 +168,8 @@ export function createLocalStorageScoreStore(
       } catch {
         return [];
       }
+      const document = parseDocument(parsed, highScoresFormat);
+      if (document.ok) return highscoreRegularize(document.data.scores as HighScore[]).scores.slice(0, MAX_HISCORES);
       if (!Array.isArray(parsed)) return [];
       /* highscore_read gets fixed-size binary records, so upstream's only
        * corruption case is a short read; a JSON store can hand back null, a
@@ -170,7 +187,7 @@ export function createLocalStorageScoreStore(
 
     /** highscore_write (score.c L98-176), step for step. */
     write(scores: HighScore[]): void {
-      const json = JSON.stringify(scores.slice(0, MAX_HISCORES));
+      const json = serializeDocument(highScoresFormat, { scores: scores.slice(0, MAX_HISCORES) }, { compact: true });
 
       /* Lock scores (L121-128). */
       if (get(LOK) !== null) {

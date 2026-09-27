@@ -17,12 +17,14 @@ import {
   DEFAULT_PORT,
   PORT_ENV,
   PORT_FILE,
+  LEGACY_PORT_FILE,
   PORT_LADDER_SPAN,
   discoverStorageOrigins,
   portLadder,
   rememberLoopbackPort,
   resolveLoopbackPort,
 } from "./loopback-port.js";
+import { loopbackPortFormat, parseDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** A profile whose localStorage LevelDB names the given origins. */
 function profileWith(origins: readonly number[][]): string {
@@ -93,6 +95,23 @@ describe("loopback port stability (the roster's origin)", () => {
     expect(choice).toMatchObject({ port: 46000, source: "file" });
   });
 
+  it("converts a valid legacy port and removes malformed legacy text safely", () => {
+    const base = profileWith([]);
+    const userDir = path.join(base, "user");
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.writeFileSync(path.join(userDir, LEGACY_PORT_FILE), "46001\n", "utf8");
+    expect(resolveLoopbackPort(inputsFor(base)).port).toBe(46001);
+    expect(fs.existsSync(path.join(userDir, LEGACY_PORT_FILE))).toBe(false);
+    expect(parseDocument(fs.readFileSync(path.join(userDir, PORT_FILE), "utf8"), loopbackPortFormat).ok).toBe(true);
+
+    const malformedBase = profileWith([]);
+    const malformedUser = path.join(malformedBase, "user");
+    fs.mkdirSync(malformedUser, { recursive: true });
+    fs.writeFileSync(path.join(malformedUser, LEGACY_PORT_FILE), "not a port", "utf8");
+    expect(() => resolveLoopbackPort(inputsFor(malformedBase))).not.toThrow();
+    expect(fs.existsSync(path.join(malformedUser, LEGACY_PORT_FILE))).toBe(false);
+  });
+
   it("lets the environment override, and remembers that too", () => {
     const base = profileWith([[54979]]);
     const choice = resolveLoopbackPort(inputsFor(base, { [PORT_ENV]: "50000" }));
@@ -101,9 +120,8 @@ describe("loopback port stability (the roster's origin)", () => {
     /* Persisted deliberately: honouring an override for one launch and reverting
      * silently would strand whatever was written during it. */
     rememberLoopbackPort(inputsFor(base).userDir, choice.port);
-    expect(fs.readFileSync(path.join(base, "user", PORT_FILE), "utf8").trim()).toBe(
-      "50000",
-    );
+    const stored = parseDocument(fs.readFileSync(path.join(base, "user", PORT_FILE), "utf8"), loopbackPortFormat);
+    expect(stored.ok && stored.data.port).toBe(50000);
     expect(resolveLoopbackPort(inputsFor(base)).port).toBe(50000);
   });
 
