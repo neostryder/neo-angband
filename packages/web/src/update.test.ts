@@ -11,6 +11,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { defaultLogLevel } from "@rpgm-tools/neo-angband-core/log";
 import {
+  CHANNEL_KEY,
   checkForUpdate,
   decideUpdate,
   defaultChannel,
@@ -26,7 +27,6 @@ import {
   writeChannel,
 } from "./update";
 import type { Release, ReleaseAsset } from "./update";
-import { SETTINGS_STORAGE_KEY } from "./settings-store";
 
 const WIN = { platform: "win32", arch: "x64" };
 const MAC_ARM = { platform: "darwin", arch: "arm64" };
@@ -319,7 +319,7 @@ describe("channels", () => {
     };
     writeChannel(s, "early");
     expect(readChannel(s, "0.16.0")).toBe("early");
-    store.set(SETTINGS_STORAGE_KEY, JSON.stringify({ format: "neo-angband/web/settings", schemaVersion: 1, data: { updateChannel: "nightly" } }));
+    store.set(CHANNEL_KEY, "nightly");
     expect(readChannel(s, "0.16.0")).toBe("beta");
     expect(readChannel(null, "0.16.0")).toBe("beta");
   });

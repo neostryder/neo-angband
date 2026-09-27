@@ -30,7 +30,8 @@
  * dares use is not a safety control.
  */
 
-import { readSetting, writeSetting, type SettingsWriter } from "./settings-store";
+/** Where a player's answer is kept. */
+export const CONSENT_KEY = "neo-angband:allow-third-party-mods";
 
 /** How a mod arrived, which is the only thing consent depends on. */
 export type ModOrigin =
@@ -42,7 +43,7 @@ export type ModOrigin =
 /** Read the answer. Never throws; anything unreadable means "not allowed". */
 export function readConsent(store: Pick<Storage, "getItem"> | null): boolean {
   try {
-    return readSetting(store, "allowThirdPartyMods") === true;
+    return store?.getItem(CONSENT_KEY) === "yes";
   } catch {
     /* Storage can throw outright in a locked-down browser. Refusing is the safe
      * answer: the cost is a prompt, and the cost of the other default is code the
@@ -52,9 +53,13 @@ export function readConsent(store: Pick<Storage, "getItem"> | null): boolean {
 }
 
 /** Record the answer. Best effort - a storage failure must not appear to succeed. */
-export function writeConsent(store: SettingsWriter | null, allow: boolean): boolean {
-  if (!store) return true;
-  return writeSetting(store, "allowThirdPartyMods", allow);
+export function writeConsent(store: Pick<Storage, "setItem"> | null, allow: boolean): boolean {
+  try {
+    store?.setItem(CONSENT_KEY, allow ? "yes" : "no");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

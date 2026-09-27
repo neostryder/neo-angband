@@ -330,6 +330,22 @@ export function readSlotSave(id: string): string | null {
  * EITHER write failed - a save whose metadata did not land is not a save the
  * character-select screen can offer.
  */
+export type RosterChange = Readonly<{ kind: "rename"; id: string; key: string; name: string }> |
+  Readonly<{ kind: "delete"; id: string; key: string }>;
+const rosterListeners = new Set<(event: RosterChange) => void>();
+
+export function onRosterChange(listener: (event: RosterChange) => void): () => void {
+  rosterListeners.add(listener);
+  return () => { rosterListeners.delete(listener); };
+}
+
+function emitRosterChange(event: RosterChange): void {
+  const frozen = Object.freeze(event);
+  for (const listener of rosterListeners) {
+    try { listener(frozen); } catch { /* A listener cannot undo a completed save. */ }
+  }
+}
+
 export function writeSlot(id: string, saveB64: string, meta: CharMeta): boolean {
   /* REFUSE, AND REPORT SUCCESS, which is mod-taint.ts's distinction and is made
    * here for its reason: "the storage would not take it" is worth telling the
@@ -340,8 +356,12 @@ export function writeSlot(id: string, saveB64: string, meta: CharMeta): boolean 
   listRoster();
   const backingStore = store();
   if (!backingStore || !canWriteStoredDocument(backingStore, ROSTER_STORAGE_KEY, LEGACY_ROSTER_STORAGE_KEY, rosterFormat)) return false;
+  const previous = getMeta(id);
   const bytes = setItem(SLOT_PREFIX + id, saveB64);
   const metaOk = upsertMeta(meta);
+  if (bytes && metaOk && previous && previous.name !== meta.name) {
+    emitRosterChange({ kind: "rename", id, key: lineageOf(meta), name: meta.name });
+  }
   return bytes && metaOk;
 }
 
@@ -430,9 +450,11 @@ function recordDeath(meta: CharMeta): void {
 
 /** Remove a slot entirely (bytes + metadata) - used to clear a tombstone. */
 export function deleteSlot(id: string): void {
+  const previous = getMeta(id);
   if (!writeRoster(listRoster().filter((c) => c.id !== id))) return;
   removeItem(SLOT_PREFIX + id);
   if (getActiveId() === id) setActiveId(null);
+  if (previous) emitRosterChange({ kind: "delete", id, key: lineageOf(previous) });
 }
 
 /**

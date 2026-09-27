@@ -11,13 +11,13 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ASKED_KEY,
   durabilityNotice,
   ensureDurableStorage,
   requestDurableStorage,
   resetDurabilityLatch,
   storageDurability,
 } from "./storage-persist";
-import { SETTINGS_STORAGE_KEY } from "./settings-store";
 
 /** A scope with a scriptable navigator.storage and an in-memory localStorage. */
 function scope(opts: {
@@ -139,7 +139,7 @@ describe("requestDurableStorage", () => {
     const first = scope({ grant: false, store });
     expect(await requestDurableStorage(first.s)).toBe(false);
     expect(first.persist).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(store.get(SETTINGS_STORAGE_KEY) ?? "{}").data.storagePersistenceAsked).toBe(true);
+    expect(store.get(ASKED_KEY)).toBe("1");
 
     const second = scope({ grant: false, store });
     expect(await requestDurableStorage(second.s)).toBe(false);
@@ -147,7 +147,7 @@ describe("requestDurableStorage", () => {
   });
 
   it("asks again when the player asks for it deliberately", async () => {
-    const store = new Map<string, string>([["neo:storageAsked", "1"]]);
+    const store = new Map<string, string>([[ASKED_KEY, "1"]]);
     const { s, persist } = scope({ grant: true, store });
     expect(await requestDurableStorage(s, { force: true })).toBe(true);
     expect(persist).toHaveBeenCalledTimes(1);

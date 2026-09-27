@@ -633,6 +633,8 @@ export interface ModPluginContext {
   readonly keyRepeat?: () => KeyRepeatVerdict | null;
   /** Manage roster slots after declaring `saves:manage`, including at the title. */
   readonly saves?: ModSaves;
+  /** Stable host roster lineage for the attached character. */
+  readonly character?: { key(): string | null };
   /**
    * Manage this mod's keymaps in the player's current keyset. Present only when
    * the mod declared `keymap:write` and the player consented. `bind()` never
@@ -1419,6 +1421,8 @@ export type SaveListResult =
 
 /** The host's character roster and the same actions offered by its picker. */
 export interface ModSaves {
+  onChange?(listener: (event: Readonly<{ kind: "rename"; id: string; key: string; name: string }> |
+    Readonly<{ kind: "delete"; id: string; key: string }>) => void): () => void;
   list(): Promise<SaveListResult>;
   load(id: string): Promise<SaveResult>;
   rename(id: string, name: string): Promise<SaveResult>;

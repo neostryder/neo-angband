@@ -28,8 +28,11 @@ import type { GameState } from "../game/context.js";
 import { gearGet } from "../game/gear.js";
 import { LIGHTING } from "../visuals/tile-prefs.js";
 import { monsterIsVisible } from "../mon/predicate.js";
-import { PY_SPELL, spellChance } from "../player/spell.js";
+import { PY_SPELL, spellChance, spellOkayToStudy } from "../player/spell.js";
 import { makeSpellChanceEnv } from "../game/spell-cmd.js";
+import { buildObjectEffectChain } from "../game/obj-cmd.js";
+import { getSpellInfo } from "../effects/effect-info.js";
+import type { EffectRecordJson } from "../obj/types.js";
 import { priceItem } from "../store/price.js";
 import { squareIsDisarmableTrap } from "../game/trap.js";
 import { itemView, playerViewFor } from "./entity-views.js";
@@ -211,6 +214,7 @@ function storeViews(state: GameState, deps: AgentViewDeps): StoreView[] {
     const stock: StoreItemView[] = store.stock.map((obj, index) => {
       const item = itemView(0, obj, state, deps);
       const view: StoreItemView = { ...item, index };
+      view.nameColor = obj.kind.base.attr;
       if (deps.reg && !isHome) {
         view.price = priceItem(
           deps.reg,
@@ -259,6 +263,10 @@ function spellbookViews(state: GameState): SpellbookView[] {
         learned: (flags & PY_SPELL.LEARNED) !== 0,
         worked: (flags & PY_SPELL.WORKED) !== 0,
         forgotten: (flags & PY_SPELL.FORGOTTEN) !== 0,
+        studyEligible: spellOkayToStudy(p, s.sidx),
+        infoLine: (flags & PY_SPELL.WORKED) !== 0
+          ? getSpellInfo(buildObjectEffectChain(s.effectsRaw as EffectRecordJson[], state),
+            { playerLevel: p.lev, maxRange: state.z.maxRange }) : "",
       };
       if (statInd) view.chance = spellChance(p, statInd, s.sidx, chanceEnv);
       return view;
@@ -331,6 +339,11 @@ export function createAgentView(
       }
       return out;
     }),
+    quiver: gateRead(caps, D.inventory, () =>
+      (state.gear.quiver ?? []).flatMap((handle) => {
+        const obj = handle ? gearGet(state.gear, handle) : null;
+        return obj ? [itemView(handle, obj, state, deps)] : [];
+      })),
     equipment: gateRead(caps, D.inventory, () =>
       state.actor.player.equipment.map((handle) => {
         if (!handle) return null;

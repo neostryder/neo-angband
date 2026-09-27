@@ -87,6 +87,38 @@ function caps(...granted: string[]) {
 }
 
 describe("buildInputSnapshot", () => {
+  it("gates and freezes rest, message, store and active blast reads", () => {
+    const sourceWithReads = source({ messages: () => ["One", "Two"],
+      storeStatus: () => ({ feat: 9, ready: true, noSelling: false,
+        inventory: [{ handle: 1, eligible: true, price: 12 }] }),
+      activeBlast: () => ({ radius: 3, element: "FIRE", wallsStop: true }),
+      characterKey: () => "lineage-1" });
+    const before = JSON.stringify({ save: saveGame(game), rng: game.state.rng.getState(),
+      turn: game.state.turn, cmdQueue: game.state.cmdQueue ?? [] });
+    for (let i = 0; i < 5; i++) {
+      const snap = buildInputSnapshot(sourceWithReads,
+        caps("state:interaction.read", "state:messages.read", "state:stores.read", "state:inventory.read", "state:map.read"))!;
+      expect(snap.messages).toEqual({ token: snap.token, entries: ["One", "Two"] });
+      expect(snap.storeStatus).toMatchObject({ token: snap.token, feat: 9, ready: true,
+        inventory: [{ handle: 1, price: 12 }] });
+      expect(snap.activeBlast).toEqual({ token: snap.token, radius: 3, element: "FIRE", wallsStop: true });
+      expect(snap.resting).toEqual({ active: false, mode: null, turnsRemaining: null });
+      expect(Object.isFrozen(snap.messages?.entries)).toBe(true);
+      expect(Object.isFrozen(snap.storeStatus?.inventory[0])).toBe(true);
+      expect(Object.isFrozen(snap.activeBlast)).toBe(true);
+      const denied = buildInputSnapshot(sourceWithReads, caps("state:player.read"))!;
+      expect(denied.messages).toBeNull();
+      expect(denied.storeStatus).toBeNull();
+      expect(denied.activeBlast).toBeNull();
+      expect(denied.resting).toBeNull();
+    }
+    expect(JSON.stringify({ save: saveGame(game), rng: game.state.rng.getState(),
+      turn: game.state.turn, cmdQueue: game.state.cmdQueue ?? [] })).toBe(before);
+    const manifest = CapabilitySet.fromManifest({ id: "key-read", name: "Key read", version: "1.0.0",
+      shape: "plugin", facets: ["plugin"], modApi: 1, capabilities: ["state:player.read"] });
+    expect(modPluginContext("key-read", {}, game.state, {}, { snapshotSource: sourceWithReads,
+      capabilities: manifest }).character?.key()).toBe("lineage-1");
+  });
   it("offers ctx.inspect only to a mod with a matching read grant", () => {
     const manifest = (capabilities: string[]) => CapabilitySet.fromManifest({
       id: "inspect-test", name: "Inspect test", version: "1.0.0",

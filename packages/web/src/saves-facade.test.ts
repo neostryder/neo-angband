@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { createModSaves, type SavesDoorDeps } from "./saves-facade";
 import { modPluginContext } from "./mod-context";
-import { deleteSlot, listRoster, setRosterStorage, type CharMeta } from "./roster";
+import { deleteSlot, listRoster, onRosterChange, setRosterStorage, writeSlot, type CharMeta } from "./roster";
 
 const alice: CharMeta = {
   id: "alice", name: "Alice", race: "Human", cls: "Mage", sex: "",
@@ -35,6 +35,18 @@ function deps(over: Partial<SavesDoorDeps> = {}): SavesDoorDeps {
 afterEach(() => setRosterStorage(null));
 
 describe("mod saves facade", () => {
+  it("exposes roster change events only through the saves facade", () => {
+    const backing = storage();
+    setRosterStorage(backing);
+    const events: unknown[] = [];
+    const door = createModSaves(deps({ onChange: onRosterChange }));
+    const off = door.onChange!((event) => { events.push(event); });
+    try {
+      expect(writeSlot("alice", "AAAA", alice)).toBe(true);
+      expect(writeSlot("alice", "BBBB", { ...alice, name: "New" })).toBe(true);
+      expect(events).toEqual([{ kind: "rename", id: "alice", key: "alice", name: "New" }]);
+    } finally { off(); }
+  });
   it("lists frozen entries from the roster's own ordered metadata", async () => {
     const backing = storage();
     setRosterStorage(backing);

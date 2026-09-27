@@ -27,10 +27,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { PRESERVE, swapPlan, swapScript } from "./update-plan";
 
-/** A VBScript that writes one line to a file; run by wscript, it shows no window. */
-const vbsWriteMarker = (file: string, text: string): string =>
-  `CreateObject("Scripting.FileSystemObject").CreateTextFile("${file.replace(/"/gu, '""')}", True).WriteLine "${text}"\r\n`;
-
 const isWin = process.platform === "win32";
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "neo-swap-"));
 afterAll(() => {
@@ -45,7 +41,7 @@ afterAll(() => {
  * failed swap into a slow pass.
  */
 function deadPid(): number {
-  const r = spawnSync(isWin ? "cmd.exe" : "/bin/sh", isWin ? ["/c", "exit"] : ["-c", "exit"], { windowsHide: true });
+  const r = spawnSync(isWin ? "cmd.exe" : "/bin/sh", isWin ? ["/c", "exit"] : ["-c", "exit"]);
   expect(r.status).toBe(0);
   return r.pid ?? 1;
 }
@@ -76,12 +72,10 @@ describe("a real swap on real files", () => {
     /* Relaunching is part of the script, so it is part of the test: the target
      * writes a marker and exits. */
     const marker = path.join(scratch, "relaunched.txt");
-    /* A .vbs stub on Windows: Start-Process runs it with wscript, which opens
-     * no console, so the test does not flash a window on screen. */
-    const stub = path.join(scratch, isWin ? "relaunch.vbs" : "relaunch.sh");
+    const stub = path.join(scratch, isWin ? "relaunch.bat" : "relaunch.sh");
     fs.writeFileSync(
       stub,
-      isWin ? vbsWriteMarker(marker, "yes") : `#!/bin/sh\necho yes > "${marker}"\n`,
+      isWin ? `@echo off\r\n> "${marker}" echo yes\r\n` : `#!/bin/sh\necho yes > "${marker}"\n`,
     );
     if (!isWin) fs.chmodSync(stub, 0o755);
 
@@ -99,7 +93,7 @@ describe("a real swap on real files", () => {
       ? spawnSync(
           "powershell.exe",
           ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script],
-          { encoding: "utf8", windowsHide: true },
+          { encoding: "utf8" },
         )
       : spawnSync("/bin/sh", [script], { encoding: "utf8" });
     expect(ran.stderr, "the swap script errored").toBe("");
@@ -125,7 +119,7 @@ describe("a real swap on real files", () => {
      * shortly AFTER the script returns. */
     const deadline = Date.now() + 10_000;
     while (!fs.existsSync(marker) && Date.now() < deadline) {
-      spawnSync(isWin ? "cmd.exe" : "/bin/sh", isWin ? ["/c", "exit"] : ["-c", "exit"], { windowsHide: true });
+      spawnSync(isWin ? "cmd.exe" : "/bin/sh", isWin ? ["/c", "exit"] : ["-c", "exit"]);
     }
     expect(fs.existsSync(marker), "the script did not relaunch the game").toBe(true);
   }, 60_000);
@@ -168,7 +162,7 @@ describe("a real swap on real files", () => {
       spawnSync(
         "powershell.exe",
         ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script],
-        { encoding: "utf8", windowsHide: true },
+        { encoding: "utf8" },
       );
     } else {
       spawnSync("/bin/sh", [script], { encoding: "utf8" });

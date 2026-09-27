@@ -31,10 +31,14 @@ import type {
   InputToken,
   KnownLevelView,
   AgentView,
+  BlastAreaResult,
+  BookItemResult,
   GridInspectResult,
   InspectResult,
   ItemTesterResult,
   ItemRulesResult,
+  LoadoutSlotsResult,
+  LoadoutItemRef,
   TileActionsResult,
   TravelPathResult,
   SpellInspectResult,
@@ -78,6 +82,12 @@ export interface InputSnapshot {
   readonly phase: InteractionPhase | null;
   /** Whether a "-more-" pause holds input. Null without `state:interaction.read`. */
   readonly messagePending: boolean | null;
+  /** The live player_resting count; null without interaction read access. */
+  readonly resting: Readonly<{ active: boolean; mode: number | null; turnsRemaining: number | null }> | null;
+  /** Message history without consuming the agent's per-decision stream. */
+  readonly messages: Readonly<{ token: InputToken; entries: readonly string[] }> | null;
+  readonly storeStatus: Readonly<{ token: InputToken; feat: number; ready: boolean; noSelling: boolean; inventory: readonly Readonly<{ handle: number; eligible: boolean; price: number | null }>[] }> | null;
+  readonly activeBlast: Readonly<{ token: InputToken; radius: number; element: string; wallsStop: boolean }> | null;
   /** The open question, or null without `state:interaction.read`. */
   readonly prompt: PromptDescriptor | null;
   /** What the game knows at this wait (agent/boundary.ts). */
@@ -98,6 +108,10 @@ export interface InputSnapshotSource {
   viewDeps(): AgentViewDeps;
   phase(): InteractionPhase;
   messagePending(): boolean;
+  messages?(): readonly string[];
+  storeStatus?(): Omit<NonNullable<InputSnapshot["storeStatus"]>, "token"> | null;
+  characterKey?(): string | null;
+  activeBlast?(): { readonly radius: number; readonly element: string; readonly wallsStop: boolean } | null;
   prompt(): PromptDescriptor | null;
   /** The last produced frame, live; this module copies it. */
   frame(): WorldFrame | null;
@@ -128,6 +142,20 @@ export function buildInputSnapshot(
     driver: frozenDriver(source.driver?.() ?? { kind: "player" }),
     phase: interaction ? source.phase() : null,
     messagePending: interaction ? source.messagePending() : null,
+    resting: interaction ? Object.freeze({ active: !!state.resting,
+      mode: state.resting?.count ?? null,
+      turnsRemaining: state.resting && state.resting.count > 0 ? state.resting.count : null }) : null,
+    messages: grants(caps, "state:messages.read") && source.messages
+      ? Object.freeze({ token: core.token, entries: Object.freeze([...source.messages()]) }) : null,
+    storeStatus: grants(caps, "state:stores.read") && grants(caps, "state:inventory.read")
+      && source.storeStatus ? (() => {
+        const status = source.storeStatus!();
+        return status ? Object.freeze({ ...status, token: core.token,
+          inventory: Object.freeze(status.inventory.map((entry) => Object.freeze({ ...entry }))) }) : null;
+      })() : null,
+    activeBlast: interaction && grants(caps, MAP_READ_CAPABILITY) && source.activeBlast
+      ? (() => { const blast = source.activeBlast!();
+        return blast ? Object.freeze({ ...blast, token: core.token }) : null; })() : null,
     prompt: interaction ? source.prompt() : null,
     core,
     frame: live ? snapshotWorldFrame(live) : null,
@@ -145,12 +173,14 @@ export function buildKnownLevel(
 
 /** Inspection methods from a view built for the calling mod. */
 export interface ModInspect {
-  inspectItem(ref: number | { floor: { x: number; y: number; index: number } }): InspectResult | null;
+  inspectItem(ref: number | { floor: { x: number; y: number; index: number } } | { store: number; index: number }): InspectResult | null;
+  bookForItem(handle: number): BookItemResult | null;
+  compareLoadoutSlots(ref: Exclude<LoadoutItemRef, { from: "object" }>): LoadoutSlotsResult | null;
   monsterRecall(raceIndex: number): InspectResult | null;
   spellInfo(spellIndex: number): SpellInspectResult | null;
   itemTester(code: string): ItemTesterResult | null;
   projectionPath(to: { x: number; y: number }): GridInspectResult | null;
-  blastArea(to: { x: number; y: number }, radius: number): GridInspectResult | null;
+  blastArea(to: { x: number; y: number }, radius: number): BlastAreaResult | null;
   travelPath(to: { x: number; y: number }): TravelPathResult | null;
   tileActions(to: { x: number; y: number }): TileActionsResult | null;
   itemRules(): ItemRulesResult | null;
@@ -167,6 +197,8 @@ export function buildInspect(
   };
   return Object.freeze({
     inspectItem: (ref) => view()?.inspectItem?.(ref) ?? null,
+    bookForItem: (handle) => view()?.bookForItem?.(handle) ?? null,
+    compareLoadoutSlots: (ref) => view()?.compareLoadoutSlots?.(ref) ?? null,
     monsterRecall: (raceIndex) => view()?.monsterRecall?.(raceIndex) ?? null,
     spellInfo: (spellIndex) => view()?.spellInfo?.(spellIndex) ?? null,
     itemTester: (code) => view()?.itemTester?.(code) ?? null,

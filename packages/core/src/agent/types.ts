@@ -38,7 +38,7 @@ import type { ObjectInfoExtras } from "../game/object-inspect.js";
 import type { MonsterRace } from "../mon/types.js";
 import type { LoreDeps } from "../mon/lore-describe.js";
 import type { ProjectionInfo } from "../world/projection.js";
-import type { GridInspectResult, InspectResult, ItemRulesResult, ItemTesterResult, SpellInspectResult, TileActionsResult, TravelPathResult } from "./inspect.js";
+import type { BlastAreaResult, BookItemResult, GridInspectResult, InspectResult, ItemRulesResult, ItemTesterResult, LoadoutSlotsResult, SpellInspectResult, TileActionsResult, TravelPathResult } from "./inspect.js";
 
 /**
  * The frozen agent-API version (ratified 2026-07-14). Add-only from here: a new
@@ -182,6 +182,8 @@ export interface PlayerView {
   exp: number;
   maxExp: number;
   gold: number;
+  /** player.upkeep.newSpells after calc_spells. */
+  learnableSpells: number;
   depth: number;
   maxDepth: number;
   hp: number;
@@ -350,6 +352,11 @@ export interface CellView {
 export interface ItemView {
   /** Gear handle when carried/worn; 0 for a floor object. */
   handle: number;
+  /** Kind index and gear identity; a gear handle survives letter changes. */
+  kindKey: string;
+  itemKey?: string;
+  /** The attr used by the inventory name renderer. */
+  nameColor: string;
   label: string;
   tval: number;
   sval: number;
@@ -433,6 +440,9 @@ export interface SpellView {
   learned: boolean;
   worked: boolean;
   forgotten: boolean;
+  studyEligible: boolean;
+  /** get_spell_info's menu suffix for a worked spell. */
+  infoLine: string;
 }
 
 /** A read-only view of one spellbook and its spells. */
@@ -496,6 +506,8 @@ export interface LoadoutChange {
    * `object` is being ACQUIRED, so its weight joins the carried total.
    */
   readonly wield?: readonly LoadoutItemRef[];
+  /** Hypothetical placement into a named body slot, including a paired slot. */
+  readonly wieldAt?: readonly { readonly item: LoadoutItemRef; readonly slot: number }[];
   /**
    * Take these into the pack without wearing them - a purchase of something the
    * character will carry rather than wield. `number` defaults to the whole
@@ -592,6 +604,8 @@ export interface AgentView {
   knownLevel?(): import("./known-level.js").KnownLevelView | null;
   /** The carried pack (non-equipped gear), in pack order. */
   inventory(): ItemView[];
+  /** Computed quiver slots in display order. */
+  quiver?(): ItemView[];
   /** Worn equipment by body slot; null for an empty slot. */
   equipment(): Array<ItemView | null>;
   /** Floor objects on a grid (head-first, newest drop first). */
@@ -638,7 +652,10 @@ export interface AgentView {
    */
   capture?(): import("./boundary.js").CoreSnapshot;
   /** Player-facing object inspection, without learning or changing the game. */
-  inspectItem?(ref: number | { floor: { x: number; y: number; index: number } }): InspectResult | null;
+  inspectItem?(ref: number | { floor: { x: number; y: number; index: number } } | { store: number; index: number }): InspectResult | null;
+  /** The class book and spell indices for one carried object. */
+  bookForItem?(handle: number): BookItemResult | null;
+  compareLoadoutSlots?(ref: Exclude<LoadoutItemRef, { from: "object" }>): LoadoutSlotsResult;
   /** The player's existing recall for a race; null if no lore is recorded. */
   monsterRecall?(raceIndex: number): InspectResult | null;
   /** The live spell description and casting status. */
@@ -648,7 +665,7 @@ export interface AgentView {
   /** Path through remembered terrain, stopping at visible monsters. */
   projectionPath?(to: { x: number; y: number }): GridInspectResult;
   /** Ball grids through remembered terrain. */
-  blastArea?(to: { x: number; y: number }, radius: number): GridInspectResult;
+  blastArea?(to: { x: number; y: number }, radius: number): BlastAreaResult;
   /** The travel command's walking route over the remembered map. */
   travelPath?(to: { x: number; y: number }): TravelPathResult | null;
   /** Registered command codes eligible at one remembered grid. */
@@ -697,6 +714,7 @@ export interface AgentViewDeps {
     races: readonly MonsterRace[];
     loreDeps: () => LoreDeps;
     projections: readonly ProjectionInfo[];
+    activeBlast?: () => { readonly radius: number; readonly element: string; readonly wallsStop: boolean } | null;
     /** The command's door-lock predicate uses the bound trap kinds. */
     trapDeps?: import("../game/trap.js").TrapDeps;
   };

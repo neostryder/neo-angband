@@ -101,7 +101,7 @@ describe("a well-formed mod's resources are found and used", () => {
         id: "big-mod",
         manifest: manifest("big-mod", [
           { kind: "sound", path: "sounds" },
-          { kind: "prefs", path: "prefs/colours.json" },
+          { kind: "prefs", path: "prefs/colours.prf" },
           { kind: "help", path: "help/lore.txt", slot: "lore" },
           { kind: "art", path: "art/splash.txt", slot: "splash" },
         ]),
@@ -135,7 +135,7 @@ describe("a declaration that cannot work lands on the mod's own row", () => {
         {
           id: "typo-mod",
           manifest: manifest("typo-mod", [
-            { kind: "prefs", path: "../elsewhere.json" },
+            { kind: "prefs", path: "../elsewhere.prf" },
             { kind: "sound", path: "sounds" },
           ]),
         },
@@ -205,7 +205,7 @@ describe("what only THIS machine could have reported", () => {
       inputFor([
         {
           id: "fat-fingers",
-          manifest: manifest("fat-fingers", [{ kind: "prefs", path: "prefs/colors.json" }]),
+          manifest: manifest("fat-fingers", [{ kind: "prefs", path: "prefs/colors.prf" }]),
         },
       ]),
     );
@@ -263,7 +263,7 @@ describe("what only THIS machine could have reported", () => {
   it("turns a throwing probe into a refusal rather than a crashed boot", async () => {
     const { located } = locateResources(
       inputFor([
-        { id: "explodes", manifest: manifest("explodes", [{ kind: "prefs", path: "p/x.json" }]) },
+        { id: "explodes", manifest: manifest("explodes", [{ kind: "prefs", path: "p/x.prf" }]) },
       ]),
     );
     const runtime: ResourceRuntime = {

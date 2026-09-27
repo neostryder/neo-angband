@@ -42,7 +42,7 @@ describe("a well-formed declaration is accepted", () => {
     const resources: PackResource[] = [
       { kind: "sound", path: "sounds" },
       { kind: "font", path: "fonts/tiny.json" },
-      { kind: "prefs", path: "prefs/colours.json" },
+      { kind: "prefs", path: "prefs/colours.prf" },
       { kind: "help", path: "help/spoilers.txt", slot: "spoilers" },
       { kind: "art", path: "art/splash.txt", slot: "splash" },
       { kind: "locale", path: "locales/de.json", slot: "de" },
@@ -89,19 +89,19 @@ describe("a declaration that cannot work is refused, and says why", () => {
 
   it("refuses a path that leaves the mod folder", () => {
     expect(
-      resourceComplaint({ kind: "prefs", path: "../other-mod/x.json" }, "test-mod"),
+      resourceComplaint({ kind: "prefs", path: "../other-mod/x.prf" }, "test-mod"),
     ).toContain("stay inside the mod folder");
   });
 
   it("refuses a site-absolute path, which only a bundled mod could know", () => {
     expect(
-      resourceComplaint({ kind: "prefs", path: "/mods/me/x.json" }, "test-mod"),
+      resourceComplaint({ kind: "prefs", path: "/mods/me/x.prf" }, "test-mod"),
     ).toContain("must be relative to the mod folder");
   });
 
   it("refuses an extension the kind cannot be", () => {
-    const why = resourceComplaint({ kind: "prefs", path: "prefs/colours.prf" }, "m");
-    expect(why).toContain(".json");
+    const why = resourceComplaint({ kind: "prefs", path: "prefs/colours.txt" }, "m");
+    expect(why).toContain(".prf");
   });
 
   it("refuses a TOP-LEVEL .json font, because the record composer would take it", () => {
@@ -142,7 +142,7 @@ describe("a declaration that cannot work is refused, and says why", () => {
   });
 
   it("makes the manifest validator throw, with the same sentence", () => {
-    const bad = manifestWith([{ kind: "prefs", path: "../escape.json" }]);
+    const bad = manifestWith([{ kind: "prefs", path: "../escape.prf" }]);
     expect(() => validateManifest(bad)).toThrow(ManifestError);
     expect(() => validateManifest(bad)).toThrow(/stay inside the mod folder/u);
   });
@@ -164,12 +164,12 @@ describe("several mods contributing the same kind", () => {
     expect(shadowed.map((c) => c.modId)).toEqual(["first"]);
   });
 
-  it("keeps EVERY preference document, because each is a list of assignments", () => {
+  it("keeps EVERY pref file, because a .prf is a list of assignments", () => {
     const { chosen, shadowed } = chooseResources([
-      contribution("first", { kind: "prefs", path: "a.json" }),
-      contribution("second", { kind: "prefs", path: "b.json" }),
+      contribution("first", { kind: "prefs", path: "a.prf" }),
+      contribution("second", { kind: "prefs", path: "b.prf" }),
     ]);
-    expect(chosen.map((c) => c.resource.path)).toEqual(["a.json", "b.json"]);
+    expect(chosen.map((c) => c.resource.path)).toEqual(["a.prf", "b.prf"]);
     expect(shadowed).toEqual([]);
   });
 
@@ -205,7 +205,7 @@ describe("several mods contributing the same kind", () => {
 
   it("selects by kind", () => {
     const { chosen } = chooseResources([
-      contribution("a", { kind: "prefs", path: "a.json" }),
+      contribution("a", { kind: "prefs", path: "a.prf" }),
       contribution("b", { kind: "sound", path: "s" }),
     ]);
     expect(resourcesOfKind(chosen, "prefs").map((c) => c.modId)).toEqual(["a"]);

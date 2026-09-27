@@ -1,6 +1,9 @@
 /** Submit a mod's player intent through the host's ordinary input path. */
 import {
   createAgentActions,
+  bumpInputRevision,
+  disturb,
+  inputToken,
   targetAble,
   tokenIsCurrent,
   type ActionRegistry,
@@ -15,9 +18,12 @@ export const INTENT_CAPABILITY = "input:intent";
 
 export type PlayerIntent =
   | { readonly kind: "command"; readonly command: AgentCommand }
-  | { readonly kind: "travel"; readonly x: number; readonly y: number }
+  | { readonly kind: "travel"; readonly x: number; readonly y: number; readonly modifiers?: Readonly<{ shift?: boolean; ctrl?: boolean }> }
   | { readonly kind: "target"; readonly midx: number }
-  | { readonly kind: "target"; readonly x: number; readonly y: number };
+  | { readonly kind: "target"; readonly x: number; readonly y: number }
+  | { readonly kind: "stop-resting" }
+  | { readonly kind: "ignore" | "unignore"; readonly handle: number }
+  | { readonly kind: "item-rule"; readonly rule: "kind-aware" | "kind-unaware" | "ego" | "quality" | "note-aware" | "note-unaware"; readonly index: number; readonly itype?: number; readonly value: boolean | number | string };
 
 export interface IntentResult {
   readonly accepted: boolean;
@@ -27,14 +33,19 @@ export interface IntentResult {
 
 export interface ModIntent {
   submit(token: InputToken, intent: PlayerIntent): IntentResult;
+  catalogue?(): Readonly<{ token: InputToken; commands: readonly Readonly<{ code: string; args: string; phase: "play" | "store" }>[]; intents: readonly Readonly<{ kind: string; args: string }>[] }>;
 }
 
 export interface IntentGateDeps {
   readonly state: GameState;
-  readonly registry: Pick<ActionRegistry, "has">;
+  readonly registry: Pick<ActionRegistry, "has" | "codes">;
   readonly push: (command: PlayerCommand) => void;
   readonly advance: () => void;
   readonly snapshotSource: Pick<InputSnapshotSource, "phase" | "prompt">;
+  /** The live store screen's own purchase and sale flow. */
+  readonly storeCommand?: (command: AgentCommand) => boolean;
+  readonly lookAt?: (at?: Readonly<{ x: number; y: number }>) => void;
+  readonly itemAction?: (intent: Extract<PlayerIntent, { kind: "ignore" | "unignore" | "item-rule" }>) => boolean;
 }
 
 const STORE_CODES = new Set(["shop-buy", "shop-sell", "shop-exit"]);
@@ -92,6 +103,8 @@ function validCommand(command: unknown): command is AgentCommand {
   if (command.code === "cast" && (!integer(args?.spell) || args.spell < 0)) return false;
   if (command.code === "study" && !integer(args?.handle)) return false;
   if (command.code === "shop-buy" && (!integer(args?.index) || args.index < 0)) return false;
+  if (command.code === "look" && args !== undefined &&
+      (Object.keys(args).length !== 2 || !integer(args.x) || !integer(args.y))) return false;
   if (command.code === "rest" && args?.count !== undefined && !integer(args.count)) return false;
   if (command.code === "inscribe" && typeof args?.inscription !== "string") return false;
   if (args?.quantity !== undefined && (!integer(args.quantity) || args.quantity < 1)) return false;
@@ -104,12 +117,53 @@ const reject = (reason: string): IntentResult => ({ accepted: false, reason });
 /** No state is written until every check has passed. */
 export function createIntentGate(deps: IntentGateDeps): ModIntent {
   return {
+    catalogue() {
+      const commands = deps.registry.codes().map((code) => Object.freeze({ code,
+        phase: (STORE_CODES.has(code) ? "store" : "play") as "store" | "play",
+        args: DIRECTION_CODES.has(code) ? "dir: 1..9" :
+          code === "shop-sell" ? "args: {handle: integer, quantity?: positive integer (ignored)}" :
+            HANDLE_CODES.has(code) ? "args: {handle: integer, quantity?: positive integer}" :
+              code === "shop-buy" ? "args: {index: nonnegative integer, quantity?: positive integer (ignored)}" :
+              code === "cast" ? "args: {spell: nonnegative integer}" :
+                code === "rest" ? "args?: {count: integer}" :
+                  code === "pathfind" ? "args: {dest: {x: integer, y: integer}}" :
+                    code === "look" ? "args?: {x: integer, y: integer}" :
+                      "args?: plain object",
+      }));
+      const intents = [
+        { kind: "travel", args: "x, y: integer; modifiers?: {shift?: boolean, ctrl?: boolean}" },
+        { kind: "target", args: "midx: positive integer OR x, y: integer" },
+        { kind: "stop-resting", args: "none" },
+        { kind: "ignore", args: "handle: integer" },
+        { kind: "unignore", args: "handle: integer" },
+        { kind: "item-rule", args: "rule, index, value; itype?: integer" },
+      ].map((entry) => Object.freeze(entry));
+      return Object.freeze({ token: inputToken(deps.state), commands: Object.freeze(commands), intents: Object.freeze(intents) });
+    },
     submit(token, intent): IntentResult {
       const { state, registry, snapshotSource } = deps;
       if (!tokenIsCurrent(state, token)) return reject("stale input token");
+      if (record(intent) && intent.kind === "stop-resting") {
+        if (Object.keys(intent).length !== 1 || !state.resting) return reject("not resting");
+        disturb(state);
+        bumpInputRevision(state);
+        return { accepted: true };
+      }
       if (snapshotSource.prompt?.() != null) return reject("a prompt is open");
       if (!record(intent)) return reject("malformed intent");
       const phase = snapshotSource.phase();
+      if (intent.kind === "ignore" || intent.kind === "unignore" || intent.kind === "item-rule") {
+        if (phase !== "play") return reject("input is not in play phase");
+        if (intent.kind === "item-rule") {
+          if (Object.keys(intent).some((key) => !["kind", "rule", "index", "itype", "value"].includes(key)) ||
+              !integer(intent.index) || (intent.itype !== undefined && !integer(intent.itype))) {
+            return reject("malformed item rule");
+          }
+        } else if (Object.keys(intent).length !== 2 || !integer(intent.handle)) {
+          return reject("malformed item action");
+        }
+        return deps.itemAction?.(intent) ? { accepted: true } : reject("invalid item action");
+      }
       if (intent.kind === "target") {
         if (phase !== "play") return reject("input is not in play phase");
         const keys = Object.keys(intent);
@@ -128,9 +182,27 @@ export function createIntentGate(deps: IntentGateDeps): ModIntent {
       }
       let command: AgentCommand;
       if (intent.kind === "travel") {
-        if (Object.keys(intent).length !== 3 || !integer(intent.x) || !integer(intent.y) ||
+        if (Object.keys(intent).some((key) => !["kind", "x", "y", "modifiers"].includes(key)) ||
+            !integer(intent.x) || !integer(intent.y) ||
             !state.chunk.inBounds({ x: intent.x, y: intent.y })) return reject("malformed travel destination");
-        command = createAgentActions(state).raw("pathfind", { dest: { x: intent.x, y: intent.y } });
+        const modifiers = intent.modifiers;
+        if (modifiers !== undefined && (!record(modifiers) ||
+            Object.keys(modifiers).some((key) => !["shift", "ctrl"].includes(key)) ||
+            Object.values(modifiers).some((value) => typeof value !== "boolean"))) return reject("malformed modifiers");
+        if (modifiers?.ctrl) {
+          if (phase !== "play" || !state.chunk.inBoundsFully({ x: intent.x, y: intent.y })) {
+            return reject("malformed target location");
+          }
+          createAgentActions(state).setTargetLocation(intent.x, intent.y);
+          return { accepted: true };
+        }
+        if (modifiers?.shift) {
+          const dx = intent.x - state.actor.grid.x;
+          const dy = intent.y - state.actor.grid.y;
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== 1) return reject("run needs an adjacent grid");
+          command = createAgentActions(state).raw("run");
+          command = { ...command, dir: (1 - dy) * 3 + (dx + 2) };
+        } else command = createAgentActions(state).raw("pathfind", { dest: { x: intent.x, y: intent.y } });
       } else if (intent.kind === "command") {
         if (Object.keys(intent).length !== 2 || !validCommand(intent.command)) return reject("malformed command arguments");
         command = intent.command;
@@ -146,6 +218,17 @@ export function createIntentGate(deps: IntentGateDeps): ModIntent {
       if (command.code === "pathfind" &&
           !state.chunk.inBounds(command.args!.dest as { x: number; y: number })) {
         return reject("malformed travel destination");
+      }
+      if (command.code === "look" && deps.lookAt) {
+        const at = command.args as { x: number; y: number } | undefined;
+        if (at && !state.chunk.inBoundsFully(at)) return reject("malformed look location");
+        deps.lookAt(at);
+        return { accepted: true };
+      }
+      if (command.code === "shop-buy" || command.code === "shop-sell") {
+        return deps.storeCommand?.(command)
+          ? { accepted: true }
+          : reject("store is not ready");
       }
       deps.push(command);
       deps.advance();

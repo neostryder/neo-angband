@@ -194,6 +194,14 @@ const handleALTER: EffectHandler = (ctx) => {
   return true;
 };
 
+/** The EF_BALL radius used by the handler and by a pending aim preview. */
+export function ballRadius(radius: number, other: number, playerLev: number, powerful = false): number {
+  let rad = radius || 2;
+  if (powerful) rad++;
+  else if (other) rad += Math.trunc(playerLev / other);
+  return rad;
+}
+
 const handleBALL: EffectHandler = (ctx) => {
   const env = gameEnv(ctx);
   if (!env) return true;
@@ -201,13 +209,9 @@ const handleBALL: EffectHandler = (ctx) => {
   const source = sourceFor(env, ctx);
   const { grid } = resolveAimedTarget(env.state, source, ctx.dir, env.aimed);
 
-  let rad = ctx.radius ? ctx.radius : 2;
-  if (source.isMonster) {
-    const mon = env.state.monsters[source.monster];
-    if (mon && monsterIsPowerful(mon)) rad++;
-  } else if (source.isPlayer && ctx.other) {
-    rad += Math.trunc(playerLevel(env) / ctx.other);
-  }
+  const mon = source.isMonster ? env.state.monsters[source.monster] : null;
+  const rad = ballRadius(ctx.radius, source.isPlayer ? ctx.other : 0,
+    source.isPlayer ? playerLevel(env) : 0, !!mon && monsterIsPowerful(mon));
 
   const aimedAtTarget = source.isPlayer && ctx.dir === DIR_TARGET && env.aimed !== undefined;
   if (castBall(env.state, env.cast, source, grid, dam, ctx.subtype, rad, { aimedAtTarget }))

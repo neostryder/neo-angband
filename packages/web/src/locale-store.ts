@@ -16,7 +16,7 @@
  * to act on unasked.
  */
 
-import { readSetting, writeSetting } from "./settings-store";
+const KEY = "neo:locale";
 
 /**
  * A language tag's SHAPE, not its validity. `Intl` is the judge of what a tag
@@ -28,8 +28,8 @@ const TAG = /^[A-Za-z]{2,8}(-[A-Za-z0-9]{2,8})*$/u;
 /** The player's saved language, or null for English. */
 export function readStoredLocale(): string | null {
   try {
-    const raw = readSetting(localStorage, "locale");
-    return raw !== undefined && TAG.test(raw) ? raw : null;
+    const raw = localStorage.getItem(KEY);
+    return raw !== null && TAG.test(raw) ? raw : null;
   } catch {
     /* Storage can be denied outright (a locked-down browser, private mode in
      * some builds). English is a working game; a thrown exception at boot is
@@ -41,7 +41,8 @@ export function readStoredLocale(): string | null {
 /** Remember the player's language. `null` or "en" clears it back to English. */
 export function writeStoredLocale(tag: string | null): void {
   try {
-    writeSetting(localStorage, "locale", tag === null || tag === "en" || !TAG.test(tag) ? undefined : tag);
+    if (tag === null || tag === "en" || !TAG.test(tag)) localStorage.removeItem(KEY);
+    else localStorage.setItem(KEY, tag);
   } catch {
     /* The choice applies to this session either way - setLocale has already
      * happened - it simply will not survive a reload. Losing a preference is

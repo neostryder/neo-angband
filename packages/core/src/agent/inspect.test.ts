@@ -1,7 +1,7 @@
 /** Seeded inspection reads must leave the entire saved game unchanged. */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT, MFLAG } from "../generated/index.js";
+import { FEAT, MFLAG, TV } from "../generated/index.js";
 import { gearAdd } from "../game/gear.js";
 import { objectSeeAt } from "../game/known.js";
 import { objectInfoTextblock } from "../game/object-inspect.js";
@@ -225,6 +225,47 @@ describe("inspection reads", () => {
     expect(() => view.travelPath!({ x: 1, y: 1 })).toThrow(AgentCapabilityError);
     expect(() => view.tileActions!({ x: 1, y: 1 })).toThrow(AgentCapabilityError);
     expect(() => view.itemRules!()).toThrow(AgentCapabilityError);
+    expect(() => view.bookForItem!(1)).toThrow(AgentCapabilityError);
+    expect(() => view.compareLoadoutSlots!({ from: "gear", handle: 1 })).toThrow(AgentCapabilityError);
+  });
+
+  it("returns stock sections, book mapping, paired slots and blast metadata without mutation", () => {
+    const game = startGame(pack, { seed: 4242, depth: 0 });
+    const state = game.state;
+    const store = state.stores!.find((entry) => entry.stock.length > 0)!;
+    expect(store).toBeDefined();
+    const storeIndex = state.stores!.indexOf(store);
+    state.actor.player.cls = game.players.classes.find((cls) => cls.magic.books.length > 0)!;
+    const bookKind = game.booted.registries.objects.kinds.find((kind) =>
+      state.actor.player.cls.magic.books.some((book) => book.tvalIdx === kind.tval && book.sval === kind.sval));
+    const ringKind = game.booted.registries.objects.kinds.find((kind) => kind.tval === TV.RING)!;
+    const book = bookKind ? objectPrep(state.rng, game.booted.registries.objects,
+      game.booted.registries.constants, bookKind, 1, "minimise") : null;
+    const ring = objectPrep(state.rng, game.booted.registries.objects,
+      game.booted.registries.constants, ringKind, 1, "minimise");
+    const bookHandle = book ? gearAdd(state.gear, book) : 0;
+    const ringHandle = gearAdd(state.gear, ring);
+    state.gear.pack.push(ringHandle);
+    const view = viewFor(game).view;
+    const before = fingerprint(game);
+    for (let i = 0; i < 5; i++) {
+      const stockInfo = view.inspectItem!({ store: storeIndex, index: 0 })!;
+      expect(stockInfo.sections?.[0]).toEqual({ kind: "title", text: stockInfo.title });
+      expect(stockInfo.sections?.slice(1).map((section) => section.text).join("\n\n")).toBe(stockInfo.text.trim());
+      expect(Object.isFrozen(stockInfo.sections)).toBe(true);
+      if (book) expect(view.bookForItem!(bookHandle)?.spells).toEqual(
+        state.actor.player.cls.magic.books.find((entry) => entry.tvalIdx === book.tval && entry.sval === book.sval)!.spells.map((spell) => spell.sidx));
+      const comparisons = view.compareLoadoutSlots!({ from: "gear", handle: ringHandle });
+      expect(comparisons.token).toEqual(view.inputToken!());
+      expect(comparisons.slots.filter((slot) => state.actor.player.body.slots[slot.slot]?.type === "RING")).toHaveLength(2);
+      expect(Object.isFrozen(comparisons.slots)).toBe(true);
+      const blast = view.blastArea!({ x: state.actor.grid.x + 1, y: state.actor.grid.y }, 2);
+      expect(blast).toMatchObject({ radius: 2, element: null, wallsStop: true });
+      expect(Object.isFrozen(blast)).toBe(true);
+    }
+    expect(fingerprint(game)).toBe(before);
+    const inventoryOnly = viewFor(game, { has: (cap) => cap === "state:inventory.read" }).view;
+    expect(() => inventoryOnly.inspectItem!({ store: storeIndex, index: 0 })).toThrow(AgentCapabilityError);
   });
 
   it("reports the travel command's remembered route without changing the game", () => {

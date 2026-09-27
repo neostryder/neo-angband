@@ -52,11 +52,8 @@ import {
   leafIds,
   parseLayoutTree,
   pruneTree,
-  restoreDockPlace,
   type DockEdge,
-  type FloatRect,
   type LayoutNode,
-  type RememberedPlace,
 } from "./subwindow-layout";
 
 export type SubwindowId =
@@ -80,8 +77,6 @@ export type SubwindowSettings = Record<SubwindowId, boolean>;
 export interface SubwindowState {
   enabled: SubwindowSettings;
   tree: LayoutNode;
-  floats?: FloatRect[];
-  places?: Record<string, RememberedPlace>;
   /** Independent dungeon-map grafID; absent in older layouts means ASCII. */
   mapTileMode?: number;
   /** Opaque payloads retained for mods that are not currently installed. */
@@ -250,36 +245,20 @@ export function describeSubwindowsMerged(merges: readonly { id: string; into: st
   );
 }
 
-export function reconcileSubwindowTree(tree: LayoutNode, settings: SubwindowSettings,
-  floats: readonly FloatRect[] = [], places: Readonly<Record<string, RememberedPlace>> = {}): LayoutNode {
-  const enabled = enabledSubwindowIds(settings).filter((id) => !floats.some((entry) => entry.id === id));
+export function reconcileSubwindowTree(tree: LayoutNode, settings: SubwindowSettings): LayoutNode {
+  const enabled = enabledSubwindowIds(settings);
   const keep = new Set<string>([MAIN_TILE_ID, ...enabled, ...leafIds(tree).filter((id) => /^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$/.test(id) && !id.startsWith("core:"))]);
   let next = pruneTree(tree, keep) ?? emptyLayoutTree();
   for (const id of enabled) {
     if (containsLeaf(next, id)) continue;
-    const saved = places[id]?.dock;
     const dock = DEFAULT_DOCK[id];
-    next = saved ? restoreDockPlace(next, id, saved) ?? insertAtEdge(next, id, MAIN_TILE_ID, dock.edge, dock.ratio)
-      : insertAtEdge(next, id, MAIN_TILE_ID, dock.edge, dock.ratio);
+    next = insertAtEdge(next, id, MAIN_TILE_ID, dock.edge, dock.ratio);
   }
   return next;
 }
 
 export function treeForSettings(settings: SubwindowSettings): LayoutNode {
   return reconcileSubwindowTree(canonicalSubwindowTree(), settings);
-}
-
-export function standardDock(tree: LayoutNode, id: SubwindowId): LayoutNode {
-  const dock = DEFAULT_DOCK[id];
-  return insertAtEdge(tree, id, MAIN_TILE_ID, dock.edge, dock.ratio);
-}
-
-export function rememberDockTree(state: SubwindowState, tree: LayoutNode): SubwindowState {
-  const places = { ...state.places };
-  for (const id of leafIds(tree)) {
-    if (id !== MAIN_TILE_ID) places[id] = { ...places[id], dock: tree, last: "dock" };
-  }
-  return { ...state, tree, places };
 }
 
 function blankSettings(): SubwindowSettings {
@@ -303,8 +282,6 @@ interface LayoutDocument {
   tree: LayoutNode;
   mapTileMode: number;
   modBlocks?: Record<string, string>;
-  floats?: FloatRect[];
-  places?: Record<string, RememberedPlace>;
 }
 
 function stateFromDocument(data: LayoutDocument): SubwindowState {
@@ -312,9 +289,7 @@ function stateFromDocument(data: LayoutDocument): SubwindowState {
   const tree = parseLayoutTree(data.tree) ?? treeForSettings(enabled);
   return {
     enabled,
-    tree: reconcileSubwindowTree(tree, enabled, data.floats, data.places),
-    ...(data.floats ? { floats: data.floats } : {}),
-    ...(data.places ? { places: data.places } : {}),
+    tree: reconcileSubwindowTree(tree, enabled),
     mapTileMode: parseMapTileMode(data.mapTileMode),
     ...(data.modBlocks ? { modBlocks: data.modBlocks } : {}),
   };
@@ -328,8 +303,6 @@ function documentFromState(state: SubwindowState, modBlocks?: Record<string, str
     tree: state.tree,
     mapTileMode: parseMapTileMode(state.mapTileMode),
   };
-  if (state.floats?.length) document.floats = state.floats;
-  if (state.places && Object.keys(state.places).length) document.places = state.places;
   if (modBlocks && Object.keys(modBlocks).length > 0) document.modBlocks = modBlocks;
   return document;
 }
@@ -542,28 +515,8 @@ export function parseSubwindowDocument(text: string): (SubwindowState & { modBlo
 }
 
 export function setSubwindowEnabled(state: SubwindowState, id: SubwindowId, enabled: boolean): SubwindowState {
-  if (state.enabled[id] === enabled) return state;
   const nextEnabled = { ...state.enabled, [id]: enabled };
-  const places = { ...state.places };
-  const floats = [...state.floats ?? []];
-  let tree = state.tree;
-  if (!enabled) {
-    const floating = floats.find((entry) => entry.id === id);
-    if (floating) {
-      places[id] = { ...places[id], float: { x: floating.x, y: floating.y, width: floating.width, height: floating.height }, last: "float" };
-      floats.splice(floats.indexOf(floating), 1);
-    } else if (containsLeaf(tree, id)) {
-      places[id] = { ...places[id], dock: tree, last: "dock" };
-      tree = pruneTree(tree, new Set(leafIds(tree).filter((entry) => entry !== id))) ?? emptyLayoutTree();
-    }
-  } else if (!containsLeaf(tree, id) && !floats.some((entry) => entry.id === id) &&
-    places[id]?.last === "float" && places[id]?.float) {
-    floats.push({ id, ...places[id].float });
-  }
-  return { ...state, enabled: nextEnabled,
-    ...(floats.length || state.floats ? { floats } : {}),
-    ...(Object.keys(places).length || state.places ? { places } : {}),
-    tree: reconcileSubwindowTree(tree, nextEnabled, floats, places) };
+  return { ...state, enabled: nextEnabled, tree: reconcileSubwindowTree(state.tree, nextEnabled) };
 }
 
 /**

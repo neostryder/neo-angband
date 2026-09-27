@@ -5,6 +5,7 @@ import type { CharMeta } from "./roster";
 import type { ModSaves, SaveEntry, SaveListResult, SaveResult } from "./mod-plugin";
 
 export interface SavesDoorDeps {
+  onChange?: (listener: Parameters<NonNullable<ModSaves["onChange"]>>[0]) => () => void;
   listRoster(): CharMeta[];
   load(id: string): Promise<SaveResult>;
   rename(id: string, name: string): SaveResult;
@@ -20,6 +21,7 @@ const listRefused = (reason: string): SaveListResult => ({ ok: false, reason });
 export function createModSaves(deps: SavesDoorDeps): ModSaves {
   const find = (id: string): CharMeta | undefined => deps.listRoster().find((meta) => meta.id === id);
   return Object.freeze({
+    ...(deps.onChange ? { onChange: (listener: Parameters<NonNullable<ModSaves["onChange"]>>[0]) => deps.onChange!(listener) } : {}),
     async list() {
       try {
         const entries: SaveEntry[] = deps.listRoster().map((meta) => Object.freeze({

@@ -183,6 +183,8 @@ import {
   displayFeeling,
   effectChoiceRows,
   EF,
+  ELEMENT_ENTRIES,
+  PROJECTION_ENTRIES,
   OBJ_PROPERTY,
   runeAutoinscribe,
   playerRandomName,
@@ -571,8 +573,6 @@ import {
   registerSubwindowPrefBlock,
   scrollSubwindow,
   setSubwindowEnabled,
-  rememberDockTree,
-  standardDock,
   SUBWINDOW_CHOICES,
   writeSubwindowState,
   writeSubwindowDefault,
@@ -581,7 +581,7 @@ import {
 } from "./subwindows";
 import { mountSubwindowShell } from "./subwindow-shell";
 import { bindPanelProviders, panelKinds, syncPanelProviders, unregisterAllPanelKinds } from "./panel-provider";
-import { applyDrop, containsLeaf, insertAtEdge, removeLeaf, restoreDockPlace, swapLeaves, tabInto, type LayoutNode } from "./subwindow-layout";
+import { containsLeaf, insertAtEdge, leafIds, removeLeaf, tabInto, type LayoutNode } from "./subwindow-layout";
 import { readWmSettings, writeWmSettings, type WmSettings } from "./wm-settings";
 import {
   inventoryScreen,
@@ -657,6 +657,7 @@ import {
   lineageOf,
   listDeaths,
   setRosterStorage,
+  onRosterChange,
 } from "./roster";
 import type { CharMeta } from "./roster";
 /* WHERE A SAVE GOES, which is this page's own answer and not the roster's.
@@ -715,7 +716,9 @@ import {
   ignoreItemMenuCtx,
   buildIgnoreItemMenu,
   applyIgnoreItemChoice,
+  IGNORE_ACTION,
 } from "./ignore-menu";
+import { QUALITY_VALUE_NAMES, objectCopyAmt, bumpInputRevision, ballRadius, breathRadius } from "@rpgm-tools/neo-angband-core";
 import type { Store } from "@rpgm-tools/neo-angband-core";
 import { helpLinesFromText, runHelp, setModHelpPages } from "./help";
 import {
@@ -733,7 +736,7 @@ import type { CommandCategory } from "./command-menu";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu, SubwindowMenu } from "./options";
 import { loadColorPrefs, saveColorPrefs } from "./colors";
-import { applyStoredEntryRenderers, applyVisualDocument, consumeStoredAutoinscriptions, convertStoredUserPrefFiles, modPreferenceText } from "./pref-documents";
+import { applyStoredEntryRenderers, applyVisualDocument, consumeStoredAutoinscriptions, convertStoredUserPrefFiles } from "./pref-documents";
 import {
   dispatchUiInput,
   inputEvents,
@@ -810,7 +813,6 @@ import {
 } from "./mod-backup";
 import { decideImport } from "./transfer-gate";
 import { storageLines, type StorageTone } from "./storage-page";
-import { convertLegacySettings, readSetting, writeSetting } from "./settings-store";
 
 // PWA freshness: silently reload onto a newly deployed build (a ratified
 // browser-shell necessity, D2). Page chrome, independent of the game, so it
@@ -1003,66 +1005,10 @@ const subwindowShell = mountSubwindowShell({
   labels: Object.fromEntries(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.label])),
   tabLabels: Object.fromEntries(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.tab])),
   onTreeChange: (tree) => {
-    subwindowState = rememberDockTree(subwindowState, tree);
+    subwindowState = { ...subwindowState, tree };
     writeSubwindowState(localStorage, subwindowState);
     applySubwindowLayout();
     renderSubwindows();
-  },
-  onFloat: (id, rect) => {
-    if (id === "main" || !containsLeaf(subwindowState.tree, id)) return;
-    const places = { ...subwindowState.places,
-      [id]: { ...subwindowState.places?.[id], dock: subwindowState.tree,
-        float: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, last: "float" as const } };
-    subwindowState = { ...subwindowState, tree: removeLeaf(subwindowState.tree, id),
-      floats: [...subwindowState.floats ?? [], rect], places };
-    writeSubwindowState(localStorage, subwindowState);
-    applySubwindowLayout();
-    renderSubwindows();
-  },
-  onDockFloat: (id, zone) => {
-    const floating = subwindowState.floats?.find((entry) => entry.id === id);
-    if (!floating || id === "main") return;
-    const floats = (subwindowState.floats ?? []).filter((entry) => entry.id !== id);
-    const saved = subwindowState.places?.[id]?.dock;
-    let tree = subwindowState.tree;
-    if (zone?.kind === "swap") {
-      const withIncoming = saved ? restoreDockPlace(tree, id, saved) : null;
-      tree = withIncoming ?? insertAtEdge(tree, id, zone.id, "right");
-      tree = swapLeaves(tree, id, zone.id);
-      if (zone.id !== "main") {
-        tree = removeLeaf(tree, zone.id);
-        floats.push({ ...floating, id: zone.id });
-      }
-    } else if (zone) tree = applyDrop(tree, id, zone);
-    else if (saved) tree = restoreDockPlace(tree, id, saved) ?? tree;
-    if (!containsLeaf(tree, id)) {
-      const native = SUBWINDOW_CHOICES.find((choice) => choice.id === id);
-      const preferred = panelKinds().find((kind) => kind.id === id)?.spec.preferredPlacement;
-      tree = native ? standardDock(tree, native.id) : preferred && containsLeaf(tree, preferred.target)
-        ? preferred.kind === "tab" ? tabInto(tree, id, preferred.target) : insertAtEdge(tree, id, preferred.target, preferred.edge)
-        : insertAtEdge(tree, id, "main", "right");
-    }
-    subwindowState = rememberDockTree({ ...subwindowState, floats,
-      places: { ...subwindowState.places, [id]: { ...subwindowState.places?.[id],
-        float: { x: floating.x, y: floating.y, width: floating.width, height: floating.height }, last: "dock" as const } } }, tree);
-    writeSubwindowState(localStorage, subwindowState);
-    applySubwindowLayout();
-    renderSubwindows();
-  },
-  onFloatsChange: (floats) => {
-    const places = { ...subwindowState.places };
-    for (const entry of floats) places[entry.id] = { ...places[entry.id],
-      float: { x: entry.x, y: entry.y, width: entry.width, height: entry.height }, last: "float" };
-    subwindowState = { ...subwindowState, floats, places };
-    writeSubwindowState(localStorage, subwindowState);
-  },
-  dockFallback: (tree, id) => {
-    const native = SUBWINDOW_CHOICES.find((choice) => choice.id === id);
-    if (native) return standardDock(tree, native.id);
-    const preferred = panelKinds().find((kind) => kind.id === id)?.spec.preferredPlacement;
-    if (preferred && containsLeaf(tree, preferred.target)) return preferred.kind === "tab"
-      ? tabInto(tree, id, preferred.target) : insertAtEdge(tree, id, preferred.target, preferred.edge);
-    return insertAtEdge(tree, id, "main", "right");
   },
   onViewChange: () => syncPanelProviders(),
   /* A panel's own close [x] (neo-angband#246): the same live-disable path the
@@ -1097,23 +1043,13 @@ const subwindowShell = mountSubwindowShell({
     if (note) say(note);
   },
 });
-subwindowShell.apply(subwindowState.tree, subwindowState.floats, subwindowState.places);
+subwindowShell.apply(subwindowState.tree);
 const panelProviderHost = {
   shell: subwindowShell,
   tree: () => subwindowState.tree,
   forgetPanel: (id: string) => lastModTrees.delete(id),
-  closePanel: (id: string) => setModPanelEnabledLive(id, false),
-  removePanel: (id: string) => {
-    const { [id]: _forgotten, ...places } = subwindowState.places ?? {};
-    void _forgotten;
-    subwindowState = { ...subwindowState, tree: removeLeaf(subwindowState.tree, id),
-      floats: (subwindowState.floats ?? []).filter((entry) => entry.id !== id), places };
-    writeSubwindowState(localStorage, subwindowState);
-    applySubwindowLayout();
-    renderSubwindows();
-  },
   changeTree: (tree: LayoutNode) => {
-    subwindowState = rememberDockTree(subwindowState, tree);
+    subwindowState = { ...subwindowState, tree };
     writeSubwindowState(localStorage, subwindowState);
     applySubwindowLayout();
     renderSubwindows();
@@ -2007,6 +1943,7 @@ const displayRandint1 = (n: number): number => state.rng.randint1(n);
 // (tiles.ts - one atlas PNG addressed by row/column, what every upstream pack
 // is), and LOOSE PACKS (linoleum-pack.ts - a directory of named PNGs with
 // variant pools, which a mod can add). Core modes are always tilesheets.
+const TILE_MODE_KEY = "neo-angband:graf";
 
 /** buildid (buildid.c:37 = VERSION_NAME " " VERSION_STRING), for dump headers. */
 const BUILD_ID = `Neo Angband ${PARITY_BASELINE}`;
@@ -2076,11 +2013,6 @@ const glyphs = new GlyphTable({
   traps: booted.registries.traps,
   flavors: booted.registries.objects.flavors,
 });
-try {
-  convertLegacySettings(localStorage);
-} catch {
-  /* Storage denied outright: every setting keeps its default for this session. */
-}
 convertStoredUserPrefFiles({
   glyphs,
   deps: {
@@ -2112,7 +2044,7 @@ consumeStoredAutoinscriptions(glyphs, {
 function readTileMode(): number {
   const fromUrl = Number(params.get("graf"));
   if (fromUrl) return fromUrl;
-  const stored = readSetting(localStorage, "tileMode") ?? 0;
+  const stored = Number(localStorage.getItem(TILE_MODE_KEY));
   return Number.isFinite(stored) && stored > 0 ? stored : GRAPHICS_NONE;
 }
 
@@ -2221,7 +2153,11 @@ async function applyTileMode(
 ): Promise<void> {
   const request = graphics.begin(grafID);
   if (persist) {
-    writeSetting(localStorage, "tileMode", grafID && grafID !== GRAPHICS_NONE ? grafID : undefined);
+    if (grafID && grafID !== GRAPHICS_NONE) {
+      localStorage.setItem(TILE_MODE_KEY, String(grafID));
+    } else {
+      localStorage.removeItem(TILE_MODE_KEY);
+    }
   }
   const entry =
     grafID && grafID !== GRAPHICS_NONE
@@ -2521,11 +2457,12 @@ async function applyMapTileMode(grafID: number): Promise<void> {
 // to a pref file, not the savefile). Left = the classic 13-column status
 // column; Top = a one-line vitals header over a full-width map; None = no
 // vitals furniture at all. viewport() reads this to pick the layout.
+const SIDEBAR_MODE_KEY = "neo-angband:sidebar-mode";
 const SIDEBAR_MODES = ["Left", "Top", "None"] as const; // SIDEBAR_LEFT/TOP/NONE
 type SidebarLayout = "left" | "top" | "none";
 
 function readSidebarMode(): number {
-  const stored = readSetting(localStorage, "sidebarMode") ?? 0;
+  const stored = Number(localStorage.getItem(SIDEBAR_MODE_KEY));
   return Number.isInteger(stored) && stored >= 0 && stored < SIDEBAR_MODES.length
     ? stored
     : 0; // default SIDEBAR_LEFT
@@ -2538,7 +2475,8 @@ const sidebarModeMenu: SidebarModeMenu = {
   set: (index: number) => {
     const n = SIDEBAR_MODES.length;
     sidebarMode = ((index % n) + n) % n;
-    writeSetting(localStorage, "sidebarMode", sidebarMode === 0 ? undefined : sidebarMode);
+    if (sidebarMode === 0) localStorage.removeItem(SIDEBAR_MODE_KEY);
+    else localStorage.setItem(SIDEBAR_MODE_KEY, String(sidebarMode));
     render();
   },
 };
@@ -2837,7 +2775,7 @@ function trackObjectRecall(title: string, tb: Textblock): void {
 }
 
 function applySubwindowLayout(): void {
-  subwindowShell.apply(subwindowState.tree, subwindowState.floats, subwindowState.places);
+  subwindowShell.apply(subwindowState.tree);
   for (const choice of SUBWINDOW_CHOICES) {
     if (subwindowState.enabled[choice.id]) ensureSubwindowTerm(choice.id);
   }
@@ -2911,40 +2849,50 @@ function setSubwindowEnabledLive(id: SubwindowId, enabled: boolean): void {
 
 const lastModTrees = new Map<string, LayoutNode>();
 
+function placeModPanel(tree: LayoutNode, id: string, saved: LayoutNode): LayoutNode | null {
+  function find(node: LayoutNode): LayoutNode | null {
+    if (node.kind === "leaf") {
+      if (!(node.tabs ?? [node.id]).includes(id)) return null;
+      const neighbor = (node.tabs ?? [node.id]).find((tab) => tab !== id && containsLeaf(tree, tab));
+      return neighbor ? tabInto(tree, id, neighbor) : null;
+    }
+    const inFirst = containsLeaf(node.first, id);
+    const inSecond = containsLeaf(node.second, id);
+    if (inFirst || inSecond) {
+      const nested = find(inFirst ? node.first : node.second);
+      if (nested) return nested;
+      const other = inFirst ? node.second : node.first;
+      const target = leafIds(other).find((candidate) => containsLeaf(tree, candidate));
+      if (target) {
+        const edge = node.axis === "v" ? (inFirst ? "left" : "right") : (inFirst ? "top" : "bottom");
+        return insertAtEdge(tree, id, target, edge, inFirst ? node.ratio : 1 - node.ratio);
+      }
+    }
+    return null;
+  }
+  return containsLeaf(saved, id) ? find(saved) : null;
+}
+
 function setModPanelEnabledLive(id: string, enabled: boolean): void {
   const entry = panelKinds().find((kind) => kind.id === id);
   if (enabled && !entry) return;
   let tree = subwindowState.tree;
-  let floats = [...subwindowState.floats ?? []];
-  const places = { ...subwindowState.places };
   if (enabled) {
-    if (containsLeaf(tree, id) || floats.some((entry) => entry.id === id)) return;
-    if (places[id]?.last === "float" && places[id]?.float) {
-      floats.push({ id, ...places[id].float });
-    } else {
-    const saved = places[id]?.dock ?? lastModTrees.get(id) ?? readSubwindowDefault(localStorage)?.tree;
-    const placed = saved ? restoreDockPlace(tree, id, saved) : null;
+    if (containsLeaf(tree, id)) return;
+    const saved = lastModTrees.get(id) ?? readSubwindowDefault(localStorage)?.tree;
+    const placed = saved ? placeModPanel(tree, id, saved) : null;
     const preferred = entry?.spec.preferredPlacement;
     tree = placed ?? (preferred && containsLeaf(tree, preferred.target)
       ? preferred.kind === "tab"
         ? tabInto(tree, id, preferred.target)
         : insertAtEdge(tree, id, preferred.target, preferred.edge)
       : insertAtEdge(tree, id, "main", "right"));
-    }
   } else {
-    const floating = floats.find((item) => item.id === id);
-    if (floating) {
-      places[id] = { ...places[id], float: { x: floating.x, y: floating.y,
-        width: floating.width, height: floating.height }, last: "float" };
-      floats = floats.filter((item) => item.id !== id);
-    } else {
-      if (!containsLeaf(tree, id)) return;
-      lastModTrees.set(id, tree);
-      places[id] = { ...places[id], dock: tree, last: "dock" };
-      tree = removeLeaf(tree, id);
-    }
+    if (!containsLeaf(tree, id)) return;
+    lastModTrees.set(id, tree);
+    tree = removeLeaf(tree, id);
   }
-  subwindowState = { ...subwindowState, tree, floats, places };
+  subwindowState = { ...subwindowState, tree };
   writeSubwindowState(localStorage, subwindowState);
   applySubwindowLayout();
   renderSubwindows();
@@ -3011,15 +2959,9 @@ const subwindowMenu: SubwindowMenu = {
       enabled: () => wmSettings.fitToContent,
       set: (enabled) => setWmFeature("fitToContent", enabled),
     },
-    {
-      label: t("options.subwindows.featureFloating", "Floating windows: move panels above the tiled layout inside the game"),
-      enabled: () => wmSettings.floatingWindows,
-      set: (enabled) => setWmFeature("floatingWindows", enabled),
-    },
   ],
   mapTiles: mapTileModeMenu,
-  enabled: (id) => id.includes(":") ? containsLeaf(subwindowState.tree, id) ||
-    !!subwindowState.floats?.some((entry) => entry.id === id) : subwindowState.enabled[id as SubwindowId],
+  enabled: (id) => id.includes(":") ? containsLeaf(subwindowState.tree, id) : subwindowState.enabled[id as SubwindowId],
   set: (id, enabled) => {
     if (id.includes(":")) { setModPanelEnabledLive(id, enabled); return; }
     if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
@@ -4302,7 +4244,7 @@ const AIMED_VERBS = new Set([
 async function dispatchItemVerb(code: string, handle: number, obj: GameObject | null): Promise<void> {
   const args: Record<string, unknown> = { handle };
   if (obj && AIMED_VERBS.has(code) && objNeedsAim(obj, { flavor: game.flavor })) {
-    const dir = await aimDir();
+    const dir = await aimDir(usedEffectChain(obj));
     if (dir === null) return;
     args["dir"] = dir;
   }
@@ -4326,7 +4268,7 @@ async function dispatchItemRef(code: string, ref: ItemTargetRef): Promise<void> 
   const args: Record<string, unknown> =
     "handle" in ref ? { handle: ref.handle } : { floor: ref.floor };
   if (obj && AIMED_VERBS.has(code) && objNeedsAim(obj, { flavor: game.flavor })) {
-    const dir = await aimDir();
+    const dir = await aimDir(usedEffectChain(obj));
     if (dir === null) return;
     args["dir"] = dir;
   }
@@ -4406,7 +4348,7 @@ async function prepareEffectAimDir(
   chain: Effect | null,
 ): Promise<"none" | "cancel" | { tgtdir: number }> {
   if (!effectAimDirRequest(chain, state)) return "none";
-  const dir = await aimDir();
+  const dir = await aimDir(chain);
   if (dir === null) return "cancel";
   return { tgtdir: dir };
 }
@@ -4485,7 +4427,7 @@ async function activateItem(): Promise<void> {
   /* No AIMED_VERBS gate: this screen IS do_cmd_activate, one of the seven that
    * reach use_aux, so the question is owed unconditionally here. */
   if (obj && objNeedsAim(obj, { flavor: game.flavor })) {
-    const dir = await aimDir();
+    const dir = await aimDir(usedEffectChain(obj));
     if (dir === null) return;
     args["dir"] = dir;
   }
@@ -4940,7 +4882,8 @@ async function castSpell(): Promise<void> {
   }
   const args: Record<string, unknown> = { spell };
   if (spellNeedsAim(player, spell)) {
-    const dir = await aimDir();
+    const dir = await aimDir(spellData ? buildObjectEffectChain(
+      spellData.effectsRaw as EffectRecordJson[], state) : null);
     if (dir === null) return;
     args["dir"] = dir;
   }
@@ -5861,44 +5804,66 @@ async function chooseTarget(): Promise<boolean> {
 // '*'/<click> opens the interactive target loop; "'" targets the closest
 // monster; 5/t/0/. use the current target. Re-prompts (bell) if the player
 // backs out of the picker or asks for a target with none set/available.
-async function aimDir(): Promise<number | null> {
-  /* Every caller (throw/fire/aim-wand/zap-rod/activate/cast) reaches here from a
-   * full-screen item or spell picker, whose teardown does not repaint. Restore
-   * the map before the direction prompt so the player aims over the dungeon,
-   * not the leftover menu (get_aim_dir runs on the main term in C, ui-game.c). */
-  render();
-  /* "Auto-target if requested" (ui-input.c:1619-1620):
-   *
-   *   if (OPT(player, use_old_target) && target_okay() && !dir) dir = 5;
-   *
-   * With the option on and a live target, get_aim_dir returns DIR_TARGET without
-   * printing a prompt or reading a key. The option was defined, toggleable and
-   * persisted in this port and READ BY NOTHING, so turning it on changed nothing
-   * and firing always asked for a direction. options.ts even recorded it as an
-   * intentional no-op, attributing it to a "default-selection nuance" in
-   * target_set_interactive - which is not where the C uses it; that note was
-   * written from the option's description rather than from its one reader.
-   *
-   * The DEFAULT stays false, as upstream ships it (list-options.h:22-23), so
-   * out of the box the game still prompts. Only two readers exist in the whole C
-   * tree: this line and borg-init.c:421, which forces it off. */
-  if (state.options?.get("use_old_target") && targetOkay(state)) return 5;
-  for (;;) {
-    const d = await getAimDir(term, targetOkay(state));
-    if (d === null) return null;
-    if (d === AIM_STAR) {
-      const chosen = await runTargetLoop(TARGET.KILL, false);
-      render();
-      if (chosen) return 5;
-      continue;
+let pendingBlast: { radius: number; element: string; wallsStop: boolean } | null = null;
+
+function blastFromEffect(chain: Effect | null | undefined): typeof pendingBlast {
+  for (let effect = chain; effect; effect = effect.next) {
+    if (effect.index !== EF.BALL && effect.index !== EF.BREATH) continue;
+    const radius = effect.index === EF.BALL
+      ? ballRadius(effect.radius, effect.other, state.actor.player.lev)
+      : breathRadius(effect.radius, state.z.maxRange);
+    const element = game.booted.registries.projections?.[effect.subtype]?.name ??
+      ELEMENT_ENTRIES[effect.subtype]?.name ??
+      PROJECTION_ENTRIES[effect.subtype - ELEMENT_ENTRIES.length]?.name ?? "UNKNOWN";
+    return { radius, element, wallsStop: true };
+  }
+  return null;
+}
+
+async function aimDir(chain?: Effect | null): Promise<number | null> {
+  const previousBlast = pendingBlast;
+  pendingBlast = blastFromEffect(chain);
+  try {
+    /* Every caller (throw/fire/aim-wand/zap-rod/activate/cast) reaches here from a
+     * full-screen item or spell picker, whose teardown does not repaint. Restore
+     * the map before the direction prompt so the player aims over the dungeon,
+     * not the leftover menu (get_aim_dir runs on the main term in C, ui-game.c). */
+    render();
+    /* "Auto-target if requested" (ui-input.c:1619-1620):
+     *
+     *   if (OPT(player, use_old_target) && target_okay() && !dir) dir = 5;
+     *
+     * With the option on and a live target, get_aim_dir returns DIR_TARGET without
+     * printing a prompt or reading a key. The option was defined, toggleable and
+     * persisted in this port and READ BY NOTHING, so turning it on changed nothing
+     * and firing always asked for a direction. options.ts even recorded it as an
+     * intentional no-op, attributing it to a "default-selection nuance" in
+     * target_set_interactive - which is not where the C uses it; that note was
+     * written from the option's description rather than from its one reader.
+     *
+     * The DEFAULT stays false, as upstream ships it (list-options.h:22-23), so
+     * out of the box the game still prompts. Only two readers exist in the whole C
+     * tree: this line and borg-init.c:421, which forces it off. */
+    if (state.options?.get("use_old_target") && targetOkay(state)) return 5;
+    for (;;) {
+      const d = await getAimDir(term, targetOkay(state));
+      if (d === null) return null;
+      if (d === AIM_STAR) {
+        const chosen = await runTargetLoop(TARGET.KILL, false);
+        render();
+        if (chosen) return 5;
+        continue;
+      }
+      if (d === AIM_CLOSEST) {
+        const chosen = targetSetClosest(state, TARGET.KILL);
+        render();
+        if (chosen) return 5;
+        continue; // bell(): no monster in line of sight
+      }
+      return d;
     }
-    if (d === AIM_CLOSEST) {
-      const chosen = targetSetClosest(state, TARGET.KILL);
-      render();
-      if (chosen) return 5;
-      continue; // bell(): no monster in line of sight
-    }
-    return d;
+  } finally {
+    pendingBlast = previousBlast;
   }
 }
 
@@ -6384,6 +6349,9 @@ async function restCmd(): Promise<void> {
     "Rest (0-9999, '!' for HP or SP, '*' for HP and SP, '&' as needed): ",
     "&",
     4, // char out_val[5]: 4 chars + terminator
+    undefined,
+    0,
+    "rest",
   );
   if (input === null) return;
   const first = input[0];
@@ -6711,6 +6679,7 @@ setModDebugDoor({ wizard: wizardCtx, confirm: confirmDebugGate });
  * routes are already available here, so the same door works at title and in
  * play on both storage-backed front ends. */
 setModSavesControl(createModSaves({
+  onChange: onRosterChange,
   listRoster,
   activeSlot: attachedSlot,
   namePinned: argForceName,
@@ -9571,6 +9540,14 @@ const agentMake = agentId ? DEMO_AGENTS[agentId] : undefined;
  * one - the same precedence ModDisplay's `mode` uses. */
 const modSnapshotSource: InputSnapshotSource = {
   state: () => state,
+  characterKey: () => {
+    const id = attachedSlot();
+    return id ? lineageOf(metaFromState(id)) : null;
+  },
+  activeBlast: () => {
+    const prompt = currentPrompt();
+    return prompt && (prompt.kind === "direction" || prompt.kind === "target") ? pendingBlast : null;
+  },
   driver: () => currentInputDriver(),
   knownLevel: (caps) => createAgentView(state, undefined, {
     resolver: new ContentIdResolver({
@@ -9594,6 +9571,7 @@ const modSnapshotSource: InputSnapshotSource = {
       races: booted.registries.monsters.races,
       loreDeps: recallDeps,
       projections: booted.registries.projections ?? [],
+      activeBlast: () => pendingBlast,
       ...(game.wizardBundles.trapDeps ? { trapDeps: game.wizardBundles.trapDeps } : {}),
     },
   }),
@@ -9610,6 +9588,20 @@ const modSnapshotSource: InputSnapshotSource = {
               ? "modal"
               : "play",
   messagePending: () => morePending,
+  messages: () => msglog.all().map((entry) => entry.text),
+  storeStatus: () => {
+    const store = storeModalActive ? storeAtPlayer() : null;
+    if (!store) return null;
+    return { feat: store.feat, ready: currentPrompt() === null && storeIntentReceiver !== null,
+      noSelling: state.options?.get("birth_no_selling") ?? false,
+      inventory: state.gear.pack.flatMap((handle) => {
+        const obj = gearGet(state.gear, handle);
+        if (!obj) return [];
+        const eligible = game.willBuy(store, obj);
+        return [{ handle, eligible, price: eligible && store.feat !== FEAT.HOME
+          ? game.price(store, objectCopyAmt(obj, 1), true, 1) : null }];
+      }) };
+  },
   prompt: () => currentPrompt(),
   frame: () => lastWorldFrame,
 };
@@ -9643,12 +9635,63 @@ setModListControl(() => {
     ...[...manifests.values()].filter((manifest) => manifest.shape === "tiles").map((manifest) => manifest.id)]);
   return publicModList(loadedModOrder, manifests, loaded, resolveModRuleFlagsByMod());
 });
+let storeIntentReceiver: ((command: PlayerCommand) => void) | null = null;
 setModIntentGate(createIntentGate({
   state,
   registry,
   snapshotSource: modSnapshotSource,
   push: (command) => { commandBuffer.push(command); },
   advance: () => advance(),
+  storeCommand: (command) => {
+    if (!storeIntentReceiver) return false;
+    storeIntentReceiver(command);
+    return true;
+  },
+  lookAt: (at) => {
+    void openModal(() => runTargetLoop(TARGET.LOOK, true, at?.x, at?.y));
+  },
+  itemAction: (intent) => {
+    if (intent.kind === "ignore" || intent.kind === "unignore") {
+      const obj = Number.isSafeInteger(intent.handle) ? gearGet(state.gear, intent.handle) : null;
+      if (!obj) return false;
+      const action = intent.kind === "ignore" ? IGNORE_ACTION.ITEM : IGNORE_ACTION.UNIGNORE_ITEM;
+      if (!buildIgnoreItemMenu(ignoreItemMenuCtx(obj, state, game)).some((entry) => entry.action === action)) return false;
+      applyIgnoreItemChoice(action, obj, state, game);
+      bumpInputRevision(state);
+      void openModal(applyIgnoreDrop);
+      return true;
+    }
+    if (intent.kind !== "item-rule") return false;
+    const { rule, index, itype, value } = intent;
+    const rows = createAgentView(state, undefined, modSnapshotSource.viewDeps()).itemRules!();
+    if (!Number.isSafeInteger(index) || index < 0) return false;
+    if (rule === "quality") {
+      if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value >= QUALITY_VALUE_NAMES.length ||
+          !rows.quality.some((row) => row.itype === index)) return false;
+      state.ignore.level[index] = value;
+    } else if (rule === "ego") {
+      if (typeof value !== "boolean" || !Number.isSafeInteger(itype) ||
+          !rows.egos.some((row) => row.eidx === index && row.itype === itype)) return false;
+      if (state.ignore.egoIsIgnored(index, itype!) !== value) state.ignore.egoToggle(index, itype!);
+    } else {
+      if (!rows.kinds.some((row) => row.kidx === index)) return false;
+      if (rule === "kind-aware" || rule === "kind-unaware") {
+        if (typeof value !== "boolean") return false;
+        const aware = rule === "kind-aware";
+        const current = aware ? state.ignore.kindIsIgnoredAware(index) : state.ignore.kindIsIgnoredUnaware(index);
+        if (current !== value) {
+          if (aware) state.ignore.kindToggleAware(index);
+          else state.ignore.kindToggleUnaware(index);
+        }
+      } else if (rule === "note-aware" || rule === "note-unaware") {
+        if (typeof value !== "string") return false;
+        state.autoinscribe?.set(index, value, rule === "note-aware");
+      } else return false;
+    }
+    bumpInputRevision(state);
+    void openModal(applyIgnoreDrop);
+    return true;
+  },
 }));
 
 /**
@@ -10089,12 +10132,23 @@ function answerBlockingPrompt(who: string): void {
 /** Wait for any keypress or tap (anykey, ui-input.c) - the -more- gate. */
 function waitAnyKey(): Promise<void> {
   return new Promise<void>((resolve) => {
-    const done = (ev: Event): void => {
-      ev.preventDefault();
-      if (ev.type === "keydown") (ev as KeyboardEvent).stopImmediatePropagation();
+    const wait = openPrompt({ kind: "ack", label: "-more-", tag: "more" }, (answer) => {
+      if (typeof answer !== "object" || answer.action !== "acknowledge") {
+        return { accepted: false, reason: "expected acknowledgement" };
+      }
+      finish();
+      return { accepted: true };
+    });
+    const finish = (): void => {
+      wait.close();
       inputEvents.removeEventListener("keydown", done, true);
       window.removeEventListener("pointerdown", done, true);
       resolve();
+    };
+    const done = (ev: Event): void => {
+      ev.preventDefault();
+      if (ev.type === "keydown") (ev as KeyboardEvent).stopImmediatePropagation();
+      finish();
     };
     inputEvents.addEventListener("keydown", done, true);
     window.addEventListener("pointerdown", done, true);
@@ -10214,6 +10268,10 @@ async function enterStoreModal(store: Store): Promise<void> {
       // player->grid) AFRESH (store.c:1665, :1795, :1872, :2014); the shop
       // screen must not trust the Store it was opened with.
       storeAt: storeAtPlayer,
+      storeIntent: (receive) => {
+        storeIntentReceiver = receive;
+        return () => { if (storeIntentReceiver === receive) storeIntentReceiver = null; };
+      },
       featureName: feat?.name ?? store.featName,
       rogueLike: state.options?.get("rogue_like_commands") ?? false,
       storeItemNameEllipsis,
@@ -14295,16 +14353,10 @@ async function applyModResources(): Promise<void> {
   const splash = await modArtLines("splash");
   setSplashArt(splash);
 
-  /* PREFERENCE RESOURCES ACCUMULATE, in load order: each is a list of
-   * assignments, and layering them is what upstream's own pref pipeline does.
-   * Applied after the font because a resource may set glyphs the font has to
-   * already be able to draw.
-   *
-   * A resource is one JSON preference document (#288). It is rendered back to
-   * the directive lines its fields came from and applied through the same
-   * transient path the retired `.prf` resources used, so it never touches the
-   * player's stored documents and its tile directives replay on a fresh
-   * graphics map. JSON has no includes, so nothing is resolved beside it. */
+  /* PREF FILES ACCUMULATE, in load order - a `.prf` is a list of assignments and
+   * layering them is what upstream's own pref pipeline does. Applied after the
+   * font because a pref file may set glyphs the font has to already be able to
+   * draw. */
   const ctx = prefsUiCtx();
   const nextTilePrefTexts: ModPrefText[] = [];
   for (const pref of modPrefResources()) {
@@ -14315,15 +14367,26 @@ async function applyModResources(): Promise<void> {
     try {
       const res = await fetch(url);
       if (!res.ok) continue;
-      const text = modPreferenceText(await res.text());
-      if (text === null) {
-        reportModFault(
-          pref.modId,
-          `preference file "${pref.resource.path}" is in a format this version does not read`,
-        );
-        continue;
-      }
-      const applied = await applyPrefText(ctx, text, pref.resource.path, async () => null);
+      const text = await res.text();
+      /* `%:` INCLUDES RESOLVE BESIDE THE INCLUDING RESOURCE (#278), which is the
+       * mod-folder reading of upstream's flat directory search: a pack's
+       * `%:flvr-x.prf` sits next to its `graf-x.prf`, and `loadTilePrefs` has
+       * always resolved one against the other's directory. Every include of
+       * every depth is resolved against the declared resource's directory, so a
+       * mod lays its pref files out in one folder rather than reasoning about
+       * which file asked. */
+      const dir = pref.resource.path.replace(/[^/]*$/u, "");
+      const applied = await applyPrefText(
+        ctx,
+        text,
+        pref.resource.path,
+        async (name) => {
+          const at = await resolve(`${dir}${name}`);
+          if (at === null) return null;
+          const r = await fetch(at);
+          return r.ok ? await r.text() : null;
+        },
+      );
       /* Keep the exact bytes that reach the GlyphTable - and the include bytes
        * with them - so every fresh graphics map can replay the tile directives
        * without resolving the mod again. */

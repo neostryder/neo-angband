@@ -212,6 +212,9 @@ export function modPluginContext(
     ...(tiles ? { tiles } : {}),
     ...(keyRepeat ? { keyRepeat } : {}),
     ...(saves ? { saves } : {}),
+    ...(state && (session.capabilities?.has("state:player.read") || session.capabilities?.has("state:*.read")) &&
+      (session.snapshotSource ?? snapshotSource)?.characterKey
+      ? { character: Object.freeze({ key: () => (session.snapshotSource ?? snapshotSource)?.characterKey?.() ?? null }) } : {}),
     ...(keymaps ? { keymaps } : {}),
     ...(characterStore ? { characterStore } : {}),
     /* Defaults FALSE, which is the safe way round: a mod that seeds something
@@ -442,7 +445,7 @@ function inspectFor(session: ModSessionFacts): ModInspect | undefined {
   const source = session.snapshotSource ?? snapshotSource;
   if (!source) return undefined;
   const caps = session.capabilities;
-  if (caps && !caps.has("state:*.read") && !["inventory", "monsters", "spells", "map"].some((domain) => caps.has(`state:${domain}.read`))) return undefined;
+  if (caps && !caps.has("state:*.read") && !["inventory", "monsters", "spells", "map", "player"].some((domain) => caps.has(`state:${domain}.read`))) return undefined;
   return buildInspect(source, caps);
 }
 
@@ -471,7 +474,7 @@ function intentFor(id: string, session: ModSessionFacts): ModIntent | undefined 
   const gate = session.intentGate ?? intentGate;
   if (!gate) return undefined;
   if (!driverControl) return gate;
-  return { submit: (token, intent) => {
+  return { ...(gate.catalogue ? { catalogue: () => gate.catalogue!() } : {}), submit: (token, intent) => {
     const owner = driverControl?.current();
     if (owner?.kind === "controller" && owner.owner !== id) {
       return { accepted: false, code: "controller-owned", reason: `input is owned by controller ${owner.owner}` };

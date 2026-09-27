@@ -332,6 +332,8 @@ register(host, ctx) {
 
 `ctx.snapshot()` returns the game at the current input wait as one frozen object, or null before a game exists: `core` (the `AgentView.capture()` parts: turn, player, inventory, equipment, monsters, target, stores, spellbooks), `phase`, `messagePending`, `frame` (the last world frame) and `token`. Send the token back with an action so a stale one can be refused. Parts you have no read capability for are null; the phase and pause use `state:interaction.read` and the frame uses `state:map.read`. See [MOD_SEAMS.md section 4g](MOD_SEAMS.md#4g-ctxsnapshot-and-the-input-token---one-wait-read-whole).
 
+The core snapshot also carries quiver items, equipment slot labels, local floor items, item keys and name attributes, and spell study fields under their matching state grants. The host snapshot adds rest activity, message history, active blast metadata and store status. `ctx.character.key()` returns the attached character's roster lineage under `state:player.read`. See [MOD_SEAMS.md sections 4g](MOD_SEAMS.md#4g-ctxsnapshot-and-the-input-token---one-wait-read-whole) and [4r](MOD_SEAMS.md#4r-command-catalogue-and-store-panel-status).
+
 `ctx.inspect.travelPath()` previews the travel command's walking route, `tileActions()` lists command codes for a remembered grid, and `itemRules()` reads learned ignore and auto-inscription settings. The map reads need `state:map.read`; item rules need `state:inventory.read`. Each answer is frozen and stamped with the input token. `ctx.display.setMapMargin()` reserves a clear strip beside the main map and needs no added capability. See [MOD_SEAMS.md section 4k](MOD_SEAMS.md#4k-ctxinspect---read-the-games-own-inspection-answers) and [section 4o](MOD_SEAMS.md#4o-reserving-a-map-margin).
 
 ### Working beside controllers and other mods
@@ -346,11 +348,11 @@ Declare `event:combat-outcome`, `event:heal`, or `event:motion` to receive `ctx.
 
 Declare `saves:manage` for a replacement title screen that lists, loads, renames or deletes characters. `ctx.saves` is absent without that grant. The methods and their refusal results are described in [MOD_SEAMS.md section 4m](MOD_SEAMS.md#4m-ctxsaves---the-host-character-roster).
 
+`ctx.saves.onChange()` reports frozen rename and delete events after the host changes the roster, including changes made outside a mod menu. Each event carries the stable lineage key returned by `ctx.character.key()` for the attached character. See [MOD_SEAMS.md section 4m](MOD_SEAMS.md#4m-ctxsaves---the-host-character-roster).
+
 ### Tiled panels beside `openPanel`
 
 Declare `ui:panel.mount` to offer a panel in Subwindow setup with `ctx.ui.registerPanelKind(spec)`. Its `mount` function draws into the slot's shadow root. Use the returned function during mod cleanup to unregister the kind. See [MOD_SEAMS.md section 4p](MOD_SEAMS.md#4p-ctxuiregisterpanelkind---a-mod-panel-in-the-tiled-layout) for the host handle and saved layout behavior.
-
-The host can float the same registered panel inside the game viewport and restore its last docked or floating place when it is shown again. A missing mod leaves a named placeholder in either place. See [MOD_SEAMS.md section 4r](MOD_SEAMS.md#4r-floating-panel-positions-and-recovery).
 
 ### Filtering panels with the canvas
 
@@ -363,12 +365,18 @@ Use `ctx.knownLevel()` to draw a map or minimap from every grid the player knows
 
 `ctx.inspect` reads item inspection, monster recall, spell details, item picker eligibility, projection paths, and ball areas from the game's own helpers. Each result is frozen and stamped with the current input token. Declare the matching `state:inventory.read`, `state:monsters.read`, `state:spells.read`, or `state:map.read` capability. See [MOD_SEAMS.md section 4k](MOD_SEAMS.md#4k-ctxinspect---read-the-games-own-inspection-answers).
 
+`inspectItem` now accepts store stock references and returns separate sections. `bookForItem` maps a carried spellbook to its class spells; `compareLoadoutSlots` runs the existing loadout simulation for each compatible slot, including a second ring slot. Blast previews include radius and element metadata. See [MOD_SEAMS.md section 4k](MOD_SEAMS.md#4k-ctxinspect---read-the-games-own-inspection-answers).
+
 ### Acting at one input wait: `ctx.intent.submit()`
 
 Declare `input:intent` to receive `ctx.intent`. Pass the current `ctx.snapshot()` token with a command, travel destination or target. The host rejects stale or blocked actions with a reason; accepted commands use the same buffer and game loop as a keypress, while target setters change no turn. For a compound action, send travel, wait for the next input wait, inspect a new snapshot and send the follow-up command. See [MOD_SEAMS.md section 4i](MOD_SEAMS.md#4i-ctxintentsubmit---act-at-the-current-input-wait).
+
+`ctx.intent.catalogue()` lists registered commands and argument shapes. A `look` command can start at a grid; travel modifiers map Ctrl to targeting and Shift on an adjacent grid to running. The `stop-resting`, `ignore`, `unignore` and `item-rule` intents use the game's existing handlers. Store buy and sell intents ask the store's quantity and confirmation questions before trading. See [MOD_SEAMS.md sections 4i](MOD_SEAMS.md#4i-ctxintentsubmit---act-at-the-current-input-wait) and [4r](MOD_SEAMS.md#4r-command-catalogue-and-store-panel-status).
 ### Answering the open prompt
 
 With `state:interaction.read`, `ctx.snapshot().prompt` describes the question currently holding input. A mod with `input:prompt.reply` also receives `ctx.prompt.reply(promptId, answer)`, which sends a typed answer through the game's existing handler. Invalid or stale replies leave the question open and return a reason. See [MOD_SEAMS.md section 4j](MOD_SEAMS.md#4j-typed-prompts-and-replies) for the kinds and answers.
+
+Store quantity prompts include the unit price, current total and gold. Reply with `{ action: "cancel" }` to cancel a quantity question. The rest prompt has a stable tag, and a `-more-` pause accepts `{ action: "acknowledge" }`. See [MOD_SEAMS.md section 4j](MOD_SEAMS.md#4j-typed-prompts-and-replies).
 
 ### Engine-wide settings you change through `ctx.core`, not through a hook
 

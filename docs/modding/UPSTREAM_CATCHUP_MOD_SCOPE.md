@@ -114,7 +114,17 @@ broader "learn everything the shape has" shortcut. The remaining candidate,
 
 ### The seam they ride, and the one they do not
 
-**A `prefs` resource is the wrong door for these four.** A mod's preference document becomes directive lines that `applyPrefText` runs through the same grammar, sink and deps as a player's own file, and those lines are replayed into every tile map the game builds (see the preference-resource section of [MOD_REACH.md](MOD_REACH.md)). That replay is the problem. The resource reaches every tile map, whichever tile set is loaded. The `prefs` kind sets `slot: "forbidden"`, so a declaration cannot name a tile set, and a preference document has no conditions, so no entry inside it can name one either. A preference resource cannot be scoped to a tile set.
+**A `prefs` resource is the wrong door for these four, and that was measured
+rather than assumed.** `prefs` is one of the seven resource kinds a mod may
+supply, `applyPrefText` runs a mod's `.prf` through the same grammar, the same
+sink and the same deps a user's file goes through, `%:` includes are followed,
+and the same text is replayed into every freshly built tile map (see the
+pref-file section of [MOD_REACH.md](MOD_REACH.md)). That last property is the
+problem. A mod's pref resource reaches EVERY tile map the game builds, whatever
+tile set is loaded; the `prefs` kind sets `slot: "forbidden"`, so a declaration
+cannot name one; and the pref grammar's `?:` expressions test `$SYS`, `$RACE`
+and `$CLASS` and nothing else (`ui-prefs.c` L553-560), so no line can name one
+either. There is no way to scope a pref file to a tile set.
 
 These four commits are per-tile-set by nature, and the sheets overlap. David
 Gervais' `graf-dvg.prf` already assigns the Knight's Shield, the Sip of Miruvor,

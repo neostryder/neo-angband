@@ -202,6 +202,7 @@ function wield(
   state: GameState,
   w: Working,
   ref: LoadoutItemRef,
+  requestedSlot?: number,
 ): { slot: number; worn: Carried; displaced: Carried | null } | null {
   const obj = resolveRef(state, ref);
   if (!obj) {
@@ -213,7 +214,21 @@ function wield(
      with no handle (a ware being bought) still has to read as full, so the
      synthetic 1 stands in for "occupied by something". */
   const occupancy = w.equip.map((c) => (c ? c.handle || 1 : 0));
+  if (requestedSlot !== undefined) {
+    if (!Number.isInteger(requestedSlot) || requestedSlot < 0 || requestedSlot >= body.count) {
+      w.unresolved.push(ref);
+      return null;
+    }
+    /* Ask wield_slot whether this object fits with the requested slot as the
+     * first empty candidate. This keeps the slot rule in the game function. */
+    occupancy.fill(1);
+    occupancy[requestedSlot] = 0;
+  }
   const slot = wieldSlot(body, obj.tval, occupancy);
+  if (requestedSlot !== undefined && slot !== requestedSlot) {
+    w.unresolved.push(ref);
+    return null;
+  }
   if (slot < 0 || slot >= body.count) {
     w.unresolved.push(ref);
     return null;
@@ -287,6 +302,10 @@ function applyChange(
   const placed: Array<{ slot: number; worn: Carried; displaced: Carried | null }> = [];
   for (const ref of change.wield ?? []) {
     const done = wield(state, w, ref);
+    if (done) placed.push(done);
+  }
+  for (const entry of change.wieldAt ?? []) {
+    const done = wield(state, w, entry.item, entry.slot);
     if (done) placed.push(done);
   }
   for (const entry of change.carry ?? []) {

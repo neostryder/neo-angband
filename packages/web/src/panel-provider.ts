@@ -62,8 +62,6 @@ export interface PanelProviderHost {
   tree(): LayoutNode;
   changeTree(tree: LayoutNode): void;
   forgetPanel?(id: string): void;
-  closePanel?(id: string): void;
-  removePanel?(id: string): void;
 }
 
 /** Bind once to the game shell; registrations may arrive before or after it. */
@@ -100,7 +98,7 @@ export function bindPanelProviders(host: PanelProviderHost): () => void {
 
   function syncOnce(): void {
     const tree = host.tree();
-    const ids = new Set([...leafIds(tree), ...host.shell.floatingIds()].filter((id) => id.includes(":")));
+    const ids = new Set(leafIds(tree).filter((id) => id.includes(":")));
     for (const id of hinted) if (!ids.has(id) || !kinds.has(id)) {
       host.shell.setPanelMinSize(id, null);
       hinted.delete(id);
@@ -126,8 +124,7 @@ export function bindPanelProviders(host: PanelProviderHost): () => void {
         remove.textContent = t("subwindows.placeholder.remove", "Remove");
         remove.addEventListener("click", () => {
           host.forgetPanel?.(id);
-          if (host.removePanel) host.removePanel(id);
-          else host.changeTree(removeLeaf(host.tree(), id));
+          host.changeTree(removeLeaf(host.tree(), id));
         });
         box.append(message, remove);
         body.appendChild(box);
@@ -162,10 +159,7 @@ export function bindPanelProviders(host: PanelProviderHost): () => void {
             if (selected !== host.tree()) host.changeTree(selected);
             slot.focus();
           },
-          requestClose() {
-            if (host.closePanel) host.closePanel(id);
-            else host.changeTree(removeLeaf(host.tree(), id));
-          },
+          requestClose() { host.changeTree(removeLeaf(host.tree(), id)); },
           setFitHeight(px) { host.shell.setFitHeight(id, px); },
         };
         try {

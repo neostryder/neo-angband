@@ -22,6 +22,8 @@ import {
 import type { FlagSet } from "../bitflag.js";
 import type { GameState } from "../game/context.js";
 import type { GameObject } from "../obj/object.js";
+import { tvalIsBook } from "../obj/object.js";
+import { playerObjectToBook } from "../player/spell.js";
 import { OBJ_MOD_NAMES } from "../obj/bind.js";
 import { objectValue } from "../obj/value.js";
 import type { PlayerState } from "../player/calcs.js";
@@ -121,6 +123,10 @@ export function itemView(
 
   const view: ItemView = {
     handle,
+    kindKey: `kind:${obj.kind.kidx}`,
+    ...(handle > 0 ? { itemKey: `gear:${handle}` } : {}),
+    nameColor: tvalIsBook(obj.tval) && !playerObjectToBook(state.actor.player, obj)
+      ? "slate" : obj.kind.base.attr,
     label: obj.kind.name,
     tval: obj.tval,
     sval: obj.sval,
@@ -203,6 +209,7 @@ export function playerViewFor(
     exp: p.exp,
     maxExp: p.maxExp,
     gold: p.au,
+    learnableSpells: p.upkeep.newSpells,
     depth: state.chunk.depth,
     maxDepth: p.maxDepth,
     hp: p.chp,

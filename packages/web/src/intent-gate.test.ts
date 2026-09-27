@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   inputToken,
+  createAgentActions,
+  objectPrep,
+  TV,
+  FEAT,
   loc,
   NOSCORE,
   runGameLoop,
@@ -20,6 +24,11 @@ import { modPluginContext } from "./mod-context";
 import { createIntentGate, type PlayerIntent } from "./intent-gate";
 import type { InteractionPhase } from "./input-snapshot";
 import type { PromptDescriptor } from "./prompt-view";
+import { currentPrompt, modPrompt } from "./prompt-wait";
+import { runStore } from "./shop";
+import { clearInputDoor, dispatchUiInput } from "./input-door";
+import { resetRegionStack } from "./ui-stack";
+import type { GridSurface, GridPointerInput } from "./term";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(readFileSync(new URL(`../../content/pack/${name}.json`, import.meta.url), "utf8")) as T;
@@ -99,6 +108,146 @@ function knownNeighbor(game: StartedGame): { x: number; y: number; dir: number }
 }
 
 describe("player intent gate", () => {
+  it("lists frozen registered commands and validates look, modifiers and stop-resting", () => {
+    const game = newGame();
+    const buffer: PlayerCommand[] = [];
+    let looked: { x: number; y: number } | undefined;
+    let phase: InteractionPhase = "play";
+    const gate = createIntentGate({ state: game.state, registry: game.registry,
+      push: (command) => { buffer.push(command); }, advance: () => {},
+      snapshotSource: { phase: () => phase, prompt: () => null },
+      lookAt: (at) => { looked = at; } });
+    const before = fingerprint(game);
+    for (let i = 0; i < 5; i++) {
+      const catalogue = gate.catalogue!();
+      expect(catalogue.token).toEqual(inputToken(game.state));
+      expect(catalogue.commands.find((entry) => entry.code === "shop-buy")?.phase).toBe("store");
+      expect(Object.isFrozen(catalogue.commands)).toBe(true);
+      expect(Object.isFrozen(catalogue.commands[0])).toBe(true);
+    }
+    expect(fingerprint(game)).toBe(before);
+    const { x, y } = knownNeighbor(game);
+    expect(gate.submit(inputToken(game.state), { kind: "command", command: { code: "look", args: { x, y } } }).accepted).toBe(true);
+    expect(looked).toEqual({ x, y });
+    expect(fingerprint(game)).toBe(before);
+    expect(gate.submit(inputToken(game.state), { kind: "travel", x, y, modifiers: { shift: true } }).accepted).toBe(true);
+    expect(buffer.at(-1)?.code).toBe("run");
+    expect(gate.submit(inputToken(game.state), { kind: "travel", x, y, modifiers: { ctrl: true } }).accepted).toBe(true);
+    expect(game.state.target.grid).toEqual({ x, y });
+    phase = "modal";
+    game.state.resting = { count: 8, turnsRested: 1 };
+    expect(gate.submit(inputToken(game.state), { kind: "stop-resting" }).accepted).toBe(true);
+    expect(game.state.resting).toBeUndefined();
+  });
+  it("routes mod store trades through quantity and confirmation while explicit core quantities stay direct", async () => {
+    const storePack: GamePack = { ...pack, store: records("store") };
+    const game = startGame(storePack, { seed: 4242, depth: 0 });
+    const store = game.state.stores?.find((entry) => entry.feat !== FEAT.HOME);
+    expect(store).toBeDefined();
+    const kind = game.booted.registries.objects.kinds.find((entry) => entry?.tval === TV.FOOD)!;
+    const stock = objectPrep(game.state.rng, game.booted.registries.objects,
+      game.booted.registries.constants, kind, 3, "minimise");
+    stock.number = 3;
+    store!.stock = [stock];
+    game.state.chunk.setFeat(game.state.actor.grid, store!.feat);
+    game.state.actor.player.au = 10000;
+    let receiver: ((command: PlayerCommand) => void) | null = null;
+    const term = { size: () => ({ cols: 80, rows: 24 }), invalidate() {}, flush() {}, clear() {},
+      setCursor() {}, hideCursor() {}, put() {}, print() {}, eraseToEol() {}, prt() {},
+      onCellTap: () => () => {} } as unknown as GridSurface & GridPointerInput;
+    const screen = runStore(term, game, store!, () => {}, game.booted.registries.constants, {
+      featureName: "General Store", rogueLike: false, examine: async () => {},
+      sellPick: async () => ({ kind: "cancel" }), storeAt: () => store!,
+      storeIntent: (receive) => { receiver = receive; return () => { receiver = null; }; },
+    });
+    const gate = createIntentGate({ state: game.state, registry: game.registry,
+      push: () => { throw new Error("mod trade reached core command queue"); },
+      advance: () => { throw new Error("mod trade advanced the world"); },
+      snapshotSource: { phase: () => "store", prompt: currentPrompt },
+      storeCommand: (command) => { if (!receiver) return false; receiver(command); return true; },
+    });
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      await tick();
+      const before = fingerprint(game);
+      const buy = { kind: "command", command: { code: "shop-buy", args: { index: 0, quantity: 3 } } } as const;
+      expect(gate.submit(inputToken(game.state), buy).accepted).toBe(true);
+      await tick();
+      const quantity = currentPrompt();
+      expect(quantity).toMatchObject({ kind: "quantity", max: 3, gold: 10000,
+        unitPrice: expect.any(Number), totalPrice: expect.any(Number) });
+      if (quantity?.kind === "quantity") expect(quantity.totalPrice).toBe(quantity.unitPrice);
+      expect(modPrompt.reply(quantity!.promptId, { action: "cancel" }).accepted).toBe(true);
+      await tick();
+      expect(fingerprint(game)).toBe(before);
+      expect(gate.submit(inputToken(game.state), buy).accepted).toBe(true);
+      await tick();
+      const cancelAtPrice = currentPrompt();
+      expect(cancelAtPrice?.kind).toBe("quantity");
+      expect(modPrompt.reply(cancelAtPrice!.promptId, 1).accepted).toBe(true);
+      await tick();
+      expect(currentPrompt()?.kind).toBe("confirm");
+      expect(modPrompt.reply(currentPrompt()!.promptId, { action: "cancel" }).accepted).toBe(true);
+      await tick();
+      expect(fingerprint(game)).toBe(before);
+      expect(gate.submit(inputToken(game.state), buy).accepted).toBe(true);
+      await tick();
+      const second = currentPrompt();
+      expect(second?.kind).toBe("quantity");
+      expect(modPrompt.reply(second!.promptId, 2).accepted).toBe(true);
+      await tick();
+      const confirm = currentPrompt();
+      expect(confirm?.kind).toBe("confirm");
+      expect(game.state.actor.player.au).toBe(10000);
+      expect(modPrompt.reply(confirm!.promptId, true).accepted).toBe(true);
+      await tick();
+      expect(game.state.actor.player.au).toBeLessThan(10000);
+      const handle = game.state.gear.pack.find((candidate) => game.state.gear.store.get(candidate)?.kind.kidx === kind.kidx)!;
+      const sellIntent = { kind: "command", command: { code: "shop-sell", args: { handle, quantity: 2 } } } as const;
+      const beforeSell = fingerprint(game);
+      expect(gate.submit(inputToken(game.state), sellIntent).accepted).toBe(true);
+      await tick();
+      expect(currentPrompt()).toMatchObject({ kind: "quantity", max: 2,
+        unitPrice: expect.any(Number), totalPrice: expect.any(Number), gold: game.state.actor.player.au });
+      expect(modPrompt.reply(currentPrompt()!.promptId, { action: "cancel" }).accepted).toBe(true);
+      await tick();
+      expect(fingerprint(game)).toBe(beforeSell);
+      expect(gate.submit(inputToken(game.state), sellIntent).accepted).toBe(true);
+      await tick();
+      const sellQuantity = currentPrompt();
+      expect(sellQuantity).toMatchObject({ kind: "quantity", max: 2 });
+      expect(modPrompt.reply(sellQuantity!.promptId, 1).accepted).toBe(true);
+      await tick();
+      const sellConfirm = currentPrompt();
+      expect(sellConfirm?.kind).toBe("confirm");
+      expect(modPrompt.reply(sellConfirm!.promptId, true).accepted).toBe(true);
+      await tick();
+      expect(game.state.gear.store.get(handle)?.number).toBe(1);
+    } finally {
+      dispatchUiInput({ key: { key: "Escape", modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false } });
+      await screen;
+      clearInputDoor();
+      resetRegionStack();
+    }
+    const direct = startGame(storePack, { seed: 4242, depth: 0 });
+    const directKind = direct.booted.registries.objects.kinds.find((entry) => entry?.tval === TV.FOOD)!;
+    const directStore = direct.state.stores!.find((entry) => entry.feat !== FEAT.HOME)!;
+    const directStock = objectPrep(direct.state.rng, direct.booted.registries.objects,
+      direct.booted.registries.constants, directKind, 3, "minimise");
+    directStock.number = 3;
+    directStore.stock = [directStock];
+    direct.state.chunk.setFeat(direct.state.actor.grid, directStore.feat);
+    direct.state.actor.player.au = 10000;
+    const command = createAgentActions(direct.state).shopBuy(0, 2);
+    expect(command.args).toEqual({ index: 0, quantity: 2 });
+    direct.registry.get(command.code)?.(direct.state, command);
+    expect(direct.state.actor.player.au).toBeLessThan(10000);
+    const directHandle = direct.state.gear.pack.find((candidate) => direct.state.gear.store.get(candidate)?.kind.kidx === directKind.kidx)!;
+    const sell = createAgentActions(direct.state).shopSell(directHandle, 1);
+    expect(sell.args).toEqual({ handle: directHandle, quantity: 1 });
+    direct.registry.get(sell.code)?.(direct.state, sell);
+    expect(direct.state.gear.store.get(directHandle)?.number).toBe(1);
+  });
   it("leaves the full fingerprint unchanged for every rejection", () => {
     const game = newGame();
     const h = harness(game);

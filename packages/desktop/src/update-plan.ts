@@ -221,10 +221,8 @@ export function swapScript(plan: SwapPlan, pid: number, platform: string): strin
       `Remove-Item -LiteralPath $attic -Recurse -Force -ErrorAction SilentlyContinue`,
       `Say 'swap complete; relaunching'`,
       /* -WorkingDirectory, because this process was created by the WMI provider
-       * host and inherited ITS current directory (System32), not the game's.
-       * -WindowStyle Normal, because this script's own console is hidden and
-       * the game must still open on screen. */
-      `Start-Process -FilePath ${q(plan.relaunch)} -WorkingDirectory $target -WindowStyle Normal`,
+       * host and inherited ITS current directory (System32), not the game's. */
+      `Start-Process -FilePath ${q(plan.relaunch)} -WorkingDirectory $target`,
     ].join("\n");
   }
   const q = shQuote;

@@ -34,8 +34,6 @@
  * re-asked on every launch.
  */
 
-import { readSetting, writeSetting, type SettingsWriter } from "./settings-store";
-
 /** navigator.storage, structurally: every field is optional in some engine. */
 interface StorageManagerLike {
   persist?(): Promise<boolean>;
@@ -45,8 +43,11 @@ interface StorageManagerLike {
 
 interface DurabilityScope {
   navigator?: { storage?: StorageManagerLike };
-  localStorage?: SettingsWriter;
+  localStorage?: Pick<Storage, "getItem" | "setItem">;
 }
+
+/** Set once the request has been made, so it is not repeated every launch. */
+export const ASKED_KEY = "neo:storageAsked";
 
 /** What the game knows about the durability of its own storage. */
 export interface StorageDurability {
@@ -103,7 +104,7 @@ export async function storageDurability(
 
 function wasAsked(scope: unknown): boolean {
   try {
-    return readSetting((scope as DurabilityScope).localStorage, "storagePersistenceAsked") === true;
+    return (scope as DurabilityScope).localStorage?.getItem(ASKED_KEY) === "1";
   } catch {
     return false;
   }
@@ -111,7 +112,7 @@ function wasAsked(scope: unknown): boolean {
 
 function markAsked(scope: unknown): void {
   try {
-    writeSetting((scope as DurabilityScope).localStorage, "storagePersistenceAsked", true);
+    (scope as DurabilityScope).localStorage?.setItem(ASKED_KEY, "1");
   } catch {
     /* Storage that cannot record the attempt will re-ask next launch, which is a
      * worse experience but not a lost character. */

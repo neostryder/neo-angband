@@ -1242,8 +1242,9 @@ export function promptTextInline(
   maxLen = 15,
   randomize?: () => string,
   row = 0,
+  tag?: "rest",
 ): Promise<string | null> {
-  return textInlineShown(term, restatePrompt(prompt), initial, maxLen, randomize, row);
+  return textInlineShown(term, restatePrompt(prompt), initial, maxLen, randomize, row, undefined, undefined, tag);
 }
 
 /**
@@ -1260,6 +1261,8 @@ function textInlineShown(
   randomize: (() => string) | undefined,
   row: number,
   quantityMax?: number,
+  pricing?: { readonly unitPrice: number; readonly gold: number; readonly total: (quantity: number) => number },
+  tag?: "rest",
 ): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     const st: LineEdit = { buf: initial, curs: 0 };
@@ -1267,6 +1270,14 @@ function textInlineShown(
     let composing = false;
     const x = prompt.length;
     const paint = (): void => {
+      if (quantityMax !== undefined && pricing) {
+        const parsed = Number.parseInt(st.buf, 10);
+        const quantity = st.buf.startsWith("*") ? quantityMax :
+          Math.max(0, Math.min(quantityMax, Number.isFinite(parsed) ? parsed : 0));
+        wait.update({ kind: "quantity", label: prompt, min: 0, max: quantityMax,
+          defaultValue: 1, unitPrice: pricing.unitPrice,
+          totalPrice: pricing.total(quantity), gold: pricing.gold });
+      }
       const { cols } = term.size();
       /* The caller's own `prt(prompt, row, 0)` (e.g. ui-input.c:1153, :1189,
        * :1357, ui-options.c:57) - one erase-then-draw, not a spaces pass
@@ -1327,13 +1338,19 @@ function textInlineShown(
       composing = false;
     };
     const wait = quantityMax === undefined
-      ? openPrompt({ kind: "text", label: prompt, maxLength: maxLen, defaultValue: initial }, (answer) => {
+      ? openPrompt({ kind: "text", label: prompt, maxLength: maxLen, defaultValue: initial,
+        ...(tag ? { tag } : {}) }, (answer) => {
         if (typeof answer !== "string" || answer.length > maxLen || /[\r\n]/u.test(answer))
           return { accepted: false, reason: "invalid text" };
         finish(answer);
         return { accepted: true };
       })
-      : openPrompt({ kind: "quantity", label: prompt, min: 0, max: quantityMax, defaultValue: 1 }, (answer) => {
+      : openPrompt({ kind: "quantity", label: prompt, min: 0, max: quantityMax, defaultValue: 1,
+        ...(pricing ? { unitPrice: pricing.unitPrice, totalPrice: pricing.total(1), gold: pricing.gold } : {}) }, (answer) => {
+        if (typeof answer === "object" && answer.action === "cancel") {
+          finish(null);
+          return { accepted: true };
+        }
         if (typeof answer !== "number" || !Number.isInteger(answer) || answer < 0 || answer > quantityMax ||
           (answer !== quantityMax && String(answer).length > maxLen))
           return { accepted: false, reason: "quantity out of range" };
@@ -1388,12 +1405,13 @@ export async function getQuantity(
   term: GridSurface & GridPointerInput,
   prompt: string | null,
   max: number,
+  pricing?: { readonly unitPrice: number; readonly gold: number; readonly total: (quantity: number) => number },
 ): Promise<number> {
   if (max === 1) return 1;
   const label = prompt ?? `Quantity (0-${max}, *=all): `;
   const shown = restatePrompt(label);
   const eff = shown.length + 7 > 80 ? 80 - shown.length : 7;
-  const s = await textInlineShown(term, shown, "1", Math.max(1, eff - 1), undefined, 0, max);
+  const s = await textInlineShown(term, shown, "1", Math.max(1, eff - 1), undefined, 0, max, pricing);
   if (s === null) return 0;
   /* atoi: leading digits, 0 for anything unparseable. */
   const parsed = Number.parseInt(s, 10);

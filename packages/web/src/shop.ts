@@ -44,7 +44,7 @@ import {
   storeSellGuard,
   storeStashGuard,
 } from "@rpgm-tools/neo-angband-core";
-import type { GameObject, StartedGame, Store, EarlierObjectOpts } from "@rpgm-tools/neo-angband-core";
+import type { AgentCommand, GameObject, StartedGame, Store, EarlierObjectOpts } from "@rpgm-tools/neo-angband-core";
 import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./term";
 import { getQuantity, itemSelect, screenRegionSpec } from "./overlay";
 import { openPrompt } from "./prompt-wait";
@@ -305,6 +305,8 @@ export interface StoreScreenDeps {
    * Absent, the guards read the opened store (test harnesses).
    */
   storeAt?: () => Store | null;
+  /** Register an intent only while the main store menu is waiting for input. */
+  storeIntent?: (receive: (command: AgentCommand) => void) => () => void;
   /** rogue_like_commands: swaps the selection string and the 'l'/'x' help key. */
   rogueLike: boolean;
   /** store_examine (ui-store.c L749): show the object_info screen for `obj`. */
@@ -365,7 +367,9 @@ export interface StoreScreenDeps {
 }
 
 /** One keyboard key or one grid tap from the store's own input listener. */
-type StoreInput = { type: "key"; key: string } | { type: "tap"; row: number; col: number };
+type StoreInput = { type: "key"; key: string } | { type: "tap"; row: number; col: number } |
+  { type: "intent"; command: AgentCommand };
+type StoreKeyInput = Exclude<StoreInput, { type: "intent" }>;
 
 /**
  * store_display_entry's name column. The default stays byte-for-byte with the
@@ -382,11 +386,20 @@ export function truncateStoreItemName(name: string, nameWidth: number, ellipsis:
  * not resolve as a bare key. Registers and tears down its own window-keydown and
  * onCellTap handlers each call, so no two readers are ever live at once.
  */
-function readStoreInput(term: GridSurface & GridPointerInput): Promise<StoreInput> {
+function readStoreInput(term: GridSurface & GridPointerInput): Promise<StoreKeyInput>;
+function readStoreInput(
+  term: GridSurface & GridPointerInput,
+  registerIntent: StoreScreenDeps["storeIntent"],
+): Promise<StoreInput>;
+function readStoreInput(
+  term: GridSurface & GridPointerInput,
+  registerIntent?: StoreScreenDeps["storeIntent"],
+): Promise<StoreInput> {
   return new Promise<StoreInput>((resolve) => {
     const finish = (value: StoreInput): void => {
       inputEvents.removeEventListener("keydown", onKey, true);
       setActiveCellTap(term, null);
+      unregister?.();
       resolve(value);
     };
     const onKey = (ev: KeyboardEvent): void => {
@@ -397,6 +410,7 @@ function readStoreInput(term: GridSurface & GridPointerInput): Promise<StoreInpu
       ev.stopImmediatePropagation();
       finish({ type: "key", key: ev.key });
     };
+    const unregister = registerIntent?.((command) => finish({ type: "intent", command }));
     inputEvents.addEventListener("keydown", onKey, true);
     setActiveCellTap(term, (cell) => finish({ type: "tap", row: cell.row, col: cell.col }));
   });
@@ -439,6 +453,10 @@ function storeConfirm(
       finish(true);
     };
     const wait = openPrompt({ kind: "confirm", label: prompt }, (answer) => {
+      if (typeof answer === "object" && answer.action === "cancel") {
+        finish(false);
+        return { accepted: true };
+      }
       if (typeof answer !== "boolean") return { accepted: false, reason: "expected boolean" };
       finish(answer);
       return { accepted: true };
@@ -945,6 +963,9 @@ export async function runStore(
         term,
         t("shop.quantity.prompt", "{verb} how many{have}? (max {amt}) ", { verb, have, amt }),
         amt,
+        isHome ? undefined : { unitPrice: game.price(store, obj, false, 1), gold: player.au,
+          total: (quantity) => quantity > 0
+            ? game.price(store, objectCopyAmt(obj, quantity), false, quantity) : 0 },
       );
       if (q <= 0) return;
       amt = q;
@@ -1028,7 +1049,7 @@ export async function runStore(
    * quantity, confirm the sale price, then commit through game.sell. The Home
    * stashes without a price or confirmation.
    */
-  const sellFlow = async (): Promise<void> => {
+  const sellFlow = async (selected?: number): Promise<void> => {
     /* store_sell get_item (ui-store.c L487-518): a faithful multi-source pick
      * over USE_INVEN|USE_EQUIP|USE_QUIVER|USE_FLOOR, filtered by the tester - a
      * real shop only lists items it would actually buy (store_will_buy_tester);
@@ -1041,7 +1062,9 @@ export async function runStore(
       : noSelling
         ? t("shop.sell.givePrompt", "Give which item? ")
         : t("shop.sell.sellPrompt", "Sell which item? ");
-    const picked = await deps.sellPick(term, sellPrompt, (obj) => game.willBuy(store, obj));
+    const picked: SellPick = selected === undefined
+      ? await deps.sellPick(term, sellPrompt, (obj) => game.willBuy(store, obj))
+      : { kind: "handle", handle: selected };
     if (picked.kind === "empty") {
       // store_sell reject (ui-store.c L499), shared by shops and the Home.
       storeSay(t("shop.sell.nothingWanted", "You have nothing that I want. "));
@@ -1051,7 +1074,11 @@ export async function runStore(
     // The chosen source: a gear object (handle) or a live floor-pile object.
     const obj = picked.kind === "handle" ? game.state.gear.store.get(picked.handle) : picked.obj;
     if (!obj) return;
-    const amt = await getQuantity(term, null, obj.number);
+    if (!game.willBuy(store, obj)) return;
+    const amt = await getQuantity(term, null, obj.number,
+      isHome ? undefined : { unitPrice: game.price(store, obj, true, 1), gold: game.state.actor.player.au,
+        total: (quantity) => quantity > 0
+          ? game.price(store, objectCopyAmt(obj, quantity), true, quantity) : 0 });
     if (amt <= 0) return;
     const name = objectName(game.state, obj);
     if (!isHome) {
@@ -1252,10 +1279,22 @@ export async function runStore(
   // Main store input loop (store_menu_handle, ui-store.c L1032).
   for (;;) {
     paint();
-    const ev = await readStoreInput(term);
+    const ev = await readStoreInput(term, deps.storeIntent);
     // prt("", 0, 0) at the head of the store's command handlers: the last
     // transaction message stays up until the next command is issued.
     statusMsg = "";
+    if (ev.type === "intent") {
+      const args = ev.command.args;
+      if (ev.command.code === "shop-buy" && typeof args?.index === "number") {
+        /* StoreItemView.index names store.stock, while the screen sorts that
+         * array for display. Resolve the same object before selecting its row. */
+        const stock = store.stock[args.index];
+        if (stock) await purchase(displayStock.indexOf(stock), false);
+      } else if (ev.command.code === "shop-sell" && typeof args?.handle === "number") {
+        await sellFlow(args.handle);
+      }
+      continue;
+    }
     if (ev.type === "tap") {
       const gm = geom();
       const r = ev.row - gm.listTop;

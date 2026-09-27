@@ -2,13 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   CONSENT_DISCLAIMER,
+  CONSENT_KEY,
   installBlocked,
   readConsent,
   writeConsent,
 } from "./mod-consent";
-import { readSetting } from "./settings-store";
-
-const LEGACY_CONSENT_KEY = "neo-angband:allow-third-party-mods";
 
 /** A localStorage that can be made to throw, which real ones do. */
 function store(initial: Record<string, string> = {}, throws = false) {
@@ -37,7 +35,7 @@ describe("the third-party consent switch", () => {
   it("remembers a yes and a no", () => {
     const s = store();
     expect(writeConsent(s, true)).toBe(true);
-    expect(readSetting(s, "allowThirdPartyMods")).toBe(true);
+    expect(s.read(CONSENT_KEY)).toBe("yes");
     expect(readConsent(s)).toBe(true);
     writeConsent(s, false);
     expect(readConsent(s)).toBe(false);
@@ -55,11 +53,10 @@ describe("the third-party consent switch", () => {
     expect(writeConsent(store({}, true), true)).toBe(false);
   });
 
-  it("treats an older build's stored value that is not exactly yes as no", () => {
+  it("treats a value that is not exactly yes as no", () => {
     for (const raw of ["", "no", "true", "1", "YES"]) {
-      expect(readConsent(store({ [LEGACY_CONSENT_KEY]: raw })), raw).toBe(false);
+      expect(readConsent(store({ [CONSENT_KEY]: raw })), raw).toBe(false);
     }
-    expect(readConsent(store({ [LEGACY_CONSENT_KEY]: "yes" }))).toBe(true);
   });
 });
 

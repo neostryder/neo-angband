@@ -17,12 +17,9 @@ import {
   allDropZones,
   applyDrop,
   computeLayout,
-  containsLeaf,
   dropZoneAt,
   fitForComfort,
   leafIds,
-  insertAtEdge,
-  restoreDockPlace,
   ratioFromPointer,
   resizeSplit,
   selectTab,
@@ -31,11 +28,8 @@ import {
   type DropZone,
   type LayoutNode,
   type Rect,
-  type FloatRect,
-  type RememberedPlace,
 } from "./subwindow-layout";
 import { addControlDomOwner, blurTiledPanelFocus, setTiledPanelInputBlocked } from "./input-door";
-import { t } from "@rpgm-tools/neo-angband-core";
 
 /** One mod-owned chrome control (neo-angband#241), rendered between the title label and the close button. */
 export interface SubwindowControlSpec {
@@ -53,8 +47,7 @@ export interface SubwindowSelectSpec {
 }
 
 export interface SubwindowShell {
-  apply(tree: LayoutNode, floats?: readonly FloatRect[], places?: Readonly<Record<string, RememberedPlace>>): void;
-  floatingIds(): readonly string[];
+  apply(tree: LayoutNode): void;
   slot(id: string): HTMLElement | undefined;
   canvas(id: string): HTMLCanvasElement | undefined;
   bounds(id: string): HTMLElement | undefined;
@@ -119,7 +112,6 @@ export interface SubwindowFeatures {
   readonly moveDungeonView: boolean;
   /** Size panels that ask for a content height to that height. */
   readonly fitToContent: boolean;
-  readonly floatingWindows: boolean;
 }
 
 export interface SubwindowShellOptions {
@@ -129,10 +121,6 @@ export interface SubwindowShellOptions {
   /** Short names for tab strips; a panel without one uses its label. */
   tabLabels?: Readonly<Record<string, string>>;
   onTreeChange: (tree: LayoutNode) => void;
-  onFloat?: (id: string, rect: FloatRect) => void;
-  onDockFloat?: (id: string, zone?: DropZone) => void;
-  onFloatsChange?: (floats: FloatRect[]) => void;
-  dockFallback?: (tree: LayoutNode, id: string) => LayoutNode;
   onViewChange?: () => void;
   /** A panel's own close [x] was clicked (neo-angband#246); never fired for the main tile. */
   onClose?: (id: string) => void;
@@ -305,8 +293,6 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   }
 
   let currentTree: LayoutNode = { kind: "leaf", id: MAIN_TILE_ID };
-  let currentFloats: FloatRect[] = [];
-  let currentPlaces: Readonly<Record<string, RememberedPlace>> = {};
   /* The tree actually on screen: `currentTree` after the small-viewport pass.
    * Drop zones, guides and dividers are measured against this one, because
    * it is the geometry the player sees. */
@@ -360,11 +346,9 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     lockDividers: false,
     moveDungeonView: true,
     fitToContent: true,
-    floatingWindows: true,
   };
   const fitHeights = new Map<string, number>();
   const minSizes = new Map<string, Readonly<{ width: number; height: number }>>();
-  const floatMinSizes = new Map<string, Readonly<{ width: number; height: number }>>();
   const layoutOf = (layoutTree: LayoutNode, viewport: Rect) =>
     computeLayout(layoutTree, viewport, { minSizes, ...(features.fitToContent ? { fit: fitHeights } : {}) });
   let drag: {
@@ -374,31 +358,6 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     startY: number;
     active: boolean;
   } | null = null;
-  let floatDrag: { id: string; pointerId: number; startX: number; startY: number;
-    original: FloatRect; mode: "move" | "resize"; moved: boolean } | null = null;
-
-  function floatPixels(entry: FloatRect): Rect {
-    const view = hostSize(host);
-    const min = floatMinSizes.get(entry.id);
-    const w = Math.min(view.w, Math.max(min?.width ?? 96, entry.width * view.w));
-    const h = Math.min(view.h, Math.max(min?.height ?? 96, entry.height * view.h));
-    return { x: Math.min(Math.max(0, entry.x * view.w), Math.max(0, view.w - w)),
-      y: Math.min(Math.max(0, entry.y * view.h), Math.max(0, view.h - h)), w, h };
-  }
-
-  function fractionRect(id: string, rect: Rect): FloatRect {
-    const view = hostSize(host);
-    return { id, x: rect.x / view.w, y: rect.y / view.h,
-      width: rect.w / view.w, height: rect.h / view.h };
-  }
-
-  function raiseFloat(id: string): void {
-    const index = currentFloats.findIndex((entry) => entry.id === id);
-    if (index < 0 || index === currentFloats.length - 1) return;
-    currentFloats.push(currentFloats.splice(index, 1)[0]!);
-    opts.onFloatsChange?.([...currentFloats]);
-    paint(currentTree);
-  }
 
   /*
    * neo-angband#241: a plain left click focuses the leaf (a canvas has no
@@ -471,10 +430,6 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   };
 
   function bindLeafDrag(leaf: HTMLElement): void {
-    leaf.addEventListener("pointerdown", () => {
-      const id = leaf.dataset.tile;
-      if (id && currentFloats.some((entry) => entry.id === id)) raiseFloat(id);
-    }, true);
     leaf.addEventListener("pointerdown", onLeafPointerDown, true);
     leaf.addEventListener("contextmenu", onContextMenu);
     leaf.addEventListener("pointerdown", onLeafFocusClick);
@@ -512,23 +467,6 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     controls.className = "tile-controls";
     controlsContainers.set(id, controls);
     refreshControls(id);
-    const float = document.createElement("button");
-    float.type = "button";
-    float.className = "tile-float-action";
-    float.textContent = t("subwindows.float", "Float");
-    float.addEventListener("pointerdown", (event) => event.stopPropagation());
-    float.addEventListener("click", (event) => {
-      event.stopPropagation();
-      const saved = currentPlaces[id]?.float;
-      const rect = saved ? { id, ...saved } : { id, x: 0.31, y: 0.22, width: 0.38, height: 0.42 };
-      opts.onFloat?.(id, rect);
-    });
-    const dock = document.createElement("button");
-    dock.type = "button";
-    dock.className = "tile-dock-action";
-    dock.textContent = t("subwindows.dock", "Dock");
-    dock.addEventListener("pointerdown", (event) => event.stopPropagation());
-    dock.addEventListener("click", (event) => { event.stopPropagation(); opts.onDockFloat?.(id); });
     const close = document.createElement("button");
     close.type = "button";
     close.className = "tile-close";
@@ -546,19 +484,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     title.appendChild(label);
     title.appendChild(tabs);
     title.appendChild(controls);
-    title.appendChild(float);
-    title.appendChild(dock);
     title.appendChild(close);
-    title.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0 || !features.floatingWindows || !currentFloats.some((entry) => entry.id === id) ||
-        event.target instanceof Element && event.target.closest("button, select")) return;
-      const entry = currentFloats.find((item) => item.id === id)!;
-      raiseFloat(id);
-      floatDrag = { id, pointerId: event.pointerId, startX: event.clientX,
-        startY: event.clientY, original: entry, mode: "move", moved: false };
-      event.preventDefault();
-      leaf.setPointerCapture(event.pointerId);
-    });
     const body = document.createElement("div");
     body.className = "tile-body";
     const canvas = document.createElement("canvas");
@@ -566,22 +492,6 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     body.appendChild(canvas);
     leaf.appendChild(title);
     leaf.appendChild(body);
-    const grip = document.createElement("div");
-    grip.className = "tile-float-resize";
-    grip.setAttribute("role", "separator");
-    grip.setAttribute("aria-label", t("subwindows.resizeFloat", "Resize floating window"));
-    grip.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) return;
-      const entry = currentFloats.find((item) => item.id === id);
-      if (!entry) return;
-      raiseFloat(id);
-      floatDrag = { id, pointerId: event.pointerId, startX: event.clientX,
-        startY: event.clientY, original: entry, mode: "resize", moved: false };
-      event.preventDefault();
-      event.stopPropagation();
-      grip.setPointerCapture(event.pointerId);
-    });
-    leaf.appendChild(grip);
     filterSlot(leaf);
     bindLeafDrag(leaf);
     host.appendChild(leaf);
@@ -627,17 +537,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
 
   function paint(tree: LayoutNode): void {
     currentTree = tree;
-    let displayTree = tree;
-    if (!features.floatingWindows) {
-      for (const entry of currentFloats) {
-        const fallback = () => opts.dockFallback?.(displayTree, entry.id) ??
-          insertAtEdge(displayTree, entry.id, MAIN_TILE_ID, "right");
-        displayTree = currentPlaces[entry.id]?.dock
-          ? restoreDockPlace(displayTree, entry.id, currentPlaces[entry.id]!.dock!) ?? fallback()
-          : fallback();
-      }
-    }
-    visibleTree = displayTree;
+    visibleTree = tree;
     if (!gameLive) {
       // #260: no game exists yet (the title screen, Open/Update/Profile,
       // character creation) - the main view takes the WHOLE host rect
@@ -657,10 +557,10 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
      * `currentTree` above) is never changed by this, so growing the window
      * back out separates merged groups again with nothing to undo. */
     const fitted = features.fitSmallWindows
-      ? fitForComfort(displayTree, viewport, { prefer: preferredTabs })
-      : { tree: displayTree, merged: [] };
+      ? fitForComfort(tree, viewport, { prefer: preferredTabs })
+      : { tree, merged: [] };
     visibleTree = fitted.tree;
-    dividersLocked = features.lockDividers || fitted.merged.length > 0 || !features.floatingWindows && currentFloats.length > 0;
+    dividersLocked = features.lockDividers || fitted.merged.length > 0;
     const key = mergeKey(fitted.merged);
     if (key !== lastMergeKey) {
       lastMergeKey = key;
@@ -671,35 +571,12 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     for (const id of leafIds(tree)) {
       if (id.includes(":")) ensureSlot(id);
     }
-    for (const entry of currentFloats) ensureSlot(entry.id);
     mainGrip.hidden = !features.moveDungeonView || layout.tiles.length < 2;
     for (const tile of layout.tiles) {
       const leaf = tile.id === MAIN_TILE_ID ? mainSlot : ensureSlot(tile.id);
       setRect(leaf, tile.rect);
       if (!leaf.isConnected) host.appendChild(leaf);
       if (tile.id !== MAIN_TILE_ID) renderTabs(leaf, tile.tabs, tile.id);
-    }
-    if (features.floatingWindows) {
-      for (const [index, entry] of currentFloats.entries()) {
-        const leaf = ensureSlot(entry.id);
-        renderTabs(leaf, undefined, entry.id);
-        setRect(leaf, floatPixels(entry));
-        leaf.style.zIndex = String(10 + index);
-        leaf.classList.add("tile-floating");
-        leaf.querySelector<HTMLElement>(".tile-float-action")!.hidden = true;
-        leaf.querySelector<HTMLElement>(".tile-dock-action")!.hidden = false;
-        if (!leaf.isConnected) host.appendChild(leaf);
-        lastVisibleIds.add(entry.id);
-      }
-    }
-    for (const [id, leaf] of slots) {
-      if (id === MAIN_TILE_ID || features.floatingWindows && currentFloats.some((entry) => entry.id === id)) continue;
-      leaf.style.zIndex = "";
-      leaf.classList.remove("tile-floating");
-      const float = leaf.querySelector<HTMLElement>(".tile-float-action");
-      const dock = leaf.querySelector<HTMLElement>(".tile-dock-action");
-      if (float) float.hidden = !features.floatingWindows;
-      if (dock) dock.hidden = true;
     }
     applyLeafVisibility();
     clearGutters();
@@ -792,9 +669,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
 
   const onLeafPointerDown = (event: PointerEvent): void => {
     if (event.button !== 2) return;
-    const source = event.currentTarget;
-    if (source instanceof HTMLElement && currentFloats.some((entry) => entry.id === source.dataset.tile)) return;
-    if (event.target instanceof Element && event.target.closest(".tile-controls, .tile-close, .tile-float-action, .tile-dock-action, .tile-float-resize")) return;
+    if (event.target instanceof Element && event.target.closest(".tile-controls, .tile-close")) return;
     const leaf = event.currentTarget;
     if (!(leaf instanceof HTMLElement)) return;
     /* A right-drag that starts on a tab moves that tab's panel, not the one
@@ -814,29 +689,6 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   };
 
   const onPointerMove = (event: PointerEvent): void => {
-    if (floatDrag && event.pointerId === floatDrag.pointerId) {
-      const active = floatDrag;
-      const view = hostSize(host);
-      const start = floatPixels(active.original);
-      const dx = event.clientX - active.startX;
-      const dy = event.clientY - active.startY;
-      active.moved ||= dx * dx + dy * dy >= DRAG_THRESHOLD * DRAG_THRESHOLD;
-      const min = floatMinSizes.get(active.id);
-      const rect = active.mode === "move"
-        ? { ...start, x: Math.min(Math.max(0, start.x + dx), Math.max(0, view.w - start.w)),
-          y: Math.min(Math.max(0, start.y + dy), Math.max(0, view.h - start.h)) }
-        : { ...start, w: Math.min(view.w - start.x, Math.max(min?.width ?? 96, start.w + dx)),
-          h: Math.min(view.h - start.y, Math.max(min?.height ?? 96, start.h + dy)) };
-      currentFloats = currentFloats.map((entry) => entry.id === active.id ? fractionRect(active.id, rect) : entry);
-      paint(currentTree);
-      if (active.mode === "move" && active.moved) {
-        const { tiles } = layoutOf(visibleTree, view);
-        renderGuides(allDropZones(tiles, active.id, { tabs: features.tabs }));
-        const point = pointerInHost(host, event);
-        showPreview(dropZoneAt(tiles, point.x, point.y, { dragging: active.id, tabs: features.tabs }));
-      }
-      return;
-    }
     if (resize && event.pointerId === resize.pointerId) {
       const { splitters } = layoutOf(currentTree, hostSize(host));
       const splitter = splitters.find(
@@ -861,21 +713,6 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   };
 
   const onPointerUp = (event: PointerEvent): void => {
-    if (floatDrag && event.pointerId === floatDrag.pointerId) {
-      const active = floatDrag;
-      floatDrag = null;
-      preview.hidden = true;
-      clearGuides();
-      const point = pointerInHost(host, event);
-      const original = floatPixels(active.original);
-      const leftOriginal = point.x < original.x || point.x > original.x + original.w ||
-        point.y < original.y || point.y > original.y + original.h;
-      const zone = active.mode === "move" && active.moved && leftOriginal
-        ? zoneFromEvent(event, active.id) : null;
-      if (zone) opts.onDockFloat?.(active.id, zone);
-      else opts.onFloatsChange?.([...currentFloats]);
-      return;
-    }
     if (resize && event.pointerId === resize.pointerId) {
       resize = null;
       onTreeChange(currentTree);
@@ -938,12 +775,9 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   document.addEventListener("focusin", onFocusIn);
 
   return {
-    apply(tree, floats = [], places = {}) {
-      currentFloats = floats.filter((entry) => entry.id !== MAIN_TILE_ID && !containsLeaf(tree, entry.id));
-      currentPlaces = places;
+    apply(tree) {
       paint(tree);
     },
-    floatingIds() { return currentFloats.map((entry) => entry.id); },
     slot(id) {
       return slots.get(id);
     },
@@ -1020,13 +854,9 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       paint(currentTree);
     },
     setPanelMinSize(id, size) {
-      const oldFloatMin = floatMinSizes.get(id);
-      if (size) floatMinSizes.set(id, size);
-      else floatMinSizes.delete(id);
       const normalized = size ? { width: Math.min(800, Math.max(96, size.width)), height: Math.min(600, Math.max(96, size.height)) } : null;
       const before = minSizes.get(id);
-      if (before?.width === normalized?.width && before?.height === normalized?.height &&
-        oldFloatMin?.width === size?.width && oldFloatMin?.height === size?.height) return;
+      if (before?.width === normalized?.width && before?.height === normalized?.height) return;
       if (normalized) minSizes.set(id, normalized);
       else minSizes.delete(id);
       paint(currentTree);

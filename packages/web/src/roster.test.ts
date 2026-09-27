@@ -7,6 +7,7 @@ import {
   listDeaths,
   listRoster,
   markDead,
+  onRosterChange,
   rosterReadableFrom,
   setActiveId,
   setRosterStorage,
@@ -71,6 +72,21 @@ afterEach(() => {
 });
 
 describe("the roster reports a failed write (ui-game.c:1152-1166)", () => {
+  it("emits frozen rename and delete events with stable lineage", () => {
+    const events: unknown[] = [];
+    const off = onRosterChange((event) => { events.push(event); });
+    try {
+      expect(writeSlot("a", "AAAA", meta("a", { lineage: "origin" }))).toBe(true);
+      expect(events).toEqual([]);
+      expect(writeSlot("a", "BBBB", meta("a", { lineage: "origin", name: "Renamed" }))).toBe(true);
+      deleteSlot("a");
+      expect(events).toEqual([
+        { kind: "rename", id: "a", key: "origin", name: "Renamed" },
+        { kind: "delete", id: "a", key: "origin" },
+      ]);
+      expect(events.every(Object.isFrozen)).toBe(true);
+    } finally { off(); }
+  });
   it("writeSlot succeeds and is readable when storage accepts it", () => {
     expect(writeSlot("a", "AAAA", meta("a"))).toBe(true);
     expect(listRoster().map((c) => c.id)).toEqual(["a"]);

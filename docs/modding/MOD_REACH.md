@@ -211,7 +211,8 @@ mod, and two are worth naming because they are what a UI mod would want:
   register into.
 
 User-editable-but-not-mod-editable: keymaps (`packages/web/src/keymap-store.ts:20`,
-localStorage) and the colour table (`packages/web/src/colors.ts`, localStorage).
+localStorage) and the colour table (`packages/web/src/colors.ts`, localStorage +
+`.prf`).
 
 #### The denominator
 
@@ -226,7 +227,7 @@ The headline "25 named behaviour-dispatch points, 5 mod-reachable" refers to thi
 | 5 | `VocabularyRegistry` (mod-owned) | **yes**, from disk (re-measured 2026-08-08) |
 | 6 | `DungeonProfiles` builders (9) + profiles (9) | **yes** (`registry:profile`, 2026-08-08) |
 | 7 | `MONSTER_HANDLERS` (56) | **yes** (`registry:projection`, 4th side, 2026-08-14) |
-| 8 | prefs `HANDLERS` (13) | **yes**: a mod's preference resource reaches `sound:` from disk (2026-08-14); the other 12 stay module-private |
+| 8 | prefs `HANDLERS` (13) | **yes**: a mod's `.prf` reaches `sound:` from disk (2026-08-14); the other 12 stay module-private |
 | 9 | monster blow effects, recording path (30) | **yes** (`registry:blow`, 2026-08-08) |
 | 10 | monster blow effects, live path (30) | **yes**: the SAME registry entry, which is the point |
 | 11 | `PROJECT_FEAT_HANDLERS` (37, keyed by `code`) | **yes** (`registry:projection`, 2026-08-09) |
@@ -557,11 +558,13 @@ The desktop shell is why this was worth fixing first. It serves arbitrary pack f
 
 Outside the mod system, `?tiles=<base-url>` plus `?graf=<id>` (`tiles.ts:178-187`, `packages/web/src/main.ts:1005-1006`) loads a tile set from a URL and also exposes the full catalog (`tile-catalog.ts:109`). It is meant for a user typing a URL, is not a mod path, and cannot add a grafID.
 
-### Mod preference resources: JSON documents through the pref grammar
+### Mod pref resources (`.prf`): parsed fully since gap 7
 
-The `ui-prefs.c` grammar remains in `packages/core/src/visuals/prefs.ts`. A mod's `prefs` resource is a JSON preference document, and `modPreferenceText` (`pref-documents.ts`) renders it back into the directive lines its fields came from. The player preference UI in `packages/web/src/prefs-ui.ts` imports and exports the same documents. Stored user `.prf` files convert through `packages/web/src/pref-documents.ts` and are removed after their new documents read back.
+The `ui-prefs.c` grammar remains in `packages/core/src/visuals/prefs.ts` for mod resources and tile mappings. The player preference UI in `packages/web/src/prefs-ui.ts` exports and imports JSON documents. Stored user `.prf` files convert through `packages/web/src/pref-documents.ts` and are removed after their new documents read back.
 
-`prefs` is one of the seven mod resource kinds, and `applyPrefText` (`prefs-ui.ts`) runs the rendered lines through the core grammar without writing the player's stored documents. Errors are returned against the contributing mod's row because the message line does not exist yet at boot. The same lines are replayed into every freshly built tile map (#153). A JSON document has no `%:` includes; `preloadPrefIncludes` now serves only a tile pack's own `.prf` files.
+`prefs` is one of the seven mod resource kinds, and `applyPrefText` (`prefs-ui.ts`) runs a mod's `.prf` through the core grammar. Errors are returned against the contributing mod's row because the message line does not exist yet at boot. The player UI no longer loads these files directly.
+
+Since #278, `%:` includes are followed on that path. Before that they were skipped, on the grounds that the grammar's `loadFile` is synchronous while a mod's files resolve through a resolver that may mint a blob or read IndexedDB. The files can be read before the parse instead of during it, though, and `loadTilePrefs` has always done that for a pack's own `%:flvr-*.prf`. `preloadPrefIncludes` walks a mod's pref text for `%:` names, reads them transitively down to the parser's own depth bound, and hands the parse a map it can answer synchronously. An include resolves against the directory of the declared resource at every depth, so a mod can keep its pref files in one folder. A name that does not resolve is skipped quietly, as upstream's `parse_prefs_load` discards a nested read (ui-prefs.c L438). `applyPrefText` returns the included bytes along with the faults, because the same text is replayed into every freshly built tile map (#153), and a replay without the includes would silently skip them all over again.
 
 The port ships no `lib/customize` tree. A tile pack's `.prf` files still reach `loadTilePrefs` with their `%:` includes (`tiles.ts`); those files belong to the tile-pack conversion.
 

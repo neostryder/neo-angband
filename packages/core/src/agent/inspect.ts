@@ -28,13 +28,15 @@ import { PY_SPELL, objCanBrowse, objCanCastFrom, objCanStudy, playerObjectToBook
 import { Chunk, featIsPassable } from "../world/chunk.js";
 import { PROJECT, computeProjection, projectPath } from "../world/project.js";
 import { inputToken } from "./boundary.js";
+import { simulateLoadout } from "./loadout.js";
 import { AgentCapabilityError } from "./types.js";
-import type { AgentCapabilities, AgentViewDeps } from "./types.js";
+import type { AgentCapabilities, AgentViewDeps, LoadoutItemRef, LoadoutSimulation } from "./types.js";
 
 export interface InspectResult {
   readonly token: ReturnType<typeof inputToken>;
   readonly title: string;
   readonly text: string;
+  readonly sections?: readonly { readonly kind: "title" | "description" | "info"; readonly text: string }[];
 }
 
 export interface SpellInspectResult {
@@ -52,9 +54,26 @@ export interface ItemTesterResult {
   readonly items: readonly ({ readonly handle: number } | { readonly floor: { readonly x: number; readonly y: number; readonly index: number } })[];
 }
 
+export interface BookItemResult {
+  readonly token: ReturnType<typeof inputToken>;
+  readonly bookIndex: number;
+  readonly spells: readonly number[];
+}
+
+export interface LoadoutSlotsResult {
+  readonly token: ReturnType<typeof inputToken>;
+  readonly slots: readonly { readonly slot: number; readonly name: string; readonly comparison: LoadoutSimulation }[];
+}
+
 export interface GridInspectResult {
   readonly token: ReturnType<typeof inputToken>;
   readonly grids: readonly { readonly x: number; readonly y: number }[];
+}
+
+export interface BlastAreaResult extends GridInspectResult {
+  readonly radius: number;
+  readonly element: string | null;
+  readonly wallsStop: boolean;
 }
 
 export interface TravelPathResult {
@@ -144,21 +163,33 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
   const at = () => inputToken(state);
   const valid = (to: { x: number; y: number }) => Number.isInteger(to.x) && Number.isInteger(to.y) && state.chunk.inBoundsFully(to);
   return {
-    inspectItem: gate(caps, "inventory", (ref: number | { floor: { x: number; y: number; index: number } }): InspectResult | null => {
-      const obj = typeof ref === "number" ? gearGet(state.gear, ref) :
-        state.chunk.inBounds(ref.floor) ? state.floor.get(ref.floor.y * state.chunk.width + ref.floor.x)?.[ref.floor.index] : undefined;
+    inspectItem: gate(caps, "inventory", (ref: number | { floor: { x: number; y: number; index: number } } | { store: number; index: number }): InspectResult | null => {
+      if (typeof ref !== "number" && "store" in ref && caps &&
+          !caps.has("state:stores.read") && !caps.has("state:*.read")) {
+        throw new AgentCapabilityError('agent inspect: capability "state:stores.read" is not granted');
+      }
+      const inStore = typeof ref !== "number" && "store" in ref;
+      const obj = typeof ref === "number" ? gearGet(state.gear, ref) : "store" in ref
+        ? state.stores?.[ref.store]?.stock[ref.index]
+        : state.chunk.inBounds(ref.floor) ? state.floor.get(ref.floor.y * state.chunk.width + ref.floor.x)?.[ref.floor.index] : undefined;
       /* A floor object answers only when the player remembers that exact
        * object; a sensed "something is here" memory does not name it. */
       if (!obj) return null;
-      if (typeof ref !== "number") {
+      if (typeof ref !== "number" && "floor" in ref) {
         const known = knownFloorObject(state, ref.floor, obj);
         if (!known || known.sensed) return null;
       }
       const extras = deps.inspect?.objectInfo;
       if (!extras) return null;
-      const title = objectDesc(obj, ODESC.PREFIX | ODESC.FULL, state.actor.player, state.runeEnv, knownDescOf(state, true), undefined, state.chestTraps);
-      const text = objectInfoTextblock(state, obj, extras, true).runs.map((run) => run.text).join("");
-      return freeze({ token: at(), title: title.charAt(0).toUpperCase() + title.slice(1), text });
+      const title = objectDesc(obj, ODESC.PREFIX | ODESC.FULL | (inStore ? ODESC.STORE : 0), state.actor.player, state.runeEnv, knownDescOf(state, true), undefined, state.chestTraps);
+      const text = objectInfoTextblock(state, obj, inStore ? { ...extras, inStore: true } : extras, true).runs.map((run) => run.text).join("");
+      const fullTitle = title.charAt(0).toUpperCase() + title.slice(1);
+      const paragraphs = text.trim().split(/\n\s*\n/u).filter(Boolean);
+      const sections: InspectResult["sections"] = [
+        { kind: "title", text: fullTitle },
+        ...paragraphs.map((part, index) => ({ kind: index === 0 ? "description" as const : "info" as const, text: part })),
+      ];
+      return freeze({ token: at(), title: fullTitle, text, sections });
     }),
     monsterRecall: gate(caps, "monsters", (raceIndex: number): InspectResult | null => {
       const race = deps.inspect?.races?.[raceIndex];
@@ -186,6 +217,28 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
         failChance: spellChance(player, state.statInd ?? [], spellIndex, makeSpellChanceEnv(state)),
         canCastNow: playerCanCast(state) && spellOkayToCast(player, spellIndex) && hasBook });
     }),
+    bookForItem: gate(caps, "spells", (handle: number): BookItemResult | null => {
+      if (caps && !caps.has("state:inventory.read") && !caps.has("state:*.read")) {
+        throw new AgentCapabilityError('agent inspect: capability "state:inventory.read" is not granted');
+      }
+      const obj = gearGet(state.gear, handle);
+      const book = obj ? playerObjectToBook(state.actor.player, obj) : null;
+      if (!book) return null;
+      return freeze({ token: at(), bookIndex: state.actor.player.cls.magic.books.indexOf(book),
+        spells: book.spells.map((spell) => spell.sidx) });
+    }),
+    compareLoadoutSlots: gate(caps, "player", (ref: Exclude<LoadoutItemRef, { from: "object" }>): LoadoutSlotsResult => {
+      const domain = ref.from === "gear" ? "inventory" : "stores";
+      if (caps && !caps.has(`state:${domain}.read`) && !caps.has("state:*.read")) {
+        throw new AgentCapabilityError(`agent inspect: capability "state:${domain}.read" is not granted`);
+      }
+      const slots = state.actor.player.body.slots.flatMap(({ name }, slot) => {
+        const comparison = simulateLoadout(state, { wieldAt: [{ item: ref, slot }] }, { viewDeps: deps });
+        return comparison?.placements.some((placement) => placement.slot === slot)
+          ? [{ slot, name, comparison }] : [];
+      });
+      return freeze({ token: at(), slots });
+    }),
     itemTester: gate(caps, "inventory", (code: string): ItemTesterResult => {
       const selection = itemSelection(state, code);
       if (!selection) return freeze({ token: at(), items: [] });
@@ -211,11 +264,12 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
       const grids = valid(to) ? projectPath(knownChunk(state), state.z.maxRange, state.actor.grid, to, PROJECT.INFO | PROJECT.STOP) : [];
       return freeze({ token: at(), grids });
     }),
-    blastArea: gate(caps, "map", (to: { x: number; y: number }, radius: number): GridInspectResult => {
-      if (!valid(to) || !Number.isSafeInteger(radius) || radius < 1) return freeze({ token: at(), grids: [] });
+    blastArea: gate(caps, "map", (to: { x: number; y: number }, radius: number): BlastAreaResult => {
+      const metadata = { radius, element: deps.inspect?.activeBlast?.()?.element ?? null, wallsStop: true };
+      if (!valid(to) || !Number.isSafeInteger(radius) || radius < 1) return freeze({ token: at(), grids: [], ...metadata });
       const grids = computeProjection(knownChunk(state), { origin: state.actor.grid, finish: to, rad: radius,
         typ: 0, flg: PROJECT.INFO | PROJECT.STOP | PROJECT.KILL, maxRange: state.z.maxRange, dam: 0 }).grids;
-      return freeze({ token: at(), grids });
+      return freeze({ token: at(), grids, ...metadata });
     }),
     travelPath: gate(caps, "map", (to: { x: number; y: number }): TravelPathResult | null => {
       if (!valid(to) || !squareIsKnown(state, to) || (state.actor.player.timed[TMD.CONFUSED] ?? 0) > 0) return null;

@@ -36,7 +36,8 @@ A new install opens with the panels of "The default arrangement" below, built ar
 
 ## Rearranging panels
 
-Panels can fill docked spaces or float above them inside the game viewport. Floating panels never open as separate desktop windows.
+Panels tile the window - there is no floating or overlapping, and every panel
+always has a home that fills the available space.
 
 - **Move a panel: right-click and drag it.** Left-click is reserved for ordinary game input and for focusing a panel, so dragging always uses the right mouse button. While dragging, every other panel outlines the places it could accept the drop. The four edge zones **dock** the dragged panel against that edge, splitting that panel's space to make room. The middle of a panel holds two labeled targets: **Swap** trades the two panels' places, and **Tab** adds the dragged panel to that panel's space as a tab. Release over the zone you want.
 - **Switch tabs: click a tab.** A space holding more than one panel shows a row of tabs in its title bar in place of the panel name. Clicking a tab shows that panel, and right-click-dragging a tab moves that one panel out of the group. Closing the shown panel shows the next tab.
@@ -46,11 +47,8 @@ Panels can fill docked spaces or float above them inside the game viewport. Floa
   drag always leaves both sides usable.
 - **Close a panel from its own title bar**, with the small `x` in its corner -
   the same effect as unchecking it back in Subwindow setup.
-- **Float a panel: click Float in its title bar.** Drag the floating panel by its title bar, resize it from its lower-right grip, or click Dock to return it to its last docked place. Drag its title bar onto a dock zone to dock, swap or add it as a tab.
 
-Turning a panel off and on again restores its last floating or docked place. A panel with no saved place uses its standard dock. A disabled mod leaves a named placeholder in a floating panel as it does in a docked panel.
-
-The dungeon view can move too. Drag the small grip in its top-right corner to dock it against another panel's edge, or drop it in the middle of a panel to trade places with it. It never closes, hides, floats or becomes a tab, so the map is always on screen.
+The dungeon view can move too. Drag the small grip in its top-right corner to dock it against another panel's edge, or drop it in the middle of a panel to trade places with it. It never closes, never hides and never becomes a tab, so the map is always on screen.
 
 ## Small windows
 
@@ -58,11 +56,11 @@ Shrink the window far enough and the panels run out of room to stay readable. Ra
 
 ## Window features
 
-Six rows on the Subwindow setup screen switch parts of the panel system on and off, each on its own. **Tabs** (on by default) offers the Tab target when you drag one panel onto another. **Small windows** (on by default) folds cramped docked panels into tabs as described above; floating panels remain separate and stay within the viewport. **Lock dividers** (off by default) stops the splitters from moving, so a finished arrangement cannot be nudged by a stray drag. **Move the dungeon view** (on by default) shows the grip in the dungeon view's corner; with it off, the dungeon view stays where it is and other panels can still swap places with it. **Fit to content** (on by default) gives a panel that asks for a set height, such as a mod's quickbar, that height when it sits above or below another panel. Drag its divider to pick your own size instead, and double-click the divider to hand the size back to the panel. **Floating windows** (on by default) shows Float controls; with it off, floating panels appear docked at their remembered places, and their floating sizes and positions return when it is on again.
+Five rows on the Subwindow setup screen switch parts of the panel system on and off, each on its own. **Tabs** (on by default) offers the Tab target when you drag one panel onto another. **Small windows** (on by default) folds cramped panels into tabs as described above; with it off, panels shrink to their minimum size instead. **Lock dividers** (off by default) stops the splitters from moving, so a finished arrangement cannot be nudged by a stray drag. **Move the dungeon view** (on by default) shows the grip in the dungeon view's corner; with it off, the dungeon view stays where it is and other panels can still swap places with it. **Fit to content** (on by default) gives a panel that asks for a set height, such as a mod's quickbar, that height when it sits above or below another panel. Drag its divider to pick your own size instead, and double-click the divider to hand the size back to the panel. Turning a switch off never rearranges anything: tabs that already exist keep working with Tabs off, and your saved layout stays as it is.
 
 ## The default arrangement
 
-The default arrangement follows the shipped Loth.prf layout: the character sheet and inventory/equipment down the left side, the map beside the main view along the top, the monster list, item list, messages, and monster/object recall tiled underneath, and the second character sheet page in a narrow column on the right. A panel with no earlier place of its own docks to a sensible default edge instead of stacking. Turning a panel back off, then on again, returns it to its last place.
+The default arrangement follows the shipped Loth.prf layout: the character sheet and inventory/equipment down the left side, the map beside the main view along the top, the monster list, item list, messages, and monster/object recall tiled underneath, and the second character sheet page in a narrow column on the right. A panel with no earlier place of its own docks to a sensible default edge instead of stacking. Turning a panel back off, then on again, returns it to that same default spot unless you have moved it.
 
 ## Making an arrangement stick
 

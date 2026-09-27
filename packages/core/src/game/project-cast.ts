@@ -563,6 +563,11 @@ export function castArc(
   return castProjection(state, cctx, source, target, dam, typ, flg, r, degrees, diameter);
 }
 
+/** The radius the breath projection passes to project(). */
+export function breathRadius(radius: number | undefined, maxRange: number): number {
+  return radius && radius > 0 ? radius : maxRange;
+}
+
 /**
  * effect_handler_BREATH (L681): breathe an element in a cone. Like castArc, but
  * a powerful monster breathes at full strength further out (source diameter
@@ -583,7 +588,7 @@ export function castBreath(
   let flg = PROJECT.ARC | PROJECT.GRID | PROJECT.ITEM | PROJECT.KILL;
   if (source.isMonster) flg |= PROJECT.PLAY;
   const degrees = Math.max(degreesOfArc, 20);
-  const rad = opts.radius && opts.radius > 0 ? opts.radius : cctx.maxRange;
+  const rad = breathRadius(opts.radius, cctx.maxRange);
   /* Powerful monsters breathe at full strength further out. */
   const baseDiameter = opts.powerful ? Math.trunc((4 * 3) / 2) : 4;
   const diameter = arcDiameter(baseDiameter, degrees);

@@ -120,6 +120,16 @@ describe("capture is read-pure", () => {
     expect(Object.isFrozen(snap.inventory)).toBe(true);
     expect(snap.player).not.toBe(view.player());
     expect(snap.turn).toBe(game.state.turn);
+    expect(snap.equipmentSlots).toEqual(game.state.actor.player.body.slots);
+    expect(Object.isFrozen(snap.equipmentSlots)).toBe(true);
+    expect(snap.quiver).toEqual([]);
+    expect(Object.isFrozen(snap.floorHere)).toBe(true);
+    expect(snap.player?.learnableSpells).toBe(game.state.actor.player.upkeep.newSpells);
+    for (const item of snap.inventory ?? []) {
+      expect(item.kindKey).toBe(`kind:${game.state.gear.store.get(item.handle)!.kind.kidx}`);
+      expect(item.itemKey).toBe(`gear:${item.handle}`);
+      expect(typeof item.nameColor).toBe("string");
+    }
   });
 
   it("returns null for a part the caller cannot read, and never throws for it", () => {
@@ -128,6 +138,9 @@ describe("capture is read-pure", () => {
     const snap = createAgentView(game.state, undefined, {}, caps).capture!();
     expect(snap.player).not.toBeNull();
     expect(snap.inventory).toBeNull();
+    expect(snap.equipmentSlots).toBeNull();
+    expect(snap.quiver).toBeNull();
+    expect(snap.floorHere).toBeNull();
     expect(snap.monsters).toBeNull();
     expect(snap.targetReadable).toBe(false);
   });

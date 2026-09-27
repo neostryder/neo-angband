@@ -632,20 +632,12 @@ export function winCommandLine(parts: readonly string[]): string {
  *
  * The launcher spawned to make the call is itself inside the job, and that is
  * fine: it only has to live for one WMI call, and the caller waits for it.
- *
- * ShowWindow = 0 (SW_HIDE) in Win32_ProcessStartup keeps the swap script's own
- * console from opening on screen. Without it, WMI creates the PowerShell host
- * with a new visible console, which takes focus from whatever is in front
- * during a real update and during every test run that exercises this path.
- * The flag covers only that console: the game relaunched at the end of the
- * script is started by Start-Process with its own window style.
  */
 export function wmiCreateScript(commandLine: string): string {
   const literal = `'${commandLine.replace(/'/gu, "''")}'`;
   return [
     `$ErrorActionPreference = 'Stop'`,
-    `$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }`,
-    `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = ${literal}; ProcessStartupInformation = $si }`,
+    `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = ${literal} }`,
     `if ($null -eq $r -or $r.ReturnValue -ne 0) { [Console]::Error.Write('Win32_Process.Create returned ' + $r.ReturnValue); exit 1 }`,
     `[Console]::Out.Write([string]$r.ProcessId)`,
   ].join("; ");

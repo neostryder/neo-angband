@@ -108,6 +108,9 @@ export interface CoreSnapshot {
   readonly player: PlayerView | null;
   readonly inventory: readonly ItemView[] | null;
   readonly equipment: readonly (ItemView | null)[] | null;
+  readonly equipmentSlots: readonly { readonly type: string; readonly name: string }[] | null;
+  readonly quiver: readonly ItemView[] | null;
+  readonly floorHere: readonly ItemView[] | null;
   readonly monsters: readonly MonsterView[] | null;
   readonly target: TargetView | null;
   /** False when the target part was not readable, so null above is ambiguous. */
@@ -156,6 +159,12 @@ export function captureCoreSnapshot(
     player: part(() => view.player()),
     inventory: part(() => view.inventory()),
     equipment: part(() => view.equipment()),
+    equipmentSlots: part(() => {
+      view.equipment();
+      return state.actor.player.body.slots.map(({ type, name }) => ({ type, name }));
+    }),
+    quiver: part(() => view.quiver!()),
+    floorHere: part(() => view.floorItems(state.actor.grid.x, state.actor.grid.y)),
     monsters: part(() => view.monsters()),
     target: target.ok ? target.value : null,
     targetReadable: target.ok,
