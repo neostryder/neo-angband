@@ -135,7 +135,7 @@ export function buildInputSnapshot(
 ): InputSnapshot | null {
   const state = source.state();
   if (!state) return null;
-  const view = createAgentView(state, undefined, source.viewDeps(), caps);
+  const view = createAgentView(state, undefined, { ...source.viewDeps(), perceivedMonstersOnly: true }, caps);
   const core = view.capture!();
   const interaction = grants(caps, INTERACTION_READ_CAPABILITY);
   const live = grants(caps, MAP_READ_CAPABILITY) ? source.frame() : null;
@@ -196,7 +196,7 @@ export function buildInspect(
   const view = (): AgentView | null => {
     const state = source.state();
     if (!state) return null;
-    return createAgentView(state, undefined, source.viewDeps(), caps);
+    return createAgentView(state, undefined, { ...source.viewDeps(), perceivedMonstersOnly: true }, caps);
   };
   return Object.freeze({
     inspectItem: (ref) => view()?.inspectItem?.(ref) ?? null,

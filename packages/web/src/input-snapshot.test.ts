@@ -5,7 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { AgentCapabilityError, createAgentView, saveGame, startGame, tokenIsCurrent } from "@rpgm-tools/neo-angband-core";
+import { AgentCapabilityError, createAgentView, MFLAG, saveGame, startGame, tokenIsCurrent } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { GamePack } from "@rpgm-tools/neo-angband-core";
 import { buildInputSnapshot, buildKnownLevel, type InputSnapshotSource } from "./input-snapshot";
@@ -159,6 +159,16 @@ describe("buildInputSnapshot", () => {
     });
     expect(ctx.knownLevel?.()).toBeNull();
   });
+  it("lists only the monsters the player perceives (#293)", () => {
+    const hidden = game.state.monsters.find((m) => m && !m.mflag.has(MFLAG.VISIBLE));
+    const all = createAgentView(game.state, undefined, {}).monsters();
+    const snapshot = buildInputSnapshot(source(), caps("state:monsters.read"))!;
+    const ids = (snapshot.core.monsters ?? []).map((m) => m.id);
+    expect(ids.length).toBeLessThanOrEqual(all.length);
+    for (const m of snapshot.core.monsters ?? []) expect(m.visible).toBe(true);
+    if (hidden) expect(ids).not.toContain(hidden.midx);
+  });
+
   it("is null before a game exists", () => {
     expect(buildInputSnapshot(source({ state: () => undefined }), undefined)).toBeNull();
   });

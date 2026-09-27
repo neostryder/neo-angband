@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { OF, TV } from "../generated/index.js";
+import { MFLAG } from "../generated/index.js";
 import { objectSeeAt } from "../game/known.js";
 import { objectPrep } from "../obj/make.js";
 import { OBJ_NOTICE } from "../obj/knowledge.js";
@@ -200,5 +201,30 @@ describe("reads for interface effects", () => {
     const objects = auraAt(game, grid);
     expect(objects[0] && "aura" in objects[0] ? objects[0].aura : undefined).toBeUndefined();
     expect(fingerprint(game)).toBe(before);
+  });
+});
+
+describe("a mod's monster read (#293)", () => {
+  it("lists only the monsters the player perceives as monsters", () => {
+    const game = startGame(pack, { seed: 4242, depth: 10 });
+    const state = game.state;
+    const live = state.monsters.filter((m) => m);
+    expect(live.length).toBeGreaterThan(2);
+    const [seen, unseen, mimic] = live as [NonNullable<(typeof live)[number]>, NonNullable<(typeof live)[number]>, NonNullable<(typeof live)[number]>];
+    seen.mflag.on(MFLAG.VISIBLE);
+    seen.mflag.off(MFLAG.CAMOUFLAGE);
+    unseen.mflag.off(MFLAG.VISIBLE);
+    mimic.mflag.on(MFLAG.VISIBLE);
+    mimic.mflag.on(MFLAG.CAMOUFLAGE);
+
+    const deps = { reg: game.booted.registries.objects };
+    const ids = (perceivedMonstersOnly: boolean) =>
+      createAgentView(state, undefined, { ...deps, perceivedMonstersOnly }).monsters().map((m) => m.id);
+    const perceived = ids(true);
+    expect(perceived).toContain(seen.midx);
+    expect(perceived).not.toContain(unseen.midx);
+    expect(perceived).not.toContain(mimic.midx);
+    /* The controller's view is unchanged. */
+    expect(ids(false)).toEqual(expect.arrayContaining([seen.midx, unseen.midx, mimic.midx]));
   });
 });

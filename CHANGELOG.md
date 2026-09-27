@@ -89,6 +89,7 @@ still calls itself.
 
 ### Fixed
 
+- [Internal] [Modding-API] **A mod's monster list holds only the monsters the player can perceive.** `ctx.snapshot().core.monsters` used to include every monster on the level. It now matches the game's own monster list, so detected and telepathically sensed monsters appear, and unseen monsters and mimics posing as objects do not. (#293)
 - [Visible] [UI] **Installing an update on Windows no longer opens a console window.** The script that swaps in the new version runs hidden, and the game still reopens on screen when it finishes. (#292)
 - [Internal] [Modding-API] **Store intents now ask the store's quantity and price questions before trading.** Mods answer or cancel the typed prompts, while core agent callers with an explicit quantity keep their direct transaction path. (#291)
 

@@ -582,7 +582,7 @@ Under `state:messages.read`, `ctx.snapshot().messages.entries` copies `msglog.al
 
 ## 4t. Reads for visual effects
 
-`MonsterView` in `ctx.snapshot().core.monsters` carries `unique` (RF_UNIQUE), `questGuardian` and `finalGuardian`. A quest guardian is the race of one of the character's quests. The final guardian guards the last quest, the one whose kill wins the game, which is Morgoth in the shipped quest.txt. Both flags follow the quest table, so a mod that changes the quests moves them too. `id` is the level-local monster index an animation can key on.
+`MonsterView` in `ctx.snapshot().core.monsters` carries `unique` (RF_UNIQUE), `questGuardian` and `finalGuardian`. A quest guardian is the race of one of the character's quests. The final guardian guards the last quest, the one whose kill wins the game, which is Morgoth in the shipped quest.txt. Both flags follow the quest table, so a mod that changes the quests moves them too. `id` is the level-local monster index an animation can key on. The list holds only the monsters the player perceives as monsters, the ones the game's own monster list shows. That includes monsters found by detection or telepathy, and leaves out any the player cannot see and any mimic still posing as an object.
 
 `PlayerView` carries `hpWarning`, the low hit point threshold in hit points: `trunc(maxHp * hitpoint_warn / 10)`, or 0 when the warning is off. The warning applies while `hp` is below it. `recall` and `descent` are the turns left on Word of Recall and Deep Descent, and 0 when neither is active. `dead` turns true the moment the character dies, before the fatal message is acknowledged, so a death effect can start there instead of reading hit points, which bloodlust can take below zero.
 

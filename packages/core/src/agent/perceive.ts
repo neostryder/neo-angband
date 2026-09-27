@@ -28,7 +28,7 @@ import { useFlavorGlyph } from "../visuals/object-glyph.js";
 import type { GameState } from "../game/context.js";
 import { gearGet } from "../game/gear.js";
 import { LIGHTING } from "../visuals/tile-prefs.js";
-import { monsterIsVisible } from "../mon/predicate.js";
+import { monsterIsObvious, monsterIsVisible } from "../mon/predicate.js";
 import { PY_SPELL, spellChance, spellOkayToStudy } from "../player/spell.js";
 import { makeSpellChanceEnv } from "../game/spell-cmd.js";
 import { buildObjectEffectChain } from "../game/obj-cmd.js";
@@ -86,6 +86,7 @@ function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
   for (let i = 1; i < state.monsters.length; i++) {
     const m = state.monsters[i];
     if (!m) continue;
+    if (deps.perceivedMonstersOnly && !monsterIsObvious(m)) continue;
     const view: MonsterView = {
       id: m.midx,
       race: m.race.name,
