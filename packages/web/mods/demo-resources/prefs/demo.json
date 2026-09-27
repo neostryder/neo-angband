@@ -1,0 +1,14 @@
+{
+  "format": "neo-angband/prefs/visual-overrides",
+  "schemaVersion": 1,
+  "data": {
+    "features": [
+      {
+        "code": "FLOOR",
+        "lighting": "all",
+        "color": 1,
+        "glyph": "."
+      }
+    ]
+  }
+}

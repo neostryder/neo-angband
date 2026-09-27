@@ -7,6 +7,7 @@ import { keymapFormat } from "./keymaps.js";
 import { soundMappingFormat } from "./sound-mappings.js";
 import { subwindowLayoutFormat } from "./subwindow-layout.js";
 import { visualOverrideFormat } from "./visual-overrides.js";
+import { settingsFormat } from "./settings.js";
 import { windowStateFormat } from "./window-state.js";
 import { color, defineFormat, json, keyInput, listFormats, parseDocument, serializeDocument, utcTimestamp } from "./index.js";
 
@@ -19,6 +20,7 @@ void [
   soundMappingFormat,
   subwindowLayoutFormat,
   visualOverrideFormat,
+  settingsFormat,
 ];
 
 defineFormat({

@@ -83,9 +83,9 @@ export type ResourceKind = "sound" | "font" | "prefs" | "help" | "art" | "locale
  *   one   a single thing exists and the LAST enabled contributor wins, which is
  *         the same rule tiles, field patches and rule flags already follow (the
  *         mod manager's "loads last, wins conflicts" row means it).
- *   all   every contribution applies, in load order. Right for pref files
- *         because a `.prf` is a list of assignments and layering them is what
- *         upstream's own pref pipeline does.
+ *   all   every contribution applies, in load order. Right for preference
+ *         documents because each is a list of assignments and layering them
+ *         is what upstream's own pref pipeline does.
  *   slot  keyed by the entry's `slot`; last wins WITHIN a slot and different
  *         slots coexist. Right for anything with named parts - one mod may
  *         replace the splash while another adds a help page.
@@ -145,9 +145,9 @@ export const RESOURCE_KINDS: Readonly<Record<ResourceKind, ResourceKindSpec>> = 
   prefs: {
     merge: "all",
     directory: false,
-    extensions: [".prf"],
+    extensions: [".json"],
     slot: "forbidden",
-    describe: "a pref file",
+    describe: "a JSON preference document",
   },
   help: {
     merge: "slot",

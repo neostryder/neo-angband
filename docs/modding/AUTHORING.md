@@ -281,7 +281,7 @@ declared in one `resources` array in your manifest, each naming a `kind` and a
 "resources": [
   { "kind": "sound", "path": "sounds" },
   { "kind": "font",  "path": "fonts/terminal.json" },
-  { "kind": "prefs", "path": "prefs/colours.prf" },
+  { "kind": "prefs", "path": "prefs/colours.json" },
   { "kind": "help",  "path": "help/lore.txt", "slot": "lore", "name": "The lore" },
   { "kind": "art",   "path": "art/splash.txt", "slot": "splash" }
 ]
@@ -296,21 +296,14 @@ browser's database. The host composes your path with your mod's own resolver.
 | --- | --- | --- |
 | `sound` | a **directory** of samples named as `sound.prf` names them, `.mp3` or `.ogg` | the last enabled one wins |
 | `font` | a bitmap font, `{ "w", "h", "glyphs" }`, one scanline number per row | the last enabled one wins |
-| `prefs` | a `.prf` in ui-prefs.c's own grammar; ASCII glyphs, colours and sound prefs apply at install, and TILE assignments layer over a graphics pack's own prefs on every map build | **all of them apply**, in load order |
+| `prefs` | a JSON preference document: visual overrides, colours, sounds, auto-inscriptions, entry renderers or keymaps. ASCII glyphs, colours and sounds apply at install, and TILE assignments layer over a graphics pack's own prefs on every map build | **all of them apply**, in load order |
 | `help` | one page of plain text | per `slot` |
 | `art` | one screen of `{colour}...{/}` markup | per `slot` |
 | `locale` | one language, `slot` being its BCP 47 tag | per `slot` |
 
 Four things that will otherwise cost you an afternoon:
 
-- **A `.prf`'s `%:` includes resolve beside the file you declared.** They are
-  followed (they were silently skipped before #278), to the same depth the
-  parser allows, and every one of them, including an include's own includes,
-  is looked up in the directory of the `path` in your manifest. So
-  `prefs/colours.prf` saying `%:shared.prf` reads `prefs/shared.prf`. A name
-  that does not resolve is skipped without a message, which is what upstream
-  does; if a rule of yours is not taking effect, check the spelling of the
-  include before anything else.
+- **A preference document applies for the session only.** It never changes the player's own saved preferences, and it stops applying when your mod is turned off. A subwindow layout, or any document outside that list, is reported on your mod's row instead of being applied.
 - **A `.json` resource must sit in a subdirectory.** A top-level `.json` is read
   as a record contribution, so `font.json` would be handed to the record
   composer, which has no content file by that name, and your mod would load with

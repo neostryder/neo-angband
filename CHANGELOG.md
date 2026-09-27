@@ -53,6 +53,7 @@ still calls itself.
 
 - [Internal] [Modding-API] **Mods can read the current controller and enabled peers.** Frozen driver and public mod reads, controller status events, input ownership refusals, and per-mod display setter restoration let interface mods coexist with other controllers and display mods. (#290)
 
+- [Visible] [UI] **Subwindows can float inside the game viewport.** Float and Dock controls move panels between floating windows and remembered docked places; a switch can show floats docked without losing their positions, and hidden panels return to their last place. (#287)
 - [Internal] [Modding-API] **Interface mods can read travel routes, grid actions, and item rules.** Frozen inspect answers use the game's pathfinder, remembered terrain, and learned ignore settings; a display margin keeps whole map cells clear for mod controls. (#289)
 - [Internal] [Modding-API] **Mods can provide panels for the tiled subwindow layout.** `ctx.ui.registerPanelKind` adds a host-mounted shadow-root panel under `ui:panel.mount`, with saved placement, tabs, state updates, cleanup and a placeholder when its mod is not loaded. (#287)
 
@@ -73,6 +74,8 @@ still calls itself.
 
 ### Changed
 
+- [Internal] [Modding-API] **A mod's `prefs` resource is a JSON preference document.** Visual overrides, colours, sounds, auto-inscriptions, entry renderers and keymaps apply for the session, through the same grammar and tile replay as before, and never change the player's saved preferences. A `.prf` path fails manifest validation. (#288)
+- [Internal] [Save-Compat] **The web game's single-value settings share one JSON document.** Language, graphics mode, sidebar layout, update channel, log level, control profile, autoplayer speed, the third-party mods switch and two one-time flags live under `neo-angband:settings` instead of ten separate browser-storage keys. The first launch after an update moves each old value into the document and removes the old key once the document reads back; a document from a newer build is left untouched. (#288)
 - [Visible] [UI] **A new install opens with the default subwindow arrangement.** The first launch shows the panels of the shipped Loth.prf layout around the main view instead of the game view alone. A layout with every panel turned off now stays that way between launches. If you had every panel off before this version, the default arrangement appears once; turn the panels off again and that choice sticks. (#287)
 - [Visible] [UI] **The title screen calls Neo Angband a faithful but moddable port of Angband, meant to be playable almost anywhere.** The line under the logo used to describe it by its programming language.
 - [Visible] [Save-Compat] **A character export is a plain JSON document.** A `.neochar` file holds the character and the save as readable JSON. An older character file still imports, and a save from before this change still loads. (#288)
@@ -80,6 +83,7 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] [UI] **Installing an update on Windows no longer opens a console window.** The script that swaps in the new version runs hidden, and the game still reopens on screen when it finishes. (#292)
 - [Internal] [Modding-API] **Store intents now ask the store's quantity and price questions before trading.** Mods answer or cancel the typed prompts, while core agent callers with an explicit quantity keep their direct transaction path. (#291)
 
 ## [1.18.0] - 2026-09-26

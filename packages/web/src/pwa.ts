@@ -20,6 +20,7 @@
 // player simply lands on the current build with their save intact.
 
 import { isStale, WEB_BUILD_ID, WEB_BUILD_ID_FILE } from "./build-id";
+import { readSetting, writeSetting } from "./settings-store";
 
 /**
  * The browser's own install prompt, held for the (I)nstall locally page.
@@ -204,9 +205,6 @@ export async function applyWebUpdate(): Promise<void> {
   location.reload();
 }
 
-/** Set once per window, so a shell that stays stale cannot reload forever. */
-const DESKTOP_REFRESHED_KEY = "neo:desktop-shell-refreshed";
-
 /** What the desktop refresh needs, injected so it can be tested. */
 export interface DesktopRefreshDeps {
   isDesktop?: () => boolean;
@@ -297,17 +295,13 @@ export async function refreshStaleDesktopShell(
    * stale title it is trying to correct. The guard has to be real to act on. */
   if (!store) return false;
   try {
-    if (store.getItem(DESKTOP_REFRESHED_KEY)) return false;
+    if (readSetting(store, "desktopShellRefreshed") === true) return false;
   } catch {
     return false;
   }
   const check = deps.check ?? ((): Promise<boolean> => isBuildStale());
   if (!(await check())) return false;
-  try {
-    store.setItem(DESKTOP_REFRESHED_KEY, "1");
-  } catch {
-    return false;
-  }
+  if (!writeSetting(store, "desktopShellRefreshed", true)) return false;
   (deps.reload ?? ((): void => {
     location.reload();
   }))();

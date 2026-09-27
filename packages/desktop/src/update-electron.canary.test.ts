@@ -36,6 +36,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** A VBScript that writes one line to a file; run by wscript, it shows no window. */
+const vbsWriteMarker = (file: string, text: string): string =>
+  `CreateObject("Scripting.FileSystemObject").CreateTextFile("${file.replace(/"/gu, '""')}", True).WriteLine "${text}"\r\n`;
+
 const isWin = process.platform === "win32";
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -59,14 +63,14 @@ describe.skipIf(!isWin)("a swap launched from Electron", () => {
      * and then start. The character must survive; that is the one thing this
      * project will not trade for an update. */
     fs.writeFileSync(path.join(install, "version.txt"), "old");
-    fs.writeFileSync(path.join(install, "app.cmd"), "@echo off\r\n");
+    /* A .vbs "program" rather than a .cmd: Start-Process runs it with
+     * wscript, which opens no console, so a test run does not flash a window
+     * in front of whatever the machine is showing. */
+    fs.writeFileSync(path.join(install, "app.vbs"), "' old\r\n");
     fs.writeFileSync(path.join(saves, "Bilbo.sav"), "a character");
     /* The new version, staged exactly as stageArchive would leave it. */
     fs.writeFileSync(path.join(staging, "version.txt"), "new");
-    fs.writeFileSync(
-      path.join(staging, "app.cmd"),
-      `@echo off\r\n>"${relaunched}" echo relaunched\r\n`,
-    );
+    fs.writeFileSync(path.join(staging, "app.vbs"), vbsWriteMarker(relaunched, "relaunched"));
 
     /* The REAL updater, bundled - not a re-implementation of it. A hand-written
      * stand-in here would be a test of my own idea of the launcher, and the
@@ -98,7 +102,7 @@ app.whenReady().then(async () => {
       root: ${JSON.stringify(install)},
       staging: ${JSON.stringify(staging)},
       platform: "win32",
-      execPath: ${JSON.stringify(path.join(install, "app.cmd"))},
+      execPath: ${JSON.stringify(path.join(install, "app.vbs"))},
       pid: process.pid,
     });
   } catch (err) {

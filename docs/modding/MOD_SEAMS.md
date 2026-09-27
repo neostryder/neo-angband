@@ -568,7 +568,11 @@ Typing in a focused editable field inside the panel goes to that field through t
 
 Each mod's display setters keep its own last request. The most recent live request controls the grid, camera, full map view, tile scaling, map overview, sidebar extent, map margin, or visual filter. Clearing a nullable request removes that mod's value; `setTileScaling(null)` restores the default automatic sampler and `setFullMapOverview(null)` restores the default overview when no earlier request remains. `getGrid()`, `getCamera()`, `getMapView()`, `getTileScaling()`, `getFullMapOverview()`, `getSidebarExtent()`, `getMapMargin()`, and `getVisualFilter()` report the value in force. Mod teardown removes every request from that mod and restores the next most recent request for each setter.
 
-## 4r. Command catalogue and store panel status
+## 4r. Floating panel positions and recovery
+
+The host's Subwindow setup can move a registered panel into a floating window inside the game viewport. The panel keeps the same slot, shadow root, controls, minimum size and input behavior. Its title bar can move it onto the same dock, swap and tab drop zones as a docked panel. Closing and showing it again restores its floating rectangle; Dock returns it to its last docked place or `preferredPlacement` if that place is unavailable. A saved float whose mod is not loaded shows the same named placeholder as a docked panel. The Floating windows switch temporarily renders floats at their remembered docked places without erasing their saved rectangles. No new capability or `ctx.ui` field is required.
+
+## 4s. Command catalogue and store panel status
 
 `ctx.intent.catalogue()` is present with `input:intent`. It returns a frozen, token-stamped list of the action registry's command codes, their play or store phase, and their argument shape, plus the non-command intent kinds. Registered mod command codes appear in the same list. The catalogue is a read; it takes no turn, consumes no RNG, and adds nothing to the command queue.
 

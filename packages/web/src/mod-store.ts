@@ -28,6 +28,7 @@
  */
 
 import type { PackManifest, SortPin } from "@rpgm-tools/neo-angband-mod-sdk";
+import { readSetting, writeSetting } from "./settings-store";
 
 const ENABLED_KEY = "neo:enabledMods";
 /* Explicit per-mod decisions, distinct from the resulting enabled SET: an entry
@@ -43,7 +44,6 @@ const PINS_KEY = "neo:modPins";
 const SECTION_CHOICES_KEY = "neo:modSectionChoices";
 /* The pump rate for a mod's autoplayer (ModPlugin.controller), player-set
  * beside the mod's own rule row that turns the controller on at all. */
-const AUTOPLAYER_SPEED_KEY = "neo:autoplayerSpeed";
 
 /**
  * A mod's autoplayer pump rate. "fast", "normal" and "slow" match the debug
@@ -836,12 +836,12 @@ export class ModStore {
    * exactly as it always did.
    */
   getAutoplayerSpeed(): AutoplayerSpeed {
-    const raw = readJson<unknown>(this.storage, AUTOPLAYER_SPEED_KEY, "normal");
+    const raw = readSetting(this.storage, "autoplayerSpeed");
     return raw === "turbo" || raw === "fast" || raw === "normal" || raw === "slow" ? raw : "normal";
   }
 
   setAutoplayerSpeed(speed: AutoplayerSpeed): void {
-    writeJson(this.storage, AUTOPLAYER_SPEED_KEY, speed);
+    writeSetting(this.storage, "autoplayerSpeed", speed);
   }
 }
 

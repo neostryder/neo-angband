@@ -18,6 +18,18 @@
 export const MAIN_TILE_ID = "main";
 
 export type TileId = string;
+export interface FloatRect {
+  id: TileId;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+export interface RememberedPlace {
+  dock?: LayoutNode;
+  float?: Omit<FloatRect, "id">;
+  last: "dock" | "float";
+}
 export type SplitAxis = "h" | "v";
 export type DockEdge = "left" | "right" | "top" | "bottom";
 
@@ -288,6 +300,27 @@ function findPath(node: LayoutNode, id: TileId, path: number[] = []): number[] |
 export function removeLeaf(tree: LayoutNode, id: TileId): LayoutNode {
   if (id === MAIN_TILE_ID) return tree;
   return removeFrom(tree, id) ?? tree;
+}
+
+/** Restore a panel beside its former neighbor while keeping current panels. */
+export function restoreDockPlace(tree: LayoutNode, id: TileId, saved: LayoutNode): LayoutNode | null {
+  function find(node: LayoutNode): LayoutNode | null {
+    if (node.kind === "leaf") {
+      if (!groupTabs(node).includes(id)) return null;
+      const neighbor = groupTabs(node).find((tab) => tab !== id && containsLeaf(tree, tab));
+      return neighbor ? tabInto(tree, id, neighbor) : null;
+    }
+    const inFirst = containsLeaf(node.first, id);
+    const inSecond = containsLeaf(node.second, id);
+    if (!inFirst && !inSecond) return null;
+    const nested = find(inFirst ? node.first : node.second);
+    if (nested) return nested;
+    const target = leafIds(inFirst ? node.second : node.first).find((candidate) => containsLeaf(tree, candidate));
+    if (!target) return null;
+    const edge = node.axis === "v" ? (inFirst ? "left" : "right") : (inFirst ? "top" : "bottom");
+    return insertAtEdge(tree, id, target, edge, inFirst ? node.ratio : 1 - node.ratio);
+  }
+  return containsLeaf(saved, id) && !containsLeaf(tree, id) ? find(saved) : null;
 }
 
 function removeFrom(node: LayoutNode, id: TileId): LayoutNode | null {

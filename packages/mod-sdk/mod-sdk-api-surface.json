@@ -132,6 +132,7 @@
     "savedGameFormat",
     "sectionFlag",
     "serializeDocument",
+    "settingsFormat",
     "slugify",
     "sortModOrder",
     "soundMappingFormat",

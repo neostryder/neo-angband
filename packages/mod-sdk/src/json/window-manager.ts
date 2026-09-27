@@ -16,6 +16,8 @@ const validator = json.object({
   moveDungeonView: json.boolean,
   /** A panel that asks for a content height gets it until its divider is dragged. */
   fitToContent: json.boolean,
+  /** Panels may float inside the game viewport. */
+  floatingWindows: json.optional(json.boolean),
 });
 
 export const windowManagerFormat = defineFormat({
@@ -28,5 +30,6 @@ export const windowManagerFormat = defineFormat({
     lockDividers: false,
     moveDungeonView: true,
     fitToContent: true,
+    floatingWindows: true,
   },
 });

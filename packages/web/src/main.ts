@@ -573,6 +573,8 @@ import {
   registerSubwindowPrefBlock,
   scrollSubwindow,
   setSubwindowEnabled,
+  rememberDockTree,
+  standardDock,
   SUBWINDOW_CHOICES,
   writeSubwindowState,
   writeSubwindowDefault,
@@ -581,7 +583,7 @@ import {
 } from "./subwindows";
 import { mountSubwindowShell } from "./subwindow-shell";
 import { bindPanelProviders, panelKinds, syncPanelProviders, unregisterAllPanelKinds } from "./panel-provider";
-import { containsLeaf, insertAtEdge, leafIds, removeLeaf, tabInto, type LayoutNode } from "./subwindow-layout";
+import { applyDrop, containsLeaf, insertAtEdge, removeLeaf, restoreDockPlace, swapLeaves, tabInto, type LayoutNode } from "./subwindow-layout";
 import { readWmSettings, writeWmSettings, type WmSettings } from "./wm-settings";
 import {
   inventoryScreen,
@@ -736,7 +738,7 @@ import type { CommandCategory } from "./command-menu";
 import { runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu, SubwindowMenu } from "./options";
 import { loadColorPrefs, saveColorPrefs } from "./colors";
-import { applyStoredEntryRenderers, applyVisualDocument, consumeStoredAutoinscriptions, convertStoredUserPrefFiles } from "./pref-documents";
+import { applyStoredEntryRenderers, applyVisualDocument, consumeStoredAutoinscriptions, convertStoredUserPrefFiles, modPreferenceText } from "./pref-documents";
 import {
   dispatchUiInput,
   inputEvents,
@@ -813,6 +815,7 @@ import {
 } from "./mod-backup";
 import { decideImport } from "./transfer-gate";
 import { storageLines, type StorageTone } from "./storage-page";
+import { convertLegacySettings, readSetting, writeSetting } from "./settings-store";
 
 // PWA freshness: silently reload onto a newly deployed build (a ratified
 // browser-shell necessity, D2). Page chrome, independent of the game, so it
@@ -1005,10 +1008,66 @@ const subwindowShell = mountSubwindowShell({
   labels: Object.fromEntries(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.label])),
   tabLabels: Object.fromEntries(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.tab])),
   onTreeChange: (tree) => {
-    subwindowState = { ...subwindowState, tree };
+    subwindowState = rememberDockTree(subwindowState, tree);
     writeSubwindowState(localStorage, subwindowState);
     applySubwindowLayout();
     renderSubwindows();
+  },
+  onFloat: (id, rect) => {
+    if (id === "main" || !containsLeaf(subwindowState.tree, id)) return;
+    const places = { ...subwindowState.places,
+      [id]: { ...subwindowState.places?.[id], dock: subwindowState.tree,
+        float: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, last: "float" as const } };
+    subwindowState = { ...subwindowState, tree: removeLeaf(subwindowState.tree, id),
+      floats: [...subwindowState.floats ?? [], rect], places };
+    writeSubwindowState(localStorage, subwindowState);
+    applySubwindowLayout();
+    renderSubwindows();
+  },
+  onDockFloat: (id, zone) => {
+    const floating = subwindowState.floats?.find((entry) => entry.id === id);
+    if (!floating || id === "main") return;
+    const floats = (subwindowState.floats ?? []).filter((entry) => entry.id !== id);
+    const saved = subwindowState.places?.[id]?.dock;
+    let tree = subwindowState.tree;
+    if (zone?.kind === "swap") {
+      const withIncoming = saved ? restoreDockPlace(tree, id, saved) : null;
+      tree = withIncoming ?? insertAtEdge(tree, id, zone.id, "right");
+      tree = swapLeaves(tree, id, zone.id);
+      if (zone.id !== "main") {
+        tree = removeLeaf(tree, zone.id);
+        floats.push({ ...floating, id: zone.id });
+      }
+    } else if (zone) tree = applyDrop(tree, id, zone);
+    else if (saved) tree = restoreDockPlace(tree, id, saved) ?? tree;
+    if (!containsLeaf(tree, id)) {
+      const native = SUBWINDOW_CHOICES.find((choice) => choice.id === id);
+      const preferred = panelKinds().find((kind) => kind.id === id)?.spec.preferredPlacement;
+      tree = native ? standardDock(tree, native.id) : preferred && containsLeaf(tree, preferred.target)
+        ? preferred.kind === "tab" ? tabInto(tree, id, preferred.target) : insertAtEdge(tree, id, preferred.target, preferred.edge)
+        : insertAtEdge(tree, id, "main", "right");
+    }
+    subwindowState = rememberDockTree({ ...subwindowState, floats,
+      places: { ...subwindowState.places, [id]: { ...subwindowState.places?.[id],
+        float: { x: floating.x, y: floating.y, width: floating.width, height: floating.height }, last: "dock" as const } } }, tree);
+    writeSubwindowState(localStorage, subwindowState);
+    applySubwindowLayout();
+    renderSubwindows();
+  },
+  onFloatsChange: (floats) => {
+    const places = { ...subwindowState.places };
+    for (const entry of floats) places[entry.id] = { ...places[entry.id],
+      float: { x: entry.x, y: entry.y, width: entry.width, height: entry.height }, last: "float" };
+    subwindowState = { ...subwindowState, floats, places };
+    writeSubwindowState(localStorage, subwindowState);
+  },
+  dockFallback: (tree, id) => {
+    const native = SUBWINDOW_CHOICES.find((choice) => choice.id === id);
+    if (native) return standardDock(tree, native.id);
+    const preferred = panelKinds().find((kind) => kind.id === id)?.spec.preferredPlacement;
+    if (preferred && containsLeaf(tree, preferred.target)) return preferred.kind === "tab"
+      ? tabInto(tree, id, preferred.target) : insertAtEdge(tree, id, preferred.target, preferred.edge);
+    return insertAtEdge(tree, id, "main", "right");
   },
   onViewChange: () => syncPanelProviders(),
   /* A panel's own close [x] (neo-angband#246): the same live-disable path the
@@ -1043,13 +1102,23 @@ const subwindowShell = mountSubwindowShell({
     if (note) say(note);
   },
 });
-subwindowShell.apply(subwindowState.tree);
+subwindowShell.apply(subwindowState.tree, subwindowState.floats, subwindowState.places);
 const panelProviderHost = {
   shell: subwindowShell,
   tree: () => subwindowState.tree,
   forgetPanel: (id: string) => lastModTrees.delete(id),
+  closePanel: (id: string) => setModPanelEnabledLive(id, false),
+  removePanel: (id: string) => {
+    const { [id]: _forgotten, ...places } = subwindowState.places ?? {};
+    void _forgotten;
+    subwindowState = { ...subwindowState, tree: removeLeaf(subwindowState.tree, id),
+      floats: (subwindowState.floats ?? []).filter((entry) => entry.id !== id), places };
+    writeSubwindowState(localStorage, subwindowState);
+    applySubwindowLayout();
+    renderSubwindows();
+  },
   changeTree: (tree: LayoutNode) => {
-    subwindowState = { ...subwindowState, tree };
+    subwindowState = rememberDockTree(subwindowState, tree);
     writeSubwindowState(localStorage, subwindowState);
     applySubwindowLayout();
     renderSubwindows();
@@ -1943,7 +2012,6 @@ const displayRandint1 = (n: number): number => state.rng.randint1(n);
 // (tiles.ts - one atlas PNG addressed by row/column, what every upstream pack
 // is), and LOOSE PACKS (linoleum-pack.ts - a directory of named PNGs with
 // variant pools, which a mod can add). Core modes are always tilesheets.
-const TILE_MODE_KEY = "neo-angband:graf";
 
 /** buildid (buildid.c:37 = VERSION_NAME " " VERSION_STRING), for dump headers. */
 const BUILD_ID = `Neo Angband ${PARITY_BASELINE}`;
@@ -2013,6 +2081,11 @@ const glyphs = new GlyphTable({
   traps: booted.registries.traps,
   flavors: booted.registries.objects.flavors,
 });
+try {
+  convertLegacySettings(localStorage);
+} catch {
+  /* Storage denied outright: every setting keeps its default for this session. */
+}
 convertStoredUserPrefFiles({
   glyphs,
   deps: {
@@ -2044,7 +2117,7 @@ consumeStoredAutoinscriptions(glyphs, {
 function readTileMode(): number {
   const fromUrl = Number(params.get("graf"));
   if (fromUrl) return fromUrl;
-  const stored = Number(localStorage.getItem(TILE_MODE_KEY));
+  const stored = readSetting(localStorage, "tileMode") ?? 0;
   return Number.isFinite(stored) && stored > 0 ? stored : GRAPHICS_NONE;
 }
 
@@ -2153,11 +2226,7 @@ async function applyTileMode(
 ): Promise<void> {
   const request = graphics.begin(grafID);
   if (persist) {
-    if (grafID && grafID !== GRAPHICS_NONE) {
-      localStorage.setItem(TILE_MODE_KEY, String(grafID));
-    } else {
-      localStorage.removeItem(TILE_MODE_KEY);
-    }
+    writeSetting(localStorage, "tileMode", grafID && grafID !== GRAPHICS_NONE ? grafID : undefined);
   }
   const entry =
     grafID && grafID !== GRAPHICS_NONE
@@ -2457,12 +2526,11 @@ async function applyMapTileMode(grafID: number): Promise<void> {
 // to a pref file, not the savefile). Left = the classic 13-column status
 // column; Top = a one-line vitals header over a full-width map; None = no
 // vitals furniture at all. viewport() reads this to pick the layout.
-const SIDEBAR_MODE_KEY = "neo-angband:sidebar-mode";
 const SIDEBAR_MODES = ["Left", "Top", "None"] as const; // SIDEBAR_LEFT/TOP/NONE
 type SidebarLayout = "left" | "top" | "none";
 
 function readSidebarMode(): number {
-  const stored = Number(localStorage.getItem(SIDEBAR_MODE_KEY));
+  const stored = readSetting(localStorage, "sidebarMode") ?? 0;
   return Number.isInteger(stored) && stored >= 0 && stored < SIDEBAR_MODES.length
     ? stored
     : 0; // default SIDEBAR_LEFT
@@ -2475,8 +2543,7 @@ const sidebarModeMenu: SidebarModeMenu = {
   set: (index: number) => {
     const n = SIDEBAR_MODES.length;
     sidebarMode = ((index % n) + n) % n;
-    if (sidebarMode === 0) localStorage.removeItem(SIDEBAR_MODE_KEY);
-    else localStorage.setItem(SIDEBAR_MODE_KEY, String(sidebarMode));
+    writeSetting(localStorage, "sidebarMode", sidebarMode === 0 ? undefined : sidebarMode);
     render();
   },
 };
@@ -2775,7 +2842,7 @@ function trackObjectRecall(title: string, tb: Textblock): void {
 }
 
 function applySubwindowLayout(): void {
-  subwindowShell.apply(subwindowState.tree);
+  subwindowShell.apply(subwindowState.tree, subwindowState.floats, subwindowState.places);
   for (const choice of SUBWINDOW_CHOICES) {
     if (subwindowState.enabled[choice.id]) ensureSubwindowTerm(choice.id);
   }
@@ -2849,50 +2916,40 @@ function setSubwindowEnabledLive(id: SubwindowId, enabled: boolean): void {
 
 const lastModTrees = new Map<string, LayoutNode>();
 
-function placeModPanel(tree: LayoutNode, id: string, saved: LayoutNode): LayoutNode | null {
-  function find(node: LayoutNode): LayoutNode | null {
-    if (node.kind === "leaf") {
-      if (!(node.tabs ?? [node.id]).includes(id)) return null;
-      const neighbor = (node.tabs ?? [node.id]).find((tab) => tab !== id && containsLeaf(tree, tab));
-      return neighbor ? tabInto(tree, id, neighbor) : null;
-    }
-    const inFirst = containsLeaf(node.first, id);
-    const inSecond = containsLeaf(node.second, id);
-    if (inFirst || inSecond) {
-      const nested = find(inFirst ? node.first : node.second);
-      if (nested) return nested;
-      const other = inFirst ? node.second : node.first;
-      const target = leafIds(other).find((candidate) => containsLeaf(tree, candidate));
-      if (target) {
-        const edge = node.axis === "v" ? (inFirst ? "left" : "right") : (inFirst ? "top" : "bottom");
-        return insertAtEdge(tree, id, target, edge, inFirst ? node.ratio : 1 - node.ratio);
-      }
-    }
-    return null;
-  }
-  return containsLeaf(saved, id) ? find(saved) : null;
-}
-
 function setModPanelEnabledLive(id: string, enabled: boolean): void {
   const entry = panelKinds().find((kind) => kind.id === id);
   if (enabled && !entry) return;
   let tree = subwindowState.tree;
+  let floats = [...subwindowState.floats ?? []];
+  const places = { ...subwindowState.places };
   if (enabled) {
-    if (containsLeaf(tree, id)) return;
-    const saved = lastModTrees.get(id) ?? readSubwindowDefault(localStorage)?.tree;
-    const placed = saved ? placeModPanel(tree, id, saved) : null;
+    if (containsLeaf(tree, id) || floats.some((entry) => entry.id === id)) return;
+    if (places[id]?.last === "float" && places[id]?.float) {
+      floats.push({ id, ...places[id].float });
+    } else {
+    const saved = places[id]?.dock ?? lastModTrees.get(id) ?? readSubwindowDefault(localStorage)?.tree;
+    const placed = saved ? restoreDockPlace(tree, id, saved) : null;
     const preferred = entry?.spec.preferredPlacement;
     tree = placed ?? (preferred && containsLeaf(tree, preferred.target)
       ? preferred.kind === "tab"
         ? tabInto(tree, id, preferred.target)
         : insertAtEdge(tree, id, preferred.target, preferred.edge)
       : insertAtEdge(tree, id, "main", "right"));
+    }
   } else {
-    if (!containsLeaf(tree, id)) return;
-    lastModTrees.set(id, tree);
-    tree = removeLeaf(tree, id);
+    const floating = floats.find((item) => item.id === id);
+    if (floating) {
+      places[id] = { ...places[id], float: { x: floating.x, y: floating.y,
+        width: floating.width, height: floating.height }, last: "float" };
+      floats = floats.filter((item) => item.id !== id);
+    } else {
+      if (!containsLeaf(tree, id)) return;
+      lastModTrees.set(id, tree);
+      places[id] = { ...places[id], dock: tree, last: "dock" };
+      tree = removeLeaf(tree, id);
+    }
   }
-  subwindowState = { ...subwindowState, tree };
+  subwindowState = { ...subwindowState, tree, floats, places };
   writeSubwindowState(localStorage, subwindowState);
   applySubwindowLayout();
   renderSubwindows();
@@ -2959,9 +3016,15 @@ const subwindowMenu: SubwindowMenu = {
       enabled: () => wmSettings.fitToContent,
       set: (enabled) => setWmFeature("fitToContent", enabled),
     },
+    {
+      label: t("options.subwindows.featureFloating", "Floating windows: move panels above the tiled layout inside the game"),
+      enabled: () => wmSettings.floatingWindows,
+      set: (enabled) => setWmFeature("floatingWindows", enabled),
+    },
   ],
   mapTiles: mapTileModeMenu,
-  enabled: (id) => id.includes(":") ? containsLeaf(subwindowState.tree, id) : subwindowState.enabled[id as SubwindowId],
+  enabled: (id) => id.includes(":") ? containsLeaf(subwindowState.tree, id) ||
+    !!subwindowState.floats?.some((entry) => entry.id === id) : subwindowState.enabled[id as SubwindowId],
   set: (id, enabled) => {
     if (id.includes(":")) { setModPanelEnabledLive(id, enabled); return; }
     if (!SUBWINDOW_CHOICES.some((choice) => choice.id === id)) return;
@@ -14353,10 +14416,16 @@ async function applyModResources(): Promise<void> {
   const splash = await modArtLines("splash");
   setSplashArt(splash);
 
-  /* PREF FILES ACCUMULATE, in load order - a `.prf` is a list of assignments and
-   * layering them is what upstream's own pref pipeline does. Applied after the
-   * font because a pref file may set glyphs the font has to already be able to
-   * draw. */
+  /* PREFERENCE RESOURCES ACCUMULATE, in load order: each is a list of
+   * assignments, and layering them is what upstream's own pref pipeline does.
+   * Applied after the font because a resource may set glyphs the font has to
+   * already be able to draw.
+   *
+   * A resource is one JSON preference document (#288). It is rendered back to
+   * the directive lines its fields came from and applied through the same
+   * transient path the retired `.prf` resources used, so it never touches the
+   * player's stored documents and its tile directives replay on a fresh
+   * graphics map. JSON has no includes, so nothing is resolved beside it. */
   const ctx = prefsUiCtx();
   const nextTilePrefTexts: ModPrefText[] = [];
   for (const pref of modPrefResources()) {
@@ -14367,26 +14436,15 @@ async function applyModResources(): Promise<void> {
     try {
       const res = await fetch(url);
       if (!res.ok) continue;
-      const text = await res.text();
-      /* `%:` INCLUDES RESOLVE BESIDE THE INCLUDING RESOURCE (#278), which is the
-       * mod-folder reading of upstream's flat directory search: a pack's
-       * `%:flvr-x.prf` sits next to its `graf-x.prf`, and `loadTilePrefs` has
-       * always resolved one against the other's directory. Every include of
-       * every depth is resolved against the declared resource's directory, so a
-       * mod lays its pref files out in one folder rather than reasoning about
-       * which file asked. */
-      const dir = pref.resource.path.replace(/[^/]*$/u, "");
-      const applied = await applyPrefText(
-        ctx,
-        text,
-        pref.resource.path,
-        async (name) => {
-          const at = await resolve(`${dir}${name}`);
-          if (at === null) return null;
-          const r = await fetch(at);
-          return r.ok ? await r.text() : null;
-        },
-      );
+      const text = modPreferenceText(await res.text());
+      if (text === null) {
+        reportModFault(
+          pref.modId,
+          `preference file "${pref.resource.path}" is in a format this version does not read`,
+        );
+        continue;
+      }
+      const applied = await applyPrefText(ctx, text, pref.resource.path, async () => null);
       /* Keep the exact bytes that reach the GlyphTable - and the include bytes
        * with them - so every fresh graphics map can replay the tile directives
        * without resolving the mod again. */
