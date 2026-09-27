@@ -350,6 +350,7 @@ import {
   setModListControl,
   setModSnapshotSource,
   setModSavesControl,
+  setModOptionsAfterChange,
   setModIntentGate,
   setModInstallDoor,
   setModReadDoor,
@@ -627,7 +628,7 @@ import {
   REPORT_ACTION_KEYS,
   screenPromptFor,
 } from "./screens";
-import { showCharacterSheet, dumpCharacterFile, dumpFileName } from "./charsheet";
+import { showCharacterSheet, dumpCharacterFile, dumpFileName, characterSheetData } from "./charsheet";
 import {
   showRuneKnowledge,
   showFeatureKnowledge,
@@ -676,6 +677,7 @@ import {
   slotHeldElsewhere,
 } from "./slot-attach";
 import { SAVE_CODEC, SAVE_CODECS } from "./save-codec";
+import { renameStoredSave } from "./stored-rename";
 // --- High scores (task #28) ---
 import {
   createLocalStorageScoreStore,
@@ -6748,6 +6750,9 @@ setModDebugDoor({ wizard: wizardCtx, confirm: confirmDebugGate });
 /* The title builds mod contexts before play begins. The roster and its menu
  * routes are already available here, so the same door works at title and in
  * play on both storage-backed front ends. */
+/* ctx.options saves the game after a mod changes an option, as closing the
+ * options menu does. */
+setModOptionsAfterChange(() => autosave(true));
 setModSavesControl(createModSaves({
   onChange: onRosterChange,
   listRoster,
@@ -6758,6 +6763,7 @@ setModSavesControl(createModSaves({
   rename: (_id, name) => renamePlayer(name)
     ? { ok: true }
     : { ok: false, reason: "The character could not be saved." },
+  renameStored: (id, name) => renameStoredSlot(id, name),
   load: async (id) => {
     if (!readSlotSave(id)) return { ok: false, reason: "This character has no save to load." };
     if (await refusedAsPlayedElsewhere(id)) {
@@ -6771,6 +6777,21 @@ setModSavesControl(createModSaves({
     return { ok: true };
   },
 }));
+
+/**
+ * Rename a character that is not in play: its stored save (stored-rename.ts)
+ * and its roster row are rewritten together.
+ */
+function renameStoredSlot(id: string, name: string): { ok: true } | { ok: false; reason: string } {
+  const meta = getMeta(id);
+  const stored = readSlotSave(id);
+  if (!meta || !stored) return { ok: false, reason: "This character has no save to rename." };
+  const renamed = renameStoredSave(b64ToBytes(stored), name);
+  if (!renamed.ok) return renamed;
+  return writeSlot(id, bytesToB64(renamed.bytes), { ...meta, name })
+    ? { ok: true }
+    : { ok: false, reason: "The character could not be saved." };
+}
 
 /** The roster metadata for the current character, drawn from the live game. */
 function metaFromState(id: string): CharMeta {
@@ -9613,6 +9634,14 @@ const modSnapshotSource: InputSnapshotSource = {
   characterKey: () => {
     const id = attachedSlot();
     return id ? lineageOf(metaFromState(id)) : null;
+  },
+  characterSheet: () => {
+    const opts = charSheetOpts();
+    return characterSheetData(state, playerName, {
+      numShots: opts.numShots,
+      launcher: opts.launcher,
+      uiEntryPacks: opts.uiEntryPacks,
+    });
   },
   activeBlast: () => {
     const prompt = currentPrompt();

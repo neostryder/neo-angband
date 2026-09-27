@@ -118,6 +118,16 @@ describe("buildInputSnapshot", () => {
       shape: "plugin", facets: ["plugin"], modApi: 1, capabilities: ["state:player.read"] });
     expect(modPluginContext("key-read", {}, game.state, {}, { snapshotSource: sourceWithReads,
       capabilities: manifest }).character?.key()).toBe("lineage-1");
+    const sheetSource = source({ characterKey: () => "lineage-1",
+      characterSheet: () => ({ name: "Fred", panels: [{ key: "topleft", lines: [] }], stats: [], history: "", grids: null }) });
+    const sheet = modPluginContext("key-read", {}, game.state, {}, { snapshotSource: sheetSource,
+      capabilities: manifest }).character?.sheet?.();
+    expect(sheet?.name).toBe("Fred");
+    expect(Object.isFrozen(sheet?.panels[0])).toBe(true);
+    const noGrant = CapabilitySet.fromManifest({ id: "key-read", name: "Key read", version: "1.0.0",
+      shape: "plugin", facets: ["plugin"], modApi: 1, capabilities: ["state:map.read"] });
+    expect(modPluginContext("key-read", {}, game.state, {}, { snapshotSource: sheetSource,
+      capabilities: noGrant }).character).toBeUndefined();
   });
   it("offers ctx.inspect only to a mod with a matching read grant", () => {
     const manifest = (capabilities: string[]) => CapabilitySet.fromManifest({

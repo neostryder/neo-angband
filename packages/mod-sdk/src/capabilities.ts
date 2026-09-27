@@ -266,7 +266,8 @@ export type ParsedCapability =
   | { kind: "mod"; action: "install" | "session" }
   | { kind: "mod-read"; action: "read" }
   | { kind: "debug"; action: "spawn" | "wizard" }
-  | { kind: "keymap"; action: "write" }
+  | { kind: "keymap"; action: "write" | "edit" }
+  | { kind: "options"; action: "write" }
   | { kind: "query"; action: "snapshot" }
   | { kind: "policy"; action: "install" }
   | { kind: "hook"; action: "respond" }
@@ -429,6 +430,17 @@ export function parseCapability(cap: string): ParsedCapability {
   if (cap === "keymap:write") {
     return { kind: "keymap", action: "write" };
   }
+  /* "keymap:edit": the player's whole keymap editor - read, replace and remove
+   * any binding in the current keyset, and capture a key to bind. More than
+   * "keymap:write", which only adds new bindings a mod owns and never touches the
+   * player's, so the action is compared and neither covers the other. */
+  if (cap === "keymap:edit") {
+    return { kind: "keymap", action: "edit" };
+  }
+  /* "options:write": change the game's user interface options and its three
+   * number settings, the same values the '=' menu changes. Birth and cheat
+   * options are not reachable through it. */
+  if (cap === "options:write") return { kind: "options", action: "write" };
   if (cap === "query:snapshot") return { kind: "query", action: "snapshot" };
   if (cap === "policy:install") return { kind: "policy", action: "install" };
   if (cap === "hook:respond") return { kind: "hook", action: "respond" };
@@ -538,6 +550,8 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
       return grant.kind === "debug" && grant.action === request.action;
     case "keymap":
       return grant.kind === "keymap" && grant.action === request.action;
+    case "options":
+      return grant.kind === "options";
     case "query":
       return grant.kind === "query" && grant.action === request.action;
     case "policy":

@@ -9,6 +9,8 @@ export interface SavesDoorDeps {
   listRoster(): CharMeta[];
   load(id: string): Promise<SaveResult>;
   rename(id: string, name: string): SaveResult;
+  /** Rename a character that is not in play by rewriting its stored save. */
+  renameStored?(id: string, name: string): SaveResult;
   confirmDelete(meta: CharMeta): Promise<boolean>;
   deleteSlot(id: string): void;
   activeSlot(): string | null;
@@ -54,12 +56,13 @@ export function createModSaves(deps: SavesDoorDeps): ModSaves {
         const meta = find(id);
         if (!meta) return refused("Character not found.");
         if (deps.namePinned()) return refused("You are not allowed to change your name!");
-        /* The roster row is rebuilt from the loaded character on every save,
-         * so only the character in play can be renamed and keep the name. */
-        if (deps.activeSlot() !== id) return refused("Load this character to rename it.");
         const name = acceptedCharacterName(entered);
         if (name === null) return refused("Enter a name of 1 to 15 characters.");
-        return deps.rename(id, name);
+        /* The character in play renames live and saves; any other one is renamed
+         * inside its stored save, so the next load and the roster agree. */
+        if (deps.activeSlot() === id) return deps.rename(id, name);
+        if (!deps.renameStored) return refused("Load this character to rename it.");
+        return deps.renameStored(id, name);
       } catch {
         return refused("The character could not be renamed.");
       }

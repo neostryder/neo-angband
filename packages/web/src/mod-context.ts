@@ -10,6 +10,8 @@
  * needs the live namespace lives here, where no plugin imports it.
  */
 
+import { createModOptions, type ModOptions } from "./mod-options";
+import { createModKeybindings, type ModKeybindings } from "./mod-keybindings";
 import * as neoCore from "@rpgm-tools/neo-angband-core";
 /* The SDK as a VALUE, for the same reason core is one here and only here: this
  * is the module that hands a live namespace to a plugin, and it is the module no
@@ -162,6 +164,8 @@ export function modPluginContext(
   const keyRepeat = keyRepeatFor(session);
   const saves = savesFor(session);
   const keymaps = keymapsFor(id, state, session);
+  const options = optionsFor(state, session);
+  const keybindings = keybindingsFor(state, session);
   const characterStore = characterStoreFor(id, state, session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
@@ -214,8 +218,18 @@ export function modPluginContext(
     ...(saves ? { saves } : {}),
     ...(state && (session.capabilities?.has("state:player.read") || session.capabilities?.has("state:*.read")) &&
       (session.snapshotSource ?? snapshotSource)?.characterKey
-      ? { character: Object.freeze({ key: () => (session.snapshotSource ?? snapshotSource)?.characterKey?.() ?? null }) } : {}),
+      ? { character: Object.freeze({
+        key: () => (session.snapshotSource ?? snapshotSource)?.characterKey?.() ?? null,
+        ...((session.snapshotSource ?? snapshotSource)?.characterSheet ? {
+          sheet: () => {
+            const sheet = (session.snapshotSource ?? snapshotSource)?.characterSheet?.() ?? null;
+            return sheet ? deepFreezeSheet(sheet) : null;
+          },
+        } : {}),
+      }) } : {}),
     ...(keymaps ? { keymaps } : {}),
+    ...(options ? { options } : {}),
+    ...(keybindings ? { keybindings } : {}),
     ...(characterStore ? { characterStore } : {}),
     /* Defaults FALSE, which is the safe way round: a mod that seeds something
      * for a new life must not seed it over a character who already lived one,
@@ -250,6 +264,27 @@ export function modPluginContext(
 }
 
 /** `ctx.keymaps` is meaningful only during a live game and with its own consent. */
+/** The host's save-after-change hook for `ctx.options`, latched at boot (main.ts autosave). */
+let optionsAfterChange: (() => void) | undefined;
+
+export function setModOptionsAfterChange(after: (() => void) | undefined): void {
+  optionsAfterChange = after;
+}
+
+function optionsFor(state: GameState | undefined, session: ModSessionFacts): ModOptions | undefined {
+  const caps = session.capabilities;
+  if (!state || !caps || !(caps.has("state:options.read") || caps.has("state:*.read"))) return undefined;
+  return createModOptions(state, {
+    writable: caps.has("options:write"),
+    ...(optionsAfterChange ? { afterChange: optionsAfterChange } : {}),
+  });
+}
+
+function keybindingsFor(state: GameState | undefined, session: ModSessionFacts): ModKeybindings | undefined {
+  if (!state || !session.capabilities?.has("keymap:edit")) return undefined;
+  return createModKeybindings(state);
+}
+
 function keymapsFor(id: string, state: GameState | undefined, session: ModSessionFacts): ModKeymaps | undefined {
   if (!state || !session.capabilities?.has(KEYMAP_WRITE_CAPABILITY)) return undefined;
   return createModKeymaps(id, state);
@@ -829,4 +864,13 @@ export interface ModOwnFiles {
   readonly assetUrl?: (id: string, path: string) => Promise<string | null>;
   /** The pack's parsed record files, keyed without `.json` (DiskPack.files). */
   readonly data?: Readonly<Record<string, unknown>>;
+}
+
+/** A fresh sheet is built per call; freeze it whole so a mod cannot edit what the next reader sees. */
+function deepFreezeSheet<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const child of Object.values(value as Record<string, unknown>)) deepFreezeSheet(child);
+    Object.freeze(value);
+  }
+  return value;
 }

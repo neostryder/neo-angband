@@ -592,6 +592,16 @@ A remembered object in `ctx.knownLevel()` may carry `aura`: `cursed` for a known
 
 The `bolt` and `explosion` events (`event:bolt` and `event:explosion`) name their projection in `element`, such as `FIRE` or `COLD`, beside the numeric `projType`. An explosion also reports `arc` for a breath or cone, and `radius`, the farthest affected distance from its centre. The `motion` event in section 4l already marks a blink or teleport with `kind: "teleport"`.
 
+## 4u. Character sheet, saves, options and keymaps
+
+`ctx.character.sheet()`, under `state:player.read`, returns the character sheet as data: the five panels of the first page with each line's label, value and colour, one row per stat with the Self, race, class, equipment and Best columns, the background paragraph, and the second page's sustains, resistance, ability, hindrance and modifier grids. Each grid row has one cell per equipment slot and then the player's own column. Every colour comes as its COLOUR_* index and as a CSS colour. The sheet is built by the same functions as the character screen, so the two never disagree, and it is `null` for the grids when the game has no ui_entry packs.
+
+`ctx.saves.rename(id, name)` renames any saved character, not only the one in play. For a character that is not loaded, the host changes the name inside its save and in the roster. The rename is refused for a save from a newer build of the game, for a save that failed its integrity check, and for a dead character, whose save no longer exists. A dead character cannot be replayed either, because death is final.
+
+`ctx.options`, under `state:options.read`, lists every option on the interface, birth, cheat and score pages with its description and current value, plus the hit point warning, the delay factor and the movement delay. With `options:write` as well, `set()` changes user interface options and those three numbers. A change applies whole or not at all, fires the `optionsChanged` hook and saves the game, the same as closing the options menu. Birth options lock at character creation, and a cheat option takes the character off the score table for good, so `set()` refuses both.
+
+`ctx.keybindings`, under `keymap:edit`, is the player's keymap editor for the current keyset. `list()` returns every binding with the mod that created it, if any; `set()` binds or replaces a trigger and `remove()` drops one, and both save at once. A binding set here belongs to the player even when it replaces one a mod made with `ctx.keymaps`, so that mod no longer removes it. `capture()` resolves with the next key the player presses that a keymap can use, or null for Escape, and the game never acts on that key. `keymap:write` does not cover `keymap:edit`.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

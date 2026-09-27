@@ -112,6 +112,7 @@ export interface InputSnapshotSource {
   messages?(): readonly string[];
   storeStatus?(): Omit<NonNullable<InputSnapshot["storeStatus"]>, "token"> | null;
   characterKey?(): string | null;
+  characterSheet?(): import("./charsheet").CharacterSheetData | null;
   activeBlast?(): { readonly radius: number; readonly element: string; readonly wallsStop: boolean } | null;
   prompt(): PromptDescriptor | null;
   /** The last produced frame, live; this module copies it. */

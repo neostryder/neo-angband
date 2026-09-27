@@ -45,6 +45,7 @@ import {
   charsheetPromptLabels,
   MODE_VIEW_IDS,
   buildCharacterDump,
+  characterSheetData,
 } from "./charsheet";
 import {
   characterScreen,
@@ -1410,3 +1411,33 @@ describe("character dump - the autoplayer mark", () => {
     expect(dumpWithNoscore(NOSCORE.BORG).startsWith(dumpWithNoscore(0))).toBe(true);
   });
 });
+
+describe("characterSheetData: the sheet as data for a mod", () => {
+  it("carries the same panels, stats, history and flag grid the two pages draw", () => {
+    const { state } = setup();
+    const data = characterSheetData(state, "Fred", { uiEntryPacks });
+    const screen = characterScreen(state, "Fred");
+    expect(data.name).toBe("Fred");
+    expect(data.panels.map((p) => p.key)).toEqual(["topleft", "misc", "midleft", "combat", "skills"]);
+    expect(data.panels[0]!.lines.find((l) => l.label.trim().startsWith("Name"))?.value.trim()).toBe("Fred");
+    expect(data.stats).toHaveLength(5);
+    expect(data.history).toBe(state.actor.player.history.trim());
+    expect(screen.blocks.some((b) => b.kind === "text")).toBe(data.history.length > 0);
+    const grids = data.grids!;
+    expect(grids.map((g) => g.key)).toEqual(["sustains", "resistances", "abilities", "hindrances", "modifiers"]);
+    const flags = characterFlagsScreen(state, "Fred", buildUiEntryConfig(uiEntryPacks));
+    const resist = flags.blocks[1]!;
+    if (resist.kind !== "table") throw new Error("the flag grid stopped being a table");
+    expect(grids[1]!.rows).toHaveLength(resist.rows.length);
+    for (const row of grids[1]!.rows) {
+      expect(row.cells).toHaveLength(state.actor.player.body.count + 1);
+      expect(row.labelColor.css).toMatch(/^#|^rgb/);
+    }
+  });
+
+  it("reports no grid when the game has no ui_entry packs", () => {
+    const { state } = setup();
+    expect(characterSheetData(state, "Fred").grids).toBeNull();
+  });
+});
+

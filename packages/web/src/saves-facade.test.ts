@@ -88,6 +88,20 @@ describe("mod saves facade", () => {
     expect(door.rename).toHaveBeenCalledTimes(1);
   });
 
+  it("renames a character not in play inside its stored save, when the host can", async () => {
+    const backing = storage();
+    setRosterStorage(backing);
+    backing.setItem("neo-angband-roster", JSON.stringify([alice]));
+    const renameStored = vi.fn(() => ({ ok: true as const }));
+    const door = deps({ activeSlot: vi.fn(() => "bob"), renameStored });
+    const saves = createModSaves(door);
+    expect(await saves.rename("alice", " Stored ")).toEqual({ ok: true });
+    expect(renameStored).toHaveBeenCalledExactlyOnceWith("alice", "Stored");
+    expect(door.rename).not.toHaveBeenCalled();
+    expect(await saves.rename("alice", "")).toMatchObject({ ok: false });
+    expect(renameStored).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses the active slot and requires host confirmation", async () => {
     const backing = storage();
     setRosterStorage(backing);

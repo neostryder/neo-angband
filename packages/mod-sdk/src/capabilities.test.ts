@@ -40,6 +40,17 @@ describe("parseCapability: valid forms", () => {
     }));
     expect(manager.has("saves:manage")).toBe(true);
   });
+  it("keeps options:write and keymap:edit apart from the grants near them", () => {
+    expect(parseCapability("options:write")).toEqual({ kind: "options", action: "write" });
+    expect(parseCapability("keymap:edit")).toEqual({ kind: "keymap", action: "edit" });
+    const writer = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["keymap:write", "state:*.read"] }));
+    expect(writer.has("keymap:edit")).toBe(false);
+    expect(writer.has("options:write")).toBe(false);
+    const editor = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["keymap:edit", "options:write"] }));
+    expect(editor.has("keymap:edit")).toBe(true);
+    expect(editor.has("keymap:write")).toBe(false);
+    expect(editor.has("options:write")).toBe(true);
+  });
   it("parses input:intent as its own grant", () => {
     expect(parseCapability("input:intent")).toEqual({ kind: "input", action: "intent" });
     expect(() => parseCapability("input:*")).toThrow(CapabilityError);

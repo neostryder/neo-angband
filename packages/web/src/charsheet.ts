@@ -1344,3 +1344,92 @@ function paintPanel(
   }
   return y;
 }
+
+/** One coloured value on the structured sheet: its COLOUR_* index and the CSS colour it draws in. */
+export interface SheetColor {
+  readonly color: number;
+  readonly css: string;
+}
+
+/**
+ * The character sheet as data, for a mod that lays it out itself
+ * (`ctx.character.sheet()`). It carries the same panels, stat rows, history and
+ * flag grid that `characterScreen` and `characterFlagsScreen` draw, computed by
+ * the same core functions, so the two pages and this read never disagree.
+ */
+export interface CharacterSheetData {
+  readonly name: string;
+  /** The five panels of the first page (topleft, misc, midleft, combat, skills). */
+  readonly panels: readonly {
+    readonly key: string;
+    readonly lines: readonly ({ readonly label: string; readonly value: string } & SheetColor)[];
+  }[];
+  /** One row per stat: the Self, race, class, equipment and Best columns, and the drained value. */
+  readonly stats: readonly {
+    readonly key: string;
+    readonly label: string;
+    readonly natural: string;
+    readonly raceBonus: string;
+    readonly classBonus: string;
+    readonly equipBonus: string;
+    readonly best: string;
+    readonly reduced: string | null;
+    readonly naturalMax: boolean;
+    readonly drained: boolean;
+  }[];
+  /** The background paragraph, unwrapped, or "" when the character has none. */
+  readonly history: string;
+  /**
+   * The second page: the sustains block first, then the resistance, ability,
+   * hindrance and modifier regions. Each row has one cell per equipment slot and
+   * then the player's own column. Null when the game has no ui_entry packs.
+   */
+  readonly grids: readonly {
+    readonly key: string;
+    readonly rows: readonly {
+      readonly name: string;
+      readonly label: string;
+      readonly labelColor: SheetColor;
+      readonly cells: readonly ({ readonly symbol: string } & SheetColor)[];
+    }[];
+  }[] | null;
+}
+
+function sheetColor(color: number): SheetColor {
+  return { color, css: colorToCss(color) };
+}
+
+export function characterSheetData(
+  state: GameState,
+  name: string,
+  opts: { numShots?: number; launcher?: GameObject | null; uiEntryPacks?: UiEntryPackRecords } = {},
+): CharacterSheetData {
+  const deps = {
+    ...charSheetDeps(state, name),
+    ...(opts.numShots !== undefined ? { numShots: opts.numShots } : {}),
+    ...(opts.launcher !== undefined ? { launcher: opts.launcher } : {}),
+  };
+  const background = state.modHooks?.characterBackground;
+  const stored = state.actor.player.history;
+  const gridConfig = opts.uiEntryPacks ? buildUiEntryConfig(opts.uiEntryPacks, state.uiEntry) : null;
+  const grid = gridConfig ? characterGrid(state, gridConfig, liveUiEntryDeps(state)) : null;
+  const gridData = (panel: UiGridPanel) => ({
+    key: panel.key,
+    rows: panel.rows.map((row) => ({
+      name: row.name,
+      label: row.label,
+      labelColor: sheetColor(row.labelColor),
+      cells: row.cells.map((cell) => ({ symbol: cell.symbol, ...sheetColor(cell.color) })),
+    })),
+  });
+  return {
+    name,
+    panels: characterPanels(state, deps).map((panel) => ({
+      key: panel.key,
+      lines: panel.lines.map((line) => ({ label: line.label, value: line.value, ...sheetColor(line.color) })),
+    })),
+    stats: statTable(state, deps).map((row) => ({ ...row })),
+    history: (background ? background(stored) : stored).trim(),
+    grids: grid ? [{ ...gridData(grid.statModPanel), key: "sustains" }, ...grid.resistPanels.map(gridData)] : null,
+  };
+}

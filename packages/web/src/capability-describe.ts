@@ -290,9 +290,21 @@ export function describeCapability(cap: string): CapabilityDescription {
         elevated: true,
       };
     case "keymap":
+      return parsed.action === "edit"
+        ? {
+            cap,
+            text: "Change, replace and remove any of your keymaps in the current keyset, and read the next key you press to bind it",
+            elevated: true,
+          }
+        : {
+            cap,
+            text: "Create new shortcut keymaps in your current keyset without replacing your existing shortcuts",
+            elevated: false,
+          };
+    case "options":
       return {
         cap,
-        text: "Create new shortcut keymaps in your current keyset without replacing your existing shortcuts",
+        text: "Change your user interface options and delay settings, as the options menu does; birth and cheat options stay yours to set",
         elevated: false,
       };
     case "query":

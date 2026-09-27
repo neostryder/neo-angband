@@ -631,10 +631,25 @@ export interface ModPluginContext {
    * stale repeat is a separate, later change.
    */
   readonly keyRepeat?: () => KeyRepeatVerdict | null;
+  /**
+   * The game's own options, under `state:options.read`; `set` needs
+   * `options:write` too and changes only user interface options and the three
+   * number settings (mod-options.ts).
+   */
+  readonly options?: import("./mod-options").ModOptions;
+  /** The player's keymap editor for the current keyset, under `keymap:edit` (mod-keybindings.ts). */
+  readonly keybindings?: import("./mod-keybindings").ModKeybindings;
   /** Manage roster slots after declaring `saves:manage`, including at the title. */
   readonly saves?: ModSaves;
-  /** Stable host roster lineage for the attached character. */
-  readonly character?: { key(): string | null };
+  /**
+   * The attached character, under `state:player.read`. `key()` is its stable host
+   * roster lineage. `sheet()` is the character sheet as data: the same panels,
+   * stat rows, history and flag grid the character screen draws.
+   */
+  readonly character?: {
+    key(): string | null;
+    sheet?(): import("./charsheet").CharacterSheetData | null;
+  };
   /**
    * Manage this mod's keymaps in the player's current keyset. Present only when
    * the mod declared `keymap:write` and the player consented. `bind()` never

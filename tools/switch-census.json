@@ -24,25 +24,25 @@
       "verdict": "UI - keypress routing in the equipment-compare overlay (MOD_REACH gap 23). Reachable once the keypress table is data."
     },
     {
+      "file": "packages/mod-sdk/src/capabilities.ts",
+      "cases": 21,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - capability grants are host-owned consent vocabulary. saves:manage (#285) names the roster-management grant; mods cannot add a capability kind. options:write (#291) is one more host-owned grant."
+    },
+    {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 21,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. saves:manage (#285) is elevated because it can delete characters; mods cannot add an unreviewed consent category. keymap:edit (#291) is elevated because it can replace the player's keymaps."
+    },
+    {
       "file": "packages/core/src/obj/object.ts",
       "cases": 20,
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
-    },
-    {
-      "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 20,
-      "hasDefault": false,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - capability grants are host-owned consent vocabulary. saves:manage (#285) names the roster-management grant; mods cannot add a capability kind."
-    },
-    {
-      "file": "packages/web/src/capability-describe.ts",
-      "cases": 20,
-      "hasDefault": false,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. saves:manage (#285) is elevated because it can delete characters; mods cannot add an unreviewed consent category."
     },
     {
       "file": "packages/web/src/main.ts",
@@ -234,6 +234,13 @@
       "verdict": "LOCALIZATION - skill_index_to_name. Index to display string; gap 14 owns the strings."
     },
     {
+      "file": "packages/mod-sdk/src/capabilities.ts",
+      "cases": 9,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "INTERNAL - parsing recognizes the closed capability grammar owned by the mod SDK. input:intent and input:prompt.reply (#285) are documented tokens, not game behavior branches a mod can add at runtime. options:write and keymap:edit (#291) are two more exact grants."
+    },
+    {
       "file": "packages/web/src/birth.ts",
       "cases": 9,
       "hasDefault": false,
@@ -309,13 +316,6 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
-    },
-    {
-      "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 8,
-      "hasDefault": false,
-      "kind": "IF_CHAIN",
-      "verdict": "INTERNAL - parsing recognizes the closed capability grammar owned by the mod SDK. input:intent and input:prompt.reply (#285) are documented tokens, not game behavior branches a mod can add at runtime."
     },
     {
       "file": "packages/mod-sdk/src/patch.ts",
