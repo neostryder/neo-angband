@@ -15,12 +15,12 @@
  * written months apart and the only thing keeping them agreeing is a shape both
  * of them read from one place.
  *
- * WHAT IS IN IT. A neo-angband/web/character-export document: the roster
- * metadata, plus the save itself as JSON when this build can read the slot.
- * The metadata is a CONVENIENCE and is treated as such - it is re-derived from
- * the game the first time that character is saved, so a hand-edited level
- * number is a cosmetic lie that lasts one turn, not a cheat. A file written
- * by an older build still carries the slot bytes in base64, and still imports.
+ * WHAT IS IN IT. The save bytes, base64, exactly as the slot holds them, plus the
+ * roster metadata so the receiving picker can show the character without decoding
+ * a save it may not be able to read yet. The metadata is a CONVENIENCE and is
+ * treated as such - it is re-derived from the game the first time that character
+ * is saved, so a hand-edited level number is a cosmetic lie that lasts one turn,
+ * not a cheat.
  *
  * WHAT IS DELIBERATELY NOT IN IT: the slot id. An id is unique to the roster it
  * came from, and honouring one from a file would let an import silently overwrite
@@ -44,22 +44,8 @@
  * neither is worth engineering against.
  */
 
-import {
-  applyCodec,
-  decodeSavedGame,
-  encodeSavedGame,
-  stampSavefile,
-  type SavedGame,
-} from "@rpgm-tools/neo-angband-core";
-import {
-  characterExportFormat,
-  isSavedGameHeader,
-  parseDocument,
-  serializeDocument,
-  savedGameFormat,
-  type CharacterExport,
-} from "@rpgm-tools/neo-angband-mod-sdk";
-import { SAVE_CODEC, SAVE_CODECS } from "./save-codec";
+import { decodeSavedGame } from "@rpgm-tools/neo-angband-core";
+import { SAVE_CODECS } from "./save-codec";
 
 /** The current file format. Bumped only when an older file would be MISREAD. */
 export const TRANSFER_VERSION = 1;
@@ -121,31 +107,16 @@ export function encodeTransfer(input: {
   readonly exportedAt: string;
   readonly lineage: string;
 }): string {
-  return serializeDocument(characterExportFormat, {
+  const file: TransferFile = {
+    magic: TRANSFER_MAGIC,
+    version: TRANSFER_VERSION,
     engine: input.engine,
     exportedAt: input.exportedAt,
-    ...(input.lineage !== "" ? { lineage: input.lineage } : {}),
+    lineage: input.lineage,
     meta: input.meta,
-    save: embedSave(input.save),
-  });
-}
-
-/** The save JSON when the slot decodes, otherwise the slot text unchanged. */
-function embedSave(slotText: string): unknown {
-  try {
-    const decoded = decodeSavedGame(
-      base64ToBytes(slotText),
-      undefined,
-      SAVE_CODECS,
-      MAX_TRANSFER_DECOMPRESSED_BYTES,
-    );
-    /* Keep a failed integrity stamp with its original bytes. Re-encoding the
-     * parsed payload would make damage appear to have passed verification. */
-    if (decoded.save && (decoded.verified || decoded.unstamped)) return decoded.save;
-  } catch {
-    /* The slot text still travels. A later build may read what this one cannot. */
-  }
-  return slotText;
+    save: input.save,
+  };
+  return `${JSON.stringify(file, null, 2)}\n`;
 }
 
 /** A filename a player will recognise a week later, safe on every filesystem. */
@@ -238,22 +209,6 @@ export type TransferPeek =
  * same contract as `decodeTransfer`.
  */
 export function peekTransferMeta(text: string): TransferPeek {
-  const house = readHouseExport(text);
-  if (house.kind === "refuse") return { ok: false, why: house.why };
-  if (house.kind === "house") {
-    if (house.data.meta.name === "") {
-      return { ok: false, why: "that character file's details are missing or malformed" };
-    }
-    return {
-      ok: true,
-      meta: house.data.meta,
-      engine: house.data.engine,
-      exportedAt: house.data.exportedAt,
-      ...(house.data.lineage !== undefined && house.data.lineage !== ""
-        ? { lineage: house.data.lineage }
-        : {}),
-    };
-  }
   const envelope = parseEnvelope(text);
   if (!envelope.ok) return envelope;
   const meta = readMeta(envelope.o["meta"]);
@@ -278,9 +233,6 @@ export function peekTransferMeta(text: string): TransferPeek {
  * between the wrong file, a truncated download and a version they cannot use.
  */
 export function decodeTransfer(text: string): TransferResult {
-  const house = readHouseExport(text);
-  if (house.kind === "refuse") return { ok: false, why: house.why };
-  if (house.kind === "house") return decodeHouseExport(house.data);
   const envelope = parseEnvelope(text);
   if (!envelope.ok) return envelope;
   const { o, version } = envelope;
@@ -371,136 +323,6 @@ function utf8LengthExceeds(text: string, maxBytes: number): boolean {
     if (bytes > maxBytes) return true;
   }
   return false;
-}
-
-type HouseRead =
-  | { readonly kind: "house"; readonly data: CharacterExport }
-  | { readonly kind: "legacy" }
-  | { readonly kind: "refuse"; readonly why: string };
-
-/**
- * A current character document, or a signal to try the previous magic/version
- * file. Size and JSON failures fall through so the older reader keeps its
- * own sentences.
- */
-function readHouseExport(text: string): HouseRead {
-  if (utf8LengthExceeds(text, MAX_TRANSFER_TEXT_BYTES)) return { kind: "legacy" };
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch {
-    return { kind: "legacy" };
-  }
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return { kind: "legacy" };
-  const record = raw as Record<string, unknown>;
-  if (typeof record["format"] !== "string") return { kind: "legacy" };
-  if (record["format"] !== characterExportFormat.format) {
-    return { kind: "refuse", why: "that file is not a Neo Angband character file" };
-  }
-  const version = record["schemaVersion"];
-  if (typeof version === "number" && version > characterExportFormat.schemaVersion) {
-    return {
-      kind: "refuse",
-      why:
-        `that character file is format ${String(version)} and this build reads ` +
-        `${String(characterExportFormat.schemaVersion)} - it was written by a newer version of the game`,
-    };
-  }
-  const parsed = parseDocument(record, characterExportFormat);
-  if (!parsed.ok) {
-    return { kind: "refuse", why: "that character file's details are missing or malformed" };
-  }
-  return { kind: "house", data: parsed.data };
-}
-
-function decodeHouseExport(data: CharacterExport): TransferResult {
-  if (data.meta.name === "") {
-    return { ok: false, why: "that character file's details are missing or malformed" };
-  }
-  const save = slotTextFromExport(data.save);
-  if (!save.ok) return save;
-  return {
-    ok: true,
-    file: {
-      magic: TRANSFER_MAGIC,
-      version: TRANSFER_VERSION,
-      engine: data.engine,
-      exportedAt: data.exportedAt,
-      ...(data.lineage !== undefined && data.lineage !== "" ? { lineage: data.lineage } : {}),
-      meta: data.meta,
-      save: save.b64,
-    },
-  };
-}
-
-const DAMAGED_SAVE =
-  `that character file's save data is damaged, malformed, or expands beyond ` +
-  `the ${formatBytes(MAX_TRANSFER_DECOMPRESSED_BYTES)} import limit`;
-
-function slotTextFromExport(save: unknown): { readonly ok: true; readonly b64: string } | { readonly ok: false; readonly why: string } {
-  if (typeof save === "string") {
-    if (save.length === 0) return { ok: false, why: "that character file carries no save data" };
-    if (maxBase64Bytes(save.length) > MAX_TRANSFER_SAVE_BYTES) {
-      return {
-        ok: false,
-        why: `that character file's save data is larger than the ${formatBytes(MAX_TRANSFER_SAVE_BYTES)} import limit`,
-      };
-    }
-    let bytes: Uint8Array;
-    try {
-      bytes = base64ToBytes(save);
-    } catch {
-      return { ok: false, why: "that character file's save data is not valid base64" };
-    }
-    if (bytes.length > MAX_TRANSFER_SAVE_BYTES) {
-      return {
-        ok: false,
-        why: `that character file's save data is larger than the ${formatBytes(MAX_TRANSFER_SAVE_BYTES)} import limit`,
-      };
-    }
-    const decoded = decodeSavedGame(bytes, undefined, SAVE_CODECS, MAX_TRANSFER_DECOMPRESSED_BYTES);
-    if (decoded.unknownCodec) {
-      return {
-        ok: false,
-        why: `that character file uses the unsupported ${decoded.unknownCodec} save codec`,
-      };
-    }
-    if (!decoded.save && !decoded.futureSchema) return { ok: false, why: DAMAGED_SAVE };
-    return { ok: true, b64: save };
-  }
-  if (save === null || typeof save !== "object" || Array.isArray(save)) {
-    return { ok: false, why: "that character file carries no save data" };
-  }
-  const record = save as Record<string, unknown>;
-  if (typeof record["format"] === "string") {
-    const parsed = parseDocument(save, savedGameFormat);
-    if (!parsed.ok) {
-      if (parsed.issues.some((issue) => issue.message === "future schema version")) {
-        return { ok: true, b64: preserveSaveDocument(save) };
-      }
-      return { ok: false, why: DAMAGED_SAVE };
-    }
-    return {
-      ok: true,
-      b64: bytesToBase64(encodeSavedGame(parsed.data as unknown as SavedGame, undefined, SAVE_CODEC)),
-    };
-  }
-  if (!isSavedGameHeader(save)) return { ok: false, why: DAMAGED_SAVE };
-  return { ok: true, b64: bytesToBase64(encodeSavedGame(save as unknown as SavedGame, undefined, SAVE_CODEC)) };
-}
-
-/** Keep a future save document inside the storage wrapper without rewriting its fields. */
-function preserveSaveDocument(value: unknown): string {
-  const payload = new TextEncoder().encode(JSON.stringify(value));
-  return bytesToBase64(stampSavefile(applyCodec(payload, SAVE_CODEC)));
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(binary);
 }
 
 function base64ToBytes(base64: string): Uint8Array {

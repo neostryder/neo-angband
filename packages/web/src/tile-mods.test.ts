@@ -234,7 +234,7 @@ describe("enabledTileModes", () => {
 
 describe("enabledTileModes: loose packs", () => {
   it("adds a mode of the mod's own, with its own name and no catalog entry", () => {
-    // A loose pack carries its metadata inside the pack (pack.json), so it
+    // A loose pack carries its metadata inside the pack (manifest.txt), so it
     // needs no list.txt row - it ADDS a Graphics row instead of re-skinning one.
     const modes = enabledTileModes({
       manifests: manifests(["loosepack", loosepack]),

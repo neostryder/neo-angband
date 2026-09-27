@@ -140,14 +140,7 @@ is also explicitly absent in this shell. These are parity gaps, not permission
 to emulate rules with a touch macro. Touch must expose available commands and
 record unavailable upstream operations rather than silently assign substitutes.
 
-Before this increment, keymaps were shared globally across original/rogue
-keyset tables in `neo-angband:keymaps`, with ownership in
-`neo-angband:keymap-owners`. Desktop retains those keys; Touch adds independent
-`:touch` keys as described in the design. The editor
-accepts printable triggers, Enter and F1-F12; actions encode named keys as
-`[Enter]` or `[F5]`. Expansion enters the queue once without recursive keymap
-expansion. Modal prompts, scores and the interrupt pump receive literal input.
-Player replacement clears mod ownership, so mod removal must preserve it.
+Keymaps use a JSON document in `neo-angband:keymaps` for Desktop and a separate `:touch` document for Touch. Each binding includes its owner and typed trigger and action keys. The older `neo-angband:keymap-owners` keys and bracket-encoded actions convert on first read. The editor accepts printable triggers, Enter and F1-F12. Expansion enters the queue once without recursive keymap expansion. Modal prompts, scores and the interrupt pump receive literal input. Player replacement clears mod ownership, so mod removal must preserve it.
 
 Selection is not execution. Fire and Throw select an item and then aim. Cast
 selects a book and spell before any optional effect prompts. Recharge, enchant,

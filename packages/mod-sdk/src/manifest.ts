@@ -405,18 +405,16 @@ export interface PackTilePack {
 export interface LinoleumTilesheetSource {
   /** Stable pack key, used to partition generated cache entries. */
   key: string;
-  /** The id written into the generated loose pack's pack.json. */
+  /** The id written into the generated loose pack's manifest.txt. */
   packId: string;
-  /** The display name written into the generated loose pack's pack.json. */
+  /** The display name written into the generated loose pack's manifest.txt. */
   displayName: string;
   /** Bump whenever any compact source input changes, invalidating its cache. */
   cacheKey: string;
   /** PNG path relative to this tile pack's `path`. */
   image: string;
-  /** JSON tile-map document relative to this tile pack's `path`. */
-  tileMap?: string;
-  /** Older compact sources use these files until they are republished. */
-  prefFiles?: string[];
+  /** The legacy .prf files, relative to this tile pack's `path`. */
+  prefFiles: string[];
   /** Nominal output resolution and images/<resolution>/ directory name. */
   resolution: number;
   tileWidth?: number;
@@ -1166,16 +1164,8 @@ function validateLinoleumTilesheet(value: unknown, id: string): void {
       throw new ManifestError(`manifest ${id}: tilePacks tilesheet.${key} must be a non-empty string`);
     }
   }
-  const tileMap = source["tileMap"];
-  const prefFiles = source["prefFiles"];
-  if (tileMap !== undefined && (typeof tileMap !== "string" || tileMap === "")) {
-    throw new ManifestError(`manifest ${id}: tilePacks tilesheet.tileMap must be a non-empty string`);
-  }
-  if (prefFiles !== undefined && (!Array.isArray(prefFiles) || prefFiles.length === 0 || prefFiles.some((file) => typeof file !== "string" || file === ""))) {
+  if (!Array.isArray(source["prefFiles"]) || source["prefFiles"].length === 0 || source["prefFiles"].some((file) => typeof file !== "string" || file === "")) {
     throw new ManifestError(`manifest ${id}: tilePacks tilesheet.prefFiles must be an array of non-empty strings`);
-  }
-  if (tileMap === undefined && prefFiles === undefined) {
-    throw new ManifestError(`manifest ${id}: tilePacks tilesheet needs tileMap or prefFiles`);
   }
   if (typeof source["resolution"] !== "number" || !Number.isInteger(source["resolution"]) || source["resolution"] <= 0) {
     throw new ManifestError(`manifest ${id}: tilePacks tilesheet.resolution must be a positive integer`);
@@ -1186,7 +1176,7 @@ function validateLinoleumTilesheet(value: unknown, id: string): void {
       throw new ManifestError(`manifest ${id}: tilePacks tilesheet.${key} must be a non-negative integer`);
     }
   }
-  for (const path of [source["image"], ...(tileMap === undefined ? [] : [tileMap]), ...(Array.isArray(prefFiles) ? prefFiles : [])]) {
+  for (const path of [source["image"], ...(source["prefFiles"] as unknown[])]) {
     if (typeof path !== "string" || /^([a-z][a-z0-9+.-]*:)?\//iu.test(path) || path.startsWith("\\") || path.split(/[/\\]/u).includes("..")) {
       throw new ManifestError(`manifest ${id}: tilePacks tilesheet files must stay inside the tile pack`);
     }

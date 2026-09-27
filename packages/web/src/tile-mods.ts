@@ -36,7 +36,7 @@
  *   against the pack;
  * - a `linoleum` pack needs only `path` and `menuname` and may claim a grafID of
  *   its own (use >= 100 to stay clear of upstream's list.txt numbering), which
- *   ADDS a row - everything else comes from the pack's pack.json.
+ *   ADDS a row - everything else comes from the pack's manifest.txt.
  *
  * The pure `enabledTileModes` / `mergeModSources` / `contributedTileModes` do the
  * work over already-discovered inputs so they are unit-testable;
@@ -209,7 +209,7 @@ function lastClaimWins(packs: readonly TileModePack[]): TileModePack[] {
  * A pack is skipped when it could not be rendered anyway: a tilesheet whose
  * grafID the core catalog does not know or that has no atlas filename (its cell
  * size and pref file would be unknown), or a loose pack with no `path` (a loose
- * pack's pack.json exists only inside the pack, so there would be nothing to
+ * pack's manifest.txt exists only inside the pack, so there would be nothing to
  * read its metadata from).
  */
 export function enabledTileModes(input: {
@@ -321,7 +321,7 @@ export type ModAssetSource =
  * already where the shell's own tile base points (that is what a `path`-less
  * `tilePacks` entry has always meant), and the caller supplies its own base for
  * that case. A LOOSE pack is never in that position - enabledTileModes drops one
- * with no `path` - because a loose pack's pack.json only exists inside the pack.
+ * with no `path` - because a loose pack's manifest.txt only exists inside the pack.
  *
  * Pure over the source, so the bundle case and the three directory cases are
  * testable without a browser or a mods folder.

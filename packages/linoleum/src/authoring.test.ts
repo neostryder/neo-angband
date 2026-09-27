@@ -6,23 +6,18 @@
  * pool built from assets the export actually produced.
  */
 
-import { readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
-import { linoleumPackFormat, parseDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import { convertPacks } from "./convert.js";
+import { parsePoolsFile, parseTargetsFile } from "./targets.js";
 
 const tilesRoot = fileURLToPath(new URL("../../../reference/lib/tiles", import.meta.url));
 const outputRoot = fileURLToPath(new URL("../.test-out-authoring", import.meta.url));
 
 const packRoot = (): string => join(outputRoot, "original-tiles");
-
-function pack() {
-  const parsed = parseDocument(readFileSync(join(packRoot(), "pack.json"), "utf8"), linoleumPackFormat);
-  if (!parsed.ok) throw new Error(parsed.issues.map((issue) => issue.message).join("; "));
-  return parsed.data;
-}
+const read = (path: string): string => readFileSync(path, "utf8");
 
 // Real assets the original-tiles export produces (FLOOR carries dark/lit/los/
 // torch variants; a lit torch object exists). Used both as pool members and as
@@ -37,8 +32,12 @@ describe("no authoring: pool files stay absent (regression bar)", () => {
     convertPacks({ tilesRoot, outputRoot, packKeys: ["original-tiles"] });
   }, 60_000);
 
-  it("omits pools from the pack document", () => {
-    expect(pack().pools).toBeUndefined();
+  it("writes no maps/pools.txt", () => {
+    expect(existsSync(join(packRoot(), "maps", "pools.txt"))).toBe(false);
+  });
+
+  it("does not register a pools map in the manifest", () => {
+    expect(read(join(packRoot(), "manifest.txt"))).not.toContain("map:pools");
   });
 
   it("reports zero authored pools/targets", () => {
@@ -81,10 +80,15 @@ describe("with authoring: pools + per-object rules are emitted", () => {
     });
   }, 60_000);
 
-  it("writes the authored pool into the pack document", () => {
-    expect(pack().pools).toEqual([
+  it("registers the pools map in the manifest", () => {
+    expect(read(join(packRoot(), "manifest.txt"))).toContain("map:pools:maps/pools.txt");
+  });
+
+  it("writes maps/pools.txt with the authored pool", () => {
+    const pools = parsePoolsFile(read(join(packRoot(), "maps", "pools.txt")));
+    expect(pools).toEqual([
       {
-        id: "floor_variants",
+        poolId: "floor_variants",
         selection: "stable",
         members: [FLOOR_LIT, FLOOR_DARK, FLOOR_LOS],
       },
@@ -92,7 +96,7 @@ describe("with authoring: pools + per-object rules are emitted", () => {
   });
 
   it("appends the pool and per-object target rules", () => {
-    const rules = pack().targets;
+    const rules = parseTargetsFile(read(join(packRoot(), "maps", "targets.txt")));
     expect(rules).toContainEqual({
       type: "feat",
       selector: "FLOOR",

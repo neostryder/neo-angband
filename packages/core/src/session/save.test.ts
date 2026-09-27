@@ -33,8 +33,7 @@ import {
   SAVE_VERSION,
 } from "./save.js";
 import type { SavedGame } from "./save.js";
-import { applyCodec, type SaveCodec } from "../save/compress.js";
-import { stampSavefile, verifyStampedSavefile } from "../save/integrity.js";
+import type { SaveCodec } from "../save/compress.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -528,55 +527,6 @@ describe("saveGame / loadGame round trip (decision 9)", () => {
     const out = decodeSavedGame(bytes);
     expect(out.save).toBeNull();
     expect(out.malformed).toBe(true);
-  });
-
-  it("loads a save written as bare JSON, then writes the envelope", () => {
-    const game = startGame(pack, { seed: 7, depth: 1 });
-    const save = saveGame(game);
-    save.mods = { "frost-mod": { schema: 1, data: { rune: "ice" } } };
-    const legacy = stampSavefile(new TextEncoder().encode(JSON.stringify(save)));
-    const loaded = decodeSavedGame(legacy);
-    expect(loaded.save?.version).toBe(SAVE_VERSION);
-    expect(loaded.save?.mods?.["frost-mod"]?.data).toEqual({ rune: "ice" });
-    expect(loaded.futureSchema).toBeUndefined();
-
-    const again = encodeSavedGame(loaded.save!);
-    const payload = verifyStampedSavefile(again).payload;
-    const document = JSON.parse(new TextDecoder().decode(payload)) as {
-      format: string;
-      schemaVersion: number;
-      data: { mods?: { "frost-mod"?: { data: { rune: string } } } };
-    };
-    expect(document.format).toBe("neo-angband/core/saved-game");
-    expect(document.schemaVersion).toBe(1);
-    expect(document.data.mods?.["frost-mod"]?.data).toEqual({ rune: "ice" });
-    expect(decodeSavedGame(again).save?.turn).toBe(save.turn);
-  });
-
-  it("loads a bare save that was compressed, and a future envelope is not damage", () => {
-    const game = startGame(pack, { seed: 8, depth: 1 });
-    const save = saveGame(game);
-    const flip: SaveCodec = {
-      id: "flip",
-      compress: (b) => b.map((v) => v ^ 0xff),
-      decompress: (b) => b.map((v) => v ^ 0xff),
-    };
-    const legacy = stampSavefile(applyCodec(new TextEncoder().encode(JSON.stringify(save)), flip));
-    const loaded = decodeSavedGame(legacy, undefined, [flip]);
-    expect(loaded.codecId).toBe("flip");
-    expect(loaded.save?.version).toBe(SAVE_VERSION);
-
-    const future = stampSavefile(
-      new TextEncoder().encode(JSON.stringify({
-        format: "neo-angband/core/saved-game",
-        schemaVersion: 2,
-        data: save,
-      })),
-    );
-    const out = decodeSavedGame(future);
-    expect(out.save).toBeNull();
-    expect(out.futureSchema).toBe(true);
-    expect(out.malformed).toBeUndefined();
   });
 
   /* Compression (decision 9's third word). The codec is injected, so these use a

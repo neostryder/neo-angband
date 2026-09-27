@@ -22,7 +22,7 @@
  *      comparison in step 4 cannot see this - it compares the art and never
  *      asks how many cells that art covers - and the two engines reach the
  *      answer by different routes, which is the point: the sheet tests the
- *      mode's overdraw band, the loose pack reads the tall list in pack.json.
+ *      mode's overdraw band, the loose pack reads its own maps/tall.txt.
  *
  * It has already earned its keep: it caught an asset-name collision that made
  * two different scrolls share one file (so one drew the other's tile) and the
@@ -65,14 +65,16 @@ import {
 import type { TileAtlas, TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
 import { ALL_PACKS, buildPackExport } from "@rpgm-tools/neo-angband-linoleum";
 import type { PackConfig } from "@rpgm-tools/neo-angband-linoleum";
-import { linoleumPackFormat, parseDocument } from "@rpgm-tools/neo-angband-mod-sdk";
-import type { TargetRule } from "@rpgm-tools/neo-angband-linoleum/targets";
+import { parseTargetsFile } from "@rpgm-tools/neo-angband-linoleum/targets";
 import {
   atlasToSlot,
   buildLinoleumIndex,
   LinoleumPack,
+  parseFamiliesFile,
+  parseLinoleumManifest,
+  parseTallFile,
 } from "./linoleum-pack";
-import type { LinoleumFamily, LinoleumFamilyEffect, LinoleumIndex } from "./linoleum-pack";
+import type { LinoleumIndex } from "./linoleum-pack";
 import { createTileRenderer, isTile, tileCode } from "./tiles";
 import type { TileBlitter } from "./tiles";
 import { loadGamePack } from "./pack";
@@ -202,36 +204,24 @@ function prepare(key: string): Subject {
     },
   });
 
-  /* Read the way loadLinoleumPack reads it: one pack document. An omitted
-   * `tall` array is "nothing overdraws". A converter that dropped the array
-   * would leave every tall tile flat, which is the failure this catches. */
-  const parsed = parseDocument(readText(join(packRoot, "pack.json")), linoleumPackFormat);
-  if (!parsed.ok) throw new Error(`unreadable pack document for ${key}`);
-  const targets: TargetRule[] = parsed.data.targets.map((rule) => ({
-    type: rule.type,
-    selector: rule.selector,
-    kind: rule.kind,
-    value: rule.value,
-  }));
-  const families = new Map<string, LinoleumFamily>();
-  for (const family of parsed.data.families ?? []) {
-    const effect: LinoleumFamilyEffect = {};
-    if (family.glowAlpha !== undefined) effect.glowAlpha = family.glowAlpha;
-    if (family.tint !== undefined) effect.tint = family.tint;
-    if (family.pulse !== undefined) effect.pulse = family.pulse;
-    families.set(family.id, {
-      asset: family.asset,
-      ...(Object.keys(effect).length === 0 ? {} : { effect }),
-    });
-  }
-  const tall = new Set(parsed.data.tall ?? []);
-  const manifest = {
-    packId: parsed.data.packId,
-    displayName: parsed.data.displayName,
-    format: parsed.data.imageFormat,
-    resolution: parsed.data.resolution,
-    maps: new Map<string, string>(),
-  };
+  // The loose index, built the way the loose engine builds it.
+  const targets = parseTargetsFile(readText(join(packRoot, "maps", "targets.txt")));
+  const familiesPath = join(packRoot, "maps", "families.txt");
+  const families = existsSync(familiesPath)
+    ? parseFamiliesFile(readText(familiesPath))
+    : new Map<string, string>();
+  /* Read the way loadLinoleumPack reads it: the manifest names the map, and a
+   * pack with no overdraw band writes none. Going through the manifest rather
+   * than straight to the path is the point - a converter that stopped listing
+   * `map:tall:` would leave the file on disk and every tall tile would quietly
+   * go flat again, which is exactly the failure this is here to catch. */
+  const manifest = parseLinoleumManifest(readText(join(packRoot, "manifest.txt")));
+  if (manifest === null) throw new Error(`unreadable manifest for ${key}`);
+  const tallPath = manifest.maps.get("tall");
+  const tall =
+    tallPath === undefined
+      ? new Set<string>()
+      : parseTallFile(readText(join(packRoot, tallPath)));
 
   const loose = buildLinoleumIndex({
     rules: targets,
@@ -424,7 +414,7 @@ for (const { key, ascii, tall, tallEntities } of PACKS) {
       expect(offAtlas).toEqual([]);
       expect(asciiPairs.length).toBe(ascii);
       expect(compared).toBe(entities.length - ascii);
-    }, 30_000);
+    });
 
     it("reads every rule the pack declares, dropping none of them", () => {
       // Nothing is dropped, so no tile can go missing. The conditional rules -
@@ -439,7 +429,7 @@ for (const { key, ascii, tall, tallEntities } of PACKS) {
     it("both engines call the SAME entities double-height", () => {
       /* #243. Each engine is asked through the object the shell holds, and each
        * reads its OWN authority: the tilesheet reads the mode's overdraw band
-       * (is_dh_tile over the atlas row), the loose pack reads pack.json,
+       * (is_dh_tile over the atlas row), the loose pack reads maps/tall.txt,
        * which the converter wrote from the rectangle it actually cropped. Two
        * independent derivations of one fact, so a converter that stops
        * extending a crop and an engine that stops reporting the flag are both

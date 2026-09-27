@@ -122,10 +122,6 @@ export function backupFolderDisplayName(folderPath: string): string {
  * bytes off disk. `ext` defaults to `.neochar`, the original caller's own
  * extension.
  *
- * The text is the file as stored. A current character file is a JSON
- * document and an older `.neochar` is still listed; this function does not
- * parse either one.
- *
  * BEST-EFFORT, LIKE `write()`'s OWN FAILURE MODE. One unreadable file
  * (permissions, a race with deletion between the `readdirSync` and the
  * `readFileSync`) is skipped rather than failing the whole listing - the

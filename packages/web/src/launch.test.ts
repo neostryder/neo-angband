@@ -299,8 +299,7 @@ describe("the pref-file paths under arg_force_name", () => {
     const c = ctx(term);
     const done = dumpPrefFile(c.ctx, () => "# x\n", "Save monster attr/chars", 8);
     await tick();
-    /* player_safe_name(...) + ".prf", offered rather than typed. */
-    expect(term.snapshot().join("\n")).toContain("Confirm writing to Bilbo.prf? ");
+    expect(term.snapshot().join("\n")).toContain("Confirm writing to Bilbo-preferences.json? ");
     press(win, "y");
     await done;
     /* strstr(title, " ") + 1 - the message names the title after its first space. */
@@ -319,29 +318,4 @@ describe("the pref-file paths under arg_force_name", () => {
     expect(c.said).toEqual([]);
   });
 
-  it("load: confirms the pinned filename instead (ui-options.c:1222)", async () => {
-    initLaunchArgs(["-f"]);
-    const { loadPrefFileHack } = await import("./prefs-ui");
-    const term = makeTerm();
-    const c = ctx(term);
-    const done = loadPrefFileHack(c.ctx, 8);
-    await tick();
-    expect(term.snapshot().join("\n")).toContain("Confirm loading Bilbo.prf? ");
-    press(win, "n");
-    await done;
-    expect(c.said).toEqual([]);
-  });
-
-  it("load: asks for a filename when the flag is off", async () => {
-    const { loadPrefFileHack } = await import("./prefs-ui");
-    const term = makeTerm();
-    const c = ctx(term);
-    const done = loadPrefFileHack(c.ctx, 8);
-    await tick();
-    expect(term.snapshot().join("\n")).toContain("Command: Load a user pref file");
-    expect(term.snapshot().join("\n")).toContain("File: ");
-    press(win, "Escape");
-    await done;
-    expect(c.said).toEqual([]);
-  });
 });

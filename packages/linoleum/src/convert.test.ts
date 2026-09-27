@@ -32,7 +32,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 import { beforeAll, describe, expect, it } from "vitest";
-import { linoleumInventoryFormat, linoleumPackFormat, linoleumTileMapFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import { convertPacks } from "./convert.js";
 import type { ConvertSummary } from "./convert.js";
 
@@ -50,77 +49,66 @@ beforeAll(() => {
   });
 }, 60_000);
 
-function packOf(root: string) {
-  const parsed = parseDocument(readFileSync(join(root, "pack.json"), "utf8"), linoleumPackFormat);
-  if (!parsed.ok) throw new Error(parsed.issues.map((issue) => issue.message).join("; "));
-  return parsed.data;
-}
-
-function targetIndex(
-  root: string,
-  type: string,
-  selector: string,
-  kind: string,
-  value: string,
-): number {
-  return packOf(root).targets.findIndex(
-    (rule) => rule.type === type && rule.selector === selector && rule.kind === kind && rule.value === value,
-  );
+function readLines(path: string): string[] {
+  return readFileSync(path, "utf8").split("\n");
 }
 
 describe("original-tiles (old, 8x8) pack", () => {
   const packRoot = (): string => join(outputRoot, "original-tiles");
 
-  it("writes the pack document", () => {
-    const pack = packOf(packRoot());
-    expect(pack.packId).toBe("linoleum-original-tiles");
-    expect(pack.displayName).toBe("Original Tiles (Linoleum)");
-    expect(pack.imageFormat).toBe("png");
-    expect(pack.resolution).toBe(8);
-    expect(pack.families?.length).toBeGreaterThan(0);
-    expect(existsSync(join(packRoot(), "manifest.txt"))).toBe(false);
-    expect(existsSync(join(packRoot(), "graf-xxx.prf"))).toBe(false);
+  it("writes the exact manifest lines", () => {
+    expect(readFileSync(join(packRoot(), "manifest.txt"), "utf8")).toBe(
+      [
+        "pack:linoleum-original-tiles:Original Tiles (Linoleum)",
+        "format:png",
+        "resolution:8",
+        "map:targets:maps/targets.txt",
+        "map:families:maps/families.txt",
+        "",
+      ].join("\n"),
+    );
   });
 
-  it("emits the expected exact targets (hand-computed from graf-xxx.prf)", () => {
-    const root = packRoot();
+  it("emits the expected exact target lines (hand-computed from graf-xxx.prf)", () => {
+    const lines = readLines(join(packRoot(), "maps", "targets.txt"));
     // graf-xxx.prf: feat:FLOOR:lit:0x80:0xA1
-    expect(targetIndex(root, "feat", "FLOOR:lit", "asset", "feat_floor_lit_0")).toBeGreaterThan(-1);
+    expect(lines).toContain("target:feat:FLOOR:lit:asset:feat_floor_lit_0");
     // graf-xxx.prf: monster:Farmer Maggot:0x9B:0x8B
-    expect(targetIndex(root, "monster", "Farmer Maggot", "asset", "monster_farmer_maggot_0")).toBeGreaterThan(-1);
+    expect(lines).toContain("target:monster:Farmer Maggot:asset:monster_farmer_maggot_0");
     // graf-xxx.prf: GF:ELEC:0:0x84:0x90 (logical value contains a colon)
-    expect(targetIndex(root, "GF", "ELEC:0", "asset", "gf_elec_0_0")).toBeGreaterThan(-1);
+    expect(lines).toContain("target:GF:ELEC:0:asset:gf_elec_0_0");
     // xtra-xxx.prf: ?:[AND [EQU $CLASS Warrior] [EQU $RACE Human] ] then
     // monster:<player>:0x8C:0x80
-    expect(targetIndex(
-      root,
-      "monster",
-      "<player>:when:[AND [EQU $CLASS Warrior] [EQU $RACE Human] ]",
-      "asset",
-      "monster_player_when_and_equ_class_warrior_equ_race_human_0",
-    )).toBeGreaterThan(-1);
+    expect(lines).toContain(
+      "target:monster:<player>:when:[AND [EQU $CLASS Warrior] [EQU $RACE Human] ]:asset:monster_player_when_and_equ_class_warrior_equ_race_human_0",
+    );
   });
 
   it("emits compatibility aliases preferring the lit variant", () => {
-    const root = packRoot();
+    const lines = readLines(join(packRoot(), "maps", "targets.txt"));
     // FLOOR has dark/lit/los/torch variants; lit ranks highest for aliases.
-    expect(targetIndex(root, "feat", "FLOOR", "asset", "feat_floor_lit_0")).toBeGreaterThan(-1);
+    expect(lines).toContain("target:feat:FLOOR:asset:feat_floor_lit_0");
     // LESS is a family-mapped stairway selector.
-    expect(targetIndex(root, "feat", "LESS", "family", "feat_less_lit_0_fx")).toBeGreaterThan(-1);
+    expect(lines).toContain("target:feat:LESS:family:feat_less_lit_0_fx");
   });
 
-  it("puts compatibility aliases before the exact selector they generalize", () => {
-    const root = packRoot();
-    const aliasIndex = targetIndex(root, "feat", "FLOOR", "asset", "feat_floor_lit_0");
-    const exactIndex = targetIndex(root, "feat", "FLOOR:lit", "asset", "feat_floor_lit_0");
+  it("puts compatibility aliases before the exact-selectors comment", () => {
+    const lines = readLines(join(packRoot(), "maps", "targets.txt"));
+    const aliasIndex = lines.indexOf("target:feat:FLOOR:asset:feat_floor_lit_0");
+    const exactHeaderIndex = lines.indexOf(
+      "# Exact legacy selectors, in source order - a later rule overrides an earlier one.",
+    );
+    const exactIndex = lines.indexOf("target:feat:FLOOR:lit:asset:feat_floor_lit_0");
     expect(aliasIndex).toBeGreaterThan(-1);
-    expect(exactIndex).toBeGreaterThan(aliasIndex);
+    expect(exactHeaderIndex).toBeGreaterThan(aliasIndex);
+    expect(exactIndex).toBeGreaterThan(exactHeaderIndex);
   });
 
   it("exports the decimal-coordinate line object:none:<pile>:131:159", () => {
     // The ps1 dropped it (hex-only); the C reads decimal, and the pile tile is
     // real art the map draws over a grid holding several objects.
-    expect(targetIndex(packRoot(), "object", "none:<pile>", "asset", "object_none_pile_0")).toBeGreaterThan(-1);
+    const lines = readLines(join(packRoot(), "maps", "targets.txt"));
+    expect(lines).toContain("target:object:none:<pile>:asset:object_none_pile_0");
     expect(existsSync(join(packRoot(), "images", "8", "object_none_pile_0.png"))).toBe(true);
   });
 
@@ -128,9 +116,13 @@ describe("original-tiles (old, 8x8) pack", () => {
     // object.txt has both `Enchant Armour` and `*Enchant Armour*` (a distinct,
     // greater scroll) and they slug to the same name; the second takes _1, so
     // neither scroll can end up drawing the other's tile.
-    const root = packRoot();
-    expect(targetIndex(root, "object", "scroll:Enchant Armour", "asset", "object_scroll_enchant_armour_0")).toBeGreaterThan(-1);
-    expect(targetIndex(root, "object", "scroll:*Enchant Armour*", "asset", "object_scroll_enchant_armour_1")).toBeGreaterThan(-1);
+    const lines = readLines(join(packRoot(), "maps", "targets.txt"));
+    expect(lines).toContain(
+      "target:object:scroll:Enchant Armour:asset:object_scroll_enchant_armour_0",
+    );
+    expect(lines).toContain(
+      "target:object:scroll:*Enchant Armour*:asset:object_scroll_enchant_armour_1",
+    );
     const dir = join(packRoot(), "images", "8");
     const first = PNG.sync.read(readFileSync(join(dir, "object_scroll_enchant_armour_0.png")));
     const second = PNG.sync.read(readFileSync(join(dir, "object_scroll_enchant_armour_1.png")));
@@ -138,47 +130,27 @@ describe("original-tiles (old, 8x8) pack", () => {
   });
 
   it("keeps an override line after the line it overrides (source order)", () => {
-    const root = packRoot();
-    const specific = targetIndex(root, "object", "scroll:Enchant Armour", "asset", "object_scroll_enchant_armour_0");
-    const glob = targetIndex(root, "object", "scroll:*Enchant Armour*", "asset", "object_scroll_enchant_armour_1");
+    const lines = readLines(join(packRoot(), "maps", "targets.txt"));
+    const specific = lines.indexOf(
+      "target:object:scroll:Enchant Armour:asset:object_scroll_enchant_armour_0",
+    );
+    const glob = lines.indexOf(
+      "target:object:scroll:*Enchant Armour*:asset:object_scroll_enchant_armour_1",
+    );
     expect(specific).toBeGreaterThan(-1);
     expect(glob).toBeGreaterThan(specific);
   });
 
   it("writes family effect metadata for LESS/MORE stairs", () => {
-    const families = packOf(packRoot()).families ?? [];
-    const less = families.find((family) => family.id === "feat_less_lit_0_fx");
-    const more = families.find((family) => family.id === "feat_more_lit_0_fx");
-    expect(less).toMatchObject({
-      asset: "feat_less_lit_0",
-      selection: "stable",
-      glowAlpha: 72,
-      tint: { red: 180, green: 220, blue: 255, alpha: 48 },
-      pulse: { min: 168, max: 255, period: 1400 },
-    });
-    expect(more).toMatchObject({
-      glowAlpha: 64,
-      tint: { red: 255, green: 210, blue: 150, alpha: 40 },
-      pulse: { min: 176, max: 255, period: 1200 },
-    });
-  });
-
-  it("records the pref selectors in tile-map.json instead of copying .prf", () => {
-    const text = readFileSync(join(packRoot(), "tile-map.json"), "utf8");
-    const parsed = parseDocument(
-      text,
-      linoleumTileMapFormat,
-    );
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    expect(serializeDocument(linoleumTileMapFormat, parsed.data)).toBe(text);
-    const packText = readFileSync(join(packRoot(), "pack.json"), "utf8");
-    const pack = parseDocument(packText, linoleumPackFormat);
-    expect(pack.ok && serializeDocument(linoleumPackFormat, pack.data)).toBe(packText);
-    const graf = parsed.data.files.find((file) => file.name === "graf-xxx.prf");
-    expect(graf?.selectors).toContainEqual({ type: "feat", selector: "FLOOR:lit", row: 0, column: 33 });
-    expect(existsSync(join(packRoot(), "xtra-xxx.prf"))).toBe(false);
-    expect(existsSync(join(packRoot(), "flvr-xxx.prf"))).toBe(false);
+    const lines = readLines(join(packRoot(), "maps", "families.txt"));
+    expect(lines).toContain("family:feat_less_lit_0_fx:selection:stable");
+    expect(lines).toContain("family:feat_less_lit_0_fx:asset:feat_less_lit_0");
+    expect(lines).toContain("family:feat_less_lit_0_fx:glow-alpha:72");
+    expect(lines).toContain("family:feat_less_lit_0_fx:tint:180,220,255,48");
+    expect(lines).toContain("family:feat_less_lit_0_fx:pulse:168,255,1400");
+    expect(lines).toContain("family:feat_more_lit_0_fx:glow-alpha:64");
+    expect(lines).toContain("family:feat_more_lit_0_fx:tint:255,210,150,40");
+    expect(lines).toContain("family:feat_more_lit_0_fx:pulse:176,255,1200");
   });
 
   it("extracts 8x8 PNG assets matching the source sheet pixels", () => {
@@ -203,9 +175,11 @@ describe("original-tiles (old, 8x8) pack", () => {
     expect(files.length).toBe(result?.assetCount);
   });
 
-  it("does not copy the source pref files into the pack", () => {
+  it("mirrors the pref files byte-for-byte", () => {
     for (const pref of ["graf-xxx.prf", "xtra-xxx.prf", "flvr-xxx.prf"]) {
-      expect(existsSync(join(packRoot(), pref))).toBe(false);
+      const source = readFileSync(join(tilesRoot, "old", pref));
+      const mirror = readFileSync(join(packRoot(), pref));
+      expect(Buffer.compare(source, mirror)).toBe(0);
     }
   });
 });
@@ -213,22 +187,27 @@ describe("original-tiles (old, 8x8) pack", () => {
 describe("nomad (8x16, non-square) pack", () => {
   const packRoot = (): string => join(outputRoot, "nomad");
 
-  it("writes the pack document with the nominal 16 resolution", () => {
-    const pack = packOf(packRoot());
-    expect(pack.packId).toBe("linoleum-nomad");
-    expect(pack.displayName).toBe("Nomad's tiles (Linoleum)");
-    expect(pack.resolution).toBe(16);
-    expect(pack.families?.length).toBeGreaterThan(0);
+  it("writes the exact manifest lines with the nominal 16 resolution", () => {
+    expect(readFileSync(join(packRoot(), "manifest.txt"), "utf8")).toBe(
+      [
+        "pack:linoleum-nomad:Nomad's tiles (Linoleum)",
+        "format:png",
+        "resolution:16",
+        "map:targets:maps/targets.txt",
+        "map:families:maps/families.txt",
+        "",
+      ].join("\n"),
+    );
   });
 
   it("preserves the literal * variant in exact selectors", () => {
-    const root = packRoot();
+    const lines = readLines(join(packRoot(), "maps", "targets.txt"));
     // graf-nmd.prf: feat:LESS:*:0x80:0x94
-    expect(targetIndex(root, "feat", "LESS:*", "family", "feat_less_0_fx")).toBeGreaterThan(-1);
-    expect(targetIndex(root, "feat", "LESS", "family", "feat_less_0_fx")).toBeGreaterThan(-1);
+    expect(lines).toContain("target:feat:LESS:*:family:feat_less_0_fx");
+    expect(lines).toContain("target:feat:LESS:family:feat_less_0_fx");
     // graf-nmd.prf: feat:FLOOR:lit:0x80:0x82
-    expect(targetIndex(root, "feat", "FLOOR:lit", "asset", "feat_floor_lit_0")).toBeGreaterThan(-1);
-    expect(targetIndex(root, "feat", "FLOOR", "asset", "feat_floor_lit_0")).toBeGreaterThan(-1);
+    expect(lines).toContain("target:feat:FLOOR:lit:asset:feat_floor_lit_0");
+    expect(lines).toContain("target:feat:FLOOR:asset:feat_floor_lit_0");
   });
 
   it("extracts 8x16 PNG assets", () => {
@@ -259,9 +238,11 @@ describe("nomad (8x16, non-square) pack", () => {
     expect(files.length).toBe(1463);
   });
 
-  it("does not copy the source pref files into the pack", () => {
+  it("mirrors the pref files byte-for-byte", () => {
     for (const pref of ["graf-nmd.prf", "xtra-nmd.prf", "flvr-nmd.prf"]) {
-      expect(existsSync(join(packRoot(), pref))).toBe(false);
+      const source = readFileSync(join(tilesRoot, "nomad", pref));
+      const mirror = readFileSync(join(packRoot(), pref));
+      expect(Buffer.compare(source, mirror)).toBe(0);
     }
   });
 });
@@ -270,12 +251,23 @@ describe("inventory reports", () => {
   it("writes a well-formed JSON inventory with the packs' counts", () => {
     const path = join(outputRoot, "graphics-linoleum-inventory.json");
     expect(existsSync(path)).toBe(true);
-    const text = readFileSync(path, "utf8");
-    const parsed = parseDocument(text, linoleumInventoryFormat);
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    expect(serializeDocument(linoleumInventoryFormat, parsed.data)).toBe(text);
-    const inventory = parsed.data;
+    const inventory = JSON.parse(readFileSync(path, "utf8")) as {
+      generatedAt: string;
+      outputRoot: string;
+      packCount: number;
+      packs: Array<{
+        key: string;
+        resolution: number;
+        assetCount: number;
+        exactSelectorCount: number;
+        compatibilityAliasCount: number;
+        totalTargetRuleCount: number;
+        statefulSelectorCount: number;
+        conditionalSelectorCount: number;
+        invalidSourceSelectorCount: number;
+        legacyTypeCounts: Record<string, number>;
+      }>;
+    };
 
     expect(inventory.packCount).toBe(2);
     expect(inventory.packs).toHaveLength(2);
@@ -321,12 +313,14 @@ describe("inventory reports", () => {
     );
   });
 
-  it("counts pack targets consistently with the inventory", () => {
+  it("counts target lines in targets.txt consistently with the inventory", () => {
     for (const [key, expected] of [
       ["original-tiles", 1558],
       ["nomad", 1522],
     ] as const) {
-      expect(packOf(join(outputRoot, key)).targets.length).toBe(expected);
+      const lines = readLines(join(outputRoot, key, "maps", "targets.txt"));
+      const targetLines = lines.filter((line) => line.startsWith("target:"));
+      expect(targetLines.length).toBe(expected);
     }
   });
 });

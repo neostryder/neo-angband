@@ -9,6 +9,7 @@
  */
 
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -17,16 +18,14 @@ import {
 } from "node:fs";
 import { basename, join } from "node:path";
 import { PNG } from "pngjs";
-import { linoleumPackFormat, linoleumTileMapFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
-import type { Infer } from "@rpgm-tools/neo-angband-mod-sdk";
-import { linoleumInventoryFormat } from "@rpgm-tools/neo-angband-mod-sdk";
 import { deterministicAssetName, selectorKey } from "./naming.js";
 import { readLegacySelectors } from "./prf.js";
 import type { PrefSource } from "./prf.js";
 import { selectPacks } from "./packs.js";
 import type { PackConfig } from "./packs.js";
+import { formatPoolLines, formatTargetRule } from "./targets.js";
 import type { PoolDefinition, TargetRule } from "./targets.js";
-import { PACK_FILE, TILE_MAP_FILE, planTilesheetConversion } from "./conversion-plan.js";
+import { planTilesheetConversion } from "./conversion-plan.js";
 
 /** Header comment naming this tool; the only allowed textual divergence. */
 /**
@@ -66,6 +65,14 @@ export interface EffectProfile {
   pulse: string;
 }
 
+interface EffectFamily {
+  familyId: string;
+  assetName: string;
+  glowAlpha: number;
+  tint: string;
+  pulse: string;
+}
+
 /** Per-pack conversion result, mirroring the ps1 result object. */
 export interface PackResult {
   key: string;
@@ -74,10 +81,13 @@ export interface PackResult {
   sourceDirectory: string;
   resolution: number;
   packRoot: string;
-  /** Path of pack.json. */
-  packPath: string;
-  /** Path of tile-map.json. */
-  tileMapPath: string;
+  manifestPath: string;
+  targetMapPath: string;
+  familyMapPath: string;
+  /** Path of maps/pools.txt (written only when the pack authors pools). */
+  poolMapPath: string;
+  /** Path of maps/tall.txt (written only when the source mode has overdraw rows). */
+  tallMapPath: string;
   /** How many assets were cropped two cells tall (0 for a mode with no band). */
   tallAssetCount: number;
   /** Count of authored variant pools emitted (0 when none authored). */
@@ -85,6 +95,7 @@ export interface PackResult {
   /** Count of authored per-object / pooled target rules (0 when none). */
   authoredTargetCount: number;
   prefFiles: readonly string[];
+  prefMirrorPaths: Record<string, string>;
   legacyTypeCounts: Record<string, number>;
   exactTypeCounts: Record<string, number>;
   compatibilityAliasCounts: Record<string, number>;
@@ -105,8 +116,8 @@ export interface PackResult {
  * optional and only emitted when supplied, so a pack with no authoring
  * converts byte-identically to the pure legacy export (the regression bar).
  *
- * - `pools` are written into pack.json.
- * - `targets` are appended to that document's target list;
+ * - `pools` are written to `maps/pools.txt` and registered in the manifest.
+ * - `targets` are appended to `maps/targets.txt` under a dedicated section;
  *   each may point at an existing asset (a distinct per-object image) or at a
  *   `pool` id (a variant pool). Every referenced asset / pool must resolve, or
  *   the conversion throws so a mis-authored pack fails loudly at build time.
@@ -150,12 +161,50 @@ interface Rect {
 }
 
 const PARITY_NOTES: readonly string[] = [
-  "Legacy pref selectors are recorded in tile-map.json, and the pack does not ship a .prf copy.",
+  "Legacy pref files are mirrored locally into the Linoleum pack folder so the mode still loads its own pref corpus.",
   "Stateful feat/trap selectors are preserved as exact loose-pack selector values with suffixes such as <selector>:lit.",
-  "When a source mode uses legacy overdraw rows, the exporter keeps the bottom-anchored double-height source rectangle instead of clipping it back to one base cell, and names every such asset in pack.json so a runtime can draw it over the cell above.",
+  "When a source mode uses legacy overdraw rows, the exporter keeps the bottom-anchored double-height source rectangle instead of clipping it back to one base cell, and names every such asset in maps/tall.txt so a runtime can draw it over the cell above.",
   "Conditional xtra remaps are preserved as exact selector values with :when:<query> suffixes and also receive one compatibility alias for the current runtime.",
   "Any source selector that points outside the original sheet is counted in the inventory and skipped rather than crashing the export.",
 ];
+
+/**
+ * Culture-aware, case-insensitive comparison approximating PowerShell's
+ * default Sort-Object string ordering (.NET CurrentCultureIgnoreCase, which
+ * is ICU-backed; Intl.Collator is ICU-backed too).
+ */
+const collator = new Intl.Collator("en-US", { sensitivity: "accent" });
+
+/**
+ * Exact rules are emitted in SOURCE order, not sorted.
+ *
+ * A target map has the same precedence rule as the pref file it came from: a
+ * later line wins (linoleum-pack.ts hands the rules back to core's pref parser
+ * in file order, and parseTilePrefsInto reassigns the entity's slot). Sorting
+ * the rules alphabetically discards that precedence - a pack whose pref file
+ * states a broad rule and then narrows it (an `object:<tval>:*` wildcard, a
+ * repeated selector, a `GF:*` blanket) can come out with the override written
+ * BEFORE the thing it overrides, and a reader replaying the file then draws the
+ * wrong tile.
+ *
+ * Scope of the fix, honestly: on the four packs the game ships this is latent,
+ * not observed - their only overlapping rules are the `GF:*` blankets, which
+ * happened to sort first anyway. It is pinned by convert.test.ts (the override
+ * must follow what it overrides), NOT by the pixel-equivalence test, which
+ * passes either way today. The wrong-scroll-tile bug that prompted the look at
+ * this file was the asset-name collision below, not the ordering.
+ */
+function compareSourceOrder(a: ExportEntry, b: ExportEntry): number {
+  return a.sourceOrder - b.sourceOrder;
+}
+
+function compareRuleOrder(a: ExportEntry, b: ExportEntry): number {
+  const byType = collator.compare(a.type, b.type);
+  if (byType !== 0) {
+    return byType;
+  }
+  return collator.compare(a.selectorValue, b.selectorValue);
+}
 
 function isNullOrWhitespace(value: string | null): boolean {
   return value === null || value.trim().length === 0;
@@ -293,9 +342,14 @@ export function buildPackExport(
   const sourceDir = join(tilesRoot, packConfig.sourceDirectory);
   const sheetPath = join(sourceDir, packConfig.imageFile);
   const packRoot = join(outputRoot, packConfig.key);
+  const mapsDir = join(packRoot, "maps");
   const imageDir = join(packRoot, "images", String(packConfig.resolution));
-  const packPath = join(packRoot, PACK_FILE);
-  const tileMapPath = join(packRoot, TILE_MAP_FILE);
+  const manifestPath = join(packRoot, "manifest.txt");
+  const targetMapPath = join(mapsDir, "targets.txt");
+  const familyMapPath = join(mapsDir, "families.txt");
+  const poolMapPath = join(mapsDir, "pools.txt");
+  const tallMapPath = join(mapsDir, "tall.txt");
+  const prefMirrorPaths: Record<string, string> = {};
 
   const authoredPools = authoring?.pools ?? [];
   const authoredTargets = authoring?.targets ?? [];
@@ -308,7 +362,7 @@ export function buildPackExport(
   const compatibilityRules: ExportEntry[] = [];
   const compatibilitySeen = new Set<string>();
   const uniqueAssets = new Set<string>();
-  /** Assets cropped two cells tall. Empty for most packs. */
+  /** Assets cropped two cells tall, for maps/tall.txt. Empty for most packs. */
   const tallAssets = new Set<string>();
   const legacyTypeCounts: Record<string, number> = {};
   const exactTypeCounts: Record<string, number> = {};
@@ -317,6 +371,7 @@ export function buildPackExport(
   let conditionalSelectorCount = 0;
   let invalidSourceSelectorCount = 0;
   const invalidSourceExamples: string[] = [];
+  const effectFamilies = new Map<string, EffectFamily>();
 
   const tileWidth = packConfig.tileWidth ?? packConfig.resolution;
   const tileHeight = packConfig.tileHeight ?? packConfig.resolution;
@@ -334,9 +389,9 @@ export function buildPackExport(
     );
   }
   /* The browser uses this same plan, then crops it through Canvas. The Node
-   * exporter still uses pngjs for the actual pixels, but writes the plan's
-   * JSON so selector rules, filenames and metadata have one authority
-   * whichever side performs the conversion. */
+   * exporter still uses pngjs for the actual pixels, but writes these shared
+   * text files below so selector rules, filenames and metadata have one
+   * authority whichever side performs the conversion. */
   const conversionPlan = planTilesheetConversion({
     pack: packConfig,
     prefSources,
@@ -345,7 +400,15 @@ export function buildPackExport(
     ...(authoring === undefined ? {} : { authoring }),
   });
 
+  mkdirSync(mapsDir, { recursive: true });
   mkdirSync(imageDir, { recursive: true });
+
+  for (const prefFile of packConfig.prefFiles) {
+    const sourcePrefPath = join(sourceDir, prefFile);
+    const destinationPrefPath = join(packRoot, prefFile);
+    copyFileSync(sourcePrefPath, destinationPrefPath);
+    prefMirrorPaths[prefFile] = destinationPrefPath;
+  }
 
   /**
    * Asset names, one per distinct selector, with collisions broken.
@@ -433,6 +496,15 @@ export function buildPackExport(
       const familyId = `${assetName}_fx`;
       exportEntry.mappingKind = "family";
       exportEntry.mappingValue = familyId;
+      if (!effectFamilies.has(familyId)) {
+        effectFamilies.set(familyId, {
+          familyId,
+          assetName,
+          glowAlpha: effectProfile.glowAlpha,
+          tint: effectProfile.tint,
+          pulse: effectProfile.pulse,
+        });
+      }
     }
 
     exportableEntries.push(exportEntry);
@@ -513,28 +585,133 @@ export function buildPackExport(
     }
   }
 
-  /* The plan is the file authority. The crop loop above stays Node-specific:
-   * pngjs preserves exact source pixels, while the web cache has no node:fs. */
-  mkdirSync(packRoot, { recursive: true });
+  const manifestLines: string[] = [
+    `pack:${packConfig.packId}:${packConfig.displayName}`,
+    "format:png",
+    `resolution:${packConfig.resolution}`,
+    "map:targets:maps/targets.txt",
+  ];
+  if (effectFamilies.size > 0) {
+    manifestLines.push("map:families:maps/families.txt");
+  }
+  if (authoredPools.length > 0) {
+    manifestLines.push("map:pools:maps/pools.txt");
+  }
+  if (tallAssets.size > 0) {
+    manifestLines.push("map:tall:maps/tall.txt");
+  }
+  writeTextFile(manifestPath, manifestLines);
+
+  /**
+   * The double-height assets, by name.
+   *
+   * Written only when the source mode HAS an overdraw band, so the four packs
+   * without one are byte-identical to before and a hand-authored pack that
+   * declares nothing is unaffected. The reader treats an absent file as "no
+   * asset is tall", which is the same answer.
+   *
+   * A NAME, not a row. The pack's whole point is that pictures are addressed by
+   * name rather than by sheet coordinate, so the tileset row this was cropped
+   * from does not survive conversion - and the runtime's synthetic slot number
+   * is not a row either. Nothing but this file can tell the loose-pack engine
+   * which pictures overdraw, which is why its absence made every Shockbolt
+   * monster squat under Linoleum (#243).
+   */
+  if (tallAssets.size > 0) {
+    const tallLines: string[] = [
+      GENERATED_BY,
+      "# Double-height (overdraw) assets: each image is two cells tall and",
+      "# BOTTOM-ANCHORED, so a runtime draws it over the cell above the one it",
+      "# is placed in (is_dh_tile, grafmode.c L241; docs/LINOLEUM.md).",
+      "",
+    ];
+    for (const asset of [...tallAssets].sort((a, b) => collator.compare(a, b))) {
+      tallLines.push(`tall:${asset}`);
+    }
+    writeTextFile(tallMapPath, tallLines);
+  } else if (existsSync(tallMapPath)) {
+    rmSync(tallMapPath, { force: true });
+  }
+
+  if (authoredPools.length > 0) {
+    const poolMapLines: string[] = [
+      GENERATED_BY,
+      "# Variant pools: a selector may map to a pool of candidate assets that",
+      "# a runtime resolves per grid (see docs/LINOLEUM.md, selectPoolMember).",
+      "",
+    ];
+    for (const pool of authoredPools) {
+      poolMapLines.push(...formatPoolLines(pool));
+      poolMapLines.push("");
+    }
+    writeTextFile(poolMapPath, poolMapLines);
+  } else if (existsSync(poolMapPath)) {
+    rmSync(poolMapPath, { force: true });
+  }
+
+  if (effectFamilies.size > 0) {
+    const familyMapLines: string[] = [
+      GENERATED_BY,
+      "# Family effect metadata stays behind stable target selector syntax.",
+      "",
+    ];
+    const families = [...effectFamilies.values()].sort((a, b) =>
+      collator.compare(a.familyId, b.familyId),
+    );
+    for (const family of families) {
+      familyMapLines.push(`family:${family.familyId}:selection:stable`);
+      familyMapLines.push(`family:${family.familyId}:asset:${family.assetName}`);
+      familyMapLines.push(`family:${family.familyId}:glow-alpha:${family.glowAlpha}`);
+      familyMapLines.push(`family:${family.familyId}:tint:${family.tint}`);
+      familyMapLines.push(`family:${family.familyId}:pulse:${family.pulse}`);
+      familyMapLines.push("");
+    }
+    writeTextFile(familyMapPath, familyMapLines);
+  } else if (existsSync(familyMapPath)) {
+    rmSync(familyMapPath, { force: true });
+  }
+
+  const targetMapLines: string[] = [
+    GENERATED_BY,
+    "# Compatibility aliases come first so current unsuffixed runtime lookups stay usable.",
+    "",
+  ];
+  for (const entry of [...compatibilityRules].sort(compareRuleOrder)) {
+    targetMapLines.push(
+      `target:${entry.type}:${entry.selectorValue}:${entry.mappingKind}:${entry.mappingValue}`,
+    );
+  }
+  if (compatibilityRules.length > 0) {
+    targetMapLines.push("");
+  }
+  targetMapLines.push(
+    "# Exact legacy selectors, in source order - a later rule overrides an earlier one.",
+  );
+  for (const entry of [...exactRules].sort(compareSourceOrder)) {
+    targetMapLines.push(
+      `target:${entry.type}:${entry.selectorValue}:${entry.mappingKind}:${entry.mappingValue}`,
+    );
+  }
+  if (authoredTargets.length > 0) {
+    targetMapLines.push("");
+    targetMapLines.push(
+      "# Authored per-object and variant-pool rules (additive; see maps/pools.txt).",
+    );
+    const sortedAuthored = [...authoredTargets].sort((a, b) => {
+      const byType = collator.compare(a.type, b.type);
+      return byType !== 0 ? byType : collator.compare(a.selector, b.selector);
+    });
+    for (const rule of sortedAuthored) {
+      targetMapLines.push(formatTargetRule(rule));
+    }
+  }
+  writeTextFile(targetMapPath, targetMapLines);
+
+  /* Replace the Node-local textual assembly with the browser-safe plan. The
+   * crop loop above remains deliberately Node-specific: pngjs preserves exact
+   * source pixels for the offline builder, while the web cache has no node:fs. */
   for (const [relativePath, text] of conversionPlan.files) {
     writeFileSync(join(packRoot, relativePath), text, { encoding: "utf8" });
-  }
-  const packBack = parseDocument(readFileSync(packPath, "utf8"), linoleumPackFormat);
-  const tileBack = parseDocument(readFileSync(tileMapPath, "utf8"), linoleumTileMapFormat);
-  if (!packBack.ok || !tileBack.ok) throw new Error(`Could not verify converted pack '${packConfig.key}'.`);
-
-  /* A re-run of an older converter leaves text maps and copied prefs beside
-   * the new documents. Drop them after both documents read back. */
-  for (const relative of [
-    "manifest.txt",
-    "maps/targets.txt",
-    "maps/families.txt",
-    "maps/pools.txt",
-    "maps/tall.txt",
-    ...packConfig.prefFiles,
-  ]) {
-    const stale = join(packRoot, relative);
-    if (existsSync(stale)) rmSync(stale, { force: true });
   }
 
   return {
@@ -544,12 +721,16 @@ export function buildPackExport(
     sourceDirectory: packConfig.sourceDirectory,
     resolution: packConfig.resolution,
     packRoot,
-    packPath,
-    tileMapPath,
+    manifestPath,
+    targetMapPath,
+    familyMapPath,
+    poolMapPath,
+    tallMapPath,
     tallAssetCount: tallAssets.size,
     poolCount: authoredPools.length,
     authoredTargetCount: authoredTargets.length,
     prefFiles: packConfig.prefFiles,
+    prefMirrorPaths,
     legacyTypeCounts,
     exactTypeCounts,
     compatibilityAliasCounts,
@@ -606,10 +787,10 @@ export function writeInventoryMarkdown(
   lines.push("## Coverage notes");
   lines.push("");
   lines.push(
-    "- Each converted pack records its pref selectors in `tile-map.json`.",
+    "- Each converted pack mirrors its original pref files into its own Linoleum folder so the mode keeps loading local legacy mapping truth rather than falling back to a placeholder pref stub.",
   );
   lines.push(
-    "- `pack.json` preserves exact legacy selectors for stateful terrain and traps by encoding selectors such as `feat:FLOOR:lit` or `trap:pit:dark` as first-class loose-pack target keys.",
+    "- `maps/targets.txt` preserves exact legacy selectors for stateful terrain and traps by encoding selectors such as `feat:FLOOR:lit` or `trap:pit:dark` as first-class loose-pack target keys.",
   );
   lines.push(
     "- Conditional `xtra` remaps are preserved as exact selector values with `:when:<query>` suffixes, and each pack also ships one compatibility alias per base selector for the current runtime.",
@@ -627,7 +808,7 @@ export function writeInventoryMarkdown(
     lines.push(`- Source mode: \`${result.sourceMode}\``);
     lines.push(`- Source directory: \`${join(tilesRoot, result.sourceDirectory)}\``);
     lines.push(`- Linoleum root: \`${result.packRoot}\``);
-    lines.push(`- Source pref files: ${prefList}`);
+    lines.push(`- Mirrored pref files: ${prefList}`);
     lines.push(`- Asset count: \`${result.assetCount}\``);
     lines.push(`- Exact selector count: \`${result.exactSelectorCount}\``);
     lines.push(`- Compatibility alias count: \`${result.compatibilityAliasCount}\``);
@@ -674,18 +855,13 @@ export function convertPacks(options: ConvertOptions): ConvertSummary {
 
   writeInventoryMarkdown(results, inventoryMarkdownPath, options.tilesRoot, options.outputRoot);
 
-  const inventory: Infer<(typeof linoleumInventoryFormat)["validator"]> = {
+  const inventory = {
     generatedAt: new Date().toISOString(),
     outputRoot: options.outputRoot,
     packCount: results.length,
-    packs: results.map((result) => ({
-      ...result,
-      prefFiles: [...result.prefFiles],
-      invalidSourceExamples: [...result.invalidSourceExamples],
-      parityNotes: [...result.parityNotes],
-    })),
+    packs: results,
   };
-  writeFileSync(inventoryJsonPath, serializeDocument(linoleumInventoryFormat, inventory), {
+  writeFileSync(inventoryJsonPath, JSON.stringify(inventory, null, 2) + "\n", {
     encoding: "utf8",
   });
 

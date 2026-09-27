@@ -9,10 +9,9 @@
  * Upstream keeps two entirely separate persistences for options:
  *
  *   - the SAVEFILE holds the options this character is playing with;
- *   - `customized_birth_options.json` and `customized_interface_options.json`
- *     in ANGBAND_DIR_USER hold the defaults the PLAYER wants every NEW
- *     character to start from. A `.txt` file from an older build is read
- *     once, rewritten as JSON, and removed after that document reads back.
+ *   - `customized_birth_options.txt` and `customized_interface_options.txt` in
+ *     ANGBAND_DIR_USER hold the defaults the PLAYER wants every NEW character
+ *     to start from.
  *
  * The second is read by `options_init_defaults` (option.c:148-164, called from
  * `player_init`, player.c:491) BEFORE any birth choice is made, so it sets what
@@ -23,7 +22,7 @@
  * NEXT character; there is no savefile yet.
  *
  * Only BIRTH and INTERFACE are restored at init. `options_init_defaults` (:155-156) names
- * those two pages and no others, so a `customized_cheat_options.json` written by
+ * those two pages and no others, so a `customized_cheat_options.txt` written by
  * hand is never read - and upstream cannot write one either, because
  * `option_toggle_menu` only gives `cmd_keys` containing S/R/X to the interface
  * page and the AT-BIRTH birth page (ui-options.c L333-348).
@@ -53,7 +52,6 @@
  * docs/modding/MOD_COMPATIBILITY.md for the one export that went with it.
  */
 
-import { customOptionsFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import { OPTION_ENTRIES } from "../generated/options.js";
 import { FileMode, FileType, HostDir } from "../host/io.js";
 import type { HostIo } from "../host/io.js";
@@ -96,30 +94,13 @@ export function optionTypeName(page: string): string {
   }
 }
 
-/** `customized_<page>_options.json`, the document options_save_custom writes. */
+/**
+ * `strnfmt(file_name, ..., "customized_%s_options.txt", page_name)` - the same
+ * expression in both options_save_custom (:177) and options_restore_custom
+ * (:232), which is why it is one function here.
+ */
 export function customOptionsFileName(page: string): string {
-  return `customized_${optionTypeName(page)}_options.json`;
-}
-
-/** The text file an older build wrote. Read once, then removed. */
-export function legacyCustomOptionsFileName(page: string): string {
   return `customized_${optionTypeName(page)}_options.txt`;
-}
-
-const OPTION_PAGES = ["birth", "interface", "cheat", "score", "special"] as const;
-type OptionPageName = (typeof OPTION_PAGES)[number];
-
-function pageNameOf(page: string): OptionPageName | null {
-  const name = optionTypeName(page);
-  return (OPTION_PAGES as readonly string[]).includes(name) ? (name as OptionPageName) : null;
-}
-
-/** True when either the JSON document or the older text file is present. */
-function customOptionsPresent(io: HostIo, page: string): boolean {
-  return (
-    io.exists(HostDir.USER, customOptionsFileName(page)) ||
-    io.exists(HostDir.USER, legacyCustomOptionsFileName(page))
-  );
 }
 
 /**
@@ -137,19 +118,23 @@ function pageEntries(page: string): readonly (typeof OPTION_ENTRIES)[number][] {
  * ------------------------------------------------------------------------ */
 
 /**
- * The custom-options document for one page. Option order is the option table's
- * order. Throws when `page` is not one of the five pages, which no caller
- * reaches: the menu only saves birth and interface.
+ * The exact bytes options_save_custom writes (option.c:185-205): a three-line
+ * header naming the page, then two lines per option - its description as a
+ * comment, then the `option:name:yes|no` line the reader parses back.
+ *
+ * Pure, so the file can be compared against the C's format string by eye and by
+ * test without a host.
  */
 export function optionsSaveCustomText(opts: Readonly<OptionOpts>, page: string): string {
-  const pageName = pageNameOf(page);
-  if (pageName === null) throw new Error(`unknown option page ${page}`);
-  return serializeDocument(customOptionsFormat, {
-    page: pageName,
-    options: pageEntries(page)
-      .filter((entry) => entry.name.length > 0)
-      .map((entry) => ({ name: entry.name, enabled: opts[entry.name] === true })),
-  });
+  const pageName = optionTypeName(page);
+  let out = `# These are customized defaults for the ${pageName} options.\n`;
+  out += `# All lines begin with "option:" followed by the internal option name.\n`;
+  out += `# After the name is a colon followed by yes or no for the option's state.\n`;
+  for (const entry of pageEntries(page)) {
+    out += `# ${entry.description}\n`;
+    out += `option:${entry.name}:${opts[entry.name] ? "yes" : "no"}\n`;
+  }
+  return out;
 }
 
 /**
@@ -163,24 +148,15 @@ export function optionsSaveCustom(
   opts: Readonly<OptionOpts>,
   page: string,
 ): boolean {
-  let text: string;
-  try {
-    text = optionsSaveCustomText(opts, page);
-  } catch {
-    return false;
-  }
-  const name = customOptionsFileName(page);
-  if (io.exists(HostDir.USER, name)) {
-    const existing = io.read(HostDir.USER, name);
-    if (existing === null || !parseDocument(existing, customOptionsFormat).ok) return false;
-  }
-  const outcome = io.write(HostDir.USER, name, text, FileMode.WRITE, FileType.TEXT);
-  if (outcome !== "ok") return false;
-  const back = io.read(HostDir.USER, name);
-  if (back !== null && parseDocument(back, customOptionsFormat).ok) {
-    io.remove(HostDir.USER, legacyCustomOptionsFileName(page));
-  }
-  return true;
+  const text = optionsSaveCustomText(opts, page);
+  const outcome = io.write(
+    HostDir.USER,
+    customOptionsFileName(page),
+    text,
+    FileMode.WRITE,
+    FileType.TEXT,
+  );
+  return outcome === "ok";
 }
 
 /* ------------------------------------------------------------------------
@@ -322,17 +298,6 @@ export function optionsRestoreMaintainer(opts: OptionOpts, page: string): void {
  * counterpart and nothing is lost: a close that fails on a READ has already
  * delivered the bytes.)
  */
-function applyOptionsDocument(
-  opts: OptionOpts,
-  page: string,
-  options: readonly { name: string; enabled: boolean }[],
-): void {
-  const known = new Set<string>(pageEntries(page).map((entry) => entry.name));
-  for (const option of options) {
-    if (known.has(option.name)) opts[option.name] = option.enabled;
-  }
-}
-
 export function optionsRestoreCustom(
   io: HostIo,
   opts: OptionOpts,
@@ -340,41 +305,15 @@ export function optionsRestoreCustom(
   msg?: (message: string) => void,
 ): boolean {
   const name = customOptionsFileName(page);
-  const pageName = pageNameOf(page);
-  if (io.exists(HostDir.USER, name)) {
-    const text = io.read(HostDir.USER, name);
-    if (text === null) return false;
-    const parsed = parseDocument(text, customOptionsFormat);
-    /* Corrupt, wrong page, or a future schema: keep the defaults already in
-     * `opts` and leave the file alone. */
-    if (!parsed.ok || pageName === null || parsed.data.page !== pageName) return true;
-    applyOptionsDocument(opts, page, parsed.data.options);
-    return true;
-  }
-
-  const legacyName = legacyCustomOptionsFileName(page);
-  if (!io.exists(HostDir.USER, legacyName)) {
+  if (!io.exists(HostDir.USER, name)) {
     optionsRestoreMaintainer(opts, page);
     return true;
   }
-  const legacy = io.read(HostDir.USER, legacyName);
-  if (legacy === null) return false;
-  const converted = { ...opts };
-  const messages = parseCustomOptionsText(legacy, converted, page);
+  const text = io.read(HostDir.USER, name);
+  if (text === null) return false;
+
+  const messages = parseCustomOptionsText(text, opts, page);
   if (msg) for (const m of messages) msg(m);
-  if (pageName === null) return true;
-  let text: string;
-  try {
-    text = optionsSaveCustomText(converted, page);
-  } catch {
-    return true;
-  }
-  if (io.write(HostDir.USER, name, text, FileMode.WRITE, FileType.TEXT) !== "ok") return true;
-  const back = io.read(HostDir.USER, name);
-  const parsed = back === null ? null : parseDocument(back, customOptionsFormat);
-  if (!parsed?.ok || parsed.data.page !== pageName) return true;
-  applyOptionsDocument(opts, page, parsed.data.options);
-  io.remove(HostDir.USER, legacyName);
   return true;
 }
 
@@ -431,7 +370,10 @@ export function optionsInitDefaults(
       if (value === undefined) continue;
       const entry = OPTION_ENTRIES.find((e) => e.name === name);
       if (!entry) continue;
-      const pageFileMissing = !customOptionsPresent(io, entry.type);
+      const pageFileMissing = !io.exists(
+        HostDir.USER,
+        customOptionsFileName(entry.type),
+      );
       if (!onlyIfPageFileMissing || pageFileMissing) opts[name] = value;
     }
   };

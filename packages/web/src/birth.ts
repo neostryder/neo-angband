@@ -1742,7 +1742,7 @@ export async function runBirth(
   };
   // The keyset the character being born will actually use (#5). do_cmd_help
   // (ui-help.c:476) reads rogue_like_commands live off the player, and that
-  // option is restored from customized_interface_options.json in player_init
+  // option is restored from customized_interface_options.txt in player_init
   // the same way OP_BIRTH is restored above - before any birth stage runs, so
   // there is no savefile to read it from yet either. Without this, '?' during
   // birth always opened the original-keyset command summary even when the

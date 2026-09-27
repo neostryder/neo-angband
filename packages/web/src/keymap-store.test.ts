@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { keymapFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   clearKeymaps,
   decodeActionTokens,
@@ -112,6 +113,45 @@ describe("keymap store (keymap_add / find / remove)", () => {
     localStorage.setItem("neo-angband:keymaps", "{not json");
     expect(() => loadKeymapPrefs()).not.toThrow();
     expect(keymapEntries("orig")).toHaveLength(0);
+  });
+
+  it("converts old action strings and owner tables once", () => {
+    localStorage.setItem("neo-angband:keymaps", JSON.stringify({ orig: { F5: "q[Enter]" }, rogue: {} }));
+    localStorage.setItem("neo-angband:keymap-owners", JSON.stringify({ orig: { F5: "qol" }, rogue: {} }));
+    loadKeymapPrefs();
+    expect(keymapFind("orig", "F5")).toBe("q[Enter]");
+    expect(keymapOwner("orig", "F5")).toBe("qol");
+    expect(localStorage.getItem("neo-angband:keymap-owners")).toBeNull();
+    const raw = localStorage.getItem("neo-angband:keymaps")!;
+    const parsed = parseDocument(raw, keymapFormat);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.data.bindings[0]?.action[1]).toEqual({ key: "Enter", code: "Enter", modifiers: [] });
+    expect(serializeDocument(keymapFormat, parsed.data, { compact: true })).toBe(raw);
+    saveKeymapPrefs();
+    expect(localStorage.getItem("neo-angband:keymaps")).toBe(raw);
+  });
+
+  it("keeps a future document untouched during load and save", () => {
+    const raw = JSON.stringify({ format: keymapFormat.format, schemaVersion: 99, data: {} });
+    localStorage.setItem("neo-angband:keymaps", raw);
+    loadKeymapPrefs();
+    keymapAdd("orig", "x", "q");
+    expect(saveKeymapPrefs()).toBe(false);
+    expect(localStorage.getItem("neo-angband:keymaps")).toBe(raw);
+  });
+
+  it("keeps typed codes and modifiers when saving an unchanged binding", () => {
+    const data = { bindings: [{
+      mode: "orig" as const,
+      trigger: { key: "!", code: "Digit1", modifiers: ["shift" as const] },
+      action: [{ key: "q", code: "KeyQ", modifiers: ["control" as const] }],
+    }] };
+    const raw = serializeDocument(keymapFormat, data, { compact: true });
+    localStorage.setItem("neo-angband:keymaps", raw);
+    loadKeymapPrefs();
+    expect(saveKeymapPrefs()).toBe(true);
+    expect(localStorage.getItem("neo-angband:keymaps")).toBe(raw);
   });
 });
 

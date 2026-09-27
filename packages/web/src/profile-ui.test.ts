@@ -338,39 +338,6 @@ describe("keeping and reclaiming a deleted profile's saves", () => {
     await done;
   });
 
-  it("keeps the profile when its orphan archive cannot be written", async () => {
-    const store = new ProfileStore(fakeStorage());
-    const real = fakeStorage();
-    const id = store.create("Testing", { realStorage: real });
-    const scoped = scopedStorage(real, id);
-    scoped.setItem("neo-angband-roster", JSON.stringify([bilbo]));
-    scoped.setItem("neo-angband-save:char-1", "c2F2ZQ==");
-    const originalSet = real.setItem.bind(real);
-    real.setItem = (key, value) => {
-      if (key === "neo-angband-orphan-records") throw new Error("quota");
-      originalSet(key, value);
-    };
-    const { win, done } = open(store, real);
-    await flush();
-    press(win, "ArrowDown");
-    press(win, "Enter");
-    await flush();
-    press(win, "ArrowDown");
-    press(win, "ArrowDown");
-    press(win, "Enter");
-    await flush();
-    press(win, "y");
-    await flush();
-    press(win, "y");
-    await flush();
-    expect(store.list().some((profile) => profile.id === id)).toBe(true);
-    expect(scoped.getItem("neo-angband-save:char-1")).toBe("c2F2ZQ==");
-    press(win, "Escape");
-    await flush();
-    press(win, "Escape");
-    await done;
-  });
-
   it("reclaiming an orphaned save adds it to the currently active roster", async () => {
     const store = new ProfileStore(fakeStorage());
     const real = fakeStorage();

@@ -48,15 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
-### Changed
-
-- [Visible] [Save-Compat] **A character export is a plain JSON document.** A `.neochar` file holds the character and the save as readable JSON. An older character file still imports, and a save from before this change still loads. (#288)
-
 ### Added
 
-- [Visible] [UI] **Subwindow panels can share one space as tabs.** Dropping a panel on the new Tab target in the middle of another panel adds it as a tab, and a tab strip in the title bar switches between them. A window too small for every panel now folds the most cramped panel into a tab beside the panel closest to it in shape instead of hiding it, and separates them again when there is room. (#287)
-- [Visible] [UI] **Each part of the subwindow manager has its own switch.** The Subwindow setup screen turns tabs, small-window folding, divider locking and fit to content on or off one at a time, and none of them changes a saved arrangement. Fit to content gives a panel that asks for a set height that height until you drag its divider; double-clicking the divider hands the size back. (#287)
-- [Visible] [UI] **The dungeon view can be moved like any other panel.** A grip in its top-right corner drags it to another panel's edge or swaps it with a panel, and a switch on the Subwindow setup screen hides the grip. It never closes, hides or becomes a tab. (#287)
 - [Internal] [Modding-API] **JSON documents share a schema registry and canonical writer.** The mod SDK validates envelopes and scalar values, migrates older versions, and serializes stable output; desktop window placement now converts `window.txt` to `window.json` on first read. (#288)
 - [Internal] [Modding-API] **Mods can read the game's own inspection answers.** `ctx.inspect` and `AgentView` return an item's description, a monster's recall, a spell's details, the items a command would offer, and aiming paths, each stamped with the current input token. Answers cover only what the player knows, need the matching state read grant, and leave game state and RNG unchanged. (#285)
 - [Internal] [Modding-API] **Resolved combat, healing, and movement events expose outcomes to interface mods.** Core emits copied hit, miss, damage, death, restored HP, and typed walk or teleport facts at their resolving paths, with a visibility flag; web mods subscribe through `ctx.events` using individual `event:<name>` grants. (#285)
@@ -69,10 +62,6 @@ still calls itself.
 - [Visible] [UI] **Open the Mods screen from the title screen before creating a character.** Install, enable and order mods there; applying changes reloads the title and birth screens with the new mod set (#286).
 - [Internal] [Modding-API] **A mod can read one input wait whole with `ctx.snapshot()`.** It returns the player, pack, equipment, monsters, target, stores and spellbooks from one moment, with the shell's phase, whether a "-more-" pause holds input, and the last map frame, under a token that changes only when the game does. `AgentView.capture()` and `inputToken()` give the core half, and `tokenIsCurrent()` checks a token against the game as it stands now. Reading changes no game state or RNG (#285).
 
-### Changed
-
-- [Visible] [Save-Compat] **Saved option defaults, monster memory, random-artifact exports and Linoleum tile packs are stored as JSON.** Your existing files convert the first time the game reads them, and the old copies are removed once the new ones read back correctly. A tile pack already saved in your browser converts the same way. If a file cannot be read, it is left untouched and the game uses the defaults for that session. (#288)
-
 ## [1.18.0] - 2026-09-26
 
 ### Added
@@ -83,6 +72,7 @@ still calls itself.
 
 ### Changed
 
+- [Visible] [Save-Compat] **Preference exports now use JSON documents.** Existing user `.prf` files, keymaps, controller bindings, colors, and subwindow layouts convert on first read. The Options Menu exports and imports JSON files, including named mod blocks in subwindow layouts. (#288)
 - [Visible] [Docs] **The README, install guide, mod guides, modding docs and policy pages are reworded for plainer reading, with every fact kept.** Long asides are cut down and sentences are shorter, which takes about 7,600 words out of the docs in total (#278).
 
 ### Fixed

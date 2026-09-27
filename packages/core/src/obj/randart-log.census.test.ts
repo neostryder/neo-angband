@@ -87,6 +87,16 @@ const RANDART_SITES = sites(
   "obj-randart.c",
   /file_putf\(log_file,\s*((?:"(?:[^"\\]|\\.)*"\s*)+)/g,
 );
+/**
+ * file_putf(fff, ...) in obj-randart.c - write_randart_entry, i.e. randart.txt.
+ * A DIFFERENT FILE with a different grammar, counted separately because
+ * "randart.log is complete" says nothing about it.
+ */
+const TXT_SITES = sites(
+  "obj-randart.c",
+  /file_putf\(fff,\s*((?:"(?:[^"\\]|\\.)*"\s*)+)/g,
+);
+
 /** A site is covered when every one of its literal spans is in the port. */
 function covered(s: Site): boolean {
   return s.spans.every((span) => PORT.includes(span));
@@ -133,6 +143,21 @@ describe("randart.log covers obj-power.c (PORT_TODO 5.5)", () => {
 
   it("every obj-power.c log line has a counterpart in the port", () => {
     const missing = POWER_SITES.filter((s) => !covered(s)).map((s) => s.fmt);
+    expect(missing).toEqual([]);
+  });
+});
+
+describe("randart.txt covers write_randart_entry (PORT_TODO 5.5)", () => {
+  it("finds the C's writer sites at all", () => {
+    /* 19 file_putf(fff, ...) calls; the ones whose format is a bare "%s\n"
+     * style conversion have no span and are dropped, so this is the visible
+     * subset. Guarding it stops an extraction that matched nothing from making
+     * the assertion below pass for free. */
+    expect(TXT_SITES.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("every write_randart_entry line has a counterpart in the port", () => {
+    const missing = TXT_SITES.filter((s) => !covered(s)).map((s) => s.fmt);
     expect(missing).toEqual([]);
   });
 });

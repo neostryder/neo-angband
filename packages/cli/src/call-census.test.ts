@@ -39,11 +39,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 /** C function name -> why the port defines it and never uses it. */
 const KNOWN_UNUSED: Record<string, readonly string[]> = {
-  "retired export: randart.json serializes modifiers and elements as JSON fields":
-    [
-      "write_mods",
-      "write_elements",
-    ],
   "renamed: the port does this work under another name; the same-named export is a leftover":
     [
       /* mon-place.ts:224 calls createDrop for exactly this, at exactly
@@ -54,6 +49,9 @@ const KNOWN_UNUSED: Record<string, readonly string[]> = {
        * pathfind_direction_to has one caller and the port reaches the same
        * result through motionDir. */
       "pathfind_direction_to",
+      /* User preferences are serialized as JSON documents by the SDK. The
+       * old core pref writer remains for parity tests, not runtime exports. */
+      "prefs_save",
     ],
 
   "reduced: the port models this area with a flatter structure, and the faithful helper waits on the fuller one (documented in known.ts:6-12 and ledgered)":

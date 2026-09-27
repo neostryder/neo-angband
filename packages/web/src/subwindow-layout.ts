@@ -1,18 +1,11 @@
 /**
  * Binary-space-partition tiling for the game view and its subwindows.
  *
- * A node is either a leaf or a split (two children sharing an axis). A leaf is
- * a tab group: `id` is the panel it shows, and `tabs`, present only when the
- * group holds more than one panel, lists every panel in tab order. A saved
- * tree from before tab groups is a tree of one-tab groups and loads as is.
- * The root always covers the viewport, so the computed rectangles have no gaps
- * and no overlaps. Drag-docking replaces a leaf with a split; removing the
- * last panel of a leaf collapses its parent. This is the same shape as a
- * tiling window manager, not free-floating OS windows.
- *
- * The main view never joins a group of more than one tab: an inactive tab is
- * hidden, and the dungeon view is never hidden. It can still move: it docks
- * against another panel's edge or trades places with a panel like any other.
+ * A node is either a leaf (one panel) or a split (two children sharing an
+ * axis). The root always covers the viewport, so the computed rectangles have
+ * no gaps and no overlaps. Drag-docking replaces a leaf with a split; removing
+ * a leaf collapses its parent. This is the same shape as a tiling window
+ * manager, not free-floating OS windows.
  */
 
 export const MAIN_TILE_ID = "main";
@@ -25,21 +18,13 @@ export interface SplitNode {
   kind: "split";
   axis: SplitAxis;
   ratio: number;
-  /**
-   * The player dragged this divider, so a panel's fit-to-content height no
-   * longer moves it (#287). Double-clicking the divider clears it.
-   */
-  sized?: true;
   first: LayoutNode;
   second: LayoutNode;
 }
 
 export interface LeafNode {
   kind: "leaf";
-  /** The panel this group shows: its active tab. */
   id: TileId;
-  /** Every panel in the group, in tab order, when it holds more than one. */
-  tabs?: readonly TileId[];
 }
 
 export type LayoutNode = SplitNode | LeafNode;
@@ -54,8 +39,6 @@ export interface Rect {
 export interface TileRect {
   id: TileId;
   rect: Rect;
-  /** The group's panels in tab order; absent for a single panel. */
-  tabs?: readonly TileId[];
 }
 
 export interface SplitterRect {
@@ -72,14 +55,7 @@ export interface LayoutRects {
 
 export type DropZone =
   | { kind: "dock"; id: TileId; edge: DockEdge; preview: Rect }
-  | { kind: "swap"; id: TileId; preview: Rect }
-  | { kind: "tab"; id: TileId; preview: Rect };
-
-/** What a center drop zone does with the dragged panel, shown on its guide. */
-export const DROP_ZONE_LABELS: Readonly<Record<"swap" | "tab", string>> = {
-  swap: "Swap",
-  tab: "Tab",
-};
+  | { kind: "swap"; id: TileId; preview: Rect };
 
 export const SPLITTER_PX = 6;
 export const MIN_TILE_PX = 96;
@@ -108,25 +84,13 @@ export function isLeaf(node: LayoutNode): node is LeafNode {
   return node.kind === "leaf";
 }
 
-/** A group's panels in tab order; a single panel is a group of one. */
-export function groupTabs(leaf: LeafNode): readonly TileId[] {
-  return leaf.tabs && leaf.tabs.length > 1 ? leaf.tabs : [leaf.id];
-}
-
-/** Build a group, dropping `tabs` when only one panel is left in it. */
-function makeGroup(tabs: readonly TileId[], active: TileId): LeafNode {
-  const id = tabs.includes(active) ? active : tabs[0]!;
-  return tabs.length > 1 ? { kind: "leaf", id, tabs: [...tabs] } : { kind: "leaf", id };
-}
-
-/** Every panel in the tree, including inactive tabs. */
 export function leafIds(node: LayoutNode): TileId[] {
-  if (node.kind === "leaf") return [...groupTabs(node)];
+  if (node.kind === "leaf") return [node.id];
   return [...leafIds(node.first), ...leafIds(node.second)];
 }
 
 export function containsLeaf(node: LayoutNode, id: TileId): boolean {
-  if (node.kind === "leaf") return groupTabs(node).includes(id);
+  if (node.kind === "leaf") return node.id === id;
   return containsLeaf(node.first, id) || containsLeaf(node.second, id);
 }
 
@@ -152,49 +116,17 @@ function splitSizes(
   return [first, inner - first];
 }
 
-export interface LayoutOptions {
-  splitterPx?: number;
-  minPx?: number;
-  /**
-   * Heights in CSS pixels that panels ask for to fit their content (#287),
-   * keyed by panel id. A request applies when the panel is the active tab of
-   * one side of a stacked split whose divider the player has not dragged.
-   */
-  fit?: ReadonlyMap<TileId, number>;
-}
-
 export function computeLayout(
   tree: LayoutNode,
   viewport: Rect,
-  opts: LayoutOptions = {},
+  opts: { splitterPx?: number; minPx?: number } = {},
 ): LayoutRects {
   const splitterPx = opts.splitterPx ?? SPLITTER_PX;
   const minPx = opts.minPx ?? MIN_TILE_PX;
   const tiles: TileRect[] = [];
   const splitters: SplitterRect[] = [];
-  walk(tree, viewport, [], splitterPx, minPx, opts.fit, tiles, splitters);
+  walk(tree, viewport, [], splitterPx, minPx, tiles, splitters);
   return { tiles, splitters };
-}
-
-/**
- * The ratio that gives a fitted panel its requested height, or the saved
- * ratio when no request applies. The result is kept inside the same minimum
- * sizes as a dragged divider.
- */
-function fittedRatio(node: SplitNode, height: number, splitterPx: number, fit?: ReadonlyMap<TileId, number>): number {
-  if (!fit || fit.size === 0 || node.sized) return node.ratio;
-  const inner = height - splitterPx;
-  if (inner <= 0) return node.ratio;
-  const want = (child: LayoutNode): number | undefined => {
-    if (child.kind !== "leaf" || child.id === MAIN_TILE_ID) return undefined;
-    const px = fit.get(child.id);
-    return px !== undefined && Number.isFinite(px) && px > 0 ? px : undefined;
-  };
-  const first = want(node.first);
-  if (first !== undefined) return clampRatio(first / inner);
-  const second = want(node.second);
-  if (second !== undefined) return clampRatio(1 - second / inner);
-  return node.ratio;
 }
 
 function walk(
@@ -203,13 +135,11 @@ function walk(
   path: readonly number[],
   splitterPx: number,
   minPx: number,
-  fit: ReadonlyMap<TileId, number> | undefined,
   tiles: TileRect[],
   splitters: SplitterRect[],
 ): void {
   if (node.kind === "leaf") {
-    const tabs = groupTabs(node);
-    tiles.push(tabs.length > 1 ? { id: node.id, rect, tabs } : { id: node.id, rect });
+    tiles.push({ id: node.id, rect });
     return;
   }
   if (node.axis === "v") {
@@ -223,12 +153,11 @@ function walk(
       h: rect.h,
     };
     splitters.push({ axis: "v", path, rect: gutter, parent: rect });
-    walk(node.first, firstRect, [...path, 0], splitterPx, minPx, fit, tiles, splitters);
-    walk(node.second, secondRect, [...path, 1], splitterPx, minPx, fit, tiles, splitters);
+    walk(node.first, firstRect, [...path, 0], splitterPx, minPx, tiles, splitters);
+    walk(node.second, secondRect, [...path, 1], splitterPx, minPx, tiles, splitters);
     return;
   }
-  const ratio = fittedRatio(node, rect.h, splitterPx, fit);
-  const [firstH, secondH] = splitSizes(rect.h, ratio, splitterPx, minPx);
+  const [firstH, secondH] = splitSizes(rect.h, node.ratio, splitterPx, minPx);
   const firstRect = { x: rect.x, y: rect.y, w: rect.w, h: firstH };
   const gutter = { x: rect.x, y: rect.y + firstH, w: rect.w, h: splitterPx };
   const secondRect = {
@@ -238,8 +167,8 @@ function walk(
     h: secondH,
   };
   splitters.push({ axis: "h", path, rect: gutter, parent: rect });
-  walk(node.first, firstRect, [...path, 0], splitterPx, minPx, fit, tiles, splitters);
-  walk(node.second, secondRect, [...path, 1], splitterPx, minPx, fit, tiles, splitters);
+  walk(node.first, firstRect, [...path, 0], splitterPx, minPx, tiles, splitters);
+  walk(node.second, secondRect, [...path, 1], splitterPx, minPx, tiles, splitters);
 }
 
 function replaceAt(
@@ -255,43 +184,27 @@ function replaceAt(
   return node;
 }
 
-/** The path to the group holding `id`, whether or not it is the active tab. */
 function findPath(node: LayoutNode, id: TileId, path: number[] = []): number[] | null {
-  if (node.kind === "leaf") return groupTabs(node).includes(id) ? path : null;
+  if (node.kind === "leaf") return node.id === id ? path : null;
   const first = findPath(node.first, id, [...path, 0]);
   if (first) return first;
   return findPath(node.second, id, [...path, 1]);
 }
 
-/**
- * Take one panel out of the tree. A panel sharing a group leaves the rest of
- * the group in place, and the next tab becomes active if the removed panel was
- * the one shown. The last panel of a group takes the group with it and
- * collapses its parent split.
- */
 export function removeLeaf(tree: LayoutNode, id: TileId): LayoutNode {
   if (id === MAIN_TILE_ID) return tree;
-  return removeFrom(tree, id) ?? tree;
-}
-
-function removeFrom(node: LayoutNode, id: TileId): LayoutNode | null {
-  if (node.kind === "leaf") {
-    const tabs = groupTabs(node);
-    const index = tabs.indexOf(id);
-    if (index < 0) return node;
-    const rest = tabs.filter((tab) => tab !== id);
-    if (rest.length === 0) return null;
-    return makeGroup(rest, node.id === id ? rest[Math.min(index, rest.length - 1)]! : node.id);
-  }
-  const first = removeFrom(node.first, id);
-  const second = removeFrom(node.second, id);
-  if (!first) return second;
-  if (!second) return first;
-  return { ...node, first, second };
+  if (tree.kind === "leaf") return tree;
+  if (tree.first.kind === "leaf" && tree.first.id === id) return tree.second;
+  if (tree.second.kind === "leaf" && tree.second.id === id) return tree.first;
+  return {
+    ...tree,
+    first: removeLeaf(tree.first, id),
+    second: removeLeaf(tree.second, id),
+  };
 }
 
 function splitOnEdge(
-  target: LayoutNode,
+  target: LeafNode,
   incoming: LeafNode,
   edge: DockEdge,
   incomingRatio: number,
@@ -317,59 +230,21 @@ export function insertAtEdge(
   incomingRatio = 0.3,
 ): LayoutNode {
   if (incomingId === targetId) return tree;
-  /* removeLeaf keeps the main view in place for every caller that closes or
-   * prunes panels; a move takes it out so it can land somewhere else. */
-  const stripped = removeFrom(tree, incomingId) ?? tree;
+  const stripped = incomingId === MAIN_TILE_ID ? tree : removeLeaf(tree, incomingId);
   const path = findPath(stripped, targetId);
   if (!path) return tree;
-  const target = nodeAt(stripped, path);
-  if (!target) return tree;
   const incoming: LeafNode = { kind: "leaf", id: incomingId };
+  const target: LeafNode = { kind: "leaf", id: targetId };
   return replaceAt(stripped, path, splitOnEdge(target, incoming, edge, incomingRatio));
 }
 
-function mapIds(node: LayoutNode, map: (id: TileId) => TileId): LayoutNode {
-  if (node.kind === "leaf") return makeGroup(groupTabs(node).map(map), map(node.id));
-  return { ...node, first: mapIds(node.first, map), second: mapIds(node.second, map) };
-}
-
-/**
- * Exchange two panels. Each takes the other's position, including its place in
- * a tab group. The main view does not trade places with a panel that shares a
- * group, because that would put the main view inside the group.
- */
 export function swapLeaves(tree: LayoutNode, a: TileId, b: TileId): LayoutNode {
   if (a === b) return tree;
   const pathA = findPath(tree, a);
   const pathB = findPath(tree, b);
   if (!pathA || !pathB) return tree;
-  const other = a === MAIN_TILE_ID ? pathB : b === MAIN_TILE_ID ? pathA : null;
-  if (other) {
-    const group = nodeAt(tree, other);
-    if (group?.kind === "leaf" && groupTabs(group).length > 1) return tree;
-  }
-  return mapIds(tree, (id) => (id === a ? b : id === b ? a : id));
-}
-
-/** Move a panel into another panel's group as that group's active tab. */
-export function tabInto(tree: LayoutNode, incomingId: TileId, targetId: TileId): LayoutNode {
-  if (incomingId === targetId || incomingId === MAIN_TILE_ID || targetId === MAIN_TILE_ID) return tree;
-  if (!containsLeaf(tree, targetId)) return tree;
-  const stripped = removeLeaf(tree, incomingId);
-  const path = findPath(stripped, targetId);
-  if (!path) return tree;
-  const group = nodeAt(stripped, path);
-  if (group?.kind !== "leaf") return tree;
-  return replaceAt(stripped, path, makeGroup([...groupTabs(group), incomingId], incomingId));
-}
-
-/** Show `id` in its group. A panel alone in its group is already shown. */
-export function selectTab(tree: LayoutNode, id: TileId): LayoutNode {
-  const path = findPath(tree, id);
-  if (!path) return tree;
-  const group = nodeAt(tree, path);
-  if (group?.kind !== "leaf" || group.id === id) return tree;
-  return replaceAt(tree, path, makeGroup(groupTabs(group), id));
+  const withA = replaceAt(tree, pathA, { kind: "leaf", id: b });
+  return replaceAt(withA, pathB, { kind: "leaf", id: a });
 }
 
 function nodeAt(tree: LayoutNode, path: readonly number[]): LayoutNode | null {
@@ -388,15 +263,7 @@ export function resizeSplit(
 ): LayoutNode {
   const node = nodeAt(tree, path);
   if (!node || node.kind !== "split") return tree;
-  return replaceAt(tree, path, { ...node, ratio: clampRatio(ratio), sized: true });
-}
-
-/** Hand a dragged divider back to fit-to-content sizing. */
-export function unsizeSplit(tree: LayoutNode, path: readonly number[]): LayoutNode {
-  const node = nodeAt(tree, path);
-  if (!node || node.kind !== "split" || !node.sized) return tree;
-  const { sized: _sized, ...rest } = node;
-  return replaceAt(tree, path, rest);
+  return replaceAt(tree, path, { ...node, ratio: clampRatio(ratio) });
 }
 
 export function ratioFromPointer(
@@ -431,79 +298,25 @@ function edgeBand(rect: Rect, edge: DockEdge, fraction: number, minPx: number, m
   }
 }
 
-export interface DropZoneOptions {
-  fraction?: number;
-  minPx?: number;
-  maxPx?: number;
-  /** The panel being dragged. The main view never becomes a tab. */
-  dragging?: TileId;
-  /** Offer the Tab target. False leaves the whole interior as Swap. */
-  tabs?: boolean;
-}
-
-/**
- * The interior of a tile, inside its four edge bands, split into the Swap
- * target and the Tab target: side by side in a wide tile, stacked in a tall
- * one. When the main view is either end of the drop, the whole interior is
- * Swap.
- */
-function centerZones(tile: TileRect, opts: ResolvedZoneOptions): DropZone[] {
-  const { rect } = tile;
-  const left = edgeBand(rect, "left", opts.fraction, opts.minPx, opts.maxPx).w;
-  const top = edgeBand(rect, "top", opts.fraction, opts.minPx, opts.maxPx).h;
-  const inner = {
-    x: rect.x + left,
-    y: rect.y + top,
-    w: Math.max(0, rect.w - left * 2),
-    h: Math.max(0, rect.h - top * 2),
-  };
-  if (!opts.tabs || tile.id === MAIN_TILE_ID || opts.dragging === MAIN_TILE_ID) {
-    return [{ kind: "swap", id: tile.id, preview: inner }];
-  }
-  if (inner.w >= inner.h) {
-    const half = Math.floor(inner.w / 2);
-    return [
-      { kind: "swap", id: tile.id, preview: { ...inner, w: half } },
-      { kind: "tab", id: tile.id, preview: { ...inner, x: inner.x + half, w: inner.w - half } },
-    ];
-  }
-  const half = Math.floor(inner.h / 2);
-  return [
-    { kind: "swap", id: tile.id, preview: { ...inner, h: half } },
-    { kind: "tab", id: tile.id, preview: { ...inner, y: inner.y + half, h: inner.h - half } },
-  ];
-}
-
-type ResolvedZoneOptions = Required<Omit<DropZoneOptions, "dragging">> & { dragging?: TileId | undefined };
-
-function zoneOptions(opts: DropZoneOptions): ResolvedZoneOptions {
-  return {
-    fraction: opts.fraction ?? 0.25,
-    minPx: opts.minPx ?? 12,
-    maxPx: opts.maxPx ?? 56,
-    dragging: opts.dragging,
-    tabs: opts.tabs ?? true,
-  };
-}
-
 export function dropZoneAt(
   tiles: readonly TileRect[],
   x: number,
   y: number,
-  opts: DropZoneOptions = {},
+  opts: { fraction?: number; minPx?: number; maxPx?: number } = {},
 ): DropZone | null {
-  const resolved = zoneOptions(opts);
+  const fraction = opts.fraction ?? 0.25;
+  const minPx = opts.minPx ?? 12;
+  const maxPx = opts.maxPx ?? 56;
   const hit = tiles.find((tile) => pointInRect(tile.rect, x, y));
   if (!hit) return null;
   const edges: DockEdge[] = ["left", "right", "top", "bottom"];
   for (const edge of edges) {
-    const preview = edgeBand(hit.rect, edge, resolved.fraction, resolved.minPx, resolved.maxPx);
+    const preview = edgeBand(hit.rect, edge, fraction, minPx, maxPx);
     if (pointInRect(preview, x, y)) {
       return { kind: "dock", id: hit.id, edge, preview };
     }
   }
-  const center = centerZones(hit, resolved);
-  return center.find((zone) => pointInRect(zone.preview, x, y)) ?? center[0]!;
+  return { kind: "swap", id: hit.id, preview: hit.rect };
 }
 
 /**
@@ -518,21 +331,18 @@ export function dropZoneAt(
 export function allDropZones(
   tiles: readonly TileRect[],
   excludeId: TileId,
-  opts: DropZoneOptions = {},
+  opts: { fraction?: number; minPx?: number; maxPx?: number } = {},
 ): DropZone[] {
-  const resolved = zoneOptions({ ...opts, dragging: opts.dragging ?? excludeId });
+  const fraction = opts.fraction ?? 0.25;
+  const minPx = opts.minPx ?? 12;
+  const maxPx = opts.maxPx ?? 56;
   const edges: DockEdge[] = ["left", "right", "top", "bottom"];
   const zones: DropZone[] = [];
   for (const tile of tiles) {
     if (tile.id === excludeId) continue;
-    zones.push(...centerZones(tile, resolved));
+    zones.push({ kind: "swap", id: tile.id, preview: tile.rect });
     for (const edge of edges) {
-      zones.push({
-        kind: "dock",
-        id: tile.id,
-        edge,
-        preview: edgeBand(tile.rect, edge, resolved.fraction, resolved.minPx, resolved.maxPx),
-      });
+      zones.push({ kind: "dock", id: tile.id, edge, preview: edgeBand(tile.rect, edge, fraction, minPx, maxPx) });
     }
   }
   return zones;
@@ -546,21 +356,11 @@ export function applyDrop(
 ): LayoutNode {
   if (zone.id === incomingId) return tree;
   if (zone.kind === "swap") return swapLeaves(tree, incomingId, zone.id);
-  if (zone.kind === "tab") return tabInto(tree, incomingId, zone.id);
-  /* A docked panel takes the smaller share of the split. The dungeon view is
-   * the play area, so when it is the one moving it takes the larger share. */
-  const ratio = incomingId === MAIN_TILE_ID ? 1 - incomingRatio : incomingRatio;
-  return insertAtEdge(tree, incomingId, zone.id, zone.edge, ratio);
+  return insertAtEdge(tree, incomingId, zone.id, zone.edge, incomingRatio);
 }
 
 export function pruneTree(node: LayoutNode, keep: ReadonlySet<TileId>): LayoutNode | null {
-  if (node.kind === "leaf") {
-    const tabs = groupTabs(node);
-    const kept = tabs.filter((id) => keep.has(id));
-    if (kept.length === 0) return null;
-    if (kept.length === tabs.length) return node;
-    return makeGroup(kept, node.id);
-  }
+  if (node.kind === "leaf") return keep.has(node.id) ? node : null;
   const first = pruneTree(node.first, keep);
   const second = pruneTree(node.second, keep);
   if (!first) return second;
@@ -568,107 +368,65 @@ export function pruneTree(node: LayoutNode, keep: ReadonlySet<TileId>): LayoutNo
   return { ...node, first, second };
 }
 
-export interface ComfortMerge {
-  /** The panel that was shown in the group moved. */
-  id: TileId;
-  /** The panel shown in the group it joined. */
-  into: TileId;
-}
-
-export interface ComfortResult {
-  /** The tree to actually render, with 0 or more groups merged together. */
+export interface DegradeResult {
+  /** The tree to actually render, with 0 or more leaves pruned out. */
   tree: LayoutNode;
-  /** Each merge, in the order it happened (smallest group first). */
-  merged: ComfortMerge[];
-}
-
-/** How far apart two rectangles' shapes are: 0 for the same aspect ratio. */
-function shapeDistance(a: Rect, b: Rect): number {
-  const ratio = (r: Rect): number => Math.max(1, r.w) / Math.max(1, r.h);
-  return Math.abs(Math.log(ratio(a)) - Math.log(ratio(b)));
-}
-
-/** Remove a whole group at `path`, collapsing its parent split. */
-function removeGroupAt(tree: LayoutNode, path: readonly number[]): LayoutNode | null {
-  if (path.length === 0) return null;
-  const parentPath = path.slice(0, -1);
-  const parent = nodeAt(tree, parentPath);
-  if (!parent || parent.kind !== "split") return tree;
-  const survivor = path[path.length - 1] === 0 ? parent.second : parent.first;
-  return replaceAt(tree, parentPath, survivor);
+  /** The ids removed, in the order they were dropped (smallest first). */
+  dropped: TileId[];
 }
 
 /**
- * Small-viewport pass (neo-angband#275, #287): given the tree a player
- * actually arranged and the real viewport it is about to be rendered into,
- * repeatedly take the smallest group that is too cramped to read and merge
- * all of its panels as tabs into the open group whose shape is closest to it
- * (a tall panel joins a tall panel, a wide one a wide one), until every group
- * clears `COMFORTABLE_MIN_PX` or only one group besides the main view is left.
- * No panel is hidden by this pass: a merged panel is one tab away.
+ * Graceful-degradation pass (neo-angband#275): given the tree a player
+ * actually asked for and the real viewport it is about to be rendered into,
+ * repeatedly drop the smallest leaf until every remaining leaf clears
+ * `COMFORTABLE_MIN_PX` in both dimensions, or only one non-main leaf is left.
  *
- * The saved tree is never changed. The pass decides which render tree to
- * hand to the ordinary `computeLayout` path, so growing the viewport back out
- * separates the groups again with nothing to undo. A layout that already fits
- * runs the loop once, finds nothing to merge, and returns the same tree object.
+ * This never touches `splitSizes`'s own clamp - it decides which SMALLER tree
+ * to hand to the ordinary `computeLayout`/`splitSizes` path, so a layout that
+ * already fits comfortably runs this loop once, finds nothing to drop, and
+ * returns the same tree object it was given (a no-op, byte-identical to
+ * calling `computeLayout` directly, per #275's requirement that the common
+ * case never changes).
  *
- * `prefer` lists panels to show in whichever merged group they end up in, so
- * a tab chosen inside a merged group stays chosen across repaints.
+ * "Constrained dimension" is simplified to both: a leaf counts as comfortable
+ * only when its narrower side (`min(w, h)`) already clears the threshold,
+ * rather than guessing width-vs-height per panel id. A saved layout can dock
+ * any panel on any edge via drag-and-drop (subwindow-shell.ts), so a
+ * per-id width-or-height table would silently mis-score a panel a player has
+ * moved off its default edge; `min(w, h)` is right regardless of where a
+ * panel currently sits.
  *
- * A group counts as comfortable only when its narrower side clears the
- * threshold, whichever edge it is docked on. The main view never merges and
- * is never merged into, matching the rule that it never shares a group.
+ * `MAIN_TILE_ID` is never a drop candidate and never counted against the
+ * "only one left" floor - it is the one tile that always stays, matching
+ * `removeLeaf`'s and `reconcileSubwindowTree`'s own treatment of it.
  */
-export function fitForComfort(
+export function degradeForComfort(
   tree: LayoutNode,
   viewport: Rect,
-  opts: { splitterPx?: number; minPx?: number; comfortablePx?: number; prefer?: readonly TileId[] } = {},
-): ComfortResult {
+  opts: { splitterPx?: number; minPx?: number; comfortablePx?: number } = {},
+): DegradeResult {
   const comfortablePx = opts.comfortablePx ?? COMFORTABLE_MIN_PX;
-  const merged: ComfortMerge[] = [];
+  const dropped: TileId[] = [];
   let current = tree;
   for (;;) {
+    const others = leafIds(current).filter((id) => id !== MAIN_TILE_ID);
+    if (others.length <= 1) break;
     const { tiles } = computeLayout(current, viewport, opts);
-    const groups = tiles.filter((tile) => tile.id !== MAIN_TILE_ID);
-    if (groups.length <= 1) break;
-    let smallest: TileRect | null = null;
-    let smallestSize = Infinity;
-    for (const tile of groups) {
+    let smallest: { id: TileId; size: number } | null = null;
+    for (const tile of tiles) {
+      if (tile.id === MAIN_TILE_ID) continue;
       const size = Math.min(tile.rect.w, tile.rect.h);
       if (size >= comfortablePx) continue;
-      if (size < smallestSize) {
-        smallest = tile;
-        smallestSize = size;
-      }
+      if (!smallest || size < smallest.size) smallest = { id: tile.id, size };
     }
     if (!smallest) break;
-    let target: TileRect | null = null;
-    let best = Infinity;
-    for (const tile of groups) {
-      if (tile === smallest) continue;
-      const distance = shapeDistance(smallest.rect, tile.rect);
-      const area = tile.rect.w * tile.rect.h;
-      const bestArea = target ? target.rect.w * target.rect.h : -1;
-      if (distance < best - 1e-9 || (Math.abs(distance - best) <= 1e-9 && area > bestArea)) {
-        target = tile;
-        best = distance;
-      }
-    }
-    if (!target) break;
-    const fromPath = findPath(current, smallest.id);
-    const fromNode = fromPath ? nodeAt(current, fromPath) : null;
-    if (!fromPath || !fromNode || fromNode.kind !== "leaf") break;
-    const without = removeGroupAt(current, fromPath);
-    if (!without) break;
-    const intoPath = findPath(without, target.id);
-    const intoNode = intoPath ? nodeAt(without, intoPath) : null;
-    if (!intoPath || !intoNode || intoNode.kind !== "leaf") break;
-    const tabs = [...groupTabs(intoNode), ...groupTabs(fromNode)];
-    const preferred = opts.prefer?.find((id) => tabs.includes(id));
-    current = replaceAt(without, intoPath, makeGroup(tabs, preferred ?? intoNode.id));
-    merged.push({ id: smallest.id, into: target.id });
+    const keep = new Set(leafIds(current).filter((id) => id !== smallest!.id));
+    const pruned = pruneTree(current, keep);
+    if (!pruned) break;
+    current = pruned;
+    dropped.push(smallest.id);
   }
-  return { tree: current, merged };
+  return { tree: current, dropped };
 }
 
 export function parseLayoutTree(raw: unknown): LayoutNode | null {
@@ -685,28 +443,20 @@ function parseNode(raw: unknown): LayoutNode | null {
   const rec = raw as Record<string, unknown>;
   if (rec.kind === "leaf") {
     if (typeof rec.id !== "string" || rec.id.length === 0) return null;
-    if (rec.tabs === undefined) return { kind: "leaf", id: rec.id };
-    if (!Array.isArray(rec.tabs)) return null;
-    const tabs = rec.tabs as unknown[];
-    if (!tabs.every((tab): tab is string => typeof tab === "string" && tab.length > 0)) return null;
-    if (!tabs.includes(rec.id) || new Set(tabs).size !== tabs.length) return null;
-    if (tabs.length > 1 && tabs.includes(MAIN_TILE_ID)) return null;
-    return makeGroup(tabs, rec.id);
+    return { kind: "leaf", id: rec.id };
   }
   if (rec.kind === "split") {
     if (rec.axis !== "h" && rec.axis !== "v") return null;
     const first = parseNode(rec.first);
     const second = parseNode(rec.second);
     if (!first || !second) return null;
-    const split: SplitNode = {
+    return {
       kind: "split",
       axis: rec.axis,
       ratio: clampRatio(typeof rec.ratio === "number" ? rec.ratio : 0.5),
       first,
       second,
     };
-    if (rec.sized === true) split.sized = true;
-    return split;
   }
   return null;
 }

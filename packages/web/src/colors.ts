@@ -12,15 +12,18 @@
  */
 
 import { inputEvents } from "./input-door";
+import { colorTableFormat, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   COLOR_TABLE,
   MAX_COLORS,
   colorChannel,
+  colorPrefId,
   colorTableSnapshot,
   colorToCss,
   restoreColorTable,
   setColorChannel,
 } from "@rpgm-tools/neo-angband-core";
+import { readStoredDocument, writeStoredDocument } from "./json-storage";
 import type { GridPointerInput, GridSurface } from "./term";
 import { screenRegionSpec } from "./overlay";
 import { popRegion, pushRegion, regionSurface } from "./ui-stack";
@@ -28,29 +31,72 @@ import { UI_TEXT } from "./ui-colors";
 
 /** localStorage key for the user's edited colour table (a global pref). */
 const COLOR_PREF_KEY = "neo-angband:colors";
+const colorAlpha = Array.from({ length: MAX_COLORS }, () => 255);
 
 /**
  * Load the user's saved colour edits into the live table. Called once at boot,
  * before the first paint, so custom colours apply from the start. Best-effort:
  * a missing / malformed value leaves the built-in defaults in place.
  */
+function documentFromTable(): { colors: { name: string; kv: number; color: { red: number; green: number; blue: number; alpha: number } }[] } {
+  return {
+    colors: colorTableSnapshot().map((row, index) => ({
+      name: colorPrefId(index),
+      kv: row[0] ?? 0,
+      color: { red: row[1] ?? 0, green: row[2] ?? 0, blue: row[3] ?? 0, alpha: colorAlpha[index] ?? 255 },
+    })),
+  };
+}
+
+function restoreDocument(data: { colors: readonly { kv: number; color: { red: number; green: number; blue: number; alpha: number } }[] }): void {
+  data.colors.forEach((row, index) => { colorAlpha[index] = row.color.alpha; });
+  restoreColorTable(data.colors.map((row) => [row.kv, row.color.red, row.color.green, row.color.blue]));
+}
+
+/** The old pref was a bare array of `[kv, red, green, blue]` tuples, one per row. */
+function legacyColors(raw: string): ReturnType<typeof documentFromTable> | null {
+  let rows: unknown;
+  try {
+    rows = JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(rows)) return null;
+  const current = documentFromTable();
+  rows.forEach((row, index) => {
+    const slot = current.colors[index];
+    if (!slot || !Array.isArray(row)) return;
+    const [kv, red, green, blue] = row as unknown[];
+    if (typeof kv === "number") slot.kv = kv & 255;
+    if (typeof red === "number") slot.color.red = red & 255;
+    if (typeof green === "number") slot.color.green = green & 255;
+    if (typeof blue === "number") slot.color.blue = blue & 255;
+  });
+  return current;
+}
+
 export function loadColorPrefs(): void {
   try {
-    const raw = localStorage.getItem(COLOR_PREF_KEY);
-    if (!raw) return;
-    const rows = JSON.parse(raw) as unknown;
-    if (Array.isArray(rows)) restoreColorTable(rows as number[][]);
+    colorAlpha.fill(255);
+    const read = readStoredDocument(localStorage, COLOR_PREF_KEY, colorTableFormat, legacyColors);
+    if (read.data) restoreDocument(read.data);
   } catch {
     /* ignore: a corrupt pref just means default colours. */
   }
 }
 
-/** Persist the live colour table as the user's colour pref. */
-export function saveColorPrefs(): void {
+/** The live palette as a pretty JSON document for a download. */
+export function exportColorDocument(): string {
+  return serializeDocument(colorTableFormat, documentFromTable());
+}
+
+/** Persist the live colour table as the user's colour document. */
+export function saveColorPrefs(): boolean {
   try {
-    localStorage.setItem(COLOR_PREF_KEY, JSON.stringify(colorTableSnapshot()));
+    return writeStoredDocument(localStorage, COLOR_PREF_KEY, colorTableFormat, documentFromTable()) !== null;
   } catch {
     /* ignore: storage may be unavailable (private mode); edits still apply live. */
+    return false;
   }
 }
 

@@ -18,7 +18,6 @@ import {
   applyCodec,
   encodeSavedGame,
   saveGame,
-  stampSavefile,
   startGame,
   type SavedGame,
 } from "@rpgm-tools/neo-angband-core";
@@ -79,31 +78,11 @@ const FILE = encodeTransfer({
   lineage: "lin-grond",
 });
 
-/** A character file from the build that wrote magic, version and base64 slot bytes. */
-function legacyFile(over: Record<string, unknown> = {}): string {
-  return JSON.stringify({
-    magic: TRANSFER_MAGIC,
-    version: TRANSFER_VERSION,
-    engine: "0.10.0",
-    exportedAt: "2026-07-31T12:00:00.000Z",
-    lineage: "lin-grond",
-    meta: META,
-    save: bytesToBase64(stampSavefile(applyCodec(new TextEncoder().encode(JSON.stringify(MINIMAL_SAVE)), gzipCodec))),
-    ...over,
-  });
-}
-
 describe("a character survives the round trip", () => {
-  it("carries the save back, and an older file's slot bytes unchanged", () => {
+  it("carries the save bytes back byte-for-byte", () => {
     const r = decodeTransfer(FILE);
     expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    const embedded = JSON.parse(FILE).data.save as { version: number; turn: number };
-    expect(embedded.version).toBe(1);
-    expect(embedded.turn).toBe(0);
-    const old = legacyFile();
-    const legacy = decodeTransfer(old);
-    expect(legacy.ok && legacy.file.save).toBe(JSON.parse(old).save);
+    expect(r.ok && r.file.save).toBe(JSON.parse(FILE).save);
   });
 
   it("carries every roster field the picker shows", () => {
@@ -121,31 +100,15 @@ describe("a character survives the round trip", () => {
     /* An id belongs to the roster it came from. Honouring one from a file would
      * let an import land on top of a character already in that slot - and the
      * case a player will actually hit is importing the same file twice. */
-    const document = JSON.parse(FILE) as { data: { meta: object } };
-    expect(document).not.toHaveProperty("id");
-    expect(document.data).not.toHaveProperty("id");
-    expect(document.data.meta).not.toHaveProperty("id");
+    expect(JSON.parse(FILE)).not.toHaveProperty("id");
+    expect(JSON.parse(FILE).meta).not.toHaveProperty("id");
   });
 
   it("is a file a human can open", () => {
     expect(FILE).toContain("\n");
     expect(FILE.endsWith("\n")).toBe(true);
-    expect(JSON.parse(FILE).format).toBe("neo-angband/web/character-export");
-    expect(JSON.parse(FILE).schemaVersion).toBe(1);
-  });
-
-  it("does not turn a failed integrity stamp into a verified save", () => {
-    const bytes = encodeSavedGame(MINIMAL_SAVE, undefined, gzipCodec);
-    bytes[bytes.length - 1] = bytes[bytes.length - 1] === 48 ? 49 : 48;
-    const original = bytesToBase64(bytes);
-    const file = encodeTransfer({
-      meta: META,
-      save: original,
-      engine: "0.10.0",
-      exportedAt: "2026-07-31T12:00:00.000Z",
-      lineage: "lin-grond",
-    });
-    expect((JSON.parse(file) as { data: { save: string } }).data.save).toBe(original);
+    expect(JSON.parse(FILE).magic).toBe(TRANSFER_MAGIC);
+    expect(JSON.parse(FILE).version).toBe(TRANSFER_VERSION);
   });
 });
 
@@ -195,24 +158,21 @@ describe("what it refuses, and how it says so", () => {
   });
 
   it("refuses a file from a NEWER game, and says which format it is", () => {
-    const newer = JSON.parse(FILE) as { schemaVersion: number };
-    newer.schemaVersion = 2;
-    const r = decodeTransfer(JSON.stringify(newer));
-    expect(r.ok === false && r.why).toContain("2");
+    const newer = JSON.stringify({ ...JSON.parse(FILE), version: TRANSFER_VERSION + 1 });
+    const r = decodeTransfer(newer);
+    expect(r.ok === false && r.why).toContain(String(TRANSFER_VERSION + 1));
     expect(r.ok === false && r.why).toContain("newer version of the game");
-    const oldNewer = decodeTransfer(legacyFile({ version: TRANSFER_VERSION + 1 }));
-    expect(oldNewer.ok === false && oldNewer.why).toContain(String(TRANSFER_VERSION + 1));
   });
 
   it("accepts a file from an OLDER format", () => {
-    /* An older character file still imports. Refusing one would strand it. */
-    expect(decodeTransfer(legacyFile({ version: 0 })).ok).toBe(true);
+    /* Nothing to migrate yet, and refusing one would be inventing a
+     * compatibility break that has not happened. */
+    const older = JSON.stringify({ ...JSON.parse(FILE), version: 0 });
+    expect(decodeTransfer(older).ok).toBe(true);
   });
 
   it("refuses a file with no save data rather than importing an empty slot", () => {
-    const empty = JSON.parse(FILE) as { data: { save: unknown } };
-    empty.data.save = "";
-    const r = decodeTransfer(JSON.stringify(empty));
+    const r = decodeTransfer(JSON.stringify({ ...JSON.parse(FILE), save: "" }));
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.why).toContain("no save data");
   });
@@ -220,15 +180,15 @@ describe("what it refuses, and how it says so", () => {
   it("refuses a nameless character", () => {
     /* The one metadata field with no sensible default: a blank row in the picker
      * is indistinguishable from a corrupt roster. */
-    const anon = JSON.parse(FILE) as { data: { meta: { name: string } } };
-    anon.data.meta.name = "";
+    const anon = JSON.parse(FILE);
+    anon.meta.name = "";
     expect(decodeTransfer(JSON.stringify(anon)).ok).toBe(false);
   });
 });
 
 describe("metadata off a disk is defended, not trusted", () => {
   it("clamps a nonsense level rather than putting NaN in the roster", () => {
-    const bad = JSON.parse(legacyFile()) as { meta: { level: unknown; depth: number; turn: number } };
+    const bad = JSON.parse(FILE);
     bad.meta.level = "seventeen";
     bad.meta.depth = -5;
     bad.meta.turn = Number.POSITIVE_INFINITY;
@@ -243,8 +203,8 @@ describe("metadata off a disk is defended, not trusted", () => {
     /* Decision 16 is not enforced by this module - a file can always be copied,
      * exactly as a .sav can in upstream - but the flag travels, so an imported
      * tombstone arrives as a tombstone rather than as a playable character. */
-    const dead = JSON.parse(FILE) as { data: { meta: { alive: boolean } } };
-    dead.data.meta.alive = false;
+    const dead = JSON.parse(FILE);
+    dead.meta.alive = false;
     const r = decodeTransfer(JSON.stringify(dead));
     expect(r.ok && r.file.meta.alive).toBe(false);
   });
@@ -253,7 +213,7 @@ describe("metadata off a disk is defended, not trusted", () => {
     /* Every file this build writes carries it, and a dead slot has no bytes to
      * export in the first place - so defaulting to dead would turn an old or
      * hand-made file into an unplayable tombstone. */
-    const old = JSON.parse(legacyFile()) as { meta: { alive?: boolean } };
+    const old = JSON.parse(FILE);
     delete old.meta.alive;
     const r = decodeTransfer(JSON.stringify(old));
     expect(r.ok && r.file.meta.alive).toBe(true);
@@ -269,7 +229,10 @@ describe("import size limits", () => {
 
   it("rejects an oversized encoded save before base64 decoding it", () => {
     const result = decodeTransfer(
-      legacyFile({ save: "A".repeat((MAX_TRANSFER_SAVE_BYTES * 4) / 3 + 4) }),
+      JSON.stringify({
+        ...JSON.parse(FILE),
+        save: "A".repeat((MAX_TRANSFER_SAVE_BYTES * 4) / 3 + 4),
+      }),
     );
     expect(result.ok).toBe(false);
     expect(result.ok === false && result.why).toContain("save data is larger");
@@ -289,9 +252,7 @@ describe("peekTransferMeta: ticket #24's cheap header read", () => {
     /* The whole point: identifying a character costs a JSON.parse, not the
      * base64 decode and decompression decodeTransfer pays to actually import
      * one. Garbage save bytes prove peekTransferMeta never reaches for them. */
-    const garbageDoc = JSON.parse(FILE) as { data: { save: unknown } };
-    garbageDoc.data.save = "not base64 at all!!";
-    const garbage = JSON.stringify(garbageDoc);
+    const garbage = JSON.stringify({ ...JSON.parse(FILE), save: "not base64 at all!!" });
     expect(decodeTransfer(garbage).ok).toBe(false);
     const r = peekTransferMeta(garbage);
     expect(r.ok).toBe(true);
@@ -306,15 +267,13 @@ describe("peekTransferMeta: ticket #24's cheap header read", () => {
     const wrongKind = peekTransferMeta(JSON.stringify({ version: 1, save: "x" }));
     expect(wrongKind.ok === false && wrongKind.why).toContain("not a Neo Angband character file");
 
-    const newerDoc = JSON.parse(FILE) as { schemaVersion: number };
-    newerDoc.schemaVersion = TRANSFER_VERSION + 1;
-    const newer = peekTransferMeta(JSON.stringify(newerDoc));
+    const newer = peekTransferMeta(JSON.stringify({ ...JSON.parse(FILE), version: TRANSFER_VERSION + 1 }));
     expect(newer.ok === false && newer.why).toContain("newer version of the game");
   });
 
   it("has no lineage for a file written before that field existed - absent, not refused", () => {
-    const noLineage = JSON.parse(FILE) as { data: { lineage?: string } };
-    delete noLineage.data.lineage;
+    const noLineage = JSON.parse(FILE);
+    delete noLineage.lineage;
     const r = peekTransferMeta(JSON.stringify(noLineage));
     expect(r.ok).toBe(true);
     expect(r.ok && r.lineage).toBeUndefined();

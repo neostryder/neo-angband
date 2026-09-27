@@ -2,9 +2,9 @@
  * Linoleum target-map and variant-pool model, parsers, and the deterministic
  * pool selection rule.
  *
- * The converter used to write `maps/targets.txt` and `maps/pools.txt`. This
- * module still parses that text, so a cached pack can be converted once, and
- * it holds the pure selection rule a runtime uses to resolve a `pool`
+ * The converter (convert.ts) is the WRITER of `maps/targets.txt` and (when a
+ * pack authors them) `maps/pools.txt`. This module gives the format a matching
+ * READER plus the pure selection rule a runtime uses to resolve a `pool`
  * mapping down to a single asset for a given grid, so the additive pool /
  * per-object features are round-trippable and testable without touching a
  * tilesheet.

@@ -9,7 +9,7 @@
 export interface PackConfig {
   /** Pack key used on the command line and as the output directory name. */
   key: string;
-  /** Pack id written into pack.json. */
+  /** Pack id written into manifest.txt. */
   packId: string;
   /** Human-readable display name. */
   displayName: string;

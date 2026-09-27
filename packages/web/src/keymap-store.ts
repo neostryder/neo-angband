@@ -15,7 +15,10 @@
 /** keymap modes (keymap.c KEYMAP_MODE_*). */
 export type KeymapMode = "orig" | "rogue";
 
+import { keyInput, keymapFormat, parseDocument, type Infer } from "@rpgm-tools/neo-angband-mod-sdk";
+// parseDocument is used when a downloaded keymap file replaces the stored one.
 import type { ControlProfile } from "./control-profile";
+import { looksLikeEnvelope, writeStoredDocument } from "./json-storage";
 
 let activeProfile: ControlProfile = "desktop";
 
@@ -26,10 +29,10 @@ function profileKey(key: string): string {
 /** trigger char -> action string, per mode. */
 type KeymapTable = Record<string, string>;
 const tables: Record<KeymapMode, KeymapTable> = { orig: {}, rogue: {} };
+const typedKeys: Record<KeymapMode, Record<string, StoredBinding>> = { orig: {}, rogue: {} };
 
 const KEYMAP_PREF_KEY = "neo-angband:keymaps";
-/* Kept apart from the player-owned preference so an older build can still read
- * its keymaps. It records only which live binding a mod may later manage. */
+/** Retired owner table, read only while converting an old keymap store. */
 const KEYMAP_OWNER_PREF_KEY = "neo-angband:keymap-owners";
 
 /** Mod owner per trigger, per mode. A missing entry means player-owned. */
@@ -49,6 +52,7 @@ export function keymapFind(mode: KeymapMode, trigger: string): string | null {
 /** keymap_add (keymap.c): bind `trigger` to `action` in `mode` (replaces any). */
 export function keymapAdd(mode: KeymapMode, trigger: string, action: string): void {
   tables[mode][trigger] = action;
+  delete typedKeys[mode][trigger];
   /* The keymap editor owns this path. A player replacement turns a former mod
    * binding into the player's binding, so later mod teardown must leave it. */
   delete owners[mode][trigger];
@@ -58,6 +62,7 @@ export function keymapAdd(mode: KeymapMode, trigger: string, action: string): vo
 export function keymapRemove(mode: KeymapMode, trigger: string): boolean {
   if (trigger in tables[mode]) {
     delete tables[mode][trigger];
+    delete typedKeys[mode][trigger];
     delete owners[mode][trigger];
     return true;
   }
@@ -91,60 +96,200 @@ export function keymapRemoveOwnedBy(owner: string): boolean {
   return removed;
 }
 
+interface StoredKey {
+  key: string;
+  code: string;
+  modifiers: Infer<typeof keyInput>["modifiers"];
+}
+
+interface StoredBinding {
+  mode: KeymapMode;
+  trigger: StoredKey;
+  action: StoredKey[];
+  owner?: string;
+}
+
+/**
+ * The older tables stored a trigger as the browser's `key` string and an
+ * action as bracket text. `code` was not stored, so a converted key uses the
+ * physical code a desktop keyboard reports for that string. Modifiers were
+ * not stored either: Shift is already part of the letter.
+ */
+export function keyInputFromToken(token: string): StoredKey | null {
+  if (token.length === 0) return null;
+  let code = token;
+  if (/^[a-zA-Z]$/u.test(token)) code = `Key${token.toUpperCase()}`;
+  else if (/^[0-9]$/u.test(token)) code = `Digit${token}`;
+  return { key: token, code, modifiers: [] };
+}
+
+function actionFromSteps(steps: readonly { key: string }[]): string {
+  return steps.map((step) => encodeActionToken(step.key)).join("");
+}
+
+function applyBindings(bindings: readonly StoredBinding[]): void {
+  for (const row of bindings) {
+    const action = actionFromSteps(row.action);
+    if (row.trigger.key.length === 0 || action.length === 0) continue;
+    tables[row.mode][row.trigger.key] = action;
+    typedKeys[row.mode][row.trigger.key] = row;
+    if (row.owner && row.owner.length > 0) owners[row.mode][row.trigger.key] = row.owner;
+  }
+}
+
+function bindingsFromTables(): StoredBinding[] {
+  const bindings: StoredBinding[] = [];
+  for (const mode of ["orig", "rogue"] as const) {
+    for (const [trigger, action] of Object.entries(tables[mode])) {
+      const original = typedKeys[mode][trigger];
+      const triggerKey = original && actionFromSteps(original.action) === action
+        ? original.trigger : keyInputFromToken(trigger);
+      const steps = original && actionFromSteps(original.action) === action ? original.action : decodeActionTokens(action)
+        .map((token) => keyInputFromToken(token))
+        .filter((step): step is StoredKey => step !== null);
+      if (!triggerKey || steps.length === 0) continue;
+      const owner = owners[mode][trigger];
+      bindings.push({
+        mode,
+        trigger: triggerKey,
+        action: steps,
+        ...(owner ? { owner } : {}),
+      });
+    }
+  }
+  return bindings;
+}
+
+function legacyBindings(raw: string | null, ownersRaw: string | null): { bindings: StoredBinding[] } | null {
+  if (raw === null && ownersRaw === null) return null;
+  let data: unknown = {};
+  if (raw !== null) {
+    try {
+      data = JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const ownerMap: Record<KeymapMode, Record<string, string>> = { orig: {}, rogue: {} };
+  if (ownersRaw !== null) {
+    try {
+      const parsed = JSON.parse(ownersRaw) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        for (const mode of ["orig", "rogue"] as const) {
+          const known = (parsed as Record<string, unknown>)[mode];
+          if (!known || typeof known !== "object") continue;
+          for (const [trigger, owner] of Object.entries(known as Record<string, unknown>)) {
+            if (typeof owner === "string" && owner.length > 0) ownerMap[mode][trigger] = owner;
+          }
+        }
+      }
+    } catch {
+      /* A damaged owner table leaves every binding player-owned. */
+    }
+  }
+  const bindings: StoredBinding[] = [];
+  for (const mode of ["orig", "rogue"] as const) {
+    const table = (data as Record<string, unknown>)[mode];
+    if (!table || typeof table !== "object" || Array.isArray(table)) continue;
+    for (const [trigger, action] of Object.entries(table as Record<string, unknown>)) {
+      if (typeof action !== "string") continue;
+      const triggerKey = keyInputFromToken(trigger);
+      const steps = decodeActionTokens(action)
+        .map((token) => keyInputFromToken(token))
+        .filter((step): step is StoredKey => step !== null);
+      if (!triggerKey || steps.length === 0) continue;
+      const owner = ownerMap[mode][trigger];
+      bindings.push({ mode, trigger: triggerKey, action: steps, ...(owner ? { owner } : {}) });
+    }
+  }
+  return { bindings };
+}
+
 /** Load saved keymaps into the live tables (boot, before first input). */
 export function loadKeymapPrefs(profile: ControlProfile = "desktop"): void {
   activeProfile = profile;
   clearKeymaps();
-  // Copy once, including owners. Subsequent phone edits never touch Desktop.
-  if (profile === "touch") {
-    try {
-      if (localStorage.getItem(profileKey(KEYMAP_PREF_KEY)) === null) {
-        for (const key of [KEYMAP_OWNER_PREF_KEY, KEYMAP_PREF_KEY]) {
-          localStorage.setItem(profileKey(key), localStorage.getItem(key) ?? "{}");
-        }
-      }
-    } catch { /* Storage can be unavailable. */ }
-  }
+  let storage: Storage;
   try {
-    const raw = localStorage.getItem(profileKey(KEYMAP_PREF_KEY));
-    if (!raw) return;
-    const data = JSON.parse(raw) as unknown;
-    if (!data || typeof data !== "object") return;
-    for (const mode of ["orig", "rogue"] as const) {
-      const t = (data as Record<string, unknown>)[mode];
-      if (t && typeof t === "object") {
-        for (const [k, v] of Object.entries(t as Record<string, unknown>)) {
-          if (typeof v === "string" && k.length >= 1) tables[mode][k] = v;
+    storage = localStorage;
+  } catch {
+    return;
+  }
+  const key = profileKey(KEYMAP_PREF_KEY);
+  const ownerKey = profileKey(KEYMAP_OWNER_PREF_KEY);
+  // Touch starts from Desktop's converted document, then saves independently.
+  try {
+    if (profile === "touch" && storage.getItem(key) === null) {
+      const desktop = storage.getItem(KEYMAP_PREF_KEY);
+      const desktopOwners = storage.getItem(KEYMAP_OWNER_PREF_KEY);
+      if (desktop !== null && looksLikeEnvelope(desktop)) {
+        const parsed = parseDocument(desktop, keymapFormat);
+        if (parsed.ok) writeStoredDocument(storage, key, keymapFormat, parsed.data);
+      } else {
+        const converted = legacyBindings(desktop, desktopOwners);
+        if (converted) {
+          const saved = writeStoredDocument(storage, KEYMAP_PREF_KEY, keymapFormat, converted, [KEYMAP_OWNER_PREF_KEY]);
+          if (saved) writeStoredDocument(storage, key, keymapFormat, saved);
         }
       }
     }
   } catch {
-    /* ignore: a corrupt pref just means no custom keymaps. */
+    /* Storage can be unavailable. */
   }
+  let raw: string | null = null;
+  let ownersRaw: string | null = null;
   try {
-    const raw = localStorage.getItem(profileKey(KEYMAP_OWNER_PREF_KEY));
-    if (!raw) return;
-    const data = JSON.parse(raw) as unknown;
-    if (!data || typeof data !== "object") return;
-    for (const mode of ["orig", "rogue"] as const) {
-      const known = (data as Record<string, unknown>)[mode];
-      if (!known || typeof known !== "object") continue;
-      for (const [trigger, owner] of Object.entries(known as Record<string, unknown>)) {
-        if (typeof owner === "string" && owner.length > 0 && trigger in tables[mode]) owners[mode][trigger] = owner;
-      }
-    }
+    raw = storage.getItem(key);
+    ownersRaw = storage.getItem(ownerKey);
   } catch {
-    /* ignore: missing or corrupt ownership leaves every keymap player-owned. */
+    return;
+  }
+  if (raw !== null && looksLikeEnvelope(raw)) {
+    const parsed = parseDocument(raw, keymapFormat);
+    if (parsed.ok) applyBindings(parsed.data.bindings);
+    return;
+  }
+  const converted = legacyBindings(raw, ownersRaw);
+  if (converted === null) return;
+  const written = writeStoredDocument(storage, key, keymapFormat, converted, [ownerKey]);
+  if (written) applyBindings(written.bindings);
+}
+
+/** Replace the active profile's keymap document with a file the player imported. */
+export function installKeymapDocument(text: string): boolean {
+  const parsed = parseDocument(text, keymapFormat);
+  if (!parsed.ok) return false;
+  try {
+    const written = writeStoredDocument(
+      localStorage,
+      profileKey(KEYMAP_PREF_KEY),
+      keymapFormat,
+      parsed.data,
+      [profileKey(KEYMAP_OWNER_PREF_KEY)],
+    );
+    if (!written) return false;
+    clearKeymaps();
+    applyBindings(written.bindings);
+    return true;
+  } catch {
+    return false;
   }
 }
 
-/** Persist the live keymaps as the user's keymap pref. */
-export function saveKeymapPrefs(): void {
+/** Persist the live keymaps as the user's keymap document. */
+export function saveKeymapPrefs(): boolean {
   try {
-    localStorage.setItem(profileKey(KEYMAP_PREF_KEY), JSON.stringify(tables));
-    localStorage.setItem(profileKey(KEYMAP_OWNER_PREF_KEY), JSON.stringify(owners));
+    return writeStoredDocument(
+      localStorage,
+      profileKey(KEYMAP_PREF_KEY),
+      keymapFormat,
+      { bindings: bindingsFromTables() },
+      [profileKey(KEYMAP_OWNER_PREF_KEY)],
+    ) !== null;
   } catch {
     /* ignore: storage may be unavailable (private mode). */
+    return false;
   }
 }
 
@@ -152,6 +297,8 @@ export function saveKeymapPrefs(): void {
 export function clearKeymaps(): void {
   tables.orig = {};
   tables.rogue = {};
+  typedKeys.orig = {};
+  typedKeys.rogue = {};
   owners.orig = {};
   owners.rogue = {};
 }

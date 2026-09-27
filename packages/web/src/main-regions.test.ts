@@ -283,7 +283,7 @@ const TERM_CLEAR_REGIONS: Readonly<Record<string, readonly string[]>> = {
   "monster-list.ts": ["showMonsterListOnTerminal > paint"],
   "news.ts": ["paintTitleArt"],
   "options.ts": ["optionToggleScreen > paint", "runSidebarModePage > paint"],
-  "prefs-ui.ts": ["getPrefPath", "loadPrefFileHack"],
+  "prefs-ui.ts": ["getJsonPath"],
   "score.ts": ["showScoreScreen > showScoresOnTerminal > paint"],
   "shop.ts": ["runStore > paint"],
   "wizard.ts": ["drawWizItem", "paintWizItemOnTerminal"],
@@ -445,7 +445,7 @@ describe("term.clear() is a ratchet: the list of full-screen erases may only shr
   it("counts what is LEFT, and every file that claims a region has one", () => {
     /* TWO CLAIMS, because the census and the conversion fail in different ways.
      *
-     * THE COUNT. 33 sites, one of them the compositor's own frame. The number
+     * THE COUNT. 32 sites, one of them the compositor's own frame. The number
      * that matters is `TERM_CLEAR_PENDING`'s, because that is the one
      * `docs/modding/MOD_REACH.md` quotes for gap 21, and a doc quoting a number
      * nothing derives is a number that drifts. This does not read the doc - it
@@ -460,9 +460,9 @@ describe("term.clear() is a ratchet: the list of full-screen erases may only shr
      * catches, and it is the accident a table of claims invites. */
     expect(siteCount(TERM_CLEAR_COMPOSITOR)).toBe(1);
     expect(siteCount(TERM_CLEAR_INDEPENDENT)).toBe(2);
-    expect(siteCount(TERM_CLEAR_REGIONS)).toBe(32);
+    expect(siteCount(TERM_CLEAR_REGIONS)).toBe(31);
     expect(siteCount(TERM_CLEAR_PENDING), "MOD_REACH.md's gap-21 row quotes this").toBe(3);
-    expect(siteCount(TERM_CLEAR_ALLOWED)).toBe(38);
+    expect(siteCount(TERM_CLEAR_ALLOWED)).toBe(37);
 
     for (const file of Object.keys(TERM_CLEAR_REGIONS)) {
       const text = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");

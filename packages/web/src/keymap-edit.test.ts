@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { keymapFormat, parseDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { GlyphTerm } from "./term";
 import { runKeymapEditor } from "./keymap-edit";
 import { clearKeymaps, keymapFind } from "./keymap-store";
@@ -110,8 +111,9 @@ describe("runKeymapEditor (do_cmd_keymaps)", () => {
     press(win, "y"); // confirm
     await tick();
     expect(keymapFind("orig", "X")).toBe("qc");
-    // Persisted to localStorage.
-    expect(localStorage.getItem("neo-angband:keymaps")).toContain("qc");
+    const persisted = parseDocument(localStorage.getItem("neo-angband:keymaps")!, keymapFormat);
+    expect(persisted.ok).toBe(true);
+    if (persisted.ok) expect(persisted.data.bindings[0]?.action.map((step) => step.key)).toEqual(["q", "c"]);
     press(win, "Escape"); // ack "Keymap added."
     await tick();
     press(win, "Escape"); // leave the menu

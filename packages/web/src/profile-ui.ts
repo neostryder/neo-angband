@@ -25,7 +25,6 @@ import {
   listRoster,
   newCharId,
   readLivingRosterFrom,
-  rosterReadableFrom,
   readSlotSaveFrom,
   writeSlot,
 } from "./roster";
@@ -241,12 +240,6 @@ async function deleteProfile(
   );
   if (keepSaves) {
     const scoped = scopedStorage(deps.realStorage, id);
-    if (!rosterReadableFrom(scoped)) {
-      await showTextScreen(term, t("profilesScreen.delete.failedTitle", "Profile was not deleted"), [
-        { text: t("profilesScreen.delete.rosterFailed", "The character roster could not be read. The profile and its saves are still here."), color: UI_BAD },
-      ]);
-      return;
-    }
     const entries = readLivingRosterFrom(scoped).reduce<OrphanedSave[]>((out, c) => {
       const save = readSlotSaveFrom(scoped, c.id);
       if (save !== null) {
@@ -254,12 +247,7 @@ async function deleteProfile(
       }
       return out;
     }, []);
-    if (entries.length > 0 && !addOrphanedSaves(deps.realStorage, entries)) {
-      await showTextScreen(term, t("profilesScreen.delete.failedTitle", "Profile was not deleted"), [
-        { text: t("profilesScreen.delete.saveFailed", "This browser could not store the characters to reclaim. The profile and its saves are still here."), color: UI_BAD },
-      ]);
-      return;
-    }
+    if (entries.length > 0) addOrphanedSaves(deps.realStorage, entries);
   }
   const wasActive = store.activeId() === id;
   store.remove(id, deps.realStorage);

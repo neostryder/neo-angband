@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { gamepadBindingsFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   STANDARD_BUTTON, buttonName, describeCapabilities, describePad, padSignature,
   type PadSnapshot,
@@ -105,6 +106,56 @@ describe("default layouts", () => {
 });
 
 describe("remapping", () => {
+  it("converts per-signature maps to typed targets and preserves a future document", () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => { store.set(key, value); },
+    });
+    try {
+      const capabilities = describeCapabilities(synthPad());
+      const signature = padSignature(capabilities);
+      store.set("neo-angband:gamepad-bindings", JSON.stringify({
+        [signature]: { buttons: { 0: "key:Escape", 1: "role:cancel" }, layer: {}, deadZone: { inner: 0.2, outer: 0.9 } },
+      }));
+      expect(loadBindings(signature, capabilities).buttons[0]).toBe("key:Escape");
+      const raw = store.get("neo-angband:gamepad-bindings")!;
+      const parsed = parseDocument(raw, gamepadBindingsFormat);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.data.pads[0]?.buttons[0]?.target).toEqual({
+        kind: "key", key: { key: "Escape", code: "Escape", modifiers: [] },
+      });
+      expect(serializeDocument(gamepadBindingsFormat, parsed.data, { compact: true })).toBe(raw);
+      const future = JSON.stringify({ format: gamepadBindingsFormat.format, schemaVersion: 99, data: {} });
+      store.set("neo-angband:gamepad-bindings", future);
+      saveBindings(signature, defaultBindings(capabilities));
+      expect(store.get("neo-angband:gamepad-bindings")).toBe(future);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("keeps a typed key target when the pad is saved again", () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => { store.set(key, value); },
+    });
+    try {
+      const capabilities = describeCapabilities(synthPad());
+      const signature = padSignature(capabilities);
+      const data = { pads: [{ signature, buttons: [{ index: 0, target: {
+        kind: "key" as const, key: { key: "!", code: "Digit1", modifiers: ["shift" as const] },
+      } }], layer: [], deadZone: { inner: 0.2, outer: 0.9 } }] };
+      store.set("neo-angband:gamepad-bindings", serializeDocument(gamepadBindingsFormat, data, { compact: true }));
+      saveBindings(signature, loadBindings(signature, capabilities));
+      const parsed = parseDocument(store.get("neo-angband:gamepad-bindings")!, gamepadBindingsFormat);
+      expect(parsed.ok).toBe(true);
+      if (parsed.ok) expect(parsed.data.pads[0]?.buttons.find((row) => row.index === 0)?.target).toEqual(data.pads[0]?.buttons[0]?.target);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it("moves a role rather than letting two buttons claim it", () => {
     const base = defaultBindings(describeCapabilities(synthPad()));
     const moved = rebind(base, STANDARD_BUTTON.faceUp, "role:cancel");

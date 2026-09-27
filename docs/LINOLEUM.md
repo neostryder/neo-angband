@@ -16,7 +16,7 @@ care which is active:
 | | tilesheet (`packages/web/src/tiles.ts`) | loose pack (`packages/web/src/linoleum-pack.ts`) |
 |---|---|---|
 | art | one atlas PNG, addressed by (row, col) | one PNG per tile, addressed by name |
-| mapping | `graf-*.prf` (upstream's own data) | `pack.json` targets |
+| mapping | `graf-*.prf` (upstream's own data) | `maps/targets.txt` |
 | brought by | CORE - every tile set the game ships | a mod, via a `tilePacks` entry with `"engine": "linoleum"` |
 | variant pools | no | yes |
 
@@ -24,7 +24,7 @@ A loose pack's selector is exactly the middle of the pref line it came from, so 
 
 `packages/web/src/linoleum-equivalence.test.ts` checks that the two engines agree. It converts all six bundled graphics modes, builds both engines' maps, and asserts that every entity either engine draws (features at all four lightings, traps, monsters, object kinds, flavours, projections) resolves to a pixel-identical tile, and that nothing the sheet covers is left uncovered. Writing the test found two converter defects: an asset-name collision that made two different scrolls share one file, and dropped decimal-coordinate lines. It also led to a third, defensive change: target rules are now written in source order, because the format is last-rule-wins and sorting discarded a pack's own precedence. That change alters no tile in the bundled packs, and `convert.test.ts` pins it.
 
-The packs themselves are not in this repository. The [neo-angband-mod-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) mod declares six graphics modes and ships compact source archives, each with an atlas and selector mapping. The host converts a selected mode into loose images on first enable and caches the result. Current published archives still contain legacy pref mapping files; a republished archive can provide a `tileMap` JSON source instead. The installer fetches each archive from a pinned tag, records its SHA-256 digest, and unpacks it into the mod folder. The recorded digest lets the game detect a later change to the installed bytes.
+The packs themselves are not in this repository. The mod declares six, one per tile set Angband ships, and ships all six pre-converted in its own repository, [neo-angband-mod-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum), as seven committed archives (9161 files and 42 MiB of art, 24.6 MiB zipped). The installer fetches each archive from a pinned tag, records the SHA-256 of the bytes that arrived, and unpacks them into the mod's own folder, which is where `tilePackResolver` looks. The pinned tag keeps the download from changing under you, and the recorded digest lets the game tell you later whether a pack has changed since you installed it. No digest ships inside the game, so it cannot tell you whether what arrived is what the author published.
 
 This repository holds the *converter* (`packages/linoleum`, a port of the upstream
 fork's `build-linoleum-packs.ps1`) and the *reader*
@@ -37,7 +37,7 @@ With the mod installed and enabled, the Graphics screen offers its six rows besi
 
 Conditional (`?:` / `:when:`) rules are evaluated by core's shared pref evaluator, and loose-pack `family` effect metadata (glow/tint/pulse) is applied at render time. The only time this engine draws something a pack did not author is a derived tile that a tileset mod requests for a mod's own content, which the tilesheet engine has no room for; see [Derived tiles for a mod's content](#derived-tiles-for-a-mods-content).
 
-Double-height (overdraw) tiles were once unsupported. Both engines now draw them over the cell above, but they learn which tiles are tall in different ways (#243). A tilesheet reads the graphics mode's overdraw band, which is core data. A loose pack has no rows to test and no mode in the core catalog to read a band from, since its grafID is its own, so the pack lists its tall assets in `pack.json`. Until it did, every Shockbolt monster in a Linoleum pack was squashed into one cell.
+Double-height (overdraw) tiles were once unsupported. Both engines now draw them over the cell above, but they learn which tiles are tall in different ways (#243). A tilesheet reads the graphics mode's overdraw band, which is core data. A loose pack has no rows to test and no mode in the core catalog to read a band from, since its grafID is its own, so the pack lists its tall assets itself in `maps/tall.txt`. Until it did, every Shockbolt monster in a Linoleum pack was squashed into one cell.
 
 Everything below describes the pack format itself.
 
@@ -47,39 +47,68 @@ A converted pack directory looks like this:
 
 ```
 <pack-key>/
-  pack.json                 neo-angband/linoleum/pack, schema version 1
-  tile-map.json             neo-angband/linoleum/tile-map, the pref selectors
+  manifest.txt              pack id, format, resolution, map registrations
+  maps/
+    targets.txt             selector -> asset/family/pool mappings
+    families.txt            family effect metadata (only when authored)
+    pools.txt               variant-pool definitions (only when authored)
+    tall.txt                double-height assets (only when the source mode
+                            has an overdraw band)
   images/<resolution>/      one PNG per asset, deterministic names
+  graf-*.prf, xtra-*.prf,   the original legacy pref files, mirrored so the
+  flvr-*.prf                mode keeps loading local legacy mapping truth
 ```
 
-`pack.json` holds the pack id, display name, image format (`png`), resolution, and the target rules. Families, pools, and the tall-asset list are omitted when the pack has none. Of the six packs the game ships, only Shockbolt Dark and Shockbolt Light list tall assets. A browser that still has the old `manifest.txt` and `maps/*.txt` files converts them once on load and rewrites the cache.
+`manifest.txt` is a plain list of `key:value` lines:
 
-`tile-map.json` records each source pref's selectors as type, selector, row, and column. The converter reads the upstream `.prf` files and does not copy them into the pack.
+```
+pack:linoleum-original-tiles:Original Tiles (Linoleum)
+format:png
+resolution:8
+map:targets:maps/targets.txt
+map:families:maps/families.txt
+map:pools:maps/pools.txt
+map:tall:maps/tall.txt
+```
 
-A tall asset's PNG is two cells tall and bottom-anchored. It is drawn over the cell above the one it occupies. A pack that omits `tall` has no tiles that overdraw. When authoring by hand you may declare any asset tall. Nothing requires an overdraw band or a source tilesheet.
+`map:families:` and `map:pools:` lines are present only when the pack actually
+authors that kind of metadata; a legacy-only export omits both. `map:tall:` is
+present only when the source mode declares an overdraw band - of the six the
+game ships, that is Shockbolt Dark and Shockbolt Light and nothing else.
+
+`maps/tall.txt` is one `tall:<asset>` line per double-height asset:
+
+```
+tall:monster_guardian_naga_0
+tall:monster_spirit_naga_0
+```
+
+Such an asset's PNG is two cells tall and bottom-anchored: it is drawn over the cell above the one it occupies. A pack without `maps/tall.txt` has no tiles that overdraw, and a runtime treats a missing file that way. When authoring by hand you may declare any asset tall; nothing requires an overdraw band or even a source tilesheet.
 
 ## Target map and selector syntax
 
-Each target in `pack.json` is one object:
+`maps/targets.txt` holds one rule per line:
 
 ```
-{ "type": "feat", "selector": "FLOOR:lit", "kind": "asset", "value": "feat_floor_lit_0" }
+target:<type>:<selector>:<kind>:<value>
 ```
 
 - `type` is one of `feat`, `trap`, `GF`, `monster`, `object`, `flavor`.
 - `kind` is one of:
   - `asset` - value is a PNG base name under `images/<resolution>/`;
-  - `family` - value is a family id in the same document;
-  - `pool` - value is a pool id in the same document (a set of candidate
+  - `family` - value is a family id from `maps/families.txt`;
+  - `pool` - value is a pool id from `maps/pools.txt` (a set of candidate
     assets resolved per grid; see "Variant pools" below).
-- Selectors may contain colons (for example `GF:ELEC:0` or `object:light:Wooden Torch`). The selector is one string, so those colons stay inside it.
+- Selectors may contain colons (for example `GF:ELEC:0` or
+  `object:light:Wooden Torch`), so lines are parsed by fixed head/tail
+  fields, not by splitting freely.
 
 **Per-object images.** Object kinds are addressed by their own selectors
 (`object:<tval>:<name>`, e.g. `object:light:Wooden Torch`), so each object kind
 already resolves to its own `asset`. A per-object rule may instead point at a
 `pool`, giving one object kind a set of interchangeable images.
 
-Two selector layers coexist in the same `targets` array:
+Two selector layers coexist in the same file:
 
 - **Exact selectors** preserve full legacy fidelity:
   - stateful terrain and traps carry a variant suffix:
@@ -87,13 +116,23 @@ Two selector layers coexist in the same `targets` array:
   - conditional remaps (from `?:` lines in `xtra-*.prf`) carry a
     `:when:<query>` suffix, for example
     `monster:<player>:when:[AND [EQU $CLASS Warrior] [EQU $RACE Human] ]`.
-- **Compatibility aliases** come first in the array and give the current
+- **Compatibility aliases** come first in the file and give the current
   runtime one unsuffixed rule per base selector (for example `feat:FLOOR`).
   The alias points at the asset of the best exact rule: unconditioned rules
   win over conditioned ones, then variants rank `*`, `lit`, `torch`, `los`,
   `dark`, then earliest source order.
 
-A family object binds glow, tint, and pulse metadata to an asset behind a stable family id. The generated packs use this for the LESS and MORE staircase selectors. Tint is a color with red, green, blue, and alpha channels. Pulse is a minimum, a maximum, and a period. Glow alpha is an integer from 0 to 255.
+`maps/families.txt` binds glow/tint/pulse effect metadata to an asset behind
+a stable family id (currently generated for the `feat:LESS`/`feat:MORE`
+staircase selectors):
+
+```
+family:feat_less_lit_0_fx:selection:stable
+family:feat_less_lit_0_fx:asset:feat_less_lit_0
+family:feat_less_lit_0_fx:glow-alpha:72
+family:feat_less_lit_0_fx:tint:180,220,255,48
+family:feat_less_lit_0_fx:pulse:168,255,1400
+```
 
 Asset names are deterministic: the lowercased `type:selector` string is
 slugged (`[^a-z0-9]+` runs become `_`), capped at 61 characters with an
@@ -103,13 +142,22 @@ md5-derived suffix when needed, and given a trailing `_0`.
 
 A `pool`-kind target maps one selector to a POOL of candidate assets instead of
 exactly one, so a feature or object kind can vary its appearance across the map.
-A pool object names its id, a `stable` or `index` selection, and its member assets:
+Pools are declared in `maps/pools.txt` (registered with `map:pools:` in the
+manifest):
 
 ```
-{ "id": "floor_variants", "selection": "stable", "members": ["feat_floor_lit_0", "feat_floor_dark_0", "feat_floor_los_0"] }
+pool:floor_variants:selection:stable
+pool:floor_variants:member:feat_floor_lit_0
+pool:floor_variants:member:feat_floor_dark_0
+pool:floor_variants:member:feat_floor_los_0
 ```
 
-A target binds a selector to that pool with `"kind": "pool"` and `"value": "floor_variants"`.
+and bound to a selector with a `pool` target rule:
+
+```
+target:feat:FLOOR:pool:floor_variants
+target:object:light:Wooden Torch:pool:torch_variants
+```
 
 Every `member` is an ordinary asset base name under `images/<resolution>/`, and it must be an asset the pack already produced; the converter fails the build otherwise. A pool declares one of two deterministic selection rules. At blit time the loose engine resolves the pool to a single member with the pure `selectPoolMember` function in `packages/linoleum/src/targets.ts`, given the cell being drawn:
 
@@ -167,10 +215,13 @@ keys: `original-tiles`, `adam-bolt`, `gervais`, `nomad`, `shockbolt-dark`,
 The converter:
 
 - parses each pack's `graf`/`xtra`/`flvr` pref files into selectors;
-- extracts one PNG per selector from the source tilesheet (Shockbolt's overdraw rows 27-31 become bottom-anchored double-height 64x128 assets, and each is named in `pack.json`);
+- extracts one PNG per selector from the source tilesheet (Shockbolt's
+  overdraw rows 27-31 become bottom-anchored double-height 64x128 assets, and
+  each is named in `maps/tall.txt`);
 - skips and counts selectors that point outside the sheet;
-- writes `pack.json` and `tile-map.json`;
-- writes a Markdown inventory and a `neo-angband/linoleum/inventory` JSON document into the output root.
+- mirrors the pref files into the pack;
+- writes `manifest.txt`, `maps/targets.txt`, and `maps/families.txt`;
+- writes Markdown and JSON inventory reports into the output root.
 
 ## Shipping a pack in a mod
 
@@ -180,9 +231,8 @@ Put the converted directory inside your mod folder and name it in the manifest:
 my-tiles/
   manifest.json
   my-set/                    <- the converted pack directory
-    pack.json
-    tile-map.json
-    images/ ...
+    manifest.txt
+    maps/ images/ ...
 ```
 
 ```json
@@ -201,8 +251,6 @@ my-tiles/
   ]
 }
 ```
-
-For a compact source archive, declare `tilesheet.image` and `tilesheet.tileMap` under the pack entry. The `tileMap` path points to a `neo-angband/linoleum/tile-map` document. Older manifests with `tilesheet.prefFiles` still load so an installed archive can fill the browser cache once. New source archives use `tileMap` and carry no copied `.prf` files.
 
 **`path` is relative to your mod folder, not to the site.** A mod cannot know where the host serves it from, and for two of the three ways a mod can arrive the host serves it from nowhere at all: a folder the player picked in a browser has no URL for its files until their bytes are wrapped in a `blob:`, and a mod installed from a repository lives in IndexedDB. So the manifest names a directory, and the host combines it with however that mod's bytes are reached. `validateManifest` refuses a `path` that still starts with `mods/`, the older documented form.
 

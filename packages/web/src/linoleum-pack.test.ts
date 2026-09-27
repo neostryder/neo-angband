@@ -17,7 +17,6 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import type { TilePrefsDeps } from "@rpgm-tools/neo-angband-core";
 import type { PoolDefinition, TargetRule } from "@rpgm-tools/neo-angband-linoleum/targets";
-import { linoleumPackFormat, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   atlasToSlot,
   buildLinoleumIndex,
@@ -122,7 +121,6 @@ describe("parseFamiliesFile", () => {
     expect(families.size).toBe(1);
     expect(families.get("feat_more_lit_0_fx")).toEqual({
       asset: "feat_more_lit_0",
-      selection: "stable",
       effect: {
         glowAlpha: 0.35 * 255,
         tint: { red: 255, green: 204, blue: 102, alpha: 255 },
@@ -615,20 +613,27 @@ describe("loadLinoleumPack", () => {
     }) as typeof fetch;
   }
 
-  const packDocument = serializeDocument(linoleumPackFormat, {
-    packId: "p",
-    displayName: "Pack P",
-    imageFormat: "png",
-    resolution: 8,
-    targets: [
-      { type: "feat", selector: "FLOOR:lit", kind: "pool", value: "floors" },
-      { type: "feat", selector: "FLOOR:dark", kind: "family", value: "dark_fx" },
-      { type: "monster", selector: "Farmer Maggot", kind: "asset", value: "maggot" },
-    ],
-    pools: [{ id: "floors", selection: "index", members: ["floor_a", "floor_b"] }],
-    families: [{ id: "dark_fx", asset: "floor_dark" }],
-  });
-  const files = { "mods/p/pack.json": packDocument };
+  const files = {
+    "mods/p/manifest.txt": [
+      "pack:p:Pack P",
+      "format:png",
+      "resolution:8",
+      "map:targets:maps/targets.txt",
+      "map:pools:maps/pools.txt",
+      "map:families:maps/families.txt",
+    ].join("\n"),
+    "mods/p/maps/targets.txt": [
+      "target:feat:FLOOR:lit:pool:floors",
+      "target:feat:FLOOR:dark:family:dark_fx",
+      "target:monster:Farmer Maggot:asset:maggot",
+    ].join("\n"),
+    "mods/p/maps/pools.txt": [
+      "pool:floors:selection:index",
+      "pool:floors:member:floor_a",
+      "pool:floors:member:floor_b",
+    ].join("\n"),
+    "mods/p/maps/families.txt": "family:dark_fx:asset:floor_dark",
+  };
 
   const original = globalThis.fetch;
   afterEach(() => {
@@ -675,9 +680,9 @@ describe("loadLinoleumPack", () => {
     expect(await loadLinoleumPack({ resolve: urlBaseResolver("mods/p"), menuname: "Pack P", deps })).toBeNull();
   });
 
-  it("is null when the pack document is not a pack", async () => {
+  it("is null when the manifest names no target map", async () => {
     globalThis.fetch = serve({
-      "mods/p/pack.json": "{\"format\":\"neo-angband/linoleum/pack\",\"schemaVersion\":99,\"data\":{}}",
+      "mods/p/manifest.txt": "pack:p:Pack P\nresolution:8",
     });
     expect(await loadLinoleumPack({ resolve: urlBaseResolver("mods/p"), menuname: "Pack P", deps })).toBeNull();
   });
@@ -721,19 +726,10 @@ describe("loadLinoleumPack", () => {
     ).toBeNull();
   });
 
-  it("tolerates omitted pools and families rather than failing the pack", async () => {
+  it("tolerates a missing pools/families file rather than failing the pack", async () => {
     globalThis.fetch = serve({
-      "mods/p/pack.json": serializeDocument(linoleumPackFormat, {
-        packId: "p",
-        displayName: "Pack P",
-        imageFormat: "png",
-        resolution: 8,
-        targets: [
-          { type: "feat", selector: "FLOOR:lit", kind: "pool", value: "floors" },
-          { type: "feat", selector: "FLOOR:dark", kind: "family", value: "dark_fx" },
-          { type: "monster", selector: "Farmer Maggot", kind: "asset", value: "maggot" },
-        ],
-      }),
+      "mods/p/manifest.txt": files["mods/p/manifest.txt"],
+      "mods/p/maps/targets.txt": files["mods/p/maps/targets.txt"],
     });
     const pack = await loadLinoleumPack({ resolve: urlBaseResolver("mods/p"), menuname: "Pack P", deps });
     // The plain asset rule still works; the pool and family rules are dropped.

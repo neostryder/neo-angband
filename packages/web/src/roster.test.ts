@@ -2,13 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CharMeta } from "./roster";
 import {
   deleteSlot,
-  getActiveId,
   lineageOf,
   listDeaths,
   listRoster,
   markDead,
-  rosterReadableFrom,
-  setActiveId,
   setRosterStorage,
   upsertMeta,
   writeSlot,
@@ -165,7 +162,7 @@ describe("a death outlives its tombstone (the import gate's ledger)", () => {
     writeSlot("a", "AAAA", meta("a", { lineage: "lin-1" }));
     const raw = storage.setItem.bind(storage);
     storage.setItem = (k: string, v: string): void => {
-      if (k === "neo-angband-death-records") throw new Error("quota");
+      if (k === "neo-angband-deaths") throw new Error("quota");
       raw(k, v);
     };
     expect(markDead("a")).toBe(true);
@@ -176,79 +173,7 @@ describe("a death outlives its tombstone (the import gate's ledger)", () => {
   it("reads a corrupt or half-written ledger as empty", () => {
     storage.setItem("neo-angband-deaths", "{not json");
     expect(listDeaths()).toEqual([]);
-    expect(storage.getItem("neo-angband-deaths")).toBe("{not json");
     storage.setItem("neo-angband-deaths", JSON.stringify([{ name: "no lineage" }, 7, null]));
     expect(listDeaths()).toEqual([]);
-  });
-
-  it("converts a previous roster array once, and leaves a future document untouched", () => {
-    storage.setItem(
-      "neo-angband-roster",
-      JSON.stringify([{ id: "a", name: "Grond", race: "Human", cls: "Warrior", sex: "", level: 3, depth: 1, maxDepth: 2, turn: 40, alive: true, updatedAt: 1_700_000_000_000 }]),
-    );
-    expect(listRoster().map((c) => c.name)).toEqual(["Grond"]);
-    expect(storage.getItem("neo-angband-roster")).toBeNull();
-    const document = storage.getItem("neo-angband-character-roster");
-    expect(document).toContain("neo-angband/web/character-roster");
-    expect(listRoster()[0]?.updatedAt).toBe(1_700_000_000_000);
-    const again = storage.getItem("neo-angband-character-roster");
-    expect(again).toBe(document);
-
-    const future = document!.replace('"schemaVersion":1', '"schemaVersion":2');
-    storage.setItem("neo-angband-character-roster", future);
-    expect(listRoster()).toEqual([]);
-    expect(storage.getItem("neo-angband-character-roster")).toBe(future);
-  });
-
-  it("converts a raw active id and does not write that key again", () => {
-    storage.setItem("neo-angband-active", "slot-9");
-    expect(getActiveId()).toBe("slot-9");
-    expect(storage.getItem("neo-angband-active")).toBeNull();
-    expect(storage.getItem("neo-angband-active-slot")).toContain("slot-9");
-    setActiveId("slot-8");
-    expect(storage.getItem("neo-angband-active")).toBeNull();
-    expect(getActiveId()).toBe("slot-8");
-  });
-
-  it("converts the old death ledger and leaves a future ledger untouched", () => {
-    storage.setItem("neo-angband-deaths", JSON.stringify([
-      { lineage: "lin-1", name: "Grond", turn: 44, at: 1_700_000_000_000 },
-    ]));
-    expect(listDeaths()[0]?.lineage).toBe("lin-1");
-    expect(storage.getItem("neo-angband-deaths")).toBeNull();
-    const document = storage.getItem("neo-angband-death-records");
-    expect(document).toContain("neo-angband/web/death-records");
-    expect(listDeaths()[0]?.at).toBe(1_700_000_000_000);
-    expect(storage.getItem("neo-angband-death-records")).toBe(document);
-
-    const future = document!.replace('"schemaVersion":1', '"schemaVersion":2');
-    storage.setItem("neo-angband-death-records", future);
-    expect(writeSlot("a", "AAAA", meta("a"))).toBe(true);
-    expect(markDead("a")).toBe(true);
-    expect(storage.getItem("neo-angband-death-records")).toBe(future);
-  });
-
-  it("does not overwrite future roster, active, or death documents", () => {
-    const future = (format: string): string => JSON.stringify({ format, schemaVersion: 2, data: {} });
-    const roster = future("neo-angband/web/character-roster");
-    const active = future("neo-angband/web/active-slot");
-    const deaths = future("neo-angband/web/death-records");
-    storage.setItem("neo-angband-character-roster", roster);
-    storage.setItem("neo-angband-active-slot", active);
-    storage.setItem("neo-angband-death-records", deaths);
-    expect(rosterReadableFrom(storage)).toBe(false);
-    expect(upsertMeta(meta("a"))).toBe(false);
-    setActiveId("a");
-    expect(writeSlot("a", "AAAA", meta("a"))).toBe(false);
-    expect(storage.getItem("neo-angband-character-roster")).toBe(roster);
-    expect(storage.getItem("neo-angband-active-slot")).toBe(active);
-    expect(storage.getItem("neo-angband-death-records")).toBe(deaths);
-  });
-
-  it("keeps save bytes when a death tombstone cannot be stored", () => {
-    expect(writeSlot("a", "AAAA", meta("a"))).toBe(true);
-    storage.full = true;
-    expect(markDead("a")).toBe(false);
-    expect(storage.getItem("neo-angband-save:a")).toBe("AAAA");
   });
 });

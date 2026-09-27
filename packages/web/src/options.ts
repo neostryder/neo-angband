@@ -773,18 +773,9 @@ export interface SidebarModeMenu {
   set: (index: number) => void;
 }
 
-/** One window-manager feature switch shown on the Subwindow setup screen. */
-export interface SubwindowFeatureToggle {
-  label: string;
-  enabled: () => boolean;
-  set: (enabled: boolean) => void;
-}
-
 /** The supported subset of do_cmd_options_win's independent term flags. */
 export interface SubwindowMenu {
   choices: readonly { id: string; label: string }[];
-  /** Window-manager feature switches (#287), listed after the panels. */
-  features?: readonly SubwindowFeatureToggle[];
   enabled: (id: string) => boolean;
   set: (id: string, enabled: boolean) => void;
   mapTiles?: TileModeMenu;
@@ -806,10 +797,6 @@ async function runSubwindowPage(
     const items: MenuItem[] = subwindows.choices.map((choice) => ({
       label: `${subwindows.enabled(choice.id) ? "X" : "."} ${choice.label}`,
     }));
-    const featuresStart = items.length;
-    for (const feature of subwindows.features ?? []) {
-      items.push({ label: `${feature.enabled() ? "X" : "."} ${feature.label}` });
-    }
     const mapTilesIdx = subwindows.mapTiles ? items.length : -1;
     if (subwindows.mapTiles) {
       const tiles = subwindows.mapTiles;
@@ -847,11 +834,6 @@ async function runSubwindowPage(
     const choice = subwindows.choices[idx];
     if (choice) {
       subwindows.set(choice.id, !subwindows.enabled(choice.id));
-      continue;
-    }
-    const feature = idx >= featuresStart ? subwindows.features?.[idx - featuresStart] : undefined;
-    if (feature) {
-      feature.set(!feature.enabled());
       continue;
     }
     let message: string;
@@ -1052,17 +1034,17 @@ export async function runOptionsMenu(
   }
   if (prefs) {
     items.push(
-      { label: t("options.menu.dumpSubwindow", "Save subwindow setup to pref file"), tag: "s" },
-      { label: t("options.menu.dumpAutoinsc", "Save autoinscriptions to pref file"), tag: "t" },
-      { label: t("options.menu.dumpCharScreen", "Save char screen options to pref file"), tag: "u" },
-      { label: t("options.menu.loadPrefFile", "Load a user pref file"), tag: "p" },
+      { label: t("options.menu.dumpSubwindow", "Export subwindow layout"), tag: "s" },
+      { label: t("options.menu.dumpAutoinsc", "Export autoinscriptions"), tag: "t" },
+      { label: t("options.menu.dumpCharScreen", "Export character screen options"), tag: "u" },
+      { label: t("options.menu.loadPrefFile", "Import preferences"), tag: "p" },
     );
   }
   items.push(
     { label: t("options.menu.keymaps", "Edit keymaps (advanced)"), tag: "e" },
     { label: t("options.menu.colours", "Edit colours (advanced)"), tag: "c" },
   );
-  if (prefs) items.push({ label: t("options.menu.visuals", "Save visuals (advanced)"), tag: "v" });
+  if (prefs) items.push({ label: t("options.menu.visuals", "Visual graphics (advanced)"), tag: "v" });
   // Derive the hint from the live rows so it can never drift out of sync.
   const tagHint = items.map((i) => i.tag).join("/");
   /* Every row below can change an option, including the pref-file loader, so the

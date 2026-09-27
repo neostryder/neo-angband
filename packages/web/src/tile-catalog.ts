@@ -89,7 +89,7 @@ export interface TileModeEntry {
   /**
    * How to reach the pack's files, by path relative to the PACK root - so the
    * tilesheet atlas is `<directory>/<file>` and a loose pack's manifest is
-   * `pack.json`. Undefined for core modes, which use the shell's own tile
+   * `manifest.txt`. Undefined for core modes, which use the shell's own tile
    * base, and for a mod pack whose source cannot serve assets.
    *
    * A resolver rather than a base URL because a mod in a folder the player picked

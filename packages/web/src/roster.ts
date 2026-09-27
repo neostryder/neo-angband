@@ -12,28 +12,6 @@
  * behaviour rather than throwing, exactly as the old single-slot code did.
  */
 
-import {
-  ACTIVE_STORAGE_KEY,
-  activeSlotFormat,
-  activeSlotFromLegacy,
-  characterFromLegacy,
-  DEATHS_STORAGE_KEY,
-  deathRecordsFormat,
-  deathsFromLegacy,
-  epochFromTimestamp,
-  LEGACY_ACTIVE_STORAGE_KEY,
-  LEGACY_DEATHS_STORAGE_KEY,
-  LEGACY_ROSTER_STORAGE_KEY,
-  parseDocument,
-  ROSTER_STORAGE_KEY,
-  rosterFormat,
-  rosterFromLegacy,
-  serializeDocument,
-  timestampFromEpoch,
-  type CharacterRecord,
-} from "@rpgm-tools/neo-angband-mod-sdk";
-import { canWriteStoredDocument, readStoredDocument } from "./document-store";
-
 /** The light metadata shown in the picker; the heavy save bytes live apart. */
 export interface CharMeta {
   id: string;
@@ -76,7 +54,10 @@ export interface DeathRecord {
   at: number;
 }
 
+const ROSTER_KEY = "neo-angband-roster";
+const ACTIVE_KEY = "neo-angband-active";
 const SLOT_PREFIX = "neo-angband-save:";
+const DEATHS_KEY = "neo-angband-deaths";
 
 /**
  * How many deaths are remembered. Generous, and bounded on purpose: the ledger
@@ -206,55 +187,21 @@ export function resetSlotWriteSurrender(): void {
   surrendered = false;
 }
 
-function toCharMeta(row: CharacterRecord): CharMeta {
-  return {
-    id: row.id,
-    name: row.name,
-    race: row.race,
-    cls: row.cls,
-    sex: row.sex,
-    level: row.level,
-    depth: row.depth,
-    maxDepth: row.maxDepth,
-    turn: row.turn,
-    alive: row.alive,
-    updatedAt: epochFromTimestamp(row.updatedAt),
-    ...(row.lineage !== undefined ? { lineage: row.lineage } : {}),
-  };
-}
-
 /** The roster metadata, newest save first. Never throws. */
 export function listRoster(): CharMeta[] {
-  const backingStore = store();
-  if (!backingStore) return [];
-  const data = readStoredDocument(
-    backingStore,
-    ROSTER_STORAGE_KEY,
-    LEGACY_ROSTER_STORAGE_KEY,
-    rosterFormat,
-    rosterFromLegacy,
-  );
-  if (!data) return [];
-  return data.characters.map(toCharMeta).sort((a, b) => b.updatedAt - a.updatedAt);
+  const raw = getItem(ROSTER_KEY);
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw) as CharMeta[];
+    if (!Array.isArray(list)) return [];
+    return list.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+  } catch {
+    return [];
+  }
 }
 
 function writeRoster(list: CharMeta[]): boolean {
-  const backingStore = store();
-  if (!backingStore || !canWriteStoredDocument(backingStore, ROSTER_STORAGE_KEY, LEGACY_ROSTER_STORAGE_KEY, rosterFormat)) return false;
-  const characters: CharacterRecord[] = [];
-  for (const meta of list) {
-    const row = characterFromLegacy(meta);
-    if (!row) return false;
-    characters.push(row);
-  }
-  try {
-    const text = serializeDocument(rosterFormat, { characters }, { compact: true });
-    if (!setItem(ROSTER_STORAGE_KEY, text)) return false;
-    const written = getItem(ROSTER_STORAGE_KEY);
-    return written === text && parseDocument(written, rosterFormat).ok;
-  } catch {
-    return false;
-  }
+  return setItem(ROSTER_KEY, JSON.stringify(list));
 }
 
 /** The living characters (resumable); tombstones are excluded. */
@@ -286,38 +233,12 @@ export function upsertMeta(meta: CharMeta): boolean {
  * which no other page can reach.
  */
 export function getActiveId(): string | null {
-  const backingStore = store();
-  if (!backingStore) return null;
-  const data = readStoredDocument(
-    backingStore,
-    ACTIVE_STORAGE_KEY,
-    LEGACY_ACTIVE_STORAGE_KEY,
-    activeSlotFormat,
-    activeSlotFromLegacy,
-  );
-  return data?.activeSlotId ?? null;
+  return getItem(ACTIVE_KEY);
 }
 
 export function setActiveId(id: string | null): void {
-  if (!id) {
-    getActiveId();
-    const backingStore = store();
-    if (!backingStore || !canWriteStoredDocument(backingStore, ACTIVE_STORAGE_KEY, LEGACY_ACTIVE_STORAGE_KEY, activeSlotFormat)) return;
-    removeItem(ACTIVE_STORAGE_KEY);
-    return;
-  }
-  getActiveId();
-  const backingStore = store();
-  if (!backingStore || !canWriteStoredDocument(backingStore, ACTIVE_STORAGE_KEY, LEGACY_ACTIVE_STORAGE_KEY, activeSlotFormat)) return;
-  let text: string;
-  try {
-    text = serializeDocument(activeSlotFormat, { activeSlotId: id }, { compact: true });
-  } catch {
-    return;
-  }
-  if (setItem(ACTIVE_STORAGE_KEY, text) && getItem(ACTIVE_STORAGE_KEY) === text) {
-    removeItem(LEGACY_ACTIVE_STORAGE_KEY);
-  }
+  if (id) setItem(ACTIVE_KEY, id);
+  else removeItem(ACTIVE_KEY);
 }
 
 /** The base64 save bytes for a slot, or null if none / storage disabled. */
@@ -337,9 +258,6 @@ export function writeSlot(id: string, saveB64: string, meta: CharMeta): boolean 
    * offered" is not, because retrying changes nothing and a save-failure warning
    * would point at the wrong thing entirely. */
   if (surrendered) return true;
-  listRoster();
-  const backingStore = store();
-  if (!backingStore || !canWriteStoredDocument(backingStore, ROSTER_STORAGE_KEY, LEGACY_ROSTER_STORAGE_KEY, rosterFormat)) return false;
   const bytes = setItem(SLOT_PREFIX + id, saveB64);
   const metaOk = upsertMeta(meta);
   return bytes && metaOk;
@@ -354,15 +272,13 @@ export function markDead(id: string): boolean {
    * active id now points at. Reported as success for the same reason `writeSlot`
    * does - there was nothing to tombstone here. */
   if (surrendered) return true;
+  removeItem(SLOT_PREFIX + id);
   const meta = getMeta(id);
   /* No meta at all means there is nothing to tombstone, which is not a
    * failure. A meta write that does not land IS one: the memorial is lost. */
   if (!meta) return true;
   recordDeath(meta);
-  if (!upsertMeta({ ...meta, alive: false })) return false;
-  if (getMeta(id)?.alive !== false) return false;
-  removeItem(SLOT_PREFIX + id);
-  return true;
+  return upsertMeta({ ...meta, alive: false });
 }
 
 /** The character behind a slot: their lineage, or the slot they were born in. */
@@ -372,22 +288,15 @@ export function lineageOf(meta: Pick<CharMeta, "id" | "lineage">): string {
 
 /** Every death this roster remembers, oldest first. Never throws. */
 export function listDeaths(): DeathRecord[] {
-  const backingStore = store();
-  if (!backingStore) return [];
-  const data = readStoredDocument(
-    backingStore,
-    DEATHS_STORAGE_KEY,
-    LEGACY_DEATHS_STORAGE_KEY,
-    deathRecordsFormat,
-    deathsFromLegacy,
-  );
-  if (!data) return [];
-  return data.deaths.map((row) => ({
-    lineage: row.lineage,
-    name: row.name,
-    turn: row.turn,
-    at: epochFromTimestamp(row.at),
-  }));
+  const raw = getItem(DEATHS_KEY);
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw) as DeathRecord[];
+    if (!Array.isArray(list)) return [];
+    return list.filter((d) => typeof d?.lineage === "string" && d.lineage !== "");
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -404,8 +313,6 @@ export function listDeaths(): DeathRecord[] {
  * the write that matters (markDead's return value is savefile_save's).
  */
 function recordDeath(meta: CharMeta): void {
-  const backingStore = store();
-  if (!backingStore || !canWriteStoredDocument(backingStore, DEATHS_STORAGE_KEY, LEGACY_DEATHS_STORAGE_KEY, deathRecordsFormat)) return;
   const rec: DeathRecord = {
     lineage: lineageOf(meta),
     name: meta.name,
@@ -415,23 +322,13 @@ function recordDeath(meta: CharMeta): void {
   const kept = listDeaths().filter((d) => d.lineage !== rec.lineage);
   kept.push(rec);
   /* Oldest first, so dropping from the front drops the oldest. */
-  const deaths = kept.slice(Math.max(0, kept.length - DEATHS_CAP)).map((row) => ({
-    lineage: row.lineage,
-    name: row.name,
-    turn: row.turn,
-    at: timestampFromEpoch(row.at),
-  }));
-  try {
-    setItem(DEATHS_STORAGE_KEY, serializeDocument(deathRecordsFormat, { deaths }, { compact: true }));
-  } catch {
-    /* A ledger that cannot be encoded must not fail the death save. */
-  }
+  setItem(DEATHS_KEY, JSON.stringify(kept.slice(Math.max(0, kept.length - DEATHS_CAP))));
 }
 
 /** Remove a slot entirely (bytes + metadata) - used to clear a tombstone. */
 export function deleteSlot(id: string): void {
-  if (!writeRoster(listRoster().filter((c) => c.id !== id))) return;
   removeItem(SLOT_PREFIX + id);
+  writeRoster(listRoster().filter((c) => c.id !== id));
   if (getActiveId() === id) setActiveId(null);
 }
 
@@ -443,26 +340,18 @@ export function deleteSlot(id: string): void {
  * gone, so there is nothing for a caller of this to carry.
  */
 export function readLivingRosterFrom(s: RosterStorage): CharMeta[] {
-  const data = readStoredDocument(
-    s,
-    ROSTER_STORAGE_KEY,
-    LEGACY_ROSTER_STORAGE_KEY,
-    rosterFormat,
-    rosterFromLegacy,
-  );
-  if (!data) return [];
-  return data.characters.map(toCharMeta).filter((row) => row.alive);
-}
-
-/** Refuse a profile deletion when its roster exists but cannot be decoded. */
-export function rosterReadableFrom(s: RosterStorage): boolean {
+  let raw: string | null;
   try {
-    const current = s.getItem(ROSTER_STORAGE_KEY);
-    if (current !== null) return parseDocument(current, rosterFormat).ok;
-    const legacy = s.getItem(LEGACY_ROSTER_STORAGE_KEY);
-    return legacy === null || rosterFromLegacy(legacy) !== null;
+    raw = s.getItem(ROSTER_KEY);
   } catch {
-    return false;
+    return [];
+  }
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw) as CharMeta[];
+    return Array.isArray(list) ? list.filter((c) => c.alive) : [];
+  } catch {
+    return [];
   }
 }
 

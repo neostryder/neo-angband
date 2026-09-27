@@ -25,7 +25,6 @@ import {
   setHost,
 } from "@rpgm-tools/neo-angband-core";
 import type { LoreStore, MonsterRace } from "@rpgm-tools/neo-angband-core";
-import { loreFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 
 import { loadLoreFile, saveLoreFile } from "./lore-file";
 
@@ -69,37 +68,14 @@ describe("lore.txt through the host", () => {
     expect(saveLoreFile([race], first)).toBe(true);
     /* text_lines_to_file stages <name>.new and rotates it, so the file the game
      * can read next launch is lore.txt itself and nothing is left behind. */
-    expect(host.read(HostDir.USER, "lore.json")).toContain("\"name\": \"kobold\"");
-    expect(host.exists(HostDir.USER, "lore.json.new")).toBe(false);
-    expect(host.exists(HostDir.USER, "lore.json.old")).toBe(false);
+    expect(host.read(HostDir.USER, "lore.txt")).toContain("name:kobold");
+    expect(host.exists(HostDir.USER, "lore.txt.new")).toBe(false);
+    expect(host.exists(HostDir.USER, "lore.txt.old")).toBe(false);
 
     /* A DIFFERENT character - an empty store, as a fresh birth produces. */
     const next: LoreStore = new Map();
     loadLoreFile([race], next);
     expect(next.get(3)?.tkills).toBe(21);
-    const text = host.read(HostDir.USER, "lore.json")!;
-    const parsed = parseDocument(text, loreFormat);
-    expect(parsed.ok && serializeDocument(loreFormat, parsed.data)).toBe(text);
-  });
-
-  it("converts the old lore file and removes it after reading the JSON", () => {
-    host.write(HostDir.USER, "lore.txt", "name:kobold\ncounts:5:0:21:0:0:0:0\n");
-    const next: LoreStore = new Map();
-    loadLoreFile([race], next);
-    expect(next.get(3)?.tkills).toBe(21);
-    expect(host.exists(HostDir.USER, "lore.txt")).toBe(false);
-    expect(parseDocument(host.read(HostDir.USER, "lore.json"), loreFormat).ok).toBe(true);
-  });
-
-  it("leaves a corrupt or future document alone through load and save", () => {
-    for (const text of ["{broken", '{"format":"neo-angband/monster/lore","schemaVersion":99,"data":{}}']) {
-      host.write(HostDir.USER, "lore.json", text);
-      const next: LoreStore = new Map();
-      loadLoreFile([race], next);
-      expect(next.size).toBe(0);
-      expect(saveLoreFile([race], next)).toBe(false);
-      expect(host.read(HostDir.USER, "lore.json")).toBe(text);
-    }
   });
 
   it("leaves an empty store alone when there is no file", () => {
@@ -110,7 +86,7 @@ describe("lore.txt through the host", () => {
   });
 
   it("survives a host that cannot write, and says the write failed", () => {
-    setHost(new MemoryHost({ failWrites: ["lore.json.new"] }));
+    setHost(new MemoryHost({ failWrites: ["lore.txt.new"] }));
     const store: LoreStore = new Map();
     const lore = newMonsterLore(race);
     lore.sights = 1;
