@@ -592,7 +592,7 @@ import {
 } from "./subwindows";
 import { mountSubwindowShell } from "./subwindow-shell";
 import { bindPanelProviders, panelKinds, settlePanelProviders, syncPanelProviders, unregisterAllPanelKinds } from "./panel-provider";
-import { applyDrop, containsLeaf, dockBesideMain, insertAtEdge, removeLeaf, restoreDockPlace, swapLeaves, tabInto, type LayoutNode, type RememberedPlace } from "./subwindow-layout";
+import { applyDrop, containsLeaf, dockBesideMain, fillFreedSpace, insertAtEdge, removeLeaf, restoreDockPlace, swapLeaves, tabInto, type LayoutNode, type RememberedPlace } from "./subwindow-layout";
 import { readWmSettings, writeWmSettings, type WmSettings } from "./wm-settings";
 import {
   inventoryScreen,
@@ -1066,7 +1066,7 @@ const subwindowShell = mountSubwindowShell({
     const places = { ...subwindowState.places,
       [id]: { ...subwindowState.places?.[id], dock: subwindowState.tree,
         float: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, last: "float" as const } };
-    subwindowState = { ...subwindowState, tree: removeLeaf(subwindowState.tree, id),
+    subwindowState = { ...subwindowState, tree: withoutPanel(subwindowState.tree, id),
       floats: [...subwindowState.floats ?? [], rect], places };
     writeSubwindowState(localStorage, subwindowState);
     applySubwindowLayout();
@@ -1167,7 +1167,7 @@ const panelProviderHost = {
   removePanel: (id: string) => {
     const { [id]: _forgotten, ...places } = subwindowState.places ?? {};
     void _forgotten;
-    subwindowState = { ...subwindowState, tree: removeLeaf(subwindowState.tree, id),
+    subwindowState = { ...subwindowState, tree: withoutPanel(subwindowState.tree, id),
       floats: (subwindowState.floats ?? []).filter((entry) => entry.id !== id), places };
     writeSubwindowState(localStorage, subwindowState);
     applySubwindowLayout();
@@ -3029,13 +3029,22 @@ function renderSubwindows(): void {
 
 /** The live path shared by the Interface Options checklist and a panel's own close [x] (neo-angband#246). */
 function setSubwindowEnabledLive(id: SubwindowId, enabled: boolean): void {
+  const before = subwindowState.tree;
   subwindowState = setSubwindowEnabled(subwindowState, id, enabled);
+  if (!enabled && subwindowState.tree !== before) {
+    subwindowState = { ...subwindowState, tree: fillFreedSpace(before, subwindowState.tree, id, subwindowShell.layoutContext()) };
+  }
   writeSubwindowState(localStorage, subwindowState);
   applySubwindowLayout();
   renderSubwindows();
 }
 
 const lastModTrees = new Map<string, LayoutNode>();
+
+/** Take a panel out of the docked layout and hand its space on (#302). */
+function withoutPanel(tree: LayoutNode, id: string): LayoutNode {
+  return fillFreedSpace(tree, removeLeaf(tree, id), id, subwindowShell.layoutContext());
+}
 
 /**
  * Where a mod's panel opens when the player has no saved place for it: its
@@ -3087,7 +3096,7 @@ function setModPanelEnabledLive(id: string, enabled: boolean, parked = false): v
       if (!containsLeaf(tree, id)) return;
       lastModTrees.set(id, tree);
       places[id] = markParked({ ...places[id], dock: tree, last: "dock" }, parked);
-      tree = removeLeaf(tree, id);
+      tree = withoutPanel(tree, id);
     }
   }
   subwindowState = { ...subwindowState, tree, floats, places };

@@ -10,6 +10,7 @@ import {
   containsLeaf,
   dockBesideMain,
   dropZoneAt,
+  fillFreedSpace,
   fitForComfort,
   groupTabs,
   insertAtEdge,
@@ -156,6 +157,46 @@ describe("dockBesideMain (#297)", () => {
     const tree = dockBesideMain(dockBesideMain(mainOnly, "a:one", "right", 0.3), "a:two", "right", 0.3);
     const moved = dockBesideMain(tree, "a:one", "right", 0.3);
     expect(leafIds(moved).sort()).toEqual(["a:one", "a:two", MAIN_TILE_ID].sort());
+  });
+});
+
+describe("fillFreedSpace (#302)", () => {
+  const rect = (tree: LayoutNode, id: string): Rect => computeLayout(tree, VIEW).tiles.find((tile) => tile.id === id)!.rect;
+  const leaf = (id: string): LayoutNode => ({ kind: "leaf", id });
+
+  it("gives a closed panel's space to the dungeon view when the others are comfortable", () => {
+    const before: LayoutNode = { kind: "split", axis: "v", ratio: 0.7,
+      first: { kind: "split", axis: "v", ratio: 0.7, first: leaf(MAIN_TILE_ID), second: leaf("a:one") }, second: leaf("a:two") };
+    const after = fillFreedSpace(before, removeLeaf(before, "a:two"), "a:two", { viewport: VIEW });
+    const { tiles, splitters } = computeLayout(after, VIEW);
+    tiled(tiles, splitters, VIEW);
+    expect(Math.abs(rect(after, "a:one").w - rect(before, "a:one").w)).toBeLessThanOrEqual(1);
+    expect(rect(after, MAIN_TILE_ID).w).toBeGreaterThan(rect(before, MAIN_TILE_ID).w + 200);
+  });
+
+  it("lets a cramped panel keep the space it gains", () => {
+    const before: LayoutNode = { kind: "split", axis: "v", ratio: 0.8,
+      first: { kind: "split", axis: "v", ratio: 0.88, first: leaf(MAIN_TILE_ID), second: leaf("a:one") }, second: leaf("a:two") };
+    expect(rect(before, "a:one").w).toBeLessThan(COMFORTABLE_MIN_PX);
+    const plain = removeLeaf(before, "a:two");
+    expect(fillFreedSpace(before, plain, "a:two", { viewport: VIEW })).toEqual(plain);
+  });
+
+  it("counts a panel's own minimum size as cramped too", () => {
+    const before: LayoutNode = { kind: "split", axis: "v", ratio: 0.7,
+      first: { kind: "split", axis: "v", ratio: 0.7, first: leaf(MAIN_TILE_ID), second: leaf("a:one") }, second: leaf("a:two") };
+    const plain = removeLeaf(before, "a:two");
+    const minSizes = new Map([["a:one", { width: 400, height: 96 }]]);
+    expect(fillFreedSpace(before, plain, "a:two", { viewport: VIEW, minSizes })).toEqual(plain);
+  });
+
+  it("leaves a stacked neighbour to fill space the dungeon view cannot use", () => {
+    const before: LayoutNode = { kind: "split", axis: "v", ratio: 0.7, first: leaf(MAIN_TILE_ID),
+      second: { kind: "split", axis: "h", ratio: 0.5, first: leaf("a:one"), second: leaf("a:two") } };
+    const plain = removeLeaf(before, "a:two");
+    const after = fillFreedSpace(before, plain, "a:two", { viewport: VIEW });
+    expect(after).toEqual(plain);
+    expect(rect(after, "a:one").h).toBe(VIEW.h);
   });
 });
 

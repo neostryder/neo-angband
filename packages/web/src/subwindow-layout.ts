@@ -379,6 +379,73 @@ export function insertAtEdge(
   return replaceAt(stripped, path, splitOnEdge(target, incoming, edge, incomingRatio));
 }
 
+export interface FillContext {
+  readonly viewport: Rect;
+  readonly minSizes?: ReadonlyMap<TileId, Readonly<{ width: number; height: number }>>;
+  readonly splitterPx?: number;
+}
+
+/** The rectangle covering every shown panel under a node. */
+function spanOf(node: LayoutNode, rects: ReadonlyMap<TileId, Rect>): Rect | null {
+  let span: Rect | null = null;
+  for (const id of leafIds(node)) {
+    const r = rects.get(id);
+    if (!r) continue;
+    if (!span) { span = { ...r }; continue; }
+    const x = Math.min(span.x, r.x);
+    const y = Math.min(span.y, r.y);
+    span = { x, y, w: Math.max(span.x + span.w, r.x + r.w) - x, h: Math.max(span.y + span.h, r.y + r.h) - y };
+  }
+  return span;
+}
+
+/**
+ * When a panel leaves, its split collapses and the panels beside it grow into
+ * the gap (#302). This undoes that growth for any of them that were already big
+ * enough, so the dungeon view gets the room instead. A neighbour under
+ * `COMFORTABLE_MIN_PX`, or under its own minimum size in the direction that
+ * opened up, keeps the extra space.
+ */
+export function fillFreedSpace(before: LayoutNode, after: LayoutNode, removedId: TileId, ctx: FillContext): LayoutNode {
+  const path = findPath(before, removedId);
+  if (!path || path.length === 0) return after;
+  const parent = nodeAt(before, path.slice(0, -1));
+  const group = nodeAt(before, path);
+  if (parent?.kind !== "split" || group?.kind !== "leaf" || groupTabs(group).length > 1) return after;
+  const axis = parent.axis;
+  const extent = (r: Rect): number => (axis === "v" ? r.w : r.h);
+  const opts = { splitterPx: ctx.splitterPx ?? SPLITTER_PX, ...(ctx.minSizes ? { minSizes: ctx.minSizes } : {}) };
+  const rectsOf = (tree: LayoutNode) => new Map(computeLayout(tree, ctx.viewport, opts).tiles.map((tile) => [tile.id, tile.rect]));
+  const was = rectsOf(before);
+  const cramped = (id: TileId): boolean => {
+    const r = was.get(id);
+    if (!r || id === MAIN_TILE_ID) return false;
+    const hint = ctx.minSizes?.get(id);
+    return extent(r) < Math.max(COMFORTABLE_MIN_PX, hint ? (axis === "v" ? hint.width : hint.height) : 0);
+  };
+  let tree = after;
+  const mainPath = findPath(tree, MAIN_TILE_ID);
+  if (!mainPath) return after;
+  for (let depth = 0; depth < mainPath.length; depth++) {
+    const splitPath = mainPath.slice(0, depth);
+    const node = nodeAt(tree, splitPath);
+    if (node?.kind !== "split" || node.axis !== axis) continue;
+    const otherIsFirst = mainPath[depth] === 1;
+    const other = otherIsFirst ? node.first : node.second;
+    if (leafIds(other).some(cramped)) continue;
+    const now = rectsOf(tree);
+    const whole = spanOf(node, now);
+    const grown = spanOf(other, now);
+    const old = spanOf(other, was);
+    if (!whole || !grown || !old || extent(grown) <= extent(old) + 1) continue;
+    const inner = extent(whole) - opts.splitterPx;
+    if (inner <= 0) continue;
+    const share = extent(old) / inner;
+    tree = replaceAt(tree, splitPath, { ...node, ratio: clampRatio(otherIsFirst ? share : 1 - share) });
+  }
+  return tree;
+}
+
 function groupCount(node: LayoutNode): number {
   return node.kind === "leaf" ? 1 : groupCount(node.first) + groupCount(node.second);
 }

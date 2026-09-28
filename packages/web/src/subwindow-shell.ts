@@ -105,6 +105,8 @@ export interface SubwindowShell {
   setFitHeight(id: string, height: number | null): void;
   setPanelLabel(id: string, label: string, tab?: string): void;
   setPanelMinSize(id: string, size: Readonly<{ width: number; height: number }> | null): void;
+  /** The docked area's size and each panel's minimum size, for layout decisions made outside the shell. */
+  layoutContext(): Readonly<{ viewport: Rect; minSizes: ReadonlyMap<string, Readonly<{ width: number; height: number }>> }>;
   destroy(): void;
 }
 
@@ -1044,6 +1046,9 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       if (normalized) minSizes.set(id, normalized);
       else minSizes.delete(id);
       paint(currentTree);
+    },
+    layoutContext() {
+      return { viewport: hostSize(host), minSizes: new Map(minSizes) };
     },
     setVisualFilter(filter) {
       visualFilter = filter;

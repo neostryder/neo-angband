@@ -48,7 +48,7 @@ Panels can fill docked spaces or float above them inside the game viewport. Floa
   the same effect as unchecking it back in Subwindow setup.
 - **Float a panel: click Float in its title bar.** Drag the floating panel by its title bar, resize it from its lower-right grip, or click Dock to return it to its last docked place. Drag its title bar onto a dock zone to dock, swap or add it as a tab.
 
-Turning a panel off and on again restores its last floating or docked place. A panel with no saved place uses its standard dock. If other panels already sit on that side of the dungeon view, the new one joins them and shares their space, so the dungeon view keeps its size. A disabled mod leaves a named placeholder in a floating panel as it does in a docked panel.
+Closing a panel hands its space to the panels beside it that are cramped. If none of them are, the dungeon view takes it. Turning a panel off and on again restores its last floating or docked place. A panel with no saved place uses its standard dock. If other panels already sit on that side of the dungeon view, the new one joins them and shares their space, so the dungeon view keeps its size. A disabled mod leaves a named placeholder in a floating panel as it does in a docked panel.
 
 The dungeon view can move too. Drag the small grip in its top-right corner to dock it against another panel's edge, or drop it in the middle of a panel to trade places with it. It never closes, hides, floats or becomes a tab, so the map is always on screen.
 
