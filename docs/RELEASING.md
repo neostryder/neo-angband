@@ -427,17 +427,7 @@ the same tag: it recreates the release in place. This is the one point a
 release still passes through a draft-shaped state, briefly, mid-recovery - not
 as a normal step.
 
-**The `publish` job's last step dispatches `pages.yml` and
-`discord-announce.yml` directly - it does not rely on the `release: published`
-event reaching them.** GitHub does not cascade a `release` event into new
-workflow runs when the release was created or edited by `GITHUB_TOKEN` itself
-(documented anti-recursion behaviour; `workflow_dispatch` and
-`repository_dispatch` are the only events exempted from it). That never
-mattered while publishing was a human clicking Publish in the UI - a real
-account, not `GITHUB_TOKEN` - but this job now publishes directly, so without
-the explicit dispatch, Pages and the Discord announcement would both go quiet
-with no error anywhere. Found this way once, on `v0.34.2`: the release
-published correctly and neither downstream workflow ran.
+**The `publish` job's last step starts `pages.yml` itself.** GitHub does not start new workflow runs from a `release` event that `GITHUB_TOKEN` caused (only `workflow_dispatch` and `repository_dispatch` are exempt), and this job publishes with `GITHUB_TOKEN`. Without the explicit dispatch, Pages would not rebuild and nothing would report an error, which is what happened on `v0.34.2`.
 
 ### Every tag push turns on the in-game updater, immediately
 
@@ -459,20 +449,9 @@ the normal path, so this is a list of things not to "tidy up":
 was one, and hiding them would have meant the feature never worked before
 1.0; the version comparison is what decides, not the label.
 
-### The release also announces itself on Discord
+### The release is announced on Discord
 
-`.github/workflows/discord-announce.yml` listens for the same `published`
-event and posts to the RPGM Tools Discord's Neo Angband announcements forum,
-via `.github/scripts/discord-announce.mjs`. It skips `early` channel tags the
-same way `release.yml` excludes them from the build, but every real release
-gets announced regardless of version-bump size - patch, minor and major all
-post, automatically, the moment the tag's build finishes. The post body is the
-matching `CHANGELOG.md` heading, so there is one account of what changed
-rather than a second one written for Discord. The post @-mentions the Neo
-Angband News role, a self-assigned, opt-in role members pick up via the
-server's Channels & Roles page - members who have not added it see the post
-like anyone else in the forum, they just are not pinged. Each first-party mod
-repository carries the same script and workflow, triggered on its own tag push.
+The releases site at releases.rpgm.tools, built from the RPGM-Tools/rpgm-tools-press repo, checks for new releases every 30 minutes and posts each stable one to the Neo Angband announcements forum in the RPGM Tools Discord. It only picks up `vX.Y.Z` tags, so `early` channel builds are never posted. The post body is the release's `CHANGELOG.md` section, and the post mentions the Neo Angband News role, which members opt into on the server's Channels & Roles page. Mod releases are announced the same way. Nothing in this repo takes part, so a missing or wrong announcement is fixed on the releases site.
 
 ### The three channels, and how they're produced
 

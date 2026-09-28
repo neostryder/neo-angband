@@ -30,7 +30,6 @@ const [pm, pmVersion] = rootManifest.packageManager.split("@");
  * rest of this file exists to catch. */
 const WORKFLOWS = [
   "ci.yml",
-  "discord-announce.yml",
   "edge.yml",
   "mod-canary.yml",
   "pages.yml",

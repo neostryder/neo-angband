@@ -56,6 +56,9 @@ still calls itself.
 - [Visible] [UI] **A mod's panels open when you first turn it on.** Each one opens where the mod places it, and a panel you close stays closed until you add it again from Subwindow setup (#296).
 - [Visible] [UI] **Panels opened beside the dungeon view no longer shrink it each time.** A new panel on a side that already has panels joins them and shares their space, so only the first panel on each side takes room from the map (#297).
 
+### Removed
+- [Internal] **Removed this repo's own Discord release announcer.** Its workflow, script and test are gone, and the release workflow no longer dispatches it. The releases site at releases.rpgm.tools now posts each new release to the Neo Angband announcements forum.
+
 ### Fixed
 - [Visible] [UI] **Turning off a mod feature no longer leaves a "mod is not loaded" pane behind.** The pane leaves the screen and comes back to the same place when you turn the feature on again. A pane whose mod is missing now names the mod instead of showing its id (#298).
 

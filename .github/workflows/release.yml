@@ -305,16 +305,13 @@ jobs:
           fi
           echo "::notice::$TAG is published. Every existing install now sees it on its next launch."
 
-      - name: Trigger Pages and Discord (release events from GITHUB_TOKEN don't cascade)
-        # GitHub does not fire follow-on workflow runs for a `release` event
-        # that GITHUB_TOKEN itself caused - documented anti-recursion behaviour,
-        # exempting only workflow_dispatch and repository_dispatch. That never
-        # mattered while publishing was a human clicking Publish in the UI; now
-        # that this job publishes directly, pages.yml and discord-announce.yml
-        # would otherwise never hear about it. Dispatch both explicitly instead.
+      - name: Trigger Pages (release events from GITHUB_TOKEN don't cascade)
+        # GitHub does not start new workflow runs from a `release` event that
+        # GITHUB_TOKEN caused; only workflow_dispatch and repository_dispatch are
+        # exempt. This job publishes with GITHUB_TOKEN, so pages.yml would never
+        # hear about the release. Dispatch it explicitly instead.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           gh workflow run pages.yml -f tag="$TAG"
-          gh workflow run discord-announce.yml -f tag="$TAG"
