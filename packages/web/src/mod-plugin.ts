@@ -95,6 +95,7 @@ import type { DiscoveredMod } from "./mod-discover";
 import type { KeyRepeatVerdict } from "./key-repeat";
 import type { InputSnapshot } from "./input-snapshot";
 import type { ChromeTheme } from "./chrome-theme";
+import type { TerminalGround, TerminalGroundScope } from "./terminal-ground";
 import type { ModInspect } from "./input-snapshot";
 import type { KnownLevelView } from "@rpgm-tools/neo-angband-core";
 import type { ModIntent } from "./intent-gate";
@@ -315,6 +316,14 @@ export interface ModDisplay {
    */
   setChromeTheme?(theme: ChromeTheme | null): void;
   getChromeTheme?(): ChromeTheme | null;
+  /**
+   * Clear the text terminals to `color` instead of the game's black, under
+   * `display:filter`. `scope` is "subwindows" (the default) or "all", which adds
+   * the main terminal. Only the ground changes; every explicit cell background
+   * and every text colour stays the game's. null restores the game's ground.
+   */
+  setTerminalGround?(ground: { readonly color: string; readonly scope?: TerminalGroundScope } | null): void;
+  getTerminalGround?(): TerminalGround | null;
   repaint(): void;
 }
 

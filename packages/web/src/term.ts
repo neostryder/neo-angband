@@ -439,6 +439,14 @@ export class GlyphTerm
   private readonly canvas: HTMLCanvasElement;
   private readonly options: GlyphTermOptions;
   private ctx: CanvasRenderingContext2D;
+  /**
+   * The colour the canvas clears to, and what a cell with no background of its
+   * own (or UI_BG, the game's own ground) paints. setGround changes it for a mod.
+   * Only the pixels change: the grid, snapshot() and snapshotColored() keep the
+   * game's colours, so screen dumps and the appearance-parity checks do not see
+   * a mod's ground.
+   */
+  private ground = UI_BG;
   /** Term_gotoxy's cursor cell, and whether Term_set_cursor showed it. */
   private cursorX = 0;
   private cursorY = 0;
@@ -838,6 +846,14 @@ export class GlyphTerm
     this.schedule();
   }
 
+  /** Paint the ground in `color` instead of UI_BG; null puts UI_BG back. */
+  setGround(color: string | null): void {
+    const next = color ?? UI_BG;
+    if (next === this.ground) return;
+    this.ground = next;
+    this.invalidate();
+  }
+
   /**
    * Queue the paint for the end of the current task.
    *
@@ -868,7 +884,7 @@ export class GlyphTerm
   flush(): void {
     if (this.fullRepaint) {
       this.fullRepaint = false;
-      this.ctx.fillStyle = UI_BG;
+      this.ctx.fillStyle = this.ground;
       this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
       /* Nothing is on the canvas now, so every non-null cell below differs and
        * every null one already matches the fill. */
@@ -1379,7 +1395,7 @@ export class GlyphTerm
      * fractional dpr, because the diff never repaints the neighbour that owns
      * the other half of the boundary pixel. */
     const { x: px, y: py, w: cw, h: ch } = this.cellBox(x, y);
-    this.ctx.fillStyle = g?.bg ?? UI_BG;
+    this.ctx.fillStyle = g?.bg === undefined || g.bg === UI_BG ? this.ground : g.bg;
     this.ctx.fillRect(px, py, cw, ch);
     if (blitCellAssets(canvasAssetRenderer, this.ctx, g, px, py, cw, ch)) return;
     if (g && g.ch !== " ") {

@@ -379,6 +379,7 @@ import { playerCommandEvent } from "./player-command-event";
 import { createKeyRepeatTracker } from "./key-repeat";
 import { VisualFilterOverlay, applyScopedVisualFilter } from "./visual-filter";
 import { applyChromeTheme, type ChromeTheme } from "./chrome-theme";
+import type { TerminalGround } from "./terminal-ground";
 import { mountChromeNotice } from "./chrome-notice";
 import { migrateModBags, migrateModBagsAsync } from "./mod-bags";
 import {
@@ -1199,6 +1200,15 @@ const term = new GlyphTerm(canvas, { boundsElement: gameView });
 const visualFilterOverlay = new VisualFilterOverlay(canvas);
 /* The chrome theme a mod asked for through ctx.display.setChromeTheme, or null for the game's own look. */
 let chromeTheme: ChromeTheme | null = null;
+/* The terminal ground a mod asked for through ctx.display.setTerminalGround, or null for UI_BG. */
+let terminalGround: TerminalGround | null = null;
+
+/** Give every subwindow terminal the requested ground, and the main one too for scope "all". */
+function applyTerminalGround(): void {
+  const color = terminalGround?.color ?? null;
+  for (const panel of subwindowTerms.values()) panel.setGround(color);
+  term.setGround(terminalGround?.scope === "all" ? color : null);
+}
 let requestedVisualFilter: { filter: string | null; scope: "canvas" | "game" } = {
   filter: null,
   scope: "canvas",
@@ -2958,6 +2968,8 @@ function ensureSubwindowTerm(id: SubwindowId): GlyphTerm | undefined {
     fontPx: 16,
   });
   subwindowTerms.set(id, next);
+  /* A panel opened after the request still takes the mod's ground. */
+  next.setGround(terminalGround?.color ?? null);
   next.onSizeChanged(() => {
     if (subwindowState.enabled[id]) renderSubwindows();
   });
@@ -9884,6 +9896,11 @@ const displayControl: ModDisplay = {
     applyChromeTheme(theme);
   },
   getChromeTheme() { return chromeTheme; },
+  setTerminalGround(ground) {
+    terminalGround = ground === null ? null : { color: ground.color, scope: ground.scope ?? "subwindows" };
+    applyTerminalGround();
+  },
+  getTerminalGround() { return terminalGround; },
   repaint() {
     if (levelMapActive) levelMapRepaint?.();
     else renderBackground();

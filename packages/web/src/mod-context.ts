@@ -46,6 +46,7 @@ import { INTENT_CAPABILITY, type ModIntent } from "./intent-gate";
 import { modPrompt } from "./prompt-wait";
 import { VISUAL_FILTER_CAPABILITY } from "./visual-filter";
 import { validateChromeTheme, type ChromeTheme } from "./chrome-theme";
+import { validateTerminalGround } from "./terminal-ground";
 import { createDisplayOwnership } from "./display-ownership";
 import { frozenDriver, type InputDriver } from "./input-snapshot";
 import { diskPacks } from "./disk-packs";
@@ -455,6 +456,16 @@ function displayFor(id: string, session: ModSessionFacts): ModDisplay | undefine
         display.setChromeTheme!(theme === null ? null : validateChromeTheme(theme));
       },
       getChromeTheme: () => display.getChromeTheme?.() ?? null,
+    } : {}),
+    ...(display.setTerminalGround ? {
+      setTerminalGround: (ground: Parameters<NonNullable<ModDisplay["setTerminalGround"]>>[0]) => {
+        if (!session.capabilities) {
+          throw new Error(`this plugin needs capability "${VISUAL_FILTER_CAPABILITY}"; no capability set was supplied`);
+        }
+        session.capabilities.check(VISUAL_FILTER_CAPABILITY);
+        display.setTerminalGround!(ground === null ? null : validateTerminalGround(ground));
+      },
+      getTerminalGround: () => display.getTerminalGround?.() ?? null,
     } : {}),
     repaint: () => display.repaint(),
   };
