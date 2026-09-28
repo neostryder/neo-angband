@@ -227,7 +227,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   const mainGrip = document.createElement("button");
   mainGrip.type = "button";
   mainGrip.className = "tile-main-grip";
-  mainGrip.textContent = "\u283f";
+  mainGrip.textContent = "=";
   mainGrip.title = "Drag here to move the dungeon view. Drop it on a panel edge to dock beside it, or on Swap to trade places.";
   mainGrip.setAttribute("aria-label", "Move the dungeon view");
   mainGrip.hidden = true;
@@ -513,7 +513,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     title.className = "tile-title";
     const handle = document.createElement("span");
     handle.className = "tile-drag-handle";
-    handle.textContent = "⠿";
+    handle.textContent = "=";
     handle.setAttribute("aria-hidden", "true");
     const label = document.createElement("span");
     label.className = "tile-title-label";
@@ -546,7 +546,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     const close = document.createElement("button");
     close.type = "button";
     close.className = "tile-close";
-    close.textContent = "×";
+    close.textContent = "x";
     close.setAttribute("aria-label", `Close ${labels[id] ?? id}`);
     close.title = `Close ${labels[id] ?? id}`;
     /* stopPropagation: the leaf's own pointerdown (drag-to-dock) listener is

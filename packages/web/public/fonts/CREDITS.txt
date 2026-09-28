@@ -1,0 +1,1 @@
+angband-8x13.woff2 is built by packages/web/scripts/fon-to-woff2.py from Angband's lib/fonts/8x13x.fon. The .fon glyphs are GPL, by Leon Marrick, Sheldon Simms III and/or Nick McConnell (Angband's docs/copying.rst).

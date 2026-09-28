@@ -1,5 +1,6 @@
 /** Per-mod requests for the shared display setters. */
 import type { ModDisplay } from "./mod-plugin";
+import type { ChromeTheme } from "./chrome-theme";
 
 function copy<T>(value: T): T {
   return value !== null && typeof value === "object" ? structuredClone(value) : value;
@@ -39,6 +40,7 @@ export function createDisplayOwnership(display: ModDisplay) {
   const overview = slot((value: boolean) => display.setFullMapOverview(value), false, display.getFullMapOverview?.bind(display));
   type Filter = { readonly filter: string; readonly scope: "canvas" | "game" } | null;
   const filter = slot((value: Filter) => display.setVisualFilter(value?.filter ?? null, value ? { scope: value.scope } : undefined), null, display.getVisualFilter?.bind(display));
+  const chrome = slot((value: ChromeTheme | null) => display.setChromeTheme?.(value), null, display.getChromeTheme?.bind(display));
   return {
     forMod(id: string): ModDisplay {
       return {
@@ -66,11 +68,15 @@ export function createDisplayOwnership(display: ModDisplay) {
         setMonsterListColorKey: (value) => display.setMonsterListColorKey(value),
         setVisualFilter: (value, options) => filter.set(id, value === null ? null : { filter: value, scope: options?.scope ?? "canvas" }, value === null),
         getVisualFilter: () => filter.get(),
+        ...(display.setChromeTheme ? {
+          setChromeTheme: (value: ChromeTheme | null) => chrome.set(id, value, value === null),
+          getChromeTheme: () => chrome.get(),
+        } : {}),
         repaint: () => display.repaint(),
       };
     },
     clear(id: string): void {
-      for (const entry of [grid, camera, mapView, sidebar, margin, scaling, overview, filter]) entry.clear(id);
+      for (const entry of [grid, camera, mapView, sidebar, margin, scaling, overview, filter, chrome]) entry.clear(id);
     },
   };
 }

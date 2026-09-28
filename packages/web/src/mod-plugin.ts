@@ -94,6 +94,7 @@ import type { ModPrefs } from "./mod-prefs";
 import type { DiscoveredMod } from "./mod-discover";
 import type { KeyRepeatVerdict } from "./key-repeat";
 import type { InputSnapshot } from "./input-snapshot";
+import type { ChromeTheme } from "./chrome-theme";
 import type { ModInspect } from "./input-snapshot";
 import type { KnownLevelView } from "@rpgm-tools/neo-angband-core";
 import type { ModIntent } from "./intent-gate";
@@ -305,6 +306,14 @@ export interface ModDisplay {
   /** Apply a CSS filter to the canvas or the game's panels; null clears both. */
   setVisualFilter(filter: string | null, options?: { readonly scope?: "canvas" | "game" }): void;
   getVisualFilter(): { readonly filter: string; readonly scope: "canvas" | "game" } | null;
+  /**
+   * Repaint the window chrome around the panels (title bars, tabs, buttons,
+   * dividers and drop guides) under `display:filter`; null puts back the
+   * game's own colours and font. Each key is optional and an unknown key or a
+   * bad value throws (chrome-theme.ts).
+   */
+  setChromeTheme?(theme: ChromeTheme | null): void;
+  getChromeTheme?(): ChromeTheme | null;
   repaint(): void;
 }
 

@@ -45,6 +45,7 @@ import { buildInputSnapshot, buildKnownLevel, buildInspect, type InputSnapshot, 
 import { INTENT_CAPABILITY, type ModIntent } from "./intent-gate";
 import { modPrompt } from "./prompt-wait";
 import { VISUAL_FILTER_CAPABILITY } from "./visual-filter";
+import { validateChromeTheme, type ChromeTheme } from "./chrome-theme";
 import { createDisplayOwnership } from "./display-ownership";
 import { frozenDriver, type InputDriver } from "./input-snapshot";
 import { diskPacks } from "./disk-packs";
@@ -439,6 +440,16 @@ function displayFor(id: string, session: ModSessionFacts): ModDisplay | undefine
       else display.setVisualFilter(filter, options);
     },
     getVisualFilter: () => display.getVisualFilter?.() ?? null,
+    ...(display.setChromeTheme ? {
+      setChromeTheme: (theme: ChromeTheme | null) => {
+        if (!session.capabilities) {
+          throw new Error(`this plugin needs capability "${VISUAL_FILTER_CAPABILITY}"; no capability set was supplied`);
+        }
+        session.capabilities.check(VISUAL_FILTER_CAPABILITY);
+        display.setChromeTheme!(theme === null ? null : validateChromeTheme(theme));
+      },
+      getChromeTheme: () => display.getChromeTheme?.() ?? null,
+    } : {}),
     repaint: () => display.repaint(),
   };
   return Object.freeze(facade);

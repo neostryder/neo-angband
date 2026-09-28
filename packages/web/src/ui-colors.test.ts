@@ -61,6 +61,12 @@ describe("UI palette lint", () => {
     );
   });
 
+  it("keeps the window chrome in index.html on the same palette", () => {
+    const html = readFileSync(join(SRC_DIR, "..", "index.html"), "utf8");
+    const offPalette = (html.match(HEX) ?? []).filter((hex) => !PALETTE.has(hex.toLowerCase()));
+    expect(offPalette).toEqual([]);
+  });
+
   it("exposes the anchor colours at their z-color values", () => {
     // Guards the semantic anchors REND-2 depends on (curs_attrs, -more-).
     expect(colorToCss(1).toLowerCase()).toBe("#ffffff"); // WHITE  labels/normal

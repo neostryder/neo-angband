@@ -374,6 +374,7 @@ import { frozenDriver, type InputDriver, type InputSnapshotSource } from "./inpu
 import type { ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, ModTiles } from "./mod-plugin";
 import { createKeyRepeatTracker } from "./key-repeat";
 import { VisualFilterOverlay, applyScopedVisualFilter } from "./visual-filter";
+import { applyChromeTheme, type ChromeTheme } from "./chrome-theme";
 import { migrateModBags, migrateModBagsAsync } from "./mod-bags";
 import {
   folderPickingSupported,
@@ -1189,6 +1190,8 @@ const term = new GlyphTerm(canvas, { boundsElement: gameView });
  * visual-filter.ts. Created lazily; a player who never turns a filter on
  * never creates the overlay's canvas. */
 const visualFilterOverlay = new VisualFilterOverlay(canvas);
+/* The chrome theme a mod asked for through ctx.display.setChromeTheme, or null for the game's own look. */
+let chromeTheme: ChromeTheme | null = null;
 let requestedVisualFilter: { filter: string | null; scope: "canvas" | "game" } = {
   filter: null,
   scope: "canvas",
@@ -9830,6 +9833,11 @@ const displayControl: ModDisplay = {
     refreshVisualFilter();
   },
   getVisualFilter() { return requestedVisualFilter.filter ? { ...requestedVisualFilter, filter: requestedVisualFilter.filter } : null; },
+  setChromeTheme(theme) {
+    chromeTheme = theme;
+    applyChromeTheme(theme);
+  },
+  getChromeTheme() { return chromeTheme; },
   repaint() {
     if (levelMapActive) levelMapRepaint?.();
     else renderBackground();

@@ -99,3 +99,6 @@ REPORT-*.md
 # fail, so they are regenerated rather than committed.
 test-results/
 playwright-report/
+
+# Python bytecode from the font scripts in packages/web/scripts
+__pycache__/

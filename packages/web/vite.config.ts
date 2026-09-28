@@ -68,12 +68,12 @@ export default defineConfig({
         name: "Neo Angband",
         short_name: "Neo Angband",
         description:
-          "Modern TypeScript port of the roguelike Angband: web-first and offline-capable.",
+          "A faithful but moddable port of Angband, meant to be playable almost anywhere.",
         start_url: ".",
         scope: ".",
         display: "standalone",
-        background_color: "#101014",
-        theme_color: "#101014",
+        background_color: "#000000",
+        theme_color: "#000000",
         icons: [
           {
             src: "icons/icon-192.png",
@@ -136,7 +136,7 @@ export default defineConfig({
          * The honest cost, measured rather than estimated: the precache goes from
          * roughly 5 MiB to roughly 25 MiB, paid once at install. That is the price
          * of an offline install that can do everything the desktop build can. */
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest,prf,mp3,txt,md}"],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest,prf,mp3,txt,md,woff2}"],
         /* The freshness file must never be served from the cache - see
          * buildIdFile above. It is not matched by globPatterns today (no `json`
          * in the list), and it is named here anyway, because the day somebody

@@ -645,6 +645,10 @@ On the Mods screen a setting is a row under its mod's switches, such as `CRT str
 
 `ctx.settings` is present for a mod whose manifest declares at least one setting. `get(id)` and `all()` return the values clamped to the declared range and rounded to the nearest step, whatever the stored value says, so a mod that narrows a range in a later version still reads a value inside it. `onChange(listener)` calls `listener(id, value)` when the player changes a setting, and returns a function that stops it. A setting marked `requiresReload` changes nothing until the game reloads, so it fires no change and the manager offers its reload prompt. `resolveSettingValue(setting, value)` in the SDK does the same clamping for a mod's own tests.
 
+## 4v. `ctx.display.setChromeTheme` - the window chrome's look
+
+`ctx.display.setChromeTheme(theme)` repaints the chrome around the panels: title bars, tabs, buttons, dividers and drop guides. It needs `display:filter`. Every key is optional: `font` (a family already loaded in the page, for example with the FontFace API), `fontSize` (8 to 24), the colours `page`, `titleBackground`, `text`, `textStrong`, `muted`, `border`, `divider`, `dividerHover`, `accent` and `floatBorder` (as #rgb, #rrggbb, #rrggbbaa or rgb()), `radius` (0 to 16) and `shadow` (true or false). An unknown key or a bad value throws. `null` puts back the game's own look: Angband's palette and its 8x13 dialog font. As with the other display setters, each mod's last request is kept, the most recent one is in force, and a mod's request goes away when the mod is torn down. `getChromeTheme()` reports the theme in force. It covers the chrome only; what a panel shows inside is up to whoever draws that panel.
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#101014" />
+    <meta name="theme-color" content="#000000" />
     <!-- The manifest link is injected at build time by vite-plugin-pwa. -->
     <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png" />
@@ -15,18 +15,44 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Neo Angband</title>
     <style>
+      /* Window chrome in Angband's own colours (angband_color_table in
+         reference/src/z-color.c) and its 8x13 dialog font, the font and palette
+         upstream's SDL2 front end draws its menus with. A mod that restyles the
+         chrome sets these properties; every rule below reads them. */
+      @font-face {
+        font-family: "Angband 8x13";
+        src: url("fonts/angband-8x13.woff2") format("woff2");
+        font-display: block;
+      }
+      :root {
+        --chrome-font: "Angband 8x13", "Cascadia Mono", Consolas, monospace;
+        --chrome-font-size: 13px;
+        --chrome-page: #000000; /* COLOUR_DARK */
+        --chrome-title-bg: #000000; /* COLOUR_DARK, SDLPUI_COLOR_MENU_BG */
+        --chrome-text: #c0c0c0; /* COLOUR_L_WHITE */
+        --chrome-text-strong: #ffffff; /* COLOUR_WHITE, SDLPUI_COLOR_MENU_FG */
+        --chrome-muted: #808080; /* COLOUR_SLATE */
+        --chrome-border: #282828; /* COLOUR_SHADE, SDLPUI_COLOR_MENU_BORDER */
+        --chrome-gutter: #282828; /* COLOUR_SHADE */
+        --chrome-gutter-hover: #606060; /* COLOUR_L_DARK */
+        --chrome-accent: #ffff00; /* COLOUR_YELLOW, the subwindow cursor */
+        --chrome-accent-rgb: 255, 255, 0;
+        --chrome-float-border: #606060; /* COLOUR_L_DARK */
+        --chrome-radius: 0px;
+        --chrome-shadow: none;
+      }
       html,
       body {
         margin: 0;
         padding: 0;
         height: 100%;
-        background: #101014;
+        background: var(--chrome-page);
         overflow: hidden;
       }
       #game-layout {
         position: fixed;
         inset: 0;
-        background: #101014;
+        background: var(--chrome-page);
       }
       #game-view,
       .tile-leaf {
@@ -52,22 +78,22 @@
       }
       .tile-title {
         height: 20px;
-        padding: 0 4px 0 8px;
+        padding: 0 4px 0 6px;
         box-sizing: border-box;
-        background: #18181e;
-        color: #c0c0c8;
-        font: 12px/20px sans-serif;
+        background: var(--chrome-title-bg);
+        color: var(--chrome-text);
+        font: var(--chrome-font-size)/20px var(--chrome-font);
         user-select: none;
-        border-bottom: 1px solid #50505a;
+        border-bottom: 1px solid var(--chrome-border);
         display: flex;
         align-items: center;
       }
       .tile-drag-handle {
         flex: none;
-        width: 12px;
-        margin-right: 4px;
-        color: #50505a;
-        font: 11px/20px sans-serif;
+        width: 8px;
+        margin-right: 6px;
+        color: var(--chrome-muted);
+        font: var(--chrome-font-size)/20px var(--chrome-font);
         text-align: center;
         user-select: none;
       }
@@ -85,30 +111,35 @@
         margin-left: 4px;
         border: none;
         background: transparent;
-        color: #70707a;
-        font: 13px/16px sans-serif;
+        color: var(--chrome-muted);
+        font: var(--chrome-font-size)/16px var(--chrome-font);
         cursor: pointer;
         padding: 0;
       }
       .tile-close:hover {
-        color: #e0e0e6;
+        color: var(--chrome-text-strong);
       }
       .tile-float-action,
       .tile-dock-action {
         border: 0;
         background: transparent;
-        color: #c0c0c8;
-        font: 11px sans-serif;
+        color: var(--chrome-muted);
+        font: var(--chrome-font-size)/16px var(--chrome-font);
         cursor: pointer;
         padding: 0 3px;
+      }
+      .tile-float-action:hover,
+      .tile-dock-action:hover {
+        color: var(--chrome-text-strong);
       }
       .tile-float-action[hidden],
       .tile-dock-action[hidden] {
         display: none;
       }
       .tile-floating {
-        box-shadow: 0 4px 18px #000a;
-        border: 1px solid #6a6a78;
+        box-shadow: var(--chrome-shadow);
+        border: 1px solid var(--chrome-float-border);
+        border-radius: var(--chrome-radius);
         box-sizing: border-box;
       }
       .tile-floating .tile-title {
@@ -123,11 +154,11 @@
         position: absolute;
         right: 0;
         bottom: 0;
-        width: 14px;
-        height: 14px;
+        width: 12px;
+        height: 12px;
         cursor: nwse-resize;
         touch-action: none;
-        background: linear-gradient(135deg, transparent 50%, #a0a0aa 50%);
+        background: linear-gradient(135deg, transparent 50%, var(--chrome-muted) 50%);
       }
       .tile-controls {
         flex: none;
@@ -141,21 +172,22 @@
         height: 16px;
         border: none;
         background: transparent;
-        color: #70707a;
-        font: 12px/16px sans-serif;
+        color: var(--chrome-muted);
+        font: var(--chrome-font-size)/16px var(--chrome-font);
         cursor: pointer;
         padding: 0;
       }
       .tile-control:hover {
-        color: #e0e0e6;
+        color: var(--chrome-text-strong);
       }
       .tile-select {
         max-width: 140px;
         height: 18px;
-        border: 1px solid #50505a;
-        background: #181820;
-        color: #e0e0e6;
-        font: 11px sans-serif;
+        border: 1px solid var(--chrome-border);
+        border-radius: var(--chrome-radius);
+        background: var(--chrome-title-bg);
+        color: var(--chrome-text);
+        font: var(--chrome-font-size) var(--chrome-font);
         padding: 0;
       }
       .tile-body {
@@ -177,22 +209,42 @@
       .tile-body canvas[hidden] {
         display: none;
       }
+      .tile-panel-placeholder {
+        padding: 6px 8px;
+        color: var(--chrome-text);
+        font: var(--chrome-font-size)/16px var(--chrome-font);
+      }
+      .tile-panel-placeholder p {
+        margin: 0 0 8px;
+      }
+      .tile-panel-placeholder button {
+        border: 1px solid var(--chrome-float-border);
+        border-radius: var(--chrome-radius);
+        background: var(--chrome-title-bg);
+        color: var(--chrome-text-strong);
+        font: var(--chrome-font-size)/16px var(--chrome-font);
+        padding: 1px 8px;
+        cursor: pointer;
+      }
+      .tile-panel-placeholder button:hover {
+        border-color: var(--chrome-accent);
+      }
       .tile-gutter {
         position: absolute;
         z-index: 3;
-        background: #2a2a32;
+        background: var(--chrome-gutter);
         touch-action: none;
       }
       .tile-gutter:hover,
       .tile-gutter:active {
-        background: #6a6a78;
+        background: var(--chrome-gutter-hover);
       }
       .tile-drop-preview {
         position: absolute;
         z-index: 1001;
         pointer-events: none;
-        background: rgba(201, 162, 39, 0.28);
-        outline: 1px solid #c9a227;
+        background: rgba(var(--chrome-accent-rgb), 0.22);
+        outline: 1px solid var(--chrome-accent);
       }
       .tile-drop-guide {
         position: absolute;
@@ -200,14 +252,14 @@
         pointer-events: none;
       }
       .tile-drop-guide[data-kind="dock"] {
-        background: rgba(201, 162, 39, 0.14);
-        outline: 1px solid rgba(201, 162, 39, 0.45);
+        background: rgba(var(--chrome-accent-rgb), 0.1);
+        outline: 1px solid rgba(var(--chrome-accent-rgb), 0.45);
         outline-offset: -1px;
       }
       .tile-drop-guide[data-kind="swap"],
       .tile-drop-guide[data-kind="tab"] {
         background: transparent;
-        outline: 1px dashed rgba(201, 162, 39, 0.35);
+        outline: 1px dashed rgba(var(--chrome-accent-rgb), 0.35);
         outline-offset: -1px;
       }
       .tile-drop-guide[data-kind="swap"],
@@ -216,8 +268,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        color: rgba(232, 214, 160, 0.85);
-        font: 12px sans-serif;
+        color: var(--chrome-accent);
+        font: var(--chrome-font-size) var(--chrome-font);
         overflow: hidden;
       }
       .tile-tabs {
@@ -236,23 +288,23 @@
         flex: 0 1 auto;
         min-width: 32px;
         max-width: 160px;
-        padding: 0 8px;
+        padding: 0 6px;
         border: none;
-        border-bottom: 2px solid transparent;
+        border-bottom: 1px solid transparent;
         background: transparent;
-        color: #8a8a94;
-        font: 12px/17px sans-serif;
+        color: var(--chrome-muted);
+        font: var(--chrome-font-size)/18px var(--chrome-font);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
         cursor: pointer;
       }
       .tile-tab:hover {
-        color: #e0e0e6;
+        color: var(--chrome-text-strong);
       }
       .tile-tab[aria-selected="true"] {
-        color: #e0e0e6;
-        border-bottom-color: #c9a227;
+        color: var(--chrome-text-strong);
+        border-bottom-color: var(--chrome-accent);
       }
       .tile-main-grip {
         position: absolute;
@@ -262,24 +314,24 @@
         width: 18px;
         height: 18px;
         padding: 0;
-        border: 1px solid #50505a;
-        border-radius: 3px;
-        background: rgba(24, 24, 30, 0.7);
-        color: #8a8a94;
-        font: 12px/16px sans-serif;
+        border: 1px solid var(--chrome-border);
+        border-radius: var(--chrome-radius);
+        background: var(--chrome-title-bg);
+        color: var(--chrome-muted);
+        font: var(--chrome-font-size)/16px var(--chrome-font);
         cursor: grab;
         opacity: 0.55;
       }
       .tile-main-grip:hover {
         opacity: 1;
-        color: #e0e0e6;
+        color: var(--chrome-text-strong);
       }
       .tile-main-grip[hidden] {
         display: none;
       }
       .tile-gutter-locked,
       .tile-gutter-locked:hover {
-        background: #2a2a32;
+        background: var(--chrome-gutter);
         pointer-events: none;
       }
       .tile-host-dragging,

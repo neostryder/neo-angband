@@ -52,6 +52,10 @@ Turning a panel off and on again restores its last floating or docked place. A p
 
 The dungeon view can move too. Drag the small grip in its top-right corner to dock it against another panel's edge, or drop it in the middle of a panel to trade places with it. It never closes, hides, floats or becomes a tab, so the map is always on screen.
 
+## How panels look
+
+Panel title bars, tabs and buttons use Angband's own 8x13 font and colours, the same ones the original draws its menus with. A mod you have allowed to change how the game looks can repaint them.
+
 ## Small windows
 
 Shrink the window far enough and the panels run out of room to stay readable. Rather than squeezing them further, the game folds the most cramped panel into a tab beside the panel closest to it in shape: the monster list joins the item list, and messages join another wide strip along an edge. A message in the log names each pair. Every panel stays one click away, and your arrangement is untouched, so widening the window puts each panel back where it was. The splitters hold still until then.
