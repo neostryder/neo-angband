@@ -774,6 +774,12 @@ export interface AgentViewDeps {
   aware?: (kind: ObjectKind) => boolean;
   /** object_desc for an ItemView's `name`; absent, views carry no name. */
   describe?: (obj: GameObject) => string;
+  /**
+   * object_desc with ODESC_STORE for a shop's wares (not the home's), which
+   * names an unaware flavour the way the shop screen does. Absent, wares are
+   * named by `describe`.
+   */
+  describeStore?: (obj: GameObject) => string;
   /** ignore_item_ok for an ItemView's `ignored`; absent, views carry no ignore mark. */
   ignored?: (obj: GameObject) => boolean;
   /** OPT(player, birth_no_selling), for store buy pricing. */

@@ -71,6 +71,7 @@ import {
   TRF,
   installPickup,
   describeObject,
+  ODESC,
   objectInfoTextblock,
   gearGet,
   objectIsInQuiver,
@@ -10032,6 +10033,7 @@ const modSnapshotSource: InputSnapshotSource = {
     reg: booted.registries.objects,
     glyphs: glyphs.agentGlyphs(),
     describe: (obj: GameObject) => objectName(state, obj),
+    describeStore: (obj: GameObject) => describeObject(state, obj, ODESC.PREFIX | ODESC.FULL | ODESC.STORE),
     ignored: (obj: GameObject) => state.isIgnored?.(obj) ?? false,
     inspect: {
       objectInfo: inspectExtras,
@@ -15963,6 +15965,10 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
   };
   const session = installController(state, modLatched, {
     capabilities: CapabilitySet.fromManifest(loaded.manifest),
+    /* The same deps the mod's input snapshot uses, so an autoplayer reads the
+     * names the inventory shows and store prices, as the player does. Without
+     * them an item view carries only its kind's raw label. */
+    viewDeps: modSnapshotSource.viewDeps(),
     ...(install.nondeterministic === true ? {
       nondeterministic: true,
       onNondeterministic: () => markSaveNondeterministic(loaded.id),

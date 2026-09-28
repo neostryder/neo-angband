@@ -66,6 +66,7 @@ still calls itself.
 - [Internal] **Removed this repo's own Discord release announcer.** Its workflow, script and test are gone, and the release workflow no longer dispatches it. The releases site at releases.rpgm.tools now posts each new release to the Neo Angband announcements forum.
 
 ### Fixed
+- [Visible] [Modding-API] **An autoplayer mod sees item names and shop prices the way the player does.** Its view used to carry only each item's raw kind name, so it could not tell a Potion of Cure Light Wounds from any other potion. Wares in a shop are now named as the shop screen names them, which shows a potion's name even before its flavour is known. (#300)
 - [Visible] [UI] **Turning off a mod feature no longer leaves a "mod is not loaded" pane behind.** The pane leaves the screen and comes back to the same place when you turn the feature on again. A pane whose mod is missing now names the mod instead of showing its id (#298).
 
 ## [1.19.0] - 2026-09-27

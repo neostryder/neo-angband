@@ -222,6 +222,7 @@ function storeViews(state: GameState, deps: AgentViewDeps): StoreView[] {
       const item = itemView(0, obj, state, deps);
       const view: StoreItemView = { ...item, index };
       view.nameColor = obj.kind.base.attr;
+      if (deps.describeStore && !isHome) view.name = deps.describeStore(obj);
       if (deps.reg && !isHome) {
         view.price = priceItem(
           deps.reg,

@@ -597,6 +597,31 @@ describe("stores()", () => {
     expect(stores[0]?.stock[0]?.price).toBeUndefined();
     expect(stores[0]?.stock[0]?.label).toBe(obj.kind.name);
   });
+
+  it("names a shop's wares as the shop screen does, and the home's as the pack does", () => {
+    const state = makeState();
+    const base = {
+      owners: [{ index: 0, name: "Bilbo", maxCost: 500 }],
+      owner: { index: 0, name: "Bilbo", maxCost: 500 },
+      alwaysTable: [],
+      normalTable: [],
+      buy: null,
+      turnover: 0,
+      normalStockMin: 0,
+      normalStockMax: 0,
+      stockSize: 10,
+    };
+    state.stores = [
+      { ...base, feat: FEAT.STORE_GENERAL, featName: "STORE_GENERAL", stock: [makeItem(TV.SWORD)] },
+      { ...base, feat: FEAT.HOME, featName: "HOME", stock: [makeItem(TV.SWORD)] },
+    ] as Store[];
+
+    const view = createAgentView(state, undefined, { describe: () => "in the pack", describeStore: () => "on the shelf" });
+    const [shop, home] = view.stores();
+
+    expect(shop?.stock[0]?.name).toBe("on the shelf");
+    expect(home?.stock[0]?.name).toBe("in the pack");
+  });
 });
 
 describe("constants()", () => {
