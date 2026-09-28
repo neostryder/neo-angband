@@ -1,8 +1,7 @@
 /** Reads added for interface effects: terrain catalogue, monster quest flags, player warnings, object auras. */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { OF, TV } from "../generated/index.js";
-import { MFLAG } from "../generated/index.js";
+import { MFLAG, OF, TMD, TV } from "../generated/index.js";
 import { objectSeeAt } from "../game/known.js";
 import { objectPrep } from "../obj/make.js";
 import { OBJ_NOTICE } from "../obj/knowledge.js";
@@ -162,6 +161,26 @@ describe("reads for interface effects", () => {
     const again = viewFor(game).view.monsters();
     expect(again.find((m) => m.id === target.id)).toMatchObject({ questGuardian: true, finalGuardian: true });
     if (other) expect(again.find((m) => m.id === other.id)).toMatchObject({ questGuardian: true, finalGuardian: false });
+  });
+
+  it("reports fear from every source, and terror, amnesia and hallucination", () => {
+    const game = newGame();
+    const { state } = game;
+    const p = state.actor.player;
+    const status = () => viewFor(game).view.player().status;
+    expect(status()).toMatchObject({ afraid: 0, fearful: false, terror: 0, amnesia: 0, image: 0 });
+    p.timed[TMD.TERROR] = 5;
+    p.timed[TMD.AMNESIA] = 3;
+    p.timed[TMD.IMAGE] = 4;
+    state.updateBonuses!();
+    /* Terror is not timed fear, but it sets OF_AFRAID, which refuses melee. */
+    expect(status()).toMatchObject({ afraid: 0, fearful: true, terror: 5, amnesia: 3, image: 4 });
+    p.timed[TMD.TERROR] = 0;
+    state.updateBonuses!();
+    expect(status().fearful).toBe(false);
+    /* An item, a curse or a shape reaches the same flag. */
+    state.playerState!.flags.on(OF.AFRAID);
+    expect(status()).toMatchObject({ afraid: 0, fearful: true });
   });
 
   it("reports the low hit point threshold and the recall and descent timers", () => {

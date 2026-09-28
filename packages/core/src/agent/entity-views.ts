@@ -16,6 +16,7 @@
 import {
   ELEMENT_ENTRIES,
   OBJECT_FLAG_ENTRIES,
+  OF,
   PLAYER_FLAG_ENTRIES,
   TMD,
 } from "../generated/index.js";
@@ -259,6 +260,13 @@ export function playerViewFor(
       resFire: p.timed[TMD.OPP_FIRE] ?? 0,
       resCold: p.timed[TMD.OPP_COLD] ?? 0,
       resPois: p.timed[TMD.OPP_POIS] ?? 0,
+      /* player_of_has(p, OF_AFRAID), the flag the melee refusal reads: the
+       * timed effects' flag synonyms are folded into playerState.flags by
+       * calc_bonuses, alongside equipment, curses and shapes. */
+      fearful: (playerState?.flags.has(OF.AFRAID) ?? false) || (p.timed[TMD.AFRAID] ?? 0) > 0,
+      terror: p.timed[TMD.TERROR] ?? 0,
+      amnesia: p.timed[TMD.AMNESIA] ?? 0,
+      image: p.timed[TMD.IMAGE] ?? 0,
     },
     dead: state.isDead,
     winner: p.totalWinner,

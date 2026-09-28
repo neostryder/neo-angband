@@ -603,6 +603,8 @@ The same rule covers cells and items in every view, a controller's included. `Ce
 
 `PlayerView` carries `hpWarning`, the low hit point threshold in hit points: `trunc(maxHp * hitpoint_warn / 10)`, or 0 when the warning is off. The warning applies while `hp` is below it. `recall` and `descent` are the turns left on Word of Recall and Deep Descent, and 0 when neither is active. `dead` turns true the moment the character dies, before the fatal message is acknowledged, so a death effect can start there instead of reading hit points, which bloodlust can take below zero.
 
+`status.afraid` is the Fear timer alone. `status.fearful` is true whenever the character cannot fight in melee: timed fear, Terror, or fear from a curse, an item or a shape. `status.terror`, `status.amnesia` and `status.image` are the Terror, Amnesia and Hallucination timers. Amnesia stops the character reading scrolls.
+
 A remembered object in `ctx.knownLevel()` may carry `aura`: `cursed` for a known curse, `artifact` for an object known to be an artifact, or `rune` for an assessed object with a rune the player has not learned. These match the `{cursed}` and `{??}` markers and the artifact name that the item list already shows. An object has at most one aura, taken in that order.
 
 `ctx.inspect.terrainCatalogue()`, under `state:map.read`, returns every bound terrain feature with its index, code, name and terrain flag codes, plus `stairs` (`"up"`, `"down"` or null), `fiery` and `passable`. The index matches `CellView.feat` and the known level's `feat`.

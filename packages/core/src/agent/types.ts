@@ -172,6 +172,18 @@ export interface PlayerStatusView {
   resCold: number;
   /** Temporary poison resistance (p->timed[TMD_OPP_POIS]). */
   resPois: number;
+  /**
+   * Whether the player is afraid by any source: timed fear, Terror, a cursed or
+   * afraid item, a shape, or anything else that sets OF_AFRAID on the player.
+   * This is what refuses a melee blow; `afraid` alone counts only timed fear.
+   */
+  fearful?: boolean;
+  /** Terror (p->timed[TMD_TERROR]): afraid, and hasted. */
+  terror?: number;
+  /** Amnesia (p->timed[TMD_AMNESIA]), which stops reading scrolls. */
+  amnesia?: number;
+  /** Hallucination (p->timed[TMD_IMAGE]). */
+  image?: number;
 }
 
 /** A read-only view of the player (BORG_AS_MOD section 3, Player). */
