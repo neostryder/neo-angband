@@ -334,6 +334,35 @@
         background: var(--chrome-gutter);
         pointer-events: none;
       }
+      .chrome-notice {
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1100;
+        max-width: min(640px, calc(100% - 32px));
+        box-sizing: border-box;
+        padding: 4px 10px;
+        border: 1px solid var(--chrome-float-border);
+        border-radius: var(--chrome-radius);
+        background: var(--chrome-title-bg);
+        color: var(--chrome-text);
+        font: var(--chrome-font-size)/17px var(--chrome-font);
+        pointer-events: none;
+        opacity: 1;
+        transition: opacity 0.6s ease-out;
+      }
+      .chrome-notice[hidden] {
+        display: none;
+      }
+      .chrome-notice-fading {
+        opacity: 0;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .chrome-notice {
+          transition: none;
+        }
+      }
       .tile-host-dragging,
       .tile-host-dragging * {
         cursor: grabbing !important;

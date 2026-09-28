@@ -53,6 +53,7 @@ still calls itself.
 
 ### Changed
 - [Visible] [UI] **Panel title bars, tabs and buttons look like Angband.** They use the game's own 8x13 font and colours instead of a system font and a gold highlight (#299).
+- [Visible] [UI] **The notice about panels sharing a space fades after a few seconds.** It appears at the top of the dungeon view instead of the message line, and it no longer fills the message log (#301).
 - [Visible] [UI] **A mod's panels open when you first turn it on.** Each one opens where the mod places it, and a panel you close stays closed until you add it again from Subwindow setup (#296).
 - [Visible] [UI] **Panels opened beside the dungeon view no longer shrink it each time.** A new panel on a side that already has panels joins them and shares their space, so only the first panel on each side takes room from the map (#297).
 

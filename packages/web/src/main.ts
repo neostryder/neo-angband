@@ -375,6 +375,7 @@ import type { ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, Mod
 import { createKeyRepeatTracker } from "./key-repeat";
 import { VisualFilterOverlay, applyScopedVisualFilter } from "./visual-filter";
 import { applyChromeTheme, type ChromeTheme } from "./chrome-theme";
+import { mountChromeNotice } from "./chrome-notice";
 import { migrateModBags, migrateModBagsAsync } from "./mod-bags";
 import {
   folderPickingSupported,
@@ -1045,6 +1046,8 @@ async function rediscoverModSources(): Promise<void> {
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const gameView = document.getElementById("game-view") as HTMLElement;
 const gameLayout = document.getElementById("game-layout") as HTMLElement;
+/* Layout news fades from the dungeon view instead of sitting in the message log. */
+const layoutNotice = mountChromeNotice(gameView);
 let subwindowState: SubwindowState = readSubwindowState(localStorage);
 const subwindowTerms = new Map<SubwindowId, GlyphTerm>();
 const subwindowShell = mountSubwindowShell({
@@ -1140,7 +1143,7 @@ const subwindowShell = mountSubwindowShell({
       const spec = panelKinds().find((kind) => kind.id === id)?.spec;
       return spec ? spec.tab ?? spec.label : undefined;
     });
-    if (note) say(note);
+    if (note) layoutNotice.show(note);
   },
 });
 subwindowShell.apply(subwindowState.tree, subwindowState.floats, subwindowState.places);
