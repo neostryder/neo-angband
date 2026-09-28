@@ -1885,6 +1885,26 @@ function wireGame(
       }
     };
 
+    /* effect_simple(EF_DETECT_ORE, source_none(), "0", 0, 0, 0, 3, 3, NULL)
+     * (game-world.c:961), the SEE_ORE sense process_player runs each turn. */
+    state.detectOre = (): void => {
+      const ctx = attachGameEnv(buildEffectContext(state, envDeps), {
+        state,
+        cast,
+        takeHitHooks: sharedTakeHitHooks,
+        teleport,
+        general,
+        item,
+        summon,
+      });
+      effects.effectSimple(EF.DETECT_ORE, ctx, {
+        origin: sourceNone(),
+        diceString: "0",
+        y: 3,
+        x: 3,
+      });
+    };
+
     /* The wizard/debug effect bundle (WP-14): identical to the object-command
      * and trap effect bundles - registry + the game-env pieces effect_simple
      * needs. The interactive debug commands (cure/detect/map/teleport/summon-

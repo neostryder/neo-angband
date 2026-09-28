@@ -138,9 +138,8 @@ import {
   monDecTimed,
   monIncTimed,
   monsterEffectLevel,
-  type MonTimedMessageSink,
 } from "../mon/timed.js";
-import { addMonsterMessage, monMessageCodeByName } from "./mon-message.js";
+import { monsterTimedMessage } from "./mon-message.js";
 import { tvalIsMoney } from "../obj/object.js";
 import { monMeleeAttack } from "../combat/mon-melee.js";
 import { reactToSlay } from "../combat/brand-slay.js";
@@ -1051,7 +1050,7 @@ export function monsterTurnShouldStagger(
  */
 function monsterSlightlyStunByMove(mon: Monster, state: GameState): void {
   if ((mon.mTimed[MON_TMD.STUN] ?? 0) < 5 && state.rng.oneIn(3)) {
-    monIncTimed(state.rng, mon, MON_TMD.STUN, 3, 0);
+    monIncTimed(state.rng, mon, MON_TMD.STUN, 3, 0, monsterTimedMessage(state));
   }
 }
 
@@ -1665,15 +1664,6 @@ export function monsterTurn(mon: Monster, state: GameState): void {
  * monster outright via monster_wake (which draws its own randint0(100)); only
  * otherwise does the noise-notice reduction run.
  */
-function monsterTimedMessage(state: GameState): MonTimedMessageSink {
-  return (mon, note) => {
-    /* add_monster_message(mon, m_note, true) (mon-timed.c:215): the DELAYED
-     * pass, so "The kobold is no longer confused." follows whatever hurt it. */
-    const code = monMessageCodeByName(note);
-    if (code !== null) addMonsterMessage(state, mon, code, true);
-  };
-}
-
 function monsterReduceSleep(mon: Monster, state: GameState): void {
   const stealth = state.actor.stealth;
   const playerNoise = Math.pow(2, 30 - stealth);
@@ -1737,9 +1727,10 @@ export function processMonsterTimed(mon: Monster, state: GameState): boolean {
     revert: (m: Monster): boolean => monsterRevertShape(state, m),
   };
   /* mon-move.c L1800-1826: flag-0 decrements precede the notifying
-   * stun/confusion/shape decrements, all through mon_dec_timed. */
+   * stun/confusion/shape decrements, all through mon_dec_timed. Flag 0 still
+   * announces the effect ending, because mon_set_timed forces NOTIFY at 0. */
   for (const idx of [MON_TMD.FAST, MON_TMD.SLOW, MON_TMD.HOLD, MON_TMD.DISEN]) {
-    if ((mon.mTimed[idx] ?? 0) > 0) monDecTimed(state.rng, mon, idx, 1);
+    if ((mon.mTimed[idx] ?? 0) > 0) monDecTimed(state.rng, mon, idx, 1, 0, sink);
   }
   for (const idx of [MON_TMD.STUN, MON_TMD.CONF]) {
     if ((mon.mTimed[idx] ?? 0) > 0) {

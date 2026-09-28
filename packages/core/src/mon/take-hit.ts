@@ -36,6 +36,7 @@ import {
   monClearTimed,
   monDecTimed,
   monIncTimed,
+  type MonTimedMessageSink,
 } from "./timed.js";
 
 /**
@@ -48,9 +49,10 @@ export function monsterWake(
   mon: Monster,
   notify: boolean,
   awareChance: number,
+  onMessage?: MonTimedMessageSink,
 ): void {
   const flag = notify ? MON_TMD_FLG_NOTIFY : MON_TMD_FLG_NOMESSAGE;
-  monClearTimed(rng, mon, MON_TMD.SLEEP, flag);
+  monClearTimed(rng, mon, MON_TMD.SLEEP, flag, onMessage);
   if (rng.randint0(100) < awareChance) {
     mon.mflag.on(MFLAG.AWARE);
   }
@@ -138,6 +140,8 @@ export interface MonTakeHitHooks {
    * (game/mon-group.ts monsterPrimaryGroupSize); absent, 1 (a lone monster).
    */
   primaryGroupSize?: () => number;
+  /** add_monster_message for the status lines a hit causes ("can move again."). */
+  timedMessage?: MonTimedMessageSink;
 }
 
 /** The outcome of a hit: whether the monster died and whether it took fright. */
@@ -165,7 +169,7 @@ export function monTakeHit(
   /* If the hit doesn't kill, wake it up and make it aware of the player. */
   if (dam <= mon.hp) {
     monsterWake(rng, mon, false, 100);
-    monClearTimed(rng, mon, MON_TMD.HOLD, MON_TMD_FLG_NOTIFY);
+    monClearTimed(rng, mon, MON_TMD.HOLD, MON_TMD_FLG_NOTIFY, hooks.timedMessage);
   }
 
   /* Become aware of its presence. */

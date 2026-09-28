@@ -81,10 +81,10 @@ import {
 } from "./known.js";
 import { squareIsSeen } from "../world/view.js";
 import { emitCombatOutcome, emitHeal, emitMotion } from "./resolved-events.js";
-import { playerConfuseDir } from "./obj-cmd.js";
+import { playerConfuseDir, playerIsShapechanged } from "./obj-cmd.js";
 import { disturb } from "./player-path.js";
 import { playerAdjustManaPrecise } from "./loop.js";
-import { addMonsterMessage } from "./mon-message.js";
+import { addMonsterMessage, monsterTimedMessage } from "./mon-message.js";
 import {
   playerIsTrapsafe,
   squareIsDisarmableTrap,
@@ -209,7 +209,7 @@ export function buildMeleeHooks(state: GameState, mon: Monster): MeleeEffectHook
       }
     },
     confuseMonster: (m, dur): void => {
-      monIncTimed(state.rng, m, MON_TMD.CONF, dur, MON_TMD_FLG_NOTIFY);
+      monIncTimed(state.rng, m, MON_TMD.CONF, dur, MON_TMD_FLG_NOTIFY, monsterTimedMessage(state));
     },
     /* Vampiric drain (player-attack.c:877-881). */
     attVamp: (p.timed[TMD.ATT_VAMP] ?? 0) > 0,
@@ -283,10 +283,10 @@ export function buildMeleeHooks(state: GameState, mon: Monster): MeleeEffectHook
       showDamage: state.options?.get("show_damage") ?? false,
       msg: (text): void => state.msg?.(text),
       stunMonster: (m, dur): void => {
-        monIncTimed(state.rng, m, MON_TMD.STUN, dur, 0);
+        monIncTimed(state.rng, m, MON_TMD.STUN, dur, 0, monsterTimedMessage(state));
       },
       confuseMonster: (m, dur): void => {
-        monIncTimed(state.rng, m, MON_TMD.CONF, dur, 0);
+        monIncTimed(state.rng, m, MON_TMD.CONF, dur, 0, monsterTimedMessage(state));
       },
     };
   }
@@ -800,7 +800,15 @@ export function holdAction(state: GameState, _cmd: PlayerCommand): number {
      * screen is the host's (enterStoreModal, web/src/main.ts), but cancelling a
      * run or a rest is the engine's, and it has to happen whether or not a host
      * has a store UI at all. */
-    if (state.chunk.isShop(state.actor.grid)) disturb(state);
+    if (state.chunk.isShop(state.actor.grid)) {
+      /* A shapechanged player is turned away and the turn is spent
+       * (cmd-cave.c:1592-1597). */
+      if (playerIsShapechanged(state)) return state.z.moveEnergy;
+      disturb(state);
+      /* "Turn will be taken exiting the shop" (cmd-cave.c:1607): standing
+       * still into a shop costs nothing; walking back out takes the turn. */
+      return 0;
+    }
   }
 
   return state.z.moveEnergy;
@@ -1057,10 +1065,26 @@ export function processPlayer(
      * sorted inven[] view. */
     state.overflowPack?.();
 
+    /* Dwarves detect treasure (game-world.c:952-962), only in good shape. */
+    if (playerHasPf(state, PF.SEE_ORE)) {
+      const t = state.actor.player.timed;
+      if (
+        !t[TMD.IMAGE] &&
+        !t[TMD.CONFUSED] &&
+        !t[TMD.AMNESIA] &&
+        !t[TMD.STUN] &&
+        !t[TMD.PARALYZED] &&
+        !t[TMD.TERROR] &&
+        !t[TMD.AFRAID]
+      ) {
+        state.detectOre?.();
+      }
+    }
+
     /* Paralyzed or Knocked Out player gets no turn (game-world.c:965-968):
      * inject CMD_SLEEP so a full-energy no-op is spent and nextCommand is
-     * never consulted. Ordering matches C: after the detect-ore block (not
-     * yet in the port), before command prep / cmdq_pop. */
+     * never consulted. Ordering matches C: after the detect-ore block, before
+     * command prep / cmdq_pop. */
     {
       const p = state.actor.player;
       const stunEff = state.world?.timedTable?.[TMD.STUN];

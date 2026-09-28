@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TMD } from "../generated/index.js";
+import { STAT, TMD } from "../generated/index.js";
 import { loc } from "../loc.js";
 import { createDefaultRegistry } from "./player-turn.js";
 import {
@@ -334,6 +334,22 @@ describe("process_world upkeep", () => {
 
     expect(p.timed[TMD.AFRAID]).toBe(4);
     expect(p.timed[TMD.FOOD]).toBe(5000);
+  });
+
+  it("recovers from stun, poison and cuts at the rate of the derived CON, gear included", () => {
+    const state = makeState();
+    const p = state.actor.player;
+    p.timed[TMD.STUN] = 50;
+    p.timed[TMD.POISONED] = 50;
+    /* stat_ind 37 is 18/220, where adj_con_fix gives 9, so each drops by 10. */
+    const statInd = new Array<number>(6).fill(0);
+    statInd[STAT.CON] = 37;
+    state.playerState = { statInd } as unknown as NonNullable<GameState["playerState"]>;
+
+    decreaseTimeouts(state);
+
+    expect(p.timed[TMD.STUN]).toBe(40);
+    expect(p.timed[TMD.POISONED]).toBe(40);
   });
 });
 

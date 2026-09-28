@@ -53,7 +53,7 @@ import type { LoreStore } from "./lore.js";
 import { monsterIsUnique } from "./predicate.js";
 import { monsterWake } from "./take-hit.js";
 import { MON_TMD } from "../generated/index.js";
-import { monDecTimed, MON_TMD_FLG_NOTIFY } from "./timed.js";
+import { monDecTimed, MON_TMD_FLG_NOTIFY, type MonTimedMessageSink } from "./timed.js";
 
 /**
  * get_random_monster_object (mon-util.c L1405): pick one object from the
@@ -85,6 +85,8 @@ export function getRandomMonsterObject(
 export interface StealEnv {
   /** msg(): route messages to the game's sink. */
   msg(text: string): void;
+  /** add_monster_message for the victim's "wakes up." line. */
+  timedMessage?: MonTimedMessageSink;
   /** monster_desc(mon, MDESC_TARG) (mon-util.c L1438): the victim's name. */
   monName(mon: Monster): string;
   /**
@@ -234,16 +236,16 @@ export function stealMonsterItem(
       getLore(lore, mon.race).thefts++;
 
       /* Monster wakes a little. */
-      monDecTimed(rng, mon, MON_TMD.SLEEP, wake, MON_TMD_FLG_NOTIFY);
+      monDecTimed(rng, mon, MON_TMD.SLEEP, wake, MON_TMD_FLG_NOTIFY, env.timedMessage);
     } else if (Math.trunc(monsterReaction / 2) < stealSkill) {
       /* Decent attempt, at least. */
       const oName = env.isMoney(obj) ? "treasure" : env.objectName(obj);
       env.msg(`You fail to steal ${oName} from ${mName}.`);
       /* Monster wakes, may notice. */
-      monsterWake(rng, mon, true, 50);
+      monsterWake(rng, mon, true, 50, env.timedMessage);
     } else {
       /* Bungled it. */
-      monsterWake(rng, mon, true, 100);
+      monsterWake(rng, mon, true, 100, env.timedMessage);
       env.msg(
         `${(env.monNameStandard ?? env.monName)(mon)} cries out in anger!`,
       );

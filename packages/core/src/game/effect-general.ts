@@ -69,6 +69,7 @@ import {
 } from "../player/exp.js";
 import type { ExpDeps } from "../player/exp.js";
 import { monIncTimed } from "../mon/timed.js";
+import { monsterTimedMessage } from "./mon-message.js";
 import { monsterWake } from "../mon/take-hit.js";
 import { loreDoProbe } from "../mon/lore.js";
 import { monsterIsVisible } from "../mon/predicate.js";
@@ -561,7 +562,7 @@ const handleDRAIN_MANA: EffectHandler = (ctx) => {
       MON_TMD.DISEN,
       Math.max(drain, 0),
       0,
-      undefined,
+      monsterTimedMessage(state),
       env.monShape,
     );
     return true;
@@ -909,7 +910,7 @@ const handleMON_TIMED_INC: EffectHandler = (ctx) => {
       ctx.subtype,
       Math.max(amount, 0),
       0,
-      undefined,
+      monsterTimedMessage(state),
       env.monShape,
     );
     ctx.ident = true;
@@ -1007,7 +1008,7 @@ const handleCOMMAND: EffectHandler = (ctx) => {
 
   /* Player is commanding; monster is commanded. */
   p.timed[TMD.COMMAND] = Math.max(amount, 0);
-  monIncTimed(state.rng, mon, MON_TMD.COMMAND, Math.max(amount, 0), 0);
+  monIncTimed(state.rng, mon, MON_TMD.COMMAND, Math.max(amount, 0), 0, monsterTimedMessage(state));
   return true;
 };
 

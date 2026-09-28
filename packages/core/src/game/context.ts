@@ -41,6 +41,7 @@ import { NORMAL_ENERGY } from "./energy.js";
  * so there is no runtime cycle. */
 import { monsterPrimaryGroupSize, monsterRemoveFromGroups } from "./mon-group.js";
 import type { MonTakeHitHooks } from "../mon/take-hit.js";
+import { monsterTimedMessage } from "./mon-message.js";
 import {
   becomeAware,
   moveMimickedObject,
@@ -918,6 +919,9 @@ export interface GameState {
   /** game-world.c:947 pack_overflow(NULL), installed by the live session with
    * its full object/calc_inventory dependencies. */
   overflowPack?: () => void;
+  /** effect_simple(EF_DETECT_ORE, ...) for the SEE_ORE sense (game-world.c:961),
+   * installed by the live session with the effect stack. */
+  detectOre?: () => void;
   /**
    * combine_pack (obj-gear.c L1242), installed by the live session for the same
    * reason overflowPack is: it needs z_info's pack_size / quiver_slot_size /
@@ -1566,6 +1570,7 @@ export function gameTakeHitHooks(state: GameState, mon: Monster): MonTakeHitHook
       state.actor.player.timed[TMD.COVERTRACKS] = 0;
     },
     primaryGroupSize: (): number => monsterPrimaryGroupSize(state, mon),
+    timedMessage: monsterTimedMessage(state),
   };
 }
 

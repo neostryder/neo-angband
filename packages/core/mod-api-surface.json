@@ -1281,6 +1281,7 @@
     "monsterScaredByDamage",
     "monsterSpellFailrate",
     "monsterSwap",
+    "monsterTimedMessage",
     "monsterTurn",
     "monsterTurnMultiply",
     "monsterTurnShouldStagger",

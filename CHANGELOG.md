@@ -69,6 +69,10 @@ still calls itself.
 ### Fixed
 - [Visible] [Modding-API] **Mods and autoplayers no longer learn what the player cannot see or has not identified.** A square's occupant, the monster list and floor objects are reported only when the player perceives or remembers them, in an autoplayer's view as in any other, and an item's ego, artifact, bonuses, runes, curses and value come from what the player knows about it, as its name already did. (#304)
 - [Visible] **Wielding a light in the dark, or a light going out, now redraws the view at once rather than on the next step.** (#305)
+- [Visible] **Stun, poison and cuts now wear off faster with Constitution from equipment and shapes, not only base Constitution.** (#310)
+- [Visible] **Monsters' status changes are now announced: holding, haste and slowness running out, confusion and stuns from your blows and shield bashes, and monsters waking to noise.** (#311)
+- [Visible] **Dwarves now sense treasure veins within three squares, as long as they are not afraid, confused, stunned or otherwise impaired.** (#312)
+- [Visible] **Standing still to enter a shop no longer gives monsters a turn.** Walking back out takes the turn, as in the original. (#313)
 - [Visible] [Modding-API] **An autoplayer mod sees item names and shop prices the way the player does.** Its view used to carry only each item's raw kind name, so it could not tell a Potion of Cure Light Wounds from any other potion. Wares in a shop are now named as the shop screen names them, which shows a potion's name even before its flavour is known. (#300)
 - [Visible] [UI] **Turning off a mod feature no longer leaves a "mod is not loaded" pane behind.** The pane leaves the screen and comes back to the same place when you turn the feature on again. A pane whose mod is missing now names the mod instead of showing its id (#298).
 

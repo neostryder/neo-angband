@@ -22,6 +22,7 @@ import { MDESC, MDESC_TARG, monsterDesc, pluralAux } from "../mon/desc.js";
 import { monsterIsObvious } from "../mon/predicate.js";
 import { PN } from "../player/types.js";
 import type { GameState } from "./context.js";
+import type { MonTimedMessageSink } from "../mon/timed.js";
 
 /**
  * get_message_text's bracket state machine (mon-msg.c L376): "[a|b]" selects a
@@ -414,6 +415,20 @@ export function addMonsterMessage(
   delay: boolean,
 ): boolean {
   return pushMessage(state, mon, msgCode, messageFlags(state, mon), delay, 0);
+}
+
+/**
+ * The sink mon_set_timed queues its status lines through:
+ * add_monster_message(mon, m_note, true) (mon-timed.c:215), the delayed pass, so
+ * "The kobold is no longer confused." follows whatever hurt it. Every game-layer
+ * call to the monster timed setters passes this; the setter itself decides which
+ * line fires and whether the monster is seen.
+ */
+export function monsterTimedMessage(state: GameState): MonTimedMessageSink {
+  return (mon, note) => {
+    const code = monMessageCodeByName(note);
+    if (code !== null) addMonsterMessage(state, mon, code, true);
+  };
 }
 
 /**

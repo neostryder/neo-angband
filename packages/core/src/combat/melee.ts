@@ -400,7 +400,7 @@ export function pyAttackReal(
    * (player-attack.c L759-760). Draws randint0(100); mon_take_hit's own
    * non-fatal wake later re-draws, exactly as upstream. */
   monsterWake(rng, mon, false, 100);
-  monClearTimed(rng, mon, MON_TMD.HOLD, MON_TMD_FLG_NOTIFY);
+  monClearTimed(rng, mon, MON_TMD.HOLD, MON_TMD_FLG_NOTIFY, h?.takeHit?.timedMessage);
   const th = h?.takeHit;
 
   /* See if the player hit. */

@@ -24,6 +24,7 @@ import type { GameState } from "./context.js";
 import { updateMonsterDistances } from "./context.js";
 import { emitHeal } from "./resolved-events.js";
 import { monDecTimed, monsterEffectLevel } from "../mon/timed.js";
+import { monsterTimedMessage } from "./mon-message.js";
 import { getNonplayerHitDeps, monsterTakeTerrainDamage } from "./mon-death.js";
 import {
   monsterCheckActive,
@@ -72,7 +73,7 @@ export function restoreMonsters(state: GameState, numTurns: number): void {
     if (statusRed > 0) {
       for (let status = 0; status < mon.mTimed.length; status++) {
         if (mon.mTimed[status]) {
-          monDecTimed(state.rng, mon, status, statusRed, 0);
+          monDecTimed(state.rng, mon, status, statusRed, 0, monsterTimedMessage(state));
         }
       }
     }

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { FlagSet } from "../bitflag.js";
-import { FEAT, MFLAG, MON_TMD, OF, SQUARE, TMD, TV } from "../generated/index.js";
+import { FEAT, MFLAG, MON_TMD, OF, PF, SQUARE, TMD, TV } from "../generated/index.js";
 import { OF_SIZE, PF_SIZE } from "../player/types.js";
 import type { PlayerState } from "../player/calcs.js";
 import { MDESC, monsterDesc } from "../mon/desc.js";
@@ -191,6 +191,14 @@ describe("built-in player actions", () => {
     expect(mon.hp).toBeLessThan(200);
   });
 
+  it("hold on a shop door costs nothing, unless a shapechanged player is turned away", () => {
+    const state = makeState();
+    state.chunk.isShop = () => true;
+    expect(holdAction(state, { code: "hold" })).toBe(0);
+    state.actor.player.shape = { name: "bat" } as NonNullable<typeof state.actor.player.shape>;
+    expect(holdAction(state, { code: "hold" })).toBe(state.z.moveEnergy);
+  });
+
   it("hold spends a turn in place; descend signals a level change", () => {
     const state = makeState();
     expect(holdAction(state, { code: "hold" })).toBe(state.z.moveEnergy);
@@ -310,6 +318,30 @@ describe("action registry dispatch", () => {
     expect(res.energyUsed).toBe(state.z.moveEnergy);
     expect(state.actor.player.chp).toBe(startHp - 7);
     expect(state.actor.totalEnergy).toBe(state.z.moveEnergy);
+  });
+
+  it("a dwarf senses ore before each command, unless afraid, confused or worse", () => {
+    const reg = createDefaultRegistry();
+    reg.register("wait", (s) => s.z.moveEnergy);
+    const sensed = (timed?: number): number => {
+      const state = makeState({ commands: [{ code: "wait" }] });
+      /* The harness race is shared between tests, so the flag comes off again. */
+      const { pflags } = state.actor.player.race;
+      pflags.on(PF.SEE_ORE);
+      try {
+        if (timed !== undefined) state.actor.player.timed[timed] = 5;
+        let calls = 0;
+        state.detectOre = (): void => void calls++;
+        processPlayer(state, reg);
+        return calls;
+      } finally {
+        pflags.off(PF.SEE_ORE);
+      }
+    };
+    expect(sensed()).toBeGreaterThan(0);
+    for (const t of [TMD.IMAGE, TMD.CONFUSED, TMD.AMNESIA, TMD.STUN, TMD.TERROR, TMD.AFRAID]) {
+      expect(sensed(t)).toBe(0);
+    }
   });
 
   it("a mod can replace a built-in action", () => {

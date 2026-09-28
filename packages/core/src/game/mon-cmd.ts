@@ -32,6 +32,7 @@ import {
   monClearTimed,
   monIncTimed,
 } from "../mon/timed.js";
+import { monsterTimedMessage } from "./mon-message.js";
 import { monSpellIsInnate } from "../mon/spell.js";
 import { STUN_DAM_REDUCTION } from "../combat/hit.js";
 import {
@@ -480,7 +481,7 @@ export function monsterAttackMonster(
         displayBlowMessageVsMonster(state, method, name, tMon);
         if (!applyMonVsMonHit(state, mon, tMon, damage, hurtMsg, dieMsg)) {
           if (timedKey !== null && state.monsters[tMon.midx]) {
-            monIncTimed(state.rng, tMon, timedKey, timedAmount, 0);
+            monIncTimed(state.rng, tMon, timedKey, timedAmount, 0, monsterTimedMessage(state));
           }
         }
       }
@@ -516,7 +517,7 @@ export function monsterAttackMonster(
             break;
         }
         const still = squareMonster(state, grid);
-        if (amt && still) monIncTimed(state.rng, still, MON_TMD.STUN, amt, 0);
+        if (amt && still) monIncTimed(state.rng, still, MON_TMD.STUN, amt, 0, monsterTimedMessage(state));
       }
     } else {
       emitCombatOutcome(state, mon.midx, tMon.midx, "melee", false, 0,
@@ -601,7 +602,7 @@ function commandedDrop(state: GameState, mon: Monster, mName: string): void {
 
 /** Release the commanded monster ('r' while commanding). */
 function releaseCommand(state: GameState, mon: Monster): void {
-  monClearTimed(state.rng, mon, MON_TMD.COMMAND, MON_TMD_FLG_NOTIFY);
+  monClearTimed(state.rng, mon, MON_TMD.COMMAND, MON_TMD_FLG_NOTIFY, monsterTimedMessage(state));
   state.actor.player.timed[TMD.COMMAND] = 0;
 }
 

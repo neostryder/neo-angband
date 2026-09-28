@@ -35,6 +35,7 @@ import { distance } from "../loc.js";
 import { los } from "../world/view.js";
 import { monsterIsUnique } from "../mon/predicate.js";
 import { monsterWake } from "../mon/take-hit.js";
+import { monsterTimedMessage } from "./mon-message.js";
 import { GROUP_MAX, GROUP_TYPE } from "../mon/monster.js";
 import type { Monster, MonsterGroupInfo } from "../mon/monster.js";
 import { MON_GROUP } from "../mon/types.js";
@@ -305,7 +306,7 @@ export function monsterGroupRouse(state: GameState, mon: Monster): void {
     if (!friend) continue;
     if ((friend.mTimed[MON_TMD.SLEEP] ?? 0) > 0 && los(state.chunk, mon.grid, friend.grid)) {
       const dist = distance(mon.grid, friend.grid);
-      if (state.rng.oneIn(dist * 20)) monsterWake(state.rng, friend, true, 50);
+      if (state.rng.oneIn(dist * 20)) monsterWake(state.rng, friend, true, 50, monsterTimedMessage(state));
     }
   }
 }

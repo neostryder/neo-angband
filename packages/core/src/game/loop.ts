@@ -36,6 +36,7 @@ import {
   monClearTimed,
   monDecTimed,
 } from "../mon/timed.js";
+import { monsterTimedMessage } from "./mon-message.js";
 import { getCommandedMonster } from "./mon-cmd.js";
 import { adj_con_fix, calcStatIndices } from "../player/calcs.js";
 import { equipLearnAfterTime, equipLearnFlag } from "../obj/knowledge.js";
@@ -293,7 +294,13 @@ export function playerRegenMana(state: GameState): void {
  */
 export function decreaseTimeouts(state: GameState): void {
   const p = state.actor.player;
-  const conInd = calcStatIndices(p.race, p.cls, p.statCur)[STAT.CON] ?? 0;
+  /* player->state.stat_ind[STAT_CON]: the derived index, so gear, shapes and
+   * timed stat effects count. The base-stat index stands in only for a
+   * worldless harness with no derive. */
+  const conInd =
+    state.playerState?.statInd[STAT.CON] ??
+    calcStatIndices(p.race, p.cls, p.statCur)[STAT.CON] ??
+    0;
   const adjust = (adj_con_fix[conInd] ?? 0) + 1;
   const env = state.world;
   const table = env?.timedTable;
@@ -319,13 +326,13 @@ export function decreaseTimeouts(state: GameState): void {
       const mon = getCommandedMonster(state);
       if (mon && !los(state.chunk, state.actor.grid, mon.grid)) {
         /* Out of sight is out of mind. */
-        monClearTimed(state.rng, mon, MON_TMD.COMMAND, MON_TMD_FLG_NOTIFY);
+        monClearTimed(state.rng, mon, MON_TMD.COMMAND, MON_TMD_FLG_NOTIFY, monsterTimedMessage(state));
         const cmd = table?.[TMD.COMMAND];
         if (cmd) playerClearTimed(p, cmd, true, true, thooks);
         else p.timed[i] = 0;
       } else if (mon) {
         /* Keep the monster timer aligned. */
-        monDecTimed(state.rng, mon, MON_TMD.COMMAND, decr, 0);
+        monDecTimed(state.rng, mon, MON_TMD.COMMAND, decr, 0, monsterTimedMessage(state));
       }
     }
 

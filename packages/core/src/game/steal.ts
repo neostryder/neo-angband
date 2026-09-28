@@ -45,6 +45,7 @@ import { playerHasWorld } from "./world.js";
 import { teleportPlayer } from "./effect-teleport.js";
 import { playerConfuseDir } from "./obj-cmd.js";
 import type { ActionRegistry } from "./player-turn.js";
+import { monsterTimedMessage } from "./mon-message.js";
 
 /** What the steal command needs beyond the state. */
 export interface StealCmdDeps {
@@ -87,6 +88,7 @@ function makeStealEnv(state: GameState, deps: StealCmdDeps): StealEnv {
 
   return {
     msg,
+    timedMessage: monsterTimedMessage(state),
     /* monster_desc(mon, MDESC_TARG) / MDESC_STANDARD (mon-util.c L1438/1524). */
     monName: (mon) => monsterDesc(mon, MDESC_TARG),
     monNameStandard: (mon) => monsterDesc(mon, MDESC_STANDARD),

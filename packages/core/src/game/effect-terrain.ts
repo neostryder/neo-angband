@@ -37,6 +37,7 @@ import { MDESC_TARG, monsterDesc } from "../mon/desc.js";
 import {
   addMonsterMessage,
   addMonsterMessageShowDamage,
+  monsterTimedMessage,
 } from "./mon-message.js";
 import { liveObjectIsKnownArtifact } from "../obj/artifact-known.js";
 import { equipLearnElement } from "../obj/knowledge.js";
@@ -132,7 +133,7 @@ export function lightRoom(state: GameState, grid: Loc, light: boolean): void {
         (mon.mTimed[MON_TMD.SLEEP] ?? 0) > 0 &&
         state.rng.randint0(100) < chance
       ) {
-        monsterWake(state.rng, mon, true, 100);
+        monsterWake(state.rng, mon, true, 100, monsterTimedMessage(state));
       }
     }
   } else {
