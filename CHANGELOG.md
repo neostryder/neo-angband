@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.19.1] - 2026-09-28
+
 ### Added
 - [Visible] [Modding-API] **Mods can set the ground colour of the text subwindows, or of every terminal, with `ctx.display.setTerminalGround` under `display:filter`.** Cell backgrounds and text colours stay the game's, and screen dumps still report the game's own colours.
 - [Visible] [Modding-API] **Mods can make HTTP requests through the game with `ctx.net`, including to servers that send no CORS headers.** A `network:` capability may now name a port (`network:localhost:8010`) or `network:local` for this computer and a home network, and each request is checked against those grants. In the desktop app the main process sends the request, keeps a mod's API keys encrypted where the page cannot read them, and asks the player before reading an environment variable; in a browser tab it is an ordinary `fetch` and keys stay in page storage. (#300)
