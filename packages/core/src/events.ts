@@ -123,6 +123,26 @@ export interface TunnelEventData {
 }
 
 /**
+ * A command the player issued, reported by the web host as the game loop takes
+ * it (`player-command`). Keys, keymaps, the mouse and mod intents all reach the
+ * loop as commands, so they all arrive here; an autoplayer's commands and a
+ * run's own continuation steps do not. Fired before the command runs, so the
+ * input token and a snapshot read in the handler still describe the wait the
+ * command answered. Every field is a copy.
+ */
+export interface PlayerCommandEventData {
+  readonly code: string;
+  readonly dir?: number;
+  readonly args?: Readonly<Record<string, unknown>>;
+  /** For `repeat`, the command it repeats, when there is one. */
+  readonly repeats?: { readonly code: string; readonly dir?: number; readonly args?: Readonly<Record<string, unknown>> };
+  /** `store` for an item command given inside a shop, otherwise `play`. */
+  readonly phase: "play" | "store";
+  /** The input token of the wait the command was issued at. */
+  readonly token: { readonly epoch: number; readonly revision: number };
+}
+
+/**
  * Every game event and its payload type. `undefined` payloads are
  * signal-only events.
  */
@@ -156,6 +176,7 @@ export interface GameEventMap {
   heal: HealEventData;
   motion: MotionEventData;
   "driver-changed": { readonly kind: "player" } | { readonly kind: "controller"; readonly owner: string; readonly label?: string; readonly reason?: string };
+  "player-command": PlayerCommandEventData;
 
   inventory: undefined;
   equipment: undefined;
@@ -237,6 +258,7 @@ export const GAME_EVENT_TYPES: readonly GameEventType[] = [
   "heal",
   "motion",
   "driver-changed",
+  "player-command",
   "inventory",
   "equipment",
   "itemlist",

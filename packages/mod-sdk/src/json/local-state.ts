@@ -40,3 +40,18 @@ export const installedMarkerFormat = defineFormat({ format: "neo-angband/desktop
   validator: json.object({ installed: json.boolean, note: json.optional(json.string) }), sample: { installed: true, note: "Where the savefiles are." } });
 export const backupFolderFormat = defineFormat({ format: "neo-angband/desktop/backup-folder", schemaVersion: 1,
   validator: json.object({ path: json.string }), sample: { path: "C:/Backups" } });
+
+/* One named secret a mod keeps for its own network requests. `hosts` lists the
+ * `network:` grant hosts it may be sent to. The desktop app stores either an
+ * OS-encrypted value (base64 of Electron safeStorage output) or the names of the
+ * environment variables to read, tried in order. */
+const desktopSecret = json.object({ hosts: json.array(json.string),
+  encrypted: json.optional(json.string), env: json.optional(json.array(json.string)) });
+export const modSecretsFormat = defineFormat({ format: "neo-angband/desktop/mod-secrets", schemaVersion: 1,
+  validator: json.object({ mods: json.map(json.map(desktopSecret), json.string) }),
+  sample: { mods: { squire: { jev: { hosts: ["api.typesafe.ai"], env: ["TYPESAFE_API_KEY", "JEV_API_KEY"] } } } } });
+/* The browser fallback: page storage, readable by any script on the page. */
+const pageSecret = json.object({ hosts: json.array(json.string), value: json.string });
+export const modPageSecretsFormat = defineFormat({ format: "neo-angband/web/mod-secrets", schemaVersion: 1,
+  validator: json.object({ secrets: json.map(pageSecret) }),
+  sample: { secrets: { jev: { hosts: ["api.typesafe.ai"], value: "example" } } } });

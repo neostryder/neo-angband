@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CapabilityError,
   CapabilitySet,
+  networkRequestCapability,
   parseCapability,
 } from "./capabilities.js";
 import type { PackManifest, PackShape } from "./manifest.js";
@@ -604,6 +605,38 @@ describe("CapabilitySet: has / check", () => {
     );
     expect(set.has("network:api.example.com")).toBe(true);
     expect(set.has("network:evil.example.com")).toBe(false);
+  });
+
+  it("keeps a port on a network host, and a grant without one covers the default port only", () => {
+    const set = CapabilitySet.fromManifest(
+      manifest("plugin", { capabilities: ["network:API.Example.com", "network:localhost:8010"] }),
+    );
+    expect(set.has("network:api.example.com")).toBe(true);
+    expect(set.has("network:api.example.com:8443")).toBe(false);
+    expect(set.has("network:localhost:8010")).toBe(true);
+    expect(set.has("network:localhost:8011")).toBe(false);
+    expect(set.networkGrants()).toEqual(["api.example.com", "localhost:8010"]);
+    expect(() => parseCapability("network:localhost:70000")).toThrow(CapabilityError);
+    expect(parseCapability("network:[::1]:8010")).toEqual({ kind: "network", host: "[::1]:8010" });
+  });
+
+  it("network:local covers loopback and private addresses on any port, and nothing public", () => {
+    const set = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["network:local"] }));
+    for (const host of ["localhost:8010", "127.0.0.1", "192.168.2.154:8010", "10.0.0.5:80", "172.20.1.1", "169.254.1.1", "[::1]:9000", "[fd12::1]", "laya.localhost"]) {
+      expect(set.has(`network:${host}`), host).toBe(true);
+    }
+    for (const host of ["api.typesafe.ai", "172.32.0.1", "192.169.0.1", "8.8.8.8", "laya.lan", "[2001:db8::1]"]) {
+      expect(set.has(`network:${host}`), host).toBe(false);
+    }
+  });
+
+  it("networkRequestCapability names the host and any explicit port of an http(s) URL", () => {
+    expect(networkRequestCapability("https://api.typesafe.ai/v1/systemone")).toBe("network:api.typesafe.ai");
+    expect(networkRequestCapability("https://api.typesafe.ai:443/x")).toBe("network:api.typesafe.ai");
+    expect(networkRequestCapability("http://192.168.2.154:8010/v1/systemone")).toBe("network:192.168.2.154:8010");
+    expect(networkRequestCapability("http://[::1]:8010/")).toBe("network:[::1]:8010");
+    expect(networkRequestCapability("file:///etc/passwd")).toBeNull();
+    expect(networkRequestCapability("not a url")).toBeNull();
   });
 
   it("network:* grants any host", () => {

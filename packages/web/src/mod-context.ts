@@ -65,6 +65,7 @@ import { createModDebug, SPAWN_CAPABILITY, type DebugDoorDeps } from "./spawn-ru
 import { createModWizard, WIZARD_CAPABILITY, type WizardDoorDeps } from "./wizard-runtime";
 import { createModKeymaps, KEYMAP_WRITE_CAPABILITY } from "./macro-runtime";
 import { modSettingsFor } from "./mod-settings-values";
+import type { ModNet } from "./mod-net";
 import type { CapabilitySet, ComposedRecords } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /**
@@ -166,7 +167,8 @@ export function modPluginContext(
   const intent = intentFor(id, session);
   const tiles = tilesFor(session);
   const keyRepeat = keyRepeatFor(session);
-  const saves = savesFor(session);
+  const saves = savesFor(id, session);
+  const net = netFor(id, session);
   const keymaps = keymapsFor(id, state, session);
   const options = optionsFor(state, session);
   const keybindings = keybindingsFor(state, session);
@@ -251,6 +253,7 @@ export function modPluginContext(
     log: (msg: string) => {
       log.info(`mod:${id}`, `${msg}`);
     },
+    ...(net ? { net } : {}),
     ...(backupFolder ? { backupFolder } : {}),
     ...(ui ? { ui } : {}),
     ...(installMod ? { installMod } : {}),
@@ -269,7 +272,10 @@ export function modPluginContext(
     get() {
       const current = driverControl?.current();
       return current?.kind === "controller" && current.owner === id
-        ? Object.freeze({ setStatus: (status: { readonly label?: string; readonly reason?: string }) => driverControl?.setStatus(id, status) })
+        ? Object.freeze({
+          setStatus: (status: { readonly label?: string; readonly reason?: string }) => driverControl?.setStatus(id, status),
+          markNondeterministic: () => driverControl?.markNondeterministic?.(id),
+        })
         : undefined;
     },
   });
@@ -468,6 +474,8 @@ export function clearModDisplayValues(id: string): void {
 export interface ModDriverControl {
   current(): InputDriver;
   setStatus(id: string, status: { readonly label?: string; readonly reason?: string }): void;
+  /** Mark the save nondeterministic for the controller `id` owns. */
+  markNondeterministic?(id: string): void;
 }
 
 let driverControl: ModDriverControl | undefined;
@@ -531,15 +539,62 @@ export function setModSnapshotSource(source: InputSnapshotSource | undefined): v
 }
 
 let savesControl: ModSaves | undefined;
+let autoplayerRollOn: ModAutoplayerRollOn | undefined;
 
-function savesFor(session: ModSessionFacts): ModSaves | undefined {
+/**
+ * The host's side of `ctx.saves.create({ resumeAutoplayer: true })`: `arm(id)`
+ * agrees only when mod `id` owns the installed controller, and `disarm()` undoes
+ * it when creation then fails to start.
+ */
+export interface ModAutoplayerRollOn {
+  arm(id: string): { readonly ok: true } | { readonly ok: false; readonly reason: string };
+  disarm(): void;
+}
+
+function savesFor(id: string, session: ModSessionFacts): ModSaves | undefined {
   if (!session.capabilities?.has("saves:manage")) return undefined;
-  return session.saves ?? savesControl;
+  const base = session.saves ?? savesControl;
+  if (!base?.create) return base;
+  const create = base.create.bind(base);
+  const rollOn = session.autoplayerRollOn ?? autoplayerRollOn;
+  /* The roster door is shared by every mod; `resumeAutoplayer` is the one option
+   * whose answer depends on which mod asked, so this mod's copy carries its id. */
+  return Object.freeze({
+    ...base,
+    async create(options?: Parameters<NonNullable<ModSaves["create"]>>[0]) {
+      if (options?.resumeAutoplayer !== true) return create(options);
+      const armed = rollOn?.arm(id) ?? { ok: false as const, reason: "This game cannot hand a new character to an autoplayer." };
+      if (!armed.ok) return { ok: false as const, reason: armed.reason };
+      const result = await create(options);
+      if (!result.ok) rollOn?.disarm();
+      return result;
+    },
+  });
 }
 
 /** Install the host roster door before any title screen plugin runs. */
 export function setModSavesControl(saves: ModSaves | undefined): void {
   savesControl = saves;
+}
+
+/** Install the host's autoplayer roll-on gate (boot path and tests). */
+export function setModAutoplayerRollOn(control: ModAutoplayerRollOn | undefined): void {
+  autoplayerRollOn = control;
+}
+
+let netControl: ((id: string, grants: readonly string[]) => ModNet) | undefined;
+
+/** `ctx.net` exists for a mod whose grants name at least one network host. */
+function netFor(id: string, session: ModSessionFacts): ModNet | undefined {
+  if (session.net) return session.net;
+  const grants = session.capabilities?.networkGrants?.() ?? [];
+  if (grants.length === 0 || !netControl) return undefined;
+  return netControl(id, grants);
+}
+
+/** Install the factory behind `ctx.net` (boot path and tests). */
+export function setModNetControl(control: ((id: string, grants: readonly string[]) => ModNet) | undefined): void {
+  netControl = control;
 }
 
 /** The live player-intent gate, latched beside the snapshot source. */
@@ -850,6 +905,10 @@ export interface ModSessionFacts {
   readonly keyRepeat?: () => KeyRepeatVerdict | null;
   /** Override the saves door in tests. */
   readonly saves?: ModSaves;
+  /** Override the autoplayer roll-on gate in tests. */
+  readonly autoplayerRollOn?: ModAutoplayerRollOn;
+  /** Override ctx.net directly (tests, and a front end with its own). */
+  readonly net?: ModNet;
   /** Override ctx.characterStore directly (tests, and a front end with its own). */
   readonly characterStore?: ModCharacterStore;
   /**

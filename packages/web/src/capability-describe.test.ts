@@ -64,6 +64,8 @@ describe("describeCapability", () => {
     expect(describeCapability("state:*.read")).toMatchObject({ elevated: true });
     expect(describeCapability("network:example.com")).toMatchObject({ elevated: true });
     expect(describeCapability("network:*").text).toMatch(/ANY host/i);
+    expect(describeCapability("network:local").text).toMatch(/local network/);
+    expect(describeCapability("network:localhost:8010").text).toBe("Send network requests to localhost:8010");
     expect(describeCapability("display:filter")).toMatchObject({ elevated: false });
     expect(describeCapability("display:filter").text).toMatch(/post-processing filter/i);
     expect(describeCapability("display:filter").text).toMatch(/canvas and panels/i);

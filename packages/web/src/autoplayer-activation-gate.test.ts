@@ -100,9 +100,21 @@ describe("the boot-time install loop no longer installs unconditionally", () => 
     const body = installLoop();
     const gateAt = body.indexOf("justConfirmedAutoplayerId === loaded.id");
     expect(gateAt).toBeGreaterThan(-1);
-    const finishAt = body.indexOf("finishAutoplayerInstall(loaded, controller);");
+    const finishAt = body.indexOf("finishAutoplayerInstall(loaded, install);");
     expect(finishAt, "finishAutoplayerInstall is still called from the loop").toBeGreaterThan(-1);
     expect(finishAt).toBeGreaterThan(gateAt);
+  });
+
+  it("skips the prompt for a roll-on only on the first boot after birth", () => {
+    const body = installLoop();
+    const rollAt = body.indexOf("rollOnAutoplayerId === loaded.id");
+    expect(rollAt).toBeGreaterThan(body.indexOf("justConfirmedAutoplayerId === loaded.id"));
+    expect(body).toMatch(/if \(rollOnHeldForBirth === loaded\.id\) continue;/u);
+    const at = NO_COMMENTS.indexOf("let rollOnAutoplayerId");
+    const loopAt = NO_COMMENTS.indexOf("for (const loaded of activeModCode().plugins) {", at);
+    const setup = NO_COMMENTS.slice(at, loopAt);
+    expect(setup).toMatch(/if \(birthPending\) \{\s*rollOnHeldForBirth = armed;/u);
+    expect(setup).toMatch(/reloadStorage\.removeItem\(AUTOPLAYER_ROLL_ON_KEY\);\s*if \(sessionFacts\.newCharacter\) rollOnAutoplayerId = armed;/u);
   });
 
   it("reads and clears the one-shot flag once, ahead of the loop", () => {
@@ -121,7 +133,7 @@ describe("the boot-time install loop no longer installs unconditionally", () => 
 
   it("holds an unconfirmed candidate instead of installing it", () => {
     const body = installLoop();
-    expect(body).toMatch(/pendingAutoplayerInstall = \{ loaded, controller \};/u);
+    expect(body).toMatch(/pendingAutoplayerInstall = \{ loaded, install \};/u);
   });
 
   it("refuses a second autoplayer whether the first is installed or only pending", () => {
@@ -183,7 +195,7 @@ describe("the confirm gate itself", () => {
   it("only installs after the player says yes", () => {
     const body = confirmPendingBody();
     const declineAt = body.indexOf("if (!(await confirmBorgActivation())) {");
-    const finishAt = body.indexOf("finishAutoplayerInstall(pending.loaded, pending.controller);");
+    const finishAt = body.indexOf("finishAutoplayerInstall(pending.loaded, pending.install);");
     expect(declineAt).toBeGreaterThan(-1);
     expect(finishAt, "still calls finishAutoplayerInstall on acceptance").toBeGreaterThan(-1);
     expect(finishAt).toBeGreaterThan(declineAt);

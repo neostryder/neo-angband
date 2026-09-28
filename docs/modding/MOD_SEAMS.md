@@ -513,6 +513,8 @@ const rules = ctx.inspect?.itemRules();
 
 These events contain copied coordinates and scalar values. They do not carry a live player, monster, or grid object. Core emits them at the resolving code path and does not use a listener's return value. Mods can keep a payload for later animation without retaining game state.
 
+`player-command` reports each command the player issues, whether it came from a key, a keymap, the mouse or a mod's `ctx.intent.submit()`. Declare `event:player-command` to receive it. The payload has the command's `code`, its `dir` and a copy of its `args`, `phase` (`play`, or `store` for an item command given inside a shop), and `token`, the input token of the wait the command answered. A `repeat` also carries `repeats`, the command it repeats. The event fires as the game loop takes the command and before it runs, so `ctx.snapshot()` in the handler still describes that wait, and a mod can compare its own choice with the player's. Commands from an installed controller, and the follow-up steps of a run or a repeat count, do not fire it. Buying and selling in a shop are store screen actions rather than commands, so they do not fire it either. A handler that throws is logged, and the command still runs. (neostryder/neo-angband#300)
+
 ## 4m. `ctx.saves` - the host character roster
 
 A plugin with `saves:manage` receives `ctx.saves` at the title and during play. `list()` reads the character picker's roster in the same order. Its frozen entries contain the slot id, name, race, class, level, depth, death status and last-save time in epoch milliseconds. Every call returns `ok` or a refusal with a `reason`.
@@ -579,6 +581,8 @@ Typing in a focused editable field inside the panel goes to that field through t
 
 Each mod's display setters keep its own last request. The most recent live request controls the grid, camera, full map view, tile scaling, map overview, sidebar extent, map margin, or visual filter. Clearing a nullable request removes that mod's value; `setTileScaling(null)` restores the default automatic sampler and `setFullMapOverview(null)` restores the default overview when no earlier request remains. `getGrid()`, `getCamera()`, `getMapView()`, `getTileScaling()`, `getFullMapOverview()`, `getSidebarExtent()`, `getMapMargin()`, and `getVisualFilter()` report the value in force. Mod teardown removes every request from that mod and restores the next most recent request for each setter.
 
+`controller()` may return `{ controller, nondeterministic, onDeath }` instead of a bare controller. `nondeterministic: true` marks the save nondeterministic when the controller installs, for a mod whose manifest is deterministic but whose controller this time draws on a model, a clock or the network. The manifest's own `nondeterministic` flag still marks the save when the mod is enabled. `ctx.controller.markNondeterministic()` does the same while the mod owns the keyboard, for a controller that switches to such a source after install. The mark is permanent and is saved at once. `onDeath` chooses what the character's death does while the controller holds the keyboard. The default, `reincarnate`, starts the next character in place, as the Borg does. `end` runs the ordinary death with its tombstone, score entry and `ctx.character.onRunEnd`, and leaves the controller installed until the page reloads. (neostryder/neo-angband#300)
+
 ## 4r. Floating panel positions and recovery
 
 The host's Subwindow setup can move a registered panel into a floating window inside the game viewport. The panel keeps the same slot, shadow root, controls, minimum size and input behavior. Its title bar can move it onto the same dock, swap and tab drop zones as a docked panel. Closing and showing it again restores its floating rectangle; Dock returns it to its last docked place or `preferredPlacement` if that place is unavailable. A saved float whose mod is not loaded shows the same named placeholder as a docked panel. The Floating windows switch temporarily renders floats at their remembered docked places without erasing their saved rectangles. No new capability or `ctx.ui` field is required.
@@ -637,6 +641,8 @@ The draft changes only through the game's rules. `chooseRace` and `chooseClass` 
 
 `ctx.saves.create()` starts character creation from a mod, as the title screen's new character does, and the page reloads into it. `create({ like })` sets the previous character first, so `usePrevious` and the name default start from it. A run report's `birth` field has the shape `like` takes, which is how a graveyard offers a new character like a dead one. The dead character itself stays dead.
 
+Pass `resumeAutoplayer: true` to `create()` to give the new character to your own autoplayer. This is for a roll-on setting the player turns on in your mod ahead of time: after a death, the mod calls `create({ like: report.birth, resumeAutoplayer: true })` and play carries on. The call is refused unless your controller holds the keyboard at that moment. The character born from the birth screens that follow gets your controller on its first boot, with no prompt, and is marked as autoplayed. If the player leaves the birth screens and loads a different character instead, that character is asked about as usual. Pair it with `onDeath: "end"` from section 4q, since a controller that reincarnates in place never reaches a death. (neostryder/neo-angband#300)
+
 ## 4y. Numeric settings
 
 A mod can declare numbers the player sets on the Mods screen, such as an effect's strength or a delay. They go under a top-level `settings` key in `manifest.json`, not inside `rules`, so an engine from before this seam drops the key and shows the mod's switches as before. Each entry has an `id`, a `title` and a `description`, then `min`, `max`, `step` and `default`, and optionally `unit`, `parent` and `requiresReload`. The id must differ from every rule flag in the manifest. The default must lie on a step between `min` and `max`, and `parent` must name one of the manifest's rules.
@@ -648,6 +654,32 @@ On the Mods screen a setting is a row under its mod's switches, such as `CRT str
 ## 4v. `ctx.display.setChromeTheme` - the window chrome's look
 
 `ctx.display.setChromeTheme(theme)` repaints the chrome around the panels: title bars, tabs, buttons, dividers and drop guides. It needs `display:filter`. Every key is optional: `font` (a family already loaded in the page, for example with the FontFace API), `fontSize` (8 to 24), the colours `page`, `titleBackground`, `text`, `textStrong`, `muted`, `border`, `divider`, `dividerHover`, `accent` and `floatBorder` (as #rgb, #rrggbb, #rrggbbaa or rgb()), `radius` (0 to 16) and `shadow` (true or false). An unknown key or a bad value throws. `null` puts back the game's own look: Angband's palette and its 8x13 dialog font. As with the other display setters, each mod's last request is kept, the most recent one is in force, and a mod's request goes away when the mod is torn down. `getChromeTheme()` reports the theme in force. It covers the chrome only; what a panel shows inside is up to whoever draws that panel.
+
+## 4z. `ctx.net` - HTTP requests through the host
+
+`ctx.net` sends HTTP requests to the hosts a mod's manifest names. It is present when the manifest asks for at least one `network:` host. `network:api.example.com` covers that host on the default port of http or https, `network:localhost:8010` covers one port, and `network:local` covers this computer and the private address ranges of a home network on any port, for a server whose address the player types in. `network:local` judges IP literals and `localhost` only; a name such as `laya.lan` needs its own grant. The consent screen lists each host.
+
+`request({ url, method, headers, body, timeoutMs })` never throws. When a response arrives it resolves to `{ ok: true, status, headers, body }`, whatever the status. When none does it resolves to `{ ok: false, code, problem }`, where `problem` is a sentence the mod can show the player and `code` is the `NetProblemCode` that names the reason, such as `not-declared` for a host the manifest does not list or `timeout`. Bodies are strings, up to 1 MiB going out and 4 MiB coming back. The timeout defaults to 30 seconds and can be set from 1 to 120. A mod cannot set cookies or the `Host`, `Origin` and `Referer` headers, and the page's own cookies are never sent.
+
+In the desktop app the main process sends the request, so the server needs no CORS headers and an http server on the local network is reachable from the game's page. Redirects are followed up to three times, and each hop must land on a declared host. In a browser tab `request` is `fetch` from the page: CORS applies, a redirect is reported rather than followed, and a server on the local network has to allow the page's origin. `ctx.net.transport` is `relay` or `page`, so a mod can say which limits apply.
+
+Secrets keep an API key out of the mod's own code and storage. `ctx.net.secrets.set(name, value, { hosts })` stores a value, and a header written as `Authorization: Bearer {secret:jev}` sends it. The host fills in the value only when the request goes to one of `hosts`, which must be hosts the manifest declares. `fromEnv(name, variables, { hosts })` takes the value from the first of the listed environment variables that is set, such as `["TYPESAFE_API_KEY", "JEV_API_KEY"]`. `has(name)` says whether a secret is set and where, and `delete(name)` removes it. No call returns a value. In the desktop app `set` encrypts the value with the operating system's key store, in a file the page cannot read, and `fromEnv` shows the player a dialog naming the variables and the servers before anything is read. The dialog comes back only when the variables or the servers change. In a browser tab secrets are kept in page storage, where any script on the page can read them, `fromEnv` is refused, and every response that used a secret carries `secretStorage: "page"`. Tell the player when a key is stored that way.
+
+```js
+const net = ctx.net;
+if (net) {
+  await net.secrets.fromEnv("jev", ["TYPESAFE_API_KEY", "JEV_API_KEY"], { hosts: ["api.typesafe.ai"] });
+  const reply = await net.request({
+    url: "https://api.typesafe.ai/v1/systemone",
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer {secret:jev}" },
+    body: JSON.stringify(question),
+  });
+  if (!reply.ok) ctx.log(reply.problem);
+}
+```
+
+Code running in the page can still reach the relay without `ctx.net`, because in-process mods share the page. The host checks on each request are consent checks against what the manifest declared. The secret rules hold even so: a value is sent only to the hosts it was stored for, it never comes back to the page, and an environment variable is read only after the player agrees. Mods in the Worker tier do not get `ctx.net`. (neostryder/neo-angband#300)
 
 ## 5. Doors that are exported but deliberately closed
 

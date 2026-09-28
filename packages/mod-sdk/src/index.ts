@@ -96,7 +96,7 @@ export type { OrphanRecord, OrphanRecords } from "./json/orphan-saves.js";
 export { isSavedGameHeader, savedGameFormat } from "./json/saved-game.js";
 export { windowManagerFormat } from "./json/window-manager.js";
 export { settingsFormat } from "./json/settings.js";
-export { highScoresFormat, birthChoiceFormat, reloadStateFormat, loopbackPortFormat, mergedOriginsFormat, deathLedgerFormat, installedMarkerFormat, backupFolderFormat } from "./json/local-state.js";
+export { highScoresFormat, birthChoiceFormat, reloadStateFormat, loopbackPortFormat, mergedOriginsFormat, deathLedgerFormat, installedMarkerFormat, backupFolderFormat, modSecretsFormat, modPageSecretsFormat } from "./json/local-state.js";
 export { loadOrderFormat } from "./json/load-order.js";
 export { buildIdFormat } from "./json/build-id.js";
 export { modFontFormat, modLocaleFormat } from "./json/mod-resources.js";
@@ -226,7 +226,9 @@ export type {
   RecordConflict,
   RecordOverride,
 } from "./conflicts.js";
-export { CapabilityError, CapabilitySet, parseCapability } from "./capabilities.js";
+export { CapabilityError, CapabilitySet, isLocalNetworkHost, networkGrantCovers, networkRequestCapability, parseCapability, splitHostPort } from "./capabilities.js";
+export { NET_LIMITS, checkNetRequest, checkSecretHosts, fillSecretTemplates, isSecretName, readBodyCapped, secretNamesIn } from "./net-request.js";
+export type { CheckedNetRequest, NetMethod, NetProblem, NetProblemCode, NetRequest, NetSecretValue } from "./net-request.js";
 export type { ParsedCapability } from "./capabilities.js";
 export {
   MANIFEST_FILE,

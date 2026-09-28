@@ -42,7 +42,14 @@
  *                             api.example.com"); "*" is this module's
  *                             extension for a plugin that genuinely needs
  *                             unrestricted egress, and reads the same way
- *                             the other wildcards do.
+ *                             the other wildcards do. A host may carry a
+ *                             port ("network:localhost:8010"), and without
+ *                             one it covers the scheme's default port only.
+ *                             "network:local" covers this computer and the
+ *                             private address ranges of a home network, on
+ *                             any port, for a server whose address the
+ *                             player types in (see `isLocalNetworkHost`).
+ *                             `ctx.net` enforces the family per request.
  *  - "registry:<domain>"    - override a game SYSTEM registry from a TRUSTED
  *                             in-process plugin (W2.2, core/mod/registry-host.ts):
  *                             "registry:effect" | "registry:room" |
@@ -342,7 +349,11 @@ const UI_CREATE_RE = /^ui:region\.create$/;
  */
 const UI_MOUNT_RE = /^ui:panel\.mount$/;
 const STATE_RE = /^state:(\*|[a-z][a-z0-9-]*)\.read$/;
-const NETWORK_RE = /^network:(\*|[a-zA-Z0-9.-]+)$/;
+/**
+ * A host is a DNS name or an IPv4 literal, or a bracketed IPv6 literal, with an
+ * optional port. `*` and `local` are the two wildcards.
+ */
+const NETWORK_RE = /^network:(\*|(?:[a-zA-Z0-9.-]+|\[[0-9a-fA-F:.]+\])(?::[0-9]{1,5})?)$/;
 /** The override domains ModRegistryHost gates, plus the "*" wildcard. */
 const REGISTRY_RE =
   /^registry:(\*|effect-info|effect|room|profile|blow|store|command|monster|projection|ui-entry|glyph|randart|rune|tval|vocab|menu|message|tiles)$/;
@@ -473,7 +484,12 @@ export function parseCapability(cap: string): ParsedCapability {
   }
   const network = NETWORK_RE.exec(cap);
   if (network) {
-    return { kind: "network", host: network[1] as string };
+    const host = (network[1] as string).toLowerCase();
+    const port = splitHostPort(host).port;
+    if (port !== null && (port < 1 || port > 65535)) {
+      throw new CapabilityError(`capability "${cap}": the port must be between 1 and 65535`);
+    }
+    return { kind: "network", host };
   }
   const registry = REGISTRY_RE.exec(cap);
   if (registry) {
@@ -508,7 +524,9 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
     case "network":
       return (
         grant.kind === "network" &&
-        (grant.host === "*" || grant.host === request.host)
+        (grant.host === "*" ||
+          grant.host === request.host ||
+          (grant.host === "local" && isLocalNetworkHost(splitHostPort(request.host).host)))
       );
     case "registry":
       return (
@@ -657,6 +675,15 @@ export class CapabilitySet {
     );
   }
 
+  /**
+   * The hosts this set's `network:` grants name, as written after the prefix:
+   * `"api.example.com"`, `"localhost:8010"`, `"local"` or `"*"`. Empty when the
+   * manifest asked for no network access.
+   */
+  networkGrants(): readonly string[] {
+    return this.grants.flatMap((grant) => (grant.kind === "network" ? [grant.host] : []));
+  }
+
   /** True if the manifest declared `nondeterministic: true` (section 4). */
   isNondeterministic(): boolean {
     return this.nondeterministic;
@@ -666,4 +693,78 @@ export class CapabilitySet {
   isAffectsGameplay(): boolean {
     return this.affectsGameplay;
   }
+}
+
+/**
+ * Split `host` or `host:port` into its parts. A bracketed IPv6 literal keeps its
+ * brackets; `port` is null when none is written.
+ */
+export function splitHostPort(value: string): { host: string; port: number | null } {
+  const bracket = /^(\[[^\]]*\])(?::([0-9]+))?$/.exec(value);
+  if (bracket) {
+    return { host: bracket[1] as string, port: bracket[2] === undefined ? null : Number(bracket[2]) };
+  }
+  const colon = value.lastIndexOf(":");
+  if (colon < 0) return { host: value, port: null };
+  const port = value.slice(colon + 1);
+  if (!/^[0-9]+$/.test(port)) return { host: value, port: null };
+  return { host: value.slice(0, colon), port: Number(port) };
+}
+
+/**
+ * True for a host `network:local` covers: `localhost` and names under
+ * `.localhost`, the IPv4 loopback, private and link-local ranges (127/8, 10/8,
+ * 172.16/12, 192.168/16, 169.254/16), and the IPv6 loopback, unique-local and
+ * link-local ranges. Only literals are judged. A name such as `laya.lan` is not
+ * resolved, because a name can point anywhere; a mod that needs one declares it
+ * by name.
+ */
+export function isLocalNetworkHost(host: string): boolean {
+  const h = host.toLowerCase();
+  if (h === "localhost" || h.endsWith(".localhost")) return true;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (v4) {
+    const [a, b, c, d] = v4.slice(1).map(Number) as [number, number, number, number];
+    if ([a, b, c, d].some((n) => n > 255)) return false;
+    return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) || (a === 169 && b === 254);
+  }
+  const v6 = /^\[([0-9a-f:.]+)\]$/.exec(h);
+  if (v6) {
+    const addr = v6[1] as string;
+    if (addr === "::1") return true;
+    const first = addr.split(":")[0] ?? "";
+    if (first === "") return false;
+    const word = parseInt(first, 16);
+    return (word & 0xfe00) === 0xfc00 || (word & 0xffc0) === 0xfe80;
+  }
+  return false;
+}
+
+/**
+ * The capability a request to `url` needs: `network:<host>`, plus `:<port>`
+ * when the URL names a port other than its scheme's default. Null for anything
+ * but an absolute http or https URL.
+ */
+export function networkRequestCapability(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  if (parsed.hostname === "") return null;
+  return `network:${parsed.hostname.toLowerCase()}${parsed.port ? `:${parsed.port}` : ""}`;
+}
+
+/**
+ * True when one of `grants` (hosts as `CapabilitySet.networkGrants()` returns
+ * them) covers the `network:` capability `cap`. Throws CapabilityError when a
+ * grant or `cap` is not a valid network capability.
+ */
+export function networkGrantCovers(grants: readonly string[], cap: string): boolean {
+  const request = parseCapability(cap);
+  if (request.kind !== "network") throw new CapabilityError(`"${cap}" is not a network capability`);
+  return grants.some((host) => grantCovers(parseCapability(`network:${host}`), request));
 }

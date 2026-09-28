@@ -164,7 +164,7 @@ describe("the activation gate marks the savefile", () => {
      * respawn - so the character that was already alive when the mod took over is
      * marked too. The bit was defined, score-invalidating, persisted and read at
      * death, and set by nothing at all until this line. */
-    const at = NO_COMMENTS.indexOf("installedController = { id: loaded.id, session }");
+    const at = NO_COMMENTS.indexOf("installedController = { id: loaded.id, session");
     expect(at, "the host still records the autoplayer slot").toBeGreaterThan(-1);
     const nearby = NO_COMMENTS.slice(at, at + 500);
     expect(nearby).toMatch(/markNoscore\([^)]*noscore,\s*NOSCORE\.BORG\)/u);

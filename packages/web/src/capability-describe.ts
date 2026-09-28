@@ -177,6 +177,13 @@ export function describeCapability(cap: string): CapabilityDescription {
         ? { cap, text: "Read ALL game state", elevated: true }
         : { cap, text: `Read ${parsed.domain} game state`, elevated: false };
     case "network":
+      if (parsed.host === "local") {
+        return {
+          cap,
+          text: "Send network requests to servers on this computer or your local network",
+          elevated: true,
+        };
+      }
       return parsed.host === "*"
         ? {
             cap,

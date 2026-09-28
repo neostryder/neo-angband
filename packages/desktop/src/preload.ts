@@ -33,6 +33,7 @@ import {
   HOST_SHELL_LIMITS,
   LOG_CHANNEL,
   MOD_ZIP_CHANNEL,
+  NET_CHANNEL,
   REPORT_CHANNEL,
   UPDATE_CHANNEL,
   UPDATE_PROGRESS_CHANNEL,
@@ -142,6 +143,14 @@ contextBridge.exposeInMainWorld("neoDesktop", {
    */
   backup(op: string, arg?: unknown): Promise<unknown> {
     return ipcRenderer.invoke(BACKUP_CHANNEL, op, arg) as Promise<unknown>;
+  },
+
+  /**
+   * The mod network relay behind `ctx.net`. One operation channel, like
+   * `backup`; the main process validates every argument (net-relay.ts).
+   */
+  net(op: string, arg?: unknown): Promise<unknown> {
+    return ipcRenderer.invoke(NET_CHANNEL, op, arg) as Promise<unknown>;
   },
 
   /** Download progress. Returns the unsubscribe, so a closed page stops listening. */

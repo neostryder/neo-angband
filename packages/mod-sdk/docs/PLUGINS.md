@@ -360,7 +360,7 @@ The core snapshot also carries quiver items, equipment slot labels, local floor 
 
 ### Working beside controllers and other mods
 
-`ctx.snapshot().driver` and `ctx.driver()` name the current keyboard owner. A controller mod can publish a task label and reason through `ctx.controller.setStatus()`, and mods with `event:driver-changed` can listen for changes. `ctx.mods()` lists enabled, loaded mods and only the rule or section flags each manifest declares in `publicFlags`. Display setters keep a value per mod, restore an earlier value when the current owner clears or unloads, and expose getters for the value in force. See [MOD_SEAMS.md section 4q](MOD_SEAMS.md#4q-controller-ownership-public-mods-and-display-requests).
+`ctx.snapshot().driver` and `ctx.driver()` name the current keyboard owner. A controller mod can publish a task label and reason through `ctx.controller.setStatus()`, and mods with `event:driver-changed` can listen for changes. `ctx.mods()` lists enabled, loaded mods and only the rule or section flags each manifest declares in `publicFlags`. Display setters keep a value per mod, restore an earlier value when the current owner clears or unloads, and expose getters for the value in force. See [MOD_SEAMS.md section 4q](MOD_SEAMS.md#4q-controller-ownership-public-mods-and-display-requests). A controller can say more about one install by returning `{ controller, nondeterministic, onDeath }`, and a mod with `event:player-command` can watch the player's own commands while it waits; see [MOD_SEAMS.md sections 4q and 4l](MOD_SEAMS.md#4q-controller-ownership-public-mods-and-display-requests).
 
 ### Watching resolved outcomes: `ctx.events`
 
@@ -1020,7 +1020,7 @@ Those are the same live objects, by identity, not copies. `ctx.core` also export
 
 That follows from how plugins run. A trusted plugin runs in-process, synchronously, holding the engine namespace, because that is the only way a handler can touch the live `rng`, `chunk` and `player` deep inside a turn (the reasoning is in `packages/core/src/mod/registry-host.ts`, under WHY IN-PROCESS AND TRUSTED). Nothing reachable from that namespace can be withheld from code already inside it, and a read-only view over `ctx.registries` would close three of the fifteen twins above while looking as though it had closed all of them. `packages/web/src/capability-gate-reach.test.ts` tests both halves: the gate refusing, and the twin reaching.
 
-The same holds for other capability families in the in-process tier. `state:<domain>.read` gates the perceive facade's accessors per domain, but `ctx.state` is the whole live `GameState`. `network:<host>` gates the act facade's request helper, but a plugin is an ES module in the game's own page with the global `fetch` in scope.
+The same holds for other capability families in the in-process tier. `state:<domain>.read` gates the perceive facade's accessors per domain, but `ctx.state` is the whole live `GameState`. `network:<host>` gates `ctx.net`, which refuses a request to an undeclared host, but a plugin is an ES module in the game's own page with the global `fetch` in scope.
 
 These capabilities are enforced in the sandboxed Worker tier. That tier is isolated by construction: it gets the reactive perceive / act / event surface across a message boundary and none of `ctx.core`, `ctx.state` or `ctx.registries`, so there is no twin to reach, and a denied domain stays denied. The same capability string therefore means containment on one side of that boundary and declaration on the other; this section is about the in-process tier.
 

@@ -98,6 +98,7 @@ import type { ChromeTheme } from "./chrome-theme";
 import type { ModInspect } from "./input-snapshot";
 import type { KnownLevelView } from "@rpgm-tools/neo-angband-core";
 import type { ModIntent } from "./intent-gate";
+import type { ModNet } from "./mod-net";
 import type { ModSettingsRead } from "./mod-settings-values";
 import type { ModPrompt } from "./prompt-view";
 import type {
@@ -599,8 +600,17 @@ export interface ModPluginContext {
   readonly snapshot?: () => InputSnapshot | null;
   /** The current keyboard owner, read from the host's installed controller. */
   readonly driver?: () => import("./input-snapshot").InputDriver;
-  /** Publish status only while this mod owns the installed controller. */
-  readonly controller?: { setStatus(status: { readonly label?: string; readonly reason?: string }): void } | undefined;
+  /**
+   * Present only while this mod owns the installed controller. `setStatus`
+   * publishes its current task. `markNondeterministic()` records on the save that
+   * the controller's play can no longer be replayed from the seed, for a mod that
+   * switches to a nondeterministic source (a model, a clock) after install. The
+   * mark is permanent for the save.
+   */
+  readonly controller?: {
+    setStatus(status: { readonly label?: string; readonly reason?: string }): void;
+    markNondeterministic(): void;
+  } | undefined;
   /** Enabled and loaded mods, limited to manifest-declared public flags. */
   readonly mods?: () => readonly { readonly id: string; readonly version: string; readonly flags?: Readonly<Record<string, boolean>> }[];
   /** Resolved game events, gated by each declared `event:<name>` grant. */
@@ -708,6 +718,15 @@ export interface ModPluginContext {
   readonly newCharacter: boolean;
   /** Emit a diagnostic line; the host decides where it goes. */
   readonly log: (msg: string) => void;
+  /**
+   * HTTP requests to the hosts this mod's manifest names with `network:<host>`,
+   * `network:local` or `network:*`. Present only when the manifest asks for at
+   * least one. In the desktop app the main process sends the request, so a
+   * server needs no CORS headers, and secrets are kept encrypted where the page
+   * cannot read them. In a browser tab it is `fetch`, CORS applies, and secrets
+   * are kept in page storage. See docs/modding/MOD_SEAMS.md section 4z.
+   */
+  readonly net?: ModNet;
   /**
    * Ticket #133's cloud-backup folder. Present only when this mod's manifest
    * declared the `backup:folder` capability AND this front end can pick a
@@ -1477,7 +1496,35 @@ export interface ModSaves {
    */
   create?(options?: {
     readonly like?: { readonly race: string; readonly cls: string; readonly name?: string; readonly stats?: readonly number[] };
+    /**
+     * Hand the new character to this mod's autoplayer without asking the player
+     * again. Accepted only from the mod whose controller holds the keyboard when
+     * `create` is called; any other caller gets a refusal and nothing starts. The
+     * new character is marked as autoplayed when the controller installs. Ask the
+     * player for this in your own settings first: it is how they agree to it.
+     */
+    readonly resumeAutoplayer?: boolean;
   }): Promise<SaveResult>;
+}
+
+/** A controller plus what the host should know about this one install. */
+export interface ModControllerInstall {
+  readonly controller: AgentController;
+  /**
+   * The controller draws on a source the save's seed cannot replay: a model, a
+   * wall clock, the network. The save is marked nondeterministic when it
+   * installs, permanently.
+   */
+  readonly nondeterministic?: boolean;
+  /**
+   * What the character's death does while this controller holds the keyboard.
+   * `reincarnate`, the default, starts the next character in place, as the Borg
+   * does. `end` runs the ordinary death: the tombstone, the score table and
+   * `ctx.character.onRunEnd`. The controller stays installed until the page
+   * reloads, so the mod can start the next character with
+   * `ctx.saves.create({ resumeAutoplayer: true })`.
+   */
+  readonly onDeath?: "reincarnate" | "end";
 }
 
 /** A mod's code. Both members optional: a plugin may do either job, or both. */
@@ -1551,12 +1598,16 @@ export interface ModPlugin {
    * Requires the `command:add` capability in the manifest (a controller that
    * cannot act is not a controller); installController throws
    * AgentCapabilityError without it, which is reported as this mod's fault and
-   * leaves the game playable by hand. Determinism is NOT declared here - the
-   * manifest's `nondeterministic` flag already advances the save's determinism
-   * ratchet when the mod is enabled, and a second place to say it is a second
-   * place for it to disagree.
+   * leaves the game playable by hand.
+   *
+   * Return a `ModControllerInstall` instead of a bare controller to say more
+   * about this install: `nondeterministic` marks the save when the controller
+   * installs, for a mod whose manifest is deterministic but whose controller
+   * this time is not, and `onDeath` chooses what the character's death does.
+   * A manifest's own `nondeterministic` flag still marks the save when the mod is
+   * enabled.
    */
-  controller?(ctx: ModPluginContext): AgentController | undefined;
+  controller?(ctx: ModPluginContext): AgentController | ModControllerInstall | undefined;
   /**
    * Replace the map renderer with a sink for the live `WorldFrame` stream.
    *

@@ -350,6 +350,8 @@ import {
   setModDisplayControl,
   clearModDisplayValues,
   setModDriverControl,
+  setModAutoplayerRollOn,
+  setModNetControl,
   setModListControl,
   setModSnapshotSource,
   setModSavesControl,
@@ -371,7 +373,9 @@ import { publicModList } from "./mod-list";
 import { applyMapMargin } from "./map-margin";
 import { createModSaves } from "./saves-facade";
 import { frozenDriver, type InputDriver, type InputSnapshotSource } from "./input-snapshot";
-import type { ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, ModTiles } from "./mod-plugin";
+import type { ModControllerInstall, ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, ModTiles } from "./mod-plugin";
+import { createModNet, netRelayBridge } from "./mod-net";
+import { playerCommandEvent } from "./player-command-event";
 import { createKeyRepeatTracker } from "./key-repeat";
 import { VisualFilterOverlay, applyScopedVisualFilter } from "./visual-filter";
 import { applyChromeTheme, type ChromeTheme } from "./chrome-theme";
@@ -760,7 +764,7 @@ import {
   applyIgnoreItemChoice,
   IGNORE_ACTION,
 } from "./ignore-menu";
-import { objectCopyAmt, bumpInputRevision, ballRadius, breathRadius } from "@rpgm-tools/neo-angband-core";
+import { objectCopyAmt, bumpInputRevision, inputToken, ballRadius, breathRadius } from "@rpgm-tools/neo-angband-core";
 import type { Store } from "@rpgm-tools/neo-angband-core";
 import { helpLinesFromText, runHelp, setModHelpPages } from "./help";
 import {
@@ -1368,6 +1372,12 @@ const SHOW_GRAPHICS_KEY = "neo-angband-show-graphics";
 // activateAutoplayerCmd right before its reload; consumed (read once, cleared
 // unconditionally) by the controller-install loop below.
 const AUTOPLAYER_JUST_CONFIRMED_KEY = "neo-angband-autoplayer-just-confirmed";
+// One-shot across the two reloads of a new character (#300): "the autoplayer
+// that held the keyboard asked, through ctx.saves.create({ resumeAutoplayer }),
+// to carry on with the character about to be born". Written by newGame only
+// when rollOnRequest is set, removed by every other newGame, and consumed by the
+// boot after birth. The birth screen's own boot leaves it in place.
+const AUTOPLAYER_ROLL_ON_KEY = "neo-angband-autoplayer-roll-on";
 interface StoredBirth {
   raceName: string;
   className: string;
@@ -7279,6 +7289,13 @@ function autosave(force = false): void {
 /** Start a brand-new character in a fresh roster slot (birth, then play). */
 function newGame(): void {
   suppressSave = true; // the outgoing page must not save into the new slot
+  try {
+    if (rollOnRequest) reloadStorage.setItem(AUTOPLAYER_ROLL_ON_KEY, rollOnRequest);
+    else reloadStorage.removeItem(AUTOPLAYER_ROLL_ON_KEY);
+  } catch {
+    /* storage disabled: the new character's boot asks before the autoplayer takes over */
+  }
+  rollOnRequest = null;
   /* Let go of the character being left, before naming the one being started.
    * The reload attaches the new slot; this page is on its way out and must not
    * be attached to anything while it goes, so its unload-time flush writes
@@ -8163,9 +8180,26 @@ const commandBuffer: PlayerCommand[] = [];
 let lastRepeatCmd: PlayerCommand | null = null;
 state.nextCommand = (): PlayerCommand | null => {
   const cmd = commandBuffer.shift() ?? null;
+  if (cmd) emitPlayerCommand(cmd, "play", cmd.code === "repeat" ? lastRepeatCmd : null);
   if (cmd && cmd.code !== "repeat") lastRepeatCmd = cmd;
   return cmd;
 };
+
+/**
+ * The player-command event (#300): a command the player issued, reported as the
+ * loop takes it and before it runs, so a listener reading ctx.snapshot() sees
+ * the wait the command answered. This provider is the human's; an installed
+ * controller replaces it, so an autoplayer's commands never reach here. A
+ * listener that throws is logged and does not stop the command.
+ */
+function emitPlayerCommand(cmd: PlayerCommand, phase: "play" | "store", repeats: PlayerCommand | null): void {
+  if (!state.events) return;
+  try {
+    state.events.emit("player-command", playerCommandEvent(cmd, phase, repeats, inputToken(state)));
+  } catch (err) {
+    log.error("mods", "a player-command listener failed:", err);
+  }
+}
 
 /* --- check_for_player_interrupt (ui-game.c:645), hosted ------------------- */
 /* A key arrived while the loop was driving a run / repeat / rest. The keydown
@@ -9922,7 +9956,19 @@ setModSubwindowsControl(subwindowsControl);
  * single state.nextCommand: two of them is not "two autoplayers", it is one
  * autoplayer and one mod that thinks it is running and is not.
  */
-let installedController: { id: string; session: AgentSession; status?: { readonly label?: string; readonly reason?: string } } | null = null;
+let installedController: {
+  id: string;
+  session: AgentSession;
+  status?: { readonly label?: string; readonly reason?: string };
+  /** ModControllerInstall.onDeath; absent means reincarnate in place. */
+  onDeath?: "reincarnate" | "end";
+} | null = null;
+/**
+ * The mod whose controller asked, through ctx.saves.create({ resumeAutoplayer }),
+ * to carry on with the next character. newGame writes it to AUTOPLAYER_ROLL_ON_KEY
+ * and clears it.
+ */
+let rollOnRequest: string | null = null;
 let coreAgentSession: AgentSession | null = null;
 const installedPluginIds = new Set<string>();
 const agentId = params.get("agent");
@@ -10031,7 +10077,37 @@ setModDriverControl({
     };
     state.events?.emit("driver-changed", frozenDriver(currentInputDriver()));
   },
+  markNondeterministic: (id) => {
+    if (installedController?.id !== id) throw new Error(`markNondeterministic requires active owner ${id}`);
+    markSaveNondeterministic(id);
+  },
 });
+setModAutoplayerRollOn({
+  arm: (id) => {
+    if (installedController?.id !== id) {
+      return { ok: false, reason: "Only the autoplayer that holds the keyboard can carry on with a new character." };
+    }
+    rollOnRequest = id;
+    return { ok: true };
+  },
+  disarm: () => {
+    rollOnRequest = null;
+  },
+});
+setModNetControl((id, grants) => createModNet({
+  modId: id,
+  modName: activeModCode().plugins.find((loaded) => loaded.id === id)?.manifest.name ?? "A mod",
+  grants,
+  relay: netRelayBridge(globalThis),
+  fetch: (input, init) => fetch(input, init),
+  storage: (() => {
+    try {
+      return window.localStorage;
+    } catch {
+      return null;
+    }
+  })(),
+}));
 const loadedModOrder = enabledModIds();
 setModListControl(() => {
   const code = activeModCode();
@@ -10668,6 +10744,7 @@ async function pumpMessages(preLen: number, force = false): Promise<void> {
  */
 function runStoreItemCmd(code: string, args: Record<string, unknown>): string | null {
   const before = msglog.all().length;
+  if (installedController === null) emitPlayerCommand({ code, args }, "store", null);
   game.registry.get(code)?.(state, { code, args });
   const fresh = msglog.all().slice(before).map((m) => m.text);
   return fresh.length ? fresh.join(" ") : null;
@@ -11091,6 +11168,9 @@ function advance(): void {
 function reincarnateAutoplayer(): boolean {
   const holder = installedController;
   if (!holder) return false;
+  /* ModControllerInstall.onDeath "end": the mod wants the ordinary death, with
+   * its tombstone and run report, and starts the next character itself. */
+  if (holder.onDeath === "end") return false;
   const diedFrom = state.actor.player.diedFrom || "the dungeon";
   const diedAt = state.chunk.depth;
   const diedAtLevel = state.actor.player.lev;
@@ -13174,7 +13254,7 @@ async function confirmPendingAutoplayerInstall(): Promise<void> {
       render();
       return;
     }
-    finishAutoplayerInstall(pending.loaded, pending.controller);
+    finishAutoplayerInstall(pending.loaded, pending.install);
     render();
   });
 }
@@ -15113,7 +15193,7 @@ let stopInstalledController: (() => void) | null = null;
  * installedController: a reload is a fresh boot, and the new one runs this
  * whole gate again from scratch.
  */
-let pendingAutoplayerInstall: { loaded: LoadedModPlugin; controller: AgentController } | null =
+let pendingAutoplayerInstall: { loaded: LoadedModPlugin; install: ModControllerInstall } | null =
   null;
 
 function installSandbox(pluginId: string): void {
@@ -15829,7 +15909,26 @@ function currentOrPendingAutoplayerId(): string | undefined {
  * the exact same install - the only difference between them is whether this
  * runs at once or waits on that "yes" first.
  */
-function finishAutoplayerInstall(loaded: LoadedModPlugin, controller: AgentController): void {
+/**
+ * Record on the save that an autoplayer's play can no longer be replayed from
+ * its seed: the same one-way ratchet a nondeterministic manifest advances when
+ * the mod is enabled (advanceSaveRatchets), written through at once so the mark
+ * is on disk before the controller's first action.
+ */
+function markSaveNondeterministic(id: string): void {
+  if (game.manifest.determinism === "nondeterministic") return;
+  game.manifest.determinism = advanceDeterminism(game.manifest.determinism, true);
+  log.info(`mod:${id}`, `marked the save nondeterministic`);
+  autosave(true);
+}
+
+/** A controller() answer as an install, whichever shape the mod returned. */
+function controllerInstallOf(answer: AgentController | ModControllerInstall): ModControllerInstall {
+  return typeof answer === "function" ? { controller: answer } : answer;
+}
+
+function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModControllerInstall): void {
+  const controller = install.controller;
   /* installController is installed and then nothing drove it (found
    * 2026-08-21 while wiring the restart-on-death loop, see docs/PLANNED.md):
    * a mod's controller took a turn only when a human happened to press a
@@ -15847,8 +15946,12 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, controller: AgentContr
   };
   const session = installController(state, modLatched, {
     capabilities: CapabilitySet.fromManifest(loaded.manifest),
+    ...(install.nondeterministic === true ? {
+      nondeterministic: true,
+      onNondeterministic: () => markSaveNondeterministic(loaded.id),
+    } : {}),
   });
-  installedController = { id: loaded.id, session };
+  installedController = { id: loaded.id, session, ...(install.onDeath === "end" ? { onDeath: "end" as const } : {}) };
   state.events?.emit("driver-changed", frozenDriver(currentInputDriver()));
   /* Mark the savefile (do_cmd_try_borg, cmd-misc.c:128-140): a character an
    * autoplayer took over is not a character that earned its result, and the bit
@@ -15957,6 +16060,24 @@ try {
 } catch {
   /* best-effort; worst case this boot asks, which is the safe direction */
 }
+/* The other boot that may skip the prompt (#300): the first boot of a character
+ * whose predecessor's autoplayer asked to carry on (AUTOPLAYER_ROLL_ON_KEY). The
+ * birth screen's boot keeps the flag for the boot after it and installs nothing,
+ * since its character is the throwaway behind the birth screen. Any other boot
+ * clears it, so a player who backs out of birth and loads someone else is asked. */
+let rollOnAutoplayerId: string | null = null;
+let rollOnHeldForBirth: string | null = null;
+try {
+  const armed = reloadStorage.getItem(AUTOPLAYER_ROLL_ON_KEY);
+  if (birthPending) {
+    rollOnHeldForBirth = armed;
+  } else {
+    reloadStorage.removeItem(AUTOPLAYER_ROLL_ON_KEY);
+    if (sessionFacts.newCharacter) rollOnAutoplayerId = armed;
+  }
+} catch {
+  /* best-effort; worst case this boot asks, which is the safe direction */
+}
 for (const loaded of activeModCode().plugins) {
   const makeController = loaded.plugin.controller;
   if (!makeController) continue;
@@ -15970,7 +16091,7 @@ for (const loaded of activeModCode().plugins) {
     continue;
   }
   try {
-    const controller = makeController.call(
+    const answer = makeController.call(
       loaded.plugin,
       modPluginContext(
         loaded.id,
@@ -15983,7 +16104,12 @@ for (const loaded of activeModCode().plugins) {
     /* undefined is a decline: a mod that has never been handed the keyboard
      * for this character (Borg's own gate: NOSCORE.BORG unset) says so by
      * returning nothing, and the human keeps the keyboard. */
-    if (!controller) continue;
+    if (!answer) continue;
+    const install = controllerInstallOf(answer);
+    if (typeof install.controller !== "function") {
+      throw new TypeError("controller() must return a controller function or { controller }");
+    }
+    if (rollOnHeldForBirth === loaded.id) continue;
     /* THE GATE (#125, corrected). NOSCORE.BORG is permanent and one-way - it
      * marks a character as having used an autoplayer EVER, for scoring, and
      * must never by itself mean "resume without asking": that would silently
@@ -15997,9 +16123,12 @@ for (const loaded of activeModCode().plugins) {
      * screen is live - the same warn-and-confirm a first-time activation
      * gets, every single boot. */
     if (justConfirmedAutoplayerId === loaded.id) {
-      finishAutoplayerInstall(loaded, controller);
+      finishAutoplayerInstall(loaded, install);
+    } else if (rollOnAutoplayerId === loaded.id) {
+      finishAutoplayerInstall(loaded, install);
+      say(t("main.autoplayer.roll-on", "{name} carries on with the new character.", { name: loaded.manifest.name }));
     } else {
-      pendingAutoplayerInstall = { loaded, controller };
+      pendingAutoplayerInstall = { loaded, install };
     }
   } catch (err) {
     /* Same containment as register(): a controller that will not install must

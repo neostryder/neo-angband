@@ -20,7 +20,7 @@
  *     lives in core (host/bridge.ts), so neither end can drift from the other.
  */
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen, session, shell } from "electron";
 import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -46,6 +46,7 @@ import {
   HOST_SHELL_LIMITS,
   LOG_CHANNEL,
   MOD_ZIP_CHANNEL,
+  NET_CHANNEL,
   REPORT_CHANNEL,
   UPDATE_CHANNEL,
   UPDATE_PROGRESS_CHANNEL,
@@ -95,6 +96,7 @@ import {
 } from "./mod-origin-merge.js";
 import type { ModRecord, ModSnapshot } from "./mod-origin-merge.js";
 import { ORIGIN_PROBE_ROUTE, planRequest } from "./routes.js";
+import { createNetRelay } from "./net-relay.js";
 import type { OriginSnapshot } from "./origin-merge.js";
 import { readWindowState, startPlacement, writeWindowState } from "./window-state.js";
 import { mergedOriginsFormat, deathLedgerFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -612,6 +614,51 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
   installUpdater();
   installModZipChannel();
   installBackupChannel();
+  installNetChannel();
+}
+
+/**
+ * The mod network relay (`ctx.net`, neostryder/neo-angband#300). The rules are in
+ * net-relay.ts; this supplies Electron's parts. Secrets live in one JSON file
+ * beside `mods/`, each value encrypted with safeStorage, and an environment
+ * variable is shared only after the player agrees in a native dialog.
+ */
+function installNetChannel(): void {
+  const file = path.join(USER_BASE, "mod-secrets.json");
+  const relay = createNetRelay({
+    fetch: (input, init) => fetch(input, init),
+    env: (name) => process.env[name],
+    encryption: {
+      available: () => safeStorage.isEncryptionAvailable(),
+      encrypt: (value) => safeStorage.encryptString(value).toString("base64"),
+      decrypt: (encoded) => safeStorage.decryptString(Buffer.from(encoded, "base64")),
+    },
+    readStore: () => {
+      try {
+        return fs.readFileSync(file, "utf8");
+      } catch {
+        return null;
+      }
+    },
+    writeStore: (text) => {
+      fs.writeFileSync(file, text, "utf8");
+    },
+    confirmEnv: async ({ modName, variables, hosts }) => {
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      const options = {
+        type: "question" as const,
+        buttons: ["Share", "Don't share"],
+        defaultId: 1,
+        cancelId: 1,
+        title: "Share an environment variable?",
+        message: `${modName} wants to send ${variables.join(" or ")} to ${hosts.join(", ")}.`,
+        detail: "The game reads the first of these environment variables that is set and sends it with this mod's requests to those servers only. The mod never sees the value. You are asked again if the mod names other variables or servers.",
+      };
+      const result = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+      return result.response === 0;
+    },
+  });
+  ipcMain.handle(NET_CHANNEL, (_event, op: unknown, arg: unknown) => relay.handle(op, arg));
 }
 
 /**

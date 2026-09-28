@@ -82,6 +82,13 @@ export const LOG_FLUSH_MS = 250;
  */
 export const REPORT_CHANNEL = "neo-report";
 
+/**
+ * The mod network relay (`invoke`, neostryder/neo-angband#300): `ctx.net`
+ * requests and the mod secrets that go with them. The renderer names an
+ * operation and passes one argument object; net-relay.ts holds the rules.
+ */
+export const NET_CHANNEL = "neo-net";
+
 /** What the renderer may ask the updater to do. */
 export type UpdateOp = "shape" | "download" | "apply" | "reveal";
 
