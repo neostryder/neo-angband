@@ -314,14 +314,10 @@ export interface CellView {
   /** The player remembers this square (known map). */
   known: boolean;
   /**
-   * `square(c, grid)->mon`, verbatim: a positive monster id, 0 for none, and
-   * NEGATIVE for the player's own square (upstream stores -1 there, cave.h).
-   *
-   * The doc used to say "or 0 for none" and stop, which is how a caller ends up
-   * writing `if (cell.monster !== 0) lookUpMonster(cell.monster)` and asking the
-   * monster list for id -1 on the one square it is certain to examine. Corrected
-   * rather than changed: the VALUE is upstream's and callers may already depend
-   * on it, so making it 0 here would be the breaking half of the two options.
+   * The monster id standing here when the player perceives it (seen, detected
+   * or sensed, and not a mimic posing as an object), 0 when the square is empty
+   * or its occupant is unseen, and -1 on the player's own square, as upstream's
+   * `square(c, grid)->mon` stores it. Check `> 0` before looking the id up.
    */
   monster: number;
   /** Number of floor objects on the square. */
@@ -375,7 +371,14 @@ export interface CellView {
   objectGlyph?: string;
 }
 
-/** A read-only view of an object (BORG_AS_MOD section 3, Items). */
+/**
+ * A read-only view of an object (BORG_AS_MOD section 3, Items), as the player
+ * knows it. Every field that says what the object is comes from its known twin
+ * (upstream `obj->known`): an unidentified ego reads as `ego: false` with a null
+ * `egoName`, an unassessed artifact as `artifact: false`, and bonuses,
+ * modifiers, flags, brands, slays, resists, curses and value count only what the
+ * player has learned. Kind and weight are known on sight.
+ */
 export interface ItemView {
   /** Gear handle when carried/worn; 0 for a floor object. */
   handle: number;

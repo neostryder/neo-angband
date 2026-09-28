@@ -895,10 +895,6 @@ function wireGame(
     derived = calcBonuses(p, bonusOptions);
     state.playerState = derived;
     refreshKnownCombat(p, bonusOptions);
-    /* calc_light's town-daytime branch (player-calcs.c 1608-1611) flags
-     * PU_UPDATE_VIEW | PU_MONSTERS before returning; reinstate that refresh so
-     * ambient town light tracks the day/night cycle. */
-    if (state.chunk.depth === 0 && daytime) state.updateFov?.(state);
     for (let i = 0; i < liveStatInd.length; i++) {
       liveStatInd[i] = derived.statInd[i] ?? 0;
     }
@@ -908,6 +904,16 @@ function wireGame(
     state.actor.speed = derived.speed;
     state.actor.light = derived.curLight;
     state.actor.unlight = derived.pflags.has(PF.UNLIGHT);
+    /* calc_bonuses (player-calcs.c:2401-2404): a changed light radius flags
+     * PU_UPDATE_VIEW | PU_MONSTERS, so wielding a torch in the dark or a light
+     * going out redraws the view at once rather than on the next step.
+     * calc_light's town-daytime branch (1608-1611) flags the same, and the view
+     * is refreshed there on every pass so ambient town light tracks the
+     * day/night cycle. Both run after state.actor.light is set, because the view
+     * reads it. */
+    if (derived.curLight !== before.curLight || (state.chunk.depth === 0 && daytime)) {
+      state.updateFov?.(state);
+    }
     state.actor.stealth = combat.skills[SKILL.STEALTH] ?? 0;
     const weaponSlot = p.body.slots.findIndex((s) => s.type === "WEAPON");
     state.actor.weapon =
@@ -2887,9 +2893,11 @@ function makeChangeLevel(
          * arriving. The old level's pile is gone either way, so a remembered
          * args.floor index must not be re-dispatched. */
         cmdDisableRepeatFloorItem(state.actor.player);
-        state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
-        /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
+        /* only_partial during level entry (ui-display.c:2522 / cave-view.c:851),
+         * set before the bonus pass as upstream sets it before handle_stuff, so a
+         * view rebuild that pass triggers for a changed light radius is partial too. */
         state.chunk.onlyPartial = true;
+        state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
         state.updateFov?.(state);
         /* on_new_level's own disturb (game-world.c:1016-1017), immediately before
          * the feeling and the search: arriving on a level cancels whatever was
@@ -3095,9 +3103,10 @@ function makeChangeLevel(
      * flooded. Without this the daytime-town cur_light (0) leaks into the
      * dungeon, so the torch radius is -1 and arrival renders dark until the
      * next bonus recompute. Run the bonus pass before the first view build. */
-    state.updateBonuses?.();
-    /* only_partial during level-entry FOV (ui-display.c:2522 / cave-view.c:851). */
+    /* only_partial during level entry (ui-display.c:2522 / cave-view.c:851), set
+     * before the bonus pass for the same reason as the revisit branch above. */
     state.chunk.onlyPartial = true;
+    state.updateBonuses?.();
     state.updateFov?.(state);
     /* on_new_level's own disturb (game-world.c:1016-1017), immediately before
      * the feeling and the search: arriving on a level cancels whatever was

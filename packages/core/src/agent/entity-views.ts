@@ -26,6 +26,8 @@ import { tvalIsBook } from "../obj/object.js";
 import { playerObjectToBook } from "../player/spell.js";
 import { OBJ_MOD_NAMES } from "../obj/bind.js";
 import { objectValue } from "../obj/value.js";
+import { objectFlagsKnown, objectKnownShadow } from "../obj/known-object.js";
+import { knownDescOf } from "../game/describe.js";
 import type { PlayerState } from "../player/calcs.js";
 import type { PlayerCombatState } from "../combat/melee.js";
 import type { AgentViewDeps, ItemView, PlayerView } from "./types.js";
@@ -71,44 +73,52 @@ export function itemView(
   count?: number,
 ): ItemView {
   const number = count ?? obj.number;
+  /* Everything below that says what the object IS comes from its known twin
+   * (upstream obj->known, objectKnownShadow), the same record object_desc and the
+   * inspect screen read. A mod sees what the player knows: an unidentified ego
+   * reads as plain gear, and an unlearned rune adds nothing. The kind, weight and
+   * base dice and armour are known on sight. */
+  const p = state.actor.player;
+  const knownDesc = knownDescOf(state, true);
+  const known = objectKnownShadow(obj, p, state.runeEnv, knownDesc);
   const modifiers: Array<{ code: string; value: number }> = [];
-  for (let i = 0; i < obj.modifiers.length; i++) {
-    const value = obj.modifiers[i] ?? 0;
+  for (let i = 0; i < known.modifiers.length; i++) {
+    const value = known.modifiers[i] ?? 0;
     if (value === 0) continue;
     const code = OBJ_MOD_NAMES[i];
     if (code) modifiers.push({ code, value });
   }
 
   const brands: string[] = [];
-  if (obj.brands) {
-    for (let i = 0; i < obj.brands.length; i++) {
-      if (!obj.brands[i]) continue;
+  if (known.brands) {
+    for (let i = 0; i < known.brands.length; i++) {
+      if (!known.brands[i]) continue;
       const code = state.brands[i]?.code;
       if (code) brands.push(code);
     }
   }
 
   const slays: string[] = [];
-  if (obj.slays) {
-    for (let i = 0; i < obj.slays.length; i++) {
-      if (!obj.slays[i]) continue;
+  if (known.slays) {
+    for (let i = 0; i < known.slays.length; i++) {
+      if (!known.slays[i]) continue;
       const code = state.slays[i]?.code;
       if (code) slays.push(code);
     }
   }
 
   const resists: Array<{ element: string; level: number }> = [];
-  for (let i = 0; i < obj.elInfo.length; i++) {
-    const level = obj.elInfo[i]?.resLevel ?? 0;
+  for (let i = 0; i < known.elInfo.length; i++) {
+    const level = known.elInfo[i]?.resLevel ?? 0;
     if (level === 0) continue;
     const name = ELEMENT_ENTRIES[i]?.name;
     if (name) resists.push({ element: name, level });
   }
 
   const curses: string[] = [];
-  if (obj.curses) {
-    for (let i = 0; i < obj.curses.length; i++) {
-      const power = obj.curses[i]?.power ?? 0;
+  if (known.curses) {
+    for (let i = 0; i < known.curses.length; i++) {
+      const power = known.curses[i]?.power ?? 0;
       if (power <= 0) continue;
       /* Curse names resolve from the always-present RuneEnv curse table (real
        * in production, inert [null] in the worldless harness), then the
@@ -130,26 +140,26 @@ export function itemView(
     label: obj.kind.name,
     tval: obj.tval,
     sval: obj.sval,
-    pval: obj.pval,
+    pval: known.pval,
     number,
     weight: obj.weight,
-    ac: obj.ac,
-    toA: obj.toA,
-    toH: obj.toH,
-    toD: obj.toD,
-    dd: obj.dd,
-    ds: obj.ds,
-    ego: obj.ego !== null,
-    artifact: obj.artifact !== null,
-    flags: ofCodes(obj.flags),
+    ac: known.ac,
+    toA: known.toA,
+    toH: known.toH,
+    toD: known.toD,
+    dd: known.dd,
+    ds: known.ds,
+    ego: known.ego !== null,
+    artifact: known.artifact !== null,
+    flags: ofCodes(objectFlagsKnown(obj, p, state.runeEnv, knownDesc)),
     modifiers,
     brands,
     slays,
     resists,
     curses,
-    egoName: obj.ego?.name ?? null,
-    artifactName: obj.artifact?.name ?? null,
-    activation: obj.activation !== null,
+    egoName: known.ego?.name ?? null,
+    artifactName: known.artifact?.name ?? null,
+    activation: known.activation !== null,
     timeout: obj.timeout,
     inscription: obj.note ?? null,
   };
@@ -161,7 +171,7 @@ export function itemView(
   }
   if (deps.reg) {
     const aware = deps.aware ?? ((): boolean => true);
-    view.value = objectValue(deps.reg, obj, number, aware(obj.kind));
+    view.value = objectValue(deps.reg, obj, number, aware(obj.kind), { p, env: state.runeEnv, deps: knownDesc });
   }
   return view;
 }

@@ -122,6 +122,19 @@ function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
   return out;
 }
 
+/**
+ * The occupant a cell reports: the monster index when the player perceives it
+ * (monster_is_obvious: seen, detected or sensed by telepathy, and not a mimic
+ * posing as an object), 0 otherwise. The player is -1 on their own grid. A
+ * creature the player cannot see is not in any view's cells, as it is not on
+ * the player's map.
+ */
+function perceivedOccupant(state: GameState, occupant: number): number {
+  if (occupant <= 0) return occupant;
+  const m = state.monsters[occupant];
+  return m && monsterIsObvious(m) ? occupant : 0;
+}
+
 function cellView(
   state: GameState,
   x: number,
@@ -140,7 +153,7 @@ function cellView(
     passable: c.isPassable(grid),
     inView: c.sqinfoHas(grid, SQUARE["VIEW"]),
     known: (state.known.feat[idx] ?? -1) >= 0,
-    monster: c.mon(grid),
+    monster: perceivedOccupant(state, c.mon(grid)),
     objectCount: (state.floor.get(idx) ?? []).length,
     glow: c.sqinfoHas(grid, SQUARE["GLOW"]),
     /* square_isdisarmabletrap, not "the trap list is non-empty": a closed door's

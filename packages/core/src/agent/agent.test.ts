@@ -8,6 +8,7 @@ import { createDefaultRegistry } from "../game/player-turn.js";
 import { FLOOR, addMon, featureReg, makeRace, makeState, plReg } from "../game/harness.js";
 import { ObjRegistry } from "../obj/bind.js";
 import { objectPrep } from "../obj/make.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
 import type { GameObject } from "../obj/object.js";
 import type { ObjPackJson } from "../obj/types.js";
 import type { Trap } from "../game/trap.js";
@@ -98,6 +99,7 @@ describe("perceive facade (AgentView)", () => {
     const race = makeRace();
     race.name = "test-kobold";
     const mon = addMon(state, race, loc(12, 10));
+    mon.mflag.on(MFLAG.VISIBLE);
     const view = createAgentView(state);
 
     const monsters = view.monsters();
@@ -107,6 +109,13 @@ describe("perceive facade (AgentView)", () => {
 
     const cell = view.cell(12, 10);
     expect(cell?.monster).toBe(mon.midx);
+    /* An occupant the player cannot perceive is not on the player's map. */
+    mon.mflag.off(MFLAG.VISIBLE);
+    expect(view.cell(12, 10)?.monster).toBe(0);
+    mon.mflag.on(MFLAG.VISIBLE);
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    expect(view.cell(12, 10)?.monster).toBe(0);
+    expect(view.cell(10, 10)?.monster).toBeLessThan(0);
     expect(cell?.passable).toBe(true);
     /* Out of bounds returns null. */
     expect(view.cell(-1, -1)).toBeNull();
@@ -287,6 +296,8 @@ describe("flag-code mapping (guards the per-table offset)", () => {
     state.gear.pack.push(1);
     state.gear.store.set(1, obj);
     const view = createAgentView(state);
+    expect(view.inventory()[0]?.flags, "an unlearned rune is not listed").not.toContain("SEE_INVIS");
+    state.actor.player.objKnown.flags.on(OF.SEE_INVIS);
     expect(view.inventory()[0]?.flags).toContain("SEE_INVIS");
   });
 
@@ -334,8 +345,11 @@ describe("ItemView rich fields", () => {
     obj.flags.on(OF.FREE_ACT);
     obj.modifiers[0] = 3; /* OBJ_MOD STR (index 0). */
     obj.note = "test-note";
+    obj.notice |= OBJ_NOTICE.ASSESSED;
     state.gear.pack.push(1);
     state.gear.store.set(1, obj);
+    state.actor.player.objKnown.flags.on(OF.FREE_ACT);
+    state.actor.player.objKnown.modifiers[0] = 1;
     const view = createAgentView(state);
     const item = view.inventory()[0];
 
@@ -351,6 +365,38 @@ describe("ItemView rich fields", () => {
     /* No deps supplied: kindId/value stay omitted. */
     expect(item?.kindId).toBeUndefined();
     expect(item?.value).toBeUndefined();
+  });
+});
+
+describe("ItemView reports what the player knows", () => {
+  it("hides an unidentified ego, an unassessed artifact and unlearned bonuses", () => {
+    const state = makeState();
+    const ego = objReg.egos.find((e) => e && e.name);
+    const art = objReg.artifacts.find((a) => a && a.name);
+    if (!ego || !art) throw new Error("the content pack has no ego or artifact");
+    const sword = makeItem(TV.SWORD);
+    sword.ego = ego;
+    sword.toH = 7;
+    sword.toD = 5;
+    sword.notice |= OBJ_NOTICE.ASSESSED;
+    const relic = makeItem(TV.SWORD);
+    relic.artifact = art;
+    state.gear.pack.push(1, 2);
+    state.gear.store.set(1, sword);
+    state.gear.store.set(2, relic);
+    const p = state.actor.player;
+    p.objKnown.toH = 0;
+    p.objKnown.toD = 0;
+    const [egoView, artView] = createAgentView(state).inventory();
+    expect(egoView).toMatchObject({ ego: false, egoName: null, toH: 0, toD: 0 });
+    expect(artView).toMatchObject({ artifact: false, artifactName: null });
+    /* Assessing the relic shows it for what it is, as object_desc would. */
+    relic.notice |= OBJ_NOTICE.ASSESSED;
+    p.objKnown.toH = 1;
+    p.objKnown.toD = 1;
+    const [egoAgain, artAgain] = createAgentView(state).inventory();
+    expect(egoAgain).toMatchObject({ toH: 7, toD: 5 });
+    expect(artAgain).toMatchObject({ artifact: true, artifactName: art.name });
   });
 });
 
@@ -675,6 +721,7 @@ describe("pre-freeze gap closures", () => {
       { power: 0, timeout: 0 },
       { power: 5, timeout: 0 },
     ];
+    obj.notice |= OBJ_NOTICE.ASSESSED;
     /* Install a named curse at index 1 on the always-present RuneEnv table. */
     state.runeEnv = {
       ...state.runeEnv,
@@ -683,6 +730,8 @@ describe("pre-freeze gap closures", () => {
     state.gear.pack.push(1);
     state.gear.store.set(1, obj);
 
+    expect(createAgentView(state).inventory()[0]?.curses, "an unknown curse is not listed").toEqual([]);
+    state.actor.player.objKnown.curses[1] = 1;
     const item = createAgentView(state).inventory()[0];
     expect(item?.curses).toEqual(["teleportation"]);
   });
