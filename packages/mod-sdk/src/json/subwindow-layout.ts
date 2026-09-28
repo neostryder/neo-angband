@@ -48,6 +48,8 @@ export interface RememberedPlaceData {
   dock?: LayoutNodeData;
   float?: Omit<FloatRectData, "id">;
   last: "dock" | "float";
+  /** Set aside by the game while its mod stopped providing it; it returns here when the mod provides it again. */
+  parked?: boolean;
 }
 
 export type LayoutTileId = "main" | (typeof SUBWINDOW_LAYOUT_IDS)[number] | `${string}:${string}`;
@@ -136,6 +138,7 @@ const place = json.object({
   dock: json.optional(layoutNode),
   float: json.optional(floatGeometry),
   last: json.enum(["dock", "float"] as const),
+  parked: json.optional(json.boolean),
 });
 const validator = json.object({
   enabled: json.map(json.boolean, subwindowId),

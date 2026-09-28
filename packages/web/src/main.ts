@@ -589,8 +589,8 @@ import {
   type SubwindowState,
 } from "./subwindows";
 import { mountSubwindowShell } from "./subwindow-shell";
-import { bindPanelProviders, panelKinds, syncPanelProviders, unregisterAllPanelKinds } from "./panel-provider";
-import { applyDrop, containsLeaf, dockBesideMain, insertAtEdge, removeLeaf, restoreDockPlace, swapLeaves, tabInto, type LayoutNode } from "./subwindow-layout";
+import { bindPanelProviders, panelKinds, settlePanelProviders, syncPanelProviders, unregisterAllPanelKinds } from "./panel-provider";
+import { applyDrop, containsLeaf, dockBesideMain, insertAtEdge, removeLeaf, restoreDockPlace, swapLeaves, tabInto, type LayoutNode, type RememberedPlace } from "./subwindow-layout";
 import { readWmSettings, writeWmSettings, type WmSettings } from "./wm-settings";
 import {
   inventoryScreen,
@@ -1135,7 +1135,10 @@ const subwindowShell = mountSubwindowShell({
    * changes, so saying it here is a one-time notice rather than a repeat on
    * every resize tick. */
   onMerged: (merges) => {
-    const note = describeSubwindowsMerged(merges);
+    const note = describeSubwindowsMerged(merges, (id) => {
+      const spec = panelKinds().find((kind) => kind.id === id)?.spec;
+      return spec ? spec.tab ?? spec.label : undefined;
+    });
     if (note) say(note);
   },
 });
@@ -1145,13 +1148,18 @@ const panelProviderHost = {
   tree: () => subwindowState.tree,
   forgetPanel: (id: string) => lastModTrees.delete(id),
   closePanel: (id: string) => setModPanelEnabledLive(id, false),
-  /* #296: a mod's panel opens the first time its kind is registered. A
-   * remembered place means the player has placed or closed it before, and
-   * that choice stands. */
+  /* #296: a mod's panel opens the first time its kind is registered, and
+   * again when the game set it aside because its feature was off. Any other
+   * remembered place means the player placed or closed it, and that choice
+   * stands. */
   offerPanel: (id: string) => {
-    if (subwindowState.places?.[id]) return;
+    const place = subwindowState.places?.[id];
+    if (place && !place.parked) return;
     setModPanelEnabledLive(id, true);
   },
+  modLoaded: (modId: string) => activeModCode().plugins.some((plugin) => plugin.id === modId),
+  modName: (modId: string) => diskPacks().packs.find((pack) => pack.manifest.id === modId)?.manifest.name,
+  parkPanel: (id: string) => setModPanelEnabledLive(id, false, true),
   removePanel: (id: string) => {
     const { [id]: _forgotten, ...places } = subwindowState.places ?? {};
     void _forgotten;
@@ -3037,13 +3045,25 @@ function placeModPanel(tree: LayoutNode, id: string): LayoutNode {
     : insertAtEdge(tree, id, preferred.target, preferred.edge);
 }
 
-function setModPanelEnabledLive(id: string, enabled: boolean): void {
+/** A remembered place, marked as set aside by the game (#296) or not. */
+function markParked(place: RememberedPlace, parked: boolean): RememberedPlace {
+  const { parked: _parked, ...rest } = place;
+  void _parked;
+  return parked ? { ...rest, parked: true } : rest;
+}
+
+/**
+ * Show or hide a mod's panel. `parked` hides it on the game's behalf rather
+ * than the player's, so it comes back when its kind is registered again.
+ */
+function setModPanelEnabledLive(id: string, enabled: boolean, parked = false): void {
   const entry = panelKinds().find((kind) => kind.id === id);
   if (enabled && !entry) return;
   let tree = subwindowState.tree;
   let floats = [...subwindowState.floats ?? []];
   const places = { ...subwindowState.places };
   if (enabled) {
+    if (places[id]) places[id] = markParked(places[id], false);
     if (containsLeaf(tree, id) || floats.some((entry) => entry.id === id)) return;
     if (places[id]?.last === "float" && places[id]?.float) {
       floats.push({ id, ...places[id].float });
@@ -3054,13 +3074,13 @@ function setModPanelEnabledLive(id: string, enabled: boolean): void {
   } else {
     const floating = floats.find((item) => item.id === id);
     if (floating) {
-      places[id] = { ...places[id], float: { x: floating.x, y: floating.y,
-        width: floating.width, height: floating.height }, last: "float" };
+      places[id] = markParked({ ...places[id], float: { x: floating.x, y: floating.y,
+        width: floating.width, height: floating.height }, last: "float" }, parked);
       floats = floats.filter((item) => item.id !== id);
     } else {
       if (!containsLeaf(tree, id)) return;
       lastModTrees.set(id, tree);
-      places[id] = { ...places[id], dock: tree, last: "dock" };
+      places[id] = markParked({ ...places[id], dock: tree, last: "dock" }, parked);
       tree = removeLeaf(tree, id);
     }
   }
@@ -15678,6 +15698,9 @@ installedHud = installHud(
   reportDisplayFault,
 );
 liveHudSink = hudFrameSink(installedHud, reportDisplayFault);
+/* Every enabled plugin has now run register() and hud(), the two hooks that
+ * register panel kinds, so a kind still missing from a loaded mod is off. */
+settlePanelProviders();
 
 /* THE MENUS. One grant for all of them (`ui:menu.replace`) rather than one per
  * menu id, which would be a consent list nobody could read; the finer choice is

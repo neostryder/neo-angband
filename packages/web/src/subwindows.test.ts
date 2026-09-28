@@ -3,6 +3,7 @@ import { parseDocument, serializeDocument, subwindowLayoutFormat } from "@rpgm-t
 import { COLOUR_RED, colorToCss } from "@rpgm-tools/neo-angband-core";
 import { MessageLog } from "./messages";
 import {
+  describeSubwindowsMerged,
   MessageSubwindowPainter,
   applySubwindowPrefBlock,
   canonicalSubwindowTree,
@@ -121,6 +122,24 @@ const allOff: SubwindowSettings = {
   items: false,
   "player-topbar": false,
 };
+
+describe("small-window notice names", () => {
+  it("names a mod's panel by its label, and never by its id", () => {
+    const merges = [{ id: "anybandui:spells", into: "monsters" }, { id: "gone:thing", into: "items" }];
+    const note = describeSubwindowsMerged(merges, (id) => (id === "anybandui:spells" ? "Spells" : undefined));
+    expect(note).toContain("Spells with Monsters");
+    expect(note).toContain("a mod's panel with Items");
+    expect(note).not.toContain("anybandui");
+    expect(note).not.toContain("gone:thing");
+  });
+
+  it("layout documents keep a panel the game set aside", () => {
+    const tree = { kind: "split", axis: "v", ratio: 0.7, first: { kind: "leaf", id: "main" }, second: { kind: "leaf", id: "anybandui:spells" } };
+    const doc = { enabled: {}, tree: { kind: "leaf", id: "main" }, mapTileMode: 0, places: { "anybandui:spells": { dock: tree, last: "dock", parked: true } } };
+    const parsed = parseDocument(serializeDocument(subwindowLayoutFormat, doc as never), subwindowLayoutFormat);
+    expect(parsed.ok && parsed.data.places?.["anybandui:spells"]?.parked).toBe(true);
+  });
+});
 
 describe("subwindow settings", () => {
   it("keeps the map pack through toggles, reloads, and pref-file save/restore with all panels closed", () => {

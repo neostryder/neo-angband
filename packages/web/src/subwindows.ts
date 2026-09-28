@@ -234,10 +234,14 @@ export function enabledSubwindowIds(settings: SubwindowSettings): SubwindowId[] 
  * The shell reports only when the merged set changes, so a resize does not
  * repeat it.
  */
-export function describeSubwindowsMerged(merges: readonly { id: string; into: string }[]): string {
+export function describeSubwindowsMerged(
+  merges: readonly { id: string; into: string }[],
+  modLabel: (id: string) => string | undefined = () => undefined,
+): string {
   if (merges.length === 0) return "";
   const labelById = new Map<string, string>(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.tab]));
-  const label = (id: string): string => labelById.get(id) ?? id;
+  const label = (id: string): string =>
+    labelById.get(id) ?? modLabel(id) ?? t("subwindows.note.modPanel", "a mod's panel");
   const pairs = merges.map((merge) => t(
     "subwindows.note.mergedPair",
     "{panel} with {other}",

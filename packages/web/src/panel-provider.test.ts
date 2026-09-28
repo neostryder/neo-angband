@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { modPluginContext } from "./mod-context";
-import { bindPanelProviders, registerPanelKind, syncPanelProviders, unregisterAllPanelKinds } from "./panel-provider";
+import { bindPanelProviders, registerPanelKind, settlePanelProviders, syncPanelProviders, unregisterAllPanelKinds, type PanelProviderHost } from "./panel-provider";
 import { mountSubwindowShell } from "./subwindow-shell";
 import { browserKeydown, clearInputDoor, inputEvents, installBrowserAdapter, setDomKeyboardOwner } from "./input-door";
 import { containsLeaf, removeLeaf, selectTab, type LayoutNode } from "./subwindow-layout";
@@ -11,7 +11,7 @@ const main: LayoutNode = { kind: "leaf", id: "main" };
 const withPanel: LayoutNode = { kind: "split", axis: "v", ratio: 0.7,
   first: main, second: { kind: "leaf", id: "sample:editor" } };
 
-function setup(initial: LayoutNode = withPanel, offerPanel?: (id: string) => void) {
+function setup(initial: LayoutNode = withPanel, extra: Partial<PanelProviderHost> = {}) {
   document.body.innerHTML = '<div id="host"><div id="main"><canvas></canvas></div></div>';
   const host = document.getElementById("host")!;
   const mainSlot = document.getElementById("main")!;
@@ -25,7 +25,7 @@ function setup(initial: LayoutNode = withPanel, offerPanel?: (id: string) => voi
   shell.apply(tree);
   const unbind = bindPanelProviders({ shell, tree: () => tree,
     changeTree(next) { tree = next; shell.apply(tree); },
-    ...(offerPanel ? { offerPanel } : {}),
+    ...extra,
   });
   shell.setGameLive(true);
   return { shell, tree: () => tree, change(next: LayoutNode) { tree = next; shell.apply(tree); },
@@ -50,13 +50,13 @@ describe("tiled panel providers", () => {
   it("shows a missing mod placeholder and fills the same slot on registration", () => {
     const page = setup();
     const slot = page.shell.slot("sample:editor")!;
-    expect(slot.textContent).toContain("This panel's mod, sample, is not loaded.");
+    expect(slot.textContent).toContain("This panel's mod is not installed.");
     const mount = vi.fn();
     const unregister = registerPanelKind("sample", { kind: "editor", label: "Editor", mount });
     expect(mount).toHaveBeenCalledOnce();
     expect(slot.querySelector(".tile-panel-placeholder")).toBeNull();
     unregister();
-    expect(slot.textContent).toContain("not loaded");
+    expect(slot.textContent).toContain("not installed");
     slot.querySelector<HTMLButtonElement>(".tile-panel-placeholder button")!.click();
     expect(containsLeaf(page.tree(), "sample:editor")).toBe(false);
     page.close();
@@ -64,7 +64,7 @@ describe("tiled panel providers", () => {
 
   it("offers a newly registered kind once, and not one already on screen (#296)", () => {
     const offerPanel = vi.fn();
-    const page = setup(withPanel, offerPanel);
+    const page = setup(withPanel, { offerPanel });
     registerPanelKind("sample", { kind: "editor", label: "Editor", mount: vi.fn() });
     expect(offerPanel).not.toHaveBeenCalled();
     const unregister = registerPanelKind("sample", { kind: "quickbar", label: "Quickbar", mount: vi.fn() });
@@ -74,6 +74,35 @@ describe("tiled panel providers", () => {
     unregister();
     registerPanelKind("sample", { kind: "quickbar", label: "Quickbar", mount: vi.fn() });
     expect(offerPanel).toHaveBeenCalledTimes(2);
+    page.close();
+  });
+
+  it("names a missing mod by its proper name, and not by its id", () => {
+    const named = setup(withPanel, { modName: (id) => (id === "sample" ? "Sample Editor" : undefined) });
+    expect(named.shell.slot("sample:editor")!.textContent).toContain("This panel's mod, Sample Editor, is not loaded.");
+    named.close();
+    const unknown = setup();
+    const text = unknown.shell.slot("sample:editor")!.textContent ?? "";
+    expect(text).toContain("This panel's mod is not installed.");
+    expect(text).not.toContain("sample");
+    unknown.close();
+  });
+
+  it("sets aside a panel its loaded mod stopped providing, once mods have settled (#296)", () => {
+    const parkPanel = vi.fn();
+    const page = setup(withPanel, { parkPanel, modLoaded: (id) => id === "sample" });
+    expect(parkPanel).not.toHaveBeenCalled();
+    settlePanelProviders();
+    expect(parkPanel).toHaveBeenCalledExactlyOnceWith("sample:editor");
+    page.close();
+  });
+
+  it("keeps the placeholder for a panel whose mod is not loaded", () => {
+    const parkPanel = vi.fn();
+    const page = setup(withPanel, { parkPanel, modLoaded: () => false });
+    settlePanelProviders();
+    expect(parkPanel).not.toHaveBeenCalled();
+    expect(page.shell.slot("sample:editor")!.querySelector(".tile-panel-placeholder")).not.toBeNull();
     page.close();
   });
 

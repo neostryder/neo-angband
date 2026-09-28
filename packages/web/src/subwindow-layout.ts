@@ -29,6 +29,8 @@ export interface RememberedPlace {
   dock?: LayoutNode;
   float?: Omit<FloatRect, "id">;
   last: "dock" | "float";
+  /** Set aside by the host while its mod stopped providing it (#296); it returns here when the kind is registered again. */
+  parked?: boolean;
 }
 export type SplitAxis = "h" | "v";
 export type DockEdge = "left" | "right" | "top" | "bottom";

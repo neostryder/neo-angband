@@ -52,6 +52,9 @@ still calls itself.
 - [Visible] [UI] **A mod's panels open when you first turn it on.** Each one opens where the mod places it, and a panel you close stays closed until you add it again from Subwindow setup (#296).
 - [Visible] [UI] **Panels opened beside the dungeon view no longer shrink it each time.** A new panel on a side that already has panels joins them and shares their space, so only the first panel on each side takes room from the map (#297).
 
+### Fixed
+- [Visible] [UI] **Turning off a mod feature no longer leaves a "mod is not loaded" pane behind.** The pane leaves the screen and comes back to the same place when you turn the feature on again. A pane whose mod is missing now names the mod instead of showing its id (#298).
+
 ## [1.19.0] - 2026-09-27
 
 ### Added

@@ -13,6 +13,9 @@ export interface RegisteredPanelKind {
 
 const kinds = new Map<string, RegisteredPanelKind>();
 let changed: (() => void) | undefined;
+/* Every enabled mod has had its chance to register kinds. Until then a kind
+ * missing from a loaded mod may still be on its way. */
+let settled = false;
 
 export function panelKinds(): readonly RegisteredPanelKind[] {
   return [...kinds.values()];
@@ -70,6 +73,16 @@ export interface PanelProviderHost {
    * kind is registered again. The host decides whether to open it.
    */
   offerPanel?(id: string): void;
+  /** Whether this mod's code is running this session. */
+  modLoaded?(modId: string): boolean;
+  /** The mod's name as players see it, when the game knows it. */
+  modName?(modId: string): string | undefined;
+  /**
+   * A loaded mod stopped providing this panel, most often because the player
+   * turned off the feature behind it. The host takes the panel off screen and
+   * keeps its place, so it returns there when the kind is registered again.
+   */
+  parkPanel?(id: string): void;
 }
 
 /** Bind once to the game shell; registrations may arrive before or after it. */
@@ -112,6 +125,11 @@ export function bindPanelProviders(host: PanelProviderHost): () => void {
       offered.add(id);
       if (!leafIds(host.tree()).includes(id) && !host.shell.floatingIds().includes(id)) host.offerPanel?.(id);
     }
+    if (settled && host.parkPanel && host.modLoaded) {
+      for (const id of new Set([...leafIds(host.tree()), ...host.shell.floatingIds()])) {
+        if (id.includes(":") && !kinds.has(id) && host.modLoaded(id.split(":")[0]!)) host.parkPanel(id);
+      }
+    }
     const tree = host.tree();
     const ids = new Set([...leafIds(tree), ...host.shell.floatingIds()].filter((id) => id.includes(":")));
     for (const id of hinted) if (!ids.has(id) || !kinds.has(id)) {
@@ -133,7 +151,11 @@ export function bindPanelProviders(host: PanelProviderHost): () => void {
         const box = document.createElement("div");
         box.className = "tile-panel-placeholder";
         const message = document.createElement("p");
-        message.textContent = t("subwindows.placeholder.missingMod", "This panel's mod, {mod}, is not loaded.", { mod: id.split(":")[0] ?? id });
+        const name = host.modName?.(id.split(":")[0]!);
+        host.shell.setPanelLabel(id, name ?? t("subwindows.placeholder.title", "Missing panel"));
+        message.textContent = name
+          ? t("subwindows.placeholder.missingMod", "This panel's mod, {mod}, is not loaded.", { mod: name })
+          : t("subwindows.placeholder.unknownMod", "This panel's mod is not installed.");
         const remove = document.createElement("button");
         remove.type = "button";
         remove.textContent = t("subwindows.placeholder.remove", "Remove");
@@ -223,7 +245,14 @@ export function syncPanelProviders(): void {
   changed?.();
 }
 
+/** Call once every enabled mod has run the hooks that register panel kinds. */
+export function settlePanelProviders(): void {
+  settled = true;
+  changed?.();
+}
+
 export function unregisterAllPanelKinds(): void {
+  settled = false;
   kinds.clear();
   changed?.();
 }

@@ -115,7 +115,7 @@ describe("floating subwindows", () => {
     const page = setup(modTree);
     page.shell.slot("sample:editor")!.querySelector<HTMLButtonElement>(".tile-float-action")!.click();
     const slot = page.shell.slot("sample:editor")!;
-    expect(slot.textContent).toContain("This panel's mod, sample, is not loaded.");
+    expect(slot.textContent).toContain("This panel's mod is not installed.");
     page.change({ ...page.state(), floats: [{ id: "sample:editor", x: 0.9, y: 0.9, width: 0.5, height: 0.5 }] });
     Object.defineProperty(page.host, "clientWidth", { value: 300, configurable: true });
     Object.defineProperty(page.host, "clientHeight", { value: 200, configurable: true });
