@@ -87,7 +87,9 @@ function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
   for (let i = 1; i < state.monsters.length; i++) {
     const m = state.monsters[i];
     if (!m) continue;
-    if (deps.perceivedMonstersOnly && !monsterIsObvious(m)) continue;
+    /* The monsters the player perceives, as the game's own monster list shows
+     * them, in every view: a controller's included. */
+    if (!monsterIsObvious(m)) continue;
     const view: MonsterView = {
       id: m.midx,
       race: m.race.name,

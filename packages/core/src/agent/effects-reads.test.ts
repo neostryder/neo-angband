@@ -141,6 +141,12 @@ describe("reads for interface effects", () => {
   it("marks unique monsters and the guardian of the last quest", () => {
     const game = startGame(pack, { seed: 4242, depth: 10 });
     const state = game.state;
+    /* Only perceived monsters are listed; let the player see them all. */
+    for (const m of state.monsters) {
+      if (!m) continue;
+      m.mflag.on(MFLAG.VISIBLE);
+      m.mflag.off(MFLAG.CAMOUFLAGE);
+    }
     const monsters = viewFor(game).view.monsters();
     expect(monsters.length).toBeGreaterThan(0);
     for (const m of monsters) {
@@ -224,7 +230,7 @@ describe("a mod's monster read (#293)", () => {
     expect(perceived).toContain(seen.midx);
     expect(perceived).not.toContain(unseen.midx);
     expect(perceived).not.toContain(mimic.midx);
-    /* The controller's view is unchanged. */
-    expect(ids(false)).toEqual(expect.arrayContaining([seen.midx, unseen.midx, mimic.midx]));
+    /* A controller's view follows the same rule. */
+    expect(ids(false)).toEqual(perceived);
   });
 });

@@ -57,6 +57,13 @@ const objReg = new ObjRegistry(objPack);
 const objConstants = bindConstants(loadJson("constants"));
 
 /** A hand-built object of the given tval, cleared of flags/mods for tests. */
+/** A monster the player can see, as the monster list and cells report only those. */
+function seenMon(...args: Parameters<typeof addMon>): ReturnType<typeof addMon> {
+  const mon = addMon(...args);
+  mon.mflag.on(MFLAG.VISIBLE);
+  return mon;
+}
+
 function makeItem(tval: number): GameObject {
   const kind = objReg.kinds.find(
     (k) => k.tval === tval && k.kidx < objReg.ordinaryKindCount,
@@ -304,7 +311,7 @@ describe("flag-code mapping (guards the per-table offset)", () => {
   it("maps a known RF_* flag on a race to its expected code", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const race = makeRace({ flags: [RF.UNIQUE] });
-    addMon(state, race, loc(11, 10));
+    seenMon(state, race, loc(11, 10));
     const view = createAgentView(state);
     expect(view.monsters()[0]?.raceFlags).toContain("UNIQUE");
   });
@@ -404,7 +411,7 @@ describe("MonsterView rich fields", () => {
   it("reports level, raceFlags, and spellFlags from the race", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const race = makeRace({ level: 7, flags: [RF.UNIQUE, RF.MALE] });
-    addMon(state, race, loc(12, 10));
+    seenMon(state, race, loc(12, 10));
     const view = createAgentView(state);
     const mon = view.monsters()[0];
 
@@ -581,7 +588,7 @@ describe("CellView / MonsterView glyphs (1.1.0)", () => {
   it("takes a monster's character from the table", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const race = makeRace({});
-    addMon(state, race, loc(12, 10));
+    seenMon(state, race, loc(12, 10));
     const view = createAgentView(state, undefined, { glyphs: spy });
     expect(view.monsters()[0]?.glyph).toBe(`m${String(race.ridx)}`);
   });
@@ -740,7 +747,7 @@ describe("pre-freeze gap closures", () => {
 describe("perceive: partial resolver degrades, never throws (W1.5)", () => {
   it("omits monster raceId and item kindId when the resolver lacks them", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
-    addMon(state, makeRace(), loc(11, 10));
+    seenMon(state, makeRace(), loc(11, 10));
     // A resolver bound only to objects/player - no monster races, no kinds.
     const resolver = new ContentIdResolver({
       objects: new ObjRegistry({

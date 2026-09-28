@@ -792,10 +792,8 @@ export interface AgentViewDeps {
   /** OPT(player, birth_no_selling), for store buy pricing. */
   noSelling?: boolean;
   /**
-   * List only the monsters the player perceives as monsters
-   * (monster_is_obvious: visible, which detection and telepathy also set, and
-   * not a mimic still posing as an object), as the monster list shows them. A
-   * mod's reads set this; an autoplayer's controller keeps the full list.
+   * No longer has any effect: every view lists only the monsters the player
+   * perceives (monster_is_obvious). Kept so existing callers still compile.
    */
   perceivedMonstersOnly?: boolean;
 }
