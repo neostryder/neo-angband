@@ -40,6 +40,7 @@ import { itemView, playerViewFor } from "./entity-views.js";
 import { simulateLoadout } from "./loadout.js";
 import { captureCoreSnapshot, inputToken } from "./boundary.js";
 import { captureKnownLevel } from "./known-level.js";
+import { knownFloorObject, knownPile } from "../game/known.js";
 import { createInspectView } from "./inspect.js";
 import { AGENT_API_VERSION, AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types.js";
 import type {
@@ -154,7 +155,8 @@ function cellView(
     inView: c.sqinfoHas(grid, SQUARE["VIEW"]),
     known: (state.known.feat[idx] ?? -1) >= 0,
     monster: perceivedOccupant(state, c.mon(grid)),
-    objectCount: (state.floor.get(idx) ?? []).length,
+    /* The player's floor memory, which the map draws from, not the live pile. */
+    objectCount: knownPile(state, grid).length,
     glow: c.sqinfoHas(grid, SQUARE["GLOW"]),
     /* square_isdisarmabletrap, not "the trap list is non-empty": a closed door's
      * lock, a glyph of warding, a web and a decoy are all trap records, and none
@@ -376,9 +378,15 @@ export function createAgentView(
       const pile = state.floor.get(y * state.chunk.width + x) ?? [];
       /* A floor object has no handle, so it is named by where it lies. The
        * index is the one a command's args.floor takes for the pile under the
-       * player, and the key changes when the pile does. */
-      return pile.map((obj, index) =>
-        ({ ...itemView(0, obj, state, deps), itemKey: `floor:${x},${y}:${index}`, floorIndex: index }));
+       * player, and the key changes when the pile does. Only objects the player
+       * remembers exactly are listed; one only sensed, or never seen, is not. */
+      const grid = { x, y };
+      return pile.flatMap((obj, index) => {
+        const memory = knownFloorObject(state, grid, obj);
+        return memory && !memory.sensed
+          ? [{ ...itemView(0, obj, state, deps), itemKey: `floor:${x},${y}:${index}`, floorIndex: index }]
+          : [];
+      });
     }),
     target: gateRead(caps, D.target, (): TargetView | null => {
       const t = state.target;

@@ -320,7 +320,7 @@ export interface CellView {
    * `square(c, grid)->mon` stores it. Check `> 0` before looking the id up.
    */
   monster: number;
-  /** Number of floor objects on the square. */
+  /** Objects the player remembers on the square, sensed ones included. */
   objectCount: number;
   /** SQUARE_GLOW: the square is self-illuminating. */
   glow: boolean;
@@ -648,7 +648,11 @@ export interface AgentView {
   quiver?(): ItemView[];
   /** Worn equipment by body slot; null for an empty slot. */
   equipment(): Array<ItemView | null>;
-  /** Floor objects on a grid (head-first, newest drop first). */
+  /**
+   * Floor objects on a grid that the player remembers exactly (head-first,
+   * newest drop first). Each keeps its index in the live pile, which is what a
+   * command's args.floor takes.
+   */
   floorItems(x: number, y: number): ItemView[];
   /** The current target, or null when none is set. */
   target(): TargetView | null;

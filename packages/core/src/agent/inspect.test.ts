@@ -180,6 +180,10 @@ describe("inspection reads", () => {
     const floorKey = grid.y * state.chunk.width + grid.x;
     const objs = [0, 1].map(() => objectPrep(state.rng, game.booted.registries.objects, game.booted.registries.constants, potion, 1, "minimise"));
     state.floor.set(floorKey, objs);
+    expect(createAgentView(state).floorItems(grid.x, grid.y), "objects the player has not seen are not listed").toEqual([]);
+    expect(createAgentView(state).cell(grid.x, grid.y)?.objectCount).toBe(0);
+    for (const obj of objs) objectSeeAt(state, grid, obj);
+    expect(createAgentView(state).cell(grid.x, grid.y)?.objectCount).toBe(2);
     const bare = createAgentView(state).floorItems(grid.x, grid.y);
     expect(bare.map((item) => [item.itemKey, item.floorIndex])).toEqual([
       [`floor:${grid.x},${grid.y}:0`, 0], [`floor:${grid.x},${grid.y}:1`, 1]]);
