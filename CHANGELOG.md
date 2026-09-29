@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 - [Visible] [Modding-API] **Mods can check an item's flags the way the game does, counting the flags its curses grant, with `objHasFlag` and `objCanTakeoff`.** (#283)
+- [Visible] [Modding-API] **Mod effects can raise and lower experience the way the game's own effects do.** `playerExpGain`, `playerExpLose` and the rest of the experience helpers are now exported, and `effectExpDeps(ctx, env)` gives a handler what those calls need, so a mod can drain experience without making the loss permanent.
 
 ### Changed
 - [Visible] [UI] **New installs open with the dungeon view alone, as the original does, and screens that can also be panels say so.** The first few times you open the inventory, equipment, monster or item list, messages, character sheet, or a monster or object recall, a note says that `+` or the new `+` button keeps that screen open beside the map. On the first dungeon level, one line points to Subwindow setup. The notes stop once any panel is open, and a Panel tips switch in Subwindow setup turns them off. Existing installs keep their layout (#317).

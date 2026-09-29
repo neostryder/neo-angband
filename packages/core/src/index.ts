@@ -94,6 +94,7 @@ export * from "./player/history.js";
 export * from "./player/death.js";
 export * from "./player/abilities.js";
 export * from "./player/shape-lore.js";
+export * from "./player/exp.js";
 export * from "./save/buffer.js";
 export * from "./save/compress.js";
 export * from "./save/description.js";

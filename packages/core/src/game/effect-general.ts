@@ -134,8 +134,12 @@ function descStat(
 }
 
 
-/** The expDeps fallback: level changes still recompute, messages ride ctx. */
-function expDepsOf(
+/**
+ * The ExpDeps an effect handler passes to playerExpGain or playerExpLose: the
+ * game's own when it supplied them, otherwise level changes still recompute and
+ * messages go to the effect's message sink. Exported for mod effect handlers.
+ */
+export function effectExpDeps(
   ctx: EffectHandlerContext,
   env: GameEffectEnvLike,
 ): ExpDeps {
@@ -470,7 +474,7 @@ const handleRESTORE_EXP: EffectHandler = (ctx) => {
     if (ctx.origin.what !== "none") {
       say(ctx, "You feel your life energies returning.");
     }
-    playerExpGain(p, p.maxExp - p.exp, expDepsOf(ctx, env));
+    playerExpGain(p, p.maxExp - p.exp, effectExpDeps(ctx, env));
   }
 
   ctx.ident = true;
@@ -489,7 +493,7 @@ const handleGAIN_EXP: EffectHandler = (ctx) => {
 
   if (p.exp < PY_MAX_EXP) {
     say(ctx, "You feel more experienced.");
-    playerExpGain(p, Math.trunc(amount / 2), expDepsOf(ctx, env));
+    playerExpGain(p, Math.trunc(amount / 2), effectExpDeps(ctx, env));
   }
 
   ctx.ident = true;
@@ -1036,7 +1040,7 @@ const handleBIZARRE: EffectHandler = (ctx) => {
       }
 
       /* Lose some experience (permanently). */
-      playerExpLose(p, Math.trunc(p.exp / 4), true, expDepsOf(ctx, env));
+      playerExpLose(p, Math.trunc(p.exp / 4), true, effectExpDeps(ctx, env));
       state.updateBonuses?.();
       return true;
     }
