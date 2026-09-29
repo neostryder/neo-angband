@@ -1132,6 +1132,16 @@ export function loadGamePack(): GamePack {
      * register() at all, so composition is the ONLY route that reaches every
      * pack that would want one. */
     messageTypes: optionalRecords("message_type"),
+    /* #319: a pack's own monster spells, declared before bindCore binds a
+     * monster that casts one (core session/boot.ts declareModMonsterSpells).
+     * Core's own spells are compiled in and their records carry no `type`; a
+     * mod's declaration names its list-mon-spells.h type ("RST_BREATH |
+     * RST_INNATE"), so the records with one are the declarations. Without this
+     * field the first mod monster naming its own spell stopped the boot with
+     * "mon: invalid spell name". */
+    monsterSpells: records("monster_spell").filter(
+      (r) => typeof (r as { type?: unknown }).type === "string",
+    ),
     names: records("names"),
     store: records("store"),
     quest: records("quest"),

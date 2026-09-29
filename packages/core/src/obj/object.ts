@@ -1553,3 +1553,36 @@ seedTval((reg) => {
     return tval === TV.WAND || tval === TV.STAFF;
     });
 });
+
+/* ------------------------------------------------------------------ */
+/* Flags granted by curses (obj-util.c)                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * obj_has_flag (obj-util.c L844): the object's own flags, then the flags of
+ * every curse on it with non-zero power. `curses` is the bound curse registry
+ * (upstream's global curses[], 1-based, index 0 null). Stock 4.2.6 grants no
+ * object flag through a curse, but a pack may, and a curse carrying STICKY must
+ * pin its item exactly as an item's own STICKY does.
+ */
+export function objHasFlag(
+  obj: { readonly flags: FlagSet; readonly curses: readonly (CurseData | null | undefined)[] | null },
+  flag: number,
+  curses: readonly (Curse | null)[],
+): boolean {
+  if (obj.flags.has(flag)) return true;
+  if (obj.curses) {
+    for (let i = 1; i < curses.length; i++) {
+      if (obj.curses[i]?.power && curses[i]?.obj.flags.has(flag)) return true;
+    }
+  }
+  return false;
+}
+
+/** obj_can_takeoff (obj-util.c L792): no STICKY flag, whether its own or a curse's. */
+export function objCanTakeoff(
+  obj: { readonly flags: FlagSet; readonly curses: readonly (CurseData | null | undefined)[] | null },
+  curses: readonly (Curse | null)[],
+): boolean {
+  return !objHasFlag(obj, OF.STICKY, curses);
+}

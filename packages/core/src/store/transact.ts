@@ -49,11 +49,13 @@
  */
 
 import type { Constants } from "../constants.js";
-import { FEAT, OF, ORIGIN } from "../generated/index.js";
+import { FEAT, ORIGIN } from "../generated/index.js";
 import type { GameObject, StackLimits } from "../obj/object.js";
+import type { Curse } from "../obj/types.js";
 import {
   distributeCharges,
   objectAbsorb,
+  objCanTakeoff,
   objectMergeable,
   OSTACK_PACK,
   tvalCanHaveCharges,
@@ -103,10 +105,6 @@ function isEquipped(player: Player, handle: number): boolean {
   return player.equipment.includes(handle);
 }
 
-/** obj_can_takeoff (obj-util.c L794): only non-sticky items come off. */
-function objCanTakeoff(obj: GameObject): boolean {
-  return !obj.flags.has(OF.STICKY);
-}
 
 /** Knowledge learned by transacting an item. The rune learn loop runs on BOTH
  * sides of the counter (see the header); flavour awareness too. */
@@ -425,7 +423,7 @@ export function storeSell(
   if (!obj) return { ok: false, failure: "no-item" };
 
   /* Cannot remove stuck (sticky-cursed) equipped objects (ui-store.c L522). */
-  if (isEquipped(player, handle) && !objCanTakeoff(obj)) {
+  if (isEquipped(player, handle) && !objCanTakeoff(obj, ctx.deps.reg.curses)) {
     return { ok: false, failure: "stuck" };
   }
 
@@ -662,12 +660,15 @@ export function homeStash(
   player: Player,
   gear: Gear,
   constants: Constants,
+  /* The bound curse registry, so a curse-granted STICKY counts (store.c:2030's
+   * obj_can_takeoff). Omitted, only the item's own flag is seen. */
+  curses: readonly (Curse | null)[] = [],
 ): HomeResult {
   const obj = gear.store.get(handle);
   if (!obj) return { ok: false, failure: "no-item" };
 
   /* Cannot remove stuck (sticky-cursed) equipped objects. */
-  if (isEquipped(player, handle) && !objCanTakeoff(obj)) {
+  if (isEquipped(player, handle) && !objCanTakeoff(obj, curses)) {
     return { ok: false, failure: "stuck" };
   }
 

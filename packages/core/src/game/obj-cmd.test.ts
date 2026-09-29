@@ -7,7 +7,9 @@ import { Rng } from "../rng.js";
 import { EffectRegistry } from "../effects/interpreter.js";
 import { registerCoreHandlers } from "../effects/handlers.js";
 import { ObjRegistry } from "../obj/bind.js";
-import type { EffectRecordJson, ObjPackJson } from "../obj/types.js";
+import type { Curse, EffectRecordJson, ObjPackJson } from "../obj/types.js";
+import { newOfFlags } from "../obj/types.js";
+import { objCanTakeoff, objHasFlag } from "../obj/object.js";
 import { objectPrep } from "../obj/make.js";
 import type { GameObject } from "../obj/object.js";
 import {
@@ -1697,6 +1699,80 @@ describe("OF_STICKY enforcement (obj-util.c:794 obj_can_takeoff)", () => {
     expect(processPlayer(state, registry).energyUsed).toBe(0);
     expect(msgs.join("|")).toContain("You cannot remove the");
     expect(state.gear.pack).toContain(replacement);
+  });
+});
+
+describe("a STICKY granted by a curse pins its item (obj-util.c:844 obj_has_flag)", () => {
+  /*
+   * Upstream's obj_can_takeoff asks obj_has_flag, which reads the object's own
+   * flags and then the flags of every curse on it with power. No 4.2.6 curse
+   * grants STICKY, so the stock game cannot show the difference; a pack whose
+   * curse carries `flags:STICKY` can, and before this the port let the cursed
+   * item come straight off. #283.
+   */
+  const cursedArmour = (state: GameState, power: number): number => {
+    const flags = newOfFlags();
+    flags.on(OF.STICKY);
+    /* curses[] is 1-based with index 0 null, as upstream's is. */
+    const table = state.curses.length > 0 ? [...state.curses] : [null];
+    const index = table.length;
+    (state as { curses: readonly (Curse | null)[] }).curses = [
+      ...table,
+      { index, name: "test stickiness", obj: { flags } } as unknown as Curse,
+    ];
+    const armour = makeNamed("Soft Leather Armour~", TV.SOFT_ARMOR);
+    armour.curses = [];
+    armour.curses[index] = { power, timeout: 0 };
+    const h = carry(state, armour);
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state));
+    const commands = [{ code: "wield", args: { handle: h } }];
+    state.nextCommand = () => commands.shift() ?? null;
+    processPlayer(state, registry);
+    expect(state.actor.player.equipment, "fixture failed to equip").toContain(h);
+    return h;
+  };
+
+  const run = (state: GameState, code: string, args: Record<string, unknown>, msgs: string[] = []): number => {
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state, { env: { msg: (t) => msgs.push(t) } }));
+    const commands = [{ code, args }];
+    state.nextCommand = () => commands.shift() ?? null;
+    return processPlayer(state, registry).energyUsed;
+  };
+
+  it("refuses take-off, drop and wielding over it", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const h = cursedArmour(state, 30);
+    expect(run(state, "takeoff", { handle: h })).toBe(0);
+    const msgs: string[] = [];
+    expect(run(state, "drop", { handle: h, quantity: 1 }, msgs)).toBe(0);
+    expect(msgs).toContain("Hmmm, it seems to be stuck.");
+    const replacement = carry(state, makeNamed("Soft Leather Armour~", TV.SOFT_ARMOR));
+    const wieldMsgs: string[] = [];
+    expect(run(state, "wield", { handle: replacement }, wieldMsgs)).toBe(0);
+    expect(wieldMsgs.join("|")).toContain("You cannot remove the");
+    expect(state.actor.player.equipment).toContain(h);
+  });
+
+  it("lets the item go once the curse's power is gone", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const h = cursedArmour(state, 30);
+    gearGet(state.gear, h)!.curses![state.curses.length - 1]!.power = 0;
+    run(state, "takeoff", { handle: h });
+    expect(state.actor.player.equipment).not.toContain(h);
+  });
+
+  it("objHasFlag reads the item's own flag first and a curse's flag second", () => {
+    const flags = newOfFlags();
+    flags.on(OF.STICKY);
+    const curses = [null, { obj: { flags } } as unknown as Curse];
+    const own = newOfFlags();
+    expect(objHasFlag({ flags: own, curses: null }, OF.STICKY, curses)).toBe(false);
+    expect(objHasFlag({ flags: own, curses: [null, { power: 5, timeout: 0 }] }, OF.STICKY, curses)).toBe(true);
+    expect(objHasFlag({ flags: own, curses: [null, { power: 0, timeout: 0 }] }, OF.STICKY, curses)).toBe(false);
+    own.on(OF.STICKY);
+    expect(objCanTakeoff({ flags: own, curses: null }, [null])).toBe(false);
   });
 });
 

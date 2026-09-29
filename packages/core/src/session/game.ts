@@ -1083,6 +1083,7 @@ function wireGame(
           depth: state.chunk.depth,
           isDaytime: daytime,
         }).skills[SKILL.DIGGING] ?? 0,
+      reg.objects.curses,
     );
   };
 
@@ -1110,6 +1111,7 @@ function wireGame(
           depth: state.chunk.depth,
           isDaytime: daytime,
         }).skills[SKILL.DIGGING] ?? 0,
+      reg.objects.curses,
     );
   };
 
@@ -4113,6 +4115,7 @@ function makeStoreApi(
           state.actor.player,
           state.gear,
           reg.constants,
+          reg.objects.curses,
         );
         if (!r.ok) {
           return {

@@ -8,7 +8,8 @@ import { ObjRegistry } from "../obj/bind.js";
 import { ArtifactState, ObjAllocState, objectPrep } from "../obj/make.js";
 import type { MakeDeps } from "../obj/make.js";
 import type { GameObject, StackLimits } from "../obj/object.js";
-import type { ObjPackJson } from "../obj/types.js";
+import type { Curse, ObjPackJson } from "../obj/types.js";
+import { newOfFlags } from "../obj/types.js";
 import { bindPlayer } from "../player/bind.js";
 import { blankPlayer } from "../player/player.js";
 import type { Player } from "../player/player.js";
@@ -471,6 +472,28 @@ describe("storeSell from equipment / floor (ui-store.c L487 get_mode)", () => {
     expect(res.failure).toBe("stuck");
     expect(player.au).toBe(7); // no gold, still worn
     expect(player.equipment[0]).toBe(handle);
+  });
+
+  it("refuses an equipped item that a curse makes STICKY (#283)", () => {
+    const { ctx, stores, player, gear } = setup();
+    storeReset(ctx);
+    const weapon = stores.find((s) => s.feat === FEAT.STORE_WEAPON)!;
+    const curseFlags = newOfFlags();
+    curseFlags.on(OF.STICKY);
+    const reg = ctx.deps.reg as unknown as { curses: (Curse | null)[] };
+    const saved = reg.curses;
+    reg.curses = [null, { obj: { flags: curseFlags } } as unknown as Curse];
+    try {
+      const sword = makeObj(TV.SWORD);
+      sword.curses = [null, { power: 20, timeout: 0 }] as GameObject["curses"];
+      const handle = gearAdd(gear, sword);
+      player.equipment[0] = handle;
+      const res = storeSell(ctx, weapon, handle, 1, player, gear, NO_SELL);
+      expect(res.failure).toBe("stuck");
+      expect(player.equipment[0]).toBe(handle);
+    } finally {
+      reg.curses = saved;
+    }
   });
 
   it("storeSellFloor sells a floor-pile object via the supplied detach", () => {

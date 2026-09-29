@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FlagSet } from "../bitflag.js";
 import { OF, TV } from "../generated/index.js";
 import { OF_SIZE } from "../obj/types.js";
+import type { Curse } from "../obj/types.js";
 import type { GameObject } from "../obj/object.js";
 import { playerBestDiggerDigging } from "./best-digger.js";
 
@@ -18,6 +19,7 @@ function weapon(
     weight,
     number: opts.number ?? 1,
     flags,
+    curses: null,
   } as unknown as GameObject;
 }
 
@@ -59,6 +61,18 @@ describe("playerBestDiggerDigging (player_best_digger + swap)", () => {
       diggingByWeight,
     );
     expect(dig).toBe(30);
+  });
+
+  it("treats a STICKY granted by a curse on the wielded weapon the same way", () => {
+    /* obj_can_takeoff asks obj_has_flag, which counts a curse's flags (#283). */
+    const curseFlags = new FlagSet(OF_SIZE);
+    curseFlags.on(OF.STICKY);
+    const curses = [null, { obj: { flags: curseFlags } } as unknown as Curse];
+    const cursed = weapon(TV.SWORD, 30);
+    (cursed as { curses: unknown }).curses = [null, { power: 20, timeout: 0 }];
+    const shovel = weapon(TV.DIGGING, 200);
+    expect(playerBestDiggerDigging([cursed], [cursed, shovel], 0, diggingByWeight, curses)).toBe(30);
+    expect(playerBestDiggerDigging([cursed], [cursed, shovel], 0, diggingByWeight)).toBe(200);
   });
 
   it("falls back to unarmed digging when nothing melee is carried", () => {

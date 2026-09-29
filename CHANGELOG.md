@@ -48,9 +48,16 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+- [Visible] [Modding-API] **Mods can check an item's flags the way the game does, counting the flags its curses grant, with `objHasFlag` and `objCanTakeoff`.** (#283)
+
 ### Changed
 - [Visible] [UI] **New installs open with the dungeon view alone, as the original does, and screens that can also be panels say so.** The first few times you open the inventory, equipment, monster or item list, messages, character sheet, or a monster or object recall, a note says that `+` or the new `+` button keeps that screen open beside the map. On the first dungeon level, one line points to Subwindow setup. The notes stop once any panel is open, and a Panel tips switch in Subwindow setup turns them off. Existing installs keep their layout (#317).
 - [Visible] [UI] **Panels open in the same places whatever order you open them in.** Until you move, resize, tab or float a panel, the game arranges the open panels from a fixed side for each, and closing one gives its room back to the rest. Once you arrange anything by hand, a new panel docks beside the dungeon view and the others stay put. A layout saved without its panel positions gets the same automatic arrangement (#317).
+
+### Fixed
+- [Visible] [Modding-API] **A curse that grants STICKY now keeps its item on, as an item's own STICKY does.** You can't take the item off, drop it, throw it, sell it or wield something in its place, and tunnelling no longer swaps it for a better digger. The game's own curses grant no flags, so this matters only for curses a mod adds. (#283)
+- [Visible] [Modding-API] **A mod monster can cast a spell the same mod adds.** The game no longer stops loading with "mon: invalid spell name" when a mod declares its own monster spell. (#319)
 
 ## [1.19.1] - 2026-09-28
 

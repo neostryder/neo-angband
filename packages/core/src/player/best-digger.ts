@@ -17,9 +17,9 @@
  * any draw here).
  */
 
-import { OF } from "../generated/index.js";
 import type { GameObject } from "../obj/object.js";
-import { tvalIsMeleeWeapon } from "../obj/object.js";
+import { objCanTakeoff, tvalIsMeleeWeapon } from "../obj/object.js";
+import type { Curse } from "../obj/types.js";
 
 /**
  * player_best_digger + the do_cmd_tunnel_aux / compute_rubble_penalty swap:
@@ -41,12 +41,14 @@ export function playerBestDiggerDigging(
   gearObjects: readonly GameObject[],
   weaponSlot: number,
   computeDigging: (equipment: (GameObject | null)[]) => number,
+  curses: readonly (Curse | null)[] = [],
 ): number {
   const { swap, best } = bestDiggerSwap(
     liveEquipment,
     gearObjects,
     weaponSlot,
     computeDigging,
+    curses,
   );
   if (swap) {
     const equip = liveEquipment.slice();
@@ -66,12 +68,14 @@ export function playerBestDiggerWithClause(
   gearObjects: readonly GameObject[],
   weaponSlot: number,
   computeDigging: (equipment: (GameObject | null)[]) => number,
+  curses: readonly (Curse | null)[] = [],
 ): string {
   const { swap, currentWeapon } = bestDiggerSwap(
     liveEquipment,
     gearObjects,
     weaponSlot,
     computeDigging,
+    curses,
   );
   if (swap) return "with your swap digger";
   return currentWeapon === null ? "with your hands" : "with your weapon";
@@ -83,6 +87,7 @@ function bestDiggerSwap(
   gearObjects: readonly GameObject[],
   weaponSlot: number,
   computeDigging: (equipment: (GameObject | null)[]) => number,
+  curses: readonly (Curse | null)[],
 ): { best: GameObject | null; swap: boolean; currentWeapon: GameObject | null } {
   const currentWeapon =
     weaponSlot >= 0 ? (liveEquipment[weaponSlot] ?? null) : null;
@@ -96,7 +101,7 @@ function bestDiggerSwap(
     /* forbid_stack is false here, so any positive-count item qualifies. */
     if (obj.number < 1) continue;
     /* Don't use it if it has a sticky curse (obj_can_takeoff). */
-    if (obj.flags.has(OF.STICKY)) continue;
+    if (!objCanTakeoff(obj, curses)) continue;
 
     const candidate = liveEquipment.slice();
     if (weaponSlot >= 0) candidate[weaponSlot] = obj;
@@ -112,7 +117,7 @@ function bestDiggerSwap(
      off (a null current weapon - unarmed - always can). */
   const swap =
     best !== currentWeapon &&
-    (currentWeapon === null || !currentWeapon.flags.has(OF.STICKY));
+    (currentWeapon === null || objCanTakeoff(currentWeapon, curses));
 
   return { best, swap, currentWeapon };
 }

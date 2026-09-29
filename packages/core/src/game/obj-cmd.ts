@@ -53,6 +53,7 @@ import {
   tvalIsWearable,
   tvalCanHaveCharges,
   tvalCanHaveTimeout,
+  objCanTakeoff,
 } from "../obj/object.js";
 import {
   FlavorKnowledge,
@@ -809,7 +810,7 @@ export function objCanThrow(state: GameState, obj: GameObject): boolean {
   const worn = state.actor.player.equipment.some(
     (handle) => handle && gearGet(state.gear, handle) === obj,
   );
-  return !worn || (tvalIsMeleeWeapon(obj.tval) && !obj.flags.has(OF.STICKY));
+  return !worn || (tvalIsMeleeWeapon(obj.tval) && objCanTakeoff(obj, state.curses));
 }
 
 /** do_cmd_use's item eligibility and dispatch order (cmd-obj.c L961-996). */
@@ -1809,11 +1810,12 @@ export function installObjCommands(
     const displaced = displacedHandle ? gearGet(state.gear, displacedHandle) : null;
 
     /* Step 5: prevent wielding into a stickied slot (cmd-obj.c:313-320).
-     * obj_can_takeoff is !OF_STICKY (obj-util.c L794), and the refusal names the
+     * obj_can_takeoff is !obj_has_flag(OF_STICKY) (obj-util.c L794), counting a
+     * curse's STICKY as well as the item's own, and the refusal names the
      * stuck item by its base description plus equip_describe's wording for the
      * slot. Draws no RNG and spends no energy: the command aborts before
      * inven_wield. */
-    if (displaced && displaced.flags.has(OF.STICKY)) {
+    if (displaced && !objCanTakeoff(displaced, state.curses)) {
       deps.env?.msg?.(
         `You cannot remove the ${describeObject(state, displaced, ODESC.BASE)} ` +
           `you are ${equipDescribe(state, targetSlot)}.`,
@@ -1890,7 +1892,7 @@ export function installObjCommands(
     /* obj_can_takeoff (obj-util.c:794-796) is the takeoff-item filter in
      * do_cmd_takeoff (cmd-obj.c:251): a sticky item is not selectable, so this
      * direct command entry likewise aborts silently and spends no energy. */
-    if (obj?.flags.has(OF.STICKY)) return 0;
+    if (obj && !objCanTakeoff(obj, state.curses)) return 0;
     if (!invenTakeoff(state, handle)) return 0;
     /* inven_takeoff sets PU_INVEN and calls update_stuff ITSELF (obj-gear.c
      * L1058-1062), one line before its message - because that message names the
@@ -1943,7 +1945,7 @@ export function installObjCommands(
      * energy is spent and no RNG is drawn. */
     if (
       state.actor.player.equipment.includes(handle) &&
-      obj.flags.has(OF.STICKY)
+      !objCanTakeoff(obj, state.curses)
     ) {
       deps.env?.msg?.("Hmmm, it seems to be stuck.");
       return 0;
