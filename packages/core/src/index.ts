@@ -71,6 +71,7 @@ export * from "./obj/randart.js";
 export * from "./obj/randart-registry.js";
 export * from "./obj/rune-registry.js";
 export * from "./obj/tval-registry.js";
+export * from "./obj/tval-table.js";
 /* The randart BUILD primitives (addFlag / addMod / addResist / addBrand /
  * addToHit / ... ) and the set profile. A mod's registry:randart handler is
  * written exactly the way core's arms are written - by calling these - so a

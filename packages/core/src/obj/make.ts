@@ -88,9 +88,9 @@ import {
   OBJ_PROPERTY,
   OF_SIZE,
   OFT,
-  TV_MAX,
 } from "./types.js";
 import type { RandomValue } from "../rng.js";
+import { FIRST_MOD_TVAL } from "./tval-table.js";
 
 /** randcalc(v, 0, MINIMISE) without an Rng (consumes no randomness). */
 function randcalcMin(v: RandomValue): number {
@@ -268,7 +268,9 @@ export class ObjAllocState {
   /** Cumulative prob table: (maxObjDepth+1) rows of (kMax+1). */
   private readonly objAlloc: Uint32Array;
   private readonly objAllocGreat: Uint32Array;
-  /** Per-tval totals: (maxObjDepth+1) rows of TV_MAX. */
+  /** One row of the totals below: every tval a kind uses, declared classes included. */
+  private readonly tvMax: number;
+  /** Per-tval totals: (maxObjDepth+1) rows of tvMax. */
   private readonly objTotalTval: Uint32Array;
   private readonly objTotalTvalGreat: Uint32Array;
   /** alloc_ego_table, sorted by ego alloc_min. */
@@ -279,12 +281,16 @@ export class ObjAllocState {
     this.reg = reg;
     this.kMax = reg.kinds.length;
     this.maxObjDepth = constants.maxObjDepth;
+    /* Wide enough for every kind's tval, declared classes included
+     * (obj/tval-table.ts). */
+    this.tvMax = FIRST_MOD_TVAL;
+    for (const kind of reg.kinds) if (kind && kind.tval >= this.tvMax) this.tvMax = kind.tval + 1;
 
     const rows = this.maxObjDepth + 1;
     this.objAlloc = new Uint32Array(rows * (this.kMax + 1));
     this.objAllocGreat = new Uint32Array(rows * (this.kMax + 1));
-    this.objTotalTval = new Uint32Array(rows * TV_MAX);
-    this.objTotalTvalGreat = new Uint32Array(rows * TV_MAX);
+    this.objTotalTval = new Uint32Array(rows * this.tvMax);
+    this.objTotalTvalGreat = new Uint32Array(rows * this.tvMax);
 
     /* alloc_init_objects: fill the cumulative probability tables. */
     for (let item = 0; item < this.kMax; item++) {
@@ -298,14 +304,14 @@ export class ObjAllocState {
         const row = lev * (this.kMax + 1);
         this.objAlloc[row + item + 1] =
           (this.objAlloc[row + item] as number) + rarity;
-        this.objTotalTval[lev * TV_MAX + kind.tval] =
-          (this.objTotalTval[lev * TV_MAX + kind.tval] as number) + rarity;
+        this.objTotalTval[lev * this.tvMax + kind.tval] =
+          (this.objTotalTval[lev * this.tvMax + kind.tval] as number) + rarity;
 
         if (!good) rarity = 0;
         this.objAllocGreat[row + item + 1] =
           (this.objAllocGreat[row + item] as number) + rarity;
-        this.objTotalTvalGreat[lev * TV_MAX + kind.tval] =
-          (this.objTotalTvalGreat[lev * TV_MAX + kind.tval] as number) +
+        this.objTotalTvalGreat[lev * this.tvMax + kind.tval] =
+          (this.objTotalTvalGreat[lev * this.tvMax + kind.tval] as number) +
           rarity;
       }
     }
@@ -378,7 +384,7 @@ export class ObjAllocState {
   ): ObjectKind | null {
     const objects = good ? this.objAllocGreat : this.objAlloc;
     const totals = good ? this.objTotalTvalGreat : this.objTotalTval;
-    const total = totals[level * TV_MAX + tval] as number;
+    const total = totals[level * this.tvMax + tval] as number;
     if (!total) return null;
 
     let value = rng.randint0(total);

@@ -37,7 +37,6 @@ import {
   OF,
   RF,
   STAT_ENTRIES,
-  TVAL_ENTRIES,
 } from "../generated/index.js";
 import type { RandomValue } from "../rng.js";
 import type { ProjectionInfo } from "../world/projection.js";
@@ -45,6 +44,7 @@ import { attachExt, provenanceOf } from "../mod/extension.js";
 import { fieldOwner, refusalWhy } from "../mod/refusal.js";
 import type { RecordRefusal } from "../mod/refusal.js";
 import { tvalIsLight } from "./object.js";
+import { tvals } from "./tval-table.js";
 import type {
   Activation,
   ActivationRecordJson,
@@ -84,7 +84,6 @@ import {
   OFID,
   OFT,
   SV_UNKNOWN,
-  TV_MAX,
   zeroRv,
 } from "./types.js";
 
@@ -330,13 +329,9 @@ export function tvalFindIdx(name: string): number {
   const num = /^\s*(\d+)\s*$/.exec(name);
   if (num) {
     const r = Number(num[1]);
-    return r < TV_MAX ? r : -1;
+    return r < tvals.max ? r : -1;
   }
-  const mod = deArmour(name).toLowerCase();
-  for (let i = 0; i < TVAL_ENTRIES.length; i++) {
-    if ((TVAL_ENTRIES[i] as { textName: string }).textName === mod) return i;
-  }
-  return -1;
+  return tvals.lookup(deArmour(name).toLowerCase());
 }
 
 /**
@@ -352,8 +347,7 @@ export function objectShortName(name: string): string {
 
 /** tval_find_name: textual name for a numeric tval. */
 export function tvalFindName(tval: number): string {
-  const e = TVAL_ENTRIES[tval];
-  return e ? e.textName : "unknown";
+  return tvals.nameAt(tval) ?? "unknown";
 }
 
 /* ------------------------------------------------------------------ */
@@ -669,7 +663,7 @@ export class ObjRegistry {
     }
     /* kb_info is mem_zalloc'd for every tval; unlisted tvals stay
      * zeroed (name "", flags empty, max_stack 0). */
-    for (let tval = 0; tval < TV_MAX; tval++) {
+    for (let tval = 0; tval < tvals.max; tval++) {
       this.bases.push({
         name: "",
         tval,
@@ -827,10 +821,10 @@ export class ObjRegistry {
     for (let r = records.length - 1; r >= 0; r--) {
       const rec = records[r] as CurseRecordJson;
       const from = provenanceOf(rec);
-      const poss: boolean[] = new Array<boolean>(TV_MAX).fill(false);
+      const poss: boolean[] = new Array<boolean>(tvals.max).fill(false);
       for (const tvalName of rec.type ?? []) {
         const tval = tvalFindIdx(tvalName);
-        if (tval >= 0 && tval < TV_MAX) {
+        if (tval >= 0 && tval < tvals.max) {
           poss[tval] = true;
           continue;
         }
@@ -1520,7 +1514,7 @@ export class ObjRegistry {
         }
         propIndex = idx;
       }
-      const typeMult = new Array<number>(TV_MAX).fill(1);
+      const typeMult = new Array<number>(tvals.max).fill(1);
       for (const { type: tvalName, mult } of rec["type-mult"] ?? []) {
         const tval = tvalFindIdx(tvalName);
         if (tval < 0) {

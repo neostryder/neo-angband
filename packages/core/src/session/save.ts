@@ -86,6 +86,7 @@ import { Chunk, SQUARE_SIZE } from "../world/chunk.js";
 import type { ChunkSquaresData } from "../world/chunk.js";
 import type { GameObject } from "../obj/object.js";
 import { objectNew, tvalIsMoney } from "../obj/object.js";
+import { FIRST_MOD_TVAL } from "../obj/tval-table.js";
 import type { ObjRegistry } from "../obj/bind.js";
 import { ELEMENT_NAMES, OBJ_MOD_NAMES } from "../obj/bind.js";
 import type { ElementInfo } from "../obj/types.js";
@@ -1031,7 +1032,9 @@ export function deserializeObject(
     ego,
     artifact,
     grid: data.grid ? loc(data.grid.x, data.grid.y) : null,
-    tval: data.tval,
+    /* A declared class's number depends on which mods are loaded, so it comes
+     * from the kind, which was found by id (obj/tval-table.ts). */
+    tval: data.tval >= FIRST_MOD_TVAL ? kind.tval : data.tval,
     sval: data.sval,
     pval: data.pval,
     ...(data.knownPval !== undefined ? { knownPval: data.knownPval } : {}),

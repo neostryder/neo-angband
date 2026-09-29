@@ -58,7 +58,7 @@
  * definer's spelling survives composition.
  */
 
-import { TVAL_ENTRIES } from "../generated/index.js";
+import { tvals } from "../obj/tval-table.js";
 import type { ObjRegistry } from "../obj/bind.js";
 import type { MonsterRace } from "../mon/types.js";
 import type { PlayerClass, PlayerRace } from "../player/types.js";
@@ -119,8 +119,7 @@ export function parseId(id: string): { namespace: string; localid: string } | nu
  * fragility ids exist to avoid.
  */
 export function kindLocalId(tval: number, name: string): string {
-  const tv = TVAL_ENTRIES[tval];
-  return slug(tv ? tv.textName : String(tval)) + ID_SEP + slug(name);
+  return slug(tvals.nameAt(tval) ?? String(tval)) + ID_SEP + slug(name);
 }
 
 /* ------------------------------------------------------------------ *
@@ -209,13 +208,13 @@ function asDefined(entity: ModExtensible, path: string, live: string): string {
 /**
  * The tval a pack's `type` string names, or undefined when it names none.
  *
- * TVAL_ENTRIES is indexed BY tval, and an object record's `type` is exactly the
- * `textName` of its entry - both asserted over the shipped pack in ids.test.ts,
+ * The tval table is indexed BY tval, and an object record's `type` is exactly
+ * the `textName` of its entry - both asserted over the shipped pack in ids.test.ts,
  * because this is a lookup by a string in a data file and a silent miss would
  * simply leave the id where the patch put it.
  */
 function tvalOfTypeName(type: string): number | undefined {
-  const at = TVAL_ENTRIES.findIndex((e) => e.textName === type);
+  const at = tvals.lookup(type);
   return at < 0 ? undefined : at;
 }
 

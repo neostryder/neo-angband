@@ -259,6 +259,20 @@ New records are appended after core's, and the position matters. In upstream, `s
 
 Composition appends because core is pack zero and a mod that declares `core` as a dependency loads after it. `packages/web/src/mod-added-record.test.ts` binds core's pack with and without one added object and asserts the whole table, not a sample. The one thing that does move is the tail of dummy kinds `bindCore` creates for special artifacts whose base sval `object.txt` never defines (the Phial, the Star, the rings of power). Their array index shifts by one, and nothing depends on it, because a savefile stores a namespaced string `kindId` rather than a `kidx`.
 
+### A new item class
+
+An object's `type` names its class. A class Angband 4.2 does not have, such as the junk, skeletons and bottles of 3.x, has to be declared before any record can use it. Ship a `tval.json` with one record per class:
+
+```json
+{ "records": [ { "name": "junk" } ] }
+```
+
+Then add an `object_base` for the class and objects whose `type` is `junk`. Without the declaration, the game stops loading with `object: unknown tval junk`.
+
+A declared class takes the next number after Angband's own. That number depends on which mods are loaded, so nothing stores it: a savefile keeps each object's `kindId`, and the object gets its number back from its kind when the game loads.
+
+A declared class can't be worn, wielded, flavoured, read, eaten or aimed, and its objects are called by their own names. To change any of that, register the answers through `registry:tval` ([PLUGINS.md](PLUGINS.md)).
+
 ### Your artifact and the `birth_randarts` option
 
 An artifact your mod adds survives a character born with random artifacts turned on. Every other artifact in the game is redesigned into a different item, but yours keeps the name, the base object and the numbers you wrote.

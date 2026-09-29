@@ -1139,6 +1139,9 @@ export function loadGamePack(): GamePack {
      * RST_INNATE"), so the records with one are the declarations. Without this
      * field the first mod monster naming its own spell stopped the boot with
      * "mon: invalid spell name". */
+    /* A pack's own item classes (core obj/tval-table.ts). Only mods ship a
+     * tval.json, so the core pack alone has none. */
+    tvals: optionalRecords("tval"),
     monsterSpells: records("monster_spell").filter(
       (r) => typeof (r as { type?: unknown }).type === "string",
     ),

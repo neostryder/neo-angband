@@ -46,6 +46,7 @@ import { KF, OBJ_MOD, OF } from "../generated/index.js";
 import { TV } from "../generated/index.js";
 import type { Player } from "../player/player.js";
 import type { GameObject } from "./object.js";
+import { FIRST_MOD_TVAL, tvals } from "./tval-table.js";
 import { seedTval, tvalRegistry } from "./tval-registry.js";
 import type { TvalBasenameHandler } from "./tval-registry.js";
 import {
@@ -225,6 +226,11 @@ function objDescGetBasename(
   if (handler) {
     return handler({ obj, kind: obj.kind, showFlavor, terse, aware });
   }
+
+  /* A class a pack declared in tval.json (obj/tval-table.ts) is called by its
+   * kind's own name, as Angband's unflavoured classes are and as 3.x's junk
+   * was, until a mod registers a template for it. */
+  if (obj.tval >= FIRST_MOD_TVAL && tvals.nameAt(obj.tval) !== null) return obj.kind.name;
 
   return "(nothing)";
 }

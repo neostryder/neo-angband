@@ -36,6 +36,7 @@ import { MonAllocTable } from "../mon/make.js";
 import type { LoreStore } from "../mon/lore.js";
 import { declareModMonsterSpells } from "../mon/spell-declarations.js";
 import { monSpells } from "../mon/spell-registry.js";
+import { declareModTvals, tvals } from "../obj/tval-table.js";
 import {
   createRoomRegistry,
   loadRoomTemplates,
@@ -105,6 +106,8 @@ export interface CorePack {
    * has not happened, and would push a cast onto every caller.
    */
   messageTypes?: readonly unknown[];
+  /** A pack's own item classes, from a composed tval.json (obj/tval-table.ts). */
+  tvals?: readonly unknown[];
   /*
    * Monster-spell names a pack coins (the declaration half of row 22 / #281).
    * Optional; without it a pack can only name the spells compiled from
@@ -216,6 +219,11 @@ export function bindCore(pack: CorePack): CoreRegistries {
    * declareModMonsterSpells never throws - refusals are collected. */
   monSpells.clear();
   declareModMonsterSpells(pack.monsterSpells);
+  /* A pack's own item classes (tval.json) must be numbered before ObjRegistry
+   * sizes its bases and binds the kinds and bases that name them. Cleared first
+   * for the same reason as monSpells. */
+  tvals.clear();
+  declareModTvals(pack.tvals);
   const constants = bindConstants(pack.constants);
   const chestTraps = bindChestTraps(pack.chestTraps);
   const topology = bindWorld(pack.world, constants.maxDepth);
