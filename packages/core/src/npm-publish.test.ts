@@ -31,6 +31,8 @@ import { fileURLToPath } from "node:url";
 import { publishablePackages } from "../../../tools/publishable.mjs";
 // @ts-expect-error -- plain .mjs tooling, no types; see tools/npm-pack-result.mjs
 import { packResult } from "../../../tools/npm-pack-result.mjs";
+// @ts-expect-error -- plain .mjs tooling, no types; see tools/pin-workspace-ranges.mjs
+import { pinnedManifest, publishedVersions, workspaceRanges } from "../../../tools/pin-workspace-ranges.mjs";
 // @ts-expect-error -- plain .mjs tooling, no types; see packages/mod-sdk/scripts/sync-docs.mjs
 import { documents, outputDir, renderDocument } from "../../mod-sdk/scripts/sync-docs.mjs";
 
@@ -318,6 +320,13 @@ describe("publish-npm.yml publishes without a token", () => {
     expect(code, "a hardcoded package loop is back").not.toMatch(/for pkg in [a-z]/u);
   });
 
+  it("replaces workspace: ranges before it checks or publishes anything (#318)", () => {
+    const pin = workflow.indexOf("node tools/pin-workspace-ranges.mjs --write");
+    expect(pin).toBeGreaterThan(-1);
+    expect(pin).toBeLessThan(workflow.indexOf("node tools/check-npm-package.mjs"));
+    expect(pin).toBeLessThan(workflow.indexOf("npm publish --access public"));
+  });
+
   it("asserts the npm version instead of assuming the runner's", () => {
     /* An npm older than 11.5.1 does not report that it cannot do OIDC. It quietly
      * falls back to looking for a token, and fails with ENEEDAUTH - which reads as
@@ -406,5 +415,40 @@ describe("the generated SDK documentation tree", () => {
     };
     walk(outputDir as string, "");
     expect(found.filter((f) => !expected.has(f))).toEqual([]);
+  });
+});
+
+describe("workspace: ranges are replaced before packing (#318)", () => {
+  const versions = new Map([["@scope/sdk", "1.19.1"]]);
+  const manifest = (range: string) => ({
+    name: "@scope/core",
+    dependencies: { "@scope/sdk": range, other: "^2.0.0" },
+    devDependencies: { "@scope/sdk": "workspace:*" },
+  });
+
+  it("pins each form the way pnpm pack does", () => {
+    expect(pinnedManifest(manifest("workspace:*"), versions).dependencies["@scope/sdk"]).toBe("1.19.1");
+    expect(pinnedManifest(manifest("workspace:^"), versions).dependencies["@scope/sdk"]).toBe("^1.19.1");
+    expect(pinnedManifest(manifest("workspace:~"), versions).dependencies["@scope/sdk"]).toBe("~1.19.1");
+    expect(pinnedManifest(manifest("workspace:>=1.0.0"), versions).dependencies["@scope/sdk"]).toBe(">=1.0.0");
+  });
+
+  it("leaves other ranges, devDependencies and the input alone", () => {
+    const input = manifest("workspace:*");
+    const out = pinnedManifest(input, versions);
+    expect(out.dependencies.other).toBe("^2.0.0");
+    expect(out.devDependencies["@scope/sdk"]).toBe("workspace:*");
+    expect(input.dependencies["@scope/sdk"]).toBe("workspace:*");
+    expect(workspaceRanges(out)).toEqual([]);
+  });
+
+  it("refuses a range naming a package that is not published", () => {
+    expect(() => pinnedManifest(manifest("workspace:*"), new Map())).toThrow(/not a published package/u);
+  });
+
+  it.each(PUBLISHED)("%s pins to versions of packages that are published", (pkg) => {
+    const own = JSON.parse(readFileSync(join(packagesDir, pkg, "package.json"), "utf8"));
+    const all = publishedVersions(join(packagesDir, ".."));
+    expect(workspaceRanges(pinnedManifest(own, all))).toEqual([]);
   });
 });

@@ -78,8 +78,5 @@
   },
   "scripts": {
     "build": "tsc"
-  },
-  "dependencies": {
-    "@rpgm-tools/neo-angband-mod-sdk": "workspace:*"
   }
 }

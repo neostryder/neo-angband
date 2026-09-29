@@ -37,12 +37,14 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { publishablePackages } from "./publishable.mjs";
 import { packResult } from "./npm-pack-result.mjs";
+import { publishedVersions, withPinnedManifest, workspaceRanges } from "./pin-workspace-ranges.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /* Derived from the manifests, not listed here - see tools/publishable.mjs for
  * why there is exactly one place that answers this. */
 const PUBLISHABLE = publishablePackages();
+const VERSIONS = publishedVersions();
 
 const requested = process.argv.slice(2).filter((a) => !a.startsWith("-"));
 const packages = requested.length > 0 ? requested : PUBLISHABLE;
@@ -156,8 +158,11 @@ for (const pkg of packages) {
 
   try {
     /* --pack-destination keeps the tarball out of the working tree, so a failed
-     * run cannot leave a .tgz behind for someone to commit. */
-    const out = runNpm(["pack", "--pack-destination", staging, "--json"], packageRoot);
+     * run cannot leave a .tgz behind for someone to commit. The manifest is packed
+     * with its workspace: ranges replaced, as the publish job packs it. */
+    const out = withPinnedManifest(packageRoot, VERSIONS, () =>
+      runNpm(["pack", "--pack-destination", staging, "--json"], packageRoot),
+    );
     const packed = packResult(out, pkg);
     const tarball = join(staging, packed.filename);
 
@@ -182,6 +187,12 @@ for (const pkg of packages) {
 
     for (const required of ["README.md", "LICENSE.md", "package.json"]) {
       if (!files.includes(required)) fail(`${pkg}: tarball is missing ${required}`);
+    }
+
+    /* No workspace: range may reach the tarball; see tools/pin-workspace-ranges.mjs. */
+    if (files.includes("package.json")) {
+      const left = workspaceRanges(JSON.parse(readFileSync(join(root, "package.json"), "utf8")));
+      if (left.length > 0) fail(`${pkg}: the packed package.json still has ${left.join(", ")}`);
     }
 
     /* SHIPPED IS NOT THE SAME AS REACHABLE, and the gap is silent. An `exports`

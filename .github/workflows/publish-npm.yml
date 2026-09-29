@@ -110,6 +110,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
+      # See tools/pin-workspace-ranges.mjs. Editing package.json in place is fine
+      # because this checkout is discarded when the job ends. It runs before the
+      # tarball check, so the check sees exactly what gets published.
+      - run: node tools/pin-workspace-ranges.mjs --write
+
       # The tarball is what gets published, so the tarball is what gets checked:
       # packs each package, extracts it into an empty directory and imports it
       # with plain Node. This is the step that would have caught the engine's
@@ -143,8 +148,8 @@ jobs:
         run: |
           # `npm publish -w` is not available: the workspace is declared in
           # pnpm-workspace.yaml, which npm does not read. Publishing from inside
-          # each package directory works under either manager, and these packages
-          # have zero dependencies so there is no workspace: range to rewrite.
+          # each package directory works under either manager. The workspace:
+          # ranges were already replaced by the pin step above.
           #
           # Derived, not listed - see the note on the version check above.
           for pkg in $(node tools/publishable.mjs); do
