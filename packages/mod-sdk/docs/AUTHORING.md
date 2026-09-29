@@ -359,6 +359,27 @@ repository rather than looking for it in the game.
 
 ---
 
+### Art for restored records
+
+A mod that brings back something Angband cut can give it the tile it used to have. Three manifest fields hold that art, each keyed by the tile-pack directory (`old`, `adam-bolt`, `gervais`, `nomad`, `shockbolt`), and each pack entry is either a cell on that pack's sheet or an image inside your mod folder:
+
+```json
+"restoredItemArt": [
+  { "kind": "frost:hard-armor:rusty-chain-mail", "packs": { "old": { "row": 11, "col": 20 } } }
+],
+"restoredMonsterArt": [
+  { "race": "frost:mature-bronze-dragon", "packs": { "nomad": { "asset": "art/bronze.png" } }, "hue": 40 }
+],
+"restoredFlavorArt": [
+  { "flavor": 303, "drawAs": 28, "hue": 90 }
+]
+```
+
+- `restoredItemArt` names an object kind by id, and `restoredMonsterArt` names a monster by id.
+- `restoredFlavorArt` names a flavour by its index in `flavor.json`. `drawAs` makes it draw another flavour's tile in every pack, and a `packs` entry overrides that for one pack.
+- Art only fills a slot the pack's own pref files left empty, so a pack that already draws the thing keeps its own picture.
+- `hue` rotates the tile's colours by that many degrees in the Linoleum engine, which can recolour. Use it when a restored thing's old tile is also the tile of the thing that replaced it, so the two can be told apart. Angband's own tile sheets can't recolour, so there the tile is drawn as it is.
+
 ## Translating the game
 
 English ships in the game and is what a player sees with no mod installed. A

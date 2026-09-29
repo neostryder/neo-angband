@@ -219,7 +219,8 @@ import type {
   Textblock,
 } from "@rpgm-tools/neo-angband-core";
 import { GameEvents, useFlavorGlyph, makeShapeLoreEnv } from "@rpgm-tools/neo-angband-core";
-import { applyRestoredItemArt } from "@rpgm-tools/neo-angband-core";
+import { applyRestoredArt } from "@rpgm-tools/neo-angband-core";
+import type { RestoredArtDerive } from "@rpgm-tools/neo-angband-core";
 import type { BoltEventData, ExplosionEventData } from "@rpgm-tools/neo-angband-core";
 import { registerLocale, setLocale, t } from "@rpgm-tools/neo-angband-core";
 import type { LocaleBundle } from "@rpgm-tools/neo-angband-core";
@@ -498,7 +499,7 @@ import {
   type TileModeEntry,
 } from "./tiles";
 import { LinoleumPack, loadLinoleumPack } from "./linoleum-pack";
-import { restoredItemArtForPack } from "./tile-mods";
+import { restoredArtForPack } from "./tile-mods";
 import { ensureLinoleumTilesheetPack } from "./linoleum-cache";
 import {
   beginTileConversion,
@@ -2320,11 +2321,15 @@ function linoleumSourceDirectory(grafID: number): string {
   }
 }
 
-/** Apply enabled mods' stable-id restoration declarations before tile fillers run. */
-async function applyDeclaredRestoredItemArt(map: TileMap, pack: string): Promise<void> {
-  const declarations = await restoredItemArtForPack(pack);
-  const ids = new ContentIdResolver({ objects: booted.registries.objects });
-  applyRestoredItemArt(map, declarations, pack, (id) => ids.kindIndex(id));
+/**
+ * Apply enabled mods' restored art (kinds, races, flavours) before tile fillers
+ * run. `derive` is the loose-pack engine's hue rotation; the tilesheet engine has
+ * none, so a declared hue is drawn there as the plain tile.
+ */
+async function applyDeclaredRestoredArt(map: TileMap, pack: string, derive?: RestoredArtDerive): Promise<void> {
+  const art = await restoredArtForPack(pack);
+  const ids = new ContentIdResolver(booted.registries);
+  applyRestoredArt(map, art, pack, { kindIndex: (id) => ids.kindIndex(id), raceIndex: (id) => ids.raceIndex(id) }, derive);
 }
 
 /** Start a recovered standalone substitute image once and repaint when it arrives. */
@@ -2407,8 +2412,8 @@ async function applyTileMode(
         menuname,
         deps: { ...tileDeps, vars: playerPrefVars() },
         modPrefTexts: modTilePrefTexts,
-        applyRestoredItemArt: (map) =>
-          applyDeclaredRestoredItemArt(map, linoleumSourceDirectory(grafID)),
+        applyRestoredArt: (map, derive) =>
+          applyDeclaredRestoredArt(map, linoleumSourceDirectory(grafID), derive),
       });
       // Ignore a stale load if the mode changed during the fetch.
       if (!request.isCurrent()) return;
@@ -2470,7 +2475,7 @@ async function applyTileMode(
   const map = await loadTilePrefs(resolve, mode, {
     ...tileDeps,
     vars: playerPrefVars(),
-  }, modTilePrefTexts, (loaded) => applyDeclaredRestoredItemArt(loaded, mode.directory));
+  }, modTilePrefTexts, (loaded) => applyDeclaredRestoredArt(loaded, mode.directory));
   // Ignore a stale load if the mode changed during the fetch.
   request.publish(ts, map);
 }

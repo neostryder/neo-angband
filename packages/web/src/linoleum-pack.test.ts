@@ -27,6 +27,7 @@ import {
   loadLinoleumPack,
   parseFamiliesFile,
   parseLinoleumManifest,
+  slotFromAtlas,
   slotToAtlas,
 } from "./linoleum-pack";
 import { urlBaseResolver } from "./pack-files";
@@ -668,6 +669,24 @@ describe("loadLinoleumPack", () => {
     const cell = tileForFeature(pack!.index.map, FLOOR_FIDX, LIGHTING.LIT);
     expect(tileCode(cell?.attr ?? 0, cell?.char ?? 0)).toEqual({ row: 0, col: 2 });
     expect(pack?.index.slots[2]).toEqual({ kind: "asset", asset: "maggot" });
+  });
+
+  it("hands the restore hook a derive, so restored art can take a hue there", async () => {
+    globalThis.fetch = serve(files);
+    const pack = await loadLinoleumPack({
+      resolve: urlBaseResolver("mods/p"),
+      menuname: "Pack P",
+      deps,
+      applyRestoredArt: (map, derive) => {
+        const donor = map.monster[MAGGOT_RIDX];
+        const tinted = donor ? derive(donor, 60) : null;
+        if (tinted) map.monster[99] = tinted;
+      },
+    });
+    const restored = tileForMonster(pack!.index.map, 99);
+    expect(restored).not.toBeNull();
+    const slot = pack!.index.slots[slotFromAtlas(restored!)];
+    expect(slot?.kind).toBe("derived");
   });
 
   it("is null when the pack is not there, so the game just stays ASCII", async () => {

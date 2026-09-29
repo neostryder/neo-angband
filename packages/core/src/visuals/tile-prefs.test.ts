@@ -13,6 +13,7 @@ import {
   tileForShownObject,
   tileForMonster,
   tileForObject,
+  applyRestoredArt,
   applyRestoredItemArt,
   tileForProjection,
   tileForTrap,
@@ -223,6 +224,69 @@ describe("parseTilePrefs: object lines", () => {
       () => restored.kidx,
     );
     expect(tileForObject(assetMap, restored)).toEqual({ attr: 0, char: 0, asset: "spike.png" });
+  });
+});
+
+describe("restored art for races and flavours", () => {
+  const index = {
+    kindIndex: () => undefined,
+    raceIndex: (id: string) => (id === "feature-restoration:mature-bronze-dragon" ? 700 : undefined),
+  };
+  /** A derive that marks the hue in the char, so a test can see it ran. */
+  const derive = (donor: { attr: number; char: number }, hue: number) => ({ attr: donor.attr, char: hue });
+
+  it("fills an unmapped race from its pack's cell and leaves a mapped one alone", () => {
+    const map = new TileMap();
+    map.monster[701] = { attr: 0x81, char: 0x81 };
+    applyRestoredArt(
+      map,
+      { monsters: [{ race: "feature-restoration:mature-bronze-dragon", packs: { old: { row: 13, col: 5 } } }] },
+      "old",
+      index,
+    );
+    expect(tileForMonster(map, 700)).toEqual({ attr: 0x8d, char: 0x85 });
+    expect(tileForMonster(map, 701)).toEqual({ attr: 0x81, char: 0x81 });
+  });
+
+  it("draws a flavour as another flavour's tile, unless its own pack entry says otherwise", () => {
+    const map = new TileMap();
+    map.flavor[28] = { attr: 0x90, char: 0x91 };
+    applyRestoredArt(
+      map,
+      {
+        flavors: [
+          { flavor: 303, drawAs: 28 },
+          { flavor: 304, drawAs: 28, packs: { old: { row: 2, col: 3 } } },
+          { flavor: 305, drawAs: 99 },
+        ],
+      },
+      "old",
+      index,
+    );
+    expect(tileForFlavor(map, 303)).toEqual({ attr: 0x90, char: 0x91 });
+    expect(tileForFlavor(map, 304)).toEqual({ attr: 0x82, char: 0x83 });
+    expect(tileForFlavor(map, 305)).toBeNull();
+  });
+
+  it("rotates the hue where the engine can, and draws the plain tile where it cannot", () => {
+    const art = {
+      monsters: [{ race: "feature-restoration:mature-bronze-dragon", packs: { old: { row: 13, col: 5 } }, hue: 40 }],
+      flavors: [{ flavor: 303, drawAs: 28, hue: 90 }],
+    };
+    const loose = new TileMap();
+    loose.flavor[28] = { attr: 0x90, char: 0x91 };
+    applyRestoredArt(loose, art, "old", index, derive);
+    expect(tileForMonster(loose, 700)).toEqual({ attr: 0x8d, char: 40 });
+    expect(tileForFlavor(loose, 303)).toEqual({ attr: 0x90, char: 90 });
+    expect(tileForFlavor(loose, 28)).toEqual({ attr: 0x90, char: 0x91 });
+
+    const sheet = new TileMap();
+    applyRestoredArt(sheet, art, "old", index);
+    expect(tileForMonster(sheet, 700)).toEqual({ attr: 0x8d, char: 0x85 });
+
+    const refused = new TileMap();
+    applyRestoredArt(refused, art, "old", index, () => null);
+    expect(tileForMonster(refused, 700)).toEqual({ attr: 0x8d, char: 0x85 });
   });
 });
 

@@ -534,6 +534,7 @@
     "applyMagicArmour",
     "applyMagicWeapon",
     "applyRenderer",
+    "applyRestoredArt",
     "applyRestoredItemArt",
     "arcDiameter",
     "arenaInterceptDeath",

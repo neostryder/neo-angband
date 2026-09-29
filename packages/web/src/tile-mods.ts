@@ -45,7 +45,13 @@
  */
 
 import { getGraphicsMode, GRAPHICS_NONE } from "@rpgm-tools/neo-angband-core";
-import type { RestoredItemArt } from "@rpgm-tools/neo-angband-core";
+import type {
+  RestoredArt,
+  RestoredFlavorArt,
+  RestoredItemArt,
+  RestoredItemTile,
+  RestoredMonsterArt,
+} from "@rpgm-tools/neo-angband-core";
 import { manifestFields, type LinoleumTilesheetSource } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   diskPacks,
@@ -487,27 +493,64 @@ export function discoverEnabledTileModeClaims(): TileModePack[] {
   return enabledTileModeClaims(discoverMods());
 }
 
-function readRestoredItemArt(raw: unknown): RestoredItemArt[] {
-  const list = (raw as { restoredItemArt?: unknown } | null)?.restoredItemArt;
-  if (!Array.isArray(list)) return [];
-  const out: RestoredItemArt[] = [];
-  for (const entry of list) {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
-    const item = entry as { kind?: unknown; packs?: unknown };
-    if (typeof item.kind !== "string" || typeof item.packs !== "object" || item.packs === null || Array.isArray(item.packs)) continue;
-    const packs: Record<string, RestoredItemArt["packs"][string]> = {};
-    for (const [pack, value] of Object.entries(item.packs)) {
-      if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
-      const tile = value as { row?: unknown; col?: unknown; asset?: unknown };
-      if (Number.isInteger(tile.row) && Number.isInteger(tile.col)) {
-        packs[pack] = { row: tile.row as number, col: tile.col as number };
-      } else if (typeof tile.asset === "string") {
-        packs[pack] = { asset: tile.asset };
-      }
-    }
-    out.push({ kind: item.kind, packs });
+/** One pack's tile off a raw manifest entry, or undefined when it is malformed. */
+function readRestoredTile(value: unknown): RestoredItemTile | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const tile = value as { row?: unknown; col?: unknown; asset?: unknown };
+  if (Number.isInteger(tile.row) && Number.isInteger(tile.col)) {
+    return { row: tile.row as number, col: tile.col as number };
   }
-  return out;
+  if (typeof tile.asset === "string") return { asset: tile.asset };
+  return undefined;
+}
+
+function readRestoredPacks(value: unknown): Record<string, RestoredItemTile> | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const packs: Record<string, RestoredItemTile> = {};
+  for (const [pack, raw] of Object.entries(value)) {
+    const tile = readRestoredTile(raw);
+    if (tile !== undefined) packs[pack] = tile;
+  }
+  return packs;
+}
+
+function readHue(value: unknown): { hue?: number } {
+  return typeof value === "number" && Number.isFinite(value) ? { hue: value } : {};
+}
+
+/** The three restored-art lists off a raw manifest, skipping malformed entries. */
+function readRestoredArt(raw: unknown): {
+  items: RestoredItemArt[];
+  monsters: RestoredMonsterArt[];
+  flavors: RestoredFlavorArt[];
+} {
+  const m = (raw ?? {}) as { restoredItemArt?: unknown; restoredMonsterArt?: unknown; restoredFlavorArt?: unknown };
+  const entries = (list: unknown): Record<string, unknown>[] =>
+    Array.isArray(list)
+      ? list.filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null && !Array.isArray(e))
+      : [];
+  const items: RestoredItemArt[] = [];
+  for (const e of entries(m.restoredItemArt)) {
+    const packs = readRestoredPacks(e["packs"]);
+    if (typeof e["kind"] === "string" && packs) items.push({ kind: e["kind"], packs, ...readHue(e["hue"]) });
+  }
+  const monsters: RestoredMonsterArt[] = [];
+  for (const e of entries(m.restoredMonsterArt)) {
+    const packs = readRestoredPacks(e["packs"]);
+    if (typeof e["race"] === "string" && packs) monsters.push({ race: e["race"], packs, ...readHue(e["hue"]) });
+  }
+  const flavors: RestoredFlavorArt[] = [];
+  for (const e of entries(m.restoredFlavorArt)) {
+    if (!Number.isInteger(e["flavor"])) continue;
+    const packs = readRestoredPacks(e["packs"]);
+    flavors.push({
+      flavor: e["flavor"] as number,
+      ...(packs ? { packs } : {}),
+      ...(Number.isInteger(e["drawAs"]) ? { drawAs: e["drawAs"] as number } : {}),
+      ...readHue(e["hue"]),
+    });
+  }
+  return { items, monsters, flavors };
 }
 
 function modAssetResolver(source: ModAssetSource, modId: string): PackFileResolver {
@@ -515,25 +558,48 @@ function modAssetResolver(source: ModAssetSource, modId: string): PackFileResolv
   return (rel) => source.assetUrl(modId, rel);
 }
 
-/** Resolve enabled mods' recovered object art for the active pack before fillers run. */
-export async function restoredItemArtForPack(pack: string): Promise<RestoredItemArt[]> {
+/**
+ * Resolve enabled mods' restored art (kinds, races, flavours) for the active
+ * pack before fillers run. Each declaration keeps only the active pack's tile,
+ * with an asset path turned into a URL the renderer can load; an asset that
+ * does not resolve is dropped, leaving the slot to the fillers.
+ */
+export async function restoredArtForPack(pack: string): Promise<Required<RestoredArt>> {
   const discovered = discoverMods();
-  const out: RestoredItemArt[] = [];
+  const out = {
+    items: [] as RestoredItemArt[],
+    monsters: [] as RestoredMonsterArt[],
+    flavors: [] as RestoredFlavorArt[],
+  };
   for (const id of discovered.enabledIds) {
     const raw = discovered.manifests.get(id);
+    if (raw === undefined) continue;
+    /* Only an asset path needs the mod's files; a cell or a drawAs does not. */
     const source = discovered.sources.get(id);
-    if (raw === undefined || source === undefined) continue;
-    const resolve = modAssetResolver(source, id);
-    for (const declaration of readRestoredItemArt(raw)) {
-      const tile = declaration.packs[pack];
-      if (tile === undefined) continue;
-      if ("asset" in tile) {
-        let asset: string | null;
-        try { asset = await resolve(tile.asset); } catch { asset = null; }
-        if (asset === null) continue;
-        out.push({ kind: declaration.kind, packs: { [pack]: { asset } } });
-      } else {
-        out.push({ kind: declaration.kind, packs: { [pack]: tile } });
+    const resolve = source === undefined ? null : modAssetResolver(source, id);
+    const forPack = async (packs: Readonly<Record<string, RestoredItemTile>> | undefined) => {
+      const tile = packs?.[pack];
+      if (tile === undefined) return undefined;
+      if (!("asset" in tile)) return { [pack]: tile };
+      let asset: string | null;
+      try { asset = resolve === null ? null : await resolve(tile.asset); } catch { asset = null; }
+      return asset === null ? null : { [pack]: { asset } };
+    };
+    const art = readRestoredArt(raw);
+    for (const item of art.items) {
+      const packs = await forPack(item.packs);
+      if (packs) out.items.push({ ...item, packs });
+    }
+    for (const monster of art.monsters) {
+      const packs = await forPack(monster.packs);
+      if (packs) out.monsters.push({ ...monster, packs });
+    }
+    for (const flavor of art.flavors) {
+      const packs = await forPack(flavor.packs);
+      if (packs) out.flavors.push({ ...flavor, packs });
+      else if (flavor.drawAs !== undefined) {
+        const { packs: _unused, ...rest } = flavor;
+        out.flavors.push(rest);
       }
     }
   }

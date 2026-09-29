@@ -83,7 +83,51 @@ export interface RestoredItemArt {
   kind: string;
   /** One native atlas cell or standalone substitute for each pack the mod supports. */
   packs: Readonly<Record<string, RestoredItemTile>>;
+  /**
+   * Degrees to rotate the tile's hue where the engine can (the loose-pack
+   * engine can; a fixed tilesheet cannot, and draws the tile as it is). For a
+   * restored thing whose historical tile is also its successor's.
+   */
+  hue?: number;
 }
+
+/** One restored monster race's historical art. Same shape as RestoredItemArt. */
+export interface RestoredMonsterArt {
+  /** Stable namespaced race id. */
+  race: string;
+  packs: Readonly<Record<string, RestoredItemTile>>;
+  hue?: number;
+}
+
+/**
+ * One restored flavour's art: its own cell per pack, or `drawAs`, another
+ * flavour whose tile it draws in every pack (a restored Ruby ring draws what
+ * flavour 28 draws, because that was its tile before 4.2 fixed it to an
+ * artifact). A pack entry wins over `drawAs` for that pack.
+ */
+export interface RestoredFlavorArt {
+  /** The flavour's index in flavor.json. */
+  flavor: number;
+  packs?: Readonly<Record<string, RestoredItemTile>>;
+  drawAs?: number;
+  hue?: number;
+}
+
+/** Everything the enabled mods declare, for one apply pass. */
+export interface RestoredArt {
+  items?: readonly RestoredItemArt[];
+  monsters?: readonly RestoredMonsterArt[];
+  flavors?: readonly RestoredFlavorArt[];
+}
+
+/** How declared ids reach this game's indices. */
+export interface RestoredArtIndex {
+  kindIndex(id: string): number | undefined;
+  raceIndex(id: string): number | undefined;
+}
+
+/** The loose-pack engine's hue rotation, or undefined where the engine has none. */
+export type RestoredArtDerive = (donor: TileAtlas, hue: number) => TileAtlas | null;
 
 /** A real cell on the active pack's sheet, or a standalone image when that pack has none. */
 export type RestoredItemTile =
@@ -125,24 +169,63 @@ export function applyRestoredItemArt(
   declarations: readonly RestoredItemArt[],
   pack: string,
   kindIndex: (id: string) => number | undefined,
+  derive?: RestoredArtDerive,
 ): void {
-  for (const declaration of declarations) {
-    const tile = declaration.packs[pack];
-    if (tile === undefined) continue;
-    const kidx = kindIndex(declaration.kind);
+  applyRestoredArt(map, { items: declarations }, pack, { kindIndex, raceIndex: () => undefined }, derive);
+}
+
+/** A declared cell or asset as a map entry, or null when the cell is out of range. */
+function restoredTile(tile: RestoredItemTile): TileAtlas | null {
+  if ("asset" in tile) return { attr: 0, char: 0, asset: tile.asset };
+  const { row, col } = tile;
+  if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || row >= 128 || col < 0 || col >= 128) {
+    return null;
+  }
+  return { attr: 0x80 | row, char: 0x80 | col };
+}
+
+/**
+ * Apply every declared kind, race and flavour, each only where the pack's own
+ * prefs left the slot empty, as applyRestoredItemArt does for kinds. A `hue`
+ * goes through `derive` where the engine supplies one; without one, or when it
+ * refuses, the tile is used as it is.
+ */
+export function applyRestoredArt(
+  map: TileMap,
+  art: RestoredArt,
+  pack: string,
+  index: RestoredArtIndex,
+  derive?: RestoredArtDerive,
+): void {
+  const tinted = (tile: TileAtlas, hue: number | undefined): TileAtlas =>
+    hue && derive ? (derive(tile, hue) ?? tile) : tile;
+
+  for (const declaration of art.items ?? []) {
+    const declared = declaration.packs[pack];
+    if (declared === undefined) continue;
+    const kidx = index.kindIndex(declaration.kind);
     if (kidx === undefined || map.object[kidx] !== undefined) continue;
-    if ("asset" in tile) {
-      map.object[kidx] = { attr: 0, char: 0, asset: tile.asset };
-    } else if (
-      Number.isInteger(tile.row) &&
-      Number.isInteger(tile.col) &&
-      tile.row >= 0 &&
-      tile.row < 128 &&
-      tile.col >= 0 &&
-      tile.col < 128
-    ) {
-      map.object[kidx] = { attr: 0x80 | tile.row, char: 0x80 | tile.col };
-    }
+    const tile = restoredTile(declared);
+    if (tile) map.object[kidx] = tinted(tile, declaration.hue);
+  }
+  for (const declaration of art.monsters ?? []) {
+    const declared = declaration.packs[pack];
+    if (declared === undefined) continue;
+    const ridx = index.raceIndex(declaration.race);
+    if (ridx === undefined || map.monster[ridx] !== undefined) continue;
+    const tile = restoredTile(declared);
+    if (tile) map.monster[ridx] = tinted(tile, declaration.hue);
+  }
+  for (const declaration of art.flavors ?? []) {
+    if (map.flavor[declaration.flavor] !== undefined) continue;
+    const declared = declaration.packs?.[pack];
+    const tile =
+      declared !== undefined
+        ? restoredTile(declared)
+        : declaration.drawAs !== undefined
+          ? (map.flavor[declaration.drawAs] ?? null)
+          : null;
+    if (tile) map.flavor[declaration.flavor] = tinted({ ...tile }, declaration.hue);
   }
 }
 

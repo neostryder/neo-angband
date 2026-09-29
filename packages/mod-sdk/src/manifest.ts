@@ -11,9 +11,28 @@ import { resourceComplaint } from "./resources.js";
 import type { PackResource } from "./resources.js";
 
 /** Historical object art declared by a content pack, keyed by stable kind id. */
+/** One pack's tile for a restored thing: a cell on its sheet, or an image in the mod folder. */
+export type RestoredTile = { row: number; col: number } | { asset: string };
+
 export interface RestoredItemArt {
   kind: string;
-  packs: Readonly<Record<string, { row: number; col: number } | { asset: string }>>;
+  packs: Readonly<Record<string, RestoredTile>>;
+  /** Hue rotation in degrees, applied where the tile engine can recolour. */
+  hue?: number;
+}
+
+export interface RestoredMonsterArt {
+  race: string;
+  packs: Readonly<Record<string, RestoredTile>>;
+  hue?: number;
+}
+
+/** A restored flavour: its own cell per pack, or the flavour index it draws as. */
+export interface RestoredFlavorArt {
+  flavor: number;
+  packs?: Readonly<Record<string, RestoredTile>>;
+  drawAs?: number;
+  hue?: number;
 }
 
 /** Pack identifiers are namespaced: "<pack>:<id>", e.g. "core:kobold". */
@@ -612,6 +631,10 @@ export interface PackManifest {
    * by the stable kind id and by the bundled tile-pack directory.
    */
   restoredItemArt?: readonly RestoredItemArt[];
+  /** Historical art for monster races a content mod restores, keyed by race id. */
+  restoredMonsterArt?: readonly RestoredMonsterArt[];
+  /** Art for flavours a content mod adds, by flavour index. */
+  restoredFlavorArt?: readonly RestoredFlavorArt[];
   /**
    * Declares the pack deliberately nondeterministic (a wall-clock event, an
    * external agent, live multiplayer). Trips the save's determinism ratchet
@@ -834,7 +857,9 @@ export function validateManifest(value: unknown): PackManifest {
   validateCompat(m["compat"], id, sectionIds);
   validateTilePacks(m["tilePacks"], id);
   validateResources(m["resources"], id);
-  validateRestoredItemArt(m["restoredItemArt"], id);
+  validateRestoredArt(m["restoredItemArt"], id, "restoredItemArt", "kind");
+  validateRestoredArt(m["restoredMonsterArt"], id, "restoredMonsterArt", "race");
+  validateRestoredFlavorArt(m["restoredFlavorArt"], id);
   validatePayload(m["payload"], id);
   for (const key of [
     "engine",
@@ -1334,54 +1359,99 @@ function validateResources(value: unknown, id: string): void {
   }
 }
 
-/** Validate historical object-art declarations before the shell reaches their files. */
-function validateRestoredItemArt(value: unknown, id: string): void {
+/** Validate one declaration's packs map: each pack gets exactly one of a cell or an asset path. */
+function validateRestoredPacks(packs: unknown, id: string, field: string, name: string): void {
+  if (typeof packs !== "object" || packs === null || Array.isArray(packs)) {
+    throw new ManifestError(`manifest ${id}: ${field} ${name} needs a packs map`);
+  }
+  for (const [pack, tile] of Object.entries(packs)) {
+    if (pack === "" || typeof tile !== "object" || tile === null || Array.isArray(tile)) {
+      throw new ManifestError(`manifest ${id}: ${field} ${name} has an invalid pack entry`);
+    }
+    const spec = tile as Record<string, unknown>;
+    const native = Number.isInteger(spec["row"]) && Number.isInteger(spec["col"]);
+    const asset = typeof spec["asset"] === "string";
+    if (native === asset) {
+      throw new ManifestError(`manifest ${id}: ${field} ${name} ${pack} needs exactly one of row/col or asset`);
+    }
+    if (native) {
+      const row = spec["row"] as number;
+      const col = spec["col"] as number;
+      if (row < 0 || row > 127 || col < 0 || col > 127) {
+        throw new ManifestError(`manifest ${id}: ${field} ${name} ${pack} cell is out of range`);
+      }
+    } else {
+      const path = spec["asset"] as string;
+      if (path === "" || path.includes("\\") || path.split("/").includes("..") || /^([a-z][a-z0-9+.-]*:)?\//iu.test(path)) {
+        throw new ManifestError(`manifest ${id}: ${field} ${name} ${pack} asset must stay inside the mod folder`);
+      }
+    }
+  }
+}
+
+/** A hue, when present, is a finite number of degrees. */
+function validateHue(hue: unknown, id: string, field: string, name: string): void {
+  if (hue !== undefined && (typeof hue !== "number" || !Number.isFinite(hue))) {
+    throw new ManifestError(`manifest ${id}: ${field} ${name} hue must be a number of degrees`);
+  }
+}
+
+/** Validate item or monster art declarations, keyed by a namespaced id in `key`. */
+function validateRestoredArt(value: unknown, id: string, field: string, key: "kind" | "race"): void {
   if (value === undefined) return;
   if (!Array.isArray(value)) {
-    throw new ManifestError(`manifest ${id}: restoredItemArt must be an array`);
+    throw new ManifestError(`manifest ${id}: ${field} must be an array`);
   }
-  const kinds = new Set<string>();
+  const seen = new Set<string>();
   for (const entry of value) {
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      throw new ManifestError(`manifest ${id}: each restoredItemArt entry must be an object`);
+      throw new ManifestError(`manifest ${id}: each ${field} entry must be an object`);
     }
     const item = entry as Record<string, unknown>;
-    if (typeof item["kind"] !== "string" || !item["kind"].includes(":")) {
-      throw new ManifestError(`manifest ${id}: restoredItemArt kind must be a namespaced id`);
+    const name = item[key];
+    if (typeof name !== "string" || !name.includes(":")) {
+      throw new ManifestError(`manifest ${id}: ${field} ${key} must be a namespaced id`);
     }
-    if (kinds.has(item["kind"])) {
-      throw new ManifestError(`manifest ${id}: restoredItemArt repeats kind ${item["kind"]}`);
+    if (seen.has(name)) {
+      throw new ManifestError(`manifest ${id}: ${field} repeats ${key} ${name}`);
     }
-    kinds.add(item["kind"]);
-    const packs = item["packs"];
-    if (typeof packs !== "object" || packs === null || Array.isArray(packs)) {
-      throw new ManifestError(`manifest ${id}: restoredItemArt ${item["kind"]} needs a packs map`);
+    seen.add(name);
+    validateRestoredPacks(item["packs"], id, field, name);
+    validateHue(item["hue"], id, field, name);
+  }
+}
+
+/** Validate flavour art: a flavour index, and a packs map, a drawAs index, or both. */
+function validateRestoredFlavorArt(value: unknown, id: string): void {
+  const field = "restoredFlavorArt";
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    throw new ManifestError(`manifest ${id}: ${field} must be an array`);
+  }
+  const seen = new Set<number>();
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new ManifestError(`manifest ${id}: each ${field} entry must be an object`);
     }
-    for (const [pack, tile] of Object.entries(packs)) {
-      if (pack === "" || typeof tile !== "object" || tile === null || Array.isArray(tile)) {
-        throw new ManifestError(`manifest ${id}: restoredItemArt ${item["kind"]} has an invalid pack entry`);
-      }
-      const spec = tile as Record<string, unknown>;
-      const native = Number.isInteger(spec["row"]) && Number.isInteger(spec["col"]);
-      const asset = typeof spec["asset"] === "string";
-      if (native === asset) {
-        throw new ManifestError(
-          `manifest ${id}: restoredItemArt ${item["kind"]} ${pack} needs exactly one of row/col or asset`,
-        );
-      }
-      if (native) {
-        const row = spec["row"] as number;
-        const col = spec["col"] as number;
-        if (row < 0 || row > 127 || col < 0 || col > 127) {
-          throw new ManifestError(`manifest ${id}: restoredItemArt ${item["kind"]} ${pack} cell is out of range`);
-        }
-      } else {
-        const path = spec["asset"] as string;
-        if (path === "" || path.includes("\\") || path.split("/").includes("..") || /^([a-z][a-z0-9+.-]*:)?\//iu.test(path)) {
-          throw new ManifestError(`manifest ${id}: restoredItemArt ${item["kind"]} ${pack} asset must stay inside the mod folder`);
-        }
-      }
+    const item = entry as Record<string, unknown>;
+    const flavor = item["flavor"];
+    if (!Number.isInteger(flavor) || (flavor as number) < 0) {
+      throw new ManifestError(`manifest ${id}: ${field} flavor must be a flavour index`);
     }
+    const name = String(flavor);
+    if (seen.has(flavor as number)) {
+      throw new ManifestError(`manifest ${id}: ${field} repeats flavor ${name}`);
+    }
+    seen.add(flavor as number);
+    const drawAs = item["drawAs"];
+    if (drawAs !== undefined && (!Number.isInteger(drawAs) || (drawAs as number) < 0 || drawAs === flavor)) {
+      throw new ManifestError(`manifest ${id}: ${field} ${name} drawAs must be another flavour's index`);
+    }
+    if (item["packs"] !== undefined) validateRestoredPacks(item["packs"], id, field, name);
+    else if (drawAs === undefined) {
+      throw new ManifestError(`manifest ${id}: ${field} ${name} needs a packs map or drawAs`);
+    }
+    validateHue(item["hue"], id, field, name);
   }
 }
 

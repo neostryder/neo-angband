@@ -77,7 +77,7 @@
 import { parseTilePrefsInto, TileMap } from "@rpgm-tools/neo-angband-core";
 import { linoleumPackFormat, parseDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import { tileRegistry } from "./tile-registry";
-import type { TilePrefsDeps, TileTransform } from "@rpgm-tools/neo-angband-core";
+import type { RestoredArtDerive, TilePrefsDeps, TileTransform } from "@rpgm-tools/neo-angband-core";
 // Deliberately the `targets` subpath, not the package root: the root also
 // exports the converter, which imports node:fs and must never reach a browser
 // bundle. This subpath is pure format code (its md5 is portable - md5.ts).
@@ -1245,7 +1245,8 @@ export async function loadLinoleumPack(input: {
   menuname: string;
   deps: TilePrefsDeps;
   modPrefTexts?: readonly ModPrefText[];
-  applyRestoredItemArt?: (map: TileMap) => void | Promise<void>;
+  /** Restored art, given this engine's hue rotation for declarations that carry a hue. */
+  applyRestoredArt?: (map: TileMap, derive: RestoredArtDerive) => void | Promise<void>;
 }): Promise<LinoleumPack | null> {
   const packText = await readPackText(input.resolve, "pack.json");
   if (packText === null) return null;
@@ -1305,8 +1306,8 @@ export async function loadLinoleumPack(input: {
    * differs is what the two can OFFER: this one hands over a real `derive`, and
    * tiles.ts hands over null.
    */
-  await input.applyRestoredItemArt?.(index.map);
   const allocator = derivedSlots(index.slots);
+  await input.applyRestoredArt?.(index.map, allocator.derive);
   tileRegistry.run(
     index.map,
     { engine: "linoleum", id: manifest.packId, menuname: input.menuname },

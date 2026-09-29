@@ -441,6 +441,8 @@ export function modManifest(raw: unknown): PackManifest {
      * the symptom does not appear where the mistake is. */
     ...(m.resources ? { resources: m.resources } : {}),
     ...(m.restoredItemArt ? { restoredItemArt: m.restoredItemArt } : {}),
+    ...(m.restoredMonsterArt ? { restoredMonsterArt: m.restoredMonsterArt } : {}),
+    ...(m.restoredFlavorArt ? { restoredFlavorArt: m.restoredFlavorArt } : {}),
     ...(m.repository ? { repository: m.repository } : {}),
     /* Which of the repository's files ARE the mod. Carried through because the
      * updater re-reads an installed mod's manifest to work out what to fetch for
