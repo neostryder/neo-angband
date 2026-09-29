@@ -6,7 +6,6 @@ import {
   describeSubwindowsMerged,
   MessageSubwindowPainter,
   applySubwindowPrefBlock,
-  canonicalSubwindowTree,
   enabledSubwindowIds,
   firstLaunchSubwindowState,
   paintOverviewSubwindow,
@@ -361,37 +360,6 @@ describe("subwindow layout document", () => {
     expect(containsLeaf(state!.tree, "messages")).toBe(true);
     parsed.data.enabled["not-a-real-id"] = true;
     expect(parseSubwindowDocument(JSON.stringify(parsed))).toBeNull();
-  });
-});
-
-describe("canonical default tree (#236)", () => {
-  it("places a full multi-panel layout around a still-substantial main view", () => {
-    const tree = canonicalSubwindowTree();
-    expect(leafIds(tree).sort()).toEqual(
-      [
-        MAIN_TILE_ID,
-        "player-basic",
-        "player-extra",
-        "equipment",
-        "inventory",
-        "map",
-        "messages",
-        "monsters",
-        "items",
-        "monster-recall",
-        "object-recall",
-      ].sort(),
-    );
-    const { tiles } = computeLayout(tree, { x: 0, y: 0, w: 1600, h: 900 });
-    const main = tiles.find((tile) => tile.id === MAIN_TILE_ID)!.rect;
-    expect(main.w * main.h).toBeGreaterThan(1600 * 900 * 0.25);
-  });
-
-  it("leaves every panel this tree does not place to DEFAULT_DOCK's own fallback", () => {
-    const tree = canonicalSubwindowTree();
-    for (const id of ["overhead", "player-compact", "status", "player-topbar"] as const) {
-      expect(containsLeaf(tree, id)).toBe(false);
-    }
   });
 });
 

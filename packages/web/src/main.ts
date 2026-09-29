@@ -589,6 +589,10 @@ import {
   registerSubwindowPrefBlock,
   scrollSubwindow,
   setSubwindowEnabled,
+  autoSubwindowTree,
+  extraPanelsIn,
+  isAutoLayout,
+  type LayoutExtras,
   rememberDockTree,
   standardDock,
   SUBWINDOW_CHOICES,
@@ -3072,9 +3076,12 @@ function renderSubwindows(): void {
 /** The live path shared by the Interface Options checklist and a panel's own close [x] (neo-angband#246). */
 function setSubwindowEnabledLive(id: SubwindowId, enabled: boolean): void {
   const before = subwindowState.tree;
-  subwindowState = setSubwindowEnabled(subwindowState, id, enabled);
+  const auto = isAutoLayout(subwindowState, layoutExtras);
+  subwindowState = setSubwindowEnabled(subwindowState, id, enabled, layoutExtras);
   if (enabled) panelCues.notePanelOpened();
-  if (!enabled && subwindowState.tree !== before) {
+  /* The automatic layout already sizes what is left; resizing it here would
+   * take it out of automatic mode. */
+  if (!enabled && !auto && subwindowState.tree !== before) {
     subwindowState = { ...subwindowState, tree: fillFreedSpace(before, subwindowState.tree, id, subwindowShell.layoutContext()) };
   }
   writeSubwindowState(localStorage, subwindowState);
@@ -3094,6 +3101,12 @@ function withoutPanel(tree: LayoutNode, id: string): LayoutNode {
  * declared placement, or beside the main view on the right. A panel docked
  * against the main view joins the panels already on that side (#297).
  */
+/** Mods' panels in the automatic layout (#317): registration order, each at its own preferred place. */
+const layoutExtras: LayoutExtras = {
+  get order() { return panelKinds().map((kind) => kind.id); },
+  place: (tree, id) => placeModPanel(tree, id),
+};
+
 function placeModPanel(tree: LayoutNode, id: string): LayoutNode {
   const preferred = panelKinds().find((kind) => kind.id === id)?.spec.preferredPlacement;
   if (!preferred || !containsLeaf(tree, preferred.target)) return dockBesideMain(tree, id, "right");
@@ -3120,10 +3133,13 @@ function setModPanelEnabledLive(id: string, enabled: boolean, parked = false): v
   let tree = subwindowState.tree;
   let floats = [...subwindowState.floats ?? []];
   const places = { ...subwindowState.places };
+  const auto = isAutoLayout(subwindowState, layoutExtras);
   if (enabled) {
     if (places[id]) places[id] = markParked(places[id], false);
     if (containsLeaf(tree, id) || floats.some((entry) => entry.id === id)) return;
-    if (places[id]?.last === "float" && places[id]?.float) {
+    if (auto && places[id]?.last !== "float") {
+      tree = autoSubwindowTree(subwindowState.enabled, [...extraPanelsIn(tree, layoutExtras), id], layoutExtras);
+    } else if (places[id]?.last === "float" && places[id]?.float) {
       floats.push({ id, ...places[id].float });
     } else {
     const saved = places[id]?.dock ?? lastModTrees.get(id) ?? readSubwindowDefault(localStorage)?.tree;
@@ -3139,7 +3155,9 @@ function setModPanelEnabledLive(id: string, enabled: boolean, parked = false): v
       if (!containsLeaf(tree, id)) return;
       lastModTrees.set(id, tree);
       places[id] = markParked({ ...places[id], dock: tree, last: "dock" }, parked);
-      tree = withoutPanel(tree, id);
+      tree = auto
+        ? autoSubwindowTree(subwindowState.enabled, extraPanelsIn(tree, layoutExtras).filter((entry) => entry !== id), layoutExtras)
+        : withoutPanel(tree, id);
     }
   }
   subwindowState = { ...subwindowState, tree, floats, places };
@@ -6984,6 +7002,7 @@ function wizardCtx(): WizardUiCtx {
       state.generateLevel = false;
       panelCam = null; // new level: recentre the camera on the player
       panelCamPinned = false;
+      if (state.chunk.depth > 0) panelCues.welcome();
     },
     /* quit("user choice") (cmd-wizard.c L2203). Deliberately NOT exitToTitle:
      * that one saves first, and the whole point of this command is that nothing

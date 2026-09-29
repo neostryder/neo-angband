@@ -48,6 +48,7 @@ import { UI_DIM, UI_TEXT } from "./ui-colors";
 import {
   MAIN_TILE_ID,
   containsLeaf,
+  sameLayout,
   dockBesideMain,
   leafIds,
   parseLayoutTree,
@@ -137,77 +138,6 @@ const DEFAULT_DOCK: Readonly<Record<SubwindowId, { edge: DockEdge; ratio: number
   status: { edge: "bottom", ratio: 0.12 },
 };
 
-/**
- * The default tiling arrangement for a newly-enabled panel with no saved tree
- * of its own (#236): a full multi-panel layout rather than upstream's flat
- * Term-1..7 right-hand column, built around a main view sharing its row with
- * the dungeon map. A panel this tree does not place falls back to DEFAULT_DOCK
- * the same way it already did, so leaving one out here is never a gap.
- */
-export function canonicalSubwindowTree(): LayoutNode {
-  return {
-    kind: "split",
-    axis: "v",
-    ratio: 0.92,
-    first: {
-      kind: "split",
-      axis: "v",
-      ratio: 0.11814488056710794,
-      first: {
-        kind: "split",
-        axis: "h",
-        ratio: 0.6325118418796261,
-        first: { kind: "leaf", id: "player-basic" },
-        second: {
-          kind: "split",
-          axis: "h",
-          ratio: 0.35968923702293415,
-          first: { kind: "leaf", id: "equipment" },
-          second: { kind: "leaf", id: "inventory" },
-        },
-      },
-      second: {
-        kind: "split",
-        axis: "v",
-        ratio: 0.814788482047636,
-        first: {
-          kind: "split",
-          axis: "h",
-          ratio: 0.6325118418796261,
-          first: { kind: "leaf", id: MAIN_TILE_ID },
-          second: { kind: "leaf", id: "map" },
-        },
-        second: {
-          kind: "split",
-          axis: "h",
-          ratio: 0.8427305041435362,
-          first: {
-            kind: "split",
-            axis: "h",
-            ratio: 0.7955276675939713,
-            first: {
-              kind: "split",
-              axis: "h",
-              ratio: 0.7,
-              first: {
-                kind: "split",
-                axis: "h",
-                ratio: 0.48665462266530424,
-                first: { kind: "leaf", id: "monsters" },
-                second: { kind: "leaf", id: "items" },
-              },
-              second: { kind: "leaf", id: "messages" },
-            },
-            second: { kind: "leaf", id: "monster-recall" },
-          },
-          second: { kind: "leaf", id: "object-recall" },
-        },
-      },
-    },
-    second: { kind: "leaf", id: "player-extra" },
-  };
-}
-
 export function emptyLayoutTree(): LayoutNode {
   return { kind: "leaf", id: MAIN_TILE_ID };
 }
@@ -263,8 +193,9 @@ export function reconcileSubwindowTree(tree: LayoutNode, settings: SubwindowSett
   return next;
 }
 
+/** The layout for a document that names its panels but carries no tree. */
 export function treeForSettings(settings: SubwindowSettings): LayoutNode {
-  return reconcileSubwindowTree(canonicalSubwindowTree(), settings);
+  return autoSubwindowTree(settings);
 }
 
 export function standardDock(tree: LayoutNode, id: SubwindowId): LayoutNode {
@@ -539,9 +470,64 @@ export function parseSubwindowDocument(text: string): (SubwindowState & { modBlo
   return parsed.data.modBlocks ? { ...state, modBlocks: parsed.data.modBlocks } : state;
 }
 
-export function setSubwindowEnabled(state: SubwindowState, id: SubwindowId, enabled: boolean): SubwindowState {
+/**
+ * Panels from outside the core set (mods' panels) and how each one is placed.
+ * `order` is fixed for a given set of mods, so the automatic layout is too.
+ */
+export interface LayoutExtras {
+  readonly order: readonly string[];
+  readonly place: (tree: LayoutNode, id: string) => LayoutNode;
+}
+
+/**
+ * The automatic layout for a set of open panels (#317): each core panel docks
+ * in upstream's window-flag order, then each extra panel in `extras.order`.
+ * It depends on which panels are open and never on the order they were opened
+ * in, so the same set always gives the same arrangement.
+ */
+export function autoSubwindowTree(enabled: SubwindowSettings, extras: readonly string[] = [],
+  layoutExtras?: LayoutExtras): LayoutNode {
+  let tree = emptyLayoutTree();
+  for (const id of SUBWINDOW_IDS) if (enabled[id]) tree = standardDock(tree, id);
+  if (layoutExtras) {
+    for (const id of layoutExtras.order) if (extras.includes(id)) tree = layoutExtras.place(tree, id);
+  }
+  return tree;
+}
+
+/** The extra (mod) panels docked in a tree, in their fixed order. */
+export function extraPanelsIn(tree: LayoutNode, layoutExtras?: LayoutExtras): string[] {
+  const docked = new Set(leafIds(tree));
+  return (layoutExtras?.order ?? []).filter((id) => docked.has(id));
+}
+
+/**
+ * True while the player has not arranged anything by hand: no panel floats,
+ * and the tree is still exactly the automatic layout for the panels it holds.
+ * A drag, a resize, a tab or a float ends it, and from then on a newly opened
+ * panel docks beside the dungeon view without moving the others.
+ */
+export function isAutoLayout(state: SubwindowState, layoutExtras?: LayoutExtras): boolean {
+  if (state.floats?.length) return false;
+  const docked = new Set(leafIds(state.tree));
+  const unknown = [...docked].some((id) => id !== MAIN_TILE_ID && !(SUBWINDOW_IDS as readonly string[]).includes(id) &&
+    !(layoutExtras?.order ?? []).includes(id));
+  if (unknown) return false;
+  return sameLayout(state.tree, autoSubwindowTree(state.enabled, extraPanelsIn(state.tree, layoutExtras), layoutExtras));
+}
+
+export function setSubwindowEnabled(state: SubwindowState, id: SubwindowId, enabled: boolean,
+  layoutExtras?: LayoutExtras): SubwindowState {
   if (state.enabled[id] === enabled) return state;
   const nextEnabled = { ...state.enabled, [id]: enabled };
+  /* A panel with a place of its own (docked somewhere by hand, or floating)
+   * goes back there. Closing a panel in the automatic layout remembers no place,
+   * so it comes back to the automatic one. */
+  const remembered = enabled && state.places?.[id] !== undefined;
+  if (!remembered && isAutoLayout(state, layoutExtras)) {
+    return { ...state, enabled: nextEnabled,
+      tree: autoSubwindowTree(nextEnabled, extraPanelsIn(state.tree, layoutExtras), layoutExtras) };
+  }
   const places = { ...state.places };
   const floats = [...state.floats ?? []];
   let tree = state.tree;

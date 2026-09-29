@@ -144,6 +144,22 @@ export function containsLeaf(node: LayoutNode, id: TileId): boolean {
   return containsLeaf(node.first, id) || containsLeaf(node.second, id);
 }
 
+/**
+ * Two trees describe the same layout: the same panels in the same splits and
+ * tab groups, with the same ratios. Key order does not matter, so a tree read
+ * back from storage still matches the tree it was written from.
+ */
+export function sameLayout(a: LayoutNode, b: LayoutNode): boolean {
+  if (a.kind === "leaf" || b.kind === "leaf") {
+    if (a.kind !== "leaf" || b.kind !== "leaf" || a.id !== b.id) return false;
+    const tabsA = groupTabs(a);
+    const tabsB = groupTabs(b);
+    return tabsA.length === tabsB.length && tabsA.every((id, i) => id === tabsB[i]);
+  }
+  return a.axis === b.axis && Math.abs(a.ratio - b.ratio) < 1e-9 && !!a.sized === !!b.sized &&
+    sameLayout(a.first, b.first) && sameLayout(a.second, b.second);
+}
+
 export function clampRatio(ratio: number): number {
   if (!Number.isFinite(ratio)) return 0.5;
   return Math.min(0.92, Math.max(0.08, ratio));

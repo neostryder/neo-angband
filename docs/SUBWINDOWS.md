@@ -64,9 +64,9 @@ Shrink the window far enough and the panels run out of room to stay readable. Ra
 
 Seven rows on the Subwindow setup screen switch parts of the panel system on and off, each on its own. **Tabs** (on by default) offers the Tab target when you drag one panel onto another. **Small windows** (on by default) folds cramped docked panels into tabs as described above; floating panels remain separate and stay within the viewport. **Lock dividers** (off by default) stops the splitters from moving, so a finished arrangement cannot be nudged by a stray drag. **Move the dungeon view** (on by default) shows the grip in the dungeon view's corner; with it off, the dungeon view stays where it is and other panels can still swap places with it. **Fit to content** (on by default) gives a panel that asks for a set height, such as a mod's quickbar, that height when it sits above or below another panel. Drag its divider to pick your own size instead, and double-click the divider to hand the size back to the panel. **Floating windows** (on by default) shows Float controls; with it off, floating panels appear docked at their remembered places, and their floating sizes and positions return when it is on again. **Panel tips** (on by default) shows those notes and the `+` button; `+` still keeps a screen open with it off.
 
-## The default arrangement
+## Where a panel opens
 
-A panel you turn on takes its place from the shipped Loth.prf layout: the character sheet and inventory/equipment down the left side, the map beside the main view along the top, the monster list, item list, messages, and monster/object recall tiled underneath, and the second character sheet page in a narrow column on the right. A panel with no earlier place of its own docks to a sensible default edge instead of stacking. Turning a panel back off, then on again, returns it to its last place.
+Until you move, resize, tab or float a panel, the game arranges the panels for you. Each one has its own side of the dungeon view: the inventory, equipment, monster and item lists and both recalls on the right, the map, overhead view and character panels on the left, the top bar above, and messages and status below. The same panels always get the same arrangement, whatever order you open them in, and closing one gives its room back to the rest. Once you arrange anything by hand, a newly opened panel docks beside the dungeon view and the others stay where you put them. A panel you close and open again goes back to its last place.
 
 ## Making an arrangement stick
 
@@ -79,7 +79,7 @@ graphics setting (below). **Save as my default** snapshots whatever you
 currently have arranged; **Restore my default** brings it back, any time,
 without asking anything of you. Nothing is saved until you press *Save as my
 default* yourself, and there is nothing to restore until you have. This is
-separate from the *shipped* default arrangement described above - your own
+separate from the automatic arrangement described above - your own
 saved default, once you make one, takes priority whenever a fresh panel needs
 somewhere to go.
 

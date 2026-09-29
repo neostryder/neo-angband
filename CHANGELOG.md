@@ -50,6 +50,7 @@ still calls itself.
 
 ### Changed
 - [Visible] [UI] **New installs open with the dungeon view alone, as the original does, and screens that can also be panels say so.** The first few times you open the inventory, equipment, monster or item list, messages, character sheet, or a monster or object recall, a note says that `+` or the new `+` button keeps that screen open beside the map. On the first dungeon level, one line points to Subwindow setup. The notes stop once any panel is open, and a Panel tips switch in Subwindow setup turns them off. Existing installs keep their layout (#317).
+- [Visible] [UI] **Panels open in the same places whatever order you open them in.** Until you move, resize, tab or float a panel, the game arranges the open panels from a fixed side for each, and closing one gives its room back to the rest. Once you arrange anything by hand, a new panel docks beside the dungeon view and the others stay put. A layout saved without its panel positions gets the same automatic arrangement (#317).
 
 ## [1.19.1] - 2026-09-28
 
