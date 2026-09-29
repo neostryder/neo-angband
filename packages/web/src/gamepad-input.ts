@@ -44,6 +44,8 @@ export interface GamepadHost {
   toggleLegend(): void;
   /** Interrupt a run, a rest or an autoplayer the way the shell does. */
   stop(): void;
+  /** Keep the open screen beside the map as a panel (#317). Does nothing with no such screen open. */
+  pinScreen(): void;
   /** A pad appeared, went away, or had its layout changed. */
   padsChanged(pads: readonly ConnectedPad[]): void;
 }
@@ -281,6 +283,7 @@ export class GamepadAdapter {
       case "commands": this.host.toggleWheel(); return;
       case "legend": this.host.toggleLegend(); return;
       case "stop": this.host.stop(); return;
+      case "pin": this.host.pinScreen(); return;
       case "confirm": this.confirm(); return;
       case "cancel": this.cancel(); return;
       case "wait": this.wait(); return;

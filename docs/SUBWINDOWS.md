@@ -32,7 +32,7 @@ needed. An `X` marks a panel that is currently on, a `.` marks one that is off.
 
 Mods that provide panels add rows below the built-in panels. A panel stays in its saved place when its mod is not loaded and shows the mod's name with a Remove button. Loading the mod fills that place again; Remove takes the panel out of the layout. A mod's panel opens by itself the first time the mod or the feature that provides it is turned on. Close it and it stays closed until you turn it back on here. Turning off the mod feature that provides a panel takes the panel off screen, and turning the feature back on returns it to the same place.
 
-A new install opens with the dungeon view alone, as the original does. The first few times you open a screen that can also be a panel (inventory, equipment, the monster and item lists, messages, the character sheet, monster and object recall), a note at the top of the dungeon view says so. Press `+`, or the `+` button at the top right, and that screen stays open beside the map. The notes stop once any panel is open. A layout with every panel off stays that way the next time you start the game.
+A new install opens with the dungeon view alone, as the original does. The first few times you open a screen that can also be a panel (inventory, equipment, the monster and item lists, messages, the character sheet, monster and object recall), a note at the top of the dungeon view says so. Press `+`, or the `+` button at the top right, and that screen stays open beside the map. On a controller with triggers, hold the left trigger and press the right trigger. The notes stop once any panel is open. A layout with every panel off stays that way the next time you start the game.
 
 ## Rearranging panels
 

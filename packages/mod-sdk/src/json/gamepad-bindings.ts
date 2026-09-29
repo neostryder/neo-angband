@@ -14,6 +14,7 @@ export const GAMEPAD_ROLE_IDS = [
   "page-prev",
   "page-next",
   "legend",
+  "pin",
 ] as const;
 
 const roleTarget = json.object({

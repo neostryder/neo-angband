@@ -37,6 +37,8 @@ import "./gamepad-controls.css";
 
 export interface GamepadControlsHost {
   stop(): void;
+  /** Keep the open screen beside the map as a panel (#317). */
+  pinScreen?(): void;
 }
 
 /**
@@ -652,6 +654,7 @@ export function installGamepadControls(
       }
     },
     stop: () => host.stop(),
+    pinScreen: () => host.pinScreen?.(),
     padsChanged: (next) => {
       const had = pads;
       pads = next;

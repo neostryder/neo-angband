@@ -45,6 +45,7 @@ function stubHost(overrides: Partial<GamepadHost> = {}): GamepadHost & { pads: r
     toggleWheel: vi.fn(),
     toggleLegend: vi.fn(),
     stop: vi.fn(),
+    pinScreen: vi.fn(),
     padsChanged: vi.fn(),
     ...overrides,
   };
@@ -217,6 +218,20 @@ describe("commands", () => {
     adapter.poll([withButtons([STANDARD_BUTTON.leftTrigger])], 16);
     adapter.poll([withButtons([STANDARD_BUTTON.leftTrigger, STANDARD_BUTTON.faceRight])], 32);
     expect(quaff).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("keeping a screen open as a panel (#317)", () => {
+  it("pins with the second layer on the right trigger, and sends no key", () => {
+    const surface = new ControlSurface();
+    const pinScreen = vi.fn();
+    const seen = recorder();
+    const adapter = new GamepadAdapter(surface, stubHost({ pinScreen }));
+    adapter.poll([withButtons([STANDARD_BUTTON.leftTrigger])], 0);
+    adapter.poll([withButtons([STANDARD_BUTTON.leftTrigger, STANDARD_BUTTON.rightTrigger])], 16);
+    expect(pinScreen).toHaveBeenCalledTimes(1);
+    expect(seen.keys).toEqual([]);
+    seen.dispose();
   });
 });
 

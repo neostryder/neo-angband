@@ -49,7 +49,8 @@ export type GamepadRole =
   | "wait"
   | "page-prev"
   | "page-next"
-  | "legend";
+  | "legend"
+  | "pin";
 
 export const GAMEPAD_ROLES: readonly GamepadRole[] = GAMEPAD_ROLE_IDS;
 
@@ -63,6 +64,7 @@ export const ROLE_LABEL: Record<GamepadRole, string> = {
   "page-prev": "Previous page or list",
   "page-next": "Next page or list",
   legend: "Controller legend and mapping",
+  pin: "Keep the open screen beside the map",
 };
 
 export type BindingTarget = `role:${GamepadRole}` | `cmd:${string}` | `key:${string}`;
@@ -179,6 +181,8 @@ export function defaultBindings(capabilities: PadCapabilities): GamepadBindings 
       if (buttons[index] === "role:layer") continue;
       assign(layer, index, value, count);
     }
+    /* #317: the pad's way to keep a screen open as a panel, as + does. */
+    if (capabilities.triggers) assign(layer, STANDARD_BUTTON.rightTrigger, "role:pin", count);
   }
 
   // A pad with no room for an essential role would be unplayable rather than

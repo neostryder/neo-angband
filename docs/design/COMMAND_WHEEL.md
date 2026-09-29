@@ -145,7 +145,7 @@ case in a table.
 | 4 left shoulder | Previous page or list | Go up staircase |
 | 5 right shoulder | Next page or list | Go down staircase |
 | 6 left trigger | Hold for second layer | |
-| 7 right trigger | Command wheel | |
+| 7 right trigger | Command wheel | Keep the open screen beside the map |
 | 8 view | Controller legend and mapping | Character description |
 | 9 menu | Escape, which opens the game menu | Rest for a while |
 | 10 left stick click | Stand still | Display inventory listing |
