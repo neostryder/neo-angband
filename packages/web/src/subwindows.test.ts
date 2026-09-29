@@ -162,12 +162,12 @@ describe("subwindow settings", () => {
     expect(parseSubwindowDocument(JSON.stringify(data))).toBeNull();
   });
 
-  it("opens a new install with the default arrangement and keeps a layout with every panel off (#287)", () => {
+  it("opens a new install with the dungeon view alone and keeps a layout with every panel off (#317)", () => {
     const storage = memoryStorage();
     const first = readSubwindowState(storage);
     expect(first).toEqual(firstLaunchSubwindowState());
-    expect(first.tree).toEqual(canonicalSubwindowTree());
-    expect(enabledSubwindowIds(first.enabled).sort()).toEqual(leafIds(canonicalSubwindowTree()).filter((id) => id !== MAIN_TILE_ID).sort());
+    expect(leafIds(first.tree)).toEqual([MAIN_TILE_ID]);
+    expect(enabledSubwindowIds(first.enabled)).toEqual([]);
     const enabled = { ...allOff, messages: true, inventory: true, items: true };
     writeSubwindowState(storage, { enabled, tree: treeForSettings(enabled) });
     expect(readSubwindowSettings(storage)).toEqual(enabled);

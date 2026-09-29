@@ -213,16 +213,11 @@ export function emptyLayoutTree(): LayoutNode {
 }
 
 /**
- * What a new install opens with (#287): every panel of the shipped Loth.prf
- * arrangement, tiled as `canonicalSubwindowTree` places them.
+ * What a new install opens with (#317): the dungeon view alone, as upstream
+ * does. Screens with a panel twin offer to stay open beside it (panel-cues.ts).
  */
 export function firstLaunchSubwindowState(): SubwindowState {
-  const tree = canonicalSubwindowTree();
-  const enabled = blankSettings();
-  for (const id of leafIds(tree)) {
-    if (id !== MAIN_TILE_ID) enabled[id as SubwindowId] = true;
-  }
-  return { enabled, tree };
+  return { enabled: blankSettings(), tree: emptyLayoutTree() };
 }
 
 export function enabledSubwindowIds(settings: SubwindowSettings): SubwindowId[] {

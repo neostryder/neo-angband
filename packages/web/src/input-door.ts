@@ -205,6 +205,48 @@ export function setAutoplayerInterruptOwner(
   autoplayerInterruptOwner = owner;
 }
 
+/**
+ * The key that keeps an open screen in a panel (#317, panel-cues.ts). It is
+ * read here, ahead of the screen's own handler, so no screen has to know it.
+ */
+export const VIEW_PIN_KEY = "+";
+
+/**
+ * The open screen's pin, and the key listener that screen registered. The
+ * first capture listener added after arming is the screen's own. `+` pins only
+ * while that listener is the innermost one: a prompt the screen opens (a
+ * rename, an inscription) registers its own, or takes the screen's place
+ * while it runs, and `+` typed there stays text.
+ */
+let viewPin: { readonly pin: () => void; owner?: KeydownListener } | undefined;
+
+/**
+ * Arm the pin for the screen about to open. The returned function puts back
+ * whatever was armed before, so a screen opened from another one (a monster's
+ * recall from the monster list) hands the pin back when it closes.
+ */
+export function armViewPin(pin: () => void): () => void {
+  const previous = viewPin;
+  const armed: { readonly pin: () => void; owner?: KeydownListener } = { pin };
+  viewPin = armed;
+  return () => {
+    if (viewPin === armed) viewPin = previous;
+  };
+}
+
+function viewPinOwnsInput(): boolean {
+  if (!viewPin?.owner) return false;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (entries[i]!.capture) return entries[i]!.listener === viewPin.owner;
+  }
+  return false;
+}
+
+function isViewPinKey(key: UiKey | undefined): boolean {
+  return key !== undefined && key.key === VIEW_PIN_KEY && !key.repeat &&
+    !key.modifiers.ctrl && !key.modifiers.alt && !key.modifiers.meta;
+}
+
 const entries: Entry[] = [];
 const auxiliaryEntries: AuxiliaryEntry[] = [];
 let nextSequence = 1;
@@ -304,6 +346,7 @@ function deliverAuxiliary(type: AuxiliaryInputType, event: Event): void {
 export function onKeydown(listener: KeydownListener, capture = false): void {
   // EventTarget ignores a duplicate listener with the same capture flag.
   if (entries.some((entry) => entry.listener === listener && entry.capture === capture)) return;
+  if (capture && viewPin && viewPin.owner === undefined) viewPin.owner = listener;
   entries.push({ listener, capture });
 }
 
@@ -456,6 +499,12 @@ export function setKeymapResolver(
 /** Route a semantic input sample through the same door as browser input. */
 export function dispatchUiInput(draft: UiInputDraft, original?: KeyboardEvent, bypassKeymap = false): void {
   const input = stamp(draft);
+  const armed = viewPin;
+  if (armed && isViewPinKey(input.key) && viewPinOwnsInput()) {
+    original?.preventDefault();
+    armed.pin();
+    return;
+  }
   const expansion = !bypassKeymap && (keymapResolverOptions?.enabled?.() ?? true)
     ? keymapResolver?.(input)
     : null;
@@ -506,6 +555,7 @@ export function clearInputDoor(): void {
   tiledPanelRoots.clear();
   tiledPanelInputBlocked = false;
   autoplayerInterruptOwner = undefined;
+  viewPin = undefined;
   nextSequence = 1;
   if (browserWindow) {
     browserWindow.removeEventListener("keydown", browserKeydown, true);

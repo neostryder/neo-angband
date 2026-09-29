@@ -382,6 +382,7 @@ import { VisualFilterOverlay, applyScopedVisualFilter } from "./visual-filter";
 import { applyChromeTheme, type ChromeTheme } from "./chrome-theme";
 import type { TerminalGround } from "./terminal-ground";
 import { mountChromeNotice } from "./chrome-notice";
+import { mountPanelCues } from "./panel-cues";
 import { migrateModBags, migrateModBagsAsync } from "./mod-bags";
 import {
   folderPickingSupported,
@@ -1054,6 +1055,24 @@ const gameView = document.getElementById("game-view") as HTMLElement;
 const gameLayout = document.getElementById("game-layout") as HTMLElement;
 /* Layout news fades from the dungeon view instead of sitting in the message log. */
 const layoutNotice = mountChromeNotice(gameView);
+/* #317: screens with a panel twin offer to stay open beside the map. */
+const panelCues = mountPanelCues({
+  host: gameView,
+  notice: layoutNotice,
+  storage: localStorage,
+  label: (id) => SUBWINDOW_CHOICES.find((choice) => choice.id === id)?.tab ?? id,
+  isOpen: (id) => subwindowState.enabled[id as SubwindowId] === true,
+  open: (id) => setSubwindowEnabledLive(id as SubwindowId, true),
+});
+/** Run a screen that has a panel twin, with `+` and the pin button armed for it. */
+async function withPanelTwin<T>(id: SubwindowId, run: () => Promise<T>): Promise<T> {
+  const leave = panelCues.enterScreen(id);
+  try {
+    return await run();
+  } finally {
+    leave();
+  }
+}
 let subwindowState: SubwindowState = readSubwindowState(localStorage);
 const subwindowTerms = new Map<SubwindowId, GlyphTerm>();
 const subwindowShell = mountSubwindowShell({
@@ -3054,6 +3073,7 @@ function renderSubwindows(): void {
 function setSubwindowEnabledLive(id: SubwindowId, enabled: boolean): void {
   const before = subwindowState.tree;
   subwindowState = setSubwindowEnabled(subwindowState, id, enabled);
+  if (enabled) panelCues.notePanelOpened();
   if (!enabled && subwindowState.tree !== before) {
     subwindowState = { ...subwindowState, tree: fillFreedSpace(before, subwindowState.tree, id, subwindowShell.layoutContext()) };
   }
@@ -3193,6 +3213,11 @@ const subwindowMenu: SubwindowMenu = {
       label: t("options.subwindows.featureFloating", "Floating windows: move panels above the tiled layout inside the game"),
       enabled: () => wmSettings.floatingWindows,
       set: (enabled) => setWmFeature("floatingWindows", enabled),
+    },
+    {
+      label: t("options.subwindows.featurePanelTips", "Panel tips: say when a screen can stay open beside the map"),
+      enabled: () => panelCues.enabled(),
+      set: (enabled) => panelCues.setEnabled(enabled),
     },
   ],
   mapTiles: mapTileModeMenu,
@@ -4099,7 +4124,7 @@ async function runContextMenuObject(handle: number): Promise<ContextMenuResult> 
       const header = name.charAt(0).toUpperCase() + name.slice(1);
       const tb = objectInfoTextblock(state, obj, inspectExtras);
       trackObjectRecall(header, tb);
-      await showTextScreen(term, objectRecallScreen(header, tb));
+      await withPanelTwin("object-recall", () => showTextScreen(term, objectRecallScreen(header, tb)));
       /* MENU_VALUE_INSPECT returns 2 (L821): the caller reopens this menu on the
        * same object, so reading an item's info does not throw you out of it. */
       return CTX_REOPEN;
@@ -4306,7 +4331,7 @@ async function inspectOnce(
   const header = name.charAt(0).toUpperCase() + name.slice(1); /* ODESC_CAPITAL */
   const tb = objectInfoTextblock(state, obj, inspectExtras);
   trackObjectRecall(header, tb);
-  await showTextScreen(term, objectRecallScreen(header, tb));
+  await withPanelTwin("object-recall", () => showTextScreen(term, objectRecallScreen(header, tb)));
   return true;
 }
 
@@ -5490,7 +5515,7 @@ function recallDeps(): LoreDeps {
  */
 async function showRaceRecall(race: MonsterRace, lore: MonsterLore): Promise<void> {
   trackMonsterRecall(race);
-  await showTextScreen(term, monsterRecallScreen(race, lore, recallDeps()));
+  await withPanelTwin("monster-recall", () => showTextScreen(term, monsterRecallScreen(race, lore, recallDeps())));
 }
 
 async function showMonsterRecall(mon: Monster): Promise<void> {
@@ -11394,6 +11419,7 @@ function continueAdvance(
       state.generateLevel = false;
       autosave(true); // a fresh level is a natural save point
       render();
+      if (state.chunk.depth > 0) panelCues.welcome();
     });
     return; // the modal owns the rest of this turn's tail
   }
@@ -11547,8 +11573,8 @@ function buildCommandTable(): CommandRow[] {
      * (ui-knowledge.c:3932-3934, :3978-3980, :4027-4029). */
     /* do_cmd_equip / do_cmd_inven / do_cmd_quiver: each opens its listing as a
      * PICKER into context_menu_object, not as a read-only screen. */
-    { desc: "Display equipment listing", cat: "Manage items", o: "e", act: () => void openModal(() => doCmdItemListing("equip")) },
-    { desc: "Display inventory listing", cat: "Manage items", o: "i", act: () => void openModal(() => doCmdItemListing("inven")) },
+    { desc: "Display equipment listing", cat: "Manage items", o: "e", act: () => void openModal(() => withPanelTwin("equipment", () => doCmdItemListing("equip"))) },
+    { desc: "Display inventory listing", cat: "Manage items", o: "i", act: () => void openModal(() => withPanelTwin("inventory", () => doCmdItemListing("inven"))) },
     { desc: "Display quiver listing", cat: "Manage items", o: "|", act: () => void openModal(() => doCmdItemListing("quiver")) },
     { desc: "Pick up objects", cat: "Manage items", o: "g", act: () => void openModal(pickupCmd) },
     // Ignore: 'k' in the original keyset; roguelike uses ^D (handled above) so
@@ -11561,11 +11587,11 @@ function buildCommandTable(): CommandRow[] {
     { desc: "Cast a spell", cat: "Information", o: "m", act: () => void openModal(castSpell) },
     { desc: "Full dungeon map", cat: "Information", o: "M", act: () => void openModal(showLevelMapForShell) },
     { desc: "Toggle ignoring of items", cat: "Information", o: "K", r: "O", act: () => { state.ignore.unignoring = !state.ignore.unignoring; void openModal(() => applyIgnoreDrop()); } },
-    { desc: "Display visible item list", cat: "Information", o: "]", act: () => void openModal(() => showTextScreen(term, objectListScreen(state))) },
-    { desc: "Display visible monster list", cat: "Information", o: "[", act: () => void openModal(() => showMonsterList(term, state, monsterListColorKey)) },
+    { desc: "Display visible item list", cat: "Information", o: "]", act: () => void openModal(() => withPanelTwin("items", () => showTextScreen(term, objectListScreen(state)))) },
+    { desc: "Display visible monster list", cat: "Information", o: "[", act: () => void openModal(() => withPanelTwin("monsters", () => showMonsterList(term, state, monsterListColorKey))) },
     { desc: "Locate player on map", cat: "Information", o: "L", r: "W", act: () => void openModal(() => runLocate()) },
     { desc: "Identify symbol", cat: "Information", o: "/", act: () => void openModal(querySymbolCmd) },
-    { desc: "Character description", cat: "Information", o: "C", act: () => void openModal(() => showCharacterSheet(term, state, playerName, charSheetOpts())) },
+    { desc: "Character description", cat: "Information", o: "C", act: () => void openModal(() => withPanelTwin("player-basic", () => showCharacterSheet(term, state, playerName, charSheetOpts()))) },
     { desc: "Check knowledge", cat: "Information", o: "~", act: () => void openModal(openKnowledgeMenu) },
     // Utility/assorted (cmd_util, ui-game.c:196-203).
     { desc: "Interact with options", cat: "Utility", o: "=", act: () => { void openModal(() => runOptionsMenu(term, state, openIgnoreSetup, sidebarModeMenu, prefsUiCtx(), openModOptions, subwindowMenu)).then(() => autosave(true)); } },
@@ -11917,7 +11943,7 @@ inputEvents.addEventListener("keydown", (ev) => {
   if (ev.ctrlKey && (ev.key === "p" || ev.key === "P")) {
     ev.preventDefault();
     void openModal(() =>
-      showTextScreen(term, messageHistoryScreen(msglog)),
+      withPanelTwin("messages", () => showTextScreen(term, messageHistoryScreen(msglog))),
     );
     return;
   }

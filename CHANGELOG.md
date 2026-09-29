@@ -48,6 +48,9 @@ still calls itself.
 
 ## [Unreleased]
 
+### Changed
+- [Visible] [UI] **New installs open with the dungeon view alone, as the original does, and screens that can also be panels say so.** The first few times you open the inventory, equipment, monster or item list, messages, character sheet, or a monster or object recall, a note says that `+` or the new `+` button keeps that screen open beside the map. On the first dungeon level, one line points to Subwindow setup. The notes stop once any panel is open, and a Panel tips switch in Subwindow setup turns them off. Existing installs keep their layout (#317).
+
 ## [1.19.1] - 2026-09-28
 
 ### Added

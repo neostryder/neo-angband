@@ -53,10 +53,10 @@ function functionBody(src: string, name: string): string {
 describe("i / e / | run do_cmd_inven's picker, not a listing", () => {
   it("binds all three keys to it, each opening on its own list", () => {
     expect(MAIN).toMatch(
-      new RegExp(String.raw`\{ desc: "[^"]*", cat: (?:null|"[^"]*"), o: "i", act: \(\) => void openModal\(\(\) => doCmdItemListing\("inven"\)\) \}`),
+      new RegExp(String.raw`\{ desc: "[^"]*", cat: (?:null|"[^"]*"), o: "i", act: \(\) => void openModal\(\(\) => withPanelTwin\("inventory", \(\) => doCmdItemListing\("inven"\)\)\) \}`),
     );
     expect(MAIN).toMatch(
-      new RegExp(String.raw`\{ desc: "[^"]*", cat: (?:null|"[^"]*"), o: "e", act: \(\) => void openModal\(\(\) => doCmdItemListing\("equip"\)\) \}`),
+      new RegExp(String.raw`\{ desc: "[^"]*", cat: (?:null|"[^"]*"), o: "e", act: \(\) => void openModal\(\(\) => withPanelTwin\("equipment", \(\) => doCmdItemListing\("equip"\)\)\) \}`),
     );
     expect(MAIN).toMatch(
       new RegExp(String.raw`\{ desc: "[^"]*", cat: (?:null|"[^"]*"), o: "\|", act: \(\) => void openModal\(\(\) => doCmdItemListing\("quiver"\)\) \}`),

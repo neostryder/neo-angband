@@ -75,7 +75,7 @@ while still claiming a tap.
 
 The tiled subwindow shell now offers every non-Borg PW_* content type, each in
 its own panel, with right-click docking and splitter resize around the main
-view. A new install opens with the canonical tiling of the shipped Loth.prf arrangement.
+view. A new install opens with the dungeon view alone; panels open from Subwindow setup, or with `+` on a screen that has a panel twin (#317).
 
 Remaining: the arbitrary eight-term flag matrix, assignment of multiple flags to one term, and the `^E` inventory/equipment flip. Layouts now export and import as JSON documents. Tracked as issue #191.
 

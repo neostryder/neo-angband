@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { UiInput } from "./input-door";
 import {
+  armViewPin,
   clearInputDoor,
   dispatchUiInput,
   inputEvents,
@@ -371,5 +372,86 @@ describe("the autoplayer interrupt hatch", () => {
     fakeDocument.hasFocus = () => true;
     door.press("q");
     expect(interrupted).toBe(true);
+  });
+});
+
+describe("the pin key for a screen with a panel twin (#317)", () => {
+  function withModifiers(k: string, mods: Partial<{ ctrl: boolean; shift: boolean; alt: boolean; meta: boolean }>) {
+    return { key: { key: k, modifiers: { ctrl: false, shift: false, alt: false, meta: false, ...mods }, repeat: false } };
+  }
+
+  it("takes + ahead of the open screen's own handler", () => {
+    const pins: string[] = [];
+    const screenSaw: string[] = [];
+    armViewPin(() => pins.push("inventory"));
+    onKeydown((event) => screenSaw.push(event.key), true);
+    dispatchUiInput(key("+"));
+    dispatchUiInput(key("a"));
+    expect(pins).toEqual(["inventory"]);
+    expect(screenSaw).toEqual(["a"]);
+  });
+
+  it("accepts Shift, which + needs on many layouts, and refuses Ctrl, Alt and Meta", () => {
+    const pins: number[] = [];
+    armViewPin(() => pins.push(1));
+    onKeydown(() => {}, true);
+    dispatchUiInput(withModifiers("+", { shift: true }));
+    dispatchUiInput(withModifiers("+", { ctrl: true }));
+    dispatchUiInput(withModifiers("+", { alt: true }));
+    dispatchUiInput(withModifiers("+", { meta: true }));
+    expect(pins).toEqual([1]);
+  });
+
+  it("leaves + as text in a prompt the screen opens on top of itself", () => {
+    const pins: number[] = [];
+    const promptSaw: string[] = [];
+    armViewPin(() => pins.push(1));
+    onKeydown(() => {}, true);
+    onKeydown((event) => promptSaw.push(event.key), true);
+    dispatchUiInput(key("+"));
+    expect(pins).toEqual([]);
+    expect(promptSaw).toEqual(["+"]);
+  });
+
+  it("leaves + as text in a prompt that takes the screen's place while it runs", () => {
+    const pins: number[] = [];
+    const promptSaw: string[] = [];
+    armViewPin(() => pins.push(1));
+    const screen = () => {};
+    const prompt = (event: KeyboardEvent) => promptSaw.push(event.key);
+    onKeydown(screen, true);
+    inputEvents.removeEventListener("keydown", screen, true);
+    onKeydown(prompt, true);
+    dispatchUiInput(key("+"));
+    inputEvents.removeEventListener("keydown", prompt, true);
+    onKeydown(screen, true);
+    dispatchUiInput(key("+"));
+    expect(promptSaw).toEqual(["+"]);
+    expect(pins).toEqual([1]);
+  });
+
+  it("hands the pin back to the outer screen when an inner one closes", () => {
+    const pins: string[] = [];
+    armViewPin(() => pins.push("monsters"));
+    onKeydown(() => {}, true);
+    const inner = () => {};
+    const disarmInner = armViewPin(() => pins.push("monster-recall"));
+    onKeydown(inner, true);
+    dispatchUiInput(key("+"));
+    disarmInner();
+    inputEvents.removeEventListener("keydown", inner, true);
+    dispatchUiInput(key("+"));
+    expect(pins).toEqual(["monster-recall", "monsters"]);
+  });
+
+  it("does nothing once the screen is closed", () => {
+    const pins: number[] = [];
+    const rootSaw: string[] = [];
+    const disarm = armViewPin(() => pins.push(1));
+    disarm();
+    onKeydown((event) => rootSaw.push(event.key));
+    dispatchUiInput(key("+"));
+    expect(pins).toEqual([]);
+    expect(rootSaw).toEqual(["+"]);
   });
 });

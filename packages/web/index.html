@@ -358,6 +358,29 @@
       .chrome-notice-fading {
         opacity: 0;
       }
+      .panel-pin {
+        position: absolute;
+        top: 8px;
+        /* Clear of the dungeon view's move grip in the corner. */
+        right: 28px;
+        z-index: 1100;
+        min-width: 28px;
+        height: 28px;
+        padding: 0 8px;
+        border: 1px solid var(--chrome-float-border);
+        border-radius: var(--chrome-radius);
+        background: var(--chrome-title-bg);
+        color: var(--chrome-text);
+        font: 18px/26px var(--chrome-font);
+        cursor: pointer;
+      }
+      .panel-pin:hover,
+      .panel-pin:focus-visible {
+        border-color: var(--chrome-text);
+      }
+      .panel-pin[hidden] {
+        display: none;
+      }
       @media (prefers-reduced-motion: reduce) {
         .chrome-notice {
           transition: none;
