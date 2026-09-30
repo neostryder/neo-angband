@@ -76,6 +76,7 @@ import type { Artifact } from "../obj/types.js";
 import type { Monster } from "../mon/monster.js";
 import type { OptionStateData } from "../player/options.js";
 import type { Chunk } from "../world/chunk.js";
+import type { CoreRegistries } from "../session/boot.js";
 
 /**
  * A history entry offered to the write seam.
@@ -227,6 +228,14 @@ export type AbilityGained =
  * exactly the failure the call-site census exists to catch.
  */
 export interface ModHooks {
+  /**
+   * A newly created character after startGame has built and wired its state.
+   * This runs once for new characters only; loadGame and reloads do not call it.
+   * Changes to the state become ordinary character state and are saved normally.
+   * Every contributor runs in mod load order.
+   */
+  newCharacter?: (state: GameState, registries: CoreRegistries) => void;
+
   /**
    * A walk into a grid the player could tunnel through (cave-cmd.ts,
    * movementAutoDig's call site).
@@ -703,6 +712,7 @@ export type ModHookFold =
  * interface without adding it here does not compile.
  */
 export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
+  newCharacter: "all-observe",
   walkBlockedByDiggable: "last-answer",
   objectListTiebreak: "last-answer",
   projectionRadius: "chained",
@@ -796,6 +806,13 @@ export function guardModHooks(
     /* null is DECLINE, so core bumps the wall as it would with no mod loaded. */
     out.walkBlockedByDiggable = (state, grid, deps): number | null =>
       guard("walkBlockedByDiggable", () => walk(state, grid, deps), null);
+  }
+
+  const newCharacter = hooks.newCharacter;
+  if (newCharacter) {
+    out.newCharacter = (state, registries): void => {
+      guard("newCharacter", () => newCharacter(state, registries), undefined);
+    };
   }
 
   const tiebreak = hooks.objectListTiebreak;
@@ -971,6 +988,13 @@ export function composeModHooks(
   if (list.length === 0) return undefined;
 
   const out: ModHooks = {};
+
+  const newCharacter = list.map((c) => c.newCharacter).filter(isFn);
+  if (newCharacter.length > 0) {
+    out.newCharacter = (state, registries): void => {
+      for (const fn of newCharacter) fn(state, registries);
+    };
+  }
 
   /* REVERSE load order for both of the last-answer folds, so the mod the player
    * moved to the bottom of the list is the one that gets asked first and

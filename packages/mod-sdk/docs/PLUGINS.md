@@ -209,9 +209,9 @@ What `ctx` carries:
 
 `flags` is sliced per mod so that one mod cannot read or act on another mod's toggles. Otherwise a mod's behaviour would depend on which other mods the player happened to enable.
 
-### `state` is absent in `hooks`, and it always will be
+### `hooks(ctx)` can observe new characters
 
-The host composes every enabled mod's hooks before it starts the game, because the composed `ModHooks` is an argument to `startGame`. There is no `GameState` to hand you at that point, and there never can be. Treat `hooks(ctx)` as a factory over your flags, and put anything that needs the live game in `register(host, ctx)`, which runs once after the game is built.
+The host calls `hooks(ctx)` before it starts the game, so the factory itself has no `GameState`. A hook it returns can receive the live state later: `newCharacter(state, registries)` runs once after `startGame` has built and wired a new character. It does not run when a saved game is loaded or reloaded. Changes it makes become ordinary character state and are saved with that character. Other work that needs the live game can go in `register(host, ctx)`, which runs after the game is built.
 
 If you need the engine at `hooks` time for something other than the live game (classifying option names, reading a constant), `ctx.core` is available and is the same module instance the game runs on.
 

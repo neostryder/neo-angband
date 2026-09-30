@@ -556,6 +556,19 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
   }
 
   const PROBES: Record<keyof ModHooks, Probe> = {
+    newCharacter: {
+      yes: (log, tag) => ({
+        newCharacter: () => {
+          log.push(tag);
+        },
+      }),
+      no: (log, tag) => ({
+        newCharacter: () => {
+          log.push(tag);
+        },
+      }),
+      run: (h) => h.newCharacter?.(STATE, {} as Parameters<NonNullable<ModHooks["newCharacter"]>>[1]),
+    },
     walkBlockedByDiggable: {
       /* Distinct answers, so an order-dependent fold is visible in the value. */
       yes: (log, tag, nth) => ({

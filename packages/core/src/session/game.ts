@@ -3949,6 +3949,8 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
    * not split across two closures with separate `inArena` flags. */
   const changeLevel = makeChangeLevel(state, reg, wired.trapDeps);
 
+  state.modHooks?.newCharacter?.(state, reg);
+
   return {
     state,
     registry: wired.registry,

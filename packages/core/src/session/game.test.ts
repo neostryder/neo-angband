@@ -14,8 +14,9 @@ import type { PlayerCommand } from "../game/context.js";
 import { sourcePlayer } from "../effects/interpreter.js";
 import { attachGameEnv } from "../game/effect-game-env.js";
 import { buildEffectContext } from "../game/effect-env.js";
-import { startGame } from "./game.js";
+import { loadGame, saveGame, startGame } from "./game.js";
 import type { GamePack } from "./game.js";
+import { composeModHooks, guardModHooks } from "../mod/hooks.js";
 import { calcBonuses } from "../player/calcs.js";
 import { gearGet } from "../game/gear.js";
 import { histHas, historyIsArtifactKnown } from "../player/history.js";
@@ -125,6 +126,42 @@ describe("issue #118: shape-granted flag learning", () => {
 });
 
 describe("startGame (new-game assembly)", () => {
+  it("calls newCharacter once in mod load order and never while loading a save", () => {
+    const calls: string[] = [];
+    const modHooks = composeModHooks([
+      { newCharacter: (state, registries) => {
+        expect(state.actor.player).toBeDefined();
+        expect(registries.objects.kinds.length).toBeGreaterThan(0);
+        calls.push("first");
+      } },
+      { newCharacter: () => calls.push("second") },
+    ]);
+    const game = startGame(pack, { seed: 301, depth: 1, modHooks: modHooks! });
+    expect(calls).toEqual(["first", "second"]);
+
+    loadGame(pack, saveGame(game), new Set(["core"]), { modHooks: modHooks! });
+    expect(calls).toEqual(["first", "second"]);
+  });
+
+  it("reports a throwing newCharacter hook and still starts the game", () => {
+    const faults: Array<{ hook: string; error: unknown }> = [];
+    const guarded = guardModHooks(
+      { newCharacter: () => { throw new Error("new character failure"); } },
+      (fault) => faults.push(fault),
+    );
+    const game = startGame(pack, { seed: 302, depth: 1, modHooks: guarded });
+    expect(game.state.actor.player).toBeDefined();
+    expect(faults).toHaveLength(1);
+    expect(faults[0]?.hook).toBe("newCharacter");
+    expect(faults[0]?.error).toEqual(new Error("new character failure"));
+  });
+
+  it("leaves a no-hook game unchanged", () => {
+    const withoutOption = startGame(pack, { seed: 303, depth: 1 });
+    const withNoContribution = startGame(pack, { seed: 303, depth: 1, modHooks: {} });
+    expect(saveGame(withNoContribution)).toEqual(saveGame(withoutOption));
+  });
+
   it("births a level-1 character with derived bonuses at the player spot", () => {
     const { state, booted } = startGame(pack, { seed: 123, depth: 1 });
     expect(state.actor.player.lev).toBe(1);

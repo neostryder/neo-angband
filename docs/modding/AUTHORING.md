@@ -529,6 +529,18 @@ mod version have no birth choice in an older save and use the current toggle.
 
 ## Front-end groundwork
 
+### Initialize newly created characters
+
+A plugin's `hooks(ctx)` can return the `newCharacter(state, registries)` hook. The host calls it once after core has built and wired a new character. It never runs while a save is loaded or a game is reloaded. The hook can initialize live character state, including `state.ignore`; anything it sets becomes ordinary character state and is saved with that character.
+
+```js
+hooks() {
+  return {
+    newCharacter(state, registries) {}
+  };
+}
+```
+
 The host draws through a renderer-neutral `GridSurface`, and the existing canvas terminal is one implementation of it. Menus are declarative front-end data. Request `registry:menu` and call `host.menus.register("core:game-menu", fn)` to rewrite one named menu's rows. The id is stable and is never a localized title. Each row carries a stable id plus `semantic.kind`, an optional `semantic.ref` and small scalar `semantic.data`, so an alternative layout can work from what a row means instead of parsing its label. If you need to wrap a transformer an earlier mod installed, call `host.menus.handlerFor(id)` before registering. A failed transform is reported, and the unmodified menu still opens.
 
 `ModPlugin.frontend?(ctx)` is the single map-display slot. The frontend enabled later in load order wins, and only its factory is invoked; return a `WorldFrameSink`, or `undefined` to keep the glyph terminal. The host runs the world-render-data producer from its real map repaint and passes the winning frontend a frozen, renderer-neutral `WorldFrame` snapshot. Grids keep semantic terrain, trap, object, monster and path ids plus seen, remembered or unknown state. The glyph projection is only the current terminal fallback, including its terrain-under-foreground tile inputs, even for a path over otherwise bare seen terrain. The world data is therefore ready for an isometric or 3D consumer. TypeScript mods can write `import type { WorldFrame, WorldFrameSink } from "@rpgm-tools/neo-angband-mod-sdk"`; the import is type-only, so it does not break the folder-plugin rule against bare runtime imports. A control test runs the same producer `main.ts` calls, checks the unmodded glyph sink's pre-frame `term.put` tuples, and confirms that an independently owned host sink receives that exact frame in the same call. A disk fixture confirms that the later plugin receives the frame and that an unmodded control still paints glyphs. The snapshot has no mutable player-grid alias, so a frontend can keep a frame without keeping live game state.
