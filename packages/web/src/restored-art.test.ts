@@ -6,10 +6,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { NO_DISK_PACKS, resetDiskPacks, setDiskPacks } from "./disk-packs";
 import type { DiskPack, DiskPackReport } from "./disk-packs";
+import { resetComposition } from "./pack";
 import { restoredArtForPack } from "./tile-mods";
 
 afterEach(() => {
   resetDiskPacks();
+  resetComposition();
 });
 
 function artPack(): DiskPack {
@@ -71,5 +73,67 @@ describe("restoredArtForPack", () => {
     const art = await restoredArtForPack("old");
     expect(art.items).toEqual([]);
     expect(art.flavors).toEqual([{ flavor: 305, drawAs: 30 }]);
+  });
+});
+
+describe("restoredArtForPack and a mod's flavour section", () => {
+  const ring = (index: number, desc: string) => ({
+    kind: { tval: "ring", glyph: "=" },
+    entries: [{ kind: "flavor", index, attr: "Red", desc }],
+  });
+
+  /** A mod that adds flavour 303 in its `flavors` section and gives it art. */
+  function sectioned(on: boolean): DiskPack {
+    return {
+      manifest: {
+        id: "restorer",
+        name: "restorer",
+        version: "1.0.0",
+        shape: "content",
+        dependencies: { core: "*" },
+        sections: [{ id: "flavors", title: "Flavours", default: on }],
+        restoredFlavorArt: [{ flavor: 303, packs: { old: { row: 3, col: 4 } } }, { flavor: 28, drawAs: 29 }],
+      } as unknown as DiskPack["manifest"],
+      files: { flavor: { sections: { flavors: { records: [ring(303, "Ruby")] } } } } as unknown as DiskPack["files"],
+      code: [],
+      assets: [],
+    };
+  }
+
+  /** Another mod whose own appended flavour also takes index 303. */
+  const other: DiskPack = {
+    manifest: {
+      id: "other",
+      name: "other",
+      version: "1.0.0",
+      shape: "content",
+      dependencies: { core: "*" },
+    } as unknown as DiskPack["manifest"],
+    files: { flavor: { records: [ring(303, "Lava")] } } as unknown as DiskPack["files"],
+    code: [],
+    assets: [],
+  };
+
+  function both(on: boolean): DiskPackReport {
+    return {
+      ...NO_DISK_PACKS,
+      packs: [sectioned(on), other],
+      order: ["restorer", "other"],
+      available: true,
+      kind: "picked",
+      dir: "/mods",
+    };
+  }
+
+  it("skips art for a flavour the mod adds only in a section that is off", async () => {
+    setDiskPacks(both(false));
+    const art = await restoredArtForPack("old");
+    expect(art.flavors).toEqual([{ flavor: 28, drawAs: 29 }]);
+  });
+
+  it("keeps it while the section is on", async () => {
+    setDiskPacks(both(true));
+    const art = await restoredArtForPack("old");
+    expect(art.flavors).toEqual([{ flavor: 303, packs: { old: { row: 3, col: 4 } } }, { flavor: 28, drawAs: 29 }]);
   });
 });

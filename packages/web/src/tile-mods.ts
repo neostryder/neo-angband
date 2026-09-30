@@ -61,6 +61,7 @@ import {
 } from "./disk-packs";
 import { engineAllows } from "./mod-engine";
 import { isShippedMod, readEnabledModIds } from "./mod-store";
+import { flavorIndicesInOffSections } from "./pack";
 import {
   subPackResolver,
   urlBaseResolver,
@@ -562,10 +563,13 @@ function modAssetResolver(source: ModAssetSource, modId: string): PackFileResolv
  * Resolve enabled mods' restored art (kinds, races, flavours) for the active
  * pack before fillers run. Each declaration keeps only the active pack's tile,
  * with an asset path turned into a URL the renderer can load; an asset that
- * does not resolve is dropped, leaving the slot to the fillers.
+ * does not resolve is dropped, leaving the slot to the fillers. A flavour the
+ * mod adds only in a section that is off is skipped, because its index may now
+ * belong to another mod's flavour (pack.ts flavorIndicesInOffSections).
  */
 export async function restoredArtForPack(pack: string): Promise<Required<RestoredArt>> {
   const discovered = discoverMods();
+  const offFlavors = flavorIndicesInOffSections();
   const out = {
     items: [] as RestoredItemArt[],
     monsters: [] as RestoredMonsterArt[],
@@ -595,6 +599,7 @@ export async function restoredArtForPack(pack: string): Promise<Required<Restore
       if (packs) out.monsters.push({ ...monster, packs });
     }
     for (const flavor of art.flavors) {
+      if (offFlavors.get(id)?.has(flavor.flavor)) continue;
       const packs = await forPack(flavor.packs);
       if (packs) out.flavors.push({ ...flavor, packs });
       else if (flavor.drawAs !== undefined) {

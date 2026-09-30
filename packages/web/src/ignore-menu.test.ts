@@ -8,7 +8,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   loc,
   Rng,
@@ -30,6 +30,8 @@ import {
   IGNORE,
   ITYPE,
   TV,
+  FIRST_MOD_TVAL,
+  tvals,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   GameState,
@@ -47,6 +49,7 @@ import {
   IGNORE_ACTION,
 } from "./ignore-menu";
 import type { IgnoreItemMenuCtx, IgnoreMenuGame } from "./ignore-menu";
+import { ignoreCategories, svalCategoryItems, SVAL_DEPENDENT } from "./screens";
 
 /* ------------------------------------------------------------------ */
 /* Content-pack registry + a minimal real GameState (as screens.test). */
@@ -400,5 +403,97 @@ describe("ignoreItemMenuCtx (ui-object.c:1724-1784 guards)", () => {
       label: "Unignore this item",
       action: IGNORE_ACTION.UNIGNORE_ITEM,
     });
+  });
+});
+
+/* ================================================================== */
+/* A mod's own item class in the ignore menus (core obj/tval-table.ts). */
+/* ================================================================== */
+
+describe("a declared item class and the ignore menus", () => {
+  afterEach(() => {
+    tvals.clear();
+  });
+
+  /** The shipped objects plus a junk class that opts in and a skeleton class that does not. */
+  function modRegistry(): ObjRegistry {
+    tvals.add("junk", null, "Junk");
+    tvals.add("skeleton");
+    const objectBase = loadJson<{ records: unknown[] }>("object_base");
+    const object = loadJson<{ records: unknown[] }>("object");
+    const kind = (name: string, type: string) => ({
+      name,
+      type,
+      graphics: { glyph: "~", color: "w" },
+      level: 0,
+      weight: 2,
+      cost: 0,
+      alloc: { common: 50, minmax: "0 to 40" },
+      desc: ["Junk."],
+    });
+    return new ObjRegistry({
+      objectBase: {
+        ...objectBase,
+        records: [
+          ...objectBase.records,
+          { name: { tval: "junk", name: "Junk" }, graphics: "white" },
+          { name: { tval: "skeleton", name: "Skeleton" }, graphics: "white" },
+        ],
+      },
+      object: {
+        ...object,
+        records: [...object.records, kind("& Empty Bottle~", "junk"), kind("& Broken Skull~", "skeleton")],
+      },
+      egoItem: loadJson("ego_item"),
+      artifact: loadJson("artifact"),
+      curse: loadJson("curse"),
+      brand: loadJson("brand"),
+      slay: loadJson("slay"),
+      activation: loadJson("activation"),
+      objectProperty: loadJson("object_property"),
+      flavor: loadJson("flavor"),
+    } as ObjPackJson);
+  }
+
+  function objectOf(reg: ObjRegistry, name: string): GameObject {
+    const kind = reg.kinds.find((k) => k?.name === name) as ObjectKind;
+    return Object.assign(objectNew(kind), { tval: kind.tval, sval: kind.sval, number: 1 });
+  }
+
+  it("with no declared class, the categories are SVAL_DEPENDENT itself", () => {
+    expect(ignoreCategories()).toBe(SVAL_DEPENDENT);
+    const { items, tvals: listed } = svalCategoryItems(objReg);
+    expect(listed).toEqual(SVAL_DEPENDENT.filter((d) => (objReg.bases[d.tval]?.numSvals ?? 0) > 0).map((d) => d.tval));
+    expect(items.map((i) => i.label)).toEqual(
+      SVAL_DEPENDENT.filter((d) => (objReg.bases[d.tval]?.numSvals ?? 0) > 0).map((d) => d.desc),
+    );
+  });
+
+  it("lists an opted-in class after Angband's categories in the setup menu, and leaves the other out", () => {
+    const reg = modRegistry();
+    const { items, tvals: listed } = svalCategoryItems(reg);
+    expect(listed[listed.length - 1]).toBe(FIRST_MOD_TVAL);
+    expect(items[items.length - 1]?.label).toBe("Junk");
+    expect(listed).not.toContain(FIRST_MOD_TVAL + 1);
+    expect(listed.slice(0, -1)).toEqual(svalCategoryItems(objReg).tvals);
+  });
+
+  it("offers the kind row on an opted-in class's object, and not on the other class's", () => {
+    const reg = modRegistry();
+    const state = makeTestState();
+    const bottle = ignoreItemMenuCtx(objectOf(reg, "& Empty Bottle~"), state, awareGame);
+    expect(bottle.flavor?.ignored).toBe(false);
+    expect(buildIgnoreItemMenu(bottle)[1]?.action).toBe(IGNORE_ACTION.FLAVOR);
+    const skull = ignoreItemMenuCtx(objectOf(reg, "& Broken Skull~"), state, awareGame);
+    expect(skull.flavor).toBeUndefined();
+  });
+
+  it("ignores the kind through the menu like any other kind", () => {
+    const reg = modRegistry();
+    const state = makeTestState();
+    const bottle = objectOf(reg, "& Empty Bottle~");
+    applyIgnoreItemChoice(IGNORE_ACTION.FLAVOR, bottle, state, awareGame);
+    expect(state.ignore.kindIsIgnoredAware(bottle.kind.kidx)).toBe(true);
+    expect(ignoreItemMenuCtx(bottle, state, awareGame).flavor?.ignored).toBe(true);
   });
 });

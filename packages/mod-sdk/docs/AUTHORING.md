@@ -273,6 +273,14 @@ A declared class takes the next number after Angband's own. That number depends 
 
 A declared class can't be worn, wielded, flavoured, read, eaten or aimed, and its objects are called by their own names. To change any of that, register the answers through `registry:tval` ([PLUGINS.md](PLUGINS.md)).
 
+A declared class stays out of the ignore menus unless its record gives the label for its category there:
+
+```json
+{ "records": [ { "name": "junk", "ignoreMenu": "Junk" } ] }
+```
+
+The label is listed in the item ignoring setup after Angband's own categories, in the order the classes are declared, and the `k` command on one of these objects offers to ignore every object of its kind. Without the field, a player can only ignore these objects one at a time, so a mod that ignores the kind for a new character has to declare the label or the player can never undo it. A kind ignore is saved by the object's id. If the mod is turned off later, the save still loads and that ignore is dropped.
+
 ### Your artifact and the `birth_randarts` option
 
 An artifact your mod adds survives a character born with random artifacts turned on. Every other artifact in the game is redesigned into a different item, but yours keeps the name, the base object and the numbers you wrote.
@@ -377,6 +385,7 @@ A mod that brings back something Angband cut can give it the tile it used to hav
 
 - `restoredItemArt` names an object kind by id, and `restoredMonsterArt` names a monster by id.
 - `restoredFlavorArt` names a flavour by its index in `flavor.json`. `drawAs` makes it draw another flavour's tile in every pack, and a `packs` entry overrides that for one pack.
+- A flavour your mod adds only inside a section gets its art only while that section is on. With the section off, another mod may add a flavour at the same index, and your art is not drawn on it.
 - Art only fills a slot the pack's own pref files left empty, so a pack that already draws the thing keeps its own picture.
 - `hue` rotates the tile's colours by that many degrees in the Linoleum engine, which can recolour. Use it when a restored thing's old tile is also the tile of the thing that replaced it, so the two can be told apart. Angband's own tile sheets can't recolour, so there the tile is drawn as it is.
 

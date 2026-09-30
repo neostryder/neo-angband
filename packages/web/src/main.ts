@@ -630,7 +630,7 @@ import {
   egoIgnoreMenu,
   svalKindMenu,
   svalCategoryItems,
-  SVAL_DEPENDENT,
+  ignoreCategories,
   objectListScreen,
   monsterRecallScreen,
   knownMonsterEntries,
@@ -5064,7 +5064,7 @@ async function openIgnoreSetup(): Promise<void> {
     }
     const tval = tvals[idx - 2];
     if (tval === undefined) continue;
-    const desc = SVAL_DEPENDENT.find((d) => d.tval === tval)?.desc ?? "";
+    const desc = ignoreCategories().find((d) => d.tval === tval)?.desc ?? "";
     await openSvalKindMenu(tval, desc);
   }
   if (ignoreConfigChanged) await applyIgnoreDrop();

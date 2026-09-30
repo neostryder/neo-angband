@@ -548,6 +548,8 @@ interface Composition {
   readonly dropped: ReturnType<typeof composeDroppingBroken>["dropped"];
   /** Mods held out of the set before composing, because this build is not theirs. */
   readonly refused: readonly ModProblem[];
+  /** modId -> sectionId -> on, as this composition applied it. */
+  readonly sections: Readonly<Record<string, Readonly<Record<string, boolean>>>>;
   /* The inputs this answer is FOR, so a later call with different inputs cannot be
    * served a stale one. See composition(). */
   readonly forReport: unknown;
@@ -665,7 +667,7 @@ function composition(): Composition {
       composed.faults.push({ packId: fault.packId, why: fault.message });
     }
   }
-  memo = { packs, composed, dropped, refused, forReport: report, forEnabled: key, forSlot: slot };
+  memo = { packs, composed, dropped, refused, sections, forReport: report, forEnabled: key, forSlot: slot };
   return memo;
 }
 
@@ -775,6 +777,47 @@ function migratedSectionChoices(
   } catch {
     return {};
   }
+}
+
+/** Every flavour entry's `index` in one flavor.json contribution. An entry is
+ * the object carrying both `index` and `attr`, which also finds one inside a
+ * patch or a field op without knowing every op's shape. */
+function flavorIndicesIn(value: unknown, into: Set<number>): void {
+  if (Array.isArray(value)) {
+    for (const v of value) flavorIndicesIn(v, into);
+    return;
+  }
+  if (typeof value !== "object" || value === null) return;
+  const rec = value as Record<string, unknown>;
+  if (Number.isInteger(rec["index"]) && typeof rec["attr"] === "string") into.add(rec["index"] as number);
+  for (const v of Object.values(rec)) flavorIndicesIn(v, into);
+}
+
+/**
+ * modId -> the flavour indices that mod adds only inside sections that are off.
+ *
+ * `restoredFlavorArt` names a flavour by its index, and no mod owns an index,
+ * so with the section that adds a flavour off, another mod's flavour at the
+ * same index would draw the first mod's art (tile-mods.ts restoredArtForPack).
+ * An index the mod also adds outside those sections stays out of the set.
+ */
+export function flavorIndicesInOffSections(): Map<string, Set<number>> {
+  const { packs, sections } = composition();
+  const out = new Map<string, Set<number>>();
+  for (const pack of packs) {
+    const flavor = pack.files["flavor"];
+    if (!flavor) continue;
+    const { sections: bySection, ...base } = flavor;
+    const on = new Set<number>();
+    const off = new Set<number>();
+    flavorIndicesIn(base, on);
+    for (const [sid, sub] of Object.entries(bySection ?? {})) {
+      flavorIndicesIn(sub, (sections[pack.manifest.id]?.[sid] ?? true) ? on : off);
+    }
+    const dropped = [...off].filter((i) => !on.has(i));
+    if (dropped.length > 0) out.set(pack.manifest.id, new Set(dropped));
+  }
+  return out;
 }
 
 /** Forget the composition, so a test can compose again over different inputs. */

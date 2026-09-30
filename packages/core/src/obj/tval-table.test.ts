@@ -12,8 +12,8 @@ import { Rng } from "../rng.js";
 import { bindCore } from "../session/boot.js";
 import type { CorePack } from "../session/boot.js";
 import { ContentIdResolver, kindLocalId } from "../mod/ids.js";
-import { deserializeObject, serializeObject } from "../session/save.js";
-import type { SavedObject } from "../session/save.js";
+import { deserializeIgnore, deserializeObject, serializeIgnore, serializeObject } from "../session/save.js";
+import type { SavedIgnoreSettings, SavedObject } from "../session/save.js";
 import { tvalFindIdx, tvalFindName } from "./bind.js";
 import { objectDesc, ODESC } from "./desc.js";
 import { makeRuneEnv } from "./knowledge.js";
@@ -41,10 +41,12 @@ const BOTTLE = {
   desc: ["An empty bottle."],
 };
 
-/** The shipped pack, with the junk base and one junk kind added to its object files. */
-function junkPack(declared: readonly unknown[] | undefined): CorePack {
+/** The shipped pack, with the junk base and one junk kind added to its object files unless `withJunk` is false. */
+function junkPack(declared: readonly unknown[] | undefined, withJunk = true): CorePack {
   const objectBase = loadJson<{ records: unknown[] }>("object_base");
   const object = loadJson<{ records: unknown[] }>("object");
+  const junkBase = withJunk ? [{ name: { tval: "junk", name: "Junk" }, graphics: "white" }] : [];
+  const junkKinds = withJunk ? [BOTTLE] : [];
   return {
     constants: loadJson("constants"),
     terrain: loadRecords("terrain"),
@@ -57,8 +59,8 @@ function junkPack(declared: readonly unknown[] | undefined): CorePack {
     quest: loadRecords("quest"),
     store: loadRecords("store"),
     obj: {
-      objectBase: { ...objectBase, records: [...objectBase.records, { name: { tval: "junk", name: "Junk" }, graphics: "white" }] },
-      object: { ...object, records: [...object.records, BOTTLE] },
+      objectBase: { ...objectBase, records: [...objectBase.records, ...junkBase] },
+      object: { ...object, records: [...object.records, ...junkKinds] },
       egoItem: loadJson("ego_item"),
       artifact: loadJson("artifact"),
       curse: loadJson("curse"),
@@ -175,5 +177,69 @@ describe("a saved object of a declared class", () => {
     expect(back.kind.name).toBe(BOTTLE.name);
     expect(back.tval).toBe(FIRST_MOD_TVAL + 1);
     expect(back.tval).toBe(back.kind.tval);
+  });
+});
+
+describe("a declared class in the ignore menus", () => {
+  it("offers kind ignoring only for a class whose record names an ignoreMenu label, in declaration order", () => {
+    const result = declareModTvals([
+      { name: "junk", ignoreMenu: "Junk" },
+      { name: "skeleton" },
+      { name: "bottle", ignoreMenu: " Bottles " },
+    ]);
+    expect(result.refused).toEqual([]);
+    expect(tvals.ignoreCategories()).toEqual([
+      { tval: FIRST_MOD_TVAL, desc: "Junk" },
+      { tval: FIRST_MOD_TVAL + 2, desc: "Bottles" },
+    ]);
+  });
+
+  it("offers none when no class opts in", () => {
+    declareModTvals([{ name: "junk" }]);
+    expect(tvals.ignoreCategories()).toEqual([]);
+  });
+
+  it("refuses a malformed ignoreMenu and still declares the class", () => {
+    const result = declareModTvals([{ name: "junk", ignoreMenu: "" }, { name: "skeleton", ignoreMenu: 3 }]);
+    expect(result.declared).toEqual(["junk", "skeleton"]);
+    expect(result.refused).toHaveLength(2);
+    expect(tvals.ignoreCategories()).toEqual([]);
+  });
+
+  it("saves a kind ignore on an opted-in class by id, and reloads it under another mod set", () => {
+    const first = bindCore(junkPack([{ name: "junk", ignoreMenu: "Junk" }]));
+    const kidx = first.objects.kinds.find((k) => k?.name === BOTTLE.name)!.kidx;
+    const saved = JSON.parse(
+      JSON.stringify(
+        serializeIgnore(
+          { level: [], ego: [], kindAware: [kidx], kindUnaware: [kidx], unignoring: false },
+          new ContentIdResolver(first),
+        ),
+      ),
+    ) as SavedIgnoreSettings;
+    const id = new ContentIdResolver(first).kindIdOrNull(kidx);
+    expect(saved.kindAware).toEqual([id]);
+    expect(saved.kindUnaware).toEqual([id]);
+
+    const second = bindCore(junkPack([{ name: "skeleton" }, { name: "junk", ignoreMenu: "Junk" }]));
+    const back = deserializeIgnore(saved, new ContentIdResolver(second));
+    const kidx2 = second.objects.kinds.find((k) => k?.name === BOTTLE.name)!.kidx;
+    expect(back.kindAware).toEqual([kidx2]);
+    expect(back.kindUnaware).toEqual([kidx2]);
+  });
+
+  it("drops the kind ignore without error when the mod that declared the class is gone", () => {
+    const first = bindCore(junkPack([{ name: "junk", ignoreMenu: "Junk" }]));
+    const kidx = first.objects.kinds.find((k) => k?.name === BOTTLE.name)!.kidx;
+    const saved = JSON.parse(
+      JSON.stringify(
+        serializeIgnore({ level: [], ego: [], kindAware: [kidx], kindUnaware: [], unignoring: false }, new ContentIdResolver(first)),
+      ),
+    ) as SavedIgnoreSettings;
+
+    const plain = bindCore(junkPack(undefined, false));
+    expect(tvals.ignoreCategories()).toEqual([]);
+    const back = deserializeIgnore(saved, new ContentIdResolver(plain));
+    expect(back.kindAware).toEqual([]);
   });
 });

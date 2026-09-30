@@ -39,7 +39,7 @@ import {
   t,
 } from "@rpgm-tools/neo-angband-core";
 import type { GameState, GameObject } from "@rpgm-tools/neo-angband-core";
-import { SVAL_DEPENDENT } from "./screens";
+import { ignoreCategories } from "./screens";
 import { selectFromMenu } from "./overlay";
 import type { MenuItem } from "./overlay";
 import type { GridPointerInput, GridSurface } from "./term";
@@ -173,9 +173,10 @@ function flavorIsAware(state: GameState, game: IgnoreMenuGame, obj: GameObject):
 
 /** ignore_tval (ui-options.c:1699): the tval is an sval-ignore category. A
  * real held object always has num_svals >= 1, so only the sval_dependent
- * membership test (SVAL_DEPENDENT) is meaningful here. */
+ * membership test (SVAL_DEPENDENT plus a mod's opted-in classes) is
+ * meaningful here. */
 function ignoreTval(tval: number): boolean {
-  return SVAL_DEPENDENT.some((d) => d.tval === tval);
+  return ignoreCategories().some((d) => d.tval === tval);
 }
 
 /**

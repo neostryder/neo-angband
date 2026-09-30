@@ -12,6 +12,7 @@
  */
 
 import {
+  tvals,
   describeObject,
   objectKindName,
   gearGet,
@@ -2180,6 +2181,16 @@ export const SVAL_DEPENDENT: readonly { tval: number; desc: string }[] = [
   { tval: TV.GOLD, desc: "Money" },
 ];
 
+/**
+ * The ignore-menu categories this game offers: SVAL_DEPENDENT, then every item
+ * class a mod declared with `ignoreMenu` (core obj/tval-table.ts), in
+ * declaration order. With no opt-in it is SVAL_DEPENDENT itself.
+ */
+export function ignoreCategories(): readonly { tval: number; desc: string }[] {
+  const added = tvals.ignoreCategories();
+  return added.length === 0 ? SVAL_DEPENDENT : [...SVAL_DEPENDENT, ...added];
+}
+
 /* ------------------------------------------------------------------ *
  * Death / tombstone screens (ui-death.c).
  * ------------------------------------------------------------------ */
@@ -2833,7 +2844,7 @@ export function svalCategoryItems(
 ): { items: MenuItem[]; tvals: number[] } {
   const items: MenuItem[] = [];
   const tvals: number[] = [];
-  for (const cat of SVAL_DEPENDENT) {
+  for (const cat of ignoreCategories()) {
     if ((reg.bases[cat.tval]?.numSvals ?? 0) === 0) continue;
     items.push({ label: cat.desc, color: FG });
     tvals.push(cat.tval);

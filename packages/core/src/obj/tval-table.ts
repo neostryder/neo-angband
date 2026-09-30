@@ -14,6 +14,12 @@
  * flavoured, read, eaten or aimed. That is exactly what junk needs, and a mod
  * that wants more wraps the predicates it needs.
  *
+ * A declared class offers kind ignoring only when its record opts in with
+ * `ignoreMenu`, the category label the ignore menus show for it. Angband's own
+ * categories are a fixed list in the front end (sval_dependent, ui-options.c),
+ * and without an opt-in a player could never un-ignore a class that a mod
+ * ignored for them.
+ *
  * Numbers are not stable across mod sets, so nothing persists one. Kinds are
  * saved by id (`<class>:<name>`), and a saved object of a declared class takes
  * its tval from its kind on load (session/save.ts).
@@ -35,6 +41,14 @@ export interface ModTvalEntry {
   readonly textName: string;
   /** The mod that declared it, or null for an unattributed call. */
   readonly owner: string | null;
+  /** The ignore-menu category label, or null when the class does not offer kind ignoring. */
+  readonly ignoreMenu: string | null;
+}
+
+/** One category a declared class adds to the ignore menus. */
+export interface ModIgnoreCategory {
+  readonly tval: number;
+  readonly desc: string;
 }
 
 /** What a declaration did: the tval taken, or -1 and a sentence saying why not. */
@@ -52,7 +66,7 @@ export class DeclaredTvalTable {
   readonly #byName = new Map<string, number>();
 
   /** Declare one class. Never throws. */
-  add(textName: string, owner: string | null = null): ModTvalAddResult {
+  add(textName: string, owner: string | null = null, ignoreMenu: string | null = null): ModTvalAddResult {
     const refuse = (refused: string): ModTvalAddResult => ({ tval: -1, refused });
     const name = textName.trim().toLowerCase();
     if (name === "") return refuse("an item class needs a name");
@@ -62,7 +76,7 @@ export class DeclaredTvalTable {
     }
     if (this.#byName.has(name)) return refuse(`duplicate item class ${name}`);
     const tval = FIRST_MOD_TVAL + this.#entries.length;
-    this.#entries.push({ textName: name, owner });
+    this.#entries.push({ textName: name, owner, ignoreMenu });
     this.#byName.set(name, tval);
     return { tval, refused: null };
   }
@@ -83,6 +97,15 @@ export class DeclaredTvalTable {
   /** Only the declared classes, in declaration order. */
   added(): readonly ModTvalEntry[] {
     return this.#entries;
+  }
+
+  /** The classes that opted into kind ignoring, in declaration order. */
+  ignoreCategories(): ModIgnoreCategory[] {
+    const out: ModIgnoreCategory[] = [];
+    this.#entries.forEach((entry, i) => {
+      if (entry.ignoreMenu !== null) out.push({ tval: FIRST_MOD_TVAL + i, desc: entry.ignoreMenu });
+    });
+    return out;
   }
 
   /** The live tval count: the compiled classes plus the declared ones. */
@@ -108,8 +131,10 @@ export interface TvalDeclarationResult {
 
 /**
  * Declare the classes in a composed `tval.json`. Each record is
- * `{ "name": "<text name>" }`; the owner comes from the provenance composition
- * stamps on it.
+ * `{ "name": "<text name>" }`, with an optional `"ignoreMenu": "<label>"`; the
+ * owner comes from the provenance composition stamps on it. A malformed
+ * `ignoreMenu` is refused on its own and the class is still declared, because
+ * dropping the class would stop the bind over a menu label.
  */
 export function declareModTvals(records: readonly unknown[] | undefined | null): TvalDeclarationResult {
   const declared: string[] = [];
@@ -124,12 +149,17 @@ export function declareModTvals(records: readonly unknown[] | undefined | null):
       refused.push("tval declaration: each record must be an object");
       continue;
     }
-    const rec = raw as { name?: unknown };
+    const rec = raw as { name?: unknown; ignoreMenu?: unknown };
     if (typeof rec.name !== "string") {
       refused.push("tval declaration: name must be a string");
       continue;
     }
-    const result = tvals.add(rec.name, provenanceOf(raw)?.owner ?? null);
+    let ignoreMenu: string | null = null;
+    if (rec.ignoreMenu !== undefined) {
+      if (typeof rec.ignoreMenu === "string" && rec.ignoreMenu.trim() !== "") ignoreMenu = rec.ignoreMenu.trim();
+      else refused.push(`item class ${rec.name.trim().toLowerCase()}: ignoreMenu must be a non-empty string`);
+    }
+    const result = tvals.add(rec.name, provenanceOf(raw)?.owner ?? null, ignoreMenu);
     if (result.refused !== null) refused.push(result.refused);
     else declared.push(rec.name.trim().toLowerCase());
   }
