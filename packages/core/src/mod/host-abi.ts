@@ -475,6 +475,8 @@ export interface ModPluginContext {
       readonly reason?: string;
     }): void;
     markNondeterministic(): void;
+    /** Give the keyboard back to the player, showing the optional reason. Does nothing once another mod owns the controller. */
+    release(reason?: string): void;
   } | undefined;
   /** Enabled and loaded mods, limited to manifest-declared public flags. */
   readonly mods?: () => readonly {

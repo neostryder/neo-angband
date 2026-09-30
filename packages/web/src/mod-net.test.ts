@@ -190,6 +190,7 @@ describe("the context wiring", () => {
     const marked: string[] = [];
     setModDriverControl({
       current: () => ({ kind: "controller", owner: "squire" }),
+      release: () => undefined,
       setStatus: () => undefined,
       markNondeterministic: (id) => void marked.push(id),
     });

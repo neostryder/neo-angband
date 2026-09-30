@@ -11,4 +11,9 @@ describe("the published host ABI", () => {
     expectTypeOf<Parameters<NonNullable<ModPlugin["hud"]>>[0]>().toEqualTypeOf<ModPluginContext>();
     expectTypeOf<Parameters<NonNullable<ModPlugin["controller"]>>[0]>().toEqualTypeOf<ModPluginContext>();
   });
+
+  it("publishes an optional reason on controller release", () => {
+    expectTypeOf<NonNullable<ModPluginContext["controller"]>["release"]>()
+      .toEqualTypeOf<(reason?: string) => void>();
+  });
 });

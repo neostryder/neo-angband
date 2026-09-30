@@ -39,6 +39,7 @@ describe("modPluginContext session facts", () => {
     const statuses: string[] = [];
     setModDriverControl({
       current: () => driver,
+      release: () => undefined,
       setStatus: (id, status) => {
         if (driver.kind !== "controller" || driver.owner !== id) throw new Error("wrong owner");
         driver = { ...driver, ...status };

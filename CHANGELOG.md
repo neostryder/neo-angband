@@ -58,6 +58,7 @@ still calls itself.
 - [Visible] [Modding-API] **A mod's own item class can join the ignore menus.** A `tval.json` record with `"ignoreMenu": "<label>"` lists the class in item ignoring setup after Angband's own categories and offers kind ignoring for its objects in the `k` menu.
 - [Visible] [Modding-API] **Restored flavour art no longer draws over another mod's flavour when the section that adds it is off.**
 - [Visible] [Modding-API] **Mod plugins can type their host context from Core.** `ModPluginContext` and the panel, network, birth, input, prompt, intent, display and event types it uses are exported from `@rpgm-tools/neo-angband-core`. The web host uses the same types, so a mod's types match the objects it receives.
+- [Visible] [Modding-API] **A controller mod can hand the keyboard back when its task ends.** `ctx.controller.release(reason?)` stops the controller, hides the banner and shows the reason in the message line.
 
 ### Changed
 - [Visible] [UI] **New installs open with the dungeon view alone, as the original does, and screens that can also be panels say so.** The first few times you open the inventory, equipment, monster or item list, messages, character sheet, or a monster or object recall, a note says that `+` or the new `+` button keeps that screen open beside the map. On the first dungeon level, one line points to Subwindow setup. The notes stop once any panel is open, and a Panel tips switch in Subwindow setup turns them off. Existing installs keep their layout (#317).

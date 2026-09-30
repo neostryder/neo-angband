@@ -276,6 +276,7 @@ export function modPluginContext(
         ? Object.freeze({
           setStatus: (status: { readonly label?: string; readonly reason?: string }) => driverControl?.setStatus(id, status),
           markNondeterministic: () => driverControl?.markNondeterministic?.(id),
+          release: (reason?: string) => driverControl?.release(id, reason),
         })
         : undefined;
     },
@@ -485,6 +486,7 @@ export function clearModDisplayValues(id: string): void {
 export interface ModDriverControl {
   current(): InputDriver;
   setStatus(id: string, status: { readonly label?: string; readonly reason?: string }): void;
+  release(id: string, reason?: string): void;
   /** Mark the save nondeterministic for the controller `id` owns. */
   markNondeterministic?(id: string): void;
 }

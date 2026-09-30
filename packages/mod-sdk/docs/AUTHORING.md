@@ -15,6 +15,10 @@ game running.
 
 TypeScript plugins can import `ModPluginContext` from `@rpgm-tools/neo-angband-core` to type the context passed to `register`, `hooks`, `hud` and `controller`. The same package exports `ModUi`, `ModPanel`, `PanelKindSpec`, `PanelMount` and `PanelState` for panels; `ModNet`, `ModNetResponse` and `ModNetSecrets` for network requests and secrets; and `ModBirthSession` and `BirthResult` for character creation. Use `import type` because the host passes the live objects to the plugin at runtime.
 
+## Controllers
+
+A controller gets `ctx.controller` while its mod owns the keyboard. It can publish its task through `setStatus({ label, reason })` and mark the save through `markNondeterministic()` if it starts using a nondeterministic source. When it has finished, it can call `ctx.controller.release(reason?)` to give control back to the player. The host uninstalls the session, clears its timer and controller slot, emits `driver-changed`, and hides the banner. The optional reason appears in the message line; without one, the host shows its usual keyboard hand-back message. A retained controller context cannot release another mod's controller. Returning `null` still means that the controller has no command for this tick and keeps the keyboard.
+
 ## Two ways in, and the `import` is only one of them
 
 An offline tool installs the package and imports it, which is what every example

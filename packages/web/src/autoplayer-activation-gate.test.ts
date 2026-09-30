@@ -24,12 +24,166 @@
  */
 
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import ts from "typescript";
+import { GameEvents, installController, type AgentController, type GameState } from "@rpgm-tools/neo-angband-core";
+import { modPluginContext, setModDriverControl } from "./mod-context";
+import { hideAutoplayerBanner, showAutoplayerBanner } from "./autoplayer-banner";
+import type { InputDriver } from "./input-snapshot";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SRC = readFileSync(resolve(here, "main.ts"), "utf8");
+
+/* The shell boots on import, so these tests execute its release and teardown
+ * declarations with a real core session and a controlled timer. */
+function releaseHost(controller: AgentController) {
+  const parsed = ts.createSourceFile("main.ts", SRC, ts.ScriptTarget.ES2023, true, ts.ScriptKind.TS);
+  function declaration(name: string): ts.FunctionDeclaration {
+    const found = parsed.statements.find(
+      (node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node) && node.name?.text === name,
+    );
+    if (!found) throw new Error(`main.ts no longer declares ${name}`);
+    return found;
+  }
+  const driverStatement = parsed.statements.find((node) =>
+    ts.isExpressionStatement(node) && ts.isCallExpression(node.expression)
+      && node.expression.expression.getText(parsed) === "setModDriverControl",
+  ) as ts.ExpressionStatement;
+  const driverMethods = (driverStatement.expression as ts.CallExpression).arguments[0] as ts.ObjectLiteralExpression;
+  const release = driverMethods.properties.find((node) => node.name?.getText(parsed) === "release") as ts.PropertyAssignment;
+  let stop: ts.ExpressionStatement | undefined;
+  function findStop(node: ts.Node): void {
+    if (ts.isExpressionStatement(node) && ts.isBinaryExpression(node.expression)
+      && node.expression.left.getText(parsed) === "stopInstalledController"
+      && ts.isArrowFunction(node.expression.right)) stop = node;
+    ts.forEachChild(node, findStop);
+  }
+  findStop(declaration("finishAutoplayerInstall"));
+  if (!stop || !release) throw new Error("main.ts no longer declares controller release or teardown");
+  const emitted = ts.transpileModule(`
+    let { installedController, modTimer, state, say, render, reportModFault, hideAutoplayerBanner } = env;
+    const loaded = { id: installedController.id };
+    const coreAgentSession = null;
+    const agentId = null;
+    let installedControllerSpeed = () => {};
+    let stopInstalledController = null;
+    const frozenDriver = Object.freeze;
+    const faultMessage = String;
+    const t = (_key, fallback, values) => fallback.replace("{id}", values.id);
+    ${declaration("currentInputDriver").getText(parsed)}
+    ${stop.getText(parsed)}
+    return {
+      release: ${release.initializer.getText(parsed)},
+      current: currentInputDriver,
+      install: (next) => { installedController = next; },
+      stopped: () => installedController === null && installedControllerSpeed === null && stopInstalledController === null,
+    };
+  `, { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.None } }).outputText;
+  const playerInput = vi.fn(() => null);
+  const playerMessage = vi.fn();
+  const state = { events: new GameEvents(), nextCommand: playerInput, msg: playerMessage } as unknown as GameState;
+  const session = installController(state, controller);
+  const uninstall = vi.spyOn(session, "uninstall");
+  const tick = vi.fn(() => state.nextCommand?.());
+  const modTimer = setInterval(tick, 120);
+  const say = vi.fn();
+  const render = vi.fn();
+  const reportModFault = vi.fn();
+  const host = new Function("env", emitted)({
+    installedController: { id: "squire", session }, modTimer, state, say, render, reportModFault, hideAutoplayerBanner,
+  }) as {
+    release(id: string, reason?: string): void;
+    current(): InputDriver;
+    install(next: { id: string; session: typeof session }): void;
+    stopped(): boolean;
+  };
+  setModDriverControl({ current: host.current, release: host.release, setStatus: () => undefined });
+  let banner: { id: string; textContent: string } | null = null;
+  vi.stubGlobal("document", {
+    createElement: () => ({
+      id: "", textContent: "", style: { cssText: "" }, setAttribute: () => undefined,
+      remove: () => { banner = null; },
+    }),
+    getElementById: (id: string) => banner?.id === id ? banner : null,
+    body: { append: (node: NonNullable<typeof banner>) => { banner = node; } },
+  });
+  showAutoplayerBanner("squire");
+  return { host, state, uninstall, tick, say, render, reportModFault, playerInput, playerMessage };
+}
+
+describe("a controller releases the keyboard", () => {
+  afterEach(() => {
+    setModDriverControl(undefined);
+    hideAutoplayerBanner();
+    vi.unstubAllGlobals();
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("uninstalls its session, clears the timer and slot, emits the player driver, and hides the banner", () => {
+    vi.useFakeTimers();
+    const rig = releaseHost(() => {
+      ctx.controller?.release("The task is finished.");
+      return null;
+    });
+    const ctx = modPluginContext("squire", {});
+    const changes: InputDriver[] = [];
+    rig.state.events?.on("driver-changed", (_type, driver) => changes.push(driver));
+    const retained = ctx.controller!;
+    expect(document.getElementById("neo-autoplayer-banner")).not.toBeNull();
+    vi.advanceTimersByTime(120);
+    expect(rig.host.stopped()).toBe(true);
+    expect(ctx.controller).toBeUndefined();
+    expect(rig.uninstall).toHaveBeenCalledOnce();
+    expect(rig.state.nextCommand).toBe(rig.playerInput);
+    expect(rig.state.msg).toBe(rig.playerMessage);
+    expect(changes).toEqual([{ kind: "player" }]);
+    expect(Object.isFrozen(changes[0])).toBe(true);
+    expect(document.getElementById("neo-autoplayer-banner")).toBeNull();
+    expect(rig.say).toHaveBeenCalledExactlyOnceWith("The task is finished.");
+    expect(rig.render).toHaveBeenCalledOnce();
+    retained.release("A repeated release.");
+    vi.advanceTimersByTime(1000);
+    expect(rig.tick).toHaveBeenCalledOnce();
+    expect(rig.say).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a stale context when another controller owns the slot", () => {
+    vi.useFakeTimers();
+    const rig = releaseHost(() => null);
+    const retained = modPluginContext("squire", {}).controller!;
+    const replacement = { uninstall: vi.fn() } as unknown as Parameters<typeof rig.host.install>[0]["session"];
+    rig.host.install({ id: "other", session: replacement });
+    const changed = vi.fn();
+    rig.state.events?.on("driver-changed", changed);
+    retained.release("This context no longer owns the keyboard.");
+    expect(rig.host.current()).toEqual({ kind: "controller", owner: "other" });
+    expect(replacement.uninstall).not.toHaveBeenCalled();
+    expect(rig.uninstall).not.toHaveBeenCalled();
+    expect(changed).not.toHaveBeenCalled();
+    expect(rig.say).not.toHaveBeenCalled();
+    expect(document.getElementById("neo-autoplayer-banner")).not.toBeNull();
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it("keeps null ticks installed and uses the existing hand-back message without a reason", () => {
+    vi.useFakeTimers();
+    const rig = releaseHost(() => null);
+    vi.advanceTimersByTime(240);
+    expect(rig.host.current()).toEqual({ kind: "controller", owner: "squire" });
+    expect(rig.uninstall).not.toHaveBeenCalled();
+    expect(document.getElementById("neo-autoplayer-banner")).not.toBeNull();
+    modPluginContext("squire", {}).controller?.release();
+    expect(rig.uninstall).toHaveBeenCalledOnce();
+    expect(rig.state.nextCommand).toBe(rig.playerInput);
+    expect(rig.state.msg).toBe(rig.playerMessage);
+    expect(rig.say).toHaveBeenCalledExactlyOnceWith("You take the keyboard back from squire.");
+    expect(rig.reportModFault).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
 
 /** main.ts with comments stripped, so a comment naming a behaviour cannot
  * stand in for the code actually doing it. */
@@ -159,7 +313,7 @@ describe("finishAutoplayerInstall shows the on-screen indicator", () => {
 
   it("hides the banner in the same place the keyboard is actually handed back", () => {
     const body = finishBody();
-    const stopAt = body.indexOf("stopInstalledController = () => {");
+    const stopAt = body.indexOf("stopInstalledController = (reason) => {");
     expect(stopAt).toBeGreaterThan(-1);
     const stopBody = body.slice(stopAt, body.indexOf("};", stopAt));
     expect(stopBody).toMatch(/hideAutoplayerBanner\(\);/u);

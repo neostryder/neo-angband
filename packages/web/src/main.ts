@@ -10167,6 +10167,10 @@ setModDriverControl({
     if (installedController?.id !== id) throw new Error(`markNondeterministic requires active owner ${id}`);
     markSaveNondeterministic(id);
   },
+  release: (id, reason) => {
+    if (installedController?.id !== id) return;
+    stopInstalledController?.(reason);
+  },
 });
 setModAutoplayerRollOn({
   arm: (id) => {
@@ -15266,7 +15270,7 @@ let installedControllerSpeed: ((speed: AutoplayerSpeed) => void) | null = null;
  * and in reloadAfterModChange (which tears the whole mod down instead, for a
  * page reload rather than a live hand-back).
  */
-let stopInstalledController: (() => void) | null = null;
+let stopInstalledController: ((reason?: string) => void) | null = null;
 
 /**
  * A candidate autoplayer the boot-time controller-install loop held back
@@ -16120,7 +16124,7 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
   /* The player's way out (#125): any real keypress, or Ctrl-Z pressed again,
    * calls this. A live hand-back, not a reload - the character stays exactly
    * where it is, mid-turn, with the human in the chair. */
-  stopInstalledController = () => {
+  stopInstalledController = (reason) => {
     clearInterval(modTimer);
     const id = installedController?.id ?? loaded.id;
     try {
@@ -16133,7 +16137,7 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
     installedControllerSpeed = null;
     stopInstalledController = null;
     hideAutoplayerBanner();
-    say(t("main.autoplayer.keyboard-back", "You take the keyboard back from {id}.", { id }));
+    say(reason ?? t("main.autoplayer.keyboard-back", "You take the keyboard back from {id}.", { id }));
     render();
   };
 }
