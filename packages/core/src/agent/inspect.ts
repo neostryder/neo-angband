@@ -1,5 +1,5 @@
 /** Read-pure answers from the game's inspection and selection code. */
-import { FEAT, IGNORE_TYPE_ENTRIES, OF, TERRAIN_FLAG_ENTRIES, TF, TMD } from "../generated/index.js";
+import { FEAT, IGNORE_TYPE_ENTRIES, TERRAIN_FLAG_ENTRIES, TF, TMD } from "../generated/index.js";
 import { DDGRID } from "../loc.js";
 import type { EffectRecordJson } from "../obj/types.js";
 import type { GameState } from "../game/context.js";
@@ -21,6 +21,7 @@ import { ODESC, objectDesc } from "../obj/desc.js";
 import { IGNORE, QUALITY_VALUE_NAMES, ITYPE_MAX, egoHasIgnoreType } from "../obj/ignore.js";
 import { ITYPE } from "../generated/ignore-types.js";
 import type { GameObject } from "../obj/object.js";
+import { objCanTakeoff } from "../obj/object.js";
 import {
   tvalIsEdible, tvalIsPotion,
   tvalIsRod, tvalIsScroll, tvalIsStaff, tvalIsWand,
@@ -144,7 +145,7 @@ function itemSelection(state: GameState, code: string): { mode: number; test: (o
   const selections: Record<string, { mode: number; test: (obj: GameObject) => boolean }> = {
     inspect: { mode: packFloor | USE_MODE.EQUIP, test: () => true },
     wield: { mode: packFloor, test: (o) => objCanWear(state, o) },
-    takeoff: { mode: USE_MODE.EQUIP, test: (o) => !o.flags.has(OF.STICKY) },
+    takeoff: { mode: USE_MODE.EQUIP, test: (o) => objCanTakeoff(o, state.curses) },
     drop: { mode: USE_MODE.INVEN | USE_MODE.QUIVER | USE_MODE.EQUIP, test: () => true },
     inscribe: { mode: packFloor | USE_MODE.EQUIP, test: () => true },
     uninscribe: { mode: packFloor | USE_MODE.EQUIP, test: objHasInscrip },

@@ -522,8 +522,10 @@ declared `default` as usual.
 A section whose content must keep stable positions in an existing character can
 declare `"lockedAtBirth": true`. The host saves its on/off choice when the
 character is created and uses that choice whenever it loads the character.
-Changing the toggle then affects new characters only. Sections added in a later
-mod version have no birth choice in an older save and use the current toggle.
+Changing the toggle then affects new characters only. In an older save without
+`sectionBirth`, or when a locked section has no entry in that table, the section
+is off unless its declared `default` is on. If a saved locked section is on but
+its mod is not loaded, the game warns and names the mod and section before load.
 
 ---
 

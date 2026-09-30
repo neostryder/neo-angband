@@ -100,6 +100,12 @@ function throughDisk<T>(value: T): T {
 }
 
 describe("ctx.characterStore survives a real save and load (#171)", () => {
+  it("preserves an empty birth table in a new character's save", () => {
+    const game = startGame(pack, { seed: 20260921, depth: 1, className: "Warrior" });
+    game.sectionBirth = {};
+    expect(loadGame(pack, throughDisk(saveGame(game))).sectionBirth).toEqual({});
+  });
+
   it("writes and restores the section choices recorded at character birth", () => {
     const game = startGame(pack, { seed: 20260921, depth: 1, className: "Warrior" });
     game.sectionBirth = { spellbooks: { restored: false } };

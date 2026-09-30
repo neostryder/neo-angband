@@ -22,7 +22,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
-import { applySectionBirthChoices, loadEnabledModRuleDecls, sectionFlagsByMod } from "./pack";
+import { applySectionBirthChoices, compositionMemoMatches, loadEnabledModRuleDecls, missingLockedBirthSections, sectionFlagsByMod } from "./pack";
 import { resolveSectionState } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { resolveModRules, DEFAULT_ENABLED_MODS, FIRST_PARTY_MOD_IDS } from "./mod-store";
@@ -190,8 +190,9 @@ describe("locked section birth choices", () => {
     version: "1.0.0",
     shape: "content",
     sections: [
-      { id: "restored", title: "Restored", lockedAtBirth: true },
+      { id: "restored", title: "Restored", lockedAtBirth: true, default: false },
       { id: "later", title: "Later", lockedAtBirth: true },
+      { id: "default-on", title: "Default On", lockedAtBirth: true, default: true },
       { id: "live", title: "Live", lockedAtBirth: false },
     ],
   }] as unknown as PackManifest[];
@@ -200,7 +201,36 @@ describe("locked section birth choices", () => {
     expect(applySectionBirthChoices(manifests, { spellbooks: { restored: current } }, { spellbooks: { restored: born } }).spellbooks?.restored).toBe(born);
   });
 
-  it("uses current toggles for sections added after birth and leaves unlocked sections live", () => {
-    expect(applySectionBirthChoices(manifests, { spellbooks: { later: false, live: false } }, { spellbooks: { restored: true } })).toEqual({ spellbooks: { later: false, live: false, restored: true } });
+  it("keeps missing locked choices off unless their declared default is on", () => {
+    expect(applySectionBirthChoices(manifests, { spellbooks: { restored: true, later: true, "default-on": false, live: true } }, {})).toEqual({
+      spellbooks: { restored: false, later: false, "default-on": true, live: true },
+    });
+    expect(applySectionBirthChoices(manifests, { spellbooks: { restored: true, live: false } }, { spellbooks: { restored: true } })).toEqual({
+      spellbooks: { restored: true, later: false, "default-on": true, live: false },
+    });
   });
+
+  it("leaves new-character choices live before birth is recorded", () => {
+    expect(applySectionBirthChoices(manifests, { spellbooks: { restored: true } }, undefined)).toEqual({ spellbooks: { restored: true } });
+  });
+
+  it("names the missing mod and locked section required by a save", () => {
+    expect(missingLockedBirthSections({ spellbooks: { restored: true } }, new Set(), manifests)).toEqual(["Spellbooks: Restored"]);
+    expect(missingLockedBirthSections({ spellbooks: { restored: false } }, new Set(), manifests)).toEqual([]);
+    expect(missingLockedBirthSections({ spellbooks: { restored: true } }, new Set(["spellbooks"]), manifests)).toEqual([]);
+    expect(missingLockedBirthSections({ absent: { legacy: true } }, new Set(), manifests)).toEqual(["absent: legacy"]);
+  });
+
+  it("keeps a locked choice off when the pack it patches is absent", () => {
+    const patcher = { ...manifests[0]!, compat: [{ with: "other", claim: "patches", scope: ["restored"], because: "test" }] } as PackManifest;
+    const choices = applySectionBirthChoices([patcher], {}, { spellbooks: { restored: true } });
+    expect(resolveSectionState([patcher], choices, new Set(["spellbooks"])).get("spellbooks")?.get("restored")).toBe(false);
+  });
+});
+
+it("recomposes when the active character changes without changing enabled mods", () => {
+  const report = {};
+  const previous = { forReport: report, forEnabled: "spellbooks", forSlot: "first" };
+  expect(compositionMemoMatches(previous, report, "spellbooks", "first")).toBe(true);
+  expect(compositionMemoMatches(previous, report, "spellbooks", "second")).toBe(false);
 });

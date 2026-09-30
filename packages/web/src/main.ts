@@ -397,7 +397,7 @@ import {
 import type { PrefsUiCtx } from "./prefs-ui";
 import { applyPrefText } from "./prefs-ui";
 import { CapabilitySet, birthChoiceFormat, parseDocument, serializeDocument, reloadStateFormat } from "@rpgm-tools/neo-angband-mod-sdk";
-import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, loadEnabledModSettings, discoverContentModManifests, presentNamespaces, presentPackDigests, prefetchInstalledPackDigests, diskPackStatus, enabledModIds, composedRecords, sectionBirthChoices } from "./pack";
+import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, loadEnabledModSettings, discoverContentModManifests, presentNamespaces, presentPackDigests, prefetchInstalledPackDigests, diskPackStatus, enabledModIds, composedRecords, sectionBirthChoices, missingLockedBirthSections } from "./pack";
 import { liveConflictLines } from "./mod-conflicts";
 import { composedObjects, hasFacet, resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
@@ -1670,6 +1670,15 @@ function bootGame(): ReturnType<typeof startGame> {
           loadedNote = decoded.verified
             ? ""
             : "WARNING: save integrity check failed.";
+          const missingSections = missingLockedBirthSections(
+            decoded.save.sectionBirth,
+            presentNamespaces(),
+            discoverContentModManifests(),
+          );
+          if (missingSections.length > 0) {
+            const warning = `WARNING: This character needs these mod sections enabled: ${missingSections.join(", ")}.`;
+            loadedNote = loadedNote ? `${loadedNote} ${warning}` : warning;
+          }
           resumedActive = true;
           // present = core + every enabled CONTENT mod's namespace (pack.ts),
           // so loadGame reconciles the save's mod-lifecycle blocks correctly:
@@ -1697,7 +1706,8 @@ function bootGame(): ReturnType<typeof startGame> {
            * character's file is how a player finds out too late - and say
            * loudest whatever could not be carried across. */
           if (loaded.saveMigration) {
-            loadedNote = describeMigration(loaded.saveMigration);
+            const migrationNote = describeMigration(loaded.saveMigration);
+            loadedNote = loadedNote ? `${loadedNote} ${migrationNote}` : migrationNote;
           }
           /* issue #20: a still-present pack's composed content no longer
            * matches what this save was written with - most often a session or
@@ -1831,7 +1841,7 @@ function bootGame(): ReturnType<typeof startGame> {
       : {}),
   });
   const sectionBirth = sectionBirthChoices();
-  if (Object.keys(sectionBirth).length > 0) game.sectionBirth = sectionBirth;
+  game.sectionBirth = sectionBirth;
   return game;
 }
 

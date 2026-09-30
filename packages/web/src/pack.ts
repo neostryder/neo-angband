@@ -552,9 +552,20 @@ interface Composition {
    * served a stale one. See composition(). */
   readonly forReport: unknown;
   readonly forEnabled: string;
+  readonly forSlot: string | null;
 }
 
 let memo: Composition | null = null;
+
+export function compositionMemoMatches(
+  previous: Pick<Composition, "forReport" | "forEnabled" | "forSlot"> | null,
+  report: unknown,
+  enabled: string,
+  slot: string | null,
+): boolean {
+  return previous !== null && previous.forReport === report &&
+    previous.forEnabled === enabled && previous.forSlot === slot;
+}
 
 /**
  * The active pack set and the pack composed from it, computed on FIRST USE and
@@ -599,7 +610,8 @@ function composition(): Composition {
   const report = diskPacks();
   const enabledIds = enabledModIds();
   const key = enabledIds.join(",");
-  if (memo && memo.forReport === report && memo.forEnabled === key) return memo;
+  const slot = getActiveId();
+  if (memo && compositionMemoMatches(memo, report, key, slot)) return memo;
 
   const mods = discoverMods();
   /* THE ENGINE GATE, ahead of the composer - and since 2026-08-02 it holds back
@@ -653,7 +665,7 @@ function composition(): Composition {
       composed.faults.push({ packId: fault.packId, why: fault.message });
     }
   }
-  memo = { packs, composed, dropped, refused, forReport: report, forEnabled: key };
+  memo = { packs, composed, dropped, refused, forReport: report, forEnabled: key, forSlot: slot };
   return memo;
 }
 
@@ -671,7 +683,7 @@ function sectionChoiceTable(
   const choices = migratedSectionChoices(manifests);
   const resolved = resolveSectionState(
     manifests,
-    choices,
+    applySectionBirthChoices(manifests, choices, birth),
     new Set(manifests.map((m) => m.id)),
   );
   const out: Record<string, Record<string, boolean>> = {};
@@ -679,7 +691,7 @@ function sectionChoiceTable(
     if (table.size === 0) continue;
     out[modId] = Object.fromEntries(table);
   }
-  return applySectionBirthChoices(manifests, out, birth);
+  return out;
 }
 
 export function applySectionBirthChoices(
@@ -690,14 +702,35 @@ export function applySectionBirthChoices(
   const out = Object.fromEntries(
     Object.entries(current).map(([id, sections]) => [id, { ...sections }]),
   );
+  if (birth === undefined) return out;
   for (const manifest of manifests) {
     for (const section of manifest.sections ?? []) {
       if (!section.lockedAtBirth) continue;
-      const born = birth?.[manifest.id]?.[section.id];
-      if (born !== undefined && out[manifest.id]) out[manifest.id]![section.id] = born;
+      (out[manifest.id] ??= {})[section.id] =
+        birth[manifest.id]?.[section.id] ?? section.default ?? false;
     }
   }
   return out;
+}
+
+export function missingLockedBirthSections(
+  birth: Record<string, Record<string, boolean>> | undefined,
+  present: ReadonlySet<string>,
+  manifests: readonly PackManifest[],
+): string[] {
+  const byId = new Map(manifests.map((manifest) => [manifest.id, manifest]));
+  const missing: string[] = [];
+  for (const [modId, sections] of Object.entries(birth ?? {})) {
+    if (present.has(modId)) continue;
+    const manifest = byId.get(modId);
+    for (const [sectionId, on] of Object.entries(sections)) {
+      const section = manifest?.sections?.find((entry) => entry.id === sectionId);
+      if (on && (section?.lockedAtBirth ?? true)) {
+        missing.push(`${manifest?.name ?? modId}: ${section?.title ?? sectionId}`);
+      }
+    }
+  }
+  return missing;
 }
 
 /** Capture the resolved locked-section choices for a newly created character. */
@@ -724,7 +757,8 @@ function selectedSectionBirth(): Record<string, Record<string, boolean>> | undef
     const stored = id === null ? null : readSlotSave(id);
     if (!stored) return undefined;
     const bytes = Uint8Array.from(atob(stored), (char) => char.charCodeAt(0));
-    return decodeSavedGame(bytes, undefined, SAVE_CODECS).save?.sectionBirth;
+    const save = decodeSavedGame(bytes, undefined, SAVE_CODECS).save;
+    return save ? save.sectionBirth ?? {} : undefined;
   } catch {
     return undefined;
   }

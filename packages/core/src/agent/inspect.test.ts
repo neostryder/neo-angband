@@ -1,14 +1,14 @@
 /** Seeded inspection reads must leave the entire saved game unchanged. */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT, MFLAG, TV } from "../generated/index.js";
+import { FEAT, MFLAG, OF, TV } from "../generated/index.js";
 import { gearAdd } from "../game/gear.js";
 import { objectSeeAt } from "../game/known.js";
 import { objectInfoTextblock } from "../game/object-inspect.js";
 import { loreDescription } from "../mon/lore-describe.js";
 import { newMonsterLore } from "../mon/lore.js";
 import { objectPrep } from "../obj/make.js";
-import { tvalIsPotion } from "../obj/object.js";
+import { objCanTakeoff, tvalIsPotion } from "../obj/object.js";
 import { spellByIndex, spellChance } from "../player/spell.js";
 import { makeSpellChanceEnv } from "../game/spell-cmd.js";
 import { floorPile } from "../game/floor.js";
@@ -113,6 +113,29 @@ function viewFor(game: StartedGame, caps?: { has(cap: string): boolean }) {
 }
 
 describe("inspection reads", () => {
+  it("excludes equipment held by an active sticky curse from takeoff choices", () => {
+    const game = newGame();
+    const state = game.state;
+    const kind = game.booted.registries.objects.kinds.find((entry) => entry.tval === TV.SOFT_ARMOR)!;
+    const obj = objectPrep(state.rng, game.booted.registries.objects, game.booted.registries.constants, kind, 1, "minimise");
+    const handle = gearAdd(state.gear, obj);
+    state.actor.player.equipment[0] = handle;
+    const flags = obj.flags.clone();
+    flags.on(OF.STICKY);
+    const curses = game.booted.registries.objects.curses;
+    const index = curses.findIndex((curse, i) => i > 0 && curse !== null);
+    expect(index).toBeGreaterThan(0);
+    const original = curses[index]!;
+    curses[index] = { ...original, obj: { ...original.obj, flags } };
+    try {
+      obj.curses = Array.from({ length: curses.length }, (_, i) => ({ power: i === index ? 5 : 0, timeout: 0 }));
+      expect(objCanTakeoff(obj, curses)).toBe(false);
+      expect(viewFor(game).view.itemTester!("takeoff").items).not.toContainEqual({ handle });
+    } finally {
+      curses[index] = original;
+    }
+  });
+
   it("repeats item, recall, spell, tester and map reads without a state change", () => {
     const game = newGame();
     const state = game.state;
