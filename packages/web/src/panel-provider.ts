@@ -1,5 +1,6 @@
 /** Host-owned tiled DOM panels. The saved tree carries identity, not mod code. */
 import type { PanelKindSpec, PanelMount } from "./mod-plugin";
+import type { PanelState } from "@rpgm-tools/neo-angband-core";
 import { SUBWINDOW_LAYOUT_IDS } from "@rpgm-tools/neo-angband-mod-sdk";
 import { t } from "@rpgm-tools/neo-angband-core";
 import { addTiledPanelRoot } from "./input-door";
@@ -57,8 +58,6 @@ interface Mounted {
   cleanup: (() => void) | undefined;
   state: PanelState;
 }
-
-type PanelState = Readonly<{ bounds: Readonly<{ width: number; height: number }>; active: boolean; focused: boolean }>;
 
 export interface PanelProviderHost {
   readonly shell: SubwindowShell;

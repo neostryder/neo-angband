@@ -46,20 +46,7 @@
 
 import type { RegionCells } from "./regions";
 
-/** The live question at an input wait. PromptRequest remains the presenter ABI. */
-export type PromptDescriptor =
-  | { readonly kind: "ack"; readonly promptId: number; readonly label: string; readonly tag: "more" }
-  | { readonly kind: "confirm"; readonly promptId: number; readonly label: string; readonly price?: number }
-  | { readonly kind: "quantity"; readonly promptId: number; readonly label: string; readonly min: number; readonly max: number; readonly defaultValue: number; readonly unitPrice?: number; readonly totalPrice?: number; readonly totals?: readonly number[]; readonly gold?: number }
-  | { readonly kind: "text"; readonly promptId: number; readonly label: string; readonly maxLength: number; readonly defaultValue: string; readonly tag?: "rest" }
-  | { readonly kind: "direction"; readonly promptId: number; readonly label: string; readonly targetAllowed: boolean }
-  | { readonly kind: "item"; readonly promptId: number; readonly label: string; readonly choices: readonly { readonly handle: number; readonly label: string; readonly letter: string }[]; readonly tabs: Readonly<{ floor: boolean; quiver: boolean; equipment: boolean }> }
-  | { readonly kind: "spell"; readonly promptId: number; readonly label: string; readonly choices: readonly { readonly index: number; readonly name: string; readonly level: number; readonly mana: number; readonly fail: number; readonly castable: boolean }[] }
-  | { readonly kind: "target"; readonly promptId: number; readonly label: string; readonly mode: "interesting" | "free"; readonly cursor: Readonly<{ x: number; y: number }>; readonly candidates: readonly Readonly<{ x: number; y: number }>[]; readonly path: readonly Readonly<{ x: number; y: number }>[] };
-
-export type PromptAnswer = boolean | number | string | Readonly<{ action: "move"; x: number; y: number }> | Readonly<{ action: "next" | "previous" | "toggle" | "select" | "cancel" | "acknowledge" }>;
-export interface PromptReplyResult { readonly accepted: boolean; readonly reason?: string; readonly code?: "controller-owned" }
-export interface ModPrompt { reply(promptId: number, answer: PromptAnswer): PromptReplyResult }
+export type { PromptDescriptor, PromptAnswer, PromptReplyResult, ModPrompt } from "@rpgm-tools/neo-angband-core";
 
 /**
  * How much of the terminal the game is about to write on.

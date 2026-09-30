@@ -20,31 +20,8 @@ import {
   keymapRemove,
   saveKeymapPrefs,
 } from "./keymap-store";
-
-export interface ModKeybinding {
-  /** The key that runs the binding, such as "g" or "F5". */
-  readonly trigger: string;
-  /** The keys it presses, in the keymap action encoding ("R&[Enter]"). */
-  readonly action: string;
-  /** The mod that created it with `ctx.keymaps`, or null for the player's own. */
-  readonly owner: string | null;
-}
-
-export interface ModKeybindings {
-  /** "original" or "roguelike": the keyset these bindings belong to. */
-  keyset(): "original" | "roguelike";
-  list(): readonly ModKeybinding[];
-  /** Bind or replace one trigger. False for a trigger no keymap can use, or an empty action. */
-  set(trigger: string, action: string): boolean;
-  /** Remove one binding; false when there was none. */
-  remove(trigger: string): boolean;
-  /**
-   * Resolve with the next key the player presses that a keymap can use, or null
-   * for Escape. The key is taken before the game sees it, so it runs nothing.
-   * A second capture while one is waiting resolves the first with null.
-   */
-  capture(): Promise<string | null>;
-}
+import type { ModKeybindings } from "@rpgm-tools/neo-angband-core";
+export type { ModKeybinding, ModKeybindings } from "@rpgm-tools/neo-angband-core";
 
 export function createModKeybindings(state: GameState): ModKeybindings {
   const mode = () => keymapModeFor(state.options?.get("rogue_like_commands") ?? false);

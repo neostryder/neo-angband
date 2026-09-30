@@ -31,25 +31,12 @@
  */
 
 import { log } from "./logging";
+import type { ModPrefs } from "@rpgm-tools/neo-angband-core";
+export type { ModPrefs } from "@rpgm-tools/neo-angband-core";
 
 /** The per-mod storage key. One key per mod, so removing a mod is one delete. */
 export function modPrefsKey(id: string): string {
   return `neo:modPrefs:${id}`;
-}
-
-/** What a plugin is handed as `ctx.prefs`. */
-export interface ModPrefs {
-  /**
-   * This mod's stored value, or null when it has never stored one. Parsed fresh
-   * on every call rather than cached: the game and the mod manager both run in
-   * this tab, and a cached copy would go stale the moment a profile is applied.
-   */
-  get(): unknown;
-  /**
-   * Replace this mod's stored value. Passing null or undefined REMOVES it, so a
-   * mod can forget what it knows without leaving an empty husk behind.
-   */
-  set(value: unknown): void;
 }
 
 /** The storage a ModPrefs reads and writes. `localStorage`, in both front ends. */

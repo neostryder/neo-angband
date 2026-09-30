@@ -29,73 +29,8 @@ import type { CharacterSheetData } from "./charsheet";
 import type { LoggedMessage } from "./messages";
 import { log } from "./logging";
 import { historyEntryNote } from "./screens";
-
-export type HistoryKind =
-  | "birth"
-  | "level"
-  | "unique"
-  | "artifact"
-  | "artifact-unknown"
-  | "note"
-  | "import"
-  | "other";
-
-export interface CharacterHistoryEntry {
-  readonly kind: HistoryKind;
-  /** The text the character history screen shows, without its "(LOST)" suffix. */
-  readonly text: string;
-  readonly turn: number;
-  /** Dungeon level when recorded; feet are this times 50. */
-  readonly depth: number;
-  /** Character level when recorded. */
-  readonly level: number;
-  /** An artifact entry for an artifact the character has since lost. */
-  readonly lost: boolean;
-}
-
-export type RunOutcome = "death" | "winner" | "retired";
-
-export interface RunBelonging {
-  readonly name: string;
-  readonly color: string;
-  readonly location: "equipment" | "pack" | "quiver" | "home";
-  readonly quantity: number;
-  /** The item's inspect text, as `ctx.inspect.inspectItem` returns it. */
-  readonly recall: { readonly title: string; readonly text: string } | null;
-}
-
-export interface RunReport {
-  readonly outcome: RunOutcome;
-  /** The killer's name, "Ripe Old Age" for a winner, or "Retiring". */
-  readonly cause: string;
-  /** `ctx.character.key()` for the character, or null when it had no save slot. */
-  readonly key: string | null;
-  readonly name: string;
-  readonly race: string;
-  readonly cls: string;
-  readonly level: number;
-  readonly maxLevel: number;
-  /** The deepest dungeon level reached; feet are this times 50. */
-  readonly maxDepth: number;
-  /** The dungeon level the run ended on. */
-  readonly depth: number;
-  readonly gold: number;
-  /** The game turn the run ended on. */
-  readonly turn: number;
-  /** total_points: maximum experience plus 100 per level of maximum depth. */
-  readonly score: number;
-  /** Whether the score table accepted the entry. */
-  readonly scored: boolean;
-  /** Epoch milliseconds. */
-  readonly endedAt: number;
-  readonly history: readonly CharacterHistoryEntry[];
-  /** The last messages, oldest first, with repeats folded into `count`. */
-  readonly messages: readonly { readonly text: string; readonly count: number; readonly color?: string }[];
-  readonly belongings: readonly RunBelonging[];
-  readonly sheet: CharacterSheetData | null;
-  /** The character's birth choices, for `ctx.saves.create({ like: report.birth })`. */
-  readonly birth: { readonly race: string; readonly cls: string; readonly name: string; readonly stats: readonly number[] };
-}
+import type { HistoryKind, CharacterHistoryEntry, RunOutcome, RunBelonging, RunReport } from "@rpgm-tools/neo-angband-core";
+export type { HistoryKind, CharacterHistoryEntry, RunOutcome, RunBelonging, RunReport } from "@rpgm-tools/neo-angband-core";
 
 /** How many of the final messages a report keeps. */
 export const RUN_REPORT_MESSAGES = 40;

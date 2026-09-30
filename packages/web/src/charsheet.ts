@@ -118,6 +118,8 @@ import { argForceName } from "./launch";
 import { userTextLinesToFile, exportUserFile, userPath } from "./user-io";
 import type { ScreenLine } from "./overlay";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
+import type { SheetColor, CharacterSheetData } from "@rpgm-tools/neo-angband-core";
+export type { SheetColor, CharacterSheetData } from "@rpgm-tools/neo-angband-core";
 
 const LABEL = UI_TEXT;
 const FG = UI_TEXT;
@@ -1154,7 +1156,6 @@ export function showCharacterSheet(
         paint();
       };
 
-
       /**
        * Run one of the sheet's commands with THIS MODULE'S listeners detached: `promptText`
        * and `getFile` listen in the capture phase and would otherwise be starved by
@@ -1343,56 +1344,6 @@ function paintPanel(
     y += 1;
   }
   return y;
-}
-
-/** One coloured value on the structured sheet: its COLOUR_* index and the CSS colour it draws in. */
-export interface SheetColor {
-  readonly color: number;
-  readonly css: string;
-}
-
-/**
- * The character sheet as data, for a mod that lays it out itself
- * (`ctx.character.sheet()`). It carries the same panels, stat rows, history and
- * flag grid that `characterScreen` and `characterFlagsScreen` draw, computed by
- * the same core functions, so the two pages and this read never disagree.
- */
-export interface CharacterSheetData {
-  readonly name: string;
-  /** The five panels of the first page (topleft, misc, midleft, combat, skills). */
-  readonly panels: readonly {
-    readonly key: string;
-    readonly lines: readonly ({ readonly label: string; readonly value: string } & SheetColor)[];
-  }[];
-  /** One row per stat: the Self, race, class, equipment and Best columns, and the drained value. */
-  readonly stats: readonly {
-    readonly key: string;
-    readonly label: string;
-    readonly natural: string;
-    readonly raceBonus: string;
-    readonly classBonus: string;
-    readonly equipBonus: string;
-    readonly best: string;
-    readonly reduced: string | null;
-    readonly naturalMax: boolean;
-    readonly drained: boolean;
-  }[];
-  /** The background paragraph, unwrapped, or "" when the character has none. */
-  readonly history: string;
-  /**
-   * The second page: the sustains block first, then the resistance, ability,
-   * hindrance and modifier regions. Each row has one cell per equipment slot and
-   * then the player's own column. Null when the game has no ui_entry packs.
-   */
-  readonly grids: readonly {
-    readonly key: string;
-    readonly rows: readonly {
-      readonly name: string;
-      readonly label: string;
-      readonly labelColor: SheetColor;
-      readonly cells: readonly ({ readonly symbol: string } & SheetColor)[];
-    }[];
-  }[] | null;
 }
 
 function sheetColor(color: number): SheetColor {

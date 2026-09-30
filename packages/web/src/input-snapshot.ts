@@ -23,101 +23,21 @@
  */
 
 import { createAgentView } from "@rpgm-tools/neo-angband-core";
-import type {
-  AgentCapabilities,
-  AgentViewDeps,
-  CoreSnapshot,
-  GameState,
-  InputToken,
-  KnownLevelView,
-  AgentView,
-  BlastAreaResult,
-  BookItemResult,
-  GridInspectResult,
-  InspectResult,
-  ItemTesterResult,
-  ItemRulesResult,
-  TerrainCatalogueResult,
-  LoadoutSlotsResult,
-  LoadoutItemRef,
-  TileActionsResult,
-  TravelPathResult,
-  SpellInspectResult,
-} from "@rpgm-tools/neo-angband-core";
+import type { AgentCapabilities, AgentViewDeps, GameState, KnownLevelView, AgentView } from "@rpgm-tools/neo-angband-core";
 import { REST_ALL_POINTS, REST_COMPLETE, REST_SOME_POINTS } from "@rpgm-tools/neo-angband-core";
 import { snapshotWorldFrame } from "./world-view";
 import type { WorldFrame } from "./world-view";
 import type { PromptDescriptor } from "./prompt-view";
+import type { InteractionPhase, InputDriver, InputSnapshot, ModInspect, RestMode } from "@rpgm-tools/neo-angband-core";
+export type { InteractionPhase, InputDriver, InputSnapshot, ModInspect, RestMode } from "@rpgm-tools/neo-angband-core";
 
 /** The capability for the host-side parts of a snapshot. */
 export const INTERACTION_READ_CAPABILITY = "state:interaction.read";
 const MAP_READ_CAPABILITY = "state:map.read";
 const ANY_READ_CAPABILITY = "state:*.read";
 
-/**
- * What the shell is doing at this moment.
- *
- * - `pregame`: the title, the roster or birth; no game screen is live.
- * - `play`: the dungeon or town, waiting on an ordinary command.
- * - `store`: a shop or the Home screen.
- * - `more`: a "-more-" pause is holding input until the player dismisses it.
- * - `modal`: any other full-screen takeover (options, an item list, the target
- *   loop, a recall page).
- * - `dead`: the character has died and the death screens own the terminal.
- */
-export type InteractionPhase = "pregame" | "play" | "store" | "more" | "modal" | "dead";
-
-export type InputDriver =
-  | { readonly kind: "player" }
-  | { readonly kind: "controller"; readonly owner: string; readonly label?: string; readonly reason?: string };
-
 export function frozenDriver(driver: InputDriver): InputDriver {
   return Object.freeze({ ...driver });
-}
-
-export interface InputSnapshot {
-  /** The core token; the same value `core.token` carries. */
-  readonly token: InputToken;
-  /** The host's current keyboard owner, independent of read capabilities. */
-  readonly driver: InputDriver;
-  /** Null when `state:interaction.read` is not granted. */
-  readonly phase: InteractionPhase | null;
-  /** Whether a "-more-" pause holds input. Null without `state:interaction.read`. */
-  readonly messagePending: boolean | null;
-  /**
-   * The current rest; null without interaction read access. `mode` is "turns"
-   * for a timed rest or the condition a special rest waits for; `turnsRequested`
-   * is the length a timed rest was asked to run.
-   */
-  readonly resting: Readonly<{
-    active: boolean;
-    mode: RestMode | null;
-    turnsRequested: number | null;
-    turnsRemaining: number | null;
-    turnsRested: number | null;
-  }> | null;
-  /** Message history without consuming the agent's per-decision stream. */
-  /**
-   * The message history, oldest first. `entries` is the text alone; `log`
-   * carries each entry's repeat count and colour as the message history shows
-   * them. Reading it does not drain the log.
-   */
-  readonly messages: Readonly<{
-    token: InputToken;
-    entries: readonly string[];
-    log: readonly Readonly<{ text: string; count: number; color?: string }>[];
-  }> | null;
-  readonly storeStatus: Readonly<{ token: InputToken; feat: number; ready: boolean; noSelling: boolean; inventory: readonly Readonly<{ handle: number; location?: "pack" | "quiver" | "equipment"; eligible: boolean; price: number | null }>[] }> | null;
-  readonly activeBlast: Readonly<{ token: InputToken; radius: number; arc?: number; element: string; wallsStop: boolean }> | null;
-  /** The open question, or null without `state:interaction.read`. */
-  readonly prompt: PromptDescriptor | null;
-  /** What the game knows at this wait (agent/boundary.ts). */
-  readonly core: CoreSnapshot;
-  /**
-   * The last world frame the map was painted from, copied. Null before the
-   * first paint, or without `state:map.read`.
-   */
-  readonly frame: WorldFrame | null;
 }
 
 /** What the host supplies; main.ts implements it over its own state. */
@@ -202,22 +122,6 @@ export function buildKnownLevel(
   return source.knownLevel(caps);
 }
 
-/** Inspection methods from a view built for the calling mod. */
-export interface ModInspect {
-  inspectItem(ref: number | { floor: { x: number; y: number; index: number } } | { store: number; index: number }): InspectResult | null;
-  bookForItem(handle: number): BookItemResult | null;
-  compareLoadoutSlots(ref: Exclude<LoadoutItemRef, { from: "object" }>): LoadoutSlotsResult | null;
-  monsterRecall(raceIndex: number): InspectResult | null;
-  spellInfo(spellIndex: number): SpellInspectResult | null;
-  itemTester(code: string): ItemTesterResult | null;
-  projectionPath(to: { x: number; y: number }): GridInspectResult | null;
-  blastArea(to: { x: number; y: number }, radius: number, arc?: number): BlastAreaResult | null;
-  travelPath(to: { x: number; y: number }): TravelPathResult | null;
-  tileActions(to: { x: number; y: number }): TileActionsResult | null;
-  itemRules(): ItemRulesResult | null;
-  terrainCatalogue(): TerrainCatalogueResult | null;
-}
-
 export function buildInspect(
   source: InputSnapshotSource,
   caps: AgentCapabilities | undefined,
@@ -242,9 +146,6 @@ export function buildInspect(
     terrainCatalogue: () => view()?.terrainCatalogue?.() ?? null,
   } satisfies ModInspect);
 }
-
-/** What a rest runs until: a turn count, or one of the three conditions `R` offers. */
-export type RestMode = "turns" | "complete" | "all-points" | "some-points";
 
 const SPECIAL_REST_MODES: ReadonlyMap<number, RestMode> = new Map([
   [REST_COMPLETE, "complete"],

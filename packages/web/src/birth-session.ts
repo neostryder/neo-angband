@@ -45,129 +45,13 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import { PREVIEW_SEED, previewState, type BirthChoice, type BirthDeps } from "./birth";
 import { charSheetDeps } from "./screens";
+import type { BirthAbilityView, BirthPreview, BirthResult, ModBirthSession } from "@rpgm-tools/neo-angband-core";
+export type { BirthAbilityView, BirthRaceView, BirthClassView, BirthOptionView, BirthCatalogue, BirthPreview, BirthDraftView, BirthResult, ModBirthSession } from "@rpgm-tools/neo-angband-core";
 
 /** PLAYER_NAME_LEN (option.h:23 = 32) leaves 31 usable characters. */
 export const BIRTH_NAME_MAX = 31;
 
 const SKILL_KEYS = Object.keys(SKILL) as (keyof typeof SKILL)[];
-
-export interface BirthAbilityView {
-  readonly name: string;
-  readonly description: string;
-}
-
-export interface BirthRaceView {
-  readonly name: string;
-  /** STR, INT, WIS, DEX, CON adjustments. */
-  readonly statAdj: readonly number[];
-  readonly hitDie: number;
-  /** Experience factor, as a percentage. */
-  readonly expFactor: number;
-  readonly infravisionFeet: number;
-  /** Skill bonuses by SKILL name (DISARM_PHYS, DEVICE, SAVE, STEALTH, ...). */
-  readonly skills: Readonly<Record<string, number>>;
-  readonly abilities: readonly BirthAbilityView[];
-}
-
-export interface BirthClassView {
-  readonly name: string;
-  readonly statAdj: readonly number[];
-  readonly hitDie: number;
-  readonly expFactor: number;
-  readonly skills: Readonly<Record<string, number>>;
-  /** The realms of magic the class learns; empty for a class with no spells. */
-  readonly magic: readonly string[];
-  readonly abilities: readonly BirthAbilityView[];
-}
-
-export interface BirthOptionView {
-  readonly name: string;
-  readonly description: string;
-  readonly value: boolean;
-}
-
-export interface BirthCatalogue {
-  readonly races: readonly BirthRaceView[];
-  readonly classes: readonly BirthClassView[];
-  readonly stats: readonly string[];
-  readonly pointBudget: number;
-  readonly nameMax: number;
-  /** The previous character's race, class and name, when there is one to reuse. */
-  readonly previous: { readonly race: string; readonly cls: string; readonly name: string } | null;
-  /** A name the host pinned (a launch argument); `setName` then refuses. */
-  readonly namePinned: boolean;
-}
-
-export interface BirthPreview {
-  /** The terminal birth screen's stat rows: label, Self, race, class and Best. */
-  readonly stats: readonly {
-    readonly key: string;
-    readonly label: string;
-    readonly natural: string;
-    readonly raceBonus: string;
-    readonly classBonus: string;
-    readonly best: string;
-  }[];
-  /** The five character panels, each line with its label, value and COLOUR_* index. */
-  readonly panels: readonly {
-    readonly key: string;
-    readonly lines: readonly { readonly label: string; readonly value: string; readonly color: number }[];
-  }[];
-  /** Starting gold before equipment is bought, as point-buy leaves it. */
-  readonly gold: number;
-}
-
-export interface BirthDraftView {
-  readonly race: string | null;
-  readonly cls: string | null;
-  /** "point" for point-buy, "roller" for the standard roller. */
-  readonly method: "point" | "roller";
-  /** The natural stats the character will start with, STR to CON. */
-  readonly stats: readonly number[];
-  readonly pointsLeft: number;
-  readonly pointsSpent: readonly number[];
-  readonly canPreviousRoll: boolean;
-  readonly name: string;
-  readonly history: string;
-  readonly historyEdited: boolean;
-  readonly options: readonly BirthOptionView[];
-  readonly preview: BirthPreview | null;
-  /** Race, class and a name are all chosen, so `accept` will start the game. */
-  readonly ready: boolean;
-}
-
-export type BirthResult = { readonly ok: true } | { readonly ok: false; readonly reason: string };
-
-export interface ModBirthSession {
-  catalogue(): BirthCatalogue;
-  draft(): BirthDraftView;
-  chooseRace(name: string): BirthResult;
-  chooseClass(name: string): BirthResult;
-  /** Switch to point-buy at the suggested spread. */
-  usePointBuy(): BirthResult;
-  buy(stat: number): BirthResult;
-  sell(stat: number): BirthResult;
-  /** The suggested spread for the chosen race and class (generate_stats). */
-  suggest(): BirthResult;
-  /** Every stat back to 10 with the full budget. */
-  reset(): BirthResult;
-  /** Switch to the standard roller and roll a new set of stats. */
-  roll(): BirthResult;
-  /** Swap back to the roll before the latest one. */
-  previousRoll(): BirthResult;
-  setName(name: string): BirthResult;
-  randomName(): BirthResult;
-  setHistory(text: string): BirthResult;
-  /** Roll a new background for the chosen race and drop any edit. */
-  regenerateHistory(): BirthResult;
-  setOption(name: string, value: boolean): BirthResult;
-  /** Take the previous character's race, class and stats. */
-  usePrevious(): BirthResult;
-  /** Start the game with this draft. The page reloads into the new character. */
-  accept(): BirthResult;
-  /** Leave creation without starting a game, back to the title screen. */
-  cancel(): void;
-}
 
 export interface BirthSessionDeps {
   readonly races: readonly PlayerRace[];

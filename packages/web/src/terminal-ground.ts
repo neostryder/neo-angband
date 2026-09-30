@@ -4,15 +4,8 @@
  */
 
 import { colorChannels } from "./chrome-theme";
-
-/** Which terminals take the ground: the text subwindows only, or the main terminal too. */
-export type TerminalGroundScope = "subwindows" | "all";
-
-export interface TerminalGround {
-  /** #rgb, #rrggbb, #rrggbbaa or rgb(), the forms setChromeTheme accepts. */
-  readonly color: string;
-  readonly scope: TerminalGroundScope;
-}
+import type { TerminalGround } from "@rpgm-tools/neo-angband-core";
+export type { TerminalGroundScope, TerminalGround } from "@rpgm-tools/neo-angband-core";
 
 /** Check a request and fill in the default scope. Throws TypeError on a bad key or value. */
 export function validateTerminalGround(value: unknown): TerminalGround {

@@ -1,15 +1,8 @@
 /** `ctx.settings`, the door a mod reads its Mods screen numbers through. */
 
 import { resolveSettingValue, type PackSetting } from "@rpgm-tools/neo-angband-mod-sdk";
-
-export interface ModSettingsRead {
-  /** Undefined for an id the manifest does not declare. */
-  get(id: string): number | undefined;
-  /** Every declared setting, by id. */
-  all(): Readonly<Record<string, number>>;
-  /** Runs when the player moves a setting that needs no reload. Call the returned function to stop. */
-  onChange(listener: (id: string, value: number) => void): () => void;
-}
+import type { ModSettingsRead } from "@rpgm-tools/neo-angband-core";
+export type { ModSettingsRead } from "@rpgm-tools/neo-angband-core";
 
 export interface ModSettingSource {
   /** From the enabled mod's manifest. */

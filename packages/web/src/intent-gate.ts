@@ -11,32 +11,13 @@ import {
   type ActionRegistry,
   type AgentCommand,
   type GameState,
-  type InputToken,
   type PlayerCommand,
 } from "@rpgm-tools/neo-angband-core";
 import type { InputSnapshotSource } from "./input-snapshot";
+import type { PlayerIntent, IntentResult, ModIntent } from "@rpgm-tools/neo-angband-core";
+export type { PlayerIntent, IntentResult, ModIntent } from "@rpgm-tools/neo-angband-core";
 
 export const INTENT_CAPABILITY = "input:intent";
-
-export type PlayerIntent =
-  | { readonly kind: "command"; readonly command: AgentCommand }
-  | { readonly kind: "travel"; readonly x: number; readonly y: number; readonly modifiers?: Readonly<{ shift?: boolean; ctrl?: boolean }> }
-  | { readonly kind: "target"; readonly midx: number }
-  | { readonly kind: "target"; readonly x: number; readonly y: number }
-  | { readonly kind: "stop-resting" }
-  | { readonly kind: "ignore" | "unignore"; readonly handle: number }
-  | { readonly kind: "item-rule"; readonly rule: "kind-aware" | "kind-unaware" | "ego" | "quality" | "note-aware" | "note-unaware"; readonly index: number; readonly itype?: number; readonly value: boolean | number | string };
-
-export interface IntentResult {
-  readonly accepted: boolean;
-  readonly reason?: string;
-  readonly code?: "controller-owned";
-}
-
-export interface ModIntent {
-  submit(token: InputToken, intent: PlayerIntent): IntentResult;
-  catalogue?(): Readonly<{ token: InputToken; commands: readonly Readonly<{ code: string; verb: string | null; args: string; phase: "play" | "store" }>[]; intents: readonly Readonly<{ kind: string; args: string }>[] }>;
-}
 
 export interface IntentGateDeps {
   readonly state: GameState;

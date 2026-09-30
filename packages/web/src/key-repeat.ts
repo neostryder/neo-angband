@@ -1,3 +1,5 @@
+import type { KeyRepeatVerdict } from "@rpgm-tools/neo-angband-core";
+export type { KeyRepeatVerdict } from "@rpgm-tools/neo-angband-core";
 /**
  * Telling a genuine key-repeat apart from a fresh press (neo-angband#35).
  *
@@ -75,30 +77,6 @@ export interface ClassifiableKeydown {
   readonly key: string;
   readonly repeat: boolean;
   readonly timeStamp: number;
-}
-
-/** What the tracker decided about one keydown. */
-export interface KeyRepeatVerdict {
-  /**
-   * The host's own judgment: true if this keydown should be treated as a
-   * continuation of a held key rather than a fresh, deliberate press.
-   * `reportedRepeat || (intervalMs !== null && intervalMs < MIN_HUMAN_KEYPRESS_INTERVAL_MS)`.
-   */
-  readonly isRepeat: boolean;
-  /** `event.repeat` exactly as the browser reported it. */
-  readonly reportedRepeat: boolean;
-  /**
-   * Milliseconds since the previous keydown of this SAME key, or null when
-   * there was none yet (a different key, or the first keydown this tracker
-   * has ever classified).
-   */
-  readonly intervalMs: number | null;
-  /**
-   * Milliseconds between this event's own `timeStamp` and `now` (the moment it
-   * was classified) - see the module header for why this is reported but does
-   * not drive `isRepeat` on its own.
-   */
-  readonly ageMs: number;
 }
 
 /**

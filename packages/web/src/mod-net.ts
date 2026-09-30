@@ -23,63 +23,10 @@ import {
   serializeDocument,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { NetProblem, NetProblemCode, NetRequest } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { ModNetResponse, ModSecretResult, ModNet } from "@rpgm-tools/neo-angband-core";
+export type { ModSecretStorage, ModNetResponse, ModSecretResult, ModNetSecrets, ModNet } from "@rpgm-tools/neo-angband-core";
 
 export type { NetProblemCode, NetRequest } from "@rpgm-tools/neo-angband-mod-sdk";
-
-/** Where a secret's value is kept. */
-export type ModSecretStorage = "os" | "environment" | "page";
-
-/**
- * What `ctx.net.request` resolves to. `ok: true` means a response arrived,
- * whatever its status; read `status` for the HTTP result.
- */
-export type ModNetResponse =
-  | {
-      readonly ok: true;
-      readonly status: number;
-      /** Response headers, names in lower case. */
-      readonly headers: Readonly<Record<string, string>>;
-      readonly body: string;
-      /** Present when the request used a secret: where the least protected one is kept. */
-      readonly secretStorage?: ModSecretStorage;
-    }
-  | { readonly ok: false; readonly code: NetProblemCode; readonly problem: string };
-
-export type ModSecretResult =
-  | { readonly ok: true; readonly storage: ModSecretStorage }
-  | { readonly ok: false; readonly problem: string };
-
-export interface ModNetSecrets {
-  /** Where `set` keeps a value on this front end: `os` in the desktop app, `page` in a browser tab. */
-  readonly storage: "os" | "page";
-  /**
-   * Keep `value` under `name`, to be sent only to `hosts`. Each host must be one
-   * this mod's grants cover. Setting a name again replaces its value and hosts.
-   */
-  set(name: string, value: string, options: { readonly hosts: readonly string[] }): Promise<ModSecretResult>;
-  /**
-   * Take `name`'s value from the first of `variables` that is set in the
-   * environment the game was started from, sent only to `hosts`. Desktop app
-   * only. The player is asked, in a dialog of the game's own, the first time and
-   * whenever the variables or hosts change.
-   */
-  fromEnv(name: string, variables: readonly string[], options: { readonly hosts: readonly string[] }): Promise<ModSecretResult>;
-  /** Whether `name` is set, and where. Never the value. */
-  has(name: string): Promise<{ readonly present: boolean; readonly storage?: ModSecretStorage }>;
-  delete(name: string): Promise<{ readonly ok: boolean }>;
-}
-
-export interface ModNet {
-  /** `relay` in the desktop app, `page` in a browser tab. */
-  readonly transport: "relay" | "page";
-  /**
-   * Send one request. A header value may contain `{secret:name}`, which the host
-   * replaces with that secret's value when the request's host is one the secret
-   * may be sent to. Never throws.
-   */
-  request(request: NetRequest): Promise<ModNetResponse>;
-  readonly secrets: ModNetSecrets;
-}
 
 /** The desktop preload's relay, when this page has one. */
 export interface NetRelayBridge {

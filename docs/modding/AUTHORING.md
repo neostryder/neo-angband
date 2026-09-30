@@ -11,6 +11,10 @@ The pipeline cannot report any of that, because it has no model of what a workin
 Everything on this page is in `@rpgm-tools/neo-angband-mod-sdk` and needs no
 game running.
 
+## Plugin host types
+
+TypeScript plugins can import `ModPluginContext` from `@rpgm-tools/neo-angband-core` to type the context passed to `register`, `hooks`, `hud` and `controller`. The same package exports `ModUi`, `ModPanel`, `PanelKindSpec`, `PanelMount` and `PanelState` for panels; `ModNet`, `ModNetResponse` and `ModNetSecrets` for network requests and secrets; and `ModBirthSession` and `BirthResult` for character creation. Use `import type` because the host passes the live objects to the plugin at runtime.
+
 ## Two ways in, and the `import` is only one of them
 
 An offline tool installs the package and imports it, which is what every example

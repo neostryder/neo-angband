@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GameEvents } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
-import type { GameState } from "@rpgm-tools/neo-angband-core";
+import type { GameEventMap, GameState } from "@rpgm-tools/neo-angband-core";
 import { playerCommandEvent } from "./player-command-event";
 import { modPluginContext } from "./mod-context";
 
@@ -30,7 +30,7 @@ describe("the player-command event", () => {
     });
     const ctx = modPluginContext("squire", {}, { events: bus } as GameState, {}, { capabilities });
     const heard: string[] = [];
-    ctx.events?.on("player-command", (_type, event) => heard.push(`${event.code}@${event.token.revision}`));
+    ctx.events?.on("player-command", (_type: "player-command", event: GameEventMap["player-command"]) => heard.push(`${event.code}@${event.token.revision}`));
     bus.emit("player-command", playerCommandEvent({ code: "walk", dir: 2 }, "play", null, { epoch: 1, revision: 5 }));
     expect(heard).toEqual(["walk@5"]);
   });

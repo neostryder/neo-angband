@@ -19,6 +19,8 @@
 import type { Rng } from "@rpgm-tools/neo-angband-core";
 import type { KnowledgeGroup, KnowledgeRow } from "./knowledge";
 import type { ScreenView } from "./screen-view";
+import type { KnowledgeCategoryId, KnowledgeEntryView, KnowledgeListView, ModKnowledge } from "@rpgm-tools/neo-angband-core";
+export type { KnowledgeCategoryId, KnowledgeCategoryView, KnowledgeEntryView, KnowledgeGroupView, KnowledgeListView, ModKnowledge } from "@rpgm-tools/neo-angband-core";
 
 /** The knowledge menu's categories, in the menu's own order (ui-knowledge.c:3487-3503). */
 export const KNOWLEDGE_CATEGORIES = [
@@ -31,49 +33,6 @@ export const KNOWLEDGE_CATEGORIES = [
   "traps",
   "shapes",
 ] as const;
-
-export type KnowledgeCategoryId = (typeof KNOWLEDGE_CATEGORIES)[number];
-
-export interface KnowledgeCategoryView {
-  readonly id: KnowledgeCategoryId;
-  /** The browser's own title ("runes (3 unknown)", "known objects"). */
-  readonly title: string;
-  /** How many entries the category lists. The game greys a category at 0 where it has a gate. */
-  readonly count: number;
-}
-
-export interface KnowledgeEntryView {
-  /** Stable within the category for the session: pass it to `recall`. */
-  readonly id: string;
-  readonly name: string;
-  /** CSS colour the game draws the name in. */
-  readonly color: string;
-  /** Extra fields the game prints after the name: a rune's note, a monster's symbol, kills and "Full". */
-  readonly cells?: readonly { readonly text: string; readonly color: string }[];
-}
-
-export interface KnowledgeGroupView {
-  readonly name: string;
-  readonly entries: readonly KnowledgeEntryView[];
-}
-
-export interface KnowledgeListView {
-  readonly title: string;
-  readonly groups: readonly KnowledgeGroupView[];
-}
-
-export interface ModKnowledge {
-  categories(): readonly KnowledgeCategoryView[];
-  /** The known members of one category, grouped as the game groups them. Null for an unknown category id. */
-  list(category: string): KnowledgeListView | null;
-  /**
-   * The recall page for one entry, as the game shows it. Null when the id is not
-   * in the category's current list: an entry the player does not know yet has no
-   * page to read. A monster's page grows as its lore does, so read it again after
-   * the snapshot changes rather than keeping an old one.
-   */
-  recall(category: string, id: string): ScreenView | null;
-}
 
 /**
  * One category, as main.ts wires it: the grouped rows, an id for a member, and

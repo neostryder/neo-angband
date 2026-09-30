@@ -11,41 +11,8 @@
 
 import { OPTION_ENTRIES, type GameState } from "@rpgm-tools/neo-angband-core";
 import { notifyOptionsChanged, optionsFingerprint } from "./options";
-
-export interface ModOptionEntry {
-  readonly name: string;
-  readonly description: string;
-  /** The options page: "interface", "birth", "cheat" or "score". */
-  readonly page: string;
-  readonly value: boolean;
-  /** Whether `set` accepts this option. */
-  readonly writable: boolean;
-}
-
-export interface ModOptionsView {
-  readonly entries: readonly ModOptionEntry[];
-  /** The low hit point warning, in tenths of maximum hit points (0 to 9). */
-  readonly hitpointWarn: number;
-  /** The base delay factor in milliseconds (0 to 255). */
-  readonly delayFactor: number;
-  /** The movement delay in milliseconds (0 to 255). */
-  readonly lazymoveDelay: number;
-}
-
-export interface ModOptionsChange {
-  readonly values?: Readonly<Record<string, boolean>>;
-  readonly hitpointWarn?: number;
-  readonly delayFactor?: number;
-  readonly lazymoveDelay?: number;
-}
-
-export type ModOptionsResult = { readonly ok: true; readonly changed: readonly string[] } | { readonly ok: false; readonly reason: string };
-
-export interface ModOptions {
-  get(): ModOptionsView;
-  /** Apply a whole change or none of it. Present only with `options:write`. */
-  set?(change: ModOptionsChange): ModOptionsResult;
-}
+import type { ModOptionsView, ModOptionsChange, ModOptionsResult, ModOptions } from "@rpgm-tools/neo-angband-core";
+export type { ModOptionEntry, ModOptionsView, ModOptionsChange, ModOptionsResult, ModOptions } from "@rpgm-tools/neo-angband-core";
 
 const PAGES = new Set(["INTERFACE", "BIRTH", "CHEAT", "SCORE"]);
 

@@ -130,6 +130,7 @@ export * from "./session/save-migrate.js";
  * cannot write a hook without the type, and a host cannot install one without
  * the fold, so both are part of the published API - see mod/hooks.ts. */
 export * from "./mod/hooks.js";
+export type * from "./mod/host-abi.js";
 export * from "./mod/save-blocks.js";
 /* The player-facing half of the same store: what is quarantined, which pack
  * owned it, and whether that pack can be found now. Read-only over

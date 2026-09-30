@@ -1,35 +1,5 @@
-/**
- * The window chrome's look: title bars, tabs, buttons, dividers and drop
- * guides around the panels. index.html draws it from `--chrome-*` custom
- * properties whose defaults are Angband's own palette and 8x13 dialog font. A
- * mod holding `display:filter` can repaint it through
- * `ctx.display.setChromeTheme`, and clearing the request puts the game's own
- * look back.
- */
-
-/** Colours accept #rgb, #rrggbb, #rrggbbaa or rgb()/rgba(). */
-export interface ChromeTheme {
-  /** A font family already loaded in the page, for example with the FontFace API. */
-  readonly font?: string;
-  /** Font size in CSS pixels, 8 to 24. */
-  readonly fontSize?: number;
-  /** Behind every panel, and the dividers' ground. */
-  readonly page?: string;
-  readonly titleBackground?: string;
-  readonly text?: string;
-  readonly textStrong?: string;
-  readonly muted?: string;
-  readonly border?: string;
-  readonly divider?: string;
-  readonly dividerHover?: string;
-  /** Selected tab, drop guides and hover outlines. */
-  readonly accent?: string;
-  readonly floatBorder?: string;
-  /** Corner rounding in CSS pixels, 0 to 16. */
-  readonly radius?: number;
-  /** A drop shadow under floating panels. */
-  readonly shadow?: boolean;
-}
+import type { ChromeTheme } from "@rpgm-tools/neo-angband-core";
+export type { ChromeTheme } from "@rpgm-tools/neo-angband-core";
 
 const COLOR_KEYS = {
   page: "--chrome-page",
