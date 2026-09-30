@@ -66,6 +66,7 @@ still calls itself.
 - [Internal] [Docs] **The Cutting Room Floor charter defines which upstream content belongs in the mod and how restorations cite sources, preserve prices, and handle birth-locked content and art.**
 
 ### Fixed
+- [Visible] [UI] **The game no longer stops on the crash screen the first time it converts an old pref file that holds a panel layout.** The converted layout now applies once startup is far enough along to draw it (#324).
 - [Visible] [Modding-API] **A curse that grants STICKY now keeps its item on, as an item's own STICKY does.** You can't take the item off, drop it, throw it, sell it or wield something in its place, and tunnelling no longer swaps it for a better digger. The game's own curses grant no flags, so this matters only for curses a mod adds. (#283)
 - [Visible] [Modding-API] **Core installs from npm again.** Core 1.19.0 and 1.19.1 listed mod-sdk with a range only this repository can resolve, so installing either one failed. Core now names the mod-sdk version released with it. (#318)
 - [Visible] [Modding-API] **A mod monster can cast a spell the same mod adds.** The game no longer stops loading with "mon: invalid spell name" when a mod declares its own monster spell. (#319)

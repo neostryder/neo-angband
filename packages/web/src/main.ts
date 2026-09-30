@@ -2264,6 +2264,9 @@ try {
 } catch {
   /* Storage denied outright: every setting keeps its default for this session. */
 }
+/* A layout converted from an old pref file waits here until the graphics menus
+ * further down exist. Applying it now reads them before they are initialized. */
+let convertedLayout = null as SubwindowState | null;
 convertStoredUserPrefFiles({
   glyphs,
   deps: {
@@ -2272,7 +2275,7 @@ convertStoredUserPrefFiles({
     monsters: booted.registries.monsters,
     traps: booted.registries.traps,
   },
-  applyLayout: (next) => restoreSubwindowLayout(next),
+  applyLayout: (next) => { convertedLayout = next; },
 });
 applyVisualDocument(glyphs, {
   features: booted.registries.features,
@@ -12696,7 +12699,8 @@ const stopLoading = startLoading(term, { seed: Date.now() >>> 0 });
 // best-effort: fetches the pack image + prefs and repaints when ready, leaving
 // the map ASCII on any failure.
 void applyTileMode(readTileMode());
-void applyMapTileMode(subwindowState.mapTileMode ?? GRAPHICS_NONE);
+if (convertedLayout) restoreSubwindowLayout(convertedLayout);
+else void applyMapTileMode(subwindowState.mapTileMode ?? GRAPHICS_NONE);
 
 // --- Birth: choose a character for a new game -------------------------------
 // A brand-new game opens the staged birth screen (ui-birth.c stage order). The
