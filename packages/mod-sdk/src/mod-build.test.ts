@@ -105,7 +105,9 @@ describe("a well-formed mod builds", () => {
   });
 });
 
-describe("--check catches a STALE committed plugin.js", () => {
+/* Each test here runs the builder twice as a child process, which takes several
+ * seconds when the whole suite shares the machine. */
+describe("--check catches a STALE committed plugin.js", { timeout: 30_000 }, () => {
   /**
    * The failure nothing else in the chain can see. In a mod repository plugin.js is
    * committed, because that is the file the catalogue fetches at a tag and hashes - so
