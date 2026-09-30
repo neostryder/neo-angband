@@ -100,6 +100,21 @@ function throughDisk<T>(value: T): T {
 }
 
 describe("ctx.characterStore survives a real save and load (#171)", () => {
+  it("writes and restores the section choices recorded at character birth", () => {
+    const game = startGame(pack, { seed: 20260921, depth: 1, className: "Warrior" });
+    game.sectionBirth = { spellbooks: { restored: false } };
+    const onDisk = throughDisk(saveGame(game));
+    expect(onDisk.sectionBirth).toEqual({ spellbooks: { restored: false } });
+    expect(loadGame(pack, onDisk).sectionBirth).toEqual({ spellbooks: { restored: false } });
+  });
+
+  it("loads an older save without section birth data unchanged", () => {
+    const game = startGame(pack, { seed: 20260921, depth: 1, className: "Warrior" });
+    const oldSave = throughDisk(saveGame(game));
+    delete oldSave.sectionBirth;
+    expect(loadGame(pack, oldSave).sectionBirth).toBeUndefined();
+  });
+
   it("writes through ctx.characterStore, and a freshly loaded game reads the same value back", () => {
     const game = startGame(pack, { seed: 20260921, depth: 1, className: "Warrior" });
     setModCharacterStoreControl(controlFor(game));

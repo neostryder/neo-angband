@@ -520,6 +520,8 @@ export interface StartedGame {
   manifest: SaveManifest;
   /** Per-mod private save bags (mod:<id>), round-tripped verbatim. */
   mods: Record<string, ModBag>;
+  /** Section choices frozen when a character was created. */
+  sectionBirth?: Record<string, Record<string, boolean>>;
   /**
    * Quarantined entities (missing/shadowed packs), preserved across save/load
    * so reinstalling a pack rehydrates its content. Empty for a core-only game.
@@ -4352,6 +4354,7 @@ export function saveGame(game: StartedGame): SavedGame {
    * when non-empty, so a core-only save stays clean. */
   save.manifest = game.manifest;
   if (Object.keys(game.mods).length > 0) save.mods = game.mods;
+  if (game.sectionBirth !== undefined) save.sectionBirth = game.sectionBirth;
   if (Object.keys(game.orphans).length > 0) save.orphans = game.orphans;
   if (game.orphansAcknowledged) save.orphansAcknowledged = true;
   return save;
@@ -4885,6 +4888,7 @@ export function loadGame(
     seedFlavor,
     manifest: reconciledManifest,
     mods: save.mods ?? {},
+    ...(save.sectionBirth !== undefined ? { sectionBirth: save.sectionBirth } : {}),
     orphans: quarantine.orphans,
     orphansAcknowledged: save.orphansAcknowledged ?? false,
     quarantined: quarantine.quarantined,

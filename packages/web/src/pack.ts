@@ -13,7 +13,7 @@
  * mod-sdk-agnostic - this host module owns the glue.
  */
 
-import { CORE_RECORD_KEYS } from "@rpgm-tools/neo-angband-core";
+import { CORE_RECORD_KEYS, decodeSavedGame } from "@rpgm-tools/neo-angband-core";
 import type {
   GamePack,
   SavePackRef,
@@ -43,6 +43,8 @@ import { diskPacks, sessionPacks, type ModDirKind, type ModOrigin } from "./disk
 import type { InstalledModMeta } from "./mod-install";
 import { sessionMods } from "./mod-session";
 import { activeModCode } from "./mod-code";
+import { getActiveId, readSlotSave } from "./roster";
+import { SAVE_CODECS } from "./save-codec";
 import { engineAllows, engineProblem } from "./mod-engine";
 import { dedupeProblems, modFaults, type ModProblem } from "./mod-problems";
 
@@ -630,7 +632,7 @@ function composition(): Composition {
    * decide whether a compatibility section applies at all. A section that is off
    * is dropped before composition, so its records are absent rather than present
    * and overridden. */
-  const sections = sectionChoiceTable(packs.map((p) => p.manifest));
+  const sections = sectionChoiceTable(packs.map((p) => p.manifest), selectedSectionBirth());
   const { composed, dropped } = composeDroppingBroken(packs, { sections });
   /* THE OTHER HALF OF THE FIELD RULE, and it can only run here. The composer
    * enforces "a namespaced key must be declared" with nothing but the
@@ -664,6 +666,7 @@ function composition(): Composition {
  */
 function sectionChoiceTable(
   manifests: readonly PackManifest[],
+  birth: Record<string, Record<string, boolean>> | undefined,
 ): Record<string, Record<string, boolean>> {
   const choices = migratedSectionChoices(manifests);
   const resolved = resolveSectionState(
@@ -676,7 +679,55 @@ function sectionChoiceTable(
     if (table.size === 0) continue;
     out[modId] = Object.fromEntries(table);
   }
+  return applySectionBirthChoices(manifests, out, birth);
+}
+
+export function applySectionBirthChoices(
+  manifests: readonly PackManifest[],
+  current: Record<string, Record<string, boolean>>,
+  birth: Record<string, Record<string, boolean>> | undefined,
+): Record<string, Record<string, boolean>> {
+  const out = Object.fromEntries(
+    Object.entries(current).map(([id, sections]) => [id, { ...sections }]),
+  );
+  for (const manifest of manifests) {
+    for (const section of manifest.sections ?? []) {
+      if (!section.lockedAtBirth) continue;
+      const born = birth?.[manifest.id]?.[section.id];
+      if (born !== undefined && out[manifest.id]) out[manifest.id]![section.id] = born;
+    }
+  }
   return out;
+}
+
+/** Capture the resolved locked-section choices for a newly created character. */
+export function sectionBirthChoices(): Record<string, Record<string, boolean>> {
+  const manifests = composition().packs.map((pack) => pack.manifest);
+  const choices = sectionChoiceTable(manifests, undefined);
+  const birth: Record<string, Record<string, boolean>> = {};
+  for (const manifest of manifests) {
+    for (const section of manifest.sections ?? []) {
+      if (!section.lockedAtBirth) continue;
+      const value = choices[manifest.id]?.[section.id];
+      if (value !== undefined) (birth[manifest.id] ??= {})[section.id] = value;
+    }
+  }
+  return birth;
+}
+
+function selectedSectionBirth(): Record<string, Record<string, boolean>> | undefined {
+  try {
+    const params = new URLSearchParams(location.search);
+    if (params.has("new") || params.has("seed")) return undefined;
+    if (sessionStorage.getItem("neo-angband-force-new") === "1") return undefined;
+    const id = getActiveId();
+    const stored = id === null ? null : readSlotSave(id);
+    if (!stored) return undefined;
+    const bytes = Uint8Array.from(atob(stored), (char) => char.charCodeAt(0));
+    return decodeSavedGame(bytes, undefined, SAVE_CODECS).save?.sectionBirth;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Read saved section choices after importing any retired rule/section names. */

@@ -292,6 +292,31 @@ describe("title visits apply changes before returning", () => {
 });
 
 describe("the top-level Mod options browser", () => {
+  it("shows that locked sections affect new characters only", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80, 24);
+    const store = new ModStore(fakeStorage());
+    store.setModEnabled("spellbooks", true);
+    const mod = {
+      ...manifest("spellbooks", "Spellbooks"),
+      sections: [{ id: "restored", title: "Restored spells", lockedAtBirth: true }],
+    } as CatalogManifest;
+    const done = runModOptionsBrowser(term, makeDeps(store, vi.fn(), [mod]));
+    await flush();
+    press(win, "Enter");
+    await flush();
+    expect(term.snapshot().join("\n")).toContain("Restored spells (new characters only)");
+    const note = term.snapshot().map((line) => line.trim()).join(" ").replace(/\s+/g, " ");
+    expect(note).toContain(
+      "Each character keeps the choice it was created with. Changing it takes effect after a reload, for new characters.",
+    );
+    press(win, "Escape");
+    await flush();
+    press(win, "Escape");
+    await done;
+  });
+
   it("starts with All mods and keeps disabled mods reachable by name", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;

@@ -397,7 +397,7 @@ import {
 import type { PrefsUiCtx } from "./prefs-ui";
 import { applyPrefText } from "./prefs-ui";
 import { CapabilitySet, birthChoiceFormat, parseDocument, serializeDocument, reloadStateFormat } from "@rpgm-tools/neo-angband-mod-sdk";
-import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, loadEnabledModSettings, discoverContentModManifests, presentNamespaces, presentPackDigests, prefetchInstalledPackDigests, diskPackStatus, enabledModIds, composedRecords } from "./pack";
+import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, loadEnabledModSettings, discoverContentModManifests, presentNamespaces, presentPackDigests, prefetchInstalledPackDigests, diskPackStatus, enabledModIds, composedRecords, sectionBirthChoices } from "./pack";
 import { liveConflictLines } from "./mod-conflicts";
 import { composedObjects, hasFacet, resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
@@ -1789,7 +1789,7 @@ function bootGame(): ReturnType<typeof startGame> {
     /* storage disabled or corrupt: fall through to seed */
   }
   const startHooks = activeModHooks();
-  return startGame(pack, {
+  const game = startGame(pack, {
     seed,
     depth,
     ...(birthRngState ? { rngState: birthRngState } : {}),
@@ -1830,6 +1830,9 @@ function bootGame(): ReturnType<typeof startGame> {
       ? { optionOverrides: birthChoice.birthOptions }
       : {}),
   });
+  const sectionBirth = sectionBirthChoices();
+  if (Object.keys(sectionBirth).length > 0) game.sectionBirth = sectionBirth;
+  return game;
 }
 
 /* BEFORE THE GAME EXISTS, not after.

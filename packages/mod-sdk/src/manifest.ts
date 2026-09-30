@@ -229,6 +229,8 @@ export interface PackSection {
   description?: string;
   /** Whether the section is on when the mod is enabled. Absent means on. */
   default?: boolean;
+  /** Whether this section keeps its character-creation choice for the save. */
+  lockedAtBirth?: boolean;
   /**
    * Where this section sits relative to the rest of the mod (see SectionBand).
    * Absent is "normal": the section takes its mod's own load-order position.
@@ -1070,6 +1072,9 @@ function validateSections(
     }
     if (s["default"] !== undefined && typeof s["default"] !== "boolean") {
       throw new ManifestError(`manifest ${id}: section ${sid} default must be a boolean`);
+    }
+    if (s["lockedAtBirth"] !== undefined && typeof s["lockedAtBirth"] !== "boolean") {
+      throw new ManifestError(`manifest ${id}: section ${sid} lockedAtBirth must be a boolean`);
     }
     if (
       s["priority"] !== undefined &&

@@ -1869,6 +1869,8 @@ export interface SavedGame {
    * persisted state. Round-tripped verbatim; migrated only by the owning mod.
    */
   mods?: Record<string, ModBag>;
+  /** Section choices frozen at character creation; absent in older saves. */
+  sectionBirth?: Record<string, Record<string, boolean>>;
   /**
    * The orphans store (orphans:<id>@<version>): entities quarantined because
    * their defining pack is missing or shadowed (mod/save-blocks.ts). Frozen and

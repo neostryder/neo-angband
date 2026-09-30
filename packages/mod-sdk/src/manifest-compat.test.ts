@@ -95,6 +95,11 @@ describe("sections", () => {
     ).not.toThrow();
   });
 
+  it("accepts lockedAtBirth and rejects non-boolean values", () => {
+    expect(validateManifest(manifest({ sections: [{ id: "spells", title: "Spells", lockedAtBirth: true }] })).sections?.[0]?.lockedAtBirth).toBe(true);
+    expect(() => validateManifest(manifest({ sections: [{ id: "spells", title: "Spells", lockedAtBirth: "yes" }] }))).toThrow(/lockedAtBirth must be a boolean/);
+  });
+
   it("accepts retired rule or section names on the current section", () => {
     expect(
       validateManifest(

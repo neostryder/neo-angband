@@ -22,7 +22,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
-import { loadEnabledModRuleDecls, sectionFlagsByMod } from "./pack";
+import { applySectionBirthChoices, loadEnabledModRuleDecls, sectionFlagsByMod } from "./pack";
 import { resolveSectionState } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { resolveModRules, DEFAULT_ENABLED_MODS, FIRST_PARTY_MOD_IDS } from "./mod-store";
@@ -180,5 +180,27 @@ describe("sectionFlagsByMod's cross-mod propagation (neo-angband#32)", () => {
     const resolved = resolveSectionState([broken], {}, new Set(["bug-fixes", "borg"]));
     const byMod = sectionFlagsByMod([broken], resolved);
     expect(byMod.get("borg")).toBeUndefined();
+  });
+});
+
+describe("locked section birth choices", () => {
+  const manifests = [{
+    id: "spellbooks",
+    name: "Spellbooks",
+    version: "1.0.0",
+    shape: "content",
+    sections: [
+      { id: "restored", title: "Restored", lockedAtBirth: true },
+      { id: "later", title: "Later", lockedAtBirth: true },
+      { id: "live", title: "Live", lockedAtBirth: false },
+    ],
+  }] as unknown as PackManifest[];
+
+  it.each([[true, false], [false, true]])("keeps the birth value when the current toggle is %s", (born, current) => {
+    expect(applySectionBirthChoices(manifests, { spellbooks: { restored: current } }, { spellbooks: { restored: born } }).spellbooks?.restored).toBe(born);
+  });
+
+  it("uses current toggles for sections added after birth and leaves unlocked sections live", () => {
+    expect(applySectionBirthChoices(manifests, { spellbooks: { later: false, live: false } }, { spellbooks: { restored: true } })).toEqual({ spellbooks: { later: false, live: false, restored: true } });
   });
 });

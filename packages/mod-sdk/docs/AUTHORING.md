@@ -519,6 +519,12 @@ name, the old section choice wins. It consumes retired entries afterwards, so a
 later load is unchanged. With no current or retired choice, the section uses its
 declared `default` as usual.
 
+A section whose content must keep stable positions in an existing character can
+declare `"lockedAtBirth": true`. The host saves its on/off choice when the
+character is created and uses that choice whenever it loads the character.
+Changing the toggle then affects new characters only. Sections added in a later
+mod version have no birth choice in an older save and use the current toggle.
+
 ---
 
 ## Front-end groundwork

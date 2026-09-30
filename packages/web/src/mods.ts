@@ -2372,8 +2372,11 @@ async function manageModOptions(
       }
       if (option.kind === "section") {
         const needs = option.needs === null ? "" : `   (${t("modsScreen.options.needs", "needs {name}", { name: option.needs })})`;
+        const birthLock = option.section.lockedAtBirth
+          ? t("modsScreen.options.sectionLockedAtBirthLabel", " (new characters only)")
+          : "";
         return {
-          label: `${prefix(option.mod)}${option.on ? "[x]" : "[ ]"} ${option.section.title}${needs}`,
+          label: `${prefix(option.mod)}${option.on ? "[x]" : "[ ]"} ${option.section.title}${birthLock}${needs}`,
           color: option.needs === null ? (option.on ? C_ENABLED : C_DISABLED) : C_DISABLED,
           ...(option.needs === null ? {} : { disabled: true }),
         };
@@ -2532,8 +2535,12 @@ function modOptionDetail(
       { text: "", color: C_FG },
       ...wrapped(
         t(
-          "modsScreen.options.sectionNote",
-          "This is a structural part of the mod. Changing it takes effect after a reload.",
+          option.section.lockedAtBirth
+            ? "modsScreen.options.sectionLockedAtBirthNote"
+            : "modsScreen.options.sectionNote",
+          option.section.lockedAtBirth
+            ? "Each character keeps the choice it was created with. Changing it takes effect after a reload, for new characters."
+            : "This is a structural part of the mod. Changing it takes effect after a reload.",
         ),
         cols - 1,
         C_DIM,
