@@ -34,6 +34,8 @@ import {
   type ModPluginContext,
   type ModSessionOutcome,
   type ModSaves,
+  type ModTitle,
+  type ModProfiles,
   type ModSubwindows,
   type ModTiles,
   type ModUi,
@@ -169,6 +171,8 @@ export function modPluginContext(
   const tiles = tilesFor(session);
   const keyRepeat = keyRepeatFor(session);
   const saves = savesFor(id, session);
+  const title = session.capabilities?.has("ui:title") ? titleControl?.(id) : undefined;
+  const profiles = session.capabilities?.has("profiles:manage") ? profilesControl?.(id, session.capabilities) : undefined;
   const net = netFor(id, session);
   const keymaps = keymapsFor(id, state, session);
   const options = optionsFor(state, session);
@@ -226,6 +230,10 @@ export function modPluginContext(
     ...(tiles ? { tiles } : {}),
     ...(keyRepeat ? { keyRepeat } : {}),
     ...(saves ? { saves } : {}),
+    ...(title ? { title } : {}),
+    ...(profiles ? { profiles } : {}),
+    ...(session.capabilities?.has("profiles:manage") && session.capabilities?.has("saves:manage") && controllerArmedControl?.(id)
+      ? { controllerArmed: true } : {}),
     ...(state && (session.capabilities?.has("state:player.read") || session.capabilities?.has("state:*.read")) &&
       (session.snapshotSource ?? snapshotSource)?.characterKey
       ? { character: Object.freeze({
@@ -552,6 +560,21 @@ export function setModSnapshotSource(source: InputSnapshotSource | undefined): v
 }
 
 let savesControl: ModSaves | undefined;
+let titleControl: ((id: string) => ModTitle) | undefined;
+let profilesControl: ((id: string, caps: CapabilitySet) => ModProfiles) | undefined;
+let controllerArmedControl: ((id: string) => boolean) | undefined;
+
+export function setModTitleControl(control: typeof titleControl): void {
+  titleControl = control;
+}
+
+export function setModProfilesControl(control: typeof profilesControl): void {
+  profilesControl = control;
+}
+
+export function setModControllerArmedControl(control: typeof controllerArmedControl): void {
+  controllerArmedControl = control;
+}
 let autoplayerRollOn: ModAutoplayerRollOn | undefined;
 
 /**

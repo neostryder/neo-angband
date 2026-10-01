@@ -76,7 +76,7 @@ describe('the pre-game menus answer "back", not null/false', () => {
     const src = stripComments(MAIN);
     expect(src).toMatch(/async function maybeBirth\(\): Promise<BootStep>/u);
     const body = stripComments(functionBody(MAIN, "maybeBirth"));
-    expect(body).toMatch(/if \(!choice\) return "back"/u);
+    expect(body).toMatch(/if \(!choice\) \{[\s\S]*?requestedControllerId = null;[\s\S]*?return "back";/u);
   });
 
   it("birth is no longer wrapped in an un-escapable retry loop", () => {
@@ -88,7 +88,7 @@ describe('the pre-game menus answer "back", not null/false', () => {
      * so the terminal birth is one arm of that expression rather than its own
      * statement. Either way a first-stage back is answered "back". */
     expect(body).toMatch(/await runBirth\(/u);
-    expect(body).toMatch(/if \(!choice\) return "back";/u);
+    expect(body).toMatch(/if \(!choice\) \{[\s\S]*?requestedControllerId = null;[\s\S]*?return "back";/u);
   });
 
   it("startNewCharacter is awaited so birth's 'back' can reach bootMenus", () => {

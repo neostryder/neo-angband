@@ -525,6 +525,18 @@ The facade uses the roster's configured storage in the browser and Electron. Its
 
 `ctx.character.key()` is present with `state:player.read` while a character is attached. It returns the roster lineage, which survives saves and renames. Under `saves:manage`, `ctx.saves.onChange(listener)` receives frozen `rename` and `delete` events after the host writes the roster; each event carries the slot id and lineage key, and a rename also carries the new name. The subscription returns an unsubscribe function.
 
+## Player profiles and title actions
+
+`ctx.profiles.list()` returns `ProfileResult<readonly ModProfile[]>`, where each profile has `id: string | null`, `name: string` and `active: boolean`. The default profile has a null id. `ProfileResult<T>` is `{ ok: true, value: T } | { ok: false, reason: string }`; calls without the capability throw a capability error.
+
+`create(name, { copyFrom? })` returns `ProfileResult<ModProfile>`. Omit `copyFrom` for a fresh profile, pass a profile id to copy it, or pass `null` to copy the default. Copies include saved game options, mod loadout, rule choices, mod settings and per-mod preferences. They exclude save bytes, roster entries, death records, character exports and global settings. A new profile enables its creator. `setEnabledMods(id, mods)` replaces the enabled set in a profile the caller created, keeps the caller enabled and returns `ProfileResult`. Every named mod must be installed; code mods must already have the player's approval in the source or destination profile. The host records profile ownership so the creator can reuse this method after a reload.
+
+`switchTo(id, action?)` returns `ProfileResult` and reloads through the host's mod teardown path. The optional `ModProfileAction` is `{ kind: "create-character", armController?: boolean }`. Character creation requires `saves:manage`; arming also requires the calling mod to supply a controller. The calling mod must be enabled in the destination profile. The host stores the destination id, calling mod id and action in a JSON document in reload storage. On the next boot it removes the document before validating the destination and calling mod, then starts creation there. A missing mod, mismatched destination or unreadable document produces a refusal report and the action is not retried.
+
+`ctx.controllerArmed` is true for the calling mod during birth and on the first boot of its new character when controller arming was requested. A controller factory can use that fact to return its controller. The host carries the request through the existing birth reload and marks the character when the controller installs. A resumed character receives no arming request from this action. The mod owns its prompts and its decision to ask the player before arming.
+
+Under `ui:title`, `ctx.title.registerRow(row)` accepts `ModTitleRow`, which has `label: string`, optional `key: string` and `run(): void | Promise<void>`. It returns an unregister function. The host draws mod rows below its own title options. `ctx.title.choose(title, choices)` takes a string and a readonly string array and returns `Promise<number | null>`. Escape returns null and the first choice is the default. The profile capability grants no title rows, and the title capability grants no profile access.
+
 ## 4n. Filtering the whole game viewport
 
 `ctx.display.setVisualFilter(filter, { scope: "game" })` applies a CSS filter to the terminal canvas, tiled subwindow content, and every mod panel's content, including panels opened after the call. The call still requires `display:filter`. Omitting the options keeps the previous canvas-only behavior. Pass `null` to clear both scopes; mod teardown also clears the filter before a changed mod set reloads.

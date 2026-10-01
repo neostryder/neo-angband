@@ -141,6 +141,8 @@
     "parseCapability",
     "parseDocument",
     "peersFor",
+    "profileActionFormat",
+    "profileOwnerFormat",
     "profilesFormat",
     "provenanceOf",
     "randartFormat",

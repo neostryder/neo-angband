@@ -206,8 +206,8 @@ const strip = (s: string): string => s.replace(/\{[^}]*\}/gu, "");
 function renderTitle(
   over: Partial<Parameters<typeof showTitleScreen>[1]> = {},
   deps?: Parameters<typeof showTitleScreen>[2],
+  cols = 80,
 ): { ch: string; fg: string }[][] {
-  const cols = 80;
   const rows = 24;
   const grid: { ch: string; fg: string }[][] = Array.from({ length: rows }, () =>
     Array.from({ length: cols }, () => ({ ch: " ", fg: "" })),
@@ -419,6 +419,18 @@ describe("the 'Neo' overlay against news.txt (reference/lib/screens/news.txt)", 
  * on upstream's row 23 with two blank rows above it.
  */
 describe("title screen project information", () => {
+  it("places a mod action on the line below the core options", () => {
+    const grid = renderTitle({ modRows: [{ choice: "mod:0", label: "New test character", key: "t" }] });
+    expect(rowText(grid, 22)).toContain("(N)ew");
+    expect(rowText(grid, 22)).toContain("(Q)uit");
+    expect(rowText(grid, 23).trim()).toBe("(T) New test character");
+  });
+
+  it("keeps the mod line visible when the core options exceed the grid width", () => {
+    const grid = renderTitle({ modRows: [{ choice: "mod:0", label: "New test character" }] }, undefined, 32);
+    expect(rowText(grid, 22)).toContain("(N)ew");
+    expect(rowText(grid, 23).trim()).toBe("New test character");
+  });
   it("shows the PORT's version in news.txt's $VERSION slot, not Angband's", () => {
     const slot = titleLines().find((l) => l.markup.includes(ENGINE_VERSION));
     expect(slot, `no line carries ${ENGINE_VERSION}`).toBeDefined();

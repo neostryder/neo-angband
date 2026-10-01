@@ -543,6 +543,12 @@ export interface ModPluginContext {
   readonly knowledge?: ModKnowledge;
   /** Manage roster slots after declaring `saves:manage`, including at the title. */
   readonly saves?: ModSaves;
+  /** Add title actions after declaring `ui:title`. */
+  readonly title?: ModTitle;
+  /** Manage player profiles after declaring `profiles:manage`. */
+  readonly profiles?: ModProfiles;
+  /** True when this mod's controller was requested for the new character. */
+  readonly controllerArmed?: boolean;
   /**
    * The attached character, under `state:player.read`. `key()` is its stable host
    * roster lineage. `sheet()` is the character sheet as data: the same panels,
@@ -1384,6 +1390,47 @@ export type SaveListResult = {
   readonly ok: false;
   readonly reason: string;
 };
+
+export interface ModTitleRow {
+  readonly label: string;
+  readonly key?: string;
+  run(): void | Promise<void>;
+}
+
+export interface ModTitle {
+  registerRow(row: ModTitleRow): () => void;
+  choose(title: string, choices: readonly string[]): Promise<number | null>;
+}
+
+export interface ModProfile {
+  readonly id: string | null;
+  readonly name: string;
+  readonly active: boolean;
+}
+
+export type ProfileResult<T = undefined> = {
+  readonly ok: true;
+  readonly value: T;
+} | {
+  readonly ok: false;
+  readonly reason: string;
+};
+
+export interface ModProfileAction {
+  readonly kind: "create-character";
+  /** Requires `saves:manage` and this mod's controller. */
+  readonly armController?: boolean;
+}
+
+export interface ModProfiles {
+  list(): ProfileResult<readonly ModProfile[]>;
+  /** Omit copyFrom for a fresh profile; null copies the default profile. Saves are excluded. */
+  create(name: string, options?: { readonly copyFrom?: string | null }): ProfileResult<ModProfile>;
+  /** Replace the enabled set in a profile this mod created; the calling mod stays enabled. */
+  setEnabledMods(id: string, mods: readonly string[]): ProfileResult;
+  /** Reload into a profile, then run the action once. Refusals leave the active profile unchanged. */
+  switchTo(id: string | null, action?: ModProfileAction): ProfileResult;
+}
 
 /** The host's character roster and the same actions offered by its picker. */
 export interface ModSaves {

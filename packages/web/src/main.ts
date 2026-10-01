@@ -358,6 +358,9 @@ import {
   setModListControl,
   setModSnapshotSource,
   setModSavesControl,
+  setModTitleControl,
+  setModProfilesControl,
+  setModControllerArmedControl,
   setModOptionsAfterChange,
   setModKnowledgeSource,
   setModRunReports,
@@ -560,6 +563,8 @@ import { buildGraphicsOverview, buildOverview, panLocate, locateSectorBanner } f
 import type { BuildOverviewParams, LevelOverview, Overview, OverviewGlyph } from "./mapview";
 import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
+import { TitleRuntime } from "./title-runtime";
+import { consumeProfileAction, createModProfiles } from "./profile-runtime";
 import { startLoading } from "./loading";
 import type { TitleChoice } from "./news";
 import type { BirthDeps } from "./birth";
@@ -1637,6 +1642,30 @@ const birthChoice = readBirthChoice();
  */
 function activeModRules(): Record<string, boolean> {
   return resolveModRules(loadEnabledModRuleDecls(), defaultModStore().getRuleChoices());
+}
+
+const profileActionResult = consumeProfileAction(reloadStorage, profileStore.activeId(), (pending) => {
+  const loaded = activeModCode().plugins.find((mod) => mod.id === pending.modId);
+  if (!loaded || !CapabilitySet.fromManifest(loaded.manifest).has("profiles:manage") ||
+      !CapabilitySet.fromManifest(loaded.manifest).has("saves:manage")) {
+    return { ok: false, reason: "The mod that requested character creation is unavailable or lacks permission." };
+  }
+  if (pending.action.armController && !loaded.plugin.controller) {
+    return { ok: false, reason: "The mod that requested character creation has no controller." };
+  }
+  reloadStorage.removeItem(BIRTH_DONE_KEY);
+  reloadStorage.setItem(FORCE_NEW_KEY, "1");
+  reloadStorage.setItem(SKIP_TITLE_KEY, "1");
+  if (pending.action.armController) reloadStorage.setItem(AUTOPLAYER_ROLL_ON_KEY, pending.modId);
+  else reloadStorage.removeItem(AUTOPLAYER_ROLL_ON_KEY);
+  setActiveId(newCharId());
+  return { ok: true };
+});
+let requestedControllerId: string | null = null;
+try {
+  requestedControllerId = reloadStorage.getItem(AUTOPLAYER_ROLL_ON_KEY);
+} catch {
+  requestedControllerId = null;
 }
 
 /**
@@ -7168,6 +7197,32 @@ setModDebugDoor({ wizard: wizardCtx, confirm: confirmDebugGate });
 setModOptionsAfterChange(() => autosave(true));
 setModKnowledgeSource(() => createModKnowledge(modKnowledgeSources(), () => state?.rng));
 setModRunReports(runReports);
+const modTitle = new TitleRuntime((title, choices) => {
+  if (gameScreenLive) return Promise.reject(new Error("Title choices are available before play begins."));
+  return openModal(() => selectFromMenu(term, "mods:title:choice", title, choices.map((label) => ({ label }))));
+});
+setModTitleControl((id) => modTitle.forMod(id));
+setModProfilesControl((id, caps) => createModProfiles(id, caps, {
+  store: profileStore,
+  storage: realGameStorage,
+  pendingStorage: reloadStorage,
+  installed: () => [...discoverContentModManifests(),
+    ...[...discoverPlugins().values()].map((p) => p.manifest),
+    ...[...discoverTrustedPlugins().values()].map((p) => p.manifest),
+    ...diskPacks().packs.map((p) => p.manifest)],
+  hasController: (modId) => activeModCode().plugins.some((p) => p.id === modId && !!p.plugin.controller),
+  canSwitch: () => gameScreenLive
+    ? { ok: false, reason: "Profiles can be switched before play begins." }
+    : { ok: true },
+  reload: () => {
+    for (const key of [FORCE_NEW_KEY, SKIP_TITLE_KEY, BIRTH_DONE_KEY, BIRTH_RNG_KEY, AUTOPLAYER_ROLL_ON_KEY]) reloadStorage.removeItem(key);
+    const url = new URL(location.href);
+    url.searchParams.delete("new");
+    url.searchParams.delete("seed");
+    history.replaceState(null, "", url.toString());
+    reloadAfterModChange({ resume: false });
+  },
+}));
 /* The enabled set is fixed for the page's life (a change reloads), so the
  * declarations are read once; the player's values are read through the store. */
 const modSettingDecls = loadEnabledModSettings();
@@ -12908,7 +12963,15 @@ async function maybeBirth(): Promise<BootStep> {
      * do/while loops until Y/N/C/= and ignores ESCAPE outright unless the terminal
      * is disconnecting (ui-birth.c:114-131), so it stays inert - the one step of
      * the pre-game flow ESC does not back out of, and that is the C's choice. */
-    if (!choice) return "back";
+    if (!choice) {
+      requestedControllerId = null;
+      try {
+        reloadStorage.removeItem(AUTOPLAYER_ROLL_ON_KEY);
+      } catch {
+        /* A cancelled birth must release the request in this page even without storage. */
+      }
+      return "back";
+    }
     try {
       writeBirthChoice(choice);
       reloadStorage.setItem(BIRTH_DONE_KEY, "1");
@@ -13082,6 +13145,7 @@ async function maybeTitle(): Promise<TitleChoice | null> {
           canUpdate:
             desktopBridge === null ? update !== null : updateHow !== "none",
           updateReady: update !== null,
+          modRows: modTitle.list(),
         },
         {
           randint1: titleRandint1,
@@ -13252,6 +13316,7 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
     clearVisualFilter: () => displayControl.setVisualFilter(null),
     clearMapMargin: () => displayControl.setMapMargin?.(null),
     releaseKeymaps: releaseModKeymaps,
+    removeTitleRows: (id) => modTitle.removeMod(id),
   });
   for (const worker of workerPlugins.values()) worker.teardown();
   installedController = null;
@@ -14890,6 +14955,10 @@ async function bootMenus(): Promise<void> {
    * return from here without painting anything.
    */
   stopLoading();
+  if (profileActionResult && !profileActionResult.ok) {
+    const reason = profileActionResult.reason;
+    await openModal(() => showTextScreen(term, t("profilesScreen.title", "Profiles"), [{ text: reason, color: UI_BAD }]));
+  }
   /* #24: the "offer what is in the folder" checkpoint, once per launch, before
    * any menu paints - see checkBackupArrivals's own header. Wrapped in
    * openModal like every other pre-game screen below, so a prompt it shows
@@ -14903,6 +14972,15 @@ async function bootMenus(): Promise<void> {
   const canReturnToTitle = !params.get("agent");
   for (;;) {
     const choice = await maybeTitle();
+    if (choice?.startsWith("mod:")) {
+      try {
+        await modTitle.run(choice);
+      } catch (err) {
+        const owner = modTitle.list().find((row) => row.choice === choice)?.owner ?? "mods";
+        reportModFault(owner, `its title action failed: ${faultMessage(err)}`);
+      }
+      continue;
+    }
     /* Title suppressed (autoplayer, post-birth rebuild, or an internal
      * continuation reload): the pre-title-menu flow. */
     if (choice === null) {
@@ -15618,6 +15696,7 @@ const folderRuleFlags = resolveModRuleFlagsByMod();
  * seeding one that is about to be discarded, and the reload after birth would
  * ask it again anyway. */
 const sessionFacts: ModSessionFacts = { newCharacter: bootedNew && !birthPending };
+setModControllerArmedControl((id) => requestedControllerId === id && (birthPending || sessionFacts.newCharacter === true));
 
 /* API-2 starts only here, after the save and resolved rule flags exist but before
  * any bag migration. API-1 remains on every one of its existing in-process paths.

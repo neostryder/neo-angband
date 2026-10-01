@@ -25,3 +25,21 @@ export const profilesFormat = defineFormat({
     active: "5b0f7c2e-8d1a-4f3e-9c6b-2a7d4e1f0b93",
   },
 });
+
+export const profileOwnerFormat = defineFormat({
+  format: "neo-angband/web/profile-owner",
+  schemaVersion: 1,
+  validator: json.object({ profileId: json.string, modId: json.string }),
+  sample: { profileId: "5b0f7c2e-8d1a-4f3e-9c6b-2a7d4e1f0b93", modId: "sample-player" },
+});
+
+export const profileActionFormat = defineFormat({
+  format: "neo-angband/web/profile-action",
+  schemaVersion: 1,
+  validator: json.object({
+    profileId: json.nullable(json.string),
+    modId: json.string,
+    action: json.object({ kind: json.enum(["create-character"]), armController: json.optional(json.boolean) }),
+  }),
+  sample: { profileId: null, modId: "sample-player", action: { kind: "create-character", armController: true } },
+});

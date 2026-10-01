@@ -59,6 +59,7 @@ export interface ModTeardownController {
 }
 
 export interface ModTeardownDeps {
+  readonly removeTitleRows?: (id: string) => void;
   /** Every plugin whose code the host ran, in load order. */
   readonly plugins: readonly ModTeardownTarget[];
   /** The one installed autoplayer, or null while the human has the keyboard. */
@@ -155,6 +156,11 @@ export function teardownModPlugins(deps: ModTeardownDeps): ModTeardownResult {
         );
         log.error(`mod:${loaded.id}`, `uninstall() failed:`, err);
       }
+    }
+    try {
+      deps.removeTitleRows?.(loaded.id);
+    } catch (err) {
+      log.error(`mod:${loaded.id}`, "removing title rows failed:", err);
     }
     try {
       deps.clearDisplayValues?.(loaded.id);

@@ -29,6 +29,16 @@ function manifest(
 }
 
 describe("parseCapability: valid forms", () => {
+  it("keeps title additions and profile management separate from wildcards", () => {
+    expect(parseCapability("ui:title")).toEqual({ kind: "title", action: "add" });
+    expect(parseCapability("profiles:manage")).toEqual({ kind: "profiles", action: "manage" });
+    const broad = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["ui:*.replace", "registry:*", "saves:manage"] }));
+    expect(broad.has("ui:title")).toBe(false);
+    expect(broad.has("profiles:manage")).toBe(false);
+    const explicit = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["ui:title", "profiles:manage"] }));
+    expect(explicit.has("ui:title")).toBe(true);
+    expect(explicit.has("profiles:manage")).toBe(true);
+  });
   it("keeps saves:manage separate from other grants", () => {
     expect(parseCapability("saves:manage")).toEqual({ kind: "saves", action: "manage" });
     expect(() => parseCapability("saves:*")).toThrow(CapabilityError);

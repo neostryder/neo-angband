@@ -372,6 +372,12 @@ Declare `saves:manage` for a replacement title screen that lists, loads, renames
 
 `ctx.saves.onChange()` reports frozen rename and delete events after the host changes the roster, including changes made outside a mod menu. Each event carries the stable lineage key returned by `ctx.character.key()` for the attached character. See [MOD_SEAMS.md section 4m](MOD_SEAMS.md#4m-ctxsaves---the-host-character-roster).
 
+### Title actions and player profiles
+
+Declare `ui:title` to receive `ctx.title`. `registerRow({ label, key?, run })` adds an action after the core title options. Rows keep their registration order, and the host removes a mod's rows when it uninstalls that mod. The optional key is a letter or digit; a core key or an earlier mod key keeps its existing action. `choose(title, choices)` opens a choice menu before play begins and returns the chosen index, or `null` on Escape. The first choice is selected by default.
+
+Declare `profiles:manage` to receive `ctx.profiles`. A mod can list profiles, create a fresh profile or copy configuration from another profile, replace the enabled mods in a profile it created, and switch profiles before play begins. Profile copies exclude characters and the save roster. See [MOD_SEAMS.md](MOD_SEAMS.md#player-profiles-and-title-actions) for method types and reload actions.
+
 ### Tiled panels beside `openPanel`
 
 Declare `ui:panel.mount` to offer a panel in Subwindow setup with `ctx.ui.registerPanelKind(spec)`. Its `mount` function draws into the slot's shadow root. Use the returned function during mod cleanup to unregister the kind. See [MOD_SEAMS.md section 4p](MOD_SEAMS.md#4p-ctxuiregisterpanelkind---a-mod-panel-in-the-tiled-layout) for the host handle and saved layout behavior.

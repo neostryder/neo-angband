@@ -129,7 +129,9 @@ describe("ESC out of the first birth stage (BIRTH_RESET)", () => {
     // shell that HAS a level above birth. See boot-menus.test.ts for the full
     // walk-back; this file only keeps the never-play-an-unchosen-hero half.
     const body = functionBody(MAIN, "maybeBirth");
-    expect(body).toMatch(/if \(!choice\) return "back"/u);
+    expect(body).toMatch(/if \(!choice\) \{[\s\S]*?requestedControllerId = null;[\s\S]*?return "back";/u);
+    expect(body).toContain("requestedControllerId = null;");
+    expect(body).toContain("reloadStorage.removeItem(AUTOPLAYER_ROLL_ON_KEY)");
     expect(
       body,
       "maybeBirth must not treat a null birth choice as permission to play on",

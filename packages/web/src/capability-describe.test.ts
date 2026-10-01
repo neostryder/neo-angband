@@ -14,6 +14,10 @@ import {
 } from "./capability-describe";
 
 describe("describeCapability", () => {
+  it("describes title additions and profile changes separately", () => {
+    expect(describeCapability("ui:title")).toEqual({ cap: "ui:title", text: "Add title screen actions", elevated: false });
+    expect(describeCapability("profiles:manage")).toEqual({ cap: "profiles:manage", text: "Create profiles and switch between them", elevated: true });
+  });
   it("describes each registry override domain, flagging system override as elevated", () => {
     expect(describeCapability("registry:effect")).toMatchObject({ elevated: true });
     expect(describeCapability("registry:room")).toMatchObject({ elevated: true });

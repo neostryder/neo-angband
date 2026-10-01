@@ -294,10 +294,11 @@ export function titleLines(): readonly TitleLine[] {
  * FIRST rather than in File-menu order, because with more than one profile it is
  * the row that decides which profile's roster every other row below it acts on.
  */
-export type TitleChoice = "profile" | "new" | "open" | "load" | "mods" | "quit" | "install" | "update";
+export type TitleChoice = "profile" | "new" | "open" | "load" | "mods" | "quit" | "install" | "update" | `mod:${number}`;
 
 /** Which title rows are live, mirroring main-win.c's EnableMenuItem calls. */
 export interface TitleOptions {
+  readonly modRows?: readonly { readonly choice: `mod:${number}`; readonly label: string; readonly key?: string }[];
   /** A living character can be resumed. */
   canLoad: boolean;
   /** Some character is saved, so there is something to open. */
@@ -389,6 +390,13 @@ export function titleRows(opts: TitleOptions): TitleRow[] {
     rows.push({ choice: "update", key: "u", label: t("news.title.update", "(U)pdate"), enabled: true });
   }
   rows.push({ choice: "quit", key: "q", label: t("news.title.quit", "(Q)uit"), enabled: opts.canQuit });
+  const reserved = new Set(["p", "n", "o", "r", "m", "i", "u", "q"]);
+  for (const row of opts.modRows ?? []) {
+    const key = row.key?.toLowerCase() ?? "";
+    const available = key !== "" && !reserved.has(key);
+    rows.push({ choice: row.choice, key: available ? key : "", label: available ? `(${key.toUpperCase()}) ${row.label}` : row.label, enabled: true });
+    if (available) reserved.add(key);
+  }
   return rows;
 }
 
@@ -642,7 +650,7 @@ export function showTitleScreen(
         disabled: !row.enabled, run: () => finish(row.choice),
       })),
     });
-    let spans: { row: TitleRow; start: number; end: number }[] = [];
+    let spans: { row: TitleRow; start: number; end: number; y: number }[] = [];
     let linkSpans: readonly TitleLinkSpan[] = [];
     let promptRow = 0;
     /* The shimmer's current colour. Held outside paint() so a full repaint (a
@@ -655,14 +663,21 @@ export function showTitleScreen(
       /* The prompt line, on upstream's own row. The project information is part
        * of the painted screen above (titleLines), so there is one place where the
        * layout is decided and one place to check it against the row budget. */
-      promptRow = Math.min(height - 1, 23);
-      spans = titleRowSpans(rows, cols);
+      const coreRows = rows.filter((row) => !row.choice.startsWith("mod:"));
+      const modRows = rows.filter((row) => row.choice.startsWith("mod:"));
+      promptRow = Math.max(0, Math.min(height - modRows.length - 1, 23));
+      linkSpans = linkSpans.filter((span) => span.row < promptRow);
+      spans = [
+        ...titleRowSpans(coreRows, cols).map((span) => ({ ...span, y: promptRow })),
+        ...modRows.flatMap((row, index) => titleRowSpans([row], cols).map((span) => ({ ...span, y: promptRow + index + 1 }))),
+      ];
       const white = colorToCss(COLOUR_WHITE);
+      for (const y of new Set(spans.map((span) => span.y))) term.print(0, y, " ".repeat(cols), white);
       for (const span of spans) {
-        if (span.start >= cols) break;
+        if (span.start >= cols) continue;
         term.print(
           span.start,
-          promptRow,
+          span.y,
           span.row.label.slice(0, cols - span.start),
           span.row.enabled ? (span.row.choice === "update" ? shimmer : white) : UI_DIM,
         );
@@ -732,8 +747,7 @@ export function showTitleScreen(
         openExternalUrl(link.href);
         return;
       }
-      if (cell.row !== promptRow) return;
-      const hit = spans.find((s) => cell.col >= s.start && cell.col <= s.end);
+      const hit = spans.find((s) => cell.row === s.y && cell.col >= s.start && cell.col <= s.end);
       if (hit?.row.enabled) finish(hit.row.choice);
     });
     publishControls();

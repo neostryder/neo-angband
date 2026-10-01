@@ -74,13 +74,14 @@ export function copyScopedStorage(
   storage: ScopedStorage,
   fromId: string | null,
   toId: string,
+  include: (key: string) => boolean = () => true,
 ): void {
   const from = scopedStorage(storage, fromId);
   const to = scopedStorage(storage, toId);
   const keys: string[] = [];
   for (let i = 0; i < from.length; i++) {
     const k = from.key(i);
-    if (k !== null) keys.push(k);
+    if (k !== null && include(k)) keys.push(k);
   }
   for (const k of keys) {
     const v = from.getItem(k);

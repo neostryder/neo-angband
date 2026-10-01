@@ -105,7 +105,7 @@ export { modStateFormat } from "./json/mod-state.js";
 export type { ModState } from "./json/mod-state.js";
 export { modSettingValuesFormat } from "./json/mod-settings.js";
 export type { ModSettingValues } from "./json/mod-settings.js";
-export { profilesFormat } from "./json/profiles.js";
+export { profilesFormat, profileOwnerFormat, profileActionFormat } from "./json/profiles.js";
 export type { ProfileIndex } from "./json/profiles.js";
 export type { Settings } from "./json/settings.js";
 

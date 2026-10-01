@@ -170,6 +170,10 @@ export function describeCapability(cap: string): CapabilityDescription {
       return { cap, text: "Answer the game's current question through its input handler", elevated: true };
     case "saves":
       return { cap, text: "List, load, rename and delete your characters; deletion asks you first", elevated: true };
+    case "title":
+      return { cap, text: "Add title screen actions", elevated: false };
+    case "profiles":
+      return { cap, text: "Create profiles and switch between them", elevated: true };
     case "event":
       return { cap, text: `Observe the "${parsed.name}" game event`, elevated: false };
     case "state":
