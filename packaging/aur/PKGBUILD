@@ -7,10 +7,10 @@ pkgdesc="Modern TypeScript port of Angband, packaged from the upstream AppImage"
 arch=('x86_64')
 url='https://github.com/neostryder/neo-angband'
 license=('GPL-2.0-only')
-depends=('fuse2')
+depends=('fuse2' 'zlib')
 provides=('neo-angband')
 conflicts=('neo-angband')
-options=('!strip')
+options=('!strip' '!debug')
 
 _appimage="Neo.Angband-${pkgver}-x86_64.AppImage"
 source=(
