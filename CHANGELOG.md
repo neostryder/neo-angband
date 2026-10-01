@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-09-30
+
 ### Added
 - [Visible] [Modding-API] **Mods can check an item's flags the way the game does, counting the flags its curses grant, with `objHasFlag` and `objCanTakeoff`.** (#283)
 - [Visible] [Modding-API] **Mod effects can raise and lower experience the way the game's own effects do.** `playerExpGain`, `playerExpLose` and the rest of the experience helpers are now exported, and `effectExpDeps(ctx, env)` gives a handler what those calls need, so a mod can drain experience without making the loss permanent.
