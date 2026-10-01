@@ -40,6 +40,16 @@ export const installedMarkerFormat = defineFormat({ format: "neo-angband/desktop
   validator: json.object({ installed: json.boolean, note: json.optional(json.string) }), sample: { installed: true, note: "Where the savefiles are." } });
 export const backupFolderFormat = defineFormat({ format: "neo-angband/desktop/backup-folder", schemaVersion: 1,
   validator: json.object({ path: json.string }), sample: { path: "C:/Backups" } });
+/* The desktop version that last launched with this data folder. A different
+ * version on the next launch is what takes a restore point. */
+export const lastRunVersionFormat = defineFormat({ format: "neo-angband/desktop/last-run-version", schemaVersion: 1,
+  validator: json.object({ version: json.string }), sample: { version: "1.20.0" } });
+/* What one restore point holds: the version that was about to run, the one that ran
+ * before it when known, and when it was taken (milliseconds since the epoch). */
+export const restorePointFormat = defineFormat({ format: "neo-angband/desktop/restore-point", schemaVersion: 1,
+  validator: json.object({ fromVersion: json.optional(json.string), toVersion: json.string, createdAt: json.finiteNumber,
+    reason: json.enum(["update", "before-restore"] as const) }),
+  sample: { fromVersion: "1.20.0", toVersion: "1.20.1", createdAt: 1790000000000, reason: "update" } });
 
 /* One named secret a mod keeps for its own network requests. `hosts` lists the
  * `network:` grant hosts it may be sent to. The desktop app stores either an

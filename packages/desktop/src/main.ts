@@ -88,6 +88,15 @@ import {
 } from "./app-origin.js";
 import { handledPorts, planOriginMerge } from "./origin-merge.js";
 import {
+  lastRunVersion,
+  pruneRestorePoints,
+  rememberRunVersion,
+  requestedRestorePoint,
+  restoreFrom,
+  takeRestorePoint,
+  type RestorePaths,
+} from "./restore-points.js";
+import {
   MOD_DB_NAME,
   MOD_DB_STORES,
   MOD_DB_VERSION,
@@ -1763,6 +1772,67 @@ async function recoverStrandedOrigins(
 }
 
 /**
+ * Take a restore point when this version is not the one that last ran here, or
+ * put one back when the launch asked for it with `--restore-point=<name>`.
+ *
+ * Runs after the single-instance lock, so no other copy of the game has the
+ * storage open, and before the origin move and the first window, so a restore point
+ * holds the data exactly as the previous version left it.
+ */
+async function applyRestorePoints(): Promise<void> {
+  const userDir = path.join(USER_BASE, "user");
+  const version = app.getVersion();
+  const paths: RestorePaths = {
+    base: USER_BASE,
+    sessionDir: app.getPath("sessionData"),
+    gameDirs: Object.fromEntries(ALL_HOST_DIRS.map((d) => [d, DIR_OVERRIDES[d] ?? path.join(USER_BASE, d)])),
+  };
+  const requested = requestedRestorePoint(process.argv);
+  if (requested !== undefined) {
+    try {
+      const { restored, safety } = restoreFrom(paths, requested, version);
+      rememberRunVersion(userDir, version);
+      mainLog("info", "restore", `restored ${restored}`, { saved: safety });
+      await dialog.showMessageBox({
+        type: "info",
+        title: "Neo Angband",
+        message: `Restored ${restored}.`,
+        detail:
+          safety === null
+            ? "Your characters, settings and mods are back as they were then."
+            : "Your characters, settings and mods are back as they were then. What was there " +
+              `a moment ago is saved as ${safety}, so you can go back to it the same way.`,
+      });
+    } catch (err) {
+      mainLog("error", "restore", `could not restore ${requested}`, err);
+      await dialog.showMessageBox({
+        type: "error",
+        title: "Neo Angband",
+        message: "The restore point could not be restored.",
+        detail: `${err instanceof Error ? err.message : String(err)}\n\nThe game starts with your data as it is.`,
+      });
+    }
+    return;
+  }
+  const previous = lastRunVersion(userDir);
+  if (previous === version) return;
+  try {
+    const name = takeRestorePoint(paths, { fromVersion: previous, toVersion: version, reason: "update" });
+    if (name !== null) {
+      const removed = pruneRestorePoints(USER_BASE);
+      mainLog("info", "restore", `took restore point ${name}`, removed.length > 0 ? { removed } : undefined);
+    }
+  } catch (err) {
+    mainLog("error", "restore", "could not take a restore point", err);
+  }
+  try {
+    rememberRunVersion(userDir, version);
+  } catch (err) {
+    mainLog("warn", "restore", "could not record this version as the last to run", err);
+  }
+}
+
+/**
  * True once the game's own window exists.
  *
  * Guards window-all-closed: the hidden windows startup uses to reach an origin's
@@ -2135,6 +2205,10 @@ async function start(): Promise<void> {
     app.quit();
     return;
   }
+
+  /* Restore points (#330), before anything below can change stored data and before
+   * any window opens the storage. Never allowed to stop the launch. */
+  await applyRestorePoints();
 
   // Ensure the user mods directory exists so the folder is discoverable.
   try {

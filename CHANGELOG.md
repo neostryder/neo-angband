@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- [Visible] [Save-Compat] **The desktop app keeps a restore point from before each update.** The first time a new version starts, it copies your characters, settings, mods and mod data into `data/restore-points` before changing any of them, and keeps the last three. Start the game with `--restore-point=latest` to put the newest one back (#330).
+
 ### Fixed
 
 - [Visible] [Save-Compat] **Mods, mod settings and named profiles come back after the 1.20.0 update.** If your enabled mods, their settings, or the characters in a profile other than the default went missing when you updated to 1.20.0, launch this version once and they are copied over from where 1.20.0 left them. That includes data a mod stores for itself, so Squire's history returns and Ctrl-Z finds it again. Anything you changed in 1.20.0 stays as you set it (#329).

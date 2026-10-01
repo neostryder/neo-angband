@@ -361,6 +361,14 @@ Two shapes cannot replace themselves and say so instead of pretending:
 In those cases `U` opens the releases page. In the browser the same key reloads
 onto the new build, which the service worker has already fetched.
 
+#### Restore points
+
+The first time a new version of the desktop app starts, before it changes anything, it copies your data into `data/restore-points/<version>-<date>`. That covers characters, settings, mods, mod data and profiles, so an update that loses or damages something can be undone. The last three are kept.
+
+To go back, start the game with `--restore-point=latest` for the newest one, or `--restore-point=<folder name>` for a particular one. The game first copies your current data into another restore point, whose name ends in `-before-restore`, so the restore can be undone the same way. Then it puts the chosen one back and starts.
+
+Restoring also brings every character back as they were at that point, including any who have died since. Restore points are only taken when the version changes.
+
 #### How new a build you want
 
 The update screen has three channels, and `C` cycles them. The choice is
@@ -498,8 +506,9 @@ each is its own storage sandbox. This is normal browser behavior, not data loss.
 To move a character between surfaces, use the built-in **save export / import**:
 `Shift-X` on the character list writes the highlighted character to a `.neochar`
 file, `Shift-M` reads one back. Keep an exported copy as a backup - a character
-save is overwritten in place, and death is permanent with no restore points,
-faithful to the original.
+save is overwritten in place, and death is permanent, faithful to the original.
+The one way back is the desktop app's [restore points](#restore-points), taken
+before each update.
 
 An export is **not** a restore point, and the game enforces that: a file will not
 import over a character who has died in that roster (even after the tombstone has

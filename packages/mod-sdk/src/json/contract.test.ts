@@ -13,7 +13,7 @@ import { modSettingValuesFormat } from "./mod-settings.js";
 import { profilesFormat } from "./profiles.js";
 import { settingsFormat } from "./settings.js";
 import { windowStateFormat } from "./window-state.js";
-import { highScoresFormat, birthChoiceFormat, reloadStateFormat, loopbackPortFormat, mergedOriginsFormat, deathLedgerFormat, installedMarkerFormat, backupFolderFormat, modSecretsFormat, modPageSecretsFormat } from "./local-state.js";
+import { highScoresFormat, birthChoiceFormat, reloadStateFormat, loopbackPortFormat, mergedOriginsFormat, deathLedgerFormat, installedMarkerFormat, backupFolderFormat, lastRunVersionFormat, restorePointFormat, modSecretsFormat, modPageSecretsFormat } from "./local-state.js";
 import { loadOrderFormat } from "./load-order.js";
 import { buildIdFormat } from "./build-id.js";
 import { modFontFormat, modLocaleFormat } from "./mod-resources.js";
@@ -30,6 +30,7 @@ void [
   visualOverrideFormat,
   highScoresFormat, birthChoiceFormat, reloadStateFormat, loopbackPortFormat,
   mergedOriginsFormat, deathLedgerFormat, installedMarkerFormat, backupFolderFormat,
+  lastRunVersionFormat, restorePointFormat,
   modSecretsFormat, modPageSecretsFormat,
   settingsFormat,
   loadOrderFormat,

@@ -96,7 +96,7 @@ export type { OrphanRecord, OrphanRecords } from "./json/orphan-saves.js";
 export { isSavedGameHeader, savedGameFormat } from "./json/saved-game.js";
 export { windowManagerFormat } from "./json/window-manager.js";
 export { settingsFormat } from "./json/settings.js";
-export { highScoresFormat, birthChoiceFormat, reloadStateFormat, loopbackPortFormat, mergedOriginsFormat, deathLedgerFormat, installedMarkerFormat, backupFolderFormat, modSecretsFormat, modPageSecretsFormat } from "./json/local-state.js";
+export { highScoresFormat, birthChoiceFormat, reloadStateFormat, loopbackPortFormat, mergedOriginsFormat, deathLedgerFormat, installedMarkerFormat, backupFolderFormat, lastRunVersionFormat, restorePointFormat, modSecretsFormat, modPageSecretsFormat } from "./json/local-state.js";
 export { loadOrderFormat } from "./json/load-order.js";
 export { buildIdFormat } from "./json/build-id.js";
 export { modFontFormat, modLocaleFormat } from "./json/mod-resources.js";
