@@ -35,6 +35,7 @@ import {
   MOD_ZIP_CHANNEL,
   NET_CHANNEL,
   REPORT_CHANNEL,
+  THROTTLE_CHANNEL,
   UPDATE_CHANNEL,
   UPDATE_PROGRESS_CHANNEL,
 } from "./bridge-channel.js";
@@ -82,6 +83,11 @@ contextBridge.exposeInMainWorld("neoDesktop", {
    */
   log(lines: readonly string[]): void {
     ipcRenderer.send(LOG_CHANNEL, lines);
+  },
+
+  /** Report whether an autoplayer is driving (THROTTLE_CHANNEL). */
+  setAutoplaying(active: boolean): void {
+    ipcRenderer.send(THROTTLE_CHANNEL, active === true);
   },
 
   /**

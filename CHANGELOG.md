@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- [Visible] **An autoplayer keeps playing at full speed when the desktop window is minimized or covered.** The window used to slow to about one command a second whenever it was out of sight, so Squire spent minutes in each shop. While an autoplayer has the keyboard, the window now keeps its normal pace; once you take the keyboard back, a hidden window idles as before (#333).
+
 ## [1.21.0] - 2026-09-30
 
 ### Added

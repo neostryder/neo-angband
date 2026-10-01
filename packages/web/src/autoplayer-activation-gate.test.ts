@@ -73,6 +73,8 @@ function releaseHost(controller: AgentController) {
     const faultMessage = String;
     const t = (_key, fallback, values) => fallback.replace("{id}", values.id);
     ${declaration("currentInputDriver").getText(parsed)}
+    ${declaration("announceDriver").getText(parsed)}
+    ${declaration("hostAutoplaying").getText(parsed)}
     ${stop.getText(parsed)}
     return {
       release: ${release.initializer.getText(parsed)},
@@ -132,9 +134,13 @@ describe("a controller releases the keyboard", () => {
     const changes: InputDriver[] = [];
     rig.state.events?.on("driver-changed", (_type, driver) => changes.push(driver));
     const retained = ctx.controller!;
+    const setAutoplaying = vi.fn();
+    vi.stubGlobal("neoDesktop", { setAutoplaying });
     expect(document.getElementById("neo-autoplayer-banner")).not.toBeNull();
     vi.advanceTimersByTime(120);
     expect(rig.host.stopped()).toBe(true);
+    /* The desktop shell lets a hidden window throttle again once the player drives (#333). */
+    expect(setAutoplaying).toHaveBeenCalledExactlyOnceWith(false);
     expect(ctx.controller).toBeUndefined();
     expect(rig.uninstall).toHaveBeenCalledOnce();
     expect(rig.state.nextCommand).toBe(rig.playerInput);

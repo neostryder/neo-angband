@@ -892,6 +892,8 @@ import { convertLegacySettings, readSetting, writeSetting } from "./settings-sto
  * nothing corrects it later.
  */
 const flushLog = installLogSinks();
+/* No autoplayer has been installed yet in this page, whatever the last page did. */
+hostAutoplaying(false);
 log.info("boot", `Neo Angband ${ENGINE_VERSION}`, { level: log.level });
 
 /** True only while the title screen is the thing on the screen. */
@@ -10274,7 +10276,7 @@ setModDriverControl({
       ...(status.label !== undefined ? { label: status.label } : {}),
       ...(status.reason !== undefined ? { reason: status.reason } : {}),
     };
-    state.events?.emit("driver-changed", frozenDriver(currentInputDriver()));
+    announceDriver();
   },
   markNondeterministic: (id) => {
     if (installedController?.id !== id) throw new Error(`markNondeterministic requires active owner ${id}`);
@@ -13320,7 +13322,7 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
   });
   for (const worker of workerPlugins.values()) worker.teardown();
   installedController = null;
-  state.events?.emit("driver-changed", frozenDriver(currentInputDriver()));
+  announceDriver();
   installedControllerSpeed = null;
   stopInstalledController = null;
   /* A candidate still waiting on the confirm gate below (#125) does not
@@ -15295,7 +15297,7 @@ if (agentId && agentMake) {
      * map should draw the player's map, pref-file overrides and all. */
     viewDeps: { resolver, reg: booted.registries.objects, glyphs: glyphs.agentGlyphs() },
   });
-  state.events?.emit("driver-changed", frozenDriver(currentInputDriver()));
+  announceDriver();
   // Event hook (W1.6): the same agent subscribes to the game event bus through
   // the capability-gated seam - proving mods can REACT to events, not only
   // perceive/act. event:message / event:sound are granted above.
@@ -15385,6 +15387,23 @@ function currentInputDriver(): InputDriver {
   };
   if (coreAgentSession && agentId) return { kind: "controller", owner: `core:${agentId}` };
   return { kind: "player" };
+}
+
+/** Tell the game and the desktop shell who is driving now (the shell's half is THROTTLE_CHANNEL, #333). */
+function announceDriver(): void {
+  const driver = currentInputDriver();
+  state.events?.emit("driver-changed", frozenDriver(driver));
+  hostAutoplaying(driver.kind === "controller");
+}
+
+/** Pass the driver to the desktop shell; nothing to do in a browser tab or an older shell. */
+function hostAutoplaying(active: boolean): void {
+  try {
+    const shell = (globalThis as { neoDesktop?: { setAutoplaying?: unknown } }).neoDesktop;
+    if (typeof shell?.setAutoplaying === "function") (shell.setAutoplaying as (on: boolean) => void)(active);
+  } catch {
+    /* A closed IPC channel during shutdown: nothing is driving any more. */
+  }
 }
 
 /**
@@ -16185,7 +16204,7 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
     } : {}),
   });
   installedController = { id: loaded.id, session, ...(install.onDeath === "end" ? { onDeath: "end" as const } : {}) };
-  state.events?.emit("driver-changed", frozenDriver(currentInputDriver()));
+  announceDriver();
   /* Mark the savefile (do_cmd_try_borg, cmd-misc.c:128-140): a character an
    * autoplayer took over is not a character that earned its result, and the bit
    * is what the score gate reads at death (score.c:268, the "Score not
@@ -16270,7 +16289,7 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
       reportModFault(id, `could not be released from the keyboard: ${faultMessage(err)}`);
     }
     installedController = null;
-    state.events?.emit("driver-changed", frozenDriver(currentInputDriver()));
+    announceDriver();
     installedControllerSpeed = null;
     stopInstalledController = null;
     hideAutoplayerBanner();

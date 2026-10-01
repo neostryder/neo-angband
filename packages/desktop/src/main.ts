@@ -47,6 +47,7 @@ import {
   MOD_ZIP_CHANNEL,
   NET_CHANNEL,
   REPORT_CHANNEL,
+  THROTTLE_CHANNEL,
   UPDATE_CHANNEL,
   UPDATE_PROGRESS_CHANNEL,
 } from "./bridge-channel.js";
@@ -603,6 +604,7 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
   });
 
   installLogging();
+  installThrottleChannel();
   installUpdater();
   installModZipChannel();
   installBackupChannel();
@@ -720,6 +722,18 @@ function installBackupChannel(): void {
       default:
         return { ok: false, error: `unknown operation ${String(op)}` };
     }
+  });
+}
+
+/**
+ * Background throttling goes off while an autoplayer drives and back on otherwise
+ * (THROTTLE_CHANNEL, #333). The setting belongs to the webContents and outlives a
+ * reload, so the renderer sends false at boot to clear one the last page left on.
+ */
+function installThrottleChannel(): void {
+  ipcMain.on(THROTTLE_CHANNEL, (event, active: unknown) => {
+    if (typeof active !== "boolean") return;
+    event.sender.setBackgroundThrottling(!active);
   });
 }
 

@@ -89,6 +89,18 @@ export const REPORT_CHANNEL = "neo-report";
  */
 export const NET_CHANNEL = "neo-net";
 
+/**
+ * Whether an autoplayer is driving the game (`send`, a boolean;
+ * neostryder/neo-angband#333).
+ *
+ * Chromium runs a hidden page's timers at most once a second, and a window that
+ * is minimized or covered by another window counts as hidden. The autoplayer's
+ * pump is a timer, so an unattended run behind another window played one command
+ * a second at any speed. While this says true the shell turns background
+ * throttling off for the game window; an idle game window still throttles.
+ */
+export const THROTTLE_CHANNEL = "neo-throttle";
+
 /** What the renderer may ask the updater to do. */
 export type UpdateOp = "shape" | "download" | "apply" | "reveal";
 
