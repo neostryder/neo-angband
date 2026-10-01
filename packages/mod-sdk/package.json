@@ -69,7 +69,7 @@
   "scripts": {
     "sync-docs": "node scripts/sync-docs.mjs",
     "build": "pnpm run sync-docs && tsc",
-    "prepack": "pnpm run sync-docs"
+    "prepack": "node scripts/sync-docs.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.1"
