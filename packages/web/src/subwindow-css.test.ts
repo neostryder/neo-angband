@@ -18,4 +18,8 @@ describe("subwindow panel stylesheet", () => {
   it("takes a hidden terminal canvas out of the flow, so a mod pane's content starts at the top", () => {
     expect(rule(".tile-body canvas[hidden]")).toContain("display: none");
   });
+
+  it("hides the drop preview once a drag ends, although its shown state sets display", () => {
+    expect(rule(".tile-drop-preview[hidden]")).toContain("display: none");
+  });
 });

@@ -262,7 +262,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   const removeKeyboardOwner = addControlDomOwner({
     owns: (event) => event.target instanceof Element && host.contains(event.target)
       && event.target.matches(".tile-select"),
-    escape: () => false,
+    escape: () => cancelPointerWork(),
   });
 
   function controlsFor(id: string): Map<string, SubwindowControlSpec> {
@@ -365,7 +365,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     }
   }
 
-  let resize: { path: readonly number[]; pointerId: number } | null = null;
+  let resize: { path: readonly number[]; pointerId: number; before: LayoutNode } | null = null;
   /* Dividers follow the saved tree's paths, which differ from the on-screen
    * tree while groups are merged for space, so they rest until the viewport
    * has room again. */
@@ -386,10 +386,14 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
   let drag: {
     id: string;
     pointerId: number;
+    button: number;
     startX: number;
     startY: number;
     active: boolean;
   } | null = null;
+  /* Set when a right-button drag ends: the release still fires a contextmenu
+   * event, which would open the dungeon view's command wheel. */
+  let swallowContextMenu = false;
   let floatDrag: { id: string; pointerId: number; startX: number; startY: number;
     original: FloatRect; mode: "move" | "resize"; moved: boolean } | null = null;
 
@@ -770,7 +774,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       .split(".")
       .filter((part) => part.length > 0)
       .map((part) => Number(part));
-    resize = { path, pointerId: event.pointerId };
+    resize = { path, pointerId: event.pointerId, before: currentTree };
     gutter.setPointerCapture(event.pointerId);
   };
 
@@ -798,6 +802,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     drag = {
       id: MAIN_TILE_ID,
       pointerId: event.pointerId,
+      button: event.button,
       startX: event.clientX,
       startY: event.clientY,
       active: false,
@@ -822,6 +827,7 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     drag = {
       id,
       pointerId: event.pointerId,
+      button: event.button,
       startX: event.clientX,
       startY: event.clientY,
       active: false,
@@ -829,7 +835,46 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     leaf.setPointerCapture(event.pointerId);
   };
 
+  function clearDragMarks(): void {
+    host.classList.remove("tile-host-dragging");
+    preview.hidden = true;
+    clearGuides();
+  }
+
+  /* Escape, a lost window focus, or a release the page never received puts a
+   * dragged panel, a floating window or a divider back where it started.
+   * True when something visible was undone. */
+  function cancelPointerWork(): boolean {
+    if (floatDrag) {
+      const active = floatDrag;
+      floatDrag = null;
+      currentFloats = currentFloats.map((entry) => entry.id === active.id ? active.original : entry);
+      clearDragMarks();
+      paint(currentTree);
+      return true;
+    }
+    if (resize) {
+      const before = resize.before;
+      resize = null;
+      paint(before);
+      return true;
+    }
+    if (drag) {
+      const { active, button } = drag;
+      drag = null;
+      clearDragMarks();
+      if (active && button === 2) swallowContextMenu = true;
+      return active;
+    }
+    return false;
+  }
+
   const onPointerMove = (event: PointerEvent): void => {
+    /* A mouse that moves with no button held has already been released. */
+    if (event.pointerType === "mouse" && event.buttons === 0 && (drag || floatDrag || resize)) {
+      cancelPointerWork();
+      return;
+    }
     if (floatDrag && event.pointerId === floatDrag.pointerId) {
       const active = floatDrag;
       const view = hostSize(host);
@@ -900,10 +945,9 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     if (!drag || event.pointerId !== drag.pointerId) return;
     const incoming = drag.id;
     const wasActive = drag.active;
+    if (wasActive && drag.button === 2) swallowContextMenu = true;
     drag = null;
-    host.classList.remove("tile-host-dragging");
-    preview.hidden = true;
-    clearGuides();
+    clearDragMarks();
     if (!wasActive) return;
     const zone = zoneFromEvent(event, incoming);
     if (!zone || zone.id === incoming) return;
@@ -947,10 +991,26 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
     opts.onViewChange?.();
   };
 
+  const onWindowContextMenu = (event: Event): void => {
+    if (!swallowContextMenu) return;
+    swallowContextMenu = false;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const onWindowPointerDown = (): void => {
+    swallowContextMenu = false;
+  };
+  const onWindowBlur = (): void => {
+    cancelPointerWork();
+  };
+
   window.addEventListener("pointermove", onPointerMove);
   window.addEventListener("pointerup", onPointerUp);
   window.addEventListener("pointercancel", onPointerUp);
   window.addEventListener("resize", onResize);
+  window.addEventListener("contextmenu", onWindowContextMenu, true);
+  window.addEventListener("pointerdown", onWindowPointerDown, true);
+  window.addEventListener("blur", onWindowBlur);
   document.addEventListener("focusin", onFocusIn);
 
   return {
@@ -1062,6 +1122,9 @@ export function mountSubwindowShell(opts: SubwindowShellOptions): SubwindowShell
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("contextmenu", onWindowContextMenu, true);
+      window.removeEventListener("pointerdown", onWindowPointerDown, true);
+      window.removeEventListener("blur", onWindowBlur);
       document.removeEventListener("focusin", onFocusIn);
       mainSlot.removeEventListener("pointerdown", onMainPointerDown);
       mainGrip.removeEventListener("pointerdown", onGripPointerDown);
