@@ -12,7 +12,7 @@ install, and how to mod the game. Start with the top-level
 | **Play it** | [INSTALL.md](./INSTALL.md), or grab a build from [Releases](https://github.com/neostryder/neo-angband/releases) |
 | **Get a mod** | [MODS.md - getting a mod](./MODS.md#getting-a-mod-in-one-paragraph) |
 | **Write a mod** | [modding/README.md](./modding/README.md) |
-| **Report something** | In the game: Escape menu -> *Report a problem* ([LOGGING.md](./LOGGING.md)). Or [open an issue](https://github.com/neostryder/neo-angband/issues/new/choose), or [the Discord](https://discord.gg/YegtwbHTBQ) |
+| **Report something** | In the game: the bug and idea buttons in the corner of the dungeon view, or Escape menu -> *Report a problem* ([LOGGING.md](./LOGGING.md)). Or [open an issue](https://github.com/neostryder/neo-angband/issues/new/choose), or [the Discord](https://discord.gg/YegtwbHTBQ) |
 | **Understand the parity claim** | [PARITY.md](./PARITY.md) |
 | **Work on the port** | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | **Cut a release** | [RELEASING.md](./RELEASING.md) |

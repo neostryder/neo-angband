@@ -37,6 +37,19 @@ memory and go into a report; the console has them too.
 A session that writes more than 8 MB stops and says so on the last line, rather
 than filling somebody's disk quietly.
 
+## The bug and idea buttons
+
+The bottom-right corner of the dungeon view holds a bug button and an idea button, faint until the pointer is over them. Either one opens a short form with a one-line summary and a few lines of detail, and then you choose where it goes:
+
+- **Open a GitHub issue** opens the issue form in your browser with your summary and details filled in, and for a bug the version, where you play and your mods as well. You still submit it there.
+- **Post on Discord** copies the post and gives you two links: the server invite, and the forum to paste it into. Discord has no way to fill in a post from a link.
+
+A bug report includes system details only once you tick the box, and the box lists exactly what they are. It can also copy a screenshot or your character dump for you to paste in. **Look for similar reports** searches the tracker for the words in your summary, and if one of them is yours, **Same here** opens it so you can add to it.
+
+After an update, the game says when an issue you reported, or marked as yours, has been closed as fixed. It asks GitHub only on the first launch of a new version, and only if you have reported something from the game.
+
+The `x` beside the buttons hides them, and **Report buttons** in Options (`=`), Subwindow setup (`w`) brings them back. To hand over the recent log, use **Report a problem**, below.
+
 ## Making a report
 
 Open the Escape menu and choose **Report a problem**. The screen lists everything the file will contain before it writes anything. Press `D` to describe the problem in up to three lines, then `ENTER` to write the file.

@@ -58,6 +58,7 @@ still calls itself.
 - [Visible] [Modding-API] **A mod's own item class can join the ignore menus.** A `tval.json` record with `"ignoreMenu": "<label>"` lists the class in item ignoring setup after Angband's own categories and offers kind ignoring for its objects in the `k` menu.
 - [Visible] [Modding-API] **Restored flavour art no longer draws over another mod's flavour when the section that adds it is off.**
 - [Visible] [Modding-API] **Mod plugins can type their host context from Core.** `ModPluginContext` and the panel, network, birth, input, prompt, intent, display and event types it uses are exported from `@rpgm-tools/neo-angband-core`. The web host uses the same types, so a mod's types match the objects it receives.
+- [Visible] [UI] **A bug button and an idea button sit in the corner of the dungeon view.** Either one opens a short form and sends it on as a filled-in GitHub issue or a Discord forum post. A bug report can carry the game's version, where you play and your mods once you tick the box, copy a screenshot or your character dump, and look for similar reports first. After an update, the game says when an issue you reported is marked fixed. The `x` beside the buttons hides them, and Subwindow setup brings them back (#326).
 - [Visible] [Modding-API] **A controller mod can hand the keyboard back when its task ends.** `ctx.controller.release(reason?)` stops the controller, hides the banner and shows the reason in the message line.
 
 ### Changed

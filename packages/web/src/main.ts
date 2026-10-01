@@ -385,6 +385,8 @@ import { applyChromeTheme, type ChromeTheme } from "./chrome-theme";
 import type { TerminalGround } from "./terminal-ground";
 import { mountChromeNotice } from "./chrome-notice";
 import { mountPanelCues } from "./panel-cues";
+import { captureCanvases, mountReportButtons } from "./report-buttons";
+import { addWatch, checkWatched, fixedNotice, githubWatchLookup, readWatchState, writeWatchState } from "./report-watch";
 import { migrateModBags, migrateModBagsAsync } from "./mod-bags";
 import {
   folderPickingSupported,
@@ -648,7 +650,7 @@ import {
   REPORT_ACTION_KEYS,
   screenPromptFor,
 } from "./screens";
-import { showCharacterSheet, dumpCharacterFile, dumpFileName, characterSheetData } from "./charsheet";
+import { showCharacterSheet, dumpCharacterFile, dumpFileName, characterSheetData, buildCharacterDump } from "./charsheet";
 import {
   showRuneKnowledge,
   showFeatureKnowledge,
@@ -1070,6 +1072,57 @@ const panelCues = mountPanelCues({
   isOpen: (id) => subwindowState.enabled[id as SubwindowId] === true,
   open: (id) => setSubwindowEnabledLive(id as SubwindowId, true),
 });
+/* #326: the bug and idea buttons in the corner of the dungeon view. */
+async function fetchGithubJson(url: string): Promise<unknown> {
+  const response = await fetch(url, { headers: { Accept: "application/vnd.github+json" } });
+  if (!response.ok) throw new Error(`GitHub answered ${String(response.status)}`);
+  return response.json() as Promise<unknown>;
+}
+const reportButtons = mountReportButtons({
+  host: gameView,
+  notice: layoutNotice,
+  storage: localStorage,
+  system: () => ({
+    version: ENGINE_VERSION,
+    shell: reportShell(),
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    devServer: import.meta.env.DEV,
+    mods: enabledModSummary(),
+  }),
+  characterDump: () => {
+    if (!gameScreenLive) return null;
+    try {
+      const opts = charSheetOpts();
+      return buildCharacterDump(state, playerName, {
+        uiEntryPacks: opts.uiEntryPacks,
+        inspectExtras: opts.inspectExtras,
+        seedRandart: opts.seedRandart,
+        mods: opts.mods,
+      });
+    } catch (error: unknown) {
+      log.warn("report", "the character dump could not be built", error);
+      return null;
+    }
+  },
+  screenshot: () => captureCanvases(gameLayout),
+  open: openExternalUrl,
+  fetchJson: fetchGithubJson,
+  watch: (entry) => { writeWatchState(localStorage, addWatch(readWatchState(localStorage), entry)); },
+});
+/* After an update, say which watched reports are now marked fixed. Late, so it
+ * never competes with startup, and merged with anything watched meanwhile. */
+setTimeout(() => {
+  const started = Date.now();
+  void checkWatched(readWatchState(localStorage), ENGINE_VERSION, started, githubWatchLookup(fetchGithubJson))
+    .then((result) => {
+      const added = readWatchState(localStorage).entries.filter((entry) => entry.at >= started);
+      writeWatchState(localStorage, added.reduce(addWatch, result.state));
+      const line = fixedNotice(result.fixed);
+      if (line !== null) layoutNotice.show(line);
+    })
+    .catch((error: unknown) => { log.warn("report", "reported issues could not be checked", error); });
+}, 10_000);
 /** Run a screen that has a panel twin, with `+` and the pin button armed for it. */
 async function withPanelTwin<T>(id: SubwindowId, run: () => Promise<T>): Promise<T> {
   const leave = panelCues.enterScreen(id);
@@ -3258,6 +3311,11 @@ const subwindowMenu: SubwindowMenu = {
       label: t("options.subwindows.featurePanelTips", "Panel tips: say when a screen can stay open beside the map"),
       enabled: () => panelCues.enabled(),
       set: (enabled) => panelCues.setEnabled(enabled),
+    },
+    {
+      label: t("options.subwindows.featureReportButtons", "Report buttons: the bug and idea buttons in the corner of the dungeon view"),
+      enabled: () => reportButtons.enabled(),
+      set: (enabled) => reportButtons.setEnabled(enabled),
     },
   ],
   mapTiles: mapTileModeMenu,

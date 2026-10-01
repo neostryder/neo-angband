@@ -384,6 +384,233 @@
       .panel-pin[hidden] {
         display: none;
       }
+      .report-root[hidden],
+      .report-dock[hidden],
+      .report-popup[hidden],
+      .report-popup [hidden] {
+        display: none;
+      }
+      .report-dock {
+        position: absolute;
+        right: 6px;
+        bottom: 6px;
+        z-index: 1100;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 2px;
+        border: 1px solid var(--chrome-float-border);
+        border-radius: var(--chrome-radius);
+        /* A dark, faintly striped backing keeps the icons readable over any map. */
+        background:
+          repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0 2px, transparent 2px 5px),
+          rgba(0, 0, 0, 0.78);
+        opacity: 0.4;
+        transition: opacity 0.15s ease-out;
+      }
+      .report-dock:hover,
+      .report-dock:focus-within,
+      .report-root:has(.report-popup:not([hidden])) .report-dock {
+        opacity: 1;
+      }
+      .report-dock-button {
+        width: 26px;
+        height: 26px;
+        padding: 4px;
+        border: 0;
+        background: transparent;
+        color: var(--chrome-text);
+        cursor: pointer;
+      }
+      .report-dock-button svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.3;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .report-dock-button:hover,
+      .report-dock-button:focus-visible {
+        color: var(--chrome-accent);
+      }
+      .report-dock-hide {
+        align-self: flex-start;
+        width: 12px;
+        height: 12px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--chrome-muted);
+        font: 10px/12px var(--chrome-font);
+        cursor: pointer;
+      }
+      .report-dock-hide:hover,
+      .report-dock-hide:focus-visible {
+        color: var(--chrome-text-strong);
+      }
+      .report-popup {
+        position: absolute;
+        right: 6px;
+        bottom: 42px;
+        z-index: 1101;
+        width: min(380px, calc(100% - 12px));
+        max-height: calc(100% - 52px);
+        overflow: auto;
+        box-sizing: border-box;
+        padding: 6px 10px 8px;
+        border: 1px solid var(--chrome-float-border);
+        border-radius: var(--chrome-radius);
+        background: var(--chrome-title-bg);
+        box-shadow: var(--chrome-shadow);
+        color: var(--chrome-text);
+        font: var(--chrome-font-size)/17px var(--chrome-font);
+      }
+      .report-popup-head {
+        display: flex;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+      .report-popup-title {
+        flex: 1;
+        color: var(--chrome-accent);
+      }
+      .report-popup-close {
+        border: 0;
+        background: transparent;
+        color: var(--chrome-muted);
+        font: var(--chrome-font-size)/16px var(--chrome-font);
+        cursor: pointer;
+      }
+      .report-popup-close:hover {
+        color: var(--chrome-text-strong);
+      }
+      .report-popup p {
+        margin: 0 0 6px;
+      }
+      .report-field {
+        display: block;
+        margin-bottom: 6px;
+      }
+      .report-field span {
+        display: block;
+        color: var(--chrome-muted);
+      }
+      .report-field input,
+      .report-field textarea {
+        box-sizing: border-box;
+        width: 100%;
+        padding: 2px 4px;
+        border: 1px solid var(--chrome-float-border);
+        border-radius: var(--chrome-radius);
+        background: var(--chrome-page);
+        color: var(--chrome-text-strong);
+        font: var(--chrome-font-size)/17px var(--chrome-font);
+        resize: vertical;
+      }
+      .report-field input:focus,
+      .report-field textarea:focus {
+        outline: 1px solid var(--chrome-accent);
+        outline-offset: -1px;
+      }
+      .report-consent {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+      }
+      .report-details {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 0 8px;
+        margin: 2px 0 6px 20px;
+        color: var(--chrome-muted);
+      }
+      .report-details-off {
+        opacity: 0.5;
+        text-decoration: line-through;
+      }
+      .report-details dt,
+      .report-details dd {
+        margin: 0;
+      }
+      .report-details dd {
+        overflow-wrap: anywhere;
+      }
+      .report-actions,
+      .report-send,
+      .report-discord-steps {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin: 6px 0;
+      }
+      .report-action,
+      .report-send-button,
+      .report-similar-mine {
+        padding: 1px 8px;
+        border: 1px solid var(--chrome-float-border);
+        border-radius: var(--chrome-radius);
+        background: var(--chrome-title-bg);
+        color: var(--chrome-text-strong);
+        font: var(--chrome-font-size)/17px var(--chrome-font);
+        cursor: pointer;
+      }
+      .report-send-button {
+        flex: 1;
+        border-color: var(--chrome-accent);
+      }
+      .report-action:hover,
+      .report-send-button:hover,
+      .report-similar-mine:hover {
+        border-color: var(--chrome-accent);
+        color: var(--chrome-accent);
+      }
+      .report-action:disabled {
+        color: var(--chrome-muted);
+        border-color: var(--chrome-border);
+        cursor: default;
+      }
+      .report-similar-list {
+        margin: 4px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      .report-similar-list li {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin-bottom: 2px;
+      }
+      .report-similar-link {
+        flex: 1;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--chrome-text);
+        font: inherit;
+        text-align: left;
+        text-decoration: underline;
+        cursor: pointer;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .report-similar-state {
+        color: var(--chrome-muted);
+      }
+      .report-status {
+        min-height: 17px;
+        color: var(--chrome-muted);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .report-dock {
+          transition: none;
+        }
+      }
       @media (prefers-reduced-motion: reduce) {
         .chrome-notice {
           transition: none;
