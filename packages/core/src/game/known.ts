@@ -123,17 +123,17 @@ export type KnownObjectMemory =
  * entry and not an entry of its own; the money/item split is read off the
  * original's tval at draw time, exactly as the fake kind encodes it.
  *
- * What is still deferred is the shadow's own PROPERTY set (obj->known's runes,
- * brands, curses): an entry points at the original, so a remembered object
- * reports the original's properties. That is the known-object twin, tracked
- * separately - it is what obj-value.yaml:37 and game-effect-detect.yaml:41 are
- * blocked on, and it is not needed for anything map_info does.
+ * The original link preserves legacy reads and floor identity. A separate
+ * snapshot preserves the last observed properties for known-floor reads;
+ * descriptions apply the player's current rune and flavour knowledge to it.
  */
 export interface KnownObject {
   /** The original. Reference identity replaces upstream's `oidx`. */
   obj: GameObject;
   /** object_sense's fake kind: something is here, but not what. */
   sensed: boolean;
+  /** The last observed properties, so unseen changes cannot alter new reads. */
+  remembered?: GameObject;
 }
 
 /** The player's knowledge of the current level. */
@@ -650,13 +650,24 @@ function rememberObject(
 ): void {
   const idx = gi(state, grid);
   const pile = state.known.objects.get(idx);
+  const remembered = {
+    ...obj,
+    flags: obj.flags?.clone(),
+    modifiers: obj.modifiers?.slice(),
+    elInfo: obj.elInfo?.map((e) => ({ ...e })),
+    brands: obj.brands?.slice() ?? null,
+    slays: obj.slays?.slice() ?? null,
+    curses: obj.curses?.map((c) => ({ ...c })) ?? null,
+  };
   if (!pile) {
-    state.known.objects.set(idx, [{ obj, sensed }]);
+    state.known.objects.set(idx, [{ obj, sensed, remembered }]);
     return;
   }
   const existing = pile.find((e) => e.obj === obj);
-  if (existing) existing.sensed = sensed;
-  else pile.push({ obj, sensed });
+  if (existing) {
+    existing.sensed = sensed;
+    existing.remembered = remembered;
+  } else pile.push({ obj, sensed, remembered });
 }
 
 /**

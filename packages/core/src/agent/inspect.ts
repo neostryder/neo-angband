@@ -42,6 +42,26 @@ export interface InspectResult {
   readonly sections?: readonly { readonly kind: "title" | "description" | "info"; readonly text: string }[];
 }
 
+/** Both floor reads use the host's inspection text and knowledge gates. */
+export function inspectObject(
+  state: GameState,
+  obj: GameObject,
+  deps: AgentViewDeps,
+  inStore = false,
+): InspectResult | null {
+  const extras = deps.inspect?.objectInfo;
+  if (!extras) return null;
+  const title = objectDesc(obj, ODESC.PREFIX | ODESC.FULL | (inStore ? ODESC.STORE : 0), state.actor.player, state.runeEnv, knownDescOf(state, true), undefined, state.chestTraps);
+  const text = objectInfoTextblock(state, obj, inStore ? { ...extras, inStore: true } : extras, true).runs.map((run) => run.text).join("");
+  const fullTitle = title.charAt(0).toUpperCase() + title.slice(1);
+  const paragraphs = text.trim().split(/\n\s*\n/u).filter(Boolean);
+  const sections: InspectResult["sections"] = [
+    { kind: "title", text: fullTitle },
+    ...paragraphs.map((part, index) => ({ kind: index === 0 ? "description" as const : "info" as const, text: part })),
+  ];
+  return freeze({ token: inputToken(state), title: fullTitle, text, sections });
+}
+
 export interface SpellInspectResult {
   readonly token: ReturnType<typeof inputToken>;
   readonly name: string;
@@ -207,17 +227,7 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
         const known = knownFloorObject(state, ref.floor, obj);
         if (!known || known.sensed) return null;
       }
-      const extras = deps.inspect?.objectInfo;
-      if (!extras) return null;
-      const title = objectDesc(obj, ODESC.PREFIX | ODESC.FULL | (inStore ? ODESC.STORE : 0), state.actor.player, state.runeEnv, knownDescOf(state, true), undefined, state.chestTraps);
-      const text = objectInfoTextblock(state, obj, inStore ? { ...extras, inStore: true } : extras, true).runs.map((run) => run.text).join("");
-      const fullTitle = title.charAt(0).toUpperCase() + title.slice(1);
-      const paragraphs = text.trim().split(/\n\s*\n/u).filter(Boolean);
-      const sections: InspectResult["sections"] = [
-        { kind: "title", text: fullTitle },
-        ...paragraphs.map((part, index) => ({ kind: index === 0 ? "description" as const : "info" as const, text: part })),
-      ];
-      return freeze({ token: at(), title: fullTitle, text, sections });
+      return inspectObject(state, obj, deps, inStore);
     }),
     monsterRecall: gate(caps, "monsters", (raceIndex: number): InspectResult | null => {
       const race = deps.inspect?.races?.[raceIndex];

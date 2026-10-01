@@ -85,7 +85,7 @@ import { FlagSet } from "../bitflag.js";
 import { Chunk, SQUARE_SIZE } from "../world/chunk.js";
 import type { ChunkSquaresData } from "../world/chunk.js";
 import type { GameObject } from "../obj/object.js";
-import { objectNew, tvalIsMoney } from "../obj/object.js";
+import { objectCopy, objectNew, tvalIsMoney } from "../obj/object.js";
 import { FIRST_MOD_TVAL } from "../obj/tval-table.js";
 import type { ObjRegistry } from "../obj/bind.js";
 import { ELEMENT_NAMES, OBJ_MOD_NAMES } from "../obj/bind.js";
@@ -2024,6 +2024,8 @@ export interface SavedKnownObject {
   money?: boolean;
   ch?: string | null;
   attr?: string;
+  /** Last observed properties preserve stale descriptions across a load. */
+  remembered?: SavedObject;
 }
 
 /** Where each live floor object sits: object -> [grid index, pile position]. */
@@ -2046,7 +2048,9 @@ function serializeKnownObject(
   const legacy = { ch: null, attr: "" };
   const sensed = entry.sensed ? { sensed: true } : {};
   const where = at.get(entry.obj);
-  if (where) return { ...legacy, ...sensed, at: where };
+  const remembered = entry.remembered && ids.kindIdOrNull(entry.remembered.kind.kidx) !== null
+    ? { remembered: serializeObject(entry.remembered, ids) } : {};
+  if (where) return { ...legacy, ...sensed, at: where, ...remembered };
   /* Detached: the original has left every floor pile (picked up, destroyed).
    * Keep the kind so the glyph survives one more load. A kind unbound in this
    * pack (a mod that supplied it is gone) still means SOMETHING was here,
@@ -2054,7 +2058,7 @@ function serializeKnownObject(
   const kindId = ids.kindIdOrNull(entry.obj.kind.kidx);
   return kindId === null
     ? { ...legacy, sensed: true }
-    : { ...legacy, ...sensed, kindId, ...(tvalIsMoney(entry.obj.tval) ? { money: true } : {}) };
+    : { ...legacy, ...sensed, kindId, ...(tvalIsMoney(entry.obj.tval) ? { money: true } : {}), ...remembered };
 }
 
 /**
@@ -2079,7 +2083,8 @@ function deserializeKnownObject(
 ): KnownObject | null {
   if (m.at) {
     const obj = floor.get(m.at[0])?.[m.at[1]];
-    if (obj) return { obj, sensed: m.sensed === true };
+    if (obj) return { obj, sensed: m.sensed === true,
+      remembered: m.remembered ? deserializeObject(m.remembered, reg, ids) : objectCopy(obj) };
     return null;
   }
   const kidx = m.kindId !== undefined ? ids.kindIndex(m.kindId) : undefined;
@@ -2089,7 +2094,8 @@ function deserializeKnownObject(
   obj.tval = kind.tval;
   obj.sval = kind.sval;
   obj.grid = null;
-  return { obj, sensed: m.sensed === true };
+  return { obj, sensed: m.sensed === true,
+    remembered: m.remembered ? deserializeObject(m.remembered, reg, ids) : objectCopy(obj) };
 }
 
 /** One serialized race-lore record. */

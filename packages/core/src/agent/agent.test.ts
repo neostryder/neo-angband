@@ -24,6 +24,8 @@ import { createAgentActions } from "./act.js";
 import { AgentCapabilityError, installController } from "./controller.js";
 import { subscribeEvents } from "./events.js";
 import { GameEvents } from "../events.js";
+import { describeObject } from "../game/describe.js";
+import { newKnownMap, squareKnowPile, squareSensePile } from "../game/known.js";
 
 /** A capability set granting exactly the listed capabilities. */
 function grant(...caps: string[]): AgentCapabilities {
@@ -83,6 +85,123 @@ function makeItem(tval: number): GameObject {
   }
   return obj;
 }
+
+describe("known floor reads", () => {
+  function floorState(tval: number = TV.POTION) {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const grid = loc(12, 10);
+    const obj = makeItem(tval);
+    obj.grid = grid;
+    state.floor.set(grid.y * state.chunk.width + grid.x, [obj]);
+    return { state, grid, obj, view: createAgentView(state) };
+  }
+
+  it("omits unseen drops and keeps the existing live glyph behavior", () => {
+    const { state, grid } = floorState();
+    const glyphs: AgentGlyphSource = {
+      featChar: () => ".", kindChar: () => "!", flavorChar: () => "!",
+      monsterChar: () => "m", trapChar: () => "^",
+    };
+    const view = createAgentView(state, undefined, { glyphs });
+    expect(view.knownFloorItems!(grid.x, grid.y)).toEqual([]);
+    expect(view.floorItems(grid.x, grid.y)).toEqual([]);
+    expect(view.cell(grid.x, grid.y)).toMatchObject({ objectCount: 0, knownObjectCount: 0, objectGlyph: "!" });
+    expect(view.knownFloorItems!(-1, grid.y)).toEqual([]);
+    expect(view.knownFloorItems!(0.5, grid.y)).toEqual([]);
+  });
+
+  it("reports the player's description and obscures an unknown flavour", () => {
+    const { state, grid, obj, view } = floorState();
+    state.isAware = () => false;
+    state.hasFlavor = () => true;
+    state.flavorText = () => "Smoky";
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    squareKnowPile(state, grid);
+    const [known] = view.knownFloorItems!(grid.x, grid.y);
+    expect(known).toMatchObject({ visibility: "seen", sensed: false,
+      item: { name: describeObject(state, obj), number: obj.number } });
+    expect(known!.item!.name).toContain("Smoky Potion");
+    expect(known!.item).not.toHaveProperty("sval");
+    expect(known!.item).not.toHaveProperty("kindKey");
+    expect(known!.item).not.toHaveProperty("label");
+    expect(known!.item).not.toHaveProperty("kindId");
+    expect(view.cell(grid.x, grid.y)).toMatchObject({ objectCount: 1, knownObjectCount: 1 });
+    expect(view.floorItems(grid.x, grid.y)[0]).toMatchObject({ kindKey: `kind:${obj.kind.kidx}`, floorIndex: 0 });
+  });
+
+  it("keeps remembered stack properties after unseen changes and removal", () => {
+    const { state, grid, obj, view } = floorState(TV.SWORD);
+    obj.number = 3;
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+    obj.toD = 7;
+    state.actor.player.objKnown.toD = 1;
+    squareKnowPile(state, grid);
+    const [before] = view.knownFloorItems!(grid.x, grid.y);
+    obj.number = 1;
+    obj.toD = 12;
+    obj.flags.on(OF.FREE_ACT);
+    state.actor.player.objKnown.flags.on(OF.FREE_ACT);
+    expect(view.knownFloorItems!(grid.x, grid.y)[0]!.item).toEqual(before!.item);
+    expect(view.floorItems(grid.x, grid.y)[0]).toMatchObject({ number: 1, toD: 12 });
+    state.floor.delete(grid.y * state.chunk.width + grid.x);
+    expect(view.knownFloorItems!(grid.x, grid.y)[0]).toMatchObject({ visibility: "remembered", item: { number: 3, toD: 7 } });
+    expect(view.inspectKnownFloorItem!(before!.ref)).toEqual({ status: "stale", inspection: null });
+    expect(view.cell(grid.x, grid.y)).toMatchObject({ objectCount: 1, knownObjectCount: 1 });
+    expect(view.floorItems(grid.x, grid.y)).toEqual([]);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    expect(view.inspectKnownFloorItem!(before!.ref).status).toBe("stale");
+    squareKnowPile(state, grid);
+    expect(view.knownFloorItems!(grid.x, grid.y)).toEqual([]);
+  });
+
+  it("reports sensed entries without item properties or stack size", () => {
+    const { state, grid, obj, view } = floorState();
+    obj.number = 9;
+    squareSensePile(state, grid);
+    const [known] = view.knownFloorItems!(grid.x, grid.y);
+    expect(known).toMatchObject({ visibility: "remembered", sensed: true, money: false, item: null });
+    expect(view.inspectKnownFloorItem!(known!.ref)).toEqual({ status: "sensed", inspection: null });
+    expect(view.floorItems(grid.x, grid.y)).toEqual([]);
+    expect(view.cell(grid.x, grid.y)?.knownObjectCount).toBe(1);
+    squareKnowPile(state, grid);
+    expect(view.knownFloorItems!(grid.x, grid.y)[0]).toMatchObject({ ref: known!.ref, sensed: false });
+  });
+
+  it("hides unknown runes and unassessed properties", () => {
+    const { state, grid, obj, view } = floorState(TV.SWORD);
+    obj.toD = 9;
+    obj.flags.on(OF.FREE_ACT);
+    obj.modifiers[0] = 4;
+    squareKnowPile(state, grid);
+    expect(view.knownFloorItems!(grid.x, grid.y)[0]!.item).toMatchObject({ toD: 0, flags: [], modifiers: [] });
+    state.actor.player.objKnown.flags.on(OF.FREE_ACT);
+    expect(view.knownFloorItems!(grid.x, grid.y)[0]!.item!.flags).toEqual([]);
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+    squareKnowPile(state, grid);
+    expect(view.knownFloorItems!(grid.x, grid.y)[0]!.item!.flags).toContain("FREE_ACT");
+  });
+
+  it("rejects references from another view or level and returns fresh data", () => {
+    const { state, grid, view } = floorState();
+    squareKnowPile(state, grid);
+    const [known] = view.knownFloorItems!(grid.x, grid.y);
+    known!.item!.flags.push("FAKE");
+    expect(view.knownFloorItems!(grid.x, grid.y)[0]!.item!.flags).not.toContain("FAKE");
+    expect(createAgentView(state).inspectKnownFloorItem!(known!.ref).status).toBe("stale");
+    state.known = newKnownMap(state.chunk.width, state.chunk.height);
+    expect(view.inspectKnownFloorItem!(known!.ref).status).toBe("stale");
+  });
+
+  it("gates both new reads on the floor capability", () => {
+    const { state, grid } = floorState();
+    const denied = createAgentView(state, undefined, {}, grant("state:map.read", "state:inventory.read"));
+    expect(() => denied.knownFloorItems!(grid.x, grid.y)).toThrow(AgentCapabilityError);
+    expect(() => denied.inspectKnownFloorItem!({ id: 0 })).toThrow(AgentCapabilityError);
+    const allowed = createAgentView(state, undefined, {}, grant("state:floor.read"));
+    expect(allowed.knownFloorItems!(grid.x, grid.y)).toEqual([]);
+    expect(allowed.inspectKnownFloorItem!({ id: 0 }).status).toBe("stale");
+  });
+});
 
 describe("perceive facade (AgentView)", () => {
   it("reports player vitals, position, and the turn from live state", () => {

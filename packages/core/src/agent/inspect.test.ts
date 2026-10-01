@@ -1,9 +1,9 @@
 /** Seeded inspection reads must leave the entire saved game unchanged. */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT, MFLAG, OF, TV } from "../generated/index.js";
+import { FEAT, MFLAG, OF, SQUARE, TV } from "../generated/index.js";
 import { gearAdd } from "../game/gear.js";
-import { objectSeeAt } from "../game/known.js";
+import { objectSeeAt, squareKnowPile } from "../game/known.js";
 import { objectInfoTextblock } from "../game/object-inspect.js";
 import { loreDescription } from "../mon/lore-describe.js";
 import { newMonsterLore } from "../mon/lore.js";
@@ -14,7 +14,7 @@ import { makeSpellChanceEnv } from "../game/spell-cmd.js";
 import { floorPile } from "../game/floor.js";
 import { IGNORE, QUALITY_VALUE_NAMES } from "../obj/ignore.js";
 import { ITYPE } from "../generated/ignore-types.js";
-import { saveGame, startGame } from "../session/game.js";
+import { loadGame, saveGame, startGame } from "../session/game.js";
 import type { GamePack, StartedGame } from "../session/game.js";
 import { AgentCapabilityError } from "./types.js";
 import { createAgentView } from "./perceive.js";
@@ -113,6 +113,63 @@ function viewFor(game: StartedGame, caps?: { has(cap: string): boolean }) {
 }
 
 describe("inspection reads", () => {
+  it("inspects a seen identity with only the floor capability and leaves the game unchanged", () => {
+    const game = newGame();
+    const state = game.state;
+    const grid = state.actor.grid;
+    const kind = game.booted.registries.objects.kinds.find((entry) => entry.tval === TV.POTION)!;
+    const obj = objectPrep(state.rng, game.booted.registries.objects, game.booted.registries.constants, kind, 1, "minimise");
+    obj.grid = { ...grid };
+    const idx = grid.y * state.chunk.width + grid.x;
+    state.floor.set(idx, [obj]);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    squareKnowPile(state, grid);
+    const { view, objectInfo } = viewFor(game, { has: (cap) => cap === "state:floor.read" });
+    const before = fingerprint(game);
+    const [known] = view.knownFloorItems!(grid.x, grid.y);
+    const result = view.inspectKnownFloorItem!(known!.ref);
+    expect(result.status).toBe("seen");
+    expect(result.inspection!.title.toLowerCase()).toBe(known!.item!.name.toLowerCase());
+    expect(result.inspection!.text).toBe(objectInfoTextblock(state, obj, objectInfo, true).runs.map((run) => run.text).join(""));
+    expect(Object.isFrozen(result.inspection)).toBe(true);
+    expect(fingerprint(game)).toBe(before);
+
+    const other = objectPrep(state.rng, game.booted.registries.objects, game.booted.registries.constants, kind, 1, "minimise");
+    other.grid = { ...grid };
+    state.floor.set(idx, [other, obj]);
+    expect(view.inspectKnownFloorItem!(known!.ref).status).toBe("seen");
+    state.floor.set(idx, [other]);
+    expect(view.inspectKnownFloorItem!(known!.ref).status).toBe("stale");
+  });
+
+  it("keeps remembered properties through save/load and refuses unseen inspection", () => {
+    const game = newGame();
+    const state = game.state;
+    const grid = { x: 7, y: 5 };
+    const kind = game.booted.registries.objects.kinds.find((entry) => entry.tval === TV.POTION)!;
+    const obj = objectPrep(state.rng, game.booted.registries.objects, game.booted.registries.constants, kind, 1, "minimise");
+    obj.grid = grid;
+    obj.number = 3;
+    const idx = grid.y * state.chunk.width + grid.x;
+    state.floor.set(idx, [obj]);
+    squareKnowPile(state, grid);
+    state.chunk.sqinfoOff(grid, SQUARE.SEEN);
+    const { view } = viewFor(game);
+    const [known] = view.knownFloorItems!(grid.x, grid.y);
+    expect(view.inspectKnownFloorItem!(known!.ref).status).toBe("stale");
+    obj.number = 1;
+    const restored = loadGame(pack, JSON.parse(JSON.stringify(saveGame(game))));
+    const loaded = viewFor(restored).view;
+    expect(loaded.knownFloorItems!(grid.x, grid.y)[0]!.item).toEqual(known!.item);
+    expect(restored.state.known.objects.get(idx)![0]!.obj).toBe(restored.state.floor.get(idx)![0]);
+    state.floor.delete(idx);
+    const detached = loadGame(pack, JSON.parse(JSON.stringify(saveGame(game))));
+    const detachedView = viewFor(detached).view;
+    const [remembered] = detachedView.knownFloorItems!(grid.x, grid.y);
+    expect(remembered!.item).toEqual(known!.item);
+    expect(detachedView.inspectKnownFloorItem!(remembered!.ref).status).toBe("stale");
+  });
+
   it("excludes equipment held by an active sticky curse from takeoff choices", () => {
     const game = newGame();
     const state = game.state;

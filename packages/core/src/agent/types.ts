@@ -334,6 +334,8 @@ export interface CellView {
   monster: number;
   /** Objects the player remembers on the square, sensed ones included. */
   objectCount: number;
+  /** The same remembered pile count, including sensed entries. */
+  knownObjectCount?: number;
   /** SQUARE_GLOW: the square is self-illuminating. */
   glow: boolean;
   /**
@@ -449,6 +451,33 @@ export interface ItemView {
   /** objectValue for this stack, when a registry dep is supplied. */
   value?: number;
 }
+
+/** An opaque reference valid for the view that returned it. */
+export interface KnownFloorItemRef {
+  readonly id: number;
+}
+
+/** Item properties available without exposing an unknown kind or flavour. */
+export type KnownFloorItemDetails = Pick<ItemView,
+  "tval" | "pval" | "number" | "weight" | "ac" | "toA" | "toH" | "toD" |
+  "dd" | "ds" | "flags" | "modifiers" | "brands" | "slays" | "resists" |
+  "curses" | "egoName" | "artifactName" | "inscription"
+> & { readonly name: string };
+
+/** The player's floor memory, including entries whose originals have gone. */
+export type KnownFloorItemView = {
+  readonly ref: KnownFloorItemRef;
+  readonly grid: { readonly x: number; readonly y: number };
+  readonly visibility: "seen" | "remembered";
+} & (
+  | { readonly sensed: true; readonly money: boolean; readonly item: null }
+  | { readonly sensed: false; readonly item: KnownFloorItemDetails }
+);
+
+/** Stale means the reference cannot be confirmed on a currently seen grid. */
+export type KnownFloorInspectResult =
+  | { readonly status: "seen"; readonly inspection: InspectResult }
+  | { readonly status: "stale" | "sensed" | "unavailable"; readonly inspection: null };
 
 /** One item in a store's stock (ItemView plus its slot and buy price). */
 export interface StoreItemView extends ItemView {
@@ -666,6 +695,10 @@ export interface AgentView {
    * command's args.floor takes.
    */
   floorItems(x: number, y: number): ItemView[];
+  /** Player memory in memory order; capability: state:floor.read. */
+  knownFloorItems?(x: number, y: number): KnownFloorItemView[];
+  /** Inspection requires the same object to be there and seen; state:floor.read. */
+  inspectKnownFloorItem?(ref: KnownFloorItemRef): KnownFloorInspectResult;
   /** The current target, or null when none is set. */
   target(): TargetView | null;
   /** Messages emitted since the previous decision (oldest first). */

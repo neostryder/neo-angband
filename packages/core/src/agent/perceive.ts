@@ -36,12 +36,17 @@ import { getSpellInfo } from "../effects/effect-info.js";
 import type { EffectRecordJson } from "../obj/types.js";
 import { priceItem } from "../store/price.js";
 import { squareIsDisarmableTrap } from "../game/trap.js";
-import { itemView, playerViewFor } from "./entity-views.js";
+import { itemView, ofCodes, playerViewFor } from "./entity-views.js";
 import { simulateLoadout } from "./loadout.js";
 import { captureCoreSnapshot, inputToken } from "./boundary.js";
 import { captureKnownLevel } from "./known-level.js";
 import { knownFloorObject, knownPile } from "../game/known.js";
-import { createInspectView } from "./inspect.js";
+import type { KnownMap, KnownObject } from "../game/known.js";
+import { knownDescOf } from "../game/describe.js";
+import { ODESC, objectDesc } from "../obj/desc.js";
+import { tvalIsMoney } from "../obj/object.js";
+import { objectKnownShadow } from "../obj/known-object.js";
+import { createInspectView, inspectObject } from "./inspect.js";
 import { AGENT_API_VERSION, AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types.js";
 import type {
   AgentCapabilities,
@@ -50,6 +55,10 @@ import type {
   AgentViewDeps,
   CellView,
   ItemView,
+  KnownFloorItemDetails,
+  KnownFloorItemRef,
+  KnownFloorItemView,
+  KnownFloorInspectResult,
   LoadoutChange,
   LoadoutSimulation,
   MonsterView,
@@ -59,6 +68,8 @@ import type {
   StoreView,
   TargetView,
 } from "./types.js";
+
+let nextKnownFloorRef = 1;
 
 /** RF_* codes for the set flags in a race-flag FlagSet (entry index == RF value). */
 function raceFlagCodes(flags: FlagSet): string[] {
@@ -159,6 +170,7 @@ function cellView(
     monster: perceivedOccupant(state, c.mon(grid)),
     /* The player's floor memory, which the map draws from, not the live pile. */
     objectCount: knownPile(state, grid).length,
+    knownObjectCount: knownPile(state, grid).length,
     glow: c.sqinfoHas(grid, SQUARE["GLOW"]),
     /* square_isdisarmabletrap, not "the trap list is non-empty": a closed door's
      * lock, a glyph of warding, a web and a decoy are all trap records, and none
@@ -339,6 +351,8 @@ export function createAgentView(
   caps?: AgentCapabilities,
 ): AgentView {
   const D = AGENT_STATE_DOMAINS;
+  const refs = new Map<number, { entry: KnownObject; known: KnownMap; x: number; y: number }>();
+  const ids = new WeakMap<KnownObject, number>();
   const view: AgentView = {
     apiVersion: AGENT_API_VERSION,
     turn: gateRead(caps, D.turn, () => state.turn),
@@ -389,6 +403,66 @@ export function createAgentView(
           ? [{ ...itemView(0, obj, state, deps), itemKey: `floor:${x},${y}:${index}`, floorIndex: index }]
           : [];
       });
+    }),
+    knownFloorItems: gateRead(caps, D.floor, (x: number, y: number): KnownFloorItemView[] => {
+      const grid = { x, y };
+      if (!Number.isInteger(x) || !Number.isInteger(y) || !state.chunk.inBounds(grid)) return [];
+      return knownPile(state, grid).map((entry) => {
+        let id = ids.get(entry);
+        if (id === undefined) {
+          id = nextKnownFloorRef++;
+          ids.set(entry, id);
+          refs.set(id, { entry, known: state.known, x, y });
+        }
+        const seen = !entry.sensed && state.chunk.sqinfoHas(grid, SQUARE.SEEN) &&
+          (state.floor.get(y * state.chunk.width + x)?.includes(entry.obj) ?? false);
+        const base = {
+          ref: { id },
+          grid: { ...grid },
+          visibility: seen ? "seen" as const : "remembered" as const,
+        };
+        const obj = seen ? entry.obj : entry.remembered ?? entry.obj;
+        if (entry.sensed) return { ...base, sensed: true, money: tvalIsMoney(obj.tval), item: null };
+        const perceived = itemView(0, obj, state, {});
+        const shadow = objectKnownShadow(obj, state.actor.player, state.runeEnv, knownDescOf(state, true));
+        const item: KnownFloorItemDetails = {
+          name: objectDesc(obj, ODESC.PREFIX | ODESC.FULL, state.actor.player, state.runeEnv, knownDescOf(state, true), undefined, state.chestTraps),
+          tval: perceived.tval,
+          pval: perceived.pval,
+          number: perceived.number,
+          weight: perceived.weight,
+          ac: perceived.ac,
+          toA: perceived.toA,
+          toH: perceived.toH,
+          toD: perceived.toD,
+          dd: perceived.dd,
+          ds: perceived.ds,
+          flags: ofCodes(shadow.flags),
+          modifiers: perceived.modifiers,
+          brands: perceived.brands,
+          slays: perceived.slays,
+          resists: perceived.resists,
+          curses: perceived.curses,
+          egoName: perceived.egoName,
+          artifactName: perceived.artifactName,
+          inscription: perceived.inscription,
+        };
+        return { ...base, sensed: false, item };
+      });
+    }),
+    inspectKnownFloorItem: gateRead(caps, D.floor, (ref: KnownFloorItemRef): KnownFloorInspectResult => {
+      const record = refs.get(ref?.id);
+      if (!record || record.known !== state.known) return { status: "stale", inspection: null };
+      const { entry, x, y } = record;
+      const grid = { x, y };
+      if (!knownPile(state, grid).includes(entry)) return { status: "stale", inspection: null };
+      if (entry.sensed) return { status: "sensed", inspection: null };
+      if (!state.chunk.sqinfoHas(grid, SQUARE.SEEN) ||
+          !state.floor.get(y * state.chunk.width + x)?.includes(entry.obj)) {
+        return { status: "stale", inspection: null };
+      }
+      const inspection = inspectObject(state, entry.obj, deps);
+      return inspection ? { status: "seen", inspection } : { status: "unavailable", inspection: null };
     }),
     target: gateRead(caps, D.target, (): TargetView | null => {
       const t = state.target;

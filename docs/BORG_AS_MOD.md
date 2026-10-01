@@ -133,6 +133,22 @@ The same frozen facade is what every other agent mod builds on. Freezing it is
 the point of building the Borg first: the Borg exercises the entire surface, so
 if the Borg plays faithfully, the surface is complete.
 
+### Known floor reads
+
+Use `view.knownFloorItems(x, y)` with `state:floor.read` to read the player's remembered floor pile, oldest memory first. Each entry has an opaque `ref`, its `grid`, and `visibility` (`"seen"` or `"remembered"`). An exact memory has `sensed: false` and `item`, whose `name` uses the game's player-facing object description. Unknown flavours and runes stay obscured; the details omit raw kind names, kind IDs and subtype indices. A sensed entry has `sensed: true`, `money`, and `item: null`, so it reveals neither the item kind nor its stack size. Unseen drops add no entries. Remembered properties survive unseen changes, removal and save/load. `cell(x, y).knownObjectCount` counts the same memory entries, sensed ones included, under `state:map.read`.
+
+Pass an entry's `ref` to `view.inspectKnownFloorItem(ref)`, also under `state:floor.read`. The reference belongs to the view that returned it and follows object identity through pile reordering. The result has `status: "seen"` and the game's existing `inspection` text only while that object remains on the remembered grid and the player sees the grid. `"stale"` means the reference cannot be confirmed, including any out-of-sight grid; it does not tell you whether an unseen object has gone. `"sensed"` means the memory has no exact item details, and `"unavailable"` means the host supplied no inspection data. Those results have `inspection: null`. The reads learn nothing. Existing `floorItems()`, cell object counts and glyphs, and `capture().floorHere` keep their behavior.
+
+```ts
+interface AgentView {
+  knownFloorItems?(x: number, y: number): KnownFloorItemView[];
+  inspectKnownFloorItem?(ref: KnownFloorItemRef): KnownFloorInspectResult;
+}
+interface CellView {
+  knownObjectCount?: number;
+}
+```
+
 ## 6. The state the move started from (measured 2026-08-01)
 
 This section is history, kept in the past tense because the shape of the failure
