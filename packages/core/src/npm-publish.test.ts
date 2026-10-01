@@ -252,13 +252,17 @@ describe.each(PUBLISHED)("@rpgm-tools/neo-angband-%s is publishable", (pkg) => {
      * silently went stale for a real, shipped feature (ctx.display, MOD_SEAMS.md)
      * once a version-bump revert also dropped this wiring - undetected until a
      * consumer's own build broke on a missing tutorial. `prepack` is what npm runs
-     * on every `pack`/`publish`, with or without a prior manual `build`. */
+     * on every `pack`/`publish`, with or without a prior manual `build`.
+     *
+     * The command itself, not `pnpm run <script>`: the publish workflow pins the
+     * workspace ranges in the manifests before it packs, and `pnpm run` then
+     * refuses to start because the lockfile no longer matches them. */
     const generated: Record<string, string> = { "mod-sdk": "sync-docs" };
     const script = generated[pkg];
     if (script === undefined) return;
     const scripts = manifest["scripts"] as Record<string, string>;
-    expect(scripts["prepack"]).toBe(`pnpm run ${script}`);
     expect(scripts[script]).toMatch(/^node scripts\//);
+    expect(scripts["prepack"]).toBe(scripts[script]);
   });
 
   it("resolves its own entry points to files the build actually emits", () => {

@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { ACTIVE_DOCUMENT_KEY, ROSTER_DOCUMENT_KEY, ROSTER_KEY, handledPorts, planOriginMerge } from "./origin-merge.js";
+import { ACTIVE_DOCUMENT_KEY, MOD_SETTINGS_DOCUMENT_KEY, MOD_STATE_DOCUMENT_KEY, PROFILES_DOCUMENT_KEY, ROSTER_DOCUMENT_KEY, ROSTER_KEY, handledPorts, planOriginMerge } from "./origin-merge.js";
 import type { MergePlan, OriginSnapshot } from "./origin-merge.js";
 
 function writtenCharacters(plan: MergePlan): { id?: string; name?: string; alive?: boolean }[] {
@@ -114,6 +114,11 @@ describe("stranded-origin merge", () => {
     expect(plan.writes["neo-angband-birth"]).toBe('{"name":"Frodo"}');
     expect(plan.writes["neo-angband:mod-state"]).toBe('{"format":"neo-angband/web/mod-state","schemaVersion":1,"data":{}}');
     expect(plan.writes).not.toHaveProperty("__agwt_rt");
+  });
+
+  it("carries a mod's own keys, whatever it names them", () => {
+    const plan = planOriginMerge({}, [{ port: 45990, entries: { "squire/panelScale": "1.25" } }]);
+    expect(plan.writes["squire/panelScale"]).toBe("1.25");
   });
 
   it("drops an active pointer that names no character", () => {
@@ -424,5 +429,156 @@ describe("handledPorts (the marker that is a permanent claim)", () => {
 
   it("never repeats a port", () => {
     expect(handledPorts([61806], [snap(61806)], clean)).toEqual([61806]);
+  });
+});
+
+const P = "profile:5b0f7c2e-8d1a-4f3e-9c6b-2a7d4e1f0b93:";
+
+function profileIndex(named: Record<string, string>, active?: string): string {
+  const entries = Object.fromEntries(Object.entries(named).map(([id, name]) => [id, { name, createdAt: 1790000000000 }]));
+  return JSON.stringify({
+    format: "neo-angband/web/profiles",
+    schemaVersion: 1,
+    data: active === undefined ? { named: entries } : { named: entries, active },
+  });
+}
+
+/** One origin's entries with every key moved under a named profile's prefix. */
+function inProfile(prefix: string, snapshot: OriginSnapshot): Record<string, string> {
+  return Object.fromEntries(Object.entries(snapshot.entries).map(([k, v]) => [prefix + k, v]));
+}
+
+describe("named profiles (#329)", () => {
+  it("carries a named profile's characters, saves and mod settings under its own prefix", () => {
+    const src: OriginSnapshot = {
+      port: 45990,
+      entries: {
+        ...inProfile(P, origin(45990, [meta("a", "Frodo", 300)], { a: "AAA" })),
+        [`${P}neo-angband:mod-state`]: '{"enabled":["squire"]}',
+        [`${P}neo:modPrefs:squire`]: '{"speed":2}',
+        [PROFILES_DOCUMENT_KEY]: profileIndex({ "5b0f7c2e-8d1a-4f3e-9c6b-2a7d4e1f0b93": "Testing" }, "5b0f7c2e-8d1a-4f3e-9c6b-2a7d4e1f0b93"),
+      },
+    };
+    const plan = planOriginMerge({}, [src]);
+
+    expect(plan.writes[`${P}neo-angband-save:a`]).toBe("AAA");
+    expect(plan.writes[`${P}neo-angband:mod-state`]).toBe('{"enabled":["squire"]}');
+    expect(plan.writes[`${P}neo:modPrefs:squire`]).toBe('{"speed":2}');
+    expect(plan.writes[PROFILES_DOCUMENT_KEY]).toBe(src.entries[PROFILES_DOCUMENT_KEY]);
+    const roster = JSON.parse(plan.writes[`${P}${ROSTER_DOCUMENT_KEY}`]!) as { data: { characters: { id: string }[] } };
+    expect(roster.data.characters.map((c) => c.id)).toEqual(["a"]);
+    expect(plan.recovered.map((r) => r.name)).toEqual(["Frodo"]);
+  });
+
+  it("keeps each profile's characters in its own roster", () => {
+    const src: OriginSnapshot = {
+      port: 45990,
+      entries: {
+        ...origin(45990, [meta("d", "Bilbo", 100)], { d: "DDD" }).entries,
+        ...inProfile(P, origin(45990, [meta("a", "Frodo", 300)], { a: "AAA" })),
+      },
+    };
+    const plan = planOriginMerge({}, [src]);
+
+    expect(writtenCharacters(plan).map((c) => c.id)).toEqual(["d"]);
+    expect(plan.writes["neo-angband-save:d"]).toBe("DDD");
+    expect(plan.writes["neo-angband-save:a"]).toBeUndefined();
+    expect(plan.writes[`${P}neo-angband-save:a`]).toBe("AAA");
+  });
+
+  it("fills a profile's settings only where the target profile has none", () => {
+    const target = { [`${P}neo:modPrefs:squire`]: "new" };
+    const plan = planOriginMerge(target, [{ port: 45990, entries: { [`${P}neo:modPrefs:squire`]: "old", [`${P}neo:modPrefs:qol`]: "qol" } }]);
+    expect(plan.writes[`${P}neo:modPrefs:squire`]).toBeUndefined();
+    expect(plan.writes[`${P}neo:modPrefs:qol`]).toBe("qol");
+  });
+
+  it("does not apply the death ledger to a named profile, whose copy of a character may still be alive", () => {
+    const src: OriginSnapshot = { port: 45990, entries: inProfile(P, origin(45990, [meta("a", "Frodo", 300)], { a: "AAA" })) };
+    const plan = planOriginMerge({}, [src], ["a"]);
+    expect(plan.writes[`${P}neo-angband-save:a`]).toBe("AAA");
+    expect(plan.deaths).toEqual(["a"]);
+  });
+
+  it("buries within a profile, and reports only the default profile's deaths", () => {
+    const target = inProfile(P, origin(1, [meta("a", "Frodo", 900)], { a: "LIVE" }));
+    const src: OriginSnapshot = { port: 45990, entries: inProfile(P, origin(45990, [meta("a", "Frodo", 300, false)])) };
+    const plan = planOriginMerge(target, [src]);
+    expect(plan.removes).toContain(`${P}neo-angband-save:a`);
+    expect(plan.deaths).toEqual([]);
+  });
+
+  it("holds every origin back when one profile's roster cannot be read", () => {
+    const src: OriginSnapshot = {
+      port: 45990,
+      entries: { ...origin(45990, [meta("d", "Bilbo", 100)], { d: "DDD" }).entries, [`${P}${ROSTER_KEY}`]: "{not json" },
+    };
+    const plan = planOriginMerge({}, [src]);
+    expect(plan.blocked).toBe(true);
+    expect(plan.writes).toEqual({});
+  });
+
+  it("adds the old origin's profiles to a profile list the target already has", () => {
+    const target = { [PROFILES_DOCUMENT_KEY]: profileIndex({ "11111111-1111-4111-8111-111111111111": "New" }) };
+    const src: OriginSnapshot = {
+      port: 45990,
+      entries: { [PROFILES_DOCUMENT_KEY]: profileIndex({ "5b0f7c2e-8d1a-4f3e-9c6b-2a7d4e1f0b93": "Testing" }, "5b0f7c2e-8d1a-4f3e-9c6b-2a7d4e1f0b93") },
+    };
+    const plan = planOriginMerge(target, [src]);
+    const index = JSON.parse(plan.writes[PROFILES_DOCUMENT_KEY]!) as { data: { named: Record<string, { name: string }>; active?: string } };
+    expect(Object.keys(index.data.named).sort()).toEqual(["11111111-1111-4111-8111-111111111111", "5b0f7c2e-8d1a-4f3e-9c6b-2a7d4e1f0b93"]);
+    expect(index.data.active).toBeUndefined();
+  });
+});
+
+function modState(data: Record<string, unknown>): string {
+  return JSON.stringify({ format: "neo-angband/web/mod-state", schemaVersion: 1, data });
+}
+
+function writtenModState(plan: MergePlan): Record<string, unknown> | undefined {
+  const raw = plan.writes[MOD_STATE_DOCUMENT_KEY];
+  return raw === undefined ? undefined : (JSON.parse(raw) as { data: Record<string, unknown> }).data;
+}
+
+describe("the mod manager's document, once the new origin has written its own (#329)", () => {
+  it("brings back the old enabled mods and consents over the empty document a first boot writes", () => {
+    const plan = planOriginMerge(
+      { [MOD_STATE_DOCUMENT_KEY]: modState({ enabled: [] }) },
+      [{ port: 45990, entries: { [MOD_STATE_DOCUMENT_KEY]: modState({ enabled: ["qol", "squire"], consents: { squire: ["game:autoplay"] }, sectionChoices: { qol: { tiles: true } } }) } }],
+    );
+    expect(writtenModState(plan)).toEqual({ enabled: ["qol", "squire"], consents: { squire: ["game:autoplay"] }, sectionChoices: { qol: { tiles: true } } });
+  });
+
+  it("keeps what the player chose in the new origin", () => {
+    const plan = planOriginMerge(
+      { [MOD_STATE_DOCUMENT_KEY]: modState({ enabled: ["linoleum"], choices: { squire: false }, consents: { qol: [] } }) },
+      [{ port: 45990, entries: { [MOD_STATE_DOCUMENT_KEY]: modState({ enabled: ["qol", "squire"], choices: { squire: true, qol: true }, consents: { qol: ["ui:panel.mount"] } }) } }],
+    );
+    expect(writtenModState(plan)).toEqual({ enabled: ["linoleum", "qol"], choices: { squire: false, qol: true }, consents: { qol: [] } });
+  });
+
+  it("writes nothing when the old document adds nothing", () => {
+    const doc = modState({ enabled: ["qol"] });
+    const plan = planOriginMerge({ [MOD_STATE_DOCUMENT_KEY]: doc }, [{ port: 45990, entries: { [MOD_STATE_DOCUMENT_KEY]: modState({ enabled: ["qol"] }) } }]);
+    expect(plan.writes).toEqual({});
+  });
+
+  it("does the same inside a named profile", () => {
+    const plan = planOriginMerge(
+      { [`${P}${MOD_STATE_DOCUMENT_KEY}`]: modState({ enabled: [] }) },
+      [{ port: 45990, entries: { [`${P}${MOD_STATE_DOCUMENT_KEY}`]: modState({ enabled: ["squire"] }) } }],
+    );
+    const raw = plan.writes[`${P}${MOD_STATE_DOCUMENT_KEY}`];
+    expect(raw && (JSON.parse(raw) as { data: unknown }).data).toEqual({ enabled: ["squire"] });
+  });
+
+  it("fills a mod's setting values only when the target has none for that mod", () => {
+    const values = (v: Record<string, Record<string, number>>) => JSON.stringify({ format: "neo-angband/web/mod-settings", schemaVersion: 1, data: { values: v } });
+    const plan = planOriginMerge(
+      { [MOD_SETTINGS_DOCUMENT_KEY]: values({ anybandui: { crtStrength: 10 } }) },
+      [{ port: 45990, entries: { [MOD_SETTINGS_DOCUMENT_KEY]: values({ anybandui: { crtStrength: 60 }, squire: { speed: 3 } }) } }],
+    );
+    const raw = plan.writes[MOD_SETTINGS_DOCUMENT_KEY]!;
+    expect((JSON.parse(raw) as { data: unknown }).data).toEqual({ values: { anybandui: { crtStrength: 10 }, squire: { speed: 3 } } });
   });
 });

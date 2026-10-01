@@ -157,6 +157,13 @@
       "verdict": "HOST - CHANGE_PATH_VALUES, the -d<dir>=<path> directory table (main.c's change_path_values); looked up by directory name via .find. Host wiring, not game content, same as the switch below it in this file."
     },
     {
+      "file": "packages/desktop/src/main.ts",
+      "cases": 13,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "PARSER - the tagged encoding a mod database crosses executeJavaScript in when an old loopback origin is moved (TAGGED_CODEC). Host wiring for one fixed format; a mod never sees it."
+    },
+    {
       "file": "packages/core/src/combat/mon-melee.ts",
       "cases": 12,
       "hasDefault": false,

@@ -963,25 +963,21 @@ let DIR_OVERRIDES: Readonly<Partial<Record<HostDir, string>>> = {};
  * Recovering characters stored under the old loopback origins.
  * ------------------------------------------------------------------ */
 
-/** Records which abandoned origins have already been dealt with. */
-const MERGED_FILE = "origins-merged.json";
-const LEGACY_MERGED_FILE = "origins-merged.txt";
+/**
+ * The old loopback ports whose storage has been moved into the game's own origin.
+ *
+ * Not `origins-merged.json`: older builds wrote that file to say a port had been
+ * merged into whichever port they were using, and that port was often listed too.
+ * Reading it as "already moved" skipped the port with the newest data (#329). It is
+ * left alone now, and every port it lists is read again; the merge only fills keys
+ * the new origin lacks, so reading a port twice changes nothing.
+ */
+const MERGED_FILE = "origins-moved.json";
 
 function mergedPorts(userDir: string): Set<number> {
   try {
-    const file = path.join(userDir, MERGED_FILE);
-    if (fs.existsSync(file)) { const parsed = parseDocument(fs.readFileSync(file, "utf8"), mergedOriginsFormat); return new Set(parsed.ok ? parsed.data.ports : []); }
-    const oldFile = path.join(userDir, LEGACY_MERGED_FILE);
-    const raw = fs.readFileSync(oldFile, "utf8");
-    const ports = [...new Set(
-      raw
-        .split(/\s+/)
-        .map((s) => Number.parseInt(s, 10))
-        .filter((n) => Number.isInteger(n)),
-    )];
-    fs.writeFileSync(file, serializeDocument(mergedOriginsFormat, { ports }), "utf8");
-    if (parseDocument(fs.readFileSync(file, "utf8"), mergedOriginsFormat).ok) fs.rmSync(oldFile);
-    return new Set(ports);
+    const parsed = parseDocument(fs.readFileSync(path.join(userDir, MERGED_FILE), "utf8"), mergedOriginsFormat);
+    return new Set(parsed.ok ? parsed.data.ports : []);
   } catch {
     return new Set();
   }
@@ -1285,6 +1281,216 @@ async function readOriginModIds(origin: string): Promise<string[]> {
   }
 }
 
+/*
+ * Every other IndexedDB database in an origin: the ones mods open for themselves
+ * (Squire's `neo-angband-squire`). The game's own database is carried by the mod
+ * merge above. These are copied whole, schema and records, because the shell cannot
+ * know which parts of a mod's data matter to it.
+ */
+
+/** A database as read from an origin, every key and value in TAGGED_CODEC's form. */
+interface IdbStoreDump {
+  readonly name: string;
+  readonly keyPath: string | string[] | null;
+  readonly autoIncrement: boolean;
+  readonly indexes: readonly { name: string; keyPath: string | string[]; unique: boolean; multiEntry: boolean }[];
+  /** Pairs of [key, value], both tagged. */
+  readonly records: readonly [unknown, unknown][];
+}
+
+interface IdbDump {
+  readonly name: string;
+  readonly version: number;
+  readonly stores: readonly IdbStoreDump[];
+}
+
+/**
+ * Turns stored values into JSON and back, since `executeJavaScript` carries JSON only
+ * and would turn bytes, dates and maps into `{}` without complaint. Every object and
+ * array is tagged (`{"$": "o", v}`), so no stored value can be mistaken for a tag.
+ * Blobs are read to bytes, which is why encoding is async.
+ */
+const TAGGED_CODEC = `
+  const b64 = (u) => {
+    let s = "";
+    const C = 0x8000;
+    for (let i = 0; i < u.length; i += C) s += String.fromCharCode.apply(null, u.subarray(i, i + C));
+    return btoa(s);
+  };
+  const unb64 = (s) => {
+    const bin = atob(s);
+    const u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u;
+  };
+  const enc = async (v) => {
+    if (v === undefined) return { $: "u" };
+    if (v === null || typeof v === "string" || typeof v === "boolean") return v;
+    if (typeof v === "number") return Number.isFinite(v) ? v : { $: "n", v: String(v) };
+    if (typeof v === "bigint") return { $: "bi", v: String(v) };
+    if (Array.isArray(v)) { const a = []; for (const x of v) a.push(await enc(x)); return { $: "a", v: a }; }
+    if (v instanceof Date) return { $: "d", v: v.getTime() };
+    if (v instanceof RegExp) return { $: "re", s: v.source, f: v.flags };
+    if (v instanceof ArrayBuffer) return { $: "ab", v: b64(new Uint8Array(v)) };
+    if (ArrayBuffer.isView(v)) return { $: "ta", t: v.constructor.name, v: b64(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)) };
+    if (typeof File !== "undefined" && v instanceof File) return { $: "file", name: v.name, type: v.type, lm: v.lastModified, v: b64(new Uint8Array(await v.arrayBuffer())) };
+    if (v instanceof Blob) return { $: "blob", type: v.type, v: b64(new Uint8Array(await v.arrayBuffer())) };
+    if (v instanceof Map) { const a = []; for (const [k, x] of v) a.push([await enc(k), await enc(x)]); return { $: "m", v: a }; }
+    if (v instanceof Set) { const a = []; for (const x of v) a.push(await enc(x)); return { $: "s", v: a }; }
+    const o = {};
+    for (const k of Object.keys(v)) o[k] = await enc(v[k]);
+    return { $: "o", v: o };
+  };
+  const dec = (v) => {
+    if (v === null || typeof v !== "object") return v;
+    switch (v.$) {
+      case "u": return undefined;
+      case "n": return Number(v.v);
+      case "bi": return BigInt(v.v);
+      case "a": return v.v.map(dec);
+      case "d": return new Date(v.v);
+      case "re": return new RegExp(v.s, v.f);
+      case "ab": return unb64(v.v).buffer;
+      case "ta": {
+        const u = unb64(v.v);
+        if (v.t === "DataView") return new DataView(u.buffer);
+        const T = globalThis[v.t];
+        return new T(u.buffer, 0, u.byteLength / T.BYTES_PER_ELEMENT);
+      }
+      case "file": return new File([unb64(v.v)], v.name, { type: v.type, lastModified: v.lm });
+      case "blob": return new Blob([unb64(v.v)], { type: v.type });
+      case "m": return new Map(v.v.map(([k, x]) => [dec(k), dec(x)]));
+      case "s": return new Set(v.v.map(dec));
+      case "o": { const o = {}; for (const k of Object.keys(v.v)) o[k] = dec(v.v[k]); return o; }
+      default: throw new Error("unknown tag " + String(v.$));
+    }
+  };
+  const req = (r) => new Promise((res, rej) => {
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error ?? new Error("IndexedDB request failed"));
+  });
+  const openDb = (name, version, upgrade) => new Promise((res, rej) => {
+    const r = version === undefined ? indexedDB.open(name) : indexedDB.open(name, version);
+    r.onupgradeneeded = () => { if (upgrade) upgrade(r.result); };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error ?? new Error("could not open " + name));
+    r.onblocked = () => rej(new Error("opening " + name + " was blocked"));
+  });
+`;
+
+/** Read every database of `origin` except the game's own. Throws when one cannot be read. */
+async function readOriginDatabases(origin: string): Promise<IdbDump[]> {
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
+  try {
+    await win.loadURL(`${origin}${ORIGIN_PROBE_ROUTE}`);
+    return (await win.webContents.executeJavaScript(
+      `(async () => {
+        ${TAGGED_CODEC}
+        const out = [];
+        for (const info of await indexedDB.databases()) {
+          if (!info.name || info.name === ${JSON.stringify(MOD_DB_NAME)}) continue;
+          const db = await openDb(info.name);
+          try {
+            const stores = [];
+            for (const name of Array.from(db.objectStoreNames)) {
+              const s = db.transaction(name, "readonly").objectStore(name);
+              const indexes = Array.from(s.indexNames).map((n) => {
+                const i = s.index(n);
+                return { name: n, keyPath: i.keyPath, unique: i.unique, multiEntry: i.multiEntry };
+              });
+              /* A transaction per request: one commits as soon as nothing is pending,
+               * and the awaits in between would let it. */
+              const keys = await req(db.transaction(name, "readonly").objectStore(name).getAllKeys());
+              const values = await req(db.transaction(name, "readonly").objectStore(name).getAll());
+              const records = [];
+              for (let i = 0; i < keys.length; i++) records.push([await enc(keys[i]), await enc(values[i])]);
+              stores.push({ name, keyPath: s.keyPath, autoIncrement: s.autoIncrement, indexes, records });
+            }
+            out.push({ name: db.name, version: db.version, stores });
+          } finally {
+            db.close();
+          }
+        }
+        return out;
+      })()`,
+    )) as IdbDump[];
+  } finally {
+    win.destroy();
+  }
+}
+
+/**
+ * Copy one database into `origin`. A database the origin lacks is created with the
+ * source's version, stores and indexes. One it already has gains only the records
+ * whose keys it lacks, in the stores both sides have, so nothing written there since
+ * is replaced. Returns false when anything did not land.
+ */
+async function writeOriginDatabase(origin: string, dump: IdbDump): Promise<boolean> {
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
+  try {
+    await win.loadURL(`${origin}${ORIGIN_PROBE_ROUTE}`);
+    return (await win.webContents.executeJavaScript(
+      `(async () => {
+        ${TAGGED_CODEC}
+        const dump = ${JSON.stringify(dump)};
+        const exists = (await indexedDB.databases()).some((d) => d.name === dump.name);
+        const db = await openDb(dump.name, exists ? undefined : dump.version, (fresh) => {
+          for (const s of dump.stores) {
+            const opts = { autoIncrement: s.autoIncrement };
+            if (s.keyPath !== null) opts.keyPath = s.keyPath;
+            const store = fresh.createObjectStore(s.name, opts);
+            for (const i of s.indexes) store.createIndex(i.name, i.keyPath, { unique: i.unique, multiEntry: i.multiEntry });
+          }
+        });
+        try {
+          for (const s of dump.stores) {
+            if (!db.objectStoreNames.contains(s.name)) continue;
+            const os = () => db.transaction(s.name, "readwrite").objectStore(s.name);
+            for (const [k, v] of s.records) {
+              const key = dec(k);
+              if ((await req(os().count(key))) > 0) continue;
+              await req(s.keyPath === null ? os().put(dec(v), key) : os().put(dec(v)));
+            }
+          }
+          return true;
+        } finally {
+          db.close();
+        }
+      })()`,
+    )) as boolean;
+  } catch (err) {
+    mainLog("error", "recovery", `could not copy database ${dump.name} into ${origin}`, err);
+    return false;
+  } finally {
+    win.destroy();
+  }
+}
+
+/** The names of the source databases the target still lacks, or lacks records of. */
+function databaseGaps(source: readonly IdbDump[], after: readonly IdbDump[]): string[] {
+  const gaps: string[] = [];
+  for (const db of source) {
+    const there = after.find((d) => d.name === db.name);
+    if (!there) {
+      gaps.push(db.name);
+      continue;
+    }
+    for (const s of db.stores) {
+      /* A store the target's version of the database has no room for is not a gap
+       * this copy can close: adding one would mean raising the mod's own database
+       * version underneath it. */
+      const target = there.stores.find((t) => t.name === s.name);
+      if (!target) continue;
+      const keys = new Set(target.records.map(([k]) => JSON.stringify(k)));
+      if (s.records.some(([k]) => !keys.has(JSON.stringify(k)))) {
+        gaps.push(db.name);
+        break;
+      }
+    }
+  }
+  return gaps;
+}
+
 /**
  * Reads each old loopback origin without binding its port.
  *
@@ -1297,10 +1503,12 @@ async function readOriginModIds(origin: string): Promise<string[]> {
 async function readLegacyOrigins(ports: readonly number[]): Promise<{
   sources: OriginSnapshot[];
   modSources: ModSnapshot[];
+  databases: IdbDump[][];
 }> {
   const sources: OriginSnapshot[] = [];
   const modSources: ModSnapshot[] = [];
-  if (ports.length === 0) return { sources, modSources };
+  const databases: IdbDump[][] = [];
+  if (ports.length === 0) return { sources, modSources, databases };
   const reading = new Set(ports);
   protocol.handle("http", (request) =>
     isLegacyProbe(request.url, reading)
@@ -1310,13 +1518,15 @@ async function readLegacyOrigins(ports: readonly number[]): Promise<{
   try {
     for (const port of ports) {
       try {
-        /* Both stores in one visit: the roster from localStorage and the installed
-         * mods from IndexedDB. A port goes into `sources` only once both were read,
+        /* Everything in one visit: localStorage, the installed mods and the mods'
+         * own databases. A port goes into `sources` only once all three were read,
          * so an origin read halfway is never marked handled. */
         const entries = await readOriginStorage(legacyOrigin(port));
         const mods = await readOriginMods(legacyOrigin(port));
+        const dbs = await readOriginDatabases(legacyOrigin(port));
         sources.push({ port, entries });
         modSources.push({ port, mods });
+        databases.push(dbs);
       } catch (err) {
         /* NOT marked handled: the origin is still in the profile, and the next
          * launch reads it again. */
@@ -1326,7 +1536,7 @@ async function readLegacyOrigins(ports: readonly number[]): Promise<{
   } finally {
     protocol.unhandle("http");
   }
-  return { sources, modSources };
+  return { sources, modSources, databases };
 }
 
 /**
@@ -1359,7 +1569,8 @@ async function recoverStrandedOrigins(
    */
   if (todo.length === 0 && dead.size === 0) return;
 
-  const { sources, modSources } = await readLegacyOrigins(todo);
+  const { sources, modSources, databases } = await readLegacyOrigins(todo);
+  const databaseCount = databases.reduce((n, dbs) => n + dbs.length, 0);
 
   const plan = planOriginMerge(await readOriginStorage(APP_ORIGIN), sources, dead, lastPort);
   if (plan.blocked) {
@@ -1386,7 +1597,7 @@ async function recoverStrandedOrigins(
    * - the player who tried a tileset and never finished a birth - and before the mod
    * half existed this exit was reached for exactly that origin, marking it handled and
    * making its mods unreachable forever. */
-  if (keys.length === 0 && plan.removes.length === 0 && modPlan.install.length === 0) {
+  if (keys.length === 0 && plan.removes.length === 0 && modPlan.install.length === 0 && databaseCount === 0) {
     /* `sources`, not `todo`: only origins that were actually read. See handledPorts
      * for why the difference is a character. */
     const mark = handledPorts(done, sources, { failedKeys: [], missingKeys: [] });
@@ -1401,6 +1612,13 @@ async function recoverStrandedOrigins(
    * would. `mod:` prefixed so a log line says which kind of thing failed. */
   const failedMods = await writeOriginMods(APP_ORIGIN, modPlan.install);
   for (const id of failedMods) failed.push(`mod:${id}`);
+  /* Newest origin first, as `sources` is ordered, so where two origins hold the same
+   * record the newer copy is the one that lands. */
+  for (const dbs of databases) {
+    for (const db of dbs) {
+      if (!(await writeOriginDatabase(APP_ORIGIN, db))) failed.push(`db:${db.name}`);
+    }
+  }
   /* NOT logged here. The read-back below can still move a mod from brought-over to
    * failed, and a log line written before it would contradict the dialog the player is
    * about to read - see the log next to `modLines`. */
@@ -1452,6 +1670,12 @@ async function recoverStrandedOrigins(
       }
     }
   }
+  if (databaseCount > 0) {
+    const dbsAfter = await readOriginDatabases(APP_ORIGIN);
+    for (const name of new Set(databases.flatMap((dbs) => databaseGaps(dbs, dbsAfter)))) {
+      if (!failed.includes(`db:${name}`)) missing.push(`db:${name}`);
+    }
+  }
   if (missing.length > 0) {
     mainLog(
       "error",
@@ -1487,6 +1711,11 @@ async function recoverStrandedOrigins(
       brought: modPlan.install.filter((m) => !failedMods.includes(m.id)).map((m) => m.id),
       failed: failedMods,
     });
+  }
+  if (databaseCount > 0) {
+    const names = [...new Set(databases.flatMap((dbs) => dbs.map((d) => d.name)))];
+    const failedDbs = names.filter((n) => failed.includes(`db:${n}`) || missing.includes(`db:${n}`));
+    mainLog(failedDbs.length > 0 ? "warn" : "info", "recovery", `copied mod database(s): ${names.join(", ")}`, { failed: failedDbs });
   }
   /* The previous build's own origin moving over is the update doing its job, and a
    * dialog on every player's first launch would read as something gone wrong. */

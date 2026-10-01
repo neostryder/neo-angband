@@ -160,9 +160,9 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 50 into a CLOSED vocabulary", () => {
+  it("classifies all 51 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 50 dispatch points, ZERO are content dispatch a
+     * than written in prose: of 51 dispatch points, ZERO are content dispatch a
      * mod would want. That is the finish line MOD_REACH gap list set - every
      * one of the eighteen candidates the 2026-08-09 census opened with is now
      * a registry, obj/knowledge.ts (gap 16) last. What is left is UI routing,
@@ -206,7 +206,9 @@ describe("the switch census", () => {
        * .length while routing the display text through the translator. 4 until
        * #76 added the stash view's one phrase per orphan category. */
       LOCALIZATION: 5,
-      PARSER: 3,
+      /* 3 until #329 moved mod databases between origins, which needs a decoder
+       * for the tagged values (main.ts's TAGGED_CODEC). */
+      PARSER: 4,
       REACHABLE: 6,
       /* 15 until #283. ui-entry.ts's COMBINERS row left when the array became a
        * registry, which is the count moving DOWN on a conversion - the same
@@ -236,7 +238,7 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.verdict).toContain("DEBUG");
   });
 
-  it("is measuring something: 50 dispatch points, 641 size labels", () => {
+  it("is measuring something: 51 dispatch points, 641 size labels", () => {
     /* Control for the census ITSELF. A scanner that silently matched nothing -
      * a broken regex, a wrong root - would make both tests above pass forever
      * against an empty tree. */

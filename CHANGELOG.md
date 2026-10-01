@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- [Visible] [Save-Compat] **Mods, mod settings and named profiles come back after the 1.20.0 update.** If your enabled mods, their settings, or the characters in a profile other than the default went missing when you updated to 1.20.0, launch this version once and they are copied over from where 1.20.0 left them. That includes data a mod stores for itself, so Squire's history returns and Ctrl-Z finds it again. Anything you changed in 1.20.0 stays as you set it (#329).
+
 ## [1.20.0] - 2026-09-30
 
 ### Added
