@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-09-30
+
 ### Added
 
 - [Visible] [Save-Compat] **The desktop app keeps a restore point from before each update.** The first time a new version starts, it copies your characters, settings, mods and mod data into `data/restore-points` before changing any of them, and keeps the last three. Start the game with `--restore-point=latest` to put the newest one back (#330).
