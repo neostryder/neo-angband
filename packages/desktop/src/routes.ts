@@ -39,6 +39,16 @@ export const ORIGIN_PROBE_ROUTE = "/__origin-storage";
 /** The user mods folder index, synthesised rather than read from disk. */
 export const MODS_INDEX_ROUTE = "/mods/index.json";
 
+/**
+ * The web build's service worker registration, which the desktop answers with an
+ * empty script.
+ *
+ * The game's scheme cannot host a service worker, so registering one fails with an
+ * uncaught error on every launch. The desktop has no use for one either: its files
+ * are already on the disk, and web/src/pwa.ts removes any worker it finds on boot.
+ */
+export const REGISTER_SW_ROUTE = "/registerSW.js";
+
 /** The site path bundled mods hang under, both here and in the web build. */
 export const MODS_PREFIX = "/mods/";
 
@@ -47,6 +57,8 @@ export type RoutePlan =
   | { readonly kind: "origin-probe" }
   /** Serve the synthesised mods index. */
   | { readonly kind: "mods-index" }
+  /** Serve an empty script in place of the service worker registration. */
+  | { readonly kind: "no-worker" }
   /** Path traversal, or a root the request escaped. */
   | { readonly kind: "forbidden" }
   /**
@@ -87,6 +99,7 @@ export function safeJoin(root: string, urlPath: string): string | null {
 export function planRequest(url: string, roots: RouteRoots): RoutePlan {
   if (url === ORIGIN_PROBE_ROUTE) return { kind: "origin-probe" };
   if (url === MODS_INDEX_ROUTE) return { kind: "mods-index" };
+  if (url === REGISTER_SW_ROUTE) return { kind: "no-worker" };
 
   if (url.startsWith(MODS_PREFIX)) {
     /* Both roots, in precedence order. A traversal must be refused outright and

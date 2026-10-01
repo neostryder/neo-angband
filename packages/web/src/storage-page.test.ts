@@ -24,7 +24,7 @@ const DESKTOP: StoragePageInput = {
   ...WEB,
   desktop: true,
   home: "C:\\Games\\Neo Angband\\data",
-  origin: "http://127.0.0.1:45871",
+  origin: "neo-angband://game",
 };
 
 const text = (i: StoragePageInput): string =>
@@ -100,7 +100,7 @@ describe("the two shells say different true things", () => {
   });
 
   it("falls back to the origin when the shell did not say where home is", () => {
-    expect(text({ ...DESKTOP, home: undefined })).toContain("127.0.0.1:45871");
+    expect(text({ ...DESKTOP, home: undefined })).toContain("neo-angband://game");
   });
 });
 

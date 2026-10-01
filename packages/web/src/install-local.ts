@@ -8,8 +8,8 @@
  *
  *   - "Your saves become real files you can back up." FALSE. The desktop build
  *     is this same web bundle inside Electron and keeps the roster in
- *     localStorage, partitioned by the loopback origin the shell serves it from
- *     (packages/desktop/src/loopback-port.ts). writeSlot goes to localStorage on
+ *     localStorage, partitioned by the origin the shell serves it from
+ *     (packages/desktop/src/app-origin.ts). writeSlot goes to localStorage on
  *     both platforms. What DOES become a real file is everything routed through
  *     HostIo - pref files, character dumps, spoilers - because the desktop host
  *     is RawFsHost and the browser host is localStorage-backed.

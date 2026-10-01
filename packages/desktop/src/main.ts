@@ -14,14 +14,13 @@
  * full-capability host instead of being left to discover it has none.
  *
  * Two things are served to the renderer:
- *   - the web bundle, over a loopback HTTP server (see the header on
- *     startServer for why HTTP rather than file://);
+ *   - the web bundle, from the `neo-angband://game` origin (see app-origin.ts,
+ *     and the header on appResponse for why not file://);
  *   - the host filesystem, over ONE synchronous IPC channel whose wire format
  *     lives in core (host/bridge.ts), so neither end can drift from the other.
  */
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen, session, shell } from "electron";
-import * as http from "node:http";
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, safeStorage, screen, session, shell } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
 /* The host modules by subpath, not through either barrel: the main process needs
@@ -69,7 +68,6 @@ import {
   downloadArchive,
   isAllowedRevealUrl,
   isHttpUrl,
-  isOwnLoopbackUrl,
   launchSwap,
   releaseTagFromRenderer,
   resolveReleaseAsset,
@@ -78,12 +76,16 @@ import {
 } from "./updater.js";
 import { checkWritable, resolveDataBase } from "./data-dir.js";
 import { IMPORTED_DIRNAME, archiveModZip, isModZipName } from "./mod-archive.js";
+import { lastLoopbackPort, legacyPorts } from "./legacy-origins.js";
 import {
-  PORT_ENV,
-  portLadder,
-  rememberLoopbackPort,
-  resolveLoopbackPort,
-} from "./loopback-port.js";
+  APP_ORIGIN,
+  APP_SCHEME,
+  APP_SCHEME_PRIVILEGES,
+  appRequestPath,
+  isGameUrl,
+  isLegacyProbe,
+  legacyOrigin,
+} from "./app-origin.js";
 import { handledPorts, planOriginMerge } from "./origin-merge.js";
 import {
   MOD_DB_NAME,
@@ -263,20 +265,18 @@ const MIME: Record<string, string> = {
   ".ogg": "audio/ogg",
 };
 
-function send(
-  res: http.ServerResponse,
-  status: number,
-  body: string | Buffer,
-  type?: string,
-): void {
-  res.writeHead(status, {
-    "Content-Type": type ?? "text/plain; charset=utf-8",
-    // Cross-origin isolation -> crossOriginIsolated -> SharedArrayBuffer.
-    "Cross-Origin-Opener-Policy": "same-origin",
-    "Cross-Origin-Embedder-Policy": "require-corp",
-    "Cross-Origin-Resource-Policy": "same-origin",
+/** A response with the cross-origin isolation headers every game response carries. */
+function respond(status: number, body: string | Buffer, type?: string): Response {
+  return new Response(body, {
+    status,
+    headers: {
+      "Content-Type": type ?? "text/plain; charset=utf-8",
+      // Cross-origin isolation -> crossOriginIsolated -> SharedArrayBuffer.
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Resource-Policy": "same-origin",
+    },
   });
-  res.end(body);
 }
 
 /**
@@ -288,47 +288,23 @@ function send(
  * defect worth recording: a single-candidate lookup made every bundled mod asset
  * a 404 on desktop while serving fine on Pages.
  */
-function serveFirst(
-  res: http.ServerResponse,
-  candidates: readonly string[],
-  fallbackIndex: boolean,
-): void {
-  const [head, ...rest] = candidates;
-  if (head === undefined) {
-    if (fallbackIndex) {
-      // SPA-style fallback to index.html for unknown non-asset routes.
-      serveFirst(res, [path.join(WEB_ROOT, "index.html")], false);
-      return;
+async function serveFirst(candidates: readonly string[], fallbackIndex: boolean): Promise<Response> {
+  for (const file of candidates) {
+    try {
+      const data = await fs.promises.readFile(file);
+      /* The MIME type comes from the file actually opened, not the first
+       * candidate: reading the type off the wrong name is the kind of thing that
+       * silently serves a PNG as text/plain. */
+      return respond(200, data, MIME[path.extname(file).toLowerCase()]);
+    } catch {
+      /* not this one */
     }
-    send(res, 404, "Not found");
-    return;
   }
-  fs.readFile(head, (err, data) => {
-    if (err) {
-      serveFirst(res, rest, fallbackIndex);
-      return;
-    }
-    /* The MIME type comes from the file actually opened, not the first
-     * candidate: the two roots can name different extensions for one request
-     * only if a path is odd, but reading the type off the wrong name is the kind
-     * of thing that silently serves a PNG as text/plain. */
-    send(res, 200, data, MIME[path.extname(head).toLowerCase()]);
-  });
+  // SPA-style fallback to index.html for unknown non-asset routes.
+  if (fallbackIndex) return serveFirst([path.join(WEB_ROOT, "index.html")], false);
+  return respond(404, "Not found");
 }
 
-/**
- * Why a loopback HTTP server instead of file:// -
- *  - service workers, fetch, and ES modules behave normally on http://127.0.0.1
- *    but are restricted or quirky under file://;
- *  - it allows sending Cross-Origin-Isolation headers (COOP + COEP), which turn on
- *    crossOriginIsolated and therefore SharedArrayBuffer. A static host (Pages)
- *    cannot send those headers, so the untrusted-Worker deep-override path that
- *    needs SAB is only possible on the desktop build. Nothing REQUIRES it - the
- *    trusted in-process tier works everywhere - but the door is open here.
- *
- * The server binds an ephemeral port on the loopback interface only, so nothing
- * is exposed off the machine. Path traversal is rejected.
- */
 /**
  * The mods directory, as one index the renderer can act on.
  *
@@ -424,7 +400,7 @@ function walkPack(dir: string, prefix = "", depth = 0, out: string[] = []): stri
   }
   for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     /* Symlinks are not followed: a link out of the mods folder would let a pack
-     * name any file on the machine, and the loopback server would serve it. */
+     * name any file on the machine, and the game's origin would serve it. */
     if (e.isSymbolicLink()) continue;
     if (e.isFile()) out.push(`${prefix}${e.name}`);
     else if (e.isDirectory()) {
@@ -449,8 +425,8 @@ function modsIndex(): ModsIndex {
       .sort((a, b) => a.localeCompare(b));
     for (const e of entries) {
       /* Files only, and not through a symlink: a link called `x.zip` pointing at
-       * something outside this folder would otherwise be served by the loopback
-       * route and then moved by the archive op, which is two holes for the price
+       * something outside this folder would otherwise be served by the game's
+       * origin and then moved by the archive op, which is two holes for the price
        * of one convenience nobody asked for. */
       if (!e.isFile() || !isModZipName(e.name)) continue;
       try {
@@ -521,38 +497,45 @@ function installModZipChannel(): void {
 const ORIGIN_PROBE_PAGE =
   "<!doctype html><meta charset=utf-8><title>storage</title>";
 
-function startServer(port: number): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = http.createServer((req, res) => {
-      const url = req.url ?? "/";
-      const plan = planRequest(url, { modsDir: MODS_DIR, webRoot: WEB_ROOT });
-      switch (plan.kind) {
-        case "origin-probe":
-          send(res, 200, ORIGIN_PROBE_PAGE, MIME[".html"]);
-          return;
-        // User mods folder (read-only), for the filesystem-mod path.
-        case "mods-index":
-          send(res, 200, JSON.stringify(modsIndex()), MIME[".json"]);
-          return;
-        case "forbidden":
-          send(res, 403, "Forbidden");
-          return;
-        case "file":
-          serveFirst(res, plan.candidates, plan.fallbackIndex);
-          return;
-      }
-    });
-    server.on("error", reject);
-    /* A FIXED port on loopback only. Fixed, not ephemeral, because the port is
-     * part of the origin the renderer's localStorage - and therefore the character
-     * roster - is partitioned by; see loopback-port.ts. Nothing is exposed off the
-     * machine either way. */
-    server.listen(port, "127.0.0.1", () => {
-      const addr = server.address();
-      resolve(typeof addr === "object" && addr ? addr.port : port);
-    });
-  });
+/**
+ * Answer one request for the game's own origin.
+ *
+ * Why a scheme of its own instead of file:// -
+ *  - fetch and ES modules behave normally on a standard, secure scheme but are
+ *    restricted or quirky under file://;
+ *  - it allows sending Cross-Origin-Isolation headers (COOP + COEP), which turn on
+ *    crossOriginIsolated and therefore SharedArrayBuffer. A static host (Pages)
+ *    cannot send those headers, so the untrusted-Worker deep-override path that
+ *    needs SAB is only possible on the desktop build. Nothing REQUIRES it - the
+ *    trusted in-process tier works everywhere - but the door is open here.
+ *
+ * Until #323 this was an HTTP server on 127.0.0.1, and its port was part of the
+ * origin, so a second program on that port left the character list empty. A custom
+ * scheme has no port to collide on and listens on nothing, which also means no
+ * other machine can reach it. routes.ts rejects path traversal.
+ */
+async function appResponse(url: string): Promise<Response> {
+  const request = appRequestPath(url);
+  if (request === null) return respond(404, "Not found");
+  const plan = planRequest(request, { modsDir: MODS_DIR, webRoot: WEB_ROOT });
+  switch (plan.kind) {
+    case "origin-probe":
+      return respond(200, ORIGIN_PROBE_PAGE, MIME[".html"]);
+    // User mods folder (read-only), for the filesystem-mod path.
+    case "mods-index":
+      return respond(200, JSON.stringify(modsIndex()), MIME[".json"]);
+    case "no-worker":
+      return respond(200, "", MIME[".js"]);
+    case "forbidden":
+      return respond(403, "Forbidden");
+    case "file":
+      return serveFirst(plan.candidates, plan.fallbackIndex);
+  }
 }
+
+/* Before app ready, which Electron requires: a scheme's privileges are fixed when
+ * the browser process starts. */
+protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: APP_SCHEME_PRIVILEGES }]);
 
 /**
  * Serve z-file.c to the renderer over one synchronous channel.
@@ -977,7 +960,7 @@ function handleEarlyExit(): boolean {
 let DIR_OVERRIDES: Readonly<Partial<Record<HostDir, string>>> = {};
 
 /* ------------------------------------------------------------------ *
- * Recovering characters stranded by the old ephemeral port.
+ * Recovering characters stored under the old loopback origins.
  * ------------------------------------------------------------------ */
 
 /** Records which abandoned origins have already been dealt with. */
@@ -1066,11 +1049,11 @@ function rememberDeaths(userDir: string, ids: Iterable<string>): void {
   }
 }
 
-/** Read every localStorage entry of the origin served on `port`. */
-async function readOriginStorage(port: number): Promise<Record<string, string>> {
+/** Read every localStorage entry of `origin`. */
+async function readOriginStorage(origin: string): Promise<Record<string, string>> {
   const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
   try {
-    await win.loadURL(`http://127.0.0.1:${port}${ORIGIN_PROBE_ROUTE}`);
+    await win.loadURL(`${origin}${ORIGIN_PROBE_ROUTE}`);
     return (await win.webContents.executeJavaScript(
       `(() => { const o = {};
          for (let i = 0; i < localStorage.length; i++) {
@@ -1084,16 +1067,16 @@ async function readOriginStorage(port: number): Promise<Record<string, string>> 
   }
 }
 
-/** Write entries into the origin served on `port`, one key at a time. */
+/** Write entries into `origin`, one key at a time. */
 async function writeOriginStorage(
-  port: number,
+  origin: string,
   writes: Readonly<Record<string, string>>,
   removes: readonly string[] = [],
 ): Promise<string[]> {
   const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
   const failed: string[] = [];
   try {
-    await win.loadURL(`http://127.0.0.1:${port}${ORIGIN_PROBE_ROUTE}`);
+    await win.loadURL(`${origin}${ORIGIN_PROBE_ROUTE}`);
     for (const [key, value] of Object.entries(writes)) {
       /* One key per evaluation so a quota refusal names the key that hit it
        * instead of losing the whole batch (a recovered save can be 500 kB). */
@@ -1176,16 +1159,16 @@ const MOD_DB_PREAMBLE = `
 `;
 
 /**
- * Read the installed mods out of the origin served on `port`.
+ * Read the installed mods out of `origin`.
  *
  * Bytes come back base64: a Uint8Array does not survive `executeJavaScript` as itself,
  * and silently arriving as `{}` is exactly the kind of empty success that would let the
  * merge report mods it never carried.
  */
-async function readOriginMods(port: number): Promise<ModRecord[]> {
+async function readOriginMods(origin: string): Promise<ModRecord[]> {
   const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
   try {
-    await win.loadURL(`http://127.0.0.1:${port}${ORIGIN_PROBE_ROUTE}`);
+    await win.loadURL(`${origin}${ORIGIN_PROBE_ROUTE}`);
     return (await win.webContents.executeJavaScript(
       `(async () => {
         ${MOD_DB_PREAMBLE}
@@ -1230,7 +1213,7 @@ async function readOriginMods(port: number): Promise<ModRecord[]> {
 }
 
 /**
- * Write whole mods into the origin served on `port`. Returns the ids that did not land.
+ * Write whole mods into `origin`. Returns the ids that did not land.
  *
  * FILES FIRST, METADATA LAST, and the order is the crash story again (see
  * writeOriginStorage). Killed between the two halves:
@@ -1240,12 +1223,12 @@ async function readOriginMods(port: number): Promise<ModRecord[]> {
  *   meta then files -> the Mods screen lists a mod whose files are absent, which fails
  *                      at load time for a reason the player cannot act on.
  */
-async function writeOriginMods(port: number, records: readonly ModRecord[]): Promise<string[]> {
+async function writeOriginMods(origin: string, records: readonly ModRecord[]): Promise<string[]> {
   if (records.length === 0) return [];
   const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
   const failed: string[] = [];
   try {
-    await win.loadURL(`http://127.0.0.1:${port}${ORIGIN_PROBE_ROUTE}`);
+    await win.loadURL(`${origin}${ORIGIN_PROBE_ROUTE}`);
     for (const rec of records) {
       /* One mod per evaluation, so a quota refusal names the mod that hit it instead
        * of losing the whole batch - a mod can be megabytes. */
@@ -1276,7 +1259,7 @@ async function writeOriginMods(port: number, records: readonly ModRecord[]): Pro
   } catch (err) {
     /* The whole batch is unproven, so every id is reported failed rather than the
      * loop's progress being trusted. */
-    mainLog("error", "recovery", `could not write mods into port ${String(port)}`, err);
+    mainLog("error", "recovery", `could not write mods into ${origin}`, err);
     for (const rec of records) if (!failed.includes(rec.id)) failed.push(rec.id);
   } finally {
     win.destroy();
@@ -1285,10 +1268,10 @@ async function writeOriginMods(port: number, records: readonly ModRecord[]): Pro
 }
 
 /** The ids the target origin already has installed, so the merge never displaces one. */
-async function readOriginModIds(port: number): Promise<string[]> {
+async function readOriginModIds(origin: string): Promise<string[]> {
   const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
   try {
-    await win.loadURL(`http://127.0.0.1:${port}${ORIGIN_PROBE_ROUTE}`);
+    await win.loadURL(`${origin}${ORIGIN_PROBE_ROUTE}`);
     return (await win.webContents.executeJavaScript(
       `(async () => {
         ${MOD_DB_PREAMBLE}
@@ -1303,20 +1286,69 @@ async function readOriginModIds(port: number): Promise<string[]> {
 }
 
 /**
- * Bring characters written under the old ephemeral origins into the stable one.
+ * Reads each old loopback origin without binding its port.
  *
- * Runs once per abandoned origin and reports what it found. Never fatal: a failure
- * here must not stop the player getting into the game, and nothing is deleted from
- * the origin it was read from, so a failed attempt can simply be repeated.
+ * While this runs, the session's `http` handler answers the blank probe page for
+ * the listed ports itself, so a hidden window can load `http://127.0.0.1:<port>`
+ * even when some other program is listening there (#323). Every other `http`
+ * request goes out to the network unchanged, and the handler is removed before the
+ * game window opens.
+ */
+async function readLegacyOrigins(ports: readonly number[]): Promise<{
+  sources: OriginSnapshot[];
+  modSources: ModSnapshot[];
+}> {
+  const sources: OriginSnapshot[] = [];
+  const modSources: ModSnapshot[] = [];
+  if (ports.length === 0) return { sources, modSources };
+  const reading = new Set(ports);
+  protocol.handle("http", (request) =>
+    isLegacyProbe(request.url, reading)
+      ? respond(200, ORIGIN_PROBE_PAGE, MIME[".html"])
+      : net.fetch(request, { bypassCustomProtocolHandlers: true }),
+  );
+  try {
+    for (const port of ports) {
+      try {
+        /* Both stores in one visit: the roster from localStorage and the installed
+         * mods from IndexedDB. A port goes into `sources` only once both were read,
+         * so an origin read halfway is never marked handled. */
+        const entries = await readOriginStorage(legacyOrigin(port));
+        const mods = await readOriginMods(legacyOrigin(port));
+        sources.push({ port, entries });
+        modSources.push({ port, mods });
+      } catch (err) {
+        /* NOT marked handled: the origin is still in the profile, and the next
+         * launch reads it again. */
+        mainLog("warn", "recovery", `could not read storage of ${legacyOrigin(port)}`, err);
+      }
+    }
+  } finally {
+    protocol.unhandle("http");
+  }
+  return { sources, modSources };
+}
+
+/**
+ * Bring characters, settings and mods stored under the old loopback origins into
+ * the game's own origin.
+ *
+ * Runs once per old origin and reports what it found. Never fatal: a failure here
+ * must not stop the player getting into the game, and nothing is deleted from the
+ * origin it was read from, so a failed attempt can simply be repeated.
+ *
+ * `lastPort` is the origin the previous build used. Moving its characters is the
+ * expected first launch after the update and is only logged; the dialog is for
+ * characters that come from anywhere else, and for anything that failed.
  */
 async function recoverStrandedOrigins(
   userDir: string,
-  stablePort: number,
   knownPorts: readonly number[],
+  lastPort: number,
 ): Promise<void> {
   const done = mergedPorts(userDir);
   const dead = knownDeaths(userDir);
-  const todo = knownPorts.filter((p) => p !== stablePort && !done.has(p));
+  const todo = knownPorts.filter((p) => !done.has(p));
   /*
    * NOT `if (todo.length === 0) return`, which is what this used to be. The ledger
    * makes this pass useful with no sources at all: the target may hold a living row
@@ -1327,38 +1359,9 @@ async function recoverStrandedOrigins(
    */
   if (todo.length === 0 && dead.size === 0) return;
 
-  const sources: OriginSnapshot[] = [];
-  const modSources: ModSnapshot[] = [];
-  for (const port of todo) {
-    /* A throwaway server serving ONLY the blank page: the game must not boot in
-     * one of these windows, and on this port it never can. */
-    const server = http.createServer((_req, res) =>
-      send(res, 200, ORIGIN_PROBE_PAGE, MIME[".html"]),
-    );
-    try {
-      await new Promise<void>((resolve, reject) => {
-        server.on("error", reject);
-        server.listen(port, "127.0.0.1", () => resolve());
-      });
-      /* Both stores, while the throwaway server for this port is still up: the roster
-       * from localStorage and the installed mods from IndexedDB. Reading them in one
-       * visit is not an optimisation - the server is closed in the `finally` below, so
-       * a second pass would have nothing to connect to. */
-      sources.push({ port, entries: await readOriginStorage(port) });
-      modSources.push({ port, mods: await readOriginMods(port) });
-    } catch (err) {
-      /* NOT marked handled - see the `read` set below. Reaching this means the port
-       * could not be bound, and the commonest reason now is that ANOTHER COPY of the
-       * game is serving itself on it, which is exactly the case the port ladder
-       * creates. The characters are still there and still readable once that copy is
-       * closed, so the only correct thing to do is leave the job outstanding. */
-      mainLog("warn", "recovery", `could not read storage on port ${String(port)}`, err);
-    } finally {
-      server.close();
-    }
-  }
+  const { sources, modSources } = await readLegacyOrigins(todo);
 
-  const plan = planOriginMerge(await readOriginStorage(stablePort), sources, dead);
+  const plan = planOriginMerge(await readOriginStorage(APP_ORIGIN), sources, dead, lastPort);
   if (plan.blocked) {
     /* An unreadable storage document stays on disk. Marking source origins
      * handled would leave their records where nothing looks again. */
@@ -1369,7 +1372,7 @@ async function recoverStrandedOrigins(
     );
     return;
   }
-  const modPlan = planModMerge(await readOriginModIds(stablePort), modSources);
+  const modPlan = planModMerge(await readOriginModIds(APP_ORIGIN), modSources);
   /* BEFORE any origin can be marked handled. Marking is what makes a tombstone
    * unreadable forever, so the ledger has to have the ids first or the marker can
    * seal away the only record of a death. */
@@ -1391,12 +1394,12 @@ async function recoverStrandedOrigins(
     return;
   }
 
-  const failed = await writeOriginStorage(stablePort, plan.writes);
+  const failed = await writeOriginStorage(APP_ORIGIN, plan.writes);
   /* Mods carried in the same pass, and their failures are keys as far as handledPorts
    * is concerned: a mod that did not land leaves the only copy in the source origin,
    * so marking that origin handled would strand it exactly as a refused save key
    * would. `mod:` prefixed so a log line says which kind of thing failed. */
-  const failedMods = await writeOriginMods(stablePort, modPlan.install);
+  const failedMods = await writeOriginMods(APP_ORIGIN, modPlan.install);
   for (const id of failedMods) failed.push(`mod:${id}`);
   /* NOT logged here. The read-back below can still move a mod from brought-over to
    * failed, and a log line written before it would contradict the dialog the player is
@@ -1413,16 +1416,16 @@ async function recoverStrandedOrigins(
   } catch {
     /* Not fatal: the read-back below is the actual gate. */
   }
-  const after = await readOriginStorage(stablePort);
+  const after = await readOriginStorage(APP_ORIGIN);
   const missing = Object.keys(plan.writes).filter((k) => after[k] !== plan.writes[k]);
   if (failed.length === 0 && missing.length === 0 && plan.removes.length > 0) {
-    failed.push(...await writeOriginStorage(stablePort, {}, plan.removes));
+    failed.push(...await writeOriginStorage(APP_ORIGIN, {}, plan.removes));
     try {
       await session.defaultSession.flushStorageData();
     } catch {
       /* The read-back below remains the gate. */
     }
-    const afterRemoval = await readOriginStorage(stablePort);
+    const afterRemoval = await readOriginStorage(APP_ORIGIN);
     for (const key of plan.removes) {
       if (key in afterRemoval && !failed.includes(key)) missing.push(key);
     }
@@ -1441,7 +1444,7 @@ async function recoverStrandedOrigins(
    * The key is what makes a mod installed, and its absence is what the durable failure
    * looks like - a whole database that did not persist. */
   if (modPlan.install.length > 0) {
-    const idsAfter = new Set(await readOriginModIds(stablePort));
+    const idsAfter = new Set(await readOriginModIds(APP_ORIGIN));
     for (const rec of modPlan.install) {
       if (!idsAfter.has(rec.id) && !failed.includes(`mod:${rec.id}`)) {
         missing.push(`mod:${rec.id}`);
@@ -1485,7 +1488,13 @@ async function recoverStrandedOrigins(
       failed: failedMods,
     });
   }
-  if (plan.recovered.length > 0 || modPlan.install.length > 0) {
+  /* The previous build's own origin moving over is the update doing its job, and a
+   * dialog on every player's first launch would read as something gone wrong. */
+  const lastMods = new Set(modSources.find((m) => m.port === lastPort)?.mods.map((m) => m.id) ?? []);
+  const fromElsewhere =
+    plan.recovered.some((r) => r.fromPort !== lastPort) ||
+    modPlan.install.some((m) => !lastMods.has(m.id));
+  if ((plan.recovered.length > 0 || modPlan.install.length > 0) && (fromElsewhere || failed.length > 0)) {
     const chars =
       plan.recovered.length > 0
         ? `${String(plan.recovered.length)} character(s)`
@@ -1501,19 +1510,15 @@ async function recoverStrandedOrigins(
       message:
         failed.length === 0 ? `Recovered ${both}.` : `Recovered ${both}, with problems.`,
       detail:
-        /* Two things now put characters in another origin: the ephemeral-port era,
-         * and this copy stepping to a free port because its usual one was in use.
-         * Worded to be true of both rather than naming the first and being wrong
-         * half the time - the port numbers are the part a player can act on.
-         *
-         * "characters and mods" TOGETHER in the opening sentence, because the two live
+        /* "characters and mods" TOGETHER in the opening sentence, because the two live
          * in one origin bucket and go missing as one event. A player who was told only
          * about characters would reasonably conclude their mods were uninstalled by
-         * something else. */
-        "Your characters and installed mods were stored against a different port " +
-        `number (${sources.map((s) => String(s.port)).join(", ")}) than this copy is ` +
-        `now using (${String(stablePort)}), which is why they stopped appearing. They ` +
-        "have been moved into this copy's own storage." +
+         * something else. The port numbers are what a player can match against an
+         * older copy of the game. */
+        "Older versions kept your characters and mods under a port number " +
+        `(${sources.map((s) => String(s.port)).join(", ")}). This version keeps ` +
+        "them in a place with no port, so another program using that port can no " +
+        "longer hide them. They have been copied there." +
         (names.length > 0 ? `\n\nOn the character screen now:\n${names.join("\n")}` : "") +
         (modLines.length > 0 ? `\n\n${modLines.join("\n")}` : "") +
         (plan.skippedUnplayed.length > 0
@@ -1537,7 +1542,7 @@ async function recoverStrandedOrigins(
  */
 let gameWindowOpened = false;
 
-async function createWindow(port: number): Promise<void> {
+async function createWindow(): Promise<void> {
   gameWindowOpened = true;
   const userDir = path.join(USER_BASE, "user");
   const startState = readWindowState(userDir);
@@ -1740,7 +1745,7 @@ async function createWindow(port: number): Promise<void> {
 
   // External links open in the user's real browser, not inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isOwnLoopbackUrl(url, port)) return { action: "allow" };
+    if (isGameUrl(url)) return { action: "allow" };
     /* `url` is whatever the renderer asked to open with `window.open` (or a
      * target="_blank" click) - the renderer's own choice, not this process's,
      * and a mod's plugin.js runs in that same page. A scheme other than http or
@@ -1761,7 +1766,7 @@ async function createWindow(port: number): Promise<void> {
    * an unsafe same-window link - none of which should be allowed to replace
    * the page this window's bridge is scoped to. */
   win.webContents.on("will-navigate", (event, url) => {
-    if (isOwnLoopbackUrl(url, port)) return;
+    if (isGameUrl(url)) return;
     event.preventDefault();
     mainLog("warn", "navigate", "refused to navigate the game window away from its own origin", url);
   });
@@ -1823,13 +1828,13 @@ async function createWindow(port: number): Promise<void> {
       message: "The game could not load.",
       detail:
         `${description} (${String(code)})\n${url}\n\n` +
-        "This is the local server the app runs for itself, so a firewall or " +
-        "security tool blocking 127.0.0.1 is the usual cause. Your saves are " +
-        "not involved and were not touched.",
+        "The game's page is read from its own install folder, so a missing or " +
+        "damaged file there is the usual cause, and reinstalling fixes it. Your " +
+        "saves are not involved and were not touched.",
     });
   });
 
-  await win.loadURL(`http://127.0.0.1:${port}/${agentQuery()}`);
+  await win.loadURL(`${APP_ORIGIN}/${agentQuery()}`);
 }
 
 async function start(): Promise<void> {
@@ -1850,7 +1855,7 @@ async function start(): Promise<void> {
    * `angband -l` does not care what else is open).
    *
    * Two windows on one install would share a savefile tree, a Chromium profile and
-   * a roster, and the second would lose the race for the port; under a no-save-
+   * a roster; under a no-save-
    * scumming policy two processes autosaving one character is a corruption route,
    * not an inconvenience. */
   if (!app.requestSingleInstanceLock()) {
@@ -1916,106 +1921,32 @@ async function start(): Promise<void> {
 
   installHostBridge(DIR_OVERRIDES);
 
-  /* The origin the roster lives under. Resolved and remembered BEFORE the server
-   * binds, so the number is stable across launches; see loopback-port.ts for what
-   * an ephemeral one cost. */
-  const choice = resolveLoopbackPort({
-    env: process.env,
-    userDir: path.join(USER_BASE, "user"),
-    sessionDir: app.getPath("sessionData"),
+  /* The game's own origin, served from the install folder with no port (see
+   * app-origin.ts). Registered before anything loads it, including the hidden
+   * windows recovery uses to write into it. */
+  protocol.handle(APP_SCHEME, (request) => appResponse(request.url));
+
+  const originInputs = { userDir: path.join(USER_BASE, "user"), sessionDir: app.getPath("sessionData") };
+  const known = legacyPorts(originInputs);
+  mainLog("info", "data", `storage origin ${APP_ORIGIN}`, {
+    /* Older builds kept a save under one of these, and an ephemeral port once
+     * meant a new one per launch, so they are the first thing to ask about when a
+     * character has gone. */
+    olderOrigins: known,
   });
-  mainLog("info", "port", `loopback port (${choice.source}): ${String(choice.port)}`, {
-    /* The other origins matter: a save lives under ONE of them and an ephemeral
-     * port once meant a new origin per launch, so which ports have ever been
-     * used is the first thing to ask when a character has gone. */
-    known: choice.known,
-  });
 
-  /* The ladder, and why moving is safe now when it was not before.
-   *
-   * A busy port used to be fatal, because binding elsewhere would have opened a
-   * different origin and shown the player an empty character screen. That reasoning
-   * held until recoverStrandedOrigins existed; it has run on every launch for
-   * several releases, and it is what carries the roster from the origin this copy
-   * used to be on to the one it lands on - the call is a few lines below.
-   *
-   * The case that reported this: two DIFFERENT copies of the game, each with its own
-   * profile and its own roster, both wanting DEFAULT_PORT. Nothing is shared between,
-   * so the second one stepping to the next rung costs nothing at all. One copy
-   * launched twice does not reach here - the single-instance lock above sends the
-   * second process away before the port is even resolved.
-   *
-   * An explicit NEO_ANGBAND_PORT never moves (choice.mayMove), and whatever is bound
-   * is remembered, so a copy that stepped to 45872 stays there rather than drifting
-   * back the next time 45871 happens to be free. Drifting would be a merge every
-   * launch and two origins forever taking turns. */
-  const ladder = choice.mayMove ? portLadder(choice.port) : [choice.port];
-  let port: number | null = null;
-  let lastErr: unknown = null;
-  for (const candidate of ladder) {
-    try {
-      port = await startServer(candidate);
-      break;
-    } catch (err) {
-      lastErr = err;
-      /* Only "somebody has it" is a reason to try the next one. Anything else is a
-       * problem with this machine's networking that the next port will hit too, and
-       * hiding it behind sixteen identical failures would make it unreadable.
-       * EACCES is included because Windows reports an excluded port range - a
-       * Hyper-V or WSL reservation - that way rather than as EADDRINUSE. */
-      const code = (err as NodeJS.ErrnoException | null)?.code;
-      if (code !== "EADDRINUSE" && code !== "EACCES") break;
-      mainLog("info", "port", `port ${String(candidate)} is taken (${code}), trying the next`);
-    }
-  }
-
-  if (port === null) {
-    /* Every rung refused. Still fatal, and still says which number and how to
-     * choose one, because at this point the machine is the problem. */
-    await dialog.showMessageBox({
-      type: "error",
-      title: "Neo Angband",
-      message: `Port ${choice.port} is not available.`,
-      detail:
-        "The game serves itself to its own window over this port, and your " +
-        "characters are stored against it.\n\n" +
-        `${lastErr instanceof Error ? lastErr.message : String(lastErr)}\n\n` +
-        (ladder.length > 1
-          ? `Ports ${String(ladder[0])} to ${String(ladder[ladder.length - 1])} were all ` +
-            "refused, so this is unlikely to be another copy of the game.\n\n"
-          : "") +
-        "Either close whatever is using the port, or choose a different one by " +
-        `setting ${PORT_ENV} (it will be remembered).` +
-        (choice.known.length > 1
-          ? `\n\nThis copy has storage under these ports: ${choice.known.join(", ")}.`
-          : ""),
-    });
-    app.quit();
-    return;
-  }
-
-  if (port !== choice.port) {
-    mainLog(
-      "info",
-      "port",
-      `port ${String(choice.port)} was taken, so this copy is on ${String(port)}; ` +
-        "the character roster follows below",
-    );
-  }
-  rememberLoopbackPort(path.join(USER_BASE, "user"), port);
-
-  /* Before the game opens, reunite anything the ephemeral-port era stranded. Never
-   * allowed to stop the launch. */
+  /* Before the game opens, bring over anything an older build stored under a
+   * loopback port. Never allowed to stop the launch. */
   try {
-    await recoverStrandedOrigins(path.join(USER_BASE, "user"), port, choice.known);
+    await recoverStrandedOrigins(path.join(USER_BASE, "user"), known, lastLoopbackPort(originInputs));
   } catch (err) {
     mainLog("error", "recovery", "character recovery failed", err);
   }
 
-  await createWindow(port);
+  await createWindow();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) void createWindow(port);
+    if (BrowserWindow.getAllWindows().length === 0) void createWindow();
   });
 }
 

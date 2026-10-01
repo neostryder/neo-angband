@@ -226,8 +226,8 @@ function stamp(m: Meta): number {
  *      character over. 45871 still holds the LIVING copy, untouched.
  *   3. The character dies on 45872. Its bytes are dropped and its roster row
  *      becomes a tombstone - on 45872 only.
- *   4. Anything that puts the game back on 45871 - NEO_ANGBAND_PORT is the honest
- *      way - finds it alive, at the turn it was copied at.
+ *   4. Anything that reads 45871 again (the move to the game's own origin reads
+ *      every old port) finds it alive, at the turn it was copied at.
  *
  * So the merge must never let a living copy outrank a tombstone, in EITHER
  * direction, and must not stop at declining to import: step 4's origin is the
@@ -273,11 +273,16 @@ export function buriedIds(
 /**
  * Plan the merge. `sources` should be newest-origin-first: when the same character
  * exists in two of them with equal timestamps, the earlier entry in this list wins.
+ *
+ * `keepUnplayedFrom` names the origin the player was using until this launch. Its
+ * character list is the one on their screen, so a turn-0 row there is carried like
+ * any other instead of being left behind as an abandoned birth.
  */
 export function planOriginMerge(
   target: OriginEntries,
   sources: readonly OriginSnapshot[],
   knownDead: Iterable<string> = [],
+  keepUnplayedFrom?: number,
 ): MergePlan {
   const writes: Record<string, string> = {};
   const removes: string[] = [];
@@ -372,7 +377,7 @@ export function planOriginMerge(
       /* A birth abandoned at turn 0 is not a character anybody lost; importing
        * every one of them would fill the character screen with rows the player
        * only ever pressed Enter through. Left in place, not deleted. */
-      if (!dead && (m.turn ?? 0) <= 0) {
+      if (!dead && (m.turn ?? 0) <= 0 && src.port !== keepUnplayedFrom) {
         skippedUnplayed.push(named);
         continue;
       }

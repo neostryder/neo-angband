@@ -70,6 +70,10 @@ describe("planRequest", () => {
     expect(planRequest("/mods/index.json", ROOTS)).toEqual({ kind: "mods-index" });
   });
 
+  it("answers the service worker registration with an empty script", () => {
+    expect(planRequest("/registerSW.js", ROOTS)).toEqual({ kind: "no-worker" });
+  });
+
   it("keeps the origin probe page", () => {
     expect(planRequest("/__origin-storage", ROOTS)).toEqual({ kind: "origin-probe" });
   });

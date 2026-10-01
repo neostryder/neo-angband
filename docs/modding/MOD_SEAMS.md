@@ -282,7 +282,7 @@ A mod's open panels come down when the mod set changes, after every plugin's `un
 
 ## 4c. `ctx.installMod` - a mod handing the game a mod
 
-`ModProject` has emitted a mod folder's exact bytes since it was written, and its own header names the caller it was waiting for: "a builder that returned paths and contents is equally usable from a CLI, from a test, and from an in-game mod editor." No in-game editor could exist, because nothing a mod could reach turned bytes into an installed mod. `HostDir` has no `MODS` entry, `RAW_FS_OPS` has no `mkdir`, the desktop shell's loopback server has no write route into `mods/`, and an install lands in IndexedDB, not on a filesystem.
+`ModProject` has emitted a mod folder's exact bytes since it was written, and its own header names the caller it was waiting for: "a builder that returned paths and contents is equally usable from a CLI, from a test, and from an in-game mod editor." No in-game editor could exist, because nothing a mod could reach turned bytes into an installed mod. `HostDir` has no `MODS` entry, `RAW_FS_OPS` has no `mkdir`, the desktop shell's file handler has no write route into `mods/`, and an install lands in IndexedDB, not on a filesystem.
 
 ```js
 if (!ctx.installMod) return;                      // no grant, or no door

@@ -4,7 +4,7 @@
  * WHY THIS IS NEEDED AT ALL, and it is not the reason most people would guess.
  * The desktop build is the SAME web bundle running inside Electron, and it keeps
  * the roster in localStorage exactly as a browser tab does - partitioned by the
- * loopback origin the shell serves it from (packages/desktop/src/loopback-port.ts).
+ * origin the shell serves it from (packages/desktop/src/app-origin.ts).
  * So "install the desktop build" does not move a character to it, and neither
  * does using a second browser, a second profile, or a phone. Measured, not
  * assumed: writeSlot goes to localStorage on both platforms, and nothing about

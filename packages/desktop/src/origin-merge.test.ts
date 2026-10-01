@@ -176,6 +176,16 @@ describe("stranded-origin merge", () => {
     expect(writtenCharacters(plan)).toHaveLength(1);
   });
 
+  it("carries a turn-0 character from the origin the player was using until now", () => {
+    const plan = planOriginMerge({}, [
+      origin(45871, [meta("a", "Litholor", 300, true, 0)], { a: "AAA" }),
+      origin(61038, [meta("b", "Negor", 200, true, 0)], { b: "BBB" }),
+    ], [], 45871);
+    expect(plan.recovered.map((r) => r.name)).toEqual(["Litholor"]);
+    expect(plan.skippedUnplayed.map((r) => r.name)).toEqual(["Negor"]);
+    expect(plan.writes["neo-angband-save:a"]).toBe("AAA");
+  });
+
   it("treats a missing turn as unplayed rather than guessing", () => {
     const src: OriginSnapshot = {
       port: 61806,

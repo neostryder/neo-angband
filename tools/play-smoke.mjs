@@ -82,7 +82,9 @@ async function findPage(timeoutMs = 90_000) {
     try {
       const res = await fetch(`http://127.0.0.1:${PORT}/json/list`);
       const targets = await res.json();
-      const page = targets.find((t) => t.type === "page" && /127\.0\.0\.1/u.test(t.url ?? ""));
+      /* The game's own page: neo-angband://game on current builds, a loopback port on
+       * older ones, and never the blank page the startup storage pass loads. */
+      const page = targets.find((t) => t.type === "page" && /^(neo-angband:\/\/game|http:\/\/127\.0\.0\.1:\d+)\//u.test(t.url ?? "") && !(t.url ?? "").includes("/__origin-storage"));
       if (page?.webSocketDebuggerUrl) return page;
       last = `targets: ${targets.map((t) => `${t.type}:${t.url}`).join(", ") || "none"}`;
     } catch (err) {

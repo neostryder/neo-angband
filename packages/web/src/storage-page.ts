@@ -37,7 +37,7 @@ export interface StoragePageInput {
   readonly desktop: boolean;
   /** The desktop data folder, when the shell reported one. */
   readonly home?: string | undefined;
-  /** The origin the roster is scoped to - a real site, or the loopback shell. */
+  /** The origin the roster is scoped to - a real site, or the desktop shell's own. */
   readonly origin: string;
   readonly characters: number;
   /** Installed mods, which share the same storage and the same fate. */
