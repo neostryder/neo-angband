@@ -20,14 +20,14 @@ let shown = false;
 
 /**
  * Put the banner up, naming which mod has the keyboard and how to take it
- * back. Safe to call again while already shown - the id changes in place,
+ * back. Safe to call again while already shown - the name changes in place,
  * rather than a second banner stacking on the first (only one autoplayer can
  * hold the keyboard at a time, so this should never happen, but the banner
  * does not need to trust that).
  */
-export function showAutoplayerBanner(modId: string): void {
+export function showAutoplayerBanner(modName: string): void {
   try {
-    const text = `${modId} has the keyboard. Press Escape to take it back.`;
+    const text = `${modName} has the keyboard. Press Escape to take it back.`;
     if (shown) {
       const existing = document.getElementById(BANNER_ID);
       if (existing) existing.textContent = text;

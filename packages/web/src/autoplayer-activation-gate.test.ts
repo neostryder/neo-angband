@@ -65,13 +65,14 @@ function releaseHost(controller: AgentController) {
   const emitted = ts.transpileModule(`
     let { installedController, modTimer, state, say, render, reportModFault, hideAutoplayerBanner, log } = env;
     const loaded = { id: installedController.id };
+    const modName = "Squire";
     const coreAgentSession = null;
     const agentId = null;
     let installedControllerSpeed = () => {};
     let stopInstalledController = null;
     const frozenDriver = Object.freeze;
     const faultMessage = String;
-    const t = (_key, fallback, values) => fallback.replace("{id}", values.id);
+    const t = (_key, fallback, values) => fallback.replace("{name}", values.name);
     ${declaration("currentInputDriver").getText(parsed)}
     ${declaration("announceDriver").getText(parsed)}
     ${declaration("hostAutoplaying").getText(parsed)}
@@ -112,7 +113,7 @@ function releaseHost(controller: AgentController) {
     getElementById: (id: string) => banner?.id === id ? banner : null,
     body: { append: (node: NonNullable<typeof banner>) => { banner = node; } },
   });
-  showAutoplayerBanner("squire");
+  showAutoplayerBanner("Squire");
   return { host, state, uninstall, tick, say, render, reportModFault, log, playerInput, playerMessage };
 }
 
@@ -187,7 +188,7 @@ describe("a controller releases the keyboard", () => {
     expect(rig.uninstall).toHaveBeenCalledOnce();
     expect(rig.state.nextCommand).toBe(rig.playerInput);
     expect(rig.state.msg).toBe(rig.playerMessage);
-    expect(rig.say).toHaveBeenCalledExactlyOnceWith("You take the keyboard back from squire.");
+    expect(rig.say).toHaveBeenCalledExactlyOnceWith("You take the keyboard back from Squire.");
     expect(rig.log.info).toHaveBeenCalledExactlyOnceWith("mod:squire", "handed the keyboard back (the mod released it)");
     expect(rig.reportModFault).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
@@ -314,7 +315,7 @@ describe("finishAutoplayerInstall shows the on-screen indicator", () => {
   it("shows the banner as part of installing, not as an afterthought bolted on", () => {
     const body = finishBody();
     const markAt = body.indexOf("takenOver.noscore = markNoscore(takenOver.noscore, NOSCORE.BORG)");
-    const bannerAt = body.indexOf("showAutoplayerBanner(loaded.id)");
+    const bannerAt = body.indexOf("showAutoplayerBanner(modName");
     expect(markAt).toBeGreaterThan(-1);
     expect(bannerAt, "finishAutoplayerInstall still shows the banner").toBeGreaterThan(-1);
     expect(bannerAt).toBeGreaterThan(markAt);

@@ -56,6 +56,7 @@ still calls itself.
 
 - [Visible] **Switching windows no longer stops an autoplayer.** Alt-Tab, the Windows key and its shortcuts, Shift, Control, Alt, the lock keys and an input method's keys leave it driving. Any other key still gives you the keyboard back unless the mod handles keys itself, and the banner now names Escape, which always works (#334).
 - [Visible] **The log records what took the keyboard back from an autoplayer.** Each hand-back writes one line naming the key, the touch or gamepad stop, or the mod's own release and its reason (#334).
+- [Visible] [UI] **The autoplayer banner and the hand-back line name the mod properly.** They used to show its id, so Squire appeared as "squire"; they now use the name from the mod's manifest, and the log still records the id.
 
 ## [1.21.1] - 2026-10-01
 

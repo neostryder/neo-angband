@@ -71,10 +71,10 @@ afterEach(() => {
 describe("showAutoplayerBanner", () => {
   it("names the mod and how to take the keyboard back", () => {
     installFakeDom();
-    showAutoplayerBanner("borg");
+    showAutoplayerBanner("Borg");
     const banner = document.getElementById("neo-autoplayer-banner") as unknown as FakeEl | null;
     expect(banner, "a banner element was appended").not.toBeNull();
-    expect(banner!.textContent).toContain("borg");
+    expect(banner!.textContent).toContain("Borg");
     expect(banner!.textContent.toLowerCase()).toContain("press escape");
   });
 
@@ -83,23 +83,23 @@ describe("showAutoplayerBanner", () => {
      * not something the player must act on before continuing - it is a
      * passive readout, and its ARIA role has to say so. */
     installFakeDom();
-    showAutoplayerBanner("borg");
+    showAutoplayerBanner("Borg");
     const banner = document.getElementById("neo-autoplayer-banner") as unknown as FakeEl | null;
     expect(banner!.attrs.get("role")).toBe("status");
   });
 
   it("updates the same element on a second call instead of stacking a duplicate", () => {
     installFakeDom();
-    showAutoplayerBanner("borg");
-    showAutoplayerBanner("otherMod");
+    showAutoplayerBanner("Borg");
+    showAutoplayerBanner("Squire");
     const banner = document.getElementById("neo-autoplayer-banner") as unknown as FakeEl | null;
-    expect(banner!.textContent).toContain("otherMod");
-    expect(banner!.textContent).not.toContain("borg has the keyboard");
+    expect(banner!.textContent).toContain("Squire");
+    expect(banner!.textContent).not.toContain("Borg has the keyboard");
   });
 
   it("does not throw when there is no document at all", () => {
     delete (globalThis as { document?: unknown }).document;
-    expect(() => showAutoplayerBanner("borg")).not.toThrow();
+    expect(() => showAutoplayerBanner("Borg")).not.toThrow();
   });
 
   it("does not throw when the document is hostile", () => {
@@ -109,14 +109,14 @@ describe("showAutoplayerBanner", () => {
       },
       getElementById: () => null,
     };
-    expect(() => showAutoplayerBanner("borg")).not.toThrow();
+    expect(() => showAutoplayerBanner("Borg")).not.toThrow();
   });
 });
 
 describe("hideAutoplayerBanner", () => {
   it("removes the element the banner appended", () => {
     installFakeDom();
-    showAutoplayerBanner("borg");
+    showAutoplayerBanner("Borg");
     expect(document.getElementById("neo-autoplayer-banner")).not.toBeNull();
     hideAutoplayerBanner();
     expect(document.getElementById("neo-autoplayer-banner")).toBeNull();
@@ -137,9 +137,9 @@ describe("hideAutoplayerBanner", () => {
      * would try to update an element that is no longer in the document and
      * the banner would silently stop appearing. */
     installFakeDom();
-    showAutoplayerBanner("borg");
+    showAutoplayerBanner("Borg");
     hideAutoplayerBanner();
-    showAutoplayerBanner("borg");
+    showAutoplayerBanner("Borg");
     expect(document.getElementById("neo-autoplayer-banner")).not.toBeNull();
   });
 });

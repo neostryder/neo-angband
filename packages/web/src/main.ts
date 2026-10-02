@@ -16181,6 +16181,8 @@ function controllerInstallOf(answer: AgentController | ModControllerInstall): Mo
 
 function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModControllerInstall): void {
   const controller = install.controller;
+  /* Player text names the mod as its manifest does; the id stays in the log. */
+  const modName = loaded.manifest.name.trim();
   /* installController is installed and then nothing drove it (found
    * 2026-08-21 while wiring the restart-on-death loop, see docs/PLANNED.md):
    * a mod's controller took a turn only when a human happened to press a
@@ -16228,7 +16230,7 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
    * autoplayer, so a player who IS running one must be able to see that from
    * the screen, and see how to get the keyboard back, without knowing to look
    * for a one-shot chat line on the way out. */
-  showAutoplayerBanner(loaded.id);
+  showAutoplayerBanner(modName === "" ? "The autoplayer" : modName);
   /* The pump. No tick cap: the demo/plugin seams cap ticks as a debug
    * safety valve for a manual test run, and a real "let it play" mod has no
    * such length limit - it plays until the human takes the keyboard back or
@@ -16300,7 +16302,7 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
     installedControllerSpeed = null;
     stopInstalledController = null;
     hideAutoplayerBanner();
-    say(reason ?? t("main.autoplayer.keyboard-back", "You take the keyboard back from {id}.", { id }));
+    say(reason ?? t("main.autoplayer.keyboard-back", "You take the keyboard back from {name}.", { name: modName === "" ? "the autoplayer" : modName }));
     render();
   };
 }
