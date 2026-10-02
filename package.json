@@ -1,6 +1,6 @@
 {
   "name": "neo-angband",
-  "version": "1.21.0",
+  "version": "1.21.1",
   "private": true,
   "description": "A faithful but moddable port of Angband, meant to be playable almost anywhere.",
   "author": "neostryder (RPGM Tools)",
