@@ -183,17 +183,21 @@ export function setDomKeyboardOwner(owner: DomKeyboardOwner | undefined): void {
  * one real-keyboard entry point, before a synthetic key or a mod's own handler
  * can get in the way. An autoplayer answers ITS OWN blocking prompts through
  * `dispatchUiInput` directly (see main.ts's answerBlockingPrompt), never through
- * `browserKeydown`, so this hook only ever sees a key the player actually
- * pressed - which is exactly what "any key gives the keyboard back" needs it to
- * see. Consuming that key here rather than letting it fall through to the game
- * as well is deliberate: a player mashing a key to get attention should not
- * also wield an item or step into a trap the instant control returns.
+ * `browserKeydown`, so this hook only ever sees a key the player pressed. While
+ * an autoplayer drives, none of those keys reach the game: someone pressing keys
+ * to get its attention should not also wield an item or step into a trap the
+ * moment control returns.
  */
 export interface AutoplayerInterruptOwner {
   /** True while an autoplayer currently holds `state.nextCommand`. */
   active(): boolean;
-  /** Hand the keyboard back. Called once per real keypress while active. */
-  interrupt(): void;
+  /**
+   * Called once per real keypress while active (rules in autoplayer-keys.ts).
+   * Returns true when it used the key, so the door cancels the key's browser
+   * default, and false for a key it left alone, such as a bare Alt on its way
+   * to Alt-Tab.
+   */
+  interrupt(event: KeyboardEvent): boolean;
 }
 
 let autoplayerInterruptOwner: AutoplayerInterruptOwner | undefined;
@@ -403,8 +407,7 @@ export function browserKeydown(event: Event): void {
     autoplayerInterruptOwner?.active() &&
     (typeof document === "undefined" || document.hasFocus())
   ) {
-    key.preventDefault();
-    autoplayerInterruptOwner.interrupt();
+    if (autoplayerInterruptOwner.interrupt(key)) key.preventDefault();
     return;
   }
   for (const owner of [domKeyboardOwner, ...controlDomOwners, tiledPanelOwner]) {

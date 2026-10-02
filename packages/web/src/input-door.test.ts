@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UiInput } from "./input-door";
 import {
   armViewPin,
@@ -332,17 +332,27 @@ describe("the autoplayer interrupt hatch", () => {
   it("hands the keyboard back to a real keypress instead of reaching the game", () => {
     const door = browserDoor();
     let interrupted = false;
-    setAutoplayerInterruptOwner({ active: () => true, interrupt: () => { interrupted = true; } });
+    setAutoplayerInterruptOwner({ active: () => true, interrupt: () => { interrupted = true; return true; } });
     const event = door.press("q");
     expect(interrupted).toBe(true);
     expect(door.seen).toEqual([]);
     expect(event.defaultPrevented).toBe(true);
   });
 
+  it("keeps a key the owner left alone from the game too, without cancelling it (#334)", () => {
+    const door = browserDoor();
+    const interrupt = vi.fn(() => false);
+    setAutoplayerInterruptOwner({ active: () => true, interrupt });
+    const event = door.press("Alt");
+    expect(interrupt).toHaveBeenCalledOnce();
+    expect(door.seen).toEqual([]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it("leaves an inactive autoplayer alone", () => {
     const door = browserDoor();
     let interrupted = false;
-    setAutoplayerInterruptOwner({ active: () => false, interrupt: () => { interrupted = true; } });
+    setAutoplayerInterruptOwner({ active: () => false, interrupt: () => { interrupted = true; return true; } });
     door.press("q");
     expect(interrupted).toBe(false);
     expect(door.seen).toEqual(["q"]);
@@ -356,7 +366,7 @@ describe("the autoplayer interrupt hatch", () => {
     const door = browserDoor();
     (globalThis as { document?: unknown }).document = { hasFocus: () => false };
     let interrupted = false;
-    setAutoplayerInterruptOwner({ active: () => true, interrupt: () => { interrupted = true; } });
+    setAutoplayerInterruptOwner({ active: () => true, interrupt: () => { interrupted = true; return true; } });
     door.press("q");
     expect(interrupted).toBe(false);
   });
@@ -366,7 +376,7 @@ describe("the autoplayer interrupt hatch", () => {
     const fakeDocument = { hasFocus: () => false };
     (globalThis as { document?: unknown }).document = fakeDocument;
     let interrupted = false;
-    setAutoplayerInterruptOwner({ active: () => true, interrupt: () => { interrupted = true; } });
+    setAutoplayerInterruptOwner({ active: () => true, interrupt: () => { interrupted = true; return true; } });
     door.press("q");
     expect(interrupted).toBe(false);
     fakeDocument.hasFocus = () => true;

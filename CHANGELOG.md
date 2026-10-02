@@ -48,6 +48,15 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- [Visible] [Modding-API] **An autoplayer mod can choose what a key press does while it has the keyboard.** A controller install can include `onKey`, which answers `keep`, with an optional message for the message line, or `release`. Escape and Ctrl-Z always give the keyboard back, whatever the mod answers (#334).
+
+### Changed
+
+- [Visible] **Switching windows no longer stops an autoplayer.** Alt-Tab, the Windows key and its shortcuts, Shift, Control, Alt, the lock keys and an input method's keys leave it driving. Any other key still gives you the keyboard back unless the mod handles keys itself, and the banner now names Escape, which always works (#334).
+- [Visible] **The log records what took the keyboard back from an autoplayer.** Each hand-back writes one line naming the key, the touch or gamepad stop, or the mod's own release and its reason (#334).
+
 ## [1.21.1] - 2026-10-01
 
 ### Fixed

@@ -80,7 +80,7 @@
 import type { AgentController, ModControllerInstall, ModHooks, ModPluginContext, ModRegistryHost } from "@rpgm-tools/neo-angband-core";
 import type { HudOwnership, MenuPresenter, RegionDeclaration, ScreenPresenter, WorldFrameSink } from "@rpgm-tools/neo-angband-mod-sdk";
 export type {
-  BackupFolder, BackupFolderEntry, ModAuthoringApi, ModCharacterStore, ModControllerInstall,
+  BackupFolder, BackupFolderEntry, ControllerKeyAnswer, ControllerKeyPress, ModAuthoringApi, ModCharacterStore, ModControllerInstall,
   ModCoreApi, ModDebug, ModDisplay, ModDisplayGridRequest, ModDisplaySnapshot,
   ModInstallOutcome, ModKeymapBinding, ModKeymaps, ModMapView, ModPanel, ModPanelSpec,
   ModPluginContext, ModProfile, ModProfileAction, ModProfiles, ProfileResult, ModTitle, ModTitleRow,

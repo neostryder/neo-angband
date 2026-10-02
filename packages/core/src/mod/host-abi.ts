@@ -1490,7 +1490,46 @@ export interface ModControllerInstall {
    * `ctx.saves.create({ resumeAutoplayer: true })`.
    */
   readonly onDeath?: "reincarnate" | "end";
+  /**
+   * Called for each key the player presses while this controller has the
+   * keyboard and the game window has focus. Return keep to go on driving, or
+   * release to hand the keyboard back. Escape and Ctrl-Z always hand back
+   * without reaching this handler. Alt-Tab, keys held with the Windows key, an
+   * input method's keys, and a modifier or lock key pressed alone are ignored
+   * and never reach it either. Without a handler, every other key hands back.
+   *
+   * Answer synchronously, so do the key's work (start the next errand, say)
+   * before returning; a promise, a throw or any other answer hands the keyboard
+   * back and counts as a fault in the mod. The key itself never reaches the
+   * game. (neostryder/neo-angband#334)
+   */
+  readonly onKey?: (press: ControllerKeyPress) => ControllerKeyAnswer;
 }
+
+/** A key the player pressed while a mod's controller holds the keyboard. */
+export interface ControllerKeyPress {
+  /** The key's DOM name, as `KeyboardEvent.key` gives it: "a", "Enter", "F1". */
+  readonly key: string;
+  readonly ctrl: boolean;
+  readonly alt: boolean;
+  readonly shift: boolean;
+  readonly meta: boolean;
+  /** True when a held key is repeating. */
+  readonly repeat: boolean;
+}
+
+/**
+ * `keep`: the controller goes on driving, and the host shows `message` on the
+ * message line when one is given. `release`: the keyboard goes back to the
+ * player, with `reason` shown in place of the usual line.
+ */
+export type ControllerKeyAnswer = {
+  readonly kind: "keep";
+  readonly message?: string;
+} | {
+  readonly kind: "release";
+  readonly reason?: string;
+};
 
 /**
  * What the shell is doing at this moment.

@@ -63,7 +63,7 @@ function releaseHost(controller: AgentController) {
   findStop(declaration("finishAutoplayerInstall"));
   if (!stop || !release) throw new Error("main.ts no longer declares controller release or teardown");
   const emitted = ts.transpileModule(`
-    let { installedController, modTimer, state, say, render, reportModFault, hideAutoplayerBanner } = env;
+    let { installedController, modTimer, state, say, render, reportModFault, hideAutoplayerBanner, log } = env;
     const loaded = { id: installedController.id };
     const coreAgentSession = null;
     const agentId = null;
@@ -93,8 +93,9 @@ function releaseHost(controller: AgentController) {
   const say = vi.fn();
   const render = vi.fn();
   const reportModFault = vi.fn();
+  const log = { info: vi.fn() };
   const host = new Function("env", emitted)({
-    installedController: { id: "squire", session }, modTimer, state, say, render, reportModFault, hideAutoplayerBanner,
+    installedController: { id: "squire", session }, modTimer, state, say, render, reportModFault, hideAutoplayerBanner, log,
   }) as {
     release(id: string, reason?: string): void;
     current(): InputDriver;
@@ -112,7 +113,7 @@ function releaseHost(controller: AgentController) {
     body: { append: (node: NonNullable<typeof banner>) => { banner = node; } },
   });
   showAutoplayerBanner("squire");
-  return { host, state, uninstall, tick, say, render, reportModFault, playerInput, playerMessage };
+  return { host, state, uninstall, tick, say, render, reportModFault, log, playerInput, playerMessage };
 }
 
 describe("a controller releases the keyboard", () => {
@@ -149,6 +150,7 @@ describe("a controller releases the keyboard", () => {
     expect(Object.isFrozen(changes[0])).toBe(true);
     expect(document.getElementById("neo-autoplayer-banner")).toBeNull();
     expect(rig.say).toHaveBeenCalledExactlyOnceWith("The task is finished.");
+    expect(rig.log.info).toHaveBeenCalledExactlyOnceWith("mod:squire", "handed the keyboard back (the mod released it: The task is finished.)");
     expect(rig.render).toHaveBeenCalledOnce();
     retained.release("A repeated release.");
     vi.advanceTimersByTime(1000);
@@ -186,6 +188,7 @@ describe("a controller releases the keyboard", () => {
     expect(rig.state.nextCommand).toBe(rig.playerInput);
     expect(rig.state.msg).toBe(rig.playerMessage);
     expect(rig.say).toHaveBeenCalledExactlyOnceWith("You take the keyboard back from squire.");
+    expect(rig.log.info).toHaveBeenCalledExactlyOnceWith("mod:squire", "handed the keyboard back (the mod released it)");
     expect(rig.reportModFault).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -319,7 +322,7 @@ describe("finishAutoplayerInstall shows the on-screen indicator", () => {
 
   it("hides the banner in the same place the keyboard is actually handed back", () => {
     const body = finishBody();
-    const stopAt = body.indexOf("stopInstalledController = (reason) => {");
+    const stopAt = body.indexOf("stopInstalledController = (source, reason) => {");
     expect(stopAt).toBeGreaterThan(-1);
     const stopBody = body.slice(stopAt, body.indexOf("};", stopAt));
     expect(stopBody).toMatch(/hideAutoplayerBanner\(\);/u);

@@ -27,7 +27,7 @@ let shown = false;
  */
 export function showAutoplayerBanner(modId: string): void {
   try {
-    const text = `${modId} has the keyboard. Press any key to take it back.`;
+    const text = `${modId} has the keyboard. Press Escape to take it back.`;
     if (shown) {
       const existing = document.getElementById(BANNER_ID);
       if (existing) existing.textContent = text;

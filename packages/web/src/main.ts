@@ -345,6 +345,7 @@ import {
   setModCode,
 } from "./mod-code";
 import { hideAutoplayerBanner, showAutoplayerBanner } from "./autoplayer-banner";
+import { decideAutoplayerKey, keyPressOf } from "./autoplayer-keys";
 import {
   modOwnFiles,
   modPluginContext,
@@ -379,7 +380,7 @@ import { publicModList } from "./mod-list";
 import { applyMapMargin } from "./map-margin";
 import { createModSaves } from "./saves-facade";
 import { frozenDriver, type InputDriver, type InputSnapshotSource } from "./input-snapshot";
-import type { ModControllerInstall, ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, ModTiles } from "./mod-plugin";
+import type { ControllerKeyAnswer, ControllerKeyPress, ModControllerInstall, ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, ModTiles } from "./mod-plugin";
 import { createModNet, netRelayBridge } from "./mod-net";
 import { playerCommandEvent } from "./player-command-event";
 import { createKeyRepeatTracker } from "./key-repeat";
@@ -10162,6 +10163,8 @@ let installedController: {
   status?: { readonly label?: string; readonly reason?: string };
   /** ModControllerInstall.onDeath; absent means reincarnate in place. */
   onDeath?: "reincarnate" | "end";
+  /** ModControllerInstall.onKey (#334); absent means any key hands back. */
+  onKey?: (press: ControllerKeyPress) => ControllerKeyAnswer;
 } | null = null;
 /**
  * The mod whose controller asked, through ctx.saves.create({ resumeAutoplayer }),
@@ -10284,7 +10287,7 @@ setModDriverControl({
   },
   release: (id, reason) => {
     if (installedController?.id !== id) return;
-    stopInstalledController?.(reason);
+    stopInstalledController?.(reason === undefined ? "the mod released it" : `the mod released it: ${reason}`, reason);
   },
 });
 setModAutoplayerRollOn({
@@ -12530,21 +12533,21 @@ controlSurface.setCommands(
   },
 );
 
-function stopForControlAdapter(): void {
-  if (installedController !== null) stopInstalledController?.();
+function stopForControlAdapter(source: string): void {
+  if (installedController !== null) stopInstalledController?.(source);
   else stopControlInput();
 }
 
 if (controlProfile() === "touch" || window.matchMedia?.("(pointer: coarse)").matches) {
   installTouchControls({
     save: () => { persistSave(); },
-    stop: stopForControlAdapter,
+    stop: () => stopForControlAdapter("the touch stop"),
   });
 }
 
 // Installed unconditionally, unlike the touch sheet: a controller can be
 // plugged into anything, and it stays invisible until one actually reports.
-const gamepadControls = installGamepadControls({ stop: stopForControlAdapter, pinScreen: () => panelCues.pin() }, canvas);
+const gamepadControls = installGamepadControls({ stop: () => stopForControlAdapter("the gamepad stop"), pinScreen: () => panelCues.pin() }, canvas);
 const gamepadRuntime = startGamepadRuntime(controlSurface, gamepadControls.host);
 gamepadControls.attach(gamepadRuntime.adapter);
 
@@ -13427,7 +13430,7 @@ async function activateAutoplayerCmd(modId: string): Promise<void> {
  */
 function tryBorgCommand(): void {
   if (installedController) {
-    stopInstalledController?.();
+    stopInstalledController?.("the autoplayer command");
     return;
   }
   const candidate = activeModCode().plugins.find(
@@ -15419,13 +15422,14 @@ let installedControllerSpeed: ((speed: AutoplayerSpeed) => void) | null = null;
 
 /**
  * Hands the keyboard back on demand - a real keypress (input-door.ts's
- * AutoplayerInterruptOwner) or Ctrl-Z pressed while an autoplayer is already
- * running (#125). Null on the same schedule as `installedController`: set
+ * AutoplayerInterruptOwner, decided by autoplayer-keys.ts), the touch or
+ * gamepad stop, the autoplayer command, or the mod's own release (#125, #334).
+ * `source` names which for the log; `reason` replaces the line the player sees. Null on the same schedule as `installedController`: set
  * alongside it in the controller-install loop below, cleared alongside it here
  * and in reloadAfterModChange (which tears the whole mod down instead, for a
  * page reload rather than a live hand-back).
  */
-let stopInstalledController: ((reason?: string) => void) | null = null;
+let stopInstalledController: ((source: string, reason?: string) => void) | null = null;
 
 /**
  * A candidate autoplayer the boot-time controller-install loop held back
@@ -16203,7 +16207,7 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
       onNondeterministic: () => markSaveNondeterministic(loaded.id),
     } : {}),
   });
-  installedController = { id: loaded.id, session, ...(install.onDeath === "end" ? { onDeath: "end" as const } : {}) };
+  installedController = { id: loaded.id, session, ...(install.onDeath === "end" ? { onDeath: "end" as const } : {}), ...(typeof install.onKey === "function" ? { onKey: install.onKey } : {}) };
   announceDriver();
   /* Mark the savefile (do_cmd_try_borg, cmd-misc.c:128-140): a character an
    * autoplayer took over is not a character that earned its result, and the bit
@@ -16277,12 +16281,15 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
     clearInterval(modTimer);
     startModTimer();
   };
-  /* The player's way out (#125): any real keypress, or Ctrl-Z pressed again,
+  /* The player's way out (#125): Escape, Ctrl-Z, any key the mod's onKey
+   * does not keep (#334), the touch or gamepad stop, or the mod's own release
    * calls this. A live hand-back, not a reload - the character stays exactly
-   * where it is, mid-turn, with the human in the chair. */
-  stopInstalledController = (reason) => {
+   * where it is, mid-turn, with the human in the chair. The log line names the
+   * source, so a soak can tell a stray key from the mod giving up. */
+  stopInstalledController = (source, reason) => {
     clearInterval(modTimer);
     const id = installedController?.id ?? loaded.id;
+    log.info(`mod:${id}`, `handed the keyboard back (${source})`);
     try {
       installedController?.session.uninstall();
     } catch (err) {
@@ -16400,7 +16407,24 @@ for (const loaded of activeModCode().plugins) {
  * whether or not a controller ever installs, and whichever mod's turn it is. */
 setAutoplayerInterruptOwner({
   active: () => installedController !== null,
-  interrupt: () => stopInstalledController?.(),
+  interrupt: (event) => {
+    const holder = installedController;
+    /* The slot fills a few statements before its stop function does; a key in
+     * between is left alone rather than swallowed with nothing able to act on it. */
+    if (holder === null || stopInstalledController === null) return false;
+    const outcome = decideAutoplayerKey(keyPressOf(event), holder.onKey, event.isComposing === true);
+    if (outcome.kind === "ignore") return false;
+    if (outcome.kind === "keep") {
+      if (outcome.message !== undefined && outcome.message !== "") {
+        say(outcome.message);
+        render();
+      }
+      return true;
+    }
+    if (outcome.fault !== undefined) reportModFault(holder.id, outcome.fault);
+    stopInstalledController?.(outcome.source, outcome.reason);
+    return true;
+  },
 });
 
 // Dev-only diagnostic hook for automated verification; Vite strips this whole

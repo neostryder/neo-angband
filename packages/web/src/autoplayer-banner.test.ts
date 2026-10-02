@@ -75,7 +75,7 @@ describe("showAutoplayerBanner", () => {
     const banner = document.getElementById("neo-autoplayer-banner") as unknown as FakeEl | null;
     expect(banner, "a banner element was appended").not.toBeNull();
     expect(banner!.textContent).toContain("borg");
-    expect(banner!.textContent.toLowerCase()).toContain("press any key");
+    expect(banner!.textContent.toLowerCase()).toContain("press escape");
   });
 
   it("marks itself as a status region rather than a blocking dialog", () => {
