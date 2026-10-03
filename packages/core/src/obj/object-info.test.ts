@@ -1,18 +1,22 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { Rng } from "../rng.js";
-import { TV, RF } from "../generated/index.js";
+import { OBJ_MOD, TV, RF } from "../generated/index.js";
 import { TMD } from "../generated/player-timed.js";
 import { startGame } from "../session/game.js";
 import type { GamePack } from "../session/game.js";
 import { objectPrep } from "./make.js";
-import { objectInfoTextblock, type ObjectInfoExtras } from "../game/object-inspect.js";
-import { textblockToString } from "./object-info.js";
+import {
+  makeObjectInfoDeps,
+  objectInfoTextblock,
+  type ObjectInfoExtras,
+} from "../game/object-inspect.js";
+import { objectInfo, OINFO, textblockToString } from "./object-info.js";
 import { OBJ_NOTICE, playerLearnAllRunes } from "./knowledge.js";
 import { ORIGIN } from "../generated/origins.js";
 import type { GameObject } from "./object.js";
 import type { GameState } from "../game/context.js";
-import type { EffectIntro } from "../mod/hooks.js";
+import type { EffectIntro, ObjectInfoTextSite } from "../mod/hooks.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -484,5 +488,134 @@ describe("temporary brands reach object info (PORT_TODO 3.20)", () => {
     expect(state.tempBrandSlay.hasSlay(evilIdx)).toBe(false);
     state.actor.player.timed[TMD.ATT_EVIL] = 20;
     expect(state.tempBrandSlay.hasSlay(evilIdx)).toBe(true);
+  });
+});
+
+describe("the objectInfoText seam's site", () => {
+  /** Every kind the registry binds, prepped the way boot's `prep` does. */
+  function everyKind(seed: number, raceName: string, className: string) {
+    const { state, booted } = startGame(pack, { seed, depth: 1, raceName, className });
+    const reg = booted.registries;
+    playerLearnAllRunes(state.actor.player, state.runeEnv);
+    const extras: ObjectInfoExtras = {
+      projections: reg.projections ?? [],
+      constants: reg.constants,
+    };
+    const prepRng = new Rng(1);
+    const objects = reg.objects.kinds
+      .filter((k) => k.name.length > 0 && k.tval !== TV.GOLD)
+      .map((kind) => {
+        const obj = objectPrep(prepRng, reg.objects, reg.constants, kind, 1, "minimise");
+        obj.notice |= OBJ_NOTICE.ASSESSED;
+        obj.number = 1;
+        obj.origin = ORIGIN.NONE;
+        return obj;
+      });
+    return { state, extras, objects };
+  }
+
+  const CHARACTERS: Array<[number, string, string]> = [
+    [123, "Human", "Warrior"],
+    [77, "High-Elf", "Mage"],
+    [9, "Hobbit", "Rogue"],
+  ];
+
+  it.each(CHARACTERS)(
+    "leaves every description byte-identical when a mod passes the text through (seed %i, %s %s)",
+    (seed, race, cls) => {
+      const { state, extras, objects } = everyKind(seed, race, cls);
+      expect(objects.length).toBeGreaterThan(300);
+      /* Inspection, and object recall's description of a kind. */
+      const describe = (o: GameObject) => [
+        objectInfoTextblock(state, o, extras).runs,
+        objectInfo(o, OINFO.FAKE | OINFO.SUBJ, makeObjectInfoDeps(state, o, extras)).runs,
+      ];
+      for (const aware of [true, false]) {
+        state.isAware = () => aware;
+        delete state.modHooks;
+        const faithful = objects.map(describe);
+        state.modHooks = { objectInfoText: (text) => text };
+        const passed = objects.map(describe);
+        expect(passed).toEqual(faithful);
+      }
+      delete state.modHooks;
+    },
+    30_000,
+  );
+
+  it("names the section of every fragment, and the object it describes", () => {
+    const { state, extras, objects } = everyKind(123, "Human", "Warrior");
+    state.isAware = () => true;
+    const sections = new Set<string>();
+    for (const obj of objects) {
+      const seen: Array<{ text: string; site: ObjectInfoTextSite }> = [];
+      state.modHooks = {
+        objectInfoText: (text, site) => {
+          seen.push({ text, site });
+          return text;
+        },
+      };
+      const runs = objectInfoTextblock(state, obj, extras).runs;
+      expect(seen.map((s) => s.text)).toEqual(runs.map((r) => r.text));
+      for (const { text, site } of seen) {
+        sections.add(site.section);
+        expect(site.kind).toBe(obj.kind.name);
+        expect(site.aware).toBe(true);
+        /* The blank lines between parts are the only fragments filed as breaks. */
+        if (site.section === "break") expect(text).toBe("\n");
+        if (text.startsWith("Affects your ")) expect(site.section).toBe("stats");
+        if (text.startsWith("Combat info:")) expect(site.section).toBe("combat");
+        if (/^Your chance of success is /u.test(text)) expect(site.section).toBe("effect");
+      }
+    }
+    delete state.modHooks;
+    for (const s of ["flavor", "stats", "effect", "combat", "light", "break"]) {
+      expect(sections, s).toContain(s);
+    }
+  });
+
+  it("lets a mod add upstream's full stop to an \"Affects your\" line and nothing else", () => {
+    /* obj-info.c:181, "Affects your %s" -> "Affects your %s." (upstream
+     * ad5c8401a), keyed on the section rather than on the words alone. 4.2.6
+     * writes the line where it withholds the number: object recall's
+     * description of a kind (OINFO_FAKE). */
+    const { state, extras, prep } = boot();
+    const sandals = prep("leather sandals", TV.BOOTS, { origin: ORIGIN.NONE });
+    sandals.modifiers[OBJ_MOD.STEALTH] = 2;
+    const recall = (): string =>
+      textblockToString(
+        objectInfo(sandals, OINFO.FAKE | OINFO.SUBJ, makeObjectInfoDeps(state, sandals, extras)),
+      );
+    const faithful = recall();
+    expect(faithful).toContain("Affects your stealth\n");
+
+    state.modHooks = {
+      objectInfoText: (text, site) => {
+        if (site.section !== "stats") return text;
+        const m = /^Affects your (.*)\n$/u.exec(text);
+        return m ? `Affects your ${m[1]}.\n` : text;
+      },
+    };
+    const fixed = recall();
+    delete state.modHooks;
+    expect(fixed).toBe(faithful.replace("Affects your stealth\n", "Affects your stealth.\n"));
+  });
+
+  it("lets a mod reword a line for one kind only", () => {
+    const { state, extras, prep } = boot();
+    const clw = prep("cure light wounds", TV.POTION, { origin: ORIGIN.NONE });
+    const csw = prep("cure serious wounds", TV.POTION, { origin: ORIGIN.NONE });
+    const faithful = [info(state, clw, extras), info(state, csw, extras)];
+    state.modHooks = {
+      objectInfoText: (text, site) =>
+        site.aware && site.tval === "potion" && site.kind === "Cure Light Wounds" && site.section === "effect"
+          ? text.replace("When quaffed, it ", "When drunk, it ")
+          : text,
+    };
+    const reworded = [info(state, clw, extras), info(state, csw, extras)];
+    delete state.modHooks;
+    expect(faithful[0]).toContain("When quaffed, it ");
+    expect(reworded[0]).toBe(faithful[0]?.replace("When quaffed, it ", "When drunk, it "));
+    expect(reworded[1]).toBe(faithful[1]);
   });
 });

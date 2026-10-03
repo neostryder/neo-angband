@@ -197,7 +197,7 @@ describe("composeContentPacks", () => {
  *  - `object` name-keyed, holding both a "*starred*" pair (addressable since the
  *    key stopped dropping the mark) and a genuinely duplicated name (not)
  *  - `ego_item` repeated names separated by a declared discriminator
- *  - `history` no per-record identity at all
+ *  - `history` keyed by chart and roll, but whole-file for `records`
  */
 function passthroughCore(): LoadedPack {
   return {
@@ -272,8 +272,8 @@ describe("the shipped pack", () => {
     const composed = composeContentPacks([shippedCore()]);
     expect(composed.composedFiles.length + composed.passthroughFiles.length).toBe(44);
     /* Named rather than counted: a count would still pass if a DIFFERENT file
-     * fell out of phase 1, and the three left are left for three different
-     * reasons - two config singletons and one file with no identity at all. */
+     * fell out of phase 1. Two config singletons, and history, whose records
+     * are keyed but whose order within a chart is what its rolls mean. */
     expect(composed.passthroughFiles).toEqual(["constants", "history", "visuals"]);
     expect(composed.problems).toEqual([]);
   });
@@ -404,7 +404,8 @@ describe("composeContentPacks: per-record ops on passthrough files", () => {
     /* THE SPLIT MOVED ON 2026-08-08 and this is where it is visible. `store` is
      * keyed by its STORE_* code and `ego_item` by name + discriminator, so both
      * now merge per record. What is left whole-file is `constants` (a config
-     * singleton - the host binds one), `history` (no identity at all) and
+     * singleton - the host binds one), `history` (keyed, but record order is
+     * what a chart means) and
      * `object` ONLY in this fixture, which deliberately ships "Deep Descent"
      * twice with the same type; core's real object.txt does not. */
     const composed = composeContentPacks([passthroughCore()]);
@@ -530,16 +531,50 @@ describe("composeContentPacks: per-record ops on passthrough files", () => {
 
 describe("composeContentPacks: no per-record op is ever ignored in silence", () => {
   it("reports an op against a file with no per-record identity", () => {
-    const mod: LoadedPack = {
+    /* A mod-only file with no `name` and no declared key: nothing to resolve a
+     * ref against, so the op is reported and nothing is applied. */
+    const lore: LoadedPack = {
       manifest: manifest("lore", { core: "*" }),
-      files: { history: { patches: { "core:1": { phrase: ["You were "] } } } },
+      files: { rumour: { records: [{ text: "A dragon sleeps below." }] } },
     };
-    const composed = composeContentPacks([passthroughCore(), mod]);
+    const mod: LoadedPack = {
+      manifest: manifest("gossip", { lore: "*" }),
+      files: { rumour: { patches: { "lore:1": { text: "A dragon wakes below." } } } },
+    };
+    const composed = composeContentPacks([passthroughCore(), lore, mod]);
     expect(composed.problems).toEqual([
-      'lore: history patches "core:1", but history records have no per-record identity, so only whole-file replacement can change them',
+      'gossip: rumour patches "lore:1", but rumour records have no per-record identity, so only whole-file replacement can change them',
     ]);
     // and the record is untouched, not half-applied
-    expect(recordsOf(composed, "history")[0]?.["phrase"]).toEqual(["You are "]);
+    expect(recordsOf(composed, "rumour")[0]?.["text"]).toBe("A dragon sleeps below.");
+  });
+
+  it("patches a history phrase by chart and roll", () => {
+    const mod: LoadedPack = {
+      manifest: manifest("lore", { core: "*" }),
+      files: { history: { patches: { "core:1--10": { phrase: ["You were "] } } } },
+    };
+    const composed = composeContentPacks([passthroughCore(), mod]);
+    expect(composed.problems).toEqual([]);
+    expect(composed.passthroughFiles).toContain("history");
+    expect(recordsOf(composed, "history")[0]?.["phrase"]).toEqual(["You were "]);
+    expect(recordsOf(composed, "history")[0]?.["chart"]).toEqual({ chart: 1, next: 2, roll: 10 });
+  });
+
+  it("still takes a pack's history records as the whole file", () => {
+    /* The key is for the per-record ops only. A chart's rolls mean something in
+     * file order, so shipped records replace the file rather than being
+     * appended after core's roll-100 entry, where get_history never looks. */
+    const mod: LoadedPack = {
+      manifest: manifest("lore", { core: "*" }),
+      files: {
+        history: { records: [{ chart: { chart: 1, next: 0, roll: 100 }, phrase: ["You are new. "] }] },
+      },
+    };
+    const composed = composeContentPacks([passthroughCore(), mod]);
+    expect(recordsOf(composed, "history").map((r) => r["phrase"])).toEqual([["You are new. "]]);
+    expect(composed.problems).toHaveLength(1);
+    expect(composed.problems[0]).toContain("lore: history replaces the whole file");
   });
 
   it("reports an op against a ref two records claim, and changes neither", () => {
@@ -747,7 +782,8 @@ describe("composeContentPacks: no per-record op is ever ignored in silence", () 
       { file: "object", ref: "core:scroll--deep-descent", reachable: false }, // ambiguous
       { file: "ego_item", ref: "core:of-acid", reachable: false }, // ambiguous base
       { file: "ego_item", ref: "core:of-acid#shot-arrow", reachable: true }, // discriminated
-      { file: "history", ref: "core:1", reachable: false }, // no identity
+      { file: "history", ref: "core:1--10", reachable: true }, // chart 1, roll 10
+      { file: "history", ref: "core:1", reachable: false }, // missing: needs the roll too
       { file: "store", ref: "core:nope", reachable: false }, // missing
     ];
     const ops: Array<[string, (ref: string) => Record<string, unknown>]> = [

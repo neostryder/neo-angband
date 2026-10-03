@@ -64,7 +64,8 @@ import type { ProjectionInfo } from "../world/projection.js";
 import type { RuneEnv } from "./knowledge.js";
 import { OBJ_NOTICE, sustainFlag } from "./knowledge.js";
 import type { KnownDesc } from "./known-object.js";
-import type { EffectIntro, ModHooks } from "../mod/hooks.js";
+import type { EffectIntro, ModHooks, ObjectInfoSection } from "../mod/hooks.js";
+import { tvals } from "./tval-table.js";
 import {
   objectEffectIsKnown,
   objectFullyKnown,
@@ -1915,23 +1916,43 @@ function describeFlavorText(
  * upstream object_info().
  */
 export function objectInfo(obj: GameObject, mode: number, deps: ObjectInfoDeps): Textblock {
-  const tb = objectInfoOut(obj, mode, deps);
+  const sections: ObjectInfoSection[] = [];
+  const tb = objectInfoOut(obj, mode, deps, sections);
   /* The objectInfoText seam (mod/hooks.ts): each fragment one append wrote, in
-   * order, once the whole description exists. Absent, the textblock is returned
-   * as built. A fragment a hook empties is dropped, as tbAppend drops an empty
-   * append. */
+   * order, once the whole description exists, with the section that wrote it.
+   * Absent, the textblock is returned as built. A fragment a hook empties is
+   * dropped, as tbAppend drops an empty append. */
   const restate = deps.hooks?.objectInfoText;
   if (restate) {
+    const tval = tvals.nameAt(obj.tval) ?? "unknown";
+    const kind = obj.kind.name;
+    const aware = deps.known.isAware(obj.kind);
     tb.runs = tb.runs
-      .map((r) => ({ text: restate(r.text), attr: r.attr }))
+      .map((r, i) => ({
+        text: restate(r.text, { section: sections[i] ?? "break", tval, kind, aware }),
+        attr: r.attr,
+      }))
       .filter((r) => r.text.length > 0);
   }
   return tb;
 }
 
-/** object_info_out (obj-info.c L2315): the faithful run stream, before any mod text seam. */
-function objectInfoOut(obj: GameObject, mode: number, deps: ObjectInfoDeps): Textblock {
+/**
+ * object_info_out (obj-info.c L2315): the faithful run stream, before any mod
+ * text seam. `sections[i]` is left naming the part that wrote run i, for the
+ * objectInfoText site; recording it never changes a run.
+ */
+function objectInfoOut(
+  obj: GameObject,
+  mode: number,
+  deps: ObjectInfoDeps,
+  sections: ObjectInfoSection[],
+): Textblock {
   const tb = tbNew();
+  /** Name every run written since the previous call after `section`. */
+  const wrote = (section: ObjectInfoSection): void => {
+    while (sections.length < tb.runs.length) sections.push(section);
+  };
   const terse = (mode & OINFO.TERSE) !== 0;
   const subjective = (mode & OINFO.SUBJ) !== 0;
   const ego = (mode & OINFO.EGO) !== 0;
@@ -1943,6 +1964,7 @@ function objectInfoOut(obj: GameObject, mode: number, deps: ObjectInfoDeps): Tex
      placeholder is not modelled). */
   if (obj.kind !== shadow.kind) {
     tbAppend(tb, "\n\nYou do not know what this is.\n");
+    wrote("unknown");
     return tb;
   }
 
@@ -1970,7 +1992,9 @@ function objectInfoOut(obj: GameObject, mode: number, deps: ObjectInfoDeps): Tex
   const el = getKnownElements(obj, shadow, deps.player, mode);
 
   if (subjective) describeOrigin(tb, deps, obj, terse);
+  wrote("origin");
   if (!terse) describeFlavorText(tb, deps, obj, shadow, ego);
+  wrote("flavor");
 
   let something = false;
   if (
@@ -1981,35 +2005,55 @@ function objectInfoOut(obj: GameObject, mode: number, deps: ObjectInfoDeps): Tex
     tbAppend(tb, "You do not know the full extent of this item's powers.\n");
     something = true;
   }
+  wrote("unassessed");
 
   const aware = deps.known.isAware(obj.kind);
   if (describeCurses(tb, shadow, deps.env)) something = true;
+  wrote("curses");
   if (describeStats(tb, shadow, deps.env, mode, aware)) something = true;
+  wrote("stats");
   if (describeSlays(tb, shadow, deps.env)) something = true;
+  wrote("slays");
   if (describeBrands(tb, shadow, deps.env)) something = true;
+  wrote("brands");
   if (describeElements(tb, el, deps.projections)) something = true;
+  wrote("elements");
   if (describeProtects(tb, flags, deps.env)) something = true;
+  wrote("protects");
   if (describeIgnores(tb, el, deps.projections)) something = true;
+  wrote("ignores");
   if (describeHates(tb, el, deps.projections)) something = true;
+  wrote("hates");
   if (describeSustains(tb, flags, deps.env)) something = true;
+  wrote("sustains");
   if (describeMiscMagic(tb, flags, deps.env)) something = true;
+  wrote("misc");
   if (describeLight(tb, deps, obj, mode)) something = true;
+  wrote("light");
   if (describeBook(tb, deps, obj)) something = true;
+  wrote("book");
   /* ego && describe_ego(tb, obj->ego) (obj-info.c L2360): only object_info_ego
    * sets the bit, so this is silent for inspect. */
   if (ego && describeEgo(tb, obj.ego)) something = true;
+  wrote("ego");
   if (something) tbAppend(tb, "\n");
+  wrote("break");
 
   if (!ego) {
     if (describeEffect(tb, deps, obj, shadow, subjective)) {
+      wrote("effect");
       something = true;
       tbAppend(tb, "\n");
+      wrote("break");
     }
     if (subjective && describeCombat(tb, deps, obj)) {
+      wrote("combat");
       something = true;
       tbAppend(tb, "\n");
+      wrote("break");
     }
     if (!terse && subjective && describeDigger(tb, deps, obj)) something = true;
+    wrote("digger");
   }
 
   if (!something && !terse) {
@@ -2018,5 +2062,6 @@ function objectInfoOut(obj: GameObject, mode: number, deps: ObjectInfoDeps): Tex
      * this line until desc_obj_fake / desc_ego_fake started running. */
     tbAppend(tb, "\n\nThis item does not seem to possess any special abilities.");
   }
+  wrote("nothing");
   return tb;
 }

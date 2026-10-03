@@ -245,7 +245,7 @@ Until 2026-08-08 the test was "a unique `name`", and three files failed it on co
 | `vault` | 162 | adds one, 163 |
 | `store`, `flavor`, `brand`, `slay`, `object_base`, `trap`, `names`, ... | - | adds one, keyed by whatever upstream keys it by |
 
-`constants`, `visuals` and `history` still take a whole file. `constants` and `visuals` are config singletons: the file is their identity, the host binds exactly one, and shipping `constants.json` means "use mine". `history` has no per-record identity at all: a history record is `{chart:{chart,next,roll}, phrase}`, and a mod could legitimately change any part of it. For those three, `ModProject.build` still raises `file/whole-file-replacement` as an `error`, so an author cannot replace the base game's copy of a file without noticing.
+`constants`, `visuals` and `history` still take a whole file. `constants` and `visuals` are config singletons: the file is their identity, the host binds exactly one, and shipping `constants.json` means "use mine". `history` records have refs, so a mod can patch, replace or remove a single phrase, but it cannot add a record on its own. The game walks a chart's records in file order and takes the first whose `roll` reaches the die, so a record added after core's last one would never be picked. For those three, `ModProject.build` still raises `file/whole-file-replacement` as an `error`, so an author cannot replace the base game's copy of a file without noticing.
 
 ### What a record is called
 
@@ -253,6 +253,7 @@ Refs did not change. `patchFields`, `replace` and `remove` already used the per-
 
 - `object` is `type + name`, so the Dagger is `core:sword--dagger`;
 - `ego_item` is `name`, plus a `#` discriminator where core ships a name twice, as in `core:of-acid#shot-arrow`;
+- `history` is `chart + roll`, the numbers on the record's `chart:` line in history.txt, so `chart:50:51:100` ("You have blue-gray eyes, ") is `core:50--100`;
 - `store` is its `STORE_*` code, `brand` and `slay` their `code`, `flavor` its base tval, and so on.
 
 A record answers to several refs: its base key, its discriminated form, and, as an alias, the lossy slug used before 2026-08-08, so refs written against an older engine keep working. An alias is dropped where it would shadow a *different* record's real name. `*Healing*`'s old ref, for example, is plain `Healing`'s current one, and an old alias must not take a name away from another record.

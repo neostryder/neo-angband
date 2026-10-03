@@ -25,8 +25,8 @@ import {
 /**
  * The files whose identity is NOT a unique string `name`, measured over
  * packages/content/pack on 2026-07-29 (14 with no string `name`, 6 whose names
- * slug to the same ref). `history` is deliberately NOT here: it has no identity
- * to key on, so an op against it is reported instead of applied.
+ * slug to the same ref), plus `history`, keyed by chart and roll since
+ * 2026-10-03.
  */
 const EXPECTED_KEYED_FILES = [
   "body",
@@ -36,6 +36,7 @@ const EXPECTED_KEYED_FILES = [
   "ego_item",
   "flavor",
   "hints",
+  "history",
   "names",
   "object",
   "object_base",
@@ -83,14 +84,27 @@ describe("RECORD_KEY_SPECS", () => {
     ).toEqual([]);
   });
 
-  it("does not claim history, which has no per-record identity", () => {
-    expect(RECORD_KEY_SPECS["history"]).toBeUndefined();
-    /* And it has none to claim. Asserting that against the REAL file, rather
-     * than against a list this file also builds: the previous version of this
-     * checked `[...EXPECTED_KEYED_FILES, "history"]` contained "history", which
-     * is true by construction and could never have failed. */
-    const keys = corePackFile("history").map((r) => recordKey("history", r));
-    expect(keys.every((k) => k === null)).toBe(true);
+  it("keys history by chart and roll, and keeps its records whole-file", () => {
+    expect(RECORD_KEY_SPECS["history"]).toEqual({
+      kind: "fields",
+      paths: ["chart.chart", "chart.roll"],
+      wholeFile: true,
+    });
+    /* The refs a text correction names, read off the real file: history.txt
+     * line 269 is chart 50's roll-100 entry, line 72 chart 4's roll-15 entry,
+     * and lines 69 and 186 are two records carrying the same phrase, which a
+     * phrase-based identity could not tell apart. */
+    const records = corePackFile("history") as Array<{
+      chart: { chart: number; roll: number };
+      phrase: string[];
+    }>;
+    const byKey = new Map(records.map((r) => [recordKey("history", r), r.phrase.join("")]));
+    expect(byKey.get("50--100")).toBe("You have blue-gray eyes, ");
+    expect(byKey.get("4--15")).toBe("Your mother was of the Avari. ");
+    expect(byKey.get("3--100")).toBe("You are a well liked child.  ");
+    expect(byKey.get("18--100")).toBe("You are a well liked child.  ");
+    /* Every record has its own key: no roll threshold repeats within a chart. */
+    expect(byKey.size).toBe(records.length);
   });
 
   it("keys every record of every declared file in the shipped core pack", () => {

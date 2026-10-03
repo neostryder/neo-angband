@@ -36,7 +36,9 @@
  * The identity those files really use was already declared in record-key.ts and
  * already proved unique over the shipped pack; recordsComposable now asks it.
  * What is left in phase 2 is `constants` and `visuals` (config singletons, where
- * whole-file IS the meaning) and `history` (no per-record identity at all).
+ * whole-file IS the meaning) and `history` (keyed by chart and roll since
+ * 2026-10-03, but its record order is what a chart's rolls mean, so a pack's
+ * records still replace the file and only the per-record ops use the key).
  *
  * NOTHING IS DROPPED IN SILENCE. This is the invariant the whole file exists to
  * hold. Until 2026-07-29 phase 2 did not exist: a `patches` / `replaces` /
@@ -231,7 +233,7 @@ function isNamedRecord(r: unknown): r is JsonRecord {
  */
 function recordsComposable(file: string, records: readonly unknown[]): boolean {
   const spec = keySpecFor(file);
-  if (spec.kind === "singleton") return false;
+  if (spec.kind === "singleton" || spec.wholeFile === true) return false;
   const claimants = new Map<string, number>();
   const keysOf: (readonly string[])[] = [];
   for (const r of records) {
@@ -364,8 +366,8 @@ function applyPassthroughOps(
   );
   if (!hasOps) return unmodified();
 
-  /* No declared identity (history: chart/next/roll/phrase are all values a mod
-   * would change). Every op is reported and none is applied - the one honest
+  /* No declared identity (a mod-only file with no `name` and no entry in
+   * record-key.ts). Every op is reported and none is applied - the one honest
    * answer, because inventing a key here would mis-merge instead of dropping. */
   if (RECORD_KEY_SPECS[file] === undefined && !recordsKeyedByName(records)) {
     for (const pack of ordered) {
@@ -644,7 +646,7 @@ export function composeContentPacks(
          * previous provider's records simply vanished. Say so. */
         refused.refuse(
           p.manifest.id,
-          `${f} replaces the whole file, discarding ${(out[f] as unknown[]).length} record(s) from ${providerId} - ${f} records have no ref of their own, so a whole file is the only thing that can be added to it`,
+          `${f} replaces the whole file, discarding ${(out[f] as unknown[]).length} record(s) from ${providerId} - ${f} records cannot be added one at a time, so a whole file is the only thing that can be added to it`,
         );
       }
       out[f] = [...contrib.records];

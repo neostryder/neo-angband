@@ -3,9 +3,9 @@
  * string `name`.
  *
  * CURRENT STATE, FIRST, BECAUSE THIS COMMENT USED TO MISLEAD. Every record file
- * but ONE is addressable per record today: 24 by a unique `name`, 19 by the
- * explicit specs in this file, and `history` by nothing - and an op against
- * `history` is REPORTED, never silently dropped. Two independent reviewers read
+ * is addressable per record today: 24 by a unique `name` and 20 by the explicit
+ * specs in this file. `history` was the one exception until 2026-10-03, when it
+ * gained its (chart, roll) key below. Two independent reviewers read
  * the older wording, took the "the other 20 files do not fit it" paragraph below
  * for the present tense, and filed the same non-existent P1 ("20 files silently
  * discard patch/replace/remove, including object, ego_item, vault, trap, store,
@@ -98,10 +98,17 @@
  * verified unique over the shipped core pack (see record-key.test.ts, which
  * reads the real pack and fails if a declared key stops being unique).
  *
- * `history` is deliberately absent: a history record is
- * `{chart:{chart,next,roll}, phrase}` and every part of that is a value a mod
- * would legitimately change, so it has no identity to key on. An op against it
- * is REPORTED, not applied - see loader.ts.
+ * `history` was absent until 2026-10-03, on the reasoning that a record is
+ * `{chart:{chart,next,roll}, phrase}` and a mod could change any part of it.
+ * That left history.txt's phrases the one piece of gamedata no content patch
+ * could correct. The identity upstream itself uses is (chart, roll): get_history
+ * walks one chart's entries and takes the first whose cumulative `roll` reaches
+ * the die, so a roll threshold appears once per chart (a repeat could never be
+ * chosen), and `chart` is the node every `next` link names. Neither is the
+ * phrase or the link, which are what a correction or a rewiring changes. The key
+ * is declared `wholeFile`, because a chart's meaning is its records' ORDER: an
+ * added record appended after core's would sit past the roll-100 entry where
+ * get_history can never reach it.
  *
  * AMBIGUITY IS NAMED, NEVER GUESSED. A key that two records in the same file
  * claim (object's 5 pairs, ego_item's 25) makes that one ref unaddressable; the
@@ -140,6 +147,14 @@ export type RecordKeySpec =
        * stringified: a JSON blob in a ref is not something an author can type.
        */
       readonly discriminator?: readonly string[];
+      /**
+       * The records keep whole-file semantics even though each has a key: a
+       * pack's `records` still replace the file, and only the per-record ops
+       * (patch, replace, fieldPatch, remove) use the key. For a file whose
+       * record ORDER carries meaning, where composition appending a new record
+       * at the end would change what the file says.
+       */
+      readonly wholeFile?: true;
     }
   | { readonly kind: "singleton" };
 
@@ -198,6 +213,11 @@ export const RECORD_KEY_SPECS: Readonly<Record<string, RecordKeySpec>> = {
     paths: ["name"],
     discriminator: ["type", "item.tval"],
   },
+  /* history: the chart a record belongs to and its cumulative roll threshold,
+   * which is how get_history (player-birth.c) picks it. `core:50--100` is
+   * "You have blue-gray eyes, ". Whole-file, because order within a chart is
+   * what the rolls mean (see the header). */
+  history: { kind: "fields", paths: ["chart.chart", "chart.roll"], wholeFile: true },
 };
 
 /**

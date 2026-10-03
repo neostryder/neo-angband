@@ -274,7 +274,7 @@ Core never reads `ext`. The game does not know what "bleed" means, so data alone
 
 Which keys count as core's is derived from core's own gamedata rather than declared by hand (`packages/core/src/mod/record-keys.ts`, generated and re-derived by its test in both directions), so the boundary cannot drift as the pack grows.
 
-> Every record of every shipped file can now be addressed by a ref, except `history`, whose records are `{chart, phrase}` with nothing in them that is not a value a mod would change. An op against `history` is reported, never dropped. Until 2026-07-29 a per-record op aimed at any of the 20 non-name-keyed files was silently dropped, and until 2026-08-08 a further 73 individual records, 61 of `ego_item`'s 107 among them, could not be addressed by any ref at all. `MOD_REACH.md` carries the measurement.
+> Every record of every shipped file can now be addressed by a ref. `history` was the last to get one, on 2026-10-03: a history record's ref is its chart and roll, as in `core:50--100`. Until 2026-07-29 a per-record op aimed at any of the 20 non-name-keyed files was silently dropped, and until 2026-08-08 a further 73 individual records, 61 of `ego_item`'s 107 among them, could not be addressed by any ref at all. `MOD_REACH.md` carries the measurement.
 
 Total conversions are the same mechanism at full throttle: depend on `core`, replace or remove what you do not want, and add your own world.
 ### Adding things that do not exist in the base game

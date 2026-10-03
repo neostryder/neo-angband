@@ -251,7 +251,7 @@ export class ModProject {
     const findings: AuthoringFinding[] = checkPacks([mine], all);
 
     /* THE ONE THAT COSTS THE WHOLE GAME, PROMOTED TO AN ERROR. A file whose
-     * records have no ref of their own can only be contributed WHOLE, so a mod
+     * records cannot be added one at a time can only be contributed WHOLE, so a mod
      * that ships one discards whatever the previous provider put there. The
      * loader already says so in `problems`, but a line in a list is not
      * proportionate to replacing the base game's copy of a file, and a builder
@@ -264,7 +264,8 @@ export class ModProject {
      * Since 2026-08-08 composition keys by recordRefKeys and all three merge per
      * record, so what is left here is `constants` and `visuals` - config
      * singletons, where "use mine" is what shipping the file MEANS - and
-     * `history`, which has no per-record identity to key on. */
+     * `history`, whose records have a key for patching but whose order is
+     * what a chart's rolls mean, so a record cannot be added on its own. */
     const mineId = this.#manifest.id;
     for (const problem of composed.problems) {
       if (!problem.startsWith(`${mineId}: `) || !problem.includes("replaces the whole file")) {
@@ -276,9 +277,9 @@ export class ModProject {
         record: mineId,
         rule: "file/whole-file-replacement",
         message:
-          `${problem}. Records in this file have no ref of their own, so there is ` +
-          "nothing to add one to: use `patchFields` or `replace` to change what is " +
-          "already there, rather than shipping a mod that deletes the base game's copy.",
+          `${problem}. Records in this file cannot be added one at a time, so ` +
+          "shipping them replaces the file: use `patchFields` or `replace` to change " +
+          "what is already there, rather than shipping a mod that deletes the base game's copy.",
       });
     }
 

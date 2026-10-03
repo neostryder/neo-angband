@@ -201,6 +201,68 @@ export interface ScreenTextSite {
   readonly row?: Readonly<Record<string, string>>;
 }
 
+/**
+ * The part of object_info_out (obj-info.c L2315) that wrote a fragment of an
+ * item description, named after the describe_* function that wrote it:
+ *
+ * - `unknown`: "You do not know what this is." for an object whose kind is
+ *   hidden, which ends the description.
+ * - `origin`, `flavor`: where the item was found, and the kind's, artifact's or
+ *   ego's own text.
+ * - `unassessed`: "You do not know the full extent of this item's powers."
+ * - `curses`, `stats`, `slays`, `brands`, `elements`, `protects`, `ignores`,
+ *   `hates`, `sustains`, `misc`, `light`, `book`, `ego`: the property lists,
+ *   in the order core writes them (`stats` holds the "Affects your" lines).
+ * - `effect`: describe_effect, from its introduction (see effectIntro) through
+ *   the recharge time and the chance of success.
+ * - `combat`, `digger`: the blows, damage and digging tables.
+ * - `nothing`: "This item does not seem to possess any special abilities."
+ * - `break`: a blank line object_info_out writes between two parts.
+ */
+export type ObjectInfoSection =
+  | "unknown"
+  | "origin"
+  | "flavor"
+  | "unassessed"
+  | "curses"
+  | "stats"
+  | "slays"
+  | "brands"
+  | "elements"
+  | "protects"
+  | "ignores"
+  | "hates"
+  | "sustains"
+  | "misc"
+  | "light"
+  | "book"
+  | "ego"
+  | "effect"
+  | "combat"
+  | "digger"
+  | "nothing"
+  | "break";
+
+/** Where a fragment of an item description sits, offered to `objectInfoText`. */
+export interface ObjectInfoTextSite {
+  /** The part of the description that wrote the fragment. */
+  readonly section: ObjectInfoSection;
+  /** The object's tval as object.txt names it (`"potion"`, `"sword"`). */
+  readonly tval: string;
+  /**
+   * The object kind's name as object.txt spells it (`"Cure Light Wounds"`,
+   * `"& Dagger~"`). With `tval`, it is the kind's `type` and `name` in
+   * object.json, and it is given whether or not the player knows the kind.
+   */
+  readonly kind: string;
+  /**
+   * Whether the player knows the kind (object_flavor_is_aware). A mod that
+   * keys a rewording on `kind` checks this first, so its text never names a
+   * flavour the player has not learned.
+   */
+  readonly aware: boolean;
+}
+
 /** A newly available player ability, named without exposing a mutable game object. */
 export type AbilityGained =
   | {
@@ -526,7 +588,12 @@ export interface ModHooks {
    * textblock (obj/object-info.ts, objectInfo; obj-info.c's object_info_out).
    * A fragment is what one textblock_append wrote, such as a whole
    * "Affects your stealth\n" line, a lone "\n", or a coloured number. Reached
-   * from item inspection, object recall, the character dump and spoilers.
+   * from item inspection, store examine, object recall, the character dump,
+   * spoilers and a plugin's inspectItem.
+   *
+   * `site` names the part of the description that wrote the fragment and the
+   * object it describes (see ObjectInfoTextSite), so a mod can reword a line
+   * in one section, or for one kind, and leave the same words elsewhere alone.
    *
    * Return the text to write. Faithful core writes the fragment unchanged. A
    * hook here may only restate the fragment, never change what the item does
@@ -536,7 +603,7 @@ export interface ModHooks {
    * Serves: the upstream-catchup mod's post-4.2.6 description wording
    * (upstream ad5c8401a, "Affects your %s.").
    */
-  objectInfoText?: (text: string) => string;
+  objectInfoText?: (text: string, site: ObjectInfoTextSite) => string;
 
   /**
    * The opening words of an item's effect description (obj/object-info.ts,
@@ -931,7 +998,8 @@ export function guardModHooks(
   if (infoText) {
     /* The fragment unchanged: a throwing restater must not cut lines out of an
      * item description. */
-    out.objectInfoText = (text): string => guard("objectInfoText", () => infoText(text), text);
+    out.objectInfoText = (text, site): string =>
+      guard("objectInfoText", () => infoText(text, { ...site }), text);
   }
 
   const intro = hooks.effectIntro;
@@ -1140,7 +1208,9 @@ export function composeModHooks(
 
   const infoText = list.map((c) => c.objectInfoText).filter(isFn);
   if (infoText.length > 0) {
-    out.objectInfoText = (text): string => infoText.reduce((s, fn) => fn(s), text);
+    /* Every contributor gets the same site, as with screenText: an earlier
+     * mod's rewording does not move the fragment to another section. */
+    out.objectInfoText = (text, site): string => infoText.reduce((s, fn) => fn(s, site), text);
   }
 
   const intro = list.map((c) => c.effectIntro).filter(isFn);

@@ -18,6 +18,7 @@ import {
   type EffectIntro,
   type ModHookFault,
   type ModHooks,
+  type ObjectInfoTextSite,
   type ScreenTextSite,
 } from "./hooks.js";
 import type { GameState } from "../game/context.js";
@@ -55,6 +56,14 @@ const SITE: ScreenTextSite = {
   part: "cell",
   column: "desc1",
   row: { key1: "n, PgDn", desc1: "move selection one page up" },
+};
+
+/** An "Affects your" line of a pair of boots, as object_info_out writes it. */
+const INFO_SITE: ObjectInfoTextSite = {
+  section: "stats",
+  tval: "boots",
+  kind: "& Pair~ of Leather Sandals",
+  aware: true,
 };
 
 describe("composeModHooks: nothing in, nothing out", () => {
@@ -202,7 +211,36 @@ describe("transform hooks chain in load order", () => {
     ]);
     expect(composed?.screenText?.("x", SITE)).toBe("x-a-b");
     expect(composed?.characterBackground?.("x")).toBe("x-a-b");
-    expect(composed?.objectInfoText?.("x")).toBe("x-a-b");
+    expect(composed?.objectInfoText?.("x", INFO_SITE)).toBe("x-a-b");
+  });
+
+  it("objectInfoText: every contributor is handed the site, each its own copy", () => {
+    const sites: ObjectInfoTextSite[] = [];
+    const first = guardModHooks(
+      {
+        objectInfoText: (s, site) => {
+          sites.push(site);
+          (site as { section: string }).section = "flavor";
+          return `${s}.`;
+        },
+      },
+      () => {},
+    );
+    const second = guardModHooks(
+      {
+        objectInfoText: (s, site) => {
+          sites.push(site);
+          return s;
+        },
+      },
+      () => {},
+    );
+    const composed = composeModHooks([first, second]);
+    expect(composed?.objectInfoText?.("Affects your stealth", INFO_SITE)).toBe("Affects your stealth.");
+    /* A contributor that writes to its site cannot move the fragment for the
+     * next mod or for core. */
+    expect(sites.map((site) => site.section)).toEqual(["flavor", "stats"]);
+    expect(INFO_SITE.section).toBe("stats");
   });
 
   it("screenText: every contributor is handed the same site, as the screen built it", () => {
@@ -838,7 +876,7 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
           return s;
         },
       }),
-      run: (h) => h.objectInfoText?.("x"),
+      run: (h) => h.objectInfoText?.("x", INFO_SITE),
     },
     effectIntro: {
       yes: (log, tag) => ({
@@ -1016,7 +1054,7 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
 
   it("objectInfoText writes the fragment unchanged", () => {
     const { hooks } = guarded({ objectInfoText: THROWS });
-    expect(hooks.objectInfoText?.("Affects your stealth\n")).toBe("Affects your stealth\n");
+    expect(hooks.objectInfoText?.("Affects your stealth\n", INFO_SITE)).toBe("Affects your stealth\n");
   });
 
   it("effectIntro writes the introduction core was about to write", () => {
