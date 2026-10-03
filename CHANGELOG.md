@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.22.0] - 2026-10-03
+
 ### Added
 
 - [Visible] [Modding-API] **An autoplayer mod can choose what a key press does while it has the keyboard.** A controller install can include `onKey`, which answers `keep`, with an optional message for the message line, or `release`. Escape and Ctrl-Z always give the keyboard back, whatever the mod answers (#334).
