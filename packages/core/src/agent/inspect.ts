@@ -276,7 +276,7 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
         spells: book.spells.map((spell) => spell.sidx) });
     }),
     compareLoadoutSlots: gate(caps, "player", (ref: Exclude<LoadoutItemRef, { from: "object" }>): LoadoutSlotsResult => {
-      const domain = ref.from === "gear" ? "inventory" : "stores";
+      const domain = ref.from === "gear" ? "inventory" : ref.from === "store" ? "stores" : "floor";
       if (caps && !caps.has(`state:${domain}.read`) && !caps.has("state:*.read")) {
         throw new AgentCapabilityError(`agent inspect: capability "state:${domain}.read" is not granted`);
       }

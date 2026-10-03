@@ -55,6 +55,7 @@ import { derivedStatsView, diffDerivedStats } from "../player/loadout.js";
 import { STAT } from "../generated/index.js";
 import { toCombatState, weightLimit } from "../player/calcs.js";
 import { gearGet, wieldSlot } from "../game/gear.js";
+import { knownFloorObject } from "../game/known.js";
 import { objectWeightOne } from "../obj/object.js";
 import type { GameObject } from "../obj/object.js";
 import type { GameState } from "../game/context.js";
@@ -144,6 +145,17 @@ function resolveRef(state: GameState, ref: LoadoutItemRef): GameObject | null {
     case "store": {
       const store = (state.stores ?? [])[ref.store];
       return store?.stock[ref.index] ?? null;
+    }
+    case "floor": {
+      /* inspectItem's floor rule: the object must be in the live pile at that
+         index and remembered exactly there, so an unseen square or a sensed
+         pile names nothing. */
+      const grid = { x: ref.x, y: ref.y };
+      if (!Number.isInteger(ref.x) || !Number.isInteger(ref.y) || !state.chunk.inBounds(grid)) return null;
+      const obj = state.floor.get(ref.y * state.chunk.width + ref.x)?.[ref.index];
+      if (!obj) return null;
+      const known = knownFloorObject(state, grid, obj);
+      return known && !known.sensed ? obj : null;
     }
     case "object":
       return ref.object;

@@ -29,8 +29,10 @@ import { derivedStatsView, diffDerivedStats } from "../player/loadout.js";
 import { toCombatState, weightLimit } from "../player/calcs.js";
 import { maxManaFrom, wornArmorWeight } from "../player/spell.js";
 import { Rng } from "../rng.js";
+import { objectSeeAt, squareSensePile } from "../game/known.js";
 import { createAgentView } from "./perceive.js";
 import { simulateLoadout } from "./loadout.js";
+import { AgentCapabilityError } from "./types.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -392,6 +394,109 @@ describe("simulateLoadout runs the engine's own derive on gear nobody is wearing
     /* And the real thing agrees. */
     reallyWield(state, handle);
     expect(sim.after.stats).toEqual(liveStats(state));
+  });
+});
+
+describe("a floor reference names a remembered object by grid and pile index", () => {
+  /** Lay `obj` on the floor beside the character; `seen` makes the player remember it exactly. */
+  function onFloor(state: GameState, obj: GameObject, seen: boolean) {
+    const grid = { x: state.actor.grid.x + 1, y: state.actor.grid.y };
+    obj.grid = { ...grid };
+    const key = grid.y * state.chunk.width + grid.x;
+    state.floor.set(key, [obj]);
+    if (seen) objectSeeAt(state, grid, obj);
+    return { grid, key };
+  }
+
+  const granted = (...caps: string[]) => ({ has: (cap: string) => caps.includes(cap) });
+
+  it("compares a floor armour against the worn slot exactly as the object itself compares", () => {
+    const state = newGame();
+    const p = state.actor.player;
+    const mail = make(Number.MAX_SAFE_INTEGER, TV.HARD_ARMOR);
+    const { grid, key } = onFloor(state, mail, true);
+    const ref = { from: "floor", x: grid.x, y: grid.y, index: 0 } as const;
+    const view = createAgentView(state, undefined, { reg },
+      granted("state:player.read", "state:floor.read"));
+
+    const result = view.compareLoadoutSlots!(ref);
+    const bodySlot = p.body.slots.findIndex((s) => s.type === "BODY_ARMOR");
+    expect(result.slots.map((s) => s.slot)).toEqual([bodySlot]);
+    const comparison = result.slots[0]!.comparison;
+    expect(comparison.unresolved).toEqual([]);
+    expect(comparison.placements[0]?.slot).toBe(bodySlot);
+    expect(comparison.placements[0]?.displaced?.handle).toBe(p.equipment[bodySlot] || undefined);
+    /* Wearing it off the floor picks it up, so its weight joins the burden. */
+    expect(comparison.after.stats.totalWeight - comparison.before.stats.totalWeight).toBe(mail.weight);
+
+    const truth = simulateLoadout(state, { wieldAt: [{ item: { from: "object", object: mail }, slot: bodySlot }] },
+      { viewDeps: { reg } })!;
+    expect(comparison.delta).toEqual(truth.delta);
+    expect(comparison.after.stats).toEqual(truth.after.stats);
+    expect(comparison.delta.ac).toBeGreaterThan(0);
+
+    const sim = view.simulateLoadout!({ wield: [ref] })!;
+    expect(sim.unresolved).toEqual([]);
+    expect(sim.delta).toEqual(truth.delta);
+    /* A read: the pile is where it was. */
+    expect(state.floor.get(key)).toEqual([mail]);
+  });
+
+  it("resolves nothing for a bad index or a grid off the map", () => {
+    const state = newGame();
+    const mail = make(Number.MAX_SAFE_INTEGER, TV.HARD_ARMOR);
+    const { grid } = onFloor(state, mail, true);
+    const view = createAgentView(state, undefined, { reg });
+    const bad = [
+      { from: "floor", x: grid.x, y: grid.y, index: 1 },
+      { from: "floor", x: grid.x, y: grid.y, index: -1 },
+      { from: "floor", x: -1, y: grid.y, index: 0 },
+      { from: "floor", x: state.chunk.width, y: grid.y, index: 0 },
+    ] as const;
+    for (const ref of bad) {
+      expect(view.compareLoadoutSlots!(ref).slots).toEqual([]);
+      const sim = view.simulateLoadout!({ wield: [ref] })!;
+      expect(sim.unresolved).toEqual([ref]);
+      expect(sim.delta.changed).toBe(false);
+    }
+  });
+
+  it("does not reach an object the player has never seen or has only sensed", () => {
+    const state = newGame();
+    const mail = make(Number.MAX_SAFE_INTEGER, TV.HARD_ARMOR);
+    const { grid } = onFloor(state, mail, false);
+    const ref = { from: "floor", x: grid.x, y: grid.y, index: 0 } as const;
+    const view = createAgentView(state, undefined, { reg });
+    expect(view.compareLoadoutSlots!(ref).slots).toEqual([]);
+    expect(view.simulateLoadout!({ wield: [ref] })!.unresolved).toEqual([ref]);
+
+    squareSensePile(state, grid);
+    expect(view.compareLoadoutSlots!(ref).slots).toEqual([]);
+    expect(view.simulateLoadout!({ carry: [{ item: ref }] })!.unresolved).toEqual([ref]);
+
+    objectSeeAt(state, grid, mail);
+    expect(view.compareLoadoutSlots!(ref).slots).toHaveLength(1);
+  });
+
+  it("needs the floor capability on top of the player one", () => {
+    const state = newGame();
+    const mail = make(Number.MAX_SAFE_INTEGER, TV.HARD_ARMOR);
+    const { grid } = onFloor(state, mail, true);
+    const ref = { from: "floor", x: grid.x, y: grid.y, index: 0 } as const;
+    const handle = invenCarry(state.gear, state.actor.player, make(0, TV.SOFT_ARMOR), limits);
+    const view = createAgentView(state, undefined, { reg },
+      granted("state:player.read", "state:inventory.read"));
+    expect(() => view.compareLoadoutSlots!(ref)).toThrow(AgentCapabilityError);
+    expect(() => view.simulateLoadout!({ wield: [ref] })).toThrow(AgentCapabilityError);
+    expect(() => view.simulateLoadout!({ wieldAt: [{ item: ref, slot: 0 }] })).toThrow(AgentCapabilityError);
+    expect(() => view.simulateLoadout!({ carry: [{ item: ref }] })).toThrow(AgentCapabilityError);
+    /* The other arms are unaffected by the floor grant. */
+    expect(view.compareLoadoutSlots!({ from: "gear", handle }).slots.length).toBeGreaterThan(0);
+    expect(view.simulateLoadout!({ wield: [{ from: "gear", handle }] })).not.toBeNull();
+    const floorOnly = createAgentView(state, undefined, { reg }, granted("state:floor.read"));
+    expect(() => floorOnly.compareLoadoutSlots!(ref)).toThrow(AgentCapabilityError);
+    const wildcard = createAgentView(state, undefined, { reg }, granted("state:*.read"));
+    expect(wildcard.compareLoadoutSlots!(ref).slots).toHaveLength(1);
   });
 });
 

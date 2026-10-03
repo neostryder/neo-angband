@@ -359,6 +359,13 @@ function gateRead<A extends unknown[], R>(
   };
 }
 
+/** Whether a loadout change names any item by its place on the floor. */
+function namesFloor(change: LoadoutChange): boolean {
+  return (change.wield ?? []).some((ref) => ref.from === "floor") ||
+    (change.wieldAt ?? []).some((entry) => entry.item.from === "floor") ||
+    (change.carry ?? []).some((entry) => entry.item.from === "floor");
+}
+
 export function createAgentView(
   state: GameState,
   messageBuffer?: { drain(): string[] },
@@ -492,12 +499,20 @@ export function createAgentView(
      * simulated loadout has to be interchangeable with one from the live pack,
      * or an agent's decision would depend on which read produced the object.
      * Gated on the player domain, since what it answers is a question about the
-     * player. */
+     * player. A floor reference reads the floor pile as well, so it also needs
+     * the floor domain, the one floorItems() is gated on. */
     simulateLoadout: gateRead(
       caps,
       D.player,
-      (change: LoadoutChange): LoadoutSimulation | null =>
-        simulateLoadout(state, change, { viewDeps: deps }),
+      (change: LoadoutChange): LoadoutSimulation | null => {
+        if (caps && !caps.has(`state:${D.floor}.read`) && !caps.has("state:*.read") &&
+            namesFloor(change)) {
+          throw new AgentCapabilityError(
+            `agent perceive: capability "state:${D.floor}.read" is not granted`,
+          );
+        }
+        return simulateLoadout(state, change, { viewDeps: deps });
+      },
     ),
   };
   /* Assigned after the literal so `capture` reads through the gated accessors

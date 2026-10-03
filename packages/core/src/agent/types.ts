@@ -558,21 +558,26 @@ export interface TargetView {
 /**
  * Where one item in a hypothetical loadout comes from.
  *
- * Three arms because the three questions have three different answers to "which
- * object is this". Something the character already has is a gear handle, which
- * is what every other item verb takes. A ware in a shop is NOT in the gear at
- * all, so it has no handle - `StoreItemView.index` inside `view.stores()[n]` is
- * its only address, and pricing a purchase is one of the two decisions this
- * whole capability exists for. The third arm is for a caller INSIDE the engine
- * that is holding the object itself (a floor pile, a freshly rolled drop, a
- * character-sheet comparison); an agent driving the frozen view has no
- * GameObject and will never use it.
+ * Four arms because the questions have different answers to "which object is
+ * this". Something the character already has is a gear handle, which is what
+ * every other item verb takes. A ware in a shop is NOT in the gear at all, so it
+ * has no handle - `StoreItemView.index` inside `view.stores()[n]` is its only
+ * address, and pricing a purchase is one of the two decisions this whole
+ * capability exists for. An object on the floor is named by where it lies, the
+ * same grid and pile index `inspectItem`'s floor form and `floorItems()`'s
+ * `floorIndex` use; it resolves only when the player remembers that exact
+ * object there, so it cannot reach an unseen square or a merely sensed pile.
+ * The last arm is for a caller INSIDE the engine that is holding the object
+ * itself (a freshly rolled drop, a character-sheet comparison); an agent driving
+ * the frozen view has no GameObject and will never use it.
  */
 export type LoadoutItemRef =
   /** Something already in the gear, worn or packed. */
   | { readonly from: "gear"; readonly handle: number }
   /** Store stock: `store` indexes view.stores(), `index` the ware in it. */
   | { readonly from: "store"; readonly store: number; readonly index: number }
+  /** A remembered floor object: the grid, and its index in the pile there. */
+  | { readonly from: "floor"; readonly x: number; readonly y: number; readonly index: number }
   /** An object in hand (engine-internal callers only). */
   | { readonly from: "object"; readonly object: import("../obj/object.js").GameObject };
 
@@ -589,8 +594,8 @@ export interface LoadoutChange {
   /**
    * Wear or wield these, each routed to the body slot wield_slot picks for its
    * tval (a ring goes to the first EMPTY ring slot, else the first ring slot).
-   * Whatever was in the slot moves to the pack. An item from `store` or
-   * `object` is being ACQUIRED, so its weight joins the carried total.
+   * Whatever was in the slot moves to the pack. An item from `store`, `floor`
+   * or `object` is being ACQUIRED, so its weight joins the carried total.
    */
   readonly wield?: readonly LoadoutItemRef[];
   /** Hypothetical placement into a named body slot, including a paired slot. */
@@ -670,7 +675,8 @@ export interface LoadoutSimulation {
   readonly placements: readonly LoadoutPlacement[];
   /**
    * References the change named that resolved to no object: a stale handle, a
-   * store index past the end of the stock, a shop number with no shop. They are
+   * store index past the end of the stock, a shop number with no shop, a floor
+   * grid out of bounds or a pile index the player does not remember. They are
    * SKIPPED rather than thrown for, and reported here, because a decision ladder
    * evaluating a hundred candidates must not die on one stale handle.
    */
@@ -729,7 +735,8 @@ export interface AgentView {
    * session's own calc_bonuses options (the bound timed table, the curse
    * registry), so a view over a worldless harness cannot answer and says so
    * rather than deriving a thinner state that would look like an answer.
-   * Capability: `state:player.read`.
+   * Capability: `state:player.read`, plus `state:floor.read` when the change
+   * names a `floor` reference.
    */
   simulateLoadout?(change: LoadoutChange): LoadoutSimulation | null;
   /**
