@@ -28,7 +28,9 @@
  * vouching - and the disclaimer says plainly that vouching is not auditing. Door 1's
  * community mods are the exception inside it: listing one records that its release
  * passed the listing checks, which is not a vouch, so each is third-party at install
- * and at every update, exactly as if its address had been typed into door 3. There
+ * and at every update, exactly as if its address had been typed into door 3, and
+ * each release that would replace an installed one is asked about first
+ * (confirmCommunityUpdate), wherever the replacement starts. There
  * is no such thing as a curated zip: an archive did not come from the curated list,
  * so door 4 is third-party by construction.
  *
@@ -842,13 +844,15 @@ async function askConsent(term: GridSurface & GridPointerInput, deps: ModBrowseD
       },
       { text: "", color: C_FG },
       {
-        text: t("modBrowse.consent.stillInstallAsked", "You can still install now, but you will be asked again."),
+        text: t("modBrowse.consent.cannotInstall", "Third-party mods are still off, so nothing can be installed."),
         color: C_FG,
       },
     ]);
-    /* Honest: the answer was given, so honour it for this session rather than
-     * pretending the player did not answer. It simply will not persist. */
-    return true;
+    /* Not honoured for this session. The installer re-reads the stored setting
+     * (installBlocked), so a yes kept only here would be offered and then refused
+     * at the install, and carrying it past that check would be a way round the
+     * gate. The screen says what will actually happen instead. */
+    return false;
   }
   return true;
 }
@@ -1488,6 +1492,22 @@ async function showSource(
      * the installer, which checks the same origin again. */
     const community = rowCommunity[pick] === true;
     if (community && !deps.consent.read() && !(await askConsent(term, deps))) continue;
+    /* Replacing an installed community mod, by "Change to" or "Reinstall", is
+     * asked about by name and version first, the same question every update path
+     * asks (confirmCommunityUpdate). A first install is not: choosing Install on
+     * the row, with its detail pane open, is already that answer. */
+    if (
+      community &&
+      at !== null &&
+      !(await confirmCommunityUpdate(term, {
+        name: entry.mod.name,
+        from: at,
+        to: entry.mod.tag,
+        repo: entry.mod.repo,
+      }))
+    ) {
+      continue;
+    }
     const rowOrigin: ModOrigin = community ? "third-party" : origin;
     if (await installOne(term, entry, rowOrigin, deps, { offerEnable: at === null && what === 0 })) {
       changed = true;
@@ -2787,16 +2807,42 @@ export async function showModBrowse(term: GridSurface & GridPointerInput, deps: 
  * The pending tags still come from `pendingUpgrades`; this only turns one of
  * those already-shown, pinned tags into the same install operation the mod
  * manager normally performs.  One curated-list read covers the entire pass.
+ *
+ * A community mod's update is asked about first (confirmCommunityUpdate). The
+ * Update screen's pass always has a player there: it starts from their ENTER and
+ * their answer to "Update game and mods?". A caller with nobody to answer passes
+ * `unattended`, and a community update then comes back as waiting for the
+ * player's confirmation without being fetched or installed. A no, like a waiting
+ * update, leaves the installed release in place.
  */
 export async function gameUpdateModInstaller(
   term: GridSurface & GridPointerInput,
   deps: ModUpgradeDeps,
+  opts?: { readonly unattended?: boolean },
 ): Promise<(upgrade: ModUpgrade) => Promise<string | null>> {
-  const curated = await curatedRepos(deps);
+  const listed = await listedRepos(deps);
   return async (upgrade) => {
+    const key = upgrade.repo.toLowerCase();
+    const origin: ModOrigin = listed.vouched.has(key) ? "curated" : "third-party";
+    const community = listed.community.has(key);
+    if (community && opts?.unattended === true) return communityUpdateWaitingText();
     const entry = await deps.discover({ repo: upgrade.repo, tag: upgrade.to });
     if (!entry.ok) return entry.problem;
-    const origin: ModOrigin = curated.has(upgrade.repo.toLowerCase()) ? "curated" : "third-party";
+    /* Only asked while the switch is on. With it off the installer refuses anyway,
+     * and asking "install this?" just to refuse the yes would be a question with
+     * no right answer. */
+    if (
+      community &&
+      deps.consent.read() &&
+      !(await confirmCommunityUpdate(term, {
+        name: entry.mod.name,
+        from: upgrade.from,
+        to: entry.mod.tag,
+        repo: upgrade.repo,
+      }))
+    ) {
+      return null;
+    }
     let problem: string | null = null;
     const installed = await installOne(term, entry, origin, deps, {
       offerEnable: false,
@@ -2890,7 +2936,7 @@ export async function showModUpgrades(term: GridSurface & GridPointerInput, deps
      * loop, and a list that shrinks under an in-progress "update all" would skip
      * whatever moved up into the index just used. */
     const todo = pick === 0 ? pending : [pending[pick - 1]];
-    const curated = await curatedRepos(deps);
+    const listed = await listedRepos(deps);
     for (const u of todo) {
       if (!u) continue;
       /* Pinned to the tag the check found, not to "newest": between the check and
@@ -2902,7 +2948,17 @@ export async function showModUpgrades(term: GridSurface & GridPointerInput, deps
         await showTextScreen(term, installFailureScreen(u.id, entry.problem));
         continue;
       }
-      const origin: ModOrigin = curated.has(u.repo.toLowerCase()) ? "curated" : "third-party";
+      const key = u.repo.toLowerCase();
+      const origin: ModOrigin = listed.vouched.has(key) ? "curated" : "third-party";
+      /* "Update all" included: each community mod is its own question, and a no
+       * skips that one and moves on to the next. */
+      if (
+        listed.community.has(key) &&
+        deps.consent.read() &&
+        !(await confirmCommunityUpdate(term, { name: entry.mod.name, from: u.from, to: entry.mod.tag, repo: u.repo }))
+      ) {
+        continue;
+      }
       if (await installOne(term, entry, origin, deps)) changed = true;
     }
   }
@@ -3045,8 +3101,16 @@ export function modUpdateReportScreen(refreshed: readonly ModRefresh[]): ScreenV
   });
 }
 
+/** The curated list's two kinds of repository, lower-cased. */
+export interface ListedRepos {
+  /** Its "mods": vouched for, so installs and updates skip the consent gate. */
+  readonly vouched: ReadonlySet<string>;
+  /** Its "community" mods: third-party, and every new release is asked about. */
+  readonly community: ReadonlySet<string>;
+}
+
 /**
- * Which repositories the curated list vouches for, lower-cased: its "mods" only.
+ * Which repositories the curated list vouches for, and which it lists as community mods.
  *
  * WHY AN UPDATE STILL HAS AN ORIGIN. The origin decides one thing: whether the
  * consent gate applies (mod-install.ts checks it before any fetch). A recommended
@@ -3057,15 +3121,101 @@ export function modUpdateReportScreen(refreshed: readonly ModRefresh[]): ScreenV
  * lets it be replaced. A player who has since turned the switch off has said they
  * do not want that code, and an update is more of that code.
  *
- * Its "community" mods are not in the set. Listing one is not a vouch, so an update
- * to one is third-party, the same as the install that brought it in.
+ * Its "community" mods are not vouched for. Listing one is not a vouch, so an update
+ * to one is third-party, the same as the install that brought it in, and it is also
+ * one the player confirms first (confirmCommunityUpdate). A repository on both
+ * lists is treated as vouched.
  *
- * A list that cannot be read yields an empty set, so nothing is silently promoted to
- * exempt on the strength of a failed fetch.
+ * A list that cannot be read yields two empty sets, so nothing is silently promoted
+ * to exempt on the strength of a failed fetch. A community mod's update then goes
+ * through as an ordinary third-party one, behind the consent gate and unasked,
+ * because without the list there is no telling it apart from a mod added by address.
  */
-async function curatedRepos(deps: ModUpgradeDeps): Promise<ReadonlySet<string>> {
+export async function listedRepos(deps: Pick<ModBrowseDeps, "curated">): Promise<ListedRepos> {
   const { registry } = await deps.curated();
-  return new Set((registry?.mods ?? []).map((r) => r.repo.toLowerCase()));
+  const lower = (refs: readonly RepoRef[] | undefined): Set<string> =>
+    new Set((refs ?? []).map((r) => r.repo.toLowerCase()));
+  const vouched = lower(registry?.mods);
+  const community = lower(registry?.community);
+  for (const repo of vouched) community.delete(repo);
+  return { vouched, community };
+}
+
+/** What the community-update question names. */
+export interface CommunityUpdate {
+  readonly name: string;
+  /** The installed tag. */
+  readonly from: string;
+  /** The tag that would replace it. */
+  readonly to: string;
+  /** owner/repo, as the curated list names it. */
+  readonly repo: string;
+}
+
+/**
+ * Ask before a release of a community mod replaces the installed one.
+ *
+ * A community listing records that one release passed the listing checks and says
+ * nothing about the next, which the author can publish at any time. So the switch
+ * that let the mod in does not stand for every later release: each one is named to
+ * the player, with both versions and the repository's owner, and is installed only
+ * on a yes. No, or ESC, keeps the installed release and is not a failure.
+ *
+ * First-party mods are vouched for and never ask. Mods added by address are not on
+ * the community list and do not ask either.
+ */
+export async function confirmCommunityUpdate(
+  term: GridSurface & GridPointerInput,
+  update: CommunityUpdate,
+): Promise<boolean> {
+  const owner = update.repo.split("/")[0] ?? update.repo;
+  const vars = { name: update.name, from: update.from, to: update.to, owner };
+  const pick = await selectFromMenu(
+    term,
+    "core:mod-community-update",
+    t("modBrowse.communityUpdate.title", "Install {name} {to}?", vars),
+    [
+      {
+        label: t("modBrowse.communityUpdate.keep", "No, keep {from}", vars),
+        color: C_FG,
+        hint: t("modBrowse.communityUpdate.keepHint", "Nothing changes. You can update it later."),
+      },
+      {
+        label: t("modBrowse.communityUpdate.install", "Yes, install {to}", vars),
+        color: C_WARN,
+        hint: t("modBrowse.communityUpdate.installHint", "Replaces {from} with {to} from {owner}'s repository.", vars),
+      },
+    ],
+    t("modBrowse.consent.footer", "[ ESC to go back - the same as No ]"),
+    {
+      detail: () => [
+        { text: t("modBrowse.communityUpdate.byOwner", "{name} is a community mod by {owner}.", vars), color: C_FG },
+        {
+          text: t("modBrowse.communityUpdate.versions", "Installed: {from}   New: {to}", vars),
+          color: C_FG,
+        },
+        {
+          text: t(
+            "modBrowse.communityUpdate.notReviewed",
+            "Being listed does not mean anybody reviewed this release.",
+          ),
+          color: C_DIM,
+        },
+      ],
+    },
+  );
+  return pick === 1;
+}
+
+/**
+ * Why a community update was left alone by a pass with nobody there to answer.
+ * Said as waiting, not failing: the release is fine, it only needs a yes.
+ */
+export function communityUpdateWaitingText(): string {
+  return t(
+    "modBrowse.communityUpdate.waiting",
+    "Waiting for your confirmation, as a community mod. Update it from Mods -> Update installed mods.",
+  );
 }
 
 /**

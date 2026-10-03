@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Listed community mods appear in the game under **Recommended mods... > Community mods** and on the [mod list](https://github.com/neostryder/neo-angband/blob/master/docs/MOD_LIST.md). Players install and update them the same way as a mod added by its repository address, which needs **Allow third-party mods** turned on. Before your mod is listed, a maintainer checks that the repository is public, that the release you name is a published GitHub release, that the release installs cleanly on the current build of the game, and that the daily mod canary passes with your mod on the list.
+        Listed community mods appear in the game under **Recommended mods... > Community mods** and on the [mod list](https://github.com/neostryder/neo-angband/blob/master/docs/MOD_LIST.md). Players need **Allow third-party mods** turned on to install or update your mod, as with any mod added by its repository address. Each time a newer release of yours is offered to a player, the game shows its name, both versions and your GitHub account, and installs it only if they say yes. Before your mod is listed, a maintainer checks that the repository is public, that the release you name is a published GitHub release, that the release installs cleanly on the current build of the game, and that the daily mod canary passes with your mod on the list.
 
         A listing records that those checks passed for that release. It is not an endorsement, a code review or a security audit, and it promises nothing about later releases. A listing is removed when the mod fails the canary, or when you ask.
 

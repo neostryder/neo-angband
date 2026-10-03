@@ -75,7 +75,14 @@ import {
   viewOrphanStash,
   type OrphanViewDeps,
 } from "./mod-orphans";
-import { showModUpgrades, showRecommendedMods, type ModUpgradeDeps } from "./mod-browse";
+import {
+  confirmCommunityUpdate,
+  listedRepos,
+  showModUpgrades,
+  showRecommendedMods,
+  type ListedRepos,
+  type ModUpgradeDeps,
+} from "./mod-browse";
 import { displayName } from "./mod-authors";
 import { modUpgradeRowLabel } from "./mod-refresh";
 import type { ConflictReportLines } from "./mod-conflicts";
@@ -4095,6 +4102,8 @@ async function runLoadDelve(
    * from `entry.consents`: that field is read nowhere near a grant, only
    * carried as preview data on the row above. */
   const resultLines: ScreenLine[] = [];
+  /* Read once, and only when a row would replace an installed release. */
+  let listed: ListedRepos | undefined;
   for (const row of finalRows) {
     const entry = row.entry;
     if (row.state === "same-version") {
@@ -4126,6 +4135,26 @@ async function runLoadDelve(
         color: C_DANGER,
       });
       continue;
+    }
+    /* A Delve that moves an installed community mod to another release asks
+     * first, as every update path does (confirmCommunityUpdate). A no keeps the
+     * installed release, reported the same as choosing "keep" on the preview. */
+    const installedTag = installed.get(entry.id) ?? null;
+    if (row.state === "different-version" && installedTag !== null && modBrowse.consent.read()) {
+      listed ??= await listedRepos(modBrowse);
+      const mod = row.resolution.mod;
+      if (
+        listed.community.has(mod.repo.toLowerCase()) &&
+        !(await confirmCommunityUpdate(term, { name: mod.name, from: installedTag, to: mod.tag, repo: mod.repo }))
+      ) {
+        resultLines.push({
+          text: t("modsScreen.delve.load.resultKept", "{name}: kept your installed version.", {
+            name: entry.name,
+          }),
+          color: C_FG,
+        });
+        continue;
+      }
     }
     const origin: ConsentOrigin = "third-party";
     const installResult = await modBrowse.install(row.resolution.mod, origin, () => {});

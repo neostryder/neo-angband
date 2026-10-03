@@ -71,6 +71,35 @@ describe("the Node version", () => {
   });
 });
 
+describe("the mod canary's mod list check", () => {
+  /* docs/MOD_LIST.md is built from each listed mod's newest release, so it goes out
+   * of date when a mod releases, with no change in this repository. This step of
+   * mod-canary.yml is the only thing that notices, and a workflow edit that drops
+   * it would pass every other check here. */
+  const yaml = read(".github/workflows/mod-canary.yml");
+  const lines = yaml.split(/\r?\n/u);
+  const start = lines.findIndex((l) => /^\s*-\s*name:\s*Mod list page is current\s*$/u.test(l));
+  const indent = start >= 0 ? (lines[start]?.search(/\S/u) ?? 0) : 0;
+  /* The step runs until the next line at its own indent or less: the next step,
+   * the next job, or the end of the file. */
+  const end = lines.findIndex((l, i) => i > start && l.trim() !== "" && l.search(/\S/u) <= indent);
+  const step = start >= 0 ? lines.slice(start, end < 0 ? undefined : end).join("\n") : "";
+
+  it("is still a step of the workflow", () => {
+    expect(start, 'mod-canary.yml has no "Mod list page is current" step').toBeGreaterThanOrEqual(0);
+  });
+
+  it("rebuilds the page with node tools/mod-list.mjs --stdout", () => {
+    expect(step).toMatch(/^\s*node tools\/mod-list\.mjs --stdout\b/mu);
+  });
+
+  it("fails the run when the rebuilt page differs from docs/MOD_LIST.md", () => {
+    expect(step).toMatch(/\bdiff\b[^\n]*\bdocs\/MOD_LIST\.md\b/u);
+    expect(step).toMatch(/^\s*exit 1\s*$/mu);
+    expect(step, "the step must not be allowed to fail quietly").not.toMatch(/continue-on-error:\s*true/u);
+  });
+});
+
 describe("the GitHub Actions", () => {
   it.each(WORKFLOWS)("%s pins every action to a major tag, never a floating branch", (workflow) => {
     const yaml = read(`.github/workflows/${workflow}`);

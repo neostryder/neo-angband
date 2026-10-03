@@ -8,12 +8,19 @@
  * disclaimer first, and installing nothing when it is declined), the bulk
  * recommended actions never touch a community mod, and an update to one is not
  * exempt from the consent gate the way an update to a first-party mod is.
+ *
+ * Every path that replaces an installed community mod's release also asks the
+ * player first, naming the mod, both versions and the owner: a yes installs, a no
+ * keeps the installed release without calling it a failure, a first-party update
+ * never asks, and a pass with nobody to answer leaves the update waiting.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { runGameUpdatePass } from "./game-update-pass";
 import {
   gameUpdateModInstaller,
+  showModUpgrades,
   showRecommendedMods,
   sourceRows,
   type BrowseEntry,
@@ -23,6 +30,7 @@ import { installBlocked, type ModOrigin } from "./mod-consent";
 import type { ModRegistry } from "./mod-curated";
 import type { DiscoveredMod } from "./mod-discover";
 import type { InstallResult } from "./mod-install";
+import type { ModRefresh } from "./mod-refresh";
 import { selectFromMenu } from "./overlay";
 import type { GridPointerInput, GridSurface } from "./term";
 
@@ -134,6 +142,8 @@ interface Harness {
   readonly discovered: string[];
   readonly installs: Array<{ id: string; origin: ModOrigin }>;
   allowed: boolean;
+  /** id -> installed tag; an install moves it to the installed tag. */
+  readonly installed: Map<string, string>;
 }
 
 /**
@@ -141,16 +151,18 @@ interface Harness {
  * real installer does (mod-install.ts calls the same `installBlocked`), so a
  * refusal here is the refusal a player would get.
  */
-function harness(allowed: boolean): Harness {
+function harness(allowed: boolean, installed: ReadonlyMap<string, string> = new Map()): Harness {
   const h: Harness = {
     discovered: [],
     installs: [],
     allowed,
+    installed: new Map(installed),
     deps: undefined as unknown as ModUpgradeDeps,
   };
   const byRepo = new Map([QOL, EXTRA].map((m) => [m.repo, m]));
+  const byId = new Map([QOL, EXTRA].map((m) => [m.id, m]));
   (h as { deps: ModUpgradeDeps }).deps = {
-    installed: () => Promise.resolve(new Map<string, string>()),
+    installed: () => Promise.resolve(new Map(h.installed)),
     discover: (ref): Promise<BrowseEntry> => {
       h.discovered.push(ref.repo);
       const m = byRepo.get(ref.repo);
@@ -161,6 +173,7 @@ function harness(allowed: boolean): Harness {
     install: (m, origin): Promise<InstallResult> => {
       h.installs.push({ id: m.id, origin });
       const blocked = installBlocked(origin, h.allowed);
+      if (blocked === null) h.installed.set(m.id, m.tag);
       return Promise.resolve(
         (blocked === null
           ? { ok: true, meta: { id: m.id, repo: m.repo, tag: m.tag, files: [] } }
@@ -180,7 +193,24 @@ function harness(allowed: boolean): Harness {
     },
     enabledManifests: () => [],
     readRepoFile: () => Promise.reject(new Error("not in this test")),
-    refresh: () => Promise.resolve([]),
+    /* Each installed mod's repository offers v1.0.0, so anything older is behind. */
+    refresh: () =>
+      Promise.resolve(
+        [...h.installed].map(([id, tag]): ModRefresh => {
+          const m = byId.get(id);
+          return {
+            id,
+            ...(m ? { name: m.name } : {}),
+            repo: m?.repo ?? `nobody/${id}`,
+            installed: tag,
+            newest: "v1.0.0",
+            standing: tag === "v1.0.0" ? "same" : "behind",
+            problem: null,
+            channelHeld: null,
+            engineHeld: null,
+          };
+        }),
+      ),
   };
   return h;
 }
@@ -330,28 +360,225 @@ describe("an update to a community mod", () => {
     to: "v1.0.0",
   });
 
-  it("is third-party, so it is refused while third-party mods are not allowed", async () => {
+  const QUESTION = "Install Extra Things v1.0.0?";
+
+  it("is third-party, so it is refused while third-party mods are not allowed, without a question", async () => {
     useWindow();
-    const h = harness(false);
-    const installMod = await gameUpdateModInstaller(makeTerm(), h.deps);
+    const h = harness(false, new Map([["extra", "v0.9.0"]]));
+    const term = makeTerm();
+    const installMod = await gameUpdateModInstaller(term, h.deps);
     const problem = await installMod(upgrade(EXTRA));
     expect(h.installs).toEqual([{ id: "extra", origin: "third-party" }]);
     expect(problem).toContain("Third-party mods are not enabled");
+    expect(term.text()).not.toContain(QUESTION);
   });
 
-  it("goes ahead once they are, still as third-party", async () => {
+  it("asks first, naming the mod, both versions and the owner, and installs on a yes", async () => {
     useWindow();
-    const h = harness(true);
-    const installMod = await gameUpdateModInstaller(makeTerm(), h.deps);
-    expect(await installMod(upgrade(EXTRA))).toBeNull();
+    const h = harness(true, new Map([["extra", "v0.9.0"]]));
+    const term = makeTerm();
+    const installMod = await gameUpdateModInstaller(term, h.deps);
+    const result = installMod(upgrade(EXTRA));
+    await showing(term, QUESTION);
+    expect(term.text()).toContain("Extra Things is a community mod by someone.");
+    expect(term.text()).toContain("Installed: v0.9.0   New: v1.0.0");
+    expect(h.installs).toEqual([]);
+    press("b"); // Yes, install v1.0.0
+    expect(await result).toBeNull();
     expect(h.installs).toEqual([{ id: "extra", origin: "third-party" }]);
+    expect(h.installed.get("extra")).toBe("v1.0.0");
   });
 
-  it("is not exempt the way an update to a first-party mod is", async () => {
+  it("keeps the installed release on a no, and does not report that as a failure", async () => {
+    useWindow();
+    const h = harness(true, new Map([["extra", "v0.9.0"]]));
+    const term = makeTerm();
+    const installMod = await gameUpdateModInstaller(term, h.deps);
+    const no = installMod(upgrade(EXTRA));
+    await showing(term, QUESTION);
+    press("a"); // No, keep v0.9.0
+    expect(await no).toBeNull();
+    term.clear();
+    const escape = installMod(upgrade(EXTRA));
+    await showing(term, QUESTION);
+    press("Escape"); // the same as No
+    expect(await escape).toBeNull();
+    expect(h.installs).toEqual([]);
+    expect(h.installed.get("extra")).toBe("v0.9.0");
+  });
+
+  it("is never asked about a first-party mod, with the switch on or off", async () => {
+    for (const allowed of [false, true]) {
+      useWindow();
+      const h = harness(allowed, new Map([["qol", "v0.9.0"]]));
+      const term = makeTerm();
+      const installMod = await gameUpdateModInstaller(term, h.deps);
+      /* No key is pressed: a question here would leave this waiting forever. */
+      expect(await installMod(upgrade(QOL))).toBeNull();
+      expect(h.installs).toEqual([{ id: "qol", origin: "curated" }]);
+      expect(term.text()).not.toContain("Install Quality of Life");
+    }
+  });
+
+  it("is left waiting by an unattended pass, which still installs the first-party one", async () => {
+    useWindow();
+    const h = harness(true, new Map([["qol", "v0.9.0"], ["extra", "v0.9.0"]]));
+    const term = makeTerm();
+    const installMod = await gameUpdateModInstaller(term, h.deps, { unattended: true });
+    const updated: string[] = [];
+    const result = await runGameUpdatePass("game-and-mods", [upgrade(QOL), upgrade(EXTRA)], {
+      updateMod: installMod,
+      reportModFailures: () => Promise.resolve(),
+      updateGame: () => {
+        updated.push("game");
+        return Promise.resolve(true);
+      },
+    });
+    expect(h.installs).toEqual([{ id: "qol", origin: "curated" }]);
+    expect(h.discovered).toEqual([QOL.repo]);
+    expect(h.installed.get("extra")).toBe("v0.9.0");
+    expect(result.failures.map((f) => f.update.id)).toEqual(["extra"]);
+    expect(result.failures[0]?.problem).toContain("Waiting for your confirmation");
+    expect(updated).toEqual(["game"]);
+    expect(term.text()).not.toContain(QUESTION);
+  });
+});
+
+describe("Update installed mods, with a community mod behind", () => {
+  it("asks about the community mod only during Update all, and a no keeps it", async () => {
+    useWindow();
+    const h = harness(true, new Map([["qol", "v0.9.0"], ["extra", "v0.9.0"]]));
+    const term = makeTerm();
+    const done = showModUpgrades(term, h.deps);
+    await showing(term, "Update all 2");
+    press("a");
+    await showing(term, "Quality of Life updated: v0.9.0 -> v1.0.0.");
+    expect(h.installs).toEqual([{ id: "qol", origin: "curated" }]);
+    press("Escape"); // the outcome screen
+    await showing(term, "Install Extra Things v1.0.0?");
+    press("a"); // No, keep v0.9.0
+    await showing(term, "Update it");
+    expect(h.installs).toEqual([{ id: "qol", origin: "curated" }]);
+    expect(h.installed.get("extra")).toBe("v0.9.0");
+    press("Escape");
+    expect(await done).toBe(true);
+  });
+
+  it("installs the community update as third-party on a yes", async () => {
+    useWindow();
+    const h = harness(true, new Map([["extra", "v0.9.0"]]));
+    const term = makeTerm();
+    const done = showModUpgrades(term, h.deps);
+    await showing(term, "Update it");
+    press("a");
+    await showing(term, "Install Extra Things v1.0.0?");
+    press("b"); // Yes, install v1.0.0
+    await showing(term, "Extra Things updated: v0.9.0 -> v1.0.0.");
+    expect(h.installs).toEqual([{ id: "extra", origin: "third-party" }]);
+    press("Escape"); // the outcome screen
+    await showing(term, "Each mod lives in its own repository");
+    press("Escape"); // nothing is left behind: the report screen
+    expect(await done).toBe(true);
+  });
+});
+
+describe("Recommended mods, replacing an installed community mod", () => {
+  it("asks before Change to, and a no keeps the installed release", async () => {
+    useWindow();
+    const h = harness(true, new Map([["extra", "v0.9.0"]]));
+    const term = makeTerm();
+    const done = showRecommendedMods(term, h.deps);
+    await showing(term, "Community mods");
+    press("c"); // Extra Things
+    await showing(term, "Change to 1.0.0");
+    press("a");
+    await showing(term, "Install Extra Things v1.0.0?");
+    press("a"); // No, keep v0.9.0
+    await showing(term, "Community mods");
+    expect(h.installs).toEqual([]);
+    press("Escape");
+    expect(await done).toBe(false);
+    expect(h.installed.get("extra")).toBe("v0.9.0");
+  });
+
+  it("installs on a yes, as third-party", async () => {
+    useWindow();
+    const h = harness(true, new Map([["extra", "v0.9.0"]]));
+    const term = makeTerm();
+    const done = showRecommendedMods(term, h.deps);
+    await showing(term, "Community mods");
+    press("c");
+    await showing(term, "Change to 1.0.0");
+    press("a");
+    await showing(term, "Install Extra Things v1.0.0?");
+    press("b"); // Yes, install v1.0.0
+    await showing(term, "Extra Things updated: v0.9.0 -> v1.0.0.");
+    expect(h.installs).toEqual([{ id: "extra", origin: "third-party" }]);
+    press("Escape"); // the outcome screen
+    await showing(term, "Community mods");
+    press("Escape");
+    expect(await done).toBe(true);
+  });
+
+  it("asks before Reinstall as well", async () => {
+    useWindow();
+    const h = harness(true, new Map([["extra", "v1.0.0"]]));
+    const term = makeTerm();
+    const done = showRecommendedMods(term, h.deps);
+    await showing(term, "Community mods");
+    press("c");
+    await showing(term, "Reinstall");
+    press("a");
+    await showing(term, "Install Extra Things v1.0.0?");
+    press("Escape"); // the same as No
+    await showing(term, "Community mods");
+    expect(h.installs).toEqual([]);
+    press("Escape");
+    expect(await done).toBe(false);
+  });
+
+  it("never asks before Change to on a first-party mod", async () => {
+    useWindow();
+    const h = harness(false, new Map([["qol", "v0.9.0"]]));
+    const term = makeTerm();
+    const done = showRecommendedMods(term, h.deps);
+    await showing(term, "Community mods");
+    press("a"); // Quality of Life
+    await showing(term, "Change to 1.0.0");
+    press("a");
+    await showing(term, "Quality of Life updated: v0.9.0 -> v1.0.0.");
+    expect(h.installs).toEqual([{ id: "qol", origin: "curated" }]);
+    press("Escape");
+    await showing(term, "Community mods");
+    press("Escape");
+    expect(await done).toBe(true);
+  });
+});
+
+describe("a yes to third-party mods that cannot be saved", () => {
+  it("says nothing can be installed, and installs nothing", async () => {
     useWindow();
     const h = harness(false);
-    const installMod = await gameUpdateModInstaller(makeTerm(), h.deps);
-    expect(await installMod(upgrade(QOL))).toBeNull();
-    expect(h.installs).toEqual([{ id: "qol", origin: "curated" }]);
+    (h.deps as { consent: ModUpgradeDeps["consent"] }).consent = {
+      read: () => false,
+      write: () => false,
+    };
+    const term = makeTerm();
+    const done = showRecommendedMods(term, h.deps);
+    await showing(term, "Community mods");
+    press("c"); // Extra Things
+    await showing(term, "Install only");
+    press("b");
+    await showing(term, "Before you allow third-party mods");
+    press("Escape");
+    await showing(term, "Allow third-party mods?");
+    press("b"); // Yes, I understand
+    await showing(term, "Could not save that");
+    expect(term.text()).toContain("Third-party mods are still off, so nothing can be installed.");
+    press("Escape");
+    await showing(term, "Community mods");
+    expect(h.installs).toEqual([]);
+    press("Escape");
+    expect(await done).toBe(false);
   });
 });
