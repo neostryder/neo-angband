@@ -572,6 +572,12 @@ export interface ModPluginContext {
    * ask the player in your own dialog before calling one.
    */
   readonly session?: ModGameSession;
+  /**
+   * Named JSON values mods share with each other (mod-shared-values.ts). Present
+   * when the manifest declares `shared:read` or `shared:publish`; a method whose
+   * capability was not declared throws.
+   */
+  readonly shared?: ModShared;
   /** Add title actions after declaring `ui:title`. */
   readonly title?: ModTitle;
   /** Manage player profiles after declaring `profiles:manage`. */
@@ -1517,6 +1523,45 @@ export interface ModGameSession {
    * screen instead. Resolves once the save is written and the quit has begun.
    */
   quit(): Promise<SaveResult>;
+}
+
+/**
+ * A value one mod published through `ctx.shared`, as another mod reads it. Deeply
+ * frozen. A later publish of the same name replaces the whole record.
+ */
+export interface ModSharedValue {
+  /** The publishing mod's id. */
+  readonly mod: string;
+  /** The name it was published under. */
+  readonly name: string;
+  /** The publisher's own version number for this name, so a reader can tell shapes apart. */
+  readonly version: number;
+  /** Plain JSON written by another mod. Check its shape before using it. */
+  readonly value: unknown;
+}
+
+/**
+ * Values mods share with each other: `publish` under `shared:publish`, `read` and
+ * `onChange` under `shared:read`. Values live until the page reloads, the
+ * publisher withdraws them, or the publisher is torn down or fails to load.
+ */
+export interface ModShared {
+  /**
+   * Publish or replace this mod's value under `name`. `version` is a whole number
+   * of the publisher's choosing. The value is copied, so later changes to the
+   * object passed in are not seen. Throws a TypeError for a value that is not
+   * plain JSON and a RangeError for one over the size limit.
+   */
+  publish(name: string, version: number, value: unknown): void;
+  /** Remove this mod's value under `name`. Doing so for a name never published does nothing. */
+  withdraw(name: string): void;
+  /** The value `mod` published under `name`, or null when it has none: not installed, disabled, failed to load, or not published. */
+  read(mod: string, name: string): ModSharedValue | null;
+  /**
+   * Call `listener` after `mod` publishes or withdraws `name`, with the new value
+   * or null. Returns a function that stops it.
+   */
+  onChange(mod: string, name: string, listener: (value: ModSharedValue | null) => void): () => void;
 }
 
 /** A controller plus what the host should know about this one install. */

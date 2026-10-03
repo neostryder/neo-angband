@@ -723,6 +723,39 @@ if (net) {
 
 Code running in the page can still reach the relay without `ctx.net`, because in-process mods share the page. The host checks on each request are consent checks against what the manifest declared. The secret rules hold even so: a value is sent only to the hosts it was stored for, it never comes back to the page, and an environment variable is read only after the player agrees. Mods in the Worker tier do not get `ctx.net`. (neostryder/neo-angband#300)
 
+## 4za. `ctx.shared` - values one mod shares with others
+
+A mod can publish named JSON values for other mods to read. A plugin that declares `shared:publish` calls `ctx.shared.publish(name, version, value)`, and one that declares `shared:read` calls `ctx.shared.read(modId, name)`. `ctx.shared` is present when the manifest declares either capability, and a method whose capability is missing throws a capability error. Both capabilities are listed on the Mods screen, so the player can see which mods share data and which mods read it.
+
+A name is 1 to 64 characters of lower-case letters, digits, `.`, `-` and `_`. The version is a whole number the publisher picks for that name; raise it when the value's shape changes so a reader can tell the shapes apart. The value has to be plain JSON: objects, arrays, strings, finite numbers, booleans and null. A function, `undefined`, `NaN`, a `Date`, a `Map`, a class instance, an empty array slot or a value that contains itself throws a `TypeError` naming the path to the bad part. A value whose JSON text is over 256 KiB in UTF-8 throws a `RangeError`. Either way the previous value stays. The host copies the value at publish time, so editing your object afterwards changes nothing until you publish again, and each publish replaces the whole record. `withdraw(name)` removes it.
+
+`read(modId, name)` returns `{ mod, name, version, value }`, frozen all the way down, or null when the publisher is not installed, is disabled, failed to load, or has not published that name. Values last until the page reloads. A mod whose `register()` throws loses its values at once, and so does every mod at teardown, after all the `uninstall()` calls have run. Load order does not matter, since a read returns what is published at the moment you call it, so read when you need the value instead of keeping a copy from load time. `onChange(modId, name, listener)` calls the listener after each publish or withdrawal of that name, with the new record or null, and returns a function that stops it. A listener that throws is reported against the mod that registered it.
+
+Treat a shared value as untrusted input. Another mod wrote it, and the player may have any version of that mod installed, so check the version and the type of every field you use before drawing it or acting on it.
+
+Two mods that both act on the same event run in an order you do not control. In the example below the recap listens with `onChange` rather than reading inside its own `onRunEnd`, which could run before the reporter has published. Worker-tier mods do not get `ctx.shared`. (#365)
+
+```js
+// The run reporter's plugin.js (manifest: "shared:publish")
+ctx.character.onRunEnd((report) => {
+  ctx.shared.publish("run-summary", 1, {
+    name: report.name,
+    cause: report.cause,
+    maxDepth: report.maxDepth,
+    notes: pickNotes(report), // an array of strings
+  });
+});
+
+// The death recap's plugin.js (manifest: "shared:read")
+function summaryLines() {
+  const shared = ctx.shared.read("run-reporter", "run-summary");
+  const notes = shared?.version === 1 ? shared.value?.notes : undefined;
+  if (!Array.isArray(notes)) return ["The run reporter has no summary for this run."];
+  return notes.filter((line) => typeof line === "string").slice(0, 20);
+}
+ctx.shared.onChange("run-reporter", "run-summary", () => recap.redraw(summaryLines()));
+```
+
 ## 5. Doors that are exported but deliberately closed
 
 An exported mutable table is an extension point whether or not anyone meant it to be one. Two were found this way and are now frozen at runtime, not just typed `readonly`, because a mod folder ships plain `plugin.js` and the type binds nothing there:

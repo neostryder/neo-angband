@@ -176,6 +176,10 @@ export function describeCapability(cap: string): CapabilityDescription {
       return { cap, text: "Create profiles and switch between them", elevated: true };
     case "session":
       return { cap, text: "Save the game, return to the title screen, or quit", elevated: false };
+    case "shared":
+      return parsed.action === "read"
+        ? { cap, text: "Read data other mods share", elevated: false }
+        : { cap, text: "Share data with other mods", elevated: false };
     case "event":
       return { cap, text: `Observe the "${parsed.name}" game event`, elevated: false };
     case "state":

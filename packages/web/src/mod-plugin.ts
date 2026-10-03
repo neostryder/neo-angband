@@ -84,7 +84,7 @@ export type {
   ModCoreApi, ModDebug, ModDisplay, ModDisplayGridRequest, ModDisplaySnapshot,
   ModInstallOutcome, ModKeymapBinding, ModKeymaps, ModMapView, ModPanel, ModPanelSpec,
   ModPluginContext, ModProfile, ModProfileAction, ModProfiles, ProfileResult, ModTitle, ModTitleRow,
-  ModSaves, ModGameSession, ModSessionOutcome, ModSpawnOutcome, ModSubwindowControl,
+  ModSaves, ModGameSession, ModShared, ModSharedValue, ModSessionOutcome, ModSpawnOutcome, ModSubwindowControl,
   ModSubwindowInfo, ModSubwindows, ModTiles, ModUi, ModWizard, ModWizardCatalogue,
   ModWizardEntry, ModWizardOutcome, ModWizardSandbox, ModWizardWhere, PanelKindSpec,
   PanelMount, ReadModResult, SaveEntry, SaveListResult, SaveResult,

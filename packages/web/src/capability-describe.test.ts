@@ -18,6 +18,8 @@ describe("describeCapability", () => {
     expect(describeCapability("ui:title")).toEqual({ cap: "ui:title", text: "Add title screen actions", elevated: false });
     expect(describeCapability("profiles:manage")).toEqual({ cap: "profiles:manage", text: "Create profiles and switch between them", elevated: true });
     expect(describeCapability("session:control")).toEqual({ cap: "session:control", text: "Save the game, return to the title screen, or quit", elevated: false });
+    expect(describeCapability("shared:read")).toEqual({ cap: "shared:read", text: "Read data other mods share", elevated: false });
+    expect(describeCapability("shared:publish")).toEqual({ cap: "shared:publish", text: "Share data with other mods", elevated: false });
   });
   it("describes each registry override domain, flagging system override as elevated", () => {
     expect(describeCapability("registry:effect")).toMatchObject({ elevated: true });

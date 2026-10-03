@@ -59,6 +59,20 @@ describe("parseCapability: valid forms", () => {
     const control = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["session:control"] }));
     expect(control.has("session:control")).toBe(true);
   });
+  it("keeps shared:read and shared:publish apart from each other and from every wildcard", () => {
+    expect(parseCapability("shared:read")).toEqual({ kind: "shared", action: "read" });
+    expect(parseCapability("shared:publish")).toEqual({ kind: "shared", action: "publish" });
+    expect(() => parseCapability("shared:*")).toThrow(CapabilityError);
+    const broad = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["state:*.read", "mod:read", "registry:*"] }));
+    expect(broad.has("shared:read")).toBe(false);
+    expect(broad.has("shared:publish")).toBe(false);
+    const reader = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["shared:read"] }));
+    expect(reader.has("shared:read")).toBe(true);
+    expect(reader.has("shared:publish")).toBe(false);
+    const publisher = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["shared:publish"] }));
+    expect(publisher.has("shared:publish")).toBe(true);
+    expect(publisher.has("shared:read")).toBe(false);
+  });
   it("keeps options:write and keymap:edit apart from the grants near them", () => {
     expect(parseCapability("options:write")).toEqual({ kind: "options", action: "write" });
     expect(parseCapability("keymap:edit")).toEqual({ kind: "keymap", action: "edit" });

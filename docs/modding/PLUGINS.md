@@ -380,6 +380,10 @@ Declare `ui:title` to receive `ctx.title`. `registerRow({ label, key?, run })` a
 
 Declare `profiles:manage` to receive `ctx.profiles`. A mod can list profiles, create a fresh profile or copy configuration from another profile, replace the enabled mods in a profile it created, and switch profiles before play begins. Profile copies exclude characters and the save roster. See [MOD_SEAMS.md](MOD_SEAMS.md#player-profiles-and-title-actions) for method types and reload actions.
 
+### Sharing data with other mods: `ctx.shared`
+
+Declare `shared:publish` to publish named JSON values with `ctx.shared.publish(name, version, value)`, and `shared:read` to read another mod's with `ctx.shared.read(modId, name)`. A read returns a frozen copy, or null when that mod is not installed, is disabled, failed to load, or has not published the name. Values must be plain JSON of at most 256 KiB, and the version is a number you raise when the value's shape changes. Treat what you read as untrusted input and check its version and fields before you use it. See [MOD_SEAMS.md section 4za](MOD_SEAMS.md#4za-ctxshared---values-one-mod-shares-with-others).
+
 ### Tiled panels beside `openPanel`
 
 Declare `ui:panel.mount` to offer a panel in Subwindow setup with `ctx.ui.registerPanelKind(spec)`. Its `mount` function draws into the slot's shadow root. Use the returned function during mod cleanup to unregister the kind. See [MOD_SEAMS.md section 4p](MOD_SEAMS.md#4p-ctxuiregisterpanelkind---a-mod-panel-in-the-tiled-layout) for the host handle and saved layout behavior.
@@ -963,6 +967,8 @@ The `GridSurface` rendering contract is host infrastructure, not a registry capa
 A session-only load is limited in lifetime, not in privilege. A session-loaded pack composes into the game on the same terms as an installed one. Only the archive is short-lived: what the records did to a character, and anything a mod wrote while they were loaded, outlives the session exactly as it would have if the mod had been installed. What the session tier does give a player is that it cannot accumulate: the mod is listed and marked, it can be dropped, and closing the game forgets it.
 
 That lifetime is a strong convention, not an enforced boundary. The archive lives in `sessionStorage`, which survives a reload (that is what makes the tier work, since a reload is what applies a mod). A browser also restores it when it restores a closed or crashed window, and a window the page itself opens inherits a copy of it. So "gone when you close the game" is what normally happens, not a guarantee. The mitigation is visibility: a session mod is always on the list, always marked, and always droppable, so it can never sit there unnoticed.
+
+`shared:` has two actions, and neither grant includes the other. A mod that reads what others share is not able to publish, and the reverse. Publishing needs its own grant so the player can see from the Mods screen which mods hand data to other mods, not only which mods take it.
 
 `ui:panel.mount` is not a fence around the DOM. Your `plugin.js` runs in the page's own realm, so `document` is available to it with or without any capability, and a mod that never declares this can still append an element to the body. What the grant carries is a line the player reads first, a container the host owns and can take away, and one thing a mod cannot do without it: stand the game's input door down, so a real `<input>` inside your panel can be typed into instead of the keystrokes being read as game commands.
 

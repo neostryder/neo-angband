@@ -691,6 +691,7 @@ import {
 import { createModKnowledge, type KnowledgeSources } from "./knowledge-read";
 import { buildRunReport, createRunReports } from "./run-report";
 import { notifyModSettingChanged, setModSettingSource } from "./mod-settings-values";
+import { retireSharedValues, setSharedValueFaultReporter } from "./mod-shared-values";
 import {
   buildRuneList,
   type Artifact,
@@ -7265,6 +7266,7 @@ setModSettingSource({
   stored: (modId) => defaultModStore().getSettingValues()[modId] ?? {},
   write: (modId, settingId, value) => defaultModStore().setSettingValue(modId, settingId, value),
 }, reportDisplayFault);
+setSharedValueFaultReporter(reportDisplayFault);
 setModSavesControl(createModSaves({
   onChange: onRosterChange,
   listRoster,
@@ -13365,6 +13367,7 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
     clearVisualFilter: () => displayControl.setVisualFilter(null),
     clearMapMargin: () => displayControl.setMapMargin?.(null),
     releaseKeymaps: releaseModKeymaps,
+    retireSharedValues,
     removeTitleRows: (id) => modTitle.removeMod(id),
   });
   for (const worker of workerPlugins.values()) worker.teardown();
@@ -16020,6 +16023,8 @@ for (const loaded of activeModCode().plugins) {
       loaded.id,
       `register() failed, so its effects, rooms and commands are not installed: ${faultMessage(err)}`,
     );
+    /* Not installed means nothing shared: other mods read null from here on. */
+    retireSharedValues(loaded.id);
     log.error(`mod:${loaded.id}`, `register() failed:`, err);
   }
 }

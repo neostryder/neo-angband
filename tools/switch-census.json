@@ -10,25 +10,25 @@
       "verdict": "DEBUG - wizard/debug menu action routing. Not player-facing content; a mod extends the debug menu through the command seam, not here."
     },
     {
+      "file": "packages/mod-sdk/src/capabilities.ts",
+      "cases": 25,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - capability grants are host-owned consent vocabulary. saves:manage (#285) names the roster-management grant; mods cannot add a capability kind. options:write (#291) is one more host-owned grant. session:control (#361) is the save, exit and quit grant. shared:read and shared:publish (#365) are the two sides of ctx.shared."
+    },
+    {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 25,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. saves:manage (#285) is elevated because it can delete characters; mods cannot add an unreviewed consent category. keymap:edit (#291) is elevated because it can replace the player's keymaps. session:control (#361) is not elevated because every call saves first. shared:read and shared:publish (#365) are not elevated because they move only JSON a mod chose to publish."
+    },
+    {
       "file": "packages/core/src/mon/desc.ts",
       "cases": 24,
       "hasDefault": false,
       "kind": "SWITCH",
       "verdict": "LOCALIZATION - the pronoun table (msex x mode), not a dispatch table. Belongs to MOD_REACH gap 14 (localization), which replaces the strings wholesale rather than the switch."
-    },
-    {
-      "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 24,
-      "hasDefault": false,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - capability grants are host-owned consent vocabulary. saves:manage (#285) names the roster-management grant; mods cannot add a capability kind. options:write (#291) is one more host-owned grant. session:control (#361) is the save, exit and quit grant."
-    },
-    {
-      "file": "packages/web/src/capability-describe.ts",
-      "cases": 24,
-      "hasDefault": false,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. saves:manage (#285) is elevated because it can delete characters; mods cannot add an unreviewed consent category. keymap:edit (#291) is elevated because it can replace the player's keymaps. session:control (#361) is not elevated because every call saves first."
     },
     {
       "file": "packages/web/src/equip-cmp.ts",
@@ -213,6 +213,13 @@
       "verdict": "HOST - command-line option letters. Host wiring, not game content."
     },
     {
+      "file": "packages/mod-sdk/src/capabilities.ts",
+      "cases": 10,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "INTERNAL - parsing recognizes the closed capability grammar owned by the mod SDK. input:intent and input:prompt.reply (#285) are documented tokens, not game behavior branches a mod can add at runtime. options:write and keymap:edit (#291) are two more exact grants. shared:read and shared:publish (#365) share one arm and are compared exactly."
+    },
+    {
       "file": "packages/web/src/gamepad-input.ts",
       "cases": 10,
       "hasDefault": false,
@@ -246,13 +253,6 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "LOCALIZATION - skill_index_to_name. Index to display string; gap 14 owns the strings."
-    },
-    {
-      "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 9,
-      "hasDefault": false,
-      "kind": "IF_CHAIN",
-      "verdict": "INTERNAL - parsing recognizes the closed capability grammar owned by the mod SDK. input:intent and input:prompt.reply (#285) are documented tokens, not game behavior branches a mod can add at runtime. options:write and keymap:edit (#291) are two more exact grants."
     },
     {
       "file": "packages/web/src/birth.ts",

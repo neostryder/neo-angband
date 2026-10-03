@@ -89,6 +89,12 @@ export interface ModTeardownDeps {
   readonly clearDisplayValues?: (id: string) => void;
   /** Remove keymaps still owned by each departing plugin, after its uninstall. */
   readonly releaseKeymaps?: (id: string) => void;
+  /**
+   * Withdraw every value a plugin shared through `ctx.shared`. Called for each
+   * plugin after the whole `uninstall()` pass, so every `uninstall()` can still
+   * read what the others shared.
+   */
+  readonly retireSharedValues?: (id: string) => void;
 }
 
 /** What the pass actually did, for the log and for the tests. */
@@ -172,6 +178,14 @@ export function teardownModPlugins(deps: ModTeardownDeps): ModTeardownResult {
     } catch (err) {
       reportModFault(loaded.id, `its owned keymaps could not be removed before the reload: ${faultMessage(err)}`);
       log.error(`mod:${loaded.id}`, `removing owned keymaps failed:`, err);
+    }
+  }
+
+  for (const loaded of deps.plugins) {
+    try {
+      deps.retireSharedValues?.(loaded.id);
+    } catch (err) {
+      log.error(`mod:${loaded.id}`, "withdrawing shared values failed:", err);
     }
   }
 

@@ -283,7 +283,8 @@ export type ParsedCapability =
   | { kind: "saves"; action: "manage" }
   | { kind: "title"; action: "add" }
   | { kind: "profiles"; action: "manage" }
-  | { kind: "session"; action: "control" };
+  | { kind: "session"; action: "control" }
+  | { kind: "shared"; action: "read" | "publish" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 /**
@@ -384,6 +385,13 @@ export function parseCapability(cap: string): ParsedCapability {
    * roster) does not carry it: managing characters and ending this one are two
    * different things to agree to. */
   if (cap === "session:control") return { kind: "session", action: "control" };
+  /* "shared:read" and "shared:publish": read the named JSON values other mods
+   * publish through `ctx.shared`, or publish this mod's own. Two actions so the
+   * Mods screen can show both sides of the exchange, and compared exactly, so
+   * neither grant carries the other. */
+  if (cap === "shared:read" || cap === "shared:publish") {
+    return { kind: "shared", action: cap === "shared:read" ? "read" : "publish" };
+  }
   /* NOT a registry domain, deliberately. A registry:* grant means "override
    * one named game system among many"; this one means "everything the player
    * sees of the dungeon is drawn by this mod." It is the display OWNER, so it
@@ -529,6 +537,8 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
       return grant.kind === "profiles";
     case "session":
       return grant.kind === "session";
+    case "shared":
+      return grant.kind === "shared" && grant.action === request.action;
     case "event":
       return grant.kind === "event" && grant.name === request.name;
     case "state":

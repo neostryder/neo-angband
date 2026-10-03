@@ -69,6 +69,7 @@ import { createModDebug, SPAWN_CAPABILITY, type DebugDoorDeps } from "./spawn-ru
 import { createModWizard, WIZARD_CAPABILITY, type WizardDoorDeps } from "./wizard-runtime";
 import { createModKeymaps, KEYMAP_WRITE_CAPABILITY } from "./macro-runtime";
 import { modSettingsFor } from "./mod-settings-values";
+import { sharedValuesFor } from "./mod-shared-values";
 import type { ModNet } from "./mod-net";
 import type { CapabilitySet, ComposedRecords } from "@rpgm-tools/neo-angband-mod-sdk";
 
@@ -181,6 +182,7 @@ export function modPluginContext(
   const keybindings = keybindingsFor(state, session);
   const knowledge = knowledgeFor(state, session);
   const settings = modSettingsFor(id);
+  const shared = sharedValuesFor(id, session.capabilities);
   const characterStore = characterStoreFor(id, state, session);
   /* `session.registries` first so a test can supply its own without booting a
    * game; the latch otherwise, which is what every real call site uses. */
@@ -233,6 +235,7 @@ export function modPluginContext(
     ...(keyRepeat ? { keyRepeat } : {}),
     ...(saves ? { saves } : {}),
     ...(gameSession ? { session: gameSession } : {}),
+    ...(shared ? { shared } : {}),
     ...(title ? { title } : {}),
     ...(profiles ? { profiles } : {}),
     ...(session.capabilities?.has("profiles:manage") && session.capabilities?.has("saves:manage") && controllerArmedControl?.(id)

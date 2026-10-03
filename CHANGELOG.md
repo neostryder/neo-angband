@@ -59,6 +59,7 @@ still calls itself.
 - [Visible] [Modding-API] **A mod can change its own settings.** `ctx.settings.set(id, value)` clamps, saves and announces the value, as the Mods screen does (#362).
 - [Visible] [Modding-API] **Character creation gives point-buy costs and can restore the generated background.** The draft's `statCosts` gives each stat's next cost, refund and whether it can be bought or sold, and `restoreHistory()` undoes an edit to the background (#362).
 - [Visible] [Modding-API] **A mod can save the game, return to the title screen or quit.** Under the new `session:control` capability, `ctx.session` offers `save()`, `exitToTitle()` and `quit()`, each saving first and staying in the game if the save fails (#361).
+- [Visible] [Modding-API] **Mods can share data with each other.** Under the new `shared:publish` capability, `ctx.shared.publish(name, version, value)` publishes a named JSON value, and a mod with `shared:read` gets a frozen copy from `ctx.shared.read(modId, name)`, or null when that mod is absent, disabled or has not published it (#365).
 
 ### Changed
 
