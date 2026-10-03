@@ -92,7 +92,8 @@ export type LoadoutDerive = (
 
 /**
  * The state read a reference needs: the domain the named object lives in. An
- * `object` reference is engine-internal and reads nothing a capability guards.
+ * `object` reference reads nothing a capability guards; requireLoadoutReads
+ * refuses it from any view built with capabilities.
  */
 function refDomain(ref: LoadoutItemRef): string | null {
   switch (ref.from) {
@@ -113,7 +114,8 @@ function refDomain(ref: LoadoutItemRef): string | null {
  * The result lists the worn set and the pack, which is an inventory read even
  * for an empty change; each reference then needs the read for where its object
  * lives. `state:*.read` covers all of them, and no `caps` (a trusted host)
- * grants everything. simulateLoadout and compareLoadoutSlots both check here,
+ * grants everything. An `object` reference is refused whenever `caps` is
+ * present, wildcard or not. simulateLoadout and compareLoadoutSlots both check here,
  * so the two cannot disagree about what a reference costs.
  */
 export function requireLoadoutReads(
@@ -121,9 +123,20 @@ export function requireLoadoutReads(
   refs: Iterable<LoadoutItemRef>,
   facade: string,
 ): void {
-  if (!caps || caps.has("state:*.read")) return;
+  if (!caps) return;
+  const named = [...refs];
+  /* An `object` reference hands over an engine GameObject, which only trusted
+     in-process code holds. From a capability-gated caller it is either an
+     object read around the domain checks below or a forged one, so it is
+     refused whatever the grant. */
+  if (named.some((ref) => ref.from === "object")) {
+    throw new AgentCapabilityError(
+      `agent ${facade}: an "object" reference needs a view built without capabilities; name the item by gear, store or floor`,
+    );
+  }
+  if (caps.has("state:*.read")) return;
   const domains = new Set<string>([AGENT_STATE_DOMAINS.inventory]);
-  for (const ref of refs) {
+  for (const ref of named) {
     const domain = refDomain(ref);
     if (domain) domains.add(domain);
   }
@@ -215,11 +228,13 @@ function resolveRef(state: GameState, ref: LoadoutItemRef): GameObject | null {
       return store?.stock[ref.index] ?? null;
     }
     case "floor": {
-      /* inspectItem's floor rule: the object must be in the live pile at that
-         index and remembered exactly there, so an unseen square or a sensed
-         pile names nothing. */
+      /* inspectItem's floor rule: whatever is in the live pile at that index
+         now, provided the player remembers it exactly there, so an unseen
+         square or a sensed pile names nothing. The address is positional: once
+         the pile changes, the same reference can name a different object. */
       const grid = { x: ref.x, y: ref.y };
       if (!Number.isInteger(ref.x) || !Number.isInteger(ref.y) || !state.chunk.inBounds(grid)) return null;
+      if (!Number.isInteger(ref.index) || ref.index < 0) return null;
       const obj = state.floor.get(ref.y * state.chunk.width + ref.x)?.[ref.index];
       if (!obj) return null;
       const known = knownFloorObject(state, grid, obj);

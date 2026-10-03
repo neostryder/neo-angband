@@ -64,6 +64,7 @@ still calls itself.
 - [Visible] [Modding-API] **A mod can correct one background phrase with a content patch.** Each `history` record now has a ref made of its chart and roll, so `core:50--100` is "You have blue-gray eyes, ". A patch, replace or remove can target that one phrase. A pack's own `history` records still replace the whole file, because the order of a chart's records decides which phrase a roll picks (#282).
 - [Visible] [Modding-API] **`objectInfoText` now says where each fragment of an item description comes from.** Its new second argument names the section that wrote the fragment, such as `stats` for the "Affects your" lines, and gives the item's tval and whether the player knows its kind. The kind is named only once the player knows it; before that the hook gets the flavour the player sees, such as "Light Blue". A hook that takes only the text keeps working, and with no mod installed every description is unchanged (#282).
 - [Visible] [Modding-API] **A mod can compare an item on the floor against what the character wears.** `simulateLoadout` and `compareLoadoutSlots` take `{ from: "floor", x, y, index }`, the grid and pile index `inspectItem` uses for a floor item, under `state:floor.read`. Only an object the player remembers on that grid resolves (#364).
+- [Visible] [Modding-API] **A mod can compare an item on the floor against what the character wears.** `simulateLoadout` and `compareLoadoutSlots` take `{ from: "floor", x, y, index }`, the grid and pile index `inspectItem` uses for a floor item, under `state:floor.read`. Only an object the player remembers on that grid resolves, and the index must be a whole number (#364).
 
 ### Changed
 
@@ -74,7 +75,7 @@ still calls itself.
 
 ### Fixed
 
-- [Visible] [Modding-API] [Security] **Comparing gear needs the read for every item it names.** `simulateLoadout` used to check only `state:player.read`, so a mod without `state:inventory.read` or `state:stores.read` could read pack items and shop wares through the result. It now needs `state:inventory.read` for every call, since the answer lists the pack, and `state:stores.read` or `state:floor.read` when a reference names a ware or a floor item. `compareLoadoutSlots` asks for the same reads (#367).
+- [Visible] [Modding-API] [Security] **Comparing gear needs the read for every item it names.** `simulateLoadout` used to check only `state:player.read`, so a mod without `state:inventory.read` or `state:stores.read` could read pack items and shop wares through the result. It now needs `state:inventory.read` for every call, since the answer lists the pack, and `state:stores.read` or `state:floor.read` when a reference names a ware or a floor item. `compareLoadoutSlots` asks for the same reads. A view built with capabilities refuses a `{ from: "object" }` reference outright, since only code inside the engine holds a `GameObject` (#367).
 
 ## [1.21.1] - 2026-10-01
 

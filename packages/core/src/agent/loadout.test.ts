@@ -449,14 +449,18 @@ describe("a floor reference names a remembered object by grid and pile index", (
     const mail = make(Number.MAX_SAFE_INTEGER, TV.HARD_ARMOR);
     const { grid } = onFloor(state, mail, true);
     const view = createAgentView(state, undefined, { reg });
-    const bad = [
+    /* A string or fractional index must not reach the pile through array
+       coercion: pile["0"] is the mail. */
+    const bad: LoadoutItemRef[] = [
       { from: "floor", x: grid.x, y: grid.y, index: 1 },
       { from: "floor", x: grid.x, y: grid.y, index: -1 },
+      { from: "floor", x: grid.x, y: grid.y, index: "0" as unknown as number },
+      { from: "floor", x: grid.x, y: grid.y, index: 0.5 },
       { from: "floor", x: -1, y: grid.y, index: 0 },
       { from: "floor", x: state.chunk.width, y: grid.y, index: 0 },
-    ] as const;
+    ];
     for (const ref of bad) {
-      expect(view.compareLoadoutSlots!(ref).slots).toEqual([]);
+      expect(view.compareLoadoutSlots!(ref as Exclude<LoadoutItemRef, { from: "object" }>).slots).toEqual([]);
       const sim = view.simulateLoadout!({ wield: [ref] })!;
       expect(sim.unresolved).toEqual([ref]);
       expect(sim.delta.changed).toBe(false);
@@ -544,9 +548,14 @@ describe("a loadout read needs the read for every place it looks", () => {
         expect(() => view.simulateLoadout!(change)).toThrow(AgentCapabilityError);
       }
       expect(() => view.compareLoadoutSlots!(refs[arm])).toThrow(AgentCapabilityError);
-      /* A refused reference also refuses a change that mixes it with allowed ones. */
-      const mixed = { wield: [refs[arm]], carry: [{ item: { from: "object", object: make(0, TV.SOFT_ARMOR) } as const }] };
-      expect(() => view.simulateLoadout!(mixed)).toThrow(AgentCapabilityError);
+      /* A refused reference also refuses a change that mixes it with one the
+         view may read. Without the inventory read no change answers at all. */
+      if (arm !== "gear") {
+        const allowed = arm === "store" ? refs.floor : refs.gear;
+        expect(view.simulateLoadout!({ carry: [{ item: allowed }] })).not.toBeNull();
+        const mixed = { wield: [refs[arm]], carry: [{ item: allowed }] };
+        expect(() => view.simulateLoadout!(mixed)).toThrow(AgentCapabilityError);
+      }
     });
 
     it(`answers a ${arm} reference once state:${domainOf[arm]}.read is granted`, () => {
@@ -589,6 +598,15 @@ describe("a loadout read needs the read for every place it looks", () => {
       expect(view.simulateLoadout!(change)).not.toBeNull();
       for (const ref of Object.values(refs)) expect(view.compareLoadoutSlots!(ref).slots.length).toBeGreaterThan(0);
     }
+    /* An engine object can only come from a trusted caller: any capability set refuses it. */
+    const object = { from: "object", object: make(0, TV.SOFT_ARMOR) } as const;
+    const wildcard = createAgentView(state, undefined, { reg }, granted("state:*.read"));
+    for (const change of changes(object)) {
+      expect(() => wildcard.simulateLoadout!(change)).toThrow(AgentCapabilityError);
+    }
+    expect(() => wildcard.simulateLoadout!({ wield: [refs.gear], carry: [{ item: object }] })).toThrow(AgentCapabilityError);
+    expect(() => wildcard.compareLoadoutSlots!(object as never)).toThrow(AgentCapabilityError);
+    expect(createAgentView(state, undefined, { reg }).simulateLoadout!({ wield: [object] })!.unresolved).toEqual([]);
     /* The wildcard is still a state grant: without the player read nothing answers. */
     const noPlayer = createAgentView(state, undefined, { reg },
       granted("state:inventory.read", "state:stores.read", "state:floor.read"));

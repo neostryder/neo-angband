@@ -565,20 +565,22 @@ export interface TargetView {
  * address, and pricing a purchase is one of the two decisions this whole
  * capability exists for. An object on the floor is named by where it lies, the
  * same grid and pile index `inspectItem`'s floor form and `floorItems()`'s
- * `floorIndex` use; it resolves only when the player remembers that exact
- * object there, so it cannot reach an unseen square or a merely sensed pile.
- * The last arm is for a caller INSIDE the engine that is holding the object
- * itself (a freshly rolled drop, a character-sheet comparison); an agent driving
- * the frozen view has no GameObject and will never use it.
+ * `floorIndex` use. It names whatever lies at that index when the call runs,
+ * and only if the player remembers it there, so it cannot reach an unseen
+ * square or a merely sensed pile; a reference kept while the pile changes can
+ * name a different object. The last arm is for a caller INSIDE the engine that
+ * is holding the object itself (a freshly rolled drop, a character-sheet
+ * comparison). A view built with capabilities refuses it, since an agent
+ * driving the frozen view has no GameObject to hand over.
  */
 export type LoadoutItemRef =
   /** Something already in the gear, worn or packed. */
   | { readonly from: "gear"; readonly handle: number }
   /** Store stock: `store` indexes view.stores(), `index` the ware in it. */
   | { readonly from: "store"; readonly store: number; readonly index: number }
-  /** A remembered floor object: the grid, and its index in the pile there. */
+  /** A remembered floor object: the grid, and its current index in the pile there. */
   | { readonly from: "floor"; readonly x: number; readonly y: number; readonly index: number }
-  /** An object in hand (engine-internal callers only). */
+  /** An object in hand (engine-internal callers only; a capability-gated view refuses it). */
   | { readonly from: "object"; readonly object: import("../obj/object.js").GameObject };
 
 /**
