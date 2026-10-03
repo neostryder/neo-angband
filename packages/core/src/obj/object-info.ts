@@ -80,6 +80,7 @@ import {
   tvalIsAmmo,
   tvalIsEdible,
   tvalIsFuel,
+  tvalIsLauncher,
   tvalIsLight,
   tvalIsMeleeWeapon,
   tvalIsPotion,
@@ -1437,6 +1438,119 @@ function describeCombat(tb: Textblock, deps: ObjectInfoDeps, obj: GameObject): b
     tbAppend(tb, " chance of breaking upon contact.\n");
   }
   return true;
+}
+
+/**
+ * One brand or slay line of an item's average damage (neo-angband#360).
+ * `damage` is in the same units describe_damage prints, to the tenth.
+ */
+export interface ObjectDamageLine {
+  readonly kind: "brand" | "slay";
+  readonly name: string;
+  readonly damage: number;
+}
+
+/** An item's average damage as describe_damage computes it (neo-angband#360). */
+export interface ObjectDamage {
+  /** Against a creature none of the known brands or slays affect. */
+  readonly normal: number;
+  /** Against what each known brand or slay affects, highest first, in the order the description lists them. */
+  readonly vs: readonly ObjectDamageLine[];
+  /** A brand or slay from other equipment or a timed effect adds to this weapon. */
+  readonly offWeapon: boolean;
+}
+
+/**
+ * The numbers behind an item's "Combat info" lines (neo-angband#360), from
+ * the same calculations `describeCombat` runs and limited to what the
+ * character knows of the item. Null for an item that has no combat lines.
+ */
+export interface ObjectCombatInfo {
+  /** The character is too weak to wield this weapon well. */
+  readonly tooHeavy: boolean;
+  /** Melee blows per round to the tenth the description shows (2.3); null for anything but a melee weapon. */
+  readonly blows: number | null;
+  /** Average damage per round, for a melee weapon or ammunition the current launcher fires. */
+  readonly damage: ObjectDamage | null;
+  /** Average damage per throw, for a throwing weapon or a sling stone. */
+  readonly thrownDamage: ObjectDamage | null;
+  /**
+   * Shooting power: the multiplier a launcher shows in its name, or the
+   * current launcher's multiplier for ammunition it fires.
+   */
+  readonly multiplier: number | null;
+  /** How far ammunition fired at that multiplier reaches, in feet. */
+  readonly range: number | null;
+  /** Percent chance that fired ammunition breaks on contact. */
+  readonly breakageChance: number | null;
+}
+
+/** The brand and slay lines of a damage result, in describe_damage's order. */
+function damageLines(env: RuneEnv, res: DamageResult): ObjectDamageLine[] {
+  const brandMax = env.brands.length;
+  const sortind: number[] = [];
+  for (let i = 0; i < env.slays.length; i++) {
+    if ((res.slay[i] ?? 0) > 0) sortind.push(i + brandMax);
+  }
+  for (let i = 0; i < brandMax; i++) {
+    if ((res.brand[i] ?? 0) > 0) sortind.push(i);
+  }
+  const damOf = (ind: number): number =>
+    ind < brandMax ? (res.brand[ind] ?? 0) : (res.slay[ind - brandMax] ?? 0);
+  for (let i = 0; i < sortind.length - 1; i++) {
+    let maxdam = damOf(sortind[i] as number);
+    let maxind = i;
+    for (let j = i + 1; j < sortind.length; j++) {
+      const d = damOf(sortind[j] as number);
+      if (maxdam < d) {
+        maxdam = d;
+        maxind = j;
+      }
+    }
+    if (maxind !== i) {
+      const tmp = sortind[maxind] as number;
+      sortind[maxind] = sortind[i] as number;
+      sortind[i] = tmp;
+    }
+  }
+  return sortind.map((ind) => ind < brandMax
+    ? { kind: "brand" as const, name: env.brands[ind]?.name ?? "", damage: damOf(ind) / 10 }
+    : { kind: "slay" as const, name: env.slays[ind - brandMax]?.name ?? "", damage: damOf(ind) / 10 });
+}
+
+function objectDamage(deps: ObjectInfoDeps, obj: GameObject, throwIt: boolean): ObjectDamage {
+  const res = deps.percentDamage ? oObjKnownDamage(deps, obj, throwIt) : objKnownDamage(deps, obj, throwIt);
+  const vs = res.hasBrandsOrSlays ? damageLines(deps.env, res) : [];
+  return { normal: Math.max(0, res.normal) / 10, vs, offWeapon: res.nonweapSlay };
+}
+
+/** The numbers `describeCombat` prints, for a mod that draws them itself (neo-angband#360). */
+export function objectCombatInfo(obj: GameObject, deps: ObjectInfoDeps): ObjectCombatInfo | null {
+  const shadow = shadowOf(deps, obj);
+  /* object_info_out describes an unaware object as unknown and stops. */
+  if (obj.kind !== shadow.kind) return null;
+  const rangeAt = (mult: number): number => 10 * Math.min(6 + 2 * mult, deps.z.maxRange);
+  if (tvalIsLauncher(obj.tval)) {
+    if (!shadow.kind.kindFlags.has(KF.SHOW_MULT)) return null;
+    const multiplier = shadow.pval + (shadow.modifiers[OBJ_MOD.MIGHT] ?? 0);
+    return { tooHeavy: false, blows: null, damage: null, thrownDamage: null,
+      multiplier, range: rangeAt(multiplier), breakageChance: null };
+  }
+  const weapon = tvalIsMeleeWeapon(obj.tval);
+  const ammo = deps.currentState.ammoTval === obj.tval && !!deps.bow;
+  const throwingWeapon = weapon && obj.flags.has(OF.THROWING);
+  const rock = tvalIsAmmo(obj.tval) && obj.flags.has(OF.THROWING);
+  if (!weapon && !ammo && !rock) return null;
+  const blows = weapon ? objKnownBlows(deps, obj, 1)[0]?.centiblows ?? null : null;
+  return {
+    tooHeavy: weapon && deps.deriveState(equipWith(deps, obj, deps.weaponSlot), 0, 0).heavyWield,
+    blows: blows === null ? null : Math.trunc(blows / 10) / 10,
+    damage: weapon || ammo ? objectDamage(deps, obj, false) : null,
+    thrownDamage: throwingWeapon || rock ? objectDamage(deps, obj, true) : null,
+    multiplier: ammo ? deps.currentState.ammoMult : null,
+    range: ammo ? rangeAt(deps.currentState.ammoMult) : null,
+    breakageChance: ammo ? deps.breakageChance(obj) : null,
+  };
 }
 
 /* ------------------------------------------------------------------ *

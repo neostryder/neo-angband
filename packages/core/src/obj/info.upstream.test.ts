@@ -16,7 +16,7 @@ import { TV, RF } from "../generated/index.js";
 import { startGame } from "../session/game.js";
 import type { GamePack } from "../session/game.js";
 import { objectPrep } from "./make.js";
-import { objectInfoTextblock, type ObjectInfoExtras } from "../game/object-inspect.js";
+import { objectCombatValues, objectInfoTextblock, type ObjectInfoExtras } from "../game/object-inspect.js";
 import { textblockToString } from "./object-info.js";
 import { OBJ_NOTICE, playerLearnAllRunes } from "./knowledge.js";
 import { ORIGIN } from "../generated/origins.js";
@@ -169,5 +169,37 @@ describe("object/info (reference/src/tests/object/info.c)", () => {
     const weapon = prep("dagger", TV.SWORD, { toD: 1, dd: 2, ds: 4 });
     const text = info(state, weapon, extras);
     expect(text).toMatch(/Average damage\/round: \d/);
+  });
+});
+
+describe("objectCombatValues (#360)", () => {
+  it("gives the numbers the combat lines print", () => {
+    const { state, extras, prep } = boot();
+    const weapon = prep("dagger", TV.SWORD, { toD: 2, dd: 3, ds: 8 });
+    const slays = state.runeEnv.slays;
+    const evil = slays.findIndex((s) => s?.code === "EVIL_2");
+    expect(evil).toBeGreaterThan(0);
+    weapon.slays = new Array<boolean>(slays.length).fill(false);
+    weapon.slays[evil] = true;
+    const text = info(state, weapon, extras);
+    const combat = objectCombatValues(state, weapon, extras);
+    expect(combat).not.toBeNull();
+    expect(text).toContain(`${combat!.blows!.toFixed(1)} blow`);
+    expect(combat!.damage!.vs).toEqual([{ kind: "slay", name: slays[evil]!.name, damage: expect.any(Number) }]);
+    expect(text).toContain(`${combat!.damage!.vs[0]!.damage} vs ${slays[evil]!.name}`);
+    expect(text).toContain(`${combat!.damage!.normal} vs. others`);
+    expect(combat!.damage!.vs[0]!.damage).toBeGreaterThan(combat!.damage!.normal);
+    expect(combat).toMatchObject({ multiplier: null, range: null, breakageChance: null });
+  });
+
+  it("gives a launcher's multiplier and range, and nothing for an item with no combat lines", () => {
+    const { state, extras, prep } = boot();
+    const sling = prep("sling", TV.BOW);
+    const combat = objectCombatValues(state, sling, extras);
+    expect(combat?.multiplier).toBe(sling.pval);
+    expect(combat?.range).toBe(10 * Math.min(6 + 2 * sling.pval, extras.constants.maxRange));
+    expect(combat?.damage).toBeNull();
+    const food = prep("ration", TV.FOOD);
+    expect(objectCombatValues(state, food, extras)).toBeNull();
   });
 });

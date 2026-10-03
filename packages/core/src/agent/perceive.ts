@@ -24,6 +24,7 @@ import {
   TRF,
 } from "../generated/index.js";
 import type { FlagSet } from "../bitflag.js";
+import type { MonsterRace } from "../mon/types.js";
 import { useFlavorGlyph } from "../visuals/object-glyph.js";
 import type { GameState } from "../game/context.js";
 import { gearGet } from "../game/gear.js";
@@ -91,6 +92,19 @@ function spellFlagCodes(flags: FlagSet): string[] {
   return out;
 }
 
+/**
+ * The race's spell flags the character has learned (neo-angband#359), read
+ * without creating a lore record for a race the character has no lore on.
+ */
+function knownSpellFlagCodes(state: GameState, race: MonsterRace): string[] {
+  const lore = state.lore.get(race.ridx);
+  if (!lore) return [];
+  if (lore.allKnown) return spellFlagCodes(race.spellFlags);
+  const known = lore.spellFlags.clone();
+  known.inter(race.spellFlags);
+  return spellFlagCodes(known);
+}
+
 function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
   const out: MonsterView[] = [];
   const quests = state.actor.player.quests;
@@ -123,6 +137,7 @@ function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
       questGuardian: quests.some((q) => q.race === m.race.ridx),
       finalGuardian: m.race.ridx === finalRace,
       spellFlags: spellFlagCodes(m.race.spellFlags),
+      knownSpellFlags: knownSpellFlagCodes(state, m.race),
     };
     if (deps.resolver) {
       const raceId = deps.resolver.raceIdOrNull(m.race.ridx);

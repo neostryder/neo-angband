@@ -52,6 +52,8 @@ still calls itself.
 
 - [Visible] [Modding-API] **An autoplayer mod can choose what a key press does while it has the keyboard.** A controller install can include `onKey`, which answers `keep`, with an optional message for the message line, or `release`. Escape and Ctrl-Z always give the keyboard back, whatever the mod answers (#334).
 - [Visible] [Modding-API] **A mod can save and restore the whole subwindow layout.** `ctx.subwindows.layout()` returns the arrangement as a layout document, `setLayout()` applies one, and `onLayoutChange()` reports each change once it finishes, so a mod can offer undo and redo or named layouts (#287).
+- [Visible] [Modding-API] **The agent view tells a mod which monster spells the character has learned.** `MonsterView.knownSpellFlags` lists the race's spell flags the character has seen it use, the same set the monster recall names, beside `spellFlags`, which lists them all (#359).
+- [Visible] [Modding-API] **Inspecting an item gives its combat values as numbers.** `inspectItem` results carry `combat`: blows per round, average damage per round or per throw with a line for each known brand and slay, shooting power, range and breakage chance, from the same calculation as the description (#360).
 
 ### Changed
 

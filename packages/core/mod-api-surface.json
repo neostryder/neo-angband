@@ -1344,6 +1344,8 @@
     "objectAbsorb",
     "objectAbsorbPartial",
     "objectAttrChar",
+    "objectCombatInfo",
+    "objectCombatValues",
     "objectCopy",
     "objectCopyAmt",
     "objectCursesFindElement",

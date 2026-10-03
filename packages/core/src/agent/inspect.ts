@@ -10,7 +10,8 @@ import { knownFeat, knownFloorObject, knownIsClosedDoor, knownIsDiggable, knownI
 import { squareIsDisarmableTrap } from "../game/trap.js";
 import { findPath } from "../game/player-path.js";
 import { squareIsUnlockedDoor } from "../game/cave-cmd.js";
-import { objectInfoTextblock } from "../game/object-inspect.js";
+import { objectCombatValues, objectInfoTextblock } from "../game/object-inspect.js";
+import type { ObjectCombatInfo } from "../obj/object-info.js";
 import { objCanRefill, objCanThrow, objCanWear, objHasInscrip, objIsActivatable, objectUseCode } from "../game/obj-cmd.js";
 import { makeSpellChanceEnv, playerCanCast } from "../game/spell-cmd.js";
 import { buildObjectEffectChain } from "../game/obj-cmd.js";
@@ -40,6 +41,13 @@ export interface InspectResult {
   readonly title: string;
   readonly text: string;
   readonly sections?: readonly { readonly kind: "title" | "description" | "info"; readonly text: string }[];
+  /**
+   * An item's combat lines as numbers (neo-angband#360): blows, average
+   * damage per round or per throw, shooting power, range and breakage, as
+   * far as the character knows the item. Null for an item with no combat
+   * lines; absent from a monster recall.
+   */
+  readonly combat?: ObjectCombatInfo | null;
 }
 
 /** Both floor reads use the host's inspection text and knowledge gates. */
@@ -52,14 +60,16 @@ export function inspectObject(
   const extras = deps.inspect?.objectInfo;
   if (!extras) return null;
   const title = objectDesc(obj, ODESC.PREFIX | ODESC.FULL | (inStore ? ODESC.STORE : 0), state.actor.player, state.runeEnv, knownDescOf(state, true), undefined, state.chestTraps);
-  const text = objectInfoTextblock(state, obj, inStore ? { ...extras, inStore: true } : extras, true).runs.map((run) => run.text).join("");
+  const infoExtras = inStore ? { ...extras, inStore: true } : extras;
+  const text = objectInfoTextblock(state, obj, infoExtras, true).runs.map((run) => run.text).join("");
+  const combat = objectCombatValues(state, obj, infoExtras, true);
   const fullTitle = title.charAt(0).toUpperCase() + title.slice(1);
   const paragraphs = text.trim().split(/\n\s*\n/u).filter(Boolean);
   const sections: InspectResult["sections"] = [
     { kind: "title", text: fullTitle },
     ...paragraphs.map((part, index) => ({ kind: index === 0 ? "description" as const : "info" as const, text: part })),
   ];
-  return freeze({ token: inputToken(state), title: fullTitle, text, sections });
+  return freeze({ token: inputToken(state), title: fullTitle, text, sections, combat });
 }
 
 export interface SpellInspectResult {

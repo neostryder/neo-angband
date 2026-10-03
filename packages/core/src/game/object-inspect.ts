@@ -23,7 +23,9 @@ import { describeEffect as describeEffectChain } from "../effects/effect-info.js
 import type { EffectDescribeDeps } from "../effects/effect-info.js";
 import {
   OINFO,
+  objectCombatInfo,
   objectInfo,
+  type ObjectCombatInfo,
   type ObjectInfoDeps,
   type OriginRace,
   type Textblock,
@@ -180,4 +182,14 @@ export function objectInfoTextblock(
   readOnly = false,
 ): Textblock {
   return objectInfo(obj, OINFO.SUBJ, makeObjectInfoDeps(state, obj, extras, readOnly));
+}
+
+/** The numbers behind the inspection's combat lines (neo-angband#360), from the same deps. */
+export function objectCombatValues(
+  state: GameState,
+  obj: GameObject,
+  extras: ObjectInfoExtras,
+  readOnly = false,
+): ObjectCombatInfo | null {
+  return objectCombatInfo(obj, makeObjectInfoDeps(state, obj, extras, readOnly));
 }

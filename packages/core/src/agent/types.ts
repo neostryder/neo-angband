@@ -298,6 +298,12 @@ export interface MonsterView {
   finalGuardian: boolean;
   /** RSF_* codes from race->spellFlags. */
   spellFlags: string[];
+  /**
+   * The subset of `spellFlags` the character has learned (neo-angband#359):
+   * lore.spellFlags within the race's flags, the same set the monster recall
+   * names, or every flag once the race is fully known (probing, a cheat).
+   */
+  knownSpellFlags: string[];
   /** Namespaced race id, when a ContentIdResolver dep is supplied. */
   raceId?: string;
   /**

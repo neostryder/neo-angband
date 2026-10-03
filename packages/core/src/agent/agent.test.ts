@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { loc } from "../loc.js";
-import { FEAT, MFLAG, OF, RF, SQUARE, TRF, TV } from "../generated/index.js";
+import { FEAT, MFLAG, OF, RF, RSF, SQUARE, TRF, TV } from "../generated/index.js";
 import { bindConstants } from "../constants.js";
 import { runGameLoop } from "../game/loop.js";
 import { createDefaultRegistry } from "../game/player-turn.js";
@@ -26,6 +26,7 @@ import { subscribeEvents } from "./events.js";
 import { GameEvents } from "../events.js";
 import { describeObject } from "../game/describe.js";
 import { newKnownMap, squareKnowPile, squareSensePile } from "../game/known.js";
+import { getLore } from "../mon/lore.js";
 
 /** A capability set granting exactly the listed capabilities. */
 function grant(...caps: string[]): AgentCapabilities {
@@ -540,6 +541,31 @@ describe("MonsterView rich fields", () => {
     expect(mon?.spellFlags).toEqual([]);
     expect(mon?.poisoned).toBe(false);
     expect(mon?.raceId).toBeUndefined();
+  });
+
+  it("reports only the spell flags the character has learned (#359)", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const race = makeRace({ level: 20 });
+    race.spellFlags = race.spellFlags.clone();
+    race.spellFlags.on(RSF.BLINK);
+    race.spellFlags.on(RSF.BO_FIRE);
+    seenMon(state, race, loc(12, 10));
+    const first = createAgentView(state).monsters()[0];
+    expect(first?.spellFlags).toEqual(expect.arrayContaining(["BLINK", "BO_FIRE"]));
+    expect(first?.knownSpellFlags).toEqual([]);
+    /* Reading the view creates no lore record. */
+    expect(state.lore.has(race.ridx)).toBe(false);
+
+    const lore = getLore(state.lore, race);
+    lore.spellFlags.on(RSF.BLINK);
+    /* A flag the race does not have stays out, as it does in the recall. */
+    lore.spellFlags.on(RSF.BR_FIRE);
+    expect(createAgentView(state).monsters()[0]?.knownSpellFlags).toEqual(["BLINK"]);
+
+    lore.allKnown = true;
+    expect(createAgentView(state).monsters()[0]?.knownSpellFlags).toEqual(
+      expect.arrayContaining(["BLINK", "BO_FIRE"]),
+    );
   });
 });
 
