@@ -27,8 +27,8 @@
  * character sheet, so the numbers say what the player believes the gear does.
  * The real pass would put an unlearned resist or bonus into `delta` beside an
  * ItemView that does not show it, and a comparison would identify the item for
- * free. Both sides run the same pass. `delta.unknownRunes` says when the items
- * that moved still hold something the player has not learned, which is what a
+ * free. Both sides run the same pass. `delta.unknownRunes` says when an item
+ * that moved may hold something the player has not learned, which is what a
  * caller can say instead of trusting a zero.
  *
  * ------------------------------------------------------------------
@@ -421,10 +421,10 @@ function viewOf(state: GameState, w: Working, c: Carried): ItemView {
 }
 
 /**
- * Whether the player can tell `obj` still has runes to learn: assessed with a
- * rune unknown (the "{??}" marker), or never assessed, so nothing past its base
- * properties is known. Read from the player's knowledge alone, so it reveals no
- * more than the item's name does.
+ * Whether `obj` may have runes the player has not learned: assessed with a rune
+ * unknown (the "{??}" marker), or never assessed, so nothing past its base
+ * properties is known and it may still turn out to have none. Read from the
+ * player's knowledge alone, so it reveals no more than the item's name does.
  */
 function unknownRunesOn(state: GameState, obj: GameObject): boolean {
   const p = state.actor.player;

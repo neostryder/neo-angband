@@ -663,10 +663,13 @@ export interface LoadoutView {
 /** The stat difference between two loadouts, and whether it may be incomplete. */
 export type LoadoutDelta = import("../player/loadout.js").DerivedStatsDelta & {
   /**
-   * True when an item put on or taken off has a rune the player has not
-   * learned, or has not been assessed yet (seen only from a distance), so the
-   * numbers may leave something out. They count only what the player knows,
-   * as the character sheet does. `changed` stays about the numbers alone.
+   * True when an item put on or taken off may have runes the player has not
+   * learned: it shows the {??} marker, or it has not been assessed yet (seen
+   * only from a distance) and may turn out to have none. The numbers count only
+   * what the player knows, as the character sheet does, so they may leave
+   * something out. One flag covers the whole change and does not say which
+   * item set it; compareLoadoutSlots gives one per slot. `changed` stays about
+   * the numbers alone.
    */
   readonly unknownRunes: boolean;
 };
@@ -740,7 +743,7 @@ export interface AgentView {
    * worn objects, with nothing in the live game touched. It is the known_only
    * pass behind the character sheet, so a rune the player has not learned
    * moves no number, and `delta.unknownRunes` marks a change that involves
-   * such an item.
+   * an item that may have one.
    *
    * This is the read that had no answer at all. Every other accessor here
    * reports the character as it is, so an agent deciding whether to wear, buy or
