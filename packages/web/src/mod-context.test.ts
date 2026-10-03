@@ -191,6 +191,7 @@ describe("modPluginContext session facts", () => {
     const setGrid = vi.fn();
     const addControl = vi.fn(() => () => undefined);
     const registerPrefBlock = vi.fn(() => () => undefined);
+    const setLayout = vi.fn(() => true);
     const subwindows: ModSubwindows = {
       list: () => [
         {
@@ -204,6 +205,9 @@ describe("modPluginContext session facts", () => {
       setGrid,
       addControl,
       registerPrefBlock,
+      layout: () => "{}",
+      setLayout,
+      onLayoutChange: () => () => undefined,
     };
     setModSubwindowsControl(undefined);
     expect(modPluginContext("qol", {}).subwindows).toBeUndefined();
@@ -218,6 +222,8 @@ describe("modPluginContext session facts", () => {
       const block = { serialize: () => "8", parse: (text: string) => text, apply: () => undefined };
       ctx.subwindows?.registerPrefBlock("qol-zoom", block);
       expect(registerPrefBlock).toHaveBeenCalledWith("qol-zoom", block);
+      expect(ctx.subwindows?.setLayout(ctx.subwindows.layout())).toBe(true);
+      expect(setLayout).toHaveBeenCalledWith("{}");
     } finally {
       setModSubwindowsControl(undefined);
     }

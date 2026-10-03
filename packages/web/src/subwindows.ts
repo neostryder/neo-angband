@@ -593,6 +593,42 @@ export function registerSubwindowPrefBlock<T>(name: string, block: SubwindowPref
   };
 }
 
+/**
+ * The listeners behind ModSubwindows.onLayoutChange (neo-angband#287).
+ * `changed()` is called on every save of the arrangement. One action can save
+ * several times (a restore also sets the map panel's graphics), so the saves
+ * of one task reach each listener as a single call with the layout as it
+ * stands afterwards. A listener that throws does not stop the others.
+ */
+export function createLayoutNotifier(read: () => string, onError: (error: unknown) => void): {
+  add(listener: (layout: string) => void): () => void;
+  changed(): void;
+} {
+  const listeners = new Set<(layout: string) => void>();
+  let queued = false;
+  return {
+    add(listener) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+    changed() {
+      if (queued || listeners.size === 0) return;
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        const layout = read();
+        for (const listener of [...listeners]) {
+          try {
+            listener(layout);
+          } catch (error) {
+            onError(error);
+          }
+        }
+      });
+    },
+  };
+}
+
 /** Apply every stored mod block. An unknown name or a rejected payload is skipped. */
 export function applyStoredModBlocks(blocks: Readonly<Record<string, string>>): void {
   for (const [name, payload] of Object.entries(blocks)) applySubwindowPrefBlock(name, payload);

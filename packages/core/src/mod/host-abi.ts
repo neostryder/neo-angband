@@ -248,6 +248,29 @@ export interface ModSubwindows {
     parse(text: string): T | null;
     apply(value: T): void;
   }): () => void;
+  /**
+   * The whole arrangement (neo-angband#287): which panels are open, the
+   * tiling, the floating panels, each panel's remembered place, the map
+   * panel's graphics and every registered pref block. It is the same JSON
+   * document Export subwindow layout writes, so treat it as opaque text to
+   * keep and hand back to `setLayout`, for undo and redo or named layouts.
+   */
+  layout(): string;
+  /**
+   * Replace the arrangement with one `layout()` returned, or with a layout
+   * export. It is saved as the player's current layout, exactly as an
+   * import would be. Returns false and changes nothing for text that is not
+   * a layout document.
+   */
+  setLayout(text: string): boolean;
+  /**
+   * Called with the new `layout()` text after the arrangement changes: a
+   * panel opened, closed, moved, resized, docked, floated or tabbed, or a
+   * `setLayout` call. A drag reports once, when it ends, and the changes
+   * from one action reach a listener as one call, after the action
+   * finishes. Returns an unregister function.
+   */
+  onLayoutChange(listener: (layout: string) => void): () => void;
 }
 
 /**

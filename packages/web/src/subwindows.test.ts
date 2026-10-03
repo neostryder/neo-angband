@@ -3,6 +3,7 @@ import { parseDocument, serializeDocument, subwindowLayoutFormat } from "@rpgm-t
 import { COLOUR_RED, colorToCss } from "@rpgm-tools/neo-angband-core";
 import { MessageLog } from "./messages";
 import {
+  createLayoutNotifier,
   describeSubwindowsMerged,
   MessageSubwindowPainter,
   applySubwindowPrefBlock,
@@ -638,5 +639,51 @@ describe("mod-registered subwindow pref blocks (#262)", () => {
     unregisterSecond();
     applySubwindowPrefBlock("qol-zoom", "z");
     expect(second).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("createLayoutNotifier (#287)", () => {
+  it("reports the saves of one task as one call with the layout afterwards", async () => {
+    let layout = "a";
+    const read = vi.fn(() => layout);
+    const notifier = createLayoutNotifier(read, () => undefined);
+    const seen: string[] = [];
+    notifier.add((text) => seen.push(text));
+    notifier.changed();
+    layout = "b";
+    notifier.changed();
+    expect(seen).toEqual([]);
+    await Promise.resolve();
+    expect(seen).toEqual(["b"]);
+    expect(read).toHaveBeenCalledTimes(1);
+    notifier.changed();
+    await Promise.resolve();
+    expect(seen).toEqual(["b", "b"]);
+  });
+
+  it("reads nothing while no one listens, and stops after unregister", async () => {
+    const read = vi.fn(() => "x");
+    const notifier = createLayoutNotifier(read, () => undefined);
+    notifier.changed();
+    await Promise.resolve();
+    expect(read).not.toHaveBeenCalled();
+    const listener = vi.fn();
+    const off = notifier.add(listener);
+    off();
+    notifier.changed();
+    await Promise.resolve();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("keeps calling the other listeners when one throws", async () => {
+    const errors: unknown[] = [];
+    const notifier = createLayoutNotifier(() => "x", (error) => errors.push(error));
+    const after = vi.fn();
+    notifier.add(() => { throw new Error("boom"); });
+    notifier.add(after);
+    notifier.changed();
+    await Promise.resolve();
+    expect(after).toHaveBeenCalledWith("x");
+    expect(errors).toHaveLength(1);
   });
 });

@@ -51,6 +51,7 @@ still calls itself.
 ### Added
 
 - [Visible] [Modding-API] **An autoplayer mod can choose what a key press does while it has the keyboard.** A controller install can include `onKey`, which answers `keep`, with an optional message for the message line, or `release`. Escape and Ctrl-Z always give the keyboard back, whatever the mod answers (#334).
+- [Visible] [Modding-API] **A mod can save and restore the whole subwindow layout.** `ctx.subwindows.layout()` returns the arrangement as a layout document, `setLayout()` applies one, and `onLayoutChange()` reports each change once it finishes, so a mod can offer undo and redo or named layouts (#287).
 
 ### Changed
 

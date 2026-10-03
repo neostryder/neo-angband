@@ -590,6 +590,7 @@ import {
   paintPlayerExtraSubwindow,
   paintPlayerTopbarSubwindow,
   paintStatusSubwindow,
+  createLayoutNotifier,
   parseSubwindowDocument,
   serializeSubwindowDocument,
   describeSubwindowsMerged,
@@ -1141,6 +1142,15 @@ async function withPanelTwin<T>(id: SubwindowId, run: () => Promise<T>): Promise
   }
 }
 let subwindowState: SubwindowState = readSubwindowState(localStorage);
+/* #287: mods watching the arrangement (ModSubwindows.onLayoutChange). */
+const layoutNotifier = createLayoutNotifier(
+  () => serializeSubwindowDocument(subwindowState),
+  (error) => log.error("mods", "a layout listener failed:", error),
+);
+function saveSubwindowState(): void {
+  writeSubwindowState(localStorage, subwindowState);
+  layoutNotifier.changed();
+}
 const subwindowTerms = new Map<SubwindowId, GlyphTerm>();
 const subwindowShell = mountSubwindowShell({
   host: gameLayout,
@@ -1149,7 +1159,7 @@ const subwindowShell = mountSubwindowShell({
   tabLabels: Object.fromEntries(SUBWINDOW_CHOICES.map((choice) => [choice.id, choice.tab])),
   onTreeChange: (tree) => {
     subwindowState = rememberDockTree(subwindowState, tree);
-    writeSubwindowState(localStorage, subwindowState);
+    saveSubwindowState();
     applySubwindowLayout();
     renderSubwindows();
   },
@@ -1160,7 +1170,7 @@ const subwindowShell = mountSubwindowShell({
         float: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, last: "float" as const } };
     subwindowState = { ...subwindowState, tree: withoutPanel(subwindowState.tree, id),
       floats: [...subwindowState.floats ?? [], rect], places };
-    writeSubwindowState(localStorage, subwindowState);
+    saveSubwindowState();
     applySubwindowLayout();
     renderSubwindows();
   },
@@ -1187,7 +1197,7 @@ const subwindowShell = mountSubwindowShell({
     subwindowState = rememberDockTree({ ...subwindowState, floats,
       places: { ...subwindowState.places, [id]: { ...subwindowState.places?.[id],
         float: { x: floating.x, y: floating.y, width: floating.width, height: floating.height }, last: "dock" as const } } }, tree);
-    writeSubwindowState(localStorage, subwindowState);
+    saveSubwindowState();
     applySubwindowLayout();
     renderSubwindows();
   },
@@ -1196,7 +1206,7 @@ const subwindowShell = mountSubwindowShell({
     for (const entry of floats) places[entry.id] = { ...places[entry.id],
       float: { x: entry.x, y: entry.y, width: entry.width, height: entry.height }, last: "float" };
     subwindowState = { ...subwindowState, floats, places };
-    writeSubwindowState(localStorage, subwindowState);
+    saveSubwindowState();
   },
   dockFallback: (tree, id) => {
     const native = SUBWINDOW_CHOICES.find((choice) => choice.id === id);
@@ -1261,13 +1271,13 @@ const panelProviderHost = {
     void _forgotten;
     subwindowState = { ...subwindowState, tree: withoutPanel(subwindowState.tree, id),
       floats: (subwindowState.floats ?? []).filter((entry) => entry.id !== id), places };
-    writeSubwindowState(localStorage, subwindowState);
+    saveSubwindowState();
     applySubwindowLayout();
     renderSubwindows();
   },
   changeTree: (tree: LayoutNode) => {
     subwindowState = rememberDockTree(subwindowState, tree);
-    writeSubwindowState(localStorage, subwindowState);
+    saveSubwindowState();
     applySubwindowLayout();
     renderSubwindows();
   },
@@ -2777,7 +2787,7 @@ const mapTileModeMenu: TileModeMenu = {
 async function applyMapTileMode(grafID: number): Promise<void> {
   const mode = tileModeMenu.modes.some((entry) => entry.grafID === grafID) ? grafID : GRAPHICS_NONE;
   subwindowState = { ...subwindowState, mapTileMode: mode };
-  writeSubwindowState(localStorage, subwindowState);
+  saveSubwindowState();
   subwindowShell.setSelect("map", {
     label: t("options.subwindows.mapTilesTitle", "Dungeon map graphics"),
     value: String(mode),
@@ -3191,7 +3201,7 @@ function setSubwindowEnabledLive(id: SubwindowId, enabled: boolean): void {
   if (!enabled && !auto && subwindowState.tree !== before) {
     subwindowState = { ...subwindowState, tree: fillFreedSpace(before, subwindowState.tree, id, subwindowShell.layoutContext()) };
   }
-  writeSubwindowState(localStorage, subwindowState);
+  saveSubwindowState();
   applySubwindowLayout();
   renderSubwindows();
 }
@@ -3268,7 +3278,7 @@ function setModPanelEnabledLive(id: string, enabled: boolean, parked = false): v
     }
   }
   subwindowState = { ...subwindowState, tree, floats, places };
-  writeSubwindowState(localStorage, subwindowState);
+  saveSubwindowState();
   applySubwindowLayout();
   renderSubwindows();
 }
@@ -3288,10 +3298,9 @@ function applyLoadedSubwindowLayout(text: string): void {
 
 function restoreSubwindowLayout(next: SubwindowState): void {
   if (next.modBlocks) applyStoredModBlocks(next.modBlocks);
-  writeSubwindowState(localStorage, next);
   subwindowState = next;
   void applyMapTileMode(next.mapTileMode ?? GRAPHICS_NONE);
-  writeSubwindowState(localStorage, subwindowState);
+  saveSubwindowState();
   applySubwindowLayout();
   renderSubwindows();
 }
@@ -10146,6 +10155,18 @@ const subwindowsControl: ModSubwindows = {
   },
   registerPrefBlock(name, block) {
     return registerSubwindowPrefBlock(name, block);
+  },
+  layout() {
+    return serializeSubwindowDocument(subwindowState);
+  },
+  setLayout(text) {
+    const next = parseSubwindowDocument(text);
+    if (!next) return false;
+    restoreSubwindowLayout(next);
+    return true;
+  },
+  onLayoutChange(listener) {
+    return layoutNotifier.add(listener);
   },
 };
 
