@@ -33,6 +33,7 @@ import { objectSeeAt, squareSensePile } from "../game/known.js";
 import { createAgentView } from "./perceive.js";
 import { simulateLoadout } from "./loadout.js";
 import { AgentCapabilityError } from "./types.js";
+import type { LoadoutChange, LoadoutItemRef } from "./types.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -417,7 +418,7 @@ describe("a floor reference names a remembered object by grid and pile index", (
     const { grid, key } = onFloor(state, mail, true);
     const ref = { from: "floor", x: grid.x, y: grid.y, index: 0 } as const;
     const view = createAgentView(state, undefined, { reg },
-      granted("state:player.read", "state:floor.read"));
+      granted("state:player.read", "state:inventory.read", "state:floor.read"));
 
     const result = view.compareLoadoutSlots!(ref);
     const bodySlot = p.body.slots.findIndex((s) => s.type === "BODY_ARMOR");
@@ -497,6 +498,100 @@ describe("a floor reference names a remembered object by grid and pile index", (
     expect(() => floorOnly.compareLoadoutSlots!(ref)).toThrow(AgentCapabilityError);
     const wildcard = createAgentView(state, undefined, { reg }, granted("state:*.read"));
     expect(wildcard.compareLoadoutSlots!(ref).slots).toHaveLength(1);
+  });
+});
+
+describe("a loadout read needs the read for every place it looks", () => {
+  const granted = (...caps: string[]) => ({ has: (cap: string) => caps.includes(cap) });
+
+  /** A state with one of each arm: a packed shield, a shop ware and a seen floor armour. */
+  function arms() {
+    const state = newGame(0);
+    const p = state.actor.player;
+    const handle = invenCarry(state.gear, p, make(0, TV.SOFT_ARMOR), limits);
+    const shop = (state.stores ?? []).findIndex((s) => s.stock.length > 0);
+    expect(shop).toBeGreaterThanOrEqual(0);
+    const grid = { x: state.actor.grid.x + 1, y: state.actor.grid.y };
+    const mail = make(Number.MAX_SAFE_INTEGER, TV.HARD_ARMOR);
+    mail.grid = { ...grid };
+    state.floor.set(grid.y * state.chunk.width + grid.x, [mail]);
+    objectSeeAt(state, grid, mail);
+    const refs = {
+      gear: { from: "gear", handle },
+      store: { from: "store", store: shop, index: 0 },
+      floor: { from: "floor", x: grid.x, y: grid.y, index: 0 },
+    } as const;
+    return { state, refs };
+  }
+
+  const domainOf = { gear: "inventory", store: "stores", floor: "floor" } as const;
+  const changes = (ref: LoadoutItemRef): LoadoutChange[] => [
+    { wield: [ref] },
+    { wieldAt: [{ item: ref, slot: 0 }] },
+    { carry: [{ item: ref }] },
+  ];
+
+  for (const arm of ["gear", "store", "floor"] as const) {
+    it(`refuses a ${arm} reference without state:${domainOf[arm]}.read in any entry`, () => {
+      const { state, refs } = arms();
+      const others = Object.values(domainOf).filter((d) => d !== domainOf[arm] && d !== "inventory");
+      /* Everything but the arm's own domain; for gear that domain is the inventory. */
+      const view = createAgentView(state, undefined, { reg },
+        granted("state:player.read", ...(arm === "gear" ? [] : ["state:inventory.read"]),
+          ...others.map((d) => `state:${d}.read`)));
+      for (const change of changes(refs[arm])) {
+        expect(() => view.simulateLoadout!(change)).toThrow(AgentCapabilityError);
+      }
+      expect(() => view.compareLoadoutSlots!(refs[arm])).toThrow(AgentCapabilityError);
+      /* A refused reference also refuses a change that mixes it with allowed ones. */
+      const mixed = { wield: [refs[arm]], carry: [{ item: { from: "object", object: make(0, TV.SOFT_ARMOR) } as const }] };
+      expect(() => view.simulateLoadout!(mixed)).toThrow(AgentCapabilityError);
+    });
+
+    it(`answers a ${arm} reference once state:${domainOf[arm]}.read is granted`, () => {
+      const { state, refs } = arms();
+      const view = createAgentView(state, undefined, { reg },
+        granted("state:player.read", "state:inventory.read", `state:${domainOf[arm]}.read`));
+      for (const change of changes(refs[arm])) {
+        expect(view.simulateLoadout!(change)).not.toBeNull();
+      }
+      expect(view.simulateLoadout!({ carry: [{ item: refs[arm] }] })!.unresolved).toEqual([]);
+      expect(view.compareLoadoutSlots!(refs[arm]).slots.length).toBeGreaterThan(0);
+    });
+  }
+
+  it("needs the inventory read for any change, since the answer lists the pack and the worn set", () => {
+    const { state, refs } = arms();
+    const view = createAgentView(state, undefined, { reg },
+      granted("state:player.read", "state:stores.read", "state:floor.read"));
+    expect(() => view.simulateLoadout!({})).toThrow(AgentCapabilityError);
+    expect(() => view.simulateLoadout!({ release: [{ handle: refs.gear.handle }] })).toThrow(AgentCapabilityError);
+    expect(() => view.compareLoadoutSlots!(refs.store)).toThrow(AgentCapabilityError);
+    const playerOnly = createAgentView(state, undefined, { reg }, granted("state:player.read"));
+    expect(() => playerOnly.simulateLoadout!({})).toThrow(AgentCapabilityError);
+    const withInventory = createAgentView(state, undefined, { reg },
+      granted("state:player.read", "state:inventory.read"));
+    expect(withInventory.simulateLoadout!({})).not.toBeNull();
+  });
+
+  it("lets state:*.read cover every arm, and a trusted view needs no grant", () => {
+    const { state, refs } = arms();
+    const change: LoadoutChange = {
+      wield: [refs.gear],
+      wieldAt: [{ item: refs.floor, slot: 0 }],
+      carry: [{ item: refs.store }],
+    };
+    for (const view of [
+      createAgentView(state, undefined, { reg }, granted("state:*.read")),
+      createAgentView(state, undefined, { reg }),
+    ]) {
+      expect(view.simulateLoadout!(change)).not.toBeNull();
+      for (const ref of Object.values(refs)) expect(view.compareLoadoutSlots!(ref).slots.length).toBeGreaterThan(0);
+    }
+    /* The wildcard is still a state grant: without the player read nothing answers. */
+    const noPlayer = createAgentView(state, undefined, { reg },
+      granted("state:inventory.read", "state:stores.read", "state:floor.read"));
+    expect(() => noPlayer.simulateLoadout!(change)).toThrow(AgentCapabilityError);
   });
 });
 

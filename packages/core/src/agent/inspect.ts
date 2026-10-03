@@ -32,7 +32,7 @@ import { Chunk, featIsPassable } from "../world/chunk.js";
 import { PROJECT, computeProjection, projectPath } from "../world/project.js";
 import { arcDiameter } from "../game/project-cast.js";
 import { inputToken } from "./boundary.js";
-import { simulateLoadout } from "./loadout.js";
+import { requireLoadoutReads, simulateLoadout } from "./loadout.js";
 import { AgentCapabilityError } from "./types.js";
 import type { AgentCapabilities, AgentViewDeps, LoadoutItemRef, LoadoutSimulation } from "./types.js";
 
@@ -276,10 +276,7 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
         spells: book.spells.map((spell) => spell.sidx) });
     }),
     compareLoadoutSlots: gate(caps, "player", (ref: Exclude<LoadoutItemRef, { from: "object" }>): LoadoutSlotsResult => {
-      const domain = ref.from === "gear" ? "inventory" : ref.from === "store" ? "stores" : "floor";
-      if (caps && !caps.has(`state:${domain}.read`) && !caps.has("state:*.read")) {
-        throw new AgentCapabilityError(`agent inspect: capability "state:${domain}.read" is not granted`);
-      }
+      requireLoadoutReads(caps, [ref], "inspect");
       const slots = state.actor.player.body.slots.flatMap(({ name }, slot) => {
         const comparison = simulateLoadout(state, { wieldAt: [{ item: ref, slot }] }, { viewDeps: deps });
         return comparison?.placements.some((placement) => placement.slot === slot)

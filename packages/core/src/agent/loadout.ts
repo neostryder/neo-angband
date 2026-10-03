@@ -60,7 +60,9 @@ import { objectWeightOne } from "../obj/object.js";
 import type { GameObject } from "../obj/object.js";
 import type { GameState } from "../game/context.js";
 import { itemView, playerViewFor } from "./entity-views.js";
+import { AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types.js";
 import type {
+  AgentCapabilities,
   AgentViewDeps,
   ItemView,
   LoadoutChange,
@@ -75,6 +77,60 @@ export type LoadoutDerive = (
   equipment: readonly (GameObject | null)[],
   totalWeight?: number,
 ) => PlayerState;
+
+/**
+ * The state read a reference needs: the domain the named object lives in. An
+ * `object` reference is engine-internal and reads nothing a capability guards.
+ */
+function refDomain(ref: LoadoutItemRef): string | null {
+  switch (ref.from) {
+    case "gear":
+      return AGENT_STATE_DOMAINS.inventory;
+    case "store":
+      return AGENT_STATE_DOMAINS.stores;
+    case "floor":
+      return AGENT_STATE_DOMAINS.floor;
+    case "object":
+      return null;
+  }
+}
+
+/**
+ * Throw AgentCapabilityError unless `caps` grants every state read a loadout
+ * comparison over `refs` performs, beyond the player read the caller gates on.
+ * The result lists the worn set and the pack, which is an inventory read even
+ * for an empty change; each reference then needs the read for where its object
+ * lives. `state:*.read` covers all of them, and no `caps` (a trusted host)
+ * grants everything. simulateLoadout and compareLoadoutSlots both check here,
+ * so the two cannot disagree about what a reference costs.
+ */
+export function requireLoadoutReads(
+  caps: AgentCapabilities | undefined,
+  refs: Iterable<LoadoutItemRef>,
+  facade: string,
+): void {
+  if (!caps || caps.has("state:*.read")) return;
+  const domains = new Set<string>([AGENT_STATE_DOMAINS.inventory]);
+  for (const ref of refs) {
+    const domain = refDomain(ref);
+    if (domain) domains.add(domain);
+  }
+  for (const domain of domains) {
+    const cap = `state:${domain}.read`;
+    if (!caps.has(cap)) {
+      throw new AgentCapabilityError(`agent ${facade}: capability "${cap}" is not granted`);
+    }
+  }
+}
+
+/** Every item reference a change names: its wield, wieldAt and carry entries. */
+export function loadoutChangeRefs(change: LoadoutChange): LoadoutItemRef[] {
+  return [
+    ...(change.wield ?? []),
+    ...(change.wieldAt ?? []).map((entry) => entry.item),
+    ...(change.carry ?? []).map((entry) => entry.item),
+  ];
+}
 
 /** What simulateLoadout may be told rather than reading off the state. */
 export interface LoadoutSimOptions {

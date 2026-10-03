@@ -735,8 +735,9 @@ export interface AgentView {
    * session's own calc_bonuses options (the bound timed table, the curse
    * registry), so a view over a worldless harness cannot answer and says so
    * rather than deriving a thinner state that would look like an answer.
-   * Capability: `state:player.read`, plus `state:floor.read` when the change
-   * names a `floor` reference.
+   * Capability: `state:player.read` and `state:inventory.read` (the answer
+   * lists the pack and the worn set), plus `state:stores.read` when the change
+   * names a `store` reference and `state:floor.read` for a `floor` one.
    */
   simulateLoadout?(change: LoadoutChange): LoadoutSimulation | null;
   /**

@@ -38,7 +38,7 @@ import type { EffectRecordJson } from "../obj/types.js";
 import { priceItem } from "../store/price.js";
 import { squareIsDisarmableTrap } from "../game/trap.js";
 import { itemView, ofCodes, playerViewFor } from "./entity-views.js";
-import { simulateLoadout } from "./loadout.js";
+import { loadoutChangeRefs, requireLoadoutReads, simulateLoadout } from "./loadout.js";
 import { captureCoreSnapshot, inputToken } from "./boundary.js";
 import { captureKnownLevel } from "./known-level.js";
 import { knownFloorObject, knownPile } from "../game/known.js";
@@ -359,13 +359,6 @@ function gateRead<A extends unknown[], R>(
   };
 }
 
-/** Whether a loadout change names any item by its place on the floor. */
-function namesFloor(change: LoadoutChange): boolean {
-  return (change.wield ?? []).some((ref) => ref.from === "floor") ||
-    (change.wieldAt ?? []).some((entry) => entry.item.from === "floor") ||
-    (change.carry ?? []).some((entry) => entry.item.from === "floor");
-}
-
 export function createAgentView(
   state: GameState,
   messageBuffer?: { drain(): string[] },
@@ -499,18 +492,14 @@ export function createAgentView(
      * simulated loadout has to be interchangeable with one from the live pack,
      * or an agent's decision would depend on which read produced the object.
      * Gated on the player domain, since what it answers is a question about the
-     * player. A floor reference reads the floor pile as well, so it also needs
-     * the floor domain, the one floorItems() is gated on. */
+     * player. The answer lists the worn set and the pack, and each reference
+     * reads where its object lives, so requireLoadoutReads asks for those
+     * domains too, the same ones inventory(), stores() and floorItems() need. */
     simulateLoadout: gateRead(
       caps,
       D.player,
       (change: LoadoutChange): LoadoutSimulation | null => {
-        if (caps && !caps.has(`state:${D.floor}.read`) && !caps.has("state:*.read") &&
-            namesFloor(change)) {
-          throw new AgentCapabilityError(
-            `agent perceive: capability "state:${D.floor}.read" is not granted`,
-          );
-        }
+        requireLoadoutReads(caps, loadoutChangeRefs(change), "perceive");
         return simulateLoadout(state, change, { viewDeps: deps });
       },
     ),

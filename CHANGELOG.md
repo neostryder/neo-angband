@@ -71,6 +71,10 @@ still calls itself.
 - [Visible] **The log records what took the keyboard back from an autoplayer.** Each hand-back writes one line naming the key, the touch or gamepad stop, or the mod's own release and its reason (#334).
 - [Visible] [UI] **The autoplayer banner and the hand-back line name the mod properly.** They used to show its id, so Squire appeared as "squire"; they now use the name from the mod's manifest, and the log still records the id.
 
+### Fixed
+
+- [Visible] [Modding-API] [Security] **Comparing gear needs the read for every item it names.** `simulateLoadout` used to check only `state:player.read`, so a mod without `state:inventory.read` or `state:stores.read` could read pack items and shop wares through the result. It now needs `state:inventory.read` for every call, since the answer lists the pack, and `state:stores.read` or `state:floor.read` when a reference names a ware or a floor item. `compareLoadoutSlots` asks for the same reads (#367).
+
 ## [1.21.1] - 2026-10-01
 
 ### Fixed
