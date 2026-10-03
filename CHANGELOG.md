@@ -78,6 +78,7 @@ still calls itself.
 ### Fixed
 
 - [Visible] [Modding-API] [Security] **Comparing gear needs the read for every item it names.** `simulateLoadout` used to check only `state:player.read`, so a mod without `state:inventory.read` or `state:stores.read` could read pack items and shop wares through the result. It now needs `state:inventory.read` for every call, since the answer lists the pack, and `state:stores.read` or `state:floor.read` when a reference names a ware or a floor item. `compareLoadoutSlots` asks for the same reads. A view built with capabilities refuses a `{ from: "object" }` reference outright, since only code inside the engine holds a `GameObject` (#367).
+- [Visible] [Modding-API] [Security] **Item descriptions no longer count bonuses you have not learned.** With an unidentified +to-dam or +to-hit on a ring or armour you wear, a weapon's blows and melee damage lines used to include it, and mods read the same text through `inspectItem`. The lines now use what you know, as 4.2.6 does, and they count a worn curse's stat penalties once you know the stat rune. The thrown and missile damage lines still use your real to-hit, as 4.2.6's do (#370).
 
 ## [1.21.1] - 2026-10-01
 

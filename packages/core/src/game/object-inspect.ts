@@ -7,8 +7,8 @@
  * (avoiding an import cycle through obj-cmd).
  *
  * PURE READ: every closure it builds is deterministic and RNG-free. The
- * hypothetical calc_bonuses re-derive passes update=false with the
- * statIndBoost hack; buildObjectEffectChain and describeEffect are RNG-safe by
+ * hypothetical calc_bonuses re-derive passes known_only and update=false with
+ * the statIndBoost hack; buildObjectEffectChain and describeEffect are RNG-safe by
  * construction (dice are read, never rolled); getUseDeviceChance and
  * breakageChance are pure. See obj/object-info.test.ts for the invariance guard.
  */
@@ -42,6 +42,7 @@ import { turnEnergy } from "./energy.js";
 import { isDaytime } from "./world.js";
 import type { GameState } from "./context.js";
 import { knownDescOf } from "./describe.js";
+import { knownBonusView } from "../obj/known-object.js";
 
 /** Registry-only data the engine needs that a GameState does not carry. */
 export interface ObjectInfoExtras {
@@ -90,12 +91,16 @@ export function makeObjectInfoDeps(
     h ? gearGet(state.gear, h) : null,
   );
 
-  /* The live derived state (update=true, no boost), matching refreshDerived. */
+  /* player->state, the real derived state (update=true, no boost), matching
+   * refreshDerived. obj-info.c reads it directly for the ammo tval and
+   * multiplier, the shot count, the missile crits, the bow and throw skills,
+   * the device skill and the speed line, never the known state. */
   const liveState: PlayerState =
     state.playerState ??
     calcBonuses(player, {
       equipment: equipObjects,
       timedEffects,
+      curses: state.curses,
       /* A preview has no live derived state only in a worldless harness. The
        * ordinary screen keeps update=true; inspection reads skip its writes. */
       update: !readOnly,
@@ -103,6 +108,12 @@ export function makeObjectInfoDeps(
       isDaytime: daytime,
     });
 
+  /* The hypothetical state obj-info.c recalculates for blows, damage, the
+   * heavy-wield warning and digging: calc_bonuses(player, &state, true, false)
+   * at obj-info.c:888, 914, 1056, 1296, 1738 and 1839, so known_only is set and
+   * an unlearned rune on any worn item moves none of the numbers. The read-only
+   * KnownDesc keeps the derive free of everseen writes. */
+  const deriveKnown = knownDescOf(state, true);
   const deriveState = (
     equip: readonly (GameObject | null)[],
     strBoost: number,
@@ -111,10 +122,12 @@ export function makeObjectInfoDeps(
     calcBonuses(player, {
       equipment: equip.slice(),
       timedEffects,
+      curses: state.curses,
       update: false,
       depth: state.chunk.depth,
       isDaytime: daytime,
       statIndBoost: { str: strBoost, dex: dexBoost },
+      knownOnly: (o) => knownBonusView(o, player, state.runeEnv, deriveKnown),
     });
 
   const weaponSlot = player.body.slots.findIndex((s) => s.type === "WEAPON");
