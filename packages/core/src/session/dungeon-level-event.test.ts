@@ -3,9 +3,9 @@
  * EVENT_NEW_LEVEL_DISPLAY, game-world.c:1031), never one per redraw.
  *
  * Every arrival path in the level changer is driven through the real session:
- * stairs both ways, teleport level through the live effect bundle, Word of Recall
- * through processWorld in both directions, a persistent-level revisit and the
- * single-combat arena. The session's first level is announced by the host
+ * stairs both ways, teleport level and deep descent through the live effect
+ * bundle, Word of Recall through processWorld in both directions, a trap door, a
+ * debug jump, a persistent-level revisit and the single-combat arena. The session's first level is announced by the host
  * through announceArrival, for a new game and for a load alike, as start_game
  * runs on_new_level for both (ui-game.c:743).
  */
@@ -21,9 +21,12 @@ import type { EffectContext } from "../effects/interpreter.js";
 import { buildEffectContext } from "../game/effect-env.js";
 import { attachGameEnv } from "../game/effect-game-env.js";
 import { processWorld } from "../game/loop.js";
+import { hitTrap, placeTrap } from "../game/trap.js";
+import { wizJumpLevel } from "../game/wizard.js";
 import { EF } from "../generated/index.js";
 import { GameEvents } from "../events.js";
 import type { DungeonLevelEventData } from "../events.js";
+import { lookupTrap } from "../world/trap.js";
 import { loadGame, saveGame, startGame } from "./game.js";
 import type { GamePack, StartedGame } from "./game.js";
 
@@ -229,6 +232,36 @@ describe("every level change sends exactly one event", () => {
     expect(heard.at(-1)).toMatchObject({ levelId: known.levelId, depth: known.depth });
   });
 
+  it("covers a trap door, deep descent and a debug jump", () => {
+    const game = startGame(pack, { seed: 3, depth: 1, className: "Warrior" });
+    const { heard } = listen(game);
+    const state = game.state;
+
+    /* A trap door under the player drops them one level (trap.c hit_trap). */
+    const trapDeps = game.wizardBundles.trapDeps!;
+    const trapdoor = lookupTrap(trapDeps.kinds, "trap door")!;
+    placeTrap(state, state.actor.grid, trapdoor.tidx, state.chunk.depth, trapDeps);
+    hitTrap(state, state.actor.grid, -1, trapDeps);
+    takeLevelChange(game);
+    expect(heard.at(-1)).toMatchObject({ depth: 2, cause: "change" });
+
+    /* Deep descent arms a countdown that processWorld runs out (game-world.c:815). */
+    game.effects!.effectSimple(EF.DEEP_DESCENT, liveCtx(game), { origin: sourcePlayer() });
+    expect(state.actor.player.deepDescent).toBeGreaterThan(0);
+    for (let tick = 0; tick < 10 && !state.generateLevel; tick++) processWorld(state);
+    const descentDepth = state.targetDepth!;
+    expect(descentDepth).toBeGreaterThan(2);
+    takeLevelChange(game);
+    expect(heard.at(-1)).toMatchObject({ depth: descentDepth, cause: "change" });
+
+    /* The debug menu's jump to a chosen level (cmd-wizard.c do_cmd_wiz_jump_level). */
+    expect(wizJumpLevel(state, { level: 3 }, { debug: true, wizard: false })).toBe(true);
+    takeLevelChange(game);
+    expect(heard.at(-1)).toMatchObject({ depth: 3, cause: "change" });
+
+    expect(heard.map((e) => e.depth)).toEqual([2, descentDepth, 3]);
+  });
+
   it("covers a persistent level restored on revisit", () => {
     const game = startGame(pack, {
       seed: 4242,
@@ -293,18 +326,52 @@ describe("the capability gate", () => {
 });
 
 describe("a listener that throws", () => {
-  it("still leaves the arrival whole: the feeling is announced", () => {
+  it("is reported, and the arrival carries on", () => {
     const game = startGame(pack, { seed: 3, depth: 0 });
     const { order } = listen(game);
+    const faults: Array<{ type: string; error: unknown }> = [];
+    game.state.onEventFault = (type, error): void => {
+      faults.push({ type, error });
+    };
     game.state.events!.on("dungeonlevel", () => {
       throw new Error("mod fault");
     });
     command(game, "descend");
 
-    expect(() => game.changeLevel(game.state.targetDepth!)).toThrow("mod fault");
+    expect(() => takeLevelChange(game)).not.toThrow();
     expect(game.state.chunk.depth).toBe(1);
     expect(game.state.chunk.onlyPartial).toBe(false);
+    /* The feeling still follows the event. */
     const arrival = order.indexOf("level 1");
     expect(order.slice(arrival + 1).some((line) => line.startsWith("msg "))).toBe(true);
+    expect(faults).toHaveLength(1);
+    expect(faults[0]!.type).toBe("dungeonlevel");
+    expect((faults[0]!.error as Error).message).toBe("mod fault");
+
+    /* The first-level announcement goes through the same guard. */
+    const fresh = startGame(pack, { seed: 3, depth: 0 });
+    fresh.state.events = new GameEvents();
+    fresh.state.events.on("dungeonlevel", () => {
+      throw new Error("mod fault");
+    });
+    expect(() => fresh.announceArrival()).not.toThrow();
+  });
+
+  it("does not stop a Borg reincarnation that changes level", () => {
+    const game = startGame(pack, { seed: 3, depth: 0 });
+    game.state.events = new GameEvents();
+    let faults = 0;
+    game.state.onEventFault = (): void => {
+      faults++;
+    };
+    game.state.events.on("dungeonlevel", () => {
+      throw new Error("mod fault");
+    });
+    command(game, "descend");
+    takeLevelChange(game);
+
+    expect(() => game.reincarnate()).not.toThrow();
+    expect(game.state.chunk.depth).toBe(0);
+    expect(faults).toBe(2);
   });
 });

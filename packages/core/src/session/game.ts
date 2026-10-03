@@ -589,8 +589,13 @@ export interface StartedGame {
    * cause `new-game` from startGame and `load` from loadGame. start_game calls
    * on_new_level after a load as well as after birth (ui-game.c:743), but
    * startGame and loadGame run before a host has attached its event bus and its
-   * mods' listeners, so the host calls this once they are in place. Only the
-   * first call sends anything; every later arrival is sent by changeLevel.
+   * mods' listeners, so the host calls this once they are in place. Every later
+   * arrival is sent by changeLevel.
+   *
+   * The host must call it exactly once, after every mod has registered its
+   * listeners and before the first changeLevel. A second call sends nothing, and
+   * a call made after the player has changed level sends nothing either, so a
+   * host that calls it late loses the first level's event for good.
    */
   announceArrival: () => void;
   /**
@@ -2944,14 +2949,12 @@ function makeChangeLevel(
          * still queued from the level you left. */
         disturb(state);
         /* EVENT_NEW_LEVEL_DISPLAY (game-world.c:1031) comes between the disturb
-         * and the feeling. A listener that throws still leaves the arrival whole. */
-        try {
-          emitDungeonLevel(state, "change");
-        } finally {
-          announceFeeling(state, reg);
-          search(state); /* on_new_level (game-world.c:1052). */
-          state.chunk.onlyPartial = false;
-        }
+         * and the feeling. A listener that throws is reported and the arrival
+         * goes on (emitDungeonLevel). */
+        emitDungeonLevel(state, "change");
+        announceFeeling(state, reg);
+        search(state); /* on_new_level (game-world.c:1052). */
+        state.chunk.onlyPartial = false;
         return;
       }
       /* First visit to this depth: fall through to fresh generation. The old
@@ -3159,13 +3162,10 @@ function makeChangeLevel(
      * still queued from the level you left. */
     disturb(state);
     /* EVENT_NEW_LEVEL_DISPLAY (game-world.c:1031), as in the revisit branch. */
-    try {
-      emitDungeonLevel(state, "change");
-    } finally {
-      announceFeeling(state, reg);
-      search(state); /* on_new_level (game-world.c:1052). */
-      state.chunk.onlyPartial = false;
-    }
+    emitDungeonLevel(state, "change");
+    announceFeeling(state, reg);
+    search(state); /* on_new_level (game-world.c:1052). */
+    state.chunk.onlyPartial = false;
   };
 }
 

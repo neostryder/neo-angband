@@ -53,13 +53,21 @@ export function emitMotion(
  * once the arrival's level, position and view are in place. A level change sends
  * it from the level changer; the host sends the session's first one through
  * StartedGame.announceArrival once its listeners are attached.
+ *
+ * A listener that throws goes to state.onEventFault and the arrival carries on:
+ * the feeling, the search, and the host's autosave and redraw after the change
+ * all still run, as player-command's sender does for the command.
  */
 export function emitDungeonLevel(state: GameState, cause: DungeonLevelEventData["cause"]): void {
   if (!state.events) return;
-  state.events.emit("dungeonlevel", {
-    depth: state.chunk.depth,
-    levelId: state.levelSerial ?? 0,
-    cause,
-    arena: state.arenaLevel === true,
-  });
+  try {
+    state.events.emit("dungeonlevel", {
+      depth: state.chunk.depth,
+      levelId: state.levelSerial ?? 0,
+      cause,
+      arena: state.arenaLevel === true,
+    });
+  } catch (error) {
+    state.onEventFault?.("dungeonlevel", error);
+  }
 }

@@ -845,6 +845,7 @@ import { installLines, offerInstall, type InstallLine } from "./install-local";
 import { installChoiceLines } from "./install-choice";
 import { detectInstallTarget, type InstallTarget } from "./install-target";
 import { installLogSinks, log, setLogLevel } from "./logging";
+import { firstLevelGate, reportEventFault } from "./first-level";
 import { formatLogLine, LOG_LEVELS, LOG_RING_DEFAULT } from "@rpgm-tools/neo-angband-core/log";
 import { WEB_BUILD_ID } from "./build-id";
 import {
@@ -12737,6 +12738,9 @@ const soundEvents = new GameEvents();
 // here, msg() emits "message" (above), and mods subscribe through the
 // capability-gated subscribeEvents seam. One bus, many event types.
 state.events = soundEvents;
+// A listener that throws on an event whose sender carries on regardless
+// (dungeonlevel) is logged on the mods channel, as for player-command.
+state.onEventFault = reportEventFault;
 // Default to the bundled Dubtrain pack (public/sounds/, CC-BY 4.0); samples are
 // heard only when use_sound is enabled (off by default). Override with ?sounds=<url>.
 const soundBase = params.get("sounds") ?? "sounds/";
@@ -15290,19 +15294,8 @@ async function applyModResources(): Promise<void> {
  * on_new_level, ui-game.c:743). It waits for the game to be on screen, at the end
  * of the boot chain below, AND for every folder plugin's register() to have run,
  * further down past top-level awaits that can finish on either side of that, so a
- * mod that subscribes in register() hears the first level too. A listener that
- * throws is logged, as for player-command. */
-let markModsRegistered = (): void => {};
-const modsRegistered = new Promise<void>((resolve) => {
-  markModsRegistered = resolve;
-});
-function announceFirstLevel(): void {
-  try {
-    game.announceArrival();
-  } catch (err) {
-    log.error("mods", "a dungeonlevel listener failed:", err);
-  }
-}
+ * mod that subscribes in register() hears the first level too. */
+const firstLevel = firstLevelGate(() => game.announceArrival());
 
 void applyModResources()
   .catch((e: unknown) => {
@@ -15322,7 +15315,7 @@ void applyModResources()
     gameScreenLive = true;
     subwindowShell.setGameLive(true);
     render();
-    void modsRegistered.then(announceFirstLevel);
+    firstLevel.screenLive();
   })
   .then(resetVisualsForCharacter)
   .then(maybeShowGraphics)
@@ -16055,7 +16048,7 @@ for (const loaded of activeModCode().plugins) {
  * save have no handler-backed fresh batch, so existing stock is never re-rolled.
  */
 game.resolveInitialStoreDiscounts();
-markModsRegistered();
+firstLevel.modsRegistered();
 
 /* The display slot is last-load-wins, unlike the autoplayer's historical
  * first-claim guard. Select BEFORE invoking: a lower front end never gets a

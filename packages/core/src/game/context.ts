@@ -16,7 +16,7 @@
  */
 
 import { MON_TMD, RF, TMD } from "../generated/index.js";
-import type { GameEvents } from "../events.js";
+import type { GameEvents, GameEventType } from "../events.js";
 import type { MessageLog, MessageType } from "../msg.js";
 import type { Loc } from "../loc.js";
 import { distance, locEq } from "../loc.js";
@@ -1052,6 +1052,13 @@ export interface GameState {
    * harness; core never requires it.
    */
   events?: GameEvents;
+  /**
+   * Where a listener's exception goes for an event whose sender must finish
+   * whatever a listener does (today `dungeonlevel`: a throwing mod must not cut
+   * an arrival short). The host routes it to its log; absent, the exception is
+   * dropped and the sender carries on.
+   */
+  onEventFault?: (type: GameEventType, error: unknown) => void;
   /**
    * The live town stores (store.c `stores`), indexed however the session
    * instantiates them; a shell looks a store up by its entrance feature. Set
