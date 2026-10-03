@@ -22,11 +22,19 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const PKG = join(import.meta.dirname, "..");
 const BIN = join(PKG, "bin", "neo-angband-mod-build.mjs");
 const FIXTURES = join(PKG, "test-fixtures");
+
+/* The allowance for any test or hook that runs the builder. One run is a fresh node
+ * process plus esbuild's service binary: about 0.1 seconds alone, but 2 to 6 seconds
+ * on a saturated machine, and once nearly 12, against vitest's 5 second default. So no
+ * test below runs the builder more than once (a build that several tests read is made
+ * once, in beforeAll), and each gets 30 seconds, well clear of that worst case. A
+ * builder that hangs still fails, just not on the timing of a busy machine. */
+const BUILD_TIMEOUT = 30_000;
 
 const temps: string[] = [];
 function tempDir(): string {
@@ -60,13 +68,20 @@ function run(fixture: string, extra: readonly string[] = []): Run {
   }
 }
 
-describe("a well-formed mod builds", () => {
+describe("a well-formed mod builds", { timeout: BUILD_TIMEOUT }, () => {
+  /* One build, read by the three tests that only inspect its output. */
+  let out = "";
+  let built: Run = { code: -1, out: "not built" };
+  beforeAll(() => {
+    out = tempDir();
+    built = run("ok-mod", ["--out", out]);
+  }, BUILD_TIMEOUT);
+
   it("writes plugin.js beside the manifest when --root IS the mod folder", () => {
     /* The mod-repository case, and the reason --out defaults to the folder itself:
      * plugin.js is a committed artefact there, next to the manifest.json it ships
      * with. Writing it elsewhere by default would leave the repo's own copy stale. */
-    const out = tempDir();
-    const r = run("ok-mod", ["--out", out]);
+    const r = built;
     expect(r.code, r.out).toBe(0);
     expect(existsSync(join(out, "ok-mod", "plugin.js")), r.out).toBe(true);
     /* The manifest travels with it: a folder without one is not a mod. */
@@ -77,16 +92,14 @@ describe("a well-formed mod builds", () => {
   });
 
   it("bundles the mod's own modules IN, rather than importing them", () => {
-    const out = tempDir();
-    expect(run("ok-mod", ["--out", out]).code).toBe(0);
+    expect(built.code).toBe(0);
     const js = readFileSync(join(out, "ok-mod", "plugin.js"), "utf8");
     expect(js).toContain("ok-mod-helper-was-bundled");
     expect(js).not.toMatch(/from\s*["']\.\//u);
   });
 
   it("leaves no non-relative import at all, and erases the type-only one", () => {
-    const out = tempDir();
-    expect(run("ok-mod", ["--out", out]).code).toBe(0);
+    expect(built.code).toBe(0);
     const js = readFileSync(join(out, "ok-mod", "plugin.js"), "utf8");
     /* The invariant is "no non-relative import", not "not this package name". An
      * earlier version of this assertion matched the engine's name spelled out, and a
@@ -97,17 +110,15 @@ describe("a well-formed mod builds", () => {
   });
 
   it("--check verifies and writes NOTHING", () => {
-    const out = tempDir();
-    const r = run("ok-mod", ["--out", out, "--check"]);
+    const checkOut = tempDir();
+    const r = run("ok-mod", ["--out", checkOut, "--check"]);
     expect(r.code, r.out).toBe(0);
     expect(r.out).toContain("ok");
-    expect(existsSync(join(out, "ok-mod", "plugin.js"))).toBe(false);
+    expect(existsSync(join(checkOut, "ok-mod", "plugin.js"))).toBe(false);
   });
 });
 
-/* Each test here runs the builder twice as a child process, which takes several
- * seconds when the whole suite shares the machine. */
-describe("--check catches a STALE committed plugin.js", { timeout: 30_000 }, () => {
+describe("--check catches a STALE committed plugin.js", { timeout: BUILD_TIMEOUT }, () => {
   /**
    * The failure nothing else in the chain can see. In a mod repository plugin.js is
    * committed, because that is the file the catalogue fetches at a tag and hashes - so
@@ -125,11 +136,15 @@ describe("--check catches a STALE committed plugin.js", { timeout: 30_000 }, () 
     return mod;
   }
 
+  /* Every run here starts in the mod folder, as it does in a mod repository. esbuild
+   * names each bundled file relative to the working directory, so from there plugin.js
+   * comes out byte-identical for every staged copy, and one build serves all of them. */
   function checkIn(mod: string): Run {
     try {
       return {
         code: 0,
         out: execFileSync(process.execPath, [BIN, "--root", mod, "--check"], {
+          cwd: mod,
           encoding: "utf8",
           stdio: ["ignore", "pipe", "pipe"],
         }),
@@ -140,11 +155,24 @@ describe("--check catches a STALE committed plugin.js", { timeout: 30_000 }, () 
     }
   }
 
+  /* The fresh build, made once. Each test that needs a committed artefact puts a copy
+   * of it beside its own staged source. */
+  let fresh = "";
+  let wrote = "";
+  beforeAll(() => {
+    const mod = stagedCopy();
+    wrote = execFileSync(process.execPath, [BIN, "--root", mod], { cwd: mod, encoding: "utf8" });
+    fresh = readFileSync(join(mod, "plugin.js"), "utf8");
+  }, BUILD_TIMEOUT);
+
+  function commitFreshBuild(mod: string): void {
+    writeFileSync(join(mod, "plugin.js"), fresh, "utf8");
+  }
+
   it("passes when the committed artefact is a fresh build of the source", () => {
     const mod = stagedCopy();
-    expect(
-      execFileSync(process.execPath, [BIN, "--root", mod], { encoding: "utf8" }),
-    ).toContain("wrote");
+    expect(wrote).toContain("wrote");
+    commitFreshBuild(mod);
     const r = checkIn(mod);
     expect(r.code, r.out).toBe(0);
     expect(r.out).toContain("is current");
@@ -152,7 +180,7 @@ describe("--check catches a STALE committed plugin.js", { timeout: 30_000 }, () 
 
   it("fails when the source moved on and the artefact did not", () => {
     const mod = stagedCopy();
-    execFileSync(process.execPath, [BIN, "--root", mod], { encoding: "utf8" });
+    commitFreshBuild(mod);
     /* Edit the SOURCE, leave the artefact. This is exactly what a forgotten rebuild
      * looks like in a diff, and it is invisible to every digest. */
     writeFileSync(
@@ -176,7 +204,7 @@ describe("--check catches a STALE committed plugin.js", { timeout: 30_000 }, () 
   });
 });
 
-describe("a mod that imports the engine as a VALUE is refused", () => {
+describe("a mod that imports the engine as a VALUE is refused", { timeout: BUILD_TIMEOUT }, () => {
   /**
    * The regression this pins. It is not "a bare import survives into the output" - it
    * is that the import must survive at all. esbuild resolves the engine happily from a
@@ -300,7 +328,7 @@ describe("a mod that default-exports nothing is refused", () => {
   });
 });
 
-describe("the builder's own arguments", () => {
+describe("the builder's own arguments", { timeout: BUILD_TIMEOUT }, () => {
   it("refuses a --mods id that does not exist, naming what does", () => {
     /* A typo'd id used to build nothing and exit 0, which is indistinguishable from
      * success in a CI log. */
