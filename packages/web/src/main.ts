@@ -796,6 +796,7 @@ import {
 } from "./mod-resources";
 import { readStoredLocale } from "./locale-store";
 import { chooseCommand, groupCommands, keyForKeyset, transformKeypressCommandTable } from "./command-menu";
+import { setModCommandCatalogue } from "./mod-keybindings";
 import type { CommandCategory } from "./command-menu";
 import { customPageDefaults, runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu, SubwindowMenu } from "./options";
@@ -7207,6 +7208,7 @@ setModDebugDoor({ wizard: wizardCtx, confirm: confirmDebugGate });
 /* ctx.options saves the game after a mod changes an option, as closing the
  * options menu does. */
 setModOptionsAfterChange(() => autosave(true));
+setModCommandCatalogue(() => commandTable());
 setModKnowledgeSource(() => createModKnowledge(modKnowledgeSources(), () => state?.rng));
 setModRunReports(runReports);
 const modTitle = new TitleRuntime((title, choices) => {
@@ -7241,6 +7243,7 @@ const modSettingDecls = loadEnabledModSettings();
 setModSettingSource({
   declared: (modId) => modSettingDecls.get(modId) ?? [],
   stored: (modId) => defaultModStore().getSettingValues()[modId] ?? {},
+  write: (modId, settingId, value) => defaultModStore().setSettingValue(modId, settingId, value),
 }, reportDisplayFault);
 setModSavesControl(createModSaves({
   onChange: onRosterChange,

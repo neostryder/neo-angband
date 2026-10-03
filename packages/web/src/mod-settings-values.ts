@@ -9,6 +9,8 @@ export interface ModSettingSource {
   declared(modId: string): readonly PackSetting[];
   /** Raw values from the store; they may be out of range. */
   stored(modId: string): Readonly<Record<string, unknown>>;
+  /** Save one value, as the Mods screen does. Absent where nothing can be saved. */
+  write?(modId: string, settingId: string, value: number): void;
 }
 
 type Listener = (id: string, value: number) => void;
@@ -47,6 +49,16 @@ export function modSettingsFor(modId: string): ModSettingsRead | undefined {
   return Object.freeze({
     get: (id: string) => resolvedModSettings(modId)[id],
     all: () => resolvedModSettings(modId),
+    set: (id: string, value: number): number | undefined => {
+      const setting = (source?.declared(modId) ?? []).find((s) => s.id === id);
+      if (!setting || !source?.write || typeof value !== "number" || !Number.isFinite(value)) return undefined;
+      const next = resolveSettingValue(setting, value);
+      source.write(modId, id, next);
+      /* A reload-only setting keeps its old value until the page reloads, as it
+       * does when the player moves it on the Mods screen. */
+      if (!setting.requiresReload) notifyModSettingChanged(modId, id);
+      return next;
+    },
     onChange: (listener: Listener) => {
       if (typeof listener !== "function") return () => {};
       let set = listeners.get(modId);

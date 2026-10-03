@@ -20,6 +20,8 @@
  */
 
 import {
+  BIRTH_STAT_BASE,
+  BIRTH_STAT_COSTS,
   birthGold,
   calcBonuses,
   characterPanels,
@@ -33,6 +35,7 @@ import {
   playerAbilities,
   resetStats,
   rollStats,
+  statIncreaseCost,
   buyStat,
   sellStat,
   Rng,
@@ -119,6 +122,7 @@ export function createBirthSession(d: BirthSessionDeps): {
   let previousRolled: number[] | null = null;
   let name = d.pinnedName ?? (d.previousName ? incrementNameSuffix(d.previousName, 32, d.msg) : "");
   let history = "";
+  let generatedHistory = "";
   let historyEdited = false;
 
   /* The race and class help's ability lists, from a throwaway character (the
@@ -147,6 +151,7 @@ export function createBirthSession(d: BirthSessionDeps): {
 
   const newHistory = (): void => {
     history = race ? generateHistory(d.deps.historyChartFor(race.name), d.rng) : "";
+    generatedHistory = history;
     historyEdited = false;
   };
 
@@ -239,6 +244,18 @@ export function createBirthSession(d: BirthSessionDeps): {
         stats: stats(),
         pointsLeft: method === "point" ? buy.pointsLeft : 0,
         pointsSpent: method === "point" ? [...buy.pointsSpent] : new Array<number>(STAT_MAX).fill(0),
+        statCosts: buy.stats.map((value) => {
+          const point = method === "point";
+          const buyCost = point && value < 18 ? statIncreaseCost(value) : null;
+          const sellRefund = point && value > BIRTH_STAT_BASE ? (BIRTH_STAT_COSTS[value] ?? 0) : null;
+          const buying = point && race !== null && cls !== null;
+          return {
+            buyCost,
+            sellRefund,
+            canBuy: buying && buyCost !== null && buyCost <= buy.pointsLeft,
+            canSell: buying && sellRefund !== null,
+          };
+        }),
         canPreviousRoll: method === "roller" && previousRolled !== null,
         name,
         history,
@@ -329,6 +346,13 @@ export function createBirthSession(d: BirthSessionDeps): {
       if (done) return done;
       history = text;
       historyEdited = true;
+      return ok;
+    },
+    restoreHistory: () => {
+      const bad = live() ?? (race ? null : refuse("Choose a race first."));
+      if (bad) return bad;
+      history = generatedHistory;
+      historyEdited = false;
       return ok;
     },
     regenerateHistory: () => {

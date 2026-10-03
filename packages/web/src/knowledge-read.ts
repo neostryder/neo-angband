@@ -71,6 +71,7 @@ function entryOf<T>(source: KnowledgeCategorySource<T>, row: KnowledgeRow<T>, gr
     id: source.key(row.member, groupName),
     name: row.label,
     color: row.color,
+    known: row.known ?? true,
     ...(row.cells && row.cells.length > 0
       ? { cells: Object.freeze(row.cells.map((c) => Object.freeze({ text: c.text, color: c.color }))) }
       : {}),

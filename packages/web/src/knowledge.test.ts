@@ -185,6 +185,9 @@ describe("objectKnowledgeGroups (textui_browse_object_knowledge, ui-knowledge.c 
     // unseen non-flavour kind and the INSTA_ART are absent
     expect(labels).not.toContain("Ring of Speed");
     expect(labels).not.toContain("The One Ring");
+    // only the unaware flavour is marked as not known
+    const unknown = groups.flatMap((g) => g.rows.filter((r) => r.known === false).map((r) => r.label));
+    expect(unknown).toEqual(["Flavour3"]);
   });
 
   it("appends ' {tried}' to a tried-but-unaware flavoured kind", () => {

@@ -1767,6 +1767,18 @@ export interface BirthDraftView {
   readonly stats: readonly number[];
   readonly pointsLeft: number;
   readonly pointsSpent: readonly number[];
+  /**
+   * Point-buy per stat, STR to CON: what raising it one point costs (null at
+   * 18), what lowering it one point gives back (null at the base of 10), and
+   * whether `buy` and `sell` would succeed now. With the roller every figure is
+   * null and both flags false; before a race and class are chosen the flags are false.
+   */
+  readonly statCosts: readonly {
+    readonly buyCost: number | null;
+    readonly sellRefund: number | null;
+    readonly canBuy: boolean;
+    readonly canSell: boolean;
+  }[];
   readonly canPreviousRoll: boolean;
   readonly name: string;
   readonly history: string;
@@ -1804,6 +1816,8 @@ export interface ModBirthSession {
   setName(name: string): BirthResult;
   randomName(): BirthResult;
   setHistory(text: string): BirthResult;
+  /** Put back the background the game generated and drop any edit, so `historyEdited` is false. */
+  restoreHistory(): BirthResult;
   /** Roll a new background for the chosen race and drop any edit. */
   regenerateHistory(): BirthResult;
   setOption(name: string, value: boolean): BirthResult;
@@ -2088,6 +2102,14 @@ export interface ModSettingsRead {
   get(id: string): number | undefined;
   /** Every declared setting, by id. */
   all(): Readonly<Record<string, number>>;
+  /**
+   * Move one of this mod's settings, as the player would on the Mods screen. The
+   * value is clamped to the manifest's range and snapped to its step, saved, and
+   * returned; `onChange` listeners hear it unless the setting needs a reload,
+   * in which case it applies after the next one. Undefined, with nothing saved,
+   * for an id the manifest does not declare or a value that is not a number.
+   */
+  set(id: string, value: number): number | undefined;
   /** Runs when the player moves a setting that needs no reload. Call the returned function to stop. */
   onChange(listener: (id: string, value: number) => void): () => void;
 }
@@ -2338,20 +2360,51 @@ export interface ModKeybinding {
   readonly owner: string | null;
 }
 
+/** One command from the game's command menu, with the keys that run it. */
+export interface ModGameCommand {
+  /** Stable for the session: the command's row in the game's command table. */
+  readonly id: string;
+  /** The name the game's command menu shows ("Aim a wand"). */
+  readonly name: string;
+  /** The command menu list it sits in ("Items", "Action commands"). */
+  readonly group: string;
+  /**
+   * The plain key that runs the command in each keyset, or null where it has
+   * none. A keymap on that key runs the keymap instead.
+   */
+  readonly keys: {
+    readonly original: string | null;
+    readonly roguelike: string | null;
+  };
+  /** The letter of a Ctrl chord that runs it in both keysets, or null. */
+  readonly control: string | null;
+}
+
 export interface ModKeybindings {
-  /** "original" or "roguelike": the keyset these bindings belong to. */
+  /** "original" or "roguelike": the keyset in use, which every call works on unless it names another. */
   keyset(): "original" | "roguelike";
-  list(): readonly ModKeybinding[];
-  /** Bind or replace one trigger. False for a trigger no keymap can use, or an empty action. */
-  set(trigger: string, action: string): boolean;
+  list(keyset?: "original" | "roguelike"): readonly ModKeybinding[];
+  /** Bind or replace one trigger. False for a trigger no keymap can use, an empty action, or an unknown keyset. */
+  set(trigger: string, action: string, keyset?: "original" | "roguelike"): boolean;
   /** Remove one binding; false when there was none. */
-  remove(trigger: string): boolean;
+  remove(trigger: string, keyset?: "original" | "roguelike"): boolean;
+  /**
+   * The game's commands as its command menu lists them, after any mod's menu
+   * changes, each with its key in both keysets: what a key runs when no keymap
+   * is bound to it.
+   */
+  commands(): readonly ModGameCommand[];
   /**
    * Resolve with the next key the player presses that a keymap can use, or null
    * for Escape. The key is taken before the game sees it, so it runs nothing.
    * A second capture while one is waiting resolves the first with null.
    */
   capture(): Promise<string | null>;
+  /**
+   * Stop a waiting capture, as Escape would: it resolves with null and the next
+   * key reaches the game. False when no capture was waiting.
+   */
+  cancelCapture(): boolean;
 }
 
 export interface KnowledgeCategoryView {
@@ -2368,6 +2421,12 @@ export interface KnowledgeEntryView {
   readonly name: string;
   /** CSS colour the game draws the name in. */
   readonly color: string;
+  /**
+   * False for an object flavour the player has seen but not identified, which
+   * the game lists under its flavour name. Every other entry is one the player
+   * knows: the lists hold nothing the player has not met.
+   */
+  readonly known: boolean;
   /** Extra fields the game prints after the name: a rune's note, a monster's symbol, kills and "Full". */
   readonly cells?: readonly {
     readonly text: string;

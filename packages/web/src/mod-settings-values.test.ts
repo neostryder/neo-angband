@@ -84,4 +84,31 @@ describe("ctx.settings", () => {
     clearModSettingListeners();
     setModSettingSource(null);
   });
+  it("lets a mod move its own settings, clamped and saved", () => {
+    const stored: Record<string, Record<string, number>> = {};
+    const reloadOnly: PackSetting = { ...delay, id: "frames", requiresReload: true };
+    setModSettingSource({
+      declared: (id) => (id === "fx" ? [strength, reloadOnly] : []),
+      stored: (id) => stored[id] ?? {},
+      write: (id, settingId, value) => { stored[id] = { ...(stored[id] ?? {}), [settingId]: value }; },
+    });
+    const settings = modSettingsFor("fx")!;
+    const seen = vi.fn();
+    settings.onChange(seen);
+    expect(settings.set("strength", 73)).toBe(75);
+    expect(stored).toEqual({ fx: { strength: 75 } });
+    expect(settings.get("strength")).toBe(75);
+    expect(seen).toHaveBeenCalledWith("strength", 75);
+    expect(settings.set("frames", 0.7)).toBe(0.7);
+    expect(stored["fx"]).toEqual({ strength: 75, frames: 0.7 });
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(settings.set("missing", 1)).toBeUndefined();
+    expect(settings.set("strength", Number.NaN)).toBeUndefined();
+    expect(settings.set("strength", "60" as unknown as number)).toBeUndefined();
+    expect(stored["fx"]).toEqual({ strength: 75, frames: 0.7 });
+    setModSettingSource({ declared: (id) => (id === "fx" ? [strength] : []), stored: () => ({}) });
+    expect(modSettingsFor("fx")!.set("strength", 20)).toBeUndefined();
+    clearModSettingListeners();
+    setModSettingSource(null);
+  });
 });

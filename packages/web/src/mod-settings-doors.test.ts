@@ -3,7 +3,7 @@ import { OptionState } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { GameState } from "@rpgm-tools/neo-angband-core";
 import { createModOptions } from "./mod-options";
-import { createModKeybindings } from "./mod-keybindings";
+import { createModKeybindings, setModCommandCatalogue } from "./mod-keybindings";
 import { clearKeymaps, keymapAdd, keymapFind, keymapOwner, keymapSetOwner } from "./keymap-store";
 import { createModKnowledge } from "./knowledge-read";
 import { modPluginContext, setModKnowledgeSource, setModRunReports } from "./mod-context";
@@ -129,6 +129,51 @@ describe("ctx.keybindings", () => {
     expect(await stale).toBeNull();
     press(win, "g");
     expect(await fresh).toBe("g");
+  });
+
+  it("works on the other keyset when a call names it", () => {
+    const door = createModKeybindings(stateWith());
+    expect(door.set("F4", "x", "roguelike")).toBe(true);
+    expect(keymapFind("rogue", "F4")).toBe("x");
+    expect(keymapFind("orig", "F4")).toBeNull();
+    expect(door.list()).toEqual([]);
+    expect(door.list("roguelike")).toEqual([{ trigger: "F4", action: "x", owner: null }]);
+    expect(door.set("F4", "x", "nonsense" as "original")).toBe(false);
+    expect(door.list("nonsense" as "original")).toEqual([]);
+    expect(door.remove("F4", "original")).toBe(false);
+    expect(door.remove("F4", "roguelike")).toBe(true);
+  });
+
+  it("cancels a waiting capture so the next key reaches the game", async () => {
+    const door = createModKeybindings(stateWith());
+    expect(door.cancelCapture()).toBe(false);
+    const waiting = door.capture();
+    expect(door.cancelCapture()).toBe(true);
+    expect(await waiting).toBeNull();
+    expect(press(win, "g").defaultPrevented).toBe(false);
+    expect(door.cancelCapture()).toBe(false);
+  });
+
+  it("lists the game's commands with their key in each keyset", () => {
+    setModCommandCatalogue(() => [
+      { id: "core:keypress-command:0", desc: "Aim a wand", cat: "Items", o: "a", r: "z" },
+      { id: "core:keypress-command:1", desc: "Dig a tunnel", cat: "Action commands", o: "T", r: null },
+      { id: "core:keypress-command:2", desc: "Inscribe an object", cat: "Items", o: "{" },
+      { id: "core:keypress-command:3", desc: "Swap weapon", cat: null, o: "x", r: null },
+      { id: "core:keypress-command:4", desc: "Debug mode commands", cat: "Hidden", o: null, r: null, ctrl: "A" },
+    ]);
+    try {
+      const commands = createModKeybindings(stateWith()).commands();
+      expect(commands.map((c) => [c.name, c.group, c.keys.original, c.keys.roguelike, c.control])).toEqual([
+        ["Aim a wand", "Items", "a", "z", null],
+        ["Dig a tunnel", "Action commands", "T", null, null],
+        ["Inscribe an object", "Items", "{", "{", null],
+        ["Debug mode commands", "Hidden", null, null, "A"],
+      ]);
+      expect(Object.isFrozen(commands[0]!.keys)).toBe(true);
+    } finally {
+      setModCommandCatalogue(() => []);
+    }
   });
 });
 

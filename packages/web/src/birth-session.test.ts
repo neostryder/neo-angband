@@ -88,6 +88,38 @@ describe("ctx birth session draft", () => {
     expect(s.draft().stats).not.toEqual([10, 11, 10, 10, 10]);
   });
 
+  it("gives each stat's point cost and whether it can be bought or sold", () => {
+    const { session: s } = session();
+    expect(s.draft().statCosts.every((c) => !c.canBuy && !c.canSell)).toBe(true);
+    s.chooseRace(human.name);
+    s.chooseClass(warrior.name);
+    s.reset();
+    expect(s.draft().statCosts[0]).toEqual({ buyCost: 1, sellRefund: null, canBuy: true, canSell: false });
+    while (s.draft().stats[0]! < 17) s.buy(0);
+    expect(s.draft().statCosts[0]).toMatchObject({ buyCost: 4, sellRefund: 2, canSell: true });
+    s.buy(0);
+    expect(s.draft().stats[0]).toBe(18);
+    expect(s.draft().statCosts[0]).toMatchObject({ buyCost: null, sellRefund: 4, canBuy: false });
+    while (s.draft().pointsLeft > 0) if (!s.buy(1).ok) break;
+    const left = s.draft().pointsLeft;
+    for (const cost of s.draft().statCosts) {
+      expect(cost.canBuy).toBe(cost.buyCost !== null && cost.buyCost <= left);
+    }
+    s.roll();
+    expect(s.draft().statCosts.every((c) => c.buyCost === null && c.sellRefund === null && !c.canBuy && !c.canSell)).toBe(true);
+  });
+
+  it("restores the generated background after an edit", () => {
+    const { session: s } = session();
+    expect(s.restoreHistory()).toMatchObject({ ok: false });
+    s.chooseRace(human.name);
+    const generated = s.draft().history;
+    s.setHistory("A farmer's child.");
+    expect(s.draft()).toMatchObject({ history: "A farmer's child.", historyEdited: true });
+    expect(s.restoreHistory()).toEqual({ ok: true });
+    expect(s.draft()).toMatchObject({ history: generated, historyEdited: false });
+  });
+
   it("rolls from the game stream and swaps back to the previous roll", () => {
     const rng = new Rng(11);
     const { session: s } = session({ rng });

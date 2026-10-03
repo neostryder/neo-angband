@@ -199,6 +199,11 @@ export interface KnowledgeRow<T> {
   color: string;
   member: T;
   /**
+   * False for a member the browser lists without the player knowing what it
+   * is: an object flavour seen but not identified. Absent means known.
+   */
+  known?: boolean;
+  /**
    * Extra fields the member renderer writes at FIXED columns, in its own
    * colours - upstream's member display callback after the name: display_rune's
    * yellow autoinscription at column 47 (ui-knowledge.c:2124-2125),
@@ -1399,7 +1404,7 @@ export function objectKnowledgeGroups(
       /* The braces are decoration, not prose - only "tried" is routed through
        * the translator, so the marker keeps its shape in every locale. */
       if (deps.wasTried(kind) && !aware) label += ` {${t("knowledge.object.tried", "tried")}}`;
-      return { label, color: FG, member: kind };
+      return { label, color: FG, member: kind, known: aware };
     });
     return { name: objGroupName(gid), rows };
   });

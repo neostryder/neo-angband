@@ -52,11 +52,24 @@ describe("ctx.knowledge", () => {
       id: "1:Swords",
       name: "of Slay Evil",
       color: "#fff",
+      known: true,
       cells: [{ text: "x", color: "#f00" }],
     });
     expect(Object.isFrozen(list.groups[0]!.entries[0])).toBe(true);
     expect(k.list("objects")).toBeNull();
     expect(k.list("nonsense")).toBeNull();
+  });
+
+  it("marks an entry the player has not identified", () => {
+    const source = thingSource([{ name: "Potions", members: [{ id: 1, name: "Smoky" }, { id: 2, name: "Cure Light Wounds" }] }]);
+    const groups = source.groups;
+    source.groups = () => {
+      const view = groups();
+      view.groups[0]!.rows[0]!.known = false;
+      return view;
+    };
+    const entries = createModKnowledge(sources(source), () => undefined).list("egos")!.groups[0]!.entries;
+    expect(entries.map((e) => [e.name, e.known])).toEqual([["Smoky", false], ["Cure Light Wounds", true]]);
   });
 
   it("recalls an entry through its own group, and nothing the player does not know", () => {
