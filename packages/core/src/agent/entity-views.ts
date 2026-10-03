@@ -200,6 +200,18 @@ export interface PlayerViewDerived {
  * Build a PlayerView from the live game, or - with `over` - from a derive for a
  * loadout the player is not wearing.
  *
+ * The live view reads the KNOWN state, p->known_state (state.knownPlayerState
+ * and actor.knownCombat), the derive the character sheet prints. AC, to-hit,
+ * to-dam, the object flags and the OF_AFRAID half of `fearful` are what an
+ * unlearned rune on worn gear changes, and the real state would hand them to a
+ * mod before the player could know them. Speed, light, blows, shots and
+ * infravision come from modifiers, which calc_bonuses gates on the learned-rune
+ * mask in both passes and which wielding an item teaches, so they read the
+ * same in either; max HP and SP are the sidebar's. A simulated loadout passes
+ * its own known_only derive as `over`, so `simulateLoadout({}).before.player`
+ * and this view agree. With no known state (the worldless harness) the flags
+ * read as empty, never as the real ones.
+ *
  * NOTE on `skills`: this is p->skills, the birth-time level-based skill array
  * (calcSkills), NOT state->skills. It is not a function of the worn loadout, so
  * a simulated view carries the live one, exactly as the live view does. The full
@@ -212,8 +224,8 @@ export function playerViewFor(
   over?: PlayerViewDerived,
 ): PlayerView {
   const p = state.actor.player;
-  const combat = over ? over.combat : state.actor.combat;
-  const playerState = over ? over.playerState : state.playerState;
+  const combat = over ? over.combat : state.actor.knownCombat;
+  const playerState = over ? over.playerState : state.knownPlayerState;
   const view: PlayerView = {
     race: p.race.name,
     cls: p.cls.name,

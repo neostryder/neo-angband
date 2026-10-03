@@ -176,6 +176,8 @@ export interface PlayerStatusView {
    * Whether the player is afraid by any source: timed fear, Terror, a cursed or
    * afraid item, a shape, or anything else that sets OF_AFRAID on the player.
    * This is what refuses a melee blow; `afraid` alone counts only timed fear.
+   * An item counts once the player knows its fear rune, which the first
+   * refused blow teaches.
    */
   fearful?: boolean;
   /** Terror (p->timed[TMD_TERROR]): afraid, and hasted. */
@@ -186,7 +188,14 @@ export interface PlayerStatusView {
   image?: number;
 }
 
-/** A read-only view of the player (BORG_AS_MOD section 3, Player). */
+/**
+ * A read-only view of the player (BORG_AS_MOD section 3, Player).
+ *
+ * Every field that worn gear can change through a rune comes from the known
+ * state the character sheet prints (p->known_state): `ac`, `toHit`, `toDam`,
+ * `objectFlags` and the item half of `status.fearful`. A rune the player has not
+ * learned moves none of them.
+ */
 export interface PlayerView {
   race: string;
   cls: string;
@@ -205,8 +214,11 @@ export interface PlayerView {
   maxSp: number;
   /** Net speed after effects (110 = normal). */
   speed: number;
+  /** Displayed armour class, known_state.ac + known_state.to_a, as the sheet's Armor line. */
   ac: number;
+  /** known_state.to_h: the sheet's to-hit before the wielded weapon's own bonus. */
   toHit: number;
+  /** known_state.to_d: the sheet's melee to-dam before the wielded weapon's own bonus. */
   toDam: number;
   /** Base stats (STAT order); length STAT_MAX. */
   stats: number[];
@@ -240,7 +252,7 @@ export interface PlayerView {
   skills: number[];
   /** Current shapechange name, or null in the normal shape. */
   shape: string | null;
-  /** OF_* codes from the derived player state's flag set (empty if absent). */
+  /** OF_* codes from the known player state's flag set (empty if absent). */
   objectFlags: string[];
   /**
    * PF_* codes from the player CLASS's own flag set (`p.cls.pflags`, class.txt's
@@ -703,6 +715,7 @@ export interface AgentView {
   readonly apiVersion: string;
   /** The int32 game-turn counter. */
   turn(): number;
+  /** The player as the character sheet shows them: worn gear counts only learned runes. */
   player(): PlayerView;
   /** Live monsters (index 0 unused slot omitted). */
   monsters(): MonsterView[];

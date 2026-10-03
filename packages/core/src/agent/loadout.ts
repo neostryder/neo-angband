@@ -492,9 +492,8 @@ function describe(
  * town-daylight shortcut in calc_light is gated on `update`
  * (player-calcs.c:1607), so in a daytime town a shadow derive reports the light
  * radius of the equipment and the live derive reports zero. That is upstream's
- * asymmetry and the port keeps it. The live view's player() also reads the real
- * state (p->state), while both sides here are the known pass, so worn gear with
- * an unlearned rune is a second gap between them.
+ * asymmetry and the port keeps it. The live view's player() reads the same
+ * known pass, so light is the one field where it and `before.player` part.
  *
  * MEASURED, 2026-08-21, which is why this paragraph exists: an autoplayer scored
  * a candidate loadout through this function and compared the result against the

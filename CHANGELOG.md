@@ -72,6 +72,7 @@ still calls itself.
 - [Visible] **The log records what took the keyboard back from an autoplayer.** Each hand-back writes one line naming the key, the touch or gamepad stop, or the mod's own release and its reason (#334).
 - [Visible] [UI] **The autoplayer banner and the hand-back line name the mod properly.** They used to show its id, so Squire appeared as "squire"; they now use the name from the mod's manifest, and the log still records the id.
 - [Visible] [Modding-API] **Gear comparisons count only what the player knows about an item.** `simulateLoadout` and `compareLoadoutSlots` used to work from the item's real properties, so a comparison could show a resist or bonus from a rune the player had not learned. They now use the same calculation as the character sheet, and `delta.unknownRunes` says when an item put on or taken off may have runes the player has not learned. An autoplayer choosing between unidentified items can choose differently (#366).
+- [Visible] [Modding-API] [Security] **The agent player view shows only what the player knows about worn gear.** `player()` used to read armour class, to-hit, to-dam, the object flags and the fear status from the real state, so a mod could put an item on and read off a resist or bonus from a rune the player had not learned. These fields now come from the known state the character sheet prints and change when the player learns the rune. The Borg and Squire see the same numbers the player does (#368).
 
 ### Fixed
 

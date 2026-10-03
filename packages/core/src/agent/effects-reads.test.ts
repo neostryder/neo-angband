@@ -178,8 +178,11 @@ describe("reads for interface effects", () => {
     p.timed[TMD.TERROR] = 0;
     state.updateBonuses!();
     expect(status().fearful).toBe(false);
-    /* An item, a curse or a shape reaches the same flag. */
+    /* An item, a curse or a shape reaches the same flag, once the player knows
+       it: the view reads the known state, not the real one. */
     state.playerState!.flags.on(OF.AFRAID);
+    expect(status().fearful).toBe(false);
+    state.knownPlayerState!.flags.on(OF.AFRAID);
     expect(status()).toMatchObject({ afraid: 0, fearful: true });
   });
 

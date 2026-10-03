@@ -25,6 +25,7 @@ import { startGame } from "../session/game.js";
 import type { GamePack } from "../session/game.js";
 import { invenCarry, wieldObject, wieldSlot } from "../game/gear.js";
 import { invenTakeoff } from "../game/obj-cmd.js";
+import { characterPanels } from "../game/char-sheet.js";
 import type { GameState } from "../game/context.js";
 import { derivedStatsView, diffDerivedStats } from "../player/loadout.js";
 import { toCombatState, weightLimit } from "../player/calcs.js";
@@ -735,6 +736,118 @@ describe("a comparison counts only the runes the player knows", () => {
     expect(sim.delta.unknownRunes).toBe(true);
     /* Unassessed, only the base armour counts, even with every rune learned. */
     expect(sim.delta.resists[ELEM.FIRE]).toBe(0);
+  });
+
+  /**
+   * A town character with nothing in the weapon slot, wearing `armour`, so the
+   * sheet's melee line is the bare known to-hit and to-dam.
+   */
+  function wearingUnarmed(armour: GameObject): GameState {
+    const state = unlearned();
+    const p = state.actor.player;
+    p.objKnown.toH = 0;
+    p.objKnown.toD = 0;
+    const weaponSlot = p.body.slots.findIndex((s) => s.type === "WEAPON");
+    const weapon = p.equipment[weaponSlot];
+    if (weapon) expect(invenTakeoff(state, weapon)).toBe(true);
+    reallyWield(state, invenCarry(state.gear, p, armour, limits));
+    return state;
+  }
+
+  /** The runed armour, with +3 to-hit and +2 to-dam on top. */
+  function runedCombat(): GameObject {
+    const obj = runed();
+    obj.toH = 3;
+    obj.toD = 2;
+    return obj;
+  }
+
+  /** The numbers the character sheet's combat panel prints, as a PlayerView would hold them. */
+  function sheetCombat(state: GameState) {
+    const combat = characterPanels(state).find((panel) => panel.key === "combat")!.lines;
+    const value = (label: string) => combat.find((line) => line.label === label)!.value;
+    const [base, toA] = value("Armor").slice(1, -1).split(",").map(Number);
+    const blows = state.actor.knownCombat.numBlows;
+    return {
+      ac: base! + toA!,
+      toHit: Number(value("To-hit").split(",")[1]),
+      toDam: Number(value("Melee").split(",")[1]),
+      blows: value("Blows") === `${Math.trunc(blows / 100)}.${Math.trunc(blows / 10) % 10}/turn`,
+    };
+  }
+
+  it("shows none of a worn item's unlearned runes in the player view until the player learns them", () => {
+    const twin = wearingUnarmed(plain());
+    const state = wearingUnarmed(runedCombat());
+    const view = createAgentView(state, undefined, {});
+    const twinView = createAgentView(twin, undefined, {}).player();
+
+    /* The real state has the runes; the player view is the plain twin's. */
+    expect(state.playerState!.elInfo[ELEM.FIRE]!.resLevel).toBe(1);
+    expect(state.playerState!.flags.has(OF.FREE_ACT)).toBe(true);
+    expect(state.actor.combat.toA - twin.actor.combat.toA).toBe(7);
+    expect(state.actor.combat.toH - twin.actor.combat.toH).toBe(3);
+    expect(state.actor.combat.toD - twin.actor.combat.toD).toBe(2);
+    expect(view.player()).toEqual(twinView);
+    expect(sheetCombat(state)).toEqual({ ...sheetCombat(twin), blows: true });
+
+    learnAll(state);
+    playerLearnCombat(state.actor.player, state.runeEnv, "toH", false);
+    playerLearnCombat(state.actor.player, state.runeEnv, "toD", false);
+    state.updateBonuses!();
+    const learned = view.player();
+    expect(learned.ac).toBe(twinView.ac + 7);
+    expect(learned.toHit).toBe(twinView.toHit + 3);
+    expect(learned.toDam).toBe(twinView.toDam + 2);
+    expect(learned.objectFlags).toContain("FREE_ACT");
+    expect(twinView.objectFlags).not.toContain("FREE_ACT");
+    expect(simulateLoadout(state, {})!.before.stats.resists[ELEM.FIRE]).toBe(1);
+    /* Nothing that does not hang on the runes moved. */
+    const { ac: _ac, toHit: _toHit, toDam: _toDam, objectFlags: _flags, ...rest } = learned;
+    const { ac: _ac2, toHit: _toHit2, toDam: _toDam2, objectFlags: _flags2, ...twinRest } = twinView;
+    expect(rest).toEqual(twinRest);
+  });
+
+  it("agrees with the character sheet and with a comparison's own before", () => {
+    for (const learn of [false, true]) {
+      const state = wearingUnarmed(runedCombat());
+      if (learn) {
+        learnAll(state);
+        playerLearnCombat(state.actor.player, state.runeEnv, "toH", false);
+        playerLearnCombat(state.actor.player, state.runeEnv, "toD", false);
+        state.updateBonuses!();
+      }
+      const player = createAgentView(state, undefined, {}).player();
+      const sheet = sheetCombat(state);
+      expect({ ac: player.ac, toHit: player.toHit, toDam: player.toDam, blows: sheet.blows })
+        .toEqual({ ...sheet, blows: true });
+      expect(sheet.blows).toBe(true);
+      expect(player.blows).toBe(state.actor.knownCombat.numBlows);
+      /* The same known derive on both sides, so an autoplayer's live score and
+         its simulated baseline differ only by light: calc_light skips the
+         daytime town only on the live, update=true pass (see calcs.ts). */
+      const { light: _simLight, ...simulated } = simulateLoadout(state, {})!.before.player;
+      const { light, ...live } = player;
+      expect(simulated).toEqual(live);
+      expect(light).toBe(state.actor.light);
+    }
+  });
+
+  it("reports fear from a worn item only once the player knows of it", () => {
+    const fear = plain();
+    fear.flags.on(OF.AFRAID);
+    const state = wearingUnarmed(fear);
+    state.actor.player.objKnown.flags.off(OF.AFRAID);
+    state.updateBonuses!();
+    const view = createAgentView(state, undefined, {});
+    expect(state.playerState!.flags.has(OF.AFRAID)).toBe(true);
+    expect(view.player().status.fearful).toBe(false);
+    expect(view.player().objectFlags).not.toContain("AFRAID");
+
+    playerLearnFlagRune(state.actor.player, state.runeEnv, OF.AFRAID, false);
+    state.updateBonuses!();
+    expect(view.player().status.fearful).toBe(true);
+    expect(view.player().objectFlags).toContain("AFRAID");
   });
 });
 
