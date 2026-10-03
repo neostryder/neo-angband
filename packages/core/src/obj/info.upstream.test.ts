@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { TV, RF } from "../generated/index.js";
+import { OBJ_MOD } from "../generated/object-modifiers.js";
 import { startGame } from "../session/game.js";
 import type { GamePack } from "../session/game.js";
 import { objectPrep } from "./make.js";
@@ -192,6 +193,26 @@ describe("objectCombatValues (#360)", () => {
     expect(combat).toMatchObject({ multiplier: null, range: null, breakageChance: null });
   });
 
+  it("leaves out runes the character has not learned", () => {
+    const { state: learned, extras, prep } = boot();
+    const unlearned = startGame(pack, { seed: 123, depth: 1 }).state;
+    unlearned.isAware = () => true;
+    const dagger = prep("dagger", TV.SWORD, { toD: 0, dd: 1, ds: 4 });
+    const slays = unlearned.runeEnv.slays;
+    const evil = slays.findIndex((s) => s?.code === "EVIL_2");
+    dagger.modifiers = dagger.modifiers.slice();
+    dagger.modifiers[OBJ_MOD.BLOWS] = 3;
+    dagger.slays = new Array<boolean>(slays.length).fill(false);
+    dagger.slays[evil] = true;
+    const plain = prep("dagger", TV.SWORD, { toD: 0, dd: 1, ds: 4 });
+    const hidden = objectCombatValues(unlearned, dagger, extras);
+    expect(hidden).toEqual(objectCombatValues(unlearned, plain, extras));
+    expect(hidden!.damage!.vs).toEqual([]);
+    const known = objectCombatValues(learned, dagger, extras);
+    expect(known!.blows).toBeGreaterThan(hidden!.blows!);
+    expect(known!.damage!.vs.map((line) => line.name)).toEqual([slays[evil]!.name]);
+  });
+
   it("gives a launcher's multiplier and range, and nothing for an item with no combat lines", () => {
     const { state, extras, prep } = boot();
     const sling = prep("sling", TV.BOW);
@@ -203,3 +224,5 @@ describe("objectCombatValues (#360)", () => {
     expect(objectCombatValues(state, food, extras)).toBeNull();
   });
 });
+
+
