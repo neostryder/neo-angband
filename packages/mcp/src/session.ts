@@ -3,7 +3,7 @@
  *
  * This is the whole engine side of the MCP server, and it is deliberately thin:
  * every read goes through core's FROZEN agent view and every write through its
- * act facade (`packages/core/src/agent/`, AGENT_API_VERSION 1.1.0). The MCP
+ * act facade (`packages/core/src/agent/`, AGENT_API_VERSION 1.5.0). The MCP
  * server therefore has exactly the reach a third-party agent mod has - no
  * privileged path, no test hook - which is the property that makes it worth
  * having. If a tool here needs something the facade cannot express, the facade is

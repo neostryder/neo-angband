@@ -44,7 +44,8 @@ import type { BlastAreaResult, BookItemResult, GridInspectResult, InspectResult,
 /**
  * The frozen agent-API version (ratified 2026-07-14). Add-only from here: a new
  * field is a minor bump (1.x), any change to an existing field/semantics is a
- * major bump (2.0).
+ * major bump (2.0). A change that stops a field from revealing what the player
+ * has not learned is a minor bump.
  *
  * 1.1.0 (2026-07-31): the glyph layer - `AgentViewDeps.glyphs`, and the
  * `glyph` / `trapGlyph` / `objectGlyph` / `MonsterView.glyph` fields it
@@ -79,8 +80,18 @@ import type { BlastAreaResult, BookItemResult, GridInspectResult, InspectResult,
  * messages (neostryder/neo-angband-mod-borg#32) had no engine state to
  * cross-check against and could only trust its own bookkeeping. Purely
  * additive.
+ *
+ * 1.5.0 (2026-10-03): `LoadoutDelta.unknownRunes`, and the floor arm of
+ * `LoadoutItemRef` (`{ from: "floor", x, y, index }`). Loadout comparisons and
+ * the player view now read the player's knowledge: `simulateLoadout`,
+ * `compareLoadoutSlots` and `player()` count only learned runes, the same
+ * known_only derive the character sheet prints, so a mod can no longer put an
+ * item on and read off a rune the player has not learned. Every loadout read is
+ * capability-checked against where each named object lives, and a gated view
+ * refuses `{ from: "object" }`. A minor bump under the rule above: the
+ * changed fields stop revealing unlearned runes and keep their shapes.
  */
-export const AGENT_API_VERSION = "1.4.0";
+export const AGENT_API_VERSION = "1.5.0";
 
 /**
  * A command an agent emits - identical to the engine's PlayerCommand (codes 1:1
