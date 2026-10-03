@@ -689,7 +689,8 @@ is not in that path. Releasing one is:
 5. **Rebuild the mod list**: `node tools/mod-list.mjs` in this repository rewrites
    `docs/MOD_LIST.md` from the newest release of every listed mod. It needs the
    network; set `GITHUB_TOKEN` if the unauthenticated rate limit runs out. Commit
-   the page if it changed.
+   the page if it changed. The daily mod canary runs the same script and fails
+   while the committed page is out of date.
 6. A published tag is still **never moved**. Iterating one takes a MINOR bump,
    because a player's installed copy records the tag it came from.
 

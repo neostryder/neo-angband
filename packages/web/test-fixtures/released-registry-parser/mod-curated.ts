@@ -1,10 +1,11 @@
 /*
  * FROZEN COPY of packages/web/src/mod-curated.ts as released, for
  * mod-curated-released.test.ts. Byte-identical to the file at v1.21.1 and at
- * b2adb6acc, where it was introduced, apart from this comment and the import
- * path below. Every released build that reads mods/registry.json runs this
- * parser, so a change to the committed registry has to keep reading correctly
- * here. Do not edit it to match a newer parser.
+ * b2adb6acc, where it was introduced, apart from this comment. Its one import,
+ * parseRepoRef, comes from the frozen excerpt of mod-source.ts beside it, not
+ * from today's source. Every released build that reads mods/registry.json runs
+ * this parser, so a change to the committed registry has to keep reading
+ * correctly here. Do not edit it to match a newer parser.
  */
 
 /**
@@ -34,7 +35,7 @@
  * updating the game.
  */
 
-import { parseRepoRef, type RepoRef } from "../../src/mod-source";
+import { parseRepoRef, type RepoRef } from "./mod-source";
 
 /**
  * The default list: this game's own repository, at the default branch.

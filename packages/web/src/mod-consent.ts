@@ -34,7 +34,10 @@ import { readSetting, writeSetting, type SettingsWriter } from "./settings-store
 
 /** How a mod arrived, which is the only thing consent depends on. */
 export type ModOrigin =
-  /** From the curated list in this game's own repository. */
+  /**
+   * From the curated list in this game's own repository, its "mods" key. Its
+   * "community" mods are not vouched for and arrive as third-party.
+   */
   | "curated"
   /** From somebody else's registry, or a repository the player named. */
   | "third-party";

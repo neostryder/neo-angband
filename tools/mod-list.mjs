@@ -15,15 +15,16 @@
  * from manifest.json at that release's tag. The page makes no claims of its own,
  * so it cannot drift from the mods it describes.
  *
- * A repository with no published release is left off the page and named in a
- * comment at its end, so the offline test (packages/web/src/mod-list-page.test.ts)
- * can still account for every repository in the source lists. Drafts never
- * count. A pre-release counts only when the repository has no full release, and
- * the page says so.
+ * A repository with no published release is left off the page entirely and
+ * named on the console instead, because the page shows only released mods.
+ * Drafts never count. A pre-release counts only when the repository has no full
+ * release, and the page says so.
  *
- * Needs the network. Run by hand during a release pass. GITHUB_TOKEN or GH_TOKEN
- * is sent to api.github.com when set, which lifts the unauthenticated limit of
- * sixty requests an hour; the script makes one API request per mod.
+ * Needs the network. Run by hand during a release pass. The daily mod canary
+ * (.github/workflows/mod-canary.yml) runs it with --stdout and fails when the
+ * committed page differs from what it prints. GITHUB_TOKEN or GH_TOKEN is sent
+ * to api.github.com when set, which lifts the unauthenticated limit of sixty
+ * requests an hour; the script makes one API request per mod.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -124,9 +125,30 @@ export async function modFacts(repo, { fetch: get = fetch, token } = {}) {
   };
 }
 
-/** Text from a manifest, made safe to put in Markdown as plain text. */
+/**
+ * Text from a manifest or a release, as one line: every run of whitespace, line
+ * breaks and tabs included, becomes a single space. A line break inside a field
+ * would otherwise start a new Markdown block, such as a heading.
+ */
+export function oneLine(text) {
+  return String(text).replace(/\s+/gu, " ").trim();
+}
+
+/**
+ * Text from a manifest or a release, made safe to put in Markdown as plain text
+ * on one line. Inline markup characters are escaped, and so is anything at the
+ * start that Markdown would read as a list item or a thematic break.
+ */
 export function escapeMarkdown(text) {
-  return String(text).replace(/[\\`*_[\]<>|#]/gu, (c) => `\\${c}`);
+  return oneLine(text)
+    .replace(/[\\`*_[\]<>|#~]/gu, (c) => `\\${c}`)
+    .replace(/^([-+=])/u, "\\$1")
+    .replace(/^(\d+)([.)])/u, "$1\\$2");
+}
+
+/** Text from a manifest as an inline code span, on one line. */
+function codeSpan(text) {
+  return `\`${oneLine(text).replace(/`/gu, "")}\``;
 }
 
 const INTRO =
@@ -134,23 +156,23 @@ const INTRO =
 const FIRST_PARTY =
   "Mods by the maintainer of Neo Angband. Report a bug in what a mod does in that mod's own repository.";
 const COMMUNITY =
-  "Mods by other authors, listed once their release passed the listing checks. A listing is not an endorsement, a code review or a security audit.";
+  "Mods by other authors, listed once their release passed the listing checks. A listing is not an endorsement, a code review or a security audit. Installing or updating one needs **Allow third-party mods** turned on, the same as a mod added by its repository address: you opt in to each community mod's code yourself.";
 const COMMUNITY_EMPTY =
   "No community mods are listed yet. See [Getting a community mod listed](MODS.md#getting-a-community-mod-listed) in the mod system guide to add one.";
 
 function renderMod(mod, where) {
   const lines = [`### ${escapeMarkdown(mod.name)}`, ""];
   for (const para of mod.description.split(/\n\s*\n/u)) {
-    const text = para.replace(/\s*\n\s*/gu, " ").trim();
-    if (text !== "") lines.push(escapeMarkdown(text), "");
+    const text = escapeMarkdown(para);
+    if (text !== "") lines.push(text, "");
   }
   const who = mod.author ? `, by ${escapeMarkdown(mod.author)}` : "";
-  if (mod.id) lines.push(`- Mod id: \`${mod.id.replace(/`/gu, "")}\`${who}`);
+  if (mod.id) lines.push(`- Mod id: ${codeSpan(mod.id)}${who}`);
   const pre = mod.prerelease ? " (marked as a pre-release)" : "";
-  lines.push(`- Newest release: [${escapeMarkdown(mod.tag)}](${mod.releaseUrl})${pre}, published ${mod.date}`);
   lines.push(
-    `- Game builds: ${mod.engine ? `\`${mod.engine.replace(/`/gu, "")}\`` : "any (the manifest declares no range)"}`,
+    `- Newest release: [${escapeMarkdown(mod.tag)}](${oneLine(mod.releaseUrl)})${pre}, published ${oneLine(mod.date)}`,
   );
+  lines.push(`- Game builds: ${mod.engine ? codeSpan(mod.engine) : "any (the manifest declares no range)"}`);
   lines.push(`- In the game: ${where}`);
   const links = [`[repository](https://github.com/${mod.repo})`];
   if (mod.docs) links.push(`[docs](${mod.docs})`);
@@ -158,8 +180,12 @@ function renderMod(mod, where) {
   return lines;
 }
 
-/** The whole page, from the facts `modFacts` returned for each group. */
-export function renderPage({ firstParty, community, unreleased }) {
+/**
+ * The whole page, from the facts `modFacts` returned for each group. A
+ * repository left off for having no release is not passed in, so the page never
+ * names it, not even in a comment.
+ */
+export function renderPage({ firstParty, community }) {
   const out = [
     "<!-- Generated by tools/mod-list.mjs from mods/registry.json and mods/listed.json. Run node tools/mod-list.mjs to rebuild it; edits made by hand are lost on the next run. -->",
     "",
@@ -182,26 +208,21 @@ export function renderPage({ firstParty, community, unreleased }) {
   for (const mod of community) {
     out.push(...renderMod(mod, "**Recommended mods...**, under **Community mods**"));
   }
-  if (unreleased.length > 0) {
-    out.push(`<!-- Not listed, no published release: ${unreleased.join(", ")} -->`, "");
-  }
   return `${out.join("\n").replace(/\n+$/u, "")}\n`;
 }
 
 /**
- * The repositories a rendered page names, by section, plus the ones its closing
- * comment says were left off. What the offline test compares with the sources.
+ * The repositories a rendered page names, by section. What the offline test
+ * compares with the sources.
  */
 export function pageRepos(markdown) {
-  const found = { firstParty: [], community: [], unreleased: [] };
+  const found = { firstParty: [], community: [] };
   let section = null;
   for (const line of markdown.split(/\r?\n/u)) {
     if (line === "## First-party mods") section = "firstParty";
     else if (line === "## Community mods") section = "community";
     const link = /^- Links: \[repository\]\(https:\/\/github\.com\/([^)]+)\)/u.exec(line);
     if (link && section) found[section].push(link[1]);
-    const off = /^<!-- Not listed, no published release: (.*) -->$/u.exec(line);
-    if (off) found.unreleased.push(...off[1].split(", "));
   }
   return found;
 }
@@ -222,14 +243,15 @@ async function main(argv) {
       groups[key].push({ ...facts, inGame });
     }
   }
-  const page = renderPage({ ...groups, unreleased });
+  const page = renderPage(groups);
   if (argv.includes("--stdout")) {
     process.stdout.write(page);
     return;
   }
   writeFileSync(path.join(repoRoot, PAGE_PATH), page);
+  const leftOff = unreleased.length > 0 ? ` (${unreleased.join(", ")})` : "";
   process.stdout.write(
-    `wrote ${PAGE_PATH}: ${String(groups.firstParty.length)} first-party, ${String(groups.community.length)} community, ${String(unreleased.length)} left off\n`,
+    `wrote ${PAGE_PATH}: ${String(groups.firstParty.length)} first-party, ${String(groups.community.length)} community, ${String(unreleased.length)} left off${leftOff}\n`,
   );
 }
 

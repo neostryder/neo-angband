@@ -19,8 +19,9 @@
  *
  * A list has two parts. "mods" is what its curator recommends; "community" is mods
  * by other authors, listed once a release passed the listing checks in
- * docs/MODS.md. The Recommended screen shows the second under its own heading,
- * and both install the same way.
+ * docs/MODS.md. The Recommended screen shows the second under its own heading.
+ * Only the first is vouched for: a community mod installs and updates as
+ * third-party, behind the same consent as a repository added by address.
  *
  * WHY THE DEFAULT URL IS IN THE BUILD AND THAT IS NOT A CONTRADICTION. Something
  * has to know where to start. What is baked in is a place to ask, not an answer:

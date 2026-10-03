@@ -15,7 +15,7 @@
  *   1. Recommended    - the curated list in this game's own repository. A list of
  *                       repository POINTERS, re-curatable without a release. Its
  *                       community mods, when it has any, follow under their own
- *                       heading and install the same way.
+ *                       heading, and each one is installed as if by door 3.
  *   2. A registry      - anybody else's list of the same shape, by address.
  *   3. A repository    - one mod, by owner/repo or a GitHub URL.
  *   4. A .zip file      - the one door that does NOT end in a repository. Either an
@@ -25,9 +25,12 @@
  *
  * Doors 2, 3 and 4 need "Allow third-party mods" first (mod-consent.ts). Door 1 does
  * not, because a maintainer putting a repository on that list is the act of
- * vouching - and the disclaimer says plainly that vouching is not auditing. There is
- * no such thing as a curated zip: an archive did not come from the curated list, so
- * door 4 is third-party by construction.
+ * vouching - and the disclaimer says plainly that vouching is not auditing. Door 1's
+ * community mods are the exception inside it: listing one records that its release
+ * passed the listing checks, which is not a vouch, so each is third-party at install
+ * and at every update, exactly as if its address had been typed into door 3. There
+ * is no such thing as a curated zip: an archive did not come from the curated list,
+ * so door 4 is third-party by construction.
  *
  * WHAT A ROW SAYS AND WHERE EACH PART CAME FROM is the whole design. The name,
  * version, description, size and engine range are the MOD's, read from its
@@ -1145,6 +1148,8 @@ export interface SourceRows {
   readonly items: MenuItem[];
   /** The entry row `i` shows, or null for a row that is not a mod (the heading). */
   readonly rowEntries: readonly (BrowseEntry | null)[];
+  /** Whether row `i` is a community mod, which installs and updates as third-party. */
+  readonly rowCommunity: readonly boolean[];
 }
 
 /**
@@ -1152,8 +1157,8 @@ export interface SourceRows {
  * heading. With no community entries there is no heading and the rows are the
  * curated ones alone, as they were before community mods existed.
  *
- * The heading is a disabled row with no tag letter, so the cursor and the letter
- * keys pass over it.
+ * The heading is a `disabled` row (the field selectFromMenu skips) with no tag
+ * letter, so the cursor and the letter keys pass over it.
  */
 export function sourceRows(
   curated: readonly BrowseEntry[],
@@ -1162,9 +1167,11 @@ export function sourceRows(
 ): SourceRows {
   const items: MenuItem[] = [];
   const rowEntries: (BrowseEntry | null)[] = [];
+  const rowCommunity: boolean[] = [];
   for (const e of curated) {
     items.push(browseRow(e, installedTag(e)));
     rowEntries.push(e);
+    rowCommunity.push(false);
   }
   if (community.length > 0) {
     items.push({
@@ -1174,12 +1181,14 @@ export function sourceRows(
       tag: "",
     });
     rowEntries.push(null);
+    rowCommunity.push(false);
     for (const e of community) {
       items.push(browseRow(e, installedTag(e)));
       rowEntries.push(e);
+      rowCommunity.push(true);
     }
   }
-  return { items, rowEntries };
+  return { items, rowEntries, rowCommunity };
 }
 
 /**
@@ -1242,7 +1251,7 @@ async function showSource(
 
   for (;;) {
     const installed = await deps.installed();
-    const { items, rowEntries } = sourceRows(entries, communityEntries, (e) =>
+    const { items, rowEntries, rowCommunity } = sourceRows(entries, communityEntries, (e) =>
       e.ok ? (installed.get(e.mod.id) ?? null) : null,
     );
     const recommendedActionsAt = origin === "curated" ? items.length : -1;
@@ -1472,7 +1481,15 @@ async function showSource(
       ]);
       continue;
     }
-    if (await installOne(term, entry, origin, deps, { offerEnable: at === null && what === 0 })) {
+    /* A community row is third-party whatever list it sits on: listing it is not
+     * the maintainer vouching for it, so the player opts in to its code the same
+     * way as to a repository typed into door 3. The disclaimer is offered here,
+     * when the player has chosen to install, rather than as a bare refusal from
+     * the installer, which checks the same origin again. */
+    const community = rowCommunity[pick] === true;
+    if (community && !deps.consent.read() && !(await askConsent(term, deps))) continue;
+    const rowOrigin: ModOrigin = community ? "third-party" : origin;
+    if (await installOne(term, entry, rowOrigin, deps, { offerEnable: at === null && what === 0 })) {
       changed = true;
       if (deps.leaveAfterEnabledInstall?.()) return changed;
     }
@@ -3029,7 +3046,7 @@ export function modUpdateReportScreen(refreshed: readonly ModRefresh[]): ScreenV
 }
 
 /**
- * Which repositories the curated list vouches for, lower-cased.
+ * Which repositories the curated list vouches for, lower-cased: its "mods" only.
  *
  * WHY AN UPDATE STILL HAS AN ORIGIN. The origin decides one thing: whether the
  * consent gate applies (mod-install.ts checks it before any fetch). A recommended
@@ -3040,14 +3057,15 @@ export function modUpdateReportScreen(refreshed: readonly ModRefresh[]): ScreenV
  * lets it be replaced. A player who has since turned the switch off has said they
  * do not want that code, and an update is more of that code.
  *
+ * Its "community" mods are not in the set. Listing one is not a vouch, so an update
+ * to one is third-party, the same as the install that brought it in.
+ *
  * A list that cannot be read yields an empty set, so nothing is silently promoted to
  * exempt on the strength of a failed fetch.
  */
 async function curatedRepos(deps: ModUpgradeDeps): Promise<ReadonlySet<string>> {
   const { registry } = await deps.curated();
-  return new Set(
-    [...(registry?.mods ?? []), ...(registry?.community ?? [])].map((r) => r.repo.toLowerCase()),
-  );
+  return new Set((registry?.mods ?? []).map((r) => r.repo.toLowerCase()));
 }
 
 /**

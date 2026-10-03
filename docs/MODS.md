@@ -38,9 +38,11 @@ touching what is saved.
 
 ### Getting a community mod listed
 
-Mods by other authors can be listed in the game's **Recommended mods...** screen, under a **Community mods** heading after the first-party mods, and in the community section of [MOD_LIST.md](MOD_LIST.md). They install through the same checks as every other mod on that screen, and the daily mod canary checks them along with the first-party mods.
+Mods by other authors can be listed in the game's **Recommended mods...** screen, under a **Community mods** heading after the first-party mods, and in the community section of [MOD_LIST.md](MOD_LIST.md). The daily mod canary checks them along with the first-party mods.
 
-To ask for a listing, open a [List a community mod](https://github.com/neostryder/neo-angband/issues/new?template=list-a-mod.yml) issue with the repository and the release you want listed. Before the mod is added to the `community` list in `mods/registry.json`, a maintainer checks that the repository is public, that the release is published on GitHub, that it installs cleanly on the current build of the game, and that the mod canary passes with it on the list. A listing is not an endorsement, a code review or a security audit. It also does not add you to `mods/authors.json`, the separate author register, which you can ask to join with an issue of its own.
+A listed community mod installs and updates like a mod added by its repository address. The player needs **Allow third-party mods** turned on, and the game shows what that means the first time they pick one. **Install all recommended mods** and **Update all recommended mods** cover the first-party mods only, so players opt in to each community mod's code on its own row.
+
+To ask for a listing, open a [List a community mod](https://github.com/neostryder/neo-angband/issues/new?template=list-a-mod.yml) issue with the repository and the release you want listed. Before the mod is added to the `community` list in `mods/registry.json`, a maintainer checks that the repository is public, that the release is published on GitHub, that it installs cleanly on the current build of the game, and that the mod canary passes with it on the list. Those checks are all a listing records: it is not an endorsement, a code review or a security audit, and the game does not treat it as one. It also does not add you to `mods/authors.json`, the separate author register, which you can ask to join with an issue of its own.
 
 A listing is removed when the mod's release fails the mod canary, or when its author asks.
 

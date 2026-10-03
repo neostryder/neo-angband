@@ -126,6 +126,6 @@ With no model set up, Squire keeps playing by its own rules until you take the k
 
 ## Community mods
 
-Mods by other authors, listed once their release passed the listing checks. A listing is not an endorsement, a code review or a security audit.
+Mods by other authors, listed once their release passed the listing checks. A listing is not an endorsement, a code review or a security audit. Installing or updating one needs **Allow third-party mods** turned on, the same as a mod added by its repository address: you opt in to each community mod's code yourself.
 
 No community mods are listed yet. See [Getting a community mod listed](MODS.md#getting-a-community-mod-listed) in the mod system guide to add one.

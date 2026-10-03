@@ -37,6 +37,9 @@ on:
   pull_request:
     paths:
       - "mods/registry.json"
+      - "mods/listed.json"
+      - "docs/MOD_LIST.md"
+      - "tools/mod-list.mjs"
       - "packages/web/src/mod-curated.ts"
       - "packages/web/src/mod-registry.ts"
       - "packages/web/src/mod-canary.test.ts"
@@ -65,3 +68,18 @@ jobs:
       # with those tags, not what some standalone script thinks.
       - run: pnpm build
       - run: pnpm --dir packages/web exec vitest run src/mod-canary.test.ts
+      # docs/MOD_LIST.md is built from each listed mod's newest release, so a mod
+      # that releases after the page was last built leaves the page out of date
+      # with no change in this repository. Rebuilding it here and comparing is
+      # how that shows up. Runs even when the canary above failed, and only
+      # reads: the rebuilt page goes to a temporary file and is never committed.
+      - name: Mod list page is current
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node tools/mod-list.mjs --stdout > "$RUNNER_TEMP/MOD_LIST.md"
+          if ! diff -u docs/MOD_LIST.md "$RUNNER_TEMP/MOD_LIST.md"; then
+            echo "::error file=docs/MOD_LIST.md::docs/MOD_LIST.md no longer matches the mods' newest releases (diff above). Run node tools/mod-list.mjs and commit the rebuilt page."
+            exit 1
+          fi

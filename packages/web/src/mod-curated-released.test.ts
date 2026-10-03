@@ -11,7 +11,7 @@
  * refuses.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -31,6 +31,21 @@ const { parseRegistry: releasedParse } = (await import(
 const FILE = join(import.meta.dirname, "..", "..", "..", "mods", "registry.json");
 const committed = (): string => readFileSync(FILE, "utf8");
 const repos = (list: ReadonlyArray<{ repo: string }>): string[] => list.map((r) => r.repo);
+
+describe("the frozen parser", () => {
+  it("imports nothing from today's sources, so a later change cannot move it", () => {
+    const dir = join(import.meta.dirname, "..", "test-fixtures", "released-registry-parser");
+    let imports = 0;
+    for (const file of readdirSync(dir)) {
+      const from = [...readFileSync(join(dir, file), "utf8").matchAll(/^import .* from "([^"]+)";$/gmu)].map(
+        (m) => m[1],
+      );
+      for (const path of from) expect(path, `${file} imports ${String(path)}`).toMatch(/^\.\/[^/]+$/u);
+      imports += from.length;
+    }
+    expect(imports).toBeGreaterThan(0);
+  });
+});
 
 describe("the committed registry, read by a released build", () => {
   it("reads cleanly, with the same first-party list this build reads", () => {
