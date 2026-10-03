@@ -108,6 +108,44 @@ describe("parseRegistry", () => {
   });
 });
 
+describe("parseRegistry's community list", () => {
+  it("is empty when the list has none, which is every list written before the key", () => {
+    const r = parseRegistry(doc(), URL_);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.registry.community).toEqual([]);
+  });
+
+  it("reads community entries through the same rules as the curated ones", () => {
+    const r = parseRegistry(
+      doc({ community: [{ repo: "c/three" }, { repo: "" }, { repo: "https://github.com/d/four" }] }),
+      URL_,
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.registry.mods.map((m) => m.repo)).toEqual(["a/one", "b/two"]);
+    expect(r.registry.community.map((m) => m.repo)).toEqual(["c/three", "d/four"]);
+    expect(r.registry.problems).toEqual([`${URL_} community entry 2: names no repository`]);
+  });
+
+  it("reports a repository on both lists, and keeps it on the curated one", () => {
+    const r = parseRegistry(doc({ community: [{ repo: "A/One" }] }), URL_);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.registry.mods.map((m) => m.repo)).toEqual(["a/one", "b/two"]);
+    expect(r.registry.community).toEqual([]);
+    expect(r.registry.problems[0]).toMatch(/community entry 1: .* listed more than once/u);
+  });
+
+  it("loses only the community list when that key is malformed", () => {
+    const r = parseRegistry(doc({ community: { repo: "c/three" } }), URL_);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.registry.mods).toHaveLength(2);
+    expect(r.registry.community).toEqual([]);
+    expect(r.registry.problems).toEqual([`${URL_}: its "community" is not a list`]);
+  });
+});
+
 describe("fetchRegistry", () => {
   const envWith = (
     reply: { ok: boolean; status: number; body?: string } | Error,
@@ -176,8 +214,11 @@ describe("the registry this repository ships", () => {
     /* The whole point. If a name, a version, a description or a digest ever
      * appears in an entry here, the build has started knowing about mods again -
      * which is the thing this redesign exists to stop. */
-    const parsed = JSON.parse(body()) as { mods: Array<Record<string, unknown>> };
-    for (const entry of parsed.mods) {
+    const parsed = JSON.parse(body()) as {
+      mods: Array<Record<string, unknown>>;
+      community?: Array<Record<string, unknown>>;
+    };
+    for (const entry of [...parsed.mods, ...(parsed.community ?? [])]) {
       expect(Object.keys(entry)).toEqual(["repo"]);
     }
   });

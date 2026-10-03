@@ -19,10 +19,10 @@ contact_links:
       it is worth reporting.
 
   - name: Something about a specific mod
-    url: https://github.com/neostryder/neo-angband/blob/master/docs/MODS.md#where-each-mod-lives
+    url: https://github.com/neostryder/neo-angband/blob/master/docs/MOD_LIST.md
     about: >-
-      qol, bug-fixes, linoleum and borg each have their own repository, and
-      an issue filed there reaches the person who can fix it. Not sure whether
+      Each mod has its own repository, and an issue filed there reaches the
+      person who can fix it. The mod list links to every one. Not sure whether
       it is the mod or the game? File it here and it can be moved.
 
   - name: Email, if an issue is not the right place

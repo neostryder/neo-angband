@@ -1,0 +1,43 @@
+name: List a community mod
+description: Ask for your released mod to appear in the game's Recommended mods screen and on the mod list.
+title: "[list a mod] "
+labels: ["mods"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Listed community mods appear in the game under **Recommended mods... > Community mods** and on the [mod list](https://github.com/neostryder/neo-angband/blob/master/docs/MOD_LIST.md). Before your mod is listed, a maintainer checks that the repository is public, that the release you name is a published GitHub release, that the release installs cleanly on the current build of the game, and that the daily mod canary passes with your mod on the list.
+
+        A listing records that those checks passed for that release. It is not an endorsement, a code review or a security audit, and it promises nothing about later releases. A listing is removed when the mod fails the canary, or when you ask.
+
+  - type: input
+    id: repository
+    attributes:
+      label: Repository
+      description: owner/repo, or the GitHub address of the repository.
+      placeholder: owner/neo-angband-mod-example
+    validations:
+      required: true
+
+  - type: input
+    id: release
+    attributes:
+      label: Release to list
+      description: The tag of a published release, such as v1.0.0.
+      placeholder: v1.0.0
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: own-work
+    attributes:
+      label: Your work
+      options:
+        - label: This mod is my own work.
+          required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Optional. The mod's name, description and supported game builds come from its manifest, so there is no need to repeat them here.

@@ -1,4 +1,4 @@
-# Do the curated mods still describe the world?
+# Do the curated mods, community mods included, still describe the world?
 #
 # Every promise the curated list relies on - the repository is there, its tag
 # serves the payload its manifest declares, the files come back CORS-open, the
@@ -36,7 +36,10 @@ on:
   # it before anyone downloads it.
   pull_request:
     paths:
+      - "mods/registry.json"
+      - "packages/web/src/mod-curated.ts"
       - "packages/web/src/mod-registry.ts"
+      - "packages/web/src/mod-canary.test.ts"
       - ".github/workflows/mod-canary.yml"
 
 concurrency:

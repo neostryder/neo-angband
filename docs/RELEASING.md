@@ -682,11 +682,15 @@ is not in that path. Releasing one is:
    NEW mod repository joins the curated list.
 4. **Check it from outside**, because nothing in this repository can:
    `MOD_CANARY=1 pnpm --dir packages/web exec vitest run src/mod-canary.test.ts`
-   fetches the curated list, discovers every mod in it, and confirms the payload is
-   served with `Access-Control-Allow-Origin: *` (which is what makes an install
-   from the static web build possible at all) and that the manifest admits this
-   engine version and this mod API.
-5. A published tag is still **never moved**. Iterating one takes a MINOR bump,
+   reads the curated list, discovers every mod in it (community mods included),
+   and confirms the payload is served with `Access-Control-Allow-Origin: *`
+   (which is what makes an install from the static web build possible at all)
+   and that the manifest admits this engine version and this mod API.
+5. **Rebuild the mod list**: `node tools/mod-list.mjs` in this repository rewrites
+   `docs/MOD_LIST.md` from the newest release of every listed mod. It needs the
+   network; set `GITHUB_TOKEN` if the unauthenticated rate limit runs out. Commit
+   the page if it changed.
+6. A published tag is still **never moved**. Iterating one takes a MINOR bump,
    because a player's installed copy records the tag it came from.
 
 ## How a mod repository gets the gamedata

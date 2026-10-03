@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "about": "Released mods that appear on the generated mod list page, docs/MOD_LIST.md, but not in the game's Recommended mods list. The page also lists every mod in registry.json. tools/mod-list.mjs reads both files to build it.",
+  "firstParty": [
+    { "repo": "neostryder/neo-angband-mod-squire" }
+  ]
+}

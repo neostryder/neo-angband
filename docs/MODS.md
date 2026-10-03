@@ -34,20 +34,15 @@ touching what is saved.
 
 ### Where each mod lives
 
-Every first-party mod is a separate repository with its own issues, releases and
-tests - file a bug about what a mod *does* there, and a bug about the mod
-*system* against the game.
+[MOD_LIST.md](MOD_LIST.md) lists every released mod, first-party and community, with what it does, its newest release, the game builds it runs on and links to its repository and docs. Each mod is a separate repository with its own issues, releases and tests: file a bug about what a mod *does* there, and a bug about the mod *system* against the game.
 
-| Mod | Repository | What it is |
-| --- | --- | --- |
-| `qol` | [neo-angband-mod-qol](https://github.com/neostryder/neo-angband-mod-qol) | New conveniences ([docs](modding/QOL.md)). Angband's own `=` options are not part of it; they ship in core at their upstream defaults. |
-| `bug-fixes` | [neo-angband-mod-bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes) | An unofficial patch set for upstream bugs core deliberately keeps ([docs](modding/BUG_FIXES.md)). |
-| `linoleum` | [neo-angband-mod-linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) | A second tile engine - loose packs of individually named PNGs - plus all six upstream tile sets converted to it: 9161 files of art that belongs to the mod. Not the source of the game's own tiles, which are core content ([docs](LINOLEUM.md)). |
-| `borg` | [neo-angband-mod-borg](https://github.com/neostryder/neo-angband-mod-borg) | Angband's automatic player, ported onto the agent API ([docs](BORG_AS_MOD.md)). |
-| `feature-restoration` | [neo-angband-mod-feature-restoration](https://github.com/neostryder/neo-angband-mod-feature-restoration) | Mechanics later versions of Angband dropped, brought back one switch at a time, every switch off by default ([docs](modding/FEATURE_RESTORATION.md)). |
-| `forge` | [neo-angband-mod-forge](https://github.com/neostryder/neo-angband-mod-forge) | An in-game workshop for building a mod from something that already exists - a monster, an item, a shop, a spell - without ever having to know it is JSON ([docs](https://github.com/neostryder/neo-angband-mod-forge#readme)). |
-| `upstream-catchup` | [neo-angband-mod-upstream-catchup](https://github.com/neostryder/neo-angband-mod-upstream-catchup) | Changes upstream Angband accepted after the `4.2.6` tag core is pinned to, each cited by commit, every class of them off by default. A rebaseline onto a newer upstream tag makes every row in it redundant, and the mod is meant to expire then ([scope](modding/UPSTREAM_CATCHUP_MOD_SCOPE.md)). |
-| `squire` | [neo-angband-mod-squire](https://github.com/neostryder/neo-angband-mod-squire) | An alternative autoplayer that runs one errand and hands the keyboard back, rather than playing the character for you. Each mission stops on its own terms - the target falls, a new creature appears, damage lands - and returns control immediately ([docs](https://github.com/neostryder/neo-angband-mod-squire#readme)). |
+### Getting a community mod listed
+
+Mods by other authors can be listed in the game's **Recommended mods...** screen, under a **Community mods** heading after the first-party mods, and in the community section of [MOD_LIST.md](MOD_LIST.md). They install through the same checks as every other mod on that screen, and the daily mod canary checks them along with the first-party mods.
+
+To ask for a listing, open a [List a community mod](https://github.com/neostryder/neo-angband/issues/new?template=list-a-mod.yml) issue with the repository and the release you want listed. Before the mod is added to the `community` list in `mods/registry.json`, a maintainer checks that the repository is public, that the release is published on GitHub, that it installs cleanly on the current build of the game, and that the mod canary passes with it on the list. A listing is not an endorsement, a code review or a security audit. It also does not add you to `mods/authors.json`, the separate author register, which you can ask to join with an issue of its own.
+
+A listing is removed when the mod's release fails the mod canary, or when its author asks.
 
 ### Writing one
 

@@ -200,7 +200,7 @@ Outside the guaranteed subset, `ctx.core` can change in any release; the ratchet
 
 ## Who finds out first
 
-The **mod canary** (`.github/workflows/mod-canary.yml`) runs the curated list against this build daily and whenever the list changes: every repository in `mods/registry.json` is discovered the way the game discovers it, and its manifest is put through this build's gates. An engine release that would strand a curated mod shows up in the canary rather than in a player's install. It does the job of SMAPI's compatibility list automatically, and it lets a release be held back before it ships.
+The **mod canary** (`.github/workflows/mod-canary.yml`) checks the Recommended mods list against this build daily and whenever the list changes. Every repository in `mods/registry.json`, community mods included, is discovered the way the game discovers it, and its manifest goes through the same checks this build applies at install and load time. An engine release that would strand a listed mod shows up in the canary rather than in a player's install. It does the job of SMAPI's compatibility list automatically, and it lets a release be held back before it ships.
 
 That covers curated mods only. A mod nobody has listed finds out the same way every mod always has, which is why the gates above degrade instead of refusing.
 

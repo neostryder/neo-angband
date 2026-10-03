@@ -10,12 +10,9 @@ body:
         verifying a mod, load order, or two mods fighting over the same thing.
 
         A bug in what a specific mod *does* belongs in that mod's own
-        repository, where the person who can fix it will see it -
-        [qol](https://github.com/neostryder/neo-angband-mod-qol),
-        [bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes),
-        [linoleum](https://github.com/neostryder/neo-angband-mod-linoleum),
-        [borg](https://github.com/neostryder/neo-angband-mod-borg). If you
-        cannot tell which it is, file it here.
+        repository, where the person who can fix it will see it. The
+        [mod list](https://github.com/neostryder/neo-angband/blob/master/docs/MOD_LIST.md)
+        links to each one. If you cannot tell which it is, file it here.
 
   - type: dropdown
     id: area

@@ -33,7 +33,8 @@
  * through a literal:
  *
  *   1. the curated list is readable and CORS-open, so the static build can read it;
- *   2. every repository it names still describes a mod this game could install;
+ *   2. every repository it names, community mods included, still describes a mod
+ *      this game could install;
  *   3. each manifest's `engine` range still admits THIS build's ENGINE_VERSION;
  *   4. its `modApi` still matches this host's, when it ships code;
  *   5. every declared payload file is still served, at the tag, with CORS open;
@@ -47,13 +48,15 @@
  *   MOD_CANARY=1 pnpm --dir packages/web exec vitest run src/mod-canary.test.ts
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { composeModHooks, ENGINE_VERSION, OptionState } from "@rpgm-tools/neo-angband-core";
 import type { GameState } from "@rpgm-tools/neo-angband-core";
 import { satisfies } from "@rpgm-tools/neo-angband-mod-sdk";
 import { rawUrl } from "./mod-registry";
-import { DEFAULT_REGISTRY_URL, fetchRegistry } from "./mod-curated";
+import { DEFAULT_REGISTRY_URL, parseRegistry } from "./mod-curated";
 import { discoverMod, type DiscoverEnv, type DiscoveredMod } from "./mod-discover";
 import { MOD_API_VERSION, type ModPlugin } from "./mod-plugin";
 import { modPluginContext } from "./mod-context";
@@ -89,7 +92,13 @@ async function get(url: string): Promise<Fetched> {
 }
 
 /**
- * Discover every repository the curated list names, once, for the whole file.
+ * Discover every repository the curated list names, its community mods included,
+ * once, for the whole file.
+ *
+ * The list is the CHECKED-OUT mods/registry.json, which on the schedule is master
+ * (the file every build fetches) and on a pull request is the list that request
+ * would publish, so a listing is checked before it reaches anyone. The first test
+ * below still fetches the live file to check it is served CORS-open.
  *
  * ONE PASS, not one per assertion. Discovery is three requests per mod against the
  * public API, and re-running it inside each `it` is how a scheduled job earns a rate
@@ -97,11 +106,15 @@ async function get(url: string): Promise<Fetched> {
  */
 const discovered: Promise<readonly DiscoveredMod[]> = (async () => {
   if (!ON) return [];
-  const list = await fetchRegistry(DEFAULT_REGISTRY_URL, { fetch: env.fetch });
+  const file = join(import.meta.dirname, "..", "..", "..", "mods", "registry.json");
+  const list = parseRegistry(readFileSync(file, "utf8"), "mods/registry.json");
   if (!list.ok) throw new Error(`the curated registry: ${list.problem}`);
+  if (list.registry.problems.length > 0) {
+    throw new Error(`the curated registry:\n  ${list.registry.problems.join("\n  ")}`);
+  }
   const out: DiscoveredMod[] = [];
   const failed: string[] = [];
-  for (const ref of list.registry.mods) {
+  for (const ref of [...list.registry.mods, ...list.registry.community]) {
     const r = await discoverMod(ref, env);
     if (r.ok) out.push(r.mod);
     else failed.push(`${ref.repo}: ${r.problem}`);

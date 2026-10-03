@@ -180,21 +180,9 @@ The game **bundles no mods at all**, not even the author's. Each one lives in it
 own repository and installs by the same verified route anybody's would, which is
 the only way to know that route actually works.
 
-| Mod | What it is | Reference |
-| --- | --- | --- |
-| [feature-restoration](https://github.com/neostryder/neo-angband-mod-feature-restoration) | Cutting Room Floor. Features later versions of Angband dropped, and content upstream wrote but never switched on, brought back one switch at a time | [settings](https://github.com/neostryder/neo-angband-mod-feature-restoration/blob/master/docs/README.md) |
-| [qol](https://github.com/neostryder/neo-angband-mod-qol) | Quality-of-life conveniences | [settings](https://github.com/neostryder/neo-angband-mod-qol/blob/master/docs/README.md) |
-| [bug-fixes](https://github.com/neostryder/neo-angband-mod-bug-fixes) | Fixes for upstream bugs the base game keeps on purpose | [settings](https://github.com/neostryder/neo-angband-mod-bug-fixes/blob/master/docs/README.md) |
-| [linoleum](https://github.com/neostryder/neo-angband-mod-linoleum) | A second tile engine, and all of Angband's tile sets converted to it | [settings](https://github.com/neostryder/neo-angband-mod-linoleum/blob/master/docs/README.md) |
-| [borg](https://github.com/neostryder/neo-angband-mod-borg) | An automatic player | [settings](https://github.com/neostryder/neo-angband-mod-borg/blob/master/docs/README.md) |
-| [forge](https://github.com/neostryder/neo-angband-mod-forge) | An in-game workshop for building a mod from something that already exists | [settings](https://github.com/neostryder/neo-angband-mod-forge/blob/master/docs/README.md) |
-| [upstream-catchup](https://github.com/neostryder/neo-angband-mod-upstream-catchup) | Changes Angband accepted after the 4.2.6 tag this port is pinned to, each cited to its commit | [settings](https://github.com/neostryder/neo-angband-mod-upstream-catchup/blob/master/docs/README.md) |
-| [squire](https://github.com/neostryder/neo-angband-mod-squire) | An autoplayer that runs a single errand and hands control straight back | [settings](https://github.com/neostryder/neo-angband-mod-squire/blob/master/docs/README.md) |
-
-Every **Reference** link is the same page in every mod's repository: each switch
-that mod exposes, the name a save knows it by, whether it starts on or off, and
-what the mod asks the game for. The mod's own README is the longer account of
-why any of it exists.
+[docs/MOD_LIST.md](docs/MOD_LIST.md) lists every released mod: what it does, its
+newest release, the game builds it runs on, and links to its repository and its
+docs.
 
 **What a mod can do:** change any value in any of the game's data files; add items, monsters, artifacts and whole new kinds of item; add or retune spells; change how stores behave; generate its own dungeon levels; ship art, sounds and fonts; run real code; expose its own settings; and draw the world itself. The modding docs keep a [table of what is built today and what is still missing](docs/modding/README.md#surface-status-complete-wip-not-yet).
 

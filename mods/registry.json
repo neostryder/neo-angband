@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "name": "Neo Angband recommended mods",
-  "about": "A curated list of mod REPOSITORIES, and nothing else. Every fact about a mod - its name, what it does, which versions exist, which builds of the game it works with - comes from that mod's own repository when the game looks it up. This file only says where to look. Anyone can point the game at their own list of the same shape, or install a single repository by URL, without going through here.",
+  "about": "The game's Recommended mods list, as repository addresses and nothing else. Every fact about a mod, such as its name, what it does, which versions exist and which builds of the game it works with, comes from that mod's own repository when the game looks it up. \"mods\" holds the first-party mods. \"community\" holds mods by other authors, added after their release passed the listing checks in docs/MODS.md; a listing is not an endorsement, a code review or a security audit. Anyone can point the game at their own list of the same shape, or install a single repository by URL, without going through here.",
   "mods": [
     { "repo": "neostryder/neo-angband-mod-qol" },
     { "repo": "neostryder/neo-angband-mod-bug-fixes" },
@@ -11,5 +11,6 @@
     { "repo": "neostryder/neo-angband-mod-forge" },
     { "repo": "neostryder/neo-angband-mod-upstream-catchup" },
     { "repo": "neostryder/neo-angband-mod-anybandui" }
-  ]
+  ],
+  "community": []
 }

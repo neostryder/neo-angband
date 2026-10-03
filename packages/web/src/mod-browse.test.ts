@@ -20,6 +20,7 @@ import {
   installFailureLines,
   installOutcomeLines,
   sourceLabel,
+  sourceRows,
   waitingZipRow,
   type BrowseEntry,
 } from "./mod-browse";
@@ -374,6 +375,33 @@ describe("sourceLabel", () => {
   it("names the curated list, and calls anybody else's list by its own name", () => {
     expect(sourceLabel("curated", "ignored")).toBe("Recommended mods");
     expect(sourceLabel("third-party", "Somebody's picks")).toBe("Somebody's picks");
+  });
+});
+
+describe("sourceRows", () => {
+  const qol = found();
+  const borg = found({ repo: "neostryder/neo-angband-mod-borg", id: "borg", name: "Borg" });
+  const extra = found({ repo: "someone/neo-angband-mod-extra", id: "extra", name: "Extra", author: "someone" });
+  const none = (): string | null => null;
+
+  it("with no community mods, is the curated rows alone, with no heading", () => {
+    /* An empty community list must leave the screen exactly as it was. */
+    const { items, rowEntries } = sourceRows([qol, borg], [], none);
+    expect(items).toEqual([browseRow(qol, null), browseRow(borg, null)]);
+    expect(rowEntries).toEqual([qol, borg]);
+    expect(items.some((i) => i.label === "Community mods")).toBe(false);
+  });
+
+  it("puts community mods after the curated ones, under a heading the cursor skips", () => {
+    const { items, rowEntries } = sourceRows([qol, borg], [extra], (e) => (e === extra ? "v1.0.0" : null));
+    expect(items.map((i) => i.label)).toEqual([
+      browseRow(qol, null).label,
+      browseRow(borg, null).label,
+      "Community mods",
+      browseRow(extra, "v1.0.0").label,
+    ]);
+    expect(items[2]).toMatchObject({ disabled: true, tag: "" });
+    expect(rowEntries).toEqual([qol, borg, null, extra]);
   });
 });
 

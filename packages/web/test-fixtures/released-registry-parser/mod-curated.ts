@@ -1,3 +1,12 @@
+/*
+ * FROZEN COPY of packages/web/src/mod-curated.ts as released, for
+ * mod-curated-released.test.ts. Byte-identical to the file at v1.21.1 and at
+ * b2adb6acc, where it was introduced, apart from this comment and the import
+ * path below. Every released build that reads mods/registry.json runs this
+ * parser, so a change to the committed registry has to keep reading correctly
+ * here. Do not edit it to match a newer parser.
+ */
+
 /**
  * Curated lists of mod REPOSITORIES.
  *
@@ -17,11 +26,6 @@
  * second-class path - it is the only path, and the curated list is a bookmark
  * file for it.
  *
- * A list has two parts. "mods" is what its curator recommends; "community" is mods
- * by other authors, listed once a release passed the listing checks in
- * docs/MODS.md. The Recommended screen shows the second under its own heading,
- * and both install the same way.
- *
  * WHY THE DEFAULT URL IS IN THE BUILD AND THAT IS NOT A CONTRADICTION. Something
  * has to know where to start. What is baked in is a place to ask, not an answer:
  * change the file in the repository and every build already out there sees the new
@@ -30,7 +34,7 @@
  * updating the game.
  */
 
-import { parseRepoRef, type RepoRef } from "./mod-source";
+import { parseRepoRef, type RepoRef } from "../../src/mod-source";
 
 /**
  * The default list: this game's own repository, at the default branch.
@@ -55,12 +59,6 @@ export interface ModRegistry {
   /** Where it came from, so a player can see whose list they are reading. */
   readonly url: string;
   readonly mods: readonly RepoRef[];
-  /**
-   * Mods by other authors, listed after a check of their release, in the list's
-   * own "community" key. Empty when the list has none, which is every list
-   * written before the key existed.
-   */
-  readonly community: readonly RepoRef[];
   /** One line per entry that could not be read, rather than a silent drop. */
   readonly problems: readonly string[];
 }
@@ -116,44 +114,11 @@ export function parseRegistry(body: string, url: string): RegistryResult {
     return { ok: false, problem: `${url}: its "mods" is not a list` };
   }
 
+  const mods: RepoRef[] = [];
   const problems: string[] = [];
   const seen = new Set<string>();
-  const mods = readEntries(list, `${url} entry`, seen, problems);
-
-  /* A KEY THAT BUILDS RELEASED BEFORE IT IGNORE. This parser has never read a
-   * top-level key it does not know, so an older build fetching this same file
-   * from master sees the "mods" it always saw and nothing else
-   * (mod-curated-released.test.ts runs the released parser over the committed
-   * file to keep that true). That is why community mods are a key here and not a
-   * schema bump, which an older build would refuse outright. A malformed key
-   * costs the community list, never the curated one above it. */
-  const rawCommunity = d["community"];
-  let community: RepoRef[] = [];
-  if (Array.isArray(rawCommunity)) {
-    /* The same `seen` set: one repository on both lists is the same editing
-     * mistake as one repository listed twice. */
-    community = readEntries(rawCommunity, `${url} community entry`, seen, problems);
-  } else if (rawCommunity !== undefined) {
-    problems.push(`${url}: its "community" is not a list`);
-  }
-
-  const name = typeof d["name"] === "string" && d["name"] !== "" ? d["name"] : url;
-  return { ok: true, registry: { name, url, mods, community, problems } };
-}
-
-/**
- * Read one list of entries. A bad entry is reported in `problems` and skipped;
- * `seen` is shared between lists so a repository cannot appear twice anywhere.
- */
-function readEntries(
-  list: readonly unknown[],
-  label: string,
-  seen: Set<string>,
-  problems: string[],
-): RepoRef[] {
-  const out: RepoRef[] = [];
   for (const [i, raw] of list.entries()) {
-    const at = `${label} ${String(i + 1)}`;
+    const at = `${url} entry ${String(i + 1)}`;
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
       problems.push(`${at}: not an object`);
       continue;
@@ -179,9 +144,11 @@ function readEntries(
       continue;
     }
     seen.add(key);
-    out.push(parsed.ref);
+    mods.push(parsed.ref);
   }
-  return out;
+
+  const name = typeof d["name"] === "string" && d["name"] !== "" ? d["name"] : url;
+  return { ok: true, registry: { name, url, mods, problems } };
 }
 
 /** What fetching a registry needs. */

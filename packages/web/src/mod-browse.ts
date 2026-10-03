@@ -13,7 +13,9 @@
  * requirements inspection and the same install.
  *
  *   1. Recommended    - the curated list in this game's own repository. A list of
- *                       repository POINTERS, re-curatable without a release.
+ *                       repository POINTERS, re-curatable without a release. Its
+ *                       community mods, when it has any, follow under their own
+ *                       heading and install the same way.
  *   2. A registry      - anybody else's list of the same shape, by address.
  *   3. A repository    - one mod, by owner/repo or a GitHub URL.
  *   4. A .zip file      - the one door that does NOT end in a repository. Either an
@@ -1138,6 +1140,48 @@ async function showRecommendedActions(
   }
 }
 
+/** The mod rows of one source, and which entry each row shows. */
+export interface SourceRows {
+  readonly items: MenuItem[];
+  /** The entry row `i` shows, or null for a row that is not a mod (the heading). */
+  readonly rowEntries: readonly (BrowseEntry | null)[];
+}
+
+/**
+ * The curated entries, then the community entries under a "Community mods"
+ * heading. With no community entries there is no heading and the rows are the
+ * curated ones alone, as they were before community mods existed.
+ *
+ * The heading is a disabled row with no tag letter, so the cursor and the letter
+ * keys pass over it.
+ */
+export function sourceRows(
+  curated: readonly BrowseEntry[],
+  community: readonly BrowseEntry[],
+  installedTag: (entry: BrowseEntry) => string | null,
+): SourceRows {
+  const items: MenuItem[] = [];
+  const rowEntries: (BrowseEntry | null)[] = [];
+  for (const e of curated) {
+    items.push(browseRow(e, installedTag(e)));
+    rowEntries.push(e);
+  }
+  if (community.length > 0) {
+    items.push({
+      label: t("modBrowse.source.communityHeading", "Community mods"),
+      color: C_WARN,
+      disabled: true,
+      tag: "",
+    });
+    rowEntries.push(null);
+    for (const e of community) {
+      items.push(browseRow(e, installedTag(e)));
+      rowEntries.push(e);
+    }
+  }
+  return { items, rowEntries };
+}
+
 /**
  * Show one source's mods, discovering each as the list is built.
  *
@@ -1150,13 +1194,14 @@ async function showSource(
   title: string,
   origin: ModOrigin,
   refs: readonly RepoRef[],
+  communityRefs: readonly RepoRef[],
   problems: readonly string[],
   deps: ModBrowseDeps,
 ): Promise<boolean> {
   let changed = false;
   const authors = await deps.authors();
 
-  if (refs.length === 0) {
+  if (refs.length === 0 && communityRefs.length === 0) {
     await showTextScreen(term, title, [
       {
         text: t("modBrowse.source.empty", "This list names no mods this game can install."),
@@ -1178,15 +1223,17 @@ async function showSource(
     0,
     3,
     t("modBrowse.source.asking", "Asking {count} repositories what they hold...", {
-      count: refs.length,
+      count: refs.length + communityRefs.length,
     }),
     C_DIM,
   );
   waiting.flush?.();
 
   const entries: BrowseEntry[] = [];
+  const communityEntries: BrowseEntry[] = [];
   try {
     for (const ref of refs) entries.push(await deps.discover(ref));
+    for (const ref of communityRefs) communityEntries.push(await deps.discover(ref));
   } finally {
     /* Popped even when a discovery throws: the menu below never runs in that
      * case, and a wait screen that outlives its wait is a phantom occluder. */
@@ -1195,8 +1242,8 @@ async function showSource(
 
   for (;;) {
     const installed = await deps.installed();
-    const items: MenuItem[] = entries.map((e) =>
-      browseRow(e, e.ok ? (installed.get(e.mod.id) ?? null) : null),
+    const { items, rowEntries } = sourceRows(entries, communityEntries, (e) =>
+      e.ok ? (installed.get(e.mod.id) ?? null) : null,
     );
     const recommendedActionsAt = origin === "curated" ? items.length : -1;
     if (recommendedActionsAt >= 0) {
@@ -1250,7 +1297,7 @@ async function showSource(
       t("modBrowse.common.footer.escBack", "[ ESC to go back ]"),
       {
         detail: (i) => {
-          const e = entries[i];
+          const e = rowEntries[i];
           if (!e) return [];
           /* The REAL width, asked at paint time. The pane is resizable and the
            * function's default is only there so the pure tests need no terminal. */
@@ -1269,6 +1316,9 @@ async function showSource(
     if (pick === null) return changed;
 
     if (pick === recommendedActionsAt) {
+      /* The first-party entries only. Installing every community mod in one
+       * action would install code by several authors without a look at any of
+       * them, so each community mod is installed from its own row. */
       if (await showRecommendedActions(term, entries, deps)) changed = true;
       continue;
     }
@@ -1292,7 +1342,7 @@ async function showSource(
       continue;
     }
 
-    const entry = entries[pick];
+    const entry = rowEntries[pick];
     if (!entry) continue;
     if (!entry.ok) {
       await showTextScreen(term, entry.ref.repo, browseDetail(entry, null, authors));
@@ -1464,6 +1514,7 @@ async function openRegistry(
     sourceLabel(origin, registry.name),
     origin,
     registry.mods,
+    registry.community,
     registry.problems,
     deps,
   );
@@ -2994,7 +3045,9 @@ export function modUpdateReportScreen(refreshed: readonly ModRefresh[]): ScreenV
  */
 async function curatedRepos(deps: ModUpgradeDeps): Promise<ReadonlySet<string>> {
   const { registry } = await deps.curated();
-  return new Set((registry?.mods ?? []).map((r) => r.repo.toLowerCase()));
+  return new Set(
+    [...(registry?.mods ?? []), ...(registry?.community ?? [])].map((r) => r.repo.toLowerCase()),
+  );
 }
 
 /**
