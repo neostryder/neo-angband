@@ -17,6 +17,7 @@ describe("describeCapability", () => {
   it("describes title additions and profile changes separately", () => {
     expect(describeCapability("ui:title")).toEqual({ cap: "ui:title", text: "Add title screen actions", elevated: false });
     expect(describeCapability("profiles:manage")).toEqual({ cap: "profiles:manage", text: "Create profiles and switch between them", elevated: true });
+    expect(describeCapability("session:control")).toEqual({ cap: "session:control", text: "Save the game, return to the title screen, or quit", elevated: false });
   });
   it("describes each registry override domain, flagging system override as elevated", () => {
     expect(describeCapability("registry:effect")).toMatchObject({ elevated: true });

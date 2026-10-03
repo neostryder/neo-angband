@@ -282,7 +282,8 @@ export type ParsedCapability =
   | { kind: "ui-region"; action: "write" }
   | { kind: "saves"; action: "manage" }
   | { kind: "title"; action: "add" }
-  | { kind: "profiles"; action: "manage" };
+  | { kind: "profiles"; action: "manage" }
+  | { kind: "session"; action: "control" };
 
 const EVENT_RE = /^event:([a-z][a-z0-9-]*)$/;
 /**
@@ -378,6 +379,11 @@ export function parseCapability(cap: string): ParsedCapability {
   if (cap === "saves:manage") return { kind: "saves", action: "manage" };
   if (cap === "ui:title") return { kind: "title", action: "add" };
   if (cap === "profiles:manage") return { kind: "profiles", action: "manage" };
+  /* "session:control": save the game, leave it for the title screen, or quit, the
+   * same three acts the game menu offers. Its own kind so `saves:manage` (the
+   * roster) does not carry it: managing characters and ending this one are two
+   * different things to agree to. */
+  if (cap === "session:control") return { kind: "session", action: "control" };
   /* NOT a registry domain, deliberately. A registry:* grant means "override
    * one named game system among many"; this one means "everything the player
    * sees of the dungeon is drawn by this mod." It is the display OWNER, so it
@@ -521,6 +527,8 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
       return grant.kind === "title";
     case "profiles":
       return grant.kind === "profiles";
+    case "session":
+      return grant.kind === "session";
     case "event":
       return grant.kind === "event" && grant.name === request.name;
     case "state":

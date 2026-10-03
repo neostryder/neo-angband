@@ -527,6 +527,8 @@ The facade uses the roster's configured storage in the browser and Electron. Its
 
 `ctx.character.key()` is present with `state:player.read` while a character is attached. It returns the roster lineage, which survives saves and renames. Under `saves:manage`, `ctx.saves.onChange(listener)` receives frozen `rename` and `delete` events after the host writes the roster; each event carries the slot id and lineage key, and a rename also carries the new name. The subscription returns an unsubscribe function.
 
+A plugin with `session:control` receives `ctx.session`, the game menu's Save, Save and exit, and Quit for a mod's own save dialog. `save()` writes the save and shows the game's "Saving game... done." message. `exitToTitle()` saves and then reloads to the title screen. `quit()` saves and then runs Ctrl-X: the game's "Press Return (or Escape)." pause, then the desktop app closes, while a browser tab goes to the title screen. Each one saves first and returns a refusal with a `reason` instead of leaving when no living character is in play or the save fails. None of them confirm, so ask the player in your own dialog first. `saves:manage` does not grant this seam. (#361)
+
 ## Player profiles and title actions
 
 `ctx.profiles.list()` returns `ProfileResult<readonly ModProfile[]>`, where each profile has `id: string | null`, `name: string` and `active: boolean`. The default profile has a null id. `ProfileResult<T>` is `{ ok: true, value: T } | { ok: false, reason: string }`; calls without the capability throw a capability error.

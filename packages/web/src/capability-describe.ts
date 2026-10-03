@@ -174,6 +174,8 @@ export function describeCapability(cap: string): CapabilityDescription {
       return { cap, text: "Add title screen actions", elevated: false };
     case "profiles":
       return { cap, text: "Create profiles and switch between them", elevated: true };
+    case "session":
+      return { cap, text: "Save the game, return to the title screen, or quit", elevated: false };
     case "event":
       return { cap, text: `Observe the "${parsed.name}" game event`, elevated: false };
     case "state":

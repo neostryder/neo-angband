@@ -34,6 +34,7 @@ import {
   type ModPluginContext,
   type ModSessionOutcome,
   type ModSaves,
+  type ModGameSession,
   type ModTitle,
   type ModProfiles,
   type ModSubwindows,
@@ -171,6 +172,7 @@ export function modPluginContext(
   const tiles = tilesFor(session);
   const keyRepeat = keyRepeatFor(session);
   const saves = savesFor(id, session);
+  const gameSession = session.capabilities?.has("session:control") ? session.gameSession ?? sessionControl : undefined;
   const title = session.capabilities?.has("ui:title") ? titleControl?.(id) : undefined;
   const profiles = session.capabilities?.has("profiles:manage") ? profilesControl?.(id, session.capabilities) : undefined;
   const net = netFor(id, session);
@@ -230,6 +232,7 @@ export function modPluginContext(
     ...(tiles ? { tiles } : {}),
     ...(keyRepeat ? { keyRepeat } : {}),
     ...(saves ? { saves } : {}),
+    ...(gameSession ? { session: gameSession } : {}),
     ...(title ? { title } : {}),
     ...(profiles ? { profiles } : {}),
     ...(session.capabilities?.has("profiles:manage") && session.capabilities?.has("saves:manage") && controllerArmedControl?.(id)
@@ -560,6 +563,7 @@ export function setModSnapshotSource(source: InputSnapshotSource | undefined): v
 }
 
 let savesControl: ModSaves | undefined;
+let sessionControl: ModGameSession | undefined;
 let titleControl: ((id: string) => ModTitle) | undefined;
 let profilesControl: ((id: string, caps: CapabilitySet) => ModProfiles) | undefined;
 let controllerArmedControl: ((id: string) => boolean) | undefined;
@@ -611,6 +615,11 @@ function savesFor(id: string, session: ModSessionFacts): ModSaves | undefined {
 /** Install the host roster door before any title screen plugin runs. */
 export function setModSavesControl(saves: ModSaves | undefined): void {
   savesControl = saves;
+}
+
+/** Install the host's save, exit and quit door (boot path and tests). */
+export function setModSessionControl(control: ModGameSession | undefined): void {
+  sessionControl = control;
 }
 
 /** Install the host's autoplayer roll-on gate (boot path and tests). */
@@ -941,6 +950,8 @@ export interface ModSessionFacts {
   readonly keyRepeat?: () => KeyRepeatVerdict | null;
   /** Override the saves door in tests. */
   readonly saves?: ModSaves;
+  /** Override the save, exit and quit door in tests. */
+  readonly gameSession?: ModGameSession;
   /** Override the autoplayer roll-on gate in tests. */
   readonly autoplayerRollOn?: ModAutoplayerRollOn;
   /** Override ctx.net directly (tests, and a front end with its own). */

@@ -58,6 +58,7 @@ still calls itself.
 - [Visible] [Modding-API] **Knowledge entries say whether the player knows them.** Each `ctx.knowledge` entry has `known`, false for an object flavour seen but not identified (#362).
 - [Visible] [Modding-API] **A mod can change its own settings.** `ctx.settings.set(id, value)` clamps, saves and announces the value, as the Mods screen does (#362).
 - [Visible] [Modding-API] **Character creation gives point-buy costs and can restore the generated background.** The draft's `statCosts` gives each stat's next cost, refund and whether it can be bought or sold, and `restoreHistory()` undoes an edit to the background (#362).
+- [Visible] [Modding-API] **A mod can save the game, return to the title screen or quit.** Under the new `session:control` capability, `ctx.session` offers `save()`, `exitToTitle()` and `quit()`, each saving first and staying in the game if the save fails (#361).
 
 ### Changed
 

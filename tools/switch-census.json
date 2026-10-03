@@ -18,17 +18,17 @@
     },
     {
       "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 23,
+      "cases": 24,
       "hasDefault": false,
       "kind": "SWITCH",
-      "verdict": "INTERNAL - capability grants are host-owned consent vocabulary. saves:manage (#285) names the roster-management grant; mods cannot add a capability kind. options:write (#291) is one more host-owned grant."
+      "verdict": "INTERNAL - capability grants are host-owned consent vocabulary. saves:manage (#285) names the roster-management grant; mods cannot add a capability kind. options:write (#291) is one more host-owned grant. session:control (#361) is the save, exit and quit grant."
     },
     {
       "file": "packages/web/src/capability-describe.ts",
-      "cases": 23,
+      "cases": 24,
       "hasDefault": false,
       "kind": "SWITCH",
-      "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. saves:manage (#285) is elevated because it can delete characters; mods cannot add an unreviewed consent category. keymap:edit (#291) is elevated because it can replace the player's keymaps."
+      "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. saves:manage (#285) is elevated because it can delete characters; mods cannot add an unreviewed consent category. keymap:edit (#291) is elevated because it can replace the player's keymaps. session:control (#361) is not elevated because every call saves first."
     },
     {
       "file": "packages/web/src/equip-cmp.ts",

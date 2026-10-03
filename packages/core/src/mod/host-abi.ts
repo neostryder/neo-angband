@@ -566,6 +566,12 @@ export interface ModPluginContext {
   readonly knowledge?: ModKnowledge;
   /** Manage roster slots after declaring `saves:manage`, including at the title. */
   readonly saves?: ModSaves;
+  /**
+   * Save the game, return to the title screen, or quit, under `session:control`
+   * (mod-game-session.ts). The game menu's own rows confirm first; these do not, so
+   * ask the player in your own dialog before calling one.
+   */
+  readonly session?: ModGameSession;
   /** Add title actions after declaring `ui:title`. */
   readonly title?: ModTitle;
   /** Manage player profiles after declaring `profiles:manage`. */
@@ -1493,6 +1499,24 @@ export interface ModSaves {
      */
     readonly resumeAutoplayer?: boolean;
   }): Promise<SaveResult>;
+}
+
+/**
+ * The game menu's save, exit and quit, for a mod's own dialogs. Each one saves
+ * first and refuses when there is no living character in play or the save fails,
+ * so `{ ok: false }` always means the game was not left.
+ */
+export interface ModGameSession {
+  /** Save now, as the game menu's Save row does, with its "Saving game... done." message. */
+  save(): SaveResult;
+  /** Save, then leave play for the title screen. The page reloads once the save is written. */
+  exitToTitle(): Promise<SaveResult>;
+  /**
+   * Save and quit, as Ctrl-X does: the game's own "Press Return (or Escape)."
+   * pause follows, then the desktop app closes; a browser tab goes to the title
+   * screen instead. Resolves once the save is written and the quit has begun.
+   */
+  quit(): Promise<SaveResult>;
 }
 
 /** A controller plus what the host should know about this one install. */

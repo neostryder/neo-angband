@@ -6,7 +6,8 @@ import { createModOptions } from "./mod-options";
 import { createModKeybindings, setModCommandCatalogue } from "./mod-keybindings";
 import { clearKeymaps, keymapAdd, keymapFind, keymapOwner, keymapSetOwner } from "./keymap-store";
 import { createModKnowledge } from "./knowledge-read";
-import { modPluginContext, setModKnowledgeSource, setModRunReports } from "./mod-context";
+import { modPluginContext, setModKnowledgeSource, setModRunReports, setModSessionControl } from "./mod-context";
+import { createModSession } from "./mod-game-session";
 import { createRunReports } from "./run-report";
 
 function stateWith(options = new OptionState()): GameState {
@@ -189,6 +190,20 @@ describe("ctx.knowledge", () => {
     expect(ctx(["state:*.read"], stateWith()).knowledge).toBe(door);
     expect(ctx(["state:player.read"], stateWith()).knowledge).toBeUndefined();
     expect(ctx(["state:knowledge.read"]).knowledge).toBeUndefined();
+  });
+});
+
+describe("ctx.session", () => {
+  afterEach(() => setModSessionControl(undefined));
+
+  it("is present only with session:control", () => {
+    const door = createModSession({ refusal: () => null, save: () => true, announceSaved: () => {}, exitToTitle: async () => {}, quit: () => {} });
+    setModSessionControl(door);
+    const ctx = (caps: string[]) =>
+      modPluginContext("m", {}, undefined, {}, { capabilities: CapabilitySet.fromManifest({ id: "m", name: "M", version: "1.0.0", shape: "plugin", capabilities: caps } as never) });
+    expect(ctx(["session:control"]).session).toBe(door);
+    expect(ctx(["saves:manage"]).session).toBeUndefined();
+    expect(ctx([]).session).toBeUndefined();
   });
 });
 

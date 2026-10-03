@@ -359,6 +359,7 @@ import {
   setModListControl,
   setModSnapshotSource,
   setModSavesControl,
+  setModSessionControl,
   setModTitleControl,
   setModProfilesControl,
   setModControllerArmedControl,
@@ -797,6 +798,7 @@ import {
 import { readStoredLocale } from "./locale-store";
 import { chooseCommand, groupCommands, keyForKeyset, transformKeypressCommandTable } from "./command-menu";
 import { setModCommandCatalogue } from "./mod-keybindings";
+import { createModSession } from "./mod-game-session";
 import type { CommandCategory } from "./command-menu";
 import { customPageDefaults, runOptionsMenu, runTileModePage } from "./options";
 import type { TileModeMenu, SidebarModeMenu, SubwindowMenu } from "./options";
@@ -7209,6 +7211,24 @@ setModDebugDoor({ wizard: wizardCtx, confirm: confirmDebugGate });
  * options menu does. */
 setModOptionsAfterChange(() => autosave(true));
 setModCommandCatalogue(() => commandTable());
+/* ctx.session: the game menu's Save, Save and exit, and Quit rows, without their
+ * confirmations, which a mod asks in its own dialog. persistSave reports a save
+ * it skipped as written, so the cases it skips are refused here instead. */
+setModSessionControl(createModSession({
+  refusal: () => {
+    if (birthPending || suppressSave || !attachedSlot()) return "No character is in play.";
+    if (dead) return "The character has died.";
+    if (sessionTaint()) return "A mod failed during this turn, so the game will not save over the last good save.";
+    return null;
+  },
+  save: () => persistSave(true),
+  announceSaved: () => {
+    message = "Saving game... done.";
+    render();
+  },
+  exitToTitle,
+  quit: saveQuitCmd,
+}));
 setModKnowledgeSource(() => createModKnowledge(modKnowledgeSources(), () => state?.rng));
 setModRunReports(runReports);
 const modTitle = new TitleRuntime((title, choices) => {

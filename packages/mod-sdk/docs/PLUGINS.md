@@ -372,6 +372,8 @@ Declare `saves:manage` for a replacement title screen that lists, loads, renames
 
 `ctx.saves.onChange()` reports frozen rename and delete events after the host changes the roster, including changes made outside a mod menu. Each event carries the stable lineage key returned by `ctx.character.key()` for the attached character. See [MOD_SEAMS.md section 4m](MOD_SEAMS.md#4m-ctxsaves---the-host-character-roster).
 
+Declare `session:control` for a save dialog of your own. `ctx.session` saves the game, leaves for the title screen or quits, as the game menu does, but without the menu's confirmations. Each call saves first and stays in the game when the save fails. See [MOD_SEAMS.md section 4m](MOD_SEAMS.md#4m-ctxsaves---the-host-character-roster).
+
 ### Title actions and player profiles
 
 Declare `ui:title` to receive `ctx.title`. `registerRow({ label, key?, run })` adds an action after the core title options. Rows keep their registration order, and the host removes a mod's rows when it uninstalls that mod. The optional key is a letter or digit; a core key or an earlier mod key keeps its existing action. `choose(title, choices)` opens a choice menu before play begins and returns the chosen index, or `null` on Escape. The first choice is selected by default.

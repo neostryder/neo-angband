@@ -51,6 +51,14 @@ describe("parseCapability: valid forms", () => {
     }));
     expect(manager.has("saves:manage")).toBe(true);
   });
+  it("keeps session:control apart from the roster grant", () => {
+    expect(parseCapability("session:control")).toEqual({ kind: "session", action: "control" });
+    expect(() => parseCapability("session:*")).toThrow(CapabilityError);
+    const roster = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["saves:manage", "ui:*.replace", "state:*.read"] }));
+    expect(roster.has("session:control")).toBe(false);
+    const control = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["session:control"] }));
+    expect(control.has("session:control")).toBe(true);
+  });
   it("keeps options:write and keymap:edit apart from the grants near them", () => {
     expect(parseCapability("options:write")).toEqual({ kind: "options", action: "write" });
     expect(parseCapability("keymap:edit")).toEqual({ kind: "keymap", action: "edit" });
