@@ -496,7 +496,7 @@ export interface ItemView {
   /**
    * The name the inventory shows (object_desc with its article and every detail
    * the player knows), present when the host supplies `describe`. `label` stays
-   * the kind's raw name.
+   * the bare name: the kind's once the player knows it, the flavour's before.
    */
   name?: string;
   /** Whether the game ignores this object now (ignore_item_ok), present when the host supplies `ignored`. */
