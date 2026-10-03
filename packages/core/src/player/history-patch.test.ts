@@ -93,4 +93,51 @@ describe("history phrases by record key", () => {
     );
     expect(after).not.toEqual(before);
   });
+
+  it("lets a mod replace one record whole, keeping its place in the chart", () => {
+    const original = packJson<HistoryRecordJson>("history").find(
+      (r) => r.chart.chart === 50 && r.chart.roll === 100,
+    )!;
+    const fix: LoadedPack = {
+      manifest: manifest("bug-fixes", { core: "*" }),
+      files: {
+        history: {
+          replaces: { "core:50--100": { chart: original.chart, phrase: ["You have blue-grey eyes, "] } },
+        },
+      },
+    };
+    const before = backgrounds(packJson("history"));
+    const after = backgrounds(composedHistory(fix));
+    expect(after).toEqual(
+      before.map((text) => text.replace("You have blue-gray eyes, ", "You have blue-grey eyes, ")),
+    );
+    expect(after).not.toEqual(before);
+  });
+
+  it("lets a mod remove one record, and its chart still gives every background", () => {
+    /* Chart 4's roll-15 entry. Rolls are cumulative thresholds, so with it gone
+     * rolls 1 to 15 reach the chart's next entry instead, and every chart still
+     * has an entry for every roll. */
+    const gone = "Your mother was of the Avari. ";
+    const history = packJson<HistoryRecordJson>("history");
+    expect(history.filter((r) => (r.phrase ?? []).join("") === gone)).toHaveLength(1);
+    const cut: LoadedPack = {
+      manifest: manifest("lore", { core: "*" }),
+      files: { history: { removes: ["core:4--15"] } },
+    };
+    const removed = composedHistory(cut);
+    expect(removed).toHaveLength(history.length - 1);
+
+    const before = backgrounds(history);
+    const after = backgrounds(removed);
+    expect(before.some((text) => text.includes(gone))).toBe(true);
+    for (const [i, text] of after.entries()) {
+      const was = before[i] ?? "";
+      expect(text.length).toBeGreaterThan(0);
+      expect(text).not.toContain(gone);
+      /* A background that never rolled the removed entry draws the same dice
+       * and so comes out the same. */
+      if (!was.includes(gone)) expect(text).toBe(was);
+    }
+  });
 });

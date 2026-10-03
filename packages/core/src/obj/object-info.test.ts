@@ -17,6 +17,7 @@ import { ORIGIN } from "../generated/origins.js";
 import type { GameObject } from "./object.js";
 import type { GameState } from "../game/context.js";
 import type { EffectIntro, ObjectInfoTextSite } from "../mod/hooks.js";
+import { tvals } from "./tval-table.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -520,8 +521,15 @@ describe("the objectInfoText seam's site", () => {
     [9, "Hobbit", "Rogue"],
   ];
 
+  /** Every ObjectInfoSection, spelled out so a new one has to be added here too. */
+  const SECTIONS: ReadonlySet<string> = new Set([
+    "unknown", "origin", "flavor", "unassessed", "curses", "stats", "slays", "brands",
+    "elements", "protects", "ignores", "hates", "sustains", "misc", "light", "book", "ego",
+    "effect", "combat", "digger", "nothing", "break",
+  ]);
+
   it.each(CHARACTERS)(
-    "leaves every description byte-identical when a mod passes the text through (seed %i, %s %s)",
+    "leaves every description byte-identical and gives every fragment a truthful site (seed %i, %s %s)",
     (seed, race, cls) => {
       const { state, extras, objects } = everyKind(seed, race, cls);
       expect(objects.length).toBeGreaterThan(300);
@@ -530,18 +538,109 @@ describe("the objectInfoText seam's site", () => {
         objectInfoTextblock(state, o, extras).runs,
         objectInfo(o, OINFO.FAKE | OINFO.SUBJ, makeObjectInfoDeps(state, o, extras)).runs,
       ];
+      let unawareFlavoured = 0;
       for (const aware of [true, false]) {
         state.isAware = () => aware;
         delete state.modHooks;
         const faithful = objects.map(describe);
-        state.modHooks = { objectInfoText: (text) => text };
-        const passed = objects.map(describe);
+        const wrong: string[] = [];
+        const passed = objects.map((o) => {
+          const flavoured = state.hasFlavor?.(o.kind) ?? false;
+          if (!aware && flavoured) unawareFlavoured++;
+          /* What the player sees: the kind's name once known, else its flavour. */
+          const shown = aware || !flavoured ? o.kind.name : state.flavorText!(o.kind);
+          const seen: string[] = [];
+          state.modHooks = {
+            objectInfoText: (text, site) => {
+              seen.push(text);
+              const where = `${o.kind.name} ${JSON.stringify(text)}`;
+              if (!SECTIONS.has(site.section)) wrong.push(`${where}: section ${site.section}`);
+              if (site.tval !== tvals.nameAt(o.tval)) wrong.push(`${where}: tval ${site.tval}`);
+              if (site.kind !== shown) wrong.push(`${where}: kind ${site.kind}`);
+              if (site.aware !== aware) wrong.push(`${where}: aware ${site.aware}`);
+              return text;
+            },
+          };
+          const runs = describe(o);
+          /* One call per fragment the player reads, so no site arrives without its text. */
+          const written = runs.flat().map((r) => r.text);
+          if (seen.join("\u0000") !== written.join("\u0000")) wrong.push(`${o.kind.name}: calls differ from runs`);
+          return runs;
+        });
+        expect(wrong).toEqual([]);
         expect(passed).toEqual(faithful);
       }
+      /* The sweep reached the case the site must hide. */
+      expect(unawareFlavoured).toBeGreaterThan(50);
       delete state.modHooks;
     },
     30_000,
   );
+
+  it("never shows a mod the real kind of an unidentified potion or scroll", () => {
+    const { state, extras, prep } = boot();
+    const clw = prep("cure light wounds", TV.POTION, { origin: ORIGIN.NONE });
+    const phase = prep("phase door", TV.SCROLL, { origin: ORIGIN.NONE });
+    state.isAware = () => false;
+    for (const obj of [clw, phase]) {
+      const flavour = state.flavorText!(obj.kind);
+      expect(flavour.length, "fixture: the kind has a flavour").toBeGreaterThan(0);
+      const faithful = info(state, obj, extras);
+      const sites: ObjectInfoTextSite[] = [];
+      state.modHooks = {
+        objectInfoText: (text, site) => {
+          sites.push(site);
+          /* A mod keyed on the real kind, as in the test below, has nothing to match. */
+          return site.kind === obj.kind.name && site.section === "effect" ? `${text}!` : text;
+        },
+      };
+      const restated = info(state, obj, extras);
+      delete state.modHooks;
+      expect(sites.length).toBeGreaterThan(0);
+      for (const site of sites) {
+        expect(site).toMatchObject({ tval: tvals.nameAt(obj.tval), kind: flavour, aware: false });
+      }
+      expect(JSON.stringify(sites)).not.toContain(obj.kind.name);
+      expect(restated).toBe(faithful);
+    }
+  });
+
+  it("files no fragment under a rune the player has not learned", () => {
+    /* A fresh character knows no rune, so a dagger's slay and curse stay hidden:
+     * neither the text nor any site may mention them. With every rune learned,
+     * both sections appear, with their own lines. */
+    const { state, booted } = startGame(pack, { seed: 5, depth: 1 });
+    const reg = booted.registries;
+    state.isAware = () => true;
+    const extras: ObjectInfoExtras = { projections: reg.projections ?? [], constants: reg.constants };
+    const kind = reg.objects.kinds.find((k) => k.tval === TV.SWORD && k.name.includes("Dagger"))!;
+    const dagger = objectPrep(new Rng(1), reg.objects, reg.constants, kind, 1, "minimise");
+    dagger.notice |= OBJ_NOTICE.ASSESSED;
+    dagger.origin = ORIGIN.NONE;
+    const env = state.runeEnv;
+    dagger.slays = env.slays.map((s) => s?.code === "EVIL_2");
+    const curse = env.curses.findIndex((c, i) => i > 0 && c !== null);
+    dagger.curses = env.curses.map((_, i) => ({ power: i === curse ? 20 : 0, timeout: 0 }));
+    const sectionsOf = (): Map<string, string> => {
+      const seen = new Map<string, string>();
+      state.modHooks = {
+        objectInfoText: (text, site) => {
+          seen.set(site.section, (seen.get(site.section) ?? "") + text);
+          return text;
+        },
+      };
+      objectInfoTextblock(state, dagger, extras);
+      delete state.modHooks;
+      return seen;
+    };
+    const unlearned = sectionsOf();
+    expect(unlearned.has("slays")).toBe(false);
+    expect(unlearned.has("curses")).toBe(false);
+    playerLearnAllRunes(state.actor.player, state.runeEnv);
+    const learned = sectionsOf();
+    expect(learned.get("slays")).toMatch(/^Slays /u);
+    expect(learned.get("curses")).toMatch(/^It /u);
+  });
 
   it("names the section of every fragment, and the object it describes", () => {
     const { state, extras, objects } = everyKind(123, "Human", "Warrior");

@@ -92,6 +92,7 @@ import {
   tvalIsWand,
   tvalIsWeapon,
   tvalIsWearable,
+  tvalCanHaveFlavor,
 } from "./object.js";
 import {
   EL_INFO_HATES,
@@ -1925,8 +1926,12 @@ export function objectInfo(obj: GameObject, mode: number, deps: ObjectInfoDeps):
   const restate = deps.hooks?.objectInfoText;
   if (restate) {
     const tval = tvals.nameAt(obj.tval) ?? "unknown";
-    const kind = obj.kind.name;
     const aware = deps.known.isAware(obj.kind);
+    /* A mod learns no more than the player: until the kind is known, it is named
+     * as object_kind_name (obj-desc.c L48) names it for the knowledge menu, by
+     * its flavour. A kind with no flavour shows its own name either way. */
+    const flavoured = deps.known.hasFlavor?.(obj.kind) ?? tvalCanHaveFlavor(obj.tval);
+    const kind = aware || !flavoured ? obj.kind.name : (deps.known.flavorText?.(obj.kind) ?? "");
     tb.runs = tb.runs
       .map((r, i) => ({
         text: restate(r.text, { section: sections[i] ?? "break", tval, kind, aware }),

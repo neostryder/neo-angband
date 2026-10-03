@@ -561,6 +561,56 @@ describe("composeContentPacks: no per-record op is ever ignored in silence", () 
     expect(recordsOf(composed, "history")[0]?.["chart"]).toEqual({ chart: 1, next: 2, roll: 10 });
   });
 
+  /** A core whose chart 1 has three entries, so position within the chart shows. */
+  function chartCore(): LoadedPack {
+    const core = passthroughCore();
+    core.files["history"] = {
+      records: [
+        { chart: { chart: 1, next: 0, roll: 10 }, phrase: ["You are tall. "] },
+        { chart: { chart: 1, next: 0, roll: 50 }, phrase: ["You are short. "] },
+        { chart: { chart: 1, next: 0, roll: 100 }, phrase: ["You are average. "] },
+      ],
+    };
+    return core;
+  }
+
+  it("replaces a history record by chart and roll, in its place in the chart", () => {
+    const mod: LoadedPack = {
+      manifest: manifest("lore", { core: "*" }),
+      files: {
+        history: {
+          replaces: {
+            "core:1--50": { chart: { chart: 1, next: 0, roll: 50 }, phrase: ["You are slight. "] },
+          },
+        },
+      },
+    };
+    const composed = composeContentPacks([chartCore(), mod]);
+    expect(composed.problems).toEqual([]);
+    expect(recordsOf(composed, "history").map((r) => r["phrase"])).toEqual([
+      ["You are tall. "],
+      ["You are slight. "],
+      ["You are average. "],
+    ]);
+  });
+
+  it("removes a history record by chart and roll, leaving the rest of its chart in order", () => {
+    /* Applied rather than refused: wholeFile governs a pack's `records`, and the
+     * per-record ops use the key. The chart still covers every roll, because
+     * each entry's roll is a cumulative threshold, so rolls 11 to 50 now reach
+     * the roll-100 entry. */
+    const mod: LoadedPack = {
+      manifest: manifest("lore", { core: "*" }),
+      files: { history: { removes: ["core:1--50"] } },
+    };
+    const composed = composeContentPacks([chartCore(), mod]);
+    expect(composed.problems).toEqual([]);
+    expect(recordsOf(composed, "history").map((r) => r["chart"])).toEqual([
+      { chart: 1, next: 0, roll: 10 },
+      { chart: 1, next: 0, roll: 100 },
+    ]);
+  });
+
   it("still takes a pack's history records as the whole file", () => {
     /* The key is for the per-record ops only. A chart's rolls mean something in
      * file order, so shipped records replace the file rather than being

@@ -250,15 +250,18 @@ export interface ObjectInfoTextSite {
   /** The object's tval as object.txt names it (`"potion"`, `"sword"`). */
   readonly tval: string;
   /**
-   * The object kind's name as object.txt spells it (`"Cure Light Wounds"`,
-   * `"& Dagger~"`). With `tval`, it is the kind's `type` and `name` in
-   * object.json, and it is given whether or not the player knows the kind.
+   * The object kind as the player knows it. Once the player knows the kind,
+   * this is its name as object.txt spells it (`"Cure Light Wounds"`,
+   * `"& Dagger~"`), which with `tval` is the kind's `type` and `name` in
+   * object.json. Before that it is the flavour the player sees (`"Light Blue"`,
+   * a scroll's title), as the knowledge menu lists an unidentified flavour, so
+   * a mod never learns which kind an unknown flavour is. A kind with no flavour
+   * is named the same either way.
    */
   readonly kind: string;
   /**
-   * Whether the player knows the kind (object_flavor_is_aware). A mod that
-   * keys a rewording on `kind` checks this first, so its text never names a
-   * flavour the player has not learned.
+   * Whether the player knows the kind (object_flavor_is_aware). When false,
+   * `kind` holds the flavour rather than the kind's name.
    */
   readonly aware: boolean;
 }

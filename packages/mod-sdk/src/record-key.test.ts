@@ -90,10 +90,10 @@ describe("RECORD_KEY_SPECS", () => {
       paths: ["chart.chart", "chart.roll"],
       wholeFile: true,
     });
-    /* The refs a text correction names, read off the real file: history.txt
-     * line 269 is chart 50's roll-100 entry, line 72 chart 4's roll-15 entry,
-     * and lines 69 and 186 are two records carrying the same phrase, which a
-     * phrase-based identity could not tell apart. */
+    /* The refs a text correction names, read off the real file: chart 50's
+     * roll-100 entry and chart 4's roll-15 entry, and two records in charts 3
+     * and 18 carrying the same phrase, which a phrase-based identity could not
+     * tell apart. */
     const records = corePackFile("history") as Array<{
       chart: { chart: number; roll: number };
       phrase: string[];
