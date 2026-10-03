@@ -16,7 +16,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants.js";
-import { TV } from "../generated/index.js";
+import { ELEM, OF, TV } from "../generated/index.js";
+import { OBJ_NOTICE, playerLearnCombat, playerLearnFlagRune, playerLearnResist } from "../obj/knowledge.js";
 import { ObjRegistry } from "../obj/bind.js";
 import { objectPrep } from "../obj/make.js";
 import type { GameObject, StackLimits } from "../obj/object.js";
@@ -592,6 +593,130 @@ describe("a loadout read needs the read for every place it looks", () => {
     const noPlayer = createAgentView(state, undefined, { reg },
       granted("state:inventory.read", "state:stores.read", "state:floor.read"));
     expect(() => noPlayer.simulateLoadout!(change)).toThrow(AgentCapabilityError);
+  });
+});
+
+describe("a comparison counts only the runes the player knows", () => {
+  /** A body armour with a fire resist, +7 to armour and free action; assessed unless told otherwise. */
+  function runed(assessed = true): GameObject {
+    const obj = make(0, TV.SOFT_ARMOR);
+    obj.elInfo[ELEM.FIRE]!.resLevel = 1;
+    obj.toA = 7;
+    obj.flags.on(OF.FREE_ACT);
+    if (assessed) obj.notice |= OBJ_NOTICE.ASSESSED;
+    return obj;
+  }
+
+  /** The same armour with none of the runes: what the player believes `runed` is. */
+  function plain(): GameObject {
+    const obj = make(0, TV.SOFT_ARMOR);
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+    return obj;
+  }
+
+  /** A town game whose character has learned none of the three runes. */
+  function unlearned(): GameState {
+    const state = newGame(0);
+    const p = state.actor.player;
+    p.objKnown.elInfo[ELEM.FIRE]!.resLevel = 0;
+    p.objKnown.toA = 0;
+    p.objKnown.flags.off(OF.FREE_ACT);
+    return state;
+  }
+
+  function learnAll(state: GameState): void {
+    const p = state.actor.player;
+    playerLearnResist(p, state.runeEnv, ELEM.FIRE, false);
+    playerLearnCombat(p, state.runeEnv, "toA", false);
+    playerLearnFlagRune(p, state.runeEnv, OF.FREE_ACT, false);
+  }
+
+  /** Each arm of LoadoutItemRef naming `obj`, placed where that arm looks. */
+  function placed(state: GameState, obj: GameObject, arm: "gear" | "store" | "floor" | "object"): LoadoutItemRef {
+    switch (arm) {
+      case "gear":
+        return { from: "gear", handle: invenCarry(state.gear, state.actor.player, obj, limits) };
+      case "store": {
+        const shop = (state.stores ?? []).findIndex((s) => s.stock.length > 0);
+        state.stores![shop]!.stock.unshift(obj);
+        return { from: "store", store: shop, index: 0 };
+      }
+      case "floor": {
+        const grid = { x: state.actor.grid.x + 1, y: state.actor.grid.y };
+        obj.grid = { ...grid };
+        state.floor.set(grid.y * state.chunk.width + grid.x, [obj]);
+        objectSeeAt(state, grid, obj);
+        return { from: "floor", x: grid.x, y: grid.y, index: 0 };
+      }
+      case "object":
+        return { from: "object", object: obj };
+    }
+  }
+
+  for (const arm of ["gear", "store", "floor", "object"] as const) {
+    it(`shows none of an unlearned rune through the ${arm} arm until the player learns it`, () => {
+      const twinState = unlearned();
+      const twin = simulateLoadout(twinState, { wield: [placed(twinState, plain(), arm)] })!;
+      expect(twin.unresolved).toEqual([]);
+      expect(twin.delta.unknownRunes).toBe(false);
+
+      const state = unlearned();
+      const ref = placed(state, runed(), arm);
+      const sim = simulateLoadout(state, { wield: [ref] })!;
+      expect(sim.unresolved).toEqual([]);
+      /* The runed armour derives exactly as its plain twin does. */
+      expect(sim.delta).toEqual({ ...twin.delta, unknownRunes: true });
+      expect(sim.after.stats.resists[ELEM.FIRE]).toBe(sim.before.stats.resists[ELEM.FIRE]);
+      expect(sim.after.player.objectFlags).not.toContain("FREE_ACT");
+      expect(sim.after.player.ac).toBe(twin.after.player.ac);
+
+      /* The view and the per-slot read agree with the function. */
+      if (ref.from !== "object") {
+        const view = createAgentView(state, undefined, {});
+        expect(view.simulateLoadout!({ wield: [ref] })!.delta).toEqual(sim.delta);
+        const [slot] = view.compareLoadoutSlots!(ref).slots;
+        expect(slot!.comparison.delta).toEqual(sim.delta);
+      }
+
+      learnAll(state);
+      const learned = simulateLoadout(state, { wield: [ref] })!;
+      expect(learned.delta.unknownRunes).toBe(false);
+      expect(learned.delta.resists[ELEM.FIRE]).toBe(1);
+      expect(learned.delta.toA).toBe(twin.delta.toA + 7);
+      expect(learned.delta.objectFlagsGained).toContain("FREE_ACT");
+    });
+  }
+
+  it("keeps a worn item's unlearned rune out of both sides of a swap", () => {
+    const state = unlearned();
+    const p = state.actor.player;
+    const bodySlot = p.body.slots.findIndex((s) => s.type === "BODY_ARMOR");
+    const worn = invenCarry(state.gear, p, runed(), limits);
+    reallyWield(state, worn);
+    expect(p.equipment[bodySlot]).toBe(worn);
+    const before = simulateLoadout(state, {})!;
+    /* The live known state is what `before` reports; the real state differs. */
+    expect(before.before.stats.resists[ELEM.FIRE]).toBe(state.knownPlayerState!.elInfo[ELEM.FIRE]!.resLevel);
+    expect(state.playerState!.elInfo[ELEM.FIRE]!.resLevel).toBe(1);
+    expect(before.before.stats.resists[ELEM.FIRE]).toBe(0);
+    expect(before.delta.unknownRunes).toBe(false);
+
+    /* Taking it off loses nothing the player knew of, and says so. */
+    const off = simulateLoadout(state, { remove: [bodySlot] })!;
+    expect(off.delta.resists[ELEM.FIRE]).toBe(0);
+    expect(off.delta.objectFlagsLost).not.toContain("FREE_ACT");
+    expect(off.delta.unknownRunes).toBe(true);
+  });
+
+  it("flags an item seen only from a distance, whose bonuses are not known yet", () => {
+    const state = unlearned();
+    learnAll(state);
+    const ref = placed(state, runed(false), "floor");
+    const sim = simulateLoadout(state, { wield: [ref] })!;
+    expect(sim.unresolved).toEqual([]);
+    expect(sim.delta.unknownRunes).toBe(true);
+    /* Unassessed, only the base armour counts, even with every rune learned. */
+    expect(sim.delta.resists[ELEM.FIRE]).toBe(0);
   });
 });
 

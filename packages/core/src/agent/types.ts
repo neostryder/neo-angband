@@ -658,6 +658,17 @@ export interface LoadoutView {
   readonly stats: import("../player/loadout.js").DerivedStatsView;
 }
 
+/** The stat difference between two loadouts, and whether it may be incomplete. */
+export type LoadoutDelta = import("../player/loadout.js").DerivedStatsDelta & {
+  /**
+   * True when an item put on or taken off has a rune the player has not
+   * learned, or has not been assessed yet (seen only from a distance), so the
+   * numbers may leave something out. They count only what the player knows,
+   * as the character sheet does. `changed` stays about the numbers alone.
+   */
+  readonly unknownRunes: boolean;
+};
+
 /**
  * The answer to "what would this loadout do for me": the character as it stands,
  * the character with the change applied, and the difference between them.
@@ -670,7 +681,7 @@ export interface LoadoutView {
 export interface LoadoutSimulation {
   readonly before: LoadoutView;
   readonly after: LoadoutView;
-  readonly delta: import("../player/loadout.js").DerivedStatsDelta;
+  readonly delta: LoadoutDelta;
   /** Where each wielded item landed (empty when the change wields nothing). */
   readonly placements: readonly LoadoutPlacement[];
   /**
@@ -724,7 +735,10 @@ export interface AgentView {
   /**
    * What the character would derive to wearing a DIFFERENT loadout: the same
    * calc_bonuses the engine runs for the real one, over a hypothetical set of
-   * worn objects, with nothing in the live game touched.
+   * worn objects, with nothing in the live game touched. It is the known_only
+   * pass behind the character sheet, so a rune the player has not learned
+   * moves no number, and `delta.unknownRunes` marks a change that involves
+   * such an item.
    *
    * This is the read that had no answer at all. Every other accessor here
    * reports the character as it is, so an agent deciding whether to wear, buy or

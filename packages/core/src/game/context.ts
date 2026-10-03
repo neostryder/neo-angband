@@ -420,6 +420,8 @@ export interface GameState {
    * `equipment` is indexed by body slot, exactly as CalcBonusesOptions.equipment
    * is; `totalWeight` is the burden that loadout would carry (omit to keep the
    * player's current one). Runs with update=false, so it has no side effects.
+   * It is the known_only pass (p->known_state's derive): an unlearned rune on
+   * any of the objects changes none of the numbers.
    *
    * Absent in the worldless harness, and simulateLoadout (agent/loadout.ts)
    * answers null rather than deriving a thinner state of its own.

@@ -975,13 +975,24 @@ function wireGame(
    * assembling its own would silently drop whichever it did not know about. It is
    * installed here for the same reason updateBonuses is - the session is the only
    * place that has all of it.
+   *
+   * It is the known_only pass, the derive refreshKnownCombat runs for
+   * p->known_state, so a comparison shows what the player believes the gear
+   * does and an unlearned rune moves none of its numbers. Each object's known
+   * twin is synthesised from the player's rune knowledge, which serves a ware or
+   * a floor object as well as worn gear. The read-only KnownDesc keeps the
+   * derive free of the everseen writes the live sheet makes.
    */
-  state.derivedFor = (equipment, totalWeight): PlayerState =>
-    calcBonuses(state.actor.player, {
+  state.derivedFor = (equipment, totalWeight): PlayerState => {
+    const p = state.actor.player;
+    const knownDesc = knownDescOf(state, true);
+    return calcBonuses(p, {
       ...liveBonusOptions(false),
       equipment: equipment.slice(),
       ...(totalWeight === undefined ? {} : { totalWeight }),
+      knownOnly: (obj) => knownBonusView(obj, p, state.runeEnv, knownDesc),
     });
+  };
 
   /**
    * update_stuff's PU_UPDATE_VIEW arm (player-calcs.c:2608), as the DEFAULT.

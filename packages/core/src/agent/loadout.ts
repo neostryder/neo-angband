@@ -19,8 +19,17 @@
  * is a second implementation of calc_bonuses, it cannot see the interactions
  * (the STR ring that changes the blow count, the cuirass that costs a caster
  * mana, the weight that costs speed), and it drifts from the real derive with
- * nothing to notice. So this module runs the REAL derive, `update: false`, over
- * a hypothetical equipment array, and nothing in the live game is written.
+ * nothing to notice. So this module runs the engine's own derive, `update:
+ * false`, over a hypothetical equipment array, and nothing in the live game is
+ * written.
+ *
+ * That derive is the known_only pass, the one behind p->known_state and the
+ * character sheet, so the numbers say what the player believes the gear does.
+ * The real pass would put an unlearned resist or bonus into `delta` beside an
+ * ItemView that does not show it, and a comparison would identify the item for
+ * free. Both sides run the same pass. `delta.unknownRunes` says when the items
+ * that moved still hold something the player has not learned, which is what a
+ * caller can say instead of trusting a zero.
  *
  * ------------------------------------------------------------------
  * WHERE THE DERIVE COMES FROM, AND WHY IT IS NOT BUILT HERE
@@ -57,6 +66,9 @@ import { toCombatState, weightLimit } from "../player/calcs.js";
 import { gearGet, wieldSlot } from "../game/gear.js";
 import { knownFloorObject } from "../game/known.js";
 import { objectWeightOne } from "../obj/object.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
+import { objectKnownShadow, objectRunesKnownUpstream } from "../obj/known-object.js";
+import { knownDescOf } from "../game/describe.js";
 import type { GameObject } from "../obj/object.js";
 import type { GameState } from "../game/context.js";
 import { itemView, playerViewFor } from "./entity-views.js";
@@ -141,8 +153,8 @@ export interface LoadoutSimOptions {
    */
   viewDeps?: AgentViewDeps;
   /**
-   * The derive to use. Defaults to `state.derivedFor`, which the session
-   * installs; supply it directly only in a test that has no session.
+   * The derive to use. Defaults to `state.derivedFor`, the session's known_only
+   * derive; supply it directly only in a test that has no session.
    */
   derive?: LoadoutDerive;
 }
@@ -393,6 +405,19 @@ function viewOf(state: GameState, w: Working, c: Carried): ItemView {
   return itemView(c.handle, c.obj, state, w.deps, c.number);
 }
 
+/**
+ * Whether the player can tell `obj` still has runes to learn: assessed with a
+ * rune unknown (the "{??}" marker), or never assessed, so nothing past its base
+ * properties is known. Read from the player's knowledge alone, so it reveals no
+ * more than the item's name does.
+ */
+function unknownRunesOn(state: GameState, obj: GameObject): boolean {
+  const p = state.actor.player;
+  const shadow = objectKnownShadow(obj, p, state.runeEnv, knownDescOf(state, true));
+  return (shadow.notice & OBJ_NOTICE.ASSESSED) === 0 ||
+    !objectRunesKnownUpstream(obj, shadow, p, state.runeEnv);
+}
+
 /** Derive and describe one working loadout. */
 function describe(
   state: GameState,
@@ -452,7 +477,9 @@ function describe(
  * town-daylight shortcut in calc_light is gated on `update`
  * (player-calcs.c:1607), so in a daytime town a shadow derive reports the light
  * radius of the equipment and the live derive reports zero. That is upstream's
- * asymmetry and the port keeps it.
+ * asymmetry and the port keeps it. The live view's player() also reads the real
+ * state (p->state), while both sides here are the known pass, so worn gear with
+ * an unlearned rune is a second gap between them.
  *
  * MEASURED, 2026-08-21, which is why this paragraph exists: an autoplayer scored
  * a candidate loadout through this function and compared the result against the
@@ -471,16 +498,26 @@ export function simulateLoadout(
   if (!derive) return null;
   const deps = opts.viewDeps ?? {};
 
-  const before = describe(state, liveLoadout(state, deps), derive);
+  const beforeWork = liveLoadout(state, deps);
+  const before = describe(state, beforeWork, derive);
 
   const afterWork = liveLoadout(state, deps);
   const placements = applyChange(state, afterWork, change);
   const after = describe(state, afterWork, derive);
 
+  /* The objects put on or taken off: worn on one side and not the other. */
+  const wornBefore = new Set(beforeWork.equip.flatMap((c) => (c ? [c.obj] : [])));
+  const wornAfter = new Set(afterWork.equip.flatMap((c) => (c ? [c.obj] : [])));
+  const moved = [...wornBefore].filter((obj) => !wornAfter.has(obj))
+    .concat([...wornAfter].filter((obj) => !wornBefore.has(obj)));
+
   return {
     before,
     after,
-    delta: diffDerivedStats(before.stats, after.stats),
+    delta: {
+      ...diffDerivedStats(before.stats, after.stats),
+      unknownRunes: moved.some((obj) => unknownRunesOn(state, obj)),
+    },
     placements,
     unresolved: afterWork.unresolved,
   };
