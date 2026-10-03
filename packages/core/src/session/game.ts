@@ -283,6 +283,7 @@ import type {
   TimedWeaponDesc,
 } from "../player/timed.js";
 import { disturb, installRunning } from "../game/player-path.js";
+import { emitDungeonLevel } from "../game/resolved-events.js";
 import { bindCore, bootLevel, genDeps } from "./boot.js";
 import {
   dungeonGetNextLevel,
@@ -583,6 +584,15 @@ export interface StartedGame {
    * is a no-op there and never re-rolls saved store stock.
    */
   resolveInitialStoreDiscounts: () => void;
+  /**
+   * Send the `dungeonlevel` event for the level the session starts on, with
+   * cause `new-game` from startGame and `load` from loadGame. start_game calls
+   * on_new_level after a load as well as after birth (ui-game.c:743), but
+   * startGame and loadGame run before a host has attached its event bus and its
+   * mods' listeners, so the host calls this once they are in place. Only the
+   * first call sends anything; every later arrival is sent by changeLevel.
+   */
+  announceArrival: () => void;
   /**
    * reincarnate_borg (borg/borg-reincarnate.c): wipe the live player, roll a new
    * one from the real birth pipeline, and carry on in the SAME session - no new
@@ -2728,6 +2738,9 @@ function makeChangeLevel(
         cmdDisableRepeatFloorItem(state.actor.player);
         state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
         state.updateFov?.(state);
+        /* on_new_level's EVENT_NEW_LEVEL_DISPLAY (game-world.c:1031), which
+         * upstream sends for an arena level too. */
+        emitDungeonLevel(state, "change");
         return;
       }
       /* No tracked opponent: fall through to a normal change. */
@@ -2784,6 +2797,9 @@ function makeChangeLevel(
         cmdDisableRepeatFloorItem(state.actor.player);
         state.updateBonuses?.(); /* on_new_level PU_BONUS -> calc_light */
         state.updateFov?.(state);
+        /* on_new_level's EVENT_NEW_LEVEL_DISPLAY (game-world.c:1031), which
+         * upstream sends for an arena level too. */
+        emitDungeonLevel(state, "change");
         return;
       }
       /* The stash did not survive a save boundary: fall through to a
@@ -2927,9 +2943,15 @@ function makeChangeLevel(
          * the feeling and the search: arriving on a level cancels whatever was
          * still queued from the level you left. */
         disturb(state);
-        announceFeeling(state, reg);
-        search(state); /* on_new_level (game-world.c:1052). */
-        state.chunk.onlyPartial = false;
+        /* EVENT_NEW_LEVEL_DISPLAY (game-world.c:1031) comes between the disturb
+         * and the feeling. A listener that throws still leaves the arrival whole. */
+        try {
+          emitDungeonLevel(state, "change");
+        } finally {
+          announceFeeling(state, reg);
+          search(state); /* on_new_level (game-world.c:1052). */
+          state.chunk.onlyPartial = false;
+        }
         return;
       }
       /* First visit to this depth: fall through to fresh generation. The old
@@ -3136,9 +3158,28 @@ function makeChangeLevel(
      * the feeling and the search: arriving on a level cancels whatever was
      * still queued from the level you left. */
     disturb(state);
-    announceFeeling(state, reg);
-    search(state); /* on_new_level (game-world.c:1052). */
-    state.chunk.onlyPartial = false;
+    /* EVENT_NEW_LEVEL_DISPLAY (game-world.c:1031), as in the revisit branch. */
+    try {
+      emitDungeonLevel(state, "change");
+    } finally {
+      announceFeeling(state, reg);
+      search(state); /* on_new_level (game-world.c:1052). */
+      state.chunk.onlyPartial = false;
+    }
+  };
+}
+
+/**
+ * StartedGame.announceArrival: the session's first `dungeonlevel`, sent at most
+ * once, and not at all once changeLevel has moved the player on and sent its own.
+ */
+function arrivalAnnouncer(state: GameState, cause: "new-game" | "load"): () => void {
+  const firstLevel = state.levelSerial ?? 0;
+  let sent = false;
+  return (): void => {
+    if (sent || (state.levelSerial ?? 0) !== firstLevel) return;
+    sent = true;
+    emitDungeonLevel(state, cause);
   };
 }
 
@@ -3972,6 +4013,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     randartSeed,
     changeLevel,
     resolveInitialStoreDiscounts,
+    announceArrival: arrivalAnnouncer(state, "new-game"),
     reincarnate: makeReincarnate(
       state,
       reg,
@@ -4902,6 +4944,7 @@ export function loadGame(
     randartSeed,
     changeLevel,
     resolveInitialStoreDiscounts: (): void => {},
+    announceArrival: arrivalAnnouncer(state, "load"),
     reincarnate: makeReincarnate(
       state,
       reg,

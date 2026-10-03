@@ -143,6 +143,27 @@ export interface PlayerCommandEventData {
 }
 
 /**
+ * The player's arrival on a level (`dungeonlevel`). Upstream's EVENT_DUNGEONLEVEL
+ * is the PR_DEPTH redraw signal and repeats on every full redraw; this one keeps
+ * the name but fires at on_new_level's EVENT_NEW_LEVEL_DISPLAY (game-world.c:1031)
+ * instead, once per level arrived on, so a listener can count arrivals.
+ */
+export interface DungeonLevelEventData {
+  /** The depth arrived at; 0 is the town. */
+  readonly depth: number;
+  /** The session's level serial, the same value a known-level read reports as `levelId`. */
+  readonly levelId: number;
+  /**
+   * `new-game` and `load` are the first level of a session: start_game runs
+   * on_new_level for a new character and for a loaded save alike (ui-game.c:743).
+   * `change` is every later arrival.
+   */
+  readonly cause: "new-game" | "load" | "change";
+  /** True while the level is the single-combat arena. */
+  readonly arena: boolean;
+}
+
+/**
  * Every game event and its payload type. `undefined` payloads are
  * signal-only events.
  */
@@ -157,7 +178,7 @@ export interface GameEventMap {
   playertitle: undefined;
   gold: undefined;
   monsterhealth: undefined;
-  dungeonlevel: undefined;
+  dungeonlevel: DungeonLevelEventData;
   playerspeed: undefined;
   "race-class": undefined;
   studystatus: undefined;

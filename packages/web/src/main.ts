@@ -15286,6 +15286,24 @@ async function applyModResources(): Promise<void> {
   setModHelpPages(pages);
 }
 
+/* The `dungeonlevel` event for the level the session starts on (start_game's
+ * on_new_level, ui-game.c:743). It waits for the game to be on screen, at the end
+ * of the boot chain below, AND for every folder plugin's register() to have run,
+ * further down past top-level awaits that can finish on either side of that, so a
+ * mod that subscribes in register() hears the first level too. A listener that
+ * throws is logged, as for player-command. */
+let markModsRegistered = (): void => {};
+const modsRegistered = new Promise<void>((resolve) => {
+  markModsRegistered = resolve;
+});
+function announceFirstLevel(): void {
+  try {
+    game.announceArrival();
+  } catch (err) {
+    log.error("mods", "a dungeonlevel listener failed:", err);
+  }
+}
+
 void applyModResources()
   .catch((e: unknown) => {
     /* The whole pass, as the last net under the per-consumer ones. A resource is
@@ -15304,6 +15322,7 @@ void applyModResources()
     gameScreenLive = true;
     subwindowShell.setGameLive(true);
     render();
+    void modsRegistered.then(announceFirstLevel);
   })
   .then(resetVisualsForCharacter)
   .then(maybeShowGraphics)
@@ -16036,6 +16055,7 @@ for (const loaded of activeModCode().plugins) {
  * save have no handler-backed fresh batch, so existing stock is never re-rolled.
  */
 game.resolveInitialStoreDiscounts();
+markModsRegistered();
 
 /* The display slot is last-load-wins, unlike the autoplayer's historical
  * first-claim guard. Select BEFORE invoking: a lower front end never gets a
