@@ -23,7 +23,7 @@ import {
 import type { FlagSet } from "../bitflag.js";
 import type { GameState } from "../game/context.js";
 import type { GameObject } from "../obj/object.js";
-import { tvalIsBook } from "../obj/object.js";
+import { tvalCanHaveFlavor, tvalIsBook } from "../obj/object.js";
 import { playerObjectToBook } from "../player/spell.js";
 import { OBJ_MOD_NAMES } from "../obj/bind.js";
 import { objectValue } from "../obj/value.js";
@@ -65,6 +65,10 @@ export function pfCodes(flags: FlagSet): string[] {
  * "three of the five potions I am carrying" and "one of the twelve on that
  * shelf" are real cases and the object itself must not be touched to express
  * them. Absent, the object's own number is used, which is every live read.
+ *
+ * `shopWare` marks a ware on a shop's shelf (not the home's). The shop screen
+ * names every ware by its kind, object_desc with ODESC_STORE (obj-desc.c:494),
+ * so the view does too.
  */
 export function itemView(
   handle: number,
@@ -72,8 +76,20 @@ export function itemView(
   state: GameState,
   deps: AgentViewDeps,
   count?: number,
+  shopWare = false,
 ): ItemView {
   const number = count ?? obj.number;
+  /* object_flavor_is_aware. Until the player knows a flavoured kind, the fields
+   * that would name it name the flavour instead, as object_kind_name does for
+   * the knowledge menu: `label` is the flavour text, `kindKey` is
+   * `flavor:<fidx>`, `sval` is the negated flavour index and `kindId` is left
+   * out. A negative sval never matches a real one, and two unidentified
+   * flavours still differ. A kind with no flavour is known on sight. */
+  const isAware = deps.aware ?? state.isAware ?? ((): boolean => true);
+  const kindAware = isAware(obj.kind);
+  const flavoured = state.hasFlavor?.(obj.kind) ?? tvalCanHaveFlavor(obj.tval);
+  const aware = kindAware || !flavoured || shopWare;
+  const flavor = aware ? undefined : state.flavorGlyph?.(obj.kind);
   /* Everything below that says what the object IS comes from its known twin
    * (upstream obj->known, objectKnownShadow), the same record object_desc and the
    * inspect screen read. A mod sees what the player knows: an unidentified ego
@@ -134,13 +150,14 @@ export function itemView(
 
   const view: ItemView = {
     handle,
-    kindKey: `kind:${obj.kind.kidx}`,
+    kindKey: aware ? `kind:${obj.kind.kidx}` : `flavor:${flavor ? flavor.fidx : "none"}`,
     ...(handle > 0 ? { itemKey: `gear:${handle}` } : {}),
     nameColor: tvalIsBook(obj.tval) && !playerObjectToBook(state.actor.player, obj)
       ? "slate" : obj.kind.base.attr,
-    label: obj.kind.name,
+    label: aware ? obj.kind.name : (state.flavorText?.(obj.kind) ?? flavor?.text ?? ""),
+    aware,
     tval: obj.tval,
-    sval: obj.sval,
+    sval: aware ? obj.sval : -(flavor?.fidx ?? 1),
     pval: known.pval,
     number,
     weight: obj.weight,
@@ -166,13 +183,14 @@ export function itemView(
   };
   if (deps.describe) view.name = deps.describe(obj);
   if (deps.ignored) view.ignored = deps.ignored(obj);
-  if (deps.resolver) {
+  if (deps.resolver && aware) {
     const kindId = deps.resolver.kindIdOrNull(obj.kind.kidx);
     if (kindId !== null) view.kindId = kindId;
   }
   if (deps.reg) {
-    const aware = deps.aware ?? ((): boolean => true);
-    view.value = objectValue(deps.reg, obj, number, aware(obj.kind), { p, env: state.runeEnv, deps: knownDesc });
+    /* object_value reads the player's own awareness, shop or not: an unknown
+     * flavour is worth its tval's base price, never the kind's cost. */
+    view.value = objectValue(deps.reg, obj, number, kindAware, { p, env: state.runeEnv, deps: knownDesc });
   }
   return view;
 }

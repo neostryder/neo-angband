@@ -261,9 +261,11 @@ function storeViews(state: GameState, deps: AgentViewDeps): StoreView[] {
   const stores = state.stores ?? [];
   return stores.map((store) => {
     const isHome = store.feat === FEAT.HOME;
-    const aware = deps.aware ?? ((): boolean => true);
+    /* store.c prices a ware from the player's own awareness (price_item ->
+     * object_value), as the shop screen does. */
+    const aware = deps.aware ?? state.isAware ?? ((): boolean => true);
     const stock: StoreItemView[] = store.stock.map((obj, index) => {
-      const item = itemView(0, obj, state, deps);
+      const item = itemView(0, obj, state, deps, undefined, !isHome);
       const view: StoreItemView = { ...item, index };
       view.nameColor = obj.kind.base.attr;
       if (deps.describeStore && !isHome) view.name = deps.describeStore(obj);

@@ -61,7 +61,7 @@ import { calcHitpoints } from "../player/calcs.js";
 import type { PlayerState } from "../player/calcs.js";
 import { maxManaFrom, wornArmorWeight } from "../player/spell.js";
 import { derivedStatsView, diffDerivedStats } from "../player/loadout.js";
-import { STAT } from "../generated/index.js";
+import { FEAT, STAT } from "../generated/index.js";
 import { toCombatState, weightLimit } from "../player/calcs.js";
 import { gearGet, wieldSlot } from "../game/gear.js";
 import { knownFloorObject } from "../game/known.js";
@@ -180,6 +180,8 @@ interface Carried {
   readonly handle: number;
   readonly obj: GameObject;
   number: number;
+  /** A ware from a shop's shelf, which its ItemView names by kind as the shop does. */
+  readonly shopWare?: boolean;
 }
 
 /** The working loadout the change is applied to. */
@@ -243,6 +245,11 @@ function resolveRef(state: GameState, ref: LoadoutItemRef): GameObject | null {
     case "object":
       return ref.object;
   }
+}
+
+/** Whether a reference names a shop's ware (the home's stock is the player's own). */
+function isShopWare(state: GameState, ref: LoadoutItemRef): boolean {
+  return ref.from === "store" && (state.stores ?? [])[ref.store]?.feat !== FEAT.HOME;
 }
 
 /** object_weight_one for a stack of `n` (obj-gear.c's total_weight term). */
@@ -352,7 +359,7 @@ function wield(
     worn = w.equip[at]!;
     w.equip[at] = null;
   } else {
-    worn = { handle: 0, obj, number: 1 };
+    worn = { handle: 0, obj, number: 1, shopWare: isShopWare(state, ref) };
     w.weight += stackWeight(state, obj, 1);
   }
 
@@ -378,7 +385,7 @@ function carry(
   const handle = ref.from === "gear" ? ref.handle : 0;
   const existing = handle ? w.pack.find((c) => c.handle === handle) : undefined;
   if (existing) existing.number += count;
-  else w.pack.push({ handle, obj, number: count });
+  else w.pack.push({ handle, obj, number: count, shopWare: isShopWare(state, ref) });
   w.weight += stackWeight(state, obj, count);
 }
 
@@ -417,7 +424,7 @@ function applyChange(
 
 /** One Carried as an ItemView, with its hypothetical stack count. */
 function viewOf(state: GameState, w: Working, c: Carried): ItemView {
-  return itemView(c.handle, c.obj, state, w.deps, c.number);
+  return itemView(c.handle, c.obj, state, w.deps, c.number, c.shopWare ?? false);
 }
 
 /**

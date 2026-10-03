@@ -88,8 +88,13 @@ import type { BlastAreaResult, BookItemResult, GridInspectResult, InspectResult,
  * known_only derive the character sheet prints, so a mod can no longer put an
  * item on and read off a rune the player has not learned. Every loadout read is
  * capability-checked against where each named object lives, and a gated view
- * refuses `{ from: "object" }`. A minor bump under the rule above: the
- * changed fields stop revealing unlearned runes and keep their shapes.
+ * refuses `{ from: "object" }`. `ItemView.aware` is new: an item whose
+ * flavour the player has not identified now carries the flavour in `label`,
+ * `kindKey` (`flavor:<fidx>`) and `sval` (the negated flavour index), has no
+ * `kindId`, and is valued by its tval, wherever an ItemView appears. A shop's
+ * wares keep their kind names, as the shop screen shows them. A minor bump
+ * under the rule above: the changed fields stop revealing what the player has
+ * not learned and keep their types.
  */
 export const AGENT_API_VERSION = "1.5.0";
 
@@ -425,13 +430,34 @@ export interface CellView {
 export interface ItemView {
   /** Gear handle when carried/worn; 0 for a floor object. */
   handle: number;
-  /** Kind index and gear identity; a gear handle survives letter changes. */
+  /**
+   * `kind:<kidx>` for a kind the player knows. For a flavoured kind the player
+   * has not identified it is `flavor:<fidx>`, the flavour's index, so two
+   * unidentified flavours differ and neither names its kind.
+   */
   kindKey: string;
+  /** Gear identity; a gear handle survives letter changes. */
   itemKey?: string;
   /** The attr used by the inventory name renderer. */
   nameColor: string;
+  /**
+   * The kind's raw name (`& Dagger~`) when `aware`, else the flavour the player
+   * sees (`Light Blue`, a scroll's title), as the knowledge menu lists it.
+   */
   label: string;
+  /**
+   * Whether `label`, `kindKey`, `sval` and `kindId` name the object's kind:
+   * object_flavor_is_aware, true for a kind with no flavour, and true for a
+   * shop's ware (not the home's), which the shop screen names by its kind.
+   * When false they name the flavour instead.
+   */
+  aware: boolean;
   tval: number;
+  /**
+   * The kind's sval when `aware`. Otherwise the negated flavour index, a
+   * negative number that matches no real sval and still tells two
+   * unidentified flavours of one tval apart.
+   */
   sval: number;
   pval: number;
   number: number;
@@ -475,9 +501,9 @@ export interface ItemView {
   name?: string;
   /** Whether the game ignores this object now (ignore_item_ok), present when the host supplies `ignored`. */
   ignored?: boolean;
-  /** Namespaced kind id, when a ContentIdResolver dep is supplied. */
+  /** Namespaced kind id, when a ContentIdResolver dep is supplied and `aware` is true. */
   kindId?: string;
-  /** objectValue for this stack, when a registry dep is supplied. */
+  /** objectValue for this stack, when a registry dep is supplied. An unidentified flavour is valued as upstream values it, by its tval. */
   value?: number;
 }
 
@@ -879,7 +905,11 @@ export interface AgentViewDeps {
   glyphs?: AgentGlyphSource;
   /** Enables ItemView.value and StoreItemView.price. */
   reg?: ObjRegistry;
-  /** object_flavor_is_aware(kind), for object value/price dispatch. */
+  /**
+   * object_flavor_is_aware(kind), for ItemView's kind fields and object
+   * value/price dispatch. Absent, the game's own awareness (state.isAware) is
+   * read, and with neither every kind reads as known.
+   */
   aware?: (kind: ObjectKind) => boolean;
   /** object_desc for an ItemView's `name`; absent, views carry no name. */
   describe?: (obj: GameObject) => string;

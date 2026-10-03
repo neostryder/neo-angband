@@ -127,7 +127,9 @@ describe("known floor reads", () => {
     expect(known!.item).not.toHaveProperty("label");
     expect(known!.item).not.toHaveProperty("kindId");
     expect(view.cell(grid.x, grid.y)).toMatchObject({ objectCount: 1, knownObjectCount: 1 });
-    expect(view.floorItems(grid.x, grid.y)[0]).toMatchObject({ kindKey: `kind:${obj.kind.kidx}`, floorIndex: 0 });
+    /* floorItems names the unknown flavour too (#369); with no flavour table
+       installed there is no flavour index to give. */
+    expect(view.floorItems(grid.x, grid.y)[0]).toMatchObject({ kindKey: "flavor:none", label: "Smoky", aware: false, sval: -1, floorIndex: 0 });
   });
 
   it("keeps remembered stack properties after unseen changes and removal", () => {

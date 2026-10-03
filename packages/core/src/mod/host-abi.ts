@@ -2485,7 +2485,11 @@ export interface KnowledgeCategoryView {
 }
 
 export interface KnowledgeEntryView {
-  /** Stable within the category for the session: pass it to `recall`. */
+  /**
+   * Stable within the category for the session: pass it to `recall`. An
+   * unidentified object flavour's id is `flavor:<index>`, and it changes to the
+   * kind's own id once the player learns the flavour.
+   */
   readonly id: string;
   readonly name: string;
   /** CSS colour the game draws the name in. */

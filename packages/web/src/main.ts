@@ -5806,7 +5806,12 @@ function modKnowledgeSources(): KnowledgeSources {
         title: t("knowledge.objects.title", "known objects"),
         groups: objectKnowledgeGroups(objects.kinds, objects.bases, objectKnowledgeDeps()),
       }),
-      key: (kind: ObjectKind) => String(kind.kidx),
+      /* An unidentified flavour is keyed by its flavour, so the id names only
+       * what the row shows. */
+      key: (kind: ObjectKind) =>
+        (state.hasFlavor?.(kind) ?? false) && !game.flavor.isAware(kind)
+          ? `flavor:${state.flavorGlyph?.(kind)?.fidx ?? "none"}`
+          : String(kind.kidx),
       recall: (kind: ObjectKind) => objectFakeRecall(objectKnowledgeDeps(), kind),
     },
     runes: {
