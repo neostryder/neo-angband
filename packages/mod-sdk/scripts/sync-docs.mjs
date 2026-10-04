@@ -22,6 +22,7 @@ const githubDocsUrl = "https://github.com/neostryder/neo-angband/blob/master";
  * records deliberately stay in the repository rather than shipping here. */
 export const documents = [
   "README.md",
+  "API2.md",
   "AUTHORING.md",
   "MOD_COMPATIBILITY.md",
   "MOD_LIFECYCLE.md",

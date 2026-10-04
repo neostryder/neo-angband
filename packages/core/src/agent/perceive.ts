@@ -106,7 +106,7 @@ function knownSpellFlagCodes(state: GameState, race: MonsterRace): string[] {
   return spellFlagCodes(known);
 }
 
-function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
+function monsterViews(state: GameState, deps: AgentViewDeps, every = false): MonsterView[] {
   const out: MonsterView[] = [];
   const quests = state.actor.player.quests;
   const finalRace = quests.length > 0 ? quests[quests.length - 1]!.race : -1;
@@ -114,8 +114,9 @@ function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
     const m = state.monsters[i];
     if (!m) continue;
     /* The monsters the player perceives, as the game's own monster list shows
-     * them, in every view: a controller's included. */
-    if (!monsterIsObvious(m)) continue;
+     * them, in every view: a controller's included. Only trueMonsterViews
+     * lists the rest. */
+    if (!every && !monsterIsObvious(m)) continue;
     const view: MonsterView = {
       id: m.midx,
       race: m.race.name,
@@ -150,6 +151,16 @@ function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
     out.push(view);
   }
   return out;
+}
+
+/**
+ * Every live monster on the level, whether or not the player perceives it, in
+ * the MonsterView shape. This is hidden game state: no AgentView accessor
+ * returns it, and the mod API hands it only to an allowlisted first-party
+ * autoplayer.
+ */
+export function trueMonsterViews(state: GameState, deps: AgentViewDeps = {}): MonsterView[] {
+  return monsterViews(state, deps, true);
 }
 
 /**

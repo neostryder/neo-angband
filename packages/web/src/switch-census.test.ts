@@ -160,9 +160,9 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies all 48 into a CLOSED vocabulary", () => {
+  it("classifies all 51 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
-     * than written in prose: of 48 dispatch points, ZERO are content dispatch a
+     * than written in prose: of 51 dispatch points, ZERO are content dispatch a
      * mod would want. That is the finish line MOD_REACH gap list set - every
      * one of the eighteen candidates the 2026-08-09 census opened with is now
      * a registry, obj/knowledge.ts (gap 16) last. What is left is UI routing,
@@ -199,7 +199,7 @@ describe("the switch census", () => {
        * the sibling of the save-blocks.ts row beside it and closed for the
        * same reason: a mod chooses what goes into a save, never which
        * collection quarantine takes it out of. */
-      INTERNAL: 7,
+      INTERNAL: 10,
       /* 3 until the i18n sweep (neostryder/neo-angband#95) added shop.ts's
        * commentWelcome, the greeting-tier-to-translated-line switch that keeps
        * COMMENT_WELCOME's English array intact for its RNG-parity-relevant
@@ -238,7 +238,7 @@ describe("the switch census", () => {
     expect(manifest.switches[0]?.verdict).toContain("DEBUG");
   });
 
-  it("is measuring something: 48 dispatch points, 641 size labels", () => {
+  it("is measuring something: 51 dispatch points, 641 size labels", () => {
     /* Control for the census ITSELF. A scanner that silently matched nothing -
      * a broken regex, a wrong root - would make both tests above pass forever
      * against an empty tree. */

@@ -398,16 +398,6 @@ export function modManifest(raw: unknown): PackManifest {
     ...(m.modApi !== undefined ? { modApi: m.modApi } : {}),
     ...(m.runtime ? { runtime: m.runtime } : {}),
     ...(m.workerEntry ? { workerEntry: m.workerEntry } : {}),
-    /* The schema 2 fields. A schema 2 manifest reaches this function already
-     * normalized by manifestFields, so these are copied like the rest. */
-    ...(m.api ? { api: m.api } : {}),
-    ...(m.entry ? { entry: m.entry } : {}),
-    ...(m.engineBecause ? { engineBecause: m.engineBecause } : {}),
-    ...(m.dependencyReasons ? { dependencyReasons: m.dependencyReasons } : {}),
-    ...(m.text ? { text: m.text } : {}),
-    ...(m.listing ? { listing: m.listing } : {}),
-    ...(m.budget ? { budget: m.budget } : {}),
-    ...(m.manifestSchema !== undefined ? { manifestSchema: m.manifestSchema } : {}),
     ...(m.capabilities ? { capabilities: m.capabilities } : {}),
     /* The pack's DECLARED FIELDS. Forgetting this one is not inert like the
      * ordering hints were - it inverts the feature: every field the mod

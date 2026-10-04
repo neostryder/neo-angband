@@ -346,11 +346,6 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
       if (m === null) return null;
       const api = m["modApi"];
       if (typeof api === "number" && Number.isInteger(api) && api > 0) return null;
-      /* A schema 2 manifest comes back normalized, with `modApi` filled in only
-       * when its `api` range admits an API the game runs. */
-      if (m["manifestSchema"] === 2) {
-        return `ships ${PLUGIN_FILE} but its api range ${String(m["api"])} admits no API the game runs in-process`;
-      }
       return `ships ${PLUGIN_FILE} but declares no modApi`;
     },
   },

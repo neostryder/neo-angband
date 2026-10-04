@@ -11,9 +11,7 @@ describe("manifestFields", () => {
   });
 
   it("rejects malformed manifest documents", () => {
-    /* Schema 1 fields inside a schema 2 envelope: no api, no runtime. */
     expect(manifestFields({ format: "neo-angband/mod/manifest", schemaVersion: 2, data: bare })).toBeUndefined();
-    expect(manifestFields({ format: "neo-angband/mod/manifest", schemaVersion: 3, data: bare })).toBeUndefined();
     expect(manifestFields({ format: "neo-angband/mod/manifest", schemaVersion: 1, extra: true, data: bare })).toBeUndefined();
     expect(manifestFields({ format: "neo-angband/mod/manifest", schemaVersion: 1, data: [] })).toBeUndefined();
   });

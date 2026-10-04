@@ -11,10 +11,17 @@
     },
     {
       "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 29,
+      "cases": 25,
       "hasDefault": false,
       "kind": "SWITCH",
-      "verdict": "INTERNAL - grantCovers compares a grant with a request over the closed capability vocabulary in capability-vocabulary.ts, which also holds the parsing and consent text that used to be two more switches. A mod cannot add a capability kind. The truth namespace is checked before the switch, so no wildcard arm can cover state:map-actual.read."
+      "verdict": "INTERNAL - capability grants are host-owned consent vocabulary. saves:manage (#285) names the roster-management grant; mods cannot add a capability kind. options:write (#291) is one more host-owned grant. session:control (#361) is the save, exit and quit grant. shared:read and shared:publish (#365) are the two sides of ctx.shared."
+    },
+    {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 25,
+      "hasDefault": false,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. saves:manage (#285) is elevated because it can delete characters; mods cannot add an unreviewed consent category. keymap:edit (#291) is elevated because it can replace the player's keymaps. session:control (#361) is not elevated because every call saves first. shared:read and shared:publish (#365) are not elevated because they move only JSON a mod chose to publish."
     },
     {
       "file": "packages/core/src/mon/desc.ts",
@@ -85,6 +92,13 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
+    },
+    {
+      "file": "packages/web/src/capability-describe.ts",
+      "cases": 17,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - the consent UI describes the closed host capability vocabulary. A mod cannot insert an unreviewed consent category. mod:read (#172) is the newest entry."
     },
     {
       "file": "packages/web/src/options.ts",
@@ -197,6 +211,13 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "HOST - command-line option letters. Host wiring, not game content."
+    },
+    {
+      "file": "packages/mod-sdk/src/capabilities.ts",
+      "cases": 10,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "INTERNAL - parsing recognizes the closed capability grammar owned by the mod SDK. input:intent and input:prompt.reply (#285) are documented tokens, not game behavior branches a mod can add at runtime. options:write and keymap:edit (#291) are two more exact grants. shared:read and shared:publish (#365) share one arm and are compared exactly."
     },
     {
       "file": "packages/web/src/gamepad-input.ts",

@@ -39,7 +39,7 @@ export type {
   StoreView,
   TargetView,
 } from "./types.js";
-export { createAgentView } from "./perceive.js";
+export { createAgentView, trueMonsterViews } from "./perceive.js";
 export {
   bumpInputRevision,
   captureCoreSnapshot,

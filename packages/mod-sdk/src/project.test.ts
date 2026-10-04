@@ -13,7 +13,6 @@ import { draftRecord } from "./authoring.js";
 import type { JsonRecord } from "./compose.js";
 import type { LoadedPack } from "./loader.js";
 import { ManifestError } from "./manifest.js";
-import { convertManifestV1 } from "./manifest-v2.js";
 import { modProject } from "./project.js";
 
 const packDir = new URL("../../content/pack/", import.meta.url);
@@ -72,11 +71,9 @@ describe("a mod project", () => {
   });
 
   it("reads both published manifests and the SDK document form", () => {
-    expect(modProject(MANIFEST).manifest()).toEqual({ ...MANIFEST, runtime: "data", api: "*", manifestSchema: 1 });
-    expect(modProject({ format: "neo-angband/mod/manifest", schemaVersion: 1, data: MANIFEST }).manifest()).toEqual(modProject(MANIFEST).manifest());
-    expect(modProject({ format: "neo-angband/mod/manifest", schemaVersion: 2, data: convertManifestV1(MANIFEST) }).manifest()).toMatchObject(MANIFEST);
-    expect(() => modProject({ format: "neo-angband/mod/manifest", schemaVersion: 2, data: MANIFEST })).toThrow(/\$\.data\["api"\]: missing required field/u);
-    expect(() => modProject({ format: "neo-angband/mod/manifest", schemaVersion: 3, data: MANIFEST })).toThrow(/schema version/u);
+    expect(modProject(MANIFEST).manifest()).toEqual(MANIFEST);
+    expect(modProject({ format: "neo-angband/mod/manifest", schemaVersion: 1, data: MANIFEST }).manifest()).toEqual(MANIFEST);
+    expect(() => modProject({ format: "neo-angband/mod/manifest", schemaVersion: 2, data: MANIFEST })).toThrow(/schema version/u);
   });
 
   it("emits a mod folder: manifest.json plus one file per record file", () => {
@@ -103,7 +100,7 @@ describe("a mod project", () => {
       };
     };
     expect(document.format).toBe("neo-angband/mod/manifest");
-    expect(document.schemaVersion).toBe(2);
+    expect(document.schemaVersion).toBe(1);
     const manifest = document.data;
     expect(manifest.fields?.map((f) => f.name)).toEqual(["sludge"]);
   });
