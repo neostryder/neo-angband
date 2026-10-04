@@ -612,7 +612,7 @@ const handleDRAIN_MANA: EffectHandler = (ctx) => {
     const oldHp = mon.hp;
     mon.hp += 6 * drain;
     if (mon.hp > mon.maxhp) mon.hp = mon.maxhp;
-    emitHeal(state, mon, mon.hp - oldHp, mon.grid);
+    emitHeal(state, mon.midx, mon.hp - oldHp, mon.grid);
     if (monsterIsVisible(mon)) {
       say(ctx, `${monsterDesc(mon, MDESC_STANDARD)} appears healthier.`);
     }

@@ -1,25 +1,10 @@
 /** Emit resolved facts without retaining game objects in event payloads. */
-import type { CombatOutcomeEventData, DungeonLevelEventData, MotionEventData, PerceivedActor } from "../events.js";
+import type { CombatOutcomeEventData, DungeonLevelEventData, MotionEventData } from "../events.js";
 import type { Loc } from "../loc.js";
-import type { Monster } from "../mon/monster.js";
 import { squareIsView } from "../world/view.js";
-import { knownMonsterId, monsterIsKnown } from "../agent/known-world.js";
 import type { GameState } from "./context.js";
 
-/* A monster by its record or its index. A sender that may have deleted the
- * monster already passes the record, which keeps its flags after deletion. */
-type Who = "player" | number | Monster;
-
-function rawWho(who: Who): "player" | number {
-  return typeof who === "object" ? who.midx : who;
-}
-
-function perceived(state: GameState, who: Who): PerceivedActor {
-  if (who === "player") return "player";
-  const mon = typeof who === "number" ? (state.monsters[who] ?? null) : who;
-  if (!mon || !monsterIsKnown(state, mon)) return "unseen";
-  return { monster: knownMonsterId(state, mon) };
-}
+type Who = "player" | number;
 
 function point(grid: Loc): Loc {
   return { x: grid.x, y: grid.y };
@@ -37,11 +22,7 @@ export function emitCombatOutcome(
 ): void {
   if (!state.events) return;
   state.events.emit("combat-outcome", {
-    attacker: attacker === null ? null : rawWho(attacker),
-    target: rawWho(target),
-    perceivedAttacker: attacker === null ? null : perceived(state, attacker),
-    perceivedTarget: perceived(state, target),
-    kind, hit, damage, died,
+    attacker, target, kind, hit, damage, died,
     grid: point(grid), seen: squareIsView(state.chunk, grid),
   });
 }
@@ -49,8 +30,7 @@ export function emitCombatOutcome(
 export function emitHeal(state: GameState, who: Who, amount: number, grid: Loc): void {
   if (!state.events || amount <= 0) return;
   state.events.emit("heal", {
-    who: rawWho(who), perceivedWho: perceived(state, who),
-    amount, grid: point(grid), seen: squareIsView(state.chunk, grid),
+    who, amount, grid: point(grid), seen: squareIsView(state.chunk, grid),
   });
 }
 
@@ -63,8 +43,7 @@ export function emitMotion(
 ): void {
   if (!state.events || (from.x === to.x && from.y === to.y)) return;
   state.events.emit("motion", {
-    who: rawWho(who), perceivedWho: perceived(state, who),
-    from: point(from), to: point(to), kind,
+    who, from: point(from), to: point(to), kind,
     seen: squareIsView(state.chunk, to),
   });
 }

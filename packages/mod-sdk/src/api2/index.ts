@@ -106,7 +106,6 @@ export type {
   Api2Subscription,
   Api2Tier,
   Api2TrueCell,
-  Api2TrueItem,
   Api2TrueLevel,
   Api2TrueMonster,
   Api2Truth,

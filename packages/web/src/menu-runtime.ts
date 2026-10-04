@@ -37,6 +37,7 @@
  * reload anyway.
  */
 
+import { isCoreDrawn } from "./core-drawn";
 import { modHealth } from "./mod-health";
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
@@ -179,6 +180,8 @@ export async function askInstalledPresenter(
 ): Promise<MenuAnswer | undefined> {
   const owner = currentMenuPresenter();
   if (!owner) return undefined;
+  /* Never offered: a mod must not be able to answer a Core-drawn question. */
+  if (isCoreDrawn(question.id)) return undefined;
   try {
     return (await owner.presenter.ask(question)) ?? undefined;
   } catch (error) {

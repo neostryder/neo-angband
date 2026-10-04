@@ -201,6 +201,37 @@ const cooldowns = new Map<string, number>();
 /** True once teardown has begun: no mod may open a panel after that. */
 let revoked = false;
 
+/** How many Core-drawn questions are open; while any is, panels are hidden and inert. */
+let suspended = 0;
+
+/**
+ * Hide every panel and take its keyboard away while Core asks the player
+ * something only Core may draw (core-drawn.ts). No panel opens until the
+ * returned function is called, which restores each panel as it was.
+ */
+export function suspendModPanels(): () => void {
+  suspended++;
+  const held = panels.map((panel) => ({
+    container: panel.container,
+    visibility: panel.container.style.visibility,
+    inert: panel.container.inert,
+  }));
+  for (const { container } of held) {
+    container.style.visibility = "hidden";
+    container.inert = true;
+  }
+  let restored = false;
+  return () => {
+    if (restored) return;
+    restored = true;
+    suspended = Math.max(0, suspended - 1);
+    for (const { container, visibility, inert } of held) {
+      container.style.visibility = visibility;
+      container.inert = inert;
+    }
+  };
+}
+
 /**
  * The element the GAME draws on, when the host has said which it is.
  *
@@ -520,6 +551,9 @@ function mountPanel(
    * introduce. Same argument `installRegions` makes for refusing a bad
    * declaration loudly. */
   if (fault !== undefined) throw new Error(fault);
+  if (suspended > 0) {
+    throw new Error(`panel "${spec.id}": the game is asking the player about mod permissions; open it again afterwards`);
+  }
   if (revoked) {
     throw new Error(
       `panel "${spec.id}": the mod set is changing and the page is about to re-compose, so no new panels are ` +
@@ -718,8 +752,9 @@ function mountPanel(
  * is loaded at all.
  */
 export const panelKeyboardOwner: DomKeyboardOwner = {
-  owns: (event: KeyboardEvent): boolean => panelForEvent(event) !== undefined,
+  owns: (event: KeyboardEvent): boolean => suspended === 0 && panelForEvent(event) !== undefined,
   escape: (event: KeyboardEvent): boolean => {
+    if (suspended > 0) return false;
     if (!event.isTrusted || event.repeat || event.isComposing) return false;
     const top = topPanel();
     if (!top) return false;

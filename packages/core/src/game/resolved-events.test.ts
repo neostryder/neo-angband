@@ -101,7 +101,7 @@ describe("resolved events", () => {
     effects.effectSimple(EF.HEAL_HP, buildEffectContext(state, {
       timedTable: [],
     }), { origin: sourcePlayer(), diceString: "50" });
-    expect(heals).toEqual([{ who: "player", perceivedWho: "player", amount: 50,
+    expect(heals).toEqual([{ who: "player", amount: 50,
       grid: loc(10, 10), seen: false }]);
 
     walkAction(state, { code: "walk", dir: 2 });

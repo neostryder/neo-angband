@@ -194,7 +194,7 @@ function applyMonVsMonHit(
   dieMsg: number,
 ): boolean {
   const resolved = (applied: number, died: boolean): void => {
-    emitCombatOutcome(state, attacker, tMon, "melee", true,
+    emitCombatOutcome(state, attacker.midx, tMon.midx, "melee", true,
       applied, died, tMon.grid);
   };
   const deps = getNonplayerHitDeps(state);
@@ -520,7 +520,7 @@ export function monsterAttackMonster(
         if (amt && still) monIncTimed(state.rng, still, MON_TMD.STUN, amt, 0, monsterTimedMessage(state));
       }
     } else {
-      emitCombatOutcome(state, mon, tMon, "melee", false, 0,
+      emitCombatOutcome(state, mon.midx, tMon.midx, "melee", false, 0,
         false, grid);
       /* Visible monster missed monster, so notify if appropriate. */
       if (monsterIsVisible(mon) && method.miss) {
@@ -709,7 +709,7 @@ function commandedWalk(
   if (canMove) {
     const from = mon.grid;
     monsterSwap(state, from, grid);
-    emitMotion(state, mon, from, grid, "walk");
+    emitMotion(state, mon.midx, from, grid, "walk");
     state.updateFov?.(state);
     return true;
   }

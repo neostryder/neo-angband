@@ -618,7 +618,7 @@ function fillModState(target: OriginEntries, writes: Record<string, string>, val
   if (!mine.ok || !theirs.ok) return false;
   const out = { ...mine.data };
   let changed = false;
-  for (const field of ["choices", "consents", "ruleChoices", "pins", "sectionChoices"] as const) {
+  for (const field of ["choices", "consents", "refusals", "consentVersions", "unreviewedNotices", "ruleChoices", "pins", "sectionChoices"] as const) {
     const filled = fillMap<unknown>(mine.data[field], theirs.data[field]);
     if (filled === undefined) continue;
     (out as Record<string, unknown>)[field] = filled;

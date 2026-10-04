@@ -2,7 +2,7 @@
 
 API 2 is the set of calls a mod's code gets from the game: what it can read, what it can do, and what it hears. Every call returns plain data, a permission the player turned down comes back as a result you can check, and reads show the game as the player knows it. The types are in `@rpgm-tools/neo-angband-mod-sdk`, and the in-process host is in the web package (`packages/web/src/mod-api2-host.ts`).
 
-Status: the types, the version check and the in-process host are built. The folder loader still loads API 1 plugins, and an API 2 mod reaches it wrapped as one (`api2Plugin` in `packages/web/src/mod-api2-shim.ts`). A manifest has no `api` field yet, and the Worker runtime keeps its own message protocol (see `PLUGIN_SANDBOX_DESIGN.md`). API 1 plugins run unchanged.
+Status: the types, the version check and the in-process host are built. An in-process mod whose schema 2 manifest states an `api` range that admits API 2 but not API 1 loads as API 2, wrapped for the folder loader by `api2Plugin` in `packages/web/src/mod-api2-shim.ts`. The Worker runtime keeps its own message protocol (see `PLUGIN_SANDBOX_DESIGN.md`). API 1 plugins run unchanged.
 
 ## A mod in API 2
 
@@ -62,13 +62,13 @@ A call never throws for a missing permission. `isNotGranted(result)` tells a mis
 | `store` | `prefs`, kept apart from any character, and `character`, kept in the current character's save. | None |
 | `net` | Requests to the hosts the manifest names, with credentials passed by reference. Present only when the manifest names a host. | `network:<host>` |
 | `manage` | Profiles and session control. First-party mods only. | `profiles:manage`, `session:control` |
-| `truth` | Every monster and the real map. The first-party autoplayer only. | None beyond the allowlist |
+| `truth` | Every monster and the real map. Any in-process mod the player allows it. | `state:map-actual.read` |
 
 ### What `view` shows
 
-`view` is built from core's known world (`buildKnownWorld`): the monsters the player perceives, with health as the look command words it, the abilities the player has learned, the map as the player remembers it, and items as far as the player has identified them. A monster the player cannot see is not in any part of it, and changing that monster changes nothing a mod can read. A mimic the player takes for an object is not listed as a monster, and while the player hallucinates `monsters` is empty and `monstersHidden` is `"hallucinating"`. A monster's `id` is a handle given out on each level in the order the player first perceives monsters there, not the game's monster index, and the list runs nearest first. Timed effects show the grade name the status line prints, a recall or deep descent shows only that it is active, a recharging item shows the count its name gives (`charging`), `unknownRunes` is the name's `{??}`, and a remembered trap stays as the player last saw it. `world()` returns every part at once, with `null` for each part the mod has no permission for. The single-part calls answer `not-granted` instead.
+`view` is built from core's known world (`buildKnownWorld`): the monsters the player perceives, with health as the look command words it, the abilities the player has learned, the map as the player remembers it, and items as far as the player has identified them. A monster the player cannot see is not in any part of it, and changing that monster changes nothing a mod can read. `world()` returns every part at once, with `null` for each part the mod has no permission for. The single-part calls answer `not-granted` instead.
 
-Each value carries a `token` naming the input wait it was read at. `act.submit` takes that token, and a token from an older wait comes back `refused`. A `target` intent names its monster by the `id` the view gave it; an id for a monster the player does not perceive now is refused like any monster that cannot be targeted.
+Each value carries a `token` naming the input wait it was read at. `act.submit` takes that token, and a token from an older wait comes back `refused`.
 
 ### Panels
 
@@ -76,7 +76,7 @@ Each value carries a `token` naming the input wait it was read at. `act.submit` 
 
 ## Events
 
-An event arrives only when the player could know about it. `combat-outcome`, `motion` and `heal` come through when the player took part or the grid is in view. A monster appears as `{ monster: id }` when the player perceived it as the event happened and as `"unseen"` otherwise, even when the event removed it (a kill), and movement or healing by a monster the player cannot see does not arrive. Damage and healing amounts are given only for the player, as `playerDamage` and `playerAmount`.
+An event arrives only when the player could know about it. `combat-outcome`, `motion` and `heal` come through when the player took part or the grid is in view. A monster appears as `{ monster: id }` while the player perceives it and as `"unseen"` otherwise, and movement or healing by a monster the player cannot see does not arrive. Damage and healing amounts are given only for the player, as `playerDamage` and `playerAmount`.
 
 | Event | Payload |
 | --- | --- |
@@ -120,9 +120,11 @@ These API 1 hooks have no API 2 form:
 
 `net.request({ url, method, headers, body })` sends a request to a host the manifest names. A header can hold `mod.net.credential("api-key")` in place of a string. The host fills in the value, and the mod never sees it. `net.credentials` sets, checks and removes credentials by name. A request to a host the manifest does not name answers `not-granted` with `network:<host>`. Any other failure is `refused` with one of the net problem codes (`timeout`, `too-large`, `redirect`, and the rest).
 
-## First-party seams
+## Seams outside the public API
 
-`manage` and `truth` exist only for mods the game's own build names as first-party, and they are absent from every other mod's API: test `if (mod.truth)` and there is nothing to request. `truth.monsters()` lists every monster with exact hit points and speed, and `truth.level()` gives the real map. An autoplayer uses it to plan and still acts through `act`, on what the player knows.
+`manage` and `truth` are absent from a mod's API unless it holds them, so test `if (mod.truth)` before using it. `truth.monsters()` lists every monster with exact hit points and speed, and `truth.level()` gives the real map. An autoplayer uses it to plan and still acts through `act`, on what the player knows.
+
+`truth` is built for any in-process mod the player has allowed `state:map-actual.read`. `manage` is built only for a first-party mod whose `FIRST_PARTY_ORIGINS` entry names the capability (see section 4 of `MOD_LIFECYCLE.md`). A mod that declares one it may not hold loads without it, and the Mods screen says why.
 
 ## Moving from API 1
 

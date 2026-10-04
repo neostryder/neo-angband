@@ -169,7 +169,6 @@ export type Api2Intent =
       readonly y: number;
       readonly modifiers?: { readonly shift?: boolean; readonly ctrl?: boolean };
     }
-  /** Target a monster by its KnownMonster id (the field keeps its API 1 name). */
   | { readonly kind: "target"; readonly midx: number }
   | { readonly kind: "target"; readonly x: number; readonly y: number }
   | { readonly kind: "stop-resting" }
@@ -421,19 +420,13 @@ export interface Api2TrueMonster {
 }
 
 /** One grid as it really is. */
-/**
- * A real object on the level. It carries the turns left until it recharges
- * (`timeout`) where a known item carries only what its name says.
- */
-export type Api2TrueItem = Omit<KnownItem, "charging" | "unknownRunes"> & { readonly timeout: number };
-
 export interface Api2TrueCell {
   readonly x: number;
   readonly y: number;
   readonly feat: number;
   readonly featCode?: string;
   readonly traps: readonly KnownTrap[];
-  readonly objects: readonly Api2TrueItem[];
+  readonly objects: readonly KnownItem[];
   /** The monster's id, or 0. */
   readonly monster: number;
 }

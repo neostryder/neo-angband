@@ -108,11 +108,13 @@ a cosmetic pack gone) degrades gracefully via quarantine.
 The `capabilities` list applies only to `shape: plugin` mods and is the
 consent surface (section 4). Content and tile packs request none.
 
-A grant records what the mod asked for at the moment the player gave it, so it can fall behind the manifest. Consent is written when a mod is enabled. If a later version adds a capability and the mod is updated in place, the stored grant covers only part of what the mod now requests, and a plugin whose grant does not cover its manifest does not load. `loadPluginPacks` puts it on `skipped` rather than `problems`, because a mod the player has switched off goes on that same list and neither case is a fault.
+The game records consent one capability at a time. When a mod is turned on, the player allows or refuses each capability it declares, and `ModStore.setDecisions` stores both lists along with the mod version. A refused capability is not asked about again. When an update adds a capability, only that one is new, and a plugin with a capability the player has not answered for does not load. `loadModCode` lists it under `skipped`, not `problems`: a mod the player switched off goes on the same list, and neither is a fault.
+
+A loaded mod holds what it declared, minus what its tier may not hold and minus what the player refused. That narrowed list is `LoadedModPlugin.manifest.capabilities`; the original is in `declared`. Every facade builds its `CapabilitySet` from the narrowed list, so calling something that needs a refused capability fails the same way as if the mod never asked, and API 2 answers `not-granted`. If the player refuses a capability whose vocabulary entry has `canRunWithout: false`, the mod does not start, and the Mods screen names the capability.
 
 Nothing else on the screen shows this. The row stays enabled, and every rule the mod declares still renders and still accepts a click, because the options rows are built from manifests rather than from loaded code. Only the plugin half is affected: `pack.ts` performs no capability check, so a hybrid content-and-plugin mod that is short a grant keeps composing its content while its code does not run.
 
-The manager therefore treats an out-of-date grant as its own state, with its own action. The row carries the stored grant alongside the requested list, the detail pane names the difference and says the code is not running, and the mod's own screen offers to allow what is newly requested. Declining offers to switch the mod off, so a mod that is listed as on while contributing nothing is always a state the player chose and can see.
+The manager therefore treats an out-of-date grant as its own state, with its own action. The row carries the stored grant alongside the requested list, the detail pane names the difference and says the code is not running, and the mod's own screen asks about each newly requested capability. Declining offers to switch the mod off, so a mod that is listed as on while contributing nothing is always a state the player chose and can see.
 
 The vocabulary is `command:add`, `event:<name>`, `state:<domain>.read`, `network:<host>`, `registry:<domain>`, `display:replace` and `ui:<region>.replace`. The last two cover the screen, as two separate grants. `display:replace` is what `ModPlugin.frontend` requires: the mod draws everything the player sees of the dungeon. `ui:<region>.replace` is what `ModPlugin.hud` requires, one region at a time (`ui:messages.replace`, `ui:sidebar.replace`, `ui:status.replace`, or `ui:*.replace` for all three). A mod that redraws the vitals therefore does not have to ask for the message line as well, and a player giving consent is told which part of their screen is changing hands.
  A `network:` host may carry a port, as in `network:localhost:8010`, and `network:local` covers this computer and the private address ranges of a home network. `ctx.net` enforces these grants on every request; see [MOD_SEAMS.md section 4z](MOD_SEAMS.md#4z-ctxnet---http-requests-through-the-host).
@@ -338,6 +340,25 @@ Three trust tiers, unchanged from MODS.md, made concrete at install:
   commands", "read party state", "network access to api.example.com").
   The gated facades hand over only what was asked for and approved, but
   an in-process plugin also gets `ctx.core`, and nothing gates that.
+
+### Tiers
+
+Each pack also has a tier, worked out in `packages/web/src/mod-tier.ts` from where its files came from. The manifest has no say in it.
+
+- **First-party**: installed from a repository on the build's `FIRST_PARTY_ORIGINS` list, downloaded from it rather than imported from a zip, with an id that matches, and with every file still matching its recorded digest. A copy whose files have changed counts as sideloaded.
+- **Reviewed**: installed from the game's registry, where its community entry carries `"tier": "R"`.
+- **Listed**: installed from the community list of the game's registry.
+- **Sideloaded**: anything else. That covers a mods folder, a session load, a zip, a repository address, someone else's registry, and a pack another mod installed.
+
+Tiers do not limit what code in the page can do in the game. Safety comes from review, the unreviewed notice and the Worker sandbox. `SEAM_POLICY` in `mod-tier.ts` is the single table that holds capabilities back, and it is still changing.
+
+Right now it keeps `manage` capabilities for first-party mods whose `FIRST_PARTY_ORIGINS` entry names them, because those can install or turn on other code, and the player answers a separate Core-drawn question for each. Any in-process mod can have `truth` (`state:map-actual.read`) if the player allows it; its consent sentence says the mod sees what the character has not found. A Worker mod gets only what its runtime provides, and gets `manage` or `truth` only as a named first-party mod.
+
+When the tier rules out a capability, the player is not asked about it. The consent screen lists it with the reason, and the mod loads without it, unless it cannot run without it, in which case it does not start. Strings the vocabulary does not know are never granted.
+
+Sideloaded mods, and listed mods that run code in the page, show an "unreviewed" badge on the Mods screen. The first time one with code is turned on, core shows a notice that nobody has reviewed it, what a mod in the page can reach, and how to turn it off, including safe mode. That notice, the permission screens and their menus are listed in `packages/web/src/core-drawn.ts`. Menu and screen presenters, `registry:menu` and `screenText` do not apply to them, and mod panels are hidden and inert while one is open, so a mod cannot draw or answer them.
+
+A first-party entry can also list capabilities under `marksSave`. While a loaded mod holds one, each character the game loads gets `NOSCORE.DEBUG`, the one-way mark debug mode sets. The only one today is AnybandUI's `state:map-actual.read`; another mod that sees the real map marks nothing. A runtime calls `modStartGrants(id)` for a mod's tier, the capabilities it holds, and the seams outside the public API (`manage`, `truth`) it may have.
 
 Determinism guard. Save-scum protection does not depend on determinism. It comes from the faithful port of the original's persisted RNG state (the full `STATE[]`/`Rand_value` is in the save, so a reload resumes the exact stream and cannot reroll) together with a single save and terminal death; see the save-scum policy. Because that protection rests on saved state rather than on replaying a run from a seed, it works with mods.
 

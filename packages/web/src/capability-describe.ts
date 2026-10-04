@@ -68,3 +68,15 @@ export function describeCapabilities(
 export function hasElevatedCapability(caps: readonly string[]): boolean {
   return caps.some((c) => describeCapability(c).elevated);
 }
+
+/**
+ * What stops working when the player refuses `cap`, from the vocabulary. Null
+ * for a string the vocabulary does not know.
+ */
+export function capabilityWithoutIt(cap: string): string | null {
+  try {
+    return matchCapability(cap)?.entry.withoutIt ?? null;
+  } catch {
+    return null;
+  }
+}

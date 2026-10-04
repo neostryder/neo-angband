@@ -913,13 +913,6 @@ export interface GameState {
    */
   modHooks?: import("../mod/hooks.js").ModHooks;
   /**
-   * The describers and resolvers every KnownWorld the host builds is given
-   * (agent/types.ts AgentViewDeps). Core reads it to build the KnownMonster a
-   * monsterBecameVisible hook receives, so that payload names things the way
-   * the host's KnownWorld does. Absent, the payload is built without them.
-   */
-  knownWorldDeps?: import("../agent/types.js").AgentViewDeps;
-  /**
    * PU_BONUS | PU_HP | PU_MANA: recompute the derived state from the
    * current gear (equipment commands call this after changing what is
    * worn). Installed by the session (wireGame).
@@ -1064,11 +1057,10 @@ export interface GameState {
   /**
    * Where a listener's exception goes for an event whose sender must finish
    * whatever a listener does (today `dungeonlevel`: a throwing mod must not cut
-   * an arrival short), and a fault building the monsterBecameVisible payload,
-   * which must not cut a visibility update short. The host routes it to its
-   * log; absent, the exception is dropped and the sender carries on.
+   * an arrival short). The host routes it to its log; absent, the exception is
+   * dropped and the sender carries on.
    */
-  onEventFault?: (type: GameEventType | "monsterBecameVisible", error: unknown) => void;
+  onEventFault?: (type: GameEventType, error: unknown) => void;
   /**
    * The live town stores (store.c `stores`), indexed however the session
    * instantiates them; a shell looks a store up by its entrance feature. Set

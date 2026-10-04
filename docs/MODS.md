@@ -36,6 +36,16 @@ touching what is saved.
 
 Hold Shift while the game starts to start it with every mod off, just for that session, or start the desktop app with `--safe-mode`. The game offers the same thing itself when its last two starts stopped before the menus. Safe mode changes nothing: your mods stay installed and enabled, and your characters are untouched. Switch off the mod you suspect on the Mods screen, then choose **Restart with mods** in the corner of the window. [modding/MOD_LIFECYCLE.md](modding/MOD_LIFECYCLE.md#safe-mode) has the details.
 
+### Permissions
+
+A mod that runs code says which permissions it wants, and the game asks you about them the first time you turn the mod on. Each permission is listed in plain words with what stops working if you say no. Pick **Allow these** to allow them all, or **Choose one by one** to switch any of them off. The mod still runs without the ones you switch off; only the parts that need them stop working. A few permissions are ones a mod cannot start without, and the list marks those.
+
+Seeing the real map starts switched off, even if you pick **Allow these**, because it shows the mod things your character has not found yet. When AnybandUI has it, any character you play meanwhile gets the same mark debug mode leaves, and that mark never comes off.
+
+If an update wants something new, the game asks about just that and keeps your other answers. To change an answer later, open the mod on the Mods screen and pick **Change permissions**. Changes apply after the game reloads.
+
+Managing your mods, profiles or session is different. A mod that can do that can also install and turn on other code, so only the game's own mods may, and only when they came straight from their own repository with their files unchanged. Even then, the game asks about each of these on a screen of its own. Any other mod that wants one has to do without, and the Mods screen tells you why.
+
 ### Where each mod lives
 
 [MOD_LIST.md](MOD_LIST.md) lists every released mod, first-party and community, with what it does, its newest release, the game builds it runs on and links to its repository and docs. Each mod is a separate repository with its own issues, releases and tests: file a bug about what a mod *does* there, and a bug about the mod *system* against the game.
@@ -61,11 +71,11 @@ Listing is the only check a mod gets today, and it covers whether the mod instal
 Anyone can install a mod that is on no list: by its repository address, from a registry someone else keeps, from a zip, or from a folder. Nobody reviews these mods and nothing regulates them. A plugin's code runs with the same access to the game that core has (one that declares a Worker runtime runs apart from the page instead), so install one only from an author you trust. What the game does about it today:
 
 - The repository, registry and zip routes stay closed until you turn on **Allow third-party mods**, and the game says what that switch means the first time.
-- Before a plugin is enabled, the game lists the permissions it asks for. They limit what the game hands it through its permissioned parts, but a plugin's code can still reach the rest of the game.
+- The first time you turn on an unreviewed mod that runs code, a notice fills the screen first. It tells you nobody has checked the code, what a mod like this can do, and how to turn it off again. The game draws it itself and hides every mod panel while it is open, so no mod can answer it for you.
+- The game then asks about each permission the mod wants, and you can turn any of them off (see Permissions above). Permissions limit what the game hands the mod through its permissioned parts, but a plugin's code can still reach the rest of the game.
+- An unreviewed mod has an **unreviewed** badge on the Mods screen, and it never gets the permissions kept for the game's own mods.
 - It asks before replacing an installed third-party mod with a new release.
 - If a mod stops the game from starting, safe mode starts it with every mod off.
-
-A large warning before an unlisted mod runs, a badge that stays on it, and consent to each permission one at a time are planned ([PLANNED.md](PLANNED.md#mod-review-and-sideloading)).
 
 ### Writing one
 
@@ -220,10 +230,7 @@ The engine defines a content-generator interface for names, lore, item flavor, l
 
 - Content packs: validated data, lowest risk, freely shareable.
 - Tile packs: validated manifests plus images, same posture.
-- Scripted plugins: real code with the same access to the game that core
-  has, so they are trusted code. The game lists the permissions a plugin asks
-  for before enabling it, and a plugin that declares a Worker runtime runs
-  apart from the page.
+- Scripted plugins: real code with the same access to the game that core has, so they are trusted code. The game asks about each of a plugin's permissions before turning it on. A plugin nobody has reviewed shows a notice first and keeps a badge, and a plugin that declares a Worker runtime runs apart from the page.
 
 ## Licensing note for mod authors
 
