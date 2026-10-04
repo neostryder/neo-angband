@@ -332,13 +332,12 @@ Three trust tiers, unchanged from MODS.md, made concrete at install:
   Lowest bar, freely shareable.
 - Tile packs: validated manifest plus images. Same posture.
 - Scripted plugins: real code. A plugin runs in the page with the same
-  access core has, so it is trusted code and the consent screen is the
-  boundary (`PLUGINS.md`). A plugin declaring `modApi: 2` with
-  `runtime: "worker"` runs in its own Worker instead. At
-  install the app lists the capabilities in plain language ("add
-  commands", "read party state", "network access to api.example.com")
-  and the mod gets nothing it did not request and the user did not
-  approve.
+  access core has, so it is trusted code (`PLUGINS.md`); one that declares
+  `modApi: 2` with `runtime: "worker"` runs in its own Worker instead. At
+  install the app lists what the plugin asks for in plain words ("add
+  commands", "read party state", "network access to api.example.com").
+  The gated facades hand over only what was asked for and approved, but
+  an in-process plugin also gets `ctx.core`, and nothing gates that.
 
 Determinism guard. Save-scum protection does not depend on determinism. It comes from the faithful port of the original's persisted RNG state (the full `STATE[]`/`Rand_value` is in the save, so a reload resumes the exact stream and cannot reroll) together with a single save and terminal death; see the save-scum policy. Because that protection rests on saved state rather than on replaying a run from a seed, it works with mods.
 

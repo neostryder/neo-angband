@@ -52,6 +52,21 @@ To ask for a listing, open a [List a community mod](https://github.com/neostryde
 
 A listing is removed when the mod's release fails the mod canary, or when its author asks.
 
+### Getting a mod reviewed
+
+Listing is the only check a mod gets today, and it covers whether the mod installs and runs, not what its code does. Nobody reads a community mod's code before it is listed. A review of every listed release, with the findings sent back to the author, is planned ([PLANNED.md](PLANNED.md#mod-review-and-sideloading)); until it lands, open a listing issue as above.
+
+### Mods that are not on the list
+
+Anyone can install a mod that is on no list: by its repository address, from a registry someone else keeps, from a zip, or from a folder. Nobody reviews these mods and nothing regulates them. A plugin's code runs with the same access to the game that core has (one that declares a Worker runtime runs apart from the page instead), so install one only from an author you trust. What the game does about it today:
+
+- The repository, registry and zip routes stay closed until you turn on **Allow third-party mods**, and the game says what that switch means the first time.
+- Before a plugin is enabled, the game lists the permissions it asks for. They limit what the game hands it through its permissioned parts, but a plugin's code can still reach the rest of the game.
+- It asks before replacing an installed third-party mod with a new release.
+- If a mod stops the game from starting, safe mode starts it with every mod off.
+
+A large warning before an unlisted mod runs, a badge that stays on it, and consent to each permission one at a time are planned ([PLANNED.md](PLANNED.md#mod-review-and-sideloading)).
+
 ### Writing one
 
 **[Start with the tutorials](modding/tutorials/README.md)** - seven short ones,
@@ -205,8 +220,10 @@ The engine defines a content-generator interface for names, lore, item flavor, l
 
 - Content packs: validated data, lowest risk, freely shareable.
 - Tile packs: validated manifests plus images, same posture.
-- Scripted plugins: sandboxed and capability-scoped, but still code - the
-  UI surfaces what a plugin can touch before enabling it.
+- Scripted plugins: real code with the same access to the game that core
+  has, so they are trusted code. The game lists the permissions a plugin asks
+  for before enabling it, and a plugin that declares a Worker runtime runs
+  apart from the page.
 
 ## Licensing note for mod authors
 

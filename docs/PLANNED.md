@@ -180,6 +180,18 @@ lines, and the conflict pane are the three that are known to exist.
 
 Tracked as issue #9.
 
+## Mod review and sideloading
+
+The mod system is being reworked in phases, and `docs/MODS.md` changes in the same commit as each phase that lands.
+
+Listing a mod on `mods/registry.json` will come to mean its release was checked. Each release gets a set of fixed checks first: the permissions its code uses against the ones its manifest declares, any network use or `eval`, obfuscated code, its size, and whether it builds against the current game. A code review follows, and it reads the mod's code as data, not as instructions. Only releases that pass appear in the game, and the author gets the findings whether the release passed or not. The project runs this review itself and does not hand the tool out. Authors will still be able to catch most problems before they submit: ModForge's command-line tools will run the same fixed checks locally, plus an optional code review on the author's own model key, whose results depend on which model they pick.
+
+A short content policy will say what a listed mod may not contain (hate, sexual content involving minors, stolen assets, impersonation). The in-game browser will have a button for reporting a mod, and a release that breaks the policy comes off the registry.
+
+Mods that are on no list stay installable by anyone, and they stay unreviewed. Before one runs, core will draw a large warning saying so, and the mod keeps an "unreviewed" badge on the Mods screen. It will not get the seams kept for first-party mods, which manage other mods and read the game's hidden state. Safe mode still gets a player out if one breaks the game.
+
+Permissions will also become a choice per permission. The game will explain each one in plain words, the player can turn any of them down, and a mod that loses one keeps working apart from the functions that needed it, which fail as gently as they can.
+
 ## Mod updates
 
 Game updates can now optionally carry the compatible updates already found for installed mods; what remains for #111 is automatic or periodic checking without opening a screen. Recommended-new-mod discovery is deferred with that background pass, rather than being folded into an update check.
