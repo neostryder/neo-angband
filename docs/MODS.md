@@ -14,7 +14,7 @@ Choose **Mods** on the title screen, then choose **Recommended mods...**, pick o
 
 The recommended list holds only repository addresses. Names, versions, descriptions and compatibility all come from each mod when the screen opens, so a mod can release an update without waiting for a new version of the game, and the game makes no claims of its own about what a mod contains.
 
-You are not always offered a mod's newest release. A mod that ships code declares which builds of the game it was written for, and the game refuses a release outside that range instead of loading it ([modding/MOD_COMPATIBILITY.md](modding/MOD_COMPATIBILITY.md) explains why). The screen therefore tries the mod's releases from the newest down, up to eight of them, and offers the newest one this build will run. When it skips a newer release, it tells you which one and why, and it suggests updating the game only when that would get you the newer release. If none of the releases it tried will run, the mod is refused and the screen says how many releases it checked. **Update installed mods** works the same way: it never offers an update this build would refuse to load, and a mod already on the newest release your game can run is shown as current rather than out of date.
+You are not always offered a mod's newest release. A mod that ships code declares which builds of the game it was written for, and the game refuses a release outside that range instead of loading it ([modding/MOD_COMPATIBILITY.md](modding/MOD_COMPATIBILITY.md) explains why). The screen therefore looks back through up to eight of the mod's earlier releases and offers the newest one this build will run. When it skips a newer release, it tells you which one and why, and it suggests updating the game only when that would get you the newer release. If none of the releases it tried will run, the mod is refused and the screen says how many releases it checked. **Update installed mods** works the same way: it never offers an update this build would refuse to load, and a mod already on the newest release your game can run is shown as current rather than out of date.
 
 Three more ways to add a mod are on the same screen, all behind **Allow third-party mods**:
 
@@ -34,35 +34,7 @@ touching what is saved.
 
 ### If a mod stops the game from starting
 
-Safe mode starts the game with every mod off for one session. There are four ways in:
-
-- Hold Shift as the game starts, and keep it down for about a second and a half.
-- Start the desktop app with `--safe-mode`. In a browser, add `safe=1` to the address (for example `?safe=1`).
-- Say yes when the game offers it. After two starts in a row that stopped before reaching the menus, whether from a crash, a hang or a window closed during loading, the game asks whether to start without mods. It only asks when you have mods that would load. Press Y or Enter for safe mode, or N or Escape to start normally.
-- Choose **Start without mods** on the screen that says Neo Angband could not start with the enabled mods. That screen appears when the mods you have enabled cannot be combined into one game, and it shows the error just above the button.
-
-Safe mode leaves everything as it was: your mods stay installed and enabled, your mod settings are not changed, and your characters are untouched. While it is on, a small notice in the bottom-right corner says every mod is off for this session. Open the Mods screen, which still shows the mods a normal start would load, switch off the mod you suspect, then choose **Restart with mods** on the notice. **Hide** puts the notice away. Reloading from inside the game keeps you in safe mode until you restart with mods. A start in safe mode does not reset the count of failed starts, so the offer comes back on the next normal start until one of them reaches the menus. [modding/MOD_LIFECYCLE.md](modding/MOD_LIFECYCLE.md#safe-mode) has the details.
-
-### If a mod keeps failing during play
-
-When a mod's code fails three times within 200 game turns, the game switches that mod off until the game next starts. A mod that takes more than half a second of one turn gets one pass in any 200 turns, and each time after that counts as a failure. A screen titled with the mod's name tells you it was switched off and shows where it last failed and why. Press Escape to close it, and the game asks whether to open the report page, which lists where to send a report so the mod's author can fix it. The game carries on without the mod, and if the mod was playing for you, you get the keyboard back. The mod is still on in your mod list and loads again the next time the game starts, so turn it off on the Mods screen if you want it to stay off. The Mods screen also lists the failure with the mod's other problems.
-
-A different notice appears when a mod fails in the middle of a turn. The part of the mod that failed is off for the rest of the session, and the game stops saving, because the turn may have finished half-done. Your last save is untouched. Reload to start again from it, and turn the mod off first if you would rather not hit the same failure again.
-
-### Seeing which mod slows the game
-
-The Mods screen has a **Mod performance** row. It opens a table of every mod whose code has run since the game started, busiest first. A row is red when the mod has been switched off, and yellow when it has failed or run slow. The numbers start from zero each time the game starts.
-
-| Column | What it shows |
-|---|---|
-| Mod | The mod's name |
-| Calls | How many times the game has called the mod's code |
-| CPU ms | Total time the mod's code has taken, in milliseconds |
-| Worst | The mod's slowest single call, in milliseconds |
-| Faults | How many times the mod has failed since the game started |
-| Slow | Turns in which the mod took more than its 50 ms share |
-| Sent | Data a mod running in its own Worker has passed to the game; `-` for other mods |
-| Status | `on`, or `off` if the game has switched the mod off |
+Hold Shift while the game starts to start it with every mod off, just for that session, or start the desktop app with `--safe-mode`. The game offers the same thing itself when its last two starts stopped before the menus. Safe mode changes nothing: your mods stay installed and enabled, and your characters are untouched. Switch off the mod you suspect on the Mods screen, then choose **Restart with mods** in the corner of the window. [modding/MOD_LIFECYCLE.md](modding/MOD_LIFECYCLE.md#safe-mode) has the details.
 
 ### Where each mod lives
 
@@ -74,7 +46,7 @@ Mods by other authors can be listed in the game's **Recommended mods...** screen
 
 A listed community mod installs and updates like a mod added by its repository address. The player needs **Allow third-party mods** turned on, and the game shows what that means the first time they pick one. **Install all recommended mods** and **Update all recommended mods** cover the first-party mods only, so players opt in to each community mod's code on its own row.
 
-Each new release of an installed community mod is asked about before it goes in. Wherever the game would replace one (Update installed mods, a game update that carries mod updates, Change to or Reinstall on its row, or loading a mod profile that names another version), it first shows the mod, the installed and new versions and the repository's owner, and installs the release only if the player says yes. Saying no keeps the installed release. If the game cannot read the recommended list at that moment, it cannot tell a community mod from any other mod added by address, and the update goes in without the question. A listing covers the release that was checked, and its author can publish another at any time.
+Each new release of an installed community mod is asked about before it goes in. Wherever the game would replace one (Update installed mods, a game update that carries mod updates, Change to or Reinstall on its row, or loading a mod profile that names another version), it first shows the mod, the installed and new versions and the repository's owner, and installs the release only if the player says yes. Saying no keeps the installed release. A listing covers the release that was checked, and its author can publish another at any time.
 
 To ask for a listing, open a [List a community mod](https://github.com/neostryder/neo-angband/issues/new?template=list-a-mod.yml) issue with the repository and the release you want listed. Before the mod is added to the `community` list in `mods/registry.json`, a maintainer checks that the repository is public, that the release is published on GitHub, that it installs cleanly on the current build of the game, and that the mod canary passes with it on the list. Those checks are all a listing records: it is not an endorsement, a code review or a security audit, and the game does not treat it as one. It also does not add you to `mods/authors.json`, the separate author register, which you can ask to join with an issue of its own.
 
@@ -90,7 +62,7 @@ Anyone can install a mod that is on no list: by its repository address, from a r
 
 - The repository, registry and zip routes stay closed until you turn on **Allow third-party mods**, and the game says what that switch means the first time.
 - Before a plugin is enabled, the game lists the permissions it asks for. They limit what the game hands it through its permissioned parts, but a plugin's code can still reach the rest of the game.
-- It asks before a new release of a listed community mod replaces the installed one. A mod added by its address or from a zip gets no such question: its updates go in like its first install did, and only while **Allow third-party mods** is on.
+- It asks before replacing an installed third-party mod with a new release.
 - If a mod stops the game from starting, safe mode starts it with every mod off.
 
 A large warning before an unlisted mod runs, a badge that stays on it, and consent to each permission one at a time are planned ([PLANNED.md](PLANNED.md#mod-review-and-sideloading)).

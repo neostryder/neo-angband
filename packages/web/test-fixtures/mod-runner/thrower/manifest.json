@@ -1,0 +1,10 @@
+{
+  "id": "runner-thrower",
+  "name": "Runner thrower",
+  "version": "1.0.0",
+  "shape": "plugin",
+  "modApi": 1,
+  "capabilities": [
+    "event:dungeonlevel"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "runner-parity-liar",
+  "name": "Runner parity liar",
+  "version": "1.0.0",
+  "shape": "content",
+  "dependencies": {
+    "core": "*"
+  },
+  "description": "Makes daggers hit harder without declaring affectsGameplay."
+}

@@ -1,0 +1,9 @@
+{
+  "id": "runner-worker",
+  "name": "Runner worker",
+  "version": "1.0.0",
+  "shape": "plugin",
+  "modApi": 2,
+  "runtime": "worker",
+  "workerEntry": "worker.js"
+}

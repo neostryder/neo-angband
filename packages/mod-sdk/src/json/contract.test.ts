@@ -9,6 +9,7 @@ import { subwindowLayoutFormat } from "./subwindow-layout.js";
 import { visualOverrideFormat } from "./visual-overrides.js";
 import { modStateFormat } from "./mod-state.js";
 import { installedModFormat } from "./installed-mod.js";
+import { headlessRunFormat } from "./headless-run.js";
 import { modSettingValuesFormat } from "./mod-settings.js";
 import { profilesFormat } from "./profiles.js";
 import { settingsFormat } from "./settings.js";
@@ -40,6 +41,7 @@ void [
   modFontFormat,
   modStateFormat,
   installedModFormat,
+  headlessRunFormat,
   modSettingValuesFormat,
   profilesFormat,
   modManifestFormat,

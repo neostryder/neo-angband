@@ -61,6 +61,17 @@ export interface ModOverBudget {
   readonly ceiling: boolean;
 }
 
+/** One fault as it is counted, with what the mod raised. */
+export interface ModFault {
+  readonly id: string;
+  readonly site: string;
+  /** What the mod threw, or what its promise rejected with. */
+  readonly error: unknown;
+  readonly turn: number;
+  /** True when the fault arrived as a rejected promise rather than a throw. */
+  readonly rejected: boolean;
+}
+
 /** What the profiler screen shows for one mod. */
 export interface ModHealthStats {
   readonly id: string;
@@ -96,6 +107,8 @@ export interface ModHealthOptions {
   readonly onSwitchOff?: (off: ModSwitchOff) => void;
   /** Told each time a mod first crosses its budget or the ceiling in a period. */
   readonly onOverBudget?: (report: ModOverBudget) => void;
+  /** Told about every fault as it is counted (the headless runner reads the errors). */
+  readonly onFault?: (fault: ModFault) => void;
 }
 
 /** Thrown by `run` for a mod that is switched off, before any of its code runs. */
@@ -214,7 +227,7 @@ export class ModHealthMonitor {
     this.finish(id, site, record, frame, now() - start);
     if (isThenable(result)) {
       result.then(undefined, (error: unknown) => {
-        this.fault(id, site, error);
+        this.fault(id, site, error, true);
       });
     }
     return result;
@@ -331,10 +344,19 @@ export class ModHealthMonitor {
     }
   }
 
-  private fault(id: string, site: string, error: unknown): void {
+  private fault(id: string, site: string, error: unknown, rejected = false): void {
     const record = this.record(id);
     const turn = this.turn();
     record.faults += 1;
+    if (this.options.onFault) {
+      try {
+        this.options.onFault({ id, site, error, turn, rejected });
+      } catch (reportError) {
+        queueMicrotask(() => {
+          throw reportError;
+        });
+      }
+    }
     record.faultTurns = inWindow(record.faultTurns, turn);
     record.faultTurns.push(turn);
     if (
