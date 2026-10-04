@@ -69,7 +69,7 @@
  * system gives of itself (docs/modding/PLUGINS.md, "What a capability gates").
  */
 
-import { installedMeta, installModFromZip, type InstallEnv } from "./mod-install";
+import { installedMeta, installModFromZip, manifestDisplayName, type InstallEnv } from "./mod-install";
 import { installFailureLines, installOutcomeLines } from "./mod-browse";
 import { readModZip, type ZipRead } from "./mod-zip";
 import { sessionSurvivesReload, stageSessionMod } from "./mod-session";
@@ -122,36 +122,36 @@ const CODE_SUFFIXES = [".js", ".mjs", ".cjs", ".ts", ".wasm"] as const;
 export function contentOnlyRefusal(bytes: Uint8Array): string | null {
   const read = readModZip(bytes);
   if (!read.ok) return read.problem;
-  return contentOnlyFault(read);
+  return contentOnlyFault(read, manifestDisplayName(read.files) ?? UNNAMED_MOD);
 }
 
 /**
  * The same judgement over an archive somebody has already read.
  *
- * SPLIT OUT SO THE ID SURVIVES. A refusal the install door returns is printed in
+ * SPLIT OUT SO THE NAME SURVIVES. A refusal the install door returns is printed in
  * the manager's own words, and those words start with the mod's NAME - which the
  * archive knows and a `string | null` does not. Re-reading the zip to recover it
  * would be a third unzip of the same bytes, and a second call to `readModZip`
  * whose answer this one is trusted to agree with.
  */
-function contentOnlyFault(read: Extract<ZipRead, { ok: true }>): string | null {
+function contentOnlyFault(read: Extract<ZipRead, { ok: true }>, name: string): string | null {
   const code = read.files
     .map(([path]) => path)
     .filter((path) => CODE_SUFFIXES.some((suffix) => path.toLowerCase().endsWith(suffix)));
   if (code.length > 0) {
     return (
-      `${read.id}: this door installs CONTENT mods only, and the archive ships code (${code.join(", ")}). ` +
+      `${name}: this door installs CONTENT mods only, and the archive ships code (${code.join(", ")}). ` +
       `A mod may add records, patches and removals to your library; writing a mod that RUNS is something ` +
       `the player does through the Mods screen, so they can read what it asks for first`
     );
   }
   const manifest = manifestCapabilities(read.files);
   if (manifest === null) {
-    return `${read.id}: the archive's manifest.json could not be read as JSON`;
+    return `${name}: the archive's manifest.json could not be read as JSON`;
   }
   if (manifest.length > 0) {
     return (
-      `${read.id}: this door installs CONTENT mods only, and the archive's manifest asks for ` +
+      `${name}: this door installs CONTENT mods only, and the archive's manifest asks for ` +
       `${manifest.length === 1 ? "a capability" : "capabilities"} (${manifest.join(", ")}). ` +
       `A content pack is validated data and needs none`
     );
@@ -223,6 +223,9 @@ function refusalLines(
 /** What a refusal calls an archive whose own manifest it could not read. */
 const UNREADABLE_ARCHIVE = "That archive";
 
+/** What the lines call a mod whose manifest gives no name. */
+const UNNAMED_MOD = "That mod";
+
 /**
  * Build the `ctx.installMod` a consenting mod is handed.
  *
@@ -257,7 +260,7 @@ export function createModInstaller(
      * copy is cheaper than reasoning about whether anybody would. */
     const own = new Uint8Array(bytes);
     try {
-      /* Read here rather than inside `contentOnlyRefusal`, for the mod's ID: the
+      /* Read here rather than inside `contentOnlyRefusal`, for the mod's name: the
        * manager's wording names the mod, and a refusal that called every archive
        * "that archive" would be the one place this door speaks differently from
        * the screen it is borrowing its words from. */
@@ -269,9 +272,10 @@ export function createModInstaller(
           lines: refusalLines(UNREADABLE_ARCHIVE, read.problem),
         };
       }
-      const refusal = contentOnlyFault(read);
+      const name = manifestDisplayName(read.files) ?? UNNAMED_MOD;
+      const refusal = contentOnlyFault(read, name);
       if (refusal !== null) {
-        return { ok: false, problem: refusal, lines: refusalLines(read.id, refusal) };
+        return { ok: false, problem: refusal, lines: refusalLines(name, refusal) };
       }
       /* What is on disk BEFORE, so the outcome can say "installed" or "updated
        * 1.0.0 -> 1.1.0" in the manager's own words. Read here because the answer
@@ -282,7 +286,7 @@ export function createModInstaller(
         return {
           ok: false,
           problem: result.problem,
-          lines: refusalLines(read.id, result.problem, result.unmet ?? []),
+          lines: refusalLines(name, result.problem, result.unmet ?? []),
         };
       }
       return {
@@ -295,7 +299,7 @@ export function createModInstaller(
          * offer, which say the mod is off until they turn it on. */
         lines: Object.freeze(
           installOutcomeLines(
-            read.id,
+            name,
             result.meta.tag,
             before === null ? null : before.tag,
             result.meta.tag,

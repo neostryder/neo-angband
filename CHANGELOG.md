@@ -52,6 +52,10 @@ still calls itself.
 
 - [Internal] [Docs] **Releases can go out as public betas first.** `node tools/version.mjs beta patch|minor|major` starts a `-beta.N` version and `beta next` advances it, a beta tag is published as a pre-release that only the beta and early channels offer, npm gets it under the `next` dist-tag, and the itch.io and GitHub Pages web builds stay on the last release.
 
+### Changed
+
+- [Visible] [UI] **Mod messages now call each mod by its proper name.** The notice shown when a mod fails partway through a turn, the problem lines on the Mods screen, the line saying which mod installed another, the install refusals, the import and try screens and the orphaned data screen all take the name from the mod's manifest instead of showing its id. When the game does not know a mod's name, the message is worded so it does not need one; the id appears only for a mod whose manifest never loaded or whose saved items outlived it, where it is the only name there is.
+
 ### Fixed
 
 - [Visible] [Modding-API] **A mod's event handler that throws no longer keeps the event from the mods after it.** Each `ctx.events` handler now runs separately, and an error or a rejected promise from one is logged against its mod and listed on the Mods screen while the other handlers still receive the event (#371).

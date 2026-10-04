@@ -29,6 +29,7 @@
  * this screen exists to enable.
  */
 
+import { modDisplayName } from "./mod-problems";
 import {
   orphanStash,
   t,
@@ -121,7 +122,7 @@ export function categoryText(category: OrphanCategory): string {
 
 /** Why everything under one pack is inert right now. */
 export function whyInert(group: OrphanStashGroup): string {
-  const mod = group.namespace;
+  const mod = orphanModName(group);
   switch (group.availability) {
     case "absent":
       return t("orphans.why.absent", "{mod} is not installed.", { mod });
@@ -138,9 +139,18 @@ export function whyInert(group: OrphanStashGroup): string {
   }
 }
 
+/**
+ * The mod a stash group belongs to, by its proper name when the mod is installed.
+ * The save records only the namespace, so for a mod that is gone the namespace is
+ * the one name there is.
+ */
+function orphanModName(group: OrphanStashGroup): string {
+  return modDisplayName(group.namespace) ?? group.namespace;
+}
+
 /** What would bring everything under one pack back. */
 export function howToRestore(group: OrphanStashGroup): string {
-  const mod = group.namespace;
+  const mod = orphanModName(group);
   const version = group.version;
   switch (group.availability) {
     case "disabled":
@@ -177,7 +187,7 @@ function availabilityColor(availability: OrphanAvailability): string {
 
 /** "frost 1.2.0 - 7 things set aside", the caption over one pack's table. */
 export function groupCaption(group: OrphanStashGroup): string {
-  const mod = group.version ? `${group.namespace} ${group.version}` : group.namespace;
+  const mod = group.version ? `${orphanModName(group)} ${group.version}` : orphanModName(group);
   return t("orphans.group.caption", "{mod} - {count, plural, one {# thing} other {# things}} set aside", {
     mod,
     count: group.total,
@@ -282,7 +292,7 @@ export function orphanStashScreen(stash: OrphanStash): ScreenView {
         text: t(
           "orphans.group.links",
           "Also held: {count, plural, one {# link that keeps} other {# links that keep}} {mod}'s monster packs together.",
-          { count: group.links, mod: group.namespace },
+          { count: group.links, mod: orphanModName(group) },
         ),
         color: C_DIM,
       });
@@ -335,7 +345,7 @@ export function stashActionsFooter(): string {
 
 /** The read shown above the keep/purge choice. */
 export function orphanPurgeLines(stash: OrphanStash): ScreenLine[] {
-  const mods = stash.groups.map((g) => g.namespace).join(", ");
+  const mods = stash.groups.map((g) => orphanModName(g)).join(", ");
   return [
     {
       text: t(
@@ -467,7 +477,7 @@ export function deleteOrphanConfirmLines(item: OrphanStashItem, group: OrphanSta
       text: t(
         "orphans.delete.body1",
         "Throw away {name} from {mod} permanently?",
-        { name: item.name, mod: group.namespace },
+        { name: item.name, mod: orphanModName(group) },
       ),
       color: C_WARN,
     },
@@ -476,7 +486,7 @@ export function deleteOrphanConfirmLines(item: OrphanStashItem, group: OrphanSta
       text: t(
         "orphans.delete.body2",
         "It came from {mod}, and removing it deletes it from this save. Reinstalling the mod will not bring it back.",
-        { mod: group.namespace },
+        { mod: orphanModName(group) },
       ),
       color: C_FG,
     },
@@ -485,7 +495,7 @@ export function deleteOrphanConfirmLines(item: OrphanStashItem, group: OrphanSta
       text: t(
         "orphans.delete.body3",
         "Nothing else is touched. The rest of {mod}'s things stay frozen in your save.",
-        { mod: group.namespace },
+        { mod: orphanModName(group) },
       ),
       color: C_DIM,
     },
@@ -620,7 +630,7 @@ async function pickOrphanItemToDelete(
   }
   if (flat.length === 0) return null;
   const menuItems: MenuItem[] = flat.map(({ group, item }) => ({
-    label: `${item.name}  (${categoryText(item.category)}, ${group.namespace})`,
+    label: `${item.name}  (${categoryText(item.category)}, ${orphanModName(group)})`,
     color: C_FG,
   }));
   const pick = await selectFromMenu(

@@ -242,9 +242,9 @@ export function requirementLine(f: Finding): string {
 }
 
 /** The one-line summary of a requirements refusal, for a log or a row. */
-export function requirementsRefusal(id: string): string {
+export function requirementsRefusal(name: string | null): string {
   return (
-    `${id}: this mod does not meet the requirements, so installing it ` +
+    `${name ?? "This mod"} does not meet the requirements, so installing it ` +
     `would not give you a working mod.`
   );
 }
@@ -297,7 +297,7 @@ export function archiveFaults(
    * and a trailing sentence of advice, which made the screen that shows it split
    * the string back apart on "\n" - see InstallResult.unmet. The bullet's wording
    * is still this module's (requirementLine) so there is one copy of it. */
-  return { problem: requirementsRefusal(id), unmet: inspection.errors };
+  return { problem: requirementsRefusal(manifestDisplayName(files)), unmet: inspection.errors };
 }
 
 /**
@@ -327,7 +327,7 @@ function manifestTextOf(files: ReadonlyArray<readonly [string, Uint8Array]>): st
 }
 
 /** The installed manifest's display name, or null when it has no usable one. */
-function manifestDisplayName(files: ReadonlyArray<readonly [string, Uint8Array]>): string | null {
+export function manifestDisplayName(files: ReadonlyArray<readonly [string, Uint8Array]>): string | null {
   const text = manifestTextOf(files);
   if (text === null) return null;
   try {
@@ -372,7 +372,7 @@ async function storeMod(
     if (!db) {
       return {
         ok: false,
-        problem: `${mod.id}: this browser will not let the game store downloaded mods`,
+        problem: `${manifestDisplayName(files) ?? "This mod"} could not be installed: this browser will not let the game store downloaded mods`,
       };
     }
 

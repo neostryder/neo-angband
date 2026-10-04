@@ -41,9 +41,29 @@ export interface ModProblem {
   readonly why: string;
 }
 
-/** A problem as one line, with the id put back on when there is one. */
+let nameLookup: (id: string) => string | undefined = () => undefined;
+
+/**
+ * Tell this module where mod names come from. The shell sets it once at boot from
+ * the manifests it loaded; this module imports nothing, so it cannot look itself.
+ */
+export function setModNameLookup(lookup: (id: string) => string | undefined): void {
+  nameLookup = lookup;
+}
+
+/** A mod's proper name from its manifest, or undefined when the game does not know it. */
+export function modDisplayName(id: string): string | undefined {
+  const name = nameLookup(id)?.trim();
+  return name ? name : undefined;
+}
+
+/**
+ * A problem as one line, led by the mod's proper name. The id stands in only for
+ * a mod whose manifest never loaded, since it is then the one name the player can
+ * find on disk.
+ */
 export function problemLine(p: ModProblem): string {
-  return p.id === null ? p.why : `${p.id}: ${p.why}`;
+  return p.id === null ? p.why : `${modDisplayName(p.id) ?? p.id}: ${p.why}`;
 }
 
 /**

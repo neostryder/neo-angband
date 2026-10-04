@@ -64,6 +64,8 @@ import type { AutoplayerSpeed, CatalogMod, ModStore } from "./mod-store";
 import { dropSessionMods } from "./mod-session";
 import type { ModRuleDecl } from "./pack";
 import {
+  modDisplayName,
+  problemLine,
   problemsFor,
   unattributedProblems,
   type ModProblem,
@@ -814,7 +816,9 @@ export function rowDetail(
   if (m.installedByModId !== undefined) {
     below.push(
       ...wrapped(
-        t("modsScreen.detail.installedBy", "Installed by: {id}", { id: m.installedByModId }),
+        t("modsScreen.detail.installedBy", "Installed by: {name}", {
+          name: modDisplayName(m.installedByModId) ?? t("modsScreen.detail.installedByMod", "another mod"),
+        }),
         w,
         C_DIM,
       ),
@@ -3265,7 +3269,7 @@ export function problemBlock(problems: readonly ModProblem[]): ScreenLine[] {
     { text: t("modsScreen.problemBlock.heading", "Could not be used:"), color: C_DANGER },
   ];
   for (const p of problems.slice(0, CAP)) {
-    out.push({ text: `  ${p.id === null ? p.why : `${p.id}: ${p.why}`}`, color: C_DANGER });
+    out.push({ text: `  ${problemLine(p)}`, color: C_DANGER });
   }
   if (problems.length > CAP) {
     const rest = problems.length - CAP;

@@ -427,7 +427,7 @@ import { createModWorkerPanelRenderer } from "./mod-worker/panels";
 import { MOD_WORKER_PROTOCOL_VERSION, type ModStateSnapshot, type WorkerJson } from "./mod-worker/protocol";
 import { ModWorkerTransport } from "./mod-worker/transport";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
-import { faultMessage, reportModFault } from "./mod-problems";
+import { faultMessage, reportModFault, setModNameLookup } from "./mod-problems";
 import { teardownModPlugins } from "./mod-teardown";
 import { releaseModKeymaps } from "./macro-runtime";
 import {
@@ -12659,6 +12659,12 @@ function taintScreenLines(taint: SessionTaint): ScreenLine[] {
     };
   });
 }
+
+/* Player-facing mod text names a mod by its manifest name. A folder or installed
+ * mod has its manifest in diskPacks; a plugin that loaded has it in activeModCode. */
+setModNameLookup((id) =>
+  diskPacks().packs.find((pack) => pack.manifest.id === id)?.manifest.name ??
+  activeModCode().plugins.find((plugin) => plugin.id === id)?.manifest.name);
 
 onSessionTaint((taint) => {
   setTimeout(() => {

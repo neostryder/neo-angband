@@ -556,6 +556,7 @@ describe("the temporary-load capability read", () => {
     const preview: Extract<SessionPreview, { ok: true }> = {
       ok: true,
       id: "draft",
+      name: "Draft",
       version: "1.0.0",
       code: ["plugin.js"],
       capabilities: ["registry:*"],

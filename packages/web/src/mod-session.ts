@@ -51,7 +51,7 @@ import {
 } from "./disk-packs";
 import { manifestFields } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installBlocked } from "./mod-consent";
-import { archiveFaults, importedOrigin, installedMods, sha256Hex } from "./mod-install";
+import { archiveFaults, importedOrigin, installedMods, manifestDisplayName, sha256Hex } from "./mod-install";
 import { buildModuleGraph } from "./mod-modules";
 import { originConflict } from "./mod-source";
 import { assetMime, sortPackFiles } from "./pack-files";
@@ -262,6 +262,8 @@ export type SessionPreview =
   | {
       readonly ok: true;
       readonly id: string;
+      /** The name its manifest gives, or null when it gives none. */
+      readonly name: string | null;
       readonly version: string | null;
       /** The code files it ships, by path. Empty for a content pack. */
       readonly code: readonly string[];
@@ -301,6 +303,7 @@ export async function previewSessionArchive(
   return {
     ok: true,
     id: read.id,
+    name: manifestDisplayName(read.files),
     version: read.version,
     code: read.files.map(([p]) => p).filter(isCodePath),
     capabilities: manifestCapabilities(read.files),

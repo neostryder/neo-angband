@@ -1592,7 +1592,7 @@ export function waitingZipRow(z: WaitingZip): string {
  * find it without being told to go hunting.
  */
 export function importedLines(
-  id: string,
+  name: string,
   fileCount: number,
   source: string,
   archived: { readonly ok: boolean; readonly error?: string; readonly to?: string } | null,
@@ -1647,7 +1647,7 @@ export function importedLines(
             },
           ];
   return [
-    { text: t("modBrowse.imported.installed", "{id} installed.", { id }), color: C_GOOD },
+    { text: t("modBrowse.imported.installed", "{name} installed.", { name }), color: C_GOOD },
     { text: "", color: C_FG },
     {
       text: t("modBrowse.imported.stored", "{count} file(s) stored, from {source}.", {
@@ -1705,8 +1705,8 @@ async function importOne(
   const enabled = deps.offerEnable ? await deps.offerEnable(result.meta.id) : false;
   await showTextScreen(
     term,
-    result.meta.id,
-    importedLines(result.meta.id, result.meta.files.length, source, archived, enabled),
+    result.meta.name ?? source,
+    importedLines(result.meta.name ?? source, result.meta.files.length, source, archived, enabled),
   );
   return true;
 }
@@ -1837,6 +1837,11 @@ export async function showZipImport(term: GridSurface & GridPointerInput, deps: 
   }
 }
 
+/** What the session screens call an archive: its manifest name, or else the file it came from. */
+function previewName(preview: { readonly name: string | null }, source: string): string {
+  return preview.name ?? source;
+}
+
 /**
  * The screen that asks before a mod is run for one session.
  *
@@ -1880,9 +1885,9 @@ export function sessionLoadScreen(
         {
           text:
             preview.version === null
-              ? t("modBrowse.sessionLoad.header", "{id}, from {source}", { id: preview.id, source })
-              : t("modBrowse.sessionLoad.headerVersioned", "{id} {version}, from {source}", {
-                  id: preview.id,
+              ? t("modBrowse.sessionLoad.header", "{name}, from {source}", { name: previewName(preview, source), source })
+              : t("modBrowse.sessionLoad.headerVersioned", "{name} {version}, from {source}", {
+                  name: previewName(preview, source),
                   version: preview.version,
                   source,
                 }),
@@ -2091,12 +2096,12 @@ export function sessionLoadScreen(
 
 /** What the screen says once an archive is staged. */
 export function sessionLoadedLines(
-  id: string,
+  name: string,
   source: string,
   runs: boolean,
 ): readonly ScreenLine[] {
   return [
-    { text: t("modBrowse.sessionLoaded.loaded", "{id} is loaded for this session.", { id }), color: C_GOOD },
+    { text: t("modBrowse.sessionLoaded.loaded", "{name} is loaded for this session.", { name }), color: C_GOOD },
     { text: "", color: C_FG },
     {
       text: t("modBrowse.sessionLoaded.from", "From {source}. Nothing has been added to your mods.", {
@@ -2178,8 +2183,8 @@ async function tryOne(
     term,
     "core:mod-session-consent",
     preview.code.length > 0
-      ? t("modBrowse.tryOne.runConfirm", "Run {id} for this session?", { id: preview.id })
-      : t("modBrowse.tryOne.loadConfirm", "Load {id} for this session?", { id: preview.id }),
+      ? t("modBrowse.tryOne.runConfirm", "Run {name} for this session?", { name: previewName(preview, source) })
+      : t("modBrowse.tryOne.loadConfirm", "Load {name} for this session?", { name: previewName(preview, source) }),
     [
       {
         label: survives
@@ -2219,8 +2224,8 @@ async function tryOne(
   }
   await showTextScreen(
     term,
-    staged.mod.id,
-    sessionLoadedLines(staged.mod.id, source, staged.code),
+    previewName(preview, source),
+    sessionLoadedLines(previewName(preview, source), source, staged.code),
   );
   void deps;
   return true;
@@ -2914,7 +2919,7 @@ export async function showModUpgrades(term: GridSurface & GridPointerInput, deps
         hint: t("modBrowse.upgrades.updateOneHint", "Update only this one, from {repo}.", { repo: u.repo }),
       })),
       ...blind.map((r) => ({
-        label: t("modBrowse.upgrades.couldNotCheck", "{id}  could not be checked", { id: r.id }),
+        label: t("modBrowse.upgrades.couldNotCheck", "{name}  could not be checked", { name: r.name ?? r.id }),
         color: C_WARN,
         enabled: false,
         /* The address as well as the reason: a player told "HTTP 404" can do

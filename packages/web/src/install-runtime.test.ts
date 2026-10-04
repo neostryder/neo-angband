@@ -168,10 +168,10 @@ describe("the words a mod prints are the game's own", () => {
      * wording would pass while the two drifted, which is the whole failure the
      * `lines` field exists to make impossible. */
     expect(outcome.lines).toEqual(
-      installFailureLines("made-in-game", outcome.problem).map((line) => line.text),
+      installFailureLines("Made in game", outcome.problem).map((line) => line.text),
     );
     /* And it really is the manager's frame around it, headline and all. */
-    expect(outcome.lines[0]).toBe("made-in-game was not installed.");
+    expect(outcome.lines[0]).toBe("Made in game was not installed.");
     expect(outcome.lines.join("\n")).toContain("Nothing was stored");
   });
 

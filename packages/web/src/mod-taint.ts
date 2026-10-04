@@ -31,6 +31,8 @@
  * reportModFault; they just do not get to relabel the wound.
  */
 
+import { modDisplayName } from "./mod-problems";
+
 /** The fault that ended this session's right to save. */
 export interface SessionTaint {
   /**
@@ -133,8 +135,11 @@ export function taintNotice(t: SessionTaint): string[] {
       "github.com/neostryder/neo-angband/issues  -  discord.gg/YegtwbHTBQ",
     ];
   }
+  const name = modDisplayName(t.id);
   return [
-    `The mod "${t.id}" failed while the game was in the middle of a turn.`,
+    name === undefined
+      ? "A mod failed while the game was in the middle of a turn."
+      : `The mod "${name}" failed while the game was in the middle of a turn.`,
     "",
     `Its ${t.hook} hook threw: ${t.why}`,
     "",

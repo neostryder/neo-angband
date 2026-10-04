@@ -23,7 +23,8 @@
  * pass just as well if wrapped() were called with the wrong width.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { setModNameLookup } from "./mod-problems";
 import { rowDetail } from "./mods";
 import type { CatalogMod } from "./mod-store";
 
@@ -204,10 +205,23 @@ describe("a paragraph break in a mod's description becomes a blank line", () => 
  * this is the row's only test.
  */
 describe("a mod installed by another mod says so", () => {
-  it("shows who installed it when installedByModId is set", () => {
+  afterEach(() => {
+    setModNameLookup(() => undefined);
+  });
+
+  it("names the mod that installed it by its proper name", () => {
+    setModNameLookup((id) => (id === "mod-builder" ? "Mod Builder" : undefined));
     const m = mod({ installedByModId: "mod-builder" });
     const text = rowDetail(m, 80).map((l) => l.text).join("\n");
-    expect(text).toContain("Installed by: mod-builder");
+    expect(text).toContain("Installed by: Mod Builder");
+    expect(text).not.toContain("mod-builder");
+  });
+
+  it("writes around the installer's id when its name is unknown", () => {
+    const m = mod({ installedByModId: "mod-builder" });
+    const text = rowDetail(m, 80).map((l) => l.text).join("\n");
+    expect(text).toContain("Installed by: another mod");
+    expect(text).not.toContain("mod-builder");
   });
 
   it("says nothing when the player installed it directly", () => {

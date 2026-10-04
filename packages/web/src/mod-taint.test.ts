@@ -29,7 +29,7 @@ import { MOD_API_VERSION } from "./mod-plugin";
 import { NO_DISK_PACKS, resetDiskPacks, setDiskPacks, type DiskPack } from "./disk-packs";
 import { loadModCode, PLUGIN_FILE, resetModCode, setModCode } from "./mod-code";
 import { activeModHooks } from "./mod-hooks";
-import { modFaults, problemsFor, resetModFaults } from "./mod-problems";
+import { modFaults, problemLine, problemsFor, resetModFaults, setModNameLookup } from "./mod-problems";
 import {
   onSessionTaint,
   resetSessionTaint,
@@ -47,6 +47,7 @@ afterEach(() => {
   resetModCode();
   resetModFaults();
   resetSessionTaint();
+  setModNameLookup(() => undefined);
 });
 
 const MAIN = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
@@ -143,12 +144,29 @@ describe("the session taint", () => {
 });
 
 describe("what the player is told", () => {
+  setModNameLookup((id) => (id === "rowdy" ? "Rowdy Rules" : undefined));
   const text = taintNotice(FAULT).join("\n");
+  setModNameLookup(() => undefined);
 
-  it("names the mod, the hook and the error", () => {
-    expect(text).toContain("rowdy");
+  it("names the mod by its proper name, then the hook and the error", () => {
+    expect(text).toContain('The mod "Rowdy Rules"');
+    expect(text).not.toContain("rowdy");
     expect(text).toContain("historyAdd");
     expect(text).toContain("boom");
+  });
+
+  it("writes around a mod whose name the game does not know, rather than showing its id", () => {
+    setModNameLookup(() => undefined);
+    const nameless = taintNotice(FAULT).join("\n");
+    expect(nameless).toContain("A mod failed");
+    expect(nameless).not.toContain("rowdy");
+  });
+
+  it("leads a problem line with the proper name, and with the id only when no name is known", () => {
+    setModNameLookup((id) => (id === "rowdy" ? "Rowdy Rules" : undefined));
+    expect(problemLine({ id: "rowdy", why: "boom" })).toBe("Rowdy Rules: boom");
+    expect(problemLine({ id: "ghost", why: "no manifest" })).toBe("ghost: no manifest");
+    expect(problemLine({ id: null, why: "folder gone" })).toBe("folder gone");
   });
 
   it("says the game has stopped saving, and that the old save is intact", () => {
@@ -371,8 +389,9 @@ describe("the save refusal is wired into the one function every save goes throug
   });
 
   it("still words a mod fault as a mod fault", () => {
+    setModNameLookup((id) => (id === "qol" ? "Quality of Life" : undefined));
     const lines = taintNotice({ id: "qol", hook: "onMove", why: "boom" }).join(" ");
-    expect(lines).toContain('The mod "qol"');
+    expect(lines).toContain('The mod "Quality of Life"');
     expect(lines).toContain("onMove");
   });
 });
