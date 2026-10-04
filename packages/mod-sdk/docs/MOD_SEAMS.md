@@ -108,7 +108,28 @@ The `Fold` column uses the code's own vocabulary. `MOD_HOOK_FOLDS` (`packages/co
 
 `optionsChanged` and `levelRevisited` are notifications: core asks neither of them a question. Every other hook's return value changes what the engine does next, so its fold has to decide whose answer wins. A notification returns nothing and folds as **all-observe**: every listening mod is told, in load order, and none can overrule another. `levelRevisited` passes the live restored chunk plus unrounded turn endpoints, so a tracking mod can reproduce the engine's world-tick boundary exactly. `optionsChanged` is fired by the host and tells a mod that the player has finished changing settings.
 
-`monsterBecameVisible` and `artifactIdentified` are notifications of the same kind, fired from inside core instead of the host. Neither hands over a live game object. `monsterBecameVisible` passes a `KnownMonster`, the monster as the player knows it: its index, race and grid, the look command's health band and statuses, the race's level and speed, and the race flags and spells the player's lore has recorded. Its exact hit points, its current speed and anything recall has not shown stay out. `artifactIdentified` passes `{ name, artifactIndex }`, both of which the player learns at that moment. Both fire only on the transition. `monsterBecameVisible` fires on the same "it was previously unseen" branch that increments the race's "sights" lore counter, so it fires once per fresh sighting and never on a turn where an already-visible monster stays visible. `artifactIdentified` fires when the object's `OBJ_NOTICE.ASSESSED` bit goes from unset to set, which happens once per object because the bit is never cleared.
+`monsterBecameVisible` and `artifactIdentified` are notifications of the same kind, fired from inside core instead of the host. Neither hands over a live game object. `monsterBecameVisible` passes a `KnownMonster` (`agent/known-world.ts`), the monster as the player knows it, with the fields in the table below. Its exact hit points, its current speed and anything recall has not shown stay out. `artifactIdentified` passes `{ name, artifactIndex }`: the artifact's name, which the player learns at that moment, and its index in the artifact list. Both fire only on the transition. `monsterBecameVisible` fires on the same "it was previously unseen" branch that increments the race's "sights" lore counter, so it fires once per fresh sighting and never on a turn where an already-visible monster stays visible. `artifactIdentified` fires when the object's `OBJ_NOTICE.ASSESSED` bit goes from unset to set, which happens once per object because the bit is never cleared.
+
+| Field | Type | What it holds |
+|---|---|---|
+| `id` | number | The monster's index, the one targeting and commands take. It finds the same monster in a later `KnownWorld`. |
+| `race` | string | The race's name |
+| `raceIndex` | number | The race's index |
+| `raceId` | string, optional | The namespaced race id. This hook never sets it, because its call site builds the monster without a resolver. |
+| `grid` | `{ x, y }` | Where the monster stands |
+| `visible` | boolean | The monster's visible flag. It is always true here, since the hook fires as that flag is set. |
+| `health` | string | The look command's health band: `unhurt`, `somewhat`, `wounded`, `badly` or `almost` |
+| `living` | boolean | False for a monster the look command calls damaged rather than wounded. |
+| `status` | string array | The look statuses it has, from `asleep`, `held`, `disenchanted`, `confused`, `afraid`, `stunned`, `slowed` and `hasted` |
+| `look` | string | The look command's line for it, such as `wounded, asleep` |
+| `raceLevel` | number | The race's native depth |
+| `raceSpeed` | number | The race's speed, where 110 is normal |
+| `knownFlags` | string array | Race flag codes the player's lore has learned |
+| `knownSpells` | string array | Spell codes the player's lore has learned |
+| `unique` | boolean | True when `knownFlags` includes `UNIQUE` |
+| `questGuardian` | boolean | The race is the target of one of the character's quests. |
+| `finalGuardian` | boolean | The race is the target of the character's last quest, Morgoth in the standard quest list. |
+| `glyph` | string, optional | The race's glyph. This hook never sets it. |
 
 Three parts of `optionsChanged`'s behaviour are contract, and a mod can rely on them:
 
