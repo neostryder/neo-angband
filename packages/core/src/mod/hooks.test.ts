@@ -1124,6 +1124,44 @@ describe("guardModHooks: a hook that threw is not called again", () => {
   });
 });
 
+describe("guardModHooks: the host's invoke and active options", () => {
+  it("runs each call through invoke, named by hook, and returns its answer", () => {
+    const seen: string[] = [];
+    const hooks = guardModHooks({ messageText: (s) => s.toUpperCase() }, () => undefined, {
+      invoke: (hook, run) => {
+        seen.push(hook);
+        return run();
+      },
+    });
+    expect(hooks.messageText?.("hi")).toBe("HI");
+    expect(seen).toEqual(["messageText"]);
+  });
+
+  it("still latches and reports a throw that invoke rethrows", () => {
+    const faults: ModHookFault[] = [];
+    const fn = vi.fn(THROWS);
+    const hooks = guardModHooks({ saveNoiseScent: fn }, (f) => faults.push(f), {
+      invoke: (_hook, run) => run(),
+    });
+    expect(hooks.saveNoiseScent?.()).toBe(false);
+    expect(hooks.saveNoiseScent?.()).toBe(false);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(faults).toHaveLength(1);
+  });
+
+  it("gives the neutral answer without a call or a fault while inactive", () => {
+    const faults: ModHookFault[] = [];
+    const fn = vi.fn((s: string) => s.toUpperCase());
+    let on = true;
+    const hooks = guardModHooks({ messageText: fn }, (f) => faults.push(f), { active: () => on });
+    expect(hooks.messageText?.("a")).toBe("A");
+    on = false;
+    expect(hooks.messageText?.("b")).toBe("b");
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(faults).toEqual([]);
+  });
+});
+
 describe("guardModHooks: it wraps, and does not invent", () => {
   it("leaves an absent hook absent", () => {
     /* If the guard stubbed every member, "a disabled mod's patches do not exist"

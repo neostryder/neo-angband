@@ -825,6 +825,24 @@ export interface ModHookFault {
 }
 
 /**
+ * How the host sees into a guarded mod's hook calls (guardModHooks' third
+ * argument). Both are optional, and with neither the guard behaves as it always
+ * has.
+ */
+export interface ModHookGuardOptions {
+  /**
+   * Runs each hook call. It must call `run` once and return or rethrow what it
+   * gives; the host uses it to time the call and count the mod's faults.
+   */
+  readonly invoke?: <T>(hook: keyof ModHooks, run: () => T) => T;
+  /**
+   * Asked before each hook call. False means the mod has been switched off, and
+   * every hook gives its neutral answer without running or reporting a fault.
+   */
+  readonly active?: () => boolean;
+}
+
+/**
  * ONE mod's contribution, with every hook wrapped so a throw cannot escape into
  * the middle of a turn.
  *
@@ -861,14 +879,17 @@ export interface ModHookFault {
 export function guardModHooks(
   hooks: ModHooks,
   onFault: (fault: ModHookFault) => void,
+  guardOptions: ModHookGuardOptions = {},
 ): ModHooks {
   const out: ModHooks = {};
   const stopped = new Set<keyof ModHooks>();
+  const { invoke, active } = guardOptions;
 
   function guard<T>(hook: keyof ModHooks, run: () => T, neutral: T): T {
     if (stopped.has(hook)) return neutral;
+    if (active && !active()) return neutral;
     try {
-      return run();
+      return invoke ? invoke(hook, run) : run();
     } catch (error) {
       stopped.add(hook);
       onFault({ hook, error });

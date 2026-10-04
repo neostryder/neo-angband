@@ -150,18 +150,18 @@
       "verdict": "PARSER - the tagged encoding a mod database crosses executeJavaScript in when an old loopback origin is moved (TAGGED_CODEC). Host wiring for one fixed format; a mod never sees it."
     },
     {
+      "file": "packages/web/src/mods.ts",
+      "cases": 13,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "UI - row-action routing in the mod-manager screen, an `if/else if (rk.kind === ...)` chain instead of main.ts's items[idx].action switch pattern. A mod-manager feature added to this menu has no arm to land in (MOD_REACH gap 18/24). Was 9 arms, then 8 when neo-angband#163 removed the profiles branch, 9 again with the stash-view row (#76), 11 with the Save a Delve / Load a Delve rows (#87), 12 with the mod-profile sync folder row (#158), and 13 with the Mod performance row."
+    },
+    {
       "file": "packages/core/src/combat/mon-melee.ts",
       "cases": 12,
       "hasDefault": false,
       "kind": "SWITCH",
       "verdict": "REACHABLE - monster blow effects go through registry:blow (MOD_REACH gaps 9/10); this switch is the fallback path behind it."
-    },
-    {
-      "file": "packages/web/src/mods.ts",
-      "cases": 12,
-      "hasDefault": false,
-      "kind": "IF_CHAIN",
-      "verdict": "UI - row-action routing in the mod-manager screen, an `if/else if (rk.kind === ...)` chain instead of main.ts's items[idx].action switch pattern. A mod-manager feature added to this menu has no arm to land in (MOD_REACH gap 18/24). Was 9 arms, then 8 when neo-angband#163 removed the profiles branch, 9 again with the stash-view row (#76), 11 with the Save a Delve / Load a Delve rows (#87), and 12 with the mod-profile sync folder row (#158)."
     },
     {
       "file": "packages/core/src/mon/lore-file.ts",

@@ -37,6 +37,7 @@
  * reload anyway.
  */
 
+import { modHealth } from "./mod-health";
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 import type { MenuAnswer, MenuPresenter, MenuQuestion } from "./menu-view";
@@ -113,7 +114,9 @@ export function installMenu(
   if (!winner) return null;
   let returned: MenuPresenter | undefined;
   try {
-    returned = winner.plugin.menu!.call(winner.plugin, contextFor(winner.id));
+    returned = modHealth().run(winner.id, "menu()", () =>
+      winner.plugin.menu!.call(winner.plugin, contextFor(winner.id)),
+    );
   } catch (error) {
     reportFault(winner.id, "menu() failed, so the game goes on asking its own questions", error);
     return null;
@@ -126,7 +129,10 @@ export function installMenu(
   const presenter = returned;
   /* The SDK owns the public types; the live question is structurally identical
    * and this adapter keeps the runtime boundary local. */
-  return { id: winner.id, presenter: { ask: (question) => presenter.ask(question) } };
+  return {
+    id: winner.id,
+    presenter: { ask: (question) => modHealth().run(winner.id, "menu ask", () => presenter.ask(question)) },
+  };
 }
 
 /* ------------------------------------------------------------------ */

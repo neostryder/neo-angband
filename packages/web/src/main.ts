@@ -430,7 +430,15 @@ import { createModWorkerPanelRenderer } from "./mod-worker/panels";
 import { MOD_WORKER_PROTOCOL_VERSION, type ModStateSnapshot, type WorkerJson } from "./mod-worker/protocol";
 import { ModWorkerTransport } from "./mod-worker/transport";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
-import { faultMessage, reportModFault, setModNameLookup } from "./mod-problems";
+import { faultMessage, modDisplayName, reportModFault, setModNameLookup } from "./mod-problems";
+import {
+  configureModHealth,
+  FAULT_LIMIT,
+  FAULT_WINDOW_TURNS,
+  modHealth,
+  switchOffNotice,
+  type ModSwitchOff,
+} from "./mod-health";
 import { teardownModPlugins } from "./mod-teardown";
 import { releaseModKeymaps } from "./macro-runtime";
 import {
@@ -7752,6 +7760,7 @@ async function modManagerDeps(): Promise<ModManagerDeps> {
      * instead of after a reload the player has not been told to do yet. */
     rediscover: rediscoverModSources,
     conflictLines: () => liveConflictLines(),
+    profiler: () => modHealth().stats(),
     // The mods DIRECTORY, so the manager can name a real path instead of
     // describing a capability the shell might or might not have.
     diskPackStatus: () => diskPackStatus(),
@@ -15664,14 +15673,16 @@ function installTrusted(trustedId: string): void {
         },
         caps,
       );
-      found.plugin.register(host, {
-        state,
-        id: trustedId,
-        log: (msg) => {
-          logs.push(msg);
-          log.info(`trusted:${trustedId}`, `${msg}`);
-        },
-      });
+      modHealth().run(trustedId, "register()", () =>
+        found.plugin.register(host, {
+          state,
+          id: trustedId,
+          log: (msg) => {
+            logs.push(msg);
+            log.info(`trusted:${trustedId}`, `${msg}`);
+          },
+        }),
+      );
     } catch (err) {
       trustedError = err instanceof Error ? err.message : String(err);
       log.error(`trusted:${trustedId}`, `install failed:`, err);
@@ -15866,6 +15877,63 @@ publishWorkerModels = (force = false): void => {
     if (entry.topic === "display.snapshot" && displayChanged) session.publishModel(entry.subscriptionId, displayModel);
   }
 };
+/* Runtime health (mod-health.ts). From here on every call into mod code is
+ * timed against the game turn and its faults are counted, and a mod that fails
+ * FAULT_LIMIT times within FAULT_WINDOW_TURNS turns is switched off until the
+ * page next loads. The mod list on disk is left as it is. */
+function modSwitchedOff(off: ModSwitchOff): void {
+  reportModFault(
+    off.id,
+    `it failed ${String(FAULT_LIMIT)} times within ${String(FAULT_WINDOW_TURNS)} game turns, so it is ` +
+      `switched off until the game next starts. The last error was: ${off.why}`,
+  );
+  log.error(`mod:${off.id}`, `switched off after repeated faults; the last was in ${off.site}:`, off.why);
+  /* Deferred, as the taint notice is: the fault surfaced wherever the mod was
+   * called, possibly mid-turn, and a modal opened there would interleave with it. */
+  setTimeout(() => {
+    const worker = workerPlugins.get(off.id);
+    if (worker) {
+      workerPlugins.delete(off.id);
+      worker.teardown();
+    }
+    const name = modDisplayName(off.id);
+    if (installedController?.id === off.id) {
+      stopInstalledController?.(
+        "switched off for failing",
+        name === undefined
+          ? "The autoplayer kept failing, so you have the keyboard back."
+          : `${name} kept failing, so you have the keyboard back.`,
+      );
+    }
+    void openModal(async () => {
+      await showTextScreen(
+        term,
+        name === undefined ? "A mod was switched off" : `${name} was switched off`,
+        switchOffNotice(off, name).map((text) => ({ text })),
+        "[ Press ESC to continue ]",
+      );
+      if (await confirmYesNo("Open the report page now? ")) await showReportPage();
+    });
+  }, 0);
+}
+configureModHealth({
+  turn: () => state.turn,
+  enforce: true,
+  onSwitchOff: modSwitchedOff,
+  onOverBudget: (report) => {
+    log.warn(
+      `mod:${report.id}`,
+      `used ${report.ms.toFixed(1)} ms on turn ${String(report.turn)}, over its ` +
+        (report.ceiling ? `hard limit of ${String(report.budgetMs)} ms` : `budget of ${String(report.budgetMs)} ms`),
+    );
+  },
+});
+/* A key or a tap starts a fresh budget period, so time a player spends in menus
+ * without taking a turn is not all charged to one turn. Capturing, on window, so
+ * it runs before any handler that might call a mod. */
+window.addEventListener("keydown", () => modHealth().newPeriod(), { capture: true });
+window.addEventListener("pointerdown", () => modHealth().newPeriod(), { capture: true });
+
 {
   const disk = diskPacks();
   for (const loaded of activeModCode().workers) {
@@ -15932,7 +16000,11 @@ publishWorkerModels = (force = false): void => {
           workerModelSubscriptions.delete(loaded.id);
           workerPanelRenderer.teardown(loaded.id);
         },
-        onProblem: (message) => reportModFault(loaded.id, `Worker request refused: ${message}`),
+        onProblem: (message) => {
+          reportModFault(loaded.id, `Worker request refused: ${message}`);
+          modHealth().recordFault(loaded.id, "Worker message", new Error(message));
+        },
+        onPayload: (bytes) => modHealth().recordPayload(loaded.id, bytes),
         transport: workerTransport,
         loadOrder: activeModCode().workers.findIndex((candidate) => candidate.id === loaded.id),
       });
@@ -15972,16 +16044,18 @@ publishWorkerModels = (force = false): void => {
       saveSchema: loaded.manifest.saveSchema,
       migrate: migrateBag
         ? (data: JsonValue, from: number): JsonValue =>
-            migrateBag.call(
-              loaded.plugin,
-              data,
-              from,
-              modPluginContext(
-                loaded.id,
-                folderRuleFlags.get(loaded.id) ?? {},
-                state,
-                modOwnFiles(loaded.data),
-                { ...sessionFacts, capabilities: CapabilitySet.fromManifest(loaded.manifest) },
+            modHealth().run(loaded.id, "migrateBag()", () =>
+              migrateBag.call(
+                loaded.plugin,
+                data,
+                from,
+                modPluginContext(
+                  loaded.id,
+                  folderRuleFlags.get(loaded.id) ?? {},
+                  state,
+                  modOwnFiles(loaded.data),
+                  { ...sessionFacts, capabilities: CapabilitySet.fromManifest(loaded.manifest) },
+                ),
               ),
             ) as JsonValue
         : undefined,
@@ -16046,18 +16120,20 @@ for (const loaded of activeModCode().plugins) {
       },
       CapabilitySet.fromManifest(loaded.manifest),
     );
-    register.call(
-      loaded.plugin,
-      host,
-      modPluginContext(
-        loaded.id,
-        folderRuleFlags.get(loaded.id) ?? {},
-        state,
-        modOwnFiles(loaded.data),
-        /* `capabilities` gates ctx.backupFolder (#133) - this mod's OWN
-         * resolved set, the same value `createModRegistryHost` above already
-         * computed for it, not recomputed differently. */
-        { ...sessionFacts, capabilities: CapabilitySet.fromManifest(loaded.manifest) },
+    modHealth().run(loaded.id, "register()", () =>
+      register.call(
+        loaded.plugin,
+        host,
+        modPluginContext(
+          loaded.id,
+          folderRuleFlags.get(loaded.id) ?? {},
+          state,
+          modOwnFiles(loaded.data),
+          /* `capabilities` gates ctx.backupFolder (#133) - this mod's OWN
+           * resolved set, the same value `createModRegistryHost` above already
+           * computed for it, not recomputed differently. */
+          { ...sessionFacts, capabilities: CapabilitySet.fromManifest(loaded.manifest) },
+        ),
       ),
     );
     installedPluginIds.add(loaded.id);
@@ -16295,7 +16371,10 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
   const modLatched: AgentController = (view, act) => {
     if (!modArmed) return null;
     modArmed = false;
-    return controller(view, act);
+    /* A switched-off autoplayer answers nothing until the keyboard is handed
+     * back (modSwitchedOff). */
+    if (modHealth().isOff(loaded.id)) return null;
+    return modHealth().run(loaded.id, "controller", () => controller(view, act));
   };
   const session = installController(state, modLatched, {
     capabilities: CapabilitySet.fromManifest(loaded.manifest),
@@ -16451,14 +16530,16 @@ for (const loaded of activeModCode().plugins) {
     continue;
   }
   try {
-    const answer = makeController.call(
-      loaded.plugin,
-      modPluginContext(
-        loaded.id,
-        folderRuleFlags.get(loaded.id) ?? {},
-        state,
-        modOwnFiles(loaded.data),
-        { ...sessionFacts, capabilities: CapabilitySet.fromManifest(loaded.manifest) },
+    const answer = modHealth().run(loaded.id, "controller()", () =>
+      makeController.call(
+        loaded.plugin,
+        modPluginContext(
+          loaded.id,
+          folderRuleFlags.get(loaded.id) ?? {},
+          state,
+          modOwnFiles(loaded.data),
+          { ...sessionFacts, capabilities: CapabilitySet.fromManifest(loaded.manifest) },
+        ),
       ),
     );
     /* undefined is a decline: a mod that has never been handed the keyboard

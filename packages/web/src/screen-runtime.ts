@@ -27,6 +27,7 @@
  * mod being disabled takes effect on reload anyway.
  */
 
+import { modHealth } from "./mod-health";
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 import type { PromptRequest } from "./prompt-view";
@@ -116,7 +117,9 @@ export function installScreen(
   if (!winner) return null;
   let returned: ScreenPresenter | undefined;
   try {
-    returned = winner.plugin.screen!.call(winner.plugin, contextFor(winner.id));
+    returned = modHealth().run(winner.id, "screen()", () =>
+      winner.plugin.screen!.call(winner.plugin, contextFor(winner.id)),
+    );
   } catch (error) {
     reportFault(winner.id, "screen() failed, so the game goes on showing its own screens", error);
     return null;
@@ -132,7 +135,9 @@ export function installScreen(
   /* `host` is forwarded, not dropped: it is the only way a presenter reaches a
    * screen's `actions`, and an adapter that silently ate it would leave the
    * character sheet's rename and dump unreachable with no error anywhere. */
-  const installedPresenter: ScreenPresenter = { show: (view, host) => presenter.show(view, host) };
+  const installedPresenter: ScreenPresenter = {
+    show: (view, host) => modHealth().run(winner.id, "screen show", () => presenter.show(view, host)),
+  };
   presenterRegions.set(installedPresenter, presenterRegionSpec(winner.id));
   return { id: winner.id, presenter: installedPresenter };
 }
@@ -393,7 +398,7 @@ export async function withTerminal<T>(
   /* (3) Announced and AWAITED before anything is drawn. */
   open.yielded = true;
   try {
-    await stepAside.call(open.shown, request);
+    await modHealth().run(open.modId, "screen yieldTerminal", () => stepAside.call(open.shown, request));
   } catch (error) {
     surrender(
       open,
@@ -413,7 +418,9 @@ export async function withTerminal<T>(
     /* (5) */
     open.yielded = false;
     try {
-      await stepAside.call(open.shown, null);
+      await modHealth().run(open.modId, "screen yieldTerminal", () => stepAside.call(open.shown, null), {
+        always: true,
+      });
     } catch (error) {
       /* Reported, not rethrown: the work is already done and its own result -
        * or its own exception - is what the player is owed. The screen is the

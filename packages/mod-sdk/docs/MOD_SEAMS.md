@@ -161,6 +161,8 @@ Letting the throw escape would be worse. It does not undo what the mod did befor
 
 The host handles the rest. `packages/web/src/mod-taint.ts` treats a mid-turn fault as terminal for the session: it refuses every further save, puts the fault on the mod's row in the manager, and shows a modal that names the mod and offers a reload. The save gate is in `persistSave`, not `autosave`, because a level change, `S`, the options screen and `pagehide` all force a save too. Before this existed, the only protection for the save file was that the autosave sits at the end of the turn, so the exception unwound past it.
 
+Each hook call also goes through the host's runtime health check, so the throw counts toward switching the whole mod off for the session (`MOD_LIFECYCLE.md`, section 4). Once a mod is switched off, all of its hooks give their neutral answers without being called.
+
 ### Why `null` is the decline sentinel, and not `0` or `false`
 
 For the `last-answer` fold, the decline sentinel cannot be a value the hook might legitimately return. `walkBlockedByDiggable` returns an energy cost, and `0` is a real energy cost; if `0` meant "decline", a mod could not say "I handled this action and it costs nothing". `null` keeps the two apart. The fold tests `energy !== null`, so a hook returning `0` handles the walk and stops the chain, while `null` passes it to the next mod.

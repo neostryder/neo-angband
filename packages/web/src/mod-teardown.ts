@@ -40,6 +40,7 @@
 
 import { faultMessage, reportModFault } from "./mod-problems";
 import { log } from "./logging";
+import { modHealth } from "./mod-health";
 import type { ModPlugin } from "./mod-plugin";
 
 /** A loaded plugin, narrowed to what teardown needs (mod-code.ts's LoadedModPlugin fits). */
@@ -150,7 +151,10 @@ export function teardownModPlugins(deps: ModTeardownDeps): ModTeardownResult {
     const uninstall = loaded.plugin.uninstall;
     if (uninstall) {
       try {
-        uninstall.call(loaded.plugin);
+        /* `always`, because a mod switched off for failing still gets to clean up. */
+        modHealth().run(loaded.id, "uninstall()", () => uninstall.call(loaded.plugin), {
+          always: true,
+        });
         torndown.push(loaded.id);
       } catch (err) {
         failed.push(loaded.id);

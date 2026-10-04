@@ -22,6 +22,7 @@ import { coreFor } from "./mod-core-usage";
 import * as neoAuthoring from "@rpgm-tools/neo-angband-mod-sdk";
 import { log } from "./logging";
 import { faultMessage, reportModFault } from "./mod-problems";
+import { modHealth } from "./mod-health";
 import type { CoreRegistries, GameState, KnownLevelView, ModBag } from "@rpgm-tools/neo-angband-core";
 import {
   IN_PROCESS_MOD_API_VERSION,
@@ -173,6 +174,8 @@ export function modPluginContext(
         log.error(`mod:${id}`, `its ${type} listener failed:`, error);
         reportModFault(id, `its ${type} listener failed: ${faultMessage(error)}`);
       },
+      invoke: (type, run) => modHealth().run(id, `${type} listener`, run),
+      active: () => !modHealth().isOff(id),
     })
     : undefined;
   const knownLevel = knownLevelFor(session);

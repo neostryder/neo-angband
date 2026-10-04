@@ -18,6 +18,7 @@
  * have been constructed before it is needed.
  */
 
+import { modHealth } from "./mod-health";
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 import {
@@ -155,7 +156,9 @@ function construct(
   reportFault: (id: string, message: string, error: unknown) => void,
 ): WorldFrameSink | null {
   try {
-    const sink = candidate.plugin.frontend!.call(candidate.plugin, contextFor(candidate.id));
+    const sink = modHealth().run(candidate.id, "frontend()", () =>
+      candidate.plugin.frontend!.call(candidate.plugin, contextFor(candidate.id)),
+    );
     if (sink === undefined) return null;
     if (typeof sink !== "object" || sink === null || typeof sink.present !== "function") {
       reportFault(candidate.id, "frontend() did not return a WorldFrameSink; the glyph front end stays active", sink);
@@ -163,7 +166,9 @@ function construct(
     }
     /* The SDK owns the public frame type; world-view's live frame is
      * structurally identical and this adapter keeps the runtime boundary local. */
-    return { present: (frame) => sink.present(frame) };
+    return {
+      present: (frame) => modHealth().run(candidate.id, "frontend present", () => sink.present(frame)),
+    };
   } catch (error) {
     reportFault(candidate.id, "frontend() failed, so the glyph front end stays active", error);
     return null;
