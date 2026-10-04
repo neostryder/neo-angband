@@ -150,6 +150,11 @@ describe("known level", () => {
     expect(privileged.cells.find((c) => c.x === grid.x && c.y === grid.y)?.actual).toMatchObject({
       feat: state.chunk.feat(grid), traps: [{ index: 3 }], objects: [{ handle: 0 }],
     });
+    /* The read wildcard reaches the remembered map but not the real one. */
+    const wildcard = createAgentView(state, undefined, {}, caps("state:*.read")).knownLevel!()!;
+    const wildcardCell = wildcard.cells.find((c) => c.x === grid.x && c.y === grid.y);
+    expect(wildcardCell?.remembered).toMatchObject({ feat: rememberedFeat });
+    expect(wildcardCell).not.toHaveProperty("actual");
     const visibleTrap = state.traps.get(index)![0]!;
     (visibleTrap.flags as unknown as Set<number>).add(TRF.VISIBLE);
     const rememberedTrap = createAgentView(state, undefined, {}, caps("state:map.read"))

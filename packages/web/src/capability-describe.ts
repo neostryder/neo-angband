@@ -183,9 +183,17 @@ export function describeCapability(cap: string): CapabilityDescription {
     case "event":
       return { cap, text: `Observe the "${parsed.name}" game event`, elevated: false };
     case "state":
-      return parsed.domain === "*"
-        ? { cap, text: "Read ALL game state", elevated: true }
-        : { cap, text: `Read ${parsed.domain} game state`, elevated: false };
+      if (parsed.domain === "*") {
+        return { cap, text: "Read ALL game state, except the parts of the map your character has not found", elevated: true };
+      }
+      if (parsed.domain === "map-actual") {
+        return {
+          cap,
+          text: "See what the map really holds, including traps, items, terrain and creatures your character has not found",
+          elevated: true,
+        };
+      }
+      return { cap, text: `Read ${parsed.domain} game state`, elevated: false };
     case "network":
       if (parsed.host === "local") {
         return {

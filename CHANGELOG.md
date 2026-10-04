@@ -54,6 +54,7 @@ still calls itself.
 
 ### Changed
 
+- [Visible] [Security] [Modding-API] **The read-everything permission no longer shows a mod the real map.** A mod that asks to read all game state now sees only what your character knows of the map; the hidden layer (traps, items, terrain and creatures not yet found) needs its own permission, `state:map-actual.read`, which the consent screen names and marks as powerful.
 - [Visible] [UI] **Mod messages now call each mod by its proper name.** The notice shown when a mod fails partway through a turn, the problem lines on the Mods screen, the line saying which mod installed another, the install refusals, the import and try screens and the orphaned data screen all take the name from the mod's manifest instead of showing its id. When the game does not know a mod's name, the message is worded so it does not need one; the id appears only for a mod whose manifest never loaded or whose saved items outlived it, where it is the only name there is.
 
 ### Fixed

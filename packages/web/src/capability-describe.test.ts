@@ -69,6 +69,12 @@ describe("describeCapability", () => {
     expect(describeCapability("event:turn")).toMatchObject({ elevated: false });
     expect(describeCapability("state:player.read")).toMatchObject({ elevated: false });
     expect(describeCapability("state:*.read")).toMatchObject({ elevated: true });
+    /* The real map is never covered by the wildcard, so its own sentence has to
+     * say what it shows, and it is flagged like the wildcard is. */
+    expect(describeCapability("state:map-actual.read")).toMatchObject({ elevated: true });
+    expect(describeCapability("state:map-actual.read").text).toMatch(/traps, items, terrain and creatures/);
+    expect(describeCapability("state:map-actual.read").text).toMatch(/has not found/);
+    expect(describeCapability("state:*.read").text).toMatch(/except the parts of the map/);
     expect(describeCapability("network:example.com")).toMatchObject({ elevated: true });
     expect(describeCapability("network:*").text).toMatch(/ANY host/i);
     expect(describeCapability("network:local").text).toMatch(/local network/);

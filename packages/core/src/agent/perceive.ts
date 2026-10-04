@@ -385,7 +385,8 @@ export function createAgentView(
     knownLevel: gateRead(caps, D.map, () => captureKnownLevel(
       state,
       deps,
-      !caps || caps.has("state:map-actual.read") || caps.has("state:*.read"),
+      /* By name only: the read wildcard does not reach the real map. */
+      !caps || caps.has("state:map-actual.read"),
     )),
     inventory: gateRead(caps, D.inventory, () => {
       const out: ItemView[] = [];

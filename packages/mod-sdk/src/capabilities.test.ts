@@ -112,6 +112,19 @@ describe("parseCapability: valid forms", () => {
     });
   });
 
+  it("does not let the state:*.read wildcard cover the real map", () => {
+    /* map-actual shows what the player has not found, so it is granted by name
+     * only; every other read domain still falls under the wildcard. */
+    const broad = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["state:*.read"] }));
+    expect(broad.has("state:map.read")).toBe(true);
+    expect(broad.has("state:monsters.read")).toBe(true);
+    expect(broad.has("state:map-actual.read")).toBe(false);
+    const named = CapabilitySet.fromManifest(manifest("plugin", { capabilities: ["state:map-actual.read"] }));
+    expect(named.has("state:map-actual.read")).toBe(true);
+    expect(named.has("state:map.read")).toBe(false);
+    expect(named.has("state:monsters.read")).toBe(false);
+  });
+
   it("parses the state:*.read wildcard", () => {
     expect(parseCapability("state:*.read")).toEqual({
       kind: "state",

@@ -396,7 +396,7 @@ Declare `display:filter` to call `ctx.display.setVisualFilter(filter, { scope: "
 
 ### Reading the known level: `ctx.knownLevel()`
 
-Use `ctx.knownLevel()` to draw a map or minimap from every grid the player knows. The frozen result has a token, level id, dimensions and cells with remembered terrain, traps and objects. Declare `state:map.read`; the call returns null without it. The separate `actual` data requires `state:map-actual.read`. See [MOD_SEAMS.md section 4h](MOD_SEAMS.md#4h-ctxknownlevel---the-players-whole-remembered-level).
+Use `ctx.knownLevel()` to draw a map or minimap from every grid the player knows. The frozen result has a token, level id, dimensions and cells with remembered terrain, traps and objects. Declare `state:map.read`; the call returns null without it. The separate `actual` data requires `state:map-actual.read` by name, alongside `state:map.read`; the `state:*.read` wildcard does not grant it. See [MOD_SEAMS.md section 4h](MOD_SEAMS.md#4h-ctxknownlevel---the-players-whole-remembered-level).
 ### Inspecting items, monsters, spells, and aiming
 
 `ctx.inspect` reads item inspection, monster recall, spell details, item picker eligibility, projection paths, and ball areas from the game's own helpers. Each result is frozen and stamped with the current input token. Declare the matching `state:inventory.read`, `state:monsters.read`, `state:spells.read`, or `state:map.read` capability. See [MOD_SEAMS.md section 4k](MOD_SEAMS.md#4k-ctxinspect---read-the-games-own-inspection-answers).

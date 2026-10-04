@@ -35,7 +35,9 @@
  *                             "event:turn-start".
  *  - "state:<domain>.read"  - read one perceive-facade domain, e.g.
  *                             "state:party.read"; or the wildcard
- *                             "state:*.read" for any domain.
+ *                             "state:*.read" for any domain except
+ *                             "map-actual", which is only ever granted
+ *                             by name.
  *  - "network:<host>"       - outbound network to one host; or "network:*"
  *                             for any host. Not in the section-4 examples
  *                             verbatim, but named there ("network access to
@@ -517,9 +519,18 @@ export function parseCapability(cap: string): ParsedCapability {
 }
 
 /**
+ * State domains the "state:*.read" wildcard does not cover. `map-actual` is the
+ * real map under the player's memory (unfound traps, unseen floor objects), so a
+ * mod gets it only by asking for it by name, where the consent screen can say
+ * what it is.
+ */
+const NAMED_ONLY_STATE_DOMAINS: ReadonlySet<string> = new Set(["map-actual"]);
+
+/**
  * True if `grant` covers `request`. Exact match for command/event, plus the
  * two documented wildcards: a "state:*.read" grant covers a read of any
- * domain, and a "network:*" grant covers egress to any host.
+ * domain except the named-only ones, and a "network:*" grant covers egress
+ * to any host.
  */
 function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolean {
   switch (request.kind) {
@@ -545,7 +556,9 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
       return (
         grant.kind === "state" &&
         grant.access === request.access &&
-        (grant.domain === "*" || grant.domain === request.domain)
+        (grant.domain === "*"
+          ? !NAMED_ONLY_STATE_DOMAINS.has(request.domain)
+          : grant.domain === request.domain)
       );
     case "network":
       return (
