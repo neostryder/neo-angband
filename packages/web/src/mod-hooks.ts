@@ -58,7 +58,6 @@ import { validateModPlugin, type ModPlugin } from "./mod-plugin";
 import { modPluginContext, modOwnFiles } from "./mod-context";
 import { faultMessage, reportModFault } from "./mod-problems";
 import { taintSession } from "./mod-taint";
-import { modHealth } from "./mod-health";
 
 /**
  * The one-argument adapter both paths are reduced to before the fold: a mod's
@@ -127,12 +126,9 @@ export function discoverModHookEntries(): Map<string, ModHookEntry> {
  */
 function pluginAdapter(id: string, plugin: ModPlugin, capabilities: CapabilitySet): ModHookEntry {
   return (flags) => {
-    const factory = plugin.hooks;
-    if (!factory || modHealth().isOff(id)) return undefined;
+    if (!plugin.hooks) return undefined;
     try {
-      return modHealth().run(id, "hooks()", () =>
-        factory.call(plugin, modPluginContext(id, flags, undefined, {}, { capabilities })),
-      );
+      return plugin.hooks(modPluginContext(id, flags, undefined, {}, { capabilities }));
     } catch (e) {
       reportModFault(id, `hooks() threw, so it changes no behaviour: ${faultMessage(e)}`);
       log.error(`mod:${id}`, `hooks() threw; contributing nothing:`, e);
@@ -198,14 +194,7 @@ export function activeModHooks(): ModHooks | undefined {
      * hook's neutral answer, so a broken mod reads to the fold exactly like a mod
      * with no opinion at that point - rather than taking the other mods' answers
      * down with it. */
-    /* Each call is also timed and counted by the health monitor, and a mod it has
-     * switched off answers neutrally without a fault (mod-health.ts). */
-    contributions.push(
-      guardModHooks(hooks, (fault) => hookThrew(id, fault), {
-        invoke: (hook, run) => modHealth().run(id, `${String(hook)} hook`, run),
-        active: () => !modHealth().isOff(id),
-      }),
-    );
+    contributions.push(guardModHooks(hooks, (fault) => hookThrew(id, fault)));
   }
   return composeModHooks(contributions);
 }
@@ -284,15 +273,12 @@ function folderHookEntries(): Map<string, ModHookEntry> {
      * register(host, ctx) has always made for this mod. */
     const capabilities = CapabilitySet.fromManifest(loaded.manifest);
     out.set(loaded.id, (flags) => {
-      if (modHealth().isOff(loaded.id)) return undefined;
       try {
-        return modHealth().run(loaded.id, "hooks()", () =>
-          hooks.call(
-            loaded.plugin,
-            modPluginContext(loaded.id, flags, undefined, modOwnFiles(loaded.data), {
-              capabilities,
-            }),
-          ),
+        return hooks.call(
+          loaded.plugin,
+          modPluginContext(loaded.id, flags, undefined, modOwnFiles(loaded.data), {
+            capabilities,
+          }),
         );
       } catch (e) {
         reportModFault(

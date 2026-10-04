@@ -343,6 +343,8 @@ export type {
   MenuQuestion,
   MenuSemantics,
 } from "./menu.js";
+/* The mod API, version 2 (docs/modding/API2.md). Named in api2/index.ts. */
+export * from "./api2/index.js";
 export type {
   PromptExtent,
   PromptRequest,

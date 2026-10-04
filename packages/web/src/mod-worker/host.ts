@@ -36,8 +36,6 @@ export interface ModWorkerHostDeps {
   readonly onUi?: (operation: "mount" | "patch", payload: WorkerJson, panelId?: string) => Promise<WorkerJson | null>;
   readonly onTeardown?: () => void;
   readonly onProblem?: (message: string) => void;
-  /** Told the size of each message the Worker sends, in bytes, for the profiler. */
-  readonly onPayload?: (bytes: number) => void;
   /** Shared per-game API-2 cache. It owns policies, declarations and regions. */
   readonly transport?: ModWorkerTransport;
   /** The resolved plugin load position, used by the same folds as ModHooks. */
@@ -107,9 +105,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       fail(`refused worker payload: ${err instanceof Error ? err.message : String(err)}`);
       return null;
     }
-    const bytes = payloadBytes(message);
-    deps.onPayload?.(bytes);
-    if (bytes > MAX_MESSAGE_BYTES) {
+    if (payloadBytes(message) > MAX_MESSAGE_BYTES) {
       fail(`refused worker payload larger than ${MAX_MESSAGE_BYTES} bytes`);
       return null;
     }

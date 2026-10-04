@@ -1010,43 +1010,6 @@ describe("event subscription: one listener's failure stays its own (#371)", () =
     expect(() => rethrow[0]?.()).toThrow("reporter broke");
   });
 
-  it("runs each listener through invoke and skips it while inactive", () => {
-    const bus = new GameEvents();
-    const seen: string[] = [];
-    let on = true;
-    const sub = subscribeEvents(bus, undefined, {
-      owner: "timed",
-      invoke: (type, run) => {
-        seen.push(type);
-        return run();
-      },
-      active: () => on,
-    });
-    let got = 0;
-    sub.on("message", () => {
-      got += 1;
-    });
-    bus.emit("message", MSG);
-    on = false;
-    bus.emit("message", MSG);
-    expect(got).toBe(1);
-    expect(seen).toEqual(["message"]);
-  });
-
-  it("still reports a throw that invoke rethrows", () => {
-    const bus = new GameEvents();
-    const faults: unknown[] = [];
-    const sub = subscribeEvents(bus, undefined, {
-      onFault: (_t, error) => faults.push(error),
-      invoke: (_type, run) => run(),
-    });
-    sub.on("message", () => {
-      throw new Error("boom");
-    });
-    expect(() => bus.emit("message", MSG)).not.toThrow();
-    expect(faults).toHaveLength(1);
-  });
-
   it("off with the function given to on removes it", () => {
     const bus = new GameEvents();
     const sub = subscribeEvents(bus);

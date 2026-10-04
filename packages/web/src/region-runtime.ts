@@ -47,7 +47,6 @@
  * a name they can act on when something is in the way.
  */
 
-import { modHealth } from "./mod-health";
 import { CapabilitySet, type PackManifest, type RegionDeclaration } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 import { MOD_REGION_LAYERS, type ModRegionLayer } from "./regions";
@@ -229,7 +228,7 @@ function specFor(
     paint: (surface: GridSurface) => {
       if (broken) return;
       try {
-        modHealth().run(modId, `region "${declaration.id}" paint`, () => declaration.paint(surface));
+        declaration.paint(surface);
       } catch (error) {
         /* ONCE, and then out. A painter that throws on one frame throws on all
          * of them, and a fault report per frame is a worse experience than one
@@ -253,7 +252,7 @@ function specFor(
           input: (pointer: { readonly col: number; readonly row: number; readonly kind: "tap" | "context" }) => {
             if (inputBroken) return;
             try {
-              modHealth().run(modId, `region "${declaration.id}" input`, () => input(pointer));
+              input(pointer);
             } catch (error) {
               /* Pointer input runs in the DOM event path, before it can queue a
                * walk or advance the game. Unlike a mid-turn hook, a throw here
@@ -300,9 +299,7 @@ export function installRegions(
     if (!regionsClaimed(candidate, reportFault)) continue;
     let returned: readonly RegionDeclaration[] | undefined;
     try {
-      returned = modHealth().run(candidate.id, "regions()", () =>
-        candidate.plugin.regions!.call(candidate.plugin, contextFor(candidate.id)),
-      );
+      returned = candidate.plugin.regions!.call(candidate.plugin, contextFor(candidate.id));
     } catch (error) {
       reportFault(candidate.id, "regions() failed, so none of its regions are on screen", error);
       continue;

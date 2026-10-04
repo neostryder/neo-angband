@@ -72,8 +72,7 @@
 
 import type { GameState } from "../game/context.js";
 import type { GameObject } from "../obj/object.js";
-import type { Artifact } from "../obj/types.js";
-import type { Monster } from "../mon/monster.js";
+import type { KnownMonster } from "../agent/known-world.js";
 import type { OptionStateData } from "../player/options.js";
 import type { Chunk } from "../world/chunk.js";
 import type { CoreRegistries } from "../session/boot.js";
@@ -292,6 +291,13 @@ export type AbilityGained =
  * call site is not written down is a hook nobody can verify is still wired -
  * exactly the failure the call-site census exists to catch.
  */
+/** The artifact a player has just identified (ModHooks.artifactIdentified). */
+export interface KnownArtifactFind {
+  readonly name: string;
+  /** Its index in the artifact list. */
+  readonly artifactIndex: number;
+}
+
 export interface ModHooks {
   /**
    * A newly created character after startGame has built and wired its state.
@@ -668,10 +674,10 @@ export interface ModHooks {
    * updateMonsters, monsterSwap and every other updateMon call site).
    *
    * A NOTIFICATION: core has already committed the visibility change and does
-   * not read a return value. `mon` is the LIVE Monster, handed over the same
-   * way levelRevisited hands over its live chunk, so a mod can read its race,
-   * grid, and anything else about it without a second lookup through
-   * state.monsters.
+   * not read a return value. `mon` is the monster as the player knows it
+   * (agent/known-world.ts): race, grid, health band, look statuses and the
+   * flags and spells lore has learned, never its hit points or unlearned
+   * abilities. Its `id` finds the same monster in a later KnownWorld.
    *
    * Fires on every FRESH sighting - the same event the "sights" lore counter
    * counts - not only the very first time this monster has ever been seen,
@@ -681,7 +687,7 @@ export interface ModHooks {
    * Serves: a mod wanting first-encounter notifications without polling
    * monsterListCollect on a timer (neo-angband-mod-qol issue #56).
    */
-  monsterBecameVisible?: (mon: Monster) => void;
+  monsterBecameVisible?: (mon: KnownMonster) => void;
 
   /**
    * An object's OBJ_NOTICE.ASSESSED bit flips from unset to set while the
@@ -690,10 +696,9 @@ export interface ModHooks {
    * squareKnowPile, and wizard.ts's item-edit path).
    *
    * A NOTIFICATION: core has already committed the assessment and does not
-   * read a return value. `obj` is the live GameObject and `artifact` is its
-   * already-resolved Artifact record - handed over together, like
-   * partialStackMerge's two GameObjects, so a mod can name the artifact and
-   * place the find without a second lookup through the artifact registry.
+   * read a return value. `found` names the artifact the player has just
+   * learned, by its name and its index in the artifact list; nothing else
+   * about the object is handed over.
    *
    * Fires once per object: ASSESSED is never cleared once set, so re-touching
    * an already-assessed artifact (standing on its grid again, picking it back
@@ -702,7 +707,7 @@ export interface ModHooks {
    * Serves: a mod wanting to react to an artifact identification without a
    * second lookup.
    */
-  artifactIdentified?: (obj: GameObject, artifact: Artifact) => void;
+  artifactIdentified?: (found: KnownArtifactFind) => void;
 }
 
 /**
@@ -820,24 +825,6 @@ export interface ModHookFault {
 }
 
 /**
- * How the host sees into a guarded mod's hook calls (guardModHooks' third
- * argument). Both are optional, and with neither the guard behaves as it always
- * has.
- */
-export interface ModHookGuardOptions {
-  /**
-   * Runs each hook call. It must call `run` once and return or rethrow what it
-   * gives; the host uses it to time the call and count the mod's faults.
-   */
-  readonly invoke?: <T>(hook: keyof ModHooks, run: () => T) => T;
-  /**
-   * Asked before each hook call. False means the mod has been switched off, and
-   * every hook gives its neutral answer without running or reporting a fault.
-   */
-  readonly active?: () => boolean;
-}
-
-/**
  * ONE mod's contribution, with every hook wrapped so a throw cannot escape into
  * the middle of a turn.
  *
@@ -874,17 +861,14 @@ export interface ModHookGuardOptions {
 export function guardModHooks(
   hooks: ModHooks,
   onFault: (fault: ModHookFault) => void,
-  guardOptions: ModHookGuardOptions = {},
 ): ModHooks {
   const out: ModHooks = {};
   const stopped = new Set<keyof ModHooks>();
-  const { invoke, active } = guardOptions;
 
   function guard<T>(hook: keyof ModHooks, run: () => T, neutral: T): T {
     if (stopped.has(hook)) return neutral;
-    if (active && !active()) return neutral;
     try {
-      return invoke ? invoke(hook, run) : run();
+      return run();
     } catch (error) {
       stopped.add(hook);
       onFault({ hook, error });
@@ -1061,12 +1045,8 @@ export function guardModHooks(
 
   const artifactIdentified = hooks.artifactIdentified;
   if (artifactIdentified) {
-    out.artifactIdentified = (obj, artifact): void => {
-      guard(
-        "artifactIdentified",
-        () => artifactIdentified(obj, artifact),
-        undefined,
-      );
+    out.artifactIdentified = (found): void => {
+      guard("artifactIdentified", () => artifactIdentified(found), undefined);
     };
   }
 
@@ -1281,8 +1261,8 @@ export function composeModHooks(
 
   const artifactIdentified = list.map((c) => c.artifactIdentified).filter(isFn);
   if (artifactIdentified.length > 0) {
-    out.artifactIdentified = (obj, artifact): void => {
-      for (const fn of artifactIdentified) fn(obj, artifact);
+    out.artifactIdentified = (found): void => {
+      for (const fn of artifactIdentified) fn(found);
     };
   }
 

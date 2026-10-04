@@ -190,6 +190,9 @@ Two field renames are invisible to the export ratchet, which compares only the s
 
 Nothing else in `UiEntryConfig` changed. A plugin that only calls `characterGrid`, `equipCmpSummary`, `applyRenderer` or `combineValues` is unaffected: each gained an optional trailing registry argument and behaves as before when it is omitted.
 Outside the guaranteed subset, `ctx.core` can change in any release; the ratchet makes each break visible in this repository before it reaches a player's browser. The guarantee covers a top-level name and its `typeof`, so nested keys on a guaranteed object (`FEAT.MORE`, `TV.SWORD`, `RSF.BR_FIRE`) are recorded like any other shape change. `ModHooks` is a closed interface of 22 members, and the bug-fixes mod alone uses nine of them. If authors keep calling unguaranteed `ctx.core` names to get past it, the answer is to grow the seam or add names to the guaranteed subset, rather than restricting the namespace.
+
+`monsterBecameVisible` and `artifactIdentified` keep their names but changed arguments (unreleased, 2026-10-04). The first used to pass the live `Monster` and now passes a `KnownMonster`; the second used to pass the `GameObject` and its `Artifact` record and now passes `{ name, artifactIndex }`. The live objects told a mod things the player does not know, such as a monster's exact hit points and every spell its race has, and a mod could change them. No first-party mod handles either hook. A handler that read `mon.race.name` reads `mon.race`, `mon.grid` is unchanged, and `artifact.aidx` becomes `artifactIndex`. A mod allowed to read game state can still find the live monster by its `id`.
+
 ## What is *not* a compatibility mechanism
 
 - **Save data.** A mod's own bag in the player's save is migrated by the mod, via

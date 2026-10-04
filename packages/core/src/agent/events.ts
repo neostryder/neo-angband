@@ -44,16 +44,6 @@ export interface EventSubscriptionOptions {
     error: unknown,
     owner: string | undefined,
   ) => void;
-  /**
-   * Runs each listener call. It must call `run` once and return or rethrow what
-   * it gives; a host uses it to time the call and count the owner's faults.
-   */
-  readonly invoke?: <T>(type: GameEventType, run: () => T) => T;
-  /**
-   * Asked before each listener call. False means the owner has been switched
-   * off, and its listeners are skipped without a fault.
-   */
-  readonly active?: () => boolean;
 }
 
 /**
@@ -102,11 +92,8 @@ export function subscribeEvents(
       }
       const original = fn as GameEventHandler<GameEventType>;
       const guard: GameEventHandler<GameEventType> = (t, data) => {
-        if (options.active && !options.active()) return;
         try {
-          const result: unknown = options.invoke
-            ? options.invoke(t, () => original(t, data))
-            : original(t, data);
+          const result: unknown = original(t, data);
           /* A handler is typed to return nothing, but an async function still
            * satisfies that type, and its failure arrives as a rejected promise. */
           if (

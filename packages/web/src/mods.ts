@@ -88,7 +88,6 @@ import {
 import { displayName } from "./mod-authors";
 import { modUpgradeRowLabel } from "./mod-refresh";
 import type { ConflictReportLines } from "./mod-conflicts";
-import { DEFAULT_TURN_BUDGET_MS, FAULT_LIMIT, FAULT_WINDOW_TURNS, type ModHealthStats } from "./mod-health";
 import {
   resolveSectionState,
   resolveSettingValue,
@@ -245,11 +244,6 @@ export interface ModManagerDeps {
   rediscover?: () => Promise<void>;
   /** Human-readable conflict lines for the enabled content set (P7.6 humanLines). */
   conflictLines: () => ConflictReportLines;
-  /**
-   * What each mod's code has cost this session (mod-health.ts), for the Mod
-   * performance screen. Absent means the row is not offered.
-   */
-  profiler?: () => readonly ModHealthStats[];
   /**
    * Apply pending changes by reloading (recompose content + reinstall plugins).
    *
@@ -2831,104 +2825,6 @@ export function modConflictsScreen(report: ConflictReportLines): ScreenView {
   });
 }
 
-/** Bytes as the profiler shows them: "-" where nothing was measured. */
-function profilerBytes(bytes: number | null): string {
-  if (bytes === null) return "-";
-  if (bytes < 1024) return `${String(bytes)} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/**
- * The Mod performance screen: one row per mod whose code has run this session,
- * busiest first, with its calls, CPU time, worst single call, faults, turns over
- * budget, Worker data sent, and whether it is still on.
- *
- * `nameOf` gives a mod's proper name; a mod with none is listed by its id, as
- * the mod list does.
- */
-export function modProfilerScreen(
-  stats: readonly ModHealthStats[],
-  nameOf: (id: string) => string | undefined,
-): ScreenView {
-  const rows = [...stats]
-    .sort((a, b) => b.cpuMs - a.cpuMs)
-    .map((s) => {
-      const off = s.switchedOff !== null;
-      return {
-        id: s.id,
-        semantic: { kind: "mod", ref: s.id },
-        color: off ? C_DANGER : s.faults > 0 || s.overBudget > 0 ? C_WARN : C_FG,
-        cells: {
-          mod: { text: nameOf(s.id) ?? s.id },
-          calls: { text: String(s.calls) },
-          cpu: { text: s.cpuMs.toFixed(1) },
-          worst: { text: s.worstMs.toFixed(1) },
-          faults: { text: String(s.faults) },
-          slow: { text: String(s.overBudget) },
-          sent: { text: profilerBytes(s.payloadBytes) },
-          status: {
-            text: off
-              ? t("modsScreen.profiler.off", "off")
-              : t("modsScreen.profiler.on", "on"),
-          },
-        },
-      };
-    });
-  const note = (text: string): { text: string; color: string }[] => [{ text, color: C_DIM }];
-  return freezeView({
-    id: "core:mod-profiler",
-    title: t("modsScreen.profiler.title", "Mod performance"),
-    footer: SCREEN_FOOTER,
-    blocks: [
-      {
-        kind: "table",
-        key: "mods",
-        tagged: false,
-        columns: [
-          { key: "mod", label: t("modsScreen.profiler.mod", "Mod"), width: 20 },
-          { key: "calls", label: t("modsScreen.profiler.calls", "Calls"), width: 7, align: "right" },
-          { key: "cpu", label: t("modsScreen.profiler.cpu", "CPU ms"), width: 8, align: "right" },
-          { key: "worst", label: t("modsScreen.profiler.worst", "Worst"), width: 7, align: "right" },
-          { key: "faults", label: t("modsScreen.profiler.faults", "Faults"), width: 6, align: "right" },
-          { key: "slow", label: t("modsScreen.profiler.slow", "Slow"), width: 5, align: "right" },
-          { key: "sent", label: t("modsScreen.profiler.sent", "Sent"), width: 9, align: "right" },
-          { key: "status", label: t("modsScreen.profiler.status", "Status"), pad: false },
-        ],
-        rows,
-        empty: { text: t("modsScreen.profiler.empty", "No mod code has run this session."), color: C_DIM },
-        gapAfter: 1,
-      },
-      {
-        kind: "text",
-        color: C_DIM,
-        paragraphs: [
-          note(
-            t(
-              "modsScreen.profiler.cpuNote",
-              "CPU ms is the time each mod's own code has taken this session. Worst is its longest single call.",
-            ),
-          ),
-          note(
-            t(
-              "modsScreen.profiler.slowNote",
-              "Slow counts turns where a mod took more than its {ms} ms share. Sent is the data a Worker mod has passed to the game.",
-              { ms: String(DEFAULT_TURN_BUDGET_MS) },
-            ),
-          ),
-          note(
-            t(
-              "modsScreen.profiler.offNote",
-              "A mod that fails {limit} times within {turns} turns is switched off until the game next starts.",
-              { limit: String(FAULT_LIMIT), turns: String(FAULT_WINDOW_TURNS) },
-            ),
-          ),
-        ],
-      },
-    ],
-  });
-}
-
 /**
  * One contested or combining row.
  *
@@ -4484,7 +4380,6 @@ export async function runModManager(
     );
     type ActionKind =
       | "conflicts"
-      | "profiler"
       | "orphans"
       | "autosort"
       | "install"
@@ -4516,9 +4411,6 @@ export async function runModManager(
       modupdates: "7",
       folder: "2",
       conflicts: "3",
-      /* Every digit is taken, so this is another punctuation tag, as "+" and
-       * "-" are. */
-      profiler: "*",
       autosort: "4",
       orphans: "5",
       install: "6",
@@ -4673,14 +4565,6 @@ export async function runModManager(
       C_FG,
       t("modsScreen.run.viewConflictsHint", "Where two mods change the same thing, and which one wins."),
     );
-    if (deps.profiler) {
-      addAction(
-        t("modsScreen.run.profiler", "Mod performance"),
-        "profiler",
-        C_FG,
-        t("modsScreen.run.profilerHint", "How much time each mod's code takes, and how often it fails."),
-      );
-    }
     addAction(
       t("modsScreen.run.autoSort", "Auto-sort load order..."),
       "autosort",
@@ -4938,12 +4822,6 @@ export async function runModManager(
       if (await manageMod(term, deps, rk.id, tileModsAtEntry)) dirty = true;
     } else if (rk.kind === "conflicts") {
       await viewConflicts(term, deps);
-    } else if (rk.kind === "profiler") {
-      const stats = deps.profiler?.() ?? [];
-      await showTextScreen(
-        term,
-        modProfilerScreen(stats, (id) => catalog.find((m) => m.id === id)?.name),
-      );
     } else if (rk.kind === "orphans") {
       /* Rebuilt on open rather than reusing the row's read: enabling a mod in
        * this same screen does not rehydrate anything until the reload, but the

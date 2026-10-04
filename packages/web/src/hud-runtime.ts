@@ -30,7 +30,6 @@
  * keys when its manifest asked for one.
  */
 
-import { modHealth } from "./mod-health";
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 import {
@@ -206,9 +205,7 @@ function construct(
 ): Partial<Record<HudSectionName, HudSectionSink>> {
   let returned: HudOwnership | undefined;
   try {
-    returned = modHealth().run(candidate.id, "hud()", () =>
-      candidate.plugin.hud!.call(candidate.plugin, contextFor(candidate.id)),
-    );
+    returned = candidate.plugin.hud!.call(candidate.plugin, contextFor(candidate.id));
   } catch (error) {
     reportFault(candidate.id, "hud() failed, so the game keeps drawing its own interface", error);
     return {};
@@ -237,10 +234,7 @@ function construct(
     }
     /* The SDK owns the public types; the live section is structurally identical
      * and this adapter keeps the runtime boundary local. */
-    out[region] = {
-      present: (section, frame) =>
-        modHealth().run(candidate.id, `hud ${region} present`, () => sink.present(section, frame)),
-    };
+    out[region] = { present: (section, frame) => sink.present(section, frame) };
   }
   return out;
 }

@@ -373,10 +373,10 @@ describe("the switch census", () => {
     /* Was 9 arms; neo-angband#163 removed the "profiles" branch (the old
      * mod-loadout-snapshot mechanism, superseded by player/testing profiles),
      * dropping this chain to 8, #76's stash-view row put it back to 9, #87's
-     * Save a Delve / Load a Delve rows moved it to 11, #158's sync-folder
-     * row moved it to 12, and the Mod performance row to 13 - still the same
-     * row throughout, and the arm count is what moved. */
-    expect(keys.has("IF_CHAIN|packages/web/src/mods.ts|13")).toBe(true);
+     * Save a Delve / Load a Delve rows moved it to 11, and #158's sync-folder
+     * row moved it to 12 - still the same row throughout, and the arm count
+     * is what moved. */
+    expect(keys.has("IF_CHAIN|packages/web/src/mods.ts|12")).toBe(true);
   });
 
   it("has no CANDIDATE left, which is what the alpha gate asked for", () => {
