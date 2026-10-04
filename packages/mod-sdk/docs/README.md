@@ -148,28 +148,44 @@ my-frost-pack/
 
 ```json
 {
-  "id": "frost",
-  "name": "The Frost Depths",
-  "version": "1.2.0",
-  "shape": "content",
-  "dependencies": { "core": "*" },
-  "author": "You",
-  "license": "CC-BY-4.0"
+  "format": "neo-angband/mod/manifest",
+  "schemaVersion": 2,
+  "data": {
+    "id": "frost",
+    "name": "The Frost Depths",
+    "version": "1.2.0",
+    "api": "*",
+    "runtime": "data",
+    "dependencies": {
+      "required": { "core": { "range": "*" } }
+    },
+    "author": "You",
+    "license": "CC-BY-4.0"
+  }
 }
 ```
 
-- `id`: lowercase kebab-case, unique among loaded packs. It becomes your
-  namespace: a monster you add named "Frost Wyrm" is `frost:frost-wyrm`
-  everywhere - in other packs, in tile-pack targets, in savefiles.
-- `shape`: `content` (declarative JSON), `tiles` (Linoleum tile pack),
-  or `plugin` (sandboxed script).
-- `dependencies`: packs that must load before yours. Declaring a
-  dependency is also a permission: you may only patch, replace, or
-  remove records owned by packs you declare here.
+- `id`: lowercase kebab-case, unique among loaded packs. It becomes your namespace: a monster you add named "Frost Wyrm" is `frost:frost-wyrm` everywhere - in other packs, in tile-pack targets, in savefiles.
+- `api`: the mod API versions your mod works with, as a semver range. A mod with no code can say `"*"`. A plugin written for today's in-process API says `">=1.0.0 <2.0.0"`.
+- `runtime`: how your mod runs. `data` runs no code, `in-process` loads `plugin.js` into the game's page, and `worker` starts the module named in `entry` in a Worker of its own. The runtime has to match the folder: a `data` mod that ships a `.js` or `.mjs` file is refused, and so is a code mod whose entry file is missing.
+- `entry`: the module a `worker` mod starts. An `in-process` mod always starts `plugin.js`, so it can leave this out.
+- `shape` and `facets`: optional. Without them a mod with no code is `content` and a code mod is `plugin`. A mod with both records and code says `"shape": "content", "facets": ["content", "plugin"]`. A code runtime always has the `plugin` facet, and a `data` mod cannot have it.
+- `dependencies`: three lists, each keyed by mod id. Mods under `required` load before yours, and listing one is also a permission: you may only patch, replace or remove records owned by mods you list here. Mods under `optional` load first when they are installed, and nothing is wrong when they are not. Mods under `conflicts` get a warning that gives your reason, and the player can still turn both on. Each entry has a `range` (needed for `required` and `optional`, and every version when a conflict leaves it out) and a `because`, which a conflict must have. A mod id goes in one list only.
+- `engine`: optional. `{ "range": ">=1.21.1", "because": "..." }` limits the game versions your mod loads on, and it needs a reason. Use it only for a known engine bug or a content format your mod relies on.
+- `capabilities`: what your code asks the player to allow; see [Capabilities](PLUGINS.md#capabilities).
+- `text`: your mod's default locale and the file holding each locale's strings, such as `{ "default": "en", "locales": { "en": "text/en.json" } }`.
+- `listing`: what a mod listing shows: `tags` (kebab-case words), `screenshots` and `changelog`, as paths inside the mod folder.
+- `budget`: `{ "msPerTurn": 50 }`, the time your mod may spend on each game turn. Without it the budget is 50 ms, and 500 ms is the most a mod can ask for.
 - `publicFlags`: optional names from this manifest's `rules` or `sections`. The host includes only these current boolean flags in `ctx.mods()` for other plugins. Missing and repeated names are refused; other settings stay private.
-- Load order is resolved deterministically (dependencies first,
-  alphabetical ties), so the same pack set composes identically on
-  every machine. Cycles and missing dependencies fail loudly at load.
+- Load order is resolved deterministically (dependencies first, alphabetical ties), so the same pack set composes identically on every machine. Cycles and missing dependencies fail loudly at load.
+
+Every other field, such as `rules`, `settings`, `sections`, `compat`, `fields`, `resources`, `tilePacks` and `payload`, keeps the name and meaning it had before schema 2.
+
+#### Manifests written before schema 2
+
+A `manifest.json` with no `format`, or with `"schemaVersion": 1`, still loads, and the game reads it the way it always has. `modApi: 1` counts as `"runtime": "in-process"` with `"api": ">=1.0.0 <2.0.0"`. `modApi: 2` with `"runtime": "worker"` counts as `"runtime": "worker"` with the Worker preview API, `"api": "2.0.0-worker"`, and its `workerEntry` as `entry`. A mod with no code counts as `"runtime": "data"` with `"api": "*"`. No other `modApi` value has a schema 2 meaning, and the integer is never read as a range.
+
+To move a manifest to schema 2, run it through the SDK's `convertManifestV1`. `dependencies` and `optionalDependencies` become `dependencies.required` and `dependencies.optional`, a `conflicts` claim about a whole mod moves to `dependencies.conflicts`, `changelog` and `screenshots` move into `listing`, and `engine` gets a placeholder reason that you should replace with the real one. `modProject(...).emit()` writes schema 2 only.
 
 ### Record composition
 

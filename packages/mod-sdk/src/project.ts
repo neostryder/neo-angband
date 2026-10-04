@@ -30,6 +30,8 @@ import type { FieldDecl } from "./fields.js";
 import { composeContentPacks } from "./loader.js";
 import type { LoadedPack } from "./loader.js";
 import { validateManifest } from "./manifest.js";
+import { manifestToV2, modManifestFormat } from "./manifest-v2.js";
+import { serializeDocument } from "./json/index.js";
 import type { PackManifest } from "./manifest.js";
 import type { FieldOp } from "./patch.js";
 
@@ -181,7 +183,7 @@ export class ModProject {
       files: Record<string, unknown>;
     };
     const out: EmittedFile[] = [
-      { path: "manifest.json", contents: `${JSON.stringify({ format: "neo-angband/mod/manifest", schemaVersion: 1, data: this.manifest() }, null, 2)}\n` },
+      { path: "manifest.json", contents: serializeDocument(modManifestFormat, manifestToV2(this.manifest())) },
     ];
     for (const file of Object.keys(pack.files).sort()) {
       out.push({

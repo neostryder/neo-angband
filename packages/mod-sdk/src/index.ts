@@ -124,6 +124,34 @@ export {
   slugify,
   validateManifest,
 } from "./manifest.js";
+export type { ManifestReadOptions } from "./manifest.js";
+export {
+  convertManifestV1,
+  DEFAULT_TURN_BUDGET_MS,
+  IN_PROCESS_ENTRY,
+  MANIFEST_FORMAT,
+  MANIFEST_SCHEMA_VERSION,
+  ManifestConversionError,
+  manifestToV2,
+  MAX_TURN_BUDGET_MS,
+  MOD_API_1_RANGE,
+  MOD_RUNTIMES,
+  modManifestFormat,
+  runtimePayloadComplaint,
+  turnBudgetMs,
+  WORKER_PREVIEW_API,
+} from "./manifest-v2.js";
+export type {
+  ManifestBudget,
+  ManifestConflict,
+  ManifestDependencies,
+  ManifestDependency,
+  ManifestEngine,
+  ManifestListing,
+  ManifestText,
+  ManifestV2Data,
+  ModRuntime,
+} from "./manifest-v2.js";
 export {
   ART_SLOTS,
   chooseResources,
@@ -230,6 +258,24 @@ export { CapabilityError, CapabilitySet, isLocalNetworkHost, networkGrantCovers,
 export { NET_LIMITS, checkNetRequest, checkSecretHosts, fillSecretTemplates, isSecretName, readBodyCapped, secretNamesIn } from "./net-request.js";
 export type { CheckedNetRequest, NetMethod, NetProblem, NetProblemCode, NetRequest, NetSecretValue } from "./net-request.js";
 export type { ParsedCapability } from "./capabilities.js";
+export {
+  CAPABILITY_TIERS,
+  CAPABILITY_VOCABULARY,
+  CapabilityArgumentError,
+  capabilityTiers,
+  consentText,
+  isPublicCapability,
+  isTruthCapability,
+  matchCapability,
+  PUBLIC_CAPABILITIES,
+} from "./capability-vocabulary.js";
+export type {
+  CapabilityArgument,
+  CapabilityEntry,
+  CapabilityMatch,
+  CapabilityNamespace,
+  CapabilityTier,
+} from "./capability-vocabulary.js";
 export {
   MANIFEST_FILE,
   MOD_REQUIREMENTS,

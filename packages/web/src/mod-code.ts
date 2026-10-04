@@ -243,6 +243,18 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       continue;
     }
     const declared = pack.manifest.modApi;
+    if (declared === undefined && pack.manifest.manifestSchema === 2) {
+      /* A schema 2 manifest states an API range, not an ABI number. The reader
+       * fills `modApi` only when this build runs an API the range admits, so an
+       * absent one here means the range admits none of them. */
+      problems.push({
+        id,
+        why:
+          `needs mod API ${String(pack.manifest.api)} in runtime ` +
+          `"${String(pack.manifest.runtime)}", which this build does not provide`,
+      });
+      continue;
+    }
     if (declared === undefined) {
       problems.push({
         id,
