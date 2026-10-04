@@ -15,6 +15,7 @@ import { createModKeybindings, type ModKeybindings } from "./mod-keybindings";
 import type { ModKnowledge } from "./knowledge-read";
 import { characterHistory, type RunReport, type RunReports } from "./run-report";
 import * as neoCore from "@rpgm-tools/neo-angband-core";
+import { coreFor } from "./mod-core-usage";
 /* The SDK as a VALUE, for the same reason core is one here and only here: this
  * is the module that hands a live namespace to a plugin, and it is the module no
  * plugin imports. mod-plugin.ts keeps its SDK imports type-only. */
@@ -203,7 +204,9 @@ export function modPluginContext(
     engine: neoCore.ENGINE_VERSION,
     flags: Object.freeze({ ...flags }),
     ...(settings ? { settings } : {}),
-    core: neoCore as unknown as ModCoreApi,
+    /* The bare namespace, or a proxy that records which names this mod reads
+     * while usage recording is on (dev builds and the canary; mod-core-usage.ts). */
+    core: coreFor(id, neoCore) as unknown as ModCoreApi,
     /* Unconditional, unlike every optional field below it. The SDK is a module
      * this host already imported, so there is no boot state it waits on and no
      * consent to check - see the field's own comment in mod-plugin.ts. */

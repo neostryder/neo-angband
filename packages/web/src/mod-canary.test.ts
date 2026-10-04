@@ -51,7 +51,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { unzipSync } from "fflate";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { composeModHooks, ENGINE_VERSION, OptionState } from "@rpgm-tools/neo-angband-core";
 import type { GameState } from "@rpgm-tools/neo-angband-core";
 import { satisfies } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -60,10 +60,18 @@ import { DEFAULT_REGISTRY_URL, parseRegistry } from "./mod-curated";
 import { discoverMod, type DiscoverEnv, type DiscoveredMod } from "./mod-discover";
 import { MOD_API_VERSION, type ModPlugin } from "./mod-plugin";
 import { modPluginContext } from "./mod-context";
+import { coreUsage, setCoreUsageRecording } from "./mod-core-usage";
 import { modPrefs } from "./mod-prefs";
 import { notifyOptionsChanged, optionsFingerprint } from "./options";
 
 const ON = process.env["MOD_CANARY"] === "1";
+
+/* The downloaded plugins run here, so this run also records which ctx.core names
+ * each one reads, and prints the list at the end for the job log. */
+if (ON) setCoreUsageRecording(true);
+afterAll(() => {
+  if (ON) console.log(`ctx.core usage by mod: ${JSON.stringify(coreUsage(), null, 2)}`);
+});
 
 /* Generous, because this is a scheduled job and not a keystroke: a large tile
  * archive is 10.6 MiB and the whole curated set is ~25 MiB. */

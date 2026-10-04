@@ -883,6 +883,12 @@ import {
 import { decideImport } from "./transfer-gate";
 import { storageLines, type StorageTone } from "./storage-page";
 import { convertLegacySettings, readSetting, writeSetting } from "./settings-store";
+import { coreUsage, setCoreUsageRecording } from "./mod-core-usage";
+
+/* A dev build records which ctx.core names each mod reads, from before the first
+ * mod context is built; __neo.coreUsage() reads the list back. A player's build
+ * hands mods the bare namespace. */
+if (import.meta.env.DEV) setCoreUsageRecording(true);
 
 // PWA freshness: silently reload onto a newly deployed build (a ratified
 // browser-shell necessity, D2). Page chrome, independent of the game, so it
@@ -16507,6 +16513,8 @@ setAutoplayerInterruptOwner({
 if (import.meta.env.DEV) {
   (window as unknown as { __neo?: unknown }).__neo = {
     resumed: resumedActive,
+    /* Each mod's ctx.core reads so far, by mod id (mod-core-usage.ts). */
+    coreUsage,
     /* A pad is sampled on animation frames, and a hidden tab has none - which
      * is the right behaviour for a player and the wrong one for a harness. This
      * hands a harness one sample at a time, through the same adapter, so what
