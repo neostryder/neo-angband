@@ -58,9 +58,11 @@ still calls itself.
 
 - [Visible] [Security] [Modding-API] **The read-everything permission no longer shows a mod the real map.** A mod that asks to read all game state now sees only what your character knows of the map; the hidden layer (traps, items, terrain and creatures not yet found) needs its own permission, `state:map-actual.read`, which the consent screen names and marks as powerful.
 - [Visible] [UI] **Mod messages now call each mod by its proper name.** The notice shown when a mod fails partway through a turn, the problem lines on the Mods screen, the line saying which mod installed another, the install refusals, the import and try screens and the orphaned data screen all take the name from the mod's manifest instead of showing its id. When the game does not know a mod's name, the message is worded so it does not need one; the id appears only for a mod whose manifest never loaded or whose saved items outlived it, where it is the only name there is.
+- [Internal] [Security] **Every install from a repository now states where the mod came from.** `installModFromRepo` takes the mod's origin and the player's third-party switch as a required argument. It used to be optional, and leaving it out counted as a registry mod, so a caller that forgot it could install a third-party mod without asking the player. No call in the game left it out.
 
 ### Fixed
 
+- [Visible] [Modding-API] **A mod can no longer remove a record that something else in the game still names.** Taking away a monster's base, a monster another monster brings along as an escort, or every phrase of a history chart another chart leads to used to break the game somewhere far from the mod, such as an error while making a character. A removal like that is now refused and listed against the mod on the Mods screen, the record stays, and the rest of the mod loads. Removing a record together with everything that names it still works. A history chart also keeps its roll-100 phrase, since a high roll has nowhere else to land.
 - [Visible] [Modding-API] **A mod's event handler that throws no longer keeps the event from the mods after it.** Each `ctx.events` handler now runs separately, and an error or a rejected promise from one is logged against its mod and listed on the Mods screen while the other handlers still receive the event (#371).
 
 ## [1.22.0] - 2026-10-03

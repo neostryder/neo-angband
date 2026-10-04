@@ -101,6 +101,8 @@ import { applyFieldPatch } from "./patch.js";
 import { applyFieldPolicy, declaredFields } from "./fields.js";
 import type { ResolvedField } from "./fields.js";
 import { stampProvenance } from "./provenance.js";
+import { brokenRemovals } from "./removal-integrity.js";
+import type { LandedRemoval } from "./removal-integrity.js";
 import { checkPacks, composedObjects } from "./validate.js";
 import type { PackFinding } from "./validate.js";
 import {
@@ -347,6 +349,7 @@ function applyPassthroughOps(
   providerId: string,
   baseId: string,
   refused: Refusals,
+  removals: LandedRemoval[],
 ): PassthroughResult {
   /** Whole-file ownership with nothing layered on: the caller's array, as it was. */
   const unmodified = (): PassthroughResult => ({
@@ -539,6 +542,10 @@ function applyPassthroughOps(
       const at = resolve(pack, "remove", ref);
       if (at === null) continue;
       removed.add(at);
+      const gone = working[at] ?? records[at];
+      if (typeof gone === "object" && gone !== null && !Array.isArray(gone)) {
+        removals.push({ packId: pack.manifest.id, file, ref, record: gone as JsonRecord });
+      }
     }
   }
 
@@ -559,6 +566,36 @@ function recordsKeyedByName(records: readonly unknown[]): boolean {
   return records.some((r) => isNamedRecord(r));
 }
 
+/** How a removal is told apart from every other: pack, file and ref as written. */
+function removalKey(packId: string, file: string, ref: string): string {
+  return `${packId}\u0000${file}\u0000${ref}`;
+}
+
+/**
+ * The packs with the refused removals taken out of their `removes`. A pack with
+ * none of them is returned as it was, so the common case copies nothing.
+ */
+function withoutRemovals(
+  packs: readonly LoadedPack[],
+  refused: ReadonlySet<string>,
+): LoadedPack[] {
+  if (refused.size === 0) return [...packs];
+  return packs.map((pack) => {
+    const id = pack.manifest.id;
+    let files: Record<string, FileContribution> | undefined;
+    for (const [file, contrib] of Object.entries(pack.files)) {
+      const removes = contrib.removes;
+      if (!removes?.some((ref) => refused.has(removalKey(id, file, ref)))) continue;
+      files ??= { ...pack.files };
+      files[file] = {
+        ...contrib,
+        removes: removes.filter((ref) => !refused.has(removalKey(id, file, ref))),
+      };
+    }
+    return files === undefined ? pack : { ...pack, files };
+  });
+}
+
 /**
  * Compose a set of loaded packs into merged per-file record arrays. With a
  * single pack (the base game alone) the output is record-identical to the
@@ -569,6 +606,27 @@ export function composeContentPacks(
   packs: readonly LoadedPack[],
   options: ComposeOptions = {},
 ): ComposedContent {
+  return composeKeeping(packs, options, new Set(), []);
+}
+
+/**
+ * composeContentPacks, minus the removals in `kept`, with the faults in `undone`
+ * reported.
+ *
+ * THE REMOVAL CHECK (#372). A removal that breaks something only shows in the
+ * composed game, and putting the record back changes that game: the record may
+ * itself name something another removal took. So the loader composes, refuses
+ * what brokenRemovals finds, and composes again from scratch until a pass finds
+ * nothing. Every pass after the first refuses at least one more removal, which
+ * caps the passes at the number of removals. With no removals at all there is
+ * one pass, the same as before #372.
+ */
+function composeKeeping(
+  packs: readonly LoadedPack[],
+  options: ComposeOptions,
+  kept: ReadonlySet<string>,
+  undone: readonly ComposeFault[],
+): ComposedContent {
   /* TWO STEPS. resolveLoadOrder first, over the UNIQUE manifests - it refuses a
    * duplicate pack id, so it has to run before sections turn one pack into
    * several entries. Then expandSections drops the parts the player switched off
@@ -576,10 +634,12 @@ export function composeContentPacks(
    * which one pack may appear more than once; composePacks already keys by
    * manifest.id and folds in sequence, so that composes exactly as the combined
    * contribution would - except at different points in the order. */
-  const ordered = expandSections(orderPacks(packs), sectionPredicate(options)).map(
-    (u) => u.content,
+  const ordered = withoutRemovals(
+    expandSections(orderPacks(packs), sectionPredicate(options)).map((u) => u.content),
+    kept,
   );
   const refused = refusals();
+  const removals: LandedRemoval[] = [];
 
   const fileNames = new Set<string>();
   for (const p of ordered) {
@@ -611,7 +671,10 @@ export function composeContentPacks(
   /* Report, do not throw: a patch aimed at a record the engine has since renamed
    * costs that patch, not the mod. See ComposePacksOptions for why the throwing
    * default is still the right answer for a mod's own build. */
-  const game = composePacks(contents, { onRefuse: refused.refuse });
+  const game = composePacks(contents, {
+    onRefuse: refused.refuse,
+    onRemove: (packId, file, ref, record) => removals.push({ packId, file, ref, record }),
+  });
 
   /* PACK ZERO IS THE FLOOR. Ownership by the base game with nothing layered on
    * top is the unremarkable case and is left unstamped, which is what keeps
@@ -684,6 +747,7 @@ export function composeContentPacks(
       providerId,
       baseId,
       refused,
+      removals,
     );
     out[f] = applied.records;
     applied.records.forEach((record, i) => {
@@ -698,6 +762,26 @@ export function composeContentPacks(
       }
     });
   }
+
+  const broken = brokenRemovals(composedObjects(out), removals);
+  if (broken.length > 0) {
+    return composeKeeping(
+      packs,
+      options,
+      new Set([
+        ...kept,
+        ...broken.map(({ removal }) => removalKey(removal.packId, removal.file, removal.ref)),
+      ]),
+      [
+        ...undone,
+        ...broken.map(({ removal, why }) => ({
+          packId: removal.packId,
+          why: `${removal.file} removes "${removal.ref}", but ${why}, so that record stays in the game`,
+        })),
+      ],
+    );
+  }
+  for (const fault of undone) refused.refuse(fault.packId, fault.why);
 
   /* THE FIELD POLICY RUNS LAST, over the composed result, because that is the
    * only point at which every pack's contribution to a record is present: a

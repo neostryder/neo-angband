@@ -193,14 +193,23 @@ Each content file may add, patch, replace, and remove records:
   key, arrays and scalars are replaced whole, and an explicit `null`
   deletes a key.
 - `replaces` swaps the record body wholesale (the ref and owner stay).
-- `removes` deletes the record from the composed game.
+- `removes` deletes the record from the composed game, unless that would
+  leave the game broken. A removal is refused, and the record stays, when
+  another record still names it (a monster whose `base` it is, an escort
+  in a monster's `friends`, a history phrase whose `next` chart it is the
+  last phrase of), or when it is the roll-100 phrase of a history chart.
+  Remove the record together with everything that names it and the
+  removal goes through.
 - `fieldPatches` applies typed ops to dot-paths (`set`, `merge`,
   `addFlag`, `removeFlag`, `add`, `mul`, `append`, `removeValue`) - see
   `packages/mod-sdk/src/patch.ts`. `append` adds entries to a list
   without restating it, which is how a mod puts an item in a shop's
   stock; `removeValue` takes an entry out again.
 - Modifying a record you do not own requires declaring its owner in
-  `dependencies`; compose throws otherwise.
+  `dependencies`. Without it, that patch, replacement or removal is
+  refused.
+- A refused op is reported on the mod's row in the Mods screen, and the
+  rest of the mod still loads.
 
 #### What a ref looks like when core ships the name twice
 

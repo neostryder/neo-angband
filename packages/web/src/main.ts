@@ -13698,8 +13698,8 @@ function modBrowseDeps(): ModUpgradeDeps {
         mod,
         await installedMeta(mod.id, globalThis),
         installEnv,
-        onProgress,
         { origin, allowed: readConsent(channelStore()) },
+        onProgress,
       ),
     uninstall: (id) => uninstallMod(id, globalThis),
     /* The fourth door. Feature-detected off the desktop bridge, so a browser tab gets

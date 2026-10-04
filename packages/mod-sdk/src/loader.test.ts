@@ -611,6 +611,60 @@ describe("composeContentPacks: no per-record op is ever ignored in silence", () 
     ]);
   });
 
+  it("refuses removing the top of a history chart (#372)", () => {
+    /* Without the roll-100 phrase, a roll of 51 to 100 has no phrase of its own;
+     * the port falls back to the chart's last phrase and upstream asserts. */
+    const mod: LoadedPack = {
+      manifest: manifest("lore", { core: "*" }),
+      files: { history: { removes: ["core:1--100"] } },
+    };
+    const composed = composeContentPacks([chartCore(), mod]);
+    expect(composed.problems).toEqual([
+      'lore: history removes "core:1--100", but history chart 1 would have no phrase for a roll above 50, so that record stays in the game',
+    ]);
+    expect(composed.faults.map((f) => f.packId)).toEqual(["lore"]);
+    expect(recordsOf(composed, "history")).toHaveLength(3);
+  });
+
+  /** chartCore, with chart 1 leading to a chart 2 and a chart 3 nothing leads to. */
+  function linkedCharts(): LoadedPack {
+    const core = passthroughCore();
+    core.files["history"] = {
+      records: [
+        { chart: { chart: 1, next: 2, roll: 100 }, phrase: ["You are a child "] },
+        { chart: { chart: 2, next: 0, roll: 50 }, phrase: ["of a farmer. "] },
+        { chart: { chart: 2, next: 0, roll: 100 }, phrase: ["of a smith. "] },
+        { chart: { chart: 3, next: 0, roll: 100 }, phrase: ["You are lost. "] },
+      ],
+    };
+    return core;
+  }
+
+  it("refuses removing every phrase of a chart another chart leads to (#372)", () => {
+    /* Before this, making a character threw "history entry references missing
+     * chart 2" from the binder, naming no mod. */
+    const mod: LoadedPack = {
+      manifest: manifest("lore", { core: "*" }),
+      files: { history: { removes: ["core:2--50", "core:2--100"] } },
+    };
+    const composed = composeContentPacks([linkedCharts(), mod]);
+    expect(composed.problems).toEqual([
+      'lore: history removes "core:2--50", but history "chart 1 roll 100" still names it in chart.next, so that record stays in the game',
+      'lore: history removes "core:2--100", but history "chart 1 roll 100" still names it in chart.next, so that record stays in the game',
+    ]);
+    expect(recordsOf(composed, "history")).toHaveLength(4);
+  });
+
+  it("lets a pack remove a whole chart nothing leads to", () => {
+    const mod: LoadedPack = {
+      manifest: manifest("lore", { core: "*" }),
+      files: { history: { removes: ["core:3--100"] } },
+    };
+    const composed = composeContentPacks([linkedCharts(), mod]);
+    expect(composed.problems).toEqual([]);
+    expect(recordsOf(composed, "history")).toHaveLength(3);
+  });
+
   it("still takes a pack's history records as the whole file", () => {
     /* The key is for the per-record ops only. A chart's rolls mean something in
      * file order, so shipped records replace the file rather than being
@@ -865,5 +919,83 @@ describe("composeContentPacks: no per-record op is ever ignored in silence", () 
         expect(changed, `${where}: expected reachable=${String(reachable)}`).toBe(reachable);
       }
     }
+  });
+});
+
+describe("removals that leave a reference naming nothing (#372)", () => {
+  /** Two monster bases and three monsters; the chief brings Kobolds as escorts. */
+  function bestiary(): LoadedPack {
+    return {
+      manifest: manifest("core"),
+      files: {
+        monster_base: { records: [{ name: "kobold" }, { name: "chief" }] },
+        monster: {
+          records: [
+            { name: "Kobold", base: "kobold" },
+            { name: "Large kobold", base: "kobold" },
+            { name: "Kobold chief", base: "chief", friends: [{ name: "Kobold" }] },
+          ],
+        },
+      },
+    };
+  }
+
+  it("refuses a removal another record still names, and says which record", () => {
+    const mod: LoadedPack = {
+      manifest: manifest("purge", { core: "*" }),
+      files: { monster_base: { removes: ["core:chief"] } },
+    };
+    const composed = composeContentPacks([bestiary(), mod]);
+    expect(composed.problems).toEqual([
+      'purge: monster_base removes "core:chief", but monster "Kobold chief" still names it in base, so that record stays in the game',
+    ]);
+    expect(recordsOf(composed, "monster_base").map((r) => r["name"])).toEqual(["kobold", "chief"]);
+  });
+
+  it("lets a pack remove a record together with everything that names it", () => {
+    const mod: LoadedPack = {
+      manifest: manifest("purge", { core: "*" }),
+      files: {
+        monster_base: { removes: ["core:chief"] },
+        monster: { removes: ["core:kobold-chief"] },
+      },
+    };
+    const composed = composeContentPacks([bestiary(), mod]);
+    expect(composed.problems).toEqual([]);
+    expect(recordsOf(composed, "monster").map((r) => r["name"])).toEqual(["Kobold", "Large kobold"]);
+  });
+
+  it("refuses a removal the record it put back depends on, one pass later", () => {
+    /* Pass one: Kobold's removal is refused, because the chief's escort names
+     * Kobold. Pass two: Kobold is back and its base is kobold, which this pack
+     * removed as well. That removal broke nothing while Kobold was gone, so only
+     * the second pass refuses it. */
+    const mod: LoadedPack = {
+      manifest: manifest("purge", { core: "*" }),
+      files: {
+        monster_base: { removes: ["core:kobold"] },
+        monster: { removes: ["core:kobold", "core:large-kobold"] },
+      },
+    };
+    const composed = composeContentPacks([bestiary(), mod]);
+    expect(composed.problems).toEqual([
+      'purge: monster removes "core:kobold", but monster "Kobold chief" still names it in friends.name, so that record stays in the game',
+      'purge: monster_base removes "core:kobold", but monster "Kobold" still names it in base, so that record stays in the game',
+    ]);
+    expect(recordsOf(composed, "monster").map((r) => r["name"])).toEqual(["Kobold", "Kobold chief"]);
+    expect(recordsOf(composed, "monster_base").map((r) => r["name"])).toEqual(["kobold", "chief"]);
+  });
+
+  it("leaves a reference core itself never resolved alone", () => {
+    /* Upstream ships references that resolve to nothing (references.ts). A
+     * removal is only refused when it is the reason a reference broke. */
+    const core = bestiary();
+    (core.files["monster"]?.records ?? []).push({ name: "Spider swarm", base: "kobold", friends: [{ name: "spider" }] });
+    const mod: LoadedPack = {
+      manifest: manifest("purge", { core: "*" }),
+      files: { monster: { removes: ["core:large-kobold"] } },
+    };
+    const composed = composeContentPacks([core, mod]);
+    expect(composed.problems).toEqual([]);
   });
 });

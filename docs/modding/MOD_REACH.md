@@ -425,14 +425,14 @@ In practice the set is bounded by three counts:
 | `records` | ADD whole records; the contributing pack owns them | `compose.ts:122-132` |
 | `patches` | PARTIAL delta, deep merge - objects merge per key, arrays and scalars replace whole, explicit `null` deletes a key | `mergePatch` `compose.ts:74-92`, applied `:147` |
 | `replaces` | whole-record swap, ref and owner preserved | `compose.ts:147-148` |
-| `removes` | DELETE the record from the composed game | `compose.ts:170-181` |
+| `removes` | DELETE the record from the composed game, unless a reference elsewhere would be left naming it or a history chart would lose its roll-100 phrase; such a removal is refused and the record stays | `compose.ts`, checked by `removal-integrity.ts` from `composeContentPacks` |
 | `fieldPatches` | typed ops on dot-paths: `set`, `merge`, `addFlag`, `removeFlag`, `add`, `mul`, `append`, `removeValue` | `FieldOp` `packages/mod-sdk/src/patch.ts:25-40`, `applyFieldPatch` `:87-135`, applied `compose.ts:153-168` |
 
 A mod can add, override, patch and remove, with field ops on top. `packages/web/mods/demo-modtest/monster.json:2-8` is a working in-repo example: it patches three fields of `core:grip-farmer-maggot-s-dog`.
 
 When two packs add a record with the same id, both records are kept. Refs are namespaced by the contributing pack (`const ref = packRef(pid, name)`, `compose.ts:127`; `PackRef = "<pack>:<slug>"`, `packages/mod-sdk/src/manifest.ts:9`), so `core:kobold`, `amod:kobold` and `bmod:kobold` are three separate records. The duplicate-rejection branch at `compose.ts:128-130` is scoped to one pack and one file, so it never fires across packs. One pack overrides another's record only through the explicit ops above, or through whole-file passthrough, where the last provider in load order wins the file (`packages/mod-sdk/src/loader.ts:131-138`).
 
-Core is pack zero and gets no special treatment. `coreLoadedPack()` (`packages/web/src/pack.ts:61-69`) makes core a `LoadedPack` with the same shape as a mod's, and `activePackSet()` is `[core, ...enabled content mods]` (`packages/web/src/pack.ts:308-329`). The only gate is `mayModify` (`compose.ts:94-96`), which is `ownerPack === m.id || m.dependencies?.[ownerPack] !== undefined`. Nothing special-cases `"core"`, as the comment at `compose.ts:13-17` notes. A mod that declares `"dependencies": { "core": "*" }` can therefore patch, replace or remove any core record, and without that dependency compose throws (`compose.ts:142-146`).
+Core is pack zero and gets no special treatment. `coreLoadedPack()` (`packages/web/src/pack.ts:61-69`) makes core a `LoadedPack` with the same shape as a mod's, and `activePackSet()` is `[core, ...enabled content mods]` (`packages/web/src/pack.ts:308-329`). The only gate is `mayModify` (`compose.ts:94-96`), which is `ownerPack === m.id || m.dependencies?.[ownerPack] !== undefined`. Nothing special-cases `"core"`, as the comment at `compose.ts:13-17` notes. A mod that declares `"dependencies": { "core": "*" }` can therefore patch, replace or remove any core record, and without that dependency the op is refused and reported on the mod's row, while the rest of the mod loads.
 
 ### The 20-file hole (closed 2026-08-08; it is now a 3-file floor)
 

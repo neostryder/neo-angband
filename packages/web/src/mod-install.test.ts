@@ -305,6 +305,9 @@ async function envFor(
  * Hashing.
  * ------------------------------------------------------------------ */
 
+/** A curated install: the origin every test here uses unless it is about consent. */
+const CURATED = { origin: "curated", allowed: false } as const;
+
 describe("sha256Hex", () => {
   it("matches the published digest of the empty string", async () => {
     expect(await sha256Hex(new Uint8Array(0), subtle)).toBe(
@@ -352,7 +355,7 @@ describe("installing from a repository: what lands", () => {
   it("stores every file plus a meta record", async () => {
     const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
     const { env, stores } = await envFor(files);
-    const r = await installModFromRepo(discovered(FILES), null, env);
+    const r = await installModFromRepo(discovered(FILES), null, env, CURATED);
 
     expect(r.ok).toBe(true);
     expect([...(stores.get(STORE_MODS)?.keys() ?? [])].sort()).toEqual([
@@ -371,7 +374,7 @@ describe("installing from a repository: what lands", () => {
   it("rewrites a record from before the document form the first time it is read", async () => {
     const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
     const { env, stores } = await envFor(files);
-    expect((await installModFromRepo(discovered(FILES), null, env)).ok).toBe(true);
+    expect((await installModFromRepo(discovered(FILES), null, env, CURATED)).ok).toBe(true);
     const bare = storedMeta(stores, "demo")!;
     stores.get(STORE_MOD_META)!.set("demo", bare);
     const listed = await installedMods(env.scope);
@@ -387,7 +390,7 @@ describe("installing from a repository: what lands", () => {
      * them to miss it. */
     const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
     const { env, stores } = await envFor(files);
-    const r = await installModFromRepo(discovered(FILES), null, env);
+    const r = await installModFromRepo(discovered(FILES), null, env, CURATED);
 
     expect(r.ok).toBe(true);
     const meta = storedMeta(stores, "demo");
@@ -401,6 +404,7 @@ describe("installing from a repository: what lands", () => {
       discovered(FILES, { sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }),
       null,
       env,
+      CURATED,
     );
 
     expect(r.ok).toBe(true);
@@ -413,7 +417,7 @@ describe("installing from a repository: what lands", () => {
     const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
     const { env } = await envFor(files);
     const seen: string[] = [];
-    await installModFromRepo(discovered(FILES), null, env, (p) =>
+    await installModFromRepo(discovered(FILES), null, env, CURATED, (p) =>
       seen.push(`${String(p.done)}/${String(p.total)} ${p.path}`),
     );
     expect(seen).toEqual(["1/2 manifest.json", "2/2 plugin.js"]);
@@ -426,6 +430,7 @@ describe("installing from a repository: what lands", () => {
       discovered([{ kind: "file", path: "plugin.js" }]),
       null,
       env,
+      CURATED,
     );
     expect(r.ok).toBe(false);
     expect(stores.get(STORE_MOD_META)?.size ?? 0).toBe(0);
@@ -439,6 +444,7 @@ describe("installing from a repository: what lands", () => {
       discovered([{ kind: "file", path: "manifest.json" }]),
       null,
       env,
+      CURATED,
     );
     /* The failure this guards is the one already fixed once in the save path: a
      * reporting layer sitting on top of an IO call that returns void, so every layer
@@ -461,6 +467,7 @@ describe("installing from a repository: what lands", () => {
       ]),
       null,
       env1,
+      CURATED,
     );
     expect(made.stores.get(STORE_MODS)?.has("demo/old.json")).toBe(true);
 
@@ -473,6 +480,7 @@ describe("installing from a repository: what lands", () => {
       ]),
       installedAs("neostryder/neo-angband-mod-demo"),
       env2,
+      CURATED,
     );
 
     /* A mod that is half v1 and half v2 is a mod whose bug reports mean nothing. */
@@ -491,12 +499,14 @@ describe("installing from a repository: what lands", () => {
       discovered(payload),
       null,
       (await envFor(v1, { idb: made.factory })).env,
+      CURATED,
     );
     const v2 = { "manifest.json": enc(MANIFEST), "data.json": enc(JSON.stringify({ v: 2 })) };
     await installModFromRepo(
       discovered(payload),
       installedAs("neostryder/neo-angband-mod-demo"),
       (await envFor(v2, { idb: made.factory })).env,
+      CURATED,
     );
     expect(
       new TextDecoder().decode(
@@ -525,6 +535,7 @@ describe("installing from a repository: what lands", () => {
       discovered(payload),
       null,
       (await envFor(v1, { idb: shared.factory })).env,
+      CURATED,
     );
     expect(first.ok).toBe(true);
 
@@ -535,6 +546,7 @@ describe("installing from a repository: what lands", () => {
       discovered(payload),
       installedAs("neostryder/neo-angband-mod-demo"),
       (await envFor(v2, { idb: refusing.factory })).env,
+      CURATED,
     );
 
     expect(second.ok).toBe(false);
@@ -559,7 +571,7 @@ describe("installing from a repository: an archive payload", () => {
       "tiles/orc.png": enc("not really a png"),
     });
     const { env, stores } = await envFor({ "pack.zip": zip });
-    const r = await installModFromRepo(discovered(ZIP), null, env);
+    const r = await installModFromRepo(discovered(ZIP), null, env, CURATED);
 
     expect(r.ok).toBe(true);
     expect([...(stores.get(STORE_MODS)?.keys() ?? [])].sort()).toEqual([
@@ -576,7 +588,7 @@ describe("installing from a repository: an archive payload", () => {
       fetch: () => Promise.resolve(res(zip, 200, String(ZIP_LIMITS.maxArchiveBytes + 1))),
     };
 
-    const r = await installModFromRepo(discovered(ZIP), null, limited);
+    const r = await installModFromRepo(discovered(ZIP), null, limited, CURATED);
 
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.problem).toMatch(/download is over the 64 MB limit/u);
@@ -602,7 +614,7 @@ describe("installing from a repository: an archive payload", () => {
         }),
     };
 
-    const r = await installModFromRepo(discovered(ZIP), null, limited);
+    const r = await installModFromRepo(discovered(ZIP), null, limited, CURATED);
 
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.problem).toMatch(/download is over the 64 MB limit/u);
@@ -618,7 +630,7 @@ describe("installing from a repository: an archive payload", () => {
       "../../saves/stolen.json": enc("{}"),
     });
     const { env, stores } = await envFor({ "pack.zip": zip });
-    const r = await installModFromRepo(discovered(ZIP), null, env);
+    const r = await installModFromRepo(discovered(ZIP), null, env, CURATED);
 
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.problem).toMatch(/escapes the mod folder/u);
@@ -630,7 +642,7 @@ describe("installing from a repository: an archive payload", () => {
     for (let i = 1; i <= ZIP_LIMITS.maxEntries; i++) entries[`f${i}.json`] = enc("{}");
     const { env, stores } = await envFor({ "pack.zip": zipSync(entries) });
 
-    const r = await installModFromRepo(discovered(ZIP), null, env);
+    const r = await installModFromRepo(discovered(ZIP), null, env, CURATED);
 
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.problem).toMatch(/more than 4096 entries/u);
@@ -646,7 +658,7 @@ describe("installing from a repository: an archive payload", () => {
     );
     const { env, stores } = await envFor({ "pack.zip": zip });
 
-    const r = await installModFromRepo(discovered(ZIP), null, env);
+    const r = await installModFromRepo(discovered(ZIP), null, env, CURATED);
 
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.problem).toMatch(/over the 64 MB limit for one file/u);
@@ -662,7 +674,7 @@ describe("installing from a repository: an archive payload", () => {
     );
     const { env, stores } = await envFor({ "pack.zip": zip });
 
-    const r = await installModFromRepo(discovered(ZIP), null, env);
+    const r = await installModFromRepo(discovered(ZIP), null, env, CURATED);
 
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.problem).toMatch(/which no mod file does/u);
@@ -683,7 +695,7 @@ describe("installing from a repository: an archive payload", () => {
     expect(zip.length).toBeLessThan(ZIP_LIMITS.maxArchiveBytes);
     const { env, stores } = await envFor({ "pack.zip": zip });
 
-    const r = await installModFromRepo(discovered(ZIP), null, env);
+    const r = await installModFromRepo(discovered(ZIP), null, env, CURATED);
 
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.problem).toMatch(/unpacks to more than 128 MB/u);
@@ -701,7 +713,7 @@ describe("installing from a repository: an archive payload", () => {
     ];
     const { env, stores } = await envFor({ "one.zip": zipSync(one), "two.zip": zipSync(two) });
 
-    const r = await installModFromRepo(discovered(payload), null, env);
+    const r = await installModFromRepo(discovered(payload), null, env, CURATED);
 
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.problem).toMatch(/more than 4096 entries/u);
@@ -731,6 +743,7 @@ describe("installed mods, read back", () => {
       ]),
       null,
       env,
+      CURATED,
     );
 
     const report = await loadInstalledMods({ indexedDB: made.factory });
@@ -772,6 +785,7 @@ describe("installed mods, read back", () => {
         }),
         null,
         env,
+        CURATED,
       );
     }
     expect((await installedMods({ indexedDB: made.factory })).map((m) => m.id)).toEqual([
@@ -979,6 +993,7 @@ describe("installed mods, read back", () => {
       ]),
       null,
       env,
+      CURATED,
     );
 
     expect(await uninstallMod("demo", { indexedDB: made.factory })).toBe(true);
@@ -1107,6 +1122,7 @@ describe("an installed TILES mod registers a Graphics row and draws its own art"
       discovered([{ kind: "archive", path: "pack.zip" }], { name: "Demo Tiles" }),
       null,
       env,
+      CURATED,
     );
     expect(installed.ok).toBe(true);
 
@@ -1145,6 +1161,7 @@ describe("an installed TILES mod registers a Graphics row and draws its own art"
       discovered([{ kind: "archive", path: "pack.zip" }], { name: "Demo Tiles" }),
       null,
       env,
+      CURATED,
     );
     const report = await loadInstalledMods({ indexedDB: made.factory });
     const merged = mergeModSources({ bundled: new Map(), disk: report });
@@ -1299,6 +1316,7 @@ describe("an INSTALLED mod's plugin.js actually runs", () => {
       ]),
       null,
       env,
+      CURATED,
     );
     expect(result.ok, result.ok ? "" : result.problem).toBe(true);
 
@@ -1409,6 +1427,7 @@ describe("installModFromRepo: trust on first use", () => {
       discovered([{ kind: "file", path: "manifest.json" }]),
       installedAs("someoneelse/neo-angband-mod-demo"),
       spying(env, asked),
+      CURATED,
     );
 
     expect(r.ok).toBe(false);
@@ -1425,6 +1444,7 @@ describe("installModFromRepo: trust on first use", () => {
       discovered([{ kind: "file", path: "manifest.json" }]),
       installedAs("neostryder/neo-angband-mod-demo"),
       env,
+      CURATED,
     );
     expect(r.ok).toBe(true);
   });
@@ -1435,6 +1455,7 @@ describe("installModFromRepo: trust on first use", () => {
       discovered([{ kind: "file", path: "manifest.json" }]),
       null,
       env,
+      CURATED,
     );
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.meta.repo).toBe("neostryder/neo-angband-mod-demo");
@@ -1457,6 +1478,7 @@ describe("installModFromRepo: what lands, with no digest to check it against", (
       ]),
       null,
       env,
+      CURATED,
     );
 
     expect(r.ok).toBe(true);
@@ -1475,6 +1497,7 @@ describe("installModFromRepo: what lands, with no digest to check it against", (
       discovered([{ kind: "archive", path: "packs/art.zip" }]),
       null,
       okEnv.env,
+      CURATED,
     );
     expect(good1.ok).toBe(true);
     if (good1.ok) {
@@ -1486,6 +1509,7 @@ describe("installModFromRepo: what lands, with no digest to check it against", (
       discovered([{ kind: "archive", path: "packs/evil.zip" }]),
       null,
       badEnv.env,
+      CURATED,
     );
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.problem).toMatch(/escapes the mod folder/u);
@@ -1503,6 +1527,7 @@ describe("installModFromRepo: what lands, with no digest to check it against", (
       ]),
       null,
       env,
+      CURATED,
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.problem).toMatch(/the archive is empty/u);
@@ -1520,6 +1545,7 @@ describe("installModFromRepo: what lands, with no digest to check it against", (
       ]),
       null,
       env,
+      CURATED,
     );
     expect(r.ok).toBe(false);
     if (!r.ok) {
@@ -1534,6 +1560,7 @@ describe("installModFromRepo: what lands, with no digest to check it against", (
       discovered([{ kind: "file", path: "plugin.js" }]),
       null,
       env,
+      CURATED,
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.problem).toMatch(/no manifest\.json/u);
@@ -1548,6 +1575,7 @@ describe("installModFromRepo: what lands, with no digest to check it against", (
       ]),
       null,
       env,
+      CURATED,
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.problem).toMatch(/gone\.js: not found at this tag/u);
@@ -1560,6 +1588,7 @@ describe("installModFromRepo: what lands, with no digest to check it against", (
       discovered([{ kind: "file", path: "manifest.json" }]),
       null,
       spying(env, asked),
+      CURATED,
     );
     expect(asked[0]).toBe(
       "https://raw.githubusercontent.com/neostryder/neo-angband-mod-demo/refs/tags/v1.0.0/manifest.json",
@@ -1579,7 +1608,7 @@ describe("installModFromRepo: what lands, with no digest to check it against", (
       ]),
       null,
       env,
-      (p) => seen.push(`${String(p.done)}/${String(p.total)} ${p.path}`),
+      CURATED, (p) => seen.push(`${String(p.done)}/${String(p.total)} ${p.path}`),
     );
     expect(seen).toEqual(["1/2 manifest.json", "2/2 plugin.js"]);
   });
@@ -1600,7 +1629,6 @@ describe("installModFromRepo: consent is enforced HERE, not in the screen", () =
       discovered([{ kind: "file", path: "manifest.json" }]),
       null,
       spying(env, asked),
-      undefined,
       { origin: "third-party", allowed: false },
     );
 
@@ -1615,7 +1643,6 @@ describe("installModFromRepo: consent is enforced HERE, not in the screen", () =
       discovered([{ kind: "file", path: "manifest.json" }]),
       null,
       env,
-      undefined,
       { origin: "third-party", allowed: true },
     );
     expect(r.ok).toBe(true);
@@ -1627,10 +1654,19 @@ describe("installModFromRepo: consent is enforced HERE, not in the screen", () =
       discovered([{ kind: "file", path: "manifest.json" }]),
       null,
       env,
-      undefined,
       { origin: "curated", allowed: false },
     );
     expect(r.ok).toBe(true);
+  });
+
+  it("will not compile without a consent argument", () => {
+    /* The check is the build's: tsc -b type-checks this file, so the day the
+     * argument goes back to optional, this directive stops being needed and the
+     * build fails on it. Never called, so no install runs. */
+    const install = (env: InstallEnv): Promise<unknown> =>
+      // @ts-expect-error consent is required; leaving it out used to mean "curated"
+      installModFromRepo(discovered([{ kind: "file", path: "manifest.json" }]), null, env);
+    expect(typeof install).toBe("function");
   });
 
   it("refuses BEFORE the origin check, so an unconsented install says the useful thing", async () => {
@@ -1642,7 +1678,6 @@ describe("installModFromRepo: consent is enforced HERE, not in the screen", () =
       discovered([{ kind: "file", path: "manifest.json" }]),
       installedAs("someoneelse/neo-angband-mod-demo"),
       env,
-      undefined,
       { origin: "third-party", allowed: false },
     );
     expect(r.ok).toBe(false);
@@ -1675,6 +1710,7 @@ describe("installModFromRepo: the standards inspection", () => {
       ]),
       null,
       env,
+      CURATED,
     );
 
     expect(r.ok).toBe(false);
@@ -1722,6 +1758,7 @@ describe("installModFromRepo: the standards inspection", () => {
       discovered([{ kind: "file", path: "manifest.json" }]),
       null,
       env,
+      CURATED,
     );
     expect(r.ok).toBe(true);
   });
@@ -1738,6 +1775,7 @@ describe("installModFromRepo: the standards inspection", () => {
       discovered([{ kind: "archive", path: "dist/pack.zip" }]),
       null,
       env,
+      CURATED,
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.unmet?.map((f) => f.id)).toContain("plugin-declares-modapi");
@@ -1864,6 +1902,7 @@ describe("installModFromZip: the fourth door ends where the other three do", () 
       discovered([{ kind: "file", path: "manifest.json" }]),
       null,
       env,
+      CURATED,
     );
     expect(first.ok).toBe(true);
 
@@ -2030,7 +2069,7 @@ describe("detecting a moved tag, end to end", () => {
     expect(first.mod.sha).toBe(SHA_A);
 
     const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
-    const installed = await installModFromRepo(first.mod, null, env);
+    const installed = await installModFromRepo(first.mod, null, env, CURATED);
     expect(installed.ok).toBe(true);
     if (!installed.ok) return;
     expect(installed.meta.tag).toBe("v1.2.0");
@@ -2059,7 +2098,7 @@ describe("detecting a moved tag, end to end", () => {
     const first = await discoverMod({ repo: REPO }, discoverEnvAt(SHA_A));
     if (!first.ok) throw new Error("setup: discovery failed");
     const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
-    const installed = await installModFromRepo(first.mod, null, env);
+    const installed = await installModFromRepo(first.mod, null, env, CURATED);
     if (!installed.ok) throw new Error("setup: install failed");
 
     const second = await discoverMod({ repo: REPO, tag: "v1.2.0" }, discoverEnvAt(SHA_A));

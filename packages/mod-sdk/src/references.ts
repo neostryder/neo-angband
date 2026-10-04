@@ -115,6 +115,8 @@ export const REFERENCE_EDGES: readonly ReferenceEdge[] = [
   { file: "room_template", path: "tval", target: "object_base", targetPath: "name.tval", keywords: ["0"], what: "the item type the template places" },
   { file: "terrain", path: "mimic", target: "terrain", targetPath: "code", what: "the terrain this one looks like" },
   { file: "p_race", path: "history", target: "history", targetPath: "chart.chart", what: "the history chart this race starts on" },
+  /* `next: 0` ends a background, as it does in history.txt. */
+  { file: "history", path: "chart.next", target: "history", targetPath: "chart.chart", keywords: ["0"], what: "the history chart this phrase leads to" },
 ];
 
 /** Normalise one side of a comparison under a rule. */
@@ -194,6 +196,14 @@ function labelOf(record: JsonRecord): string {
     if (typeof v === "object" && v !== null && !Array.isArray(v)) {
       const inner = (v as JsonRecord)["name"] ?? (v as JsonRecord)["tval"];
       if (typeof inner === "string" && inner !== "") return inner;
+    }
+  }
+  /* A history phrase has no name; its chart and roll are what identify it. */
+  const chart = record["chart"];
+  if (typeof chart === "object" && chart !== null && !Array.isArray(chart)) {
+    const { chart: id, roll } = chart as JsonRecord;
+    if (typeof id === "number" && typeof roll === "number") {
+      return `chart ${String(id)} roll ${String(roll)}`;
     }
   }
   return "(unnamed record)";

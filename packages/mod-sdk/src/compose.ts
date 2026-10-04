@@ -334,6 +334,12 @@ export interface ComposePacksOptions {
    * contribution is then SKIPPED and composition continues.
    */
   readonly onRefuse?: (packId: string, why: string) => void;
+  /**
+   * Called for each removal that takes effect, with the ref as the pack wrote it
+   * and the record as it stood just before it went. The loader uses it to find
+   * removals that leave a reference with nothing to name (removal-integrity.ts).
+   */
+  readonly onRemove?: (packId: string, file: string, ref: string, removed: JsonRecord) => void;
 }
 
 /**
@@ -645,6 +651,7 @@ export function composePacks(
       for (const refStr of contrib.removes ?? []) {
         const at = addressable("removes", refStr as PackRef);
         if (at === null) continue;
+        options.onRemove?.(pid, file, refStr, (table.get(at) as ComposedRecord).value);
         table.delete(at);
       }
     }

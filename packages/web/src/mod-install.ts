@@ -197,6 +197,18 @@ export interface InstallProgress {
   readonly path: string;
 }
 
+/**
+ * Where a mod was found, and whether the player has turned third-party mods on.
+ *
+ * Every repository install states both. A curated mod still says so, as
+ * `{ origin: "curated", allowed: <the switch> }`, so no call can reach the store
+ * without saying where the mod came from.
+ */
+export interface InstallConsent {
+  readonly origin: ModOrigin;
+  readonly allowed: boolean;
+}
+
 export type InstallResult =
   | { readonly ok: true; readonly meta: InstalledModMeta }
   | {
@@ -466,7 +478,6 @@ export async function installModFromRepo(
   mod: DiscoveredMod,
   installed: InstalledModMeta | null,
   env: InstallEnv,
-  onProgress?: (p: InstallProgress) => void,
   /**
    * How the mod was found and whether third-party mods are allowed.
    *
@@ -476,19 +487,17 @@ export async function installModFromRepo(
    * check, and the one that forgets ships code the player never agreed to. Consent
    * is about acquiring code, so it belongs at the point where bytes are stored.
    *
-   * Optional, and an absent value means CURATED-equivalent - the pre-existing
-   * behaviour of this function and of installRecommendedMod, neither of which could
-   * install anything but a vouched mod when they were written.
+   * Required. It used to be optional, and leaving it out meant "curated", so a
+   * caller that forgot it installed a third-party mod with no question asked.
    */
-  consent?: { readonly origin: ModOrigin; readonly allowed: boolean },
+  consent: InstallConsent,
+  onProgress?: (p: InstallProgress) => void,
 ): Promise<InstallResult> {
-  if (consent) {
-    const blocked = installBlocked(consent.origin, consent.allowed);
-    /* Before the origin check and before any fetch: a refused install must not have
-     * touched the network, so a player who has not consented has not silently made
-     * requests to a repository either. */
-    if (blocked !== null) return { ok: false, problem: blocked };
-  }
+  const blocked = installBlocked(consent.origin, consent.allowed);
+  /* Before the origin check and before any fetch: a refused install must not have
+   * touched the network, so a player who has not consented has not silently made
+   * requests to a repository either. */
+  if (blocked !== null) return { ok: false, problem: blocked };
   const conflict = originConflict(installed, mod.repo);
   if (conflict !== null) return { ok: false, problem: conflict };
   try {
