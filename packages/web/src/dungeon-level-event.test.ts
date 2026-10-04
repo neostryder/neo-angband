@@ -20,6 +20,7 @@ import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { firstLevelGate, reportEventFault, type FirstLevelGate } from "./first-level";
 import { log } from "./logging";
 import { modPluginContext } from "./mod-context";
+import { modFaults, resetModFaults } from "./mod-problems";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(readFileSync(new URL(`../../content/pack/${name}.json`, import.meta.url), "utf8")) as T;
@@ -98,10 +99,11 @@ describe("a mod's dungeonlevel subscription", () => {
 });
 
 describe("a mod's dungeonlevel listener that throws", () => {
-  it("is logged on the mods channel, and the arrival carries on", () => {
+  it("is reported against that mod, and the mods after it and the arrival carry on", () => {
     const game = startGame(pack, { seed: 3, depth: 0 });
     game.state.events = new GameEvents();
     game.state.onEventFault = reportEventFault;
+    resetModFaults();
     const error = vi.spyOn(log, "error").mockImplementation(() => {});
 
     const broken = modPluginContext("broken", {}, game.state, {}, {
@@ -110,6 +112,11 @@ describe("a mod's dungeonlevel listener that throws", () => {
     broken.events!.on("dungeonlevel", () => {
       throw new Error("broken mod");
     });
+    const tracker = modPluginContext("tracker", {}, game.state, {}, {
+      capabilities: capabilities("tracker", ["event:dungeonlevel"]),
+    });
+    const depths: number[] = [];
+    tracker.events!.on("dungeonlevel", (_type, data) => depths.push(data.depth));
     const messages: string[] = [];
     game.state.msg = (text: string): void => {
       messages.push(text);
@@ -119,14 +126,18 @@ describe("a mod's dungeonlevel listener that throws", () => {
       takeStairs(game, "descend");
       expect(game.state.chunk.depth).toBe(1);
       expect(game.state.chunk.onlyPartial).toBe(false);
-      /* The stair message, then the level feeling after the failed event. */
+      /* The stair message, then the level feeling after the failed listener. */
       expect(messages).toHaveLength(2);
+      /* The mod registered after the broken one still heard the arrival. */
+      expect(depths).toEqual([1]);
       expect(error).toHaveBeenCalledTimes(1);
-      expect(error.mock.calls[0]![0]).toBe("mods");
-      expect(error.mock.calls[0]![1]).toBe("a dungeonlevel listener failed:");
+      expect(error.mock.calls[0]![0]).toBe("mod:broken");
+      expect(error.mock.calls[0]![1]).toBe("its dungeonlevel listener failed:");
       expect((error.mock.calls[0]![2] as Error).message).toBe("broken mod");
+      expect(modFaults()).toEqual([{ id: "broken", why: "its dungeonlevel listener failed: broken mod" }]);
     } finally {
       error.mockRestore();
+      resetModFaults();
     }
   });
 });

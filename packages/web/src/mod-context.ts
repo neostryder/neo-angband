@@ -20,6 +20,7 @@ import * as neoCore from "@rpgm-tools/neo-angband-core";
  * plugin imports. mod-plugin.ts keeps its SDK imports type-only. */
 import * as neoAuthoring from "@rpgm-tools/neo-angband-mod-sdk";
 import { log } from "./logging";
+import { faultMessage, reportModFault } from "./mod-problems";
 import type { CoreRegistries, GameState, KnownLevelView, ModBag } from "@rpgm-tools/neo-angband-core";
 import {
   IN_PROCESS_MOD_API_VERSION,
@@ -165,7 +166,13 @@ export function modPluginContext(
   const snapshot = snapshotFor(session);
   const events = state?.events && session.capabilities &&
     neoCore.GAME_EVENT_TYPES.some((type) => session.capabilities?.has(`event:${type}`))
-    ? neoCore.subscribeEvents(state.events, session.capabilities)
+    ? neoCore.subscribeEvents(state.events, session.capabilities, {
+      owner: id,
+      onFault: (type, error) => {
+        log.error(`mod:${id}`, `its ${type} listener failed:`, error);
+        reportModFault(id, `its ${type} listener failed: ${faultMessage(error)}`);
+      },
+    })
     : undefined;
   const knownLevel = knownLevelFor(session);
   const inspect = inspectFor(session);

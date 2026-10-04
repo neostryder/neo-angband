@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- [Visible] [Modding-API] **A mod's event handler that throws no longer keeps the event from the mods after it.** Each `ctx.events` handler now runs separately, and an error or a rejected promise from one is logged against its mod and listed on the Mods screen while the other handlers still receive the event (#371).
+
 ## [1.22.0] - 2026-10-03
 
 ### Added

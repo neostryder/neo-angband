@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { loc } from "../loc.js";
 import { FEAT, MFLAG, OF, RF, RSF, SQUARE, TRF, TV } from "../generated/index.js";
 import { bindConstants } from "../constants.js";
@@ -942,6 +942,133 @@ describe("event subscription seam (W1.6)", () => {
     });
     bus.emit("sound", { msg: "", type: 3 });
     expect(got).toBe(1);
+  });
+});
+
+describe("event subscription: one listener's failure stays its own (#371)", () => {
+  const MSG = { msg: "hi", type: 0 } as const;
+
+  it("a listener that throws does not hide the event from the ones after it", () => {
+    const bus = new GameEvents();
+    const faults: [string, unknown, string | undefined][] = [];
+    const rowdy = subscribeEvents(bus, undefined, {
+      owner: "rowdy",
+      onFault: (type, error, owner) => faults.push([type, error, owner]),
+    });
+    const quiet = subscribeEvents(bus, undefined, { owner: "quiet", onFault: () => undefined });
+    const order: string[] = [];
+    quiet.on("message", () => order.push("first"));
+    rowdy.on("message", () => {
+      throw new Error("boom");
+    });
+    quiet.on("message", () => order.push("third"));
+    expect(() => bus.emit("message", MSG)).not.toThrow();
+    expect(order).toEqual(["first", "third"]);
+    expect(faults).toHaveLength(1);
+    expect(faults[0]?.[0]).toBe("message");
+    expect((faults[0]?.[1] as Error).message).toBe("boom");
+    expect(faults[0]?.[2]).toBe("rowdy");
+  });
+
+  it("a promise a listener returns is watched for rejection", async () => {
+    const bus = new GameEvents();
+    const faults: unknown[] = [];
+    const sub = subscribeEvents(bus, undefined, { onFault: (_t, error) => faults.push(error) });
+    sub.on("message", async () => {
+      throw new Error("later");
+    });
+    bus.emit("message", MSG);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(faults.map((e) => (e as Error).message)).toEqual(["later"]);
+  });
+
+  it("a fault reporter that throws does not end the loop either", () => {
+    const bus = new GameEvents();
+    const sub = subscribeEvents(bus, undefined, {
+      onFault: () => {
+        throw new Error("reporter broke");
+      },
+    });
+    const rethrow: (() => void)[] = [];
+    const queue = vi.spyOn(globalThis, "queueMicrotask").mockImplementation((cb) => {
+      rethrow.push(cb);
+    });
+    let after = 0;
+    try {
+      sub.on("message", () => {
+        throw new Error("boom");
+      });
+      sub.on("message", () => {
+        after += 1;
+      });
+      expect(() => bus.emit("message", MSG)).not.toThrow();
+    } finally {
+      queue.mockRestore();
+    }
+    expect(after).toBe(1);
+    expect(rethrow).toHaveLength(1);
+    expect(() => rethrow[0]?.()).toThrow("reporter broke");
+  });
+
+  it("off with the function given to on removes it", () => {
+    const bus = new GameEvents();
+    const sub = subscribeEvents(bus);
+    let got = 0;
+    const fn = (): void => {
+      got += 1;
+    };
+    sub.on("message", fn);
+    sub.on("message", fn);
+    bus.emit("message", MSG);
+    expect(got).toBe(2);
+    sub.off("message", fn);
+    bus.emit("message", MSG);
+    expect(got).toBe(3);
+    sub.off("message", fn);
+    sub.off("message", fn);
+    bus.emit("message", MSG);
+    expect(got).toBe(3);
+  });
+
+  it("off touches only its own event type and its own subscription", () => {
+    const bus = new GameEvents();
+    const a = subscribeEvents(bus);
+    const b = subscribeEvents(bus);
+    const heard: string[] = [];
+    const fn = (type: string): void => {
+      heard.push(type);
+    };
+    a.on("message", fn);
+    a.on("sound", fn);
+    b.on("message", fn);
+    a.off("message", fn);
+    bus.emit("message", MSG);
+    bus.emit("sound", { msg: "", type: 3 });
+    expect(heard).toEqual(["message", "sound"]);
+  });
+
+  it("with no fault handler the error is rethrown later, after the loop has finished", () => {
+    const bus = new GameEvents();
+    const sub = subscribeEvents(bus);
+    const rethrow: (() => void)[] = [];
+    const queue = vi.spyOn(globalThis, "queueMicrotask").mockImplementation((cb) => {
+      rethrow.push(cb);
+    });
+    let after = 0;
+    try {
+      sub.on("message", () => {
+        throw new Error("loud");
+      });
+      sub.on("message", () => {
+        after += 1;
+      });
+      bus.emit("message", MSG);
+    } finally {
+      queue.mockRestore();
+    }
+    expect(after).toBe(1);
+    expect(rethrow).toHaveLength(1);
+    expect(() => rethrow[0]?.()).toThrow("loud");
   });
 });
 

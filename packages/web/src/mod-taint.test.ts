@@ -114,6 +114,32 @@ describe("the session taint", () => {
     onSessionTaint(told);
     expect(told).toHaveBeenCalledWith(FAULT);
   });
+
+  it("still tells every listener when one of them throws", () => {
+    /* taintSession runs inside the turn that faulted, so a listener's own error
+     * must neither stop the listeners after it nor throw back into that turn. */
+    const later = vi.fn();
+    const rethrown: unknown[] = [];
+    const queue = vi.spyOn(globalThis, "queueMicrotask").mockImplementation((cb) => {
+      try {
+        cb();
+      } catch (error) {
+        rethrown.push(error);
+      }
+    });
+    try {
+      onSessionTaint(() => {
+        throw new Error("listener broke");
+      });
+      onSessionTaint(later);
+      expect(() => taintSession(FAULT)).not.toThrow();
+    } finally {
+      queue.mockRestore();
+    }
+    expect(later).toHaveBeenCalledWith(FAULT);
+    expect(rethrown).toHaveLength(1);
+    expect((rethrown[0] as Error).message).toBe("listener broke");
+  });
 });
 
 describe("what the player is told", () => {

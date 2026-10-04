@@ -64,4 +64,4 @@ export type { LoadoutDerive, LoadoutSimOptions } from "./loadout.js";
 export { createAgentActions } from "./act.js";
 export { AgentCapabilityError, installController } from "./controller.js";
 export { subscribeEvents } from "./events.js";
-export type { AgentEventSubscription } from "./events.js";
+export type { AgentEventSubscription, EventSubscriptionOptions } from "./events.js";

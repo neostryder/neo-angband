@@ -66,7 +66,17 @@ const listeners: ((t: SessionTaint) => void)[] = [];
 export function taintSession(t: SessionTaint): void {
   if (taint) return;
   taint = t;
-  for (const listener of listeners) listener(t);
+  /* Each on its own guard: a listener that throws must not keep the rest from
+   * hearing about the taint, and must not throw back into the turn that caused it. */
+  for (const listener of listeners) {
+    try {
+      listener(t);
+    } catch (error) {
+      queueMicrotask(() => {
+        throw error;
+      });
+    }
+  }
 }
 
 /** The fault that ended this session, or null while it is still trustworthy. */
