@@ -119,6 +119,19 @@ Tag `origin/master` after the push rather than a local commit: the local commit
 is not in the public history, and a tag pointing at one would name an object the
 public repository does not have.
 
+### Cutting a beta
+
+A beta is a public test build of the next release, offered to players on the `beta` and `early` channels. Start one with `node tools/version.mjs beta minor` (or `beta patch`), which moves 1.22.0 to 1.23.0-beta.1, then publish and tag it the same way as a release; the tool prints the commands. Each later beta of the same release is `node tools/version.mjs beta next`, which gives 1.23.0-beta.2, and another tag. When the beta is ready, `node tools/version.mjs set release` moves it to 1.23.0, and that tag is the release.
+
+A tag with a pre-release suffix is published differently from a release tag:
+
+- `release.yml` flags its GitHub Release as a pre-release, so `beta` and `early` offer it and `stable` does not.
+- `publish-npm.yml` publishes the packages under the `next` dist-tag, so a plain `npm install` still gets the last release.
+- The itch.io html channel and GitHub Pages keep the last release.
+- The AUR package is not updated for a beta.
+
+An `early` build made during a beta keeps the beta's version number, as 1.23.0-edge.N. That sorts above every 1.23.0 beta and below 1.23.0 itself, so the release still reaches every channel. Between a release and the next beta, `early` builds carry the next patch number (1.23.1-edge.N), and a patch beta of that number (1.23.1-beta.1) sorts below them. An `early` player is not offered that beta, but the `early` build made from the same commit carries the same code and sorts above the older ones, so nothing is missed. A minor or major beta has no such overlap.
+
 ### Updating the official AUR package
 
 The AUR package definition lives in [`packaging/aur/`](../packaging/aur/) as
@@ -462,7 +475,7 @@ on beta must still be offered `1.0.0` when it ships.
 | channel | what it selects | produced by |
 |---|---|---|
 | `stable` | published, not flagged pre-release | `release.yml`, automatically, on a `1.x` tag |
-| `beta` | the above, plus pre-releases, every `0.x` | `release.yml`, automatically, on any tag |
+| `beta` | the above, plus pre-releases: every `0.x` and every `-beta.N` tag | `release.yml`, automatically, on any tag |
 | `early` | the above, plus per-commit builds | `edge.yml`, automatically |
 
 All three channels are now unattended once a tag is pushed - the play-smoke

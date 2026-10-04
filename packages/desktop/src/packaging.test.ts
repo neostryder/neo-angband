@@ -346,7 +346,7 @@ describe("publishing an 0.x release does not present it as stable", () => {
     expect(workflow).toContain("--prerelease");
     /* And it must be CONDITIONAL: hard-coding it would keep flagging releases
      * as pre-release after 1.0, which is the same defect facing the other way. */
-    expect(workflow).toMatch(/0\.\*\)/u);
+    expect(workflow).toMatch(/0\.\*[|)]/u);
   });
 });
 
@@ -454,6 +454,28 @@ describe("the updater's two halves name the same repository", () => {
     /* And it must clean up after itself, or the repository accumulates a
      * release and a tag per commit forever. */
     expect(edge).toContain("--cleanup-tag");
+  });
+
+  it("treats a beta tag as a pre-release everywhere a tag is published", () => {
+    /* A beta (v1.23.0-beta.1) is for testers: the beta and early channels offer
+     * it through the GitHub pre-release flag, npm keeps it off `latest`, and the
+     * public web builds on itch.io and Pages stay on the last release. */
+    const release = read(".github/workflows/release.yml");
+    expect(release).toMatch(/0\.\*\|\*-\*\) prerelease=\(--prerelease\)/u);
+    /* Pinned to where each guard sits, not just counted: the itch job's own
+     * condition, and the step that dispatches Pages. Any lines between the
+     * header and the `if:` must be comments or the job's name and needs. */
+    const guard = String.raw`\s*if: \$\{\{ !contains\(github\.event\.inputs\.tag \|\| github\.ref_name, '-'\) \}\}`;
+    expect(release).toMatch(new RegExp(String.raw`\n  itch:\n(?:    (?:#|name:|needs:)[^\n]*\n)*` + guard, "u"));
+    expect(release).toMatch(new RegExp(String.raw`- name: Trigger Pages[^\n]*\n(?:\s*#[^\n]*\n)*` + guard, "u"));
+    /* Pages also refuses a suffixed tag given to a manual run, not only a
+     * release event's tag. */
+    expect(read(".github/workflows/pages.yml")).toContain(
+      "if: ${{ !contains(github.event.release.tag_name || github.event.inputs.tag, '-') }}",
+    );
+    const npm = read(".github/workflows/publish-npm.yml");
+    expect(npm).toMatch(/\*-\*\) dist_tag=next/u);
+    expect(npm).toContain('npm publish --access public --tag "$dist_tag"');
   });
 
   it("promises the player the same directory the swap script actually skips", () => {

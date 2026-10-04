@@ -146,6 +146,9 @@ jobs:
   itch:
     name: Push to itch.io
     needs: [web]
+    # itch.io's html channel is the one public web build, so a pre-release tag
+    # (v1.23.0-beta.1) stays off it.
+    if: ${{ !contains(github.event.inputs.tag || github.ref_name, '-') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v6
@@ -284,14 +287,14 @@ jobs:
             exit 1
           fi
           echo "attaching ${#files[@]} files"
-          # PRE-RELEASE is the one claim left to make. Without it, publishing an
-          # 0.x tag marks it "Latest release", which is how a 0.16.0 alpha would
-          # end up presented as the stable build. Every 0.x is a pre-release by
-          # definition; at 1.0.0 this stops applying and the flag goes away on
-          # its own.
+          # PRE-RELEASE is the one claim left to make. Without it, publishing a
+          # test build marks it "Latest release" and the stable channel offers it.
+          # Every 0.x is a pre-release, and so is any tag with a semver
+          # pre-release suffix (v1.23.0-beta.1): the beta and early channels
+          # offer those, and stable does not.
           prerelease=()
           case "${TAG#v}" in
-            0.*) prerelease=(--prerelease) ;;
+            0.*|*-*) prerelease=(--prerelease) ;;
           esac
           # A re-run must not fail on "already exists": update the release in place.
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -303,9 +306,16 @@ jobs:
               --title "Neo Angband ${TAG#v}" \
               --notes-file release-notes.md
           fi
-          echo "::notice::$TAG is published. Every existing install now sees it on its next launch."
+          if [ "${#prerelease[@]}" -gt 0 ]; then
+            echo "::notice::$TAG is published as a pre-release. Installs on the beta and early channels see it on their next launch."
+          else
+            echo "::notice::$TAG is published. Every existing install now sees it on its next launch."
+          fi
 
       - name: Trigger Pages (release events from GITHUB_TOKEN don't cascade)
+        # Pages serves the public browser build, so a pre-release tag does not
+        # deploy it.
+        if: ${{ !contains(github.event.inputs.tag || github.ref_name, '-') }}
         # GitHub does not start new workflow runs from a `release` event that
         # GITHUB_TOKEN caused; only workflow_dispatch and repository_dispatch are
         # exempt. This job publishes with GITHUB_TOKEN, so pages.yml would never

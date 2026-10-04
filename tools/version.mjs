@@ -72,7 +72,7 @@ export function versionSites() {
     {
       file: "packages/core/README.md",
       what: "the ENGINE_VERSION example output",
-      pattern: /(console\.log\(ENGINE_VERSION, PARITY_BASELINE\); \/\/ )(\d+\.\d+\.\d+)( )/u,
+      pattern: /(console\.log\(ENGINE_VERSION, PARITY_BASELINE\); \/\/ )(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)( )/u,
     },
     /* CHANGELOG.md is deliberately NOT a site. It was one: the file opened with a
      * single "Current state of the project at version `X`" greeting, and that
@@ -110,12 +110,12 @@ export function versionSites() {
     {
       file: "docs/RELEASING.md",
       what: "every example tag in the runbook",
-      pattern: /(git tag v)(\d+\.\d+\.\d+)()/gu,
+      pattern: /(git tag v)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)()/gu,
     },
     {
       file: "docs/RELEASING.md",
       what: "every example tag push in the runbook",
-      pattern: /(git push origin (?:master )?v)(\d+\.\d+\.\d+)()/gu,
+      pattern: /(git push origin (?:master )?v)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)()/gu,
     },
   );
   return sites;
@@ -156,12 +156,25 @@ export function versionDrift() {
   return drift;
 }
 
-const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/u;
+const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.]+))?$/u;
+const BETA = /^beta\.(\d+)$/u;
 
 function parse(version) {
   const m = SEMVER.exec(version);
   if (m === null) throw new Error(`not a semver version: ${version}`);
   return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+/** The release a version leads up to: `1.23.0` for `1.23.0-beta.2`, itself for a release. */
+export function releaseOf(version) {
+  return parse(version).join(".");
+}
+
+/** The beta number of a `-beta.N` version, or null for anything else. */
+export function betaNumber(version) {
+  const m = SEMVER.exec(version);
+  const b = m?.[4] === undefined ? null : BETA.exec(m[4]);
+  return b === null ? null : Number(b[1]);
 }
 
 /**
@@ -171,6 +184,7 @@ function parse(version) {
  * is refused: a skipped patch, a typo, a second digit that went backwards.
  */
 export function successors(version) {
+  if (releaseOf(version) !== version) throw new Error(`not a release version: ${version}`);
   const [major, minor, patch] = parse(version);
   return {
     patch: `${major}.${minor}.${patch + 1}`,
@@ -189,6 +203,8 @@ export function successors(version) {
  * and not because the arithmetic is different.
  */
 export function increment(from, to) {
+  /* A beta leads to one release only, its own. */
+  if (releaseOf(from) !== from) return to === releaseOf(from) ? "release" : null;
   const next = successors(from);
   for (const [name, value] of Object.entries(next)) if (value === to) return name;
   return null;
@@ -199,6 +215,7 @@ function usage(message) {
   console.error("");
   console.error("  node tools/version.mjs              print every site, fail on drift");
   console.error("  node tools/version.mjs set <version|patch|minor|major>");
+  console.error("  node tools/version.mjs beta <patch|minor|major|next>");
   console.error("  node tools/version.mjs edge <n>     stamp an edge build (CI only)");
   console.error("");
   process.exit(2);
@@ -239,7 +256,13 @@ function writeEverywhere(target) {
 function edge(nRaw) {
   if (!/^\d+$/u.test(nRaw)) usage(`edge needs a build number, got: ${nRaw}`);
   const current = projectVersion();
-  const target = `${successors(current).patch}-edge.${nRaw}`;
+  /* During a beta the edge build keeps the beta's triple: `1.23.0-edge.5` sorts
+   * above every `1.23.0-beta.N` (edge > beta) and below 1.23.0 itself. Bumping
+   * the patch here would put it above the release the beta is leading to. */
+  const release = releaseOf(current);
+  const target = release === current
+    ? `${successors(current).patch}-edge.${nRaw}`
+    : `${release}-edge.${nRaw}`;
   writeEverywhere(target);
   console.log(`[version] ${current} -> ${target} across ${versionSites().length} sites`);
   /* The workflow reads this line to learn the tag it should create. */
@@ -248,8 +271,22 @@ function edge(nRaw) {
 
 function set(requested, { release }) {
   const current = projectVersion();
+  if (releaseOf(current) !== current) {
+    const target = requested === "release" ? releaseOf(current) : requested;
+    if (increment(current, target) === null) {
+      usage(
+        `${current} is a beta, and the only version that may follow it with set is
+` +
+          `        its release, ${releaseOf(current)} (set release). The next beta is \`beta next\`.`,
+      );
+    }
+    writeEverywhere(target);
+    console.log(`[version] ${current} -> ${target} (release) across ${versionSites().length} sites`);
+    printNextSteps(target);
+    return;
+  }
   const next = successors(current);
-  const target = requested in next ? next[requested] : requested;
+  const target = Object.hasOwn(next, requested) ? next[requested] : requested;
 
   const kind = increment(current, target);
   if (kind === null) {
@@ -271,6 +308,41 @@ function set(requested, { release }) {
 
   writeEverywhere(target);
   console.log(`[version] ${current} -> ${target} (${kind}) across ${versionSites().length} sites`);
+  printNextSteps(target);
+}
+
+/**
+ * Start a beta, or move to the next one: `1.22.0` -> `1.23.0-beta.1` with
+ * `beta minor`, `1.23.0-beta.1` -> `1.23.0-beta.2` with `beta next`.
+ *
+ * A beta tag is a public pre-release: release.yml flags it, so the beta and
+ * early channels offer it and stable does not, and publish-npm.yml publishes it
+ * under the `next` dist-tag. `set release` then finishes the line.
+ */
+function beta(requested, { release }) {
+  const current = projectVersion();
+  const n = betaNumber(current);
+  let target;
+  if (requested === "next") {
+    if (n === null) usage(`${current} is not a beta; start one with beta <patch|minor|major>`);
+    target = `${releaseOf(current)}-beta.${n + 1}`;
+  } else {
+    if (releaseOf(current) !== current) {
+      usage(`${current} is already a pre-release; use beta next, or set release to finish it`);
+    }
+    const next = successors(current);
+    if (!Object.hasOwn(next, requested)) usage(`beta needs patch, minor, major or next, got: ${requested}`);
+    if (requested === "major" && !release) {
+      usage(`a major beta needs --release, the same as a major release`);
+    }
+    target = `${next[requested]}-beta.1`;
+  }
+  writeEverywhere(target);
+  console.log(`[version] ${current} -> ${target} (beta) across ${versionSites().length} sites`);
+  printNextSteps(target);
+}
+
+function printNextSteps(target) {
   /* NEVER --tags or --follow-tags here. This history descends from Angband's,
    * so ~1,442 upstream tags are genuine ancestors of master and either flag
    * pushes all of them. The tag goes by NAME, on its own.
@@ -294,6 +366,9 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
   if (positional[0] === "set") {
     if (positional[1] === undefined) usage("set needs a version or an increment name");
     set(positional[1], { release: flags.includes("--release") });
+  } else if (positional[0] === "beta") {
+    if (positional[1] === undefined) usage("beta needs patch, minor, major or next");
+    beta(positional[1], { release: flags.includes("--release") });
   } else if (positional[0] === "edge") {
     if (positional[1] === undefined) usage("edge needs a build number");
     edge(positional[1]);

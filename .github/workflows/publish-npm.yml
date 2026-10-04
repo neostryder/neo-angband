@@ -155,6 +155,12 @@ jobs:
           for pkg in $(node tools/publishable.mjs); do
             name=$(node -p "require('./packages/$pkg/package.json').name")
             version=$(node -p "require('./packages/$pkg/package.json').version")
+            # A pre-release version (1.23.0-beta.1) goes under `next`, so a plain
+            # `npm install` keeps getting the last stable release.
+            case "$version" in
+              *-*) dist_tag=next ;;
+              *) dist_tag=latest ;;
+            esac
 
             if npm view "$name@$version" version >/dev/null 2>&1; then
               echo "$name@$version is already on the registry; skipping"
@@ -163,7 +169,7 @@ jobs:
 
             if [ "$DRY_RUN" = "true" ]; then
               echo "dry run: would publish $name@$version"
-              (cd "packages/$pkg" && npm publish --dry-run --access public)
+              (cd "packages/$pkg" && npm publish --dry-run --access public --tag "$dist_tag")
               continue
             fi
 
@@ -177,6 +183,6 @@ jobs:
               exit 1
             fi
 
-            echo "publishing $name@$version"
-            (cd "packages/$pkg" && npm publish --access public)
+            echo "publishing $name@$version under the $dist_tag dist-tag"
+            (cd "packages/$pkg" && npm publish --access public --tag "$dist_tag")
           done

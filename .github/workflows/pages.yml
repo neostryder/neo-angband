@@ -16,7 +16,9 @@ name: Deploy web build to GitHub Pages
 # The `early` channel (edge.yml) publishes a release too, once per commit on
 # master, so its tags are excluded below - otherwise this would redeploy
 # Pages on every push. `release.yml` never dispatches this workflow for an
-# edge tag either, since it never runs its publish job for one.
+# edge tag either, since it never runs its publish job for one. A beta tag
+# (v1.23.0-beta.1) is excluded the same way, and so is a manual run given one:
+# any tag with a pre-release suffix leaves the public browser build where it is.
 #
 # `workflow_dispatch` takes an explicit tag rather than defaulting to
 # whatever is on master, so a manual re-run cannot accidentally publish an
@@ -65,7 +67,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: github.event_name != 'release' || !contains(github.event.release.tag_name, '-edge.')
+    if: ${{ !contains(github.event.release.tag_name || github.event.inputs.tag, '-') }}
     env:
       # This job builds the WEB bundle; it never launches the desktop shell, so
       # skip Electron's ~110 MB binary download (see the same note in ci.yml).

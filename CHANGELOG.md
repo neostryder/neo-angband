@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- [Internal] [Docs] **Releases can go out as public betas first.** `node tools/version.mjs beta patch|minor|major` starts a `-beta.N` version and `beta next` advances it, a beta tag is published as a pre-release that only the beta and early channels offer, npm gets it under the `next` dist-tag, and the itch.io and GitHub Pages web builds stay on the last release.
+
 ### Fixed
 
 - [Visible] [Modding-API] **A mod's event handler that throws no longer keeps the event from the mods after it.** Each `ctx.events` handler now runs separately, and an error or a rejected promise from one is logged against its mod and listed on the Mods screen while the other handlers still receive the event (#371).

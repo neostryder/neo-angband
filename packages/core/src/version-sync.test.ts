@@ -19,7 +19,7 @@ import { readdirSync, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error -- plain .mjs tooling, no types; see tools/version.mjs
-import { increment, projectVersion, siteValue, successors, versionDrift, versionSites } from "../../../tools/version.mjs";
+import { betaNumber, increment, projectVersion, releaseOf, siteValue, successors, versionDrift, versionSites } from "../../../tools/version.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -128,6 +128,17 @@ describe("a version is derived, not picked", () => {
     expect(() => successors("v0.11.0")).toThrow(/not a semver version/u);
   });
 
+  it("lets a beta lead only to its own release", () => {
+    expect(releaseOf("1.23.0-beta.2")).toBe("1.23.0");
+    expect(releaseOf("1.22.0")).toBe("1.22.0");
+    expect(betaNumber("1.23.0-beta.2")).toBe(2);
+    expect(betaNumber("1.23.0")).toBeNull();
+    expect(betaNumber("1.23.1-edge.4")).toBeNull();
+    expect(increment("1.23.0-beta.2", "1.23.0")).toBe("release");
+    expect(increment("1.23.0-beta.2", "1.24.0")).toBeNull();
+    expect(increment("1.23.0-beta.2", "1.23.1")).toBeNull();
+    expect(() => successors("1.23.0-beta.2")).toThrow(/not a release version/u);
+  });
 });
 
 describe("the release runbook quotes the version this repository is at", () => {
@@ -137,7 +148,7 @@ describe("the release runbook quotes the version this repository is at", () => {
      * reused - so a stale example tag in it is worse than a stale one anywhere
      * else. It is prose, so nothing else checks it. */
     const runbook = readFileSync(join(repoRoot, "docs", "RELEASING.md"), "utf8");
-    const tags = [...runbook.matchAll(/git tag v(\d+\.\d+\.\d+)/gu)].map((m) => m[1]);
+    const tags = [...runbook.matchAll(/git tag v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)/gu)].map((m) => m[1]);
     expect(tags.length).toBeGreaterThan(0);
     expect([...new Set(tags)]).toEqual([projectVersion()]);
   });
