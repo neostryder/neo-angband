@@ -31,7 +31,7 @@ mods/my-mod/
 Only `plugin.js` is loaded by name. Everything else your code reaches itself:
 scripts by importing them, everything else through `ctx.assetUrl`.
 
-`manifest.json` must declare the **`plugin` facet** and `modApi`.
+`manifest.json` must declare the **`plugin` facet** and `modApi`. A schema 2 manifest declares `"runtime": "in-process"` and an `api` range instead; the [manifest reference](README.md#the-manifest-manifestjson) covers both.
 
 A mod that only runs code can say `"shape": "plugin"` and stop there. A mod that
 contributes **both** records and code (the ordinary case, e.g. a new monster
@@ -526,6 +526,8 @@ Outside the window the plugin does not load, and the mod manager names both numb
 
 It is declared in the manifest, not only inside `plugin.js`, so an incompatible plugin can be refused before it is imported. A version check inside the module only runs after the module's top-level code has already executed, which is too late for code loaded from a folder anyone can write into.
 
+A schema 2 manifest states `api`, a semver range, instead of `modApi`. The game runs an `in-process` mod when the range includes API 1.0.0, and a `worker` mod when it includes the Worker preview API, `2.0.0-worker`. A range that includes neither is refused, and the Mods screen names the range and the runtime. Because `2.0.0-worker` is a prerelease, a range over the stable API 2 such as `^2.0.0` leaves it out, so a mod written for today's Worker ABI is never taken for an API 2 mod.
+
 ## What has to be true before your code runs
 
 In order, and all of it before the import:
@@ -1011,6 +1013,10 @@ player's chosen mapping or an active screen.
 | `registry:tiles` | supply tiles for content the loaded tile pack does not draw, which in practice means content a mod added. `tiles.register(filler)` installs one filler per mod; every registered filler runs, in load order, after the pack's own prefs and every mod's. A filler can only write where nothing is assigned, so it cannot repaint the tile set and two mods cannot fight over an index. The same seam also offers repainting in place (`fill.transform`, a mirror and/or a palette remap over an existing tile) and the player's own cell (`tiles.player`, asked once per frame what the character's cell should show). See [Filling tiles](#filling-tiles) and [Repainting a tile, and drawing the player's own cell](#repainting-a-tile-and-drawing-the-players-own-cell) |
 
 Touching a facade you did not declare throws, even if the player consented to something else. Consent means the player allowed these domains, and the manifest means you asked for them; you need both.
+
+Every capability is defined once, in `packages/mod-sdk/src/capability-vocabulary.ts`: its argument, the sentence the player is asked to agree to, what stops working without it, whether the mod can still start without it, whether the consent screen highlights it, and which kinds of mod may hold it. The parser, `grantCovers` and the consent screen all read that table, and a capability the manifest does not list is never granted.
+
+Five capabilities manage the game rather than play it: `mod:install`, `mod:session`, `session:control`, `profiles:manage` and `screens:manage`. They are for first-party mods only and are not in the public list. `state:map-actual.read`, the real map rather than what the character has found, is first-party only too, and no wildcard covers it: `state:*.read` grants every other state domain but not this one.
 
 ### What a capability gates, and what it does not
 

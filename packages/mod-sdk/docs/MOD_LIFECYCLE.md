@@ -333,7 +333,7 @@ Three trust tiers, unchanged from MODS.md, made concrete at install:
 - Tile packs: validated manifest plus images. Same posture.
 - Scripted plugins: real code. A plugin runs in the page with the same
   access core has, so it is trusted code (`PLUGINS.md`); one that declares
-  `modApi: 2` with `runtime: "worker"` runs in its own sandboxed Worker instead, with no network and none of the game's storage ([WORKER_ISOLATION.md](https://github.com/neostryder/neo-angband/blob/master/docs/modding/WORKER_ISOLATION.md)). At
+  `modApi: 2` with `runtime: "worker"` runs in its own Worker instead. At
   install the app lists what the plugin asks for in plain words ("add
   commands", "read party state", "network access to api.example.com").
   The gated facades hand over only what was asked for and approved, but
@@ -341,7 +341,7 @@ Three trust tiers, unchanged from MODS.md, made concrete at install:
 
 Determinism guard. Save-scum protection does not depend on determinism. It comes from the faithful port of the original's persisted RNG state (the full `STATE[]`/`Rand_value` is in the save, so a reload resumes the exact stream and cannot reroll) together with a single save and terminal death; see the save-scum policy. Because that protection rests on saved state rather than on replaying a run from a seed, it works with mods.
 
-The guard itself is a convenience and a label. Nothing withholds the wall clock, `Math.random` or the network from an in-process plugin, so staying deterministic is the author's job: draw from the game's own seeded RNG (`ctx.state.rng`), and declare `nondeterministic: true` when the mod uses anything else. A mod that does keeps the unmodded-style "shareable seed" reproducibility working. Reproducibility is a nice-to-have, and the game does not depend on it.
+The guard itself is a convenience and a label. Nothing withholds the wall clock, `Math.random` or the network from a plugin, so staying deterministic is the author's job: draw from the game's own seeded RNG (`ctx.state.rng`), and declare `nondeterministic: true` when the mod uses anything else. A mod that does keeps the unmodded-style "shareable seed" reproducibility working. Reproducibility is a nice-to-have, and the game does not depend on it.
 
 Cheaty and nondeterministic mods are allowed, and the engine does not forbid them. A mod that wants nondeterminism (a live-multiplayer transport, a wall-clock event, an external AI agent) declares `nondeterministic: true` in its manifest. The engine then grants the capabilities it asks for and marks any profile containing it as "not reproducible / not seed-shareable". Nothing is blocked; the player is simply told what they are giving up. Two consequences follow. Adding, removing or updating mods mid-run also breaks reproducibility from a seed, because the mod set is one of the seed's inputs. And a nondeterministic mod reopens reload-rerolling within its own mechanics, since those outcomes are not pinned to saved state, while core mechanics stay reroll-proof because they draw from the saved seeded stream.
 

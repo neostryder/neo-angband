@@ -365,18 +365,18 @@ describe("object_touch / object_grab (obj-knowledge.c L960-1013, gap 4.8)", () =
   });
 
   describe("artifactIdentified (mod/hooks.ts): fires on the real ASSESSED transition", () => {
-    it("fires once, with the live object and its resolved artifact", () => {
+    it("fires once, naming the artifact", () => {
       const art = reg.artifacts.find((a) => a !== null)!;
       const obj = mkObj(ordinaryKind(() => true));
       obj.artifact = art;
       const seen: unknown[][] = [];
       const hooks: ModHooks = {
-        artifactIdentified: (o, a) => void seen.push([o, a]),
+        artifactIdentified: (found) => void seen.push([found]),
       };
 
       objectTouch(obj, { hooks });
 
-      expect(seen).toEqual([[obj, art]]);
+      expect(seen).toEqual([[{ name: art.name, artifactIndex: art.aidx }]]);
     });
 
     it("does not fire again when the same object is touched a second and third time", () => {
@@ -385,7 +385,7 @@ describe("object_touch / object_grab (obj-knowledge.c L960-1013, gap 4.8)", () =
       obj.artifact = art;
       const seen: unknown[][] = [];
       const hooks: ModHooks = {
-        artifactIdentified: (o, a) => void seen.push([o, a]),
+        artifactIdentified: (found) => void seen.push([found]),
       };
 
       objectTouch(obj, { hooks });

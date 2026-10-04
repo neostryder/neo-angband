@@ -716,8 +716,10 @@ async function readPack(
     /* THE ManifestError PATH, and it is the earliest one there is: a manifest that
      * does not validate never becomes a pack, so no later layer - not loadModCode,
      * not the catalogue - ever sees this mod to have an opinion about it. This line
-     * is the only place its name is ever spoken. */
-    manifest = validateManifest(await source.readJson(id, "manifest.json"));
+     * is the only place its name is ever spoken. The folder's script list goes
+     * with it, so a schema 2 manifest's runtime is checked against what the
+     * folder really ships. */
+    manifest = validateManifest(await source.readJson(id, "manifest.json"), { code });
   } catch (e) {
     problems.push({ id, why: message(e) });
     return null;

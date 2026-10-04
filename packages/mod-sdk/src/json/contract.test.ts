@@ -17,6 +17,7 @@ import { highScoresFormat, birthChoiceFormat, bootRecordFormat, reloadStateForma
 import { loadOrderFormat } from "./load-order.js";
 import { buildIdFormat } from "./build-id.js";
 import { modFontFormat, modLocaleFormat } from "./mod-resources.js";
+import { modManifestFormat } from "../manifest-v2.js";
 import { color, defineFormat, json, keyInput, listFormats, parseDocument, serializeDocument, utcTimestamp } from "./index.js";
 
 void [
@@ -41,6 +42,7 @@ void [
   installedModFormat,
   modSettingValuesFormat,
   profilesFormat,
+  modManifestFormat,
 ];
 
 defineFormat({

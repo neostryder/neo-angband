@@ -71,6 +71,7 @@ import {
   playerKnowObjectAwareness,
 } from "../obj/knowledge.js";
 import type { GameState } from "./context.js";
+import { knownMonster } from "../agent/known-world.js";
 
 /**
  * A remembered floor object: the port of grid_data's object fields
@@ -1021,7 +1022,8 @@ export function updateMon(
       /* The behaviour seam (mod/hooks.ts monsterBecameVisible): notify on
        * this exact transition, once per fresh sighting, never on a turn where
        * an already-visible monster merely stays visible. */
-      state.modHooks?.monsterBecameVisible?.(mon);
+      const sighted = state.modHooks?.monsterBecameVisible;
+      if (sighted) sighted(knownMonster(state, mon));
     }
   } else if (monsterIsVisible(mon)) {
     /* Not visible but was previously seen - treat mimics differently

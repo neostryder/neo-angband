@@ -423,9 +423,7 @@ import { convertLegacyProfiles, defaultProfileStore } from "./profiles";
 import { scopedStorage, type ScopedStorage } from "./profile-scope";
 import { runProfileScreen } from "./profile-ui";
 import { modPrefs, setPrefsStorage } from "./mod-prefs";
-import { startModWorker, type ModWorkerLike, type ModWorkerTopic, type StartedModWorker } from "./mod-worker/host";
-import { createIsolatedModWorker } from "./mod-worker/isolation";
-import { stageModuleGraph } from "./mod-worker/staging";
+import { startModWorker, type ModWorkerTopic, type StartedModWorker } from "./mod-worker/host";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
 import { MOD_WORKER_PROTOCOL_VERSION, type ModStateSnapshot, type WorkerJson } from "./mod-worker/protocol";
 import { ModWorkerTransport } from "./mod-worker/transport";
@@ -15869,25 +15867,15 @@ publishWorkerModels = (force = false): void => {
 {
   const disk = diskPacks();
   for (const loaded of activeModCode().workers) {
-    let worker: ModWorkerLike | undefined;
+    let worker: Worker | undefined;
     let session: StartedModWorker | undefined;
     try {
       workerModelSubscriptions.set(loaded.id, new Map());
-      /* Community code runs in an opaque-origin sandbox frame, never in a Worker
-       * of the game's own origin (mod-worker/isolation.ts). Its modules cross as
-       * text the host has read, because the frame cannot load the game's URLs. */
-      const graph = await stageModuleGraph(loaded.entryUrl, {
-        origin: location.origin,
-        read: async (url) => {
-          const response = await fetch(url);
-          return response.ok ? await response.text() : null;
-        },
-      });
-      worker = createIsolatedModWorker({ id: loaded.id, graph, protocolVersion: MOD_WORKER_PROTOCOL_VERSION });
+      worker = new Worker(new URL("./mod-worker/bootstrap.ts", import.meta.url), { type: "module" });
       session = startModWorker(worker, {
         id: loaded.id,
         capabilities: loaded.manifest.capabilities ?? [],
-        entryUrl: `staged:${loaded.manifest.workerEntry ?? "entry"}`,
+        entryUrl: loaded.entryUrl,
         snapshot: {
           id: loaded.id,
           modApi: 2,

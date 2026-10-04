@@ -9,6 +9,16 @@ import { FIELD_TYPES } from "./fields.js";
 import type { FieldDecl, FieldType } from "./fields.js";
 import { resourceComplaint } from "./resources.js";
 import type { PackResource } from "./resources.js";
+import { parseDocument } from "./json/index.js";
+import {
+  IN_PROCESS_ENTRY,
+  MANIFEST_FORMAT,
+  modManifestFormat,
+  normalizeManifestV2,
+  runtimePayloadComplaint,
+  schema1Runtime,
+} from "./manifest-v2.js";
+import type { ManifestBudget, ManifestListing, ManifestText, ModRuntime } from "./manifest-v2.js";
 
 /** Historical object art declared by a content pack, keyed by stable kind id. */
 /** One pack's tile for a restored thing: a cell on its sheet, or an image in the mod folder. */
@@ -563,10 +573,30 @@ export interface PackManifest {
    */
   modApi?: number;
   /**
-   * The execution ABI selected by a code pack. API 1 keeps the historical
-   * in-process `plugin.js` entry; API 2 requires the isolated worker runtime.
+   * How the pack runs. A schema 2 manifest states it; the reader fills it in for
+   * a schema 1 manifest from `modApi`, `runtime` and the facets, so every
+   * manifest the reader returns has it. `data` runs no code.
    */
-  runtime?: PluginRuntime;
+  runtime?: ModRuntime;
+  /**
+   * Semver range over the mod API. Stated by a schema 2 manifest; derived for a
+   * schema 1 manifest whose `modApi` has a mapping (manifest-v2.ts lists them).
+   */
+  api?: string;
+  /** The module the host starts for a pack that runs code. */
+  entry?: string;
+  /** Why the pack needs its `engine` range (schema 2). */
+  engineBecause?: string;
+  /** Why the pack needs each dependency, by mod id, where the manifest says (schema 2). */
+  dependencyReasons?: Record<string, string>;
+  /** The pack's text: a default locale and a file per locale (schema 2). */
+  text?: ManifestText;
+  /** What a registry listing shows (schema 2). `changelog` and `screenshots` are copied to the top level too. */
+  listing?: ManifestListing;
+  /** Time the pack may spend per game turn (schema 2); see turnBudgetMs. */
+  budget?: ManifestBudget;
+  /** The manifest schema the pack's file was written in. */
+  manifestSchema?: 1 | 2;
   /**
    * The module imported by the host-owned API-2 Worker bootstrap. This is a
    * mod-relative file, never a host module name or URL.
@@ -685,27 +715,71 @@ const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 export class ManifestError extends Error {}
 
-/** Return manifest fields from a supported document or a bare manifest. */
-export function manifestFields(raw: unknown): Record<string, unknown> | undefined {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+type ReadFields =
+  | { readonly schema: 1; readonly fields: Record<string, unknown> }
+  | { readonly schema: 2; readonly fields: Record<string, unknown> }
+  | { readonly schema: 0; readonly why: string };
+
+/** Find a manifest's fields and the schema they were written in. */
+function readFields(raw: unknown): ReadFields {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { schema: 0, why: "manifest must be an object or a supported manifest document" };
+  }
   const root = raw as Record<string, unknown>;
-  if (root["format"] !== "neo-angband/mod/manifest") return root;
-  if (root["schemaVersion"] !== 1 || Object.keys(root).some((key) => !["format", "schemaVersion", "data"].includes(key))) return undefined;
+  if (root["format"] !== MANIFEST_FORMAT) return { schema: 1, fields: root };
+  if (root["schemaVersion"] !== 1) {
+    const parsed = parseDocument(root, modManifestFormat);
+    if (!parsed.ok) {
+      const data = root["data"] as { id?: unknown } | undefined;
+      const who = typeof data?.id === "string" ? `manifest ${data.id}` : "manifest";
+      return { schema: 0, why: `${who}: ${parsed.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; ")}` };
+    }
+    return { schema: 2, fields: normalizeManifestV2(parsed.data) as unknown as Record<string, unknown> };
+  }
   const data = root["data"];
-  return typeof data === "object" && data !== null && !Array.isArray(data)
-    ? (data as Record<string, unknown>)
-    : undefined;
+  if (root["schemaVersion"] !== 1 || Object.keys(root).some((key) => !["format", "schemaVersion", "data"].includes(key)) ||
+      typeof data !== "object" || data === null || Array.isArray(data)) {
+    return { schema: 0, why: "manifest document has an unsupported schema version, an unknown envelope field or no data object" };
+  }
+  return { schema: 1, fields: data as Record<string, unknown> };
 }
 
-/** Validate a parsed manifest object; throws ManifestError. */
-export function validateManifest(value: unknown): PackManifest {
-  const m = manifestFields(value);
-  if (!m) {
-    const wrapped = typeof value === "object" && value !== null && (value as { format?: unknown }).format === "neo-angband/mod/manifest";
-    throw new ManifestError(wrapped
-      ? "manifest document has an unsupported schema version, an unknown envelope field or no data object"
-      : "manifest must be an object or a supported manifest document");
-  }
+/**
+ * Return manifest fields from a supported document or a bare manifest. A schema
+ * 2 document comes back normalized, as validateManifest describes; anything this
+ * build cannot read comes back undefined.
+ */
+export function manifestFields(raw: unknown): Record<string, unknown> | undefined {
+  const read = readFields(raw);
+  return read.schema === 0 ? undefined : read.fields;
+}
+
+/** What validateManifest can check beyond the manifest itself. */
+export interface ManifestReadOptions {
+  /**
+   * The mod folder's script modules (`.js`, `.mjs`), when the caller has listed
+   * them. A schema 2 manifest is then held to its runtime: a `data` mod ships no
+   * script, and a mod that runs code ships its entry (runtimePayloadComplaint).
+   */
+  readonly code?: readonly string[];
+}
+
+/**
+ * The manifest reader: accepts a bare schema 1 manifest, a schema 1 document or
+ * a schema 2 document, and returns one in-memory PackManifest. Throws
+ * ManifestError.
+ *
+ * A schema 2 manifest is validated by its format, then flattened into the
+ * fields the host reads (manifest-v2.ts, normalizeManifestV2). A schema 1
+ * manifest keeps every field it had, and gains `runtime`, `entry` for a pack
+ * that runs code, and `api` where its `modApi` has a mapping. Both then pass the
+ * same field checks.
+ */
+export function validateManifest(value: unknown, options: ManifestReadOptions = {}): PackManifest {
+  const read = readFields(value);
+  if (read.schema === 0) throw new ManifestError(read.why);
+  const m = read.fields;
+  const schema = read.schema;
   if (typeof m["id"] !== "string" || !ID_RE.test(m["id"])) {
     throw new ManifestError(
       `manifest id must be lowercase kebab-case: ${String(m["id"])}`,
@@ -796,40 +870,7 @@ export function validateManifest(value: unknown): PackManifest {
       }
     }
   }
-  if (m["modApi"] !== undefined) {
-    const a = m["modApi"];
-    if (typeof a !== "number" || !Number.isInteger(a) || a < 1) {
-      throw new ManifestError(
-        `manifest ${id}: modApi must be a positive integer (the mod-plugin ABI version)`,
-      );
-    }
-  }
-  if (m["runtime"] !== undefined && m["runtime"] !== "in-process" && m["runtime"] !== "worker") {
-    throw new ManifestError(`manifest ${id}: runtime must be "in-process" or "worker"`);
-  }
-  if (m["workerEntry"] !== undefined) {
-    const entry = m["workerEntry"];
-    if (
-      typeof entry !== "string" ||
-      entry.length === 0 ||
-      entry.startsWith("/") ||
-      entry.includes("\\") ||
-      entry.split("/").some((part) => part === "" || part === "." || part === "..")
-    ) {
-      throw new ManifestError(`manifest ${id}: workerEntry must be a non-empty relative file path`);
-    }
-  }
-  if (m["modApi"] === 2) {
-    if (m["runtime"] !== "worker") {
-      throw new ManifestError(`manifest ${id}: modApi 2 requires runtime "worker"`);
-    }
-    if (typeof m["workerEntry"] !== "string") {
-      throw new ManifestError(`manifest ${id}: modApi 2 requires workerEntry`);
-    }
-  }
-  if (m["runtime"] === "worker" && m["modApi"] !== 2) {
-    throw new ManifestError(`manifest ${id}: runtime "worker" requires modApi 2`);
-  }
+  if (schema === 1) validateSchema1Runtime(m, id);
   if (
     m["nondeterministic"] !== undefined &&
     typeof m["nondeterministic"] !== "boolean"
@@ -875,7 +916,68 @@ export function validateManifest(value: unknown): PackManifest {
       throw new ManifestError(`manifest ${id}: ${key} must be a string`);
     }
   }
-  return m as unknown as PackManifest;
+  if (schema === 2) {
+    if (options.code !== undefined) {
+      const complaint = runtimePayloadComplaint(m as unknown as PackManifest, options.code);
+      if (complaint !== null) throw new ManifestError(complaint);
+    }
+    return m as unknown as PackManifest;
+  }
+  return withSchema1Runtime(m);
+}
+
+/**
+ * A schema 1 manifest with the schema 2 runtime fields added and nothing else
+ * changed. `api` is added only where `modApi` has a mapping; a plugin with no
+ * usable `modApi` is still read, and the loader reports it.
+ */
+function withSchema1Runtime(m: Record<string, unknown>): PackManifest {
+  const mapped = schema1Runtime(m);
+  const code = hasFacet(m as unknown as PackManifest, "plugin");
+  const runtime: ModRuntime = mapped?.runtime ?? (code ? (m["runtime"] === "worker" ? "worker" : "in-process") : "data");
+  const out: Record<string, unknown> = { ...m, runtime, manifestSchema: 1 };
+  if (mapped !== null) out["api"] = mapped.api;
+  if (runtime === "worker" && typeof m["workerEntry"] === "string") out["entry"] = m["workerEntry"];
+  else if (runtime === "in-process") out["entry"] = IN_PROCESS_ENTRY;
+  return out as unknown as PackManifest;
+}
+
+/** The schema 1 runtime fields: `modApi`, `runtime` and `workerEntry`. */
+function validateSchema1Runtime(m: Record<string, unknown>, id: string): void {
+  if (m["modApi"] !== undefined) {
+    const a = m["modApi"];
+    if (typeof a !== "number" || !Number.isInteger(a) || a < 1) {
+      throw new ManifestError(
+        `manifest ${id}: modApi must be a positive integer (the mod-plugin ABI version)`,
+      );
+    }
+  }
+  if (m["runtime"] !== undefined && m["runtime"] !== "in-process" && m["runtime"] !== "worker") {
+    throw new ManifestError(`manifest ${id}: runtime must be "in-process" or "worker"`);
+  }
+  if (m["workerEntry"] !== undefined) {
+    const entry = m["workerEntry"];
+    if (
+      typeof entry !== "string" ||
+      entry.length === 0 ||
+      entry.startsWith("/") ||
+      entry.includes("\\") ||
+      entry.split("/").some((part) => part === "" || part === "." || part === "..")
+    ) {
+      throw new ManifestError(`manifest ${id}: workerEntry must be a non-empty relative file path`);
+    }
+  }
+  if (m["modApi"] === 2) {
+    if (m["runtime"] !== "worker") {
+      throw new ManifestError(`manifest ${id}: modApi 2 requires runtime "worker"`);
+    }
+    if (typeof m["workerEntry"] !== "string") {
+      throw new ManifestError(`manifest ${id}: modApi 2 requires workerEntry`);
+    }
+  }
+  if (m["runtime"] === "worker" && m["modApi"] !== 2) {
+    throw new ManifestError(`manifest ${id}: runtime "worker" requires modApi 2`);
+  }
 }
 
 /** Validate an optional id->constraint map field (dependencies-shaped). */

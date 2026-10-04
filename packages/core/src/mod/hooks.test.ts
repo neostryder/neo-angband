@@ -17,6 +17,7 @@ import {
   guardModHooks,
   MOD_HOOK_FOLDS,
   type EffectIntro,
+  type KnownArtifactFind,
   type ModHookFault,
   type ModHooks,
   type ObjectInfoTextSite,
@@ -24,8 +25,7 @@ import {
 } from "./hooks.js";
 import type { GameState } from "../game/context.js";
 import type { GameObject } from "../obj/object.js";
-import type { Artifact } from "../obj/types.js";
-import type { Monster } from "../mon/monster.js";
+import type { KnownMonster } from "../agent/known-world.js";
 import type { OptionStateData } from "../player/options.js";
 import type { Chunk } from "../world/chunk.js";
 
@@ -38,10 +38,9 @@ const DEPS = {};
 const DRAINED = {} as GameObject;
 const RECEIVING = {} as GameObject;
 /** Stand-ins for a monster that just became visible. */
-const MON = {} as Monster;
+const MON = {} as KnownMonster;
 /** Stand-ins for an artifact object being assessed for the first time. */
-const TOUCHED_OBJ = {} as GameObject;
-const ARTIFACT = {} as Artifact;
+const FOUND: KnownArtifactFind = { name: "of Galadriel", artifactIndex: 1 };
 /** describe_effect's facts for an aimed wand whose effect is known. */
 const INTRO: EffectIntro = {
   effect: "known",
@@ -470,7 +469,7 @@ describe("notification hooks are observed by every contributor", () => {
     ]);
   });
 
-  it("monsterBecameVisible: observes the same live Monster reference, in load order", () => {
+  it("monsterBecameVisible: observes the same monster view, in load order", () => {
     const seen: unknown[] = [];
     const composed = composeModHooks([
       { monsterBecameVisible: (mon) => void seen.push(mon) },
@@ -480,17 +479,14 @@ describe("notification hooks are observed by every contributor", () => {
     expect(seen).toEqual([MON, MON]);
   });
 
-  it("artifactIdentified: observes the same live GameObject and Artifact, in load order", () => {
-    const seen: unknown[][] = [];
+  it("artifactIdentified: observes the same find, in load order", () => {
+    const seen: unknown[] = [];
     const composed = composeModHooks([
-      { artifactIdentified: (obj, art) => void seen.push([obj, art]) },
-      { artifactIdentified: (obj, art) => void seen.push([obj, art]) },
+      { artifactIdentified: (found) => void seen.push(found) },
+      { artifactIdentified: (found) => void seen.push(found) },
     ]);
-    composed?.artifactIdentified?.(TOUCHED_OBJ, ARTIFACT);
-    expect(seen).toEqual([
-      [TOUCHED_OBJ, ARTIFACT],
-      [TOUCHED_OBJ, ARTIFACT],
-    ]);
+    composed?.artifactIdentified?.(FOUND);
+    expect(seen).toEqual([FOUND, FOUND]);
   });
 });
 
@@ -897,7 +893,7 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
     artifactIdentified: {
       yes: (log, tag) => ({ artifactIdentified: () => void log.push(tag) }),
       no: (log, tag) => ({ artifactIdentified: () => void log.push(tag) }),
-      run: (h) => h.artifactIdentified?.(TOUCHED_OBJ, ARTIFACT),
+      run: (h) => h.artifactIdentified?.(FOUND),
     },
   };
 
@@ -1030,7 +1026,7 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
 
   it("artifactIdentified is dropped when its observer throws", () => {
     const { hooks } = guarded({ artifactIdentified: THROWS });
-    expect(hooks.artifactIdentified?.(TOUCHED_OBJ, ARTIFACT)).toBeUndefined();
+    expect(hooks.artifactIdentified?.(FOUND)).toBeUndefined();
   });
 
   it("messageText returns the RAW message, never an empty one", () => {

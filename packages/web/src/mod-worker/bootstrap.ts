@@ -1,15 +1,16 @@
 /** Host-owned module Worker bootstrap for the API-2 ordinary-plugin ABI. */
 
-import type {
-  HostReply,
-  HostToModWorker,
-  ModWorkerToHost,
-  WorkerInitSnapshot,
-  WorkerJson,
-  WorkerLogLevel,
-  ModWorkerPanel,
-  ModWorkerPanelPatch,
-  ModStateSnapshot,
+import {
+  MOD_WORKER_PROTOCOL_VERSION,
+  type HostReply,
+  type HostToModWorker,
+  type ModWorkerToHost,
+  type WorkerInitSnapshot,
+  type WorkerJson,
+  type WorkerLogLevel,
+  type ModWorkerPanel,
+  type ModWorkerPanelPatch,
+  type ModStateSnapshot,
 } from "./protocol";
 import type { RegionCell } from "./transport";
 import type { ModDisplaySnapshot } from "../mod-plugin";
@@ -38,41 +39,12 @@ export interface ModWorkerModule {
   hooks?: { artifactCommit?(input: { readonly artifactIndex: number; readonly alreadyCreated: boolean }): { readonly decision: "allow" | "deny"; readonly patch?: WorkerJson } | Promise<{ readonly decision: "allow" | "deny"; readonly patch?: WorkerJson }> };
 }
 
-/** The end of the host channel the bootstrap talks through: a MessagePort, or a Worker's own scope. */
-export interface WorkerScope {
+interface WorkerScope {
   onmessage: ((event: MessageEvent<HostToModWorker | HostReply>) => void) | null;
   postMessage(message: ModWorkerToHost): void;
 }
 
-/**
- * Install the API-2 bootstrap on `scope`.
- *
- * The isolated runtime (isolation.ts) ships this function to its sandboxed
- * Worker as source text, so the function refers to nothing outside its own
- * body and its parameters: no imported value, no module-level helper, and no
- * `import()` of its own. `importEntry` is the one way in for the mod's code,
- * and the protocol version arrives as an argument for the same reason.
- */
-export function installModWorkerBootstrap(
-  scope: WorkerScope,
-  protocolVersion: string,
-  importEntry: (hostEntryUrl: string) => Promise<unknown>,
-): void {
-  /* The Worker may retain its copy, but API-2 init data is immutable by contract. */
-  const immutableSnapshot = (snapshot: WorkerInitSnapshot): WorkerInitSnapshot => {
-    const freeze = (value: unknown): unknown => {
-      if (Array.isArray(value)) {
-        for (const item of value) freeze(item);
-        return Object.freeze(value);
-      }
-      if (value !== null && typeof value === "object") {
-        for (const item of Object.values(value)) freeze(item);
-        return Object.freeze(value);
-      }
-      return value;
-    };
-    return freeze(snapshot) as WorkerInitSnapshot;
-  };
+export function installModWorkerBootstrap(scope: WorkerScope): void {
   let id: string | null = null;
   let plugin: ModWorkerModule | null = null;
   let nextRequest = 0;
@@ -83,7 +55,7 @@ export function installModWorkerBootstrap(
 
   const send = (message: Record<string, unknown>): void => {
     if (!id) return;
-    scope.postMessage({ ...message, protocolVersion, pluginId: id } as ModWorkerToHost);
+    scope.postMessage({ ...message, protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: id } as ModWorkerToHost);
   };
   const request = <T extends WorkerJson | Uint8Array | null>(message: Record<string, unknown>): Promise<T> => {
     nextRequest += 1;
@@ -150,10 +122,10 @@ export function installModWorkerBootstrap(
     }
   };
   const boot = async (message: Extract<HostToModWorker, { type: "init" }>): Promise<void> => {
-    if (id !== null || message.protocolVersion !== protocolVersion || message.snapshot.id !== message.pluginId) return;
+    if (id !== null || message.protocolVersion !== MOD_WORKER_PROTOCOL_VERSION || message.snapshot.id !== message.pluginId) return;
     id = message.pluginId;
     try {
-      plugin = (await importEntry(message.entryUrl)) as ModWorkerModule;
+      plugin = (await import(/* @vite-ignore */ message.entryUrl)) as ModWorkerModule;
       const api: ModWorkerApi = {
         init: immutableSnapshot(message.snapshot),
         log: (level, text): void => send({ type: "log", level, message: String(text) }),
@@ -200,4 +172,22 @@ export function installModWorkerBootstrap(
       send({ type: "log", level: "error", message: err instanceof Error ? err.message : String(err) });
     }
   };
+}
+
+if (typeof self !== "undefined") installModWorkerBootstrap(self as unknown as WorkerScope);
+
+/** The Worker may retain its copy, but API-2 init data is immutable by contract. */
+function immutableSnapshot(snapshot: WorkerInitSnapshot): WorkerInitSnapshot {
+  const freeze = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      for (const item of value) freeze(item);
+      return Object.freeze(value);
+    }
+    if (value !== null && typeof value === "object") {
+      for (const item of Object.values(value)) freeze(item);
+      return Object.freeze(value);
+    }
+    return value;
+  };
+  return freeze(snapshot) as WorkerInitSnapshot;
 }

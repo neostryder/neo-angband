@@ -344,8 +344,6 @@ responses/CSP policies for no-network and approved-network workers; validate
 allowed module URLs and do not make a general same-origin service route an
 implicit capability.
 
-The shipped runtime gets there with a hidden sandboxed frame of opaque origin, a `data:` Worker under the frame's no-network policy, and module text the host reads and checks before boot. [WORKER_ISOLATION.md](WORKER_ISOLATION.md) describes it and the tests behind it.
-
 ### Electron desktop
 
 The same browser Worker design works.  Neo Angband's real game
@@ -354,8 +352,6 @@ and `sandbox: true` in `packages/desktop/src/main.ts`; the renderer is therefore
 Chromium-style web content and the Worker is a renderer Worker.  It does **not**
 need, and must not gain, a Node worker, Electron utility process, iframe, or
 main-process bridge.
-
-The shipped runtime does add one iframe, the same one as in a browser: a hidden, sandboxed `srcdoc` frame inside the game's renderer whose only job is to give the Worker an opaque origin. It brings no Node access, no extra process and no bridge.
 
 Electron documents that sandboxed renderers behave like Chromium renderers and
 have no Node environment; its multithreading guide specifically says
