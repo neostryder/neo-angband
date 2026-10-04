@@ -41,6 +41,7 @@ import { itemView, ofCodes, playerViewFor } from "./entity-views.js";
 import { loadoutChangeRefs, requireLoadoutReads, simulateLoadout } from "./loadout.js";
 import { captureCoreSnapshot, inputToken } from "./boundary.js";
 import { captureKnownLevel } from "./known-level.js";
+import { buildKnownWorld } from "./known-world.js";
 import { knownFloorObject, knownPile } from "../game/known.js";
 import type { KnownMap, KnownObject } from "../game/known.js";
 import { knownDescOf } from "../game/describe.js";
@@ -513,6 +514,7 @@ export function createAgentView(
    * not gated. */
   view.inputToken = () => inputToken(state);
   view.capture = () => captureCoreSnapshot(state, view);
+  view.knownWorld = () => buildKnownWorld(state, deps, caps);
   Object.assign(view, createInspectView(state, deps, caps));
   return view;
 }

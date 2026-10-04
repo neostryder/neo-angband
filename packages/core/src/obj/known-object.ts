@@ -687,7 +687,9 @@ export function objectTouch(obj: GameObject, deps: ObjectTouchDeps = {}): void {
   /* Log artifacts if found (L970-971). */
   if (obj.artifact) {
     deps.onArtifactFound?.(obj.artifact.aidx);
-    if (!wasAssessed) deps.hooks?.artifactIdentified?.(obj, obj.artifact);
+    if (!wasAssessed) {
+      deps.hooks?.artifactIdentified?.({ name: obj.artifact.name, artifactIndex: obj.artifact.aidx });
+    }
   }
 }
 
