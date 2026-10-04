@@ -10,6 +10,7 @@
  * left to the comment that describes it.
  */
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   composeModHooks,
@@ -1276,5 +1277,44 @@ describe("optionsChanged: a notification, so everyone is told", () => {
 
   it("is folded all-observe, which discards nothing", () => {
     expect(MOD_HOOK_FOLDS.optionsChanged).toBe("all-observe");
+  });
+});
+
+describe("the modding docs count the hooks MOD_HOOK_FOLDS has", () => {
+  /* Three pages once gave three different counts (8, 8 and 11) while the table
+   * held 22, and an author could not tell which to believe. The table is the
+   * count; these pages state it, and this keeps them from drifting again. */
+  const doc = (name: string): string =>
+    readFileSync(new URL(`../../../../docs/modding/${name}`, import.meta.url), "utf-8");
+  const total = Object.keys(MOD_HOOK_FOLDS).length;
+
+  it("MOD_LIFECYCLE.md gives the total and the count of each fold", () => {
+    const line = /Of the (\d+) behaviour hooks, ([^.]*)\./.exec(doc("MOD_LIFECYCLE.md"));
+    expect(line).not.toBeNull();
+    expect(Number(line?.[1])).toBe(total);
+    const stated: Record<string, number> = {};
+    for (const [, n, fold] of (line?.[2] ?? "").matchAll(/(\d+) (?:are )?`([a-z-]+)`/g)) {
+      stated[fold as string] = Number(n);
+    }
+    const actual: Record<string, number> = {};
+    for (const fold of Object.values(MOD_HOOK_FOLDS)) actual[fold] = (actual[fold] ?? 0) + 1;
+    expect(stated).toEqual(actual);
+  });
+
+  it("MOD_REACH.md has a row for every hook", () => {
+    const text = doc("MOD_REACH.md");
+    const heading = /### The (\d+) behaviour hooks/.exec(text);
+    expect(Number(heading?.[1])).toBe(total);
+    const start = heading?.index ?? 0;
+    const table = text.slice(start, text.indexOf("\n### ", start + 1));
+    const rows = [...table.matchAll(/^\| `([A-Za-z]+)` \|/gm)].map((m) => m[1]).sort();
+    expect(rows).toEqual(Object.keys(MOD_HOOK_FOLDS).sort());
+  });
+
+  it("MOD_REACH.md and MOD_COMPATIBILITY.md give the same total", () => {
+    expect(doc("MOD_REACH.md")).toContain(`| \`ModHooks\` behaviour hooks | **${String(total)}**`);
+    expect(doc("MOD_COMPATIBILITY.md")).toContain(
+      `\`ModHooks\` is a closed interface of ${String(total)} members`,
+    );
   });
 });

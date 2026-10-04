@@ -88,38 +88,38 @@ A pass over every binder (#8) found six more cases of the same shape and fixed t
 `composePacks`'s `fieldPatches` loop also called `applyFieldPatch` without going through `refuse()`, so a malformed op (an `append` with `value` instead of `values`, say) took down the whole pack, or every installed mod when the raw error named none of them. It is now refused the same way a missing patch target is.
 ### 4. `ctx.core` is handed over whole; a named subset of it is guaranteed
 
-`ModPluginContext.core` is the live core module namespace: the whole engine, 1,974 runtime exports, rather than a curated slice that would drift out of date. `packages/core/mod-api-surface.json` records the surface, and `mod-core-surface.test.ts` fails on any difference in either direction, so every removal and every addition shows up as a diff.
+`ModPluginContext.core` is the live core module namespace: the whole engine, about two thousand runtime exports, rather than a curated slice that would drift out of date. `packages/core/mod-api-surface.json` records the surface, and `mod-core-surface.test.ts` fails on any difference in either direction, so every removal and every addition shows up as a diff.
 
 `MOD_API_VERSION` does not cover this namespace. It versions the plugin contract itself: the members of `ModPlugin`, what the host passes, and when it calls them. A core function can be renamed without changing any of that, so the number a mod author checks says nothing about the functions their plugin calls most.
 
-The namespace is too wide to promise all of it: forbidding the removal of any of 1,974 names would freeze the port. First-party plugins call 23 of those names at runtime, and those 23 are the part of `ctx.core` that the compatibility promise covers.
+The namespace is too wide to promise all of it: forbidding the removal of any of those names would freeze the port. The promise covers the 23 names below, the ones first-party plugins called when the list was drawn up, and the list has not grown since. First-party mods read 61 names from `ctx.core` as of 2026-10-03, so 41 of them are outside the promise, and three of the guaranteed names are no longer read by any of them. Those 41 are the escape hatch described below, the same as for anyone else's mod.
 | Export | `typeof` | Called by |
 |---|---|---|
-| `DDGRID` | object | feature-restoration |
-| `FEAT` | object | bug-fixes, borg |
+| `DDGRID` | object | none |
+| `FEAT` | object | borg, bug-fixes |
 | `MON_RACE_FLAG_ENTRIES` | object | borg |
 | `MON_SPELL_ENTRIES` | object | borg |
 | `OptionState` | function | qol |
 | `REST_COMPLETE` | number | borg |
 | `RSF` | object | borg |
 | `Rng` | function | borg |
-| `TV` | object | borg |
-| `describeLookGrid` | function | qol |
-| `gearObjectForUse` | function | feature-restoration |
-| `knownPile` | function | qol |
+| `TV` | object | borg, qol |
+| `describeLookGrid` | function | anybandui |
+| `gearObjectForUse` | function | none |
+| `knownPile` | function | anybandui |
 | `loc` | function | bug-fixes |
 | `movementTunnelTest` | function | qol |
 | `parseTilePrefs` | function | upstream-catchup |
 | `placeStairs` | function | bug-fixes |
-| `playerConfuseDir` | function | feature-restoration |
+| `playerConfuseDir` | function | none |
 | `setPrefErrorPolicy` | function | qol |
 | `squareIsEmpty` | function | bug-fixes |
 | `squareIsNoStairs` | function | bug-fixes |
-| `squareIsVisibleTrap` | function | qol |
+| `squareIsVisibleTrap` | function | anybandui |
 | `squareNumWallsAdjacent` | function | bug-fixes |
 | `tunnelAux` | function | qol |
 
-By mod, qol calls 7 of these, bug-fixes 6, borg 7, feature-restoration 3 and upstream-catchup 1. linoleum and forge call none: linoleum reaches the game through `host.tiles` and `ctx.registries`, and forge holds `ctx.core` without reading a name from it.
+By mod, borg reads 7 of these, bug-fixes 6, qol 5, anybandui 3 and upstream-catchup 1. feature-restoration and squire read only unguaranteed names, and linoleum and forge read none: linoleum reaches the game through `host.tiles` and `ctx.registries`, and forge holds `ctx.core` without reading a name from it.
 
 `packages/core/mod-core-guaranteed.json` holds the list, and `mod-core-guaranteed.test.ts` fails if any of those names is missing from the namespace a plugin receives or its `typeof` has changed. Removing one is a compatibility break that needs either an alias under the old name or the two-release `modApi` path; updating `mod-api-surface.json` alone does not cover it.
 Everything else on `ctx.core` is an escape hatch. A plugin may call it, but a rename or removal of an unguaranteed name can ship in any release, recorded in the table below. Use a seam (`ModHooks`, `ctx.registries`, a capability-gated facade) when one exists; calling an unguaranteed name ties the plugin to that engine release.
@@ -189,7 +189,7 @@ Two field renames are invisible to the export ratchet, which compares only the s
 | `RendererInfo.backendIndex: number` (0..5), `RendererInfo.combinerIndex: number` | `RendererInfo.backendName: string`, `RendererInfo.combinerName: string` | Same reason and same fix: read the name. `RendererInfo` is now also an exported type, which a plugin writing a renderer backend needs in order to name it. |
 
 Nothing else in `UiEntryConfig` changed. A plugin that only calls `characterGrid`, `equipCmpSummary`, `applyRenderer` or `combineValues` is unaffected: each gained an optional trailing registry argument and behaves as before when it is omitted.
-Outside the guaranteed subset, `ctx.core` can change in any release; the ratchet makes each break visible in this repository before it reaches a player's browser. The guarantee covers a top-level name and its `typeof`, so nested keys on a guaranteed object (`FEAT.MORE`, `TV.SWORD`, `RSF.BR_FIRE`) are recorded like any other shape change. `ModHooks` is a closed interface of eight members, and the bug-fixes mod alone uses six of them. If authors keep calling unguaranteed `ctx.core` names to get past it, the answer is to grow the seam or add names to the guaranteed subset, rather than restricting the namespace.
+Outside the guaranteed subset, `ctx.core` can change in any release; the ratchet makes each break visible in this repository before it reaches a player's browser. The guarantee covers a top-level name and its `typeof`, so nested keys on a guaranteed object (`FEAT.MORE`, `TV.SWORD`, `RSF.BR_FIRE`) are recorded like any other shape change. `ModHooks` is a closed interface of 22 members, and the bug-fixes mod alone uses nine of them. If authors keep calling unguaranteed `ctx.core` names to get past it, the answer is to grow the seam or add names to the guaranteed subset, rather than restricting the namespace.
 ## What is *not* a compatibility mechanism
 
 - **Save data.** A mod's own bag in the player's save is migrated by the mod, via

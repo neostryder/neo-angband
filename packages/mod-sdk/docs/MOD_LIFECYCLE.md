@@ -5,7 +5,7 @@ This page covers how mods interact with saves, with installation and with each o
 It deals with four questions:
 
 1. How is mod content kept separate, so that installing, updating and uninstalling mods does not break your save?
-2. How do you install a mod (from a git repo today, from a marketplace later) without friction?
+2. How do you install a mod (from a git repository, through the game's mod list or by URL) without friction?
 3. How do several mods run together without corrupting each other?
 4. What keeps all of this from turning into the usual mod-manager headache?
 
@@ -34,8 +34,7 @@ The savefile is already block-based (a faithful port of `savefile.c`:
 magic, then framed blocks). The port extends it into three tiers:
 
 - A `manifest` block: the exact mod set that produced this save - each
-  pack's `id`, `version`, content hash, and source (git URL + ref, or
-  marketplace id), plus the resolved load order. This is the save's
+  pack's `id`, `version`, content hash, and source (git URL + ref), plus the resolved load order. This is the save's
   "profile fingerprint".
 - Core blocks (player, dungeon, messages, RNG state, ...): the base
   game state. All cross-references inside use namespaced string ids.
@@ -156,7 +155,7 @@ The user pastes a repository URL (or picks a ref). The app:
 [PROPOSED] A web page cannot speak the git protocol or clone from arbitrary hosts (CORS, no git transport). In the web build, "install from git" means fetching the repository tarball at a ref through the host's HTTP API; GitHub and GitLab both expose CORS-friendly archive and raw endpoints for public repos. Private or self-hosted repos need a user-supplied token or a small optional proxy, and the documentation says so. The desktop build could clone directly, since it has a real filesystem and a real process to run git in. Either way the installer consumes the same pack format.
 ### From a marketplace
 
-There is no self-hosted marketplace and none is planned. An earlier design for one, serving pre-validated, pre-packaged `.ngpack` bundles (the pack directory, zipped, with the manifest and a signed content hash) with in-app browse, search, screenshots and ratings, was never built. Nexus Mods integration (tracked in the mod-distribution issues) takes its place. Nexus already provides hosting, browse and search, screenshots and ratings at a scale a self-hosted marketplace would take years to reach, and a second, competing store would duplicate that infrastructure for a much smaller audience. The manifest fields meant for the marketplace (`description`, `screenshots`, `changelog`, `author`, `license`, and a hash-based integrity record) are the same ones a Nexus-origin install preview uses.
+There is no marketplace server and none is planned, and listings are not mirrored to Nexus Mods or mod.io. The game's list of mods is `mods/registry.json`, a list of GitHub repositories, and everything shown about a mod comes from that mod's own repository. An in-game browser over that list is planned (`docs/PLANNED.md`, "Mod updates"). An earlier design for a self-hosted marketplace serving pre-packaged `.ngpack` bundles (the pack directory, zipped, with the manifest and a signed content hash) was never built.
 ### Updating and uninstalling
 
 - Update: the app compares the pinned ref (or marketplace version)
@@ -262,11 +261,11 @@ An ordering claim moves a whole mod, and a band moves one part of it. An author 
 - Override (two mods both touch `core:kobold`): a real conflict only if
   they touch the SAME FIELD.
 
-The existing composition model (`patches`, `replaces`, `removes`) is the
-lever. [PROPOSED] `patches` becomes field-granular and composable: a
-patch is a set of field operations (`set`, `merge`, `addFlag`,
-`removeFlag`, numeric `add`/`mul`, list `append`/`removeValue`), applied in
-load order. Two mods that
+The composition model (`patches`, `fieldPatches`, `replaces`, `removes`)
+is the lever. Patches are field-granular and composable: `patches`
+deep-merges key by key, and `fieldPatches` is a set of field operations
+(`set`, `merge`, `addFlag`, `removeFlag`, numeric `add`/`mul`, list
+`append`/`removeValue`), applied in load order. Two mods that
 patch DIFFERENT fields of the same record compose cleanly with zero
 conflict. Only same-field patches conflict, and then load order decides
 and the app says so. This removes the biggest source of false conflicts
@@ -288,7 +287,7 @@ The report used to cover content records only, which is one layer out of five. T
 
 Every layer and every hook now resolves in favour of the mod that loads last, so the fold no longer decides who wins. What it tells you is whether there was anything to win. Three folds discard a contribution (`last-wins`, `last-answer`, `single-slot`) and three combine contributions (`all-must-agree`, `chained`, `any-yes`), and only the first group needs the player to do anything. Treating every layer as if it resolved the same way would be the RimWorld trap, where XML, then xpath, then C# each have their own effective precedence and "load order" quietly means three things. Treating the layers as different where they are not would mislead just as much.
 
-Of the eight behaviour hooks, two are `last-answer` (the earlier mod's rule never runs), three `all-must-agree`, one `chained`, one `any-yes`, and one `all-observe` (every handler runs and none can veto). `MOD_HOOK_FOLDS` lives in core beside `composeModHooks` and is keyed by `keyof ModHooks`, so a hook added to the interface without a fold does not compile. A test in `hooks.test.ts` checks each fold against what the composition actually does rather than restating the table, including which contributor ran, since that is the part that can be wrong while the table still looks right.
+Of the 22 behaviour hooks, 3 are `last-answer` and 4 are `all-must-agree`, then 7 are `chained`, 2 are `any-yes` and 6 are `all-observe`. Under `last-answer` the earlier mod's rule never runs, and under `all-observe` every handler runs and none can veto. `MOD_HOOK_FOLDS` lives in core beside `composeModHooks` and is keyed by `keyof ModHooks`, so a hook added to the interface without a fold does not compile. A test in `hooks.test.ts` checks each fold against what the composition actually does rather than restating the table, including which contributor ran, since that is the part that can be wrong while the table still looks right.
 
 Every claim is derived from what a mod actually contributes: the refs in its files, the keys its hooks factory returned, the grafIDs its manifest claims. A `touches` declaration in the manifest would be less code, but it would go stale the first time an author forgot to update it, and stale declarations are what this report exists to catch.
 
@@ -332,8 +331,10 @@ Three trust tiers, unchanged from MODS.md, made concrete at install:
 - Content packs (declarative JSON): validated data, cannot execute.
   Lowest bar, freely shareable.
 - Tile packs: validated manifest plus images. Same posture.
-- Scripted plugins: real code, run in a sandbox (a Web Worker with no
-  ambient DOM, network, or storage) with explicit capability grants. At
+- Scripted plugins: real code. A plugin runs in the page with the same
+  access core has, so it is trusted code and the consent screen is the
+  boundary (`PLUGINS.md`). A plugin declaring `modApi: 2` with
+  `runtime: "worker"` runs in its own Worker instead. At
   install the app lists the capabilities in plain language ("add
   commands", "read party state", "network access to api.example.com")
   and the mod gets nothing it did not request and the user did not
@@ -341,9 +342,9 @@ Three trust tiers, unchanged from MODS.md, made concrete at install:
 
 Determinism guard. Save-scum protection does not depend on determinism. It comes from the faithful port of the original's persisted RNG state (the full `STATE[]`/`Rand_value` is in the save, so a reload resumes the exact stream and cannot reroll) together with a single save and terminal death; see the save-scum policy. Because that protection rests on saved state rather than on replaying a run from a seed, it works with mods.
 
-The guard itself is a convenience and a label. The SDK hands every plugin a seeded RNG, and by default the sandbox withholds the nondeterministic sources (wall clock, `Math.random`, ambient network), so an author who does nothing special stays deterministic. That keeps the unmodded-style "shareable seed" reproducibility working when their mod is pure. Reproducibility is a nice-to-have, and the game does not depend on it.
+The guard itself is a convenience and a label. Nothing withholds the wall clock, `Math.random` or the network from a plugin, so staying deterministic is the author's job: draw from the game's own seeded RNG (`ctx.state.rng`), and declare `nondeterministic: true` when the mod uses anything else. A mod that does keeps the unmodded-style "shareable seed" reproducibility working. Reproducibility is a nice-to-have, and the game does not depend on it.
 
-Cheaty and nondeterministic mods are allowed, and the engine does not forbid them. A mod that wants nondeterminism (a live-multiplayer transport, a wall-clock event, an external AI agent) declares `nondeterministic: true` in its manifest. The engine then grants the capabilities it asks for and marks any profile containing it as "not reproducible / not seed-shareable". Nothing is blocked; the player is simply told what they are giving up. Two consequences follow. Adding, removing or updating mods mid-run also breaks reproducibility from a seed, because the mod set is one of the seed's inputs. And a nondeterministic mod reopens reload-rerolling within its own mechanics, since those outcomes are not pinned to saved state, while core mechanics stay reroll-proof because they draw from the saved seeded stream. An undeclared plugin that touches a withheld source gets a clear author-facing error pointing at the fix, instead of a silent divergence.
+Cheaty and nondeterministic mods are allowed, and the engine does not forbid them. A mod that wants nondeterminism (a live-multiplayer transport, a wall-clock event, an external AI agent) declares `nondeterministic: true` in its manifest. The engine then grants the capabilities it asks for and marks any profile containing it as "not reproducible / not seed-shareable". Nothing is blocked; the player is simply told what they are giving up. Two consequences follow. Adding, removing or updating mods mid-run also breaks reproducibility from a seed, because the mod set is one of the seed's inputs. And a nondeterministic mod reopens reload-rerolling within its own mechanics, since those outcomes are not pinned to saved state, while core mechanics stay reroll-proof because they draw from the saved seeded stream.
 
 Save determinism mode. Core enforces the label: every save carries a determinism mode that core owns, whatever mods are loaded. A save starts deterministic, and the first time a determinism-affecting mod is enabled on it, core switches it to nondeterministic. The switch is permanent. Removing the mod later does not restore deterministic mode, so a deterministic (unmodded) save cannot be tainted by a mod and then cleaned up to reclaim its reproducibility and anti-scum guarantees. Mods can trigger the switch but can never reverse or prevent it. That is why the save block records both the exact mod set and the mode: the mode travels with the save.
 Gameplay scoring mode. A pack that changes core gameplay declares `affectsGameplay: true` in its manifest. The first time it is enabled for a save, the UI warns that the save will become non-scoring and asks for confirmation, and if the player accepts, core sets `modNoscore`. This is separate from the determinism mode: a mod may be deterministic, nondeterministic, gameplay-affecting, both, or neither. Like the determinism mode it only goes one way. `modNoscore` never clears after a mod is disabled or removed, and score entry rejects it independently of Angband's reference-format-compatible `player.noscore` bitfield.
@@ -372,8 +373,8 @@ elsewhere. Each known complaint, and the design answer:
   needs runes >=2.0 - install it too?" step. Never launches with unmet
   requirements.
 - "Where do I even get mods, and is this download safe?"
-  -> In-app install from trusted git sources now, a browsable
-  marketplace later, license and author shown before install,
+  -> In-app install from trusted git sources now, an in-game
+  browser over the mod list later, license and author shown before install,
   capabilities shown before enabling a script.
 - "Updating breaks everything."
   -> Pinned refs, changelog and migration preview, atomic apply with an
@@ -406,12 +407,12 @@ While safe mode is on, a notice in the corner of the window says so and offers *
 
 ## 6. Build order
 
-Seams and formats come first, because they are cheap now and expensive to retrofit, then UI, and the marketplace last:
+Seams and formats come first, because they are cheap now and expensive to retrofit, then UI, and the mod browser last:
 
 1. Now, as the save system and loader land: string-id serialization, the namespaced save blocks and per-mod bags, the field-level patch/merge composer, the load-order and dependency resolver, the capability model, and the conflict-report computation. These are engine seams.
 1b. Wiring the engine seams from item 1 into the running game: a loader that resolves and composes the pack set at boot, capability enforcement on the perceive/act facades, the agent controller installed in the host, and the turn loop routed through the event bus. As of 2026-07-14 the item 1 seams were built and tested but had no runtime caller. This step comes before the UI below.
 2. Next: the in-app mod manager UI, kept basic to match the split with external managers described above (list, enable/disable, a one-step earlier/later nudge, per-patch opt-out, install-from-url, conflict view, capability consent, profiles), plus the one auto-sort button. Bulk reordering, staging, collections and update watching stay the external manager's job.
-3. Future release: Nexus Mods integration (a real second pinned origin, which replaces the self-hosted marketplace this item once named; see "From a marketplace" above), the externally authored enabled-set/order file, and a Vortex/MO2 extension over the shared on-disk format.
+3. Future release: the in-game mod browser over `mods/registry.json`, with no marketplace server and no Nexus Mods or mod.io mirror, the externally authored enabled-set/order file, and a Vortex/MO2 extension over the shared on-disk format.
 
 Authors check a pack in CI with `neo-angband-mod-check` (the same rules the game enforces at install) and produce a distributable `plugin.js` with `neo-angband-mod-build`. Both ship in `@rpgm-tools/neo-angband-mod-sdk`. The repo carries sample mods that CI installs and runs.
 ---

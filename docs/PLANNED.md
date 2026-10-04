@@ -184,6 +184,8 @@ Tracked as issue #9.
 
 Game updates can now optionally carry the compatible updates already found for installed mods; what remains for #111 is automatic or periodic checking without opening a screen. Recommended-new-mod discovery is deferred with that background pass, rather than being folded into an update check.
 
+An in-game mod browser over `mods/registry.json` is planned: screenshots, descriptions, changelogs, tags and search, with one-click install, update-all and rollback to an earlier version, and each mod's review status and the at-your-own-risk notice on its page. It reads each mod's own repository, as the Recommended mods row does, so it needs no server of its own. Download counts, ratings, and mirroring listings to Nexus Mods or mod.io are not planned.
+
 ## The tile seams
 
 ### Two mods answering for the player's cell is unreported

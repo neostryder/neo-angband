@@ -12,7 +12,7 @@ The target is a game built for modding throughout: a mod can override code, reso
 
 | | measured |
 | --- | --- |
-| `ModHooks` behaviour hooks | **11** (`packages/core/src/mod/hooks.ts`) |
+| `ModHooks` behaviour hooks | **22** (`MOD_HOOK_FOLDS` in `packages/core/src/mod/hooks.ts`) |
 | Switches of >= 8 cases in the tree, counted by a script | **34** (`tools/switch-census.json`, re-derived 2026-08-09 after gap 16; was 47 that morning and 50 before the three glyph decoders became one registry) |
 | ...still `CANDIDATE`, a dispatch point a mod cannot reach | **0** (was 18 on the morning of 2026-08-09). See the caution below: zero candidates is the end of what this TOOL can see, not the end of closed dispatch |
 | ...of those, a mod's CODE can add to or override | **all of them** (`profile`, `blow`, `store` 2026-08-08; `projection`, `glyph`, `effect-info`, `randart`, `tval`, `rune` 2026-08-09) |
@@ -46,7 +46,7 @@ Game behaviour living in `switch` statements with nothing to register into is no
 
 ## (a) Code
 
-### The 11 behaviour hooks, and what each can change
+### The 22 behaviour hooks, and what each can change
 
 `ModHooks` (`packages/core/src/mod/hooks.ts`, the `ModHooks` interface) is a typed interface of optional functions on `GameState.modHooks` (`packages/core/src/game/context.ts`). See `MOD_SEAMS.md` for the fold rules. Call sites below are named by file and by the symbol that reads the hook rather than by line number, since a line number in a document has no test behind it and goes stale with the next commit.
 
@@ -67,8 +67,15 @@ Game behaviour living in `switch` statements with nothing to register into is no
 | `objectInfoText` | `obj/object-info.ts`, `objectInfo` | Restate each fragment of an item description, given the section that wrote it, the item's tval, and its kind as the player knows it (the flavour until the kind is learned) | What the item does or what the player knows about it |
 | `effectIntro` | `obj/object-info.ts`, `describeEffect` | Restate the introduction to an effect description, given whether the effect is known, the item class and whether it is aimed or activated | The effect description that follows the introduction |
 | `optionsChanged` | the options pages, through `GameState.modHooks` | Observe the option state after a change. Folded `all-observe`: every mod's handler runs, none can veto | The option values themselves; it is notification, not interception |
+| `newCharacter` | `session/game.ts`, `startGame`, once for a new character after its state is built | Change the new character's state before play starts, and the change is saved like any other. Folded `all-observe`: every mod's handler runs, in load order | A loaded or reloaded character, which it never runs for |
+| `partialStackMerge` | `game/gear.ts`, `combinePack` | Refuse a partial merge of two stacks by returning false, which leaves both stacks as they were. Folded `all-must-agree` | The stacks themselves. It decides only whether the merge happens |
+| `packOverflowVictim` | `game/obj-cmd.ts`, `packOverflow` | Name which pack item is dropped when the pack overflows. Returning null leaves the choice to core, which drops the last item as usual. Folded `last-answer` | Whether the pack overflows at all |
+| `shapeLearnObviousFlagsDirectly` | `game/effect-general.ts`, the shapechange effect, before `shapeLearnOnAssume` | Have the player learn the shape's obvious flags directly when shapechanging. Folded `any-yes` | Which flags those are. Core computes the set the same way either way |
+| `abilityGained` | `game/spell-cmd.ts` (`installSpellCommands`), `game/pickup.ts` (`playerPickupAux`), `game/obj-cmd.ts` (`checkDevices`) | Observe a spell learned or an activatable item becoming known, with the command a keymap would use. Folded `all-observe` | Nothing, because core has already recorded the knowledge |
+| `monsterBecameVisible` | `game/known.ts`, `updateMon`, on every fresh sighting | Observe a monster coming into view, with the live monster. Folded `all-observe` | Whether it is seen. A monster that stays in view does not fire it again |
+| `artifactIdentified` | `obj/known-object.ts`, `objectTouch` | Observe an artifact being identified, with the object and its artifact record. Folded `all-observe`, and it fires once per object | Nothing about the identification itself |
 
-Each of the eleven hooks was carved for one concrete patch. They are correct and generic in shape, but together they do not add up to a way to "make over the whole game": they are nine separate points rather than a seam layer.
+Each hook was carved for one concrete patch or one request. They are correct and generic in shape, but together they do not add up to a way to "make over the whole game": they are separate points rather than a seam layer.
 
 ### Dispatch tables: the census
 
