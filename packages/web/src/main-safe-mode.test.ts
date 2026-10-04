@@ -129,7 +129,7 @@ describe("main composition safe mode (#88)", () => {
       "const loadGamePack = () => { throw fixtureError; };",
       "const safeModeCalls = [];",
       "const showSafeModeScreen = (error, options) => void safeModeCalls.push({ error, options });",
-      "const disableAllModsAndRestart = () => undefined;",
+      "const restartWithoutMods = () => undefined;",
       boundary!.getText(source),
       "export { loadPackForBoot, safeModeCalls };",
     ].join("\n");
@@ -142,7 +142,7 @@ describe("main composition safe mode (#88)", () => {
       loadPackForBoot: () => Promise<unknown>;
       safeModeCalls: Array<{
         error: unknown;
-        options: { disableModsAndRestart: () => void };
+        options: { startWithoutMods: () => void };
       }>;
     };
     const boot = module.loadPackForBoot();
@@ -161,12 +161,12 @@ describe("main composition safe mode (#88)", () => {
      * screen with the exact error and callback it received, so this test proves
      * the player sees the recovery rather than merely a bookkeeping call. */
     const body = installFakeDom();
-    let disabled = false;
+    let restarted = false;
     const routed = module.safeModeCalls[0]!;
     showSafeModeScreen(routed.error, {
-      disableModsAndRestart: () => {
-        disabled = true;
-        routed.options.disableModsAndRestart();
+      startWithoutMods: () => {
+        restarted = true;
+        routed.options.startWithoutMods();
       },
     });
     const screen = body.children[0];
@@ -175,21 +175,24 @@ describe("main composition safe mode (#88)", () => {
     expect(allText(screen!)).toContain("duplicate record");
 
     const restart = findButton(screen!);
-    expect(restart?.textContent).toBe("Disable all mods and restart");
+    expect(restart?.textContent).toBe("Start without mods");
     restart?.click();
-    expect(disabled, "safe mode did not offer the disable-and-retry path").toBe(true);
+    expect(restarted, "safe mode did not offer the restart without mods").toBe(true);
   });
 
-  it("persists every effective mod as off, drops session mods, and removes ?mods=", async () => {
+  it("restarts in safe mode without writing the mod settings", async () => {
     const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
     const action = source.statements.find(
       (statement): statement is ts.FunctionDeclaration =>
-        ts.isFunctionDeclaration(statement) && statement.name?.text === "disableAllModsAndRestart",
+        ts.isFunctionDeclaration(statement) && statement.name?.text === "restartWithoutMods",
     );
-    expect(action, "main.ts no longer owns the safe-mode disable action").toBeDefined();
+    expect(action, "main.ts no longer owns the safe-mode restart").toBeDefined();
 
+    /* Every mod-settings writer the old recovery used is bound to a recorder, so
+     * a regression that goes back to rewriting the enabled set shows up here. */
     const harness = [
       "const writes = [];",
+      "const enterSafeLaunch = () => void writes.push(['safe']);",
       'const enabledModIds = () => ["folder-mod", "installed-mod"];',
       "const defaultModStore = () => ({",
       "  setEnabled: (ids) => void writes.push(['enabled', ids]),",
@@ -199,25 +202,18 @@ describe("main composition safe mode (#88)", () => {
       'const location = { href: "https://example.test/?mods=folder-mod,installed-mod", reload: () => void writes.push(["reload"]) };',
       "const history = { replaceState: (_state, _title, url) => void writes.push(['url', url]) };",
       action!.getText(source),
-      "export { disableAllModsAndRestart, writes };",
+      "export { restartWithoutMods, writes };",
     ].join("\n");
     const emitted = ts.transpileModule(harness, {
       compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ESNext },
     }).outputText;
     const moduleUrl = `data:text/javascript;base64,${Buffer.from(emitted).toString("base64")}`;
     const module = await import(moduleUrl) as {
-      disableAllModsAndRestart: () => void;
+      restartWithoutMods: () => void;
       writes: unknown[][];
     };
 
-    module.disableAllModsAndRestart();
-    expect(module.writes).toEqual([
-      ["enabled", []],
-      ["choice", "folder-mod", false],
-      ["choice", "installed-mod", false],
-      ["drop-session"],
-      ["url", "https://example.test/"],
-      ["reload"],
-    ]);
+    module.restartWithoutMods();
+    expect(module.writes).toEqual([["safe"], ["reload"]]);
   });
 });

@@ -43,6 +43,7 @@ import {
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { fieldDocument, legacyJson, type LegacyField } from "./field-document";
 import { readSetting, writeSetting } from "./settings-store";
+import { safeLaunch } from "./safe-launch";
 
 /** Where the mod manager's state is kept, one `neo-angband/web/mod-state` document per profile (#288). */
 export const MOD_STATE_STORAGE_KEY = "neo-angband:mod-state";
@@ -376,13 +377,18 @@ function withForced(ids: readonly string[], forced: readonly string[]): string[]
  * Every read is guarded because a host may have no `location` (a non-browser test)
  * and no `localStorage` (private mode), and in both cases the honest answer is "no
  * recorded opinion", not a throw at boot.
+ *
+ * In safe mode the answer is none, whatever the inputs say (safe-launch.ts).
  */
 export function readEnabledModIds(input: {
   discovered: readonly string[];
   diskOrder?: readonly string[];
   /** Ids staged for this session only, which are on whatever else says. */
   forced?: readonly string[];
+  /** Answer with the set a normal start would load, even in safe mode. */
+  ignoreSafeLaunch?: boolean;
 }): string[] {
+  if (safeLaunch() && input.ignoreSafeLaunch !== true) return [];
   let url: string[] | null = null;
   try {
     const raw = new URLSearchParams(location.search).get("mods");

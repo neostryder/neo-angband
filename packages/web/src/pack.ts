@@ -344,8 +344,10 @@ export function modConflictLines(
  * with no saved set - the DEFAULT_ENABLED_MODS that are actually discovered.
  * Distinguishing "no saved key" (first run -> defaults) from an empty array
  * (user turned everything off) is why that reader reads the raw key itself.
+ * In safe mode the set is empty, unless `ignoreSafeLaunch` asks for the set a
+ * normal start would load (the Mods screen shows that one).
  */
-export function enabledModIds(): string[] {
+export function enabledModIds(options: { ignoreSafeLaunch?: boolean } = {}): string[] {
   /* The URL/localStorage reading, the player's explicit per-mod decisions and the
    * external manager's load-order.json all live in mod-store.readEnabledModIds, so
    * this surface and the tile discovery cannot answer differently. */
@@ -356,6 +358,7 @@ export function enabledModIds(): string[] {
      * and a leftover "off" choice from a copy the player once installed must not
      * silence the copy they just asked to try (mod-session.ts). */
     forced: sessionPacks().packs.map((p) => p.manifest.id),
+    ...(options.ignoreSafeLaunch === true ? { ignoreSafeLaunch: true } : {}),
   });
 }
 

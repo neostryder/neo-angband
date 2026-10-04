@@ -32,6 +32,10 @@ external manager like Vortex or MO2 deploys into it. **A URL parameter**:
 `?mods=qol,linoleum` overrides the enabled set for one session without
 touching what is saved.
 
+### If a mod stops the game from starting
+
+Hold Shift while the game starts to start it with every mod off, just for that session, or start the desktop app with `--safe-mode`. The game offers the same thing itself when its last two starts stopped before the menus. Safe mode changes nothing: your mods stay installed and enabled, and your characters are untouched. Switch off the mod you suspect on the Mods screen, then choose **Restart with mods** in the corner of the window. [modding/MOD_LIFECYCLE.md](modding/MOD_LIFECYCLE.md#safe-mode) has the details.
+
 ### Where each mod lives
 
 [MOD_LIST.md](MOD_LIST.md) lists every released mod, first-party and community, with what it does, its newest release, the game builds it runs on and links to its repository and docs. Each mod is a separate repository with its own issues, releases and tests: file a bug about what a mod *does* there, and a bug about the mod *system* against the game.

@@ -369,6 +369,10 @@ To go back, start the game with `--restore-point=latest` for the newest one, or 
 
 Restoring also brings every character back as they were at that point, including any who have died since. Restore points are only taken when the version changes.
 
+#### Starting without mods
+
+If a mod stops the game from starting, start it with `--safe-mode`, or hold Shift while it starts. Every mod is off for that session, and nothing about your mods or characters changes. [MODS.md](MODS.md#if-a-mod-stops-the-game-from-starting) has more.
+
 #### How new a build you want
 
 The update screen has three channels, and `C` cycles them. The choice is

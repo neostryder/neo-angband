@@ -30,6 +30,15 @@ export const reloadStateFormat = defineFormat({
   sample: { values: {} },
 });
 
+/* How many starts in a row stopped before the menus came up. The web shell counts
+ * a start when boot begins and clears the count once the menus are showing, so
+ * a crash, a hang or a closed window during boot all leave it raised. */
+export const bootRecordFormat = defineFormat({
+  format: "neo-angband/web/boot-record", schemaVersion: 1,
+  validator: json.object({ incompleteStarts: json.integer }),
+  sample: { incompleteStarts: 0 },
+});
+
 export const loopbackPortFormat = defineFormat({ format: "neo-angband/desktop/loopback-port", schemaVersion: 1,
   validator: json.object({ port: json.integer }), sample: { port: 45871 } });
 export const mergedOriginsFormat = defineFormat({ format: "neo-angband/desktop/merged-origins", schemaVersion: 1,

@@ -50,6 +50,7 @@
     "backupFolderFormat",
     "birthChoiceFormat",
     "blueprintFor",
+    "bootRecordFormat",
     "buildIdFormat",
     "characterExportFormat",
     "characterFromLegacy",

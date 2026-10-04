@@ -243,7 +243,8 @@ import {
   type OrphanViewDeps,
 } from "./mod-orphans";
 import { installCrashScreen } from "./crash-screen.js";
-import { showSafeModeScreen } from "./safe-mode.js";
+import { offerSafeLaunch, showSafeLaunchNotice, showSafeModeScreen } from "./safe-mode.js";
+import { addressWithoutSafeLaunch, bootCompleted, decideSafeLaunch, enterSafeLaunch, safeLaunch, watchSafeKey } from "./safe-launch";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, effectInfoRegistry, randartRegistry, runeRegistry, tvalRegistry, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
 import type { AgentController, AgentSession } from "@rpgm-tools/neo-angband-core";
 import {
@@ -320,7 +321,7 @@ import {
   loadInstalledMods,
   uninstallMod,
 } from "./mod-install";
-import { dropSessionMods, loadSessionMods } from "./mod-session";
+import { loadSessionMods } from "./mod-session";
 import type { ModUpgradeDeps } from "./mod-browse";
 import { pendingUpgrades, refreshInstalledMods, type ModUpgrade } from "./mod-refresh";
 import {
@@ -890,6 +891,10 @@ import { coreUsage, setCoreUsageRecording } from "./mod-core-usage";
  * hands mods the bare namespace. */
 if (import.meta.env.DEV) setCoreUsageRecording(true);
 
+/* Holding Shift while the game starts asks for safe mode. The watch starts here,
+ * before anything slow, and is settled just before the first mod is read. */
+const safeKeyWatch = watchSafeKey(window);
+
 // PWA freshness: silently reload onto a newly deployed build (a ratified
 // browser-shell necessity, D2). Page chrome, independent of the game, so it
 // installs first. No on-screen build stamp or network "commits behind" fetch -
@@ -1055,6 +1060,20 @@ async function rediscoverModSources(): Promise<void> {
 
 {
   await rediscoverModSources();
+
+  /* Safe mode is settled here: after the sources are listed, which only reads
+   * files, and before any mod's code is imported or its content composed. From
+   * here on the enabled-set reader answers "none" for a safe launch. */
+  const safeReason = await decideSafeLaunch({
+    storage: localStorage,
+    keyWatch: safeKeyWatch,
+    anyModsEnabled: () => enabledModIds({ ignoreSafeLaunch: true }).length > 0,
+    offer: offerSafeLaunch,
+  }).catch((e: unknown) => {
+    log.warn("mods", "safe mode could not be settled; starting normally", e);
+    return null;
+  });
+  if (safeReason) log.info("mods", `safe mode: every mod is off for this session (${safeReason})`);
 
   /* And their CODE. Until this existed, a folder could contribute records and
    * never a line of behaviour - the whole SDK (patches, conflicts, the five
@@ -1389,41 +1408,14 @@ const depthParam = params.get("depth");
 const depth = depthParam !== null && depthParam !== "" ? Number(depthParam) : 0;
 
 /**
- * The recovery action has to disable the EFFECTIVE set, not merely empty
- * the mod state's enabled list. A deployed folder's load-order.json is unioned back in on
- * the next boot unless every enabled id also has an explicit off choice; staged
- * session mods are forced on, so they must be dropped too. A URL ?mods= override
- * has the same precedence and is removed before reloading.
+ * The recovery action: restart in safe mode. Nothing about the player's mods is
+ * written. The enabled set, the per-mod choices, a deployed folder's
+ * load-order.json, staged session mods and a ?mods= override all stay as they
+ * are, and safe mode sets every one of them aside for the session, so the player
+ * can switch off the mod that failed and restart with the rest.
  */
-function disableAllModsAndRestart(): void {
-  let enabled: string[] = [];
-  try {
-    enabled = enabledModIds();
-  } catch {
-    /* Still clear the persisted set below. Recovery must make its best effort
-     * even when the broken combination also made the enabled-set reader fail. */
-  }
-  try {
-    const store = defaultModStore();
-    store.setEnabled([]);
-    for (const id of enabled) store.setModChoice(id, false);
-  } catch {
-    /* ModStore is storage-tolerant; this protects the recovery UI against a
-     * host implementation that is not. */
-  }
-  try {
-    dropSessionMods();
-  } catch {
-    /* A staged mod is session-only. If its storage is unavailable there is no
-     * durable selection to clear, so continue to the reload. */
-  }
-  try {
-    const next = new URL(location.href);
-    next.searchParams.delete("mods");
-    history.replaceState(null, "", next.toString());
-  } catch {
-    /* The persisted off choices still cover ordinary browser launches. */
-  }
+function restartWithoutMods(): void {
+  enterSafeLaunch();
   location.reload();
 }
 
@@ -1440,7 +1432,7 @@ async function loadPackForBoot(): Promise<GamePack> {
   try {
     return loadGamePack();
   } catch (error) {
-    showSafeModeScreen(error, { disableModsAndRestart: disableAllModsAndRestart });
+    showSafeModeScreen(error, { startWithoutMods: restartWithoutMods });
     return await new Promise<never>(() => {});
   }
 }
@@ -7743,8 +7735,10 @@ async function modManagerDeps(): Promise<ModManagerDeps> {
         // The EFFECTIVE set, not store.getEnabled(): a pack deployed into the
         // mods folder and listed in load-order.json is loaded without being in
         // the player's stored set, and a manager that showed it as off while the
-        // game ran it would be lying about the state of the game.
-        enabled: enabledModIds(),
+        // game ran it would be lying about the state of the game. In safe mode
+        // it is the set that comes back on a normal start, since that is what
+        // the switches change.
+        enabled: enabledModIds({ ignoreSafeLaunch: true }),
         consents: store.getConsents(),
         /* Read off the packs that actually composed rather than off the staged
          * records, so a row is marked "this session" only when there is really a
@@ -13715,7 +13709,7 @@ function modBrowseDeps(): ModUpgradeDeps {
      * player has enabled right now, for its conflict and "is this record's
      * owner enabled" checks. Same lookup the conflicts pane itself uses. */
     enabledManifests: () => {
-      const enabled = enabledModIds();
+      const enabled = enabledModIds({ ignoreSafeLaunch: true });
       return discoverContentModManifests().filter((m) => enabled.includes(m.id));
     },
     readRepoFile: async (repo, tag, path) => {
@@ -15028,6 +15022,18 @@ async function bootMenus(): Promise<void> {
    * return from here without painting anything.
    */
   stopLoading();
+  /* The start reached the menus. A safe start is not counted (decideSafeLaunch),
+   * so it does not clear the count either: the next normal start still knows
+   * about the failures before it. */
+  if (safeLaunch()) {
+    showSafeLaunchNotice({ restartWithMods: () => location.assign(addressWithoutSafeLaunch(location.href)) });
+  } else {
+    try {
+      bootCompleted(localStorage);
+    } catch {
+      /* no storage: there is no count to clear */
+    }
+  }
   if (profileActionResult && !profileActionResult.ok) {
     const reason = profileActionResult.reason;
     await openModal(() => showTextScreen(term, t("profilesScreen.title", "Profiles"), [{ text: reason, color: UI_BAD }]));
@@ -15694,10 +15700,11 @@ function installTrusted(trustedId: string): void {
   }
 }
 
-// URL params install a specific plugin for one-off testing (they win).
-const pluginId = params.get("plugin");
+// URL params install a specific plugin for one-off testing (they win), except
+// in safe mode, which sets aside every mod however it was asked for.
+const pluginId = safeLaunch() ? null : params.get("plugin");
 if (pluginId) installSandbox(pluginId);
-const trustedId = params.get("trusted");
+const trustedId = safeLaunch() ? null : params.get("trusted");
 if (trustedId) installTrusted(trustedId);
 
 // W2.4: install every mod the player enabled in the manager whose capabilities
@@ -15723,7 +15730,8 @@ try {
   // the fresh-install experience is faithful 4.2.6 with no QoL tweak and no bug
   // fix applied. The machinery is kept for the case where a future bundled mod
   // is genuinely meant to default on.
-  if (!modStore.hasStoredEnabled()) {
+  /* Safe mode writes nothing to the mod settings, the first-run set included. */
+  if (!safeLaunch() && !modStore.hasStoredEnabled()) {
     const discovered = [
       ...discoverContentModManifests().map((m) => m.id),
       ...sandboxMods.keys(),
@@ -15741,7 +15749,7 @@ try {
     }
   }
 
-  const enabledIds = modStore.getEnabled();
+  const enabledIds = safeLaunch() ? [] : modStore.getEnabled();
   if (enabledIds.length > 0) {
     const consents = modStore.getConsents();
     for (const id of enabledIds) {

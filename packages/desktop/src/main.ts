@@ -36,7 +36,7 @@ import {
 import { NodeRawFs } from "@rpgm-tools/neo-angband-cli/host-node";
 import { loadOrderFormat } from "@rpgm-tools/neo-angband-mod-sdk";
 import { LAUNCH_MODULES } from "./modules.js";
-import { agentQuery } from "./agent-mode.js";
+import { rendererQuery } from "./launch-query.js";
 import {
   BACKUP_CHANNEL,
   HOST_BRIDGE_CHANNEL,
@@ -2147,7 +2147,7 @@ async function createWindow(): Promise<void> {
     });
   });
 
-  await win.loadURL(`${APP_ORIGIN}/${agentQuery()}`);
+  await win.loadURL(`${APP_ORIGIN}/${rendererQuery(process.argv)}`);
 }
 
 async function start(): Promise<void> {

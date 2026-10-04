@@ -389,7 +389,18 @@ elsewhere. Each known complaint, and the design answer:
 The pre-migration snapshot in section 2 is not save-scumming either. It is an operational safety net that restores only when a migration throws, and it is never offered as a "load an earlier save" command. It guards against a failed tool, never against the player's own bad luck. The no-save-scum rule bars player-facing rollback of gameplay outcomes, and the snapshot is neither player-facing nor a gameplay rollback.
 ### Safe mode
 
-[PROPOSED] If an enabled combination of mods fails to boot, the app offers a one-click "start with mods disabled" recovery, so a bad mod can never lock you out of the app or out of a save.
+Safe mode starts the game with every mod off for one session. No mod code runs, no mod content, art or translation is composed in, and mods staged for the session, mods named by `?mods=` and the `?plugin=` and `?trusted=` test parameters are all set aside. The enabled set, the per-mod choices and the saves are not written, so leaving safe mode is a plain restart.
+
+There are four ways in:
+
+- Hold Shift while the game starts, for about a second and a half.
+- Start the desktop app with `--safe-mode`, or add `safe=1` to the address in a browser.
+- Accept the offer the game makes when its last two starts stopped before reaching the menus. A start is counted when boot begins and the count is cleared once the menus are up, so a crash, a hang or a window closed during boot all count. A safe start leaves the count alone, so the offer comes back on the next normal start until one gets through. The offer is only made when at least one mod would load.
+- Choose **Start without mods** on the screen shown when the enabled mods cannot be composed into a game.
+
+While safe mode is on, a notice in the corner of the window says so and offers **Restart with mods**. The Mods screen shows the mods a normal start would load, so the one at fault can be switched off before restarting. The flag stays in the address for the whole session, so a reload from inside the game stays in safe mode too.
+
+[PROPOSED] A helper that finds the mod at fault by halving the enabled set and restarting until the failure goes away.
 
 ---
 

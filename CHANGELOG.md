@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 
+- [Visible] [UI] **Safe mode starts the game with every mod off for one session, and changes nothing else.** Hold Shift while the game starts, start the desktop app with `--safe-mode`, or add `safe=1` to the address in a browser. The game also offers it after two starts in a row that stopped before the menus. Your enabled mods, mod settings and characters are left alone, and a notice in the corner offers **Restart with mods**. The screen shown when the enabled mods cannot be combined now offers this instead of switching every mod off for good.
 - [Internal] [Modding-API] **Dev builds and the mod canary record which `ctx.core` names each mod reads or checks for.** A dev build turns the recording on at boot and `__neo.coreUsage()` returns each mod's names, sorted, including any it asked for that core does not export; the mod canary prints the same list at the end of its run. A player's build hands every mod the bare namespace, as before.
 - [Internal] [Docs] **Releases can go out as public betas first.** `node tools/version.mjs beta patch|minor|major` starts a `-beta.N` version and `beta next` advances it, a beta tag is published as a pre-release that only the beta and early channels offer, npm gets it under the `next` dist-tag, and the itch.io and GitHub Pages web builds stay on the last release.
 
