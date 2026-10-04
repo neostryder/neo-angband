@@ -823,12 +823,6 @@ export interface AgentView {
    * read capability for are null. Reading it changes nothing.
    */
   capture?(): import("./boundary.js").CoreSnapshot;
-  /**
-   * The game as the player knows it, as one deep-frozen value (known-world.ts):
-   * monsters by what the look command and lore show, never the real map. Parts
-   * the caller has no read capability for are null.
-   */
-  knownWorld?(): import("./known-world.js").KnownWorld;
   /** Player-facing object inspection, without learning or changing the game. */
   inspectItem?(ref: number | { floor: { x: number; y: number; index: number } } | { store: number; index: number }): InspectResult | null;
   /** The class book and spell indices for one carried object. */

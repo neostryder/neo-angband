@@ -41,7 +41,6 @@ import { itemView, ofCodes, playerViewFor } from "./entity-views.js";
 import { loadoutChangeRefs, requireLoadoutReads, simulateLoadout } from "./loadout.js";
 import { captureCoreSnapshot, inputToken } from "./boundary.js";
 import { captureKnownLevel } from "./known-level.js";
-import { buildKnownWorld } from "./known-world.js";
 import { knownFloorObject, knownPile } from "../game/known.js";
 import type { KnownMap, KnownObject } from "../game/known.js";
 import { knownDescOf } from "../game/describe.js";
@@ -106,7 +105,7 @@ function knownSpellFlagCodes(state: GameState, race: MonsterRace): string[] {
   return spellFlagCodes(known);
 }
 
-function monsterViews(state: GameState, deps: AgentViewDeps, every = false): MonsterView[] {
+function monsterViews(state: GameState, deps: AgentViewDeps): MonsterView[] {
   const out: MonsterView[] = [];
   const quests = state.actor.player.quests;
   const finalRace = quests.length > 0 ? quests[quests.length - 1]!.race : -1;
@@ -114,9 +113,8 @@ function monsterViews(state: GameState, deps: AgentViewDeps, every = false): Mon
     const m = state.monsters[i];
     if (!m) continue;
     /* The monsters the player perceives, as the game's own monster list shows
-     * them, in every view: a controller's included. Only trueMonsterViews
-     * lists the rest. */
-    if (!every && !monsterIsObvious(m)) continue;
+     * them, in every view: a controller's included. */
+    if (!monsterIsObvious(m)) continue;
     const view: MonsterView = {
       id: m.midx,
       race: m.race.name,
@@ -151,16 +149,6 @@ function monsterViews(state: GameState, deps: AgentViewDeps, every = false): Mon
     out.push(view);
   }
   return out;
-}
-
-/**
- * Every live monster on the level, whether or not the player perceives it, in
- * the MonsterView shape. This is hidden game state: no AgentView accessor
- * returns it, and the mod API hands it only to an allowlisted first-party
- * autoplayer.
- */
-export function trueMonsterViews(state: GameState, deps: AgentViewDeps = {}): MonsterView[] {
-  return monsterViews(state, deps, true);
 }
 
 /**
@@ -525,7 +513,6 @@ export function createAgentView(
    * not gated. */
   view.inputToken = () => inputToken(state);
   view.capture = () => captureCoreSnapshot(state, view);
-  view.knownWorld = () => buildKnownWorld(state, deps, caps);
   Object.assign(view, createInspectView(state, deps, caps));
   return view;
 }

@@ -467,12 +467,11 @@ describe("doAutopickup / playerPickupItem", () => {
     obj.artifact = art;
 
     const seen: unknown[][] = [];
-    state.modHooks = { artifactIdentified: (found) => void seen.push([found]) };
+    state.modHooks = { artifactIdentified: (o, a) => void seen.push([o, a]) };
     const picked = playerPickupItem(state, null, deps);
 
     expect(picked).toBe(1);
-    expect(obj.artifact).toBe(art);
-    expect(seen).toEqual([[{ name: art.name, artifactIndex: art.aidx }]]);
+    expect(seen).toEqual([[obj, art]]);
   });
 
   it("picking up a non-artifact does NOT fire artifactIdentified", () => {
