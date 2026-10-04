@@ -4696,6 +4696,8 @@ export function loadGame(
           ids,
           loadedFloor,
           reg.objects,
+          reg.traps,
+          loadedTraps,
         ),
     /* birth_levels_persist (#30) frozen-level cache; empty in saves written
      * before the field or with the option off (back-compat). */

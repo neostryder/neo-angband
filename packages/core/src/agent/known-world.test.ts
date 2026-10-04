@@ -8,28 +8,41 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MFLAG, OF, RF, RSF, SQUARE, TV } from "../generated/index.js";
+import { MFLAG, OF, RF, RSF, SQUARE, TMD, TRF, TV } from "../generated/index.js";
 import { OBJ_MOD } from "../generated/object-modifiers.js";
+import { FlagSet } from "../bitflag.js";
+import { GameEvents } from "../events.js";
+import type { CombatOutcomeEventData } from "../events.js";
 import type { GameState } from "../game/context.js";
-import { monsterSwap } from "../game/context.js";
+import { deleteMonster, monsterSwap } from "../game/context.js";
+import { describeObject } from "../game/describe.js";
 import { floorCarry, floorExcise } from "../game/floor.js";
 import { invenCarry } from "../game/gear.js";
-import { squareKnowPile, squareMemorize } from "../game/known.js";
+import { becomeAware, squareKnowPile, squareMemorize, updateMon, updateMonsters } from "../game/known.js";
 import { squareIsEmptyLive } from "../game/mon-place.js";
-import { loc } from "../loc.js";
+import { emitCombatOutcome } from "../game/resolved-events.js";
+import { installTrap, squareMemorizeTraps, squareRemoveAllTraps } from "../game/trap.js";
+import { monsterIndexMove } from "../game/world.js";
+import { distance, loc } from "../loc.js";
 import { getLore } from "../mon/lore.js";
+import { TRF_SIZE } from "../world/trap.js";
+import type { TrapKind } from "../world/trap.js";
 import type { Monster } from "../mon/monster.js";
 import { monsterIsObvious } from "../mon/predicate.js";
-import { OBJ_NOTICE } from "../obj/knowledge.js";
+import { ContentIdResolver } from "../mod/ids.js";
+import { ODESC } from "../obj/desc.js";
+import { OBJ_NOTICE, playerLearnFlagRune } from "../obj/knowledge.js";
 import { objectPrep } from "../obj/make.js";
 import type { GameObject } from "../obj/object.js";
 import type { ObjectKind } from "../obj/types.js";
 import { Rng } from "../rng.js";
 import { startGame } from "../session/game.js";
 import type { GamePack, StartedGame } from "../session/game.js";
-import { buildKnownWorld, knownMonsters } from "./known-world.js";
-import type { KnownWorld } from "./known-world.js";
+import { GlyphTable } from "../visuals/glyph-table.js";
+import { buildKnownWorld, knownMonsterMidx, knownMonsters } from "./known-world.js";
+import type { KnownMonster, KnownWorld } from "./known-world.js";
 import { createAgentView } from "./perceive.js";
+import type { AgentViewDeps } from "./types.js";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -84,9 +97,43 @@ const pack: GamePack = {
 const SEED = 4242;
 const DEPTH = 10;
 
-/** Two games that start out identical. */
+/**
+ * The deps the web client builds every KnownWorld with (main.ts
+ * modSnapshotSource.viewDeps): content ids, item values and prices, glyphs,
+ * and the names the inventory and the shop screen print. Without them a leak
+ * through one of those fields would go unseen here.
+ */
+function clientDeps(game: StartedGame): AgentViewDeps {
+  const reg = game.booted.registries;
+  const { state } = game;
+  return {
+    resolver: new ContentIdResolver({
+      objects: reg.objects,
+      playerRaces: game.players.races,
+      playerClasses: game.players.classes,
+    }),
+    reg: reg.objects,
+    glyphs: new GlyphTable({
+      features: reg.features.allFeatures(),
+      kinds: reg.objects.kinds,
+      races: reg.monsters.races,
+      traps: reg.traps,
+      flavors: reg.objects.flavors,
+    }).agentGlyphs(),
+    describe: (obj) => describeObject(state, obj, ODESC.PREFIX | ODESC.FULL),
+    describeStore: (obj) => describeObject(state, obj, ODESC.PREFIX | ODESC.FULL | ODESC.STORE),
+    ignored: (obj) => state.isIgnored?.(obj) ?? false,
+  };
+}
+
+/** Two games that start out identical, each with the client's deps installed. */
 function pair(): [StartedGame, StartedGame] {
-  return [startGame(pack, { seed: SEED, depth: DEPTH }), startGame(pack, { seed: SEED, depth: DEPTH })];
+  const games: [StartedGame, StartedGame] = [
+    startGame(pack, { seed: SEED, depth: DEPTH }),
+    startGame(pack, { seed: SEED, depth: DEPTH }),
+  ];
+  for (const game of games) game.state.knownWorldDeps = clientDeps(game);
+  return games;
 }
 
 /**
@@ -94,7 +141,7 @@ function pair(): [StartedGame, StartedGame] {
  * which names the game rather than describing it.
  */
 function observed(state: GameState): string {
-  const world: KnownWorld = buildKnownWorld(state);
+  const world: KnownWorld = buildKnownWorld(state, state.knownWorldDeps);
   const { token: _token, level, ...rest } = world;
   const { token: _levelToken, ...levelRest } = level ?? { token: null };
   return JSON.stringify({ ...rest, level: levelRest });
@@ -186,19 +233,30 @@ describe("KnownWorld paired worlds", () => {
     seenB.hp = Math.trunc(seenB.maxhp * 0.9);
     seenB.mspeed += 10;
     /* B's race gains a resistance and a spell the player has never seen. */
-    seenB.race.flags.on(RF.IM_FIRE);
+    const lore = b.state.lore.get(seenB.race.ridx);
+    const unseen = (["IM_COLD", "IM_ACID", "IM_ELEC", "IM_POIS", "IM_FIRE"] as const).find(
+      (code) => !seenB.race.flags.has(RF[code]) && !(lore?.flags.has(RF[code]) ?? false),
+    );
+    if (!unseen) throw new Error("no unlearned immunity for this race");
+    seenB.race.flags.on(RF[unseen]);
     seenB.race.spellFlags.on(RSF.BLINK);
     expect(observed(b.state)).toBe(observed(a.state));
 
-    const view = knownMonsters(b.state).find((m) => m.id === seenB.midx);
+    const at = (state: GameState) => knownMonsters(state).find((m) => m.grid.x === seenB.grid.x && m.grid.y === seenB.grid.y);
+    const view = at(b.state);
     expect(view).toMatchObject({ health: "somewhat", raceSpeed: seenB.race.speed });
     expect(view).not.toHaveProperty("hp");
     expect(view).not.toHaveProperty("speed");
+    expect(view?.knownFlags).not.toContain(unseen);
 
     /* Control: once lore records the spell, it shows. */
     getLore(b.state.lore, seenB.race).spellFlags.on(RSF.BLINK);
     expect(observed(b.state)).not.toBe(observed(a.state));
-    expect(knownMonsters(b.state).find((m) => m.id === seenB.midx)?.knownSpells).toContain("BLINK");
+    expect(at(b.state)?.knownSpells).toContain("BLINK");
+
+    /* Control: a flag lore has learned shows too. */
+    getLore(b.state.lore, seenB.race).flags.on(RF[unseen]);
+    expect(at(b.state)?.knownFlags).toContain(unseen);
   });
 
   it("which unlearned rune, modifier value and curse a carried item has changes nothing", () => {
@@ -220,10 +278,13 @@ describe("KnownWorld paired worlds", () => {
     objB.modifiers[OBJ_MOD.STEALTH] = 2;
     objB.curses = curses(b, 2, 40);
     expect(observed(b.state)).toBe(observed(a.state));
+    const daggerIn = (state: GameState) => buildKnownWorld(state, state.knownWorldDeps).inventory?.find((i) => i.label.includes("Dagger"));
+    expect(daggerIn(b.state)?.unknownRunes).toBe(true);
 
-    /* Control: a property the player sees on sight. */
-    objB.number = objA.number + 1;
+    /* Control: learning the rune B's dagger carries names it. */
+    playerLearnFlagRune(b.state.actor.player, b.state.runeEnv, OF.SEE_INVIS, false);
     expect(observed(b.state)).not.toBe(observed(a.state));
+    expect(daggerIn(b.state)?.flags).toContain("SEE_INVIS");
   });
 
   it("an unaware potion reads only as its flavour, whichever kind it is", () => {
@@ -270,6 +331,316 @@ describe("KnownWorld paired worlds", () => {
     /* Control: once the player looks again, the memory updates. */
     squareKnowPile(b.state, grid);
     expect(observed(b.state)).not.toBe(observed(a.state));
+  });
+});
+
+/** Make a monster one the player perceives, as a detection would. */
+function perceive(mon: Monster): void {
+  mon.mflag.on(MFLAG.VISIBLE);
+  mon.mflag.off(MFLAG.CAMOUFLAGE);
+}
+
+/** Monsters the player does not perceive, nearest the player first. */
+function hiddenMonsters(state: GameState): Monster[] {
+  return liveMonsters(state)
+    .filter((m) => !monsterIsObvious(m))
+    .sort((x, y) => distance(state.actor.grid, x.grid) - distance(state.actor.grid, y.grid));
+}
+
+describe("KnownWorld paired worlds: what the review found", () => {
+  it("a mimic the player takes for an object is not a monster the player knows", () => {
+    const [a, b] = pair();
+    const mimicB = twin(b.state, hiddenMonsters(a.state)[0]!);
+    /* B's monster is in sight but camouflaged: the player sees an object. */
+    mimicB.mflag.on(MFLAG.VISIBLE);
+    mimicB.mflag.on(MFLAG.CAMOUFLAGE);
+    expect(observed(b.state)).toBe(observed(a.state));
+
+    /* Control: unmasked, it is a monster. */
+    mimicB.mflag.off(MFLAG.CAMOUFLAGE);
+    expect(observed(b.state)).not.toBe(observed(a.state));
+  });
+
+  it("while the player hallucinates, which monsters are in sight changes nothing", () => {
+    const [a, b] = pair();
+    for (const g of [a, b]) g.state.actor.player.timed[TMD.IMAGE] = 20;
+    const seenB = twin(b.state, hiddenMonsters(a.state)[0]!);
+    perceive(seenB);
+    b.state.target.set = true;
+    b.state.target.midx = seenB.midx;
+    b.state.target.grid = seenB.grid;
+    expect(observed(b.state)).toBe(observed(a.state));
+    const world = buildKnownWorld(b.state, b.state.knownWorldDeps);
+    expect(world.monstersHidden).toBe("hallucinating");
+    expect(world.monsters).toEqual([]);
+    expect(world.target).toBeNull();
+
+    /* Control: once the hallucination ends, the monster is there. */
+    for (const g of [a, b]) g.state.actor.player.timed[TMD.IMAGE] = 0;
+    expect(observed(b.state)).not.toBe(observed(a.state));
+    expect(buildKnownWorld(b.state).monstersHidden).toBeNull();
+  });
+
+  it("the order monsters were created in changes nothing", () => {
+    const [a, b] = pair();
+    const [firstA, secondA] = hiddenMonsters(a.state);
+    if (!firstA || !secondA) throw new Error("too few monsters at this seed");
+    const firstB = twin(b.state, firstA);
+    const secondB = twin(b.state, secondA);
+    for (const mon of [firstA, secondA, firstB, secondB]) perceive(mon);
+    /* In B the monster with the lower index moves to the end of the list, as if
+     * it had been created after the other, with unseen monsters in between. */
+    const lower = firstB.midx < secondB.midx ? firstB : secondB;
+    const slot = b.state.monsters.length + 3;
+    monsterIndexMove(b.state, lower.midx, slot);
+    expect(lower.midx).toBe(slot);
+    expect(observed(b.state)).toBe(observed(a.state));
+    const ids = buildKnownWorld(b.state).monsters?.map((m) => m.id);
+    expect(ids).toEqual([1, 2]);
+
+    /* Control: a third monster in sight shows. */
+    perceive(twin(b.state, hiddenMonsters(a.state)[0]!));
+    expect(observed(b.state)).not.toBe(observed(a.state));
+  });
+
+  it("a target on a monster the player cannot see is no target", () => {
+    const [a, b] = pair();
+    const hiddenB = twin(b.state, hiddenMonsters(a.state)[0]!);
+    b.state.target.set = true;
+    b.state.target.midx = hiddenB.midx;
+    b.state.target.grid = hiddenB.grid;
+    expect(observed(b.state)).toBe(observed(a.state));
+
+    /* Control: a target on a location is one. */
+    b.state.target.midx = 0;
+    b.state.target.grid = loc(b.state.actor.grid.x + 1, b.state.actor.grid.y);
+    expect(observed(b.state)).not.toBe(observed(a.state));
+    expect(buildKnownWorld(b.state).target).toEqual({ monster: null, grid: b.state.target.grid });
+  });
+
+  it("how long a timed effect, a recall or a recharge has left changes nothing", () => {
+    const [a, b] = pair();
+    const rod = (g: StartedGame) => carry(g, kindNamed(g, TV.ROD, "Treasure Location"));
+    const rodA = rod(a);
+    const rodB = rod(b);
+    const set = (g: StartedGame, fast: number, cut: number, food: number, recall: number, descent: number) => {
+      const p = g.state.actor.player;
+      p.timed[TMD.FAST] = fast;
+      p.timed[TMD.CUT] = cut;
+      p.timed[TMD.FOOD] = food;
+      p.wordRecall = recall;
+      p.deepDescent = descent;
+    };
+    /* Same grades, same food percentage, different counters. */
+    set(a, 10, 12, 5000, 15, 3);
+    set(b, 20, 20, 5050, 30, 5);
+    rodA.timeout = 5;
+    rodB.timeout = 40;
+    expect(observed(b.state)).toBe(observed(a.state));
+    const world = buildKnownWorld(b.state, b.state.knownWorldDeps);
+    expect(world.player?.status).toMatchObject({ fast: "Haste", cut: "Light Cut", food: 50 });
+    expect(world.player).toMatchObject({ recall: true, descent: true });
+    expect(world.inventory?.find((i) => i.tval === TV.ROD)).toMatchObject({ charging: 1 });
+    expect(world.inventory?.[0]).not.toHaveProperty("timeout");
+
+    /* Controls: a new grade, a recall that has fired, a rod that has recharged. */
+    b.state.actor.player.timed[TMD.CUT] = 30;
+    expect(observed(b.state)).not.toBe(observed(a.state));
+    b.state.actor.player.timed[TMD.CUT] = 20;
+    b.state.actor.player.wordRecall = 0;
+    expect(observed(b.state)).not.toBe(observed(a.state));
+    b.state.actor.player.wordRecall = 30;
+    rodB.timeout = 0;
+    expect(observed(b.state)).not.toBe(observed(a.state));
+  });
+
+  it("a remembered trap removed out of view is still remembered", () => {
+    const [a, b] = pair();
+    const grid = hiddenEmptyGrid(a.state, { x: -1, y: -1 });
+    /* The test pack has no trap records, so this is a stand-in kind. */
+    const kind = (): TrapKind => {
+      const flags = new FlagSet(TRF_SIZE);
+      flags.on(TRF.TRAP);
+      return { tidx: 0, name: "test trap", flags } as unknown as TrapKind;
+    };
+    for (const g of [a, b]) {
+      installTrap(g.state, grid, 0, 0, { kinds: [kind()] } as unknown as Parameters<typeof installTrap>[4]);
+      g.state.traps.get(grid.y * g.state.chunk.width + grid.x)![0]!.flags.on(TRF.VISIBLE);
+      squareMemorize(g.state, grid);
+      squareMemorizeTraps(g.state, grid);
+    }
+    const cell = (state: GameState) => buildKnownWorld(state).level?.cells.find((c) => c.x === grid.x && c.y === grid.y);
+    expect(cell(a.state)?.remembered.traps).toHaveLength(1);
+    /* Something the player did not see disarmed B's trap. */
+    squareRemoveAllTraps(b.state, grid);
+    expect(observed(b.state)).toBe(observed(a.state));
+
+    /* Control: once the player sees the grid again, the memory is cleared. */
+    squareMemorizeTraps(b.state, grid);
+    expect(observed(b.state)).not.toBe(observed(a.state));
+    expect(cell(b.state)?.remembered.traps).toEqual([]);
+  });
+
+  it("recall's race words show before any kill: every adjective and the first noun", () => {
+    const [a] = pair();
+    const mon = hiddenMonsters(a.state)[0]!;
+    perceive(mon);
+    mon.race.flags.on(RF.EVIL);
+    mon.race.flags.on(RF.ANIMAL);
+    mon.race.flags.on(RF.DRAGON);
+    mon.race.flags.on(RF.DEMON);
+    expect(a.state.lore.get(mon.race.ridx)?.allKnown ?? false).toBe(false);
+    const flags = knownMonsters(a.state).find((m) => m.grid.x === mon.grid.x && m.grid.y === mon.grid.y)?.knownFlags;
+    expect(flags).toEqual(expect.arrayContaining(["EVIL", "ANIMAL"]));
+    /* lore_append_movement prints only the first noun (mon-lore.c:982-987). */
+    const [first, second] = RF.DRAGON < RF.DEMON ? ["DRAGON", "DEMON"] : ["DEMON", "DRAGON"];
+    expect(flags).toContain(first);
+    expect(flags).not.toContain(second);
+  });
+
+  it("only a monster the player sees with the eyes is visible", () => {
+    const [a] = pair();
+    const mon = hiddenMonsters(a.state)[0]!;
+    perceive(mon);
+    const at = () => knownMonsters(a.state).find((m) => m.grid.x === mon.grid.x && m.grid.y === mon.grid.y);
+    expect(at()?.visible).toBe(false);
+    mon.mflag.on(MFLAG.VIEW);
+    expect(at()?.visible).toBe(true);
+  });
+});
+
+describe("KnownMonster ids", () => {
+  it("stay with a monster and lead back to it only while the player perceives it", () => {
+    const [a] = pair();
+    const mon = hiddenMonsters(a.state)[0]!;
+    perceive(mon);
+    const id = knownMonsters(a.state)[0]!.id;
+    expect(knownMonsterMidx(a.state, id)).toBe(mon.midx);
+    expect(knownMonsterMidx(a.state, id + 1)).toBeNull();
+    mon.mflag.off(MFLAG.VISIBLE);
+    expect(knownMonsterMidx(a.state, id)).toBeNull();
+    perceive(mon);
+    expect(knownMonsters(a.state)[0]!.id).toBe(id);
+    /* A new level starts the count again. */
+    a.state.levelSerial = (a.state.levelSerial ?? 0) + 1;
+    expect(knownMonsterMidx(a.state, id)).toBeNull();
+  });
+});
+
+describe("monsterBecameVisible", () => {
+  function listen(state: GameState): KnownMonster[] {
+    const heard: KnownMonster[] = [];
+    state.modHooks = { monsterBecameVisible: (m) => heard.push(m) };
+    return heard;
+  }
+
+  it("does not fire for a mimic until it is unmasked", () => {
+    const [a] = pair();
+    const heard = listen(a.state);
+    const mimic = hiddenMonsters(a.state)[0]!;
+    mimic.mflag.on(MFLAG.CAMOUFLAGE);
+    mimic.mflag.on(MFLAG.MARK);
+    updateMon(a.state, mimic, true);
+    expect(mimic.mflag.has(MFLAG.VISIBLE)).toBe(true);
+    expect(heard).toEqual([]);
+
+    becomeAware(a.state, mimic);
+    expect(heard).toHaveLength(1);
+    updateMon(a.state, mimic, true);
+    expect(heard).toHaveLength(1);
+  });
+
+  it("does not fire while the player hallucinates", () => {
+    const [a] = pair();
+    const heard = listen(a.state);
+    a.state.actor.player.timed[TMD.IMAGE] = 20;
+    const mon = hiddenMonsters(a.state)[0]!;
+    mon.mflag.on(MFLAG.MARK);
+    updateMon(a.state, mon, true);
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(true);
+    expect(heard).toEqual([]);
+
+    /* Control: the same sighting fires once the hallucination is over. */
+    a.state.actor.player.timed[TMD.IMAGE] = 0;
+    mon.mflag.off(MFLAG.VISIBLE);
+    updateMon(a.state, mon, true);
+    expect(heard).toHaveLength(1);
+  });
+
+  it("hands a frozen payload built with the client's deps", () => {
+    const [a] = pair();
+    const heard = listen(a.state);
+    const mon = hiddenMonsters(a.state)[0]!;
+    mon.mflag.on(MFLAG.MARK);
+    updateMon(a.state, mon, true);
+    expect(heard).toHaveLength(1);
+    expect(Object.isFrozen(heard[0])).toBe(true);
+    expect(Object.isFrozen(heard[0]!.knownFlags)).toBe(true);
+    /* The glyph comes only from the deps. */
+    expect(heard[0]!.glyph).toBeDefined();
+    expect(heard[0]).toEqual(knownMonsters(a.state, a.state.knownWorldDeps).find((m) => m.id === heard[0]!.id));
+  });
+
+  it("survives a fault building the payload, and reports it", () => {
+    const [a] = pair();
+    const heard = listen(a.state);
+    const faults: string[] = [];
+    a.state.onEventFault = (type) => faults.push(type);
+    a.state.knownWorldDeps = {
+      glyphs: {
+        monsterChar: () => {
+          throw new Error("broken glyphs");
+        },
+      } as unknown as NonNullable<AgentViewDeps["glyphs"]>,
+    };
+    const mon = hiddenMonsters(a.state)[0]!;
+    mon.mflag.on(MFLAG.MARK);
+    expect(() => updateMon(a.state, mon, true)).not.toThrow();
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(true);
+    expect(heard).toEqual([]);
+    expect(faults).toEqual(["monsterBecameVisible"]);
+  });
+
+  it("hears a pass's sightings nearest first, whatever order the monsters were made in", () => {
+    const [a] = pair();
+    const heard = listen(a.state);
+    const [near, far] = hiddenMonsters(a.state);
+    if (!near || !far || distance(a.state.actor.grid, near.grid) === distance(a.state.actor.grid, far.grid)) {
+      throw new Error("no two monsters at different distances at this seed");
+    }
+    /* Make the nearer one the newer one. */
+    if (near.midx < far.midx) monsterIndexMove(a.state, near.midx, a.state.monsters.length + 1);
+    expect(near.midx).toBeGreaterThan(far.midx);
+    near.mflag.on(MFLAG.MARK);
+    far.mflag.on(MFLAG.MARK);
+    updateMonsters(a.state, true);
+    expect(heard.map((m) => m.grid)).toEqual([near.grid, far.grid].map((g) => ({ x: g.x, y: g.y })));
+    expect(heard.map((m) => m.id)).toEqual([1, 2]);
+  });
+});
+
+describe("combat, movement and healing events", () => {
+  it("name a monster the event killed as the player saw it", () => {
+    const [a] = pair();
+    const heard: CombatOutcomeEventData[] = [];
+    a.state.events = new GameEvents();
+    a.state.events.on("combat-outcome", (_type, data) => heard.push(data));
+    const [seen, hidden] = hiddenMonsters(a.state);
+    perceive(seen!);
+    const id = knownMonsters(a.state)[0]!.id;
+    deleteMonster(a.state, seen!.midx);
+    deleteMonster(a.state, hidden!.midx);
+    emitCombatOutcome(a.state, "player", seen!, "melee", true, 5, true, seen!.grid);
+    emitCombatOutcome(a.state, "player", hidden!, "melee", true, 5, true, hidden!.grid);
+    expect(heard.map((e) => e.perceivedTarget)).toEqual([{ monster: id }, "unseen"]);
+    expect(heard.map((e) => e.perceivedAttacker)).toEqual(["player", "player"]);
+
+    /* While hallucinating, no monster is named. */
+    const other = hiddenMonsters(a.state)[0]!;
+    perceive(other);
+    a.state.actor.player.timed[TMD.IMAGE] = 20;
+    emitCombatOutcome(a.state, other, "player", "melee", true, 1, false, a.state.actor.grid);
+    expect(heard[2]?.perceivedAttacker).toBe("unseen");
   });
 });
 

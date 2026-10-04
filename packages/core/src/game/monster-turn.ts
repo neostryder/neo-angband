@@ -1245,8 +1245,8 @@ function monsterTurnTryPush(
   }
   const from = mon.grid;
   monsterSwap(state, from, next);
-  emitMotion(state, mon.midx, from, next, "walk");
-  if (victim && !killOk) emitMotion(state, victim.midx, next, from, "walk");
+  emitMotion(state, mon, from, next, "walk");
+  if (victim && !killOk) emitMotion(state, victim, next, from, "walk");
   return true;
 }
 
@@ -1612,7 +1612,7 @@ export function monsterTurn(mon: Monster, state: GameState): void {
     } else {
       const from = mon.grid;
       monsterSwap(state, from, next);
-      emitMotion(state, mon.midx, from, next, "walk");
+      emitMotion(state, mon, from, next, "walk");
       didSomething = true;
     }
 

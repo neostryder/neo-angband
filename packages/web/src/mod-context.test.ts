@@ -117,7 +117,7 @@ describe("modPluginContext session facts", () => {
     ctx.events?.on("combat-outcome", (_type, data) => received.push(data.damage));
     expect(() => ctx.events?.on("heal", () => {})).toThrow();
     bus.emit("combat-outcome", {
-      attacker: "player", target: 1, kind: "melee", hit: true,
+      attacker: "player", target: 1, perceivedAttacker: "player", perceivedTarget: "unseen", kind: "melee", hit: true,
       damage: 4, died: false, grid: { x: 1, y: 2 }, seen: true,
     });
     expect(received).toEqual([4]);

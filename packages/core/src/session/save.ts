@@ -1989,6 +1989,17 @@ export interface SavedKnown {
    * a one-element list.
    */
   objects: Array<[number, SavedKnownObject[]]>;
+  /**
+   * The remembered traps per grid (KnownMap.traps), newest first, by trap
+   * id. Absent in saves written before the field; the load then rebuilds the
+   * memory from the visible traps on the level.
+   */
+  traps?: Array<[number, string[]]>;
+}
+
+/* KnownMap.traps in its saved form. */
+function serializeKnownTraps(known: KnownMap, ids: ContentIdResolver): Array<[number, string[]]> {
+  return Array.from(known.traps ?? [], ([i, kinds]) => [i, kinds.map((kind) => ids.trapId(kind.tidx))]);
 }
 
 /**
@@ -2431,6 +2442,7 @@ export function serializeGame(
               i,
               pile.map((e) => serializeKnownObject(e, liveFloorAt, ids)),
             ]),
+            traps: serializeKnownTraps(state.known, ids),
           },
         }
       : {}),
@@ -2746,9 +2758,33 @@ export function deserializeKnown(
    * it, so this must be the live map the game will run on, not a copy. */
   floor: ReadonlyMap<number, GameObject[]>,
   reg: ObjRegistry,
+  /* The trap kinds, and the level's traps as loaded from the same save, for
+   * the trap memory. Without the kinds the memory stays empty. */
+  trapKinds?: readonly TrapKind[] | null,
+  liveTraps?: ReadonlyMap<number, readonly Trap[]>,
 ): KnownMap {
   const known = newKnownMap(width, height);
   if (!data) return known;
+  if (trapKinds) {
+    if (data.traps) {
+      for (const [i, trapIds] of data.traps) {
+        const kinds = trapIds.flatMap((id) => {
+          const tidx = ids.trapIndex(id);
+          const kind = tidx === undefined ? undefined : trapKinds[tidx];
+          return kind ? [kind] : [];
+        });
+        if (kinds.length > 0) (known.traps ??= new Map()).set(i, kinds);
+      }
+    } else {
+      /* An older save: the port showed the visible traps on a grid as the
+       * player's knowledge of it, so that is the memory it had. */
+      for (const [i, traps] of liveTraps ?? []) {
+        if (traps.some((t) => t.flags.has(TRF.VISIBLE))) {
+          (known.traps ??= new Map()).set(i, traps.map((t) => t.kind));
+        }
+      }
+    }
+  }
   const feat = remapFeats(
     data.feat.slice(0, known.feat.length),
     featRemap,
@@ -3025,6 +3061,7 @@ export function serializeStoredLevel(
         i,
         pile.map((e) => serializeKnownObject(e, cachedFloorAt, ids)),
       ]),
+      traps: serializeKnownTraps(level.known, ids),
     },
     decoy: level.decoy ? { x: level.decoy.x, y: level.decoy.y } : null,
     join: level.join.map((j) => ({
@@ -3067,6 +3104,9 @@ export function deserializeLevelCache(
     const chunk = deserializeChunk(entry.chunk, features, featRemap);
     chunk.turn = entry.turn;
     const cachedFloor = deserializeFloor(entry.floor, objects, chunk.width, ids);
+    const cachedTraps = traps
+      ? deserializeTraps(entry.traps, traps, chunk.width, ids)
+      : new Map<number, Trap[]>();
     cache.set(entry.depth, {
       chunk,
       monsters: entry.monsters.map((m) =>
@@ -3078,9 +3118,7 @@ export function deserializeLevelCache(
           : null,
       ),
       floor: cachedFloor,
-      traps: traps
-        ? deserializeTraps(entry.traps, traps, chunk.width, ids)
-        : new Map(),
+      traps: cachedTraps,
       known: deserializeKnown(
         entry.known,
         chunk.width,
@@ -3089,6 +3127,8 @@ export function deserializeLevelCache(
         ids,
         cachedFloor,
         objects,
+        traps,
+        cachedTraps,
       ),
       decoy: entry.decoy ? loc(entry.decoy.x, entry.decoy.y) : null,
       turn: entry.turn,

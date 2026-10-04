@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   GameEvents,
   MFLAG,
+  knownMonsterMidx,
   monsterIsObvious,
   startGame,
   type GamePack,
@@ -134,7 +135,9 @@ describe("the API 2 host's view", () => {
     const r = await api.view.monsters();
     if (!r.ok) throw new Error("refused");
     const perceived = liveMonsters(game.state).filter(monsterIsObvious).map((m) => m.midx);
-    expect(r.value.map((m) => m.id).sort()).toEqual(perceived.sort());
+    /* Each id is a handle that leads back to one perceived monster, not its index. */
+    const back = r.value.map((m) => knownMonsterMidx(game.state, m.id));
+    expect(back.slice().sort()).toEqual(perceived.slice().sort());
     expect(Object.isFrozen(r.value)).toBe(true);
     expect(structuredClone(r.value)).toEqual(r.value);
   });
@@ -167,6 +170,43 @@ describe("the API 2 host's refusals", () => {
     expect(await api.ui.keys.bind("x", "probe")).toMatchObject({ reason: "not-granted", capability: "keymap:write" });
     expect(api.meta.granted("input:intent")).toBe(false);
     expect(api.meta.granted("not a capability at all")).toBe(false);
+  });
+});
+
+describe("the API 2 host's commands", () => {
+  function commander(game: StartedGame): { api: ModApi2; sent: unknown[] } {
+    const sent: unknown[] = [];
+    const caps = capabilities("probe", [...READS, "input:intent"]);
+    const ctx = modPluginContext("probe", {}, game.state, {}, {
+      capabilities: caps,
+      prefs: memoryPrefs(),
+      intentGate: { submit: (_token, intent) => (sent.push(intent), { accepted: true }) },
+    });
+    return { api: createApi2Host(ctx, { grants: caps }), sent };
+  }
+
+  it("turn a target's KnownMonster id into the monster it names, and an unknown id into none", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const mon = liveMonsters(game.state).find((m) => !monsterIsObvious(m));
+    if (!mon) throw new Error("no unseen monster at this seed");
+    mon.mflag.on(MFLAG.VISIBLE);
+    mon.mflag.off(MFLAG.CAMOUFLAGE);
+    const { api, sent } = commander(game);
+    const listed = await api.view.monsters();
+    if (!listed.ok) throw new Error("refused");
+    const id = listed.value.find((m) => m.grid.x === mon.grid.x && m.grid.y === mon.grid.y)!.id;
+    const token = { epoch: 0, revision: 0 };
+    expect(await api.act.submit(token, { kind: "target", midx: id })).toMatchObject({ ok: true });
+    /* An id no monster holds, and a real monster index the player was never given. */
+    const hidden = liveMonsters(game.state).find((m) => !monsterIsObvious(m))!;
+    await api.act.submit(token, { kind: "target", midx: 999 });
+    expect(knownMonsterMidx(game.state, hidden.midx)).toBeNull();
+    await api.act.submit(token, { kind: "target", midx: hidden.midx });
+    expect(sent).toEqual([
+      { kind: "target", midx: mon.midx },
+      { kind: "target", midx: 0 },
+      { kind: "target", midx: 0 },
+    ]);
   });
 });
 
@@ -228,36 +268,40 @@ describe("API 2 events", () => {
     expect(heard).toEqual([{ text: "hello", type: 0 }]);
   });
 
-  it("name a monster only while the player perceives it", () => {
-    const perceives = (id: number) => id === 7;
+  it("name a monster as core perceived it when the event was sent", () => {
     const grid = { x: 1, y: 2 };
     const seen = api2EventPayload("combat-outcome", {
-      attacker: 7, target: "player", kind: "melee", hit: true, damage: 4, died: false, grid, seen: true,
-    }, perceives);
-    expect(seen).toEqual({ attacker: { monster: 7 }, target: "player", kind: "melee", hit: true, died: false, grid, playerDamage: 4 });
+      attacker: 7, target: "player", perceivedAttacker: { monster: 1 }, perceivedTarget: "player",
+      kind: "melee", hit: true, damage: 4, died: false, grid, seen: true,
+    });
+    expect(seen).toEqual({ attacker: { monster: 1 }, target: "player", kind: "melee", hit: true, died: false, grid, playerDamage: 4 });
 
     const invisible = api2EventPayload("combat-outcome", {
-      attacker: 9, target: "player", kind: "melee", hit: true, damage: 4, died: false, grid, seen: true,
-    }, perceives);
+      attacker: 9, target: "player", perceivedAttacker: "unseen", perceivedTarget: "player",
+      kind: "melee", hit: true, damage: 4, died: false, grid, seen: true,
+    });
     expect(invisible).toMatchObject({ attacker: "unseen", target: "player" });
 
     /* Two monsters the player cannot see, fighting in view: nothing to report. */
     expect(api2EventPayload("combat-outcome", {
-      attacker: 9, target: 10, kind: "melee", hit: true, damage: 4, died: false, grid, seen: true,
-    }, perceives)).toBeUndefined();
+      attacker: 9, target: 10, perceivedAttacker: "unseen", perceivedTarget: "unseen",
+      kind: "melee", hit: true, damage: 4, died: false, grid, seen: true,
+    })).toBeUndefined();
     /* Out of view and not involving the player. */
     expect(api2EventPayload("combat-outcome", {
-      attacker: 7, target: 7, kind: "effect", hit: true, damage: 1, died: false, grid, seen: false,
-    }, perceives)).toBeUndefined();
+      attacker: 7, target: 7, perceivedAttacker: { monster: 1 }, perceivedTarget: { monster: 1 },
+      kind: "effect", hit: true, damage: 1, died: false, grid, seen: false,
+    })).toBeUndefined();
     /* Damage to a monster is not a number the player sees. */
     expect(api2EventPayload("combat-outcome", {
-      attacker: "player", target: 7, kind: "melee", hit: true, damage: 12, died: false, grid, seen: true,
-    }, perceives)).not.toHaveProperty("playerDamage");
+      attacker: "player", target: 7, perceivedAttacker: "player", perceivedTarget: { monster: 1 },
+      kind: "melee", hit: true, damage: 12, died: false, grid, seen: true,
+    })).not.toHaveProperty("playerDamage");
 
-    expect(api2EventPayload("motion", { who: 9, from: grid, to: grid, kind: "walk", seen: true }, perceives)).toBeUndefined();
-    expect(api2EventPayload("heal", { who: 9, amount: 3, grid, seen: true }, perceives)).toBeUndefined();
-    expect(api2EventPayload("heal", { who: 7, amount: 3, grid, seen: true }, perceives)).toEqual({ who: { monster: 7 }, grid });
-    expect(api2EventPayload("heal", { who: "player", amount: 3, grid, seen: false }, perceives)).toEqual({ who: "player", grid, playerAmount: 3 });
+    expect(api2EventPayload("motion", { who: 9, perceivedWho: "unseen", from: grid, to: grid, kind: "walk", seen: true })).toBeUndefined();
+    expect(api2EventPayload("heal", { who: 9, perceivedWho: "unseen", amount: 3, grid, seen: true })).toBeUndefined();
+    expect(api2EventPayload("heal", { who: 7, perceivedWho: { monster: 1 }, amount: 3, grid, seen: true })).toEqual({ who: { monster: 1 }, grid });
+    expect(api2EventPayload("heal", { who: "player", perceivedWho: "player", amount: 3, grid, seen: false })).toEqual({ who: "player", grid, playerAmount: 3 });
   });
 });
 

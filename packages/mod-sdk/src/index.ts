@@ -101,16 +101,6 @@ export { loadOrderFormat } from "./json/load-order.js";
 export { buildIdFormat } from "./json/build-id.js";
 export { modFontFormat, modLocaleFormat } from "./json/mod-resources.js";
 export { installedModFormat } from "./json/installed-mod.js";
-export { headlessRunFormat } from "./json/headless-run.js";
-export type {
-  HeadlessRunHealth,
-  HeadlessRunMod,
-  HeadlessRunOutcome,
-  HeadlessRunParity,
-  HeadlessRunPhase,
-  HeadlessRunPhaseName,
-  HeadlessRunReport,
-} from "./json/headless-run.js";
 export { modStateFormat } from "./json/mod-state.js";
 export type { ModState } from "./json/mod-state.js";
 export { modSettingValuesFormat } from "./json/mod-settings.js";
@@ -354,16 +344,6 @@ export type {
   ComposedRecords,
   PackFinding,
 } from "./validate.js";
-/* One finding shape for every tool that judges a mod (mod-findings.ts). */
-export { worstSeverity } from "./mod-findings.js";
-export type {
-  ModFinding,
-  ModFindingEvidence,
-  ModFindingKind,
-  ModFindingReport,
-  ModFindingSeverity,
-  ModFindingSource,
-} from "./mod-findings.js";
 export { ModProject, modProject } from "./project.js";
 export type { EmittedFile, ProjectBuild } from "./project.js";
 export type {

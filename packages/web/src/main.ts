@@ -10331,6 +10331,10 @@ const modSnapshotSource: InputSnapshotSource = {
   frame: () => lastWorldFrame,
 };
 setModSnapshotSource(modSnapshotSource);
+/* The monsterBecameVisible payload names a monster the way a mod's KnownWorld
+ * does. A sighting made inside startGame, before the glyph table and this line
+ * exist, carries no raceId or glyph. */
+state.knownWorldDeps = modSnapshotSource.viewDeps();
 setModDriverControl({
   current: () => currentInputDriver(),
   setStatus: (id, status) => {

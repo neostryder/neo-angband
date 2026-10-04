@@ -231,7 +231,7 @@ function rangedHelper(
           ? { onArenaDeath: (m) => void arenaInterceptDeath(state, m) }
           : {}),
       });
-      emitCombatOutcome(state, "player", mon.midx, "ranged", true,
+      emitCombatOutcome(state, "player", mon, "ranged", true,
         Math.max(0, oldHp - mon.hp), res.died, grid);
       if (res.died) {
         if (!state.arenaLevel) {
@@ -262,7 +262,7 @@ function rangedHelper(
         }
       }
     } else {
-      emitCombatOutcome(state, "player", mon.midx, "ranged", false, 0, false, grid);
+      emitCombatOutcome(state, "player", mon, "ranged", false, 0, false, grid);
     }
     /* A miss has no game message (player-attack.c:1132), R3. */
 

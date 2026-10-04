@@ -168,7 +168,7 @@ export function monTakeNonplayerHit(
 
   /* Hurt the monster. */
   tMon.hp -= dam;
-  emitCombatOutcome(state, env.monCurrent ?? null, tMon.midx, "effect",
+  emitCombatOutcome(state, env.monCurrent ?? null, tMon, "effect",
     dam > 0, Math.max(0, dam), tMon.hp < 0, tMon.grid);
 
   if (tMon.hp < 0) {

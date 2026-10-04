@@ -472,7 +472,8 @@ describe("update_mon fires monsterBecameVisible on the real transition (mod/hook
     updateMon(state, mon, true);
 
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toMatchObject({ id: mon.midx, race: mon.race.name, grid: { x: 12, y: 10 }, visible: true });
+    /* The first monster the player perceives on the level is id 1. */
+    expect(seen[0]).toMatchObject({ id: 1, race: mon.race.name, grid: { x: 12, y: 10 }, visible: true });
     /* A view, not the live monster: no hit points cross. */
     expect(seen[0]).not.toHaveProperty("hp");
   });
