@@ -17,6 +17,27 @@
       "verdict": "INTERNAL - grantCovers compares a grant with a request over the closed capability vocabulary in capability-vocabulary.ts, which also holds the parsing and consent text that used to be two more switches. A mod cannot add a capability kind. The truth namespace is checked before the switch, so no wildcard arm can cover state:map-actual.read."
     },
     {
+      "file": "packages/mod-sdk/src/checks/code.ts",
+      "cases": 29,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "PARSER - the mod checker models the built-in JavaScript methods (call, apply, bind, promise, array and map methods) so a mod's context can be followed through them. The set is the language's, not the game's, and the checker reads mods rather than being extended by them."
+    },
+    {
+      "file": "packages/mod-sdk/src/checks/code.ts",
+      "cases": 26,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "PARSER - the mod checker's value analysis dispatches on the ESTree expression type of a mod's own source. The node types are fixed by the JavaScript grammar acorn parses, and the checker reads mods rather than being extended by them."
+    },
+    {
+      "file": "packages/mod-sdk/src/checks/js-scope.ts",
+      "cases": 25,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "PARSER - the mod checker's scope resolver dispatches on the ESTree node type of a mod's own source to find bindings. The node types are fixed by the JavaScript grammar, and the checker reads mods rather than being extended by them."
+    },
+    {
       "file": "packages/core/src/mon/desc.ts",
       "cases": 24,
       "hasDefault": false,
@@ -66,6 +87,13 @@
       "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24)."
     },
     {
+      "file": "packages/web/src/mod-worker/host.ts",
+      "cases": 19,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - API-2's closed Worker request vocabulary. A mod selects a documented semantic message but cannot add a host request arm."
+    },
+    {
       "file": "packages/core/src/game/char-sheet.ts",
       "cases": 18,
       "hasDefault": true,
@@ -113,6 +141,20 @@
       "hasDefault": false,
       "kind": "SWITCH",
       "verdict": "INTERNAL - the save format's own block union. A mod persists through the mod storage seam; it does not add a save-block kind."
+    },
+    {
+      "file": "packages/mod-sdk/src/checks/code.ts",
+      "cases": 14,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "PARSER - the mod checker's statement walk dispatches on the ESTree statement type of a mod's own source. The node types are fixed by the JavaScript grammar acorn parses, and the checker reads mods rather than being extended by them."
+    },
+    {
+      "file": "packages/web/src/mod-worker/host.ts",
+      "cases": 14,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "INTERNAL - worker message validation mirrors the closed API-2 request grammar. It is a boundary check, not a mod extension point."
     },
     {
       "file": "packages/web/src/wizard.ts",

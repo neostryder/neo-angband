@@ -6,8 +6,6 @@ import { describe, expect, it } from "vitest";
 import {
   composeModHooks,
   guardModHooks,
-  Rng,
-  StoreBehaviourRegistry,
   type HistoryAddEntry,
   type ModHooks,
   type ModPluginContext,
@@ -20,15 +18,7 @@ import {
   isNotGranted,
   type ModApi2,
 } from "@rpgm-tools/neo-angband-mod-sdk";
-import {
-  API1_CONTEXT_MAP,
-  api2Plugin,
-  api2PluginRegistrations,
-  api2ToModHooks,
-  checkApi2Definition,
-  installApi2PolicyRegistrations,
-  mergePolicies,
-} from "./mod-api2-shim";
+import { API1_CONTEXT_MAP, api2Plugin, api2ToModHooks, checkApi2Definition } from "./mod-api2-shim";
 import { modPluginContext } from "./mod-context";
 import { defineModPlugin, validateModPlugin, type ModPlugin } from "./mod-plugin";
 
@@ -120,7 +110,7 @@ describe("an API 2 definition through the shim", () => {
   it("refuses a definition for an API it cannot run", () => {
     expect(checkApi2Definition({ api: ">=3.0.0 <4.0.0", start() {} })).toMatch(/newer|3/);
     expect(checkApi2Definition({ api: 2, start() {} })).toMatch(/string/);
-    expect(checkApi2Definition({ api: ">=2.0.0 <3.0.0" })).toMatch(/hooks, policies, start/);
+    expect(checkApi2Definition({ api: ">=2.0.0 <3.0.0" })).toMatch(/hooks, start/);
     expect(checkApi2Definition({ api: ">=2.0.0 <3.0.0", start() {}, prefs: { version: 0, migrate: () => null } })).toMatch(/prefs.version/);
   });
 
@@ -134,28 +124,6 @@ describe("an API 2 definition through the shim", () => {
     plugin.register!({} as ModRegistryHost, { ...ctx, log: (m: string) => lines.push(m) });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(lines).toEqual(["start failed: boom"]);
-  });
-
-  it("installs an in-process mod's policy tables, with a hook function taking precedence", () => {
-    const plugin = api2Plugin(
-      defineApi2Mod({
-        api: ">=2.0.0 <3.0.0",
-        policies: () => ({
-          messageText: [{ find: "a", replace: "b" }],
-          characterBackground: [{ find: "x", replace: "y", match: "substring" }],
-        }),
-        hooks: () => ({ messageText: (raw) => `${raw}!` }),
-      }),
-      () => ({ grants: capabilities("tables", []) }),
-    );
-    const { hooks } = load("tables", plugin);
-    expect(hooks?.messageText?.("a")).toBe("a!");
-    expect(hooks?.characterBackground?.("xox")).toBe("yoy");
-  });
-
-  it("refuses invalid policy tables when the hooks are asked for", () => {
-    expect(() => mergePolicies({ messageText: [{ find: "a" }] }, undefined)).toThrow(/policies are not valid/);
-    expect(mergePolicies(undefined, undefined)).toBeUndefined();
   });
 
   it("answers not-granted through the shim when the grant is missing", async () => {
@@ -177,46 +145,5 @@ describe("the API 1 context map", () => {
       expect(API1_CONTEXT_MAP, key).toHaveProperty(key);
     }
     for (const value of Object.values(API1_CONTEXT_MAP)) expect(value.length).toBeGreaterThan(0);
-  });
-});
-
-describe("policy tables that install registrations", () => {
-  const definition = defineApi2Mod({
-    api: "^2.0.0",
-    policies: () => ({
-      messageText: [{ find: "a", replace: "b" }],
-      storeDiscountRoll: { tiers: [{ oneIn: 2, percent: 30 }, { oneIn: 3, percent: 60 }] },
-      tileMap: [{ monster: 5, like: 1 }],
-    }),
-  });
-
-  it("reads an in-process API 2 mod's registrations from its tables, and none from an API 1 plugin", () => {
-    const plugin = api2Plugin(definition, () => ({ grants: capabilities("tables", []) }));
-    expect(Object.keys(api2PluginRegistrations(plugin, "tables", {}) ?? {}).sort()).toEqual(["discountRoll", "tileFiller"]);
-    expect(api2PluginRegistrations(defineModPlugin({ api: 1 }), "old", {})).toBeUndefined();
-  });
-
-  it("installs the discount roll on the game's stores, drawing from the game's own random stream", () => {
-    const plugin = api2Plugin(definition, () => ({ grants: capabilities("tables", []) }));
-    const stores = new StoreBehaviourRegistry();
-    installApi2PolicyRegistrations(api2PluginRegistrations(plugin, "tables", {}) ?? {}, { stores, tiles: null }, () => true);
-    const rng = new Rng(42);
-    const twin = new Rng(42);
-    const expected = Array.from({ length: 20 }, () => (twin.oneIn(2) ? 30 : twin.oneIn(3) ? 60 : 0));
-    const handler = stores.discountRollHandler();
-    expect(Array.from({ length: 20 }, () => handler?.({ rng, cost: 100 }))).toEqual(expected);
-  });
-
-  it("answers as if nothing were installed once the mod is no longer active", () => {
-    const plugin = api2Plugin(definition, () => ({ grants: capabilities("tables", []) }));
-    const stores = new StoreBehaviourRegistry();
-    let filled = 0;
-    const tiles = { register: (filler: (fill: never) => void) => { filler({ pack: { id: "p" }, monsterTile: () => (filled += 1, "t"), fillMonster: () => true } as never); } };
-    installApi2PolicyRegistrations(api2PluginRegistrations(plugin, "tables", {}) ?? {}, { stores, tiles }, () => false);
-    const rng = new Rng(7);
-    const before = JSON.stringify(rng.getState());
-    expect(stores.discountRollHandler()?.({ rng, cost: 100 })).toBe(0);
-    expect(JSON.stringify(rng.getState())).toBe(before);
-    expect(filled).toBe(0);
   });
 });

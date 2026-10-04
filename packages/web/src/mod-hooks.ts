@@ -59,7 +59,6 @@ import { modPluginContext, modOwnFiles } from "./mod-context";
 import { faultMessage, reportModFault } from "./mod-problems";
 import { taintSession } from "./mod-taint";
 import { modHealth } from "./mod-health";
-import { workerModHooks } from "./mod-worker/hooks";
 
 /**
  * The one-argument adapter both paths are reduced to before the fold: a mod's
@@ -304,12 +303,6 @@ function folderHookEntries(): Map<string, ModHookEntry> {
         return undefined;
       }
     });
-  }
-  /* Worker mods answer no hook themselves: what they contribute is the host's
-   * reading of their policy tables, and forwarding of their notifications
-   * (mod-worker/hooks.ts). */
-  for (const loaded of activeModCode().workers) {
-    out.set(loaded.id, () => (modHealth().isOff(loaded.id) ? undefined : workerModHooks(loaded.id)));
   }
   return out;
 }

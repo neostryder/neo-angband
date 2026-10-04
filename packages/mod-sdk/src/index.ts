@@ -258,7 +258,6 @@ export { CapabilityError, CapabilitySet, isLocalNetworkHost, networkGrantCovers,
 export { NET_LIMITS, checkNetRequest, checkSecretHosts, fillSecretTemplates, isSecretName, readBodyCapped, secretNamesIn } from "./net-request.js";
 export type { CheckedNetRequest, NetMethod, NetProblem, NetProblemCode, NetRequest, NetSecretValue } from "./net-request.js";
 export type { ParsedCapability } from "./capabilities.js";
-export { unifiedCapabilities, unifiedCapability, WORKER_CAPABILITY_ALIASES } from "./worker-capabilities.js";
 export {
   CAPABILITY_TIERS,
   CAPABILITY_VOCABULARY,
@@ -292,6 +291,24 @@ export type {
   Requirement,
   RequirementLevel,
 } from "./standards.js";
+export { worstSeverity } from "./mod-findings.js";
+export type {
+  ModFinding,
+  ModFindingEvidence,
+  ModFindingKind,
+  ModFindingSource,
+  ModFindingReport,
+  ModFindingSeverity,
+} from "./mod-findings.js";
+/* The fixed checks: the rule table and the install subset, which carry no
+ * parser. This entry is ctx.authoring, so everything here ships in the game;
+ * runModChecks, readModArchive and basePackFromFiles live in the "./checks"
+ * export instead, which brings acorn. */
+export { CHECKS_TOOL, CHECKS_VERSION, CHECK_RULES, INSTALL_CHECK_RULES, checkRule, checksMarkdown } from "./checks/rules.js";
+export type { CheckArea, CheckRule } from "./checks/rules.js";
+export { installChecks } from "./checks/install.js";
+export { ARCHIVE_LIMITS, NOT_PAYLOAD, PAYLOAD_LIMITS, isPayloadPath } from "./checks/subject.js";
+export type { ModFileEntries } from "./checks/subject.js";
 /* Named rather than `export *`, and applyFieldPolicy is the name left out. Its
  * provenance and manifest maps are built by composition and reachable no other
  * way, so a public signature could only ever be called without them - which
