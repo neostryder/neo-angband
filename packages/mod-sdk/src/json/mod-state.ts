@@ -23,12 +23,6 @@ const validator = json.object({
   choices: json.optional(byName(json.boolean)),
   /** Mod id to the capabilities the player approved for it. */
   consents: json.optional(byName(json.array(json.string))),
-  /** Mod id to the capabilities the player refused for it, one by one. */
-  refusals: json.optional(byName(json.array(json.string))),
-  /** Mod id to the mod version its permission decisions were last made at. */
-  consentVersions: json.optional(byName(json.string)),
-  /** Mod id to the mod version at which the player read the unreviewed-mod notice. */
-  unreviewedNotices: json.optional(byName(json.string)),
   /** Rule flag to the player's explicit on or off. */
   ruleChoices: json.optional(byName(json.boolean)),
   /** Mod id to the mods the player placed it after or before. */
@@ -47,9 +41,6 @@ export const modStateFormat = defineFormat({
     enabled: ["neo-angband-mod-qol", "neo-angband-mod-bug-fixes"],
     choices: { "neo-angband-mod-qol": true },
     consents: { "neo-angband-mod-qol": ["ui:panel.mount"] },
-    refusals: { "neo-angband-mod-qol": ["backup:folder"] },
-    consentVersions: { "neo-angband-mod-qol": "1.4.0" },
-    unreviewedNotices: { "example-sideloaded-mod": "0.1.0" },
     ruleChoices: { "qol.autoDig": false },
     pins: { "neo-angband-mod-qol": { after: ["neo-angband-mod-bug-fixes"] } },
     sectionChoices: { "neo-angband-mod-qol": { tiles: true } },

@@ -188,7 +188,9 @@ Listing a mod on `mods/registry.json` will come to mean its release was checked.
 
 A short content policy will say what a listed mod may not contain (hate, sexual content involving minors, stolen assets, impersonation). The in-game browser will have a button for reporting a mod, and a release that breaks the policy comes off the registry.
 
-Seeing the real map is asked about when a mod is turned on, not at the moment an option first needs it. The **Allow third-party mods** switch still guards the routes to unlisted mods.
+Mods that are on no list stay installable by anyone, and they stay unreviewed. Before one runs, core will draw a large warning saying so, and the mod keeps an "unreviewed" badge on the Mods screen. It will not get the seams kept for first-party mods, which manage other mods and read the game's hidden state. Safe mode still gets a player out if one breaks the game.
+
+Permissions will also become a choice per permission. The game will explain each one in plain words, the player can turn any of them down, and a mod that loses one keeps working apart from the functions that needed it, which fail as gently as they can.
 
 ## Mod updates
 

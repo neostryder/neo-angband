@@ -537,7 +537,7 @@ In order, and all of it before the import:
    a disabled mod's patches;
 3. the manifest declares the `plugin` facet (via `shape` or `facets`);
 4. `modApi` matches;
-5. the player has said yes or no to every capability the mod's tier allows, and has not refused one the mod needs in order to start. The mod's `ctx` is built from the capabilities it ends up with, not from the manifest's list.
+5. the player has **consented** to every capability the manifest requests.
 
 Then the module is imported and its default export is shape-checked.
 

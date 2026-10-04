@@ -62,11 +62,6 @@ export interface ModRegistry {
    * written before the key existed.
    */
   readonly community: readonly RepoRef[];
-  /**
-   * The community repositories whose entry carries `"tier": "R"`: their code is
-   * reviewed before each release is listed. Absent or empty when none do.
-   */
-  readonly reviewed?: readonly string[];
   /** One line per entry that could not be read, rather than a silent drop. */
   readonly problems: readonly string[];
 }
@@ -135,30 +130,27 @@ export function parseRegistry(body: string, url: string): RegistryResult {
    * costs the community list, never the curated one above it. */
   const rawCommunity = d["community"];
   let community: RepoRef[] = [];
-  const reviewed: string[] = [];
   if (Array.isArray(rawCommunity)) {
     /* The same `seen` set: one repository on both lists is the same editing
      * mistake as one repository listed twice. */
-    community = readEntries(rawCommunity, `${url} community entry`, seen, problems, reviewed);
+    community = readEntries(rawCommunity, `${url} community entry`, seen, problems);
   } else if (rawCommunity !== undefined) {
     problems.push(`${url}: its "community" is not a list`);
   }
 
   const name = typeof d["name"] === "string" && d["name"] !== "" ? d["name"] : url;
-  return { ok: true, registry: { name, url, mods, community, reviewed, problems } };
+  return { ok: true, registry: { name, url, mods, community, problems } };
 }
 
 /**
  * Read one list of entries. A bad entry is reported in `problems` and skipped;
  * `seen` is shared between lists so a repository cannot appear twice anywhere.
- * When `reviewed` is given, an entry with `"tier": "R"` adds its repository to it.
  */
 function readEntries(
   list: readonly unknown[],
   label: string,
   seen: Set<string>,
   problems: string[],
-  reviewed?: string[],
 ): RepoRef[] {
   const out: RepoRef[] = [];
   for (const [i, raw] of list.entries()) {
@@ -189,7 +181,6 @@ function readEntries(
     }
     seen.add(key);
     out.push(parsed.ref);
-    if (reviewed && (raw as { tier?: unknown }).tier === "R") reviewed.push(parsed.ref.repo);
   }
   return out;
 }

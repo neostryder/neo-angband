@@ -42,8 +42,6 @@ import {
 } from "./menu-runtime";
 import { linesScreen, screenBodyLines, SCREEN_FOOTER, type ScreenView } from "./screen-view";
 import { ScreenAbandoned, showThroughPresenter } from "./screen-runtime";
-import { isCoreDrawn } from "./core-drawn";
-import { suspendModPanels } from "./panel-runtime";
 import { restatePrompt, restateScreen } from "./screen-text";
 import { popRegion, pushRegion, regionSurface, type RegionSpec } from "./ui-stack";
 
@@ -206,22 +204,12 @@ export async function showTextScreen(
   /* The screenText seam (mod/hooks.ts), applied once here so the presenter and
    * the faithful terminal are handed the same restated view. With no mod
    * contributing the hook this is the view as built. */
-  const built =
+  const view = restateScreen(
     typeof titleOrView === "string"
       ? linesScreen(titleOrView, (linesOrRoguelike as readonly ScreenLine[] | undefined) ?? [], footer)
-      : titleOrView;
+      : titleOrView,
+  );
   const roguelike = typeof titleOrView === "string" ? roguelikeArg : ((linesOrRoguelike as boolean | undefined) ?? false);
-  /* A Core-drawn screen (core-drawn.ts) is shown as built, on the terminal,
-   * with every mod panel hidden: no mod restates, presents or covers it. */
-  if (isCoreDrawn(built.id)) {
-    const restore = suspendModPanels();
-    try {
-      return await showViewOnTerminal(term, built.title, screenBodyLines(built, term.size().cols), built.footer, roguelike);
-    } finally {
-      restore();
-    }
-  }
-  const view = restateScreen(built);
   const taken = showThroughPresenter(view, screenFault);
   if (taken) {
     try {
@@ -2064,19 +2052,6 @@ export function selectFromMenu(
 ): Promise<number | null> {
   const declared = typeof titleOrItems === "string";
   const id = declared ? idOrTitle : "test:legacy-menu";
-  /* A Core-drawn question (core-drawn.ts) stays on the host's own menu with its
-   * own rows, and mod panels are hidden until it is answered. */
-  if (declared && isCoreDrawn(id) && maybeExtra?.hostOnly !== true) {
-    const restore = suspendModPanels();
-    return selectFromMenu(
-      host,
-      id,
-      titleOrItems,
-      itemsOrFooter as readonly MenuItem[],
-      footerOrExtra as string | undefined,
-      { ...maybeExtra, hostOnly: true },
-    ).finally(restore);
-  }
   const title = declared ? titleOrItems : idOrTitle;
   const rawItems = (declared ? itemsOrFooter : titleOrItems) as readonly MenuItem[];
   const footer = (declared ? footerOrExtra : itemsOrFooter) as string | undefined;

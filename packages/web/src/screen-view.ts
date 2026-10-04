@@ -521,7 +521,6 @@ export const MODELLED_SCREENS = [
   "core:mod-updates",
   "core:mod-auto-sort",
   "core:mod-capabilities",
-  "core:mod-unreviewed",
   "core:mod-conflicts",
   "core:mod-profiler",
   "core:mod-orphans",

@@ -320,6 +320,33 @@ describe("switchOffNotice", () => {
   });
 });
 
+describe("a Worker mod's broker figures", () => {
+  it("keeps response latency, network time and stale replies apart from CPU time", () => {
+    const r = rig();
+    r.monitor.run("w", "Worker view.world", r.spend(2));
+    r.monitor.recordReply("w", 4);
+    r.monitor.recordReply("w", 10);
+    r.monitor.recordNetWait("w", 250);
+    r.monitor.recordStale("w");
+    expect(r.monitor.stats()[0]).toMatchObject({ cpuMs: 2, replies: 2, replyMs: 14, worstReplyMs: 10, netMs: 250, stale: 1 });
+  });
+
+  it("switches a stalled Worker off at once, enforcement or not, with the stall notice", () => {
+    const r = rig({ enforce: false });
+    r.monitor.switchOff("w", "heartbeat", new Error("its Worker went 5 seconds without answering the game"));
+    expect(r.monitor.isOff("w")).toBe(true);
+    expect(r.offs).toMatchObject([{ id: "w", site: "heartbeat", reason: "stall" }]);
+    expect(() => r.monitor.run("w", "Worker view.world", r.spend(1))).toThrow(ModSwitchedOffError);
+    r.monitor.switchOff("w", "heartbeat", new Error("again"));
+    expect(r.offs).toHaveLength(1);
+    const text = switchOffNotice(r.offs[0]!, "Map Notes").join("\n");
+    expect(text).toMatch(/^Map Notes stopped responding/u);
+    expect(text).toContain("Its Worker went 5 seconds without answering the game, so the game stopped it.");
+    expect(text).not.toContain("heartbeat");
+    expect(text).not.toMatch(/failed \d+ times/u);
+  });
+});
+
 describe("with no mods", () => {
   afterEach(() => {
     modHealth().reset();
