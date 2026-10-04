@@ -26,7 +26,8 @@ import {
   sessionLoadScreen,
   zipImportFailureScreen,
 } from "./mod-browse";
-import { autoSortScreen, capabilityConsentScreen, modConflictsScreen } from "./mods";
+import { autoSortScreen, capabilityConsentScreen, modConflictsScreen, modProfilerScreen } from "./mods";
+import type { ModHealthStats } from "./mod-health";
 import { conflictLines, type ConflictInputs } from "./mod-conflicts";
 import { refreshRow, type ModRefresh } from "./mod-refresh";
 import {
@@ -962,5 +963,51 @@ describe("the six screens are declared as modelled", () => {
     ]) {
       expect(MODELLED_SCREENS).toContain(id);
     }
+  });
+});
+
+describe("the Mod performance screen", () => {
+  const base: ModHealthStats = {
+    id: "quiet-mod",
+    calls: 12,
+    cpuMs: 3.25,
+    worstMs: 1.5,
+    worstSite: "register()",
+    faults: 0,
+    overBudget: 0,
+    ceilingBreaches: 0,
+    payloadBytes: null,
+    switchedOff: null,
+  };
+  const busy: ModHealthStats = {
+    ...base,
+    id: "busy-mod",
+    calls: 400,
+    cpuMs: 120,
+    worstMs: 60,
+    faults: 3,
+    overBudget: 2,
+    payloadBytes: 2048,
+    switchedOff: { id: "busy-mod", site: "message listener", why: "boom", turn: 9 },
+  };
+  const names: Record<string, string> = { "busy-mod": "Busy Mod" };
+
+  it("lists the busiest mod first, by proper name where it has one", () => {
+    const view = modProfilerScreen([base, busy], (id) => names[id]);
+    expect(view.id).toBe("core:mod-profiler");
+    expect(MODELLED_SCREENS).toContain("core:mod-profiler");
+    const table = view.blocks[0] as ScreenTableBlock;
+    expect(table.rows.map((r) => r.id)).toEqual(["busy-mod", "quiet-mod"]);
+    const lines = screenBlockLines(table, 80).map((l) => l.text);
+    expect(lines[0]).toMatch(/^Mod\s+Calls\s+CPU ms\s+Worst\s+Faults\s+Slow\s+Sent\s+Status$/);
+    expect(lines[1]).toMatch(/^Busy Mod\s+400\s+120\.0\s+60\.0\s+3\s+2\s+2\.0 KB off$/);
+    expect(lines[2]).toMatch(/^quiet-mod\s+12\s+3\.3\s+1\.5\s+0\s+0\s+- on$/);
+    for (const line of screenBodyLines(view, 80)) expect(line.text.length).toBeLessThanOrEqual(80);
+  });
+
+  it("says so when no mod code has run", () => {
+    const view = modProfilerScreen([], () => undefined);
+    const text = screenBodyLines(view, 80).map((l) => l.text);
+    expect(text).toContain("No mod code has run this session.");
   });
 });

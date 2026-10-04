@@ -56,8 +56,6 @@ export type {
   ActualCell,
   TrapView,
 } from "./known-level.js";
-export { KNOWN_WORLD_VERSION, buildKnownWorld, knownMonster, knownMonsters } from "./known-world.js";
-export type { KnownMonster, KnownMonsterHealth, KnownMonsterStatus, KnownWorld } from "./known-world.js";
 export { itemView, playerViewFor } from "./entity-views.js";
 export type { PlayerViewDerived } from "./entity-views.js";
 export { simulateLoadout } from "./loadout.js";

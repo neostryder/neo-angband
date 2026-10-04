@@ -17,7 +17,6 @@ import {
   guardModHooks,
   MOD_HOOK_FOLDS,
   type EffectIntro,
-  type KnownArtifactFind,
   type ModHookFault,
   type ModHooks,
   type ObjectInfoTextSite,
@@ -25,7 +24,8 @@ import {
 } from "./hooks.js";
 import type { GameState } from "../game/context.js";
 import type { GameObject } from "../obj/object.js";
-import type { KnownMonster } from "../agent/known-world.js";
+import type { Artifact } from "../obj/types.js";
+import type { Monster } from "../mon/monster.js";
 import type { OptionStateData } from "../player/options.js";
 import type { Chunk } from "../world/chunk.js";
 
@@ -38,9 +38,10 @@ const DEPS = {};
 const DRAINED = {} as GameObject;
 const RECEIVING = {} as GameObject;
 /** Stand-ins for a monster that just became visible. */
-const MON = {} as KnownMonster;
+const MON = {} as Monster;
 /** Stand-ins for an artifact object being assessed for the first time. */
-const FOUND: KnownArtifactFind = { name: "of Galadriel", artifactIndex: 1 };
+const TOUCHED_OBJ = {} as GameObject;
+const ARTIFACT = {} as Artifact;
 /** describe_effect's facts for an aimed wand whose effect is known. */
 const INTRO: EffectIntro = {
   effect: "known",
@@ -469,7 +470,7 @@ describe("notification hooks are observed by every contributor", () => {
     ]);
   });
 
-  it("monsterBecameVisible: observes the same monster view, in load order", () => {
+  it("monsterBecameVisible: observes the same live Monster reference, in load order", () => {
     const seen: unknown[] = [];
     const composed = composeModHooks([
       { monsterBecameVisible: (mon) => void seen.push(mon) },
@@ -479,14 +480,17 @@ describe("notification hooks are observed by every contributor", () => {
     expect(seen).toEqual([MON, MON]);
   });
 
-  it("artifactIdentified: observes the same find, in load order", () => {
-    const seen: unknown[] = [];
+  it("artifactIdentified: observes the same live GameObject and Artifact, in load order", () => {
+    const seen: unknown[][] = [];
     const composed = composeModHooks([
-      { artifactIdentified: (found) => void seen.push(found) },
-      { artifactIdentified: (found) => void seen.push(found) },
+      { artifactIdentified: (obj, art) => void seen.push([obj, art]) },
+      { artifactIdentified: (obj, art) => void seen.push([obj, art]) },
     ]);
-    composed?.artifactIdentified?.(FOUND);
-    expect(seen).toEqual([FOUND, FOUND]);
+    composed?.artifactIdentified?.(TOUCHED_OBJ, ARTIFACT);
+    expect(seen).toEqual([
+      [TOUCHED_OBJ, ARTIFACT],
+      [TOUCHED_OBJ, ARTIFACT],
+    ]);
   });
 });
 
@@ -893,7 +897,7 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
     artifactIdentified: {
       yes: (log, tag) => ({ artifactIdentified: () => void log.push(tag) }),
       no: (log, tag) => ({ artifactIdentified: () => void log.push(tag) }),
-      run: (h) => h.artifactIdentified?.(FOUND),
+      run: (h) => h.artifactIdentified?.(TOUCHED_OBJ, ARTIFACT),
     },
   };
 
@@ -1026,7 +1030,7 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
 
   it("artifactIdentified is dropped when its observer throws", () => {
     const { hooks } = guarded({ artifactIdentified: THROWS });
-    expect(hooks.artifactIdentified?.(FOUND)).toBeUndefined();
+    expect(hooks.artifactIdentified?.(TOUCHED_OBJ, ARTIFACT)).toBeUndefined();
   });
 
   it("messageText returns the RAW message, never an empty one", () => {
@@ -1121,6 +1125,44 @@ describe("guardModHooks: a hook that threw is not called again", () => {
     hooks.historyAdd?.({ what: "x", type: 0, duplicate: false });
     expect(hooks.messageText?.("still here")).toBe("STILL HERE");
     expect(faults.map((f) => f.hook)).toEqual(["historyAdd"]);
+  });
+});
+
+describe("guardModHooks: the host's invoke and active options", () => {
+  it("runs each call through invoke, named by hook, and returns its answer", () => {
+    const seen: string[] = [];
+    const hooks = guardModHooks({ messageText: (s) => s.toUpperCase() }, () => undefined, {
+      invoke: (hook, run) => {
+        seen.push(hook);
+        return run();
+      },
+    });
+    expect(hooks.messageText?.("hi")).toBe("HI");
+    expect(seen).toEqual(["messageText"]);
+  });
+
+  it("still latches and reports a throw that invoke rethrows", () => {
+    const faults: ModHookFault[] = [];
+    const fn = vi.fn(THROWS);
+    const hooks = guardModHooks({ saveNoiseScent: fn }, (f) => faults.push(f), {
+      invoke: (_hook, run) => run(),
+    });
+    expect(hooks.saveNoiseScent?.()).toBe(false);
+    expect(hooks.saveNoiseScent?.()).toBe(false);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(faults).toHaveLength(1);
+  });
+
+  it("gives the neutral answer without a call or a fault while inactive", () => {
+    const faults: ModHookFault[] = [];
+    const fn = vi.fn((s: string) => s.toUpperCase());
+    let on = true;
+    const hooks = guardModHooks({ messageText: fn }, (f) => faults.push(f), { active: () => on });
+    expect(hooks.messageText?.("a")).toBe("A");
+    on = false;
+    expect(hooks.messageText?.("b")).toBe("b");
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(faults).toEqual([]);
   });
 });
 

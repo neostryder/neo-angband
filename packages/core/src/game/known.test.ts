@@ -7,7 +7,6 @@ import { OF_SIZE } from "../player/types.js";
 import type { PlayerState } from "../player/calcs.js";
 import { getLore } from "../mon/lore.js";
 import type { Monster } from "../mon/monster.js";
-import type { KnownMonster } from "../agent/known-world.js";
 import type { GameState } from "./context.js";
 import { loc } from "../loc.js";
 import type { Loc } from "../loc.js";
@@ -141,7 +140,7 @@ describe("square_know_pile find-on-sight (object_touch, obj-knowledge.c L971)", 
     const pgrid = loc(10, 10);
     const state = makeState({ playerGrid: pgrid });
     const seen: unknown[][] = [];
-    state.modHooks = { artifactIdentified: (found) => void seen.push([found]) };
+    state.modHooks = { artifactIdentified: (obj, art) => void seen.push([obj, art]) };
 
     const obj = artifactObj();
     floorCarry(state, pgrid, obj);
@@ -149,7 +148,7 @@ describe("square_know_pile find-on-sight (object_touch, obj-knowledge.c L971)", 
     /* Re-touching the same grid must not report the artifact a second time. */
     squareKnowPile(state, pgrid);
 
-    expect(seen).toEqual([[{ name: firstArtifact!.name, artifactIndex: firstArtifact!.aidx }]]);
+    expect(seen).toEqual([[obj, firstArtifact]]);
   });
 });
 
@@ -462,26 +461,23 @@ describe("update_mon infravision", () => {
 });
 
 describe("update_mon fires monsterBecameVisible on the real transition (mod/hooks.ts)", () => {
-  it("fires once, with the monster as the player knows it, on the unseen-to-seen transition", () => {
+  it("fires once, with the live monster, on the unseen-to-seen transition", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const mon = addMon(state, makeRace(), loc(12, 10));
     lightAndView(state, mon.grid);
-    const seen: KnownMonster[] = [];
+    const seen: Monster[] = [];
     state.modHooks = { monsterBecameVisible: (m) => seen.push(m) };
 
     updateMon(state, mon, true);
 
-    expect(seen).toHaveLength(1);
-    expect(seen[0]).toMatchObject({ id: mon.midx, race: mon.race.name, grid: { x: 12, y: 10 }, visible: true });
-    /* A view, not the live monster: no hit points cross. */
-    expect(seen[0]).not.toHaveProperty("hp");
+    expect(seen).toEqual([mon]);
   });
 
   it("does not fire again on a later turn where the monster simply stays visible", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const mon = addMon(state, makeRace(), loc(12, 10));
     lightAndView(state, mon.grid);
-    const seen: KnownMonster[] = [];
+    const seen: Monster[] = [];
     state.modHooks = { monsterBecameVisible: (m) => seen.push(m) };
 
     updateMon(state, mon, true);
@@ -495,7 +491,7 @@ describe("update_mon fires monsterBecameVisible on the real transition (mod/hook
     const state = makeState({ playerGrid: loc(10, 10) });
     /* Out of view, unlit, no telepathy: update_mon's own "flag" stays false. */
     const mon = addMon(state, makeRace(), loc(12, 10));
-    const seen: KnownMonster[] = [];
+    const seen: Monster[] = [];
     state.modHooks = { monsterBecameVisible: (m) => seen.push(m) };
 
     updateMon(state, mon, true);
@@ -508,7 +504,7 @@ describe("update_mon fires monsterBecameVisible on the real transition (mod/hook
     const state = makeState({ playerGrid: loc(10, 10) });
     const mon = addMon(state, makeRace(), loc(12, 10));
     lightAndView(state, mon.grid);
-    const seen: KnownMonster[] = [];
+    const seen: Monster[] = [];
     state.modHooks = { monsterBecameVisible: (m) => seen.push(m) };
 
     updateMon(state, mon, true);

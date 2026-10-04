@@ -13,6 +13,7 @@
  * for the rest of the session.
  */
 
+import { modHealth } from "./mod-health";
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { BirthChoice } from "./birth";
 import type { ModBirthSession } from "./birth-session";
@@ -82,7 +83,9 @@ export function installBirth(
   if (!winner) return null;
   let returned: BirthPresenter | undefined;
   try {
-    returned = winner.plugin.birth!.call(winner.plugin, contextFor(winner.id));
+    returned = modHealth().run(winner.id, "birth()", () =>
+      winner.plugin.birth!.call(winner.plugin, contextFor(winner.id)),
+    );
   } catch (error) {
     reportFault(winner.id, "birth() failed, so the game goes on showing its own character creation", error);
     return null;
@@ -93,7 +96,10 @@ export function installBirth(
     return null;
   }
   const presenter = returned;
-  return { id: winner.id, presenter: { show: (session) => presenter.show(session) } };
+  return {
+    id: winner.id,
+    presenter: { show: (session) => modHealth().run(winner.id, "birth show", () => presenter.show(session)) },
+  };
 }
 
 let installed: InstalledBirth | null = null;
