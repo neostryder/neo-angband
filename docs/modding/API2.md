@@ -2,7 +2,7 @@
 
 API 2 is the set of calls a mod's code gets from the game: what it can read, what it can do, and what it hears. Every call returns plain data, a permission the player turned down comes back as a result you can check, and reads show the game as the player knows it. The types are in `@rpgm-tools/neo-angband-mod-sdk`, and the in-process host is in the web package (`packages/web/src/mod-api2-host.ts`).
 
-Status: the types, the version check, the in-process host and the Worker broker are built. The folder loader still loads API 1 plugins, and an in-process API 2 mod reaches it wrapped as one (`api2Plugin` in `packages/web/src/mod-api2-shim.ts`). A Worker mod is written against API 2 and reaches the same domains through the broker (see In a Worker). API 1 plugins run unchanged.
+Status: the types, the version check, the in-process host, the Worker broker and the folder loader are built. The loader runs an in-process API 2 mod wrapped as a plugin (`api2Plugin` in `packages/web/src/mod-api2-shim.ts`), runs a Worker mod through the broker (see In a Worker), and runs API 1 plugins unchanged.
 
 ## A mod in API 2
 

@@ -298,7 +298,7 @@ Tracked as issue #18.
 
 ### API 1 plugins run without isolation
 
-An API 1 plugin's code runs in the game's page with `ctx.core`, `ctx.state`, `ctx.registries`, `document`, `fetch` and IndexedDB, whether it is installed or loaded for one session. Worker mods (`modApi: 2`, `runtime: "worker"`) run apart from the page, in an opaque-origin sandbox with no network and none of the game's storage, as `docs/modding/WORKER_ISOLATION.md` describes.
+An API 1 plugin's code runs in the game's page with `ctx.core`, `ctx.state`, `ctx.registries`, `document`, `fetch` and IndexedDB, whether it is installed or loaded for one session. Worker mods (`runtime: "worker"`, written against API 2) run apart from the page, in an opaque-origin sandbox with no network and none of the game's storage, as `docs/modding/WORKER_ISOLATION.md` describes.
 
 An API 1 plugin cannot be moved into that Worker as it stands. Its `hooks(ctx)` returns functions that the turn loop calls synchronously, `register(host, ctx)` changes live state, and a message port carries copies of data, never functions, DOM nodes or object identity. A plugin that wants isolation has to be rewritten against mod API 2, whose calls take and return plain data (`docs/modding/MIGRATING_TO_API2.md`).
 

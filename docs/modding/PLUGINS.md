@@ -526,7 +526,7 @@ Outside the window the plugin does not load, and the mod manager names both numb
 
 It is declared in the manifest, not only inside `plugin.js`, so an incompatible plugin can be refused before it is imported. A version check inside the module only runs after the module's top-level code has already executed, which is too late for code loaded from a folder anyone can write into.
 
-A schema 2 manifest states `api`, a semver range, instead of `modApi`. The game runs an `in-process` mod when the range includes API 1.0.0, and a `worker` mod when it includes the Worker preview API, `2.0.0-worker`. A range that includes neither is refused, and the Mods screen names the range and the runtime. Because `2.0.0-worker` is a prerelease, a range over the stable API 2 such as `^2.0.0` leaves it out, so a mod written for today's Worker ABI is never taken for an API 2 mod.
+A schema 2 manifest states `api`, a semver range, instead of `modApi`. The game runs an `in-process` mod when the range includes API 1.0.0, and an `in-process` or `worker` mod written against API 2 when it includes API 2 (`>=2.0.0 <3.0.0`). A range that includes none of these for the mod's runtime is refused, and the Mods screen names the range and the runtime. The retired Worker preview API, `2.0.0-worker`, is a prerelease, so a range over the stable API 2 leaves it out, and a mod declaring it is refused with a note to rebuild it against API 2.
 
 ## What has to be true before your code runs
 

@@ -58,6 +58,10 @@ a package concern and is not provided here. A new mod is a folder with a
 | Record identity | `recordKey`, `keySpecFor`, `KEYED_RECORD_FILES`, `RECORD_KEY_SPECS` |
 | Capabilities | `CapabilitySet`, `parseCapability`: what a scripted plugin is allowed to reach |
 | Fixed checks | `installChecks` (the subset the game runs at install), `CHECK_RULES`, `checkRule`, `worstSeverity`, `ModFinding`, `ModFindingReport`; `runModChecks`, `readModArchive` and `basePackFromFiles` come from `@rpgm-tools/neo-angband-mod-sdk/checks`, which carries the JavaScript parser |
+| Mod API 2 | `defineApi2Mod`, `Api2ModDefinition`, `ModApi2`, `Api2Result`, `isNotGranted`, `apiRangeVerdict`, `MOD_API2_VERSION`, `MOD_API2_DEFAULT_RANGE`: the code API a mod written for [API 2](docs/API2.md) default-exports and receives, in process or in a Worker |
+| Manifest schema 2 | `modManifestFormat`, `ManifestV2Data`, `ModRuntime`, `convertManifestV1`, `manifestToV2`, `turnBudgetMs`: the `runtime`, `api` range, `entry`, `dependencies` and `budget` fields ([migration guide](docs/MIGRATING_TO_API2.md)) |
+| Permissions | `matchCapability`, `consentText`, `PUBLIC_CAPABILITIES`, `isTruthCapability`, `WORKER_CAPABILITY_ALIASES`, `unifiedCapability`: the one capability vocabulary the game checks, shows the player and gives a Worker |
+| Headless runs | `headlessRunFormat`, `HeadlessRunReport`: the report `pnpm mod-runner` writes in the game's repository |
 
 ```ts
 import { validateManifest, ManifestError } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -75,8 +79,9 @@ try {
 - **content**: declarative JSON validated against the record schemas. Safe by
   construction: it cannot execute anything.
 - **tiles**: a tile pack, either a tilesheet re-skin or a loose Linoleum pack.
-- **plugin**: a scripted mod. It default-exports a `ModPlugin` and receives the
-  running engine as `ctx.core`, because a module loaded out of a mod folder cannot
+- **plugin**: a scripted mod. It default-exports a `ModPlugin` (API 1) or an API 2
+  definition (`defineApi2Mod`), which runs in the page or in a Worker. A `ModPlugin`
+  receives the running engine as `ctx.core`, because a module loaded out of a mod folder cannot
   resolve a bare specifier and a bundled copy of the engine would give the plugin
   its own registries while the game ran on another set.
 

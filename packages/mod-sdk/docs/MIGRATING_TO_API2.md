@@ -4,9 +4,9 @@ This guide takes an API 1 plugin (a `plugin.js` whose default export has `api: 1
 
 ## What works on this build
 
-The SDK has the API 2 types (`ModApi2`, `Api2ModDefinition`, `Api2Result`), the version check `apiRangeVerdict`, and the manifest converter `convertManifestV1`. The web host has an in-process API 2 host (`packages/web/src/mod-api2-host.ts`) and `api2Plugin` (`packages/web/src/mod-api2-shim.ts`), which wraps an API 2 definition so it runs through the API 1 loader with the same permissions and the same hook composition.
+The SDK has the API 2 types (`ModApi2`, `Api2ModDefinition`, `Api2Result`), the version check `apiRangeVerdict`, and the manifest converter `convertManifestV1`. The web host has an in-process API 2 host (`packages/web/src/mod-api2-host.ts`), `api2Plugin` (`packages/web/src/mod-api2-shim.ts`), which wraps an API 2 definition so it runs through the API 1 loader with the same permissions and the same hook composition, and a Worker broker (`packages/web/src/mod-worker/host.ts`) that serves a Worker mod the same API.
 
-The folder loader does not call `api2Plugin` yet, and the SDK does not export it. A manifest that declares runtime `in-process` with an API 2 range such as `>=2.0.0 <3.0.0` is refused with the line `needs mod API >=2.0.0 <3.0.0 in runtime "in-process", which this build does not provide`. `neo-angband-mod-build` also refuses a default export without an integer `api`. On this build you can ship the schema 2 manifest, which keeps the mod on API 1, and you can write and typecheck the API 2 code, but the game cannot load it from a folder.
+The folder loader runs an API 2 mod in either runtime. An in-process mod needs a schema 2 manifest with `"runtime": "in-process"` and an `api` range that admits API 2, such as `>=2.0.0 <3.0.0`; the loader wraps its default export with `api2Plugin`. A Worker mod needs `"runtime": "worker"`, the same kind of range and an `entry` (see Runtime tiers). A manifest whose range admits no API this build runs in that runtime is refused with a line such as `needs mod API >=3.0.0 <4.0.0 in runtime "in-process", which this build does not provide`. `neo-angband-mod-build` still refuses a default export without an integer `api`, so build an API 2 mod with your own bundler and check it with `neo-angband-mod-check`, which reads both kinds of default export.
 
 ## Step 1: check what has no API 2 form
 
@@ -113,7 +113,7 @@ After converting, replace the placeholder `because` under `engine` with the real
 
 The validator also checks that the fields agree. A `data` mod has no `entry`, no `plugin` facet and no `.js` or `.mjs` file in its payload. An `in-process` mod's entry is `plugin.js`, a `worker` mod names its `entry`, and a mod that runs code lists `plugin` in `facets` when it lists facets at all. A mod id appears in at most one of `required`, `optional` and `conflicts`, and a mod cannot list itself.
 
-The `api` range decides whether the mod loads. `>=1.0.0 <2.0.0` keeps it on API 1, which this build loads. An API 2 mod declares `>=2.0.0 <3.0.0` (`MOD_API2_DEFAULT_RANGE`), in both the manifest and the code's own `api`. `apiRangeVerdict(range)` answers `{ ok: true }` or one of four codes: `too-new` (the mod needs a newer game), `too-old` (the mod needs an update), `outside` (the range misses this version for another reason) and `malformed`.
+The `api` range decides whether the mod loads. `>=1.0.0 <2.0.0` keeps it on API 1, which this build still loads. An API 2 mod declares `>=2.0.0 <3.0.0` (`MOD_API2_DEFAULT_RANGE`), in both the manifest and the code's own `api`. `apiRangeVerdict(range)` answers `{ ok: true }` or one of four codes: `too-new` (the mod needs a newer game), `too-old` (the mod needs an update), `outside` (the range misses this version for another reason) and `malformed`.
 
 ## Step 3: change the shape of the code
 
@@ -424,25 +424,29 @@ if (!response.ok) mod.meta.log(response.message);
 | `ctx.options` | The `optionsChanged` hook, after the player changes an option |
 | `ctx.profiles`, `ctx.session` | `manage.profiles`, `manage.session`, first-party only |
 
-`meta.engine` is for diagnostics: decide on `meta.api`, never on the game version. `manage` and `truth` exist only for mods the game's build names as first-party, and nothing on this build names one yet, so both are absent for every mod.
+`meta.engine` is for diagnostics: decide on `meta.api`, never on the game version. `manage` exists only for the game's own mods: the build lists each one by its repository (`FIRST_PARTY_ORIGINS`), and a mod gets `manage` when it came from that repository with its files unchanged, was listed for that capability, and the player allowed it on its own confirmation screen. `truth` goes to any in-process mod the player allows, with a consent line saying the mod sees what the character has not found. A Worker mod gets neither. Test `mod.manage` and `mod.truth` before use, because they are absent from a mod that does not hold them.
 
 ## Runtime tiers
 
 An in-process mod runs in the game's own page. API 2 built through the in-process host goes through the same permissions and facades as API 1 and hands the mod copies of data, but it does not isolate the code: the module still runs in the page with the page's own access, as an API 1 plugin does ([PLUGINS.md](PLUGINS.md)).
 
-A Worker mod runs in an opaque-origin Worker inside a sandboxed frame, and talks to the game only through a message port ([WORKER_ISOLATION.md](WORKER_ISOLATION.md)). On this build the Worker runtime runs the preview Worker interface, declared in schema 1 as `"modApi": 2` with `"runtime": "worker"` and a `workerEntry`, and in schema 2 as `"api": "2.0.0-worker"`. That version is a prerelease of 2.0.0, so a stable API 2 range does not include it, and a mod written for the preview is not an API 2 mod.
+A Worker mod runs in an opaque-origin Worker inside a sandboxed frame, and talks to the game only through a message port ([WORKER_ISOLATION.md](WORKER_ISOLATION.md)). Its manifest declares `"runtime": "worker"`, an `api` range such as `>=2.0.0 <3.0.0` and the module to start in `entry`, and the module default-exports the same definition an in-process API 2 mod does. Each call becomes a message to the game's broker, which answers it with the in-process host under the permissions the player granted.
+
+The older Worker interface, declared in schema 1 as `"modApi": 2` with a `workerEntry`, is retired. Its manifest still reads (the converter above gives it `"api": "2.0.0-worker"`, a prerelease no stable range admits), but the loader will not run its code: the Mods screen asks for it to be rebuilt as an API 2 Worker mod. To rebuild one, write it as a definition with `hooks`, `start` and the domains it needs, rename its permissions as [API2.md](API2.md) ("In a Worker") lists, and set `api` to `>=2.0.0 <3.0.0`.
 
 Moving a mod into a Worker costs it these things:
 
-- The DOM. A Worker has no document, so drawing goes through host-drawn panels and regions.
-- The network. The page's policy refuses every connection and the Worker's network globals are deleted before the mod loads, and the preview interface has no network request.
-- The game's storage. The opaque origin gives the Worker none of the game's IndexedDB, Cache Storage or files. Preferences go through the host.
+- The DOM. A Worker has no document, so drawing goes through host-drawn panels (`ui.mount`).
+- The network. The page's policy refuses every connection and the Worker's network globals are deleted before the mod loads. A mod that names a host reaches it through `net`, which the game performs for it; `net.credential` hands the Worker a reference, never the secret.
+- The game's storage. The opaque origin gives the Worker none of the game's IndexedDB, Cache Storage or files. Preferences and the character's bag go through `store`, and a mod's own files through `content.asset`.
 - Imports by package name. A Worker mod imports only its own files by relative path, with no import cycles, at most 256 script files and 16,777,216 characters of source. Bundle a package in.
-- `import.meta.url` and computed dynamic imports of the mod's own files, because each module is a `data:` URL. Read files through the host's asset request.
+- `import.meta.url` and computed dynamic imports of the mod's own files, because each module is a `data:` URL. Read files through `content.asset`.
 - `eval`, nested Workers and `BroadcastChannel`.
-- Live objects of any kind. Everything crosses the port as structured-clone data.
+- Live objects of any kind. Everything crosses the port as structured-clone data, and every call returns a promise.
+- Hooks that answer inside a turn. A turn cannot wait for a message, so a Worker declares those answers as `policies` tables, and `hooks(context)` may name only `optionsChanged`, `abilityGained`, `monsterBecameVisible` and `artifactIdentified`. Any other hook function is not installed and is reported on the Mods screen.
+- `manage` and `truth`, and a wildcard grant: a `"*"` permission grants a Worker nothing.
 
-The Worker tier's API 2 details are added here when that runtime lands.
+A message over 64 KB is refused, and a Worker that answers no ping for 5 seconds is switched off for the session. [API2.md](API2.md) has the limits and what happens to a migration that takes over 3 seconds.
 
 ## Checklist
 
