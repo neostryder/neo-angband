@@ -978,6 +978,11 @@ describe("the Mod performance screen", () => {
     overBudget: 0,
     ceilingBreaches: 0,
     payloadBytes: null,
+    replies: 0,
+    replyMs: 0,
+    worstReplyMs: 0,
+    netMs: null,
+    stale: 0,
     switchedOff: null,
   };
   const busy: ModHealthStats = {
@@ -989,6 +994,10 @@ describe("the Mod performance screen", () => {
     faults: 3,
     overBudget: 2,
     payloadBytes: 2048,
+    replies: 4,
+    replyMs: 10,
+    worstReplyMs: 6,
+    netMs: 250,
     switchedOff: { id: "busy-mod", site: "message listener", why: "boom", turn: 9 },
   };
   const names: Record<string, string> = { "busy-mod": "Busy Mod" };
@@ -1000,9 +1009,9 @@ describe("the Mod performance screen", () => {
     const table = view.blocks[0] as ScreenTableBlock;
     expect(table.rows.map((r) => r.id)).toEqual(["busy-mod", "quiet-mod"]);
     const lines = screenBlockLines(table, 80).map((l) => l.text);
-    expect(lines[0]).toMatch(/^Mod\s+Calls\s+CPU ms\s+Worst\s+Faults\s+Slow\s+Sent\s+Status$/);
-    expect(lines[1]).toMatch(/^Busy Mod\s+400\s+120\.0\s+60\.0\s+3\s+2\s+2\.0 KB off$/);
-    expect(lines[2]).toMatch(/^quiet-mod\s+12\s+3\.3\s+1\.5\s+0\s+0\s+- on$/);
+    expect(lines[0]).toMatch(/^Mod\s+Calls\s+CPU ms\s+Worst\s+Reply\s+Net ms\s+Faults\s+Slow\s+Sent\s+Status$/);
+    expect(lines[1]).toMatch(/^Busy Mod\s+400\s+120\.0\s+60\.0\s+2\.5\s+250\s+3\s+2\s+2\.0 KB off$/);
+    expect(lines[2]).toMatch(/^quiet-mod\s+12\s+3\.3\s+1\.5\s+-\s+-\s+0\s+0\s+- on$/);
     for (const line of screenBodyLines(view, 80)) expect(line.text.length).toBeLessThanOrEqual(80);
   });
 

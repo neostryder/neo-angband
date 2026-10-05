@@ -67,7 +67,9 @@
 
 import {
   CapabilitySet,
+  MOD_API2_VERSION,
   PLUGIN_FILE,
+  WORKER_PREVIEW_API,
   apiRangeVerdict,
   hasFacet,
   validateManifest,
@@ -141,7 +143,7 @@ export interface LoadedModPlugin {
   readonly data: Readonly<Record<string, unknown>>;
 }
 
-/** An API-2 entry that has passed every manifest and consent gate but is not imported. */
+/** A Worker mod's entry, past every manifest and consent gate, which the host never imports itself. */
 export interface LoadedModWorker {
   readonly id: string;
   /** The pack's manifest with `capabilities` narrowed to what the mod holds. */
@@ -289,6 +291,75 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       });
       continue;
     }
+    /* A Worker mod is written against API 2, whichever schema its manifest
+     * uses, and the host's Worker broker serves exactly that API. The preview
+     * ABI that schema 1 called `modApi: 2` is retired: its manifest still
+     * reads, and its code is refused with what to do about it. */
+    if (pack.manifest.runtime === "worker") {
+      const range = pack.manifest.api ?? (pack.manifest.modApi === 2 ? WORKER_PREVIEW_API : undefined);
+      if (range === WORKER_PREVIEW_API) {
+        problems.push({
+          id,
+          why:
+            `is built for the retired Worker preview ABI ("modApi": 2 with "workerEntry"); ` +
+            `rebuild it against mod API ${MOD_API2_VERSION} as an API 2 Worker mod ` +
+            `("api": ">=2.0.0 <3.0.0", "runtime": "worker", "entry")`,
+        });
+        continue;
+      }
+      const verdict = range === undefined
+        ? { ok: false as const, why: `declares runtime "worker" but no "api" range` }
+        : apiRangeVerdict(range, MOD_API2_VERSION);
+      if (!verdict.ok) {
+        problems.push({
+          id,
+          why: `needs mod API ${String(range)} in runtime "worker", which this build does not provide (${verdict.why})`,
+        });
+        continue;
+      }
+      const settled = settleGrants(pack, opts);
+      if (settled.blocked) {
+        if (settled.blocked.problem) problems.push({ id, why: settled.blocked.why });
+        else skipped.push({ id, why: settled.blocked.why });
+        continue;
+      }
+      for (const why of settled.notices) problems.push({ id, why });
+      if (isUnreviewed(settled.tier) && opts.acknowledged?.(id) !== true) {
+        skipped.push({ id, why: "awaiting acknowledgment of the unreviewed mod notice" });
+        continue;
+      }
+      const entry = workerEntryOf(pack);
+      if (entry === null) {
+        problems.push({ id, why: "declares runtime \"worker\" but names no entry module" });
+        continue;
+      }
+      if (!hasWorkerPlugin(pack)) {
+        problems.push({ id, why: `starts ${entry}, which is not in the mod` });
+        continue;
+      }
+      let entryUrl: string | null;
+      try {
+        entryUrl = await opts.codeUrl(id, entry);
+      } catch (e) {
+        problems.push({ id, why: message(e) });
+        continue;
+      }
+      if (entryUrl === null) {
+        problems.push({ id, why: `${entry} is listed in the folder but could not be opened` });
+        continue;
+      }
+      workers.push({
+        id,
+        manifest: settled.manifest,
+        declared: settled.declared,
+        tier: settled.tier,
+        grants: settled.grants,
+        api: 2,
+        entryUrl,
+        data: pack.files,
+      });
+      continue;
+    }
     const modApi = pack.manifest.modApi;
     /* An in-process API 2 mod: a schema 2 manifest whose `api` range admits
      * this host's API 2. Its plugin.js default-exports an API 2 definition,
@@ -325,9 +396,9 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
      * a promise rather than a hope. A DEPRECATED plugin is reported and then
      * loaded - the line is for its author, and taking the mod away to deliver it
      * would be the behaviour the window exists to replace. */
-    /* API 2 is a separate Worker ABI, not a change to the retained API-1
-     * window. Its independently versioned wire protocol is checked at boot. */
-    const verdict = api2 || modApi === undefined || (modApi === 2 && pack.manifest.runtime === "worker")
+    /* API 2 is a separate ABI, not a change to the retained API-1 window. Its
+     * independently versioned wire protocol is checked at boot. */
+    const verdict = api2 || modApi === undefined
       ? { ok: true, deprecated: false } as const
       : modApiVerdict(modApi, hostApi, minApi);
     if (!verdict.ok) {
@@ -348,29 +419,6 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       continue;
     }
 
-    if (modApi === 2 && pack.manifest.runtime === "worker") {
-      if (pack.manifest.runtime !== "worker" || !pack.manifest.workerEntry) {
-        problems.push({ id, why: "modApi 2 requires runtime \"worker\" and workerEntry" });
-        continue;
-      }
-      if (!hasWorkerPlugin(pack)) {
-        problems.push({ id, why: `declares workerEntry ${pack.manifest.workerEntry} but the file is not in the mod` });
-        continue;
-      }
-      let entryUrl: string | null;
-      try {
-        entryUrl = await opts.codeUrl(id, pack.manifest.workerEntry);
-      } catch (e) {
-        problems.push({ id, why: message(e) });
-        continue;
-      }
-      if (entryUrl === null) {
-        problems.push({ id, why: `${pack.manifest.workerEntry} is listed in the folder but could not be opened` });
-        continue;
-      }
-      workers.push({ id, manifest, declared, tier, grants, api: 2, entryUrl, data: pack.files });
-      continue;
-    }
     if (!hasPlugin(pack)) {
       problems.push({ id, why: `targets trusted API 1 but does not ship ${PLUGIN_FILE}` });
       continue;
@@ -610,11 +658,17 @@ export function hasPlugin(pack: DiskPack): boolean {
   return pack.code.some((f) => f.toLowerCase() === PLUGIN_FILE);
 }
 
-/** Whether this pack ships the API-2 worker entry its manifest selected. */
+/** The module a Worker mod's manifest starts, or null when it is not a Worker mod or names none. */
+function workerEntryOf(pack: DiskPack): string | null {
+  if (pack.manifest.runtime !== "worker") return null;
+  const entry = pack.manifest.entry ?? pack.manifest.workerEntry;
+  return typeof entry === "string" && entry.length > 0 ? entry : null;
+}
+
+/** Whether this pack is a Worker mod and ships the entry module its manifest names. */
 export function hasWorkerPlugin(pack: DiskPack): boolean {
-  const entry = pack.manifest.workerEntry;
-  return pack.manifest.modApi === 2 && typeof entry === "string" &&
-    pack.code.some((file) => file.toLowerCase() === entry.toLowerCase());
+  const entry = workerEntryOf(pack);
+  return entry !== null && pack.code.some((file) => file.toLowerCase() === entry.toLowerCase());
 }
 
 /**

@@ -259,6 +259,7 @@ export { CapabilityError, CapabilitySet, isLocalNetworkHost, networkGrantCovers,
 export { NET_LIMITS, checkNetRequest, checkSecretHosts, fillSecretTemplates, isSecretName, readBodyCapped, secretNamesIn } from "./net-request.js";
 export type { CheckedNetRequest, NetMethod, NetProblem, NetProblemCode, NetRequest, NetSecretValue } from "./net-request.js";
 export type { ParsedCapability } from "./capabilities.js";
+export { unifiedCapabilities, unifiedCapability, WORKER_CAPABILITY_ALIASES } from "./worker-capabilities.js";
 export {
   CAPABILITY_TIERS,
   CAPABILITY_VOCABULARY,

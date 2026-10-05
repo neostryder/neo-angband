@@ -17,6 +17,7 @@ import type { JsonRecord, JsonValue } from "../compose.js";
 import type { NetMethod, NetProblemCode } from "../net-request.js";
 import type { Api2EventMap, Api2EventName } from "./events.js";
 import type { Api2HookName, Api2Hooks } from "./hooks.js";
+import type { Api2Policies } from "./policies.js";
 import type {
   KnownGrid,
   KnownItem,
@@ -493,8 +494,20 @@ export interface Api2PrefsMigration {
 export interface Api2ModDefinition {
   /** The mod API range this code was written for, such as ">=2.0.0 <3.0.0". */
   readonly api: string;
-  /** The hooks this mod contributes, given its flags. Asked once when content composes. */
+  /**
+   * The hooks this mod contributes, given its flags. Asked once when content
+   * composes. In a Worker only the notification hooks (optionsChanged,
+   * abilityGained, monsterBecameVisible, artifactIdentified) may be declared
+   * here; every hook that returns an answer is declared in `policies`.
+   */
   hooks?(context: Api2HookContext): Api2Hooks | undefined;
+  /**
+   * Changes as policy tables the host applies itself, synchronously, given
+   * the mod's flags: hook answers, and the registrations the kinds in
+   * `API2_POLICY_KINDS` install. A hook function from `hooks` takes
+   * precedence over the table for the same hook.
+   */
+  policies?(context: Api2HookContext): Api2Policies | undefined;
   /** Runs once the game is ready, with the API. */
   start?(mod: ModApi2): void | Promise<void>;
   /** Runs before the mod is taken down. */

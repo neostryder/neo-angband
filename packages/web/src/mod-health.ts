@@ -17,6 +17,12 @@
  * sits idle is not charged for every frame since the last turn). Only the synchronous part of a call is timed; an async callback's
  * awaited work runs outside the call and is not CPU time spent inside the turn.
  *
+ * A Worker mod is measured on two more axes, apart from CPU time: how long it
+ * takes to answer what the host asks it (response latency), and how long its
+ * network requests keep it waiting on the host's broker. Neither is time spent
+ * inside a turn, so neither counts against the budget. A Worker that stops
+ * answering at all is switched off at once (`switchOff`), with the same notice.
+ *
  * Callers keep their own recovery. `run` rethrows whatever the mod threw, so a
  * site that already turned a throw into a neutral answer (core's guardModHooks,
  * the event subscription, the UI runtimes' fall back to the game's own drawing)
@@ -48,6 +54,8 @@ export interface ModSwitchOff {
   readonly why: string;
   /** The game turn it happened on. */
   readonly turn: number;
+  /** Absent or "faults" for repeated faults; "stall" for a Worker that stopped answering and was terminated. */
+  readonly reason?: "faults" | "stall";
 }
 
 /** One turn in which a mod went over its time budget. */
@@ -79,6 +87,16 @@ export interface ModHealthStats {
   readonly ceilingBreaches: number;
   /** Bytes the mod sent across a Worker boundary, or null where none was measured. */
   readonly payloadBytes: number | null;
+  /** Answers a Worker mod gave to what the host asked it. */
+  readonly replies: number;
+  /** Total time those answers took, in milliseconds (response latency). */
+  readonly replyMs: number;
+  /** The slowest single answer, in milliseconds. */
+  readonly worstReplyMs: number;
+  /** Time spent waiting on this mod's network requests, in milliseconds, or null where it made none. */
+  readonly netMs: number | null;
+  /** Replies that arrived for a request the host had already given up on, and were dropped. */
+  readonly stale: number;
   /** The switch-off, when it happened. */
   readonly switchedOff: ModSwitchOff | null;
 }
@@ -131,6 +149,11 @@ interface Mutable {
   overBudget: number;
   ceilingBreaches: number;
   payloadBytes: number | null;
+  replies: number;
+  replyMs: number;
+  worstReplyMs: number;
+  netMs: number | null;
+  stale: number;
   switchedOff: ModSwitchOff | null;
   /** Game turns of the faults still inside the window. */
   faultTurns: number[];
@@ -231,6 +254,47 @@ export class ModHealthMonitor {
     record.payloadBytes = (record.payloadBytes ?? 0) + bytes;
   }
 
+  /** Record how long a Worker mod took to answer something the host asked it. */
+  recordReply(id: string, ms: number): void {
+    const record = this.record(id);
+    record.replies += 1;
+    record.replyMs += ms;
+    if (ms > record.worstReplyMs) record.worstReplyMs = ms;
+  }
+
+  /** Add time a mod's network request kept it waiting on the host's broker. */
+  recordNetWait(id: string, ms: number): void {
+    const record = this.record(id);
+    record.netMs = (record.netMs ?? 0) + ms;
+  }
+
+  /** Count a reply that came for a request the host had already given up on. */
+  recordStale(id: string): void {
+    this.record(id).stale += 1;
+  }
+
+  /**
+   * Switch a mod off now, without waiting for three faults: a Worker that
+   * stopped answering, which the caller has already terminated. Counts as a
+   * fault, and tells `onSwitchOff` as a repeated fault does, whether or not
+   * enforcement is on, because the Worker is gone either way.
+   */
+  switchOff(id: string, site: string, error: unknown): void {
+    const record = this.record(id);
+    const turn = this.turn();
+    record.faults += 1;
+    if (record.switchedOff !== null) return;
+    const off: ModSwitchOff = { id, site, why: messageOf(error), turn, reason: "stall" };
+    record.switchedOff = off;
+    try {
+      this.options.onSwitchOff?.(off);
+    } catch (reportError) {
+      queueMicrotask(() => {
+        throw reportError;
+      });
+    }
+  }
+
   /** End the current budget period early (a key or a tap from the player). */
   newPeriod(): void {
     this.periodTurn = null;
@@ -250,6 +314,11 @@ export class ModHealthMonitor {
       overBudget: r.overBudget,
       ceilingBreaches: r.ceilingBreaches,
       payloadBytes: r.payloadBytes,
+      replies: r.replies,
+      replyMs: r.replyMs,
+      worstReplyMs: r.worstReplyMs,
+      netMs: r.netMs,
+      stale: r.stale,
       switchedOff: r.switchedOff,
     }));
   }
@@ -266,6 +335,11 @@ export class ModHealthMonitor {
         overBudget: 0,
         ceilingBreaches: 0,
         payloadBytes: null,
+        replies: 0,
+        replyMs: 0,
+        worstReplyMs: 0,
+        netMs: null,
+        stale: 0,
         switchedOff: null,
         faultTurns: [],
         breachTurns: [],
@@ -399,13 +473,15 @@ export function invokeMod<A extends unknown[], R>(
  * worded so it needs none; the id is never shown.
  */
 export function switchOffNotice(off: ModSwitchOff, name: string | undefined): string[] {
+  const what = off.reason === "stall" ? "stopped responding" : "kept failing";
   return [
     name === undefined
-      ? "A mod kept failing, so it is switched off until the game next starts."
-      : `${name} kept failing, so it is switched off until the game next starts.`,
+      ? `A mod ${what}, so it is switched off until the game next starts.`
+      : `${name} ${what}, so it is switched off until the game next starts.`,
     "",
-    `It failed ${String(FAULT_LIMIT)} times within ${String(FAULT_WINDOW_TURNS)} game turns. The last failure, in ${off.site}:`,
-    off.why,
+    ...(off.reason === "stall"
+      ? [`${off.why.charAt(0).toUpperCase()}${off.why.slice(1)}, so the game stopped it.`]
+      : [`It failed ${String(FAULT_LIMIT)} times within ${String(FAULT_WINDOW_TURNS)} game turns. The last failure, in ${off.site}:`, off.why]),
     "",
     "It is still on in your mod list and will load again next time. To keep it",
     "off, turn it off on the Mods screen. The game itself carries on as normal.",

@@ -40,7 +40,7 @@
 
 import { installModWorkerBootstrap } from "./bootstrap";
 import type { ModWorkerLike } from "./host";
-import type { HostReply, HostToModWorker } from "./protocol";
+import type { HostToModWorker } from "./protocol";
 import type { StagedModuleGraph } from "./staging";
 
 /** Host to frame, once, with the Worker's port and the control port. */
@@ -229,7 +229,7 @@ export function lockDownModWorkerScope(scope: object): string[] {
 }
 
 /**
- * The isolated Worker's script, a classic one: the lockdown, then the API-2 bootstrap
+ * The isolated Worker's script, a classic one: the lockdown, then the API 2 bootstrap
  * installed on the host port the frame hands over, importing the frame-linked
  * entry and nothing else.
  */
@@ -318,7 +318,7 @@ export function createIsolatedModWorker(options: IsolatedModWorkerOptions): ModW
   const isolated: ModWorkerLike = {
     onmessage: null,
     onerror: null,
-    postMessage(message: HostToModWorker | HostReply): void {
+    postMessage(message: HostToModWorker): void {
       if (!stopped) channel.port1.postMessage(message);
     },
     terminate(): void {

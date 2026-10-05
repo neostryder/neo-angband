@@ -1,8 +1,8 @@
 # Worker mod isolation
 
-A Worker mod runs in a Worker that shares nothing with the game except a message port. It has no network, none of the game's storage, and no way to load code from anywhere. A schema 2 manifest declares one with `"runtime": "worker"`, an `entry` and an `api` range that admits `2.0.0-worker`; a schema 1 manifest says `"modApi": 2`, `"runtime": "worker"` and a `workerEntry`. The sections below cover how the isolation holds, what it was tested against, and what it leaves open.
+A Worker mod (`"runtime": "worker"`, an `api` range over API 2 and an `entry`) runs in a Worker that shares nothing with the game except a message port. It has no network, none of the game's storage, and no way to load code from anywhere. A Worker is the isolated way to run a mod: a mod that does not need isolation runs in process with the same API and none of these limits. This page says how the isolation holds, what it was tested against, and what it leaves open.
 
-API-1 plugins are not covered. They run in the game's page with the game's own access and are trusted code (`PLUGINS.md`).
+API 1 plugins are not covered. They run in the game's page with the game's own access and are trusted code (`PLUGINS.md`).
 
 ## How a Worker mod starts
 
@@ -10,9 +10,9 @@ API-1 plugins are not covered. They run in the game's page with the game's own a
 2. The game adds a hidden `<iframe sandbox="allow-scripts">` whose document comes from `srcdoc` (`packages/web/src/mod-worker/isolation.ts`). Without `allow-same-origin` the frame's origin is opaque. Its document sets a Content Security Policy before its one script runs.
 3. The game sends the frame the module text and two MessagePorts. The frame accepts that message once, and only from the page that made it.
 4. The frame turns each module into a `data:` URL, writing each import's own `data:` URL where the import stood, and starts a classic Worker from a `data:` URL. The Worker inherits the opaque origin and the frame's policy.
-5. The Worker deletes its network, storage and nested-worker globals, installs the API-2 bootstrap on the port it was handed, and imports the mod's entry.
+5. The Worker deletes its network, storage and nested-worker globals, installs the API 2 bootstrap on the port it was handed, and imports the mod's entry. The bootstrap checks that the entry's default export is an API 2 definition and tells the broker what it declares.
 
-From then on the mod talks only to the game's broker (`host.ts`), through the port, and every request is checked against the capabilities the player granted. The second port carries the frame's ready and error reports to the game, and the order to stop. Stopping the mod terminates the Worker and removes the frame.
+From then on the mod talks only to the game's broker (`host.ts`) through the port. The broker serves each call with the same API 2 host an in-process mod gets, under the permissions the player granted, and [API2.md](API2.md) ("In a Worker") lists its limits. The second port carries only Worker errors to the game and the order to stop. Stopping the mod terminates the Worker and removes the frame.
 
 A mod that fails any step fails to start, with a problem line on the Mods screen. So does a Worker that has not answered as ready within 3 seconds. Nothing falls back to an unisolated Worker.
 
@@ -45,7 +45,8 @@ The browser game and the desktop app use the same frame. The desktop app serves 
 
 ## What the tests prove
 
-- `packages/web/src/mod-worker/staging.test.ts` covers the staging rules: what is read, the order, each kind of import that is refused, a cycle, a file that cannot be read, and the size limit.
+- `packages/web/src/mod-worker/staging.test.ts` covers the staging rules: what is read, the order, and every refusal.
+- `packages/web/src/mod-worker/host.test.ts` wires the real bootstrap to the broker in one thread, on a real game. Two games that differ only in an unseen monster look the same through the Worker, and the same as through the in-process host. It also covers an answer that times out and the late reply that follows, the wildcard grant, policy tables answering inside a turn, a credential that never reaches the Worker, and a stalled Worker being stopped.
 - `packages/web/src/mod-worker/isolation.test.ts` runs the real frame script and the real Worker source against stand-ins. It covers the policy text, the lockdown, that the shipped source runs with nothing from outside it, a mod booting and answering through the broker, teardown, refused boot messages, the link limit and a frame that fails to load.
 - `tests/e2e/mod-worker-isolation.spec.ts` runs a probe mod in Chromium, Firefox and WebKit, with the lockdown on and off. The probe tries the game's IndexedDB, Cache Storage and private file system, fetch and XHR to the game, fetch to another host, a WebSocket, an EventSource, a remote module import, `eval`, a nested Worker and a BroadcastChannel. Every request the page makes is counted. In every engine the probe's origin is `null`, every network attempt fails, no store holds the game's data, `eval` is refused, and no request is made. A control run of the same probe as a plain Worker of the game's origin opens the game's IndexedDB and Cache Storage, runs `eval` and imports the remote module, which shows each check can see an open door.
 - `tests/e2e/mod-worker-isolation.electron.spec.ts` runs the same probe in the repository's Electron, on the desktop shell's scheme, privileges, headers and window settings, with the main process counting every request. It first checks that the page is `neo-angband://game`, cross-origin isolated and a secure context. The isolated runs pass the same checks as in the browsers, every store refuses the probe even with the lockdown off, and no request reaches the main process. Its control run reads the game's IndexedDB and fetches a game file, and the main process sees those requests. It uses a small stand-in for the shell's main process, because the packaged-app fixture needs a release build.
@@ -57,7 +58,7 @@ Run them with `pnpm exec playwright test tests/e2e/mod-worker-isolation.spec.ts`
 ## What it does not stop
 
 - **What the broker allows.** A mod can send out whatever its granted capabilities let it send, and can misuse an action the player approved. The broker's checks are its own subject.
-- **Resource use.** The Worker shares the renderer's CPU and memory. An endless loop or allocation flood slows or crashes the tab. The broker refuses a message over 64 KiB and more than 60 requests a minute, each refusal counts as a fault, and a mod that faults three times within 200 game turns is switched off and its Worker stopped. These soften the problem; they are not a quota.
+- **Resource use.** The Worker shares the renderer's CPU and memory. An endless loop or allocation flood slows or crashes the tab. The broker's rate and size limits, and its heartbeat, which stops a Worker that goes 5 seconds without answering, soften this; they are not a quota.
 - **Side channels.** Timing and covert channels are not addressed.
 - **BroadcastChannel without the lockdown.** It opens, scoped to the frame's opaque origin, which each sandboxed frame gets afresh. Two mods running at once were not tested against each other; the lockdown removes the API in any case.
 - **Empty stores of its own.** WebKit gives the Worker an empty Cache Storage of its own. It holds nothing of the game's and is gone with the frame.
@@ -71,5 +72,5 @@ A broker request that needs an ungranted permission resolves to `{ ok: false, re
 
 - Import only the mod's own files, by relative path. A bare package name has to be bundled in.
 - No import cycles.
-- No `import.meta.url` and no computed dynamic imports of the mod's files: a module is a `data:` URL, so neither resolves to a file. Read files with the asset request instead.
-- Each module carries the `data:` URLs of its imports inside it, so a deep or diamond-shaped graph grows faster than its source. Linking stops at 67,108,864 characters (64 Mi) with a message; bundling a mod into one file avoids the question.
+- No `import.meta.url` and no computed dynamic imports of the mod's files: a module is a `data:` URL, so neither resolves to a file. Read files with `content.asset` instead.
+- Each module carries the `data:` URLs of its imports inside it, so a deep or diamond-shaped graph grows faster than its source. Linking stops at 64 MiB with a message; bundling a mod into one file avoids the question.

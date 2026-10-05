@@ -66,13 +66,6 @@
       "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24)."
     },
     {
-      "file": "packages/web/src/mod-worker/host.ts",
-      "cases": 19,
-      "hasDefault": true,
-      "kind": "SWITCH",
-      "verdict": "INTERNAL - API-2's closed Worker request vocabulary. A mod selects a documented semantic message but cannot add a host request arm."
-    },
-    {
       "file": "packages/core/src/game/char-sheet.ts",
       "cases": 18,
       "hasDefault": true,
@@ -120,13 +113,6 @@
       "hasDefault": false,
       "kind": "SWITCH",
       "verdict": "INTERNAL - the save format's own block union. A mod persists through the mod storage seam; it does not add a save-block kind."
-    },
-    {
-      "file": "packages/web/src/mod-worker/host.ts",
-      "cases": 14,
-      "hasDefault": false,
-      "kind": "IF_CHAIN",
-      "verdict": "INTERNAL - worker message validation mirrors the closed API-2 request grammar. It is a boundary check, not a mod extension point."
     },
     {
       "file": "packages/web/src/wizard.ts",

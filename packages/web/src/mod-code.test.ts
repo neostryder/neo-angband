@@ -63,13 +63,15 @@ const ALL_ENABLED = (): boolean => true;
 const NO_CAPS = (): readonly string[] => [];
 
 describe("a folder can supply code", () => {
-  it("selects API-2 worker code without importing it in the renderer", async () => {
+  it("selects an API 2 Worker mod's entry without importing it in the renderer", async () => {
     const importer = vi.fn();
     const pack = codePack("worker", {
       modApi: 2,
+      api: ">=2.0.0 <3.0.0",
       runtime: "worker",
-      workerEntry: "worker.js",
-    });
+      entry: "worker.js",
+      manifestSchema: 2,
+    } as Partial<PackManifest>);
     const workerPack = { ...pack, code: ["worker.js"] };
     const report = await loadModCode({
       acknowledged: () => true,
@@ -81,8 +83,35 @@ describe("a folder can supply code", () => {
     });
     expect(importer).not.toHaveBeenCalled();
     expect(report.plugins).toEqual([]);
+    expect(report.problems).toEqual([]);
     expect(report.workers).toMatchObject([{ id: "worker", api: 2, entryUrl: "mem://worker/worker.js" }]);
     expect(hasWorkerPlugin(workerPack)).toBe(true);
+  });
+
+  it("refuses a Worker mod built for the retired preview ABI, saying how to rebuild it", async () => {
+    const pack = codePack("preview", { modApi: 2, runtime: "worker", workerEntry: "worker.js" } as Partial<PackManifest>);
+    const report = await loadModCode({
+      packs: [{ ...pack, code: ["worker.js"] }],
+      codeUrl: resolver(),
+      enabled: ALL_ENABLED,
+      consented: NO_CAPS,
+    });
+    expect(report.workers).toEqual([]);
+    expect(report.problems).toEqual([
+      { id: "preview", why: expect.stringMatching(/retired Worker preview ABI.*rebuild it against mod API 2\.0\.0/u) },
+    ]);
+  });
+
+  it("refuses a Worker mod whose API range this build does not run", async () => {
+    const pack = codePack("future", { api: ">=3.0.0", runtime: "worker", entry: "worker.js", manifestSchema: 2 } as Partial<PackManifest>);
+    const report = await loadModCode({
+      packs: [{ ...pack, code: ["worker.js"] }],
+      codeUrl: resolver(),
+      enabled: ALL_ENABLED,
+      consented: NO_CAPS,
+    });
+    expect(report.workers).toEqual([]);
+    expect(report.problems[0]?.why).toMatch(/needs mod API >=3\.0\.0 in runtime "worker"/u);
   });
 
   it("imports an enabled pack's plugin and returns it in load order", async () => {
