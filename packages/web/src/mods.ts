@@ -2864,6 +2864,8 @@ export function modProfilerScreen(
           calls: { text: String(s.calls) },
           cpu: { text: s.cpuMs.toFixed(1) },
           worst: { text: s.worstMs.toFixed(1) },
+          reply: { text: s.replies === 0 ? "-" : (s.replyMs / s.replies).toFixed(1) },
+          net: { text: s.netMs === null ? "-" : s.netMs.toFixed(0) },
           faults: { text: String(s.faults) },
           slow: { text: String(s.overBudget) },
           sent: { text: profilerBytes(s.payloadBytes) },
@@ -2886,13 +2888,15 @@ export function modProfilerScreen(
         key: "mods",
         tagged: false,
         columns: [
-          { key: "mod", label: t("modsScreen.profiler.mod", "Mod"), width: 20 },
-          { key: "calls", label: t("modsScreen.profiler.calls", "Calls"), width: 7, align: "right" },
-          { key: "cpu", label: t("modsScreen.profiler.cpu", "CPU ms"), width: 8, align: "right" },
-          { key: "worst", label: t("modsScreen.profiler.worst", "Worst"), width: 7, align: "right" },
+          { key: "mod", label: t("modsScreen.profiler.mod", "Mod"), width: 14 },
+          { key: "calls", label: t("modsScreen.profiler.calls", "Calls"), width: 6, align: "right" },
+          { key: "cpu", label: t("modsScreen.profiler.cpu", "CPU ms"), width: 7, align: "right" },
+          { key: "worst", label: t("modsScreen.profiler.worst", "Worst"), width: 6, align: "right" },
+          { key: "reply", label: t("modsScreen.profiler.reply", "Reply"), width: 6, align: "right" },
+          { key: "net", label: t("modsScreen.profiler.net", "Net ms"), width: 7, align: "right" },
           { key: "faults", label: t("modsScreen.profiler.faults", "Faults"), width: 6, align: "right" },
           { key: "slow", label: t("modsScreen.profiler.slow", "Slow"), width: 5, align: "right" },
-          { key: "sent", label: t("modsScreen.profiler.sent", "Sent"), width: 9, align: "right" },
+          { key: "sent", label: t("modsScreen.profiler.sent", "Sent"), width: 8, align: "right" },
           { key: "status", label: t("modsScreen.profiler.status", "Status"), pad: false },
         ],
         rows,
@@ -2907,6 +2911,12 @@ export function modProfilerScreen(
             t(
               "modsScreen.profiler.cpuNote",
               "CPU ms is the time each mod's own code has taken this session. Worst is its longest single call.",
+            ),
+          ),
+          note(
+            t(
+              "modsScreen.profiler.workerNote",
+              "Reply is a Worker mod's average time to answer the game, and Net ms the time its network requests have waited. Neither counts as CPU time.",
             ),
           ),
           note(

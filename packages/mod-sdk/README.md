@@ -27,11 +27,16 @@ separate `neo-pack` CLI.
 
 ### `neo-angband-mod-check`
 
+Runs the same rules the game enforces at install against a folder:
+
 ```
 npx neo-angband-mod-check path/to/your-mod
 ```
 
-Runs the rules the game enforces at install, then the fixed checks, against a folder or a `.zip`. The install rules cover the manifest schema, the capability grammar (`parseCapability` / `CapabilitySet.fromManifest`), the engine range, and the file-list rules a schema cannot see (a `plugin.js` with no `modApi`, a committed zip that is not declared in `payload.archives`). The fixed checks go further and read the mod: archives, what the code calls on `ctx` against the capabilities the manifest requests, imports, network hosts, `eval` and obfuscated code, the time budget, and references that composing the mod over the base game leaves broken. `--list` prints every rule with its reason, `--json` prints the report as JSON, and `--base <dir>` points at the base game's record files when `@rpgm-tools/neo-angband-content` is not installed. Each finding is a `block`, `serious`, `warning` or `note`. Exit 1 means at least one `block` finding: the game would refuse the mod, or it would not work. Exit 0 means nothing blocks. A finding marked could not check covers a part the checker could not see, which is not the same as a part it cleared.
+That includes the manifest schema, the capability grammar (`parseCapability` /
+`CapabilitySet.fromManifest`), the engine range, and the file-list rules a
+schema cannot see (a `plugin.js` with no `modApi`, a committed zip that is not
+declared in `payload.archives`). Exit 0 means the game will accept the mod.
 
 ### `neo-angband-mod-build`
 
@@ -57,7 +62,6 @@ a package concern and is not provided here. A new mod is a folder with a
 | Conflicts | `computeConflictReport` (records), `contestedSlots` / `describeContested` (every other layer), `Fold`, `foldDiscards` |
 | Record identity | `recordKey`, `keySpecFor`, `KEYED_RECORD_FILES`, `RECORD_KEY_SPECS` |
 | Capabilities | `CapabilitySet`, `parseCapability`: what a scripted plugin is allowed to reach |
-| Fixed checks | `installChecks` (the subset the game runs at install), `CHECK_RULES`, `checkRule`, `worstSeverity`, `ModFinding`, `ModFindingReport`; `runModChecks`, `readModArchive` and `basePackFromFiles` come from `@rpgm-tools/neo-angband-mod-sdk/checks`, which carries the JavaScript parser |
 
 ```ts
 import { validateManifest, ManifestError } from "@rpgm-tools/neo-angband-mod-sdk";

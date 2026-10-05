@@ -35,7 +35,6 @@
  * learn to ignore.
  */
 
-import { checksMarkdown } from "./checks/rules.js";
 import { CapabilitySet } from "./capabilities.js";
 import { ManifestError, hasFacet, manifestFields, validateManifest, type PackManifest } from "./manifest.js";
 import { compareSemver, satisfies } from "./semver.js";
@@ -514,7 +513,7 @@ export function requirementsMarkdown(): string {
       .join("\n");
 
   return [
-    "<!-- GENERATED from packages/mod-sdk/src/standards.ts and src/checks/rules.ts - do not edit by hand. -->",
+    "<!-- GENERATED from packages/mod-sdk/src/standards.ts - do not edit by hand. -->",
     "<!-- Run: node packages/mod-sdk/bin/neo-angband-mod-check.mjs --write-docs -->",
     "",
     "# What a mod must provide",
@@ -537,6 +536,5 @@ export function requirementsMarkdown(): string {
     "Advice. None of these blocks an install; all of them are things players notice.",
     "",
     section("recommended"),
-    checksMarkdown(),
   ].join("\n");
 }

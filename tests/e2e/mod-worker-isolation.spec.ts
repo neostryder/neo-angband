@@ -1,4 +1,4 @@
-// Real-engine proof for the API-2 Worker isolation (packages/web/src/mod-worker/
+// Real-engine proof for the API 2 Worker isolation (packages/web/src/mod-worker/
 // isolation.ts): a probe mod, run in the opaque-origin sandbox frame, tries every
 // store and every way out it can name, and the page's request log records any
 // request that left. The same probe run as a plain Worker of the game's origin
@@ -63,6 +63,18 @@ for (const lockDown of [true, false]) {
     expect([...hits]).toEqual([]);
   });
 }
+
+test("an API 2 Worker mod boots through the isolation and reads the world through the broker", async ({ page, browserName }) => {
+  test.setTimeout(90_000);
+  await openGame(page);
+  const run = await page.evaluate(() => (window as unknown as { probeIsolated(flag: boolean): Promise<IsolatedRun> }).probeIsolated(true));
+  console.log(`${browserName} API 2 boot: world=${JSON.stringify(run.world)} granted=${JSON.stringify(run.granted)}`);
+  expect(run.failure).toBeNull();
+  expect(run.problems).toEqual([]);
+  expect(run.world).toEqual({ ok: true, value: { probe: "known world", depth: 3 } });
+  /* The page offered "*"; the Worker holds no wildcard and nothing it was not given. */
+  expect(run.granted).toEqual({ any: false, panel: false });
+});
 
 test("the control: a plain Worker of the game's origin reaches the game's store", async ({ page, browserName }) => {
   test.setTimeout(90_000);

@@ -58,7 +58,7 @@ import {
   idbPut,
   openDb,
 } from "./idb";
-import { checkMod, checkRule, githubRepo, installChecks, installedModFormat, manifestFields, parseDocument, type Finding } from "@rpgm-tools/neo-angband-mod-sdk";
+import { checkMod, githubRepo, installedModFormat, manifestFields, parseDocument, type Finding } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installBlocked, type ModOrigin } from "./mod-consent";
 import { buildModuleGraph } from "./mod-modules";
 import type { DiscoveredMod } from "./mod-discover";
@@ -303,17 +303,7 @@ export function archiveFaults(
     files: files.map(([p]) => p),
     manifestText: manifestTextOf(files),
   });
-  if (inspection.ok) {
-    /* THE FIXED INSTALL CHECKS: unsafe or colliding paths, a payload over the size
-     * limits or missing a file it names, an entry module that is not there, a turn
-     * budget over the ceiling, an API range this game cannot run, and dependencies
-     * that contradict the load order. Only a `block` finding refuses; the rest are
-     * for the author's own run of neo-angband-mod-check. */
-    const blocking = installChecks(files).findings.filter((f) => f.severity === "block");
-    if (blocking.length === 0) return null;
-    const unmet = blocking.map((f): Finding => ({ id: f.rule, level: "required", title: checkRule(f.rule).title, problem: f.message }));
-    return { problem: `${manifestDisplayName(files) ?? "This mod"} cannot be installed: ${blocking[0]?.message ?? ""}`, unmet };
-  }
+  if (inspection.ok) return null;
   /* The FINDINGS travel, and `problem` is the summary rather than the whole
    * report. This used to flatten the list into `problem` with hand-typed bullets
    * and a trailing sentence of advice, which made the screen that shows it split

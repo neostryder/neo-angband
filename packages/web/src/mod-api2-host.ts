@@ -88,8 +88,17 @@ export interface Api2HostOptions {
   readonly panels?: ModWorkerPanelRenderer;
   /** The hooks this mod declared, for `hooks.active`. */
   readonly activeHooks?: readonly Api2HookName[];
-  /** How this mod's stored preferences migrate, when it declares a version. */
-  readonly prefs?: Api2PrefsMigration;
+  /**
+   * How this mod's stored preferences migrate, when it declares a version. A
+   * Worker mod's migration answers asynchronously, across the broker.
+   */
+  readonly prefs?: Api2PrefsMigration | Api2HostPrefsMigration;
+}
+
+/** A preference migration that may answer later: how the Worker broker passes a Worker mod's. */
+export interface Api2HostPrefsMigration {
+  readonly version: number;
+  migrate(value: JsonValue, fromVersion: number): JsonValue | Promise<JsonValue>;
 }
 
 const NO_GAME = "no game is running yet";
@@ -234,8 +243,10 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   let nextSubscription = 1;
 
   const prefsEnvelope = "$api2prefs";
+  let prefsRevision = 0;
+  let pendingMigration: Promise<Api2Result<JsonValue | null>> | undefined;
   const prefs: Api2Slot = {
-    get: () => guarded(() => {
+    get: () => guarded(async () => {
       const raw = ctx.prefs.get() as JsonValue | null;
       const migration = options.prefs;
       if (!migration || raw === null || raw === undefined) return api2Ok(raw === undefined ? null : data(raw));
@@ -243,13 +254,25 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       const from = enveloped ? (raw as Record<string, JsonValue>)[prefsEnvelope] as number : 0;
       const value = enveloped ? (raw as Record<string, JsonValue>)["value"] ?? null : raw;
       if (from >= migration.version || value === null) return api2Ok(data(value));
-      const migrated = migration.migrate(structuredClone(value), from);
-      ctx.prefs.set({ [prefsEnvelope]: migration.version, value: migrated });
-      return api2Ok(data(migrated));
+      if (pendingMigration) return pendingMigration;
+      const revision = prefsRevision;
+      const migrating = (async (): Promise<Api2Result<JsonValue | null>> => {
+        const migrated = await migration.migrate(structuredClone(value), from);
+        if (revision !== prefsRevision) return prefs.get();
+        ctx.prefs.set({ [prefsEnvelope]: migration.version, value: migrated });
+        return api2Ok(data(migrated));
+      })();
+      pendingMigration = migrating;
+      try {
+        return await migrating;
+      } finally {
+        pendingMigration = undefined;
+      }
     }),
     set: (value) => guarded(() => {
       const migration = options.prefs;
       ctx.prefs.set(value === null || !migration ? value : { [prefsEnvelope]: migration.version, value: structuredClone(value) });
+      prefsRevision += 1;
       return api2Ok(null);
     }),
   };

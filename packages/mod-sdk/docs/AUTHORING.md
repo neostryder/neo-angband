@@ -177,8 +177,6 @@ recorded: core's own data contains references that do not resolve.
 are Angband 4.2.6's, reproduced exactly under the parity mandate. A rule strict
 enough to reject them would reject Angband.
 
-`neo-angband-mod-check` makes the same comparison over the whole game. It composes your records over the base game and reports, as `checks/dangling-reference`, only the references that are broken after your mod loads and were not broken before it, so core's own broken references stay out of your report.
-
 ### Companion steps
 
 `COMPANION_RULES` is the list of things the record is fine without and **you**

@@ -65,6 +65,10 @@ export interface IsolatedRun {
   readonly logs: string[];
   readonly problems: string[];
   readonly failure: string | null;
+  /** What the probe's `api.view.world()` answered through the broker, or null when it never reported. */
+  readonly world: unknown;
+  /** What the probe's `api.meta.granted` said of "*" and of a permission it was not given. */
+  readonly granted: { readonly any: boolean; readonly panel: boolean } | null;
   readonly framesWhileRunning: number;
   readonly framesAfterTeardown: number;
 }

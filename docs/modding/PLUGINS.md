@@ -1016,7 +1016,7 @@ Touching a facade you did not declare throws, even if the player consented to so
 
 Every capability is defined once, in `packages/mod-sdk/src/capability-vocabulary.ts`: its argument, the sentence the player is asked to agree to, what stops working without it, whether the mod can still start without it, whether the consent screen highlights it, and which kinds of mod may hold it. The parser, `grantCovers` and the consent screen all read that table, and a capability the manifest does not list is never granted.
 
-Five capabilities manage the game rather than play it: `mod:install`, `mod:session`, `session:control`, `profiles:manage` and `screens:manage`. They are for first-party mods only and are not in the public list. Any in-process mod may request `state:map-actual.read`, the real map rather than what the character has found, under the player's consent. No wildcard covers it: `state:*.read` grants every other state domain but not this one. Borg and Squire keep hidden information out of their decisions and use only what the player knows.
+Five capabilities manage the game rather than play it: `mod:install`, `mod:session`, `session:control`, `profiles:manage` and `screens:manage`. They are for first-party mods only and are not in the public list. `state:map-actual.read`, the real map rather than what the character has found, is first-party only too, and no wildcard covers it: `state:*.read` grants every other state domain but not this one.
 
 ### What a capability gates, and what it does not
 

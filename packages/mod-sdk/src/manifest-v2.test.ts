@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseDocument, serializeDocument } from "./json/index.js";
 import { ManifestError, validateManifest } from "./manifest.js";
 import type { PackManifest } from "./manifest.js";
+import { unifiedCapabilities } from "./worker-capabilities.js";
 import {
   CONVERTED_ENGINE_REASON,
   DEFAULT_TURN_BUDGET_MS,
@@ -84,7 +85,14 @@ describe("schema 1 to schema 2", () => {
       expect(issues(data)).toEqual([]);
       const text = serializeDocument(modManifestFormat, data);
       const { listing, ...v2 } = validateManifest(JSON.parse(text));
-      expect(v2).toEqual({ ...v1, manifestSchema: 2, ...(v1.engine === undefined ? {} : { engineBecause: CONVERTED_ENGINE_REASON }) });
+      const expected: Record<string, unknown> = { ...v1, manifestSchema: 2, ...(v1.engine === undefined ? {} : { engineBecause: CONVERTED_ENGINE_REASON }) };
+      if (v1.runtime === "worker") {
+        /* The retired preview ABI reads back under the one capability
+         * vocabulary, and with no ABI number: no build runs it. */
+        delete expected["modApi"];
+        expected["capabilities"] = unifiedCapabilities(v1.capabilities ?? []);
+      }
+      expect(v2).toEqual(expected);
       expect(listing).toEqual(data.listing);
       expect(serializeDocument(modManifestFormat, manifestToV2(v1))).toBe(text);
       expect(serializeDocument(modManifestFormat, manifestToV2(validateManifest(JSON.parse(text))))).toBe(text);
@@ -129,14 +137,14 @@ describe("the api range and the loader's ABI", () => {
   it("fills modApi only for an API this build runs", () => {
     expect(legacyModApi("in-process", ">=1.0.0 <2.0.0")).toBe(1);
     expect(legacyModApi("in-process", ">=2.0.0")).toBeUndefined();
-    expect(legacyModApi("worker", WORKER_PREVIEW_API)).toBe(2);
-    expect(legacyModApi("worker", ">=2.0.0 <3.0.0")).toBeUndefined();
+    expect(legacyModApi("worker", WORKER_PREVIEW_API)).toBeUndefined();
+    expect(legacyModApi("worker", ">=2.0.0 <3.0.0")).toBe(2);
     expect(legacyModApi("data", "*")).toBeUndefined();
   });
 
-  it("never reads a stable API 2 range as the preview Worker ABI", () => {
+  it("files a Worker mod's stable API 2 range under API 2, never the preview ABI", () => {
     const m = validateManifest(doc({ id: "next", name: "Next", version: "1.0.0", api: "^2.0.0", runtime: "worker", entry: "main.js" }));
-    expect(m.modApi).toBeUndefined();
+    expect(m.modApi).toBe(2);
     expect(m.workerEntry).toBe("main.js");
   });
 });

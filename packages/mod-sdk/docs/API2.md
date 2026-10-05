@@ -2,7 +2,7 @@
 
 API 2 is the set of calls a mod's code gets from the game: what it can read, what it can do, and what it hears. Every call returns plain data, a permission the player turned down comes back as a result you can check, and reads show the game as the player knows it. The types are in `@rpgm-tools/neo-angband-mod-sdk`, and the in-process host is in the web package (`packages/web/src/mod-api2-host.ts`).
 
-Status: the types, the version check and the in-process host are built. The folder loader still loads API 1 plugins, and an API 2 mod reaches it wrapped as one (`api2Plugin` in `packages/web/src/mod-api2-shim.ts`). A manifest has no `api` field yet, and the Worker runtime keeps its own message protocol (see `PLUGIN_SANDBOX_DESIGN.md`). API 1 plugins run unchanged.
+Status: the types, the version check, the in-process host and the Worker broker are built. The folder loader still loads API 1 plugins, and an in-process API 2 mod reaches it wrapped as one (`api2Plugin` in `packages/web/src/mod-api2-shim.ts`). A Worker mod is written against API 2 and reaches the same domains through the broker (see In a Worker). API 1 plugins run unchanged.
 
 ## A mod in API 2
 
@@ -62,7 +62,7 @@ A call never throws for a missing permission. `isNotGranted(result)` tells a mis
 | `store` | `prefs`, kept apart from any character, and `character`, kept in the current character's save. | None |
 | `net` | Requests to the hosts the manifest names, with credentials passed by reference. Present only when the manifest names a host. | `network:<host>` |
 | `manage` | Profiles and session control. First-party mods only. | `profiles:manage`, `session:control` |
-| `truth` | Every monster and the real map, under consent for in-process mods. | Explicit hidden-state permissions |
+| `truth` | Every monster and the real map. The first-party autoplayer only. | None beyond the allowlist |
 
 ### What `view` shows
 
@@ -98,7 +98,7 @@ A `null` payload is a notice that something changed: read the view for the new v
 
 ## Hooks
 
-An API 2 mod declares its hooks in `hooks(context)`. Each one gets plain, frozen data and returns plain data. The host composes them with every other mod's hooks in load order, the same way it composes API 1 hooks.
+An API 2 mod declares its hooks in `hooks(context)`. Each one gets plain, frozen data and returns plain data. The host composes them with every other mod's hooks in load order, the same way it composes API 1 hooks. A mod can also give hook answers as data in `policies(context)`, which a Worker mod has to do for every hook that answers (see Policy tables).
 
 `messageText`, `screenText`, `characterBackground`, `objectInfoText`, `effectIntro` and `historyDisplay` restate text. `historyAdd` returns `{ keep, what?, expandUserInput? }`, and an entry is written only if every mod keeps it. `objectListTiebreak`, `saveNoiseScent` and `shapeLearnObviousFlagsDirectly` answer a question. `optionsChanged`, `abilityGained`, `monsterBecameVisible` and `artifactIdentified` tell the mod something happened.
 
@@ -110,6 +110,44 @@ These API 1 hooks have no API 2 form:
 | `projectionRadius` | It runs for projections the player never sees. | API 1 for now. |
 | `artifactCommit` | It runs when an artifact is generated, before the player has seen it. | `artifactIdentified` for what the player learns. |
 
+## Policy tables
+
+`policies(context)` returns changes as data: hook answers, and a few game registrations. The game applies them itself, without calling the mod, so a table works the same in a Worker and in process. Tables do not limit what a mod can change. An in-process mod keeps every hook function it has, and when it declares a function and a table for the same hook, the function is used.
+
+| Table | Where it applies | What `where` may name |
+| --- | --- | --- |
+| `messageText`, `characterBackground` | the same | nothing |
+| `screenText` | `screenText` | `screen`, `part`, `column` |
+| `objectInfoText` | `objectInfoText` | `section`, `tval`, `kind`, `aware` |
+| `effectIntro` | `effectIntro`, on the intro's text | `effect`, `itemClass`, `aimed`, `activation`, `describedActivation` |
+| `historyAdd` | `historyAdd` | `type`, `duplicate` |
+| `historyDisplay` | `historyDisplay` | `type` |
+| `objectListOrder` | `objectListTiebreak` | not a rule table |
+| `saveNoiseScent`, `shapeLearnObviousFlagsDirectly` | the same | not a rule table |
+| `storeDiscountRoll` | the stores' discount roll | not a rule table |
+| `tileMap` | the mod's tile filler | not a rule table |
+
+A text rule is `{ find, replace, match, where }`. `match` is `"exact"` (the whole text, and the default), `"substring"` (every occurrence) or `"prefix"`. Matching is literal text with no regular expressions, so a rule cannot stall a turn. Rules run in order, each on the text the one before it produced, and `where` limits a rule to call sites whose named fields equal the values given. A `historyAdd` rule may be `{ find, drop: true }` instead, which keeps a matching entry out of the history. `objectListOrder` lists the keys `dy`, `dx`, `-dy` and `-dx`: the first key that differs between two entries orders them, and a minus sign sorts that key high to low. The two switches take `true`.
+
+`storeDiscountRoll` is `{ minCost, tiers }`. When a store stocks an object worth at least `minCost` (0 if left out), it tries each tier `{ oneIn, percent }` in order, and the first one-in-`oneIn` roll that comes up takes `percent` off that stack. The rolls come from the game's own random numbers, so a seeded game stays repeatable. If two mods declare a discount roll, the one that loads later is used.
+
+`tileMap` lists rules of the form `{ monster, like, hue, packs }`, or `object` in place of `monster`. A rule gives a monster race or object kind the tile that the `like` index has now, turned `hue` degrees around the colour wheel when `hue` is set. It only fills a tile the pack leaves empty, so it never repaints anything a pack draws. `packs` limits a rule to those pack ids, and a pack that cannot recolour skips any rule with a `hue`.
+
+A table holds up to 256 rules, `find` and `replace` up to 4096 characters each, and `where` up to 8 fields. A discount roll has 1 to 16 tiers, `oneIn` from 1 to 1000000 and `percent` from 1 to 99. An unknown table or field is refused, not ignored, and so are tables that break these limits; `checkApi2Policies` says why. A mod whose tables are refused gets none of them.
+
+```ts
+export default defineApi2Mod({
+  api: ">=2.0.0 <3.0.0",
+  policies: () => ({
+    messageText: [{ find: "You feel", replace: "You sense", match: "prefix" }],
+    objectListOrder: ["dy", "dx"],
+    storeDiscountRoll: { minCost: 5, tiers: [{ oneIn: 25, percent: 25 }, { oneIn: 150, percent: 50 }] },
+  }),
+});
+```
+
+Each kind of table is one entry in `API2_POLICY_KINDS` (`packages/mod-sdk/src/api2/policies.ts`). The entry gives the table's name, the hook or registration it feeds, the check for its value, and what it installs; `checkApi2Policies` and `api2PolicyEffects` only walk that list. To add a kind, add its member to `Api2Policies` and its entry to the list, test it in `policies.test.ts`, and give it a row in the table above. A kind that feeds a registration the game has not installed from a table before also needs a target in `installApi2PolicyRegistrations` (`packages/web/src/mod-api2-shim.ts`).
+
 ## Storage
 
 `store.prefs.get()` and `set(value)` hold one JSON value per mod. A mod that changes the shape of what it stores declares `prefs: { version, migrate(value, fromVersion) }`. The host stores the version beside the value, calls `migrate` once on the first read after an upgrade, and writes the result back. A value stored before the mod declared a version counts as version 0.
@@ -120,9 +158,27 @@ These API 1 hooks have no API 2 form:
 
 `net.request({ url, method, headers, body })` sends a request to a host the manifest names. A header can hold `mod.net.credential("api-key")` in place of a string. The host fills in the value, and the mod never sees it. `net.credentials` sets, checks and removes credentials by name. A request to a host the manifest does not name answers `not-granted` with `network:<host>`. Any other failure is `refused` with one of the net problem codes (`timeout`, `too-large`, `redirect`, and the rest).
 
-## Management and hidden state
+## In a Worker
 
-`manage` stays first-party only, with a Core-drawn confirmation for each sensitive intent. Any in-process mod may request hidden-state permissions under the player's consent. `truth.monsters()` lists every monster with exact hit points and speed, and `truth.level()` gives the real map. Borg and Squire keep hidden information out of their decisions and act through `act` using only what the player knows.
+Running in a Worker is a choice a mod makes for isolation. Its code runs apart from the game, and the game reaches it only through messages. It is not the only way for a mod to change the game, and nothing here limits what an in-process mod can do.
+
+A mod with `"runtime": "worker"` default-exports the same definition and gets the same domains, results and known-only data as an in-process mod. Its manifest names an `api` range that API 2 satisfies and the module to start in `entry`. Each call becomes a message to the game's broker (`packages/web/src/mod-worker/host.ts`), which serves it with the in-process host and posts back a copy of the answer. The Worker runs in a sandbox with no network and none of the game's storage ([WORKER_ISOLATION.md](https://github.com/neostryder/neo-angband/blob/master/docs/modding/WORKER_ISOLATION.md)).
+
+Running there costs a mod these things:
+
+- Hooks that answer inside a turn. A turn cannot wait for a message, so every hook that returns an answer comes from `policies`. In a Worker, `hooks(context)` may declare only `optionsChanged`, `abilityGained`, `monsterBecameVisible` and `artifactIdentified`, and the game passes each one on without waiting. Any other hook function is reported on the Mods screen and not installed.
+- Immediate answers. Every call returns a promise, and every value is a copy. `meta.granted` is the only question the Worker answers itself.
+- `manage` and `truth`. No Worker mod gets either.
+- Files and the network. `content.asset(path)` answers a `data:` URL holding the file's bytes, since the sandbox can load nothing. `net.credential(name)` gives the Worker a reference only; the game keeps the value and adds it to the request after the request leaves the Worker.
+- A wildcard grant. A Worker gets the permissions the player granted under their API 2 names, and `"*"` grants nothing.
+
+The broker refuses a message over 64 KB and any call past 200 in one second. It pings the Worker every second, and a Worker that leaves a ping unanswered for 5 seconds is stopped and switched off for the session, with the notice a mod that keeps failing gets. When the game asks the Worker to migrate its bag or its preferences and has no answer within 3 seconds, it goes on without one: the character keeps its old bag, the stored preferences stay as they were, and `store.prefs.get` answers `unavailable`. An answer that arrives after that is dropped. The Mod performance screen shows a Worker mod's reply time and network wait in their own columns, apart from its CPU time.
+
+The preview Worker ABI (`modApi: 2` with `workerEntry`) is retired. Its manifest still reads, and the loader refuses its code with a note to rebuild it against API 2. Its Worker-only permission names convert to API 2 names: `ui:panel` becomes `ui:panel.mount` and `state:model.read` becomes `state:player.read`. `prefs:read`, `prefs:write` and `asset:read` become nothing, since API 2 asks no permission for a mod's own preferences and files, and so do `command:submit`, `ui:region`, `query:snapshot`, `registry:declare`, `policy:install` and `hook:respond`, which have no API 2 form. `WORKER_CAPABILITY_ALIASES` in the SDK holds the whole table.
+
+## First-party seams
+
+`manage` and `truth` exist only for mods the game's own build names as first-party, and they are absent from every other mod's API: test `if (mod.truth)` and there is nothing to request. `truth.monsters()` lists every monster with exact hit points and speed, and `truth.level()` gives the real map. An autoplayer uses it to plan and still acts through `act`, on what the player knows.
 
 ## Moving from API 1
 

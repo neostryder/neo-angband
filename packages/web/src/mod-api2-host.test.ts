@@ -15,7 +15,7 @@ import {
   type Monster,
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
-import { CapabilitySet, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
+import { CapabilitySet, type JsonValue, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { api2EventPayload, createApi2Host, type Api2HostOptions } from "./mod-api2-host";
 import { modPluginContext } from "./mod-context";
 import type { ModPrefs } from "./mod-prefs";
@@ -262,6 +262,44 @@ describe("API 2 events", () => {
 });
 
 describe("API 2 storage", () => {
+  it("shares a pending preference migration and preserves a newer write", async () => {
+    const prefs = memoryPrefs();
+    prefs.set({ colour: "red" });
+    let release: (value: JsonValue) => void = () => undefined;
+    let calls = 0;
+    const api = host(startGame(pack, { seed: SEED, depth: DEPTH }), [], {
+      prefs: {
+        version: 2,
+        migrate: () => {
+          calls += 1;
+          return new Promise<JsonValue>((resolve) => { release = resolve; });
+        },
+      },
+    }, prefs);
+    const first = api.store.prefs.get();
+    const second = api.store.prefs.get();
+    expect(calls).toBe(1);
+    await api.store.prefs.set({ colour: "blue" });
+    release({ colour: "red", shade: "dark" });
+    expect(await first).toEqual({ ok: true, value: { colour: "blue" } });
+    expect(await second).toEqual({ ok: true, value: { colour: "blue" } });
+    expect(prefs.raw()).toEqual({ $api2prefs: 2, value: { colour: "blue" } });
+  });
+
+  it("keeps a cleared preference value when an older migration finishes", async () => {
+    const prefs = memoryPrefs();
+    prefs.set({ colour: "red" });
+    let release: (value: JsonValue) => void = () => undefined;
+    const api = host(startGame(pack, { seed: SEED, depth: DEPTH }), [], {
+      prefs: { version: 2, migrate: () => new Promise<JsonValue>((resolve) => { release = resolve; }) },
+    }, prefs);
+    const reading = api.store.prefs.get();
+    await api.store.prefs.set(null);
+    release({ colour: "red" });
+    expect(await reading).toEqual({ ok: true, value: null });
+    expect(prefs.raw()).toBeNull();
+  });
+
   it("migrates stored preferences once and keeps the version beside them", async () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const prefs = memoryPrefs();

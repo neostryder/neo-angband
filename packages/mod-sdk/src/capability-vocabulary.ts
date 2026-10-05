@@ -25,6 +25,8 @@
  * A capability a manifest does not list is not granted.
  */
 
+import { API2_POLICY_KINDS } from "./api2/policies.js";
+
 /** A capability string parsed into its structured form. */
 export type ParsedCapability =
   | { kind: "command"; action: "add" | "submit" }
@@ -112,6 +114,7 @@ export interface CapabilityEntry {
 const IN_PROCESS: readonly CapabilityTier[] = ["first-party", "reviewed", "sideloaded"];
 const ALL_TIERS: readonly CapabilityTier[] = CAPABILITY_TIERS;
 const FIRST_PARTY: readonly CapabilityTier[] = ["first-party"];
+const POLICY_CAPABILITIES = new Set(API2_POLICY_KINDS.map((kind) => kind.capability));
 
 /** A fixed-spelling entry plus the structured form it parses to. */
 interface FixedEntry extends CapabilityEntry {
@@ -157,16 +160,9 @@ function fixed(
 /* ------------------------------------------------------------------ */
 
 /**
- * The game systems a trusted in-process plugin may override, with the consent
- * sentence for each. A registry override is installed as the mod loads, so a
- * refused one leaves the mod unable to start.
+ * Policy tables share registry permissions with plugins so the player can consent to each change in either runtime. A refused grant leaves its policy tables uninstalled.
  *
- * `vocab`, `message` and `tiles` are not flagged as powerful: they add to the
- * game and cannot take anything away. A tile filler is only asked for content
- * the tile set does not draw, and its door refuses a tile something already
- * assigned. `message` appends message types after the compiled 153 and binds
- * sounds to them; re-pointing a core message's sounds is upstream's own
- * last-writer-wins behaviour for a second `sound:` line.
+ * A tile filler only writes where the tile pack leaves a tile empty, so it cannot replace an assigned tile.
  */
 const REGISTRY_DOMAINS: readonly (readonly [string, string, boolean])[] = [
   ["effect", "Override effect, combat, and magic logic", true],
@@ -175,17 +171,17 @@ const REGISTRY_DOMAINS: readonly (readonly [string, string, boolean])[] = [
   ["blow", "Change what monster attacks do to you, and add new kinds of attack", true],
   ["store", "Change what shops buy from you and what they keep in stock", true],
   ["command", "Change what player commands do (and add commands)", true],
-  ["monster", "Override monster AI (take over monster turns)", true],
+  ["monster", "Override monster AI (take over monster turns), and keep monster noise and scent in saves", true],
   ["projection", "Change what spells, breaths and other elements do to the dungeon, to items on the floor, and to you", true],
-  ["ui-entry", "Change how your resistances, abilities and stat modifiers are worked out and drawn on the character sheet and the equipment comparison", true],
+  ["ui-entry", "Change how your resistances, abilities and stat modifiers are worked out and drawn on the character sheet and the equipment comparison, and rewrite screen text", true],
   ["glyph", "Change what the symbols in a room or vault layout mean when a level is drawn", true],
-  ["effect-info", "Change what the game tells you about a spell, potion or wand effect", true],
+  ["effect-info", "Change what the game tells you about objects and effects", true],
   ["randart", "Change how random artifacts are built - what powers they can get, and what each kind of item starts with", true],
-  ["rune", "Teach the game about a new kind of RUNE - what it is called, what an item carries, and how the player learns it", true],
-  ["tval", "Teach the game about a new kind of item - whether it can be worn or wielded, how it is priced, and whether it has an unidentified flavour", true],
+  ["rune", "Teach the game about a new kind of RUNE - what it is called, what an item carries, and how the player learns it, including during a shapechange", true],
+  ["tval", "Teach the game about a new kind of item - whether it can be worn or wielded, how it is priced, whether it has an unidentified flavour, and how floor items are ordered", true],
   ["vocab", "Add new vocabulary - flags, stats, and other terms", false],
   ["menu", "Rewrite one named game menu's semantic rows and layout", true],
-  ["message", "Add new message types, and choose which sounds play for them", false],
+  ["message", "Change message text and character history, add message types, and choose which sounds play for them", false],
   ["tiles", "Supply tiles for creatures and items your tile set does not draw", false],
 ];
 
@@ -209,9 +205,9 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
   fixed("command:submit", { kind: "command", action: "submit" }, "Ask the game to run commands by their names, the way your own keys do",
     "The mod cannot ask the game to run commands for you.", { powerful: true, tiers: ALL_TIERS }),
   fixed("input:intent", { kind: "input", action: "intent" }, "Act on your character's behalf with the same commands your own keys use",
-    "The mod cannot move or act for your character.", { powerful: true }),
+    "The mod cannot move or act for your character.", { powerful: true, tiers: ALL_TIERS }),
   fixed("input:prompt.reply", { kind: "input-prompt", action: "reply" }, "Answer the game's current question through its input handler",
-    "The mod cannot answer the game's questions for you, so you answer them yourself.", { powerful: true }),
+    "The mod cannot answer the game's questions for you, so you answer them yourself.", { powerful: true, tiers: ALL_TIERS }),
   fixed("saves:manage", { kind: "saves", action: "manage" }, "List, load, rename and delete your characters; deletion asks you first",
     "The mod's own character list does not appear; the game's list still works.", { powerful: true }),
   fixed("ui:title", { kind: "title", action: "add" }, "Add title screen actions",
@@ -238,7 +234,7 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
    * player the two facts they have no other way to learn: what they see may
    * not be the game, and what they type into it is the mod's to read. */
   fixed("ui:panel.mount", { kind: "ui", region: "panel", action: "mount" }, "Draw its own interface over the game with real web pages - it can look exactly like the game's own screens, cover them completely, and read whatever you type, paste or drop into it",
-    "The mod's own windows over the game do not open.", { powerful: true }),
+    "The mod's own windows over the game do not open.", { powerful: true, tiers: ALL_TIERS }),
   fixed("ui:region", { kind: "ui-region", action: "write" }, "Add and update a host-painted text region on the game screen",
     "The text area this mod fills on the game screen stays empty.", { powerful: true, tiers: ALL_TIERS }),
   fixed("ui:panel", { kind: "ui-panel", action: "write" }, "Show panels of buttons and text that the game draws for this mod",
@@ -254,7 +250,7 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
   fixed("debug:wizard", { kind: "debug", action: "wizard" }, "Use the game's debug commands to test with - depth, experience, gold, items, creatures - after stopping this session from being saved at all. Your character on disk keeps whatever the last save left and nothing after that is written, which cannot be undone without reloading",
     "The mod cannot use the game's debug commands.", { powerful: true }),
   fixed("keymap:write", { kind: "keymap", action: "write" }, "Create new shortcut keymaps in your current keyset without replacing your existing shortcuts",
-    "The shortcut keys this mod offers to add are not created.", { powerful: false }),
+    "The shortcut keys this mod offers to add are not created.", { powerful: false, tiers: ALL_TIERS }),
   fixed("keymap:edit", { kind: "keymap", action: "edit" }, "Change, replace and remove any of your keymaps in the current keyset, and read the next key you press to bind it",
     "The mod's keymap editor cannot change your keymaps.", { powerful: true }),
   fixed("options:write", { kind: "options", action: "write" }, "Change your user interface options and delay settings, as the options menu does; birth and cheat options stay yours to set",
@@ -282,10 +278,10 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
   fixed("network:local", { kind: "network", host: "local" }, "Send network requests to servers on this computer or your local network",
     "The mod cannot reach servers on this computer or your local network.", { powerful: true, tiers: ALL_TIERS }),
   fixed("registry:*", { kind: "registry", domain: "*" }, "Override ANY game system - effects, level and dungeon generation, monster attacks, shops, commands, monster AI, what spells and breaths do, what a vault symbol means, and vocabulary (full trusted, in-process access)",
-    "None of the game systems this mod changes are changed, and the mod does not start.", { powerful: true, canRunWithout: false, wildcard: true }),
+    "None of the game systems this mod changes are changed, and the mod does not start.", { powerful: true, canRunWithout: false, wildcard: true, tiers: ALL_TIERS }),
   ...REGISTRY_DOMAINS.map(([domain, consent, powerful]) =>
     fixed(`registry:${domain}`, { kind: "registry", domain }, consent,
-      "The mod does not start, because it installs this change as it loads.", { powerful, canRunWithout: false })),
+      "The mod does not start, because it installs this change as it loads.", { powerful, canRunWithout: false, tiers: POLICY_CAPABILITIES.has(`registry:${domain}`) ? ALL_TIERS : IN_PROCESS })),
 
   /* Management. Not part of the public vocabulary: first-party mods hold these
    * through the `manage` namespace. */

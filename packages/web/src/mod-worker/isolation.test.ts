@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { startModWorker, type StartedModWorker } from "./host";
+import type { ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
+import { startModWorker, type ModWorkerHostDeps, type StartedModWorker } from "./host";
 import {
   createIsolatedModWorker,
   isolatedWorkerSource,
@@ -14,7 +15,7 @@ import {
   type ModFrameFactory,
   type ModFrameWindow,
 } from "./isolation";
-import { MOD_WORKER_PROTOCOL_VERSION, type WorkerInitSnapshot } from "./protocol";
+import { MOD_WORKER_PROTOCOL_VERSION } from "./protocol";
 import type { StagedModuleGraph } from "./staging";
 
 const NONCE = "AAAAAAAAAAAAAAAAAAAAAAAA";
@@ -99,8 +100,24 @@ function frameFactory(frames: FakeFrame[]): ModFrameFactory {
   };
 }
 
-function snapshot(id: string): WorkerInitSnapshot {
-  return { id, modApi: 2, protocolVersion: MOD_WORKER_PROTOCOL_VERSION, engineVersion: "1.22.0", modVersion: "1.0.0", flags: {}, data: {}, capabilities: [], newCharacter: false };
+/* The broker's host side for one mod. Only `store.prefs.get` answers; the
+ * domains themselves are mod-api2-host.ts's and are tested there. */
+function deps(id: string, over: Partial<ModWorkerHostDeps> = {}): ModWorkerHostDeps {
+  const api = {
+    store: { prefs: { get: () => Promise.resolve({ ok: true, value: { theme: "dark" } }) } },
+  } as unknown as ModApi2;
+  return {
+    id,
+    entryUrl: "staged:worker.js",
+    grants: [],
+    flags: {},
+    engine: "1.22.0",
+    newCharacter: false,
+    net: false,
+    api: () => api,
+    readAsset: async () => null,
+    ...over,
+  };
 }
 
 const sessions: StartedModWorker[] = [];
@@ -190,26 +207,25 @@ describe("an isolated mod Worker end to end through the relay", () => {
       const dependency = `${DATA}${encodeURIComponent("export const greet = (name) => name;")}`;
       expect(text).toBe(`import { greet } from ${JSON.stringify(dependency)};\nexport default async () => {};`);
       return Promise.resolve({
-        default: async (api: { init: { id: string }; log(level: string, message: string): void; prefs: { get(): Promise<unknown> } }) => {
-          api.log("info", `hello ${api.init.id}`);
-          api.log("info", JSON.stringify(await api.prefs.get()));
+        default: {
+          api: ">=2.0.0 <3.0.0",
+          start: async (api: ModApi2) => {
+            api.meta.log(`hello ${api.meta.id}`);
+            const prefs = await api.store.prefs.get();
+            api.meta.log(JSON.stringify(prefs.ok ? prefs.value : null));
+          },
         },
       });
     };
     const worker = createIsolatedModWorker({ id: "probe", graph, protocolVersion: MOD_WORKER_PROTOCOL_VERSION, frame: frameFactory(frames), nonce: NONCE });
-    const session = startModWorker(worker, {
-      id: "probe",
-      capabilities: ["prefs:read"],
-      entryUrl: "staged:worker.js",
-      snapshot: snapshot("probe"),
-      prefs: { get: () => ({ theme: "dark" }), set: () => undefined },
-      readAsset: async () => null,
+    const session = startModWorker(worker, deps("probe", {
       onLog: (_level, message) => logs.push(message),
       onProblem: (problem) => logs.push(`problem: ${problem}`),
-    });
+    }));
     sessions.push(session);
     await session.ready;
-    expect(logs).toEqual(["hello probe", "{\"theme\":\"dark\"}"]);
+    session.start();
+    await vi.waitFor(() => expect(logs).toEqual(["hello probe", "{\"theme\":\"dark\"}"]));
     const frame = frames[0];
     expect(frame?.workers).toHaveLength(1);
     expect(frame?.workers[0]?.options).toEqual({ type: "classic", name: "neo-angband-mod:probe" });
@@ -228,7 +244,7 @@ describe("an isolated mod Worker end to end through the relay", () => {
       frame: frameFactory(frames),
       nonce: NONCE,
     });
-    const session = startModWorker(worker, { id: "probe", capabilities: [], entryUrl: "staged:worker.js", snapshot: snapshot("probe"), prefs: { get: () => null, set: () => undefined }, readAsset: async () => null });
+    const session = startModWorker(worker, deps("probe"));
     sessions.push(session);
     await expect(session.ready).rejects.toThrow("staged module refers forward or to nothing");
     expect(frames[0]?.workers).toHaveLength(0);
@@ -241,7 +257,7 @@ describe("an isolated mod Worker end to end through the relay", () => {
     const modules = [{ label: "m0.js", parts: ["export default 0;"] as (string | number)[] }];
     for (let index = 1; index < 24; index += 1) modules.push({ label: `m${String(index)}.js`, parts: ["import ", index - 1, "; import ", index - 1, ";"] });
     const worker = createIsolatedModWorker({ id: "probe", graph: { modules, size: 0 }, protocolVersion: MOD_WORKER_PROTOCOL_VERSION, frame: frameFactory(frames), nonce: NONCE, linkLimit: 1_000_000 });
-    const session = startModWorker(worker, { id: "probe", capabilities: [], entryUrl: "staged:m23.js", snapshot: snapshot("probe"), prefs: { get: () => null, set: () => undefined }, readAsset: async () => null });
+    const session = startModWorker(worker, deps("probe", { entryUrl: "staged:m23.js" }));
     sessions.push(session);
     await expect(session.ready).rejects.toThrow("the mod's modules come to more than 1000000 characters once linked");
     expect(frames[0]?.workers).toHaveLength(0);
@@ -273,6 +289,6 @@ describe("an isolated mod Worker end to end through the relay", () => {
     worker.onerror = (event) => errors.push(event.message);
     await vi.waitFor(() => expect(errors).toEqual(["frame refused"]));
     worker.terminate();
-    expect(() => worker.postMessage({ type: "teardown", pluginId: "probe" })).not.toThrow();
+    expect(() => worker.postMessage({ type: "teardown", pluginId: "probe", epoch: 1 })).not.toThrow();
   });
 });

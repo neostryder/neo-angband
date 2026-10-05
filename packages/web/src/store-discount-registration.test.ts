@@ -13,7 +13,7 @@ describe("fresh-town discount registration", () => {
   it("resolves initial stock only after folder plugins register", () => {
     const folderPlugins = MAIN.indexOf("/* The FOLDER plugins' register() half.");
     const registration = MAIN.indexOf(
-      "for (const loaded of activeModCode().plugins) {",
+      "for (const id of enabledModIds()) {",
       folderPlugins,
     );
     const resolve = MAIN.indexOf("game.resolveInitialStoreDiscounts();");
