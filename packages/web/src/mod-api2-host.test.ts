@@ -239,7 +239,7 @@ describe("the first-party seams", () => {
 
   it("are present only for the seams the allowlist names", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const truthOnly = host(game, READS, { firstParty: { truth: true } });
+    const truthOnly = host(game, READS, { tier: "first-party", firstParty: { truth: true } });
     expect(truthOnly.truth).toBeDefined();
     expect(truthOnly.manage).toBeUndefined();
     expect(truthOnly.meta.tier).toBe("first-party");
@@ -252,7 +252,7 @@ describe("the first-party seams", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const hidden = liveMonsters(game.state).find((m) => !monsterIsObvious(m));
     if (!hidden) throw new Error("no unseen monster at this seed");
-    const api = host(game, READS, { firstParty: { truth: true } });
+    const api = host(game, READS, { tier: "first-party", firstParty: { truth: true } });
     const seen = await api.view.monsters();
     const real = await api.truth!.monsters();
     if (!seen.ok || !real.ok) throw new Error("refused");

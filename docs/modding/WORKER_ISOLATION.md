@@ -63,6 +63,10 @@ Run them with `pnpm exec playwright test tests/e2e/mod-worker-isolation.spec.ts`
 - **Empty stores of its own.** WebKit gives the Worker an empty Cache Storage of its own. It holds nothing of the game's and is gone with the frame.
 - **Engine bugs.** This is not a VM or a process boundary. It depends on Chromium, Gecko and WebKit enforcing the sandbox and the policy, and on the desktop app's Electron being kept current.
 
+## Refused permissions
+
+A broker request that needs an ungranted permission resolves to `{ ok: false, reason: "not-granted", capability }`. This applies during startup too, so awaiting a refused preference read does not prevent the Worker from becoming ready. Methods that normally return no value also return this result on refusal. Invalid payloads and operational failures still reject. Host-rendered Worker panels and in-process API 2 panels stay hidden and inert while a Core confirmation is open, including panels mounted or patched during that confirmation.
+
 ## What it asks of a Worker mod
 
 - Import only the mod's own files, by relative path. A bare package name has to be bundled in.

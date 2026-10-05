@@ -49,7 +49,7 @@ import {
   type ModDirEntry,
   type ModDirSource,
 } from "./disk-packs";
-import { manifestFields } from "@rpgm-tools/neo-angband-mod-sdk";
+import { manifestFields, validateManifest, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installBlocked } from "./mod-consent";
 import { archiveFaults, importedOrigin, installedMods, manifestDisplayName, sha256Hex } from "./mod-install";
 import { buildModuleGraph } from "./mod-modules";
@@ -114,6 +114,8 @@ export interface SessionMod {
    * the mod-state document's consents ever being written.
    */
   readonly granted: readonly string[];
+  readonly refused?: readonly string[];
+  readonly acknowledged?: boolean;
   /**
    * The archive digest when `granted` was approved.
    *
@@ -231,6 +233,8 @@ function isSessionMod(value: unknown): value is SessionMod {
   if (typeof m.digest !== "string" || typeof m.source !== "string") return false;
   if (typeof m.code !== "boolean" || typeof m.zip !== "string") return false;
   if (!Array.isArray(m.granted)) return false;
+  if (m.refused !== undefined && (!Array.isArray(m.refused) || !m.refused.every((c) => typeof c === "string"))) return false;
+  if (m.acknowledged !== undefined && typeof m.acknowledged !== "boolean") return false;
   if (m.grantedDigest !== undefined && typeof m.grantedDigest !== "string") return false;
   return m.granted.every((c) => typeof c === "string");
 }
@@ -276,6 +280,7 @@ export type SessionPreview =
        * call refuses the archive either way; this is what lets the screen say which.
        */
       readonly capabilities: readonly string[] | null;
+      readonly manifest?: PackManifest;
       /** Lower-case hex SHA-256, or "" where nothing could measure one. */
       readonly digest: string;
       /** The archive's size, so the screen can name what it is holding. */
@@ -300,6 +305,13 @@ export async function previewSessionArchive(
   if (bytes.length === 0) return { ok: false, problem: "there are no bytes here to load" };
   const read = readModZip(bytes);
   if (!read.ok) return { ok: false, problem: read.problem };
+  let manifest: PackManifest | undefined;
+  try {
+    const entry = read.files.find(([path]) => path === "manifest.json");
+    if (entry) manifest = validateManifest(JSON.parse(new TextDecoder().decode(entry[1])));
+  } catch {
+    /* The preview can describe a malformed archive; staging refuses it. */
+  }
   return {
     ok: true,
     id: read.id,
@@ -307,6 +319,7 @@ export async function previewSessionArchive(
     version: read.version,
     code: read.files.map(([p]) => p).filter(isCodePath),
     capabilities: manifestCapabilities(read.files),
+    ...(manifest ? { manifest } : {}),
     digest: await digestOf(bytes, scope),
     bytes: bytes.length,
   };
@@ -360,6 +373,8 @@ export async function stageSessionMod(
     readonly bytes: Uint8Array;
     readonly source: string;
     readonly granted?: readonly string[];
+    readonly refused?: readonly string[];
+    readonly acknowledged?: boolean;
     /** The digest shown when the player approved `granted`. */
     readonly grantedDigest?: string;
     readonly contentOnly?: boolean;
@@ -439,6 +454,8 @@ export async function stageSessionMod(
     source: opts.source,
     code,
     granted: [...(opts.granted ?? [])],
+    refused: [...(opts.refused ?? [])],
+    acknowledged: opts.acknowledged === true,
     ...(opts.grantedDigest === undefined ? {} : { grantedDigest: opts.grantedDigest }),
     zip,
   };
@@ -605,6 +622,8 @@ export async function loadSessionMods(scope: unknown = globalThis): Promise<Disk
 
   const entries: { id: string; files: Map<string, Uint8Array> }[] = [];
   const consents: Record<string, readonly string[]> = {};
+  const refusals: Record<string, readonly string[]> = {};
+  const notices: Record<string, boolean> = {};
   for (const mod of staged) {
     let bytes: Uint8Array;
     try {
@@ -624,13 +643,16 @@ export async function loadSessionMods(scope: unknown = globalThis): Promise<Disk
     entries.push({ id: read.id, files: new Map(read.files.map(([p, b]) => [p, b])) });
     /* A grant names one archive. Re-staging the id with different bytes has to
      * return the mod to the same consent screen. */
-    consents[read.id] = mod.grantedDigest === mod.digest ? mod.granted : [];
+    const approved = mod.grantedDigest === mod.digest && mod.digest === await digestOf(bytes, scope);
+    consents[read.id] = approved ? mod.granted : [];
+    refusals[read.id] = approved ? mod.refused ?? [] : [];
+    notices[read.id] = approved && mod.acknowledged === true;
   }
 
   /* The consents go in even when the pack turns out to be unusable, because the
    * loader asks about ids and an id with no grant reads as "not consented", which
    * is the right answer and a different message from "not there". */
-  setSessionConsents(consents);
+  setSessionConsents(consents, refusals, notices);
   if (entries.length === 0) {
     setSessionPacks(NO_DISK_PACKS);
     return NO_DISK_PACKS;

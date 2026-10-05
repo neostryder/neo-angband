@@ -53,6 +53,7 @@ import {
 import {
   freezeView,
   SCREEN_FOOTER,
+  linesScreen,
   type ScreenBlock,
   type ScreenRow,
   type ScreenView,
@@ -60,7 +61,8 @@ import {
 import type { GridPointerInput, GridSurface } from "./term";
 import type { ModDirKind, ModOrigin } from "./disk-packs";
 import { capabilitiesNotYetGranted } from "./mod-store";
-import type { AutoplayerSpeed, CatalogMod, ModStore } from "./mod-store";
+import { buildCatalog, ModStore, type AutoplayerSpeed, type CatalogMod, type ConsentRecord } from "./mod-store";
+import { assignTier, canRunWithout, needsOwnConfirmation, playerHeld, type TierRefusal } from "./mod-tier";
 import { dropSessionMods } from "./mod-session";
 import type { ModRuleDecl } from "./pack";
 import {
@@ -70,7 +72,7 @@ import {
   unattributedProblems,
   type ModProblem,
 } from "./mod-problems";
-import { describeCapabilities, hasElevatedCapability } from "./capability-describe";
+import { capabilityWithoutIt, describeCapabilities, describeCapability, hasElevatedCapability } from "./capability-describe";
 import {
   orphanRowLabel,
   stashOf,
@@ -90,6 +92,7 @@ import { modUpgradeRowLabel } from "./mod-refresh";
 import type { ConflictReportLines } from "./mod-conflicts";
 import { DEFAULT_TURN_BUDGET_MS, FAULT_LIMIT, FAULT_WINDOW_TURNS, type ModHealthStats } from "./mod-health";
 import {
+  isTruthCapability,
   resolveSectionState,
   resolveSettingValue,
   sortModOrder,
@@ -540,6 +543,7 @@ export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuI
      * facts about something the player has, and this one does not persist. Short
      * for the reason the others are - it shares a line with a name. */
     if (m.session) flags.push(t("modsScreen.row.flag.sessionOnly", "SESSION ONLY"));
+    if (m.unreviewed) flags.push(t("modsScreen.row.flag.unreviewed", "unreviewed"));
     if (m.nondeterministic) flags.push(t("modsScreen.row.flag.unseeded", "unseeded"));
     if (m.affectsGameplay) flags.push(t("modsScreen.row.flag.noscore", "noscore"));
     if (needsConsent) flags.push(t("modsScreen.row.flag.needsOk", "NEEDS OK"));
@@ -898,12 +902,31 @@ export function rowDetail(
     );
   } else {
     below.push(...wrapped(t("modsScreen.detail.capabilitiesIntro", "It asks to be allowed to:"), w));
+    const refusedHere = new Set(m.refused ?? []);
+    const byTier = new Map((m.tierRefused ?? []).map((r) => [r.capability, r.why]));
     for (const d of describeCapabilities(m.capabilities)) {
       /* Hanging indent so a wrapped bullet stays visibly one bullet. */
       const elevatedTag = d.elevated ? `  ${t("modsScreen.detail.elevatedTag", "[powerful]")}` : "";
+      const tierWhy = byTier.get(d.cap);
+      const status =
+        tierWhy !== undefined
+          ? `  (${tierWhy})`
+          : refusedHere.has(d.cap)
+            ? `  ${t("modsScreen.detail.refusedTag", "[refused]")}`
+            : "";
+      const color = tierWhy !== undefined || refusedHere.has(d.cap) ? C_DIM : d.elevated ? C_WARN : C_FG;
       below.push(
-        ...wrapped(`  - ${d.text}${elevatedTag}`, w, d.elevated ? C_WARN : C_FG)
+        ...wrapped(`  - ${d.text}${elevatedTag}${status}`, w, color)
           .map((l, i) => (i === 0 ? l : { ...l, text: `    ${l.text}` })),
+      );
+    }
+    if (refusedHere.size > 0) {
+      below.push(
+        ...wrapped(
+          t("modsScreen.detail.refused", "You refused this. The parts of the mod that need it do not work."),
+          w,
+          C_DIM,
+        ),
       );
     }
     /* THREE STATES, NOT TWO. An enabled mod that is short a capability used to
@@ -918,7 +941,7 @@ export function rowDetail(
     if (m.consented) {
       below.push(...wrapped(t("modsScreen.detail.consented", "You have allowed this."), w, C_ENABLED));
     } else if (m.enabled) {
-      const pending = capabilitiesNotYetGranted(m.capabilities, m.granted);
+      const pending = undecidedCapabilities(m);
       below.push(
         ...wrapped(
           t(
@@ -1127,14 +1150,23 @@ function consentFooter(): string {
  * The sentences around the list are prose and stay `lines`; the warnings use prose
  * blocks so a warning itself cannot be cut off on the terminal.
  */
-export function capabilityConsentScreen(requested: CatalogMod | readonly CatalogMod[]): ScreenView {
+export function capabilityConsentScreen(
+  requested: CatalogMod | readonly CatalogMod[],
+  pending?: ReadonlyMap<string, readonly string[]>,
+): ScreenView {
   const mods = Array.isArray(requested) ? requested : [requested];
   const one = mods.length === 1;
   const m = mods[0];
   if (!m) throw new Error("capability consent needs at least one mod");
+  const asked = (mod: CatalogMod): readonly string[] => pending?.get(mod.id) ?? decidableCapabilities(mod);
   const capabilities = mods.flatMap((mod) =>
-    describeCapabilities(mod.capabilities).map((detail) => ({ mod, detail })),
+    describeCapabilities(asked(mod)).map((detail) => ({ mod, detail })),
   );
+  const tierRefused = mods.flatMap((mod) => (mod.tierRefused ?? []).map((refusal: TierRefusal) => ({ mod, refusal })));
+  const withoutIt = (cap: string): string => {
+    const text = capabilityWithoutIt(cap);
+    return text === null ? "" : ` ${t("modsScreen.consent.withoutIt", "Without it: {text}", { text })}`;
+  };
   return freezeView({
     id: "core:mod-capabilities",
     title: one
@@ -1180,12 +1212,64 @@ export function capabilityConsentScreen(requested: CatalogMod | readonly Catalog
           color: detail.elevated ? C_WARN : C_FG,
           cells: {
             bullet: { text: "-" },
-            text: { text: one ? detail.text : `${mod.name}: ${detail.text}` },
+            text: { text: `${one ? detail.text : `${mod.name}: ${detail.text}`}.${withoutIt(detail.cap)}` },
             elevated: { text: detail.elevated ? t("modsScreen.consent.elevatedTag", "[elevated]") : "" },
           },
         })),
       },
       { kind: "lines", lines: [{ text: "", color: C_FG }] },
+      ...(tierRefused.length > 0
+        ? [
+            {
+              kind: "lines" as const,
+              lines: [
+                {
+                  text: t(
+                    "modsScreen.consent.tierHeader",
+                    "The game does not give this mod these, whatever you choose:",
+                  ),
+                  color: C_WARN,
+                },
+                ...tierRefused.map(({ mod, refusal }) => ({
+                  text: `  - ${one ? "" : `${mod.name}: `}${describeCapability(refusal.capability).text} (${refusal.why})`,
+                  color: C_DIM,
+                })),
+                { text: "", color: C_FG },
+              ],
+            },
+          ]
+        : []),
+      ...(capabilities.some(({ detail }) => isTruthCapability(detail.cap))
+        ? [
+            {
+              kind: "text" as const,
+              paragraphs: [
+                [
+                  {
+                    text: t(
+                      "modsScreen.consent.truthWarning",
+                      "Seeing the real map shows this mod things your character has not found yet.",
+                    ),
+                  },
+                  /* Only a mod whose first-party entry says so marks the save (mod-tier.ts marksSave). */
+                  ...(capabilities.some(
+                    ({ mod, detail }) => isTruthCapability(detail.cap) && mod.tier?.marksSave.includes(detail.cap) === true,
+                  )
+                    ? [
+                        {
+                          text: ` ${t(
+                            "modsScreen.consent.truthMarks",
+                            "Every character you play while it is allowed is marked the way debug mode marks it, and the mark never comes off.",
+                          )}`,
+                        },
+                      ]
+                    : []),
+                ],
+              ],
+              color: C_DANGER,
+            },
+          ]
+        : []),
       /* THE IN-PROCESS LINE IS ABOUT THE CODE, NOT ABOUT THE LIST above it.
        * A plugin receives `ctx.core`, `ctx.state` and `ctx.registries` without a
        * capability check, so declared capabilities say what it intends to
@@ -1239,42 +1323,306 @@ export function capabilityConsentScreen(requested: CatalogMod | readonly Catalog
   });
 }
 
-/**
- * The capability consent gate: show every requested capability in plain terms,
- * flag elevated ones, and require an explicit Yes. Returns true if consented.
- */
-async function consentPrompt(term: GridSurface & GridPointerInput, m: CatalogMod): Promise<boolean> {
-  return await consentPromptForMods(term, [m]);
+/** The capabilities the player decides about: declared, less what the mod's tier refuses. */
+function decidableCapabilities(m: CatalogMod): readonly string[] {
+  const byTier = new Set((m.tierRefused ?? []).map((r) => r.capability));
+  return m.capabilities.filter((cap) => !byTier.has(cap));
 }
 
-/** One explicit choice grants the declared capabilities for a whole bulk action. */
-async function consentPromptForMods(
+/** The decidable capabilities the player has neither allowed nor refused. */
+function undecidedCapabilities(m: CatalogMod): readonly string[] {
+  return capabilitiesNotYetGranted(decidableCapabilities(m), [...m.granted, ...(m.refused ?? [])]);
+}
+
+/** One mod and the capabilities to ask about for it. */
+interface PermissionAsk {
+  readonly mod: CatalogMod;
+  readonly caps: readonly string[];
+}
+
+/** A capability nobody has decided about starts on, except the real map, which starts off. */
+function onByDefault(cap: string): boolean {
+  return !isTruthCapability(cap);
+}
+
+/**
+ * Ask about each capability in `asks`, one decision per capability.
+ *
+ * The read screen lists every capability with what stops working without it,
+ * then the player allows the defaults (everything but the real map), chooses
+ * one by one, or cancels. Every screen and menu here is Core-drawn
+ * (core-drawn.ts). Returns the decisions per mod id, or null on cancel.
+ */
+async function decidePermissions(
   term: GridSurface & GridPointerInput,
+  asks: readonly PermissionAsk[],
+  opts?: { readonly oneByOne?: boolean; readonly current?: (id: string) => ConsentRecord },
+): Promise<Map<string, ConsentRecord> | null> {
+  const live = asks.filter((ask) => ask.caps.length > 0);
+  const out = new Map<string, ConsentRecord>();
+  if (live.length === 0) return out;
+  const first = live[0] as PermissionAsk;
+  const one = live.length === 1;
+  const on = new Map<string, boolean>();
+  const key = (id: string, cap: string): string => `${id}\u0000${cap}`;
+  for (const { mod, caps } of live) {
+    const current = opts?.current?.(mod.id);
+    for (const cap of caps) {
+      const value = current?.granted.includes(cap)
+        ? true
+        : current?.refused.includes(cap)
+          ? false
+          : onByDefault(cap);
+      on.set(key(mod.id, cap), value);
+    }
+  }
+  const normalize = (): void => {
+    for (const { mod, caps } of live) {
+      const granted = caps.filter((cap) => on.get(key(mod.id, cap)) === true);
+      const refused = caps.filter((cap) => on.get(key(mod.id, cap)) !== true);
+      const held = playerHeld(caps, { granted, refused }).held;
+      for (const cap of granted) on.set(key(mod.id, cap), held.includes(cap));
+    }
+  };
+  normalize();
+  /* A capability SEAM_POLICY marks for its own confirmation (one that can
+   * install or turn on other code) is asked about again, on its own, before
+   * it is granted. */
+  const collect = async (): Promise<Map<string, ConsentRecord>> => {
+    for (const { mod, caps } of live) {
+      for (const cap of caps) {
+        const k = key(mod.id, cap);
+        if (on.get(k) !== true || !needsOwnConfirmation(cap)) continue;
+        if (opts?.current?.(mod.id).granted.includes(cap) === true) continue;
+        const pick = await selectFromMenu(
+          term,
+          "core:mod-manage-confirm",
+          t("modsScreen.manage.title", "{name}: {permission}?", {
+            name: mod.name,
+            permission: describeCapability(cap).text,
+          }),
+          [
+            {
+              label: t("modsScreen.manage.yes", "Allow it"),
+              color: C_WARN,
+              hint: t(
+                "modsScreen.manage.yesHint",
+                "This can install or turn on other code, so the game asks about it on its own.",
+              ),
+            },
+            {
+              label: t("modsScreen.manage.no", "Leave it off"),
+              color: C_FG,
+              hint: t("modsScreen.manage.noHint", "The mod runs without it."),
+            },
+          ],
+          t("modsScreen.common.footer.abTapEsc", "[ a/b or tap; ESC cancels ]"),
+        );
+        if (pick !== 0) on.set(k, false);
+      }
+      out.set(mod.id, {
+        granted: caps.filter((cap) => on.get(key(mod.id, cap)) === true),
+        refused: caps.filter((cap) => on.get(key(mod.id, cap)) !== true),
+      });
+    }
+    return out;
+  };
+
+  if (opts?.oneByOne !== true) {
+    await showTextScreen(
+      term,
+      capabilityConsentScreen(
+        live.map((ask) => ask.mod),
+        new Map(live.map((ask) => [ask.mod.id, ask.caps])),
+      ),
+    );
+    const truthAsked = live.some((ask) => ask.caps.some((cap) => isTruthCapability(cap)));
+    const pick = await selectFromMenu(
+      term,
+      "core:mod-capability-consent",
+      t("modsScreen.consent.allowTitle", "Allow what {name} asks for?", {
+        name: one ? first.mod.name : t("modsScreen.consent.theseMods", "these mods"),
+      }),
+      [
+        {
+          label: t("modsScreen.consent.allowDefaults", "Allow these"),
+          color: C_ENABLED,
+          hint: truthAsked
+            ? t(
+                "modsScreen.consent.allowDefaultsHintTruth",
+                "Allows everything listed except seeing the real map, which stays off unless you choose it one by one.",
+              )
+            : t("modsScreen.consent.allowDefaultsHint", "Allows everything listed."),
+        },
+        {
+          label: t("modsScreen.consent.chooseEach", "Choose one by one"),
+          color: C_FG,
+          hint: t(
+            "modsScreen.consent.chooseEachHint",
+            "Turn each permission on or off. The mod runs without the ones you turn off, and only the parts that need them stop working.",
+          ),
+        },
+        { label: t("modsScreen.common.no.cancel", "No, cancel"), color: C_FG },
+      ],
+      t("modsScreen.consent.footer", "[ a/b/c or tap; ESC cancels ]"),
+    );
+    if (pick === 0) return await collect();
+    if (pick !== 1) return null;
+  }
+
+  const rows = live.flatMap(({ mod, caps }) => caps.map((cap) => ({ mod, cap })));
+  let cursor = 0;
+  for (;;) {
+    const items: MenuItem[] = rows.map(({ mod, cap }) => {
+      const allowed = on.get(key(mod.id, cap)) === true;
+      const d = describeCapability(cap);
+      const without = capabilityWithoutIt(cap);
+      const needed = canRunWithout(cap) ? "" : ` ${t("modsScreen.permissions.needed", "The mod cannot start without this.")}`;
+      return {
+        label: `${allowed ? "[on] " : "[off]"} ${one ? "" : `${mod.name}: `}${d.text}`,
+        color: allowed ? (d.elevated ? C_WARN : C_ENABLED) : C_DIM,
+        hint: `${without === null ? "" : t("modsScreen.consent.withoutIt", "Without it: {text}", { text: without })}${needed}`,
+      };
+    });
+    items.push({
+      label: t("modsScreen.permissions.done", "Done"),
+      color: C_ENABLED,
+      hint: t("modsScreen.permissions.doneHint", "Save these choices and turn the mod on."),
+    });
+    items.push({ label: t("modsScreen.common.no.cancel", "No, cancel"), color: C_FG });
+    const pick = await selectFromMenu(
+      term,
+      "core:mod-permission-choice",
+      t("modsScreen.permissions.title", "Permissions for {name}", {
+        name: one ? first.mod.name : t("modsScreen.consent.theseMods", "these mods"),
+      }),
+      items,
+      t("modsScreen.permissions.footer", "[ choose a row to switch it; ESC cancels ]"),
+      {
+        initialCursor: cursor,
+        onHighlight: (i) => {
+          cursor = i;
+        },
+      },
+    );
+    if (pick === null || pick === rows.length + 1) return null;
+    if (pick === rows.length) return await collect();
+    const row = rows[pick];
+    if (!row) return null;
+    const k = key(row.mod.id, row.cap);
+    on.set(k, on.get(k) !== true);
+    normalize();
+    cursor = pick;
+  }
+}
+
+/** Record each mod's decisions at its current version. */
+function saveDecisions(
+  deps: ModManagerDeps,
+  mods: readonly CatalogMod[],
+  decided: ReadonlyMap<string, ConsentRecord>,
+): void {
+  for (const mod of mods) {
+    const record = decided.get(mod.id);
+    if (record) deps.store.setDecisions(mod.id, record, mod.version);
+  }
+}
+
+/**
+ * The notice Core shows once, before an unreviewed mod that runs code is first
+ * turned on. Returns true to go ahead: the player said yes, or has read it before.
+ */
+export function unreviewedNoticeScreen(m: CatalogMod): ScreenView {
+  return freezeView({
+    id: "core:mod-unreviewed",
+    title: t("modsScreen.unreviewed.title", "Unreviewed mod: {name}", { name: m.name }),
+    footer: consentFooter(),
+    blocks: [
+      {
+        kind: "text",
+        paragraphs: [
+          [
+            {
+              text: t(
+                "modsScreen.unreviewed.who",
+                "Nobody has reviewed the code in {name}. It did not come from the game's own list of mods, so no one has checked what it does.",
+                { name: m.name },
+              ),
+            },
+          ],
+        ],
+        color: C_DANGER,
+      },
+      {
+        kind: "text",
+        paragraphs: [
+          [
+            {
+              text: t(
+                "modsScreen.unreviewed.what",
+                "A mod that runs code inside the game can change how the game plays and can read and change your saved characters and settings. The permissions on the next screen limit what the game hands it, but its code can reach past them. Only turn it on if you trust whoever made it.",
+              ),
+            },
+          ],
+          [
+            {
+              text: t(
+                "modsScreen.unreviewed.off",
+                "To turn it off later, switch it off on the Mods screen. If the game will not start with it on, hold Shift while the game starts, or start the desktop app with --safe-mode, and every mod stays off for that session.",
+              ),
+            },
+          ],
+        ],
+        color: C_FG,
+      },
+    ],
+  });
+}
+
+/**
+ * Whether `m` needs the unreviewed notice before it is turned on: an unreviewed
+ * mod that runs code, whose notice the player has not read yet. Shown once per mod.
+ */
+export function unreviewedNoticeDue(m: CatalogMod, store: Pick<ModStore, "sawUnreviewedNotice">): boolean {
+  return m.unreviewed === true && m.tier !== undefined && m.tier.execution !== "data" && !store.sawUnreviewedNotice(m.id);
+}
+
+/** Show the unreviewed notice for each mod that needs it. False when the player leaves one off. */
+async function confirmUnreviewed(
+  term: GridSurface & GridPointerInput,
+  deps: Pick<ModManagerDeps, "store">,
   mods: readonly CatalogMod[],
 ): Promise<boolean> {
-  const one = mods.length === 1;
-  const m = mods[0];
-  if (!m) return true;
-  // A trailing read of the terms, then a Yes/No pick.
-  await showTextScreen(term, capabilityConsentScreen(mods));
-  const pick = await selectFromMenu(
-    term,
-    "core:mod-capability-consent",
-    one
-      ? t("modsScreen.consent.grantConfirm", 'Grant these capabilities to "{name}"?', { name: m.name })
-      : t("modsScreen.consent.batchConfirm", "Grant these capabilities to all selected mods?"),
-    [
-      {
-        label: one
-          ? t("modsScreen.consent.yes", "Yes, enable and grant")
-          : t("modsScreen.consent.batchYes", "Yes, enable all and grant"),
-        color: C_ENABLED,
-      },
-      { label: t("modsScreen.common.no.cancel", "No, cancel"), color: C_FG },
-    ],
-    t("modsScreen.common.footer.abTapEsc", "[ a/b or tap; ESC cancels ]"),
-  );
-  return pick === 0;
+  for (const m of mods) {
+    if (!unreviewedNoticeDue(m, deps.store)) continue;
+    await showTextScreen(term, unreviewedNoticeScreen(m));
+    const pick = await selectFromMenu(
+      term,
+      "core:mod-unreviewed-confirm",
+      t("modsScreen.unreviewed.confirm", "Turn on {name} anyway?", { name: m.name }),
+      [
+        { label: t("modsScreen.unreviewed.yes", "Turn it on"), color: C_WARN },
+        { label: t("modsScreen.unreviewed.no", "Leave it off"), color: C_FG },
+      ],
+      t("modsScreen.common.footer.abTapEsc", "[ a/b or tap; ESC cancels ]"),
+    );
+    if (pick !== 0) return false;
+    deps.store.markUnreviewedNotice(m.id, m.version);
+  }
+  return true;
+}
+
+/** Session choices must not become standing grants for an installed copy. */
+export async function consentSessionMod(
+  term: GridSurface & GridPointerInput,
+  manifest: PackManifest,
+): Promise<ConsentRecord | null> {
+  const tier = assignTier({ id: manifest.id, source: "session", execution: manifest.runtime === "worker" ? "worker" : "in-process" });
+  const row = buildCatalog({ content: [], sandbox: [], trusted: [manifest], enabled: [], consents: {}, tierOf: () => tier })[0];
+  if (!row) return null;
+  if (!(await confirmUnreviewed(term, { store: new ModStore(null) }, [row]))) return null;
+  const decisions = await decidePermissions(term, [{ mod: row, caps: decidableCapabilities(row) }]);
+  return decisions?.get(row.id) ?? (decisions ? { granted: [], refused: [] } : null);
 }
 
 /**
@@ -1304,13 +1652,13 @@ async function regrantConsent(
   m: CatalogMod,
   tileModsAtEntry: Set<string>,
 ): Promise<boolean> {
-  const pending = capabilitiesNotYetGranted(m.capabilities, m.granted);
+  const pending = undecidedCapabilities(m);
   if (pending.length === 0) return false;
 
-  await showTextScreen(
-    term,
-    t("modsScreen.regrant.title", "{name} v{version}", { name: m.name, version: m.version }),
-    [
+  await showTextScreen(term, {
+    ...linesScreen(
+      t("modsScreen.regrant.title", "{name} v{version}", { name: m.name, version: m.version }),
+      [
     {
       text: t("modsScreen.regrant.headline", "This version asks for something new."),
       color: C_FG,
@@ -1342,26 +1690,15 @@ async function regrantConsent(
       ),
       color: C_DIM,
     },
-    ],
-  );
+      ],
+      SCREEN_FOOTER,
+    ),
+    id: "core:mod-capability-regrant",
+  });
 
-  const pick = await selectFromMenu(
-    term,
-    "core:mod-capability-regrant",
-    t("modsScreen.regrant.confirm", 'Allow this too, so "{name}" runs again?', { name: m.name }),
-    [
-      { label: t("modsScreen.regrant.yes", "Yes, allow it"), color: C_ENABLED },
-      {
-        label: t("modsScreen.regrant.no", "No, leave it off"),
-        color: C_FG,
-        hint: t("modsScreen.regrant.noHint", "The mod stays on the list and keeps doing nothing."),
-      },
-    ],
-    t("modsScreen.common.footer.abTapEsc", "[ a/b or tap; ESC cancels ]"),
-  );
-
-  if (pick === 0) {
-    deps.store.setConsent(m.id, m.capabilities);
+  const decided = await decidePermissions(term, [{ mod: m, caps: pending }]);
+  if (decided) {
+    saveDecisions(deps, [m], decided);
     return true;
   }
 
@@ -1439,10 +1776,12 @@ async function enableMod(
     () => gameplayNoscorePrompt(term, m),
   ))) return false;
   if (!(await confirmDeclaredConflicts(term, deps, m))) return false;
-  if (m.capabilities.length > 0) {
-    const ok = await consentPrompt(term, m);
-    if (!ok) return false;
-    deps.store.setConsent(m.id, m.capabilities);
+  if (!(await confirmUnreviewed(term, deps, [m]))) return false;
+  const pending = undecidedCapabilities(m);
+  if (pending.length > 0) {
+    const decided = await decidePermissions(term, [{ mod: m, caps: pending }]);
+    if (!decided) return false;
+    saveDecisions(deps, [m], decided);
   }
   deps.advanceSaveRatchets?.(m);
   deps.store.setModEnabled(m.id, true);
@@ -1544,10 +1883,16 @@ async function enableRecommendedMods(
     if (!(await confirmDeclaredConflicts(term, deps, m))) return false;
   }
 
-  const needingConsent = toEnable.filter((m) => m.capabilities.length > 0 && !m.consented);
-  if (needingConsent.length > 0 && !(await consentPromptForMods(term, needingConsent))) return false;
-
-  for (const m of needingConsent) deps.store.setConsent(m.id, m.capabilities);
+  if (!(await confirmUnreviewed(term, deps, toEnable))) return false;
+  const needingConsent = toEnable.filter((m) => undecidedCapabilities(m).length > 0);
+  if (needingConsent.length > 0) {
+    const decided = await decidePermissions(
+      term,
+      needingConsent.map((mod) => ({ mod, caps: undecidedCapabilities(mod) })),
+    );
+    if (!decided) return false;
+    saveDecisions(deps, needingConsent, decided);
+  }
   for (const m of toEnable) {
     deps.advanceSaveRatchets?.(m);
     deps.store.setModEnabled(m.id, true);
@@ -1848,6 +2193,18 @@ async function manageMod(
         acts.push("options");
       }
     }
+    /* Every decision can be changed later, one permission at a time. */
+    if (!m.session && decidableCapabilities(m).length > 0 && undecidedCapabilities(m).length === 0) {
+      items.push({
+        label: t("modsScreen.manageMod.permissions", "Change permissions"),
+        color: C_FG,
+        hint: t(
+          "modsScreen.manageMod.permissionsHint",
+          "Switch each permission on or off. Changes apply after the game reloads.",
+        ),
+      });
+      acts.push("permissions");
+    }
     /* THE WAY TO READ A LONG BLURB.
      *
      * The pane below is capped so it can never squeeze this list (it did: a mod
@@ -1903,6 +2260,15 @@ async function manageMod(
       if (await enableMod(term, deps, m)) changed = true;
     } else if (act === "regrant") {
       if (await regrantConsent(term, deps, m, tileModsAtEntry)) changed = true;
+    } else if (act === "permissions") {
+      const decided = await decidePermissions(term, [{ mod: m, caps: decidableCapabilities(m) }], {
+        oneByOne: true,
+        current: (id) => deps.store.getDecisions(id),
+      });
+      if (decided) {
+        saveDecisions(deps, [m], decided);
+        changed = true;
+      }
     } else if (act === "disable") {
       deps.store.setModEnabled(m.id, false);
       /* Same reasoning as the space-toggle handler in runModManager (#208). */

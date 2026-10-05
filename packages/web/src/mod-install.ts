@@ -58,7 +58,16 @@ import {
   idbPut,
   openDb,
 } from "./idb";
-import { checkMod, githubRepo, installedModFormat, manifestFields, parseDocument, type Finding } from "@rpgm-tools/neo-angband-mod-sdk";
+import {
+  checkMod,
+  githubRepo,
+  INSTALL_LISTINGS,
+  installedModFormat,
+  manifestFields,
+  parseDocument,
+  type Finding,
+  type InstallListing,
+} from "@rpgm-tools/neo-angband-mod-sdk";
 import { installBlocked, type ModOrigin } from "./mod-consent";
 import { buildModuleGraph } from "./mod-modules";
 import type { DiscoveredMod } from "./mod-discover";
@@ -67,6 +76,7 @@ import { RENAMED_MOD_IDS } from "./mod-store";
 import { originConflict } from "./mod-source";
 import { readBoundedZip, ZIP_LIMITS, zipBudget } from "./mod-archive";
 import { readModZip } from "./mod-zip";
+import { installedDigestsMatch } from "./mod-tier";
 import { assetMime, sortPackFiles } from "./pack-files";
 
 /** What is recorded about an installed mod, so the manager can say where it came from. */
@@ -145,6 +155,13 @@ export interface InstalledModMeta {
    * means "the player did this", so no back-fill is needed for old records.
    */
   readonly installedByModId?: string;
+  /**
+   * How the mod reached the game: a registry list, a typed address, or a file.
+   * The loader's tier rests on it (mod-tier.ts): a zip records whatever
+   * repository its manifest claims, so only a fetched copy can be first-party.
+   * Absent on a record written before this field.
+   */
+  readonly listing?: InstallListing;
 }
 
 /* ------------------------------------------------------------------ *
@@ -207,6 +224,8 @@ export interface InstallProgress {
 export interface InstallConsent {
   readonly origin: ModOrigin;
   readonly allowed: boolean;
+  /** Which list the mod was found on, recorded with it (mod-tier.ts installListing). */
+  readonly listing?: InstallListing;
 }
 
 export type InstallResult =
@@ -360,6 +379,7 @@ async function storeMod(
     readonly tag: string;
     readonly sha?: string;
     readonly installedByModId?: string;
+    readonly listing?: InstallListing;
   },
   files: ReadonlyArray<readonly [string, Uint8Array]>,
   env: InstallEnv,
@@ -405,6 +425,7 @@ async function storeMod(
       installedAt: env.now(),
       digests,
       ...(mod.installedByModId === undefined ? {} : { installedByModId: mod.installedByModId }),
+      ...(mod.listing === undefined ? {} : { listing: mod.listing }),
     };
 
     /* ONE SWAP, NOT A DELETE AND THEN A WRITE.
@@ -556,7 +577,13 @@ export async function installModFromRepo(
     }
 
     return await storeMod(
-      { id: mod.id, repo: mod.repo, tag: mod.tag, ...(mod.sha == null ? {} : { sha: mod.sha }) },
+      {
+        id: mod.id,
+        repo: mod.repo,
+        tag: mod.tag,
+        ...(mod.sha == null ? {} : { sha: mod.sha }),
+        listing: consent.listing ?? (consent.origin === "curated" ? "curated" : "address"),
+      },
       files,
       env,
     );
@@ -644,6 +671,7 @@ export async function installModFromZip(
         repo,
         tag: read.version ?? "imported",
         ...(installedByModId === undefined ? {} : { installedByModId }),
+        listing: "file",
       },
       read.files,
       env,
@@ -889,6 +917,7 @@ function asMeta(v: unknown): InstalledModMeta | null {
   ) {
     return null;
   }
+  if (m.listing !== undefined && !(INSTALL_LISTINGS as readonly unknown[]).includes(m.listing)) return null;
   return m as InstalledModMeta;
 }
 
@@ -907,8 +936,25 @@ function asMeta(v: unknown): InstalledModMeta | null {
  */
 export function installedModSource(
   metas: readonly InstalledModMeta[],
-  read: (id: string, path: string) => Promise<Uint8Array | null>,
-): ModDirSource {
+  readStored: (id: string, path: string) => Promise<Uint8Array | null>,
+): ModDirSource & Pick<InstalledModReport, "records" | "verifyDigests"> {
+  const records = Object.freeze(metas.map((meta) => Object.freeze({
+    ...meta,
+    files: Object.freeze([...meta.files]),
+    ...(meta.digests ? { digests: Object.freeze({ ...meta.digests }) } : {}),
+  })));
+  const snapshot = (async (): Promise<ReadonlyMap<string, Uint8Array>> => {
+    const files = new Map<string, Uint8Array>();
+    for (const meta of records) {
+      for (const path of meta.files) {
+        const bytes = await readStored(meta.id, path);
+        if (bytes) files.set(`${meta.id}/${path}`, new Uint8Array(bytes));
+      }
+    }
+    return files;
+  })();
+  const read = async (id: string, path: string): Promise<Uint8Array | null> =>
+    (await snapshot).get(`${id}/${path}`) ?? null;
   const assetUrls = new Map<string, string>();
   const graphUrls = new Map<string, readonly string[]>();
 
@@ -919,6 +965,15 @@ export function installedModSource(
   };
 
   return {
+    records,
+    verifyDigests: async (id, subtle) => {
+      const meta = records.find((record) => record.id === id);
+      try {
+        return meta !== undefined && await installedDigestsMatch(meta, read, (bytes) => sha256Hex(bytes, subtle));
+      } catch {
+        return false;
+      }
+    },
     kind: "installed",
     /* No path to show: these were downloaded, not put anywhere by the player. The
      * manager names the repository and tag instead, which is the honest answer to
@@ -926,7 +981,7 @@ export function installedModSource(
     dir: () => null,
     list: () =>
       Promise.resolve(
-        metas.map((meta): ModDirEntry => ({
+        records.map((meta): ModDirEntry => ({
           id: meta.id,
           ...sortPackFiles(meta.files),
         })),
@@ -987,17 +1042,47 @@ export function installedModSource(
   };
 }
 
+export interface InstalledModReport extends DiskPackReport {
+  readonly records: readonly InstalledModMeta[];
+  verifyDigests(id: string, subtle: SubtleCrypto): Promise<boolean>;
+}
+
 /** Read every installed mod at boot. Never prompts, never touches the network. */
 export async function loadInstalledMods(
   scope: unknown = globalThis,
-): Promise<DiskPackReport> {
+): Promise<InstalledModReport> {
+  const empty: InstalledModReport = { ...NO_DISK_PACKS, records: [], verifyDigests: async () => false };
   const metas = await installedMods(scope);
-  if (metas.length === 0) return NO_DISK_PACKS;
+  if (metas.length === 0) return empty;
   const db = await openDb(scope);
-  if (!db) return NO_DISK_PACKS;
+  if (!db) return empty;
   const read = async (id: string, path: string): Promise<Uint8Array | null> =>
     installedFileBytes(db, id, path);
-  return await readModDir(installedModSource(metas, read));
+  const source = installedModSource(metas, read);
+  return { ...await readModDir(source), records: source.records, verifyDigests: source.verifyDigests };
+}
+
+/**
+ * Whether every stored file of an installed mod still hashes to the digest
+ * recorded when it arrived. False when storage cannot be opened, so a mod the
+ * game cannot check never counts as first-party. Never throws.
+ */
+export async function verifyInstalledDigests(
+  meta: InstalledModMeta,
+  subtle: Pick<SubtleCrypto, "digest">,
+  scope: unknown = globalThis,
+): Promise<boolean> {
+  try {
+    const db = await openDb(scope);
+    if (!db) return false;
+    return await installedDigestsMatch(
+      meta,
+      (id, path) => installedFileBytes(db, id, path),
+      (bytes) => sha256Hex(bytes, subtle),
+    );
+  } catch {
+    return false;
+  }
 }
 
 function message(e: unknown): string {

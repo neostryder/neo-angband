@@ -44,6 +44,7 @@ import {
 import { fieldDocument, legacyJson, type LegacyField } from "./field-document";
 import { readSetting, writeSetting } from "./settings-store";
 import { safeLaunch } from "./safe-launch";
+import { effectiveGrants, isUnreviewed, type ModTier, type TierRefusal } from "./mod-tier";
 
 /** Where the mod manager's state is kept, one `neo-angband/web/mod-state` document per profile (#288). */
 export const MOD_STATE_STORAGE_KEY = "neo-angband:mod-state";
@@ -107,6 +108,9 @@ const modState = fieldDocument<ModState>({
       if (isRecord(value)) for (const [k, v] of Object.entries(value)) if (Array.isArray(v)) out[k] = strings(v);
       return out;
     }),
+    refusals: null,
+    consentVersions: null,
+    unreviewedNotices: null,
     ruleChoices: legacyKey("neo:modRuleChoices", booleans),
     pins: legacyKey("neo:modPins", (value) => {
       const out: Record<string, { after?: string[]; before?: string[] }> = {};
@@ -154,12 +158,18 @@ export const DEFAULT_ENABLED_MODS: readonly string[] = [];
  * archives that are actually staged, so it can never name an id that is not there.
  */
 let sessionConsents: Readonly<Record<string, readonly string[]>> = {};
+let sessionRefusals: Readonly<Record<string, readonly string[]>> = {};
+let sessionNotices: Readonly<Record<string, boolean>> = {};
 
 /** Publish the session grants (mod-session.ts's boot load, and the tests). */
 export function setSessionConsents(
   granted: Readonly<Record<string, readonly string[]>>,
+  refused: Readonly<Record<string, readonly string[]>> = {},
+  acknowledged: Readonly<Record<string, boolean>> = {},
 ): void {
   sessionConsents = granted;
+  sessionRefusals = refused;
+  sessionNotices = acknowledged;
 }
 
 /**
@@ -492,6 +502,24 @@ export interface CatalogMod {
    * `CatalogInput.installedBy` is where a caller supplies it.
    */
   installedByModId?: string;
+  /**
+   * The capabilities the player refused for this mod, one by one. A refusal is
+   * a decision, so a refused capability is never asked about again; it can be
+   * changed from the mod's permissions screen.
+   */
+  refused?: readonly string[];
+  /** Declared capabilities the mod's tier may not hold, with the reason. Never asked about. */
+  tierRefused?: readonly TierRefusal[];
+  /** The tier the loader measured, when it measured one. */
+  tier?: ModTier;
+  /** Whether the row carries the "unreviewed" badge (mod-tier.ts isUnreviewed). */
+  unreviewed?: boolean;
+}
+
+/** A mod's permission decisions: what the player allowed and what they refused. */
+export interface ConsentRecord {
+  readonly granted: readonly string[];
+  readonly refused: readonly string[];
 }
 
 function readField<K extends keyof ModState>(storage: StorageLike | null, name: K, fallback: NonNullable<ModState[K]>): NonNullable<ModState[K]> {
@@ -780,7 +808,7 @@ export class ModStore {
      * Read HERE rather than at each caller because there are several - the plugin
      * loader, the manager's row, the conflict report - and one of them missing it
      * would be a mod whose code is refused for want of a consent the player gave. */
-    return this.getConsents()[id] ?? sessionConsents[id]?.slice() ?? [];
+    return sessionConsents[id]?.slice() ?? this.getConsents()[id] ?? [];
   }
 
   /** Record that the user approved exactly `caps` for `id` (replaces prior). */
@@ -790,13 +818,78 @@ export class ModStore {
     writeField(this.storage, "consents", all);
   }
 
-  /** Drop a mod's consent entirely (e.g. on remove). */
+  /** Drop a mod's consent entirely (e.g. on remove): grants, refusals and their version. */
   clearConsent(id: string): void {
     const all = this.getConsents();
     if (id in all) {
       delete all[id];
       writeField(this.storage, "consents", all);
     }
+    const refusals = this.getRefusals();
+    if (id in refusals) {
+      delete refusals[id];
+      writeField(this.storage, "refusals", refusals);
+    }
+    const versions = readField(this.storage, "consentVersions", {});
+    if (id in versions) {
+      const next = { ...versions };
+      delete next[id];
+      writeField(this.storage, "consentVersions", next);
+    }
+  }
+
+  /** Every mod's refused capabilities. */
+  getRefusals(): Record<string, string[]> {
+    const obj = readField(this.storage, "refusals", {});
+    const out: Record<string, string[]> = {};
+    for (const [id, caps] of Object.entries(obj)) {
+      if (Array.isArray(caps)) out[id] = caps.filter((c): c is string => typeof c === "string");
+    }
+    return out;
+  }
+
+  /** The capabilities the player refused for this mod. */
+  getRefusal(id: string): string[] {
+    return sessionRefusals[id]?.slice() ?? this.getRefusals()[id] ?? [];
+  }
+
+  /** What the player allowed and refused for this mod. */
+  getDecisions(id: string): ConsentRecord {
+    return { granted: this.getConsent(id), refused: this.getRefusal(id) };
+  }
+
+  /**
+   * Record the player's decision about each capability in `decided`, at mod
+   * version `version`. Decisions about capabilities not in `decided` are kept,
+   * so an update that asks about one new capability leaves the rest alone.
+   */
+  setDecisions(id: string, decided: ConsentRecord, version: string): void {
+    const touched = new Set([...decided.granted, ...decided.refused]);
+    const before = this.getDecisions(id);
+    const granted = [...before.granted.filter((c) => !touched.has(c)), ...decided.granted];
+    const refused = [...before.refused.filter((c) => !touched.has(c)), ...decided.refused.filter((c) => !decided.granted.includes(c))];
+    this.setConsent(id, [...new Set(granted)]);
+    const refusals = this.getRefusals();
+    if (refused.length > 0) refusals[id] = [...new Set(refused)];
+    else delete refusals[id];
+    writeField(this.storage, "refusals", refusals);
+    writeField(this.storage, "consentVersions", { ...readField(this.storage, "consentVersions", {}), [id]: version });
+  }
+
+  /** The mod version the player last made permission decisions at, if any. */
+  getConsentVersion(id: string): string | undefined {
+    return readField(this.storage, "consentVersions", {})[id];
+  }
+
+  /** Whether the player has read the unreviewed-mod notice for this mod. */
+  sawUnreviewedNotice(id: string): boolean {
+    if (id in sessionNotices) return sessionNotices[id] === true;
+    return id in readField(this.storage, "unreviewedNotices", {});
+  }
+
+  /** Record that the player read the unreviewed-mod notice for this mod, at this version. */
+  markUnreviewedNotice(id: string, version: string): void {
+    writeField(this.storage, "unreviewedNotices", { ...readField(this.storage, "unreviewedNotices", {}), [id]: version });
   }
 
   /* --- Setting values (numeric mod settings) ------------------------ */
@@ -966,6 +1059,10 @@ export interface CatalogInput {
   trusted: readonly PackManifest[];
   enabled: readonly string[];
   consents: Record<string, readonly string[]>;
+  /** Mod id to the capabilities the player refused. None when absent. */
+  refusals?: Record<string, readonly string[]>;
+  /** The measured tier of a mod, when the loader measured one (mod-tier.ts modTier). */
+  tierOf?: (id: string) => ModTier | undefined;
   /** Ids loaded for this session only (mod-session.ts), so the row can say so. */
   session?: readonly string[];
   /**
@@ -986,10 +1083,20 @@ function toCatalogMod(
   consents: Record<string, readonly string[]>,
   session: ReadonlySet<string>,
   installedBy: Readonly<Record<string, string>>,
+  refusals: Record<string, readonly string[]> = {},
+  tierOf: (id: string) => ModTier | undefined = () => undefined,
 ): CatalogMod {
   const capabilities = manifest.capabilities ?? [];
   const granted = consents[manifest.id] ?? [];
-  const consented = capabilities.length === 0 || consentSatisfied(capabilities, granted);
+  const refused = refusals[manifest.id] ?? [];
+  const tier = tierOf(manifest.id);
+  /* Without a measured tier nothing is refused by tier, and every declared
+   * capability is the player's to decide, as before tiers existed. */
+  const tierRefused = tier ? effectiveGrants(capabilities, tier, { granted, refused }).refusedByTier : [];
+  const byTier = new Set(tierRefused.map((r) => r.capability));
+  const consented =
+    capabilities.length === 0 ||
+    consentSatisfied(capabilities.filter((c) => !byTier.has(c)), [...granted, ...refused]);
   const installedByModId = installedBy[manifest.id];
   return {
     id: manifest.id,
@@ -1004,6 +1111,10 @@ function toCatalogMod(
     nondeterministic: manifest.nondeterministic ?? false,
     affectsGameplay: manifest.affectsGameplay ?? false,
     consented,
+    refused,
+    tierRefused,
+    ...(tier ? { tier } : {}),
+    unreviewed: tier ? isUnreviewed(tier) : false,
     ...(session.has(manifest.id) ? { session: true } : {}),
     ...(installedByModId === undefined ? {} : { installedByModId }),
   };
@@ -1045,7 +1156,7 @@ export function buildCatalog(input: CatalogInput): CatalogMod[] {
     ["trusted", input.trusted],
   ] as const) {
     for (const manifest of list) {
-      const row = toCatalogMod(manifest, kind, enabledSet, input.consents, sessionSet, installedBy);
+      const row = toCatalogMod(manifest, kind, enabledSet, input.consents, sessionSet, installedBy, input.refusals, input.tierOf);
       const prev = byId.get(row.id);
       if (!prev) byId.set(row.id, row);
       else if (RANK[row.kind] > RANK[prev.kind]) byId.set(row.id, row);

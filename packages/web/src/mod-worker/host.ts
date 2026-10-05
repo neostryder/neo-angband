@@ -96,6 +96,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     }
     post({ type: "reply", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: deps.id, requestId: id, ok: true, value: result });
   };
+  const notGranted = (id: number, capability: string): void => reply(id, { ok: false, reason: "not-granted", capability });
   const postModel = (subscriptionId: string, model: unknown): void => {
     try { post({ type: "event.model", pluginId: deps.id, subscriptionId, model: cloneWorkerJson(model) }); } catch (err) { fail(asError(err).message); }
   };
@@ -185,22 +186,25 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       return;
     }
     if (message.type === "prefs.get") {
-      if (!allowed("prefs:read")) return reply(message.requestId, new Error("prefs:read capability required"));
+      if (!allowed("prefs:read")) return notGranted(message.requestId, "prefs:read");
       try { reply(message.requestId, cloneWorkerJson(deps.prefs.get())); } catch (err) { reply(message.requestId, asError(err)); }
       return;
     }
     if (message.type === "prefs.set") {
-      if (!allowed("prefs:write")) return reply(message.requestId, new Error("prefs:write capability required"));
+      if (!allowed("prefs:write")) return notGranted(message.requestId, "prefs:write");
       try { deps.prefs.set(message.value); reply(message.requestId, null); } catch (err) { reply(message.requestId, asError(err)); }
       return;
     }
     if (message.type === "asset.read") {
-      if (!allowed("asset:read") || !validPath(message.path)) return reply(message.requestId, new Error("asset.read requires asset:read and an own relative path"));
+      if (!allowed("asset:read")) return notGranted(message.requestId, "asset:read");
+      if (!validPath(message.path)) return reply(message.requestId, new Error("asset.read requires an own relative path"));
       try { reply(message.requestId, await deps.readAsset(message.path)); } catch (err) { reply(message.requestId, asError(err)); }
       return;
     }
     if (message.type === "event.subscribe") {
-      if ((!allowed("state:model.read") && !(message.topic === "snapshot.invalidated" && allowed("query:snapshot"))) || !validTopic(message.topic)) return reply(message.requestId, new Error("event.subscribe requires its read capability and a declared topic"));
+      const capability = message.topic === "snapshot.invalidated" ? "query:snapshot" : "state:model.read";
+      if (!allowed("state:model.read") && !allowed(capability)) return notGranted(message.requestId, capability);
+      if (!validTopic(message.topic)) return reply(message.requestId, new Error("event.subscribe requires a declared topic"));
       subscriptionId += 1;
       const id = `subscription-${String(subscriptionId)}`;
       subscriptions.set(id, message.topic);
@@ -217,17 +221,17 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       }
     }
     if (message.type === "query.snapshot") {
-      if (!allowed("query:snapshot")) return reply(message.requestId, new Error("query:snapshot capability required"));
+      if (!allowed("query:snapshot")) return notGranted(message.requestId, "query:snapshot");
       try { reply(message.requestId, transport.snapshot(message.domain, message.revision, message.selector)); } catch (err) { reply(message.requestId, asError(err)); }
       return;
     }
     if (message.type === "policy.install") {
-      if (!allowed("policy:install")) return reply(message.requestId, new Error("policy:install capability required"));
+      if (!allowed("policy:install")) return notGranted(message.requestId, "policy:install");
       try { transport.installPolicy(deps.id, deps.loadOrder ?? 0, message.policy, message.revision, message.body); reply(message.requestId, null); } catch (err) { reply(message.requestId, asError(err)); }
       return;
     }
     if (message.type === "registry.declare" || message.type === "registry.revoke") {
-      if (!allowed("registry:declare")) return reply(message.requestId, new Error("registry:declare capability required"));
+      if (!allowed("registry:declare")) return notGranted(message.requestId, "registry:declare");
       try {
         if (message.type === "registry.declare") transport.declare(deps.id, message.kind, message.id, message.definition);
         else transport.revoke(deps.id, message.kind, message.id);
@@ -236,7 +240,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       return;
     }
     if (message.type === "ui.region.declare" || message.type === "ui.region.patch") {
-      if (!allowed("ui:region")) return reply(message.requestId, new Error("ui:region capability required"));
+      if (!allowed("ui:region")) return notGranted(message.requestId, "ui:region");
       try {
         if (message.type === "ui.region.declare") transport.declareRegion(deps.id, { id: message.id, layer: message.layer, placement: message.placement, inputActions: message.inputActions });
         else transport.patchRegion(deps.id, message.id, { cells: message.cells, ...(message.visible === undefined ? {} : { visible: message.visible }) });
@@ -245,12 +249,14 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       return;
     }
     if (message.type === "command.submit") {
-      if (!allowed("command:submit") || !validCode(message.code)) return reply(message.requestId, new Error("command.submit requires command:submit and a semantic code"));
+      if (!allowed("command:submit")) return notGranted(message.requestId, "command:submit");
+      if (!validCode(message.code)) return reply(message.requestId, new Error("command.submit requires a semantic code"));
       try { reply(message.requestId, (await deps.onCommand?.(message.code, message.args)) ?? null); } catch (err) { reply(message.requestId, asError(err)); }
       return;
     }
     if (message.type === "ui.mount" || message.type === "ui.patch") {
-      if (!allowed("ui:panel") || (message.type === "ui.patch" && !validId(message.panelId))) return reply(message.requestId, new Error("host-owned UI requires ui:panel and a valid panel id"));
+      if (!allowed("ui:panel")) return notGranted(message.requestId, "ui:panel");
+      if (message.type === "ui.patch" && !validId(message.panelId)) return reply(message.requestId, new Error("host-owned UI requires a valid panel id"));
       const payload = message.type === "ui.mount" ? message.panel : message.patch;
       if (message.type === "ui.mount" ? !panelDescription(payload) : !panelPatch(payload)) {
         return reply(message.requestId, new Error("host-owned UI needs a declared panel grammar"));

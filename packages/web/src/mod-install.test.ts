@@ -1041,6 +1041,22 @@ describe("installed mods, read back", () => {
  * ------------------------------------------------------------------ */
 
 describe("rawUrl", () => {
+  it("imports the installed snapshot after storage changes", async () => {
+    const files = new Map([["manifest.json", enc(MANIFEST)], ["plugin.js", enc("export default 'original';")]]);
+    const digests = Object.fromEntries(await Promise.all([...files].map(async ([path, bytes]) => [path, await sha256Hex(bytes, subtle)])));
+    const source = installedModSource([{ id: "demo", repo: MOD_REPO, tag: "v1", files: [...files.keys()], digests, installedAt: "now" }],
+      async (_id, path) => files.get(path) ?? null);
+    await source.readJson("demo", "manifest.json");
+    expect(await source.verifyDigests("demo", subtle as unknown as SubtleCrypto)).toBe(true);
+    files.set("plugin.js", enc("export default 'replacement';"));
+    expect(await source.verifyDigests("demo", subtle as unknown as SubtleCrypto)).toBe(true);
+    const url = await source.codeUrl!("demo", "plugin.js");
+    try {
+      expect(await (await fetch(url!)).text()).toContain("original");
+    } finally {
+      source.releaseUrl?.(url!);
+    }
+  });
   it("spells out refs/tags so a same-named branch cannot win", async () => {
     expect(rawUrl("neostryder/neo-angband-mod-qol", "v1.0.0", "manifest.json")).toBe(
       "https://raw.githubusercontent.com/neostryder/neo-angband-mod-qol/refs/tags/v1.0.0/manifest.json",
@@ -1325,6 +1341,7 @@ describe("an INSTALLED mod's plugin.js actually runs", () => {
     expect(report.packs).toHaveLength(1);
 
     return await loadModCode({
+      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl!,
       enabled: () => true,

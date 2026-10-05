@@ -2,7 +2,7 @@
 
 API 2 is the set of calls a mod's code gets from the game: what it can read, what it can do, and what it hears. Every call returns plain data, a permission the player turned down comes back as a result you can check, and reads show the game as the player knows it. The types are in `@rpgm-tools/neo-angband-mod-sdk`, and the in-process host is in the web package (`packages/web/src/mod-api2-host.ts`).
 
-Status: the types, the version check and the in-process host are built, but the folder loader does not run an API 2 mod yet. A manifest at schema 2 declares an `api` range. An in-process mod whose range admits API 1 (`1.0.0`) loads as an API 1 plugin, and one whose range admits only API 2 is refused with the problem that it needs a mod API this build does not provide. `api2Plugin` in `packages/web/src/mod-api2-shim.ts` wraps a definition as an API 1 plugin with `api: 1`, so the existing loader can register it with the same grants and hook composition, but the loader never calls it by itself. The Worker runtime declares the API `2.0.0-worker` and keeps its own message protocol (see `PLUGIN_SANDBOX_DESIGN.md` and `WORKER_ISOLATION.md`). That version is a prerelease, so no stable 2.x range admits it. API 1 plugins run unchanged.
+Status: the types, the version check and the in-process host are built. An in-process mod whose schema 2 manifest states an `api` range that admits API 2 but not API 1 loads as API 2, wrapped for the folder loader by `api2Plugin` in `packages/web/src/mod-api2-shim.ts`. The Worker runtime keeps its own message protocol (see `PLUGIN_SANDBOX_DESIGN.md`). API 1 plugins run unchanged.
 
 ## A mod in API 2
 
@@ -64,7 +64,7 @@ A call never throws for a missing permission. `isNotGranted(result)` tells a mis
 | `store` | `prefs`, kept apart from any character, and `character`, kept in the current character's save. | None |
 | `net` | Requests to the hosts the manifest names, with credentials passed by reference. Present only when the manifest asks for a `network:` permission. | `network:<host>` |
 | `manage` | Profiles and session control. First-party mods only. | `profiles:manage`, `session:control` |
-| `truth` | Every monster and the real map. The first-party autoplayer only. | None beyond the allowlist |
+| `truth` | Every monster and the real map. Any in-process mod the player allows it. | `state:map-actual.read` |
 
 ### What `view` shows
 
@@ -133,9 +133,16 @@ These API 1 hooks have no API 2 form:
 
 A request to a host the manifest does not name answers `not-granted` with `network:<host>`. Any other failure is `refused` with a net problem code: `timeout`, `too-large`, `redirect`, `unreachable` or `bad-request`. A credential that is not set gives `secret-missing`, and one not set up for the request's host gives `secret-host`.
 
-## First-party seams
+## Seams outside the public API
 
-`manage` and `truth` exist only for a mod the loader names first-party, and they are absent from every other mod's API: test `if (mod.truth)` and there is nothing to request. `manage` belongs to the first-party presentation mod. `manage.profiles` lists and creates player profiles, sets which mods a profile enables, and switches profile, under `profiles:manage`. `manage.session` saves, exits to the title screen or quits under `session:control`, without asking the player to confirm, so a mod asks first in its own panel. `truth` belongs to the first-party autoplayer and needs no permission, and no wildcard grant reaches it. `truth.monsters()` lists every monster with exact hit points and speed, and `truth.level()` gives the real map. An autoplayer uses it to plan and still acts through `act`, on what the player knows.
+`manage` and `truth` are absent from a mod's API unless it holds them, so test `if (mod.truth)` before using it. `truth.monsters()` lists every monster with exact hit points and speed, and `truth.level()` gives the real map. An autoplayer plans from the known-world `view` and acts through `act`, using only what the player knows. Consent to `truth` does not allow hidden information to influence its decisions.
+
+`meta.tier` reports measured identity separately from these permissions. A public mod with consent to `truth` still reports `"public"`.
+
+`truth` is built for any in-process mod the player has allowed `state:map-actual.read`. `manage` is built only for a first-party mod whose `FIRST_PARTY_ORIGINS` entry names the capability (see section 4 of `MOD_LIFECYCLE.md`). A mod that declares one it may not hold loads without it, and the Mods screen says why.
+
+`manage.profiles` lists and creates player profiles, sets which mods a profile enables, and switches profile, under `profiles:manage`. `manage.session` saves, exits to the title screen or quits under `session:control`, without asking the player to confirm, so a mod asks first in its own panel.
+
 
 ## Moving from API 1
 

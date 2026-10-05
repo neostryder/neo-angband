@@ -343,9 +343,20 @@ import {
   folderPluginManifests,
   loadModCode,
   type LoadedModPlugin,
+  measureModTiers,
   mergePluginManifests,
   setModCode,
+  settledGrants,
 } from "./mod-code";
+import {
+  installListing,
+  modTier,
+  playerHeld,
+  modTiers,
+  saveMarkingGrantHeld,
+  setModGrants,
+  setModTiers,
+} from "./mod-tier";
 import { hideAutoplayerBanner, showAutoplayerBanner } from "./autoplayer-banner";
 import { decideAutoplayerKey, keyPressOf } from "./autoplayer-keys";
 import {
@@ -412,7 +423,6 @@ import { composedObjects, hasFacet, resolveSectionState, sortModOrder } from "@r
 import {
   defaultModStore,
   buildCatalog,
-  consentSatisfied,
   resolveEnabledIds,
   resolveModRules,
   setModStorage,
@@ -1043,6 +1053,25 @@ async function rediscoverModSources(): Promise<void> {
   const installed = await loadInstalledMods();
   setDiskPacks(combineDiskReports([folder, installed]));
 
+  /* Every pack's tier, measured from where its bytes came from (mod-tier.ts).
+   * The digest check reads storage, so it happens here, while boot can still
+   * await, and the synchronous loaders read the latch. */
+  const records = installed.records;
+  const subtle = globalThis.crypto?.subtle as SubtleCrypto | undefined;
+  setModTiers(
+    await measureModTiers(
+      diskPacks().packs,
+      {
+        session: new Set(sessionPacks().packs.map((pack) => pack.manifest.id)),
+        folder: new Set(folder.packs.map((pack) => pack.manifest.id)),
+      },
+      records,
+      async (id) => {
+        return subtle !== undefined ? await installed.verifyDigests(id, subtle) : false;
+      },
+    ),
+  );
+
   /* `presentPackDigests()` has to be synchronous because `bootGame()` is. Read
    * IndexedDB's provenance records here, while boot is still awaiting setup,
    * then give pack.ts only the enabled content mods whose installed copy is the
@@ -1098,14 +1127,18 @@ async function rediscoverModSources(): Promise<void> {
    * player has not agreed to run. */
   const disk = diskPacks();
   const store = defaultModStore();
-  setModCode(
-    await loadModCode({
-      packs: disk.packs,
-      codeUrl: disk.codeUrl,
-      enabled: (id) => enabledModIds().includes(id),
-      consented: (id) => store.getConsent(id),
-    }),
-  );
+  const code = await loadModCode({
+    packs: disk.packs,
+    codeUrl: disk.codeUrl,
+    enabled: (id) => enabledModIds().includes(id),
+    consented: (id) => store.getConsent(id),
+    refused: (id) => store.getRefusal(id),
+    acknowledged: (id) => store.sawUnreviewedNotice(id),
+    tier: (pack) => modTier(pack.manifest.id),
+  });
+  /* What each mod holds, for the Worker runtime's modStartGrants and the save mark. */
+  setModGrants(settledGrants(code));
+  setModCode(code);
 }
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -1965,6 +1998,13 @@ function bootGame(): ReturnType<typeof startGame> {
  * menu, a renderer fault - lands there too. See crash-screen.ts. */
 installCrashScreen(ENGINE_VERSION);
 const game = bootGame();
+/* A mod that holds a capability its tier marks the save for (AnybandUI seeing
+ * the real map, mod-tier.ts FIRST_PARTY_ORIGINS) marks the character the way
+ * debug mode does, for as long as it is allowed. The mark is one-way, like
+ * upstream's NOSCORE_DEBUG. With no such mod loaded nothing changes. */
+if (saveMarkingGrantHeld()) {
+  game.state.actor.player.noscore = markNoscore(game.state.actor.player.noscore, NOSCORE.DEBUG);
+}
 // Strip the one-shot boot params (?new / ?seed / ?depth) from the visible URL
 // once they have been consumed. They are read into `params` / `seed` / `depth`
 // at module load (never re-read from location), so removing them here is safe
@@ -7752,6 +7792,8 @@ async function modManagerDeps(): Promise<ModManagerDeps> {
         // the switches change.
         enabled: enabledModIds({ ignoreSafeLaunch: true }),
         consents: store.getConsents(),
+        refusals: store.getRefusals(),
+        tierOf: (id) => modTiers().get(id),
         /* Read off the packs that actually composed rather than off the staged
          * records, so a row is marked "this session" only when there is really a
          * pack behind it - the same rule presentNamespaces uses. */
@@ -13712,14 +13754,21 @@ function modBrowseDeps(): ModUpgradeDeps {
     /* The installed record is LOOKED UP, not passed as null. It used to be null, which
      * silently disabled the only check that stops a mod being replaced from a different
      * repository than the one it came from - see installedMeta in mod-install.ts. */
-    install: async (mod, origin, onProgress) =>
-      await installModFromRepo(
+    install: async (mod, origin, onProgress) => {
+      /* Which list of the game's registry the mod is on, recorded with it: a mod
+       * fetched from the registry's community list is "listed", anything else by
+       * address is sideloaded (mod-tier.ts). */
+      const registry =
+        origin === "curated" ? null : await fetchRegistry(DEFAULT_REGISTRY_URL, net).catch(() => null);
+      const listing = installListing(mod.repo, origin === "curated", registry?.ok ? registry.registry : null);
+      return await installModFromRepo(
         mod,
         await installedMeta(mod.id, globalThis),
         installEnv,
-        { origin, allowed: readConsent(channelStore()) },
+        { origin, allowed: readConsent(channelStore()), listing },
         onProgress,
-      ),
+      );
+    },
     uninstall: (id) => uninstallMod(id, globalThis),
     /* The fourth door. Feature-detected off the desktop bridge, so a browser tab gets
      * the file picker and no mods-folder listing rather than a broken row. */
@@ -15548,7 +15597,7 @@ let stopInstalledController: ((source: string, reason?: string) => void) | null 
 let pendingAutoplayerInstall: { loaded: LoadedModPlugin; install: ModControllerInstall } | null =
   null;
 
-function installSandbox(pluginId: string): void {
+function installSandbox(pluginId: string, held?: readonly string[]): void {
   const found = discoverPlugins().get(pluginId);
   if (!found) {
     log.warn("plugins", `"${pluginId}" not found; skipping`);
@@ -15559,7 +15608,8 @@ function installSandbox(pluginId: string): void {
       playerRaces: players.races,
       playerClasses: players.classes,
     });
-    const caps = CapabilitySet.fromManifest(found.manifest);
+    /* `held` is what the player allowed of what it declared (mod-tier.ts playerHeld). */
+    const caps = CapabilitySet.fromManifest(held ? { ...found.manifest, capabilities: [...held] } : found.manifest);
     let pluginTicks = 0;
     let pluginReady = false;
     let pluginLastError: string | null = null;
@@ -15644,13 +15694,13 @@ function installSandbox(pluginId: string): void {
 // cannot carry. Trust is explicit: it only gets the registry:* domains its
 // manifest declares (CapabilitySet gates each facade). Enable via ?trusted=<id>
 // or by enabling it (with consent) in the mod manager (W2.4).
-function installTrusted(trustedId: string): void {
+function installTrusted(trustedId: string, held?: readonly string[]): void {
   const found = discoverTrustedPlugins().get(trustedId);
   if (!found) {
     log.warn("trusted", `"${trustedId}" not found; skipping`);
   } else {
     installedPluginIds.add(trustedId);
-    const caps = CapabilitySet.fromManifest(found.manifest);
+    const caps = CapabilitySet.fromManifest(held ? { ...found.manifest, capabilities: [...held] } : found.manifest);
     let trustedError: string | null = null;
     const logs: string[] = [];
     // This mod's own vocabulary (W2.3): declared terms + per-entity values. A
@@ -15772,13 +15822,14 @@ try {
 
   const enabledIds = safeLaunch() ? [] : modStore.getEnabled();
   if (enabledIds.length > 0) {
-    const consents = modStore.getConsents();
     for (const id of enabledIds) {
       if (installedPluginIds.has(id)) continue;
+      const decisions = modStore.getDecisions(id);
       const sb = sandboxMods.get(id);
       if (sb) {
-        if (consentSatisfied(sb.manifest.capabilities ?? [], consents[id] ?? [])) {
-          installSandbox(id);
+        const sbHeld = playerHeld(sb.manifest.capabilities ?? [], decisions);
+        if (sbHeld.start) {
+          installSandbox(id, sbHeld.held);
         } else {
           log.warn("mods", `"${id}" enabled but capabilities not consented; skipping`);
         }
@@ -15786,8 +15837,9 @@ try {
       }
       const tr = trustedMods.get(id);
       if (tr) {
-        if (consentSatisfied(tr.manifest.capabilities ?? [], consents[id] ?? [])) {
-          installTrusted(id);
+        const trHeld = playerHeld(tr.manifest.capabilities ?? [], decisions);
+        if (trHeld.start) {
+          installTrusted(id, trHeld.held);
         } else {
           log.warn("mods", `"${id}" enabled but capabilities not consented; skipping`);
         }
