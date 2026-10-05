@@ -68,7 +68,7 @@ export const CHECK_RULES: readonly CheckRule[] = [
   rule("archive-size", {
     severity: "block", kind: "packaging", area: "archive",
     title: "Stay within the archive limits",
-    reason: "The game unpacks at most 4,096 entries, 64 MB for one file and 128 MB in all, so a larger archive cannot be installed.",
+    reason: "All archives in one mod share limits of 64 MB of archive bytes, 4,096 entries and 128 MB expanded, with 64 MB for one file, so a payload over any limit cannot be installed.",
   }),
   rule("archive-bomb", {
     severity: "block", kind: "safety", area: "archive",
@@ -144,14 +144,14 @@ export const CHECK_RULES: readonly CheckRule[] = [
   }),
   rule("first-party-capability", {
     severity: "block", kind: "safety", area: "manifest",
-    title: "Leave management and hidden-state capabilities to the game's own mods",
-    reason: "Mod management and the real map under the player's memory are granted only to the first-party mods the game's build names.",
+    title: "Leave management capabilities to the game's own mods",
+    reason: "Mod management is granted only to the first-party mods the game's build names. Any in-process mod may request hidden-state access under the player's consent; autoplayer decisions still use only what the player knows.",
   }),
 
   rule("unparsed-module", {
     severity: "serious", kind: "functionality", area: "code", outcome: "could-not-check",
     title: "Ship modules the checker can parse",
-    reason: "A script that does not parse as a JavaScript module cannot be examined, and the game will most likely fail to load it too.",
+    reason: "Every imported payload file is checked as a JavaScript module, regardless of its extension. A module that does not parse cannot be examined, and the game will most likely fail to load it too.",
   }),
   rule("missing-module", {
     severity: "block", kind: "functionality", area: "code",
@@ -191,12 +191,22 @@ export const CHECK_RULES: readonly CheckRule[] = [
   rule("capability-feature-test", {
     severity: "note", kind: "functionality", area: "code",
     title: "Request the capabilities the code checks for",
-    reason: "The game leaves members such as ctx.installMod out unless the manifest requests their capability, so code that tests for one first never runs without that request.",
+    reason: "The game leaves members such as ctx.installMod out unless the manifest requests their capability, so a guard controlling that use can keep it from running without the request. An unrelated test does not guard a call.",
   }),
   rule("computed-context-access", {
     severity: "warning", kind: "functionality", area: "code", outcome: "could-not-check",
     title: "Reach the mod API by fixed property names",
     reason: "Reading `ctx[name]` or `host[name]` hides which host call is made, so the checker cannot match it to a capability.",
+  }),
+  rule("computed-global-access", {
+    severity: "warning", kind: "safety", area: "code", outcome: "could-not-check",
+    title: "Reach global functions by fixed property names",
+    reason: "A computed global property can select a function such as eval, so the checker reports unknown names rather than passing the call.",
+  }),
+  rule("untracked-invocation", {
+    severity: "warning", kind: "safety", area: "code", outcome: "could-not-check",
+    title: "Invoke functions through forms the checker can follow",
+    reason: "An unknown function property loses its callable identity, so the checker cannot tell whether it invokes generated code.",
   }),
   rule("context-escapes", {
     severity: "warning", kind: "functionality", area: "code", outcome: "could-not-check",
@@ -221,12 +231,12 @@ export const CHECK_RULES: readonly CheckRule[] = [
   rule("dynamic-eval", {
     severity: "block", kind: "safety", area: "code",
     title: "Do not run strings as code",
-    reason: "`eval`, the `Function` constructor and string timers run code that is built at run time, which no review of the shipped files can see.",
+    reason: "`eval`, function constructors and string timers run code that is built at run time, including through call, apply, bind, Reflect and tagged templates, which no review of the shipped files can see.",
   }),
   rule("script-injection", {
     severity: "block", kind: "safety", area: "code",
     title: "Do not add script elements to the page",
-    reason: "A script element loads and runs code outside the mod's own modules, past every check on them.",
+    reason: "A script element, including one created through a DOM namespace or script markup sink, can run code outside the mod's own modules, past every check on them.",
   }),
   rule("nested-worker", {
     severity: "serious", kind: "safety", area: "code",

@@ -22,7 +22,7 @@
 
 import type { CapabilitySet } from "../capabilities.js";
 import { isLocalNetworkHost, networkGrantCovers, networkRequestCapability } from "../capabilities.js";
-import { MOD_API2_VERSION } from "../api2/version.js";
+import { apiRangeVerdict, MOD_API2_VERSION } from "../api2/version.js";
 import { IN_PROCESS_ENTRY, MOD_API_1_VERSION, WORKER_PREVIEW_API } from "../manifest-v2.js";
 import type { Property } from "acorn";
 import type { ModFinding, ModFindingEvidence } from "../mod-findings.js";
@@ -63,6 +63,7 @@ type Value =
   | { readonly k: "class"; readonly id: string; readonly node: AnyNode; readonly module: string }
   | { readonly k: "ns"; readonly id: string; readonly module: string }
   | { readonly k: "global"; readonly id: string; readonly path: readonly string[] }
+  | { readonly k: "invoke"; readonly id: string; readonly target: Value; readonly method: "call" | "apply" | "bind" }
   | { readonly k: "str"; readonly id: string; readonly value: string }
   /** A string or other value the analysis stopped tracking: never equal to any known string. */
   | { readonly k: "any"; readonly id: string };
@@ -168,6 +169,7 @@ interface Reach {
   readonly need: CapabilityNeed;
   readonly what: string;
   readonly evidence: ModFindingEvidence;
+  readonly guarded?: boolean;
 }
 
 /** What the checks are told about the mod beyond its files. */
@@ -176,6 +178,8 @@ export interface CodeCheckOptions {
   readonly caps: CapabilitySet | null;
   /** Payload paths whose contents could not be read (an archive entry left inflated). */
   readonly unread?: ReadonlySet<string>;
+  /** The caller's coverage ledger includes modules reached through imports. */
+  readonly parsed?: Set<string>;
 }
 
 class Analysis {
@@ -186,6 +190,7 @@ class Analysis {
   private readonly bindingVals = new Map<Binding, VSet>();
   private readonly fieldVals = new Map<Value, Map<string, VSet>>();
   private readonly paramVals = new Map<FunctionNode, VSet[]>();
+  private readonly functionModules = new Map<FunctionNode, string>();
   private readonly thisVals = new Map<FunctionNode, VSet>();
   private readonly returnVals = new Map<FunctionNode, VSet>();
   private readonly exportVals = new Map<string, Map<string, VSet>>();
@@ -207,17 +212,40 @@ class Analysis {
   private thisStack: VSet[] = [];
   private classStack: AnyNode[] = [];
 
-  /** Members the code tests for before using them (`if (ctx.net)`, `ctx.net?.request`), by member key. */
-  readonly tested = new Set<string>();
+  private guards = new Set<string>();
 
-  /** Values used as a condition: a handle among them is a member the code tests for. */
-  private noteTest(vals: VSet): void {
-    for (const v of vals) if (v.k === "handle") this.tested.add(memberKey(v.root, v.path));
+  private guardKeys(node: AnyNode, truthy: boolean): Set<string> {
+    if (node.type === "UnaryExpression" && node.operator === "!") return this.guardKeys(node.argument, !truthy);
+    if (node.type === "LogicalExpression" && ((node.operator === "&&" && truthy) || (node.operator === "||" && !truthy))) {
+      return new Set([...this.guardKeys(node.left, truthy), ...this.guardKeys(node.right, truthy)]);
+    }
+    if (node.type === "BinaryExpression" && EQUALITY.has(node.operator)) {
+      const typeofNode = node.left.type === "UnaryExpression" && node.left.operator === "typeof" ? node.left :
+        node.right.type === "UnaryExpression" && node.right.operator === "typeof" ? node.right : null;
+      const other = typeofNode === node.left ? node.right : node.left;
+      const equal = node.operator === "==" || node.operator === "===";
+      if (typeofNode !== null && other.type === "Literal" && typeof other.value === "string" &&
+        (other.value === "undefined" ? truthy !== equal : truthy === equal)) return this.guardKeys(typeofNode.argument, true);
+    }
+    if (!truthy || (node.type !== "Identifier" && node.type !== "MemberExpression")) return new Set();
+    return new Set([...this.ev(node)].filter((v) => v.k === "handle").map((v) => memberKey(v.root, v.path)));
+  }
+
+  private withGuards<T>(keys: Iterable<string>, visit: () => T): T {
+    const previous = this.guards;
+    this.guards = new Set([...previous, ...keys]);
+    try {
+      return visit();
+    } finally {
+      this.guards = previous;
+    }
   }
 
   /* What the reporting pass collects. */
   readonly reaches: Reach[] = [];
   readonly computed: ModFindingEvidence[] = [];
+  readonly globalComputed: ModFindingEvidence[] = [];
+  readonly invocations: ModFindingEvidence[] = [];
   readonly escapes: ModFindingEvidence[] = [];
   readonly evals: Array<{ readonly what: string; readonly evidence: ModFindingEvidence }> = [];
   readonly network: Array<{ readonly what: string; readonly evidence: ModFindingEvidence }> = [];
@@ -249,6 +277,7 @@ class Analysis {
   }
 
   private fnValue(node: FunctionNode): Value {
+    this.functionModules.set(node, this.mod.path);
     return this.intern({ k: "fn", id: `f:${this.mod.path}:${node.start}`, node, module: this.mod.path });
   }
 
@@ -336,6 +365,7 @@ class Analysis {
       const list = this.params(v.node);
       const slot = list[index];
       if (slot !== undefined) this.addAll(slot, [value]);
+      this.addAll(this.slot(this.fields(this.argumentsValue(v.node, v.module)), "[]"), [value]);
     }
   }
 
@@ -347,6 +377,8 @@ class Analysis {
 
   /** Run passes until nothing changes; false when the limit was reached first. */
   run(seed: () => void): boolean {
+    for (const list of [this.reaches, this.computed, this.globalComputed, this.invocations, this.escapes, this.evals, this.network,
+      this.workers, this.scripts, this.requests, this.secretBinds, this.eventSubs, this.dynamicImports, this.remoteScripts, this.wasm]) list.length = 0;
     let passes = 0;
     do {
       this.changed = false;
@@ -369,6 +401,7 @@ class Analysis {
     this.fnStack = [];
     this.thisStack = [EMPTY];
     this.classStack = [];
+    this.guards = new Set();
     for (const statement of mod.program.body) this.stmt(statement);
   }
 
@@ -390,11 +423,12 @@ class Analysis {
       case "IfStatement":
       case "WhileStatement":
       case "DoWhileStatement":
-        this.noteTest(this.ev(node.test));
+        this.ev(node.test);
         if (node.type === "IfStatement") {
-          this.stmt(node.consequent);
-          if (node.alternate) this.stmt(node.alternate);
-        } else this.stmt(node.body);
+          this.withGuards(this.guardKeys(node.test, true), () => this.stmt(node.consequent));
+          if (node.alternate) this.withGuards(this.guardKeys(node.test, false), () => this.stmt(node.alternate as AnyNode));
+        } else if (node.type === "WhileStatement") this.withGuards(this.guardKeys(node.test, true), () => this.stmt(node.body));
+        else this.stmt(node.body);
         return;
       case "VariableDeclaration":
         for (const d of node.declarations) this.bindPattern(d.id, d.init ? this.ev(d.init) : EMPTY);
@@ -586,7 +620,11 @@ class Analysis {
   private identifier(node: Extract<AnyNode, { type: "Identifier" }>): VSet {
     const binding = this.mod.names.refs.get(node) ?? this.mod.names.decls.get(node) ?? null;
     if (binding !== null) return this.bindingVals.get(binding) ?? EMPTY;
-    if (node.name === "undefined" || node.name === "arguments") return EMPTY;
+    if (node.name === "undefined") return EMPTY;
+    if (node.name === "arguments") {
+      const fn = [...this.fnStack].reverse().find((f) => f.type !== "ArrowFunctionExpression");
+      return fn === undefined ? EMPTY : new Set([this.argumentsValue(fn, this.mod.path)]);
+    }
     if (GLOBAL_OBJECT_NAMES.has(node.name)) return new Set([this.global([])]);
     if (node.name === "WebAssembly" && this.reporting) this.wasm.push(this.at(node));
     return new Set([this.global([node.name])]);
@@ -607,15 +645,6 @@ class Analysis {
       case "BinaryExpression": {
         const left = this.ev(node.left);
         const right = this.ev(node.right);
-        if (EQUALITY.has(node.operator)) {
-          this.noteTest(left);
-          this.noteTest(right);
-        } else if (node.operator === "in") {
-          for (const h of right) {
-            if (h.k !== "handle") continue;
-            for (const name of left) if (name.k === "str") this.tested.add(memberKey(h.root, [...h.path, name.value]));
-          }
-        }
         if (node.operator !== "+") return EMPTY;
         return this.concat(["", "", ""], [left, right]);
       }
@@ -654,23 +683,20 @@ class Analysis {
       }
       case "MemberExpression": {
         const object = this.ev(node.object);
-        if (node.optional) this.noteTest(object);
         const names = node.computed ? this.keyNames(node.property) : [staticKey(node.property)];
-        return this.member(object, names, node);
+        return this.withGuards(node.optional ? [...object].filter((v) => v.k === "handle").map((v) => memberKey(v.root, v.path)) : [], () => this.member(object, names, node));
       }
       case "ChainExpression":
         return this.ev(node.expression);
       case "ConditionalExpression":
-        this.noteTest(this.ev(node.test));
-        return union(this.ev(node.consequent), this.ev(node.alternate));
+        this.ev(node.test);
+        return union(this.withGuards(this.guardKeys(node.test, true), () => this.ev(node.consequent)), this.withGuards(this.guardKeys(node.test, false), () => this.ev(node.alternate)));
       case "LogicalExpression": {
         const left = this.ev(node.left);
-        this.noteTest(left);
-        return union(left, this.ev(node.right));
+        return union(left, this.withGuards(node.operator === "??" ? [] : this.guardKeys(node.left, node.operator === "&&"), () => this.ev(node.right)));
       }
       case "UnaryExpression": {
-        const vals = this.ev(node.argument);
-        if (node.operator === "!" || node.operator === "typeof") this.noteTest(vals);
+        this.ev(node.argument);
         return EMPTY;
       }
       case "SequenceExpression": {
@@ -699,7 +725,7 @@ class Analysis {
       case "ImportExpression":
         return this.evImport(node);
       case "TaggedTemplateExpression":
-        this.ev(node.tag);
+        this.invoke(this.ev(node.tag), EMPTY, [EMPTY, ...node.quasi.expressions.map((e) => this.ev(e))], -1, node, []);
         this.ev(node.quasi);
         return EMPTY;
       case "SpreadElement":
@@ -789,6 +815,12 @@ class Analysis {
   private member(object: VSet, names: readonly string[] | null, node: AnyNode): VSet {
     const out: VSet = new Set();
     for (const v of object) {
+      if (names !== null && (v.k === "fn" || v.k === "global" || v.k === "handle" || v.k === "invoke" || v.k === "class")) {
+        for (const name of names) {
+          if (name === "constructor" && (v.k === "fn" || v.k === "class" || v.k === "invoke" || (v.k === "global" && v.path.length > 0))) out.add(this.global(["Function"]));
+          if (name === "call" || name === "apply" || name === "bind") out.add(this.intern({ k: "invoke", id: `i:${v.id}:${name}`, target: v, method: name }));
+        }
+      }
       switch (v.k) {
         case "handle":
           this.deref(v, node);
@@ -799,7 +831,10 @@ class Analysis {
           for (const name of names) if (name !== "[]") out.add(this.handle(v.root, [...v.path, name]));
           break;
         case "global":
-          if (names === null) break;
+          if (names === null) {
+            if (this.reporting) this.globalComputed.push(this.at(node));
+            break;
+          }
           for (const name of names) if (v.path.length < 3) out.add(this.global([...v.path, name]));
           break;
         case "ns": {
@@ -811,6 +846,7 @@ class Analysis {
         case "str":
           break;
         default: {
+          if (names === null && (v.k === "fn" || v.k === "class" || v.k === "invoke") && this.reporting) this.invocations.push(this.at(node));
           const fields = this.fieldVals.get(v);
           if (fields !== undefined) {
             if (names === null) for (const vals of fields.values()) for (const r of vals) out.add(r);
@@ -846,12 +882,14 @@ class Analysis {
   private deref(handle: Extract<Value, { k: "handle" }>, node: AnyNode): void {
     if (!this.reporting) return;
     const need = gatedMember(handle.root, handle.path);
-    if (need !== undefined) this.reaches.push({ key: memberKey(handle.root, handle.path), need, what: describeHandle(handle.root, handle.path), evidence: this.at(node) });
+    if (need !== undefined) this.reaches.push({ key: memberKey(handle.root, handle.path), need, what: describeHandle(handle.root, handle.path), evidence: this.at(node), guarded: this.guards.has(memberKey(handle.root, handle.path)) });
   }
 
   private writeMember(node: Extract<AnyNode, { type: "MemberExpression" }>, vals: VSet): void {
     const object = this.ev(node.object);
     const names = node.computed ? this.keyNames(node.property) : [staticKey(node.property)];
+    if (this.reporting && names?.some((name) => name === "innerHTML" || name === "outerHTML" || name === "srcdoc") &&
+      [...vals].some((v) => v.k === "str" && /<script\b/iu.test(v.value))) this.scripts.push(this.at(node));
     for (const v of object) {
       if (v.k === "handle") {
         this.deref(v, node);
@@ -888,6 +926,8 @@ class Analysis {
     const result = new Set([value]);
     this.memo.set(node, result);
     const params = this.params(node);
+    const previousGuards = this.guards;
+    this.guards = new Set();
     this.fnStack.push(node);
     const arrow = node.type === "ArrowFunctionExpression";
     if (!arrow) this.thisStack.push(this.slot(this.thisVals, node));
@@ -896,6 +936,7 @@ class Analysis {
     else this.addAll(this.slot(this.returnVals, node), this.ev(node.body));
     if (!arrow) this.thisStack.pop();
     this.fnStack.pop();
+    this.guards = previousGuards;
     return result;
   }
 
@@ -961,6 +1002,10 @@ class Analysis {
   private bindArgs(fn: FunctionNode, thisVals: VSet, args: readonly VSet[], spreadFrom: number): void {
     const params = this.params(fn);
     if (fn.type !== "ArrowFunctionExpression") this.addAll(this.slot(this.thisVals, fn), thisVals);
+    if (fn.type !== "ArrowFunctionExpression") {
+      const module = this.functionModules.get(fn);
+      if (module !== undefined) for (const arg of args) this.addAll(this.slot(this.fields(this.argumentsValue(fn, module)), "[]"), arg);
+    }
     fn.params.forEach((param, i) => {
       const slot = params[i];
       if (slot === undefined) return;
@@ -1052,19 +1097,13 @@ class Analysis {
       receiver = this.ev(calleeNode.object);
       const names = calleeNode.computed ? this.keyNames(calleeNode.property) : [staticKey(calleeNode.property)];
       methodName = names !== null && names.length === 1 ? (names[0] as string) : null;
-      callee = this.member(receiver, names, calleeNode);
+      callee = this.withGuards(calleeNode.optional ? [...receiver].filter((v) => v.k === "handle").map((v) => memberKey(v.root, v.path)) : [], () => this.member(receiver, names, calleeNode));
       thisVals = receiver;
     } else {
       callee = this.ev(calleeNode);
     }
-    if (node.optional) this.noteTest(callee);
     const { args, spreadFrom } = this.evArgs(node.arguments);
-    const out = this.callFunctions(callee, thisVals, args, spreadFrom);
-
-    for (const v of callee) {
-      if (v.k === "handle") this.handleCall(v, node, args);
-      else if (v.k === "global") for (const r of this.globalCall(v.path, node, node.arguments, args, false)) out.add(r);
-    }
+    const out = this.withGuards(node.optional ? [...callee].filter((v) => v.k === "handle").map((v) => memberKey(v.root, v.path)) : [], () => this.invoke(callee, thisVals, args, spreadFrom, node, node.arguments));
 
     if (methodName !== null) for (const r of this.builtinMethod(methodName, receiver, args, node)) out.add(r);
 
@@ -1073,6 +1112,25 @@ class Analysis {
     const safeGlobal = [...callee].every((v) => v.k !== "global" || SAFE_SINKS.has(v.path.join(".")) || isSafeGlobalCall(v.path));
     const handledBuiltin = methodName !== null && BUILTIN_METHODS.has(methodName) && receiver.size > 0;
     if (!handledBuiltin && ((unknown && !known) || !safeGlobal)) this.argEscapes(node, args);
+    return out;
+  }
+
+  private argumentsValue(fn: FunctionNode, module: string): Value {
+    return this.intern({ k: "obj", id: `a:${module}:${fn.start}`, node: null });
+  }
+
+  private invoke(callee: VSet, thisVals: VSet, args: readonly VSet[], spreadFrom: number, node: AnyNode, argNodes: readonly AnyNode[]): VSet {
+    const out = this.callFunctions(callee, thisVals, args, spreadFrom);
+    for (const v of callee) {
+      if (v.k === "handle" && node.type === "CallExpression") this.handleCall(v, node, args);
+      else if (v.k === "global") for (const r of this.globalCall(v.path, node, argNodes, args, false)) out.add(r);
+      else if (v.k === "invoke") {
+        const forwarded = v.method === "apply" ? [this.elementsOf(args[1] ?? EMPTY)] : args.slice(1);
+        const returned = this.invoke(new Set([v.target]), args[0] ?? EMPTY, forwarded, v.method === "apply" ? 0 : -1, node, argNodes.slice(1));
+        if (v.method === "bind") out.add(v.target);
+        else for (const r of returned) out.add(r);
+      }
+    }
     return out;
   }
 
@@ -1158,7 +1216,7 @@ class Analysis {
   private handleCall(handle: Extract<Value, { k: "handle" }>, node: Extract<AnyNode, { type: "CallExpression" }>, args: readonly VSet[]): void {
     if (!this.reporting) return;
     const need = gatedMember(handle.root, handle.path);
-    if (need !== undefined) this.reaches.push({ key: memberKey(handle.root, handle.path), need, what: `${describeHandle(handle.root, handle.path)}()`, evidence: this.at(node) });
+    if (need !== undefined) this.reaches.push({ key: memberKey(handle.root, handle.path), need, what: `${describeHandle(handle.root, handle.path)}()`, evidence: this.at(node), guarded: this.guards.has(memberKey(handle.root, handle.path)) });
     const key = memberKey(handle.root, handle.path);
     if (EVENT_SUBSCRIBE.has(key)) this.eventSubs.push({ names: args[0] ?? EMPTY, evidence: this.at(node) });
     if (NET_REQUEST.has(key)) {
@@ -1186,8 +1244,9 @@ class Analysis {
       else if (TIMERS.has(name) && looksLikeString(argNodes[0], args[0])) this.evals.push({ what: `${name}() with a string`, evidence: this.at(node) });
       else if (name === "importScripts") this.remoteScripts.push({ evidence: this.at(node), spec: firstString(args[0]) });
       else if (name === "Worker" || name === "SharedWorker" || name === "navigator.serviceWorker.register") this.workers.push(this.at(node));
-      else if (name === "document.createElement" && firstString(args[0])?.toLowerCase() === "script") this.scripts.push(this.at(node));
-      else if ((name === "document.write" || name === "document.writeln") && args.some((a) => [...a].some((v) => v.k === "str" && /<script/iu.test(v.value)))) this.scripts.push(this.at(node));
+      else if ((name === "document.createElement" && firstString(args[0])?.toLowerCase() === "script") ||
+        (name === "document.createElementNS" && firstString(args[1])?.toLowerCase().split(":").pop() === "script")) this.scripts.push(this.at(node));
+      else if ((name === "document.write" || name === "document.writeln" || name.endsWith(".insertAdjacentHTML")) && args.some((a) => [...a].some((v) => v.k === "str" && /<script\b/iu.test(v.value)))) this.scripts.push(this.at(node));
       const direct = DIRECT_NETWORK.get(name);
       if (direct !== undefined) {
         this.network.push({ what: direct, evidence: this.at(node) });
@@ -1197,6 +1256,10 @@ class Analysis {
       }
     }
     switch (name) {
+      case "Reflect.apply":
+      case "Reflect.construct":
+        return this.invoke(args[0] ?? EMPTY, name === "Reflect.apply" ? args[1] ?? EMPTY : EMPTY,
+          [this.elementsOf(args[name === "Reflect.apply" ? 2 : 1] ?? EMPTY)], 0, node, []);
       case "Object.freeze":
       case "Object.seal":
       case "Promise.resolve":
@@ -1299,10 +1362,9 @@ function firstString(vals: VSet | undefined): string | null {
 }
 
 function looksLikeString(node: AnyNode | undefined, vals: VSet | undefined): boolean {
-  if (node === undefined) return false;
-  if (node.type === "Literal" && typeof node.value === "string") return true;
-  if (node.type === "TemplateLiteral") return true;
-  if (node.type === "BinaryExpression" && node.operator === "+") return true;
+  if (node?.type === "Literal" && typeof node.value === "string") return true;
+  if (node?.type === "TemplateLiteral") return true;
+  if (node?.type === "BinaryExpression" && node.operator === "+") return true;
   return [...(vals ?? EMPTY)].some((v) => v.k === "str");
 }
 
@@ -1407,10 +1469,23 @@ export function checkCode(subject: CheckSubject, options: CodeCheckOptions): Mod
   }
 
   const scripts = subject.paths.filter(isScriptPath);
-  for (const path of scripts) {
+  const queued = new Set(scripts);
+  const addSpecifier = (from: string, spec: string): void => {
+    const verdict = judgeSpecifier(from, spec, subject.files);
+    if (verdict.kind === "local" && !queued.has(verdict.path)) {
+      queued.add(verdict.path);
+      scripts.push(verdict.path);
+    }
+  };
+  const declaredEntry = subject.manifest?.runtime === "data" ? undefined : subject.manifest?.entry;
+  if (declaredEntry !== undefined && subject.files.has(declaredEntry) && !queued.has(declaredEntry)) {
+    queued.add(declaredEntry);
+    scripts.push(declaredEntry);
+  }
+  const readScript = (path: string): void => {
     if (unread.has(path)) {
       out.push(finding("unparsed-module", `${path} sits in an archive that could not be inflated, so it was not examined.`, { evidence: [{ file: path }] }));
-      continue;
+      return;
     }
     const source = textOf(subject.files.get(path) ?? new Uint8Array());
     const parsed = parseSource(source);
@@ -1418,20 +1493,34 @@ export function checkCode(subject: CheckSubject, options: CodeCheckOptions): Mod
       out.push(finding("unparsed-module", `${path} does not parse: ${parsed.message}.`, {
         evidence: [{ file: path, lines: [parsed.line, parsed.line] }],
       }));
-      continue;
+      return;
     }
     analysis.addModule(path, source, parsed.program);
+    options.parsed?.add(path);
+    const discover = (node: AnyNode): void => {
+      const spec = node.type === "ImportDeclaration" || node.type === "ExportAllDeclaration" || node.type === "ExportNamedDeclaration" || node.type === "ImportExpression" ? node.source : null;
+      if (spec?.type === "Literal" && typeof spec.value === "string") addSpecifier(path, spec.value);
+      else if (spec?.type === "TemplateLiteral" && spec.expressions.length === 0) addSpecifier(path, spec.quasis[0]?.value.cooked ?? "");
+      for (const child of childNodes(node)) discover(child);
+    };
+    discover(parsed.program);
     if (looksMinified(source)) {
       out.push(finding("minified-code", `${path} is minified.`, { evidence: [{ file: path }] }));
     }
-  }
+  };
+  let scanned = 0;
+  const readScripts = (): void => {
+    while (scanned < scripts.length) readScript(scripts[scanned++] as string);
+  };
+  readScripts();
 
   /* The module graph. */
   const missing: ModFindingEvidence[] = [];
   const bare: ModFindingEvidence[] = [];
   const remote: ModFindingEvidence[] = [];
   const staticEdges = new Map<string, string[]>();
-  for (const mod of analysis.modules.values()) {
+  const buildEdges = (mod: ModuleInfo): void => {
+    if (staticEdges.has(mod.path)) return;
     const list: string[] = [];
     staticEdges.set(mod.path, list);
     for (const statement of mod.program.body) {
@@ -1445,7 +1534,11 @@ export function checkCode(subject: CheckSubject, options: CodeCheckOptions): Mod
       else if (verdict.kind === "bare") bare.push({ ...evidence, excerpt: verdict.why });
       else missing.push({ ...evidence, excerpt: verdict.why });
     }
-  }
+  };
+  const buildGraph = (): void => {
+    for (const mod of analysis.modules.values()) buildEdges(mod);
+  };
+  buildGraph();
 
   /* Seeds come from the entry's default export. */
   const runtime = subject.manifest?.runtime ?? "data";
@@ -1480,7 +1573,14 @@ export function checkCode(subject: CheckSubject, options: CodeCheckOptions): Mod
       }
     }
   };
-  const settled = analysis.run(seed);
+  let settled: boolean;
+  for (;;) {
+    settled = analysis.run(seed);
+    for (const imp of analysis.dynamicImports) if (imp.spec !== null) addSpecifier(imp.module, imp.spec);
+    if (scanned === scripts.length) break;
+    readScripts();
+    buildGraph();
+  }
   if (!settled) {
     out.push(finding("analysis-limit", `The flow analysis did not settle within ${MAX_FLOW_PASSES} passes or ${MAX_VALUES_PER_SET} values per name, so some uses of the mod API may be unchecked.`, {
       evidence: entry === null ? [] : [{ file: entry }],
@@ -1522,10 +1622,13 @@ export function checkCode(subject: CheckSubject, options: CodeCheckOptions): Mod
             evidence: [where(mod, apiProp)],
           }));
         }
-      } else if (typeof literal === "string" && !admits(MOD_API2_VERSION)) {
-        out.push(finding("api-mismatch", `${entry} is written for API ${literal}, and the manifest's api "${api ?? "none"}" does not admit ${MOD_API2_VERSION}.`, {
-          evidence: [where(mod, apiProp)],
-        }));
+      } else if (typeof literal === "string") {
+        const verdict = apiRangeVerdict(literal);
+        if (!verdict.ok || !admits(MOD_API2_VERSION)) {
+          out.push(finding("api-mismatch", !verdict.ok ? `${entry} ${verdict.why}.` : `${entry} is written for API ${literal}, and the manifest's api "${api ?? "none"}" does not admit ${MOD_API2_VERSION}.`, {
+            evidence: [where(mod, apiProp)],
+          }));
+        }
       }
       if (!isApi2 && caps !== null) {
         for (const p of props) {
@@ -1609,7 +1712,7 @@ export function checkCode(subject: CheckSubject, options: CodeCheckOptions): Mod
       if (reach.need.covered(caps)) continue;
       /* The game leaves this member out without its capability, and the code
        * checks for it first: the use is dead code rather than a failure. */
-      const into = omittedWhenUngranted(reach.key) && analysis.tested.has(reach.key) ? guarded : byNeed;
+      const into = omittedWhenUngranted(reach.key) && reach.guarded === true ? guarded : byNeed;
       const list = into.get(reach.need.label) ?? [];
       list.push(reach);
       into.set(reach.need.label, list);
@@ -1650,6 +1753,18 @@ export function checkCode(subject: CheckSubject, options: CodeCheckOptions): Mod
     }
   }
   const computed = dedupeEvidence(analysis.computed);
+  const globalComputed = dedupeEvidence(analysis.globalComputed);
+  if (globalComputed.length > 0) {
+    out.push(finding("computed-global-access", `${globalComputed.length} places read global properties by unknown names, so their callable identities were not checked.`, {
+      evidence: limitEvidence(globalComputed),
+    }));
+  }
+  const invocations = dedupeEvidence(analysis.invocations);
+  if (invocations.length > 0) {
+    out.push(finding("untracked-invocation", "The code reads unknown properties of functions, so their invocation flows were not checked.", {
+      evidence: limitEvidence(invocations),
+    }));
+  }
   if (computed.length > 0) {
     out.push(finding("computed-context-access", `${computed.length} place${computed.length === 1 ? "" : "s"} reach the mod API by a computed name, so the capabilities they need were not checked.`, {
       evidence: limitEvidence(computed),

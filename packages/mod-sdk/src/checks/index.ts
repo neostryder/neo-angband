@@ -96,12 +96,13 @@ export async function runModChecks(input: ModCheckInput, options: ModCheckOption
   const archives = new Set(input.archives ?? []);
   const unread = new Set<string>();
   const entries: Array<readonly [string, Uint8Array]> = [];
+  const budget = { archiveBytes: 0, entries: 0, totalBytes: 0 };
   for (const [path, bytes] of input.files) {
     if (!archives.has(path)) {
       entries.push([path, bytes]);
       continue;
     }
-    const reading = await readModArchive(path, bytes);
+    const reading = await readModArchive(path, bytes, budget);
     findings.push(...reading.findings);
     for (const p of reading.unread) unread.add(p);
     for (const [inner, data] of reading.entries) entries.push([inner, data]);
@@ -114,7 +115,8 @@ export async function runModChecks(input: ModCheckInput, options: ModCheckOption
   findings.push(...checkCapabilityTier(subject));
   findings.push(...checkFirstPartyCapability(subject, options.firstParty === true));
   findings.push(...checkListingFiles(subject));
-  const code = checkCode(subject, { caps: capabilitySetOf(subject), unread });
+  const parsed = new Set<string>();
+  const code = checkCode(subject, { caps: capabilitySetOf(subject), unread, parsed });
   findings.push(...code);
   findings.push(...checkComposition(subject, options.base === undefined ? {} : { base: options.base }));
 
@@ -130,7 +132,7 @@ export async function runModChecks(input: ModCheckInput, options: ModCheckOption
     },
     coverage: {
       files: subject.paths.length,
-      scripts: subject.paths.filter((p) => /\.m?js$/iu.test(p) && !unread.has(p)).length,
+      scripts: parsed.size,
       composed: options.base !== undefined && options.base.length > 0,
       unread: [...unread],
     },

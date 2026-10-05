@@ -131,7 +131,7 @@ Two entries with one name, or names that differ only in case, unpack to one file
 
 `checks/archive-size` - block, packaging
 
-The game unpacks at most 4,096 entries, 64 MB for one file and 128 MB in all, so a larger archive cannot be installed.
+All archives in one mod share limits of 64 MB of archive bytes, 4,096 entries and 128 MB expanded, with 64 MB for one file, so a payload over any limit cannot be installed.
 
 ### Make archive headers match what the entries hold
 
@@ -217,17 +217,17 @@ A mod loads after its required dependencies, so naming one in `loadBefore`, nami
 
 Some capabilities exist only for code running in the game's own page, so a Worker mod that asks for one can never be granted it.
 
-### Leave management and hidden-state capabilities to the game's own mods
+### Leave management capabilities to the game's own mods
 
 `checks/first-party-capability` - block, safety
 
-Mod management and the real map under the player's memory are granted only to the first-party mods the game's build names.
+Mod management is granted only to the first-party mods the game's build names. Any in-process mod may request hidden-state access under the player's consent; autoplayer decisions still use only what the player knows.
 
 ### Ship modules the checker can parse
 
 `checks/unparsed-module` - serious, functionality, could not check
 
-A script that does not parse as a JavaScript module cannot be examined, and the game will most likely fail to load it too.
+Every imported payload file is checked as a JavaScript module, regardless of its extension. A module that does not parse cannot be examined, and the game will most likely fail to load it too.
 
 ### Import only files the mod ships, by their full name
 
@@ -275,13 +275,25 @@ A host call that needs a capability the manifest does not request can never be g
 
 `checks/capability-feature-test` - note, functionality
 
-The game leaves members such as ctx.installMod out unless the manifest requests their capability, so code that tests for one first never runs without that request.
+The game leaves members such as ctx.installMod out unless the manifest requests their capability, so a guard controlling that use can keep it from running without the request. An unrelated test does not guard a call.
 
 ### Reach the mod API by fixed property names
 
 `checks/computed-context-access` - warning, functionality, could not check
 
 Reading `ctx[name]` or `host[name]` hides which host call is made, so the checker cannot match it to a capability.
+
+### Reach global functions by fixed property names
+
+`checks/computed-global-access` - warning, safety, could not check
+
+A computed global property can select a function such as eval, so the checker reports unknown names rather than passing the call.
+
+### Invoke functions through forms the checker can follow
+
+`checks/untracked-invocation` - warning, safety, could not check
+
+An unknown function property loses its callable identity, so the checker cannot tell whether it invokes generated code.
 
 ### Keep the mod API in code the checker can follow
 
@@ -311,13 +323,13 @@ The game reads the API from the manifest and the plugin states it again in its `
 
 `checks/dynamic-eval` - block, safety
 
-`eval`, the `Function` constructor and string timers run code that is built at run time, which no review of the shipped files can see.
+`eval`, function constructors and string timers run code that is built at run time, including through call, apply, bind, Reflect and tagged templates, which no review of the shipped files can see.
 
 ### Do not add script elements to the page
 
 `checks/script-injection` - block, safety
 
-A script element loads and runs code outside the mod's own modules, past every check on them.
+A script element, including one created through a DOM namespace or script markup sink, can run code outside the mod's own modules, past every check on them.
 
 ### Do not start workers of your own
 

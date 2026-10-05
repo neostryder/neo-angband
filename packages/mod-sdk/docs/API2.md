@@ -62,7 +62,7 @@ A call never throws for a missing permission. `isNotGranted(result)` tells a mis
 | `store` | `prefs`, kept apart from any character, and `character`, kept in the current character's save. | None |
 | `net` | Requests to the hosts the manifest names, with credentials passed by reference. Present only when the manifest names a host. | `network:<host>` |
 | `manage` | Profiles and session control. First-party mods only. | `profiles:manage`, `session:control` |
-| `truth` | Every monster and the real map. The first-party autoplayer only. | None beyond the allowlist |
+| `truth` | Every monster and the real map, under consent for in-process mods. | Explicit hidden-state permissions |
 
 ### What `view` shows
 
@@ -120,9 +120,9 @@ These API 1 hooks have no API 2 form:
 
 `net.request({ url, method, headers, body })` sends a request to a host the manifest names. A header can hold `mod.net.credential("api-key")` in place of a string. The host fills in the value, and the mod never sees it. `net.credentials` sets, checks and removes credentials by name. A request to a host the manifest does not name answers `not-granted` with `network:<host>`. Any other failure is `refused` with one of the net problem codes (`timeout`, `too-large`, `redirect`, and the rest).
 
-## First-party seams
+## Management and hidden state
 
-`manage` and `truth` exist only for mods the game's own build names as first-party, and they are absent from every other mod's API: test `if (mod.truth)` and there is nothing to request. `truth.monsters()` lists every monster with exact hit points and speed, and `truth.level()` gives the real map. An autoplayer uses it to plan and still acts through `act`, on what the player knows.
+`manage` stays first-party only, with a Core-drawn confirmation for each sensitive intent. Any in-process mod may request hidden-state permissions under the player's consent. `truth.monsters()` lists every monster with exact hit points and speed, and `truth.level()` gives the real map. Borg and Squire keep hidden information out of their decisions and act through `act` using only what the player knows.
 
 ## Moving from API 1
 

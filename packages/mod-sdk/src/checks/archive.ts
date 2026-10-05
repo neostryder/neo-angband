@@ -18,6 +18,13 @@ export interface ArchiveReading {
   readonly unread: string[];
 }
 
+/** Earlier archives in the same input count toward the installer's limits. */
+export interface ArchiveBudget {
+  archiveBytes: number;
+  entries: number;
+  totalBytes: number;
+}
+
 interface CentralEntry {
   readonly name: string;
   readonly flags: number;
@@ -110,7 +117,7 @@ function deflateDecoder(): Decompressor | undefined {
 }
 
 /** The central directory, or why it cannot be read. */
-function centralDirectory(bytes: Uint8Array): { readonly entries: CentralEntry[] } | { readonly problem: string; readonly zip64?: true } {
+function centralDirectory(bytes: Uint8Array): { readonly entries: CentralEntry[]; readonly offset: number } | { readonly problem: string; readonly zip64?: true } {
   const floor = Math.max(0, bytes.length - 22 - 0xffff);
   let eocd = -1;
   for (let at = bytes.length - 22; at >= floor; at--) {
@@ -120,17 +127,22 @@ function centralDirectory(bytes: Uint8Array): { readonly entries: CentralEntry[]
     }
   }
   if (eocd < 0) return { problem: "it has no end-of-directory record, so it is not a zip archive" };
+  if (eocd + 22 + u16(bytes, eocd + 20) !== bytes.length) return { problem: "its end-record comment length disagrees with the file length" };
   const count = u16(bytes, eocd + 10);
   const size = u32(bytes, eocd + 12);
   const offset = u32(bytes, eocd + 16);
-  if (count === 0xffff || size === 0xffffffff || offset === 0xffffffff) {
+  if (count === 0xffff || u16(bytes, eocd + 8) === 0xffff || size === 0xffffffff || offset === 0xffffffff ||
+    (eocd >= 20 && u32(bytes, eocd - 20) === 0x07064b50) || u32(bytes, offset + size) === 0x06064b50) {
     return { problem: "it is a ZIP64 archive", zip64: true };
   }
-  if (offset + size > eocd) return { problem: "its directory points past the end of the file" };
+  if (u16(bytes, eocd + 4) !== 0 || u16(bytes, eocd + 6) !== 0 || u16(bytes, eocd + 8) !== count) {
+    return { problem: "its disk fields or entry counts disagree with a single-disk archive" };
+  }
+  if (offset + size !== eocd) return { problem: "its directory boundaries disagree with the end record" };
   const entries: CentralEntry[] = [];
   let at = offset;
   for (let i = 0; i < count; i++) {
-    if (at + 46 > bytes.length || u32(bytes, at) !== 0x02014b50) {
+    if (at + 46 > eocd || u32(bytes, at) !== 0x02014b50) {
       return { problem: `directory entry ${i + 1} of ${count} is damaged` };
     }
     const madeBy = u16(bytes, at + 4);
@@ -138,6 +150,12 @@ function centralDirectory(bytes: Uint8Array): { readonly entries: CentralEntry[]
     const nameLength = u16(bytes, at + 28);
     const extraLength = u16(bytes, at + 30);
     const commentLength = u16(bytes, at + 32);
+    if (at + 46 + nameLength + extraLength + commentLength > eocd || u16(bytes, at + 34) !== 0) {
+      return { problem: `directory entry ${i + 1} has invalid boundaries or a different disk` };
+    }
+    if (u32(bytes, at + 20) === 0xffffffff || u32(bytes, at + 24) === 0xffffffff || u32(bytes, at + 42) === 0xffffffff) {
+      return { problem: "it has a ZIP64 entry", zip64: true };
+    }
     const external = u32(bytes, at + 38);
     const rawName = bytes.subarray(at + 46, at + 46 + nameLength);
     const name = (flags & 0x800 ? utf8 : latin1).decode(rawName);
@@ -154,7 +172,8 @@ function centralDirectory(bytes: Uint8Array): { readonly entries: CentralEntry[]
     });
     at += 46 + nameLength + extraLength + commentLength;
   }
-  return { entries };
+  if (at !== eocd) return { problem: "its entry count does not cover the whole directory" };
+  return { entries, offset };
 }
 
 /**
@@ -162,14 +181,15 @@ function centralDirectory(bytes: Uint8Array): { readonly entries: CentralEntry[]
  * problem comes back as a finding; the entries come back only when they could
  * all be trusted.
  */
-export async function readModArchive(archive: string, bytes: Uint8Array): Promise<ArchiveReading> {
+export async function readModArchive(archive: string, bytes: Uint8Array, budget: ArchiveBudget = { archiveBytes: 0, entries: 0, totalBytes: 0 }): Promise<ArchiveReading> {
   const findings: ModFinding[] = [];
   const entries: Array<readonly [string, Uint8Array]> = [];
   const unread: string[] = [];
   const at = (name?: string): { file: string; excerpt?: string } => (name === undefined ? { file: archive } : { file: archive, excerpt: name });
 
-  if (bytes.length > ARCHIVE_LIMITS.maxArchiveBytes) {
-    findings.push(finding("archive-size", `${archive} is ${bytes.length} bytes; an archive may be at most ${ARCHIVE_LIMITS.maxArchiveBytes}.`, { evidence: [at()] }));
+  budget.archiveBytes += bytes.length;
+  if (budget.archiveBytes > ARCHIVE_LIMITS.maxArchiveBytes) {
+    findings.push(finding("archive-size", `The archives through ${archive} total ${budget.archiveBytes} bytes; the limit is ${ARCHIVE_LIMITS.maxArchiveBytes}.`, { evidence: [at()] }));
     return { findings, entries, unread };
   }
   const directory = centralDirectory(bytes);
@@ -182,8 +202,10 @@ export async function readModArchive(archive: string, bytes: Uint8Array): Promis
     return { findings, entries, unread };
   }
   const list = directory.entries;
-  if (list.length > ARCHIVE_LIMITS.maxEntries) {
-    findings.push(finding("archive-size", `${archive} holds ${list.length} entries; the limit is ${ARCHIVE_LIMITS.maxEntries}.`, { evidence: [at()] }));
+  budget.entries += list.length;
+  if (budget.entries > ARCHIVE_LIMITS.maxEntries) {
+    findings.push(finding("archive-size", `The archives through ${archive} hold ${budget.entries} entries; the limit is ${ARCHIVE_LIMITS.maxEntries}.`, { evidence: [at()] }));
+    return { findings, entries, unread };
   }
 
   const seen = new Map<string, string>();
@@ -227,7 +249,7 @@ export async function readModArchive(archive: string, bytes: Uint8Array): Promis
       continue;
     }
     const local = entry.localOffset;
-    if (local + 30 > bytes.length || u32(bytes, local) !== 0x04034b50) {
+    if (local + 30 > directory.offset || u32(bytes, local) !== 0x04034b50) {
       findings.push(finding("archive-unreadable", `${entry.name} in ${archive} has no local header where the directory says.`, { evidence: [at(entry.name)] }));
       trusted = false;
       continue;
@@ -242,7 +264,7 @@ export async function readModArchive(archive: string, bytes: Uint8Array): Promis
     }
     const dataStart = local + 30 + localNameLength + u16(bytes, local + 28);
     const dataEnd = dataStart + entry.compressed;
-    if (dataEnd > bytes.length) {
+    if (dataEnd > directory.offset) {
       findings.push(finding("archive-unreadable", `${entry.name} in ${archive} runs past the end of the file.`, { evidence: [at(entry.name)] }));
       trusted = false;
       continue;
@@ -264,8 +286,9 @@ export async function readModArchive(archive: string, bytes: Uint8Array): Promis
     }
     files.push({ entry, dataStart });
   }
-  if (declaredTotal > ARCHIVE_LIMITS.maxTotalBytes) {
-    findings.push(finding("archive-size", `${archive} unpacks to ${declaredTotal} bytes; the limit is ${ARCHIVE_LIMITS.maxTotalBytes}.`, { evidence: [at()] }));
+  budget.totalBytes += declaredTotal;
+  if (budget.totalBytes > ARCHIVE_LIMITS.maxTotalBytes) {
+    findings.push(finding("archive-size", `The archives through ${archive} unpack to ${budget.totalBytes} bytes; the limit is ${ARCHIVE_LIMITS.maxTotalBytes}.`, { evidence: [at()] }));
     trusted = false;
   }
   spans.sort((a, b) => a.start - b.start);

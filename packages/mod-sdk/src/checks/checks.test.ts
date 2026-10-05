@@ -19,7 +19,7 @@ import { basePackFromFiles } from "./composition.js";
 import { runModChecks } from "./index.js";
 import { installChecks } from "./install.js";
 import { CHECK_RULES, INSTALL_CHECK_RULES, checkRule, checksMarkdown } from "./rules.js";
-import { isPayloadPath, type ModFileEntries } from "./subject.js";
+import { ARCHIVE_LIMITS, isPayloadPath, type ModFileEntries } from "./subject.js";
 
 /* ------------------------------------------------------------------ */
 /* Building mods                                                        */
@@ -325,6 +325,14 @@ const CASES: Record<string, { readonly trip: () => Run; readonly pass: () => Run
     trip: () => ({ files: plugin([], "export default { api: 1, register(host, ctx) { globalThis.stash(ctx); } };") }),
     pass: () => ({ files: plugin([], "export default { api: 1, register(host, ctx) { console.log(ctx); } };") }),
   },
+  "computed-global-access": {
+    trip: () => ({ files: plugin([], "export default { api: 1, register() { globalThis[Math.random()]('1'); } };") }),
+    pass: () => ({ files: plugin([], "export default { api: 1, register() { globalThis.console.log('1'); } };") }),
+  },
+  "untracked-invocation": {
+    trip: () => ({ files: plugin([], "export default { api: 1, register() { const f = () => {}; f[Date.now()]('1'); } };") }),
+    pass: () => ({ files: plugin([], "export default { api: 1, register() { const f = () => {}; f.call(null); } };") }),
+  },
   "plugin-shape": {
     trip: () => ({ files: plugin([], "export default globalThis.somePlugin;") }),
     pass: () => ({ files: plugin([], OK) }),
@@ -509,6 +517,145 @@ describe("the named cases", () => {
 /* ------------------------------------------------------------------ */
 /* The report and the install subset                                    */
 /* ------------------------------------------------------------------ */
+
+describe("checker regressions", () => {
+  it("rejects conflicting ZIP counts and disk fields", async () => {
+    for (const field of [4, 6, 8, 10]) {
+      const bytes = zip([{ name: "safe.txt", data: "safe" }, { name: "../escape.js", data: "eval('1')" }]);
+      new DataView(bytes.buffer).setUint16(bytes.length - 22 + field, 1, true);
+      const read = await readModArchive("pack.zip", bytes);
+      expect(read.findings.map((f) => f.rule), `field ${field}`).toContain("checks/archive-unreadable");
+      expect(read.entries).toEqual([]);
+    }
+  });
+
+  it("rejects ZIP directories whose counts or boundaries hide entries", async () => {
+    for (const change of ["counts", "size", "name", "disk", "comment"]) {
+      const bytes = zip([{ name: "safe.txt", data: "safe" }, { name: "../escape.js", data: "x" }]);
+      const view = new DataView(bytes.buffer);
+      const end = bytes.length - 22;
+      const directory = view.getUint32(end + 16, true);
+      if (change === "counts") {
+        view.setUint16(end + 8, 1, true);
+        view.setUint16(end + 10, 1, true);
+      } else if (change === "size") view.setUint32(end + 12, 46, true);
+      else if (change === "name") view.setUint16(directory + 28, 0xffff, true);
+      else if (change === "disk") view.setUint16(directory + 34, 1, true);
+      else view.setUint16(end + 20, 1, true);
+      const read = await readModArchive("pack.zip", bytes);
+      expect(read.findings.map((f) => f.rule), change).toContain("checks/archive-unreadable");
+      expect(read.entries).toEqual([]);
+    }
+  });
+
+  it("recognizes ZIP64 records without sentinel counts", async () => {
+    const original = zip([{ name: "safe.txt", data: "safe" }]);
+    const bytes = new Uint8Array(original.length + 76);
+    const end = original.length - 22;
+    bytes.set(original.subarray(0, end));
+    const view = new DataView(bytes.buffer);
+    view.setUint32(end, 0x06064b50, true);
+    view.setUint32(end + 4, 44, true);
+    view.setUint32(end + 56, 0x07064b50, true);
+    view.setUint32(end + 64, end, true);
+    view.setUint32(end + 72, 1, true);
+    bytes.set(original.subarray(end), end + 76);
+    const read = await readModArchive("pack.zip", bytes);
+    expect(read.findings.map((f) => f.rule)).toContain("checks/archive-unmeasured");
+    expect(read.entries).toEqual([]);
+  });
+
+  it.each(["import './payload.txt';", "export * from './payload.txt';", "import('./payload.txt');"])("checks imported modules with any extension: %s", async (edge) => {
+    const result = await runModChecks({ files: entriesOf(plugin([], `${edge}\n${OK}`, { "payload.txt": "import './nested.data';", "nested.data": "eval('1');" })) });
+    const f = result.report.findings.find((x) => x.rule === "checks/dynamic-eval");
+    expect(f?.severity).toBe("block");
+    expect(f?.evidence[0]?.file).toBe("nested.data");
+    expect(result.coverage.scripts).toBe(3);
+  });
+
+  it.each([
+    "eval.call(null, '1');", "eval.apply(null, ['1']);", "eval.bind(null)('1');",
+    "Reflect.apply(eval, null, ['1']);", "Reflect.construct(Function, ['return 1']);",
+    "(() => {}).constructor('return 1')();", "(async () => {}).constructor('return 1')();", "eval`1`;",
+    "const invoke = eval.call; invoke(null, '1');", "setTimeout.call(null, '1', 10);",
+    "Reflect.apply(setTimeout, null, ['1', 10]);", "setTimeout.apply(null, ['1', 10]);",
+  ])("blocks alternate code invocation: %s", async (call) => {
+    const r = await report({ files: plugin([], `export default { api: 1, register() { ${call} } };`) });
+    expect(r.findings.find((f) => f.rule === "checks/dynamic-eval")?.severity).toBe("block");
+  });
+
+  it("reports unknown computed global calls as unchecked", async () => {
+    const r = await report({ files: plugin([], "export default { api: 1, register() { globalThis[['ev', 'al'].join('')]('1'); } };") });
+    expect(r.findings.some((f) => f.outcome === "could-not-check")).toBe(true);
+  });
+
+  it("reports unsupported function invocation flows as unchecked", async () => {
+    const r = await report({ files: plugin([], "export default { api: 1, register() { const f = () => {}; f[Date.now()]('1'); } };") });
+    expect(r.findings.some((f) => f.outcome === "could-not-check")).toBe(true);
+  });
+
+  it("checks a local module reached through a known computed import", async () => {
+    const r = await report({ files: plugin([], "export default { api: 1, register() { const path = './payload.txt'; import(path); } };", { "payload.txt": "eval('1');" }) });
+    expect(r.findings.find((f) => f.rule === "checks/dynamic-eval")?.severity).toBe("block");
+  });
+
+  it("blocks executable DOM markup sinks", async () => {
+    const r = await report({ files: plugin([], "export default { api: 1, register() { const div = document.createElement('div'); div.innerHTML = '<script>eval(1)</script>'; } };") });
+    expect(r.findings.find((f) => f.rule === "checks/script-injection")?.severity).toBe("block");
+  });
+
+  it("blocks script creation through DOM namespaces", async () => {
+    const r = await report({ files: plugin([], "export default { api: 1, register() { const script = document.createElementNS('http://www.w3.org/1999/xhtml', 'script'); script.textContent = 'eval(1)'; document.body.append(script); } };") });
+    expect(r.findings.find((f) => f.rule === "checks/script-injection")?.severity).toBe("block");
+    expect(await rulesOf({ files: plugin([], "export default { api: 1, register() { document.createElementNS('http://www.w3.org/2000/svg', 'rect'); } };") })).not.toContain("checks/script-injection");
+  });
+
+  it("allows consented truth declarations for community in-process mods", async () => {
+    expect(await rulesOf({ files: plugin(["state:map.read", "state:map-actual.read"], OK) })).not.toContain("checks/first-party-capability");
+    expect(await rulesOf({ files: plugin(["mod:install"], OK) })).toContain("checks/first-party-capability");
+    expect(await rulesOf({ files: { "manifest.json": v2({ api: "^2.0.0", runtime: "worker", entry: "main.js", capabilities: ["state:map-actual.read"] }), "main.js": "export default { api: '^2.0.0', start() {} };" } })).toContain("checks/capability-tier");
+  });
+
+  it("follows incoming context through arguments and lexical arrows", async () => {
+    const r = await report({ files: plugin([], "function f() { (() => arguments[0].saves.list())(); } export default { api: 1, register(host, ctx) { f(ctx); } };") });
+    expect(r.findings.find((f) => f.rule === "checks/undeclared-capability")?.message).toContain("saves:manage");
+  });
+
+  it.each(["typeof ctx.saves; ctx.saves.list();", "if (ctx.saves) ctx.log('yes'); ctx.saves.list();", "if (!ctx.saves) ctx.saves.list();", "ctx.saves || ctx.saves.list();"])("keeps unguarded capability calls blocking: %s", async (code) => {
+    const r = await report({ files: plugin([], `export default { api: 1, register(host, ctx) { ${code} } };`) });
+    expect(r.findings.find((f) => f.rule === "checks/undeclared-capability")?.severity).toBe("block");
+  });
+
+  it("accumulates archive entry limits across ZIPs including directories", async () => {
+    const dirs = (prefix: string): ZipEntry[] => Array.from({ length: 2500 }, (_, i) => ({ name: `${prefix}/${i}/` }));
+    const r = await report({ files: { ...plugin([], OK), "a.zip": zip(dirs("a")), "b.zip": zip(dirs("b")) }, archives: ["a.zip", "b.zip"] });
+    expect(r.findings.find((f) => f.rule === "checks/archive-size")?.severity).toBe("block");
+  });
+
+  it("accumulates archive byte and expanded byte budgets at the limits", async () => {
+    const bytes = zip([{ name: "a.txt", data: "text" }]);
+    for (const budget of [
+      { archiveBytes: ARCHIVE_LIMITS.maxArchiveBytes - bytes.length, entries: 0, totalBytes: 0 },
+      { archiveBytes: 0, entries: 0, totalBytes: ARCHIVE_LIMITS.maxTotalBytes - 4 },
+    ]) {
+      expect((await readModArchive("a.zip", bytes, budget)).findings).toEqual([]);
+      const second = await readModArchive("b.zip", bytes, budget);
+      expect(second.findings.find((f) => f.rule === "checks/archive-size")?.severity).toBe("block");
+      expect(second.entries).toEqual([]);
+    }
+  });
+
+  it.each(["if (ctx.saves) ctx.saves.list();", "ctx.saves && ctx.saves.list();", "ctx.saves?.list();", "if (typeof ctx.saves !== 'undefined') ctx.saves.list();"])("recognizes a guard controlling the capability use: %s", async (code) => {
+    const r = await report({ files: plugin([], `export default { api: 1, register(host, ctx) { ${code} } };`) });
+    expect(r.findings.map((f) => f.rule)).not.toContain("checks/undeclared-capability");
+    expect(r.findings.map((f) => f.rule)).toContain("checks/capability-feature-test");
+  });
+
+  it.each(["^3.0.0", "invalid", ""])("rejects an exported API range the host rejects: %s", async (api) => {
+    const r = await report({ files: { "manifest.json": v2({ api: "^2.0.0", runtime: "in-process" }), "plugin.js": `export default { api: ${JSON.stringify(api)}, start() {} };` } });
+    expect(r.findings.find((f) => f.rule === "checks/api-mismatch")?.severity).toBe("block");
+  });
+});
 
 describe("the report", () => {
   it("names the tool, the version and the mod", async () => {

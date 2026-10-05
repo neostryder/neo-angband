@@ -262,7 +262,7 @@ export function checkFirstPartyCapability(subject: CheckSubject, firstParty: boo
     } catch {
       continue;
     }
-    if (namespace === undefined || namespace === "public") continue;
+    if (namespace !== "manage") continue;
     out.push(finding("first-party-capability", `${cap} is granted only to the game's first-party mods.`, {
       evidence: [{ file: "manifest.json", excerpt: cap }],
       suggestedFix: `Remove ${cap}.`,

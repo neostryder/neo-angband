@@ -47,7 +47,7 @@ export function isPayloadPath(path: string): boolean {
   return !NOT_PAYLOAD.some((re) => re.test(path));
 }
 
-/** Script modules the game can load: `.js` and `.mjs`. */
+/** Standalone script paths; import edges can make other payload files executable. */
 export const isScriptPath = (path: string): boolean => /\.m?js$/iu.test(path);
 
 /** The payload and manifest, read once for every rule. */
