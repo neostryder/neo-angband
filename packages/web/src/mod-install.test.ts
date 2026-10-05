@@ -1913,6 +1913,22 @@ describe("installModFromZip: the fourth door ends where the other three do", () 
     if (!r.ok) expect(r.problem).toContain("does not meet the requirements");
   });
 
+  it("runs the SDK's fixed install checks and names the mod in the refusal", async () => {
+    const { env } = await envFor({});
+    /* A load order that names one mod on both sides can never be satisfied. checkMod
+     * passes it; the fixed install checks are what refuse it. */
+    const tangled = JSON.stringify({ ...JSON.parse(MANIFEST), loadAfter: ["other"], loadBefore: ["other"] });
+    const r = await installModFromZip(
+      zipOf({ "manifest.json": enc(tangled), "plugin.js": enc(PLUGIN) }),
+      env,
+      true,
+    );
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.problem).toMatch(/^Demo cannot be installed: /u);
+    expect(r.unmet?.map((f) => f.id)).toContain("checks/dependency-order");
+  });
+
   it("will not let a zip overwrite a mod that came from a repository", async () => {
     const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
     const first = await installModFromRepo(

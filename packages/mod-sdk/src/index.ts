@@ -303,6 +303,15 @@ export type {
   Requirement,
   RequirementLevel,
 } from "./standards.js";
+/* The fixed checks: the rule table and the install subset, which carry no
+ * parser. This entry is ctx.authoring, so everything here ships in the game;
+ * runModChecks, readModArchive and basePackFromFiles live in the "./checks"
+ * export instead, which brings acorn. */
+export { CHECKS_TOOL, CHECKS_VERSION, CHECK_RULES, INSTALL_CHECK_RULES, checkRule, checksMarkdown } from "./checks/rules.js";
+export type { CheckArea, CheckRule } from "./checks/rules.js";
+export { installChecks } from "./checks/install.js";
+export { ARCHIVE_LIMITS, NOT_PAYLOAD, PAYLOAD_LIMITS, isPayloadPath } from "./checks/subject.js";
+export type { ModFileEntries } from "./checks/subject.js";
 /* Named rather than `export *`, and applyFieldPolicy is the name left out. Its
  * provenance and manifest maps are built by composition and reachable no other
  * way, so a public signature could only ever be called without them - which

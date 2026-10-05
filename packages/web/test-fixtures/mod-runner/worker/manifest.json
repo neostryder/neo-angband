@@ -1,9 +1,13 @@
 {
-  "id": "runner-worker",
-  "name": "Runner worker",
-  "version": "1.0.0",
-  "shape": "plugin",
-  "modApi": 2,
-  "runtime": "worker",
-  "workerEntry": "worker.js"
+  "format": "neo-angband/mod/manifest",
+  "schemaVersion": 2,
+  "data": {
+    "id": "runner-worker",
+    "name": "Runner worker",
+    "version": "1.0.0",
+    "shape": "plugin",
+    "api": ">=2.0.0 <3.0.0",
+    "runtime": "worker",
+    "entry": "worker.js"
+  }
 }

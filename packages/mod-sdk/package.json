@@ -42,6 +42,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./checks": {
+      "types": "./dist/checks/index.d.ts",
+      "default": "./dist/checks/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -70,6 +74,15 @@
     "sync-docs": "node scripts/sync-docs.mjs",
     "build": "pnpm run sync-docs && tsc",
     "prepack": "node scripts/sync-docs.mjs"
+  },
+  "//dependencies": [
+    "acorn is the JavaScript parser behind the fixed code checks in src/checks/. It is",
+    "pure JavaScript with no dependencies of its own, so the checks run in Node and in a",
+    "browser alike. Only the code checks import it: the install subset does not, so the",
+    "game bundle leaves it out."
+  ],
+  "dependencies": {
+    "acorn": "^8.18.0"
   },
   "devDependencies": {
     "esbuild": "^0.28.1"

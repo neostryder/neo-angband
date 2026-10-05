@@ -203,6 +203,10 @@ importers:
         version: link:../core
 
   packages/mod-sdk:
+    dependencies:
+      acorn:
+        specifier: ^8.18.0
+        version: 8.18.0
     devDependencies:
       esbuild:
         specifier: ^0.28.1

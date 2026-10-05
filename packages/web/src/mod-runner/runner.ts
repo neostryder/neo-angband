@@ -620,6 +620,8 @@ async function runWithImporter(
       enabled: (id) => enabled.includes(id),
       /* The run grants what each manifest asks for; a refusal is then a capability the mod uses without declaring it. */
       consented: consent,
+      /* Checking a mod is looking at it, so the unreviewed-code notice has nobody to show. */
+      acknowledged: () => true,
       ...(options.importer ? { importer: options.importer } : {}),
     });
     setModCode(code);
