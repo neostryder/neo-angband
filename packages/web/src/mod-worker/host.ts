@@ -1,683 +1,370 @@
-/**
- * The host side of the Worker broker: it runs a Worker mod's API 2 calls
- * against the same domain implementations an in-process mod uses, and asks the
- * Worker the few things only the mod can answer.
- *
- * - Every call is checked against the protocol's allowlist (WORKER_CALLS),
- *   then served by the `ModApi2` the caller built for this mod, normally
- *   `createApi2Host` over the mod's own context. Grants, known-only data and
- *   `Api2Result` answers are therefore the in-process host's, unchanged.
- * - Grants arrive as a list under their API 2 names. A literal "*" is dropped:
- *   there is no wildcard grant here.
- * - Each served call runs through the health monitor (`run`), so its host time
- *   and its faults are this mod's. Time the Worker takes to answer a question
- *   is response latency, and time its network requests wait is network time;
- *   both are recorded apart from CPU time.
- * - A question (`ask`) has an id, the epoch it was asked in, and a timeout. On
- *   timeout the host takes the neutral answer (the old bag kept, the stored
- *   preferences left as they are) and moves to a new epoch; an answer that
- *   arrives later, or from an epoch the host has left, is dropped and counted.
- * - While the mod runs, the host pings it. A Worker that does not answer a ping
- *   within the stall limit is terminated and switched off, with a switch-off
- *   notice that says it stopped responding.
- * - Secrets never cross: a credential is an opaque reference the Worker names,
- *   and the host's `net` domain puts the value into the request.
- */
-
-import {
-  API2_HOOK_NAMES,
-  api2PolicyEffects,
-  api2Refused,
-  api2Unavailable,
-  apiRangeVerdict,
-  checkApi2Policies,
-  MOD_API2_VERSION,
-  type Api2HookName,
-  type Api2Hooks,
-  type Api2Policies,
-  type Api2PolicyRegistrations,
-  type Api2Result,
-  type JsonValue,
-  type ModApi2,
-} from "@rpgm-tools/neo-angband-mod-sdk";
-import { modHealth } from "../mod-health";
-import { cloneWorkerJson, payloadBytes, toWorkerJson } from "./clone";
+import { cloneWorkerJson, payloadBytes } from "./clone";
 import {
   MOD_WORKER_PROTOCOL_VERSION,
-  WORKER_CALLS,
+  type HostReply,
   type HostToModWorker,
   type ModWorkerToHost,
-  type WorkerDefinitionSummary,
+  type WorkerInitSnapshot,
   type WorkerJson,
   type WorkerLogLevel,
-  type WorkerQuestion,
 } from "./protocol";
+import { panelDescription, panelId as validPanelId, panelPatch } from "./panel-schema";
+import { isSnapshotDomain, ModWorkerTransport } from "./transport";
 
-/** The largest message a Worker may send, in bytes. */
-export const MAX_MESSAGE_BYTES = 64 * 1024;
-/** Calls a Worker may make in one second before the rest are refused. */
-export const MAX_CALLS_PER_SECOND = 200;
-/** How long the host waits for an answer before it takes the neutral one. */
-export const ASK_TIMEOUT_MS = 3000;
-/** How often the host pings a running Worker. */
-export const HEARTBEAT_MS = 1000;
-/** How long a ping may go unanswered before the Worker is terminated. */
-export const STALL_MS = 5000;
-
-const NOTIFY_HOOKS: readonly string[] = ["optionsChanged", "abilityGained", "monsterBecameVisible", "artifactIdentified"];
+const MAX_MESSAGE_BYTES = 64 * 1024;
+const MAX_REQUESTS_PER_MINUTE = 60;
 
 export interface ModWorkerLike {
-  postMessage(message: HostToModWorker): void;
+  postMessage(message: HostToModWorker | HostReply): void;
   onmessage: ((event: MessageEvent<unknown>) => void) | null;
   onerror: ((event: ErrorEvent) => void) | null;
   terminate(): void;
 }
 
-/** What the broker adds when it asks the caller for the mod's API. */
-export interface WorkerApiOptions {
-  /** The hooks the mod declared (notifications) and the ones its policies fill. */
-  readonly activeHooks: readonly Api2HookName[];
-  /** The mod's preference migration, answered by the Worker. Absent when it declares none. */
-  readonly prefs?: { readonly version: number; migrate(value: JsonValue, fromVersion: number): Promise<JsonValue> };
-}
-
-/** The health monitor's parts the broker uses (modHealth() by default; a test may pass its own). */
-export type WorkerHealth = Pick<
-  ReturnType<typeof modHealth>,
-  "run" | "isOff" | "recordFault" | "recordPayload" | "recordReply" | "recordNetWait" | "recordStale" | "switchOff"
->;
-
 export interface ModWorkerHostDeps {
   readonly id: string;
-  /** The entry URL the Worker imports (the staged graph's own name for it). */
+  readonly capabilities: readonly string[];
+  readonly snapshot: WorkerInitSnapshot;
   readonly entryUrl: string;
-  /** The permissions granted, under their API 2 names. A "*" is dropped. */
-  readonly grants: readonly string[];
-  /** The mod's flags, for `meta.flags` and the hook context. */
-  readonly flags: Readonly<Record<string, boolean>>;
-  readonly engine: string;
-  readonly newCharacter: boolean;
-  /** Whether the mod has a `net` domain. */
-  readonly net: boolean;
-  /** Build the host-side API for this mod, once, when the Worker is ready. */
-  readonly api: (options: WorkerApiOptions) => ModApi2;
-  /**
-   * Read one of the mod's own files. When present, `content.asset` answers a
-   * data: URL of the file's bytes, since the sandbox can fetch nothing.
-   */
-  readonly readAsset?: (path: string) => Promise<Uint8Array | null>;
-  readonly health?: WorkerHealth;
+  readonly prefs: { get(): unknown; set(value: unknown): void };
+  readonly readAsset: (path: string) => Promise<Uint8Array | null>;
   readonly onLog?: (level: WorkerLogLevel, message: string) => void;
-  /** Told of every refused message and every fault the Worker reports. */
-  readonly onProblem?: (message: string) => void;
-  /** Told, once it is ready, the hooks its policy tables stand for, the notification hooks it declared, and the registrations its tables install. */
-  readonly onHooks?: (policyHooks: Api2Hooks, notify: readonly string[], registrations: Api2PolicyRegistrations) => void;
-  /** Told after the broker has stopped, for whatever reason. */
+  /** Read a fresh cloned model after a capability-checked subscription begins. */
+  readonly modelForTopic?: (topic: ModWorkerTopic) => unknown;
+  readonly onCommand?: (code: string, args: WorkerJson) => Promise<WorkerJson | null>;
+  readonly onSubscribe?: (subscriptionId: string, topic: ModWorkerTopic) => void;
+  readonly onUi?: (operation: "mount" | "patch", payload: WorkerJson, panelId?: string) => Promise<WorkerJson | null>;
   readonly onTeardown?: () => void;
-  /** Timing overrides, for tests. */
-  readonly timing?: {
-    readonly askMs?: number;
-    readonly heartbeatMs?: number;
-    readonly stallMs?: number;
-    readonly maxCallsPerSecond?: number;
-  };
-}
-
-/** What the broker found in the mod's definition. */
-export interface WorkerReady {
-  readonly summary: WorkerDefinitionSummary;
-  /** The hooks its valid policy tables stand for. */
-  readonly policyHooks: readonly Api2HookName[];
+  readonly onProblem?: (message: string) => void;
+  /** Told the size of each message the Worker sends, in bytes, for the profiler. */
+  readonly onPayload?: (bytes: number) => void;
+  /** Shared per-game API-2 cache. It owns policies, declarations and regions. */
+  readonly transport?: ModWorkerTransport;
+  /** The resolved plugin load position, used by the same folds as ModHooks. */
+  readonly loadOrder?: number;
 }
 
 export interface StartedModWorker {
-  /** Settles once the Worker has loaded the mod and the host accepted what it holds. */
-  readonly ready: Promise<WorkerReady>;
+  readonly ready: Promise<void>;
   canMigrateBag(): boolean;
-  /** Ask the Worker to migrate its bag. Rejects on failure or timeout, and the caller keeps the old bag. */
-  migrateBag(data: unknown, fromSchema: number): Promise<JsonValue>;
-  /** Run the mod's `start` with its API, after any bag migration (the in-process order). */
-  start(): void;
-  /** Forward a notification hook the mod declared. */
-  notify(hook: string, args: readonly unknown[]): void;
-  /** Answers the host dropped as stale, so far. */
-  staleCount(): number;
+  migrateBag(data: unknown, fromSchema: number): Promise<WorkerJson>;
+  publishModel(subscriptionId: string, model: unknown): void;
+  publishUiAction(panelId: string, action: string): void;
+  publishSnapshotInvalidated(domain: string, revision: number): void;
   teardown(): void;
 }
 
-type Lifecycle = "starting" | "ready" | "running" | "stopped";
+type Lifecycle = "starting" | "ready" | "tearing-down" | "stopped";
+export type ModWorkerTopic = "state.snapshot" | "display.snapshot" | "snapshot.invalidated";
 
-interface PendingAsk {
-  readonly epoch: number;
-  readonly sent: number;
-  readonly site: string;
-  readonly timeout: ReturnType<typeof setTimeout>;
-  resolve(value: WorkerJson): void;
-  reject(reason: Error): void;
-}
-
-/** Thrown for an ask that was not answered in time. */
-export class WorkerTimeoutError extends Error {}
-
-/** Start the broker for one Worker. */
+/**
+ * Host-side API-2 broker. It owns every live service and rejects malformed,
+ * over-sized, unauthorised, stale, or cross-plugin messages before acting.
+ */
 export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): StartedModWorker {
-  const health = deps.health ?? modHealth();
-  const askMs = deps.timing?.askMs ?? ASK_TIMEOUT_MS;
-  const heartbeatMs = deps.timing?.heartbeatMs ?? HEARTBEAT_MS;
-  const stallMs = deps.timing?.stallMs ?? STALL_MS;
-  const maxCalls = deps.timing?.maxCallsPerSecond ?? MAX_CALLS_PER_SECOND;
-  const grants = deps.grants.filter((g) => g !== "*");
-  const now = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
-
+  const granted = new Set(deps.capabilities);
   let state: Lifecycle = "starting";
-  let epoch = 1;
-  let nextAsk = 0;
-  let stale = 0;
-  let summary: WorkerDefinitionSummary | null = null;
-  let policyHooks: Api2HookName[] = [];
-  let api: ModApi2 | null = null;
-  let heartbeat: ReturnType<typeof setInterval> | undefined;
-  let pinging = false;
-  const asks = new Map<number, PendingAsk>();
-  const subscriptions = new Map<number, { readonly id: string }>();
-  const callTimes: number[] = [];
-
-  let resolveReady: (value: WorkerReady) => void = () => undefined;
+  let requestId = 0;
+  let subscriptionId = 0;
+  let hasMigrateBag = false;
+  const subscriptions = new Map<string, ModWorkerTopic>();
+  const pendingMigrations = new Map<number, { resolve(value: WorkerJson): void; reject(reason: Error): void; timeout: ReturnType<typeof setTimeout> }>();
+  const pendingHooks = new Map<number, { sequence: number; resolve(value: { decision: "allow" | "deny"; patch?: WorkerJson }): void }>();
+  const transport = deps.transport ?? new ModWorkerTransport({ onProblem: (pluginId, message) => deps.onProblem?.(`${pluginId}: ${message}`) });
+  const requestTimes: number[] = [];
+  let resolveReady: () => void = () => undefined;
   let rejectReady: (reason: Error) => void = () => undefined;
-  const ready = new Promise<WorkerReady>((resolve, reject) => {
+  const ready = new Promise<void>((resolve, reject) => {
     resolveReady = resolve;
     rejectReady = reject;
   });
-  /* A boot that fails is reported through `ready`; nothing else waits on it. */
-  ready.catch(() => undefined);
 
-  const problem = (message: string): void => deps.onProblem?.(message);
-  const post = (message: HostToModWorker): void => {
-    if (state === "stopped") return;
+  const fail = (message: string): void => {
+    deps.onProblem?.(message);
+  };
+  const post = (message: HostToModWorker | HostReply): void => {
     try {
       worker.postMessage(message);
     } catch (err) {
-      problem(`worker post failed: ${messageOf(err)}`);
+      fail(`worker post failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
-  const envelope = (): { pluginId: string; epoch: number } => ({ pluginId: deps.id, epoch });
-
-  const ask = (question: WorkerQuestion, site: string): Promise<WorkerJson> => {
-    if (state === "stopped") return Promise.reject(new Error("the mod's Worker has stopped"));
-    nextAsk += 1;
-    const askId = nextAsk;
-    const askedIn = epoch;
-    return new Promise<WorkerJson>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        if (!asks.delete(askId)) return;
-        /* The neutral answer is the caller's: this rejection. Every answer still
-         * outstanding from this epoch is superseded with it. */
-        supersede();
-        reject(new WorkerTimeoutError(`the mod did not answer ${site} within ${String(askMs)} ms`));
-      }, askMs);
-      asks.set(askId, { epoch: askedIn, sent: now(), site, timeout, resolve, reject });
-      post({ type: "ask", ...envelope(), askId, question });
-    });
-  };
-
-  /* A new epoch. A ping still out belongs to the old one, so it is withdrawn
-   * (its answer will be stale) and the next beat sends a fresh one. */
-  const supersede = (): void => {
-    epoch += 1;
-    for (const [askId, pending] of asks) {
-      if (pending.site !== "ping") continue;
-      clearTimeout(pending.timeout);
-      asks.delete(askId);
-      pinging = false;
+  const reply = (id: number, result: WorkerJson | Uint8Array | null | Error): void => {
+    if (result instanceof Error) {
+      post({ type: "reply", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: deps.id, requestId: id, ok: false, error: result.message });
+      return;
     }
+    post({ type: "reply", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: deps.id, requestId: id, ok: true, value: result });
   };
-
-  const stopHeartbeat = (): void => {
-    if (heartbeat !== undefined) clearInterval(heartbeat);
-    heartbeat = undefined;
+  const notGranted = (id: number, capability: string): void => reply(id, { ok: false, reason: "not-granted", capability });
+  const postModel = (subscriptionId: string, model: unknown): void => {
+    try { post({ type: "event.model", pluginId: deps.id, subscriptionId, model: cloneWorkerJson(model) }); } catch (err) { fail(asError(err).message); }
   };
-  const stall = (): void => {
-    if (state === "stopped") return;
-    const seconds = stallMs % 1000 === 0 ? `${String(stallMs / 1000)} seconds` : `${String(stallMs)} ms`;
-    /* The switch-off notice and its problem line say this; no second line is reported. */
-    stop();
-    health.switchOff(deps.id, "heartbeat", new Error(`its Worker went ${seconds} without answering the game`));
-  };
-  const ping = (): void => {
-    if (pinging || state === "stopped") return;
-    pinging = true;
-    nextAsk += 1;
-    const askId = nextAsk;
-    const sent = now();
-    /* A host thread that was itself blocked past the deadline proves nothing
-     * about the Worker, whose answer may be queued behind this very timer: it
-     * gets one more short window before the verdict. */
-    let due = sent + stallMs;
-    const verdict = (): void => {
-      const entry = asks.get(askId);
-      if (!entry) return;
-      const late = now() - due;
-      if (late > 250) {
-        due = now() + Math.min(stallMs, 1000);
-        asks.set(askId, { ...entry, timeout: setTimeout(verdict, Math.min(stallMs, 1000)) });
-        return;
-      }
-      stall();
-    };
-    const stallTimer = setTimeout(verdict, stallMs);
-    /* A ping has its own clock: it waits for the stall limit, not the ask
-     * timeout, and its answer is latency like any other. */
-    asks.set(askId, {
-      epoch,
-      sent,
-      site: "ping",
-      timeout: stallTimer,
-      resolve: () => { pinging = false; },
-      reject: () => { pinging = false; },
-    });
-    post({ type: "ask", ...envelope(), askId, question: { kind: "ping" } });
-  };
-
-  const fail = (message: string): void => {
-    problem(message);
-    health.recordFault(deps.id, "Worker message", new Error(message));
-  };
-
-  const admit = (raw: unknown): ModWorkerToHost | null => {
-    let bytes: number;
+  const allowed = (capability: string): boolean => granted.has(capability) || granted.has("*");
+  const admit = (message: unknown): ModWorkerToHost | null => {
     try {
-      cloneWorkerJson(raw);
-      bytes = payloadBytes(raw);
+      cloneWorkerJson(message);
     } catch (err) {
-      refuse(raw, `refused worker payload: ${messageOf(err)}`);
+      fail(`refused worker payload: ${err instanceof Error ? err.message : String(err)}`);
       return null;
     }
-    health.recordPayload(deps.id, bytes);
+    const bytes = payloadBytes(message);
+    deps.onPayload?.(bytes);
     if (bytes > MAX_MESSAGE_BYTES) {
-      refuse(raw, `refused worker payload larger than ${String(MAX_MESSAGE_BYTES)} bytes`);
+      fail(`refused worker payload larger than ${MAX_MESSAGE_BYTES} bytes`);
       return null;
     }
-    if (!isWorkerMessage(raw)) {
-      refuse(raw, "refused malformed worker message");
+    if (!isWorkerMessage(message)) {
+      fail("refused malformed worker message");
       return null;
     }
-    if (raw.protocolVersion !== MOD_WORKER_PROTOCOL_VERSION || raw.pluginId !== deps.id) {
+    if (message.protocolVersion !== MOD_WORKER_PROTOCOL_VERSION || message.pluginId !== deps.id) {
       fail("refused worker message with wrong protocol version or plugin id");
       return null;
     }
-    if (state === "stopped") return null;
-    return raw;
-  };
-
-  const accept = (message: Extract<ModWorkerToHost, { type: "ready" }>): void => {
-    if (state !== "starting") return fail("refused duplicate worker ready");
-    const s = message.summary;
-    const verdict = apiRangeVerdict(s.api);
-    if (!verdict.ok) {
-      const error = new Error(`"api": "${s.api}" ${verdict.why}`);
-      rejectReady(error);
-      problem(error.message);
-      stop();
-      return;
+    if (state === "stopped" || (state === "tearing-down" && message.type !== "teardown.ack")) {
+      fail("refused worker message outside its lifecycle");
+      return null;
     }
-    if (s.misplaced.length > 0) {
-      problem(
-        `declares ${s.misplaced.join(", ")} as hook functions, which a Worker cannot answer inside a turn; ` +
-          "declare them as policies instead. They are not installed.",
-      );
-    }
-    let hooks: Api2Hooks = {};
-    let registrations: Api2PolicyRegistrations = {};
-    if (s.policies !== null) {
-      const why = checkApi2Policies(s.policies);
-      if (why) problem(`its policies are not valid, so none is installed: ${why}`);
-      else ({ hooks, registrations } = api2PolicyEffects(s.policies as unknown as Api2Policies,
-        (capability) => grants.includes(capability) || grants.includes("registry:*")));
-    }
-    policyHooks = (Object.keys(hooks) as Api2HookName[]).filter((h) => API2_HOOK_NAMES.includes(h));
-    const notify = s.notify.filter((h) => NOTIFY_HOOKS.includes(h));
-    summary = { ...s, notify };
-    const prefsVersion = s.prefsVersion;
-    try {
-      api = deps.api({
-        activeHooks: [...notify, ...policyHooks] as Api2HookName[],
-        ...(prefsVersion !== null && Number.isInteger(prefsVersion) && prefsVersion >= 1
-          ? {
-            prefs: {
-              version: prefsVersion,
-              migrate: async (value: JsonValue, fromVersion: number): Promise<JsonValue> =>
-                (await ask({ kind: "prefs.migrate", value: toWorkerJson(value), fromVersion }, "its preference migration")) as JsonValue,
-            },
-          }
-          : {}),
-      });
-    } catch (err) {
-      const error = new Error(`its API could not be built: ${messageOf(err)}`);
-      rejectReady(error);
-      problem(error.message);
-      stop();
-      return;
-    }
-    state = "ready";
-    deps.onHooks?.(hooks, notify, registrations);
-    heartbeat = setInterval(ping, heartbeatMs);
-    resolveReady({ summary, policyHooks });
-  };
-
-  const answered = (message: Extract<ModWorkerToHost, { type: "answer" }>): void => {
-    const pending = asks.get(message.askId);
-    if (!pending || pending.epoch !== message.epoch || message.epoch !== epoch) {
-      stale += 1;
-      health.recordStale(deps.id);
-      return;
-    }
-    asks.delete(message.askId);
-    clearTimeout(pending.timeout);
-    health.recordReply(deps.id, Math.max(0, now() - pending.sent));
-    if (message.ok) {
-      try {
-        pending.resolve(cloneWorkerJson(message.value));
-      } catch (err) {
-        pending.reject(new Error(messageOf(err)));
+    const now = Date.now();
+    while (requestTimes[0] !== undefined && requestTimes[0] < now - 60_000) requestTimes.shift();
+    if (message.type !== "ready" && message.type !== "teardown.ack") {
+      if (requestTimes.length >= MAX_REQUESTS_PER_MINUTE) {
+        fail("refused worker request rate above 60 per minute");
+        return null;
       }
-    } else {
-      pending.reject(new Error(message.error));
+      requestTimes.push(now);
     }
+    return message;
   };
 
-  const reply = (requestId: number, calledIn: number, result: Api2Result<unknown> | Error): void => {
-    if (result instanceof Error) {
-      post({ type: "reply", pluginId: deps.id, epoch: calledIn, requestId, ok: false, error: result.message.slice(0, 4096) });
-      return;
-    }
-    let json: WorkerJson;
-    try {
-      json = toWorkerJson(result);
-    } catch (err) {
-      post({ type: "reply", pluginId: deps.id, epoch: calledIn, requestId, ok: false, error: `the answer could not be copied: ${messageOf(err)}`.slice(0, 4096) });
-      return;
-    }
-    post({ type: "reply", pluginId: deps.id, epoch: calledIn, requestId, ok: true, result: json });
-  };
-
-  const refuse = (raw: unknown, reason: string): void => {
-    if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
-      const m = raw as Record<string, unknown>;
-      if (m["type"] === "call" && m["pluginId"] === deps.id && m["protocolVersion"] === MOD_WORKER_PROTOCOL_VERSION &&
-        Number.isSafeInteger(m["requestId"]) && (m["requestId"] as number) > 0 && Number.isSafeInteger(m["epoch"])) {
-        reply(m["requestId"] as number, m["epoch"] as number, new Error(reason));
-      }
-    }
-    fail(reason);
-  };
-
-  /** Serve one call. Every path answers with an Api2Result or an error. */
-  const serve = async (host: ModApi2, method: string, args: readonly WorkerJson[]): Promise<Api2Result<unknown>> => {
-    if (method === "events.on") {
-      const [name, listenerId] = args;
-      if (typeof name !== "string" || !Number.isSafeInteger(listenerId) || (listenerId as number) <= 0 || subscriptions.has(listenerId as number)) {
-        return api2Refused("bad-call", "events.on takes an event name and a fresh listener id");
-      }
-      const result = await host.events.on(name as never, (payload: unknown) => {
-        if (state !== "running") return;
-        let json: WorkerJson;
-        try {
-          json = toWorkerJson(payload);
-        } catch (err) {
-          problem(`event ${name} could not be copied: ${messageOf(err)}`);
-          return;
-        }
-        post({ type: "event", ...envelope(), listenerId: listenerId as number, payload: json });
-      });
-      if (!result.ok) return result;
-      subscriptions.set(listenerId as number, result.value);
-      return { ok: true, value: { id: String(listenerId) } };
-    }
-    if (method === "events.off") {
-      const listenerId = Number((args[0] as { id?: unknown } | null)?.id);
-      const subscription = subscriptions.get(listenerId);
-      if (!subscription) return { ok: true, value: null };
-      subscriptions.delete(listenerId);
-      return host.events.off(subscription);
-    }
-    if (method === "ui.mount") {
-      const [panel, callbackId] = args;
-      const onAction = Number.isSafeInteger(callbackId) && (callbackId as number) > 0
-        ? (action: string): void => post({ type: "ui.action", ...envelope(), callbackId: callbackId as number, action: String(action) })
-        : undefined;
-      return host.ui.mount(panel as never, onAction);
-    }
-    if (method === "content.asset" && deps.readAsset) {
-      const path = args[0];
-      if (typeof path !== "string" || !validPath(path)) return api2Refused("bad-path", "content.asset takes a relative path inside this mod");
-      const bytes = await deps.readAsset(path);
-      if (bytes === null) return api2Refused("not-found", `this mod has no file "${path}"`);
-      return { ok: true, value: `data:application/octet-stream;base64,${base64(bytes)}` };
-    }
-    if (method === "store.prefs.get") {
-      try {
-        return await host.store.prefs.get();
-      } catch (err) {
-        if (err instanceof WorkerTimeoutError) return api2Unavailable(`its stored preferences were left as they are: ${err.message}`);
-        throw err;
-      }
-    }
-    const target = resolve(host, method);
-    if (!target) return api2Unavailable(`this mod has no "${method.split(".")[0] ?? method}" domain`);
-    if (method === "net.request") {
-      const started = now();
-      try {
-        return await (target(...args) as Promise<Api2Result<unknown>>);
-      } finally {
-        health.recordNetWait(deps.id, Math.max(0, now() - started));
-      }
-    }
-    return await (target(...args) as Promise<Api2Result<unknown>>);
-  };
-
-  const called = (message: Extract<ModWorkerToHost, { type: "call" }>): void => {
-    const respond = (result: Api2Result<unknown> | Error): void => reply(message.requestId, message.epoch, result);
-    if (message.epoch !== epoch) {
-      stale += 1;
-      health.recordStale(deps.id);
-      respond(new Error("the call was superseded by a new Worker epoch"));
-      return;
-    }
-    if (state !== "running" || api === null) {
-      respond(new Error("the mod's API is not open yet; call it from start()"));
-      return;
-    }
-    if (!(WORKER_CALLS as readonly string[]).includes(message.method)) {
-      fail(`refused call to "${message.method}", which a Worker mod cannot make`);
-      respond(new Error(`"${message.method}" is not part of the API a Worker mod holds`));
-      return;
-    }
-    const t = now();
-    while (callTimes[0] !== undefined && callTimes[0] < t - 1000) callTimes.shift();
-    if (callTimes.length >= maxCalls) {
-      respond(api2Refused("rate", `more than ${String(maxCalls)} calls in one second`));
-      return;
-    }
-    callTimes.push(t);
-    const host = api;
-    let pending: Promise<Api2Result<unknown>>;
-    try {
-      pending = health.run(deps.id, `Worker ${message.method}`, () => serve(host, message.method, message.args));
-    } catch (err) {
-      respond(err instanceof Error ? err : new Error(messageOf(err)));
-      return;
-    }
-    pending.then(
-      (result) => respond(result),
-      (err: unknown) => respond(err instanceof Error ? err : new Error(messageOf(err))),
-    );
-  };
-
-  const receive = (raw: unknown): void => {
+  const receive = async (raw: unknown): Promise<void> => {
     const message = admit(raw);
     if (!message) return;
-    switch (message.type) {
-      case "ready":
-        accept(message);
-        return;
-      case "answer":
-        answered(message);
-        return;
-      case "call":
-        called(message);
-        return;
-      case "log":
-        if (message.message.length > 4096) return fail("refused worker log longer than 4096 characters");
-        deps.onLog?.(message.level, message.message);
-        return;
-      case "fault": {
-        const error = new Error(message.message.slice(0, 4096));
-        problem(`${message.site.slice(0, 64)} failed: ${error.message}`);
-        if (state === "starting") {
-          rejectReady(error);
-          stop();
-          return;
-        }
-        health.recordFault(deps.id, message.site.slice(0, 64), error);
-        return;
-      }
-      default:
-        return;
+    if (message.type === "ready") {
+      if (state !== "starting") return fail("refused duplicate worker ready");
+      if (typeof message.hasMigrateBag !== "boolean") return fail("refused malformed worker ready");
+      hasMigrateBag = message.hasMigrateBag;
+      state = "ready";
+      resolveReady();
+      return;
     }
-  };
-
-  const stop = (): void => {
-    if (state === "stopped") return;
-    if (state !== "starting") post({ type: "teardown", ...envelope() });
-    state = "stopped";
-    stopHeartbeat();
-    worker.onmessage = null;
-    worker.onerror = null;
-    worker.terminate();
-    for (const pending of asks.values()) {
+    if (message.type === "teardown.ack") return;
+    /* A module may await prefs, assets, or subscriptions from its default export
+     * before it can truthfully send ready. Starting is therefore a live broker
+     * state, while bag migration still begins only after ready below. */
+    if (message.type === "log") {
+      if (message.message.length > 4096) return fail("refused worker log longer than 4096 characters");
+      deps.onLog?.(message.level, message.message);
+      return;
+    }
+    if (message.type === "migrateBag.result") {
+      const pending = pendingMigrations.get(message.requestId);
+      if (!pending) return fail("refused unknown migrateBag reply");
+      pendingMigrations.delete(message.requestId);
       clearTimeout(pending.timeout);
-      pending.reject(new Error("the mod's Worker stopped"));
+      try {
+        pending.resolve(cloneWorkerJson(message.data));
+      } catch (err) {
+        pending.reject(err instanceof Error ? err : new Error(String(err)));
+      }
+      return;
     }
-    asks.clear();
-    const host = api;
-    for (const subscription of subscriptions.values()) void host?.events.off(subscription);
-    subscriptions.clear();
-    rejectReady(new Error("the mod's Worker stopped before it was ready"));
-    deps.onTeardown?.();
+    if (message.type === "migrateBag.error") {
+      const pending = pendingMigrations.get(message.requestId);
+      if (!pending) return fail("refused unknown migrateBag error");
+      pendingMigrations.delete(message.requestId);
+      clearTimeout(pending.timeout);
+      pending.reject(new Error(message.error));
+      return;
+    }
+    if (message.type === "hook.result") {
+      const pending = pendingHooks.get(message.requestId);
+      if (!pending || pending.sequence !== message.sequence) return fail("refused unknown hook result");
+      pendingHooks.delete(message.requestId);
+      pending.resolve(message.patch === undefined ? { decision: message.decision } : { decision: message.decision, patch: cloneWorkerJson(message.patch) });
+      return;
+    }
+    if (message.type === "prefs.get") {
+      if (!allowed("prefs:read")) return notGranted(message.requestId, "prefs:read");
+      try { reply(message.requestId, cloneWorkerJson(deps.prefs.get())); } catch (err) { reply(message.requestId, asError(err)); }
+      return;
+    }
+    if (message.type === "prefs.set") {
+      if (!allowed("prefs:write")) return notGranted(message.requestId, "prefs:write");
+      try { deps.prefs.set(message.value); reply(message.requestId, null); } catch (err) { reply(message.requestId, asError(err)); }
+      return;
+    }
+    if (message.type === "asset.read") {
+      if (!allowed("asset:read")) return notGranted(message.requestId, "asset:read");
+      if (!validPath(message.path)) return reply(message.requestId, new Error("asset.read requires an own relative path"));
+      try { reply(message.requestId, await deps.readAsset(message.path)); } catch (err) { reply(message.requestId, asError(err)); }
+      return;
+    }
+    if (message.type === "event.subscribe") {
+      const capability = message.topic === "snapshot.invalidated" ? "query:snapshot" : "state:model.read";
+      if (!allowed("state:model.read") && !allowed(capability)) return notGranted(message.requestId, capability);
+      if (!validTopic(message.topic)) return reply(message.requestId, new Error("event.subscribe requires a declared topic"));
+      subscriptionId += 1;
+      const id = `subscription-${String(subscriptionId)}`;
+      subscriptions.set(id, message.topic);
+      try {
+        deps.onSubscribe?.(id, message.topic);
+        reply(message.requestId, id);
+        /* postMessage ordering keeps this after the reply that installs the
+         * listener in bootstrap.ts, so the initial model cannot race it. */
+        if (deps.modelForTopic) postModel(id, deps.modelForTopic(message.topic));
+        return;
+      } catch (err) {
+        subscriptions.delete(id);
+        return reply(message.requestId, asError(err));
+      }
+    }
+    if (message.type === "query.snapshot") {
+      if (!allowed("query:snapshot")) return notGranted(message.requestId, "query:snapshot");
+      try { reply(message.requestId, transport.snapshot(message.domain, message.revision, message.selector)); } catch (err) { reply(message.requestId, asError(err)); }
+      return;
+    }
+    if (message.type === "policy.install") {
+      if (!allowed("policy:install")) return notGranted(message.requestId, "policy:install");
+      try { transport.installPolicy(deps.id, deps.loadOrder ?? 0, message.policy, message.revision, message.body); reply(message.requestId, null); } catch (err) { reply(message.requestId, asError(err)); }
+      return;
+    }
+    if (message.type === "registry.declare" || message.type === "registry.revoke") {
+      if (!allowed("registry:declare")) return notGranted(message.requestId, "registry:declare");
+      try {
+        if (message.type === "registry.declare") transport.declare(deps.id, message.kind, message.id, message.definition);
+        else transport.revoke(deps.id, message.kind, message.id);
+        reply(message.requestId, null);
+      } catch (err) { reply(message.requestId, asError(err)); }
+      return;
+    }
+    if (message.type === "ui.region.declare" || message.type === "ui.region.patch") {
+      if (!allowed("ui:region")) return notGranted(message.requestId, "ui:region");
+      try {
+        if (message.type === "ui.region.declare") transport.declareRegion(deps.id, { id: message.id, layer: message.layer, placement: message.placement, inputActions: message.inputActions });
+        else transport.patchRegion(deps.id, message.id, { cells: message.cells, ...(message.visible === undefined ? {} : { visible: message.visible }) });
+        reply(message.requestId, null);
+      } catch (err) { reply(message.requestId, asError(err)); }
+      return;
+    }
+    if (message.type === "command.submit") {
+      if (!allowed("command:submit")) return notGranted(message.requestId, "command:submit");
+      if (!validCode(message.code)) return reply(message.requestId, new Error("command.submit requires a semantic code"));
+      try { reply(message.requestId, (await deps.onCommand?.(message.code, message.args)) ?? null); } catch (err) { reply(message.requestId, asError(err)); }
+      return;
+    }
+    if (message.type === "ui.mount" || message.type === "ui.patch") {
+      if (!allowed("ui:panel")) return notGranted(message.requestId, "ui:panel");
+      if (message.type === "ui.patch" && !validId(message.panelId)) return reply(message.requestId, new Error("host-owned UI requires a valid panel id"));
+      const payload = message.type === "ui.mount" ? message.panel : message.patch;
+      if (message.type === "ui.mount" ? !panelDescription(payload) : !panelPatch(payload)) {
+        return reply(message.requestId, new Error("host-owned UI needs a declared panel grammar"));
+      }
+      try { reply(message.requestId, (await deps.onUi?.(message.type === "ui.mount" ? "mount" : "patch", payload, message.type === "ui.patch" ? message.panelId : undefined)) ?? null); } catch (err) { reply(message.requestId, asError(err)); }
+    }
   };
 
-  worker.onmessage = (event): void => receive(event.data);
-  worker.onerror = (event): void => {
-    const error = new Error(event.message || "the mod's Worker failed");
-    problem(error.message);
-    if (state === "starting") {
-      rejectReady(error);
-      stop();
-    } else {
-      health.recordFault(deps.id, "Worker", error);
-    }
-  };
-  post({
-    type: "init",
-    ...envelope(),
-    protocolVersion: MOD_WORKER_PROTOCOL_VERSION,
-    entryUrl: deps.entryUrl,
-    meta: {
-      id: deps.id,
-      api: MOD_API2_VERSION,
-      engine: deps.engine,
-      tier: "public",
-      flags: { ...deps.flags },
-      newCharacter: deps.newCharacter,
-      granted: grants,
-      net: deps.net,
-      hooks: [...API2_HOOK_NAMES],
-    },
+  worker.onmessage = (event): void => { void receive(event.data); };
+  transport.addHookPeer({
+    pluginId: deps.id,
+    loadOrder: deps.loadOrder ?? 0,
+    request: (hook, sequence, input) => new Promise((resolve, reject) => {
+      if (!allowed("hook:respond") || state !== "ready") return resolve({ decision: "allow" });
+      requestId += 1;
+      pendingHooks.set(requestId, { sequence, resolve });
+      try { post({ type: "hook.request", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: deps.id, requestId, hook, sequence, input: cloneWorkerJson(input) }); } catch (err) { pendingHooks.delete(requestId); reject(asError(err)); }
+    }),
   });
+  worker.onerror = (event): void => {
+    const error = new Error(event.message || "worker failed");
+    if (state === "starting") rejectReady(error);
+    fail(error.message);
+  };
+  post({ type: "init", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: deps.id, entryUrl: deps.entryUrl, snapshot: cloneSnapshot(deps.snapshot) });
 
   return {
     ready,
-    canMigrateBag: (): boolean => summary?.migrateBag === true && state !== "stopped",
-    migrateBag: async (data: unknown, fromSchema: number): Promise<JsonValue> => {
-      if (state !== "ready" && state !== "running") throw new Error("the mod's Worker is not ready to migrate its bag");
-      if (!Number.isInteger(fromSchema) || fromSchema < 0) throw new Error("bag schema must be a non-negative integer");
-      return (await ask({ kind: "migrateBag", data: toWorkerJson(data), fromSchema }, "its bag migration")) as JsonValue;
+    canMigrateBag: (): boolean => hasMigrateBag,
+    migrateBag(data: unknown, fromSchema: number): Promise<WorkerJson> {
+      if (state !== "ready") return Promise.reject(new Error("worker is not ready to migrate its bag"));
+      if (!Number.isInteger(fromSchema) || fromSchema < 0) return Promise.reject(new Error("bag schema must be a non-negative integer"));
+      const cloned = cloneWorkerJson(data);
+      requestId += 1;
+      return new Promise<WorkerJson>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          pendingMigrations.delete(requestId);
+          reject(new Error("worker bag migration timed out"));
+        }, 5000);
+        pendingMigrations.set(requestId, { resolve, reject, timeout });
+        post({ type: "migrateBag", requestId, pluginId: deps.id, data: cloned, fromSchema });
+      });
     },
-    start(): void {
-      if (state !== "ready") return;
-      state = "running";
-      post({ type: "start", ...envelope(), policyHooks });
+    publishModel(subscriptionId: string, model: unknown): void {
+      if (state !== "ready" || !subscriptions.has(subscriptionId)) return;
+      postModel(subscriptionId, model);
     },
-    notify(hook: string, args: readonly unknown[]): void {
-      if ((state !== "ready" && state !== "running") || !summary?.notify.includes(hook) || health.isOff(deps.id)) return;
-      let json: WorkerJson[];
-      try {
-        json = args.map((arg) => toWorkerJson(arg));
-      } catch (err) {
-        problem(`${hook} could not be copied: ${messageOf(err)}`);
-        return;
+    publishUiAction(panelId: string, action: string): void {
+      if (state !== "ready" || !allowed("ui:panel") || !validPanelId(panelId) || !validPanelId(action)) return;
+      post({ type: "ui.action", pluginId: deps.id, panelId, action });
+    },
+    publishSnapshotInvalidated(domain: string, revision: number): void {
+      if (state !== "ready" || !allowed("query:snapshot") || !isSnapshotDomain(domain) || !Number.isInteger(revision) || revision < 0) return;
+      for (const [id, topic] of subscriptions) if (topic === "snapshot.invalidated") post({ type: "event.snapshotInvalidated", pluginId: deps.id, subscriptionId: id, domain, revision });
+    },
+    teardown(): void {
+      if (state === "stopped" || state === "tearing-down") return;
+      state = "tearing-down";
+      post({ type: "teardown", pluginId: deps.id });
+      worker.terminate();
+      state = "stopped";
+      for (const pending of pendingMigrations.values()) {
+        clearTimeout(pending.timeout);
+        pending.reject(new Error("worker stopped during bag migration"));
       }
-      health.run(deps.id, `${hook} hook`, () => post({ type: "notify", ...envelope(), hook, args: json }));
+      pendingMigrations.clear();
+      for (const pending of pendingHooks.values()) pending.resolve({ decision: "allow" });
+      pendingHooks.clear();
+      subscriptions.clear();
+      transport.removePlugin(deps.id);
+      deps.onTeardown?.();
     },
-    staleCount: (): number => stale,
-    teardown: stop,
   };
 }
 
-/** The API method at `path` on `api`, bound, or null when the domain is absent. */
-function resolve(api: ModApi2, path: string): ((...args: unknown[]) => unknown) | null {
-  const parts = path.split(".");
-  let owner: unknown = api;
-  for (const part of parts.slice(0, -1)) {
-    owner = (owner as Record<string, unknown> | undefined)?.[part];
-    if (owner === undefined || owner === null) return null;
-  }
-  const fn = (owner as Record<string, unknown>)[parts[parts.length - 1] ?? ""];
-  return typeof fn === "function" ? (fn as (...args: unknown[]) => unknown).bind(owner) : null;
+function cloneSnapshot(snapshot: WorkerInitSnapshot): WorkerInitSnapshot {
+  return cloneWorkerJson(snapshot) as unknown as WorkerInitSnapshot;
 }
-
-function messageOf(value: unknown): string {
-  return value instanceof Error ? value.message : String(value);
-}
-
-function validPath(value: string): boolean {
-  return value.length > 0 && value.length <= 256 && !value.startsWith("/") && !value.includes("\\") &&
-    !value.split("/").some((part) => part === "" || part === "." || part === "..");
-}
-
-function base64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(binary);
-}
-
+function asError(value: unknown): Error { return value instanceof Error ? value : new Error(String(value)); }
+function validId(value: string): boolean { return /^[a-z][a-z0-9-]{0,63}$/.test(value); }
+function validPath(value: string): boolean { return value.length > 0 && value.length <= 256 && !value.startsWith("/") && !value.includes("\\") && !value.split("/").some((part) => part === "" || part === "." || part === ".."); }
+function validTopic(value: string): value is ModWorkerTopic { return value === "state.snapshot" || value === "display.snapshot" || value === "snapshot.invalidated"; }
+function validCode(value: string): boolean { return /^[a-z][a-z0-9-]{0,63}(?:\.[a-z][a-z0-9-]{0,63})+$/.test(value); }
 function isWorkerMessage(value: unknown): value is ModWorkerToHost {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const m = value as Record<string, unknown>;
-  if (typeof m["type"] !== "string" || typeof m["protocolVersion"] !== "string" || typeof m["pluginId"] !== "string") return false;
-  if (!Number.isSafeInteger(m["epoch"])) return false;
-  const positive = (key: string): boolean => Number.isSafeInteger(m[key]) && (m[key] as number) > 0;
-  switch (m["type"]) {
-    case "ready": {
-      const s = m["summary"] as Record<string, unknown> | null;
-      return typeof s === "object" && s !== null && typeof s["api"] === "string" &&
-        stringList(s["notify"]) && stringList(s["misplaced"]) && s["policies"] !== undefined &&
-        typeof s["migrateBag"] === "boolean" && typeof s["start"] === "boolean" && typeof s["stop"] === "boolean" &&
-        (s["prefsVersion"] === null || typeof s["prefsVersion"] === "number");
-    }
-    case "call":
-      return positive("requestId") && typeof m["method"] === "string" && Array.isArray(m["args"]) && m["args"].length <= 4;
-    case "answer":
-      return positive("askId") && (m["ok"] === true ? m["value"] !== undefined : m["ok"] === false && typeof m["error"] === "string");
-    case "log":
-      return (m["level"] === "info" || m["level"] === "warn" || m["level"] === "error") && typeof m["message"] === "string";
-    case "fault":
-      return typeof m["site"] === "string" && typeof m["message"] === "string";
-    default:
-      return false;
+  const message = value as Record<string, unknown>;
+  if (typeof message["type"] !== "string" || typeof message["protocolVersion"] !== "string" || typeof message["pluginId"] !== "string") return false;
+  const request = (): boolean => Number.isSafeInteger(message["requestId"]) && (message["requestId"] as number) > 0;
+  switch (message["type"]) {
+    case "ready": return typeof message["hasMigrateBag"] === "boolean";
+    case "teardown.ack": return true;
+    case "log": return (message["level"] === "info" || message["level"] === "warn" || message["level"] === "error") && typeof message["message"] === "string";
+    case "prefs.get": return request();
+    case "prefs.set": return request() && (message["value"] === null || message["value"] !== undefined);
+    case "asset.read": return request() && typeof message["path"] === "string";
+    case "event.subscribe": return request() && typeof message["topic"] === "string";
+    case "query.snapshot": return request() && typeof message["domain"] === "string" && message["selector"] !== undefined && (message["revision"] === undefined || (Number.isInteger(message["revision"]) && (message["revision"] as number) >= 0));
+    case "policy.install": return request() && typeof message["policy"] === "string" && Number.isInteger(message["revision"]) && message["body"] !== undefined;
+    case "hook.result": return request() && Number.isInteger(message["sequence"]) && (message["decision"] === "allow" || message["decision"] === "deny") && (message["patch"] === undefined || message["patch"] !== undefined);
+    case "registry.declare": return request() && typeof message["kind"] === "string" && typeof message["id"] === "string" && message["definition"] !== undefined;
+    case "registry.revoke": return request() && typeof message["kind"] === "string" && typeof message["id"] === "string";
+    case "ui.region.declare": return request() && typeof message["id"] === "string" && typeof message["layer"] === "string" && message["placement"] !== undefined && message["inputActions"] !== undefined;
+    case "ui.region.patch": return request() && typeof message["id"] === "string" && message["cells"] !== undefined && (message["visible"] === undefined || typeof message["visible"] === "boolean");
+    case "command.submit": return request() && typeof message["code"] === "string" && message["args"] !== undefined;
+    case "ui.mount": return request() && message["panel"] !== undefined;
+    case "ui.patch": return request() && typeof message["panelId"] === "string" && message["patch"] !== undefined;
+    case "migrateBag.result": return request() && message["data"] !== undefined;
+    case "migrateBag.error": return request() && typeof message["error"] === "string";
+    default: return false;
   }
-}
-
-function stringList(value: unknown): boolean {
-  return Array.isArray(value) && value.length <= 64 && value.every((v) => typeof v === "string");
 }

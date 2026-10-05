@@ -65,33 +65,6 @@ export type {
   Api2Options,
   Api2ScreenTextSite,
 } from "./hooks.js";
-export {
-  API2_POLICY_KINDS,
-  API2_POLICY_LIMITS,
-  API2_POLICY_NAMES,
-  api2PoliciesToHooks,
-  api2PolicyEffects,
-  checkApi2Policies,
-} from "./policies.js";
-export type {
-  Api2DiscountRoll,
-  Api2DiscountRollPolicy,
-  Api2DiscountTier,
-  Api2HistoryRule,
-  Api2ObjectListKey,
-  Api2Policies,
-  Api2PolicyEffects,
-  Api2PolicyKind,
-  Api2PolicyName,
-  Api2PolicyRegistrations,
-  Api2PolicyScalar,
-  Api2PolicyTarget,
-  Api2TextMatch,
-  Api2TextRule,
-  Api2TileFill,
-  Api2TileFiller,
-  Api2TileRule,
-} from "./policies.js";
 export { defineApi2Mod } from "./domains.js";
 export type {
   Api2Act,

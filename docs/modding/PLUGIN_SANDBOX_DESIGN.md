@@ -1,7 +1,5 @@
 # Ordinary plugin Worker sandbox: design and feasibility
 
-The Worker runtime this page designed now serves API 2 ([API2.md](API2.md), "In a Worker"). The preview protocol below, with its `policy.install` and `hook.request` messages, is retired; what remains useful here is the feasibility analysis.
-
 Issue #155 asks for a **technical containment boundary** around ordinary mod
 `plugin.js` code.  Today there is no such boundary: the loader imports the
 module in the renderer and invokes its members with live objects.  Capability

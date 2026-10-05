@@ -183,7 +183,7 @@ Every other field, such as `rules`, `settings`, `sections`, `compat`, `fields`, 
 
 #### Manifests written before schema 2
 
-A `manifest.json` with no `format`, or with `"schemaVersion": 1`, still loads, and the game reads it the way it always has. `modApi: 1` counts as `"runtime": "in-process"` with `"api": ">=1.0.0 <2.0.0"`. `modApi: 2` with `"runtime": "worker"` counts as `"runtime": "worker"` with the Worker preview API, `"api": "2.0.0-worker"`, and its `workerEntry` as `entry`. The preview API is retired, so the manifest of such a mod still reads but its code does not run; rebuild it as an API 2 Worker mod ([API2.md](API2.md)). A mod with no code counts as `"runtime": "data"` with `"api": "*"`. No other `modApi` value has a schema 2 meaning, and the integer is never read as a range.
+A `manifest.json` with no `format`, or with `"schemaVersion": 1`, still loads, and the game reads it the way it always has. `modApi: 1` counts as `"runtime": "in-process"` with `"api": ">=1.0.0 <2.0.0"`. `modApi: 2` with `"runtime": "worker"` counts as `"runtime": "worker"` with the Worker preview API, `"api": "2.0.0-worker"`, and its `workerEntry` as `entry`. A mod with no code counts as `"runtime": "data"` with `"api": "*"`. No other `modApi` value has a schema 2 meaning, and the integer is never read as a range.
 
 To move a manifest to schema 2, run it through the SDK's `convertManifestV1`. `dependencies` and `optionalDependencies` become `dependencies.required` and `dependencies.optional`, a `conflicts` claim about a whole mod moves to `dependencies.conflicts`, `changelog` and `screenshots` move into `listing`, and `engine` gets a placeholder reason that you should replace with the real one. `modProject(...).emit()` writes schema 2 only.
 

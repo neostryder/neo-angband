@@ -6,9 +6,8 @@
  * `api2Plugin` wraps an API 2 definition as an API 1 plugin, so an API 2 mod
  * runs through the same loader, the same capability grants and the same
  * guarded hook composition, and an API 1 plugin keeps running exactly as it
- * did. A Worker mod runs the same definition behind the Worker broker
- * (mod-worker/host.ts), which shares `checkApi2Definition` and the policy
- * interpreter with this module.
+ * did. The Worker runtime (`modApi: 2`, `runtime: "worker"`) is a separate
+ * path and this module does not touch it.
  *
  * `API1_CONTEXT_MAP` names, for every member of the API 1 context, where its
  * job lives in API 2, or why it has no API 2 form.
@@ -16,15 +15,10 @@
 
 import type { ModHooks, ModPluginContext } from "@rpgm-tools/neo-angband-core";
 import {
-  api2PolicyEffects,
   apiRangeVerdict,
-  checkApi2Policies,
   type Api2HookName,
   type Api2Hooks,
   type Api2ModDefinition,
-  type Api2Policies,
-  type Api2PolicyRegistrations,
-  type Api2TileFill,
   type JsonValue,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { createApi2Host, type Api2HostOptions } from "./mod-api2-host";
@@ -43,7 +37,7 @@ export function checkApi2Definition(candidate: unknown): string | null {
   if (typeof d.api !== "string") return `an API 2 mod declares its "api" range as a string, such as ">=2.0.0 <3.0.0"`;
   const verdict = apiRangeVerdict(d.api);
   if (!verdict.ok) return `"api": "${d.api}" ${verdict.why}`;
-  for (const member of ["hooks", "policies", "start", "stop", "migrateBag"] as const) {
+  for (const member of ["hooks", "start", "stop", "migrateBag"] as const) {
     if (d[member] !== undefined && typeof d[member] !== "function") return `${member} is not a function`;
   }
   if (d.prefs !== undefined) {
@@ -53,9 +47,7 @@ export function checkApi2Definition(candidate: unknown): string | null {
     }
     if (typeof p.migrate !== "function") return "prefs.migrate is not a function";
   }
-  if (d.hooks === undefined && d.policies === undefined && d.start === undefined) {
-    return "an API 2 mod declares hooks, policies, start, or a combination";
-  }
+  if (d.hooks === undefined && d.start === undefined) return "an API 2 mod declares hooks, start, or both";
   return null;
 }
 
@@ -152,72 +144,6 @@ export function api2ToModHooks(hooks: Api2Hooks): ModHooks {
   return out;
 }
 
-/**
- * A mod's policy tables as hooks, with its hook functions over them: a hook
- * function wins over the table for the same hook. Throws for tables that fail
- * `checkApi2Policies`, which the caller reports as it reports a throw from
- * `hooks`.
- */
-export function mergePolicies(policies: unknown, hooks: Api2Hooks | undefined, granted: (capability: string) => boolean = () => true): Api2Hooks | undefined {
-  if (policies === undefined || policies === null) return hooks;
-  const problem = checkApi2Policies(policies);
-  if (problem) throw new Error(`its policies are not valid: ${problem}`);
-  const fromTables = api2PolicyEffects(policies as Api2Policies, granted).hooks;
-  const merged: Record<string, unknown> = { ...fromTables };
-  for (const [name, fn] of Object.entries(hooks ?? {})) if (typeof fn === "function") merged[name] = (fn as (...args: unknown[]) => unknown).bind(hooks);
-  return merged as Api2Hooks;
-}
-
-/**
- * Where the host installs the registrations a mod's policy tables stand for:
- * the game's store behaviour and the mod's own slot in the tile registry. A
- * null target is one this game does not have, and its registrations are
- * skipped.
- */
-export interface Api2PolicyTargets {
-  readonly stores: {
-    registerDiscountRoll(handler: (roll: { readonly rng: { oneIn(n: number): boolean }; readonly cost: number }) => number): void;
-  } | null;
-  readonly tiles: { register(filler: (fill: Api2TileFill) => void): void } | null;
-}
-
-/**
- * Install a mod's policy registrations. `active` is asked on every use, and a
- * mod that is no longer active answers as if it had installed nothing: no
- * discount and no roll drawn, and no tile filled.
- */
-export function installApi2PolicyRegistrations(
-  registrations: Api2PolicyRegistrations,
-  targets: Api2PolicyTargets,
-  active: () => boolean,
-): void {
-  const roll = registrations.discountRoll;
-  if (roll && targets.stores) {
-    targets.stores.registerDiscountRoll((ctx) => (active() ? roll({ cost: ctx.cost, oneIn: (n) => ctx.rng.oneIn(n) }) : 0));
-  }
-  const filler = registrations.tileFiller;
-  if (filler && targets.tiles) {
-    targets.tiles.register((fill) => {
-      if (active()) filler(fill);
-    });
-  }
-}
-
-const pluginPolicies = new WeakMap<ModPlugin, { id: string; flags: Readonly<Record<string, boolean>>; registrations: Api2PolicyRegistrations }>();
-
-/** A factory fault must not run again outside guarded hook composition, so registration reads only its cached results. */
-export function api2PluginRegistrations(
-  plugin: ModPlugin,
-  id: string,
-  flags: Readonly<Record<string, boolean>>,
-): Api2PolicyRegistrations | undefined {
-  const cached = pluginPolicies.get(plugin);
-  if (!cached || cached.id !== id || Object.keys(cached.flags).length !== Object.keys(flags).length ||
-    Object.entries(cached.flags).some(([name, value]) => flags[name] !== value)) return undefined;
-  const { registrations } = cached;
-  return Object.keys(registrations).length > 0 ? registrations : undefined;
-}
-
 /** The hooks a definition declares, by name, for `hooks.active`. */
 function declaredHooks(hooks: Api2Hooks | undefined): Api2HookName[] {
   if (!hooks) return [];
@@ -228,7 +154,8 @@ function declaredHooks(hooks: Api2Hooks | undefined): Api2HookName[] {
 export type Api2PluginOptions = Omit<Api2HostOptions, "activeHooks" | "prefs">;
 
 /**
- * The shim reads `options` at hook composition and registration so both use the loader's settled grants.
+ * Wrap an API 2 definition as an API 1 plugin. `options` is read when the
+ * plugin registers, so a loader may fill in the grants it settled late.
  *
  * - `hooks(ctx)` asks the definition for its hooks with the mod's id and flags
  *   and converts them to core hooks.
@@ -240,31 +167,12 @@ export type Api2PluginOptions = Omit<Api2HostOptions, "activeHooks" | "prefs">;
 export function api2Plugin(definition: Api2ModDefinition, options: () => Api2PluginOptions): ModPlugin {
   let active: Api2HookName[] = [];
   const plugin: { -readonly [K in keyof ModPlugin]: ModPlugin[K] } = { api: SHIM_PLUGIN_API };
-  if (definition.hooks || definition.policies) {
-    const hooksOf = definition.hooks?.bind(definition);
-    const policiesOf = definition.policies?.bind(definition);
+  if (definition.hooks) {
+    const hooksOf = definition.hooks.bind(definition);
     plugin.hooks = (ctx: ModPluginContext): ModHooks | undefined => {
-      pluginPolicies.delete(plugin as ModPlugin);
-      const context = { id: ctx.id, flags: plain({ ...ctx.flags }) };
-      const declared = hooksOf?.(context);
-      const policies = policiesOf?.(context);
-      let fromTables: Api2Hooks | undefined;
-      if (policies !== undefined && policies !== null) {
-        const problem = checkApi2Policies(policies);
-        if (problem) throw new Error(`its policies are not valid: ${problem}`);
-        const grants = options().grants;
-        const effects = api2PolicyEffects(policies, (capability) => grants.has(capability));
-        fromTables = effects.hooks;
-        pluginPolicies.set(plugin as ModPlugin, { ...context, registrations: effects.registrations });
-      }
-      const merged = fromTables === undefined ? declared : { ...fromTables };
-      if (fromTables && merged) {
-        for (const [name, fn] of Object.entries(declared ?? {})) {
-          if (typeof fn === "function") (merged as Record<string, unknown>)[name] = (fn as (...args: unknown[]) => unknown).bind(declared);
-        }
-      }
-      active = declaredHooks(merged);
-      return merged ? api2ToModHooks(merged) : undefined;
+      const declared = hooksOf({ id: ctx.id, flags: plain({ ...ctx.flags }) });
+      active = declaredHooks(declared);
+      return declared ? api2ToModHooks(declared) : undefined;
     };
   }
   if (definition.start) {

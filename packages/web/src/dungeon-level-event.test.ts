@@ -194,7 +194,7 @@ describe("the shell's first-level announcement", () => {
     const chain = MAIN.indexOf("void applyModResources()");
     const live = MAIN.indexOf("gameScreenLive = true;", chain);
     const announce = MAIN.indexOf("firstLevel.screenLive();", live);
-    const registration = MAIN.indexOf("for (const id of enabledModIds()) {", MAIN.indexOf("/* The FOLDER plugins' register() half."));
+    const registration = MAIN.indexOf("for (const loaded of activeModCode().plugins) {", MAIN.indexOf("/* The FOLDER plugins' register() half."));
     const marked = MAIN.indexOf("firstLevel.modsRegistered();", registration);
 
     expect(gate).toBeGreaterThan(-1);

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { CapabilityError, CapabilitySet, parseCapability } from "./capabilities.js";
-import { API2_POLICY_KINDS } from "./api2/policies.js";
 import {
   CAPABILITY_TIERS,
   CAPABILITY_VOCABULARY,
@@ -24,14 +23,6 @@ const granting = (...capabilities: string[]): CapabilitySet =>
   CapabilitySet.fromManifest({ id: "m", name: "M", version: "1.0.0", shape: "plugin", capabilities });
 
 describe("the capability vocabulary", () => {
-  it("allows the Worker tier to request every policy table's registry permission", () => {
-    for (const kind of API2_POLICY_KINDS) {
-      expect(capabilityTiers(kind.capability), kind.name).toContain("worker");
-      expect(granting(kind.capability).has(kind.capability)).toBe(true);
-    }
-    expect(capabilityTiers("registry:*")).toContain("worker");
-  });
-
   it("has a complete entry for every capability, each spelled once", () => {
     const spellings = CAPABILITY_VOCABULARY.map((entry) => entry.capability);
     expect(new Set(spellings).size).toBe(spellings.length);

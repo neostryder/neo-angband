@@ -108,6 +108,21 @@ function scopeWith(s: SessionStorageLike): unknown {
 }
 
 describe("staging an archive", () => {
+  it("keeps session refusals and notice acknowledgment apart from installed decisions", async () => {
+    const bytes = WITH_CODE();
+    const scope = scopeWith(store());
+    const preview = await previewSessionArchive(bytes, scope);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    const opts = { bytes, source: "draft.zip", allowed: true, granted: [], refused: ["command:add"], acknowledged: true, grantedDigest: preview.digest };
+    expect((await stageSessionMod(opts, scope)).ok).toBe(true);
+    await loadSessionMods(scope);
+    const persisted = new ModStore(store());
+    persisted.setConsent("draft", ["command:add"]);
+    expect(persisted.getDecisions("draft")).toEqual({ granted: [], refused: ["command:add"] });
+    expect(persisted.sawUnreviewedNotice("draft")).toBe(true);
+    expect(persisted.getConsents()).toEqual({ draft: ["command:add"] });
+  });
   it("holds a content pack and can read it back", async () => {
     const s = store();
     const staged = await stageSessionMod(

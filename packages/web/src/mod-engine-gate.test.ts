@@ -256,6 +256,7 @@ describe("door 2 - a plugin written for another build", () => {
       Promise.resolve({ default: { api: MOD_API_VERSION, hooks: () => undefined } }),
     );
     const report = await loadModCode({
+      acknowledged: () => true,
       packs: [codePack("stale", NEVER)],
       codeUrl: resolver,
       enabled: () => true,
@@ -278,6 +279,7 @@ describe("door 2 - a plugin written for another build", () => {
     const badApi = codePack("b");
     (badApi.manifest as { modApi?: number }).modApi = MOD_API_VERSION + 7;
     const report = await loadModCode({
+      acknowledged: () => true,
       packs: [goodApiBadEngine, badApi],
       codeUrl: resolver,
       enabled: () => true,
@@ -297,6 +299,7 @@ describe("door 2 - a plugin written for another build", () => {
       Promise.resolve({ default: { api: MOD_API_VERSION, hooks: () => undefined } }),
     );
     const report = await loadModCode({
+      acknowledged: () => true,
       packs: [codePack("current", `>=${ENGINE_VERSION}`)],
       codeUrl: resolver,
       enabled: () => true,
@@ -380,6 +383,7 @@ describe("a mod refused on two doors is reported once", () => {
     };
     setDiskPacks(folderWith(hybrid));
     const code = await loadModCode({
+      acknowledged: () => true,
       packs: [hybrid],
       codeUrl: ((id: string, f: string) =>
         Promise.resolve(`mem://${id}/${f}`)) as CodeUrlResolver,

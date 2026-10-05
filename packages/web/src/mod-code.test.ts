@@ -63,17 +63,16 @@ const ALL_ENABLED = (): boolean => true;
 const NO_CAPS = (): readonly string[] => [];
 
 describe("a folder can supply code", () => {
-  it("selects an API 2 Worker mod's entry without importing it in the renderer", async () => {
+  it("selects API-2 worker code without importing it in the renderer", async () => {
     const importer = vi.fn();
     const pack = codePack("worker", {
       modApi: 2,
-      api: ">=2.0.0 <3.0.0",
       runtime: "worker",
-      entry: "worker.js",
-      manifestSchema: 2,
-    } as Partial<PackManifest>);
+      workerEntry: "worker.js",
+    });
     const workerPack = { ...pack, code: ["worker.js"] };
     const report = await loadModCode({
+      acknowledged: () => true,
       packs: [workerPack],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -82,35 +81,8 @@ describe("a folder can supply code", () => {
     });
     expect(importer).not.toHaveBeenCalled();
     expect(report.plugins).toEqual([]);
-    expect(report.problems).toEqual([]);
     expect(report.workers).toMatchObject([{ id: "worker", api: 2, entryUrl: "mem://worker/worker.js" }]);
     expect(hasWorkerPlugin(workerPack)).toBe(true);
-  });
-
-  it("refuses a Worker mod built for the retired preview ABI, saying how to rebuild it", async () => {
-    const pack = codePack("preview", { modApi: 2, runtime: "worker", workerEntry: "worker.js" } as Partial<PackManifest>);
-    const report = await loadModCode({
-      packs: [{ ...pack, code: ["worker.js"] }],
-      codeUrl: resolver(),
-      enabled: ALL_ENABLED,
-      consented: NO_CAPS,
-    });
-    expect(report.workers).toEqual([]);
-    expect(report.problems).toEqual([
-      { id: "preview", why: expect.stringMatching(/retired Worker preview ABI.*rebuild it against mod API 2\.0\.0/u) },
-    ]);
-  });
-
-  it("refuses a Worker mod whose API range this build does not run", async () => {
-    const pack = codePack("future", { api: ">=3.0.0", runtime: "worker", entry: "worker.js", manifestSchema: 2 } as Partial<PackManifest>);
-    const report = await loadModCode({
-      packs: [{ ...pack, code: ["worker.js"] }],
-      codeUrl: resolver(),
-      enabled: ALL_ENABLED,
-      consented: NO_CAPS,
-    });
-    expect(report.workers).toEqual([]);
-    expect(report.problems[0]?.why).toMatch(/needs mod API >=3\.0\.0 in runtime "worker"/u);
   });
 
   it("imports an enabled pack's plugin and returns it in load order", async () => {
@@ -120,6 +92,7 @@ describe("a folder can supply code", () => {
       Promise.resolve({ default: url.includes("second") ? other : plugin }),
     );
     const report = await loadModCode({
+      acknowledged: () => true,
       packs: [codePack("first"), dataPack("plain"), codePack("second")],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -140,6 +113,7 @@ describe("a folder can supply code", () => {
      * and never re-fetches. */
     const released: string[] = [];
     await loadModCode({
+      acknowledged: () => true,
       packs: [codePack("one")],
       codeUrl: resolver(released),
       enabled: ALL_ENABLED,
@@ -152,6 +126,7 @@ describe("a folder can supply code", () => {
   it("releases the URL even when the import throws", async () => {
     const released: string[] = [];
     await loadModCode({
+      acknowledged: () => true,
       packs: [codePack("bad")],
       codeUrl: resolver(released),
       enabled: ALL_ENABLED,
@@ -165,6 +140,7 @@ describe("a folder can supply code", () => {
     /* This is the state the entire mod system used to be in, and from the outside
      * it looked exactly like a mod that did nothing. Silence here is the bug. */
     const report = await loadModCode({
+      acknowledged: () => true,
       packs: [codePack("wants-code")],
       codeUrl: null,
       enabled: ALL_ENABLED,
@@ -176,6 +152,7 @@ describe("a folder can supply code", () => {
 
   it("is silent for a data-only folder with no code source", async () => {
     const report = await loadModCode({
+      acknowledged: () => true,
       packs: [dataPack("plain")],
       codeUrl: null,
       enabled: ALL_ENABLED,
@@ -205,6 +182,7 @@ describe("every gate is applied BEFORE the import", () => {
       Promise.resolve({ default: { api: pluginApi, hooks: () => undefined } }),
     );
     const report = await loadModCode({
+      acknowledged: () => true,
       packs: [pack],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -355,6 +333,7 @@ describe("every gate is applied BEFORE the import", () => {
 describe("a broken plugin is one line, not a boot failure", () => {
   async function loadDefault(def: unknown) {
     return await loadModCode({
+      acknowledged: () => true,
       packs: [codePack("m")],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -365,6 +344,7 @@ describe("a broken plugin is one line, not a boot failure", () => {
 
   it("rejects a module with no default export", async () => {
     const report = await loadModCode({
+      acknowledged: () => true,
       packs: [codePack("m")],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -428,6 +408,7 @@ describe("a broken plugin is one line, not a boot failure", () => {
      * to do instead - which is the part that matters, since there is nothing to
      * import at all. */
     const report = await loadModCode({
+      acknowledged: () => true,
       packs: [codePack("m")],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -448,6 +429,7 @@ describe("a broken plugin is one line, not a boot failure", () => {
   it("carries the pack's record files to the caller for the plugin's context", async () => {
     const pack = codePack("m");
     const report = await loadModCode({
+      acknowledged: () => true,
       packs: [{ ...pack, files: { monster: [{ name: "Grip" }] } }],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -461,6 +443,7 @@ describe("a broken plugin is one line, not a boot failure", () => {
   it("one bad plugin does not cost a good one", async () => {
     const good = { api: MOD_API_VERSION, hooks: () => undefined };
     const report = await loadModCode({
+      acknowledged: () => true,
       packs: [codePack("bad"), codePack("good")],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,

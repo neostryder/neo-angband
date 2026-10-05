@@ -24,7 +24,8 @@ export interface LegacyField<V> {
   parse(raw: string): V | undefined;
 }
 
-export type LegacyFields<T> = { readonly [K in keyof T]-?: LegacyField<Exclude<T[K], undefined>> };
+/** Null for a field that was born in the document and never had a key of its own. */
+export type LegacyFields<T> = { readonly [K in keyof T]-?: LegacyField<Exclude<T[K], undefined>> | null };
 
 /** A legacy value stored as bare JSON, which is how most old keys were written. */
 export function legacyJson<V>(key: string): LegacyField<V> {
@@ -72,6 +73,7 @@ export function fieldDocument<T extends object>(options: {
 
   function fromLegacy<K extends keyof T>(store: FieldReader, name: K): Exclude<T[K], undefined> | undefined {
     const old = legacy[name];
+    if (old === null) return undefined;
     const raw = store.getItem(old.key);
     return raw === null ? undefined : old.parse(raw);
   }
@@ -116,7 +118,8 @@ export function fieldDocument<T extends object>(options: {
       try {
         const doc = load(target);
         if (doc.kind === "ok" && doc.data[name] !== undefined) return true;
-        return target.getItem(legacy[name].key) !== null;
+        const old = legacy[name];
+        return old !== null && target.getItem(old.key) !== null;
       } catch {
         return false;
       }
@@ -131,7 +134,8 @@ export function fieldDocument<T extends object>(options: {
         else next[name] = value;
         const back = store(target, next as T);
         if (back === null) return false;
-        target.removeItem?.(legacy[name].key);
+        const old = legacy[name];
+        if (old !== null) target.removeItem?.(old.key);
         return true;
       } catch {
         return false;
@@ -147,7 +151,8 @@ export function fieldDocument<T extends object>(options: {
         const next = base(target, doc);
         const moved: string[] = [];
         for (const name of Object.keys(legacy) as (keyof T)[]) {
-          if (target.getItem(legacy[name].key) !== null) moved.push(legacy[name].key);
+          const old = legacy[name];
+          if (old !== null && target.getItem(old.key) !== null) moved.push(old.key);
         }
         if (moved.length === 0) return;
         if (store(target, next as T) === null) return;

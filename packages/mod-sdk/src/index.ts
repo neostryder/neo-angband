@@ -100,7 +100,8 @@ export { highScoresFormat, birthChoiceFormat, bootRecordFormat, reloadStateForma
 export { loadOrderFormat } from "./json/load-order.js";
 export { buildIdFormat } from "./json/build-id.js";
 export { modFontFormat, modLocaleFormat } from "./json/mod-resources.js";
-export { installedModFormat } from "./json/installed-mod.js";
+export { INSTALL_LISTINGS, installedModFormat } from "./json/installed-mod.js";
+export type { InstallListing } from "./json/installed-mod.js";
 export { modStateFormat } from "./json/mod-state.js";
 export type { ModState } from "./json/mod-state.js";
 export { modSettingValuesFormat } from "./json/mod-settings.js";
@@ -258,7 +259,6 @@ export { CapabilityError, CapabilitySet, isLocalNetworkHost, networkGrantCovers,
 export { NET_LIMITS, checkNetRequest, checkSecretHosts, fillSecretTemplates, isSecretName, readBodyCapped, secretNamesIn } from "./net-request.js";
 export type { CheckedNetRequest, NetMethod, NetProblem, NetProblemCode, NetRequest, NetSecretValue } from "./net-request.js";
 export type { ParsedCapability } from "./capabilities.js";
-export { unifiedCapabilities, unifiedCapability, WORKER_CAPABILITY_ALIASES } from "./worker-capabilities.js";
 export {
   CAPABILITY_TIERS,
   CAPABILITY_VOCABULARY,

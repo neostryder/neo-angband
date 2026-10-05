@@ -467,16 +467,17 @@ describe("the consent read renders exactly what its hand-laid version did", () =
       CM({ capabilities: ["command:add", "registry:effect"], nondeterministic: true }),
     );
     const lines = screenBodyLines(view, 80);
-    expect(lines.slice(0, 5)).toEqual([
+    expect(lines.slice(0, 2)).toEqual([
       { text: '"Quality of Life" requests these capabilities:', color: UI_TEXT },
       { text: "", color: UI_TEXT },
-      { text: "  - Add new player commands", color: UI_TEXT },
-      {
-        text: "  - Override effect, combat, and magic logic".padEnd(69) + "[elevated]",
-        color: UI_GOLD,
-      },
-      { text: "", color: UI_TEXT },
     ]);
+    /* Each bullet also says what stops working without it (capability-describe.ts
+     * capabilityWithoutIt), because each one can be refused on its own. */
+    expect(lines[2]).toEqual({ text: expect.stringMatching(/^ {2}- Add new player commands\. Without it: /u), color: UI_TEXT });
+    const elevated = lines.find((line) => line.text.includes("[elevated]"));
+    expect(elevated?.color).toBe(UI_GOLD);
+    expect(elevated?.text.startsWith("  - Override effect, combat, and magic logic.")).toBe(true);
+    expect(elevated?.text.indexOf("[elevated]")).toBe(69);
     expect(
       lines.filter((line) => line.color === UI_BAD).map((line) => line.text).join(" "),
     ).toBe(
@@ -489,7 +490,7 @@ describe("the consent read renders exactly what its hand-laid version did", () =
     const source = tableOf(view, "capabilities").rows[0]!.cells.text!.text;
     const rendered = screenBodyLines(view, 80);
     const capabilityLines = rendered.filter((line) => line.color === UI_GOLD).map((line) => line.text);
-    expect(capabilityLines).toHaveLength(4);
+    expect(capabilityLines.length).toBeGreaterThanOrEqual(4);
     expect(capabilityLines[0]).toContain("[elevated]");
     expect(capabilityLines[0]!.indexOf("[elevated]")).toBe(69);
     expect(capabilityLines.slice(1).every((line) => !line.includes("[elevated]"))).toBe(true);
@@ -522,7 +523,7 @@ describe("the consent read renders exactly what its hand-laid version did", () =
     ]);
     const table = tableOf(view, "capabilities");
     expect(view.title).toBe("Capability approval");
-    expect(table.rows.map((r) => r.cells.text?.text)).toEqual([
+    expect(table.rows.map((r) => r.cells.text?.text?.split(". Without it: ")[0])).toEqual([
       "Quality of Life: Add new player commands",
       "ModForge: Override effect, combat, and magic logic",
     ]);
@@ -977,11 +978,6 @@ describe("the Mod performance screen", () => {
     overBudget: 0,
     ceilingBreaches: 0,
     payloadBytes: null,
-    replies: 0,
-    replyMs: 0,
-    worstReplyMs: 0,
-    netMs: null,
-    stale: 0,
     switchedOff: null,
   };
   const busy: ModHealthStats = {
@@ -993,10 +989,6 @@ describe("the Mod performance screen", () => {
     faults: 3,
     overBudget: 2,
     payloadBytes: 2048,
-    replies: 4,
-    replyMs: 10,
-    worstReplyMs: 6,
-    netMs: 250,
     switchedOff: { id: "busy-mod", site: "message listener", why: "boom", turn: 9 },
   };
   const names: Record<string, string> = { "busy-mod": "Busy Mod" };
@@ -1008,9 +1000,9 @@ describe("the Mod performance screen", () => {
     const table = view.blocks[0] as ScreenTableBlock;
     expect(table.rows.map((r) => r.id)).toEqual(["busy-mod", "quiet-mod"]);
     const lines = screenBlockLines(table, 80).map((l) => l.text);
-    expect(lines[0]).toMatch(/^Mod\s+Calls\s+CPU ms\s+Worst\s+Reply\s+Net ms\s+Faults\s+Slow\s+Sent\s+Status$/);
-    expect(lines[1]).toMatch(/^Busy Mod\s+400\s+120\.0\s+60\.0\s+2\.5\s+250\s+3\s+2\s+2\.0 KB off$/);
-    expect(lines[2]).toMatch(/^quiet-mod\s+12\s+3\.3\s+1\.5\s+-\s+-\s+0\s+0\s+- on$/);
+    expect(lines[0]).toMatch(/^Mod\s+Calls\s+CPU ms\s+Worst\s+Faults\s+Slow\s+Sent\s+Status$/);
+    expect(lines[1]).toMatch(/^Busy Mod\s+400\s+120\.0\s+60\.0\s+3\s+2\s+2\.0 KB off$/);
+    expect(lines[2]).toMatch(/^quiet-mod\s+12\s+3\.3\s+1\.5\s+0\s+0\s+- on$/);
     for (const line of screenBodyLines(view, 80)) expect(line.text.length).toBeLessThanOrEqual(80);
   });
 

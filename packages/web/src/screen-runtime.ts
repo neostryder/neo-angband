@@ -33,6 +33,7 @@ import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 import type { PromptRequest } from "./prompt-view";
 import type { ScreenHost, ScreenPresenter, ScreenShown, ScreenView } from "./screen-view";
 import { pushRegion, type RegionHandle, type RegionSpec } from "./ui-stack";
+import { isCoreDrawn } from "./core-drawn";
 
 /** What a mod must hold in its manifest before it may show the game's screens. */
 export const SCREEN_CAPABILITY = "ui:screen.replace";
@@ -186,6 +187,8 @@ export function showThroughPresenter(
 ): Promise<void> | null {
   const owner = currentScreenPresenter();
   if (!owner) return null;
+  /* Never offered: a Core-drawn screen is shown on the game's own terminal. */
+  if (isCoreDrawn(view.id)) return null;
   /*
    * RE-ENTRANCY. This presenter has already stood aside (or been stood aside)
    * for a prompt the game is running right now, and the game is asking it to

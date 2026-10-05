@@ -79,6 +79,7 @@ import {
 } from "./mod-install";
 import type { WaitingZip, ZipImportDeps } from "./mod-zip-source";
 import { previewSessionArchive, type SessionPreview } from "./mod-session";
+import { consentSessionMod } from "./mods";
 import { describeCapabilities } from "./capability-describe";
 import { nameFromManifests } from "./mod-conflicts";
 import {
@@ -2205,15 +2206,20 @@ async function tryOne(
   );
   if (pick !== 0 || !survives) return false;
 
+  let decisions = { granted: [] as readonly string[], refused: [] as readonly string[] };
+  if (preview.code.length > 0) {
+    if (!preview.manifest) return false;
+    const consent = await consentSessionMod(term, preview.manifest);
+    if (!consent) return false;
+    decisions = consent;
+  }
+
   const staged = await paintWhile(
     term,
     t("modBrowse.tryOne.title", "For this session"),
     t("modBrowse.tryOne.checking", "Checking {source}...", { source }),
     () =>
-      /* The capabilities the archive DECLARED are what is granted, and only for this
-       * session. Granting exactly the declared list is what the install path does
-       * (`setConsent(id, m.capabilities)`); the difference is where it is kept. */
-      zip.loadForSession(bytes, source, preview.capabilities ?? [], preview.digest),
+      zip.loadForSession(bytes, source, decisions.granted, preview.digest, decisions.refused, preview.code.length > 0),
   );
   if (!staged.ok) {
     await showTextScreen(

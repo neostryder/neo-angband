@@ -17,8 +17,8 @@
  *   no modApi and no plugin facet             runtime "data", api "*"
  *
  * `WORKER_PREVIEW_API` is a prerelease of API 2, so a stable 2.x host does not
- * satisfy it: a mod written for the retired Worker preview ABI is not taken to
- * be an API 2 mod, and the loader tells its author to rebuild it. A data mod made no API claim in schema 1, and the converter does not
+ * satisfy it: a mod written for today's Worker ABI is not taken to be an API 2
+ * mod. A data mod made no API claim in schema 1, and the converter does not
  * invent one. Any other `modApi` has no mapping and the converter refuses it.
  *
  * This module imports no runtime code from manifest.ts, so manifest.ts can use it
@@ -27,8 +27,6 @@
 
 import { json, defineFormat, type ValidationIssue, type ValidationResult, type Validator } from "./json/index.js";
 import { satisfies } from "./semver.js";
-import { MOD_API2_VERSION } from "./api2/version.js";
-import { unifiedCapabilities } from "./worker-capabilities.js";
 import type {
   FieldDecl,
 } from "./fields.js";
@@ -66,9 +64,8 @@ export const MOD_API_1_RANGE = ">=1.0.0 <2.0.0";
 export const MOD_API_1_VERSION = "1.0.0";
 
 /**
- * The API version of the retired Worker preview ABI that schema 1 called
- * `modApi: 2`. A prerelease of 2.0.0, so no range over the stable API 2
- * includes it, and no build runs it any more.
+ * The API version of the Worker ABI that schema 1 called `modApi: 2`. A
+ * prerelease of 2.0.0, so no range over the stable API 2 includes it.
  */
 export const WORKER_PREVIEW_API = "2.0.0-worker";
 
@@ -438,12 +435,6 @@ function convertFields(m: Record<string, unknown>, mapped: { runtime: ModRuntime
   for (const key of KEPT_FIELDS) {
     if (m[key] !== undefined) out[key] = m[key];
   }
-  /* A Worker mod's capabilities take their names in the one vocabulary both
-   * runtimes share (worker-capabilities.ts); a retired name with no API 2
-   * permission is dropped rather than widened into another one. */
-  if (mapped.runtime === "worker" && Array.isArray(m["capabilities"])) {
-    out["capabilities"] = unifiedCapabilities((m["capabilities"] as unknown[]).filter((c): c is string => typeof c === "string"));
-  }
   if (compat !== undefined && keptCompat.length > 0) out["compat"] = keptCompat;
 
   const listing: Record<string, unknown> = {};
@@ -488,14 +479,14 @@ export function manifestToV2(manifest: PackManifest): ManifestV2Data {
 /* ------------------------------------------------------------------ */
 
 /**
- * The ABI number the host's loader files a schema 2 manifest under, or
- * undefined when this build runs no API the range admits. In process that is
- * API 1; in a Worker it is API 2, the same API an in-process mod reaches.
+ * The schema 1 ABI number the host's current loader uses for a schema 2
+ * manifest, or undefined when this build runs none that the range admits.
+ * In process, API 1 is the only API; in a Worker, the preview ABI is.
  */
 export function legacyModApi(runtime: ModRuntime, api: string): 1 | 2 | undefined {
   try {
     if (runtime === "in-process" && satisfies(MOD_API_1_VERSION, api)) return 1;
-    if (runtime === "worker" && satisfies(MOD_API2_VERSION, api)) return 2;
+    if (runtime === "worker" && satisfies(WORKER_PREVIEW_API, api)) return 2;
   } catch {
     return undefined;
   }

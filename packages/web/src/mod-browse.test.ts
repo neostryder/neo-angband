@@ -433,7 +433,8 @@ describe("the screen is REACHABLE", () => {
     expect(mods).not.toContain('"Turn {name} on now?"');
     expect(mods).toContain("confirmGameplayNoscore(");
     expect(mods).toContain("confirmDeclaredConflicts(term, deps, m)");
-    expect(mods).toContain("consentPrompt(term, m)");
+    expect(mods).toContain("confirmUnreviewed(term, deps, [m])");
+    expect(mods).toContain("decidePermissions(term, [{ mod: m, caps: pending }])");
     expect(mods).toContain("leaveAfterEnabledInstall: () => enabledThroughInstall");
     expect(mods).toContain("await applyModChanges(term, deps, tileModsAtEntry)");
   });
