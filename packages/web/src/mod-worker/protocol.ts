@@ -10,7 +10,6 @@ export const MOD_WORKER_PROTOCOL_VERSION = "1.1.0";
 
 export type WorkerLogLevel = "info" | "warn" | "error";
 export type WorkerJson = null | boolean | number | string | WorkerJson[] | { [key: string]: WorkerJson };
-export type WorkerNotGranted = { readonly ok: false; readonly reason: "not-granted"; readonly capability: string };
 
 /** The small, reactive read model exposed by the initial Worker ABI. */
 export interface ModStateSnapshot {

@@ -668,21 +668,28 @@ export interface ModHooks {
   abilityGained?: (ability: AbilityGained) => void;
 
   /**
-   * A monster's MFLAG_VISIBLE flag flips from unset to set (game/known.ts,
-   * updateMon's "it was previously unseen" branch - the same branch that
-   * increments the race's "sights" lore counter - reached from
-   * updateMonsters, monsterSwap and every other updateMon call site).
+   * A monster becomes one the player perceives as a monster: it turns visible
+   * and is not disguised as an object (monsterIsObvious), whether by sight,
+   * telepathy or detection, or a mimic the player could see is unmasked
+   * (game/known.ts, noteSighting). Nothing fires while the player
+   * hallucinates, because no monster can be told for what it is then, and a
+   * mimic still taken for an object does not fire until it is unmasked.
    *
-   * A NOTIFICATION: core has already committed the visibility change and does
-   * not read a return value. `mon` is the monster as the player knows it
+   * A NOTIFICATION: core has already committed the change and does not read a
+   * return value. `mon` is the monster as the player knows it
    * (agent/known-world.ts): race, grid, health band, look statuses and the
    * flags and spells lore has learned, never its hit points or unlearned
-   * abilities. Its `id` finds the same monster in a later KnownWorld.
+   * abilities. It is frozen and built with the same deps (ids, glyphs) as the
+   * KnownWorld a mod reads. Its `id` is the same handle a later KnownWorld
+   * gives the monster, not the game's monster index.
    *
-   * Fires on every FRESH sighting - the same event the "sights" lore counter
-   * counts - not only the very first time this monster has ever been seen,
-   * and it does not fire again on a later turn where an already-visible
-   * monster simply remains visible.
+   * Fires on every fresh sighting, not only the first time a monster is ever
+   * seen, and not again while a perceived monster stays perceived. The
+   * sightings of one monster update pass or one detection are held until the
+   * pass ends and then delivered nearest the player first, so their order
+   * says nothing about the order the monsters were created in. A fault while
+   * building the payload is reported through onEventFault and skips that
+   * sighting; the game goes on.
    *
    * Serves: a mod wanting first-encounter notifications without polling
    * monsterListCollect on a timer (neo-angband-mod-qol issue #56).

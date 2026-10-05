@@ -66,7 +66,6 @@ async function loadBuilt(): Promise<ModPlugin> {
   ) as DiskPack["manifest"];
   const packs: DiskPack[] = [{ manifest, code: [PLUGIN_FILE], files: {}, assets: [] }];
   const report = await loadModCode({
-    acknowledged: () => true,
     packs,
     codeUrl: Object.assign(
       (id: string, file: string) => Promise.resolve(pathToFileURL(join(outDir, id, file)).href),

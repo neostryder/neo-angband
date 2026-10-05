@@ -100,8 +100,7 @@ export { highScoresFormat, birthChoiceFormat, bootRecordFormat, reloadStateForma
 export { loadOrderFormat } from "./json/load-order.js";
 export { buildIdFormat } from "./json/build-id.js";
 export { modFontFormat, modLocaleFormat } from "./json/mod-resources.js";
-export { INSTALL_LISTINGS, installedModFormat } from "./json/installed-mod.js";
-export type { InstallListing } from "./json/installed-mod.js";
+export { installedModFormat } from "./json/installed-mod.js";
 export { modStateFormat } from "./json/mod-state.js";
 export type { ModState } from "./json/mod-state.js";
 export { modSettingValuesFormat } from "./json/mod-settings.js";

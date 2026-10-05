@@ -1,9 +1,10 @@
 /** One read of the player's known level, separate from the small input capture. */
 
-import { SQUARE, TRF } from "../generated/index.js";
+import { SQUARE } from "../generated/index.js";
+import { squareIsSeen } from "../world/view.js";
 import type { GameState } from "../game/context.js";
 import { knownFeat, knownPile, squareIsKnown } from "../game/known.js";
-import { squareTrap } from "../game/trap.js";
+import { squareKnownTraps, squareTrap } from "../game/trap.js";
 import { tvalIsMoney, type GameObject } from "../obj/object.js";
 import { OBJ_NOTICE } from "../obj/knowledge.js";
 import { objectIsKnownArtifact, objectKnownShadow, objectRunesKnownUpstream } from "../obj/known-object.js";
@@ -121,16 +122,16 @@ export function captureKnownLevel(
       const feat = knownFeat(state, grid);
       const remembered: RememberedCell = {
         feat,
-        traps: squareTrap(state, grid)
-          .filter((trap) => trap.flags.has(TRF.VISIBLE))
-          .map((trap) => ({ index: trap.tidx, name: trap.kind.name })),
+        /* The player's trap memory, not the live grid: a trap removed or
+         * re-armed out of view is remembered as it was last seen. */
+        traps: squareKnownTraps(state.known, grid).map((kind) => ({ index: kind.tidx, name: kind.name })),
         objects: knownPile(state, grid).map((entry): RememberedObject => {
           if (entry.sensed) {
             return { sensed: true, money: tvalIsMoney(entry.obj.tval) };
           }
           const kind = entry.obj.kind;
           const aware = state.isAware ? state.isAware(kind) : true;
-          const aura = objectAura(state, entry.obj);
+          const aura = objectAura(state, squareIsSeen(chunk, grid) ? entry.obj : entry.remembered ?? entry.obj);
           const flavor =
             !aware && state.hasFlavor?.(kind) ? state.flavorGlyph?.(kind) : undefined;
           if (flavor) {

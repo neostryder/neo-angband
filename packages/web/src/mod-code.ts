@@ -30,21 +30,11 @@
  *      `facets` list containing it - so shipping code is a stated intent rather
  *      than a file that happened to be in the folder. A mod that contributes both
  *      records and code declares `"facets": ["content", "plugin"]`;
- *   5. the manifest's `modApi` must match this host's MOD_API_VERSION exactly, or
- *      a schema 2 manifest's `api` range must admit the in-process API 2;
- *   6. the player must have decided about every capability the mod's tier may
- *      hold (mod-tier.ts), and must not have refused one the mod cannot start
- *      without.
+ *   5. the manifest's `modApi` must match this host's MOD_API_VERSION exactly;
+ *   6. the player must have consented to every capability the manifest requests.
  *
  * Only then is the module imported, and only then is its default export shape
- * checked (mod-plugin.ts's validateModPlugin, or checkApi2Definition for an API
- * 2 mod, which is wrapped by api2Plugin).
- *
- * A loaded mod's `manifest.capabilities` is what it HOLDS: declared, less what
- * its tier may not hold, less what the player refused. Every runtime that builds
- * a CapabilitySet from that manifest therefore honours each refusal, and a call
- * that needs a refused permission gets the same answer as one the mod never
- * declared. The declared list is kept in `declared`.
+ * checked (mod-plugin.ts's validateModPlugin).
  *
  * NOTHING HERE THROWS. A hand-edited manifest, a truncated download, a plugin
  * that throws at import: each becomes one line the mod manager shows, and the
@@ -66,16 +56,12 @@
  */
 
 import {
-  CapabilitySet,
   PLUGIN_FILE,
-  apiRangeVerdict,
   hasFacet,
   validateManifest,
-  type Api2ModDefinition,
   type PackManifest,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
-import { api2Plugin, checkApi2Definition } from "./mod-api2-shim";
 import { engineBlocksCode } from "./mod-engine";
 import type { ModProblem } from "./mod-problems";
 import {
@@ -85,17 +71,6 @@ import {
   validateModPlugin,
   type ModPlugin,
 } from "./mod-plugin";
-import {
-  assignTier,
-  effectiveGrants,
-  firstPartyOrigin,
-  isUnreviewed,
-  modStartGrants,
-  type ModExecution,
-  type ModGrants,
-  type ModTier,
-  type ModTierFacts,
-} from "./mod-tier";
 
 /**
  * The one code entry point a mod folder may ship.
@@ -109,14 +84,7 @@ export { PLUGIN_FILE };
 /** A plugin that passed every gate and imported cleanly. */
 export interface LoadedModPlugin {
   readonly id: string;
-  /** The pack's manifest with `capabilities` narrowed to what the mod holds. */
   readonly manifest: PackManifest;
-  /** The capabilities the manifest declared, before tier and player refusals. */
-  readonly declared: readonly string[];
-  /** The mod's tier, as measured at boot. */
-  readonly tier: ModTier;
-  /** What it holds, and what it asked for and does not. */
-  readonly grants: ModGrants;
   readonly plugin: ModPlugin;
   /**
    * The ABI version this plugin DECLARED, which is not necessarily
@@ -126,8 +94,7 @@ export interface LoadedModPlugin {
    * it, so the window would be a promise with no mechanism behind it.
    *
    * Equal to `manifest.modApi`, and read off the manifest, because that is the
-   * copy the host gated on before it imported anything. An in-process API 2 mod
-   * records 2; its plugin is the api2Plugin wrapper.
+   * copy the host gated on before it imported anything.
    */
   readonly api: number;
   /** Where it was imported from, for diagnostics and the mod manager. */
@@ -144,12 +111,7 @@ export interface LoadedModPlugin {
 /** An API-2 entry that has passed every manifest and consent gate but is not imported. */
 export interface LoadedModWorker {
   readonly id: string;
-  /** The pack's manifest with `capabilities` narrowed to what the mod holds. */
   readonly manifest: PackManifest;
-  /** The capabilities the manifest declared, before tier and player refusals. */
-  readonly declared: readonly string[];
-  readonly tier: ModTier;
-  readonly grants: ModGrants;
   readonly api: 2;
   /** Kept alive for the host-owned Worker bootstrap to import after it starts. */
   readonly entryUrl: string;
@@ -189,21 +151,12 @@ export interface LoadModCodeOptions {
   /** Whether the player has this mod enabled. */
   readonly enabled: (id: string) => boolean;
   /**
-   * The capabilities the player allowed for this mod. A pack with a capability
-   * the player has not decided about is skipped, not loaded - the manager asks
-   * on enable, and this second-checks so a hand-edited store cannot walk around
-   * it.
+   * The capabilities the player consented to for this mod. A pack requesting
+   * capabilities it has no consent for is skipped, not loaded - the manager gates
+   * consent on enable, and this second-checks so a hand-edited store cannot walk
+   * around it.
    */
   readonly consented: (id: string) => readonly string[];
-  /** The capabilities the player refused for this mod, one by one. None when absent. */
-  readonly refused?: (id: string) => readonly string[];
-  /** Unreviewed code needs its notice acknowledged before resolving any module. */
-  readonly acknowledged?: (id: string) => boolean;
-  /**
-   * The mod's measured tier (mod-tier.ts). Absent, every pack is treated as
-   * sideloaded, which is the tier that holds least.
-   */
-  readonly tier?: (pack: DiskPack) => ModTier;
   /** This host's ABI version; a parameter only so the tests can drive a mismatch. */
   readonly hostApi?: number;
   /**
@@ -289,17 +242,8 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       });
       continue;
     }
-    const modApi = pack.manifest.modApi;
-    /* An in-process API 2 mod: a schema 2 manifest whose `api` range admits
-     * this host's API 2. Its plugin.js default-exports an API 2 definition,
-     * which api2Plugin wraps for the same register loop API 1 plugins use. */
-    const api2 =
-      modApi === undefined &&
-      pack.manifest.manifestSchema === 2 &&
-      pack.manifest.runtime === "in-process" &&
-      typeof pack.manifest.api === "string" &&
-      apiRangeVerdict(pack.manifest.api).ok;
-    if (modApi === undefined && !api2 && pack.manifest.manifestSchema === 2) {
+    const declared = pack.manifest.modApi;
+    if (declared === undefined && pack.manifest.manifestSchema === 2) {
       /* A schema 2 manifest states an API range, not an ABI number. The reader
        * fills `modApi` only when this build runs an API the range admits, so an
        * absent one here means the range admits none of them. */
@@ -311,7 +255,7 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       });
       continue;
     }
-    if (modApi === undefined && !api2) {
+    if (declared === undefined) {
       problems.push({
         id,
         why:
@@ -327,28 +271,26 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
      * would be the behaviour the window exists to replace. */
     /* API 2 is a separate Worker ABI, not a change to the retained API-1
      * window. Its independently versioned wire protocol is checked at boot. */
-    const verdict = api2 || modApi === undefined || (modApi === 2 && pack.manifest.runtime === "worker")
+    const verdict = declared === 2 && pack.manifest.runtime === "worker"
       ? { ok: true, deprecated: false } as const
-      : modApiVerdict(modApi, hostApi, minApi);
+      : modApiVerdict(declared, hostApi, minApi);
     if (!verdict.ok) {
       problems.push({ id, why: verdict.why });
       continue;
     }
     if (verdict.deprecated) problems.push({ id, why: verdict.why });
-    const settled = settleGrants(pack, opts);
-    if (settled.blocked) {
-      if (settled.blocked.problem) problems.push({ id, why: settled.blocked.why });
-      else skipped.push({ id, why: settled.blocked.why });
-      continue;
-    }
-    for (const why of settled.notices) problems.push({ id, why });
-    const { tier, grants, declared, manifest } = settled;
-    if (isUnreviewed(tier) && opts.acknowledged?.(id) !== true) {
-      skipped.push({ id, why: "awaiting acknowledgment of the unreviewed mod notice" });
+    const wanted = pack.manifest.capabilities ?? [];
+    const granted = new Set(opts.consented(id));
+    const missing = wanted.filter((c) => !granted.has(c));
+    if (missing.length > 0) {
+      skipped.push({
+        id,
+        why: `awaiting consent for ${missing.join(", ")}`,
+      });
       continue;
     }
 
-    if (modApi === 2 && pack.manifest.runtime === "worker") {
+    if (declared === 2 && pack.manifest.runtime === "worker") {
       if (pack.manifest.runtime !== "worker" || !pack.manifest.workerEntry) {
         problems.push({ id, why: "modApi 2 requires runtime \"worker\" and workerEntry" });
         continue;
@@ -368,7 +310,7 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
         problems.push({ id, why: `${pack.manifest.workerEntry} is listed in the folder but could not be opened` });
         continue;
       }
-      workers.push({ id, manifest, declared, tier, grants, api: 2, entryUrl, data: pack.files });
+      workers.push({ id, manifest: pack.manifest, api: 2, entryUrl, data: pack.files });
       continue;
     }
     if (!hasPlugin(pack)) {
@@ -406,31 +348,6 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
     }
 
     const entry = (mod as { default?: unknown } | null)?.default;
-    if (api2) {
-      const wrong = checkApi2Definition(entry);
-      if (wrong) {
-        problems.push({ id, why: `${PLUGIN_FILE}: ${wrong}` });
-        continue;
-      }
-      /* The grants and first-party seams the loader settled, read when the mod
-       * registers; the same answer modStartGrants gives the Worker runtime. */
-      const capabilities = CapabilitySet.fromManifest(manifest);
-      plugins.push({
-        id,
-        manifest,
-        declared,
-        tier,
-        grants,
-        plugin: api2Plugin(entry as Api2ModDefinition, () => {
-          const start = modStartGrants(id);
-          return { grants: capabilities, tier: start.tier.trust === "first-party" ? "first-party" : "public", ...(start.firstParty ? { firstParty: start.firstParty } : {}) };
-        }),
-        api: 2,
-        url,
-        data: pack.files,
-      });
-      continue;
-    }
     const wrong = validateModPlugin(entry, hostApi, minApi);
     if (wrong) {
       problems.push({ id, why: wrong });
@@ -438,143 +355,15 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
     }
     plugins.push({
       id,
-      manifest,
-      declared,
-      tier,
-      grants,
+      manifest: pack.manifest,
       plugin: entry as ModPlugin,
-      api: modApi ?? 1,
+      api: declared,
       url,
       data: pack.files,
     });
   }
 
   return { plugins, workers, problems, skipped };
-}
-
-/** What the install record says about one installed mod (mod-install.ts InstalledModMeta). */
-export type InstallRecordFacts = Pick<ModTierFacts, "id" | "repo" | "listing" | "sha" | "installedByModId">;
-
-/**
- * Measure the tier of every pack the game can load.
- *
- * A pack staged for this session, or read from a mods folder, is sideloaded
- * whatever it claims. An installed pack is measured from its install record,
- * and its files are hashed against the recorded digests when its record names
- * a first-party repository or a reviewed listing. The verifier and import
- * resolver must share the retained payload snapshot. `verify` must never throw.
- */
-export async function measureModTiers(
-  packs: readonly DiskPack[],
-  sources: { readonly session: ReadonlySet<string>; readonly folder: ReadonlySet<string> },
-  records: readonly InstallRecordFacts[],
-  verify: (id: string) => Promise<boolean>,
-): Promise<Map<string, ModTier>> {
-  const byId = new Map(records.map((record) => [record.id, record]));
-  const out = new Map<string, ModTier>();
-  for (const pack of packs) {
-    const id = pack.manifest.id;
-    const execution = executionOf(pack);
-    if (sources.session.has(id)) {
-      out.set(id, assignTier({ id, source: "session", execution }));
-      continue;
-    }
-    const record = byId.get(id);
-    if (sources.folder.has(id) || !record) {
-      out.set(id, assignTier({ id, source: "folder", execution }));
-      continue;
-    }
-    const firstParty = record.repo !== undefined && firstPartyOrigin(record.repo) !== undefined;
-    out.set(
-      id,
-      assignTier({
-        ...record,
-        id,
-        source: "installed",
-        execution,
-        digestsMatch: firstParty || record.listing === "reviewed" ? await verify(id) : false,
-      }),
-    );
-  }
-  return out;
-}
-
-/** The grants the loader settled for every plugin and Worker it accepted, by mod id. */
-export function settledGrants(report: ModCodeReport): Map<string, ModGrants> {
-  const out = new Map<string, ModGrants>();
-  for (const loaded of [...report.plugins, ...report.workers]) out.set(loaded.id, loaded.grants);
-  return out;
-}
-
-/** What the payload makes a pack: a Worker entry, an in-process entry, or neither. */
-export function executionOf(pack: DiskPack): ModExecution {
-  if (hasWorkerPlugin(pack)) return "worker";
-  if (hasPlugin(pack)) return "in-process";
-  return "data";
-}
-
-type Settled =
-  | {
-      readonly blocked: { readonly why: string; readonly problem: boolean };
-    }
-  | {
-      readonly blocked?: undefined;
-      readonly tier: ModTier;
-      readonly grants: ModGrants;
-      readonly declared: readonly string[];
-      readonly manifest: PackManifest;
-      /** Visible lines about capabilities the tier refused; the mod still loads. */
-      readonly notices: readonly string[];
-    };
-
-/**
- * Work out what one pack holds, or why it cannot start.
- *
- * An undecided capability skips the mod until the manager asks (not a fault).
- * A refused one the mod cannot start without skips it too: refused by the
- * player, it is the player's choice; refused by the tier, it is a fault the
- * author has to fix. Every other tier refusal is reported and the mod loads
- * without that capability.
- */
-function settleGrants(pack: DiskPack, opts: LoadModCodeOptions): Settled {
-  const id = pack.manifest.id;
-  const declared = pack.manifest.capabilities ?? [];
-  const tier = opts.tier?.(pack) ?? assignTier({ id, source: "folder", execution: executionOf(pack) });
-  const grants = effectiveGrants(declared, tier, {
-    granted: opts.consented(id),
-    refused: opts.refused?.(id) ?? [],
-  });
-  const byTier = new Map(grants.refusedByTier.map((r) => [r.capability, r.why]));
-  const tierBlock = grants.blocking.filter((cap) => byTier.has(cap));
-  if (tierBlock.length > 0) {
-    return {
-      blocked: {
-        problem: true,
-        why: `cannot start without ${tierBlock.map((cap) => `${cap}: ${byTier.get(cap) ?? ""}`).join("; ")}`,
-      },
-    };
-  }
-  if (grants.undecided.length > 0) {
-    return { blocked: { problem: false, why: `awaiting consent for ${grants.undecided.join(", ")}` } };
-  }
-  if (grants.blocking.length > 0) {
-    return {
-      blocked: {
-        problem: false,
-        why: `cannot start without ${grants.blocking.join(", ")}, which you turned off`,
-      },
-    };
-  }
-  const notices = grants.refusedByTier.map(
-    (r) => `runs without ${r.capability}: ${r.why}`,
-  );
-  return {
-    tier,
-    grants,
-    declared,
-    manifest: Object.freeze({ ...pack.manifest, capabilities: [...grants.granted] }),
-    notices,
-  };
 }
 
 /* --- The latch ---------------------------------------------------------------

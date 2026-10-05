@@ -6,7 +6,6 @@ import type {
   ModWorkerToHost,
   WorkerInitSnapshot,
   WorkerJson,
-  WorkerNotGranted,
   WorkerLogLevel,
   ModWorkerPanel,
   ModWorkerPanelPatch,
@@ -18,13 +17,13 @@ import type { ModDisplaySnapshot } from "../mod-plugin";
 export interface ModWorkerApi {
   readonly init: WorkerInitSnapshot;
   log(level: WorkerLogLevel, message: string): void;
-  prefs: { get(): Promise<WorkerJson | null>; set(value: WorkerJson | null): Promise<void | WorkerNotGranted> };
-  assets: { read(path: string): Promise<Uint8Array | null | WorkerNotGranted> };
-  events: { subscribe(topic: "state.snapshot", listener: (model: ModStateSnapshot) => void): Promise<string | WorkerNotGranted>; subscribe(topic: "display.snapshot", listener: (model: ModDisplaySnapshot) => void): Promise<string | WorkerNotGranted>; onSnapshotInvalidated(listener: (event: { readonly domain: string; readonly revision: number }) => void): Promise<string | WorkerNotGranted> };
-  query: { snapshot(domain: "engine.facts", selector: WorkerJson, revision?: number): Promise<{ readonly revision: number; readonly data: WorkerJson } | WorkerNotGranted> };
-  policies: { install(policy: "object-list.order-v1", revision: number, body: { readonly keys: readonly ("dy" | "dx")[] }): Promise<void | WorkerNotGranted> };
-  registry: { declare(kind: "command", id: string, definition: { readonly id: string; readonly verb: string; readonly input: "none" | "direction"; readonly intentCodes: readonly string[] }): Promise<void | WorkerNotGranted>; revoke(kind: "command", id: string): Promise<void | WorkerNotGranted> };
-  regions: { declare(region: { readonly id: string; readonly layer: "hud" | "overlay"; readonly placement: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }; readonly inputActions: readonly string[] }): Promise<void | WorkerNotGranted>; patch(id: string, cells: readonly RegionCell[], visible?: boolean): Promise<void | WorkerNotGranted> };
+  prefs: { get(): Promise<WorkerJson | null>; set(value: WorkerJson | null): Promise<void> };
+  assets: { read(path: string): Promise<Uint8Array | null> };
+  events: { subscribe(topic: "state.snapshot", listener: (model: ModStateSnapshot) => void): Promise<string>; subscribe(topic: "display.snapshot", listener: (model: ModDisplaySnapshot) => void): Promise<string>; onSnapshotInvalidated(listener: (event: { readonly domain: string; readonly revision: number }) => void): Promise<string> };
+  query: { snapshot(domain: "engine.facts", selector: WorkerJson, revision?: number): Promise<{ readonly revision: number; readonly data: WorkerJson }> };
+  policies: { install(policy: "object-list.order-v1", revision: number, body: { readonly keys: readonly ("dy" | "dx")[] }): Promise<void> };
+  registry: { declare(kind: "command", id: string, definition: { readonly id: string; readonly verb: string; readonly input: "none" | "direction"; readonly intentCodes: readonly string[] }): Promise<void>; revoke(kind: "command", id: string): Promise<void> };
+  regions: { declare(region: { readonly id: string; readonly layer: "hud" | "overlay"; readonly placement: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }; readonly inputActions: readonly string[] }): Promise<void>; patch(id: string, cells: readonly RegionCell[], visible?: boolean): Promise<void> };
   commands: { submit(code: string, args: WorkerJson): Promise<WorkerJson | null> };
   ui: {
     mount(panel: ModWorkerPanel): Promise<WorkerJson | null>;
@@ -160,32 +159,30 @@ export function installModWorkerBootstrap(
         log: (level, text): void => send({ type: "log", level, message: String(text) }),
         prefs: {
           get: (): Promise<WorkerJson | null> => request({ type: "prefs.get" }),
-          set: async (value): Promise<void | WorkerNotGranted> => { return await request<WorkerNotGranted | null>({ type: "prefs.set", value }) ?? undefined; },
+          set: async (value): Promise<void> => { await request({ type: "prefs.set", value }); },
         },
-        assets: { read: (path): Promise<Uint8Array | null | WorkerNotGranted> => request({ type: "asset.read", path }) },
+        assets: { read: (path): Promise<Uint8Array | null> => request({ type: "asset.read", path }) },
         events: {
-          subscribe: async (topic, listener): Promise<string | WorkerNotGranted> => {
-            const subscriptionId = await request<string | WorkerNotGranted>({ type: "event.subscribe", topic });
-            if (typeof subscriptionId !== "string") return subscriptionId;
+          subscribe: async (topic, listener): Promise<string> => {
+            const subscriptionId = await request<string>({ type: "event.subscribe", topic });
             listeners.set(subscriptionId, listener as unknown as (model: WorkerJson) => void);
             return subscriptionId;
           },
-          onSnapshotInvalidated: async (listener): Promise<string | WorkerNotGranted> => {
-            const subscriptionId = await request<string | WorkerNotGranted>({ type: "event.subscribe", topic: "snapshot.invalidated" });
-            if (typeof subscriptionId !== "string") return subscriptionId;
+          onSnapshotInvalidated: async (listener): Promise<string> => {
+            const subscriptionId = await request<string>({ type: "event.subscribe", topic: "snapshot.invalidated" });
             invalidationListeners.set(subscriptionId, listener);
             return subscriptionId;
           },
         },
-        query: { snapshot: (domain, selector, revision): Promise<{ readonly revision: number; readonly data: WorkerJson } | WorkerNotGranted> => request({ type: "query.snapshot", domain, selector, ...(revision === undefined ? {} : { revision }) }) },
-        policies: { install: async (policy, revision, body): Promise<void | WorkerNotGranted> => { return await request<WorkerNotGranted | null>({ type: "policy.install", policy, revision, body }) ?? undefined; } },
+        query: { snapshot: (domain, selector, revision): Promise<{ readonly revision: number; readonly data: WorkerJson }> => request({ type: "query.snapshot", domain, selector, ...(revision === undefined ? {} : { revision }) }) },
+        policies: { install: async (policy, revision, body): Promise<void> => { await request({ type: "policy.install", policy, revision, body }); } },
         registry: {
-          declare: async (kind, declarationId, definition): Promise<void | WorkerNotGranted> => { return await request<WorkerNotGranted | null>({ type: "registry.declare", kind, id: declarationId, definition }) ?? undefined; },
-          revoke: async (kind, declarationId): Promise<void | WorkerNotGranted> => { return await request<WorkerNotGranted | null>({ type: "registry.revoke", kind, id: declarationId }) ?? undefined; },
+          declare: async (kind, declarationId, definition): Promise<void> => { await request({ type: "registry.declare", kind, id: declarationId, definition }); },
+          revoke: async (kind, declarationId): Promise<void> => { await request({ type: "registry.revoke", kind, id: declarationId }); },
         },
         regions: {
-          declare: async (region): Promise<void | WorkerNotGranted> => { return await request<WorkerNotGranted | null>({ type: "ui.region.declare", ...region }) ?? undefined; },
-          patch: async (regionId, cells, visible): Promise<void | WorkerNotGranted> => { return await request<WorkerNotGranted | null>({ type: "ui.region.patch", id: regionId, cells, ...(visible === undefined ? {} : { visible }) }) ?? undefined; },
+          declare: async (region): Promise<void> => { await request({ type: "ui.region.declare", ...region }); },
+          patch: async (regionId, cells, visible): Promise<void> => { await request({ type: "ui.region.patch", id: regionId, cells, ...(visible === undefined ? {} : { visible }) }); },
         },
         commands: { submit: (code, args): Promise<WorkerJson | null> => request({ type: "command.submit", code, args }) },
         ui: {

@@ -10,7 +10,7 @@ import { log } from "./logging";
  * `mods` channel, as a throwing player-command listener is, and the arrival that
  * sent the event carries on.
  */
-export function reportEventFault(type: GameEventType, error: unknown): void {
+export function reportEventFault(type: GameEventType | "monsterBecameVisible", error: unknown): void {
   log.error("mods", `a ${type} listener failed:`, error);
 }
 

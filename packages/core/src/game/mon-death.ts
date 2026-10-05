@@ -460,7 +460,7 @@ export function monsterTakeTerrainDamage(
     MON_MSG.CATCH_FIRE,
     MON_MSG.DISINTEGRATES,
     deps,
-    (damage, died) => emitCombatOutcome(state, null, mon.midx, "effect",
+    (damage, died) => emitCombatOutcome(state, null, mon, "effect",
       true, damage, died, mon.grid),
   );
 }

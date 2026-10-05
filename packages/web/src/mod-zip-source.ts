@@ -68,8 +68,6 @@ export interface ZipImportDeps {
     source: string,
     granted: readonly string[],
     grantedDigest: string,
-    refused?: readonly string[],
-    acknowledged?: boolean,
   ) => Promise<SessionStageResult>;
   /** Whether a staged archive will still be there after the reload that applies it. */
   readonly sessionSurvivesReload: () => boolean;
@@ -214,9 +212,9 @@ export function zipImportDeps(
     },
     pick: pickZipFile,
     install: async (bytes) => await installModFromZip(bytes, env, allowed()),
-    loadForSession: async (bytes, source, granted, grantedDigest, refused, acknowledged) =>
+    loadForSession: async (bytes, source, granted, grantedDigest) =>
       await stageSessionMod(
-        { bytes, source, granted, grantedDigest, ...(refused ? { refused } : {}), ...(acknowledged === undefined ? {} : { acknowledged }), allowed: allowed() },
+        { bytes, source, granted, grantedDigest, allowed: allowed() },
         env.scope ?? globalThis,
       ),
     sessionSurvivesReload: () => sessionSurvivesReload(env.scope ?? globalThis),

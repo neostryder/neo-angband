@@ -30,10 +30,10 @@ export interface Api2LevelEvent {
 }
 
 /**
- * Who acted, as the player saw it: the player, a monster the player perceives
- * (by its id, the same id the view uses), or something the player could not
- * see. A monster whose record is gone by the time the event is sent is
- * `"unseen"`, because the host can no longer check what the player perceives.
+ * Who acted, as the player saw it when it happened: the player, a monster the
+ * player perceived (by its KnownMonster id), or something the player could not
+ * see, which includes every monster while the player hallucinates. A monster
+ * the event killed is reported as the player saw it before it died.
  */
 export type Api2Actor = "player" | "unseen" | { readonly monster: number };
 
@@ -53,7 +53,8 @@ export interface Api2CombatEvent {
 /** A movement the player saw. */
 export interface Api2MotionEvent {
   readonly who: Api2Actor;
-  readonly from: KnownGrid;
+  /** The origin is absent when the player did not observe it. */
+  readonly from?: KnownGrid;
   readonly to: KnownGrid;
   readonly kind: "walk" | "teleport";
 }

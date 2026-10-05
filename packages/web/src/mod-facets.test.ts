@@ -106,7 +106,6 @@ function pluginModule(): unknown {
 
 async function loadOne(pack: DiskPack) {
   return loadModCode({
-    acknowledged: () => true,
     packs: [pack],
     codeUrl: resolver(),
     enabled: () => true,

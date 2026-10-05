@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { startModWorker, type ModWorkerLike } from "./host";
 import { MOD_WORKER_PROTOCOL_VERSION, type HostReply, type HostToModWorker } from "./protocol";
 import { ModWorkerTransport } from "./transport";
-import { installModWorkerBootstrap, type ModWorkerApi, type WorkerScope } from "./bootstrap";
 
 class FakeWorker implements ModWorkerLike {
   readonly sent: Array<HostToModWorker | HostReply> = [];
@@ -19,39 +18,6 @@ function ready(worker: FakeWorker): void {
 }
 
 describe("API-2 Worker host broker", () => {
-  it("lets the bootstrap finish after awaiting refused reads and writes", async () => {
-    const worker = new FakeWorker();
-    const scope: WorkerScope = { onmessage: null, postMessage: (message) => queueMicrotask(() => worker.receive(message)) };
-    worker.postMessage = (message) => queueMicrotask(() => scope.onmessage?.({ data: message } as MessageEvent<typeof message>));
-    installModWorkerBootstrap(scope, MOD_WORKER_PROTOCOL_VERSION, async () => ({ default: async (api: ModWorkerApi) => {
-      expect(await api.prefs.get()).toMatchObject({ reason: "not-granted", capability: "prefs:read" });
-      expect(await api.prefs.set(null)).toMatchObject({ reason: "not-granted", capability: "prefs:write" });
-      expect(await api.events.subscribe("state.snapshot", () => undefined)).toMatchObject({ reason: "not-granted" });
-      expect(await api.assets.read("own.txt")).toMatchObject({ reason: "not-granted" });
-    } }));
-    const host = startModWorker(worker, {
-      id: "worker", capabilities: [], entryUrl: "mem://worker/worker.js",
-      snapshot: { id: "worker", modApi: 2, protocolVersion: MOD_WORKER_PROTOCOL_VERSION, engineVersion: "1.4.0", modVersion: "1.0.0", flags: {}, data: {}, capabilities: [], newCharacter: false },
-      prefs: { get: () => null, set: () => undefined }, readAsset: async () => null,
-    });
-    await host.ready;
-    host.teardown();
-  });
-  it("returns not-granted for a refused boot-time preference read", async () => {
-    const worker = new FakeWorker();
-    const prefs = { get: vi.fn(), set: vi.fn() };
-    const host = startModWorker(worker, {
-      id: "worker", capabilities: [], entryUrl: "mem://worker/worker.js",
-      snapshot: { id: "worker", modApi: 2, protocolVersion: MOD_WORKER_PROTOCOL_VERSION, engineVersion: "1.4.0", modVersion: "1.0.0", flags: {}, data: {}, capabilities: [], newCharacter: false },
-      prefs, readAsset: async () => null,
-    });
-    worker.receive({ type: "prefs.get", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "worker", requestId: 1 });
-    expect(worker.sent.at(-1)).toMatchObject({ ok: true, value: { ok: false, reason: "not-granted", capability: "prefs:read" } });
-    expect(prefs.get).not.toHaveBeenCalled();
-    ready(worker);
-    await host.ready;
-    host.teardown();
-  });
   it("posts only an immutable data init snapshot and brokers capability-checked requests", async () => {
     const worker = new FakeWorker();
     const prefs = { get: vi.fn(() => ({ theme: "dark" })), set: vi.fn() };

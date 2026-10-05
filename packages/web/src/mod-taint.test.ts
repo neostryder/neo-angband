@@ -233,7 +233,6 @@ async function withExplodingMod(...also: DiskPack[]): Promise<{
   setDiskPacks(folderWith(...packs));
   setModCode(
     await loadModCode({
-      acknowledged: () => true,
       packs,
       codeUrl: resolver,
       enabled: () => true,

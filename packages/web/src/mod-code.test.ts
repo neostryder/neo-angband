@@ -72,7 +72,6 @@ describe("a folder can supply code", () => {
     });
     const workerPack = { ...pack, code: ["worker.js"] };
     const report = await loadModCode({
-      acknowledged: () => true,
       packs: [workerPack],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -92,7 +91,6 @@ describe("a folder can supply code", () => {
       Promise.resolve({ default: url.includes("second") ? other : plugin }),
     );
     const report = await loadModCode({
-      acknowledged: () => true,
       packs: [codePack("first"), dataPack("plain"), codePack("second")],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -113,7 +111,6 @@ describe("a folder can supply code", () => {
      * and never re-fetches. */
     const released: string[] = [];
     await loadModCode({
-      acknowledged: () => true,
       packs: [codePack("one")],
       codeUrl: resolver(released),
       enabled: ALL_ENABLED,
@@ -126,7 +123,6 @@ describe("a folder can supply code", () => {
   it("releases the URL even when the import throws", async () => {
     const released: string[] = [];
     await loadModCode({
-      acknowledged: () => true,
       packs: [codePack("bad")],
       codeUrl: resolver(released),
       enabled: ALL_ENABLED,
@@ -140,7 +136,6 @@ describe("a folder can supply code", () => {
     /* This is the state the entire mod system used to be in, and from the outside
      * it looked exactly like a mod that did nothing. Silence here is the bug. */
     const report = await loadModCode({
-      acknowledged: () => true,
       packs: [codePack("wants-code")],
       codeUrl: null,
       enabled: ALL_ENABLED,
@@ -152,7 +147,6 @@ describe("a folder can supply code", () => {
 
   it("is silent for a data-only folder with no code source", async () => {
     const report = await loadModCode({
-      acknowledged: () => true,
       packs: [dataPack("plain")],
       codeUrl: null,
       enabled: ALL_ENABLED,
@@ -182,7 +176,6 @@ describe("every gate is applied BEFORE the import", () => {
       Promise.resolve({ default: { api: pluginApi, hooks: () => undefined } }),
     );
     const report = await loadModCode({
-      acknowledged: () => true,
       packs: [pack],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -333,7 +326,6 @@ describe("every gate is applied BEFORE the import", () => {
 describe("a broken plugin is one line, not a boot failure", () => {
   async function loadDefault(def: unknown) {
     return await loadModCode({
-      acknowledged: () => true,
       packs: [codePack("m")],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -344,7 +336,6 @@ describe("a broken plugin is one line, not a boot failure", () => {
 
   it("rejects a module with no default export", async () => {
     const report = await loadModCode({
-      acknowledged: () => true,
       packs: [codePack("m")],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -408,7 +399,6 @@ describe("a broken plugin is one line, not a boot failure", () => {
      * to do instead - which is the part that matters, since there is nothing to
      * import at all. */
     const report = await loadModCode({
-      acknowledged: () => true,
       packs: [codePack("m")],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -429,7 +419,6 @@ describe("a broken plugin is one line, not a boot failure", () => {
   it("carries the pack's record files to the caller for the plugin's context", async () => {
     const pack = codePack("m");
     const report = await loadModCode({
-      acknowledged: () => true,
       packs: [{ ...pack, files: { monster: [{ name: "Grip" }] } }],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,
@@ -443,7 +432,6 @@ describe("a broken plugin is one line, not a boot failure", () => {
   it("one bad plugin does not cost a good one", async () => {
     const good = { api: MOD_API_VERSION, hooks: () => undefined };
     const report = await loadModCode({
-      acknowledged: () => true,
       packs: [codePack("bad"), codePack("good")],
       codeUrl: resolver(),
       enabled: ALL_ENABLED,

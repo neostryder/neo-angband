@@ -190,7 +190,7 @@ export function buildMeleeHooks(state: GameState, mon: Monster): MeleeEffectHook
 
   const hooks: MeleeEffectHooks = {
     onOutcome: (hit, damage, died): void => {
-      emitCombatOutcome(state, "player", mon.midx, "melee", hit, damage, died, mon.grid);
+      emitCombatOutcome(state, "player", mon, "melee", hit, damage, died, mon.grid);
     },
     takeHit: {
       ...gameTakeHitHooks(state, mon),

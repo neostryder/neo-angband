@@ -1,7 +1,7 @@
 import type { CapabilitySet, PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { parseDocument, profileActionFormat, profileOwnerFormat, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModProfile, ModProfileAction, ModProfiles, ProfileResult, SaveResult } from "./mod-plugin";
-import { consentSatisfied, ModStore, MOD_SETTINGS_STORAGE_KEY, MOD_STATE_STORAGE_KEY, type ConsentRecord } from "./mod-store";
+import { consentSatisfied, ModStore, MOD_SETTINGS_STORAGE_KEY, MOD_STATE_STORAGE_KEY } from "./mod-store";
 import { copyScopedStorage, scopedStorage, type ScopedStorage } from "./profile-scope";
 import type { ProfileStorage, ProfileStore } from "./profiles";
 
@@ -54,18 +54,16 @@ export function createModProfiles(id: string, caps: CapabilitySet, deps: Profile
     for (const modId of enabled) {
       const manifest = installed.get(modId);
       if (!manifest) return refused(`Mod "${modId}" is not installed.`);
-      /* A refusal is a decision as much as a grant is (mod-store.ts setDecisions). */
-      const decided = (d: ConsentRecord): readonly string[] => [...d.granted, ...d.refused];
-      if (!consentSatisfied(manifest.capabilities ?? [], decided(source.getDecisions(modId))) &&
-          !consentSatisfied(manifest.capabilities ?? [], decided(store.getDecisions(modId)))) {
+      const grants = source.getConsent(modId);
+      if (!consentSatisfied(manifest.capabilities ?? [], grants) &&
+          !consentSatisfied(manifest.capabilities ?? [], store.getConsent(modId))) {
         return refused(`Mod "${manifest.name}" needs your permission in the Mods screen first.`);
       }
     }
     for (const modId of enabled) {
       const manifest = installed.get(modId)!;
-      const decisions = source.getDecisions(modId);
-      if (consentSatisfied(manifest.capabilities ?? [], [...decisions.granted, ...decisions.refused])) {
-        store.setDecisions(modId, decisions, source.getConsentVersion(modId) ?? manifest.version);
+      if (consentSatisfied(manifest.capabilities ?? [], source.getConsent(modId))) {
+        store.setConsent(modId, source.getConsent(modId));
       }
       store.setModChoice(modId, true);
     }

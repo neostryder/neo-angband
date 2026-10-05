@@ -467,17 +467,16 @@ describe("the consent read renders exactly what its hand-laid version did", () =
       CM({ capabilities: ["command:add", "registry:effect"], nondeterministic: true }),
     );
     const lines = screenBodyLines(view, 80);
-    expect(lines.slice(0, 2)).toEqual([
+    expect(lines.slice(0, 5)).toEqual([
       { text: '"Quality of Life" requests these capabilities:', color: UI_TEXT },
       { text: "", color: UI_TEXT },
+      { text: "  - Add new player commands", color: UI_TEXT },
+      {
+        text: "  - Override effect, combat, and magic logic".padEnd(69) + "[elevated]",
+        color: UI_GOLD,
+      },
+      { text: "", color: UI_TEXT },
     ]);
-    /* Each bullet also says what stops working without it (capability-describe.ts
-     * capabilityWithoutIt), because each one can be refused on its own. */
-    expect(lines[2]).toEqual({ text: expect.stringMatching(/^ {2}- Add new player commands\. Without it: /u), color: UI_TEXT });
-    const elevated = lines.find((line) => line.text.includes("[elevated]"));
-    expect(elevated?.color).toBe(UI_GOLD);
-    expect(elevated?.text.startsWith("  - Override effect, combat, and magic logic.")).toBe(true);
-    expect(elevated?.text.indexOf("[elevated]")).toBe(69);
     expect(
       lines.filter((line) => line.color === UI_BAD).map((line) => line.text).join(" "),
     ).toBe(
@@ -490,7 +489,7 @@ describe("the consent read renders exactly what its hand-laid version did", () =
     const source = tableOf(view, "capabilities").rows[0]!.cells.text!.text;
     const rendered = screenBodyLines(view, 80);
     const capabilityLines = rendered.filter((line) => line.color === UI_GOLD).map((line) => line.text);
-    expect(capabilityLines.length).toBeGreaterThanOrEqual(4);
+    expect(capabilityLines).toHaveLength(4);
     expect(capabilityLines[0]).toContain("[elevated]");
     expect(capabilityLines[0]!.indexOf("[elevated]")).toBe(69);
     expect(capabilityLines.slice(1).every((line) => !line.includes("[elevated]"))).toBe(true);
@@ -523,7 +522,7 @@ describe("the consent read renders exactly what its hand-laid version did", () =
     ]);
     const table = tableOf(view, "capabilities");
     expect(view.title).toBe("Capability approval");
-    expect(table.rows.map((r) => r.cells.text?.text?.split(". Without it: ")[0])).toEqual([
+    expect(table.rows.map((r) => r.cells.text?.text)).toEqual([
       "Quality of Life: Add new player commands",
       "ModForge: Override effect, combat, and magic logic",
     ]);

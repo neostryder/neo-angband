@@ -1,13 +1,11 @@
 import type { ModWorkerPanel, ModWorkerPanelNode, ModWorkerPanelPatch, WorkerJson } from "./protocol";
 import { panelDescription, panelPatch } from "./panel-schema";
-import { modPanelsSuspended, onModPanelSuspension } from "../panel-runtime";
 
 interface MountedPanel {
   readonly root: HTMLDivElement;
   readonly title: HTMLDivElement;
   readonly body: HTMLDivElement;
   readonly emit: (panelId: string, action: string) => void;
-  readonly unsuspend: () => void;
 }
 
 export interface ModWorkerPanelRenderer {
@@ -36,11 +34,7 @@ export function createModWorkerPanelRenderer(doc: Document = document): ModWorke
     body.style.cssText = "display:flex;flex-direction:column;gap:8px";
     root.append(title, body);
     (doc.body ?? doc.documentElement).append(root);
-    const unsuspend = onModPanelSuspension((suspended) => {
-      root.style.visibility = suspended ? "hidden" : "";
-      root.inert = suspended;
-    });
-    const mounted = { root, title, body, emit, unsuspend };
+    const mounted = { root, title, body, emit };
     panels.set(panelKey, mounted);
     draw(panel.id, mounted, panel);
     return { panelId: panel.id };
@@ -65,7 +59,6 @@ export function createModWorkerPanelRenderer(doc: Document = document): ModWorke
       for (const [panelKey, panel] of panels) {
         if (!panelKey.startsWith(`${pluginId}:`)) continue;
         panel.root.remove();
-        panel.unsuspend();
         panels.delete(panelKey);
       }
     },
@@ -99,9 +92,7 @@ function renderNode(doc: Document, panelId: string, node: ModWorkerPanelNode, em
     button.type = "button";
     button.textContent = node.label;
     button.style.cssText = "font:inherit;padding:6px 10px;background:#24242e;color:#d8d8dc;border:1px solid #56566a;border-radius:4px;cursor:pointer"; // palette-exempt: host-owned DOM panel button
-    button.addEventListener("click", () => {
-      if (!modPanelsSuspended()) emit(panelId, node.action);
-    });
+    button.addEventListener("click", () => emit(panelId, node.action));
     return button;
   }
   const layout = doc.createElement("div");

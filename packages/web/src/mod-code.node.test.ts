@@ -347,7 +347,6 @@ describe("a mod folder on disk supplies working code", () => {
     expect(report.codeUrl).not.toBeNull();
 
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -389,7 +388,6 @@ describe("a mod folder on disk supplies working code", () => {
     );
     const report = await readModDir(fsSource([{ id: "stale", files: ["manifest.json"], code: [PLUGIN_FILE] }]));
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -404,7 +402,6 @@ describe("a mod folder on disk supplies working code", () => {
     writeMod("broken", {}, `export default { api: ${MOD_API_VERSION} }; this is not javascript`);
     const report = await readModDir(fsSource([{ id: "broken", files: ["manifest.json"], code: [PLUGIN_FILE] }]));
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -423,7 +420,6 @@ describe("a mod folder on disk supplies working code", () => {
       fsSource([{ id: "with-data", files: ["manifest.json", "monster.json"], code: [PLUGIN_FILE] }]),
     );
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -516,7 +512,6 @@ describe("a mod may be several scripts, not one bundled file", () => {
     writeMod("multi", {}, MULTI.plugin, MULTI.files);
     const report = await readModDir(fsSource([MULTI_ENTRY]));
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -538,7 +533,6 @@ describe("a mod may be several scripts, not one bundled file", () => {
     writeMod("multi", {}, MULTI.plugin, MULTI.files);
     const report = await readModDir(dataSource([MULTI_ENTRY], { resolveGraph: false }));
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -553,7 +547,6 @@ describe("a mod may be several scripts, not one bundled file", () => {
     writeMod("multi", {}, MULTI.plugin, MULTI.files);
     const report = await readModDir(dataSource([MULTI_ENTRY], { resolveGraph: true }));
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -576,7 +569,6 @@ describe("a mod may be several scripts, not one bundled file", () => {
       }),
     );
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -637,7 +629,6 @@ describe("a mod folder on disk reaches the dungeon-profile registry", () => {
     );
     expect(report.problems).toEqual([]);
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -693,7 +684,6 @@ describe("a mod folder on disk reaches the dungeon-profile registry", () => {
       fsSource([{ id: "hollow", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
     );
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -715,7 +705,6 @@ describe("a mod folder on disk reaches the dungeon-profile registry", () => {
       fsSource([{ id: "greedy", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
     );
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -848,7 +837,6 @@ describe("a mod folder on disk reaches the monster blow registry", () => {
     );
     expect(report.problems).toEqual([]);
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -913,7 +901,6 @@ describe("a mod folder on disk reaches the monster blow registry", () => {
       fsSource([{ id: "sneaky", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
     );
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -966,7 +953,6 @@ describe("a mod folder on disk reaches the store registry", () => {
     );
     expect(report.problems).toEqual([]);
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -1044,7 +1030,6 @@ describe("a mod folder on disk reaches the store registry", () => {
       fsSource([{ id: "cheapskate", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
     );
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -1142,7 +1127,6 @@ describe("a mod folder on disk reaches the vault glyph registry", () => {
     );
     expect(report.problems).toEqual([]);
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -1192,7 +1176,6 @@ describe("a mod folder on disk reaches the vault glyph registry", () => {
       fsSource([{ id: "trespasser", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
     );
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -1266,7 +1249,6 @@ describe("a mod folder on disk reaches every other registry domain", () => {
     );
     expect(report.problems).toEqual([]);
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -1316,7 +1298,6 @@ describe("a mod folder on disk reaches every other registry domain", () => {
       fsSource([{ id: "overhaul", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
     );
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -1662,7 +1643,6 @@ describe("a mod folder on disk reaches the projection registries", () => {
     );
     expect(report.problems).toEqual([]);
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -1718,7 +1698,6 @@ describe("a mod folder on disk reaches the projection registries", () => {
       fsSource([{ id: "meddler", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
     );
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -1807,7 +1786,6 @@ describe("a mod folder on disk reaches the effect-info registry", () => {
     );
     expect(report.problems).toEqual([]);
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -1858,7 +1836,6 @@ describe("a mod folder on disk reaches the effect-info registry", () => {
       fsSource([{ id: "mute", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
     );
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -1977,7 +1954,6 @@ describe("a mod folder on disk reaches the random artifact registry", () => {
     );
     expect(report.problems).toEqual([]);
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -2029,7 +2005,6 @@ describe("a mod folder on disk reaches the random artifact registry", () => {
       fsSource([{ id: "overreach", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
     );
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -2124,7 +2099,6 @@ describe("a mod folder on disk reaches the item-class registry", () => {
     );
     expect(report.problems).toEqual([]);
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -2221,7 +2195,6 @@ describe("a mod folder on disk reaches the item-class registry", () => {
       fsSource([{ id: "trespass", files: ["manifest.json"], code: [PLUGIN_FILE] }]),
     );
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -2326,7 +2299,6 @@ describe("a mod folder on disk reaches the rune registry", () => {
     );
     expect(report.problems).toEqual([]);
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
@@ -2441,7 +2413,6 @@ describe("a mod folder on disk reaches the rune registry", () => {
       ]),
     );
     const code = await loadModCode({
-      acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl,
       enabled: () => true,
