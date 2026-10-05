@@ -65,6 +65,7 @@ import {
   knownFeat,
   knownObject,
   createAgentView,
+  observeKnownStore,
   type KnownObjectMemory,
   loc,
   MFLAG,
@@ -6041,6 +6042,7 @@ async function openKnowledgeMenu(): Promise<void> {
  * is, and what the game charges for each item.
  */
 async function showStoreKnowledge(store: Store): Promise<void> {
+  observeKnownStore(state, store);
   const feat = features.get(store.feat);
   const featLabel = feat?.name ?? store.featName;
   const isHome = (feat?.code ?? store.featName).toUpperCase().includes("HOME");
@@ -10331,6 +10333,10 @@ const modSnapshotSource: InputSnapshotSource = {
   frame: () => lastWorldFrame,
 };
 setModSnapshotSource(modSnapshotSource);
+/* The monsterBecameVisible payload names a monster the way a mod's KnownWorld
+ * does. A sighting made inside startGame, before the glyph table and this line
+ * exist, carries no raceId or glyph. */
+state.knownWorldDeps = modSnapshotSource.viewDeps();
 setModDriverControl({
   current: () => currentInputDriver(),
   setStatus: (id, status) => {
@@ -11030,6 +11036,7 @@ async function enterStoreModal(store: Store): Promise<void> {
     return;
   }
   const feat = features.get(store.feat);
+  observeKnownStore(state, store);
   storeModalActive = true;
   try {
     await openModal(() =>
@@ -11118,6 +11125,7 @@ async function enterStoreModal(store: Store): Promise<void> {
     );
   } finally {
     storeModalActive = false;
+    observeKnownStore(state, store);
   }
   /* leave_store's "Disable repeats" (ui-store.c:1315-1317). A store visit
    * rearranges the pack wholesale, so the remembered command's handle or floor

@@ -103,12 +103,33 @@ The `Fold` column uses the code's own vocabulary. `MOD_HOOK_FOLDS` (`packages/co
 | `objectInfoText(text, site)` | `chained` | `obj/object-info.ts` (`objectInfo`, once per fragment of the finished textblock) | `?? text` - write the fragment unchanged |
 | `effectIntro(intro)` | `chained` | `obj/object-info.ts` (`describeEffect`, for the unknown-effect sentence and the known-effect lead-in) | `?? intro.text` - write 4.2.6's introduction |
 | `optionsChanged(snapshot)` | `all-observe` | `packages/web/src/options.ts` (`notifyOptionsChanged`, at the end of `runOptionsMenu`) | nothing happens; core reads no answer |
-| `monsterBecameVisible(mon)` | `all-observe` | `game/known.ts` (`updateMon`'s "it was previously unseen" branch, reached from `updateMonsters`, `monsterSwap`, and every other `updateMon` call site) | nothing: the visibility flag was already set with no mod loaded |
+| `monsterBecameVisible(mon)` | `all-observe` | `game/known.ts` (`noteSighting`, reached when `updateMon` makes a monster obvious, when a seen mimic is unmasked, and from `detectMonsters`; a pass's sightings are delivered together, nearest first) | nothing: the visibility flag was already set with no mod loaded |
 | `artifactIdentified(found)` | `all-observe` | `obj/known-object.ts` (`objectTouch`'s ASSESSED transition, reached from `pickup.ts`'s `playerPickupAux`, `game/known.ts`'s `squareKnowPile`, and `wizard.ts`'s item-edit path) | nothing: the object was already assessed with no mod loaded |
 
 `optionsChanged` and `levelRevisited` are notifications: core asks neither of them a question. Every other hook's return value changes what the engine does next, so its fold has to decide whose answer wins. A notification returns nothing and folds as **all-observe**: every listening mod is told, in load order, and none can overrule another. `levelRevisited` passes the live restored chunk plus unrounded turn endpoints, so a tracking mod can reproduce the engine's world-tick boundary exactly. `optionsChanged` is fired by the host and tells a mod that the player has finished changing settings.
 
-`monsterBecameVisible` and `artifactIdentified` are notifications of the same kind, fired from inside core instead of the host. Neither hands over a live game object. `monsterBecameVisible` passes a `KnownMonster`, the monster as the player knows it: its index, race and grid, the look command's health band and statuses, the race's level and speed, and the race flags and spells the player's lore has recorded. Its exact hit points, its current speed and anything recall has not shown stay out. `artifactIdentified` passes `{ name, artifactIndex }`, both of which the player learns at that moment. Both fire only on the transition. `monsterBecameVisible` fires on the same "it was previously unseen" branch that increments the race's "sights" lore counter, so it fires once per fresh sighting and never on a turn where an already-visible monster stays visible. `artifactIdentified` fires when the object's `OBJ_NOTICE.ASSESSED` bit goes from unset to set, which happens once per object because the bit is never cleared.
+`monsterBecameVisible` and `artifactIdentified` are notifications of the same kind, fired from inside core instead of the host. Neither hands over a live game object. `monsterBecameVisible` passes a `KnownMonster`, the monster as the player knows it: a handle (`id`) that a later KnownWorld gives the same monster, its race and grid, the look command's health band and statuses, the race's level and speed, and the race flags and spells the player's lore has recorded. Its exact hit points, its current speed and anything recall has not shown stay out. `artifactIdentified` passes `{ name, artifactIndex }`, both of which the player learns at that moment. Both fire only on the transition. `monsterBecameVisible` fires on the same "it was previously unseen" branch that increments the race's "sights" lore counter, so it fires once per fresh sighting and never on a turn where an already-visible monster stays visible. `artifactIdentified` fires when the object's `OBJ_NOTICE.ASSESSED` bit goes from unset to set, which happens once per object because the bit is never cleared.
+
+| Field | Type | What it holds |
+|---|---|---|
+| `id` | number | A handle that a later `KnownWorld` gives the same monster, the one targeting and commands take. It is not the monster's index. |
+| `race` | string | The race's name |
+| `raceIndex` | number | The race's index |
+| `raceId` | string, optional | The namespaced race id. This hook never sets it, because its call site builds the monster without a resolver. |
+| `grid` | `{ x, y }` | Where the monster stands |
+| `visible` | boolean | The monster's visible flag. It is always true here, since the hook fires as that flag is set. |
+| `health` | string | The look command's health band: `unhurt`, `somewhat`, `wounded`, `badly` or `almost` |
+| `living` | boolean | False for a monster the look command calls damaged rather than wounded. |
+| `status` | string array | The look statuses it has, from `asleep`, `held`, `disenchanted`, `confused`, `afraid`, `stunned`, `slowed` and `hasted` |
+| `look` | string | The look command's line for it, such as `wounded, asleep` |
+| `raceLevel` | number | The race's native depth |
+| `raceSpeed` | number | The race's speed, where 110 is normal |
+| `knownFlags` | string array | Race flag codes the player's lore has learned |
+| `knownSpells` | string array | Spell codes the player's lore has learned |
+| `unique` | boolean | True when `knownFlags` includes `UNIQUE` |
+| `questGuardian` | boolean | The race is the target of one of the character's quests. |
+| `finalGuardian` | boolean | The race is the target of the character's last quest, Morgoth in the standard quest list. |
+| `glyph` | string, optional | The race's glyph. This hook never sets it. |
 
 Three parts of `optionsChanged`'s behaviour are contract, and a mod can rely on them:
 

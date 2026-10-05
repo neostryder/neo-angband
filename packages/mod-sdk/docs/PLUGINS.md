@@ -962,9 +962,9 @@ The `system` layer is reserved for the game. Asking for it is refused with its o
 
 The `GridSurface` rendering contract is host infrastructure, not a registry capability. `frontend` is a direct `ModPlugin` member because it selects one display owner instead of registering an independent game behaviour, and for the same reason it has a capability kind of its own, `display:replace`. `hud` has the same shape one level finer: a direct member because it selects an owner, gated per region by `ui:<region>.replace`, because a mod that draws hit points as a bar has no business taking the message log as well, and a player giving consent should be told which part of the screen is changing hands. `menu` is the third, gated by `ui:menu.replace` for all menus at once, because the unit a player can weigh is "the game's menus", not fifty individual screens. All three `ui:*` grants and `display:replace` are separate kinds in both directions: a mod holding the dungeon cannot draw the vitals, and a mod holding every menu cannot draw the dungeon.
 
-`ui:` has three actions, and the action is compared as well as the region. `replace` hands over something the game already draws. `region.create` adds a rectangle of the game's own character grid beside it. `panel.mount` puts real HTML on the page above the game, reached through `ctx.ui` instead of a `ModPlugin` member, because a panel opens when the player asks for one instead of being declared once at load. `ui:*.replace` covers neither of the other two: the wildcard covers which of the game's regions change hands, and adding furniture or mounting a web page are separate things for a player to agree to.
+`ui:<region>.<action>` has three actions, and the action is compared as well as the region. `replace` hands over something the game already draws. `region.create` adds a rectangle of the game's own character grid beside it. `panel.mount` puts real HTML on the page above the game, reached through `ctx.ui` instead of a `ModPlugin` member, because a panel opens when the player asks for one instead of being declared once at load. `ui:*.replace` covers neither of the other two: the wildcard covers which of the game's regions change hands, and adding furniture or mounting a web page are separate things for a player to agree to. `ui:region`, `ui:panel` and `ui:title` are kinds of their own, and no `ui:` grant covers another.
 
-`mod:` has two actions, and neither grant includes the other. `mod:install` puts a content pack in the player's library switched off. Because it waits there, one line on a consent list is a fair price for it: the player still meets the new mod on the Mods screen and still reads its own list. `mod:session` loads one for the rest of the session, on from the next reload, with none of those steps, so it grants more and cannot be covered by the install grant. `grantCovers` compares the action, the same rule `ui:` needed (#261). Both refuse code, and both refuse an archive whose manifest asks for a capability, so neither can be used to run code a mod wrote.
+`mod:` has two actions, and neither grant includes the other. `mod:install` puts a content pack in the player's library, switched off, so the player still meets it on the Mods screen and reads its own capability list before turning it on. `mod:session` loads a pack for the rest of the session and turns it on at the next reload, skipping both of those steps, so the install grant cannot cover it. `grantCovers` compares the action, the same rule `ui:` needed (#261). Both refuse an archive that ships code or whose manifest asks for a capability, so neither can be used to run code a mod wrote. `mod:read` looks a mod up at a repository address without installing anything; it is a kind of its own, and neither `mod:` grant covers it.
 
 A session-only load is limited in lifetime, not in privilege. A session-loaded pack composes into the game on the same terms as an installed one. Only the archive is short-lived: what the records did to a character, and anything a mod wrote while they were loaded, outlives the session exactly as it would have if the mod had been installed. What the session tier does give a player is that it cannot accumulate: the mod is listed and marked, it can be dropped, and closing the game forgets it.
 
@@ -976,20 +976,9 @@ That lifetime is a strong convention, not an enforced boundary. The archive live
 
 `WorldFrame` in `packages/web/src/world-view.ts` is live. `render()` calls the extracted `world-render-data.ts` with the real map-knowledge reads and passes the resulting frame to a `WorldFrameSink`. The default glyph terminal is that sink, and it consumes the frame's fallback visual projection, including the terrain-under-foreground tile inputs for a path over otherwise bare seen terrain. The frame carries semantic feature, trap, object and monster ids, visibility, ordered layers, the cursor and player placement, so a selected front end can build an isometric or 3D view without decoding terminal glyphs. As a control, the host runs the same producer `render()` uses, checks its unmodded pre-frame glyph tuples, and tees that exact frame to an independent host sink in the same call. The selected frontend receives a frozen copy of that frame; when no frontend is selected, or none exists, the glyph sink stays active unchanged.
 
-The same is true of `UiInput` in `packages/web/src/input-door.ts`. It is the
-single device-neutral route by which keyboard and keymap input reaches screens;
-its direction carries an analog vector and angle. A plugin that declares and is
-granted `keymap:write` receives `ctx.keymaps` during a live game. `bind()` claims
-only a free trigger; `entries()` lists only bindings the calling mod owns; and
-`rebind()` and `remove()` can change only those owned bindings. A plugin cannot
-read, overwrite, or remove the player's bindings or another mod's bindings. A
-player change clears the mod claim, and bindings still owned by a departing mod
-are removed during host teardown. Stored player keymaps are evaluated first when
-the root owns input; score pages, modals, and run interruption retain their
-existing literal-key gates, so a mod must not use injected input to outrank the
-player's chosen mapping or an active screen.
+The same is true of `UiInput` in `packages/web/src/input-door.ts`. It is the single device-neutral route by which keyboard and keymap input reaches screens; its direction carries an analog vector and angle. A plugin that declares and is granted `keymap:write` receives `ctx.keymaps` during a live game. `bind()` claims only a free trigger, `entries()` lists only bindings the calling mod owns, and `rebind()` and `remove()` can change only those owned bindings. Through `ctx.keymaps` a plugin cannot read, overwrite, or remove the player's bindings or another mod's bindings. Editing those is a separate grant, `keymap:edit`, which hands the plugin `ctx.keybindings`, the same editor as the game's own keymap screen. A player change clears the mod claim, and bindings still owned by a departing mod are removed during host teardown. Stored player keymaps are evaluated first when the root owns input; score pages, modals, and run interruption keep their own literal-key gates, so a mod must not use injected input to outrank the player's chosen mapping or an active screen.
 
-`register` reaches eighteen registries, each gated by a capability your manifest must declare and the player must consent to. `REGISTRY_CAPABILITIES` (`packages/core/src/mod/registry-host.ts`) defines the vocabulary, and the table below summarises it:
+`register` reaches eighteen registries, each gated by a capability your manifest must declare and the player must agree to. `REGISTRY_CAPABILITIES` in `packages/core/src/mod/registry-host.ts` maps each facade to its capability string, and the table below says what each one opens:
 
 | Capability | What it opens |
 |---|---|
@@ -1014,9 +1003,86 @@ player's chosen mapping or an active screen.
 
 Touching a facade you did not declare throws, even if the player consented to something else. Consent means the player allowed these domains, and the manifest means you asked for them; you need both.
 
-Every capability is defined once, in `packages/mod-sdk/src/capability-vocabulary.ts`: its argument, the sentence the player is asked to agree to, what stops working without it, whether the mod can still start without it, whether the consent screen highlights it, and which kinds of mod may hold it. The parser, `grantCovers` and the consent screen all read that table, and a capability the manifest does not list is never granted.
+Every capability is defined once, in `packages/mod-sdk/src/capability-vocabulary.ts`: its argument, the sentence the player is asked to agree to, what stops working without it, whether the mod can still start without it, whether the consent screen highlights it, and which kinds of mod may hold it. `parseCapability` and `grantCovers` in `capabilities.ts` read that list, and so does the consent screen (`packages/web/src/capability-describe.ts`). `parseCapability` throws on a string the list does not know, and the consent screen shows such a string as an unrecognized, high-risk grant.
 
-Five capabilities manage the game rather than play it: `mod:install`, `mod:session`, `session:control`, `profiles:manage` and `screens:manage`. They are for first-party mods only and are not in the public list. `state:map-actual.read`, the real map rather than what the character has found, is first-party only too, and no wildcard covers it: `state:*.read` grants every other state domain but not this one.
+Players answer for the whole list in one go. Your mod stays off until they have said yes to every capability in its manifest, which means the notes on what stops working without a grant tell you how your code should behave when a check fails.
+
+Three capabilities take an argument. `event:<name>` and `state:<domain>.read` take a lowercase kebab-case word, such as `turn-start` or `monsters`. `network:<host>` takes a host name or an address in brackets, with an optional port from 1 to 65535; without a port it covers the scheme's default port only. `network:local` covers this computer and the private address ranges on any port.
+
+Four grants are wildcards, and each ranges over its one argument and nothing else: `state:*.read`, `registry:*`, `network:*` and `ui:*.replace`. Where a kind has more than one action, the action is compared too, so `debug:spawn` does not cover `debug:wizard` and `prefs:read` does not cover `prefs:write`.
+
+Five capabilities run the game's own management: `mod:install`, `mod:session`, `session:control`, `profiles:manage` and `screens:manage`. Only first-party mods are meant to hold them, and they are left out of the public list. `state:map-actual.read`, the real map rather than what the character has found, is first-party only as well. A grant has to name it; `state:*.read` gives every other state domain and not this one. The game does not yet check a mod's kind when it loads, so a mod that declares one of these is not refused for it.
+
+In the table, "any code mod" means first-party, reviewed, sideloaded and Worker mods, and "in-process" means every kind except Worker mods. A mod with no code holds no capabilities.
+
+| Capability | What the player reads | Without it | Highlighted | Held by |
+|---|---|---|---|---|
+| `command:add` | Add new player commands | The commands this mod adds are not available. | no | in-process |
+| `command:submit` | Ask the game to run commands by their names, the way your own keys do | The mod cannot ask the game to run commands for you. | yes | any code mod |
+| `input:intent` | Act on your character's behalf with the same commands your own keys use | The mod cannot move or act for your character. | yes | in-process |
+| `input:prompt.reply` | Answer the game's current question through its input handler | The mod cannot answer the game's questions for you, so you answer them yourself. | yes | in-process |
+| `saves:manage` | List, load, rename and delete your characters; deletion asks you first | The mod's own character list does not appear; the game's list still works. | yes | in-process |
+| `ui:title` | Add title screen actions | The mod's entries on the title screen do not appear. | no | in-process |
+| `shared:read` | Read data other mods share | The mod cannot see what other mods share with it. | no | in-process |
+| `shared:publish` | Share data with other mods | Other mods cannot see what this mod shares. | no | in-process |
+| `display:replace` | Draw the dungeon itself - everything you see of the map comes from this mod instead of the game | The game draws the map itself and this mod's view is not used. | yes | in-process |
+| `display:filter` | Apply a visual post-processing filter to the game's terminal canvas and panels | The game's screen is shown without this mod's filter. | no | in-process |
+| `ui:*.replace` | Draw the whole interface around the map - your messages, your vitals, the status line, every menu and every full screen all come from this mod | The game draws its own interface around the map. | yes | in-process |
+| `ui:messages.replace` | Draw the message line at the top of the screen instead of the game | The game draws its own message line. | yes | in-process |
+| `ui:sidebar.replace` | Draw the vitals panel - your hit points, food, armour and depth instead of the game | The game draws its own vitals panel. | yes | in-process |
+| `ui:status.replace` | Draw the status line along the bottom of the screen instead of the game | The game draws its own status line. | yes | in-process |
+| `ui:menu.replace` | Draw the menus and choices the game offers you instead of the game | The game shows its own menus. | yes | in-process |
+| `ui:screen.replace` | Draw the full screens - your inventory, character sheet and the rest instead of the game | The game shows its own full screens. | yes | in-process |
+| `ui:birth.replace` | Draw the character creation screens instead of the game | The game shows its own character creation screens. | yes | in-process |
+| `ui:region.create` | Add furniture of its own to your screen - panels this mod draws itself, over the map and beside the game's own | The panels this mod draws on the game screen do not appear. | yes | in-process |
+| `ui:panel.mount` | Draw its own interface over the game with real web pages - it can look exactly like the game's own screens, cover them completely, and read whatever you type, paste or drop into it | The mod's own windows over the game do not open. | yes | in-process |
+| `ui:region` | Add and update a host-painted text region on the game screen | The text area this mod fills on the game screen stays empty. | yes | any code mod |
+| `ui:panel` | Show panels of buttons and text that the game draws for this mod | The panels this mod asks the game to draw do not appear. | no | any code mod |
+| `backup:folder` | Write files into a folder you pick (it never learns the folder's real path, only whether a write succeeded) | The mod cannot write backups to a folder you pick. | no | in-process |
+| `mod:read` | Look up a mod at a repository address, the same way installing one does - its name, description, author, version and file listing - by reaching out to that repository on your behalf. Nothing is installed and nothing is added to your library | The mod cannot look up other mods by their repository address. | yes | in-process |
+| `debug:spawn` | Conjure items and creatures into your game, the way the debug commands do - it asks first, and the character it happens to is marked for good and can no longer be scored | The mod cannot create items or creatures in your game. | yes | in-process |
+| `debug:wizard` | Use the game's debug commands to test with - depth, experience, gold, items, creatures - after stopping this session from being saved at all. Your character on disk keeps whatever the last save left and nothing after that is written, which cannot be undone without reloading | The mod cannot use the game's debug commands. | yes | in-process |
+| `keymap:write` | Create new shortcut keymaps in your current keyset without replacing your existing shortcuts | The shortcut keys this mod offers to add are not created. | no | in-process |
+| `keymap:edit` | Change, replace and remove any of your keymaps in the current keyset, and read the next key you press to bind it | The mod's keymap editor cannot change your keymaps. | yes | in-process |
+| `options:write` | Change your user interface options and delay settings, as the options menu does; birth and cheat options stay yours to set | The mod cannot change your options; the options menu still works. | no | in-process |
+| `query:snapshot` | Read the host's named, cloned engine and content snapshots | The mod cannot read the game's snapshots. | no | any code mod |
+| `policy:install` | Install declared host-side policies that the game evaluates synchronously | The rules this mod declares for the game to apply are not installed. | yes | any code mod |
+| `hook:respond` | Answer approved asynchronous game decisions with a safe timeout fallback | The game makes those decisions without asking this mod. | yes | any code mod |
+| `registry:declare` | Declare host-owned commands or content using approved data schemas | The commands and content this mod declares are not added. | yes | any code mod |
+| `prefs:read` | Read the settings this mod saved earlier | The mod starts from its defaults each time. | no | any code mod |
+| `prefs:write` | Save its own settings between sessions | Changes to the mod's settings are lost when you close the game. | no | any code mod |
+| `asset:read` | Read files that came with this mod | The mod cannot open the images and data files it ships with. | no | any code mod |
+| `state:*.read` | Read ALL game state, except the parts of the map your character has not found | The mod cannot read the game state it uses. | yes | any code mod |
+| `state:map-actual.read` | See what the map really holds, including traps, items, terrain and creatures your character has not found | The mod sees only what your character has found. | yes | first-party only |
+| `network:*` | Send network requests to ANY host (your data could leave this device) | The mod cannot reach the internet. | yes | any code mod |
+| `network:local` | Send network requests to servers on this computer or your local network | The mod cannot reach servers on this computer or your local network. | yes | any code mod |
+| `registry:*` | Override ANY game system - effects, level and dungeon generation, monster attacks, shops, commands, monster AI, what spells and breaths do, what a vault symbol means, and vocabulary (full trusted, in-process access) | None of the game systems this mod changes are changed, and the mod does not start. | yes | in-process |
+| `registry:effect` | Override effect, combat, and magic logic | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:room` | Override dungeon / level generation | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:profile` | Add new kinds of dungeon level, and change which kind you get at a depth | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:blow` | Change what monster attacks do to you, and add new kinds of attack | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:store` | Change what shops buy from you and what they keep in stock | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:command` | Change what player commands do (and add commands) | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:monster` | Override monster AI (take over monster turns) | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:projection` | Change what spells, breaths and other elements do to the dungeon, to items on the floor, and to you | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:ui-entry` | Change how your resistances, abilities and stat modifiers are worked out and drawn on the character sheet and the equipment comparison | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:glyph` | Change what the symbols in a room or vault layout mean when a level is drawn | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:effect-info` | Change what the game tells you about a spell, potion or wand effect | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:randart` | Change how random artifacts are built - what powers they can get, and what each kind of item starts with | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:rune` | Teach the game about a new kind of RUNE - what it is called, what an item carries, and how the player learns it | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:tval` | Teach the game about a new kind of item - whether it can be worn or wielded, how it is priced, and whether it has an unidentified flavour | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:vocab` | Add new vocabulary - flags, stats, and other terms | The mod does not start, because it installs this change as it loads. | no | in-process |
+| `registry:menu` | Rewrite one named game menu's semantic rows and layout | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:message` | Add new message types, and choose which sounds play for them | The mod does not start, because it installs this change as it loads. | no | in-process |
+| `registry:tiles` | Supply tiles for creatures and items your tile set does not draw | The mod does not start, because it installs this change as it loads. | no | in-process |
+| `profiles:manage` | Create profiles and switch between them | The mod cannot create profiles or switch between them. | yes | first-party only |
+| `session:control` | Save the game, return to the title screen, or quit | The mod cannot save the game, leave it or quit for you. | no | first-party only |
+| `screens:manage` | Draw the game's mod, profile and settings screens in its own look | The game's own management screens are shown instead. | yes | first-party only |
+| `mod:install` | Add content mods to your library - records and tweaks, never code, and they arrive switched off until you read what they ask for and turn them on yourself | The mod cannot add mods to your library. | yes | first-party only |
+| `mod:session` | Put content mods into the game for the rest of this session - records and tweaks, never code - which start working as soon as the game reloads, without waiting to be switched on. The mod is forgotten when you close the game; what it did to a character is not | The mod cannot load test content into this session. | yes | first-party only |
+| `event:<name>` | Observe the "{name}" game event | The mod is not told when this event happens. | no | any code mod |
+| `state:<domain>.read` | Read {domain} game state | The mod cannot read this part of the game state. | no | any code mod |
+| `network:<host>` | Send network requests to {host} | The mod cannot reach this server. | yes | any code mod |
 
 ### What a capability gates, and what it does not
 
@@ -1042,7 +1108,7 @@ That follows from how plugins run. A trusted plugin runs in-process, synchronous
 
 The same holds for other capability families in the in-process tier. `state:<domain>.read` gates the perceive facade's accessors per domain, but `ctx.state` is the whole live `GameState`. `network:<host>` gates `ctx.net`, which refuses a request to an undeclared host, but a plugin is an ES module in the game's own page with the global `fetch` in scope.
 
-These capabilities are enforced in the sandboxed Worker tier. That tier is isolated by construction: it gets the reactive perceive / act / event surface across a message boundary and none of `ctx.core`, `ctx.state` or `ctx.registries`, so there is no twin to reach, and a denied domain stays denied. The same capability string therefore means containment on one side of that boundary and declaration on the other; this section is about the in-process tier.
+Worker mods are different. A Worker sits behind a message port and gets the perceive, act and event calls the broker offers, with no `ctx.core`, `ctx.state` or `ctx.registries` to go around them, so a capability it lacks stays out of reach. The broker in `packages/web/src/mod-worker/host.ts` matches each request against one exact string. A state subscription, for example, needs `state:model.read` itself, and `state:*.read` does not stand in for it there. One capability string can therefore mean a hard wall for a Worker mod and a declaration for an in-process plugin; the rest of this section is about in-process plugins.
 
 For in-process plugins, the real boundary is the install. A mod is code, nobody in this project reviews it, and the player makes that decision with the toggle on the Mods screen (`packages/web/src/mod-consent.ts`). So the consent screen shows the in-process warning for any mod that ships code, whatever its declared list says, and the manager row for a plugin that declares nothing says so instead of looking reassuring.
 

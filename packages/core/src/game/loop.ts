@@ -28,7 +28,8 @@
 import { MON_TMD, OF, PF, STAT, TMD } from "../generated/index.js";
 import { msgt } from "../msg.js";
 import { TMD_MAX } from "../player/types.js";
-import { los } from "../world/view.js";
+import { los, squareIsSeen } from "../world/view.js";
+import { squareMemorizeTraps } from "./trap.js";
 import { makeNoise, updateScent } from "../world/flow.js";
 import { convertManaToHp } from "../player/combat-regen.js";
 import {
@@ -353,9 +354,19 @@ export function decreaseTimeouts(state: GameState): void {
  * seen trap re-arms is a presentation concern (#25) and is DEFERRED. No RNG.
  */
 function decreaseTrapTimeouts(state: GameState): void {
-  for (const traps of state.traps.values()) {
+  const width = state.chunk.width;
+  for (const [key, traps] of state.traps) {
+    let changed = false;
     for (const trap of traps) {
-      if (trap.timeout) trap.timeout--;
+      if (trap.timeout) {
+        trap.timeout--;
+        if (!trap.timeout) changed = true;
+      }
+    }
+    /* game-world.c:773-776: a trap that re-arms in view is memorized again. */
+    if (changed) {
+      const grid = { x: key % width, y: Math.trunc(key / width) };
+      if (squareIsSeen(state.chunk, grid)) squareMemorizeTraps(state, grid);
     }
   }
 }

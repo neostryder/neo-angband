@@ -298,51 +298,13 @@ it there.
 
 Tracked as issue #18.
 
-### There is no isolation tier a mod's own `plugin.js` could run in
+### API 1 plugins run without isolation
 
-A mod's code runs in the page's realm with `ctx.core`, `ctx.state`,
-`ctx.registries`, `document`, `fetch` and IndexedDB. That is true of an installed
-mod and it is equally true of one loaded for a session (2026-08-21), and the
-session tier is deliberately not sold as being safer than it is. The only tier in
-this tree that actually fences is the autoplayer sandbox
-(`packages/web/src/agents/sandbox/`): a Web Worker, a versioned message protocol,
-a view snapshot serialised per granted domain, and `fetch`/`XMLHttpRequest`/
-`WebSocket` neutered in the worker unless `network:*` is granted. It is real
-isolation and it hosts a CONTROLLER, not a mod.
+An API 1 plugin's code runs in the game's page with `ctx.core`, `ctx.state`, `ctx.registries`, `document`, `fetch` and IndexedDB, whether it is installed or loaded for one session. Worker mods (`modApi: 2`, `runtime: "worker"`) run apart from the page, in an opaque-origin sandbox with no network and none of the game's storage, as `docs/modding/WORKER_ISOLATION.md` describes.
 
-**Why the same shape does not extend to a plugin, measured against the ABI rather
-than guessed at.** `hooks(ctx)` is called before `startGame` and must RETURN
-FUNCTIONS, which the composed `ModHooks` then calls synchronously inside the turn
-loop; `register(host, ctx)` mutates a live state object and installs handlers by
-identity; `ctx.core` is a live namespace whose registry singletons are shared
-objects. `postMessage` copies data and cannot carry a function, a DOM node, an
-accessor or object identity, so a proxy over the boundary turns every one of those
-synchronous calls into an asynchronous one, and the turn loop cannot await inside
-itself. `SharedArrayBuffer` does not rescue it: blocking the main thread on a
-worker would freeze the frame, needs cross-origin isolation, and still does not
-transfer live object semantics.
+An API 1 plugin cannot be moved into that Worker as it stands. Its `hooks(ctx)` returns functions that the turn loop calls synchronously, `register(host, ctx)` changes live state, and a message port carries copies of data, never functions, DOM nodes or object identity. A plugin that wants isolation has to be rewritten against mod API 2, whose calls take and return plain data (`docs/modding/MIGRATING_TO_API2.md`).
 
-So a worker-hosted plugin needs a DIFFERENT ABI - snapshots in, declarative
-actions out - and that is the load-bearing objection rather than the cost:
-**isolation that changes the execution model does not test the artifact.** An
-author asking to try their own `plugin.js` would be running a different program
-from the one they ship, and a testing tool that gives false confidence is worse
-than one that admits what it is.
-
-What would fence the host without changing the plugin's execution model is a
-per-plugin JS realm sharing the thread, so hooks stay synchronous and `document`,
-`fetch` and `ctx.core` reach the plugin only when the host hands them over. No
-such primitive is available: the ShadowRealm proposal is not shipped in any
-browser this game targets, and a userland "realm" built out of proxies would be a
-reimplementation of the host, which is the thing that would then need auditing.
-Recorded as the shape to build if the platform ever grows it, not as work waiting
-on somebody here.
-
-**What is still worth doing without any of it**: the session tier's own
-confirmation names the digest of the bytes it is about to run, and nothing
-re-asks when a re-staged draft changes them.
-
-Tracked as issue #19.
+Giving each plugin its own set of globals on the game's thread would fence an API 1 plugin without changing how it runs. No browser the game targets ships ShadowRealm, and an imitation built out of proxies would be a second host needing its own audit, so this stays open until the platform offers one.
 
 ### A save written under session-only content is loadable but not reproducible
 

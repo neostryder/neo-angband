@@ -125,7 +125,6 @@
     "gamepadTarget",
     "githubRepo",
     "hasFacet",
-    "headlessRunFormat",
     "highScoresFormat",
     "installedMarkerFormat",
     "installedModFormat",
@@ -220,7 +219,6 @@
     "valuesAtPath",
     "visualOverrideFormat",
     "windowManagerFormat",
-    "windowStateFormat",
-    "worstSeverity"
+    "windowStateFormat"
   ]
 }

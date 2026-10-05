@@ -19,26 +19,26 @@
 
 import { describe, expect, it } from "vitest";
 import type * as Sdk from "@rpgm-tools/neo-angband-mod-sdk";
-import type { KnownMonster, KnownWorld } from "../agent/known-world.js";
+import type {
+  KnownItem,
+  KnownMonster,
+  KnownPlayer,
+  KnownPlayerStatus,
+  KnownStore,
+  KnownStoreItem,
+  KnownTarget,
+  KnownWorld,
+} from "../agent/known-world.js";
 import type { KnownLevelCell, KnownLevelView, RememberedCell, TrapView } from "../agent/known-level.js";
 import type { InputToken } from "../agent/boundary.js";
-import type {
-  ItemView,
-  MonsterView,
-  PlayerStatusView,
-  PlayerView,
-  SpellbookView,
-  SpellView,
-  StoreItemView,
-  StoreView,
-  TargetView,
-} from "../agent/types.js";
+import type { ItemView, MonsterView, SpellbookView, SpellView } from "../agent/types.js";
 import type {
   CombatOutcomeEventData,
   DungeonLevelEventData,
   HealEventData,
   MessageEventData,
   MotionEventData,
+  PerceivedActor,
 } from "../events.js";
 import type { OptionStateData } from "../player/options.js";
 import type {
@@ -61,14 +61,14 @@ type Both<A, B> = Fits<A, B> extends true ? SameKeys<A, B> : false;
 const agreement: Record<string, true> = {
   world: true satisfies Both<KnownWorld, Sdk.KnownWorldData>,
   token: true satisfies Both<InputToken, Sdk.KnownToken>,
-  player: true satisfies Both<PlayerView, Sdk.KnownPlayer>,
-  playerStatus: true satisfies Both<PlayerStatusView, Sdk.KnownPlayerStatus>,
-  item: true satisfies Both<ItemView, Sdk.KnownItem>,
-  storeItem: true satisfies Both<StoreItemView, Sdk.KnownStoreItem>,
-  store: true satisfies Both<StoreView, Sdk.KnownStore>,
+  player: true satisfies Both<KnownPlayer, Sdk.KnownPlayer>,
+  playerStatus: true satisfies Both<KnownPlayerStatus, Sdk.KnownPlayerStatus>,
+  item: true satisfies Both<KnownItem, Sdk.KnownItem>,
+  storeItem: true satisfies Both<KnownStoreItem, Sdk.KnownStoreItem>,
+  store: true satisfies Both<KnownStore, Sdk.KnownStore>,
   spell: true satisfies Both<SpellView, Sdk.KnownSpell>,
   spellbook: true satisfies Both<SpellbookView, Sdk.KnownSpellbook>,
-  target: true satisfies Both<TargetView, Sdk.KnownTarget>,
+  target: true satisfies Both<KnownTarget, Sdk.KnownTarget>,
   monster: true satisfies Both<KnownMonster, Sdk.KnownMonster>,
   level: true satisfies Both<KnownLevelView, Sdk.KnownLevel>,
   rememberedCell: true satisfies Both<RememberedCell, Sdk.KnownRememberedCell>,
@@ -102,9 +102,13 @@ const agreement: Record<string, true> = {
   combatEvent: true satisfies Fits<Pick<CombatOutcomeEventData, "kind" | "hit" | "died" | "grid">, Pick<Sdk.Api2CombatEvent, "kind" | "hit" | "died" | "grid">>,
   motionEvent: true satisfies Fits<Pick<MotionEventData, "from" | "to" | "kind">, Pick<Sdk.Api2MotionEvent, "from" | "to" | "kind">>,
   healEvent: true satisfies Fits<Pick<HealEventData, "grid">, Pick<Sdk.Api2HealEvent, "grid">>,
+  /* The host hands core's perceived actors to mods unchanged. */
+  actor: true satisfies Fits<PerceivedActor, Sdk.Api2Actor>,
+  actorBack: true satisfies Fits<Sdk.Api2Actor, PerceivedActor>,
 
   /* The truth namespace's monster is the trusted MonsterView. */
   trueMonster: true satisfies Both<MonsterView, Sdk.Api2TrueMonster>,
+  trueItem: true satisfies Both<ItemView, Sdk.Api2TrueItem>,
 };
 
 describe("the API 2 contract agrees with core", () => {
