@@ -796,7 +796,7 @@ const handleEARTHQUAKE: EffectHandler = (ctx) => {
       /* Apply damage directly */
       mon.hp -= mDam;
       emitCombatOutcome(state, ctx.origin.what === "monster" ? ctx.origin.monster : null,
-        mon, "effect", true, mDam, mon.hp < 0, mon.grid);
+        mon.midx, "effect", true, mDam, mon.hp < 0, mon.grid);
 
       /* display_dam (effect-handler-attack.c:1524/1546): OPT show_damage
        * selects the _show_damage form of each message. add_monster_message
@@ -820,7 +820,7 @@ const handleEARTHQUAKE: EffectHandler = (ctx) => {
         /* Escape from the rock */
         if (safeGrids) {
           monsterSwap(state, grid, safeGrid);
-          emitMotion(state, mon, grid, safeGrid, "teleport");
+          emitMotion(state, mon.midx, grid, safeGrid, "teleport");
         }
       }
     }

@@ -239,7 +239,7 @@ export function projectMonster(
         }
       : {},
   );
-  emitHeal(state, mon, mon.hp - oldHp, mon.grid);
+  emitHeal(state, mon.midx, mon.hp - oldHp, mon.grid);
 
   /* PROJ_FORCE thrust happens in the handler upstream, before wake / damage. */
   if (ctx.thrustGridsAway > 0) {

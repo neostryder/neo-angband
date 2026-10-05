@@ -7,12 +7,10 @@
  * (the "door lock" trap kind), and the disarm command with the cmd-cave.c
  * skill math.
  *
- * Trap knowledge: traps place with their upstream visibility (most are
- * TRF_INVISIBLE until revealed or triggered), and the renderer reads the
- * VISIBLE instance flag. square_memorize_traps keeps the player's memory of
- * each grid's traps (KnownMap.traps, the traps of upstream's player->cave),
- * which is what the player remembers of a grid out of view; nothing in play
- * reads it, so it changes no outcome. player_is_trapsafe and the
+ * Knowledge simplifications (with #24): traps place with their upstream
+ * visibility (most are TRF_INVISIBLE until revealed or triggered);
+ * square_memorize_traps / the player's shadow cave are replaced by the
+ * VISIBLE instance flag the renderer reads. player_is_trapsafe and the
  * OF_ save-flag checks ride on the playerHasFlag hook; a flag that saves
  * is noticed on the equipment supplying it (equipLearnFlag, rune
  * knowledge #13).
@@ -27,7 +25,6 @@ import { checkHit } from "../combat/mon-melee.js";
 import { equipLearnFlag } from "../obj/knowledge.js";
 import { featIsTrapHolding } from "../world/chunk.js";
 import type { TrapKind } from "../world/trap.js";
-import type { KnownMap } from "./known.js";
 import { lookupTrap } from "../world/trap.js";
 import { squareIsSeen } from "../world/view.js";
 import { sourceTrap } from "../effects/interpreter.js";
@@ -225,15 +222,11 @@ export function squareTrapSpecific(
   return squareTrap(state, grid).some((t) => t.tidx === tidx);
 }
 
-/**
- * square_remove_trap (trap.c:137): remove one trap instance, and refresh the
- * player's memory of the grid when `memorize` is set and the grid is seen.
- */
+/** square_remove_trap: remove one trap instance. */
 export function squareRemoveTrap(
   state: GameState,
   grid: Loc,
   trap: Trap,
-  memorize = true,
 ): boolean {
   const key = gridIdx(state, grid);
   const list = state.traps.get(key);
@@ -242,7 +235,6 @@ export function squareRemoveTrap(
   if (at < 0) return false;
   list.splice(at, 1);
   if (list.length === 0) state.traps.delete(key);
-  if (memorize && squareIsSeen(state.chunk, grid)) squareMemorizeTraps(state, grid);
   return true;
 }
 
@@ -254,38 +246,16 @@ export function squareRemoveAllTraps(
 ): boolean {
   const key = gridIdx(state, grid);
   const list = state.traps.get(key);
-  if (tidx < 0) {
-    /* square_remove_all_traps (trap.c:179) refreshes a seen grid's memory
-     * whether or not there was a trap to remove. */
-    state.traps.delete(key);
-    if (squareIsSeen(state.chunk, grid)) squareMemorizeTraps(state, grid);
-    return !!list && list.length > 0;
-  }
   if (!list || list.length === 0) return false;
+  if (tidx < 0) {
+    state.traps.delete(key);
+    return true;
+  }
   const kept = list.filter((t) => t.tidx !== tidx);
   const removed = kept.length !== list.length;
   if (kept.length === 0) state.traps.delete(key);
   else state.traps.set(key, kept);
-  if (removed && squareIsSeen(state.chunk, grid)) squareMemorizeTraps(state, grid);
   return removed;
-}
-
-/**
- * square_memorize_traps (trap.c:459): the player's memory of a grid's traps
- * contains only visible kinds because this memory has no per-trap flags to distinguish invisible siblings. Only the current level has a memory to write.
- */
-export function squareMemorizeTraps(state: GameState, grid: Loc): void {
-  const known = state.known;
-  if (known.width !== state.chunk.width || known.height !== state.chunk.height) return;
-  const key = gridIdx(state, grid);
-  const memory = (known.traps ??= new Map());
-  memory.delete(key);
-  if (squareIsVisibleTrap(state, grid)) memory.set(key, squareTrap(state, grid).filter((t) => t.flags.has(TRF.VISIBLE)).map((t) => t.kind));
-}
-
-/** The trap kinds the player remembers on a grid (player->cave's traps), newest first. */
-export function squareKnownTraps(known: KnownMap, grid: Loc): readonly TrapKind[] {
-  return known.traps?.get(grid.y * known.width + grid.x) ?? [];
 }
 
 /**
@@ -442,12 +412,6 @@ export function installTrap(
   const list = state.traps.get(key);
   if (list) list.unshift(trap);
   else state.traps.set(key, [trap]);
-  /* place_trap's square_note_spot (trap.c:392), which memorizes the traps of
-   * a grid the player sees or stands on. A level being generated is not the
-   * player's yet. */
-  if (state.playing && (squareIsSeen(state.chunk, grid) || locEq(grid, state.actor.grid))) {
-    squareMemorizeTraps(state, grid);
-  }
 }
 
 /**
@@ -471,9 +435,6 @@ export function squareRevealTrap(
       found++;
     }
   }
-  /* trap.c:427 memorizes after each trap it reveals; the last write is the
-   * one that stands. */
-  if (found) squareMemorizeTraps(state, grid);
   if (found) {
     deps.env?.msg?.(
       found === 1 ? "You have found a trap." : `You have found ${found} traps.`,
@@ -514,7 +475,6 @@ export function hitTrap(
   deps: TrapDeps,
 ): void {
   const env = deps.env ?? {};
-  const level = state.chunk;
   for (const trap of [...squareTrap(state, grid)]) {
     if (!trap.kind.flags.has(TRF.TRAP)) continue;
     if (trap.timeout) continue;
@@ -593,15 +553,11 @@ export function hitTrap(
 
     /* Some traps disappear after activating, all have a chance to. */
     if (trap.kind.flags.has(TRF.ONETIME) || state.rng.oneIn(3)) {
-      squareRemoveTrap(state, grid, trap, false);
+      squareRemoveTrap(state, grid, trap);
     } else {
       trap.flags.on(TRF.VISIBLE);
     }
   }
-
-  /* Update the player's view (trap.c:606-607), unless a trap door has already
-   * put the player on another level. */
-  if (state.chunk === level) squareMemorizeTraps(state, grid);
 }
 
 /** Run one of a trap's effect chains through the interpreter. */
@@ -663,7 +619,6 @@ export function squareSetTrapTimeout(
     /* trap.c:651-654 - unreachable upstream, see above. */
     if (domsg) (msg ?? state.msg)?.(`You have disabled the ${trap.kind.name}.`);
   }
-  if (squareIsSeen(state.chunk, grid)) squareMemorizeTraps(state, grid);
   return disabled;
 }
 
@@ -811,11 +766,10 @@ export function installTraps(
     /* Traps must be visible to disarm. */
     if (!squareIsVisibleTrap(s, grid)) {
       deps.env?.msg?.("You see nothing there to disarm.");
-      /* cmd-cave.c:713-715: when the player still remembers a player trap
-       * here, the attempt shows it is gone. */
-      if (squareKnownTraps(s.known, grid).some((kind) => kind.flags.has(TRF.TRAP))) {
-        squareMemorizeTraps(s, grid);
-      }
+      /* cmd-cave.c:713-715 re-memorizes the grid's traps when player->cave
+       * still remembers a disarmable one. The port has no separate known-trap
+       * store (known.ts:11 - trap knowledge reads the live grid), so there is
+       * no stale trap memory here to reconcile. */
       return 0;
     }
     const more = disarmAux(s, grid, deps);

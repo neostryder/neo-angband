@@ -72,21 +72,9 @@ export interface MissileEventData {
 }
 
 /** Resolved damage or a missed attack. Monster identities are cave indices. */
-/**
- * Who took part in a combat, movement or healing event, as the player
- * perceived them when it happened: the player, a monster the player perceived
- * as itself (`monster` is its KnownMonster id), or `"unseen"` for a monster
- * the player did not perceive, including any monster while the player
- * hallucinates. Worked out when the event is sent, so a monster the event
- * killed is reported as the player saw it, not as a vacant slot.
- */
-export type PerceivedActor = "player" | "unseen" | { readonly monster: number };
-
 export interface CombatOutcomeEventData {
   attacker: "player" | number | null;
   target: "player" | number;
-  perceivedAttacker: PerceivedActor | null;
-  perceivedTarget: PerceivedActor;
   kind: "melee" | "ranged" | "spell" | "effect" | "trap";
   hit: boolean;
   damage: number;
@@ -98,7 +86,6 @@ export interface CombatOutcomeEventData {
 /** Hit points actually restored. */
 export interface HealEventData {
   who: "player" | number;
-  perceivedWho: PerceivedActor;
   amount: number;
   grid: Loc;
   seen: boolean;
@@ -107,13 +94,10 @@ export interface HealEventData {
 /** A completed step or level-internal teleport. */
 export interface MotionEventData {
   who: "player" | number;
-  perceivedWho: PerceivedActor;
   from: Loc;
   to: Loc;
   kind: "walk" | "teleport";
   seen: boolean;
-  /** The monster was perceived at the origin before moving. */
-  fromSeen?: boolean;
 }
 
 /** EVENT_GEN_ROOM_CHOOSE_SIZE payload. */

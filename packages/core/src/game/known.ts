@@ -55,7 +55,7 @@ import {
 import { disturb } from "./player-path.js";
 import { describeObject } from "./describe.js";
 import { floorCarry, floorExcise, floorPile, squareHoldsObject } from "./floor.js";
-import { noteSpotRevealTrap, squareMemorizeTraps } from "./trap.js";
+import { noteSpotRevealTrap } from "./trap.js";
 import { GEAR_LABELS, gearToLabel } from "./gear.js";
 import { ODESC } from "../obj/desc.js";
 import { monsterCarry } from "../mon/make.js";
@@ -71,48 +71,7 @@ import {
   playerKnowObjectAwareness,
 } from "../obj/knowledge.js";
 import type { GameState } from "./context.js";
-import { frozenKnownMonster, knownMonsterOrder, monsterIsKnown } from "../agent/known-world.js";
-
-/*
- * Sightings waiting for the outermost updateMonsters pass to end. That pass
- * walks monsters in index order, which is creation order, so it holds the
- * sightings back and hands them over nearest first: the order the player sees
- * them in, and the order KnownMonster ids are given out in.
- */
-const pendingSightings = new WeakMap<GameState, Monster[]>();
-const previousPerception = new WeakMap<Monster, boolean>();
-
-/*
- * monsterBecameVisible: the monster has just become one the player perceives
- * as itself (monster_is_obvious, and the player is not hallucinating). A mimic
- * still passing for an object or the floor is visible but not obvious, so it
- * fires when it is unmasked, not before.
- */
-export function noteSighting(state: GameState, mon: Monster): void {
-  if (!monsterIsKnown(state, mon)) return;
-  previousPerception.set(mon, true);
-  if (!state.modHooks?.monsterBecameVisible) return;
-  const pending = pendingSightings.get(state);
-  if (pending) pending.push(mon);
-  else deliverSighting(state, mon);
-}
-
-function deliverSighting(state: GameState, mon: Monster): void {
-  const sighted = state.modHooks?.monsterBecameVisible;
-  if (!sighted || state.monsters[mon.midx] !== mon || !monsterIsKnown(state, mon)) return;
-  /* Built with the deps every KnownWorld gets, frozen so no contributor can
-   * change what the next one reads, and built inside the try so a fault in the
-   * builder cannot cut the visibility update short. The hook itself is guarded
-   * per mod by the host. */
-  let payload;
-  try {
-    payload = frozenKnownMonster(state, mon, state.knownWorldDeps ?? {});
-  } catch (error) {
-    state.onEventFault?.("monsterBecameVisible", error);
-    return;
-  }
-  sighted(payload);
-}
+import { knownMonster } from "../agent/known-world.js";
 
 /**
  * A remembered floor object: the port of grid_data's object fields
@@ -193,13 +152,6 @@ export interface KnownMap {
    * empty list is never stored - forgetRememberedObjects deletes the key.
    */
   objects: Map<number, KnownObject[]>;
-  /**
-   * The traps the player remembers per grid index, newest first: upstream's
-   * player->cave traps, written only by trap.ts squareMemorizeTraps. A grid
-   * with no entry has no remembered trap. Absent until the first trap is
-   * memorized.
-   */
-  traps?: Map<number, import("../world/trap.js").TrapKind[]>;
 }
 
 /** A blank (all-unknown) knowledge map for a fresh level. */
@@ -955,22 +907,11 @@ function mimickedObjectIgnored(state: GameState, mon: Monster): boolean {
  * player->timed[TMD_BLIND] directly. update_mon only READS MFLAG_MARK - the
  * MARK / SHOW detection-fade lives in tickMonsterMarks.
  *
- * The mod behaviour seam's monsterBecameVisible (mod/hooks.ts) compares player perception across calls, including hallucination suppression, after the flags settle so the payload's `visible` is current.
+ * The MFLAG_VISIBLE transition on a previously-unseen monster also fires the
+ * mod behaviour seam's monsterBecameVisible (mod/hooks.ts), once per fresh
+ * sighting, alongside the existing "sights" lore counter it already updates.
  */
 export function updateMon(
-  state: GameState,
-  mon: Monster,
-  full: boolean,
-): void {
-  const wasKnown = previousPerception.get(mon) ?? monsterIsKnown(state, mon);
-  updateMonFlags(state, mon, full);
-  const isKnown = monsterIsKnown(state, mon);
-  previousPerception.set(mon, isKnown);
-  if (!wasKnown && isKnown) noteSighting(state, mon);
-}
-
-/** The body of update_mon. */
-function updateMonFlags(
   state: GameState,
   mon: Monster,
   full: boolean,
@@ -1078,6 +1019,11 @@ function updateMonFlags(
       /* square_light_spot / PR_HEALTH / PR_MONLIST are presentation (#25). */
       /* Count "fresh" sightings (capped at SHRT_MAX). */
       loreCountU16(lore, "sights");
+      /* The behaviour seam (mod/hooks.ts monsterBecameVisible): notify on
+       * this exact transition, once per fresh sighting, never on a turn where
+       * an already-visible monster merely stays visible. */
+      const sighted = state.modHooks?.monsterBecameVisible;
+      if (sighted) sighted(knownMonster(state, mon));
     }
   } else if (monsterIsVisible(mon)) {
     /* Not visible but was previously seen - treat mimics differently
@@ -1156,10 +1102,6 @@ export function becomeAware(state: GameState, mon: Monster): void {
 
 /** The `if (mflag_has(mon->mflag, MFLAG_CAMOUFLAGE))` arm of become_aware. */
 function becomeAwareCamouflaged(state: GameState, mon: Monster): void {
-  /* A mimic the player was already looking at becomes a monster the player
-   * perceives the moment the camouflage drops; one not yet seen is announced
-   * by the updateMon below, if that shows it. */
-  const shownAsMimic = monsterIsVisible(mon);
   mon.mflag.off(MFLAG.CAMOUFLAGE);
 
   const lore = getLore(state.lore, mon.race);
@@ -1212,9 +1154,6 @@ function becomeAwareCamouflaged(state: GameState, mon: Monster): void {
    * which is PU_MONSTERS.
    */
   if ((mon.race.light ?? 0) !== 0) state.updateFov?.(state);
-
-  /* The visibility update above can already have announced this sighting. */
-  if (shownAsMimic && previousPerception.get(mon) !== true) noteSighting(state, mon);
 }
 
 /**
@@ -1247,38 +1186,12 @@ export function moveMimickedObject(
 
 /** update_monsters (mon-util.c): update every live (non-dead) monster. */
 export function updateMonsters(state: GameState, full: boolean): void {
-  batchSightings(state, () => {
-    for (let i = 1; i < state.monsters.length; i++) {
-      const mon = state.monsters[i];
-      if (!mon) continue;
-      updateMon(state, mon, full);
-    }
-  });
-}
-
-/**
- * Run `pass`, which walks monsters in index order, and hand the
- * monsterBecameVisible sightings it produces over once it ends, nearest first.
- * Index order is creation order, which the player cannot see; the order the
- * hook hears them in is the order KnownMonster ids are given out in. A pass
- * inside another pass joins the outer one's batch.
- */
-export function batchSightings(state: GameState, pass: () => void): void {
-  if (pendingSightings.has(state)) {
-    pass();
-    return;
+  for (let i = 1; i < state.monsters.length; i++) {
+    const mon = state.monsters[i];
+    if (!mon) continue;
+    updateMon(state, mon, full);
   }
-  const sighted: Monster[] = [];
-  pendingSightings.set(state, sighted);
-  try {
-    pass();
-  } finally {
-    pendingSightings.delete(state);
-  }
-  sighted.sort((a, b) => knownMonsterOrder(state, a, b));
-  for (const mon of sighted) deliverSighting(state, mon);
 }
-
 
 /**
  * The five player fields updateView reads, taken off a live GameState.
@@ -1368,10 +1281,8 @@ export function noteSpot(state: GameState, grid: Loc): void {
   squareMemorize(state, grid);
   squareKnowPile(state, grid);
   /* Notice secret traps on the newly-seen grid (cave-map.c square_note_spot
-   * L236-238 / cave-view.c update_one L840-842), then memorize the traps the
-   * player can see (L239). */
+   * L236-238 / cave-view.c update_one L840-842). */
   noteSpotRevealTrap(state, grid);
-  squareMemorizeTraps(state, grid);
 }
 
 /**

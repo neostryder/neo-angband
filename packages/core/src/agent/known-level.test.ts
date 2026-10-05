@@ -15,7 +15,6 @@ import type { GamePack, StartedGame } from "../session/game.js";
 import { TMD, FEAT, TRF, SQUARE } from "../generated/index.js";
 import { squareKnowPile, squareMemorize } from "../game/known.js";
 import { gearGet } from "../game/gear.js";
-import { squareMemorizeTraps } from "../game/trap.js";
 import type { Trap } from "../game/trap.js";
 import { AgentCapabilityError } from "./types.js";
 import { createAgentView } from "./perceive.js";
@@ -158,11 +157,6 @@ describe("known level", () => {
     expect(wildcardCell).not.toHaveProperty("actual");
     const visibleTrap = state.traps.get(index)![0]!;
     (visibleTrap.flags as unknown as Set<number>).add(TRF.VISIBLE);
-    /* Seeing it is what puts it in the player's memory (square_memorize_traps). */
-    const unseen = createAgentView(state, undefined, {}, caps("state:map.read"))
-      .knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y);
-    expect(unseen?.remembered.traps).toEqual([]);
-    squareMemorizeTraps(state, grid);
     const rememberedTrap = createAgentView(state, undefined, {}, caps("state:map.read"))
       .knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y);
     expect(rememberedTrap?.remembered.traps).toEqual([{ index: 3, name: "test trap" }]);

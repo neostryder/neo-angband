@@ -18,7 +18,8 @@
     "typecheck": "tsc -b",
     "check:private": "node tools/private-scan.mjs",
     "check:npm": "node tools/check-npm-package.mjs",
-    "check:version": "node tools/version.mjs"
+    "check:version": "node tools/version.mjs",
+    "mod-runner": "node packages/web/scripts/mod-runner.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

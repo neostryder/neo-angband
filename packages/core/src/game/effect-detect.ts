@@ -42,7 +42,6 @@ import {
   monsterIsInvisible,
   monsterIsLiving,
   monsterIsNotInvisible,
-  monsterIsObvious,
 } from "../mon/predicate.js";
 import { tvalIsMoney } from "../obj/object.js";
 import type { GameObject } from "../obj/object.js";
@@ -52,8 +51,6 @@ import type { GameState } from "./context.js";
 import { gameEnv } from "./effect-game-env.js";
 import type { GameEffectEnv } from "./effect-game-env.js";
 import {
-  batchSightings,
-  noteSighting,
   squareForget,
   squareKnowPile,
   squareMemorize,
@@ -449,34 +446,28 @@ function detectMonsters(
   let monsters = false;
 
   const max = monsterMax(state);
-  batchSightings(state, () => {
-    for (let i = 1; i < max; i++) {
-      const mon = state.monsters[i];
-      if (!mon) continue;
-      const { x, y } = mon.grid;
-      if (x < b.x1 || y < b.y1 || x > b.x2 || y > b.y2) continue;
+  for (let i = 1; i < max; i++) {
+    const mon = state.monsters[i];
+    if (!mon) continue;
+    const { x, y } = mon.grid;
+    if (x < b.x1 || y < b.y1 || x > b.x2 || y > b.y2) continue;
 
-      if (pred(mon) && !monsterIsCamouflaged(mon)) {
-        const wasObvious = monsterIsObvious(mon);
-        mon.mflag.on(MFLAG.MARK);
-        mon.mflag.on(MFLAG.SHOW);
-        mon.mflag.on(MFLAG.VISIBLE);
-        /* A detected monster is one the player now perceives (mod/hooks.ts
-         * monsterBecameVisible). */
-        if (!wasObvious) noteSighting(state, mon);
+    if (pred(mon) && !monsterIsCamouflaged(mon)) {
+      mon.mflag.on(MFLAG.MARK);
+      mon.mflag.on(MFLAG.SHOW);
+      mon.mflag.on(MFLAG.VISIBLE);
 
-        /* Note invisible monsters (effect-handler-general.c: rf_on(lore->flags,
-         * RF_INVISIBLE)). Every detector runs this, not just DETECT_INVISIBLE:
-         * upstream puts it in the shared helper, so an Evil-detection that
-         * happens to catch a ghost teaches invisibility too. */
-        if (monsterIsInvisible(mon)) {
-          getLore(state.lore, mon.race).flags.on(RF.INVISIBLE);
-        }
-
-        monsters = true;
+      /* Note invisible monsters (effect-handler-general.c: rf_on(lore->flags,
+       * RF_INVISIBLE)). Every detector runs this, not just DETECT_INVISIBLE:
+       * upstream puts it in the shared helper, so an Evil-detection that
+       * happens to catch a ghost teaches invisibility too. */
+      if (monsterIsInvisible(mon)) {
+        getLore(state.lore, mon.race).flags.on(RF.INVISIBLE);
       }
+
+      monsters = true;
     }
-  });
+  }
   return monsters;
 }
 

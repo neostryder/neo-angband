@@ -221,7 +221,7 @@ function healMonster(
   } else if (unseenMsg) {
     ctx.env.messages?.msg(`${name} sounds healthier.`);
   }
-  emitHeal(state, mon, mon.hp - oldHp, mon.grid);
+  emitHeal(state, mon.midx, mon.hp - oldHp, mon.grid);
 
   /* Cancel fear */
   if ((mon.mTimed[MON_TMD.FEAR] ?? 0) > 0) {

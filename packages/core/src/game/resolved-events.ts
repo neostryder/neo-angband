@@ -1,36 +1,13 @@
 /** Emit resolved facts without retaining game objects in event payloads. */
-import type { CombatOutcomeEventData, DungeonLevelEventData, MotionEventData, PerceivedActor } from "../events.js";
+import type { CombatOutcomeEventData, DungeonLevelEventData, MotionEventData } from "../events.js";
 import type { Loc } from "../loc.js";
-import type { Monster } from "../mon/monster.js";
 import { squareIsView } from "../world/view.js";
-import { assignedMonsterId, knownMonsterId, monsterIsKnown } from "../agent/known-world.js";
 import type { GameState } from "./context.js";
 
-/* A monster by its record or its index. A sender that may have deleted the
- * monster already passes the record, which keeps its flags after deletion. */
-type Who = "player" | number | Monster;
-
-function rawWho(who: Who): "player" | number {
-  return typeof who === "object" ? who.midx : who;
-}
-
-function perceived(state: GameState, who: Who, observable = true): PerceivedActor {
-  if (who === "player") return "player";
-  const mon = typeof who === "number" ? (state.monsters[who] ?? null) : who;
-  if (!mon || !monsterIsKnown(state, mon)) return "unseen";
-  const id = observable ? knownMonsterId(state, mon) : assignedMonsterId(state, mon);
-  return id === undefined ? "unseen" : { monster: id };
-}
+type Who = "player" | number;
 
 function point(grid: Loc): Loc {
   return { x: grid.x, y: grid.y };
-}
-
-const motionOrigins = new WeakMap<Monster, { grid: Loc; seen: boolean }>();
-
-/** The destination's perception cannot establish what the player knew before the move. */
-export function rememberMotionOrigin(state: GameState, mon: Monster): void {
-  motionOrigins.set(mon, { grid: point(mon.grid), seen: monsterIsKnown(state, mon) && squareIsView(state.chunk, mon.grid) });
 }
 
 export function emitCombatOutcome(
@@ -44,25 +21,16 @@ export function emitCombatOutcome(
   grid: Loc,
 ): void {
   if (!state.events) return;
-  const seen = squareIsView(state.chunk, grid);
-  const targetMon = typeof target === "number" ? state.monsters[target] : typeof target === "object" ? target : null;
-  const observable = target === "player" || (seen && !!targetMon && monsterIsKnown(state, targetMon));
   state.events.emit("combat-outcome", {
-    attacker: attacker === null ? null : rawWho(attacker),
-    target: rawWho(target),
-    perceivedAttacker: attacker === null ? null : perceived(state, attacker, observable),
-    perceivedTarget: perceived(state, target, observable),
-    kind, hit, damage, died,
-    grid: point(grid), seen,
+    attacker, target, kind, hit, damage, died,
+    grid: point(grid), seen: squareIsView(state.chunk, grid),
   });
 }
 
 export function emitHeal(state: GameState, who: Who, amount: number, grid: Loc): void {
   if (!state.events || amount <= 0) return;
-  const seen = squareIsView(state.chunk, grid);
   state.events.emit("heal", {
-    who: rawWho(who), perceivedWho: perceived(state, who, seen),
-    amount, grid: point(grid), seen,
+    who, amount, grid: point(grid), seen: squareIsView(state.chunk, grid),
   });
 }
 
@@ -74,15 +42,9 @@ export function emitMotion(
   kind: MotionEventData["kind"],
 ): void {
   if (!state.events || (from.x === to.x && from.y === to.y)) return;
-  const mon = typeof who === "number" ? state.monsters[who] : typeof who === "object" ? who : null;
-  const origin = mon ? motionOrigins.get(mon) : undefined;
-  if (mon) motionOrigins.delete(mon);
-  const seen = squareIsView(state.chunk, to);
   state.events.emit("motion", {
-    who: rawWho(who), perceivedWho: perceived(state, who, seen),
-    from: point(from), to: point(to), kind,
-    seen,
-    fromSeen: who === "player" || (origin?.seen === true && origin.grid.x === from.x && origin.grid.y === from.y),
+    who, from: point(from), to: point(to), kind,
+    seen: squareIsView(state.chunk, to),
   });
 }
 

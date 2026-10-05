@@ -20,7 +20,7 @@ import {
   AgentCapabilityError,
   buildKnownWorld,
   createAgentView,
-  knownMonsterMidx,
+  monsterIsObvious,
   trueMonsterViews,
   tokenIsCurrent,
   type AgentCapabilities,
@@ -128,14 +128,19 @@ async function guarded<T>(body: () => Api2Result<T> | Promise<Api2Result<T>>): A
  * Turn one game event into its API 2 payload, or undefined when the player
  * did not see it and the mod must not hear of it.
  *
- * The player knows outcomes against themselves. A monster's outcome requires a perceived target in view, and movement reveals only observed endpoints. Core captures identities before deleted monsters lose their slots.
+ * `perceives` answers whether the player perceives a monster now, by its id.
+ * Combat, movement and healing pass when the player took part (the player
+ * always knows what happened to them) or when the grid is in view; a monster
+ * the player does not perceive is `"unseen"`, and movement or healing by one
+ * is dropped.
  */
 export function api2EventPayload<K extends Api2EventName>(
   name: K,
   raw: GameEventMap[K & GameEventType],
+  perceives: (monster: number) => boolean,
 ): Api2EventMap[K] | undefined {
-  const actor = (who: Api2Actor): Api2Actor =>
-    typeof who === "object" ? { monster: who.monster } : who;
+  const actor = (who: "player" | number): Api2Actor =>
+    who === "player" ? "player" : perceives(who) ? { monster: who } : "unseen";
   const out = ((): unknown => {
     switch (name) {
       case "message": {
@@ -148,11 +153,12 @@ export function api2EventPayload<K extends Api2EventName>(
       }
       case "combat-outcome": {
         const c = raw as GameEventMap["combat-outcome"];
-        const attacker = c.perceivedAttacker === null ? null : actor(c.perceivedAttacker);
-        const target = actor(c.perceivedTarget);
+        const attacker = c.attacker === null ? null : actor(c.attacker);
+        const target = actor(c.target);
         const involved = attacker === "player" || target === "player";
         if (!involved && !c.seen) return undefined;
-        if (target !== "player" && (target === "unseen" || !c.seen)) return undefined;
+        /* Nothing the player can see on either side: there is nothing to report. */
+        if (!involved && target === "unseen" && (attacker === null || attacker === "unseen")) return undefined;
         return {
           attacker,
           target,
@@ -165,17 +171,13 @@ export function api2EventPayload<K extends Api2EventName>(
       }
       case "motion": {
         const m = raw as GameEventMap["motion"];
-        const who = actor(m.perceivedWho);
+        const who = actor(m.who);
         if (who === "unseen" || (who !== "player" && !m.seen)) return undefined;
-        return {
-          who,
-          ...(who === "player" || m.fromSeen ? { from: { x: m.from.x, y: m.from.y } } : {}),
-          to: { x: m.to.x, y: m.to.y }, kind: m.kind,
-        };
+        return { who, from: { x: m.from.x, y: m.from.y }, to: { x: m.to.x, y: m.to.y }, kind: m.kind };
       }
       case "heal": {
         const h = raw as GameEventMap["heal"];
-        const who = actor(h.perceivedWho);
+        const who = actor(h.who);
         if (who === "unseen" || (who !== "player" && !h.seen)) return undefined;
         return { who, grid: { x: h.grid.x, y: h.grid.y }, ...(who === "player" ? { playerAmount: h.amount } : {}) };
       }
@@ -221,6 +223,11 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   const renderer = (): ModWorkerPanelRenderer | undefined => {
     if (!panels && typeof document !== "undefined") panels = createModWorkerPanelRenderer(document);
     return panels;
+  };
+
+  const perceives = (monster: number): boolean => {
+    const mon = ctx.state?.monsters[monster];
+    return mon ? monsterIsObvious(mon) : false;
   };
 
   const subscriptions = new Map<string, { type: GameEventType; handler: (type: GameEventType, raw: unknown) => void }>();
@@ -322,14 +329,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       submit: (token, intent) => guarded(() => {
         if (!granted("input:intent")) return api2NotGranted("input:intent");
         if (!ctx.intent) return api2Unavailable("this front end takes no commands from mods");
-        const copy = structuredClone(intent) as PlayerIntent;
-        /* A monster target names the monster by its KnownMonster id. One the
-         * player does not perceive now becomes 0, which the game refuses the
-         * same way it refuses a monster it cannot target. */
-        const sent: PlayerIntent = copy.kind === "target" && "midx" in copy
-          ? { ...copy, midx: (ctx.state ? knownMonsterMidx(ctx.state, copy.midx) : null) ?? 0 }
-          : copy;
-        const result = ctx.intent.submit(structuredClone(token), sent);
+        const result = ctx.intent.submit(structuredClone(token), structuredClone(intent) as PlayerIntent);
         return result.accepted
           ? api2Ok(null)
           : api2Refused(result.code ?? "rejected", result.reason ?? "the game refused it");
@@ -375,7 +375,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         if (!ctx.events) return api2Unavailable(NO_GAME);
         const type = name as GameEventType;
         const handler = (_type: GameEventType, raw: unknown): void => {
-          const payload = api2EventPayload(name, raw as never);
+          const payload = api2EventPayload(name, raw as never, perceives);
           if (payload !== undefined) listener(payload);
         };
         ctx.events.on(type, handler as never);

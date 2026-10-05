@@ -66,13 +66,9 @@ A call never throws for a missing permission. `isNotGranted(result)` tells a mis
 
 ### What `view` shows
 
-`view` is built from core's known world (`buildKnownWorld`): the monsters the player perceives, with health as the look command words it, the abilities the player has learned, the map as the player remembers it, and items as far as the player has identified them. A monster the player cannot see is not in any part of it, and changing that monster changes nothing a mod can read. A mimic the player takes for an object is not listed as a monster, and while the player hallucinates `monsters` is empty and `monstersHidden` is `"hallucinating"`. A monster's `id` is a handle given out on each level in the order the player first perceives monsters there, not the game's monster index, and the list runs nearest first. Timed effects show the grade name the status line prints, a recall or deep descent shows only that it is active, a recharging item shows the count its name gives (`charging`), `unknownRunes` is the name's `{??}`, and a remembered trap stays as the player last saw it. `world()` returns every part at once, with `null` for each part the mod has no permission for. The single-part calls answer `not-granted` instead.
+`view` is built from core's known world (`buildKnownWorld`): the monsters the player perceives, with health as the look command words it, the abilities the player has learned, the map as the player remembers it, and items as far as the player has identified them. A monster the player cannot see is not in any part of it, and changing that monster changes nothing a mod can read. `world()` returns every part at once, with `null` for each part the mod has no permission for. The single-part calls answer `not-granted` instead.
 
-Each value carries a `token` naming the input wait it was read at. `act.submit` takes that token, and a token from an older wait comes back `refused`. A `target` intent names its monster by the `id` the view gave it; an id for a monster the player does not perceive now is refused like any monster that cannot be targeted.
-
-A monster's `visible` means eyesight: blindness, darkness and invisibility can leave a sensed monster listed with `visible: false`; infravision and see-invisible count when they let the player see it. A stationary monster first perceived during hallucination receives its sighting notification when the hallucination clears. Remembered item auras use the last observed object properties and the player's current rune knowledge, and remembered traps include only the traps the player perceived.
-
-Shop visits and shop knowledge screens record stock and owner observations, and known-world reads at a shop's entrance refresh that shop. Other shops retain their last observations for the session, or return empty stock and an unnamed owner if they have not been inspected. Loading a game starts with unknown shop observations. A host that draws a shop screen calls `observeKnownStore(state, store)` to record the stock it shows.
+Each value carries a `token` naming the input wait it was read at. `act.submit` takes that token, and a token from an older wait comes back `refused`.
 
 ### Panels
 
@@ -80,14 +76,14 @@ Shop visits and shop knowledge screens record stock and owner observations, and 
 
 ## Events
 
-An event arrives only when the player could know about it. `combat-outcome` reports outcomes against the player or a perceived monster in view; attacking an unseen monster does not reveal its position or outcome. A monster appears as `{ monster: id }` when the player perceived it as the event happened and as `"unseen"` otherwise, even when the event removed it (a kill). Movement or healing by a monster the player cannot perceive in view does not arrive. A movement omits `from` when the player did not perceive the monster at its origin before it moved. Damage and healing amounts are given only for the player, as `playerDamage` and `playerAmount`. Suppressed events assign no monster handles, and healing while the player was away from a persistent level emits no event.
+An event arrives only when the player could know about it. `combat-outcome`, `motion` and `heal` come through when the player took part or the grid is in view. A monster appears as `{ monster: id }` while the player perceives it and as `"unseen"` otherwise, and movement or healing by a monster the player cannot see does not arrive. Damage and healing amounts are given only for the player, as `playerDamage` and `playerAmount`.
 
 | Event | Payload |
 | --- | --- |
 | `message` | `{ text, type }` |
 | `dungeonlevel` | `{ depth, levelId, cause, arena }` |
 | `combat-outcome` | `{ attacker, target, kind, hit, died, grid, playerDamage? }` |
-| `motion` | `{ who, from?, to, kind }` |
+| `motion` | `{ who, from, to, kind }` |
 | `heal` | `{ who, grid, playerAmount? }` |
 | `player-command` | `{ code, dir?, phase, token }` |
 | `driver-changed` | who holds the keyboard |

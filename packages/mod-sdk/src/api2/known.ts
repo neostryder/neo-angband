@@ -26,43 +26,35 @@ export interface KnownGrid {
   readonly y: number;
 }
 
-/**
- * The player's timed effects as the status line shows them: the name of the
- * grade each active effect is in ("Graze", "Heavy Stun", "Haste"), or null
- * when the effect is clear or its grade has no name on the status line. How
- * many turns an effect has left is not shown, so it is not here.
- */
+/** The player's timed effects, in turns remaining (0 means clear). */
 export interface KnownPlayerStatus {
-  readonly blind: string | null;
-  readonly confused: string | null;
-  readonly afraid: string | null;
-  readonly poisoned: string | null;
-  readonly cut: string | null;
-  readonly stun: string | null;
-  readonly paralyzed: string | null;
-  /** The food meter's percentage, as the status line prints it. */
+  readonly blind: number;
+  readonly confused: number;
+  readonly afraid: number;
+  readonly poisoned: number;
+  readonly cut: number;
+  readonly stun: number;
+  readonly paralyzed: number;
   readonly food: number;
-  /** The food grade ("Hungry", "Fed", "Full"). */
-  readonly foodGrade: string | null;
-  readonly fast: string | null;
-  readonly sprint: string | null;
-  readonly protEvil: string | null;
-  readonly hero: string | null;
-  readonly shero: string | null;
-  readonly shield: string | null;
-  readonly stoneskin: string | null;
-  readonly blessed: string | null;
-  readonly fastcast: string | null;
-  readonly resAcid: string | null;
-  readonly resElec: string | null;
-  readonly resFire: string | null;
-  readonly resCold: string | null;
-  readonly resPois: string | null;
+  readonly fast: number;
+  readonly sprint: number;
+  readonly protEvil: number;
+  readonly hero: number;
+  readonly shero: number;
+  readonly shield: number;
+  readonly stoneskin: number;
+  readonly blessed: number;
+  readonly fastcast: number;
+  readonly resAcid: number;
+  readonly resElec: number;
+  readonly resFire: number;
+  readonly resCold: number;
+  readonly resPois: number;
   /** Afraid from any source the player knows about, which is what refuses a melee blow. */
-  readonly fearful: boolean;
-  readonly terror: string | null;
-  readonly amnesia: string | null;
-  readonly image: string | null;
+  readonly fearful?: boolean;
+  readonly terror?: number;
+  readonly amnesia?: number;
+  readonly image?: number;
 }
 
 /**
@@ -98,10 +90,8 @@ export interface KnownPlayer {
   readonly winner: boolean;
   /** The low hit point warning threshold in hit points; 0 means the warning is off. */
   readonly hpWarning: number;
-  /** A Word of Recall is active. When it fires is not shown. */
-  readonly recall: boolean;
-  /** A Deep Descent is active. When it fires is not shown. */
-  readonly descent: boolean;
+  readonly recall: number;
+  readonly descent: number;
   readonly playerRaceId?: string;
   readonly playerClassId?: string;
   readonly skills: readonly number[];
@@ -148,14 +138,7 @@ export interface KnownItem {
   readonly egoName: string | null;
   readonly artifactName: string | null;
   readonly activation: boolean;
-  /**
-   * How many of the stack the name says are recharging: the count of
-   * "(2 charging)" on a stack of rods, 1 for "(charging)", 0 when the name
-   * says neither. The turns left are not shown.
-   */
-  readonly charging: number;
-  /** The name carries "{??}": the item has runes the player has not learned. */
-  readonly unknownRunes: boolean;
+  readonly timeout: number;
   readonly inscription: string | null;
   readonly floorIndex?: number;
   readonly name?: string;
@@ -203,13 +186,9 @@ export interface KnownSpellbook {
   readonly spells: readonly KnownSpell[];
 }
 
-/**
- * The current target, when the game would accept it as one: a monster the
- * player can target now, by its KnownMonster id, or a bare location
- * (`monster` is null).
- */
+/** The current target: a monster id, or 0 for a bare location. */
 export interface KnownTarget {
-  readonly monster: number | null;
+  readonly midx: number;
   readonly grid: KnownGrid;
 }
 
@@ -233,17 +212,12 @@ export type KnownMonsterStatus =
  * spell the player's lore has not learned.
  */
 export interface KnownMonster {
-  /**
-   * A handle for this monster on this level, given out in the order the player
-   * first perceives monsters here and reset on a new level. It is not the
-   * game's monster index. Commands and targets that name a monster take it.
-   */
   readonly id: number;
   readonly race: string;
   readonly raceIndex: number;
   readonly raceId?: string;
   readonly grid: KnownGrid;
-  /** In line of sight and seen with the eyes, rather than only detected or sensed. */
+  /** Seen with the eyes, rather than only detected or sensed. */
   readonly visible: boolean;
   readonly health: KnownMonsterHealth;
   readonly living: boolean;
@@ -334,10 +308,7 @@ export interface KnownWorldData {
   readonly equipment: readonly (KnownItem | null)[] | null;
   readonly quiver: readonly KnownItem[] | null;
   readonly floorHere: readonly KnownItem[] | null;
-  /** Nearest first, then by row and column. Empty while `monstersHidden` is set. */
   readonly monsters: readonly KnownMonster[] | null;
-  /** `"hallucinating"` while the player hallucinates and no monster can be told for what it is. */
-  readonly monstersHidden: "hallucinating" | null;
   readonly target: KnownTarget | null;
   /** False when the target part was not readable, so a null target means nothing. */
   readonly targetReadable: boolean;

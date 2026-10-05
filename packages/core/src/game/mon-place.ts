@@ -864,7 +864,7 @@ function callMonster(
   /* Swap the monster. */
   const from = mon.grid;
   monsterSwap(state, from, grid);
-  emitMotion(state, mon, from, grid, "teleport");
+  emitMotion(state, mon.midx, from, grid, "teleport");
 
   /* Wake it up, make it aware. */
   monsterWake(state.rng, mon, false, 100);

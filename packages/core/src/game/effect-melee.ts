@@ -130,7 +130,7 @@ function playerBlow(state: GameState, mon: Monster): boolean {
       curses: state.curses,
       hooks: {
         onOutcome: (hit, damage, died): void => {
-          emitCombatOutcome(state, "player", mon, "melee", hit, damage,
+          emitCombatOutcome(state, "player", mon.midx, "melee", hit, damage,
             died, mon.grid);
         },
       },
@@ -167,7 +167,7 @@ function effectHit(
      * can reveal a camouflaged target, same as any other hit. */
     ...(state.becomeAware ? { becomeAware: state.becomeAware } : {}),
   });
-  emitCombatOutcome(state, "player", mon, "effect", dam > 0,
+  emitCombatOutcome(state, "player", mon.midx, "effect", dam > 0,
     Math.max(0, oldHp - mon.hp), result.died, mon.grid);
   if (result.died) {
     if (arenaInterceptDeath(state, mon)) return true;

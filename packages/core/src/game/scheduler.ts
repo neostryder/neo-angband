@@ -61,8 +61,10 @@ export function restoreMonsters(state: GameState, numTurns: number): void {
     const mon = state.monsters[i];
     if (!mon) continue;
 
-    /* The player was away, so retained visibility cannot justify a healing event. */
+    /* Regenerate. */
+    const oldHp = mon.hp;
     regenMonster(mon, Math.trunc(numTurns / 100));
+    emitHeal(state, mon.midx, mon.hp - oldHp, mon.grid);
 
     /* Handle timed effects. */
     const statusRed = Math.trunc(
@@ -114,7 +116,7 @@ export function processMonsters(state: GameState, minimumEnergy: number): void {
     if (regen) {
       const oldHp = mon.hp;
       regenMonster(mon, 1);
-      emitHeal(state, mon, mon.hp - oldHp, mon.grid);
+      emitHeal(state, mon.midx, mon.hp - oldHp, mon.grid);
     }
 
     mon.energy += turnEnergy(netSpeed(mon), state.z.moveEnergy);
