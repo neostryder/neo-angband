@@ -18,6 +18,27 @@ Code that wants the report as data calls `runHeadless({ source: nodeModsSource([
 
 Each run creates a fresh module graph for the mods and their dependencies. An injected `importer` owns its own module state. Library calls must finish one run before starting another because the game host uses shared registries and stores.
 
+## Running it from a mod repository
+
+The runner is part of the Core repository and is not published in a package, because it loads the game through Vite. A mod repository therefore runs it from a Core checkout. The CI job checks out a Core release tag such as `v1.23.0` next to the mod, installs and builds Core, and then runs the runner on the mod's folder:
+
+```yaml
+- uses: actions/checkout@v7
+  with:
+    repository: neostryder/neo-angband
+    ref: <core tag>
+    path: core
+- run: pnpm install --frozen-lockfile && pnpm build
+  working-directory: core
+- run: node core/packages/web/scripts/mod-runner.mjs . --out report.json
+```
+
+The runner exits 0 when the run passes and 1 when it does not. The file `report.json` holds the `neo-angband/mod/headless-run` document.
+
+The runner loads a folder as a sideloaded mod. A mod that requests a capability that only the game's own mods may hold, such as `profiles:manage`, therefore gets a serious `runner/load-problem` finding, and the run fails. Such a mod uses the `neo-angband-mod-check` step instead.
+
+The runner and its Core checkout run mod code with the host's privileges, so a CI job runs only the repository's own mod.
+
 ## The session
 
 The runner plays the same session twice from the same seed: first with every mod off, then with the mods on. Each session starts a new character at dungeon level 1, waits five turns, takes the stairs down, waits two more, and drinks a potion from the pack. It then tears the mods down, saves, reads the save back, loads it, registers the mods again, waits three turns, and tears them down a last time.
