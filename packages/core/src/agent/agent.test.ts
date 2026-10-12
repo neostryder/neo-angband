@@ -683,6 +683,25 @@ describe("CellView / MonsterView glyphs (1.1.0)", () => {
     expect(view.cell(11, 10)?.glyph).not.toBe(`f${String(secret.fidx)}@0`);
   });
 
+  it("reports the terrain the player remembers beside the live terrain", () => {
+    /* A secret door the player has not found is live SECRET and remembered
+     * granite. A square never seen has no remembered terrain at all. */
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const secret = featureReg.byCodeName("SECRET");
+    const granite = featureReg.byCodeName("GRANITE");
+    const width = state.chunk.width;
+    state.chunk.setFeat(loc(11, 10), secret.fidx);
+    state.known.feat[10 * width + 11] = granite.fidx;
+    state.chunk.setFeat(loc(12, 10), FLOOR);
+    state.known.feat[10 * width + 12] = -1;
+    const view = createAgentView(state);
+
+    expect(view.cell(11, 10)).toMatchObject({ feat: secret.fidx, knownFeat: granite.fidx, knownPassable: false });
+    expect(view.cell(12, 10)).toMatchObject({ known: false, knownFeat: -1, knownPassable: false });
+    state.known.feat[10 * width + 12] = FLOOR;
+    expect(view.cell(12, 10)).toMatchObject({ known: true, knownFeat: FLOOR, knownPassable: true });
+  });
+
   it("reports a trap the player can see, and hides one they cannot", () => {
     /* Measured on the MCP renderer before the glyph layer landed: 15 levels, 74
      * trapped squares, 74 undetected, and all 74 drawn. BOTH fields answer for

@@ -144,6 +144,8 @@ function unknownCell(x: number, y: number): CellView {
     passable: false,
     inView: false,
     known: false,
+    knownFeat: -1,
+    knownPassable: false,
     monster: 0,
     objectCount: 0,
     glow: false,

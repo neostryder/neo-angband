@@ -37,6 +37,7 @@ import { getSpellInfo } from "../effects/effect-info.js";
 import type { EffectRecordJson } from "../obj/types.js";
 import { priceItem } from "../store/price.js";
 import { squareIsDisarmableTrap } from "../game/trap.js";
+import { featIsPassable } from "../world/chunk.js";
 import { itemView, ofCodes, playerViewFor } from "./entity-views.js";
 import { loadoutChangeRefs, requireLoadoutReads, simulateLoadout } from "./loadout.js";
 import { captureCoreSnapshot, inputToken } from "./boundary.js";
@@ -187,13 +188,16 @@ function cellView(
   if (!c.inBounds(grid)) return null;
   const idx = y * c.width + x;
   const feat = c.feat(grid);
+  const rememberedFeat = state.known.feat[idx] ?? -1;
   const view: CellView = {
     x,
     y,
     feat,
     passable: c.isPassable(grid),
     inView: c.sqinfoHas(grid, SQUARE["VIEW"]),
-    known: (state.known.feat[idx] ?? -1) >= 0,
+    known: rememberedFeat >= 0,
+    knownFeat: rememberedFeat,
+    knownPassable: rememberedFeat >= 0 && featIsPassable(c.features, rememberedFeat),
     monster: perceivedOccupant(state, c.mon(grid)),
     /* The player's floor memory, which the map draws from, not the live pile. */
     objectCount: knownPile(state, grid).length,

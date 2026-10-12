@@ -360,6 +360,14 @@ export interface CellView {
   /** The player remembers this square (known map). */
   known: boolean;
   /**
+   * The terrain feature the player remembers on this square, or -1 when the square is unknown.
+   * This value can differ from feat, which is the live terrain: an undiscovered secret door, a door opened out of sight, or a wall dug out of view all show their true state in feat but their remembered state here.
+   * An autoplayer that decides from what a player would know reads this field instead of feat.
+   */
+  knownFeat?: number;
+  /** Whether the remembered terrain is passable; false when the square is unknown. */
+  knownPassable?: boolean;
+  /**
    * The monster id standing here when the player perceives it (seen, detected
    * or sensed, and not a mimic posing as an object), 0 when the square is empty
    * or its occupant is unseen, and -1 on the player's own square, as upstream's
