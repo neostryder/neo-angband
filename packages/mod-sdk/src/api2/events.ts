@@ -72,6 +72,7 @@ export interface Api2HealEvent {
 export interface Api2CommandEvent {
   readonly code: string;
   readonly dir?: number;
+  readonly args?: { readonly handle?: number; readonly floor?: number; readonly spell?: number; readonly index?: number };
   readonly phase: "play" | "store";
   readonly token: KnownToken;
 }

@@ -196,9 +196,14 @@ export function api2EventPayload<K extends Exclude<Api2EventName, "run-end">>(
       }
       case "player-command": {
         const c = raw as GameEventMap["player-command"];
+        const args = Object.fromEntries(["handle", "floor", "spell", "index"].flatMap((key) => {
+          const value = c.args?.[key];
+          return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? [[key, value]] : [];
+        }));
         return {
           code: c.code,
           ...(c.dir !== undefined ? { dir: c.dir } : {}),
+          ...(Object.keys(args).length > 0 ? { args } : {}),
           phase: c.phase,
           token: { epoch: c.token.epoch, revision: c.token.revision },
         };

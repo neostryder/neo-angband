@@ -128,6 +128,16 @@ async function observedThroughHost(api: ModApi2): Promise<string> {
 const READS = ["state:*.read"];
 
 describe("the API 2 host's view", () => {
+  it("copies only the player's chosen item and spell arguments", () => {
+    const command = { code: "cast", args: { handle: 4, spell: 2, floor: 0, index: 3, hidden: { name: "secret monster" } },
+      phase: "play" as const, token: { epoch: 1, revision: 1 } };
+    const result = api2EventPayload("player-command", command);
+    expect(result).toMatchObject({ args: { handle: 4, spell: 2, floor: 0, index: 3 } });
+    expect(api2EventPayload("player-command", { ...command, args: { ...command.args, hidden: { name: "different monster" } } })).toEqual(result);
+    expect(result!.args).not.toHaveProperty("hidden");
+    expect(Object.isFrozen(result!.args)).toBe(true);
+  });
+
   it("clones the knowledge menu and keeps an unknown entry without a recall", async () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const grants = capabilities("probe", READS);
