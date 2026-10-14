@@ -37,10 +37,17 @@ import { api2EventPayload, createApi2Host, disposeApi2Host, stopApi2Host, type A
 import { menuRegistry } from "./menu-registry";
 import { TitleRuntime } from "./title-runtime";
 import { clearBackupSinks, createBackupFolder, notifyBackupSinks } from "./mod-backup";
-import { clearInputDoor, enqueueUiInputs, inputEvents } from "./input-door";
+import { browserKeydown, clearInputDoor, enqueueUiInputs, inputEvents } from "./input-door";
 import { modPluginContext } from "./mod-context";
 import type { ModPrefs } from "./mod-prefs";
 import { api2Plugin } from "./mod-api2-shim";
+import { createModOptions } from "./mod-options";
+import { createModKeybindings } from "./mod-keybindings";
+import { clearKeymaps } from "./keymap-store";
+import { createModSaves } from "./saves-facade";
+import { createModWizard } from "./wizard-runtime";
+import * as authoring from "@rpgm-tools/neo-angband-mod-sdk";
+import { assignTier, effectiveGrants, modStartGrants, resetModTiers, setModGrants, setModTiers } from "./mod-tier";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(readFileSync(new URL(`../../content/pack/${name}.json`, import.meta.url), "utf8")) as T;
@@ -570,7 +577,7 @@ describe("the first-party seams", () => {
     expect(truthOnly.truth).toBeDefined();
     expect(truthOnly.manage).toBeUndefined();
     expect(truthOnly.meta.tier).toBe("first-party");
-    const manageOnly = host(game, READS, { firstParty: { manage: true } });
+    const manageOnly = host(game, READS, { tier: "first-party", firstParty: { manage: true } });
     expect(manageOnly.manage).toBeDefined();
     expect(manageOnly.truth).toBeUndefined();
   });
@@ -591,7 +598,7 @@ describe("the first-party seams", () => {
 
   it("manage without its API 1 grant answers not-granted", async () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const api = host(game, READS, { firstParty: { manage: true } });
+    const api = host(game, READS, { tier: "first-party", firstParty: { manage: true } });
     expect(await api.manage!.profiles.list()).toMatchObject({ reason: "not-granted", capability: "profiles:manage" });
     expect(await api.manage!.session.save()).toMatchObject({ reason: "not-granted", capability: "session:control" });
   });
@@ -749,6 +756,15 @@ describe("API 2 credential references", () => {
 });
 
 describe("API 2 storage", () => {
+  it("gates both key/value slots independently", async () => {
+    const api = host(startGame(pack, { seed: SEED, depth: DEPTH }), []);
+    expect(await api.store.kv.get("report")).toMatchObject({ reason: "not-granted", capability: "store:kv" });
+    expect(await api.store.kv.set("report", {})).toMatchObject({ reason: "not-granted", capability: "store:kv" });
+    expect(await api.store.kv.keys()).toMatchObject({ reason: "not-granted", capability: "store:kv" });
+    expect(await api.store.session.get("heir")).toMatchObject({ reason: "not-granted", capability: "store:session" });
+    expect(await api.store.session.set("heir", true)).toMatchObject({ reason: "not-granted", capability: "store:session" });
+    expect(await api.store.session.keys()).toMatchObject({ reason: "not-granted", capability: "store:session" });
+  });
   it("unwraps preferences when the definition drops its migration", async () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const prefs = memoryPrefs();
@@ -1037,5 +1053,156 @@ describe("API 2 controller decisions", () => {
     expect(messages).toEqual([]);
     expect(decide!(createAgentView(game.state), createAgentActions(game.state))).toBeNull();
     expect(inputToken(game.state).epoch).toBeGreaterThan(0);
+  });
+});
+
+describe("API 2 management", () => {
+  function management(granted: string[], context: Partial<ReturnType<typeof modPluginContext>> = {}, extra: Partial<Api2HostOptions> = {}) {
+    const caps = capabilities("probe", granted);
+    const ctx = { ...modPluginContext("probe", {}, undefined, {}, { capabilities: caps }), ...context };
+    return createApi2Host(ctx, { grants: caps, tier: "first-party", firstParty: { manage: true }, ...extra });
+  }
+
+  it("requires both the first-party tier and the allowlist and refuses Worker and data execution", () => {
+    expect(management([], {}, { tier: "public" }).manage).toBeUndefined();
+    expect(management([], {}, { firstParty: {} }).manage).toBeUndefined();
+    expect(management([], {}, { execution: "worker" }).manage).toBeUndefined();
+    expect(management([], {}, { execution: "data" }).manage).toBeUndefined();
+    expect(management([]).manage).toBeDefined();
+  });
+
+  it("reports every missing management permission without invoking a facade", async () => {
+    const api = management([]).manage!;
+    const calls = [
+      api.profiles.list(), api.profiles.create("New"), api.profiles.setEnabledMods("p", []), api.profiles.switchTo(null),
+      api.saves.list(), api.saves.create(), api.saves.load("s"), api.saves.rename("s", "Name"), api.saves.delete("s"),
+      api.options.get(), api.options.set({}), api.keys.keyset(), api.keys.list(), api.keys.set("F2", "h"), api.keys.remove("F2"),
+      api.keys.commands(), api.keys.capture(), api.keys.cancelCapture(), api.authoring(), api.wizard(), api.loadForSession(new Uint8Array()),
+      api.reloadGame(), api.session.save(), api.session.exitToTitle(), api.session.quit(), api.mods.snapshot(), api.mods.browse(),
+    ];
+    for (const result of await Promise.all(calls)) expect(result).toMatchObject({ ok: false, reason: "not-granted" });
+  });
+
+  it("passes a character-start action and records arming independently of ownership", async () => {
+    const switchTo = vi.fn(() => ({ ok: true as const, value: undefined }));
+    const profiles = { list: () => ({ ok: true as const, value: [] }), create: () => ({ ok: true as const, value: { id: "p", name: "Profile", active: false } }), setEnabledMods: () => ({ ok: true as const, value: undefined }), switchTo };
+    const api = management(["profiles:manage"], { profiles, controllerArmed: true });
+    const action = { kind: "create-character" as const, armController: true };
+    expect(await api.manage!.profiles.switchTo("p", action)).toEqual({ ok: true, value: null });
+    expect(switchTo).toHaveBeenCalledWith("p", action);
+    expect(api.meta.controllerArmed).toBe(true);
+    expect(management([]).meta.controllerArmed).toBe(false);
+  });
+
+  it("passes heir creation options and preserves save refusals and Core deletion confirmation", async () => {
+    const meta = { id: "s", name: "Hero", race: "Human", cls: "Warrior", sex: "Male", level: 1, depth: 0, maxDepth: 0, turn: 0, alive: true, updatedAt: 1 };
+    let consent = false;
+    const deleteSlot = vi.fn();
+    const create = vi.fn(async () => ({ ok: true as const }));
+    const saves = { ...createModSaves({ listRoster: () => [meta], activeSlot: () => null, namePinned: () => false,
+      confirmDelete: async () => consent, deleteSlot, load: async () => ({ ok: false as const, reason: "The current mod set needs approval." }), rename: () => ({ ok: true as const }),
+    }), create };
+    const api = management(["saves:manage"], { saves }).manage!;
+    expect(await api.saves.list()).toMatchObject({ value: [{ id: "s", dead: false }] });
+    expect(await api.saves.load("s")).toMatchObject({ ok: false, code: "save", message: "The current mod set needs approval." });
+    expect(await api.saves.rename("s", "Name")).toMatchObject({ ok: false });
+    const request = { like: { race: "Human", cls: "Warrior", stats: [10, 10, 10, 10, 10] }, resumeAutoplayer: true };
+    expect(await api.saves.create(request)).toEqual({ ok: true, value: null });
+    expect(create).toHaveBeenCalledWith(request);
+    expect(await api.saves.delete("s")).toMatchObject({ ok: false });
+    expect(deleteSlot).not.toHaveBeenCalled();
+    consent = true;
+    expect(await api.saves.delete("s")).toEqual({ ok: true, value: null });
+    expect(deleteSlot).toHaveBeenCalledWith("s");
+  });
+
+  it("uses option validation, birth locks, and permanent cheat score marks", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const afterChange = vi.fn();
+    const options = createModOptions(game.state, { writable: true, management: true, afterChange });
+    const api = management(["options:manage"], { options }).manage!.options;
+    expect(await api.get()).toMatchObject({ value: { entries: expect.arrayContaining([expect.objectContaining({ name: "cheat_live", writable: true }), expect.objectContaining({ name: "birth_no_selling", writable: false })]) } });
+    expect(await api.set({ values: { cheat_live: true }, delayFactor: 256 })).toMatchObject({ ok: false });
+    expect(game.state.options!.get("cheat_live")).toBe(false);
+    expect(await api.set({ values: { birth_no_selling: true } })).toMatchObject({ ok: false });
+    expect(await api.set({ values: { cheat_live: true } })).toEqual({ ok: true, value: ["cheat_live"] });
+    expect(await api.set({ values: { cheat_live: false } })).toEqual({ ok: true, value: ["cheat_live"] });
+    expect(game.state.options!.get("score_live")).toBe(true);
+    expect(await api.set({ values: { score_live: false } })).toMatchObject({ ok: false });
+    expect(afterChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("builds the options facade from measured first-party management grants", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const tier = assignTier({ id: "anybandui", source: "installed", execution: "in-process", repo: "neostryder/neo-angband-mod-anybandui", listing: "curated", sha: "abc", digestsMatch: true });
+    setModTiers(new Map([["anybandui", tier]]));
+    setModGrants(new Map([["anybandui", effectiveGrants(["options:manage"], tier, { granted: ["options:manage"], refused: [] })]]));
+    try {
+      const caps = capabilities("anybandui", ["options:manage"]);
+      const context = modPluginContext("anybandui", {}, game.state, {}, { capabilities: caps });
+      const api = createApi2Host(context, { grants: caps, tier: "first-party", firstParty: modStartGrants("anybandui").firstParty! });
+      expect(await api.manage!.options.set({ values: { cheat_live: true } })).toEqual({ ok: true, value: ["cheat_live"] });
+      expect(game.state.options!.anyScoreSet()).toBe(true);
+      expect(modPluginContext("other", {}, game.state, {}, { capabilities: capabilities("other", ["options:manage"]) }).options).toBeUndefined();
+    } finally { resetModTiers(); }
+  });
+
+  it("edits both keysets and refuses conflicts until replacement is explicit", async () => {
+    clearKeymaps();
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const keys = createModKeybindings(game.state);
+    const api = management(["keymap:edit"], { keybindings: keys }).manage!.keys;
+    try {
+      expect(await api.keyset()).toEqual({ ok: true, value: "original" });
+      expect(await api.set("F2", "h", "roguelike")).toEqual({ ok: true, value: null });
+      expect(await api.set("F2", "l", "roguelike")).toMatchObject({ ok: false, code: "key-conflict" });
+      expect(await api.list("original")).toEqual({ ok: true, value: [] });
+      expect(await api.list("roguelike")).toMatchObject({ value: [{ trigger: "F2", action: "h", owner: null }] });
+      expect(await api.set("F2", "l", "roguelike", true)).toEqual({ ok: true, value: null });
+      expect(await api.set("", "l")).toMatchObject({ ok: false });
+      expect(await api.remove("F2", "roguelike")).toEqual({ ok: true, value: null });
+      const captured = api.capture();
+      browserKeydown({ key: "F3", code: "F3", repeat: false, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false,
+        preventDefault: () => {}, stopImmediatePropagation: () => {},
+      } as KeyboardEvent);
+      expect(await captured).toEqual({ ok: true, value: "F3" });
+      expect(await api.cancelCapture()).toEqual({ ok: true, value: false });
+    } finally { clearKeymaps(); }
+  });
+
+  it("returns the running SDK and preserves the wizard sandbox gate", async () => {
+    const wizard = createModWizard("probe", { wizard: () => { throw new Error("The command must refuse before reaching the game."); } });
+    const api = management(["mod:authoring", "debug:wizard"], { wizard }).manage!;
+    const library = await api.authoring();
+    expect(library.ok && library.value.validateManifest === authoring.validateManifest).toBe(true);
+    const tools = await api.wizard();
+    if (!tools.ok) throw new Error("The wizard was refused.");
+    expect(tools.value.setGold(10)).toMatchObject({ ok: false });
+  });
+
+  it("loads session bytes with typed refusals and reloads through the existing door", async () => {
+    const reloadGame = vi.fn(async () => {});
+    let accept = false;
+    const loadModForSession = vi.fn(async () => accept ? { ok: true as const, id: "draft", version: "1.0.0", survivesReload: true } : { ok: false as const, problem: "The test content was refused." });
+    const api = management(["mod:session"], { reloadGame, loadModForSession }).manage!;
+    const bytes = new Uint8Array([1, 2, 3]);
+    expect(await api.loadForSession(bytes)).toMatchObject({ ok: false, code: "session-mod" });
+    accept = true;
+    expect(await api.loadForSession(bytes)).toEqual({ ok: true, value: { id: "draft", version: "1.0.0", survivesReload: true } });
+    expect(loadModForSession).toHaveBeenCalledWith(bytes);
+    expect(await api.reloadGame()).toEqual({ ok: true, value: null });
+    expect(reloadGame).toHaveBeenCalledOnce();
+  });
+
+  it("returns operational refusals and cancels pending key capture when the host stops", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const keys = createModKeybindings(game.state);
+    const api = management(["mod:session", "keymap:edit"], { keybindings: keys, reloadGame: async () => { throw new Error("Reload failure."); } });
+    expect(await api.manage!.reloadGame()).toMatchObject({ ok: false, code: "management" });
+    const pending = api.manage!.keys.capture();
+    stopApi2Host(api);
+    expect(await pending).toEqual({ ok: true, value: null });
+    expect(await api.manage!.keys.set("F2", "h")).toMatchObject({ reason: "unavailable" });
+    expect(keys.list()).toEqual([]);
   });
 });

@@ -11,7 +11,7 @@
     },
     {
       "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 30,
+      "cases": 31,
       "hasDefault": false,
       "kind": "SWITCH",
       "verdict": "INTERNAL - grantCovers compares a grant with a request over the closed capability vocabulary in capability-vocabulary.ts, which also holds the parsing and consent text that used to be two more switches. A mod cannot add a capability kind. The truth namespace is checked before the switch, so no wildcard arm can cover state:map-actual.read."
@@ -206,13 +206,6 @@
       "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24)."
     },
     {
-      "file": "packages/web/src/mod-manager/classic-actions.ts",
-      "cases": 11,
-      "hasDefault": false,
-      "kind": "IF_CHAIN",
-      "verdict": "UI - action routing for the mod manager's detail menu, including rollback and version retention. These branches belong to Core's mod menu and do not dispatch game content."
-    },
-    {
       "file": "packages/core/src/host/args.ts",
       "cases": 10,
       "hasDefault": true,
@@ -281,6 +274,13 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "INTERNAL - The host filters API 2 event payloads into known data. Mods subscribe through events.on."
+    },
+    {
+      "file": "packages/web/src/mod-manager/classic-actions.ts",
+      "cases": 9,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "UI - action routing for the mod manager's own detail menu (enable, regrant, permissions, disable, drop, options, up, down, read). Not a moddability gap: the branches are this screen's buttons rather than game content, and each one is built next to the row that offers it, so a mod cannot want a tenth without wanting a row that is not there."
     },
     {
       "file": "packages/web/src/mod-worker/bootstrap.ts",

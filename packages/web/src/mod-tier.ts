@@ -70,12 +70,12 @@ export const FIRST_PARTY_ORIGINS: readonly FirstPartyOrigin[] = Object.freeze([
   {
     id: "anybandui",
     repo: "neostryder/neo-angband-mod-anybandui",
-    seams: ["screens:manage", "session:control", "profiles:manage", "mod:install", TRUTH_MAP],
+    seams: ["screens:manage", "session:control", "profiles:manage", "mod:install", "options:manage", TRUTH_MAP],
     marksSave: [TRUTH_MAP],
   },
   { id: "borg", repo: "neostryder/neo-angband-mod-borg", seams: [TRUTH_MAP, "profiles:manage"] },
   { id: "squire", repo: "neostryder/neo-angband-mod-squire", seams: ["profiles:manage"] },
-  { id: "forge", repo: "neostryder/neo-angband-mod-forge", seams: ["mod:session", "mod:install"] },
+  { id: "forge", repo: "neostryder/neo-angband-mod-forge", seams: ["mod:session", "mod:install", "mod:authoring"] },
   { id: "qol", repo: "neostryder/neo-angband-mod-qol", seams: [] },
   { id: "bug-fixes", repo: "neostryder/neo-angband-mod-bug-fixes", seams: [] },
   { id: "linoleum", repo: "neostryder/neo-angband-mod-linoleum", seams: [] },
@@ -267,6 +267,7 @@ function entryOf(capability: string): CapabilityEntry | undefined {
 
 /** Why the seam policy keeps `capability` from a mod of this tier, or null when it does not. */
 function seamRefusal(entry: CapabilityEntry, capability: string, tier: ModTier): string | null {
+  if (entry.namespace === "manage" && tier.execution !== "in-process") return "Only in-process first-party mods can manage the game.";
   const rule = SEAM_POLICY[entry.namespace];
   if (!rule) return "only the game's own mods can have it";
   if (rule.inProcess && tier.execution === "in-process") return null;
@@ -482,7 +483,7 @@ export function modStartGrants(id: string): ModStartGrants {
   /* The loader granted only what SEAM_POLICY allows this tier, so holding the
    * capability is the whole test; `manage` is first-party only by that policy. */
   const truth = granted.includes(TRUTH_MAP);
-  const manage = tier.trust === "first-party" && granted.some((cap) => entryOf(cap)?.namespace === "manage");
+  const manage = tier.trust === "first-party" && tier.execution === "in-process" && granted.some((cap) => tier.seams.includes(cap) && entryOf(cap)?.namespace === "manage");
   const presentation = tier.trust === "first-party" && tier.execution === "in-process";
   if (!truth && !manage && !presentation) return Object.freeze({ tier, granted });
   return Object.freeze({ tier, granted, firstParty: Object.freeze({ ...(manage ? { manage } : {}), ...(truth ? { truth } : {}), ...(presentation ? { presentation } : {}) }) });

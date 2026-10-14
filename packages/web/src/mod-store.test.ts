@@ -24,7 +24,6 @@ import {
   migrateModIdKeys,
   migrateModIds,
   MOD_STATE_STORAGE_KEY,
-  MOD_SETTINGS_STORAGE_KEY,
   type StorageLike,
 } from "./mod-store";
 import { confirmGameplayNoscore, needsGameplayNoscoreWarning } from "./mods";
@@ -43,46 +42,6 @@ function fakeStorage(): StorageLike & { map: Map<string, string> } {
 function manifest(id: string, over: Partial<PackManifest> = {}): PackManifest {
   return { id, name: id, version: "1.0.0", shape: "content", ...over };
 }
-
-describe("ModStore configuration retention", () => {
-  it("restores one mod's settings, permissions, pins, sections, and custom flags", () => {
-    const store = new ModStore(fakeStorage());
-    store.setEnabled(["b", "a"]);
-    store.setDecisions("a", { granted: ["ui:sidebar.replace"], refused: [] }, "1.0.0");
-    store.setSettingValue("a", "amount", 7);
-    store.setRuleChoice("customRule", true);
-    store.setSectionChoice("a", "part", false);
-    store.pinAgainst("a", "b", "after");
-    const previous = store.captureConfiguration(["a"], ["customRule"]);
-    store.setEnabled(["a", "b", "c"]);
-    store.setSettingValue("a", "amount", 99);
-    store.setSettingValue("b", "amount", 12);
-    store.setRuleChoice("customRule", false);
-    store.setRuleChoice("b.rule", true);
-    store.setSectionChoice("a", "part", true);
-    store.setDecisions("a", { granted: [], refused: ["ui:sidebar.replace"] }, "2.0.0");
-    expect(store.restoreConfiguration(previous)).toBe(true);
-    expect(store.getEnabled()).toEqual(["b", "a", "c"]);
-    expect(store.getSettingValues()).toEqual({ a: { amount: 7 }, b: { amount: 12 } });
-    expect(store.getConsentVersion("a")).toBe("1.0.0");
-    expect(store.getRuleChoices()).toEqual({ customRule: true, "b.rule": true });
-    expect(store.getSectionChoices()).toEqual({ a: { part: false } });
-    expect(store.getPins()).toEqual([{ id: "a", after: ["b"] }]);
-  });
-
-  it("refuses malformed configuration documents and reports storage failures", () => {
-    const storage = fakeStorage();
-    const store = new ModStore(storage);
-    const previous = store.captureConfiguration(["a"]);
-    storage.map.set(MOD_STATE_STORAGE_KEY, "broken");
-    expect(() => store.captureConfiguration(["a"])).toThrow("The mod configuration could not be read.");
-    storage.map.delete(MOD_STATE_STORAGE_KEY);
-    storage.map.set(MOD_SETTINGS_STORAGE_KEY, "broken");
-    expect(() => store.captureConfiguration(["a"])).toThrow("The mod settings could not be read.");
-    expect(store.restoreConfiguration(previous)).toBe(false);
-    expect(new ModStore(null).restoreConfiguration(previous)).toBe(false);
-  });
-});
 
 describe("ModStore - enabled set", () => {
   it("writes the enabled list into the mod-state document", () => {

@@ -13,8 +13,6 @@ import { showRepoInstallSummary } from "./classic-browse-summary";
 import { type ModUpgrade, pendingUpgrades, unavailableMods, repoPage } from "../mod-refresh";
 import { listedRepos, registryUpdateWaitingText, communityUpdateWaitingText, confirmCommunityUpdate, paintWhile, modUpdateReportScreen } from "./classic-update-views";
 import { type ModOrigin } from "../mod-consent";
-import { classicBrowser } from "./classic-service";
-import { drawPendingManagementConfirmation } from "./classic-confirmation";
 
 /**
  * The common entry point: the curated list, without making a player cross the
@@ -315,24 +313,6 @@ export async function showModUpgrades(term: GridSurface & GridPointerInput, deps
      * loop, and a list that shrinks under an in-progress "update all" would skip
      * whatever moved up into the index just used. */
     const todo = pick === 0 ? pending : [pending[pick - 1]];
-    if (deps.stagePlan) {
-      const { service, core } = classicBrowser(deps);
-      const requested = pick === 0 ? await service.updateAll() : await service.update(todo[0]!.id);
-      const result = requested.status === "confirmation" ? await drawPendingManagementConfirmation(term, service, core) : requested;
-      if (result.status === "refused") await showTextScreen(term, installFailureScreen("", result.reason));
-      if (result.status === "ok") {
-        changed = true;
-        await showTextScreen(term, "Mods", [{ text: "The mods are staged, applies on next start.", color: C_FG }]);
-        if (deps.restart) {
-          const restart = await selectFromMenu(term, "core:mod-transaction-restart", "Mods", [
-            { label: "Restart now", color: C_WARN }, { label: "Later", color: C_FG },
-          ], "[ ESC to go back ]");
-          if (restart === 0) service.restart();
-        }
-        return changed;
-      }
-      continue;
-    }
     const listed = await listedRepos(deps);
     if (!listed.readable) {
       await showTextScreen(term, installFailureScreen("", registryUpdateWaitingText()));

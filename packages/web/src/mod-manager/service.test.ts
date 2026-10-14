@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import { createApi2Host, stopApi2Host } from "../mod-api2-host";
+import { modPluginContext } from "../mod-context";
 import { buildCatalog, ModStore, type StorageLike } from "../mod-store";
 import { assignTier, effectiveGrants, resetModTiers, setModGrants, setModTiers, TRUTH_MAP } from "../mod-tier";
 import type { DiscoveredMod } from "../mod-discover";
@@ -280,67 +282,6 @@ describe("enablement, permission records, and settings", () => {
 });
 
 describe("updates, removal, restoration, and order", () => {
-  it("stages update-all as one plan and keeps the current metadata and decisions", async () => {
-    const stagePlan = vi.fn(async () => ({ ok: true as const, results: [] }));
-    const restart = vi.fn();
-    const f = fixture(undefined, { stagePlan, restart });
-    f.store.setEnabled(["a", "b"]);
-    f.remote.set("a", manifest("a", { version: "2.0.0", capabilities: ["ui:sidebar.replace"] }));
-    f.remote.set("b", manifest("b", { version: "2.0.0" }));
-    const pending = await f.service.updateAll();
-    expect((await accept(f.core, pending, { accepted: true, permissions: { a: { granted: ["ui:sidebar.replace"], refused: [] } } })).status).toBe("ok");
-    expect(stagePlan).toHaveBeenCalledTimes(1);
-    expect(stagePlan.mock.calls[0]).toMatchObject([{ downloads: [{ mod: { id: "a" } }, { mod: { id: "b" } }] }, { a: { granted: ["ui:sidebar.replace"] } }]);
-    expect(f.install).not.toHaveBeenCalled();
-    expect(f.store.getConsent("a")).toEqual([]);
-    expect(f.service.state.installed.map((mod) => mod.version)).toEqual(["1.0.0", "1.0.0"]);
-    expect(f.service.state).toMatchObject({ staged: true, installStatus: "staged, applies on next start", canRestart: true });
-    expect(f.service.restart().status).toBe("ok");
-    expect(restart).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not stage an incomplete or undeclared permission answer", async () => {
-    const stagePlan = vi.fn(async () => ({ ok: true as const, results: [] }));
-    const f = fixture(undefined, { stagePlan });
-    f.remote.set("a", manifest("a", { version: "2.0.0", capabilities: ["ui:sidebar.replace"] }));
-    expect(await accept(f.core, await f.service.update("a"))).toMatchObject({ status: "refused", code: "permissions" });
-    expect(await accept(f.core, await f.service.update("a"), { accepted: true, permissions: { a: { granted: [TRUTH_MAP], refused: [] } } })).toMatchObject({ status: "refused", code: "permissions" });
-    expect(stagePlan).not.toHaveBeenCalled();
-  });
-
-  it("reports a refused transaction and leaves its staged status clear", async () => {
-    const f = fixture(undefined, { stagePlan: async () => ({ ok: false, problem: "Storage quota reached." }) });
-    f.remote.set("a", manifest("a", { version: "2.0.0" }));
-    expect(await accept(f.core, await f.service.update("a"))).toMatchObject({ status: "refused", code: "install", reason: "Storage quota reached." });
-    expect(f.service.state.staged).toBe(false);
-    expect(f.install).not.toHaveBeenCalled();
-  });
-
-  it("stages retained rollback only after Core confirmation", async () => {
-    const stageRollback = vi.fn(async () => ({ ok: true as const, results: [] }));
-    const f = fixture(undefined, { stageRollback, previousVersion: async () => ({ ok: true, ref: { repo: "owner/a" }, mod: discovered(manifest("a", { version: "0.9.0" })) }) });
-    const pending = await f.service.rollback("a");
-    expect(pending).toMatchObject({ status: "confirmation", confirmation: { operation: "rollback", mods: [{ name: "Mod a", version: "0.9.0" }] } });
-    expect(stageRollback).not.toHaveBeenCalled();
-    expect((await accept(f.core, pending)).status).toBe("ok");
-    expect(stageRollback).toHaveBeenCalledWith("a");
-    expect(f.service.state.staged).toBe(true);
-    expect(f.discover).not.toHaveBeenCalled();
-    expect(f.install).not.toHaveBeenCalled();
-  });
-
-  it("passes the version to save retention when the player confirms an install", async () => {
-    const referenced = vi.fn((id: string, tag?: string) => id === "a" && tag === "v0.9.0");
-    const release = vi.fn(async (id: string, saves: (id: string, tag: string) => boolean) => {
-      expect(saves(id, "v0.9.0")).toBe(true);
-      return true;
-    });
-    const f = fixture(undefined, { saveReferences: referenced, releasePreviousVersions: release });
-    expect((await f.service.confirmInstalledVersion("a")).status).toBe("ok");
-    expect(referenced).toHaveBeenCalledWith("a", "v0.9.0");
-    expect(release).toHaveBeenCalledTimes(1);
-  });
-
   it("plans update-all conflicts before installing any of the set", async () => {
     const f = fixture();
     f.store.setEnabled(["a", "b"]);
@@ -433,6 +374,60 @@ describe("Core-private confirmations and the first-party adapter", () => {
     setModTiers(new Map([[id, tier]]));
     setModGrants(new Map([[id, effectiveGrants(["mod:install"], tier, { granted: ["mod:install"], refused: [] })]]));
   }
+
+  it("wraps the service in API 2 without giving a mod the confirmation resolver", async () => {
+    grantManager();
+    const f = fixture();
+    const caps = CapabilitySet.fromManifest({ id: "anybandui", name: "AnybandUI", version: "1.0.0", shape: "plugin", capabilities: ["mod:install"] });
+    const api = createApi2Host(modPluginContext("anybandui", {}, undefined, {}, { capabilities: caps }), {
+      grants: caps, tier: "first-party", firstParty: { manage: true }, management: async () => f.service,
+    });
+    const mods = api.manage!.mods;
+    expect("resolveConfirmation" in mods).toBe(false);
+    expect("core" in mods).toBe(false);
+    const snapshots: unknown[] = [];
+    const subscription = await mods.subscribe((state) => snapshots.push(state));
+    if (!subscription.ok) throw new Error("The subscription was refused.");
+    expect(await mods.browse()).toMatchObject({ ok: true, value: { curated: [{ ok: true }] } });
+    expect(await mods.search("owner/a")).toMatchObject({ ok: true, value: [{ ok: true, mod: { id: "a" } }] });
+    expect(await mods.discover({ repo: "owner/b" })).toMatchObject({ ok: true, value: { ok: true, mod: { id: "b" } } });
+    expect(await mods.refresh()).toMatchObject({ ok: true, value: { revision: expect.any(Number) } });
+    const pending = await mods.enable("a");
+    expect(pending).toMatchObject({ ok: true, value: { operation: "enable", requestedBy: "anybandui" } });
+    expect(f.store.isEnabled("a")).toBe(false);
+    if (!pending.ok || !pending.value) throw new Error("The confirmation was not requested.");
+    expect(Object.isFrozen(pending.value)).toBe(true);
+    await f.core.resolveConfirmation(pending.value.id, { accepted: true });
+    expect(f.store.isEnabled("a")).toBe(true);
+    const plan = await mods.planInstall([{ repo: "owner/b" }]);
+    if (!plan.ok) throw new Error("The install plan was refused.");
+    expect(await mods.applyPlan(plan.value.id)).toMatchObject({ ok: true, value: { operation: "install" } });
+    expect(f.install).not.toHaveBeenCalled();
+    expect(await mods.enable("absent")).toMatchObject({ ok: false });
+    expect((await mods.snapshot()).ok).toBe(true);
+    expect(snapshots.length).toBeGreaterThan(0);
+    await mods.unsubscribe(subscription.value);
+    const count = snapshots.length;
+    f.core.setEnabled("a", false);
+    expect(snapshots).toHaveLength(count);
+    await mods.subscribe((state) => snapshots.push(state));
+    stopApi2Host(api);
+    f.core.setEnabled("a", true);
+    expect(snapshots).toHaveLength(count);
+    expect(await mods.snapshot()).toMatchObject({ reason: "unavailable" });
+  });
+
+  it("refuses the complete mod management surface when mod installation was not granted", async () => {
+    const caps = CapabilitySet.fromManifest({ id: "anybandui", name: "AnybandUI", version: "1.0.0", shape: "plugin", capabilities: [] });
+    const provider = vi.fn(async () => fixture().service);
+    const mods = createApi2Host(modPluginContext("anybandui", {}), { grants: caps, tier: "first-party", firstParty: { manage: true }, management: provider }).manage!.mods;
+    const calls = [mods.snapshot(), mods.subscribe(() => {}), mods.browse(), mods.search("a"), mods.discover({ repo: "owner/a" }), mods.refresh(),
+      mods.planInstall([]), mods.applyPlan(1), mods.recordConsent("a", { granted: [], refused: [] }), mods.enable("a"), mods.disable("a"),
+      mods.update("a"), mods.updateAll(), mods.remove("a"), mods.rollback("a"), mods.restoreModList([], true), mods.reorder([]),
+      mods.moveEnabled("a", 1), mods.setConflictOverride("slot", "a"), mods.setSectionChoice("a", "one", true), mods.setSettingValue("a", "one", 1), mods.setThirdPartyConsent(true)];
+    for (const result of await Promise.all(calls)) expect(result).toMatchObject({ reason: "not-granted", capability: "mod:install" });
+    expect(provider).not.toHaveBeenCalled();
+  });
 
   it("refuses an unknown caller and a caller spoofing a first-party repository", () => {
     const f = fixture();

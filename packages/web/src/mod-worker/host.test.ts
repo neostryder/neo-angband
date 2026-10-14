@@ -209,6 +209,26 @@ function observer(sink: (seen: string) => void): Api2ModDefinition {
 }
 
 describe("a Worker mod's view of the world", () => {
+  it("uses granted key/value stores across the broker without a management namespace", async () => {
+    const values = new Map<string, string>();
+    const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
+    const grants = ["store:kv", "store:session"];
+    let seen: unknown;
+    const wired = wire({ api: API, start: async (api) => {
+      const written = await api.store.kv.set("report", { turns: 1 });
+      const session = await api.store.session.set("heir", true);
+      seen = { written, session, report: await api.store.kv.get("report"), keys: await api.store.kv.keys(), heir: await api.store.session.get("heir"), manage: api.manage === undefined, armed: api.meta.controllerArmed };
+    } }, { grants, api: hostApi({ grants, options: { kvStorage: storage, sessionStorage: storage, tier: "first-party", firstParty: { manage: true } } }) });
+    expect(await started(wired, () => seen)).toEqual({ written: { ok: true, value: null }, session: { ok: true, value: null }, report: { ok: true, value: { turns: 1 } }, keys: { ok: true, value: ["report"] }, heir: { ok: true, value: true }, manage: true, armed: false });
+  });
+
+  it("refuses ungranted storage calls across the broker", async () => {
+    let seen: unknown;
+    const wired = wire({ api: API, start: async (api) => {
+      seen = [await api.store.kv.set("report", 1), await api.store.session.get("heir")];
+    } });
+    expect(await started(wired, () => seen)).toMatchObject([{ reason: "not-granted", capability: "store:kv" }, { reason: "not-granted", capability: "store:session" }]);
+  });
   it("is the in-process host's, and does not change when an unseen monster does (paired worlds)", async () => {
     const a = startGame(pack, { seed: SEED, depth: DEPTH });
     const b = startGame(pack, { seed: SEED, depth: DEPTH });

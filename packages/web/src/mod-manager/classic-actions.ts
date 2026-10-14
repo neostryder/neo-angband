@@ -15,7 +15,6 @@ import { problemsFor } from "../mod-problems";
 import { dropSessionMods } from "../mod-session";
 import { type PackManifest, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
 import { autoSortScreen } from "./classic-order-view";
-import { drawPendingManagementConfirmation } from "./classic-confirmation";
 
 /**
  * Enable a mod straight after the player selected "Install and enable".
@@ -483,15 +482,6 @@ export async function manageMod(
       });
       acts.push("permissions");
     }
-    if (!m.session && deps.modBrowse?.previousVersion) {
-      const previous = await deps.modBrowse.previousVersion(id);
-      if (previous?.ok) {
-        items.push({ label: `Roll back to ${previous.mod.version}`, color: C_WARN });
-        acts.push("rollback");
-        items.push({ label: "Keep this version", color: C_FG });
-        acts.push("keep-version");
-      }
-    }
     /* THE WAY TO READ A LONG BLURB.
      *
      * The pane below is capped so it can never squeeze this list (it did: a mod
@@ -543,25 +533,7 @@ export async function manageMod(
       );
       continue;
     }
-    if (act === "rollback") {
-      const { service, core } = classicManager(deps);
-      const pending = await service.rollback(id);
-      const result = pending.status === "confirmation" ? await drawPendingManagementConfirmation(term, service, core) : pending;
-      if (result.status === "refused") await showTextScreen(term, m.name, [{ text: result.reason, color: C_WARN }]);
-      if (result.status === "ok") {
-        await showTextScreen(term, m.name, [{ text: "The rollback is staged, applies on next start.", color: C_FG }]);
-        if (deps.modBrowse?.restart) {
-          const pick = await selectFromMenu(term, "core:mod-transaction-restart", m.name, [
-            { label: "Restart now", color: C_WARN }, { label: "Later", color: C_FG },
-          ], "[ ESC to go back ]");
-          if (pick === 0) service.restart();
-        }
-        return true;
-      }
-    } else if (act === "keep-version") {
-      const result = await classicManager(deps).service.confirmInstalledVersion(id);
-      if (result.status === "refused") await showTextScreen(term, m.name, [{ text: result.reason, color: C_WARN }]);
-    } else if (act === "enable") {
+    if (act === "enable") {
       if (await enableMod(term, deps, m)) changed = true;
     } else if (act === "regrant") {
       if (await regrantConsent(term, deps, m, tileModsAtEntry)) changed = true;

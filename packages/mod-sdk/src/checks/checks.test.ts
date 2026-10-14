@@ -448,6 +448,24 @@ async function report(run: Run) {
 }
 
 describe("the named cases", () => {
+  it("requires each new management and storage capability in API 2 code", async () => {
+    const cases = [
+      ["manage.saves.list", "saves:manage"], ["manage.options.get", "state:options.read"], ["manage.options.set", "options:manage"],
+      ["manage.keys.list", "keymap:edit"], ["manage.mods.browse", "mod:install"], ["manage.authoring", "mod:authoring"],
+      ["manage.wizard", "debug:wizard"], ["manage.loadForSession", "mod:session"], ["manage.reloadGame", "mod:session"],
+      ["store.kv.keys", "store:kv"], ["store.session.keys", "store:session"],
+    ] as const;
+    for (const [member, capability] of cases) {
+      const files = (capabilities: readonly string[]) => ({
+        "manifest.json": v2({ api: ">=2.0.0 <3.0.0", runtime: "in-process", capabilities }),
+        "plugin.js": `export default { api: ">=2.0.0 <3.0.0", start(mod) { mod.${member}(); } };`,
+      });
+      const refused = await report({ files: files([]), firstParty: true });
+      expect(refused.findings.find((finding) => finding.rule === "checks/undeclared-capability")?.message, member).toContain(capability);
+      const granted = await report({ files: files([capability]), firstParty: true });
+      expect(granted.findings.some((finding) => finding.rule === "checks/undeclared-capability"), member).toBe(false);
+    }
+  });
   it("blocks an undeclared capability call and names the capability", async () => {
     const r = await report({ files: plugin([], "export default { api: 1, register(host, ctx) { const { net } = ctx; net.request({ url: 'https://x.example' }); } };") });
     const f = r.findings.find((x) => x.rule === "checks/undeclared-capability");

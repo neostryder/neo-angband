@@ -83,7 +83,11 @@ import {
 import type { ModPluginContext } from "./mod-plugin";
 import { createModWorkerPanelRenderer, type ModWorkerPanelRenderer } from "./mod-worker/panels";
 import type { WorkerJson } from "./mod-worker/protocol";
-import { modInstallPrefs, type ModPrefs } from "./mod-prefs";
+import { modInstallPrefs, modKeyValueStore, type ModPrefs, type PrefsStorage } from "./mod-prefs";
+import { createManageAdapter, type ManageAdapter } from "./mod-manager/manage-adapter";
+import type { ModManagerService } from "./mod-manager/service";
+import type { ManagerResult } from "./mod-manager/types";
+import type { Api2ManagedMods, Api2ManagerConfirmation } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modRegistries } from "./mod-context";
 import { OPTION_ENTRIES } from "@rpgm-tools/neo-angband-core";
 import { bootPhase, onBootPhaseChanged } from "./presentation-phase";
@@ -107,6 +111,9 @@ export interface Api2HostOptions {
   readonly execution?: "in-process" | "worker" | "data";
   readonly install?: Api2PrefsMigration | Api2HostPrefsMigration;
   readonly installStorage?: ModPrefs;
+  readonly kvStorage?: PrefsStorage | null;
+  readonly sessionStorage?: PrefsStorage | null;
+  readonly management?: () => Promise<ModManagerService>;
   readonly commands?: {
     readonly registry: Pick<ActionRegistry, "has" | "register" | "unregister">;
     readonly verbs?: CommandVerbTable;
@@ -137,6 +144,11 @@ export interface Api2HostPrefsMigration {
 }
 
 const NO_GAME = "no game is running yet";
+let managementHost: Api2HostOptions["management"];
+
+export function setApi2ManagementHost(host: Api2HostOptions["management"]): void {
+  managementHost = host;
+}
 let commandHost: Api2HostOptions["commands"];
 const keymapCommands = new Map<string, () => void>();
 
@@ -506,6 +518,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       tier: options.tier ?? "public",
       flags: data({ ...ctx.flags }),
       newCharacter: ctx.newCharacter,
+      controllerArmed: ctx.controllerArmed === true,
       granted,
       log: (message: string) => ctx.log(message),
       settings: () => guarded(() => api2Ok(data({ ...(ctx.settings?.all() ?? {}) }))),
@@ -933,11 +946,14 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       }),
     }),
 
-    store: frozen({ prefs: Object.freeze(prefs), install: Object.freeze(install), character: Object.freeze(character) }),
+    store: frozen({ prefs: Object.freeze(prefs), install: Object.freeze(install), character: Object.freeze(character),
+      kv: modKeyValueStore(ctx.id, "kv", () => granted("store:kv"), options.kvStorage),
+      session: modKeyValueStore(ctx.id, "session", () => granted("store:session"), options.sessionStorage),
+    }),
 
     ...(ctx.net ? { net: netDomain(ctx.net) } : {}),
     ...(backupFolder ? { backupFolder } : {}),
-    ...(options.firstParty?.manage ? { manage: manageDomain(ctx) } : {}),
+    ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && options.firstParty?.manage ? { manage: manageDomain(ctx, options, cleanups, () => stopped) } : {}),
     ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}) } : {}),
     ...(options.tier === "first-party" && options.firstParty?.presentation ? {
       presentation: frozen({
@@ -1043,9 +1059,10 @@ function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModAp
   });
 }
 
-function manageDomain(ctx: ModPluginContext): Api2Manage {
-  const profiles = (): NonNullable<ModPluginContext["profiles"]> | null => ctx.profiles ?? null;
-  const session = (): NonNullable<ModPluginContext["session"]> | null => ctx.session ?? null;
+function manageDomain(ctx: ModPluginContext, options: Api2HostOptions, cleanups: Set<() => void>, stopped: () => boolean): Api2Manage {
+  cleanups.add(() => { ctx.keybindings?.cancelCapture(); });
+  const profiles = (): NonNullable<ModPluginContext["profiles"]> | null => options.grants.has("profiles:manage") ? ctx.profiles ?? null : null;
+  const session = (): NonNullable<ModPluginContext["session"]> | null => options.grants.has("session:control") ? ctx.session ?? null : null;
   const saved = (r: { readonly ok: boolean; readonly reason?: string }): Api2Result<null> =>
     r.ok ? api2Ok(null) : api2Refused("save", r.reason ?? "the game could not save");
   return frozen({
@@ -1068,12 +1085,69 @@ function manageDomain(ctx: ModPluginContext): Api2Manage {
         const r = p.setEnabledMods(id, [...mods]);
         return r.ok ? api2Ok(null) : api2Refused("profiles", r.reason);
       }),
-      switchTo: (id: string | null) => guarded(() => {
+      switchTo: (id: string | null, action) => guarded(() => {
         const p = profiles();
         if (!p) return api2NotGranted("profiles:manage");
-        const r = p.switchTo(id);
+        const r = p.switchTo(id, action);
         return r.ok ? api2Ok(null) : api2Refused("profiles", r.reason);
       }),
+    }),
+    saves: frozen({
+      list: () => guarded(async () => {
+        if (!options.grants.has("saves:manage")) return api2NotGranted("saves:manage");
+        if (!ctx.saves) return api2Unavailable("The character roster is unavailable.");
+        const result = await ctx.saves.list();
+        return result.ok ? api2Ok(data(result.entries)) : api2Refused("save", result.reason);
+      }),
+      create: (request) => guarded(async () => {
+        if (!options.grants.has("saves:manage")) return api2NotGranted("saves:manage");
+        return ctx.saves?.create ? saved(await ctx.saves.create(request)) : api2Unavailable("Character creation is unavailable.");
+      }),
+      load: (id) => saveCommand("load", id),
+      rename: (id, name) => saveCommand("rename", id, name),
+      delete: (id) => saveCommand("delete", id),
+    }),
+    options: frozen({
+      get: () => guarded(() => {
+        if (!options.grants.has("state:options.read") && !options.grants.has("state:*.read") && !options.grants.has("options:manage")) return api2NotGranted("state:options.read");
+        return ctx.options ? api2Ok(data(ctx.options.get())) : api2Unavailable("The options editor is unavailable.");
+      }),
+      set: (change) => guarded(() => {
+        if (!options.grants.has("options:write") && !options.grants.has("options:manage")) return api2NotGranted("options:manage");
+        if (!ctx.options?.set) return api2Unavailable("The options editor is unavailable.");
+        const result = ctx.options.set(change);
+        return result.ok ? api2Ok(data(result.changed)) : api2Refused("options", result.reason);
+      }),
+    }),
+    keys: frozen({
+      keyset: () => keyCommand((keys) => api2Ok(keys.keyset())),
+      list: (keyset) => keyCommand((keys) => api2Ok(data(keys.list(keyset)))),
+      commands: () => keyCommand((keys) => api2Ok(data(keys.commands()))),
+      capture: () => keyCommand(async (keys) => api2Ok(await keys.capture())),
+      cancelCapture: () => keyCommand((keys) => api2Ok(keys.cancelCapture())),
+      set: (trigger, action, keyset, replace = false) => keyCommand((keys) => {
+        const previous = keys.list(keyset).find((entry) => entry.trigger === trigger);
+        if (previous && previous.action !== action && !replace) return api2Refused("key-conflict", "The key already has a binding.");
+        return keys.set(trigger, action, keyset) ? api2Ok(null) : api2Refused("keymap", "The key binding is invalid.");
+      }),
+      remove: (trigger, keyset) => keyCommand((keys) => keys.remove(trigger, keyset) ? api2Ok(null) : api2Refused("keymap", "The key has no binding.")),
+    }),
+    mods: managedMods(ctx.id, options, cleanups, stopped),
+    authoring: () => guarded(() => options.grants.has("mod:authoring") ? api2Ok(ctx.authoring) : api2NotGranted("mod:authoring")),
+    wizard: () => guarded(() => options.grants.has("debug:wizard")
+      ? ctx.wizard ? api2Ok(ctx.wizard) : api2Unavailable("The wizard test session is unavailable.")
+      : api2NotGranted("debug:wizard")),
+    loadForSession: (bytes) => guarded(async () => {
+      if (!options.grants.has("mod:session")) return api2NotGranted("mod:session");
+      if (!ctx.loadModForSession) return api2Unavailable("Session mod loading is unavailable.");
+      const result = await ctx.loadModForSession(bytes);
+      return result.ok ? api2Ok(data({ id: result.id, version: result.version, survivesReload: result.survivesReload })) : api2Refused("session-mod", result.problem);
+    }),
+    reloadGame: () => guarded(async () => {
+      if (!options.grants.has("mod:session") && !options.grants.has("mod:install")) return api2NotGranted("mod:session");
+      if (!ctx.reloadGame) return api2Unavailable("Game reload is unavailable.");
+      await ctx.reloadGame();
+      return api2Ok(null);
     }),
     session: frozen({
       save: () => guarded(() => {
@@ -1089,6 +1163,83 @@ function manageDomain(ctx: ModPluginContext): Api2Manage {
         return s ? saved(await s.quit()) : api2NotGranted("session:control");
       }),
     }),
+  });
+
+  function saveCommand(method: "load" | "rename" | "delete", id: string, name = ""): Api2Call<null> {
+    return guarded(async () => {
+      if (!options.grants.has("saves:manage")) return api2NotGranted("saves:manage");
+      if (!ctx.saves) return api2Unavailable("The character roster is unavailable.");
+      return saved(await (method === "rename" ? ctx.saves.rename(id, name) : ctx.saves[method](id)));
+    });
+  }
+
+  function keyCommand<T>(run: (keys: NonNullable<ModPluginContext["keybindings"]>) => Api2Result<T> | Promise<Api2Result<T>>): Api2Call<T> {
+    return guarded(() => {
+      if (!options.grants.has("keymap:edit")) return api2NotGranted("keymap:edit");
+      if (!ctx.keybindings) return api2Unavailable("The keymap editor is unavailable.");
+      return run(ctx.keybindings);
+    });
+  }
+
+  async function guarded<T>(body: () => Api2Result<T> | Promise<Api2Result<T>>): Api2Call<T> {
+    if (stopped()) return api2Unavailable("The mod has stopped.");
+    try { return await body(); }
+    catch (error) {
+      return error instanceof AgentCapabilityError ? api2Refused("capability", error.message)
+        : api2Refused("management", "The management command failed.");
+    }
+  }
+}
+
+function managedMods(id: string, options: Api2HostOptions, cleanups: Set<() => void>, stopped: () => boolean): Api2ManagedMods {
+  let manager: Promise<ManagerResult<ManageAdapter>> | undefined;
+  const subscriptions = new Map<string, () => void>();
+  let nextId = 0;
+  cleanups.add(() => { for (const off of subscriptions.values()) off(); subscriptions.clear(); });
+  const read = async <T>(run: (adapter: ManageAdapter) => Api2Result<T> | Promise<Api2Result<T>>): Api2Call<T> => {
+    if (stopped()) return api2Unavailable("The mod has stopped.");
+    if (!options.grants.has("mod:install")) return api2NotGranted("mod:install");
+    const provider = options.management ?? managementHost;
+    if (!provider) return api2Unavailable("The mod manager is unavailable.");
+    try {
+      manager ??= provider().then((service) => createManageAdapter(service, id));
+      const result = await manager;
+      if (stopped()) return api2Unavailable("The mod has stopped.");
+      return result.status === "ok" ? await run(result.value) : api2Refused("first-party", "The mod cannot manage mods.");
+    } catch { return api2Refused("management", "The mod manager command failed."); }
+  };
+  const result = <T>(reply: ManagerResult<T>): Api2Result<T> => reply.status === "ok" ? api2Ok(data(reply.value))
+    : reply.status === "refused" ? api2Refused(reply.code, reply.reason) : api2Refused("confirmation", "The command is waiting for confirmation.");
+  const command = (reply: ManagerResult<unknown>): Api2Result<Api2ManagerConfirmation | null> => reply.status === "confirmation" ? api2Ok(data(reply.confirmation))
+    : reply.status === "ok" ? api2Ok(null) : api2Refused(reply.code, reply.reason);
+  return frozen<Api2ManagedMods>({
+    snapshot: () => read((adapter) => api2Ok(data(adapter.snapshot()))),
+    subscribe: (listener) => read((adapter) => {
+      const subscription = String(++nextId);
+      subscriptions.set(subscription, adapter.subscribe((state) => { if (!stopped()) listener(data(state)); }));
+      return api2Ok({ id: subscription });
+    }),
+    unsubscribe: (subscription) => guarded(() => { subscriptions.get(subscription.id)?.(); subscriptions.delete(subscription.id); return api2Ok(null); }),
+    browse: () => read(async (adapter) => result(await adapter.browse())),
+    search: (query) => read((adapter) => result(adapter.search(query))),
+    discover: (ref) => read(async (adapter) => result(await adapter.discover(ref))),
+    refresh: () => read(async (adapter) => result(await adapter.refresh())),
+    planInstall: (refs) => read(async (adapter) => result(await adapter.planInstall(refs))),
+    applyPlan: (planId) => read((adapter) => command(adapter.applyPlan(planId))),
+    recordConsent: (modId, decisions) => read((adapter) => command(adapter.recordConsent(modId, decisions))),
+    enable: (modId) => read((adapter) => command(adapter.enable(modId))),
+    disable: (modId) => read((adapter) => command(adapter.disable(modId))),
+    update: (modId) => read(async (adapter) => command(await adapter.update(modId))),
+    updateAll: () => read(async (adapter) => command(await adapter.updateAll())),
+    remove: (modId) => read(async (adapter) => command(await adapter.remove(modId))),
+    rollback: (modId) => read(async (adapter) => command(await adapter.rollback(modId))),
+    restoreModList: (entries, replace) => read((adapter) => command(adapter.restoreModList(entries, replace))),
+    reorder: (ids) => read((adapter) => command(adapter.reorder(ids))),
+    moveEnabled: (modId, delta) => read((adapter) => command(adapter.moveEnabled(modId, delta))),
+    setConflictOverride: (slot, winner) => read((adapter) => command(adapter.setConflictOverride(slot, winner))),
+    setSectionChoice: (modId, section, on) => read((adapter) => command(adapter.setSectionChoice(modId, section, on))),
+    setSettingValue: (modId, setting, value) => read((adapter) => command(adapter.setSettingValue(modId, setting, value))),
+    setThirdPartyConsent: (allow) => read((adapter) => command(adapter.setThirdPartyConsent(allow))),
   });
 }
 

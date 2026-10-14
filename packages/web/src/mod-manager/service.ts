@@ -51,7 +51,6 @@ export class ModManagerService {
   #pending: PendingConfirmation | null = null;
   #pendingAction: ((decision: ConfirmationDecision) => Promise<ManagerResult<unknown>>) | null = null;
   #busy = false;
-  #staged = false;
   #listeners = new Set<(state: Immutable<ManagerState>) => void>();
 
   private constructor(env: ModManagerEnvironment) {
@@ -81,21 +80,6 @@ export class ModManagerService {
       setSettingValue: (id, setting, value) => mutate(() => env.store.setSettingValue(id, setting, value)),
       writeThirdPartyConsent: (allow) => { const result = env.consent?.write(allow) ?? false; service.#publish(); return result; },
       installConfirmed: async (mod, origin, progress) => {
-        if (env.stagePlan) {
-          const planned = await service.planInstall([{ ref: { repo: mod.repo, tag: mod.tag }, origin }]);
-          if (planned.status !== "ok") return { ok: false, problem: planned.status === "refused" ? planned.reason : "The mod plan needs confirmation." };
-          if (planned.value.downloads.length !== 1 || planned.value.newGrants.length || planned.value.conflicts.length) {
-            service.#plans.delete(planned.value.id);
-            service.#publish();
-            return { ok: false, problem: "Review the resolved mod plan before staging it." };
-          }
-          const staged = await env.stagePlan(planned.value, {}, progress);
-          if (!staged.ok) return staged;
-          service.#staged = true;
-          service.#plans.delete(planned.value.id);
-          service.#publish();
-          return staged.results.find((result) => result.ok && result.meta.id === mod.id) ?? { ok: false, problem: "The staged mod set is incomplete." };
-        }
         const result = env.install ? await env.install(mod, origin, progress) : { ok: false as const, problem: "The host cannot install mods." };
         if (result.ok) service.#metadata = [...service.#metadata.filter((m) => m.id !== mod.id), result.meta];
         service.#publish();
@@ -168,7 +152,7 @@ export class ModManagerService {
 
   async planInstall(refs: readonly { readonly ref: RepoRef; readonly origin: ModOrigin }[], operation: InstallPlan["operation"] = "install"): Promise<ManagerResult<InstallPlan>> {
     return this.#guard(async () => {
-      if (!this.#env.discover || (!this.#env.install && !this.#env.stagePlan)) return refused("unavailable", "The host cannot install mods.");
+      if (!this.#env.discover || !this.#env.install) return refused("unavailable", "The host cannot install mods.");
       if (this.#pending || this.#busy) return refused("busy", "A mod operation is already waiting for confirmation.");
       if (this.#env.installedMetadata) this.#metadata = await this.#env.installedMetadata();
       const roots = await Promise.all(refs.map(async ({ ref, origin }) => ({ entry: await this.#env.discover!(ref), origin })));
@@ -191,38 +175,20 @@ export class ModManagerService {
     });
   }
 
-  applyPlan(id: number, requestedBy: string | null = null, enable = false): ManagerResult<unknown> {
+  applyPlan(id: number, requestedBy: string | null = null): ManagerResult<unknown> {
     const plan = this.#plans.get(id);
     if (!plan) return refused("plan", "This mod plan is no longer available.");
     return this.#request({
       operation: plan.operation, requestedBy,
       mods: plan.downloads.map(({ mod }) => this.#subject(mod)),
       permissions: plan.newGrants, conflicts: plan.conflicts,
-      riskNotice: [
-        ...(plan.downloads.some((d) => d.origin === "third-party") ? CONSENT_DISCLAIMER : []),
-        ...(enable ? ["These mods will be enabled on next start. They can make a character unscored."] : []),
-      ],
+      riskNotice: plan.downloads.some((d) => d.origin === "third-party") ? CONSENT_DISCLAIMER : [],
     }, async (decision) => {
       const results: InstallResult[] = [];
       // Consent and origin pins can change while a confirmation is open.
       const check = await resolveInstallPlan(this.#env, plan.downloads.map((d) => ({ entry: { ok: true as const, ref: { repo: d.mod.repo, tag: d.mod.tag }, mod: d.mod }, origin: d.origin })), this.#env.listCatalog(), this.#metadata, plan.id, plan.operation);
       if (check.status !== "ok") return check;
       if (JSON.stringify(check.value) !== JSON.stringify(plan)) return refused("stale-plan", "The mod plan changed. Review it again.");
-      if (this.#env.stagePlan) {
-        for (const [modId, choices] of Object.entries(decision.permissions ?? {})) {
-          const download = plan.downloads.find((entry) => entry.mod.id === modId);
-          if (!download || [...choices.granted, ...choices.refused].some((cap) => !download.manifest.capabilities?.includes(cap)) || choices.granted.some((cap) => choices.refused.includes(cap))) return refused("permissions", "The permission decisions do not match the mod plan.");
-        }
-        for (const grant of plan.newGrants) {
-          const choices = decision.permissions?.[grant.modId];
-          if (!choices || !choices.granted.includes(grant.capability) && !choices.refused.includes(grant.capability)) return refused("permissions", "Choose each new permission before staging this mod.");
-        }
-        const staged = await this.#env.stagePlan(enable ? { ...plan, enableIds: plan.downloads.map((download) => download.mod.id) } : plan, decision.permissions ?? {});
-        if (!staged.ok) return refused("install", staged.problem);
-        this.#staged = true;
-        this.#plans.delete(id);
-        return { status: "ok", value: immutable(staged.results) };
-      }
       for (const download of plan.downloads) {
         const result = await this.#env.install!(download.mod, download.origin, () => {});
         results.push(result);
@@ -368,32 +334,9 @@ export class ModManagerService {
       const previous = await this.#env.previousVersion?.(id);
       if (!previous) return refused("previous-version", "No previous version is available.");
       if (!previous.ok) return refused("discovery", previous.problem);
-      if (this.#env.stageRollback) {
-        return this.#request({ operation: "rollback", requestedBy, mods: [this.#subject(previous.mod)] }, async () => {
-          const result = await this.#env.stageRollback!(id);
-          if (!result.ok) return refused("rollback", result.problem);
-          this.#staged = true;
-          return { status: "ok", value: immutable(result.results) };
-        });
-      }
       const plan = await this.planInstall([{ ref: { repo: previous.mod.repo, tag: previous.mod.tag }, origin: "third-party" }], "rollback");
       return plan.status === "ok" ? this.applyPlan(plan.value.id, requestedBy) : plan;
     });
-  }
-
-  async confirmInstalledVersion(id: string): Promise<ManagerResult> {
-    return this.#guard(async () => {
-      if (!this.#env.releasePreviousVersions) return refused("unavailable", "The host cannot release previous mod versions.");
-      return await this.#env.releasePreviousVersions(id, (modId, tag) => this.#env.saveReferences?.(modId, tag) ?? false)
-        ? { status: "ok", value: null }
-        : refused("storage", "The previous mod versions could not be released.");
-    });
-  }
-
-  restart(): ManagerResult {
-    if (!this.#staged || !this.#env.restart) return refused("unavailable", "The host cannot restart now.");
-    this.#env.restart();
-    return { status: "ok", value: null };
   }
 
   reorder(ids: readonly string[]): ManagerResult {
@@ -561,7 +504,6 @@ export class ModManagerService {
       }),
       loadOrder: order, orderPins: pins, conflictOverrides: this.#env.conflictOverrides?.read() ?? {}, ruleChoices: store.getRuleChoices(), catalog: this.#catalog,
       pendingPlans: [...this.#plans.values()], pendingConfirmation: this.#pending, updates: this.#updates,
-      staged: this.#staged, installStatus: this.#staged ? "staged, applies on next start" : null, canRestart: !!this.#env.restart,
       thirdPartyAllowed: this.#env.consent?.read() ?? false, safeMode: this.#env.safeMode?.() ?? false, profile: this.#env.profile?.() ?? null,
       modList: catalog.map((m) => ({ id: m.id, version: m.version, enabled: m.enabled })),
     });

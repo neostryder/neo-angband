@@ -178,8 +178,6 @@ export interface InstallEnv {
   readonly scope?: unknown;
   /** ISO timestamp for the meta record. */
   readonly now: () => string;
-  readonly stage?: (meta: InstalledModMeta, files: ReadonlyArray<readonly [string, Uint8Array]>) => Promise<boolean>;
-  readonly downloaded?: (path: string, bytes: Uint8Array) => Promise<void>;
 }
 
 export interface FetchLike {
@@ -233,7 +231,7 @@ export interface InstallConsent {
 }
 
 export type InstallResult =
-  | { readonly ok: true; readonly meta: InstalledModMeta; readonly staged?: boolean }
+  | { readonly ok: true; readonly meta: InstalledModMeta }
   | {
       readonly ok: false;
       /**
@@ -442,12 +440,6 @@ async function storeMod(
       ...(mod.listing === undefined ? {} : { listing: mod.listing }),
     };
 
-    if (env.stage) {
-      return await env.stage(meta, files)
-        ? { ok: true, meta, staged: true }
-        : { ok: false, problem: "The mod transaction could not be saved." };
-    }
-
     /* ONE SWAP, NOT A DELETE AND THEN A WRITE.
      *
      * This used to delete the old copy first, and only then write the new one, so
@@ -565,7 +557,6 @@ export async function installModFromRepo(
         env,
         entry.kind === "archive" ? ZIP_LIMITS.maxArchiveBytes - archives.archiveBytes : ZIP_LIMITS.maxFileBytes,
       );
-      await env.downloaded?.(entry.path, bytes);
       if (entry.kind === "file") {
         const owner = from.get(entry.path);
         if (owner !== undefined) {

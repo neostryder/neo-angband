@@ -3,10 +3,9 @@
  * own options screen. Reading needs `state:options.read`; changing them needs
  * `options:write` as well.
  *
- * Only the user interface options and the three number settings can be changed.
- * Birth options lock when the character is created, and a cheat option costs
- * the character its place on the score table for good, so both stay in the
- * game's own menu where the player sets them directly.
+ * The management editor uses OptionState's cheat score ratchets because the
+ * save must keep them after a cheat is turned off. Birth and score options
+ * remain locked in a live game.
  */
 
 import { OPTION_ENTRIES, type GameState } from "@rpgm-tools/neo-angband-core";
@@ -22,7 +21,7 @@ function wholeIn(value: unknown, min: number, max: number): value is number {
 
 export function createModOptions(
   state: GameState,
-  opts: { writable: boolean; afterChange?: () => void },
+  opts: { writable: boolean; management?: boolean; afterChange?: () => void },
 ): ModOptions {
   const store = () => state.options;
   const get = (): ModOptionsView => {
@@ -32,7 +31,7 @@ export function createModOptions(
       description: e.description,
       page: e.type.toLowerCase(),
       value: options?.get(e.name) ?? e.normal,
-      writable: opts.writable && e.type === "INTERFACE",
+      writable: opts.writable && (e.type === "INTERFACE" || (opts.management === true && e.type === "CHEAT")),
     }));
     return Object.freeze({
       entries: Object.freeze(entries),
@@ -49,7 +48,7 @@ export function createModOptions(
     for (const [name, value] of values) {
       const entry = OPTION_ENTRIES.find((e) => e.name === name);
       if (!entry) return { ok: false, reason: `There is no option named "${name}".` };
-      if (entry.type !== "INTERFACE") return { ok: false, reason: `"${name}" can only be changed in the game's own options menu.` };
+      if (entry.type !== "INTERFACE" && !(opts.management === true && entry.type === "CHEAT")) return { ok: false, reason: `"${name}" can only be changed in the game's own options menu.` };
       if (typeof value !== "boolean") return { ok: false, reason: `"${name}" takes true or false.` };
     }
     if (change.hitpointWarn !== undefined && !wholeIn(change.hitpointWarn, 0, 9)) return { ok: false, reason: "The hit point warning is a whole number from 0 to 9." };

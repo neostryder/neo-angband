@@ -1,6 +1,6 @@
 import { validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installedMods } from "../mod-install";
-import { buildCatalog, defaultModStore, ModStore, type CatalogMod } from "../mod-store";
+import { buildCatalog, ModStore, type CatalogMod } from "../mod-store";
 import { safeLaunch } from "../safe-launch";
 import { defaultProfileStore } from "../profiles";
 import type { DiscoveredMod } from "../mod-discover";
@@ -18,17 +18,12 @@ const managers = new WeakMap<ModManagerDeps, ClassicService>();
 const browsers = new WeakMap<ModBrowseDeps, ClassicService>();
 const catalogCores = new WeakMap<CatalogMod, CoreModManager>();
 
-function browsingEnvironment(deps: ModBrowseDeps): Pick<ModManagerEnvironment, "discover" | "curated" | "readManifest" | "install" | "stagePlan" | "stageRollback" | "previousVersion" | "releasePreviousVersions" | "restart" | "uninstall" | "consent" | "refreshUpdates"> {
+function browsingEnvironment(deps: ModBrowseDeps): Pick<ModManagerEnvironment, "discover" | "curated" | "readManifest" | "install" | "uninstall" | "consent" | "refreshUpdates"> {
   return {
     discover: deps.discover,
     curated: deps.curated,
     readManifest: async (mod) => validateManifest(JSON.parse(await deps.readRepoFile(mod.repo, mod.tag, "manifest.json"))),
     install: deps.install,
-    ...(deps.stagePlan ? { stagePlan: deps.stagePlan } : {}),
-    ...(deps.stageRollback ? { stageRollback: deps.stageRollback } : {}),
-    ...(deps.previousVersion ? { previousVersion: deps.previousVersion } : {}),
-    ...(deps.releasePreviousVersions ? { releasePreviousVersions: deps.releasePreviousVersions } : {}),
-    ...(deps.restart ? { restart: deps.restart } : {}),
     uninstall: deps.uninstall,
     consent: deps.consent,
     ...("refresh" in deps ? { refreshUpdates: (deps as ModUpgradeDeps).refresh } : {}),
@@ -63,12 +58,11 @@ export function classicManager(deps: ModManagerDeps): ClassicService {
 export function classicBrowser(deps: ModBrowseDeps): ClassicService {
   let manager = browsers.get(deps);
   if (!manager) {
-    const store = deps.stagePlan ? defaultModStore() : new ModStore(null);
+    const store = new ModStore(null);
     manager = createModManagerService({
       store,
       listCatalog: () => buildCatalog({ content: [...deps.enabledManifests()], sandbox: [], trusted: [], enabled: store.getEnabled(), consents: store.getConsents() }),
       safeMode: safeLaunch,
-      ...(deps.stagePlan ? { installedMetadata: () => installedMods(globalThis) } : {}),
       ...browsingEnvironment(deps),
     });
     browsers.set(deps, manager);

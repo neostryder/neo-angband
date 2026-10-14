@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { modInstallPrefs, modPrefs, modPrefsKey, setPrefsStorage, type PrefsStorage } from "./mod-prefs";
+import { modInstallPrefs, modKeyValueStore, modPrefs, modPrefsKey, setPrefsStorage, type PrefsStorage } from "./mod-prefs";
 
 /** An in-memory PrefsStorage, so a test never touches the real localStorage. */
 function fakeStorage(seed: Record<string, string> = {}): PrefsStorage & {
@@ -24,6 +24,48 @@ function fakeStorage(seed: Record<string, string> = {}): PrefsStorage & {
 }
 
 describe("modPrefs", () => {
+  it("keeps key/value records per mod and install and tab records across reloads", async () => {
+    const install = fakeStorage();
+    const tab = fakeStorage();
+    const kv = modKeyValueStore("squire", "kv", () => true, install);
+    const session = modKeyValueStore("squire", "session", () => true, tab);
+    const value = { runs: [1] };
+    expect(await kv.set("report", value)).toEqual({ ok: true, value: null });
+    value.runs.push(2);
+    expect(await kv.get("report")).toEqual({ ok: true, value: { runs: [1] } });
+    expect(await kv.keys()).toEqual({ ok: true, value: ["report"] });
+    expect(await modKeyValueStore("borg", "kv", () => true, install).get("report")).toEqual({ ok: true, value: null });
+    expect(await session.get("report")).toEqual({ ok: true, value: null });
+    expect(await session.set("heir", true)).toEqual({ ok: true, value: null });
+    expect(await modKeyValueStore("squire", "session", () => true, tab).get("heir")).toEqual({ ok: true, value: true });
+    expect(await modKeyValueStore("squire", "session", () => true, fakeStorage()).get("heir")).toEqual({ ok: true, value: null });
+    expect(await modKeyValueStore("squire", "kv", () => true, install).get("report")).toEqual({ ok: true, value: { runs: [1] } });
+    expect(JSON.parse(install.map.values().next().value!)).toEqual({ format: "neo-angband/mod/key-value", schemaVersion: 1, data: { report: { runs: [1] } } });
+    expect(await kv.set("report", null)).toEqual({ ok: true, value: null });
+    expect(await kv.keys()).toEqual({ ok: true, value: [] });
+  });
+
+  it("refuses invalid JSON, keys, size limits, corruption, and storage failures", async () => {
+    const storage = fakeStorage();
+    const kv = modKeyValueStore("squire", "kv", () => true, storage);
+    expect(await kv.set("", true)).toMatchObject({ ok: false, code: "key" });
+    expect(await kv.set("long", "a".repeat(262144))).toMatchObject({ ok: false, code: "size" });
+    expect(await kv.set("nan", NaN)).toMatchObject({ ok: false, code: "value" });
+    expect(await kv.set("record", { report: 1 })).toEqual({ ok: true, value: null });
+    for (let index = 0; index < 255; index += 1) expect((await kv.set(String(index), true)).ok).toBe(true);
+    expect(await kv.set("overflow", true)).toMatchObject({ ok: false });
+    expect(await kv.get("record")).toEqual({ ok: true, value: { report: 1 } });
+    expect(await kv.set("record", null)).toEqual({ ok: true, value: null });
+    expect(await kv.set("overflow", true)).toEqual({ ok: true, value: null });
+    expect(await modKeyValueStore("squire", "kv", () => true, null).get("report")).toMatchObject({ reason: "unavailable" });
+    storage.map.set("neo:modStore:kv:squire", "bad JSON");
+    expect(await kv.get("report")).toMatchObject({ ok: false, code: "storage" });
+    const blocked = modKeyValueStore("squire", "kv", () => true, { ...fakeStorage(), setItem: () => { throw new Error("quota"); } });
+    expect(await blocked.set("report", 1)).toMatchObject({ ok: false, code: "storage" });
+    const aggregate = modKeyValueStore("squire", "kv", () => true, fakeStorage());
+    for (let index = 0; index < 4; index += 1) expect((await aggregate.set(String(index), "a".repeat(262100))).ok).toBe(true);
+    expect(await aggregate.set("overflow", "a".repeat(100))).toMatchObject({ ok: false });
+  });
   it("keeps install storage separate from profiles and other mods", () => {
     const install = fakeStorage();
     const first = fakeStorage();

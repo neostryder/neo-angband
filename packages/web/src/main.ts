@@ -322,7 +322,6 @@ import {
   loadInstalledMods,
   uninstallMod,
 } from "./mod-install";
-import { activateModTransaction, stageModPlan, stageModRollback, previousModVersion, releasePreviousModVersions, type ModTransactionEnvironment } from "./mod-transactions";
 import { loadSessionMods } from "./mod-session";
 import type { ModUpgradeDeps } from "./mod-browse";
 import { pendingUpgrades, refreshInstalledMods, type ModUpgrade } from "./mod-refresh";
@@ -423,7 +422,6 @@ import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPac
 import { liveConflictLines } from "./mod-conflicts";
 import { composedObjects, hasFacet, resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
-  ModStore,
   defaultModStore,
   buildCatalog,
   resolveEnabledIds,
@@ -444,7 +442,9 @@ import { createIsolatedModWorker } from "./mod-worker/isolation";
 import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
 import { MOD_WORKER_PROTOCOL_VERSION } from "./mod-worker/protocol";
-import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost } from "./mod-api2-host";
+import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost, setApi2ManagementHost } from "./mod-api2-host";
+import { classicManager } from "./mod-manager/classic-service";
+import { drawPendingManagementConfirmation } from "./mod-manager/classic-confirmation";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, modDisplayName, reportModFault, setModNameLookup } from "./mod-problems";
 import {
@@ -1107,9 +1107,7 @@ async function rediscoverModSources(): Promise<void> {
   );
 }
 
-let modTransactionNotice: string | null = null;
 {
-  modTransactionNotice = await activateModTransaction(modTransactionEnvironment());
   await rediscoverModSources();
 
   /* Safe mode is settled here: after the sources are listed, which only reads
@@ -7768,7 +7766,31 @@ function orphanStashFor(store: OrphanStore | undefined): OrphanStash {
  * (pack.ts) and enabled plugins re-install (boot). Content-mod enablement and
  * plugin consent both persist through defaultModStore.
  */
-async function modManagerDeps(): Promise<ModManagerDeps> {
+let managerDeps: Promise<ModManagerDeps> | undefined;
+
+function modManagerDeps(): Promise<ModManagerDeps> {
+  return managerDeps ??= buildModManagerDeps();
+}
+
+setApi2ManagementHost(async () => {
+  const manager = classicManager(await modManagerDeps());
+  if (!managementSubscribed) {
+    managementSubscribed = true;
+    manager.service.subscribe((snapshot) => {
+      if (!snapshot.pendingConfirmation || snapshot.pendingConfirmation.requestedBy === null || managementDrawing) return;
+      managementDrawing = true;
+      const confirmationId = snapshot.pendingConfirmation.id;
+      void openModal(() => drawPendingManagementConfirmation(term, manager.service, manager.core))
+        .catch(() => manager.core.resolveConfirmation(confirmationId, { accepted: false }))
+        .finally(() => { managementDrawing = false; });
+    });
+  }
+  return manager.service;
+});
+let managementSubscribed = false;
+let managementDrawing = false;
+
+async function buildModManagerDeps(): Promise<ModManagerDeps> {
   const store = defaultModStore();
   /* Fetched once for the life of this screen, the same way `store` above is: an
    * install through ctx.installMod only happens while a mod's plugin is running
@@ -10436,7 +10458,7 @@ setModNetControl((id, grants) => createModNet({
   modName: activeModCode().plugins.find((loaded) => loaded.id === id)?.manifest.name ?? "A mod",
   grants,
   relay: netRelayBridge(globalThis),
-  fetch: (input, init) => fetch(input, init),
+  fetch: fetch.bind(globalThis),
   storage: (() => {
     try {
       return window.localStorage;
@@ -13741,14 +13763,6 @@ async function chooseGameUpdatePass(
  * updater reads it with - so a player's one channel choice governs both, and there is
  * no second setting to fall out of step with the first.
  */
-function modTransactionEnvironment(): ModTransactionEnvironment {
-  return {
-    install: { fetch: (url) => fetch(url), subtle: crypto.subtle, scope: globalThis, now: () => new Date().toISOString() },
-    store: defaultModStore(), profileId: profileStore.activeId(), allowed: () => readConsent(channelStore()),
-    configurationStore: (id) => new ModStore(realGameStorage ? scopedStorage(realGameStorage, id) : null),
-  };
-}
-
 function modBrowseDeps(): ModUpgradeDeps {
   const net = { fetch: (url: string) => fetch(url) };
   const discoverEnv: DiscoverEnv = {
@@ -13767,17 +13781,6 @@ function modBrowseDeps(): ModUpgradeDeps {
   };
 
   return {
-    stagePlan: async (plan, permissions, progress) => {
-      const registry = await fetchRegistry(DEFAULT_REGISTRY_URL, net).catch(() => null);
-      return stageModPlan(plan, permissions, {
-        ...modTransactionEnvironment(),
-        listing: (repo, origin) => installListing(repo, origin === "curated", registry?.ok ? registry.registry : null),
-      }, progress);
-    },
-    stageRollback: (id) => stageModRollback(id, modTransactionEnvironment()),
-    previousVersion: (id) => previousModVersion(id, modTransactionEnvironment()),
-    releasePreviousVersions: (id, saveReferences) => releasePreviousModVersions(id, { ...modTransactionEnvironment(), saveReferences }),
-    restart: () => reloadAfterModChange({ resume: gameScreenLive }),
     installed: async () => {
       const metas = await installedMods(globalThis);
       return new Map(metas.map((m) => [m.id, m.tag] as const));
@@ -15125,14 +15128,6 @@ async function bootMenus(): Promise<void> {
    * return from here without painting anything.
    */
   stopLoading();
-  if (modTransactionNotice) {
-    const text = modTransactionNotice;
-    modTransactionNotice = null;
-    await openModal(() => showTextScreen(term, {
-      id: "core:mod-transaction-notice", title: "Mods", footer: "[ Press ESC to return ]",
-      blocks: [{ kind: "text", paragraphs: [[{ text }]], color: UI_BAD }],
-    }));
-  }
   /* The start reached the menus. A safe start is not counted (decideSafeLaunch),
    * so it does not clear the count either: the next normal start still knows
    * about the failures before it. */
