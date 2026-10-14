@@ -445,6 +445,30 @@ describe("an update to a community mod", () => {
 });
 
 describe("Update installed mods, with a community mod behind", () => {
+  it("skips unattended updates when the registry cannot be read", async () => {
+    const h = harness(true, new Map([["extra", "v0.9.0"]]));
+    const deps = { ...h.deps, curated: () => Promise.resolve({ registry: null, problem: "unreachable" }) };
+    const installMod = await gameUpdateModInstaller(makeTerm(), deps, { unattended: true });
+    expect(await installMod({ id: EXTRA.id, repo: EXTRA.repo, from: "v0.9.0", to: "v1.0.0" })).toContain("Updates are waiting");
+    expect(h.discovered).toEqual([]);
+    expect(h.installs).toEqual([]);
+  });
+
+  it("skips an interactive update when the registry fetch rejects", async () => {
+    useWindow();
+    const h = harness(true, new Map([["extra", "v0.9.0"]]));
+    const deps = { ...h.deps, curated: () => Promise.reject(new Error("unreachable")) };
+    const term = makeTerm();
+    const done = showModUpgrades(term, deps);
+    await showing(term, "Update it");
+    press("a");
+    await showing(term, "Updates are waiting");
+    press("Escape");
+    expect(await done).toBe(false);
+    expect(h.discovered).toEqual([]);
+    expect(h.installs).toEqual([]);
+  });
+
   it("asks about the community mod only during Update all, and a no keeps it", async () => {
     useWindow();
     const h = harness(true, new Map([["qol", "v0.9.0"], ["extra", "v0.9.0"]]));

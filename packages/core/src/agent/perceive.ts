@@ -403,6 +403,7 @@ export function createAgentView(
       deps,
       /* By name only: the read wildcard does not reach the real map. */
       !caps || caps.has("state:map-actual.read"),
+      !caps || caps.has("state:floor.read") || caps.has("state:*.read"),
     )),
     inventory: gateRead(caps, D.inventory, () => {
       const out: ItemView[] = [];

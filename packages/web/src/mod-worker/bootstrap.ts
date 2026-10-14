@@ -86,11 +86,12 @@ export function installModWorkerBootstrap(
   };
   const method = (path: string) => (...args: unknown[]): Promise<never> => call(path, args);
   const granted = (capability: string): boolean => {
+    if (capability === "engine:access") return false;
     const list = meta?.granted ?? [];
     if (list.includes(capability)) return true;
     const state = /^state:([a-z0-9-]+)\.read$/u.exec(capability);
     if (state && state[1] !== "map-actual" && list.includes("state:*.read")) return true;
-    return capability.startsWith("network:") && capability !== "network:local" && list.includes("network:*");
+    return capability.startsWith("network:") && list.includes("network:*");
   };
 
   const buildApi = (m: WorkerMeta, active: readonly string[]): ModApi2 => {
@@ -109,10 +110,31 @@ export function installModWorkerBootstrap(
         mods: method("meta.mods"),
       },
       view: {
+        options: method("view.options"),
         world: method("view.world"),
+        character: method("view.character"),
+        knowledge: method("view.knowledge"),
+        messages: method("view.messages"),
         player: method("view.player"),
         monsters: method("view.monsters"),
         level: method("view.level"),
+        look: method("view.look"),
+        simulateLoadout: method("view.simulateLoadout"),
+        catalogue: method("view.catalogue"),
+        inspect: {
+          simulateLoadout: method("view.inspect.simulateLoadout"),
+          item: method("view.inspect.item"),
+          itemRules: method("view.inspect.itemRules"),
+          itemTester: method("view.inspect.itemTester"),
+          bookForItem: method("view.inspect.bookForItem"),
+          spell: method("view.inspect.spell"),
+          monsterRecall: method("view.inspect.monsterRecall"),
+          projectionPath: method("view.inspect.projectionPath"),
+          blastArea: method("view.inspect.blastArea"),
+          travelPath: method("view.inspect.travelPath"),
+          compareLoadoutSlots: method("view.inspect.compareLoadoutSlots"),
+          tileActions: method("view.inspect.tileActions"),
+        },
         input: method("view.input"),
         isCurrent: method("view.isCurrent"),
       },
@@ -142,12 +164,28 @@ export function installModWorkerBootstrap(
       },
       hooks: { available: m.hooks, active },
       content: {
+        boundRecords: method("content.boundRecords"),
+        activations: method("content.activations"),
+        activation: method("content.activation"),
         own: method("content.own"),
+        colors: method("content.colors"),
         asset: method("content.asset"),
         records: method("content.records"),
         lookup: method("content.lookup"),
       },
       ui: {
+        onKey: async (listener: Listener): Promise<unknown> => {
+          const listenerId = ++nextListener;
+          listeners.set(listenerId, listener);
+          const result = await call("ui.onKey", [listenerId]) as { ok: boolean };
+          if (!result.ok) listeners.delete(listenerId);
+          return result;
+        },
+        offKey: (subscription: { readonly id: string }): Promise<unknown> => {
+          listeners.delete(Number(subscription.id));
+          return call("ui.offKey", [subscription]);
+        },
+        unmount: method("ui.unmount"),
         mount: (panel: unknown, onAction?: (action: string, value?: string | boolean) => void, onDismiss?: () => void): Promise<unknown> => {
           let callbackId = 0;
           if (typeof onAction === "function") {
@@ -160,7 +198,6 @@ export function installModWorkerBootstrap(
           return call("ui.mount", [panel, callbackId, dismissId]);
         },
         patch: method("ui.patch"),
-        unmount: method("ui.unmount"),
         commands: { register: (id: string, verb: string, run: () => void) => {
           const callbackId = ++nextCallback;
           callbacks.set(callbackId, run);
@@ -174,6 +211,7 @@ export function installModWorkerBootstrap(
         keys: { isBindableTriggerKey: method("ui.keys.isBindableTriggerKey"), bind: method("ui.keys.bind"), list: method("ui.keys.list"), remove: method("ui.keys.remove") },
       },
       store: {
+        install: { get: method("store.install.get"), set: method("store.install.set") },
         prefs: { get: method("store.prefs.get"), set: method("store.prefs.set") },
         character: { get: method("store.character.get"), set: method("store.character.set") },
       },
@@ -182,7 +220,7 @@ export function installModWorkerBootstrap(
           request: method("net.request"),
           /* An opaque reference: the value stays with the host, which puts it
            * into the request after the request leaves this Worker. */
-          credential: (name: string) => Object.freeze({ credential: String(name) }),
+          credential: (name: string, prefix?: string) => Object.freeze({ credential: String(name), ...(prefix !== undefined ? { prefix: String(prefix) } : {}) }),
           credentials: {
             status: method("net.credentials.status"),
             set: method("net.credentials.set"),
@@ -230,6 +268,7 @@ export function installModWorkerBootstrap(
       policies: policies === undefined ? null : plain(policies),
       migrateBag: typeof d.migrateBag === "function",
       prefsVersion: d.prefs !== undefined && typeof d.prefs.version === "number" ? d.prefs.version : null,
+      installVersion: d.install !== undefined && typeof d.install.version === "number" ? d.install.version : null,
       start: typeof d.start === "function",
       stop: typeof d.stop === "function",
     };
@@ -269,6 +308,9 @@ export function installModWorkerBootstrap(
       } else if (q.kind === "prefs.migrate") {
         if (!definition?.prefs) throw new Error("this mod declares no prefs migration");
         value = await definition.prefs.migrate(q.value as never, q.fromVersion);
+      } else if (q.kind === "install.migrate") {
+        if (!definition?.install) throw new Error("this mod declares no install migration");
+        value = await definition.install.migrate(q.value as never, q.fromVersion);
       }
       reply({ ok: true, value: plain(value) });
     } catch (err) {

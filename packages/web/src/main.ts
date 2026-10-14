@@ -449,6 +449,7 @@ import {
   configureModHealth,
   FAULT_LIMIT,
   FAULT_WINDOW_TURNS,
+  manifestBudgetFor,
   modHealth,
   switchOffNotice,
   type ModSwitchOff,
@@ -10329,6 +10330,7 @@ const modSnapshotSource: InputSnapshotSource = {
   viewDeps: () => ({
     resolver: new ContentIdResolver({
       objects: booted.registries.objects,
+      monsters: booted.registries.monsters,
       playerRaces: players.races,
       playerClasses: players.classes,
     }),
@@ -10360,6 +10362,8 @@ const modSnapshotSource: InputSnapshotSource = {
               : "play",
   messagePending: () => morePending,
   messages: () => msglog.all(),
+  messageCursor: () => msglog.rawLength(),
+  messagesSince: (since) => msglog.rawSince(since),
   storeStatus: () => {
     const store = storeModalActive ? storeAtPlayer() : null;
     if (!store) return null;
@@ -15937,6 +15941,12 @@ function modSwitchedOff(off: ModSwitchOff): void {
 configureModHealth({
   turn: () => state.turn,
   enforce: true,
+  budgetFor: (id) => manifestBudgetFor(id, [
+    ...activeModCode().plugins.map((loaded) => loaded.manifest),
+    ...activeModCode().workers.map((loaded) => loaded.manifest),
+    ...[...discoverPlugins().values()].map((loaded) => loaded.manifest),
+    ...[...discoverTrustedPlugins().values()].map((loaded) => loaded.manifest),
+  ]),
   onSwitchOff: modSwitchedOff,
   onOverBudget: (report) => {
     log.warn(
@@ -15996,7 +16006,7 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
         engine: ENGINE_VERSION,
         newCharacter: sessionFacts.newCharacter ?? false,
         net: context.net !== undefined,
-        api: (options) => createApi2Host(context, { grants: capabilities, panels: workerPanelRenderer, ...options }),
+        api: (options) => createApi2Host(context, { grants: capabilities, panels: workerPanelRenderer, ...options, execution: "worker" }),
         readAsset: async (path) => {
           const url = await disk.assetUrl?.(loaded.id, path);
           if (!url) return null;

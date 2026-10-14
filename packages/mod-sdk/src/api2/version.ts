@@ -15,6 +15,9 @@ import { satisfies, SemverError } from "../semver.js";
 /** The API version this build of the SDK describes and the in-process host implements. */
 export const MOD_API2_VERSION = "2.0.0";
 
+/** The live engine domain changes independently of the mod API and game release. */
+export const ENGINE_API2_VERSION = "1.0.0";
+
 /** The range a new mod should declare. */
 export const MOD_API2_DEFAULT_RANGE = ">=2.0.0 <3.0.0";
 
@@ -46,7 +49,9 @@ export function apiRangeVerdict(range: string, host: string = MOD_API2_VERSION):
   }
   if (fits) return { ok: true };
   const hostMajor = major(host);
-  const mentioned = [...range.matchAll(/(\d+)(?:\.\d+)?(?:\.\d+)?/gu)].map((m) => Number(m[1]));
+  const mentioned = [...range.matchAll(/(<=|>=|<|>)?(\d+)(?:\.(\d+))?(?:\.(\d+))?/gu)].map((m) =>
+    Number(m[2]) - (m[1] === "<" && Number(m[3] ?? 0) === 0 && Number(m[4] ?? 0) === 0 ? 1 : 0),
+  );
   if (mentioned.length > 0 && mentioned.every((m) => m > hostMajor)) {
     return { ok: false, code: "too-new", why: `needs mod API ${range}; this game implements ${host}, so the mod needs a newer game` };
   }

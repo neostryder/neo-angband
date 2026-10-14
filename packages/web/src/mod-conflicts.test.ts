@@ -250,6 +250,13 @@ describe("frontend: two mods each replacing the map", () => {
 });
 
 describe("declared conflicts", () => {
+  it("reports only matching dependency conflict ranges", () => {
+    const oldOnly = manifest("frost", { compat: [{ with: "runes", claim: "conflicts", range: "<2.0.0", because: "Old releases conflict." }] });
+    expect(declaredConflicts([oldOnly, manifest("runes", { version: "1.9.0" })])).toHaveLength(1);
+    expect(declaredConflicts([oldOnly, manifest("runes", { version: "2.0.0" })])).toEqual([]);
+    expect(declaredConflicts([manifest("frost", { compat: [{ with: "runes", claim: "conflicts", range: "broken", because: "x" }] }), manifest("runes")])).toEqual([]);
+  });
+
   const frost = manifest("frost", {
     compat: [
       { with: "runes", claim: "conflicts", because: "We both rewrite kobold speed." },

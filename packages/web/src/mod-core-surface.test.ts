@@ -36,6 +36,9 @@ import * as core from "@rpgm-tools/neo-angband-core";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { api2Engine } from "./mod-api2-host";
+import { modPluginContext } from "./mod-context";
+import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BASELINE = resolve(here, "../../core/mod-api-surface.json");
@@ -50,6 +53,13 @@ function baseline(): string[] {
 }
 
 describe("the ctx.core surface does not move by accident", () => {
+  it("pins engine.core to the same namespace and baseline as ctx.core", () => {
+    const ctx = modPluginContext("probe", {});
+    const grants = CapabilitySet.fromManifest({ id: "probe", name: "Probe", version: "1.0.0", shape: "plugin", capabilities: ["engine:access"] });
+    const engine = api2Engine(ctx, { grants });
+    expect(engine?.core).toBe(ctx.core);
+    expect(Object.keys(engine!.core).sort()).toEqual(surface());
+  });
   /* THE ONE THAT MATTERS. Split from the additions check so a failure says which
    * of the two happened without anyone reading a diff: an addition is a chore and
    * a removal is somebody's mod breaking. */

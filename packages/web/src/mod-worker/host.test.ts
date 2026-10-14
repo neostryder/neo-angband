@@ -106,7 +106,7 @@ function hostApi(setup: HostSetup = {}): (options: WorkerApiOptions) => ModApi2 
       prefs: setup.prefs ?? memoryPrefs(),
       ...(setup.net ? { net: setup.net } : {}),
     });
-    return createApi2Host(ctx, { grants: capabilities, ...setup.options, ...options });
+    return createApi2Host(ctx, { grants: capabilities, ...setup.options, ...options, execution: "worker" });
   };
 }
 
@@ -251,6 +251,33 @@ describe("a Worker mod's view of the world", () => {
 });
 
 describe("the broker's grants", () => {
+  it("reports vocabulary wildcards without granting truth or unrelated actions", async () => {
+    let found: unknown;
+    const grants = ["registry:*", "state:*.read", "network:*", "ui:*.replace"];
+    const wired = wire({ api: API, start: (api) => {
+      found = Object.fromEntries([
+        "registry:store", "registry:message", "state:monsters.read", "network:local", "network:example.test",
+        "ui:sidebar.replace", "ui:region.create", "state:map-actual.read", "*",
+      ].map((capability) => [capability, api.meta.granted(capability)]));
+    } }, { grants });
+    await started(wired, () => found);
+    expect(found).toEqual({
+      "registry:store": true, "registry:message": true, "state:monsters.read": true,
+      "network:local": true, "network:example.test": true, "ui:sidebar.replace": true,
+      "ui:region.create": false, "state:map-actual.read": false, "*": false,
+    });
+  });
+
+  it("answers a Worker engine request with typed not-granted and keeps live objects absent", async () => {
+    let absent: boolean | undefined;
+    const wired = wire({ api: API, start: (mod) => { absent = mod.engine === undefined; } }, { grants: ["engine:access"] });
+    await started(wired, () => absent);
+    const init = wired.worker.sent.find((message) => message.type === "init")!;
+    wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: init.epoch, requestId: 900, method: "engine.core", args: [] });
+    await vi.waitFor(() => expect(wired.worker.sent.find((message) => message.type === "reply" && message.requestId === 900)).toMatchObject({ ok: true, result: { ok: false, reason: "not-granted", capability: "engine:access" } }));
+    expect(absent).toBe(true);
+  });
+
   it.each(["ui.title.registerRow", "ui.mountPage", "ui.overlay", "presentation.cancelInput"])("refuses the first-party method %s", async (method) => {
     const wired = wire({ api: API });
     await wired.session.ready;
@@ -272,6 +299,7 @@ describe("the broker's grants", () => {
     } }, { grants, api: hostApi({ grants, options: { panels: {
       apply(_id, _operation, _payload, _patchId, onAction, onDismiss) { action = onAction; dismiss = onDismiss; return { panelId: "edit" }; },
       teardown() {},
+      unmount() {},
     } } }) });
     await started(wired, () => mounted ? true : undefined);
     action!("edit", "key", "F2");
@@ -564,13 +592,13 @@ describe("a Worker mod's network access", () => {
       api: API,
       start: async (api) => {
         if (!api.net) throw new Error("no net domain");
-        const response = await api.net.request({ url: "https://api.example.com/x", headers: { Authorization: api.net.credential("token") } });
+        const response = await api.net.request({ url: "https://api.example.com/x", headers: { Authorization: api.net.credential("token", "Bearer "), "x-api-key": api.net.credential("token") } });
         found = { response, status: await api.net.credentials.status("token") };
       },
     }, { api: hostApi({ grants, net }), grants, net: true });
     await started(wired, () => found);
     expect(found).toMatchObject({ response: { ok: true, value: { status: 200, body: "fine" } }, status: { ok: true, value: { present: true } } });
-    expect(requests[0]?.headers).toEqual({ Authorization: "{secret:token}" });
+    expect(requests[0]?.headers).toEqual({ Authorization: "Bearer {secret:token}", "x-api-key": "{secret:token}" });
     expect(JSON.stringify(wired.worker.sent)).not.toContain(secret);
     /* The request's wait is network time, apart from CPU time. */
     expect(wired.health.stats().find((s) => s.id === "probe")?.netMs).toBeGreaterThanOrEqual(15);

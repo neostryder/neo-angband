@@ -16,6 +16,7 @@ interface MountedPanel {
 
 export interface ModWorkerPanelRenderer {
   apply(pluginId: string, operation: "mount" | "patch" | "unmount", payload: WorkerJson, patchId?: string, onAction?: (panelId: string, action: string, value?: string | boolean) => void, onDismiss?: () => void): WorkerJson;
+  unmount(pluginId: string, panelId: string): void;
   teardown(pluginId: string): void;
 }
 
@@ -43,6 +44,16 @@ export function createModWorkerPanelRenderer(doc: Document = document): ModWorke
     (host?.root ?? doc.body ?? doc.documentElement).append(root);
     root.style.pointerEvents = "auto";
     if (host) root.style.cssText += ";inset:48px 16px 16px;max-width:none;overflow:auto";
+    if (!host) {
+      const dismiss = doc.createElement("button");
+      dismiss.type = "button";
+      dismiss.textContent = "Close";
+      dismiss.addEventListener("click", () => {
+        if (modPanelsSuspended()) return;
+        close();
+      });
+      root.append(dismiss);
+    }
     const unsuspend = onModPanelSuspension((suspended) => {
       root.style.visibility = suspended ? "hidden" : "";
       root.inert = suspended;
@@ -119,6 +130,9 @@ export function createModWorkerPanelRenderer(doc: Document = document): ModWorke
       if (!mounted) throw new Error(`panel ${patchId} is not mounted`);
       applyPatch(patchId, mounted, patch);
       return { panelId: patchId };
+    },
+    unmount(pluginId, panelId): void {
+      panels.get(key(pluginId, panelId))?.close();
     },
     teardown(pluginId): void {
       for (const [panelKey, panel] of panels) {

@@ -15,6 +15,7 @@
  */
 
 import type { ModHooks, ModPluginContext } from "@rpgm-tools/neo-angband-core";
+import { inputToken, tokenIsCurrent, type PlayerCommand } from "@rpgm-tools/neo-angband-core";
 import {
   api2PolicyEffects,
   apiRangeVerdict,
@@ -27,8 +28,10 @@ import {
   type Api2TileFill,
   type JsonValue,
 } from "@rpgm-tools/neo-angband-mod-sdk";
-import { createApi2Host, disposeApi2Host, type Api2HostOptions } from "./mod-api2-host";
+import { bootPhase } from "./presentation-phase";
+import { api2Engine, createApi2Host, disposeApi2Host, type Api2HostOptions } from "./mod-api2-host";
 import type { ModPlugin } from "./mod-plugin";
+import { createIntentGate } from "./intent-gate";
 
 /** The API 1 plugin version an API 2 mod presents to the loader. */
 const SHIM_PLUGIN_API = 1;
@@ -43,15 +46,15 @@ export function checkApi2Definition(candidate: unknown): string | null {
   if (typeof d.api !== "string") return `an API 2 mod declares its "api" range as a string, such as ">=2.0.0 <3.0.0"`;
   const verdict = apiRangeVerdict(d.api);
   if (!verdict.ok) return `"api": "${d.api}" ${verdict.why}`;
-  for (const member of ["hooks", "policies", "start", "stop", "migrateBag", "birth"] as const) {
+  for (const member of ["hooks", "policies", "start", "stop", "migrateBag", "controller", "armed", "birth"] as const) {
     if (d[member] !== undefined && typeof d[member] !== "function") return `${member} is not a function`;
   }
-  if (d.prefs !== undefined) {
-    const p = d.prefs as Partial<NonNullable<Api2ModDefinition["prefs"]>>;
+  for (const slot of ["prefs", "install"] as const) if (d[slot] !== undefined) {
+    const p = d[slot] as Partial<NonNullable<Api2ModDefinition["prefs"]>>;
     if (typeof p.version !== "number" || !Number.isInteger(p.version) || p.version < 1) {
-      return "prefs.version is a whole number from 1";
+      return `${slot}.version is a whole number from 1`;
     }
-    if (typeof p.migrate !== "function") return "prefs.migrate is not a function";
+    if (typeof p.migrate !== "function") return `${slot}.migrate is not a function`;
   }
   if (d.presentation !== undefined) {
     if (d.presentation === null || typeof d.presentation !== "object") return "presentation is not an object";
@@ -67,9 +70,9 @@ export function checkApi2Definition(candidate: unknown): string | null {
     !row || typeof row.id !== "string" || typeof row.label !== "string" || typeof row.run !== "function"))) {
     return "titleActions must declare an id, label and handler";
   }
-  if (d.hooks === undefined && d.policies === undefined && d.start === undefined &&
+  if (d.hooks === undefined && d.policies === undefined && d.start === undefined && d.controller === undefined &&
     !d.presentation?.menu && !d.presentation?.screen && !d.presentation?.hud && !d.presentation?.birth && !d.birth && !d.actions?.length && !d.titleActions?.length) {
-    return "an API 2 mod declares hooks, policies, start, or a combination";
+    return "an API 2 mod declares hooks, policies, start, controller or a combination";
   }
   return null;
 }
@@ -254,7 +257,16 @@ export type Api2PluginOptions = Omit<Api2HostOptions, "activeHooks" | "prefs">;
  */
 export function api2Plugin(definition: Api2ModDefinition, options: () => Api2PluginOptions): ModPlugin {
   let active: Api2HookName[] = [];
-  const hosts = new Set<import("@rpgm-tools/neo-angband-mod-sdk").ModApi2>();
+  const hosts = new Set<ReturnType<typeof createApi2Host>>();
+  let stopped = false;
+  let generation = 0;
+  const build = (ctx: ModPluginContext, extra: Partial<Api2HostOptions> = {}) => {
+    const mod = createApi2Host(ctx, { ...options(), activeHooks: active,
+      ...(definition.prefs ? { prefs: definition.prefs } : {}),
+      ...(definition.install ? { install: definition.install } : {}), ...extra });
+    hosts.add(mod);
+    return mod;
+  };
   const plugin: { -readonly [K in keyof ModPlugin]: ModPlugin[K] } = { api: SHIM_PLUGIN_API };
   const hostFor = (ctx: ModPluginContext): import("@rpgm-tools/neo-angband-mod-sdk").ModApi2 => {
     const mod = createApi2Host(ctx, options());
@@ -283,7 +295,8 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
     const policiesOf = definition.policies?.bind(definition);
     plugin.hooks = (ctx: ModPluginContext): ModHooks | undefined => {
       pluginPolicies.delete(plugin as ModPlugin);
-      const context = { id: ctx.id, flags: plain({ ...ctx.flags }) };
+      const engine = api2Engine(ctx, options());
+      const context = { id: ctx.id, flags: plain({ ...ctx.flags }), ...(engine ? { engine } : {}) };
       const declared = hooksOf?.(context);
       const policies = policiesOf?.(context);
       let fromTables: Api2Hooks | undefined;
@@ -308,12 +321,9 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
   if (definition.start || definition.actions?.length || definition.titleActions?.length) {
     const start = definition.start?.bind(definition);
     plugin.register = (_host, ctx) => {
-      const mod = createApi2Host(ctx, {
-        ...options(),
-        activeHooks: active,
-        ...(definition.prefs ? { prefs: definition.prefs } : {}),
-      });
-      hosts.add(mod);
+      stopped = false;
+      const mod = build(ctx);
+
       for (const row of definition.titleActions ?? []) {
         if (!mod.ui.title || !mod.meta.granted("profiles:manage") || !mod.meta.granted("saves:manage")) {
           ctx.log(`title action "${row.id}" needs title, profile and save grants`);
@@ -336,13 +346,82 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
       }
     };
   }
+  if (definition.controller) {
+    const decide = definition.controller.bind(definition);
+    plugin.controller = (ctx) => {
+      const opts = options();
+      if (opts.tier !== "first-party" || opts.execution === "worker" || !ctx.state) return undefined;
+      const engine = api2Engine(ctx, opts);
+      if (definition.armed && !definition.armed({ id: ctx.id, flags: plain({ ...ctx.flags }), armed: ctx.controllerArmed === true, ...(engine ? { engine } : {}) })) return undefined;
+      stopped = false;
+      const state = ctx.state;
+      const installedGeneration = generation;
+      let pending = false;
+      let deciding = false;
+      let queued: { command: PlayerCommand; token: ReturnType<typeof inputToken> } | undefined;
+      const takeAnswer = (): PlayerCommand | null => {
+        const answer = queued;
+        queued = undefined;
+        return answer && tokenIsCurrent(state, answer.token) ? answer.command : null;
+      };
+      const gate = createIntentGate({ state,
+        registry: {
+          has: (code) => ctx.intent?.catalogue?.().commands.some((command) => command.code === code) ?? true,
+          codes: () => ctx.intent?.catalogue?.().commands.map((command) => command.code) ?? [],
+        },
+        snapshotSource: { phase: () => ctx.snapshot?.()?.phase ?? "play", prompt: () => ctx.snapshot?.()?.prompt ?? null },
+        push: (command) => { queued = { command, token: inputToken(state) }; },
+        storeCommand: (command) => { queued = { command, token: inputToken(state) }; return true; },
+        advance: () => undefined,
+      });
+      const mod = build(ctx, { intent: { submit: (token, intent) => {
+        if (stopped || installedGeneration !== generation || !deciding || queued) return { accepted: false, reason: "this controller decision has ended" };
+        const driver = ctx.driver?.();
+        if (driver && (driver.kind !== "controller" || driver.owner !== ctx.id)) return { accepted: false, code: "controller-owned", reason: "this mod does not hold the keyboard" };
+        return gate.submit(token, intent);
+      } } });
+      return () => {
+        if (stopped || installedGeneration !== generation) return null;
+        if (queued) {
+          return takeAnswer();
+        }
+        if (pending) return null;
+        const snap = ctx.snapshot?.();
+        if (!opts.grants.has("state:interaction.read") && !opts.grants.has("state:*.read")) return null;
+        const input = plain({ token: inputToken(state), driver: snap?.driver ?? { kind: "controller" as const, owner: ctx.id },
+          phase: snap?.phase === "pregame" ? bootPhase() : snap?.phase ?? "play" as const, messagePending: snap?.messagePending ?? false, prompt: snap?.prompt ?? null,
+          resting: snap?.resting ?? null,
+          running: (ctx.state?.run?.running ?? 0) > 0,
+          repeating: (ctx.state?.cmdQueue?.[0]?.repeatRemaining ?? 0) > 0,
+          repeatsLeft: ctx.state?.cmdQueue?.[0]?.repeatRemaining ?? 0,
+          unignoring: (ctx.state?.unignoring ?? 0) > 0,
+          messages: opts.grants.has("state:messages.read") || opts.grants.has("state:*.read") ? snap?.messages?.log.slice(-100) ?? null : null,
+          storeStatus: (opts.grants.has("state:stores.read") && opts.grants.has("state:inventory.read")) || opts.grants.has("state:*.read") ? snap?.storeStatus ?? null : null,
+          activeBlast: opts.grants.has("state:map.read") || opts.grants.has("state:*.read") ? snap?.activeBlast ?? null : null });
+        deciding = true;
+        try {
+          const result = decide(mod, input);
+          if (result && typeof result.then === "function") {
+            pending = true;
+            result.catch((error: unknown) => ctx.log(`controller failed: ${error instanceof Error ? error.message : String(error)}`))
+              .finally(() => { pending = false; deciding = false; });
+          } else deciding = false;
+        } catch (error) {
+          deciding = false;
+          throw error;
+        }
+        return takeAnswer();
+      };
+    };
+  }
   if (definition.migrateBag) {
     const migrate = definition.migrateBag.bind(definition);
     plugin.migrateBag = (data, fromSchema) => migrate(structuredClone(data) as JsonValue, fromSchema);
   }
   plugin.uninstall = () => {
-    try { definition.stop?.(); }
-    finally {
+    stopped = true;
+    generation += 1;
+    try { definition.stop?.(); } finally {
       for (const mod of hosts) disposeApi2Host(mod);
       hosts.clear();
     }
@@ -361,9 +440,9 @@ export const API1_CONTEXT_MAP: Readonly<Record<keyof ModPluginContext, string>> 
   engine: "meta.engine",
   flags: "meta.flags",
   settings: "meta.settings, meta.setSetting",
-  core: "retired: the live core namespace; read through view, act through act",
+  core: "engine.core (in-process only, with engine:access)",
   authoring: "retired from the runtime API: the SDK package is imported at build time",
-  state: "retired: raw GameState; view (known world) or, for the first-party autoplayer, truth",
+  state: "engine.state (in-process only, with engine:access)",
   assetUrl: "content.asset",
   data: "content.own",
   prefs: "store.prefs (with an explicit prefs migration)",
@@ -375,21 +454,21 @@ export const API1_CONTEXT_MAP: Readonly<Record<keyof ModPluginContext, string>> 
   mods: "meta.mods",
   events: "events.on, events.off (known-data payloads)",
   knownLevel: "view.level",
-  inspect: "view.world, view.monsters (known data only)",
-  intent: "act.submit",
+  inspect: "view.inspect (inspectItem is item; spellInfo is spell)",
+  intent: "act.submit, view.catalogue",
   prompt: "act.answer",
   tiles: "presentation.tiles (first-party only)",
   keyRepeat: "presentation.keyRepeat (first-party only)",
   options: "hooks.optionsChanged (read); setting options has no API 2 form yet",
   keybindings: "ui.keys",
-  knowledge: "not yet in API 2: the knowledge menu's contents",
+  knowledge: "view.knowledge (category and id select a recall page)",
   saves: "not yet in API 2: save management, a later manage member (first-party only)",
   session: "manage.session (first-party only)",
   shared: "not yet in API 2: values shared between mods",
   title: "ui.title, presentation.title (first-party only)",
   profiles: "manage.profiles (first-party only)",
   controllerArmed: "act.controller.owns",
-  character: "view.player",
+  character: "view.character, view.player().key, events.on(\"run-end\")",
   keymaps: "ui.keys",
   characterStore: "store.character",
   newCharacter: "meta.newCharacter",
@@ -403,6 +482,6 @@ export const API1_CONTEXT_MAP: Readonly<Record<keyof ModPluginContext, string>> 
   readMod: "not yet in API 2: mod management, a later manage member (first-party only)",
   debug: "retired from public mods: debug tooling is first-party",
   wizard: "retired from public mods: debug tooling is first-party",
-  registries: "retired: mutable bound registries; content.records and content.lookup",
+  registries: "engine.registries (in-process only, with engine:access)",
   composedRecords: "content.records, content.lookup",
 });

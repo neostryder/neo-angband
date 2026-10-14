@@ -13,6 +13,14 @@ import type {
   WorldFrame,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 
+declare module "@rpgm-tools/neo-angband-mod-sdk" {
+  interface Api2EngineBindings {
+    readonly core: ModCoreApi;
+    readonly state: GameState;
+    readonly registries: CoreRegistries;
+  }
+}
+
 export type KnowledgeCategoryId = "objects" | "runes" | "artifacts" | "egos" | "monsters" | "features" | "traps" | "shapes";
 
 /** Whole-cell responsive geometry requested by a display-oriented mod. */
@@ -507,6 +515,7 @@ export interface ModPluginContext {
   /** Enabled and loaded mods, limited to manifest-declared public flags. */
   readonly mods?: () => readonly {
     readonly id: string;
+    readonly name?: string;
     readonly version: string;
     readonly flags?: Readonly<Record<string, boolean>>;
   }[];
@@ -1678,6 +1687,8 @@ export interface InputSnapshot {
   readonly messages: Readonly<{
     token: InputToken;
     entries: readonly string[];
+    cursor?: number;
+    recent?: readonly Readonly<{ text: string; count: number; color?: string }>[];
     log: readonly Readonly<{
       text: string;
       count: number;

@@ -228,7 +228,7 @@ export function modPluginContext(
       driver: () => frozenDriver(driverControl!.current()),
     } : {}),
     ...(modsControl ? { mods: () => Object.freeze(modsControl!().map((mod) => Object.freeze({
-      id: mod.id, version: mod.version,
+      id: mod.id, name: mod.name ?? mod.id, version: mod.version,
       ...(mod.flags ? { flags: Object.freeze({ ...mod.flags }) } : {}),
     }))) } : {}),
     ...(events ? { events } : {}),
@@ -526,7 +526,7 @@ export function setModDriverControl(control: ModDriverControl | undefined): void
   driverControl = control;
 }
 
-type PublicMod = { readonly id: string; readonly version: string; readonly flags?: Readonly<Record<string, boolean>> };
+type PublicMod = { readonly id: string; readonly name?: string; readonly version: string; readonly flags?: Readonly<Record<string, boolean>> };
 let modsControl: (() => readonly PublicMod[]) | undefined;
 export function setModListControl(control: (() => readonly PublicMod[]) | undefined): void {
   modsControl = control;

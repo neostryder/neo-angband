@@ -33,7 +33,7 @@ import { maxManaFrom, wornArmorWeight } from "../player/spell.js";
 import { Rng } from "../rng.js";
 import { objectSeeAt, squareSensePile } from "../game/known.js";
 import { createAgentView } from "./perceive.js";
-import { simulateLoadout } from "./loadout.js";
+import { deriveLoadout, simulateLoadout } from "./loadout.js";
 import { AgentCapabilityError } from "./types.js";
 import type { LoadoutChange, LoadoutItemRef } from "./types.js";
 
@@ -148,6 +148,19 @@ function reallyWield(state: GameState, handle: number): void {
 }
 
 describe("simulateLoadout runs the engine's own derive on gear nobody is wearing", () => {
+  it("derives wear and takeoff with the known policy and refuses other policies", () => {
+    const state = newGame();
+    const handle = invenCarry(state.gear, state.actor.player, make(0, TV.SOFT_ARMOR), limits);
+    const change = { wear: [{ from: "gear" as const, handle }], takeoff: [0] };
+    expect(deriveLoadout(state, change)).toEqual(simulateLoadout(state, { wield: change.wear, remove: [0] }));
+    expect(deriveLoadout(state, change, { knowledge: "known" })).toEqual(deriveLoadout(state, change));
+    for (const knowledge of ["actual", "truth", "", null]) {
+      expect(() => deriveLoadout(state, change, { knowledge: knowledge as "known" })).toThrow(AgentCapabilityError);
+    }
+    expect(() => deriveLoadout(state, change, { capabilities: { has: () => false } })).toThrow(AgentCapabilityError);
+    expect(() => deriveLoadout(state, change, { capabilities: { has: (cap) => cap === "state:player.read" } })).toThrow(AgentCapabilityError);
+  });
+
   it("predicts EXACTLY what equipping a weapon does, measured against equipping it", () => {
     const state = newGame();
     const p = state.actor.player;
@@ -673,6 +686,22 @@ describe("a comparison counts only the runes the player knows", () => {
   }
 
   for (const arm of ["gear", "store", "floor", "object"] as const) {
+    it(`keeps hidden runes identical through deriveLoadout's ${arm} arm`, () => {
+      const a = unlearned();
+      const b = unlearned();
+      const objA = runed();
+      const objB = runed();
+      objB.toA = 11;
+      const refA = placed(a, objA, arm);
+      const refB = placed(b, objB, arm);
+      const resultA = deriveLoadout(a, { wear: [refA] })!;
+      const resultB = deriveLoadout(b, { wear: [refB] })!;
+      expect(resultA).toEqual(resultB);
+      expect(resultA.delta.unknownRunes).toBe(true);
+      learnAll(b);
+      expect(deriveLoadout(b, { wear: [refB] })!.delta.toA).not.toBe(resultA.delta.toA);
+    });
+
     it(`shows none of an unlearned rune through the ${arm} arm until the player learns it`, () => {
       const twinState = unlearned();
       const twin = simulateLoadout(twinState, { wield: [placed(twinState, plain(), arm)] })!;

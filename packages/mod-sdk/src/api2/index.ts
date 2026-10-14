@@ -1,6 +1,6 @@
 /** The mod API, version 2. See docs/modding/API2.md. */
 
-export { apiRangeVerdict, MOD_API2_DEFAULT_RANGE, MOD_API2_VERSION } from "./version.js";
+export { apiRangeVerdict, ENGINE_API2_VERSION, MOD_API2_DEFAULT_RANGE, MOD_API2_VERSION } from "./version.js";
 export type { ApiRangeVerdict } from "./version.js";
 export { api2NotGranted, api2Ok, api2Refused, api2Unavailable, isNotGranted } from "./result.js";
 export type {
@@ -14,12 +14,17 @@ export type {
   Api2Unavailable,
 } from "./result.js";
 export { KNOWN_WORLD_FORMAT } from "./known.js";
+export type { DerivedStatsView, ItemRef, LoadoutChange, LoadoutDelta, LoadoutItemRef, LoadoutSimulation, LoadoutView } from "./inspection.js";
+export type { Api2Character, Api2RunEndEvent, CharacterHistoryEntry, CharacterSheetData, HistoryKind, RunBelonging, RunOutcome, RunReport, SheetColor } from "./character.js";
+export type { Api2Knowledge, KnowledgeCategoryId, KnowledgeCategoryView, KnowledgeEntryView, KnowledgeGroupView, KnowledgeListView } from "./knowledge.js";
+export type { Api2Inspect, BlastAreaResult, BookItemResult, GridInspectResult, InspectResult, ItemRulesResult, ItemTesterResult, LoadoutSlotsResult, ObjectCombatInfo, ObjectDamage, ObjectDamageLine, SpellInspectResult, TileActionsResult, TravelPathResult } from "./inspection.js";
 export type {
   KnownGrid,
   KnownItem,
   KnownLevel,
   KnownLevelCell,
   KnownMonster,
+  KnownMonsterBlow,
   KnownMonsterHealth,
   KnownMonsterStatus,
   KnownObjectAura,
@@ -39,6 +44,8 @@ export type {
 export { API2_EVENT_NAMES, api2EventCapability } from "./events.js";
 export type {
   Api2Actor,
+  Api2BoltEvent,
+  Api2ExplosionEvent,
   Api2CombatEvent,
   Api2CommandEvent,
   Api2DriverEvent,
@@ -105,6 +112,13 @@ export type {
   Api2BirthDraftView, Api2BirthResult, Api2Title, Api2TitleAction,
 } from "./presentation.js";
 export type {
+  Api2Activation,
+  Api2ActivationRef,
+  Api2BoundRecord,
+  Api2ControllerContext,
+  Api2Engine,
+  Api2EngineBindings,
+  Api2KeyEvent,
   Api2Act,
   Api2BackupFolder, Api2BackupFolderEntry,
   Api2Command,
@@ -126,6 +140,7 @@ export type {
   Api2Manage,
   Api2MenuAction,
   Api2Meta,
+  Api2MessageLog,
   Api2ModDefinition,
   Api2ModSummary,
   Api2Net,
@@ -149,6 +164,8 @@ export type {
   Api2TrueItem,
   Api2TrueLevel,
   Api2TrueMonster,
+  Api2TrueRace,
+  Api2StoreKnowledge,
   Api2Truth,
   Api2Ui,
   Api2View,
