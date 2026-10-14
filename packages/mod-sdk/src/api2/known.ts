@@ -33,6 +33,7 @@ export interface KnownGrid {
  * many turns an effect has left is not shown, so it is not here.
  */
 export interface KnownPlayerStatus {
+  readonly timed: Readonly<Record<string, string | null>>;
   readonly blind: string | null;
   readonly confused: string | null;
   readonly afraid: string | null;
@@ -139,6 +140,7 @@ export interface KnownItem {
   readonly ds: number;
   readonly ego: boolean;
   readonly artifact: boolean;
+  readonly artifactId?: number;
   readonly flags: readonly string[];
   readonly modifiers: readonly { readonly code: string; readonly value: number }[];
   readonly brands: readonly string[];
@@ -279,6 +281,7 @@ export type KnownRememberedObject =
       readonly sensed: false;
       readonly aware: true;
       readonly kindIndex: number;
+      readonly name: string;
       readonly kindId?: string;
       readonly aura?: KnownObjectAura;
     }
@@ -306,6 +309,7 @@ export interface KnownLevelCell {
   readonly remembered: KnownRememberedCell;
   /** In view right now. */
   readonly visible: boolean;
+  readonly seen: boolean;
 }
 
 /** The level as the player remembers it, never the real map. */

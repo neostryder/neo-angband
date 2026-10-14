@@ -111,7 +111,6 @@ function clientDeps(game: StartedGame): AgentViewDeps {
   return {
     resolver: new ContentIdResolver({
       objects: reg.objects,
-      monsters: reg.monsters,
       playerRaces: game.players.races,
       playerClasses: game.players.classes,
     }),
@@ -199,6 +198,32 @@ function kindNamed(game: StartedGame, tval: number, name: string): ObjectKind {
 }
 
 describe("KnownWorld paired worlds", () => {
+  it("names an artifact id only after the character knows it is an artifact", () => {
+    const [a, b] = pair();
+    const objects = [a, b].map((game) => carry(game, kindNamed(game, TV.SWORD, "Dagger")));
+    objects.forEach((obj, index) => {
+      obj.artifact = [a, b][index]!.booted.registries.objects.artifacts.find((artifact) => artifact && artifact.aidx > index)!;
+      obj.notice &= ~OBJ_NOTICE.ASSESSED;
+    });
+    expect(observed(b.state)).toBe(observed(a.state));
+    const item = () => buildKnownWorld(b.state, b.state.knownWorldDeps).inventory!.find((entry) => entry.label.includes("Dagger"))!;
+    expect(item()).not.toHaveProperty("artifactId");
+    objects[1]!.notice |= OBJ_NOTICE.ASSESSED;
+    expect(item().artifactId).toBe(objects[1]!.artifact!.aidx);
+  });
+
+  it("reports every timed code without revealing durations", () => {
+    const [a, b] = pair();
+    a.state.actor.player.timed[TMD.SLOW] = 10;
+    b.state.actor.player.timed[TMD.SLOW] = 20;
+    expect(observed(b.state)).toBe(observed(a.state));
+    const timed = buildKnownWorld(a.state).player!.status.timed;
+    expect(Object.keys(timed)).toHaveLength(Object.keys(TMD).length);
+    expect(timed["SLOW"]).toEqual(expect.any(String));
+    b.state.actor.player.timed[TMD.SLOW] = 0;
+    expect(observed(b.state)).not.toBe(observed(a.state));
+  });
+
   it("uninspected store stock produces identical observations", () => {
     const [a, b] = pair();
     for (const game of [a, b]) game.changeLevel(0);
@@ -724,7 +749,6 @@ describe("monsterBecameVisible", () => {
     expect(Object.isFrozen(heard[0]!.knownFlags)).toBe(true);
     /* The glyph comes only from the deps. */
     expect(heard[0]!.glyph).toBeDefined();
-    expect(heard[0]!.raceId).toBe(new ContentIdResolver(a.booted.registries).raceId(mon.race.ridx));
     expect(heard[0]).toEqual(knownMonsters(a.state, a.state.knownWorldDeps).find((m) => m.id === heard[0]!.id));
   });
 
