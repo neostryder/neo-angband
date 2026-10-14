@@ -53,14 +53,7 @@ export function checkApi2Definition(candidate: unknown): string | null {
     }
     if (typeof p.migrate !== "function") return "prefs.migrate is not a function";
   }
-  if (d.presentation !== undefined) {
-    if (d.presentation === null || typeof d.presentation !== "object") return "presentation is not an object";
-    for (const member of ["menu", "screen", "hud"] as const) {
-      if (d.presentation[member] !== undefined && typeof d.presentation[member] !== "function") return `presentation.${member} is not a function`;
-    }
-  }
-  if (d.hooks === undefined && d.policies === undefined && d.start === undefined &&
-    !d.presentation?.menu && !d.presentation?.screen && !d.presentation?.hud) {
+  if (d.hooks === undefined && d.policies === undefined && d.start === undefined) {
     return "an API 2 mod declares hooks, policies, start, or a combination";
   }
   return null;
@@ -247,16 +240,6 @@ export type Api2PluginOptions = Omit<Api2HostOptions, "activeHooks" | "prefs">;
 export function api2Plugin(definition: Api2ModDefinition, options: () => Api2PluginOptions): ModPlugin {
   let active: Api2HookName[] = [];
   const plugin: { -readonly [K in keyof ModPlugin]: ModPlugin[K] } = { api: SHIM_PLUGIN_API };
-  for (const member of ["menu", "screen", "hud"] as const) {
-    const presenter = definition.presentation?.[member];
-    if (!presenter) continue;
-    Object.defineProperty(plugin, member, {
-      enumerable: true,
-      get: () => options().tier === "first-party" && options().firstParty?.presentation
-        ? (ctx: ModPluginContext) => definition.presentation![member]!(createApi2Host(ctx, options()))
-        : undefined,
-    });
-  }
   if (definition.hooks || definition.policies) {
     const hooksOf = definition.hooks?.bind(definition);
     const policiesOf = definition.policies?.bind(definition);
@@ -328,8 +311,8 @@ export const API1_CONTEXT_MAP: Readonly<Record<keyof ModPluginContext, string>> 
   assetUrl: "content.asset",
   data: "content.own",
   prefs: "store.prefs (with an explicit prefs migration)",
-  display: "presentation.display (first-party only)",
-  subwindows: "presentation.subwindows (first-party only)",
+  display: "retired: host geometry and repaint; ui panels and regions are host-drawn",
+  subwindows: "retired: host chrome; ui panels",
   snapshot: "view.input",
   driver: "view.input().driver",
   controller: "act.controller",
@@ -339,7 +322,7 @@ export const API1_CONTEXT_MAP: Readonly<Record<keyof ModPluginContext, string>> 
   inspect: "view.world, view.monsters (known data only)",
   intent: "act.submit",
   prompt: "act.answer",
-  tiles: "presentation.tiles (first-party only)",
+  tiles: "retired: live tile painting; ui panels",
   keyRepeat: "retired: host input timing",
   options: "hooks.optionsChanged (read); setting options has no API 2 form yet",
   keybindings: "ui.keys",
@@ -357,7 +340,7 @@ export const API1_CONTEXT_MAP: Readonly<Record<keyof ModPluginContext, string>> 
   log: "meta.log",
   net: "net.request, net.credentials (credentials by opaque reference)",
   backupFolder: "not yet in API 2: the cloud-backup folder",
-  ui: "ui.mount, ui.patch; presentation.panels (first-party DOM panels)",
+  ui: "ui.mount, ui.patch (host-drawn panel grammar, not raw HTML)",
   installMod: "not yet in API 2: mod management, a later manage member (first-party only)",
   reloadGame: "not yet in API 2: mod management, a later manage member (first-party only)",
   loadModForSession: "not yet in API 2: mod management, a later manage member (first-party only)",
