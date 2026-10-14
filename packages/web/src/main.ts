@@ -437,7 +437,7 @@ import { runProfileScreen } from "./profile-ui";
 import { setPrefsStorage } from "./mod-prefs";
 import { startModWorker, type ModWorkerLike, type StartedModWorker } from "./mod-worker/host";
 import { settleWorkerHooks } from "./mod-worker/hooks";
-import { api2PluginRegistrations, installApi2PolicyRegistrations } from "./mod-api2-shim";
+import { api2PluginRegistrations, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "./mod-api2-shim";
 import { createIsolatedModWorker } from "./mod-worker/isolation";
 import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
@@ -594,14 +594,6 @@ import { setBootPhase } from "./presentation-phase";
 import type { BuildOverviewParams, LevelOverview, Overview, OverviewGlyph } from "./mapview";
 import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
-import { LookStore, NEO_PENDING_TEXT } from "./look-state";
-import { runLookChoice } from "./mod-manager/classic-look";
-import { captureModList, ModListStore, ModSaveGuard, retainMissingModList } from "./mod-manager/mod-lists";
-import { prepareSaveModList } from "./mod-manager/classic-mod-list";
-import { classicManager } from "./mod-manager/classic-service";
-import { modSaveApprovalFormat } from "@rpgm-tools/neo-angband-mod-sdk";
-import type { InstalledModMeta } from "./mod-install";
-import type { CatalogMod } from "./mod-store";
 import { TitleRuntime } from "./title-runtime";
 import { consumeProfileAction, createModProfiles } from "./profile-runtime";
 import { startLoading } from "./loading";
@@ -1002,13 +994,6 @@ try {
   scopedGameStorage = null; // no localStorage at all (private mode / no DOM)
 }
 setModStorage(scopedGameStorage);
-const lookStore = new LookStore(scopedGameStorage, defaultModStore());
-const modLists = new ModListStore(scopedGameStorage);
-let modSaveGuard: ModSaveGuard | null = null;
-let saveCatalog: (() => CatalogMod[]) | null = null;
-let saveModMetadata: readonly InstalledModMeta[] = [];
-let allowModSetOverwrite = false;
-const MOD_SAVE_APPROVAL_KEY = "neo-angband:mod-save-approval";
 if (scopedGameStorage) convertLegacyModState(scopedGameStorage);
 setRosterStorage(scopedGameStorage);
 setUserStorage(scopedGameStorage);
@@ -2019,6 +2004,9 @@ function bootGame(): ReturnType<typeof startGame> {
  * and a button that copies it. Every later error - a rejected promise in a
  * menu, a renderer fault - lands there too. See crash-screen.ts. */
 installCrashScreen(ENGINE_VERSION);
+setApi2PolicyLoadOrder(enabledModIds());
+let finishWorkerPolicies: () => void = () => undefined;
+const workerPoliciesReady = new Promise<void>((resolve) => { finishWorkerPolicies = resolve; });
 const game = bootGame();
 /* A mod that holds a capability its tier marks the save for (AnybandUI seeing
  * the real map, mod-tier.ts FIRST_PARTY_ORIGINS) marks the character the way
@@ -2581,6 +2569,7 @@ function repaintEverything(): void {
 async function applyTileMode(
   grafID: number, persist = false, graphics = mainTileMode,
 ): Promise<void> {
+  await workerPoliciesReady;
   const request = graphics.begin(grafID);
   if (persist) {
     writeSetting(localStorage, "tileMode", grafID && grafID !== GRAPHICS_NONE ? grafID : undefined);
@@ -7343,10 +7332,7 @@ const modSettingDecls = loadEnabledModSettings();
 setModSettingSource({
   declared: (modId) => modSettingDecls.get(modId) ?? [],
   stored: (modId) => defaultModStore().getSettingValues()[modId] ?? {},
-  write: (modId, settingId, value) => {
-    defaultModStore().setSettingValue(modId, settingId, value);
-    lookStore.recordSetting(modId, settingId, value);
-  },
+  write: (modId, settingId, value) => defaultModStore().setSettingValue(modId, settingId, value),
 }, reportDisplayFault);
 setSharedValueFaultReporter(reportDisplayFault);
 setModSavesControl(createModSaves({
@@ -7391,7 +7377,7 @@ setModSavesControl(createModSaves({
       return { ok: false, reason: "The current character could not be saved." };
     }
     detachSlot();
-    if (!(await resumeSelected(id))) return { ok: false, reason: "The character load was canceled." };
+    resumeSelected(id);
     return { ok: true };
   },
 }));
@@ -7490,16 +7476,10 @@ function persistSave(deliberate = false): boolean {
   const id = attachedSlot();
   if (!id) return true; // attached to nothing (e.g. the picker is up): nothing to save
   try {
-    if (!saveCatalog || !modSaveGuard) return false;
-    const current = captureModList(game.modList?.name ?? "", defaultModStore(), saveCatalog(), saveModMetadata);
-    if (!modSaveGuard.canOverwrite(game.modList, current, allowModSetOverwrite)) return false;
-    const save = saveGame(game);
-    save.modList = retainMissingModList(current, game.modList);
-    const b64 = bytesToB64(encodeSavedGame(save, undefined, SAVE_CODEC));
+    const b64 = bytesToB64(encodeSavedGame(saveGame(game), undefined, SAVE_CODEC));
     /* writeSlot's own verdict, not just "nothing threw": the storage write
      * itself is where a quota failure shows up. */
     const ok = writeSlot(id, b64, metaFromState(id));
-    if (ok) game.modList = save.modList;
     /* There is now a character worth protecting from the browser's own eviction, so
      * this is the moment to ask for persistent storage - once per session, in the
      * background, never blocking the save that prompted it. */
@@ -7804,17 +7784,6 @@ async function modManagerDeps(): Promise<ModManagerDeps> {
   const delveSyncFolder = createHostFolder(DELVE_SYNC_PURPOSE, DELVE_SYNC_EXT);
   return {
     store,
-    look: lookStore,
-    modLists,
-    saveReferences: (id) => {
-      for (let index = 0; index < (realGameStorage?.length ?? 0); index++) {
-        const key = realGameStorage!.key(index);
-        if (!key || (!key.startsWith("neo-angband-save:") && !key.includes(":neo-angband-save:"))) continue;
-        const stored = realGameStorage!.getItem(key);
-        if (stored && decodeSavedGame(b64ToBytes(stored), undefined, SAVE_CODECS).save?.modList?.mods.some((mod) => mod.id === id)) return true;
-      }
-      return false;
-    },
     listCatalog: () =>
       buildCatalog({
         content: discoverContentModManifests(),
@@ -13196,12 +13165,7 @@ async function refusedAsPlayedElsewhere(id: string): Promise<boolean> {
 }
 
 /** Reload to resume the chosen character (clears the fresh-start params). */
-async function resumeSelected(id: string): Promise<boolean> {
-  const stored = readSlotSave(id);
-  const saved = stored ? decodeSavedGame(b64ToBytes(stored), undefined, SAVE_CODECS).save?.modList : undefined;
-  const decision = await prepareSaveModList(term, await modManagerDeps(), saved);
-  if (!decision.load) return false;
-  reloadStorage.setItem(MOD_SAVE_APPROVAL_KEY, serializeDocument(modSaveApprovalFormat, { slot: id, revision: defaultModStore().configurationRevision(), allowOverwrite: decision.allowOverwrite }, { compact: true }));
+function resumeSelected(id: string): void {
   setActiveId(id);
   try {
     reloadStorage.setItem(SKIP_TITLE_KEY, "1"); // already past the title
@@ -13212,7 +13176,6 @@ async function resumeSelected(id: string): Promise<boolean> {
   url.searchParams.delete("new");
   url.searchParams.delete("seed");
   location.assign(url.toString());
-  return true;
 }
 
 /**
@@ -13314,8 +13277,6 @@ async function maybeTitle(): Promise<TitleChoice | null> {
       showTitleScreen(
         term,
         {
-          look: lookStore.read().active,
-          ...(lookStore.read().pending ? { lookPending: NEO_PENDING_TEXT } : {}),
           canLoad: living || resumedActive,
           canOpen: listRoster().length > 0,
           canQuit: desktopQuitAvailable(),
@@ -14868,7 +14829,7 @@ async function openRoster(): Promise<BootStep> {
          * them, and letting this one in would start the two-tab overwrite this
          * check exists to prevent. */
         if (await refusedAsPlayedElsewhere(res.id)) continue;
-        if (!(await resumeSelected(res.id))) continue;
+        resumeSelected(res.id);
         return "done";
       }
       /* "New character": through the ONE birth path, so ESC in birth still comes
@@ -15121,26 +15082,6 @@ async function startNewCharacter(): Promise<BootStep> {
  *     were in creation there was no way back to the title at all.
  */
 async function bootMenus(): Promise<void> {
-  stopLoading();
-  const saveDeps = await modManagerDeps();
-  const priorLook = lookStore.read().active;
-  classicManager(saveDeps).service.refreshState();
-  if (lookStore.read().active !== priorLook) { reloadAfterModChange({ resume: resumedActive }); return; }
-  saveCatalog = saveDeps.listCatalog;
-  saveModMetadata = await installedMods();
-  modSaveGuard = new ModSaveGuard(defaultModStore());
-  const approvalText = reloadStorage.getItem(MOD_SAVE_APPROVAL_KEY);
-  const approval = approvalText ? parseDocument(approvalText, modSaveApprovalFormat) : null;
-  const reviewed = approval?.ok && approval.data.slot === getActiveId() && approval.data.revision === defaultModStore().configurationRevision();
-  allowModSetOverwrite = reviewed ? approval.data.allowOverwrite : false;
-  if (resumedActive && !reviewed && game.modList) {
-    const decision = await openModal(() => prepareSaveModList(term, saveDeps, game.modList));
-    if (!decision.load) { detachSlot(); resumedActive = false; needsSelect = true; }
-    else {
-      allowModSetOverwrite = decision.allowOverwrite;
-      if (!modSaveGuard.current()) { reloadAfterModChange(); return; }
-    }
-  }
   /*
    * THE LOADING SCREEN ENDS HERE, and it ends at the ONE ENTRY to the menu
    * stack rather than at one of maybeTitle's four EXITS.
@@ -15164,6 +15105,7 @@ async function bootMenus(): Promise<void> {
    * It stays idempotent, and boot's tail still calls it for the routes that
    * return from here without painting anything.
    */
+  stopLoading();
   /* The start reached the menus. A safe start is not counted (decideSafeLaunch),
    * so it does not clear the count either: the next normal start still knows
    * about the failures before it. */
@@ -15191,11 +15133,6 @@ async function bootMenus(): Promise<void> {
    * (SKIP_TITLE, BIRTH_DONE) is one-shot and cleared on the first pass, so the
    * second time round the title really does appear. */
   const canReturnToTitle = !params.get("agent");
-  if (canReturnToTitle && !lookStore.read().chosen) {
-    const deps = await modManagerDeps();
-    deps.requestReload = () => reloadAfterModChange({ resume: false });
-    await openModal(() => runLookChoice(term, deps));
-  }
   for (;;) {
     const choice = await maybeTitle();
     if (choice?.startsWith("mod:")) {
@@ -15247,12 +15184,6 @@ async function bootMenus(): Promise<void> {
       await openModal(() => openModManager({ resume: false }));
       continue;
     }
-    if (choice === "look") {
-      const deps = await modManagerDeps();
-      deps.requestReload = () => reloadAfterModChange({ resume: false });
-      await openModal(() => runLookChoice(term, deps));
-      continue;
-    }
     if (choice === "install") {
       await openModal(() => showInstallChoicePage());
       continue;
@@ -15278,7 +15209,7 @@ async function bootMenus(): Promise<void> {
          * the list skipped. Refused, it falls through to the picker below rather
          * than stalling on the title with nothing said. */
         if (!(await refusedAsPlayedElsewhere(recent.id))) {
-          if (!(await resumeSelected(recent.id))) continue;
+          resumeSelected(recent.id);
           return;
         }
       }
@@ -15348,6 +15279,7 @@ async function resetVisualsForCharacter(): Promise<void> {
  * happened had the mod not been installed.
  */
 async function applyModResources(): Promise<void> {
+  await workerPoliciesReady;
   await installModResources();
 
   const font = await modFontData();
@@ -15975,6 +15907,7 @@ const workerPanelRenderer = createModWorkerPanelRenderer();
  * FAULT_LIMIT times within FAULT_WINDOW_TURNS turns is switched off until the
  * page next loads. The mod list on disk is left as it is. */
 function modSwitchedOff(off: ModSwitchOff): void {
+  removeApi2PrefErrors(off.id);
   reportModFault(
     off.id,
     off.reason === "stall"
@@ -16090,7 +16023,7 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
         onLog: (level, message) => log[level](`mod:${loaded.id}`, message),
         onProblem: (message) => reportModFault(loaded.id, message),
         onHooks: (policies, notify, registrations) => {
-          settleWorkerHooks(loaded.id, { policies, notify, send: (hook, args) => started.notify(hook, args) });
+          settleWorkerHooks(loaded.id, { policies, notify, registrations, send: (hook, args) => started.notify(hook, args) });
           workerRegistrations.set(loaded.id, registrations);
         },
         onTeardown: () => {
@@ -16113,6 +16046,8 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
     }
   }
 }
+
+finishWorkerPolicies();
 
 /* Each mod's own save bag, brought up to the schema that mod is now at, BEFORE
  * any of its other code runs (mod-bags.ts).

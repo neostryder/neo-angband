@@ -552,15 +552,6 @@ function toV1(v2: Json, ids: ContentIdResolver): Json {
  * ------------------------------------------------------------------ */
 
 describe("the migration chain is complete", () => {
-  it("loads a format 7 save without inventing a mod list", () => {
-    const previous = { ...currentSave(), version: 7 };
-    delete previous.modList;
-    const migrated = migrateSave(previous, resolver());
-    expect(migrated.save.version).toBe(SAVE_VERSION);
-    expect(migrated.save.modList).toBeUndefined();
-    expect(migrated.applied).toHaveLength(SAVE_VERSION - 7);
-    expect(loadGame(pack, previous).modList).toBeUndefined();
-  });
   it("has one step for every version below the current one", () => {
     const complete = saveMigrationsAreComplete();
     expect(complete.ok ? null : complete.why).toBeNull();
@@ -670,7 +661,7 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     expect(JSON.stringify(v5)).toContain('"knownPstateFlags"');
 
     const loaded = loadGame(pack, v5 as never);
-    expect(loaded.saveMigration?.applied).toHaveLength(SAVE_VERSION - 5);
+    expect(loaded.saveMigration?.applied).toHaveLength(2);
     expect(loaded.saveMigration?.notes).toEqual([]);
     expect(Array.from(loaded.state.lore.get(race.ridx)!.flags.bits)).toEqual(
       expectedLore,
@@ -714,7 +705,7 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     expect(JSON.stringify(v4)).not.toContain("BR_FIRE");
 
     const loaded = loadGame(pack, v4 as never);
-    expect(loaded.saveMigration?.applied).toHaveLength(SAVE_VERSION - 4);
+    expect(loaded.saveMigration?.applied).toHaveLength(3);
     expect(loaded.saveMigration?.notes).toEqual([]);
     expect(Array.from(loaded.state.lore.get(race.ridx)!.spellFlags.bits)).toEqual(
       expected,
@@ -735,7 +726,7 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     expect(JSON.stringify(back)).not.toEqual(JSON.stringify(save));
 
     const forward = migrateSave(back as never, resolver());
-    expect(forward.applied).toHaveLength(SAVE_VERSION - 3);
+    expect(forward.applied).toHaveLength(4);
     expect(forward.notes).toEqual([]);
 
     const widened = (forward.save as unknown as SavedGame).known!.objects;
@@ -761,7 +752,7 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     expect(back.version).toBe(2);
 
     const forward = migrateSave(back as never, resolver());
-    expect(forward.applied).toHaveLength(SAVE_VERSION - 2);
+    expect(forward.applied).toHaveLength(5);
     expect(forward.notes).toEqual([]);
   });
 
@@ -782,7 +773,7 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     expect(JSON.stringify(back)).toContain('"kidx"');
 
     const forward = migrateSave(back as never, resolver());
-    expect(forward.applied).toHaveLength(SAVE_VERSION - 1);
+    expect(forward.applied).toHaveLength(6);
     expect(forward.notes).toEqual([]);
   });
 
@@ -798,7 +789,7 @@ describe("round trip: a save walked back and migrated forward is unchanged", () 
     );
 
     const game = loadGame(pack, back as never);
-    expect(game.saveMigration?.applied).toHaveLength(SAVE_VERSION - 1);
+    expect(game.saveMigration?.applied).toHaveLength(6);
     expect(game.saveMigration?.notes).toEqual([]);
     /* It is a real game, not just a document that parsed. */
     playTurns(game, 3);
@@ -1082,7 +1073,7 @@ describe("version 6 -> 7 converts each table, through the real migration", () =>
   it("the whole document survives 6 -> 7 with nothing else changed", () => {
     const { v6, current } = v6WithProbes();
     const forward = migrateSave(v6 as never, resolver());
-    expect(forward.applied).toHaveLength(SAVE_VERSION - 6);
+    expect(forward.applied).toHaveLength(1);
     expect(forward.notes).toEqual([]);
     /* Every container: gear, floor, stores, monster-held, the frozen cache. */
     expect(forward.save).toEqual(current);

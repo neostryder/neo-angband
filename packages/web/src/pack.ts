@@ -418,7 +418,6 @@ export function modManifest(raw: unknown): PackManifest {
     ...(m.affectsGameplay !== undefined ? { affectsGameplay: m.affectsGameplay } : {}),
     ...(m.rules ? { rules: m.rules } : {}),
     ...(m.settings ? { settings: m.settings } : {}),
-    ...(m.lookPreset ? { lookPreset: m.lookPreset } : {}),
     ...(m.publicFlags ? { publicFlags: m.publicFlags } : {}),
     ...(m.renamedRuleFlags ? { renamedRuleFlags: m.renamedRuleFlags } : {}),
     /* THE COMPATIBILITY FIELDS, and this allowlist is exactly where they would

@@ -930,7 +930,6 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
   V4_TO_V5,
   V5_TO_V6,
   V6_TO_V7,
-  { from: 7, to: 8, summary: "Allow a saved mod list without changing older characters.", step: (save) => ({ ...save, version: 8 }) },
 ];
 
 /** The oldest save version this build can read. */

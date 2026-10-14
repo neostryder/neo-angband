@@ -42,7 +42,6 @@ export function legacyJson<V>(key: string): LegacyField<V> {
 }
 
 export interface FieldDocument<T extends object> {
-  update(store: FieldWriter | null | undefined, change: (data: T) => T, clearLegacy?: readonly (keyof T)[]): boolean;
   readonly storageKey: string;
   /** One field, or undefined when it is not set. Never throws. */
   read<K extends keyof T>(store: FieldReader | null | undefined, name: K): Exclude<T[K], undefined> | undefined;
@@ -103,20 +102,6 @@ export function fieldDocument<T extends object>(options: {
 
   return {
     storageKey,
-    update(target, change, clearLegacy = []) {
-      if (!target) return false;
-      try {
-        const doc = load(target);
-        if (doc.kind === "blocked") return false;
-        const back = store(target, change(base(target, doc) as T));
-        if (back === null) return false;
-        for (const name of clearLegacy) {
-          const old = legacy[name];
-          if (old !== null && back[name] !== undefined) target.removeItem?.(old.key);
-        }
-        return true;
-      } catch { return false; }
-    },
     read(target, name) {
       if (!target) return undefined;
       try {

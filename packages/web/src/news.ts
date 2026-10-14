@@ -294,12 +294,10 @@ export function titleLines(): readonly TitleLine[] {
  * FIRST rather than in File-menu order, because with more than one profile it is
  * the row that decides which profile's roster every other row below it acts on.
  */
-export type TitleChoice = "profile" | "new" | "open" | "load" | "mods" | "look" | "quit" | "install" | "update" | `mod:${number}`;
+export type TitleChoice = "profile" | "new" | "open" | "load" | "mods" | "quit" | "install" | "update" | `mod:${number}`;
 
 /** Which title rows are live, mirroring main-win.c's EnableMenuItem calls. */
 export interface TitleOptions {
-  readonly look?: "Vanilla" | "Neo";
-  readonly lookPending?: string;
   readonly modRows?: readonly { readonly choice: `mod:${number}`; readonly label: string; readonly key?: string }[];
   /** A living character can be resumed. */
   canLoad: boolean;
@@ -377,7 +375,6 @@ export function titleRows(opts: TitleOptions): TitleRow[] {
     },
     { choice: "mods", key: "m", label: t("news.title.mods", "(M)ods"), enabled: true },
   ];
-  if (opts.look) rows.push({ choice: "look", key: "l", label: `(L)ook: ${opts.look}`, enabled: true });
   /* Before Quit, because Quit is last in the File menu and this is not a File
    * menu item at all - putting it after Quit would read as though upstream had
    * one there. */
@@ -393,7 +390,7 @@ export function titleRows(opts: TitleOptions): TitleRow[] {
     rows.push({ choice: "update", key: "u", label: t("news.title.update", "(U)pdate"), enabled: true });
   }
   rows.push({ choice: "quit", key: "q", label: t("news.title.quit", "(Q)uit"), enabled: opts.canQuit });
-  const reserved = new Set(["p", "n", "o", "r", "m", "l", "i", "u", "q"]);
+  const reserved = new Set(["p", "n", "o", "r", "m", "i", "u", "q"]);
   for (const row of opts.modRows ?? []) {
     const key = row.key?.toLowerCase() ?? "";
     const available = key !== "" && !reserved.has(key);
@@ -663,7 +660,6 @@ export function showTitleScreen(
     const paint = (): void => {
       const { cols, rows: height } = term.size();
       linkSpans = paintTitleArt(term);
-      if (opts.lookPending) term.print(0, 22, opts.lookPending.slice(0, cols).padEnd(cols), UI_DIM);
       /* The prompt line, on upstream's own row. The project information is part
        * of the painted screen above (titleLines), so there is one place where the
        * layout is decided and one place to check it against the row budget. */

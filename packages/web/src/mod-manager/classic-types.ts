@@ -75,9 +75,6 @@ export interface ModFolderPicker {
 
 /** What the manager needs from the host (discovery + reload are browser-only). */
 export interface ModManagerDeps {
-  look?: import("../look-state").LookStore;
-  modLists?: import("./mod-lists").ModListStore;
-  saveReferences?: (id: string) => boolean;
   /** The persisted enable/consent/profile store. */
   store: ModStore;
   /**

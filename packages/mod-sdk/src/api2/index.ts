@@ -87,6 +87,7 @@ export type {
   Api2HistoryRule,
   Api2ObjectListKey,
   Api2Policies,
+  Api2PrefErrorsPolicy,
   Api2PolicyEffects,
   Api2PolicyKind,
   Api2PolicyName,
@@ -98,6 +99,7 @@ export type {
   Api2TileFill,
   Api2TileFiller,
   Api2TileRule,
+  Api2WalkBlockedByDiggablePolicy,
 } from "./policies.js";
 export { defineApi2Mod } from "./domains.js";
 export type {

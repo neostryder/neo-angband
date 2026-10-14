@@ -40,7 +40,6 @@ import {
   type ModState,
   type PackManifest,
   type SortPin,
-  type SaveModList,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { fieldDocument, legacyJson, type LegacyField } from "./field-document";
 import { readSetting, writeSetting } from "./settings-store";
@@ -51,7 +50,6 @@ import { effectiveGrants, isUnreviewed, type ModTier, type TierRefusal } from ".
 export const MOD_STATE_STORAGE_KEY = "neo-angband:mod-state";
 /** Where setting values live. They stay out of MOD_STATE_STORAGE_KEY on purpose; json/mod-settings.ts says why. */
 export const MOD_SETTINGS_STORAGE_KEY = "neo-angband:mod-settings";
-export const MOD_INSTALL_REVISION_STORAGE_KEY = "neo-angband:mod-install-revision";
 /* The pump rate for a mod's autoplayer (ModPlugin.controller), player-set
  * beside the mod's own rule row that turns the controller on at all. */
 
@@ -103,10 +101,6 @@ const modState = fieldDocument<ModState>({
   storageKey: MOD_STATE_STORAGE_KEY,
   empty: {},
   legacy: {
-    revision: null,
-    setRevision: null,
-    conflictOverrides: null,
-    settingValues: null,
     enabled: legacyKey("neo:enabledMods", strings),
     choices: legacyKey("neo:modChoices", booleans),
     consents: legacyKey("neo:modConsents", (value) => {
@@ -534,10 +528,7 @@ function readField<K extends keyof ModState>(storage: StorageLike | null, name: 
 
 /* Storage unavailable or full: degrade silently, like roster.ts. */
 function writeField<K extends keyof ModState>(storage: StorageLike | null, name: K, value: ModState[K]): void {
-  modState.update(storage, (state) => {
-    const setRevision = (state.setRevision ?? 0) + (["enabled", "choices", "pins", "sectionChoices", "conflictOverrides"].includes(name) ? 1 : 0);
-    return Object.fromEntries(Object.entries({ ...state, [name]: value, revision: (state.revision ?? 0) + 1, setRevision }).filter(([, entry]) => entry !== undefined)) as ModState;
-  }, [name]);
+  modState.write(storage, name, value);
 }
 
 /**
@@ -546,46 +537,6 @@ function writeField<K extends keyof ModState>(storage: StorageLike | null, name:
  * null/failing storage.
  */
 export class ModStore {
-  installationRevision(): string | null {
-    try { return globalThis.localStorage?.getItem(MOD_INSTALL_REVISION_STORAGE_KEY) ?? null; }
-    catch { return null; }
-  }
-  configurationRevision(): string {
-    return JSON.stringify([this.storage?.getItem(MOD_STATE_STORAGE_KEY) ?? null, this.storage?.getItem(MOD_SETTINGS_STORAGE_KEY) ?? null]);
-  }
-
-  saveRevision(): string {
-    return JSON.stringify([modState.read(this.storage, "setRevision") ?? 0, this.getEnabled(), this.getModChoices(), this.getPins(), this.getSectionChoices(), this.getConflictOverrides()]);
-  }
-
-  getConflictOverrides(): Record<string, string> {
-    return { ...readField(this.storage, "conflictOverrides", {}) };
-  }
-
-  setConflictOverride(slot: string, winner: string | null): boolean {
-    const values = this.getConflictOverrides();
-    if (winner === null) delete values[slot];
-    else values[slot] = winner;
-    return modState.update(this.storage, (state) => ({ ...state, revision: (state.revision ?? 0) + 1, setRevision: (state.setRevision ?? 0) + 1, conflictOverrides: values }));
-  }
-
-  applyModList(list: SaveModList, revision: string, effectiveEnabled: readonly string[] = []): boolean {
-    if (revision !== this.configurationRevision()) return false;
-    const sections = { ...this.getSectionChoices() };
-    const settings = { ...this.getSettingValues() };
-    for (const mod of list.mods) {
-      sections[mod.id] = { ...mod.sections };
-      settings[mod.id] = { ...mod.settings };
-    }
-    return modState.update(this.storage, (state) => ({
-      ...state, revision: (state.revision ?? 0) + 1, setRevision: (state.setRevision ?? 0) + 1,
-      enabled: [...list.resolvedOrder],
-      choices: { ...state.choices, ...Object.fromEntries([...this.getEnabled(), ...effectiveEnabled, ...list.mods.map((m) => m.id)].map((id) => [id, list.resolvedOrder.includes(id)])) },
-      pins: Object.fromEntries(list.orderPins.map(({ id, ...pin }) => [id, pin])),
-      ruleChoices: { ...list.ruleChoices }, sectionChoices: sections, settingValues: settings,
-      conflictOverrides: { ...list.conflictOverrides },
-    }));
-  }
   constructor(private readonly storage: StorageLike | null) {}
 
   /* --- Enabled set --------------------------------------------------- */
@@ -946,8 +897,6 @@ export class ModStore {
   /** Setting values by mod id, then setting id. A missing entry means the player never moved it. Clamping happens on read, in ctx.settings. */
   getSettingValues(): Record<string, Record<string, number>> {
     try {
-      const combined = modState.read(this.storage, "settingValues");
-      if (combined) return structuredClone(combined);
       const raw = this.storage?.getItem(MOD_SETTINGS_STORAGE_KEY) ?? null;
       if (raw === null) return {};
       const parsed = parseDocument(raw, modSettingValuesFormat);
@@ -965,25 +914,11 @@ export class ModStore {
     if (!Number.isFinite(value)) return;
     const all = this.getSettingValues();
     all[modId] = { ...(all[modId] ?? {}), [settingId]: value };
-    if (modState.has(this.storage, "settingValues")) {
-      writeField(this.storage, "settingValues", all);
-      return;
-    }
     try {
       this.storage?.setItem(MOD_SETTINGS_STORAGE_KEY, serializeDocument(modSettingValuesFormat, { values: all }, { compact: true }));
     } catch {
       /* Full or blocked storage: the new value is lost when the page closes. */
     }
-  }
-
-  replaceSettingValues(modId: string, values: Readonly<Record<string, number>>): void {
-    const all = this.getSettingValues();
-    all[modId] = { ...values };
-    if (modState.has(this.storage, "settingValues")) {
-      writeField(this.storage, "settingValues", all);
-      return;
-    }
-    this.storage?.setItem(MOD_SETTINGS_STORAGE_KEY, serializeDocument(modSettingValuesFormat, { values: all }, { compact: true }));
   }
 
   /* --- Rule choices (Fixes & tweaks menu) ---------------------------- */

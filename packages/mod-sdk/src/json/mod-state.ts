@@ -17,10 +17,6 @@ const pin = json.object({
  * defaults apply, which is different from an empty list.
  */
 const validator = json.object({
-  revision: json.optional(json.integer),
-  setRevision: json.optional(json.integer),
-  conflictOverrides: json.optional(byName(json.string)),
-  settingValues: json.optional(byName(byName(json.finiteNumber))),
   /** The enabled mods, in load order. */
   enabled: json.optional(json.array(json.string)),
   /** Mod id to the player's explicit on or off, which outranks an external manager's order. */

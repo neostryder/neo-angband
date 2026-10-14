@@ -29,8 +29,6 @@
  */
 
 /** The file's own kind marker - the gate on import, never the file extension. */
-import { modListValidator } from "@rpgm-tools/neo-angband-mod-sdk";
-
 export const DELVE_MAGIC = "neo-angband-delve";
 
 /**
@@ -95,7 +93,6 @@ export interface DelveOptions {
 
 /** A Delve file, exactly the shape docs/MOD_PROFILES.md's "The file format" specifies. */
 export interface DelveFile {
-  readonly modList?: import("@rpgm-tools/neo-angband-mod-sdk").SaveModList;
   readonly magic: typeof DELVE_MAGIC;
   readonly formatVersion: number;
   readonly name: string;
@@ -108,7 +105,6 @@ export interface DelveFile {
 
 /** Build a Delve object from its parts. Pure; `encodeDelve` serialises it. */
 export function buildDelveFile(input: {
-  readonly modList?: import("@rpgm-tools/neo-angband-mod-sdk").SaveModList;
   readonly name: string;
   readonly description?: string;
   readonly createdAt: string;
@@ -118,7 +114,6 @@ export function buildDelveFile(input: {
 }): DelveFile {
   return {
     magic: DELVE_MAGIC,
-    ...(input.modList ? { modList: input.modList } : {}),
     formatVersion: DELVE_FORMAT_VERSION,
     name: input.name,
     ...(input.description !== undefined && input.description !== ""
@@ -216,10 +211,7 @@ export function decodeDelve(text: string): DelveDecodeResult {
     typeof o["createdWithEngine"] === "string" ? o["createdWithEngine"] : "";
   const description = typeof o["description"] === "string" ? o["description"] : undefined;
   const options = readDelveOptions(o["options"]);
-  const modList = o["modList"] === undefined ? null : modListValidator.validate(o["modList"]);
-  if (modList && !modList.ok) return { ok: false, why: "That Delve has an invalid mod list." };
   const file: DelveFile = {
-    ...(modList?.ok ? { modList: modList.value } : {}),
     magic: DELVE_MAGIC,
     formatVersion: version,
     name,

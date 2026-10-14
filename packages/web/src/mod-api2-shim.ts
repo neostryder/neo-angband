@@ -15,7 +15,7 @@
  */
 
 import type { ModHooks, ModPluginContext } from "@rpgm-tools/neo-angband-core";
-import { inputToken, tokenIsCurrent, type PlayerCommand } from "@rpgm-tools/neo-angband-core";
+import { inputToken, movementTunnelTest, prefErrorPolicy, setPrefErrorPolicy, tokenIsCurrent, tunnelAux, type CaveCmdDeps, type PlayerCommand, type PrefErrorPolicy } from "@rpgm-tools/neo-angband-core";
 import {
   api2PolicyEffects,
   apiRangeVerdict,
@@ -199,6 +199,55 @@ export interface Api2PolicyTargets {
   readonly tiles: { register(filler: (fill: Api2TileFill) => void): void } | null;
 }
 
+export function api2PolicyModHooks(registrations: Api2PolicyRegistrations, active: () => boolean): ModHooks {
+  if (!registrations.walkBlockedByDiggable) return {};
+  return {
+    walkBlockedByDiggable: (state, grid, deps) => {
+      if (!active() || !movementTunnelTest(state, grid)) return null;
+      tunnelAux(state, grid, deps as CaveCmdDeps);
+      return state.z.moveEnergy;
+    },
+  };
+}
+
+const prefContributions = new Map<string, PrefErrorPolicy>();
+let policyLoadOrder: readonly string[] = [];
+let priorPrefPolicy: PrefErrorPolicy | null = null;
+
+function applyPrefContributions(): void {
+  const ids = [...prefContributions.keys()];
+  ids.sort((a, b) => {
+    const left = policyLoadOrder.indexOf(a);
+    const right = policyLoadOrder.indexOf(b);
+    return (left < 0 ? policyLoadOrder.length : left) - (right < 0 ? policyLoadOrder.length : right);
+  });
+  const last = ids.at(-1);
+  setPrefErrorPolicy(last === undefined ? priorPrefPolicy : prefContributions.get(last)!);
+  if (last === undefined) priorPrefPolicy = null;
+}
+
+export function setApi2PolicyLoadOrder(ids: readonly string[]): void {
+  policyLoadOrder = [...ids];
+  if (prefContributions.size > 0) applyPrefContributions();
+}
+
+export function removeApi2PrefErrors(id: string): void {
+  if (prefContributions.delete(id)) applyPrefContributions();
+}
+
+export function contributeApi2PrefErrors(id: string, registrations: Api2PolicyRegistrations): () => void {
+  const declaration = registrations.prefErrors;
+  if (!declaration) return () => undefined;
+  if (prefContributions.size === 0) priorPrefPolicy = prefErrorPolicy();
+  const policy = { continueAfterError: declaration.continueAfterError, reportLimit: declaration.reportLimit };
+  prefContributions.set(id, policy);
+  applyPrefContributions();
+  return () => {
+    if (prefContributions.get(id) !== policy) return;
+    removeApi2PrefErrors(id);
+  };
+}
+
 /**
  * Install a mod's policy registrations. `active` is asked on every use, and a
  * mod that is no longer active answers as if it had installed nothing: no
@@ -259,6 +308,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
   let active: Api2HookName[] = [];
   const hosts = new Set<ReturnType<typeof createApi2Host>>();
   let stopped = false;
+  let releasePrefErrors: () => void = () => undefined;
   let generation = 0;
   const build = (ctx: ModPluginContext, extra: Partial<Api2HostOptions> = {}) => {
     const mod = createApi2Host(ctx, { ...options(), activeHooks: active,
@@ -294,6 +344,9 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
     const hooksOf = definition.hooks?.bind(definition);
     const policiesOf = definition.policies?.bind(definition);
     plugin.hooks = (ctx: ModPluginContext): ModHooks | undefined => {
+      stopped = false;
+      const installedGeneration = generation;
+      releasePrefErrors();
       pluginPolicies.delete(plugin as ModPlugin);
       const engine = api2Engine(ctx, options());
       const context = { id: ctx.id, flags: plain({ ...ctx.flags }), ...(engine ? { engine } : {}) };
@@ -307,6 +360,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
         const effects = api2PolicyEffects(policies, (capability) => grants.has(capability));
         fromTables = effects.hooks;
         pluginPolicies.set(plugin as ModPlugin, { ...context, registrations: effects.registrations });
+        releasePrefErrors = contributeApi2PrefErrors(ctx.id, effects.registrations);
       }
       const merged = fromTables === undefined ? declared : { ...fromTables };
       if (fromTables && merged) {
@@ -315,7 +369,10 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
         }
       }
       active = declaredHooks(merged);
-      return merged ? api2ToModHooks(merged) : undefined;
+      return merged ? {
+        ...api2ToModHooks(merged),
+        ...api2PolicyModHooks(pluginPolicies.get(plugin)?.registrations ?? {}, () => !stopped && generation === installedGeneration),
+      } : undefined;
     };
   }
   if (definition.start || definition.actions?.length || definition.titleActions?.length) {
@@ -421,6 +478,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
   plugin.uninstall = () => {
     stopped = true;
     generation += 1;
+    releasePrefErrors();
     try { definition.stop?.(); } finally {
       for (const mod of hosts) disposeApi2Host(mod);
       hosts.clear();

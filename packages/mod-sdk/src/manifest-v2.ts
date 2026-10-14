@@ -169,7 +169,6 @@ export interface ManifestV2Data {
   readonly fields?: readonly FieldDecl[];
   readonly rules?: readonly PackRule[];
   readonly settings?: readonly PackSetting[];
-  readonly lookPreset?: PackManifest["lookPreset"];
   readonly publicFlags?: readonly string[];
   readonly renamedRuleFlags?: Readonly<Record<string, string>>;
   readonly sections?: readonly PackSection[];
@@ -264,7 +263,6 @@ const dataShape = json.object({
   fields: json.optional(shared<FieldDecl[]>()),
   rules: json.optional(shared<PackRule[]>()),
   settings: json.optional(shared<PackSetting[]>()),
-  lookPreset: json.optional(shared<NonNullable<PackManifest["lookPreset"]>>()),
   publicFlags: json.optional(shared<string[]>()),
   renamedRuleFlags: json.optional(shared<Record<string, string>>()),
   sections: json.optional(shared<PackSection[]>()),
@@ -359,7 +357,7 @@ export function schema1Runtime(m: Record<string, unknown>): { runtime: ModRuntim
 /** Schema 1 fields that schema 2 keeps under the same name and meaning. */
 const KEPT_FIELDS = [
   "description", "author", "license", "repository", "payload", "shape", "facets",
-  "loadAfter", "loadBefore", "group", "saveSchema", "fields", "rules", "settings", "lookPreset",
+  "loadAfter", "loadBefore", "group", "saveSchema", "fields", "rules", "settings",
   "publicFlags", "renamedRuleFlags", "sections", "tilePacks", "resources",
   "restoredItemArt", "restoredMonsterArt", "restoredFlavorArt", "nondeterministic",
   "affectsGameplay", "capabilities",

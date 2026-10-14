@@ -1,7 +1,5 @@
 import { validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
-import { archivedManifest, archivedMod, archivedSavedMod, archivedVersions, installedMods, restoreArchivedVersion, restoreInstallations } from "../mod-install";
-import { installBlocked } from "../mod-consent";
-import { originConflict } from "../mod-source";
+import { installedMods } from "../mod-install";
 import { buildCatalog, ModStore, type CatalogMod } from "../mod-store";
 import { safeLaunch } from "../safe-launch";
 import { defaultProfileStore } from "../profiles";
@@ -22,18 +20,10 @@ const catalogCores = new WeakMap<CatalogMod, CoreModManager>();
 
 function browsingEnvironment(deps: ModBrowseDeps): Pick<ModManagerEnvironment, "discover" | "curated" | "readManifest" | "install" | "uninstall" | "consent" | "refreshUpdates"> {
   return {
-    discover: async (ref) => {
-      const cached = await archivedMod(ref);
-      return cached ? { ok: true, ref, mod: cached.mod } : deps.discover(ref);
-    },
+    discover: deps.discover,
     curated: deps.curated,
-    readManifest: async (mod) => (await archivedMod({ repo: mod.repo, tag: mod.tag.startsWith("archive:") ? mod.tag : mod.sha ?? mod.tag }))?.manifest ?? validateManifest(JSON.parse(await deps.readRepoFile(mod.repo, mod.tag, "manifest.json"))),
-    install: async (mod, origin, progress) => {
-      const cached = await archivedMod({ repo: mod.repo, tag: mod.tag.startsWith("archive:") ? mod.tag : mod.sha ?? mod.tag });
-      if (!cached) return deps.install(mod, origin, progress);
-      const blocked = installBlocked(origin, deps.consent.read()) ?? originConflict((await installedMods()).find((m) => m.id === mod.id) ?? null, mod.repo);
-      return blocked ? { ok: false, problem: blocked } : restoreArchivedVersion(cached.meta);
-    },
+    readManifest: async (mod) => validateManifest(JSON.parse(await deps.readRepoFile(mod.repo, mod.tag, "manifest.json"))),
+    install: deps.install,
     uninstall: deps.uninstall,
     consent: deps.consent,
     ...("refresh" in deps ? { refreshUpdates: (deps as ModUpgradeDeps).refresh } : {}),
@@ -45,23 +35,6 @@ export function classicManager(deps: ModManagerDeps): ClassicService {
   if (!manager) {
     manager = createModManagerService({
       store: deps.store,
-      ...(deps.look ? { look: deps.look } : {}),
-      saveReferences: deps.saveReferences ?? (() => false),
-      restoreInstallations: (previous) => restoreInstallations(previous),
-      discoverSavedVersion: async (saved) => {
-        const cached = await archivedSavedMod(saved);
-        return cached ? { ok: true, ref: { repo: cached.mod.repo, tag: cached.mod.tag }, mod: cached.mod } : null;
-      },
-      conflictOverrides: { read: () => deps.store.getConflictOverrides(), write: (slot, winner) => deps.store.setConflictOverride(slot, winner) },
-      previousVersion: async (id) => {
-        const current = (await installedMods()).find((m) => m.id === id);
-        const previous = [...await archivedVersions()].reverse().find((m) => m.id === id && (m.sha !== current?.sha || m.tag !== current?.tag || JSON.stringify(m.digests) !== JSON.stringify(current?.digests)));
-        if (!previous) return null;
-        const manifest = await archivedManifest(previous);
-        if (!manifest) return null;
-        const cached = await archivedSavedMod({ id, name: manifest.name, version: manifest.version, repository: previous.repo, tag: previous.tag, commit: previous.sha ?? null, payloadDigest: previous.digests ? { ...previous.digests } : null, api: manifest.api ?? "*", settings: {}, sections: {} });
-        return cached ? { ok: true, ref: { repo: cached.mod.repo, tag: cached.mod.tag }, mod: cached.mod } : null;
-      },
       listCatalog: deps.listCatalog,
       installedMetadata: () => installedMods(globalThis),
       safeMode: safeLaunch,
