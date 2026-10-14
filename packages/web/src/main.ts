@@ -449,7 +449,6 @@ import {
   configureModHealth,
   FAULT_LIMIT,
   FAULT_WINDOW_TURNS,
-  manifestBudgetFor,
   modHealth,
   switchOffNotice,
   type ModSwitchOff,
@@ -15926,12 +15925,6 @@ function modSwitchedOff(off: ModSwitchOff): void {
 configureModHealth({
   turn: () => state.turn,
   enforce: true,
-  budgetFor: (id) => manifestBudgetFor(id, [
-    ...activeModCode().plugins.map((loaded) => loaded.manifest),
-    ...activeModCode().workers.map((loaded) => loaded.manifest),
-    ...[...sandboxMods.values()].map((loaded) => loaded.manifest),
-    ...[...trustedMods.values()].map((loaded) => loaded.manifest),
-  ]),
   onSwitchOff: modSwitchedOff,
   onOverBudget: (report) => {
     log.warn(
