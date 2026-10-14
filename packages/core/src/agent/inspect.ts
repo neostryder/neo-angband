@@ -354,7 +354,8 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
         if (knownIsClosedDoor(state, to)) codes.push("open");
         if (knownIsOpenDoor(state, to)) codes.push("close");
         const disarmable = deps.knowledgeSafe
-          ? squareKnownTraps(state.known, to).some((kind) => kind.flags.has(TRF.TRAP))
+          ? squareKnownTraps(state.known, to).some((kind, index) => kind.flags.has(TRF.TRAP) &&
+            !state.known.trapDisabled?.get(to.y * state.chunk.width + to.x)?.[index])
           : squareIsDisarmableTrap(state, to) || (knownIsClosedDoor(state, to) && squareIsUnlockedDoor(state, to, deps.inspect?.trapDeps));
         if (disarmable) codes.push("disarm");
         /* A walk into a monster is the registered melee command. */

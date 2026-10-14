@@ -19,6 +19,7 @@ import type { AgentViewDeps, ItemView } from "./types.js";
 export interface TrapView {
   readonly index: number;
   readonly name: string;
+  readonly disabled: boolean;
 }
 
 /** A shadow-pile entry. Sensed objects reveal only money versus other items. */
@@ -133,7 +134,8 @@ export function captureKnownLevel(
         feat,
         /* The player's trap memory, not the live grid: a trap removed or
          * re-armed out of view is remembered as it was last seen. */
-        traps: squareKnownTraps(state.known, grid).map((kind) => ({ index: kind.tidx, name: kind.name })),
+        traps: squareKnownTraps(state.known, grid).map((kind, index) => ({ index: kind.tidx, name: kind.name,
+          disabled: state.known.trapDisabled?.get(y * chunk.width + x)?.[index] ?? false })),
         objects: pile.map((entry): RememberedObject => {
           if (entry.sensed) {
             return { sensed: true, money: tvalIsMoney(entry.obj.tval) };
@@ -197,6 +199,7 @@ export function captureKnownLevel(
           traps: squareTrap(state, grid).map((trap) => ({
             index: trap.tidx,
             name: trap.kind.name,
+            disabled: trap.timeout > 0,
           })),
           objects: (state.floor.get(index) ?? []).map((obj) =>
             itemView(0, obj, state, deps),

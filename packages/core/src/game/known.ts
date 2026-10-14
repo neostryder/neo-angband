@@ -201,6 +201,7 @@ export interface KnownMap {
    * memorized.
    */
   traps?: Map<number, import("../world/trap.js").TrapKind[]>;
+  trapDisabled?: Map<number, boolean[]>;
 }
 
 /** A blank (all-unknown) knowledge map for a fresh level. */

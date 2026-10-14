@@ -34,6 +34,7 @@ function loadRecords<T>(name: string): T[] {
 }
 
 const pack: GamePack = {
+  trap: loadRecords("trap"),
   store: loadRecords("store"),
   constants: loadJson("constants"),
   terrain: loadRecords("terrain"),
@@ -117,6 +118,34 @@ function caps(...granted: string[]) {
 }
 
 describe("known level", () => {
+  it("remembers a disabled trap without revealing its timeout or unseen rearming", () => {
+    const game = newGame();
+    const { state } = game;
+    const grid = gridAwayFromPlayer(game);
+    const key = grid.y * state.chunk.width + grid.x;
+    const kind = game.booted.registries.traps!.find((entry) => entry.flags.has(TRF.TRAP))!;
+    const flags = kind.flags.clone();
+    flags.on(TRF.VISIBLE);
+    const trap: Trap = { tidx: kind.tidx, kind, grid, power: 0, timeout: 20, flags };
+    state.traps.set(key, [trap]);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    squareMemorize(state, grid);
+    squareMemorizeTraps(state, grid);
+    state.chunk.sqinfoOff(grid, SQUARE.SEEN);
+    const view = createAgentView(state, undefined, {}, caps("state:map.read"));
+    const traps = () => view.knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)!.remembered.traps;
+    const before = traps();
+    expect(before[0]).toMatchObject({ disabled: true });
+    expect(before[0]).not.toHaveProperty("timeout");
+    trap.timeout = 0;
+    expect(traps()).toEqual(before);
+    const loaded = loadGame(pack, saveGame(game));
+    expect(createAgentView(loaded.state).knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)!.remembered.traps).toEqual(before);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    squareMemorizeTraps(state, grid);
+    expect(traps()[0]!.disabled).toBe(false);
+  });
+
   it("returns known items from stale floor memory without live changes", () => {
     const game = newGame();
     const { state } = game;
@@ -252,7 +281,7 @@ describe("known level", () => {
     squareMemorizeTraps(state, grid);
     const rememberedTrap = createAgentView(state, undefined, {}, caps("state:map.read"))
       .knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y);
-    expect(rememberedTrap?.remembered.traps).toEqual([{ index: 3, name: "test trap" }]);
+    expect(rememberedTrap?.remembered.traps).toEqual([{ index: 3, name: "test trap", disabled: false }]);
   });
 
   it("keeps a seen pile after it leaves view and the real floor changes", () => {

@@ -275,6 +275,7 @@ export interface KnownMonster {
 export interface KnownTrap {
   readonly index: number;
   readonly name: string;
+  readonly disabled: boolean;
 }
 
 export interface KnownMonsterBlow {
