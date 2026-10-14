@@ -1,6 +1,6 @@
 /**
  * Runtime health for mod code: every call the host makes into a mod goes
- * through `invokeMod`, which attributes the call, times it, counts its faults
+ * through `modHealth().run`, which attributes the call, times it, counts its faults
  * and switches the mod off for the session when it keeps failing.
  *
  * What it counts as a fault: a throw, a rejected promise, and a repeated breach
@@ -33,6 +33,8 @@
  * `enforce: true`, from main.ts). Unit tests of the UI runtimes run without it,
  * so a test that makes one mod id fault many times measures the same as before.
  */
+
+import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** Faults within the window that switch a mod off for the session. */
 export const FAULT_LIMIT = 3;
@@ -144,15 +146,17 @@ export class ModSwitchedOffError extends Error {
 /**
  * A mod's time budget per turn.
  *
- * The one place a declared budget will be read once the manifest has a field
- * for it. Until then every mod gets the default. Whatever is declared is
- * capped at HARD_CEILING_MS.
+ * A missing or invalid budget takes the default; declarations stop at the ceiling.
  */
 export function turnBudgetMs(declared?: number): number {
   if (declared === undefined || !Number.isFinite(declared) || declared <= 0) {
     return DEFAULT_TURN_BUDGET_MS;
   }
   return Math.min(declared, HARD_CEILING_MS);
+}
+
+export function manifestBudgetFor(id: string, manifests: readonly Pick<PackManifest, "id" | "budget">[]): number {
+  return turnBudgetMs(manifests.find((manifest) => manifest.id === id)?.budget?.msPerTurn);
 }
 
 interface Mutable {
@@ -400,7 +404,7 @@ export class ModHealthMonitor {
       this.periodCrossed.set(id, "ceiling");
       if (crossed === undefined) record.overBudget += 1;
       record.ceilingBreaches += 1;
-      this.options.onOverBudget?.({ id, turn, ms: spent, budgetMs, ceiling: true });
+      this.options.onOverBudget?.({ id, turn, ms: spent, budgetMs: HARD_CEILING_MS, ceiling: true });
       /* The first breach in the window is recorded and reported; each further
        * one in the window counts as a fault. */
       record.breachTurns = inWindow(record.breachTurns, turn);
@@ -476,19 +480,6 @@ export function modHealth(): ModHealthMonitor {
 /** Set the page monitor's turn source, clock, enforcement and listeners (main.ts at boot, and tests). */
 export function configureModHealth(options: ModHealthOptions): void {
   monitor.configure(options);
-}
-
-/**
- * Call mod code through the page monitor: `fn(...args)`, attributed to mod
- * `modId` at `site`. See ModHealthMonitor.run for what is recorded.
- */
-export function invokeMod<A extends unknown[], R>(
-  modId: string,
-  site: string,
-  fn: (...args: A) => R,
-  ...args: A
-): R {
-  return monitor.run(modId, site, () => fn(...args));
 }
 
 /**

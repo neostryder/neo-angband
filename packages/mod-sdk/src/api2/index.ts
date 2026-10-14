@@ -1,6 +1,6 @@
 /** The mod API, version 2. See docs/modding/API2.md. */
 
-export { apiRangeVerdict, MOD_API2_DEFAULT_RANGE, MOD_API2_VERSION } from "./version.js";
+export { apiRangeVerdict, ENGINE_API2_VERSION, MOD_API2_DEFAULT_RANGE, MOD_API2_VERSION } from "./version.js";
 export type { ApiRangeVerdict } from "./version.js";
 export { api2NotGranted, api2Ok, api2Refused, api2Unavailable, isNotGranted } from "./result.js";
 export type {
@@ -20,6 +20,7 @@ export type {
   KnownLevel,
   KnownLevelCell,
   KnownMonster,
+  KnownMonsterBlow,
   KnownMonsterHealth,
   KnownMonsterStatus,
   KnownObjectAura,
@@ -94,19 +95,14 @@ export type {
 } from "./policies.js";
 export { defineApi2Mod } from "./domains.js";
 export type {
-  Api2Presentation, Api2Presenters, Api2BootPhase, Api2Display, Api2DisplayHit, Api2DisplaySnapshot,
-  Api2DisplayGridRequest, Api2MapView, Api2Subwindows, Api2SubwindowInfo,
-  Api2SubwindowControl, Api2Tiles, Api2DomUi, Api2DomPanel, Api2PanelSpec,
-  Api2PanelKindSpec, Api2PanelMount, Api2PanelState, Api2ChromeTheme,
-  Api2TerminalGround,
-  Api2KeyRepeat,
-  Api2BirthPresenter, Api2BirthSession, Api2BirthAbilityView, Api2BirthRaceView,
-  Api2BirthClassView, Api2BirthOptionView, Api2BirthCatalogue, Api2BirthPreview,
-  Api2BirthDraftView, Api2BirthResult, Api2Title, Api2TitleAction,
-} from "./presentation.js";
-export type {
+  Api2Activation,
+  Api2ActivationRef,
+  Api2BoundRecord,
+  Api2ControllerContext,
+  Api2Engine,
+  Api2EngineBindings,
+  Api2KeyEvent,
   Api2Act,
-  Api2BackupFolder, Api2BackupFolderEntry,
   Api2Command,
   Api2Content,
   Api2ContentRef,
@@ -124,7 +120,6 @@ export type {
   Api2KeyBinding,
   Api2Keys,
   Api2Manage,
-  Api2MenuAction,
   Api2Meta,
   Api2ModDefinition,
   Api2ModSummary,
@@ -149,6 +144,8 @@ export type {
   Api2TrueItem,
   Api2TrueLevel,
   Api2TrueMonster,
+  Api2TrueRace,
+  Api2StoreKnowledge,
   Api2Truth,
   Api2Ui,
   Api2View,

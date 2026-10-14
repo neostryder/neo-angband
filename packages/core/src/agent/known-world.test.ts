@@ -8,7 +8,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT, MFLAG, OF, RF, RSF, SQUARE, TMD, TRF, TV } from "../generated/index.js";
+import { FEAT, MFLAG, MON_TMD, OF, RF, RSF, SQUARE, TMD, TRF, TV } from "../generated/index.js";
 import { OBJ_MOD } from "../generated/object-modifiers.js";
 import { FlagSet } from "../bitflag.js";
 import { GameEvents } from "../events.js";
@@ -111,6 +111,7 @@ function clientDeps(game: StartedGame): AgentViewDeps {
   return {
     resolver: new ContentIdResolver({
       objects: reg.objects,
+      monsters: reg.monsters,
       playerRaces: game.players.races,
       playerClasses: game.players.classes,
     }),
@@ -198,6 +199,66 @@ function kindNamed(game: StartedGame, tval: number, name: string): ObjectKind {
 }
 
 describe("KnownWorld paired worlds", () => {
+  it("keeps hidden glow and changed terrain out of lighting and remembered passability", () => {
+    const [a, b] = pair();
+    const grid = hiddenEmptyGrid(a.state, { x: -1, y: -1 });
+    for (const game of [a, b]) {
+      game.state.chunk.setFeat(grid, FEAT.FLOOR);
+      squareMemorize(game.state, grid);
+    }
+    b.state.chunk.setFeat(grid, FEAT.GRANITE);
+    b.state.chunk.sqinfoOn(grid, SQUARE.GLOW);
+    expect(observed(a.state)).toBe(observed(b.state));
+    expect(createAgentView(a.state).tileActions!(grid).codes).toEqual(createAgentView(b.state).tileActions!(grid).codes);
+    const cell = buildKnownWorld(b.state).level!.cells.find((cell) => cell.x === grid.x && cell.y === grid.y)!;
+    expect(cell).toMatchObject({ lit: null, remembered: { feat: FEAT.FLOOR, passable: true } });
+    squareMemorize(b.state, grid);
+    expect(observed(a.state)).not.toBe(observed(b.state));
+  });
+
+  it("hides unobserved blows and exact status timers until lore learns the blows", () => {
+    const [a, b] = pair();
+    const monA = liveMonsters(a.state).find((mon) => mon.race.blows.length > 0)!;
+    const monB = twin(b.state, monA);
+    for (const mon of [monA, monB]) {
+      mon.mflag.on(MFLAG.VISIBLE);
+      mon.mflag.off(MFLAG.CAMOUFLAGE);
+      for (const timer of [MON_TMD.SLEEP, MON_TMD.FEAR, MON_TMD.CONF, MON_TMD.STUN]) mon.mTimed[timer] = 1;
+    }
+    for (const timer of [MON_TMD.SLEEP, MON_TMD.FEAR, MON_TMD.CONF, MON_TMD.STUN]) monB.mTimed[timer] = 90;
+    monB.race.blows[0] = { ...monB.race.blows[0]!, dice: null };
+    expect(observed(a.state)).toBe(observed(b.state));
+    expect(createAgentView(a.state).tileActions!(monA.grid).codes).toEqual(createAgentView(b.state).tileActions!(monB.grid).codes);
+    expect(knownMonsters(a.state).find((mon) => mon.raceIndex === monA.race.ridx)!.knownBlows).toEqual([]);
+    for (const game of [a, b]) getLore(game.state.lore, monA.race).blowKnown[0] = true;
+    expect(observed(a.state)).not.toBe(observed(b.state));
+    const blow = knownMonsters(a.state).find((mon) => mon.raceIndex === monA.race.ridx)!.knownBlows[0]!;
+    expect(blow).toMatchObject({ method: monA.race.blows[0]!.method.name, effect: monA.race.blows[0]!.effect.name });
+  });
+
+  it("keeps remembered objects on unknown terrain without revealing the real terrain", () => {
+    const [a, b] = pair();
+    const grid = hiddenEmptyGrid(a.state, { x: -1, y: -1 });
+    for (const game of [a, b]) {
+      const reg = game.booted.registries;
+      const obj = objectPrep(new Rng(1), reg.objects, reg.constants, kindNamed(game, TV.SWORD, "Dagger"), 1, "minimise");
+      floorCarry(game.state, grid, obj);
+      squareKnowPile(game.state, grid);
+      game.state.known.feat[grid.y * game.state.chunk.width + grid.x] = -1;
+    }
+    a.state.chunk.setFeat(grid, FEAT.FLOOR);
+    b.state.chunk.setFeat(grid, FEAT.GRANITE);
+    const cell = buildKnownWorld(a.state, a.state.knownWorldDeps).level!.cells.find((c) => c.x === grid.x && c.y === grid.y);
+    expect(cell?.remembered.feat).toBe(-1);
+    expect(cell?.remembered.objects).toHaveLength(1);
+    expect(cell?.remembered).not.toHaveProperty("featCode");
+    expect(cell).not.toHaveProperty("actual");
+    expect(observed(b.state)).toBe(observed(a.state));
+    squareMemorize(a.state, grid);
+    squareMemorize(b.state, grid);
+    expect(observed(b.state)).not.toBe(observed(a.state));
+  });
+
   it("uninspected store stock produces identical observations", () => {
     const [a, b] = pair();
     for (const game of [a, b]) game.changeLevel(0);
@@ -392,11 +453,35 @@ describe("KnownWorld paired worlds", () => {
     b.state.hasFlavor = swap(b.state.hasFlavor);
     carry(a, x);
     carry(b, y);
+    const known = buildKnownWorld(a.state, a.state.knownWorldDeps).inventory!.find((item) => item.tval === TV.POTION)!;
+    expect(known.carried).toBe(true);
+    expect(known.baseName).not.toContain("Speed");
     expect(observed(b.state)).toBe(observed(a.state));
 
     /* Control: learning the kind names it. */
     b.flavor.setAware(y);
     expect(observed(b.state)).not.toBe(observed(a.state));
+  });
+
+  it("reports carried items, floor items, and player scoring and shop facts", () => {
+    const [game] = pair();
+    const kind = kindNamed(game, TV.SWORD, "Dagger");
+    const obj = carry(game, kind);
+    obj.toH = 15;
+    const world = buildKnownWorld(game.state, game.state.knownWorldDeps);
+    const dagger = world.inventory!.find((item) => item.baseName === "Dagger")!;
+    expect(dagger.baseName).toBe("Dagger");
+    expect(dagger.carried).toBe(true);
+    const floor = objectPrep(new Rng(1), game.booted.registries.objects, game.booted.registries.constants, kind, 1, "minimise");
+    floorCarry(game.state, game.state.actor.grid, floor);
+    squareKnowPile(game.state, game.state.actor.grid);
+    expect(buildKnownWorld(game.state, game.state.knownWorldDeps).floorHere!.every((item) => !item.carried)).toBe(true);
+    game.state.actor.player.noscore = 32;
+    expect(buildKnownWorld(game.state, game.state.knownWorldDeps).player).toMatchObject({ noscore: 32, shopnum: null });
+    const shopFeat = game.booted.registries.features.shopFeats()[0];
+    if (shopFeat === undefined) throw new Error("the pack has no shop entrance");
+    game.state.chunk.setFeat(game.state.actor.grid, shopFeat);
+    expect(buildKnownWorld(game.state, game.state.knownWorldDeps).player!.shopnum).toBe(0);
   });
 
   it("floor memory that has gone stale is reported as remembered", () => {
@@ -723,6 +808,7 @@ describe("monsterBecameVisible", () => {
     expect(Object.isFrozen(heard[0]!.knownFlags)).toBe(true);
     /* The glyph comes only from the deps. */
     expect(heard[0]!.glyph).toBeDefined();
+    expect(heard[0]!.raceId).toBe(new ContentIdResolver(a.booted.registries).raceId(mon.race.ridx));
     expect(heard[0]).toEqual(knownMonsters(a.state, a.state.knownWorldDeps).find((m) => m.id === heard[0]!.id));
   });
 
