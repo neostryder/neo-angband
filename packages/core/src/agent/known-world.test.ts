@@ -199,6 +199,24 @@ function kindNamed(game: StartedGame, tval: number, name: string): ObjectKind {
 }
 
 describe("KnownWorld paired worlds", () => {
+  it("reports only the fuel printed in a light's name", () => {
+    const [a, b] = pair();
+    const torchA = carry(a, kindNamed(a, TV.LIGHT, "Wooden Torch"));
+    const torchB = carry(b, kindNamed(b, TV.LIGHT, "Wooden Torch"));
+    torchA.flags.on(OF.NO_FUEL);
+    torchB.flags.on(OF.NO_FUEL);
+    torchA.timeout = 25;
+    torchB.timeout = 2500;
+    expect(observed(b.state)).toBe(observed(a.state));
+    const item = () => buildKnownWorld(b.state, b.state.knownWorldDeps).inventory!.find((entry) => entry.label.includes("Wooden Torch"))!;
+    expect(item()).not.toHaveProperty("fuel");
+    torchB.flags.off(OF.NO_FUEL);
+    expect(item().name).toContain("(2500 turns)");
+    expect(item().fuel).toBe(2500);
+    torchB.timeout = 0;
+    expect(item().fuel).toBe(0);
+  });
+
   it("withholds unlearned blows, average health and spell frequency", () => {
     const [a, b] = pair();
     const monA = liveMonsters(a.state).find((mon) => mon.race.blows.length > 0)!;

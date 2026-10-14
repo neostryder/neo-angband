@@ -146,6 +146,7 @@ export interface KnownItem {
   readonly ego: boolean;
   readonly artifact: boolean;
   readonly artifactId?: number;
+  readonly fuel?: number;
   readonly flags: readonly string[];
   readonly modifiers: readonly { readonly code: string; readonly value: number }[];
   readonly brands: readonly string[];

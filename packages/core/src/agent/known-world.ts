@@ -51,7 +51,8 @@ import { gearGet } from "../game/gear.js";
 import { fmtDepth } from "../game/display.js";
 import { NOSCORE } from "../game/wizard.js";
 import { numberCharging } from "../game/obj-cmd.js";
-import { knownDescOf } from "../game/describe.js";
+import { describeObject, knownDescOf } from "../game/describe.js";
+import { ODESC } from "../obj/desc.js";
 import { MON_RACE_FLAG_ENTRIES, MON_SPELL_ENTRIES, MON_TMD, OF, PLAYER_TIMED_ENTRIES, RF, TMD } from "../generated/index.js";
 import { squareIsSeen, squareIsView } from "../world/view.js";
 import type { Store } from "../store/store.js";
@@ -60,7 +61,7 @@ import { distance } from "../loc.js";
 import { OBJ_NOTICE } from "../obj/knowledge.js";
 import { objectKnownShadow, objectRunesKnownUpstream } from "../obj/known-object.js";
 import type { GameObject } from "../obj/object.js";
-import { tvalCanHaveCharges, tvalCanHaveFlavor, tvalIsRod } from "../obj/object.js";
+import { tvalCanHaveCharges, tvalCanHaveFlavor, tvalIsLight, tvalIsRod } from "../obj/object.js";
 import { playerTimedGrade } from "../player/timed.js";
 import { captureCoreSnapshot } from "./boundary.js";
 import type { InputToken } from "./boundary.js";
@@ -210,6 +211,7 @@ export type KnownItem = Omit<ItemView, "timeout"> & {
   /** The name carries "{??}": the item has runes the player has not learned. */
   readonly unknownRunes: boolean;
   readonly artifactId?: number;
+  readonly fuel?: number;
 };
 
 /** One ware in a shop, or one item in the home. */
@@ -586,9 +588,12 @@ function unknownRunes(state: GameState, deps: AgentViewDeps, obj: GameObject, sh
 
 export function knownItem(state: GameState, deps: AgentViewDeps, item: ItemView, obj: GameObject | null, shopWare = false): KnownItem {
   const { timeout: _timeout, ...rest } = item;
+  const fuel = obj && tvalIsLight(obj.tval)
+    ? /\((-?\d+) turns\)/u.exec(item.name ?? describeObject(state, obj, ODESC.PREFIX | ODESC.FULL)) : null;
   return {
     ...rest,
     ...(item.artifact && obj?.artifact ? { artifactId: obj.artifact.aidx } : {}),
+    ...(fuel ? { fuel: Number(fuel[1]) } : {}),
     charging: obj ? chargingShown(state, deps, obj, shopWare) : 0,
     unknownRunes: obj ? unknownRunes(state, deps, obj, shopWare) : false,
   };
@@ -602,7 +607,9 @@ export function knownLoadoutSimulation(state: GameState, simulation: LoadoutSimu
   const item = (value: ItemView): KnownItem => {
     const { timeout: _timeout, ...rest } = value;
     const charging = /\((?:(\d+) )?charging\)/u.exec(value.name ?? "");
+    const fuel = tvalIsLight(value.tval) ? /\((-?\d+) turns\)/u.exec(value.name ?? "") : null;
     return { ...rest, charging: charging ? Number(charging[1] ?? 1) : 0,
+      ...(fuel ? { fuel: Number(fuel[1]) } : {}),
       unknownRunes: (value.name ?? "").includes("{??}") };
   };
   const loadout = (value: LoadoutSimulation["before"]) => ({

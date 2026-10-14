@@ -473,7 +473,7 @@ export interface Api2TrueMonster {
  * A real object on the level. It carries the turns left until it recharges
  * (`timeout`) where a known item carries only what its name says.
  */
-export type Api2TrueItem = Omit<KnownItem, "charging" | "unknownRunes" | "artifactId"> & { readonly timeout: number };
+export type Api2TrueItem = Omit<KnownItem, "charging" | "unknownRunes" | "artifactId" | "fuel"> & { readonly timeout: number };
 
 export interface Api2TrueCell {
   readonly x: number;
