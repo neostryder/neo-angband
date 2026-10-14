@@ -46,7 +46,8 @@ export function installModWorkerBootstrap(
   let nextCallback = 0;
   const pending = new Map<number, Pending>();
   const listeners = new Map<number, Listener>();
-  const callbacks = new Map<number, (action: string) => void>();
+  const callbacks = new Map<number, (action: string, value?: string | boolean) => void>();
+  const backupCallbacks = new Map<number, (file: { readonly name: string; readonly text: string }) => void>();
 
   const freeze = <T>(value: T): T => {
     if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
@@ -109,29 +110,9 @@ export function installModWorkerBootstrap(
       },
       view: {
         world: method("view.world"),
-        character: method("view.character"),
-        knowledge: method("view.knowledge"),
-        messages: method("view.messages"),
         player: method("view.player"),
         monsters: method("view.monsters"),
         level: method("view.level"),
-        look: method("view.look"),
-        simulateLoadout: method("view.simulateLoadout"),
-        catalogue: method("view.catalogue"),
-        inspect: {
-          simulateLoadout: method("view.inspect.simulateLoadout"),
-          item: method("view.inspect.item"),
-          itemRules: method("view.inspect.itemRules"),
-          itemTester: method("view.inspect.itemTester"),
-          bookForItem: method("view.inspect.bookForItem"),
-          spell: method("view.inspect.spell"),
-          monsterRecall: method("view.inspect.monsterRecall"),
-          projectionPath: method("view.inspect.projectionPath"),
-          blastArea: method("view.inspect.blastArea"),
-          travelPath: method("view.inspect.travelPath"),
-          compareLoadoutSlots: method("view.inspect.compareLoadoutSlots"),
-          tileActions: method("view.inspect.tileActions"),
-        },
         input: method("view.input"),
         isCurrent: method("view.isCurrent"),
       },
@@ -162,23 +143,35 @@ export function installModWorkerBootstrap(
       hooks: { available: m.hooks, active },
       content: {
         own: method("content.own"),
-        colors: method("content.colors"),
         asset: method("content.asset"),
         records: method("content.records"),
         lookup: method("content.lookup"),
       },
       ui: {
-        mount: (panel: unknown, onAction?: (action: string) => void): Promise<unknown> => {
+        mount: (panel: unknown, onAction?: (action: string, value?: string | boolean) => void, onDismiss?: () => void): Promise<unknown> => {
           let callbackId = 0;
           if (typeof onAction === "function") {
             nextCallback += 1;
             callbackId = nextCallback;
             callbacks.set(callbackId, onAction);
           }
-          return call("ui.mount", [panel, callbackId]);
+          let dismissId = 0;
+          if (typeof onDismiss === "function") { dismissId = ++nextCallback; callbacks.set(dismissId, onDismiss); }
+          return call("ui.mount", [panel, callbackId, dismissId]);
         },
         patch: method("ui.patch"),
-        keys: { bind: method("ui.keys.bind"), list: method("ui.keys.list"), remove: method("ui.keys.remove") },
+        unmount: method("ui.unmount"),
+        commands: { register: (id: string, verb: string, run: () => void) => {
+          const callbackId = ++nextCallback;
+          callbacks.set(callbackId, run);
+          return call("ui.commands.register", [id, verb, callbackId]);
+        } },
+        gameMenu: { register: (action: string, label: string, run: () => void) => {
+          const callbackId = ++nextCallback;
+          callbacks.set(callbackId, run);
+          return call("ui.gameMenu.register", [action, label, callbackId]);
+        } },
+        keys: { isBindableTriggerKey: method("ui.keys.isBindableTriggerKey"), bind: method("ui.keys.bind"), list: method("ui.keys.list"), remove: method("ui.keys.remove") },
       },
       store: {
         prefs: { get: method("store.prefs.get"), set: method("store.prefs.set") },
@@ -195,6 +188,23 @@ export function installModWorkerBootstrap(
             set: method("net.credentials.set"),
             fromEnvironment: method("net.credentials.fromEnvironment"),
             remove: method("net.credentials.remove"),
+          },
+        },
+      } : {}),
+      ...(m.granted.includes("backup:folder") ? {
+        backupFolder: {
+          name: method("backupFolder.name"), choose: method("backupFolder.choose"), forget: method("backupFolder.forget"),
+          write: method("backupFolder.write"), list: method("backupFolder.list"),
+          onSave: async (listener: (file: { readonly name: string; readonly text: string }) => void) => {
+            const callbackId = ++nextCallback;
+            backupCallbacks.set(callbackId, listener);
+            const result = await call("backupFolder.onSave", [callbackId]) as { ok: boolean };
+            if (!result.ok) backupCallbacks.delete(callbackId);
+            return result;
+          },
+          off: async (subscription: { readonly id: string }) => {
+            backupCallbacks.delete(Number(subscription.id));
+            return call("backupFolder.off", [subscription]);
           },
         },
       } : {}),
@@ -237,6 +247,8 @@ export function installModWorkerBootstrap(
         throw new Error("the Worker entry's default export is not an API 2 mod definition (an object with an \"api\" range)");
       }
       definition = candidate as Api2ModDefinition;
+      if (definition.presentation !== undefined) throw new Error("Worker mods cannot declare presentation");
+      if (definition.birth !== undefined || definition.titleActions !== undefined) throw new Error("Worker mods cannot declare birth or title actions");
       send({ type: "ready", summary: summarize(definition, meta) });
     } catch (err) {
       fault("boot", err);
@@ -304,10 +316,22 @@ export function installModWorkerBootstrap(
         const callback = callbacks.get(message.callbackId);
         if (!callback) return;
         try {
-          callback(String(message.action));
+          callback(String(message.action), message.value);
         } catch (err) {
           fault("panel action", err);
         }
+        return;
+      }
+      case "ui.dismissed": {
+        const callback = callbacks.get(message.callbackId);
+        callbacks.delete(message.callbackId);
+        try { callback?.(""); }
+        catch (error) { fault("panel dismissal", error); }
+        return;
+      }
+      case "backup.save": {
+        try { backupCallbacks.get(message.callbackId)?.(freeze(message.file)); }
+        catch (error) { fault("backup save listener", error); }
         return;
       }
       case "ask":
@@ -326,10 +350,13 @@ export function installModWorkerBootstrap(
       case "start": {
         if (started || definition === null || meta === null) return;
         started = true;
-        if (!definition.start) return;
         const active = [...Object.keys(declared), ...message.policyHooks];
         try {
-          const result = definition.start(buildApi(meta, active));
+          const mod = buildApi(meta, active);
+          for (const action of definition.actions ?? []) {
+            void mod.ui.gameMenu.register(action.action, action.label, () => action.run(mod));
+          }
+          const result = definition.start?.(mod);
           if (result && typeof (result as Promise<void>).then === "function") {
             (result as Promise<void>).then(undefined, (err: unknown) => fault("start()", err));
           }
@@ -343,6 +370,7 @@ export function installModWorkerBootstrap(
         definition = null;
         listeners.clear();
         callbacks.clear();
+        backupCallbacks.clear();
         for (const request of pending.values()) request.reject(new Error("the mod was stopped"));
         pending.clear();
         try {

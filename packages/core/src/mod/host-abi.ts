@@ -97,6 +97,9 @@ export interface ModDisplaySnapshot {
  */
 export interface ModDisplay {
   snapshot(): ModDisplaySnapshot;
+  cellAt?(clientX: number, clientY: number): import("@rpgm-tools/neo-angband-mod-sdk").Api2DisplayHit | null;
+  frame?(): ImageData | null;
+  onFrame?(listener: () => void): () => void;
   /** Subscribe ahead of the shell's ordinary and modal key owners. */
   onKey(listener: (event: KeyboardEvent) => void): () => void;
   setGrid(request: ModDisplayGridRequest | null): void;
@@ -1675,8 +1678,6 @@ export interface InputSnapshot {
   readonly messages: Readonly<{
     token: InputToken;
     entries: readonly string[];
-    cursor?: number;
-    recent?: readonly Readonly<{ text: string; count: number; color?: string }>[];
     log: readonly Readonly<{
       text: string;
       count: number;

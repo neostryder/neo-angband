@@ -442,7 +442,7 @@ import { createIsolatedModWorker } from "./mod-worker/isolation";
 import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
 import { MOD_WORKER_PROTOCOL_VERSION } from "./mod-worker/protocol";
-import { createApi2Host } from "./mod-api2-host";
+import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost } from "./mod-api2-host";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, modDisplayName, reportModFault, setModNameLookup } from "./mod-problems";
 import {
@@ -587,6 +587,9 @@ import { userPath, userWrite, exportUserFile, FileType } from "./user-io";
 import { loadLoreFile, saveLoreFile } from "./lore-file";
 import { LORE_FILE } from "@rpgm-tools/neo-angband-core";
 import { buildGraphicsOverview, buildOverview, panLocate, locateSectorBanner } from "./mapview";
+import { displayCellAt, displayFrame } from "./display-frame";
+import { displayMapLayer } from "./overlay";
+import { setBootPhase } from "./presentation-phase";
 import type { BuildOverviewParams, LevelOverview, Overview, OverviewGlyph } from "./mapview";
 import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
@@ -2028,6 +2031,7 @@ try {
   /* history/URL unavailable: harmless, the params just linger */
 }
 const { state, registry, booted, players } = game;
+setApi2CommandHost({ registry, ...(state.commandVerbs ? { verbs: state.commandVerbs } : {}) });
 /* Every plugin context built from here on reports these as `ctx.registries`.
  *
  * HERE, not at each of the seven places that build a context: the note below
@@ -10033,6 +10037,9 @@ function clampDisplayOrigin(
 }
 
 const displayControl: ModDisplay = {
+  cellAt: (x, y) => displayCellAt(term.cellAt(x, y), displayControl.snapshot(), x, y, displayMapLayer()),
+  frame: () => displayFrame(canvas, displayMapLayer()),
+  onFrame: (listener) => term.onRepaint(listener),
   snapshot() {
     const { cols, rows } = term.size();
     const metrics = term.metrics();
@@ -10353,8 +10360,6 @@ const modSnapshotSource: InputSnapshotSource = {
               : "play",
   messagePending: () => morePending,
   messages: () => msglog.all(),
-  messageCursor: () => msglog.rawLength(),
-  messagesSince: (since) => msglog.rawSince(since),
   storeStatus: () => {
     const store = storeModalActive ? storeAtPlayer() : null;
     if (!store) return null;
@@ -12046,6 +12051,7 @@ setKeymapResolver(
     // These root affordances deliberately precede upstream keymaps.
     if (key.key === "?" || (key.key === "N" && !roguelike) || dead) return null;
     const action = keymapFind(keymapModeFor(roguelike), key.key);
+    if (action !== null && runApi2KeymapCommand(action)) return [];
     return action
       ? decodeActionTokens(action).map((mapped) => ({
         key: { key: mapped, modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false },
@@ -12969,6 +12975,7 @@ async function maybeBirth(): Promise<BootStep> {
     /* sessionStorage unavailable: fall through and show birth. */
   }
   if (justBirthed) return "done"; // the choice from the previous load is already live
+  setBootPhase("birth");
   // Registry-backed data for the birth informational panels (race/class help
   // blocks + the full display_player(0) sheet), plus get_history for the
   // background stage. The birth screen holds neither the bodies/history charts
@@ -13218,6 +13225,7 @@ async function maybeTitle(): Promise<TitleChoice | null> {
    * paint, and that put the only stop behind one of this function's four exits -
    * see bootMenus, which now owns it (#251). */
   const titleHandle = pushRegion(screenRegionSpec(), term.size());
+  setBootPhase("title");
   try {
     paintTitleArt(regionSurface(term, titleHandle.cells));
   } finally {
@@ -15402,6 +15410,7 @@ void applyModResources()
      * passes through, including the ones that never see a title at all.
      * stopLoading is idempotent for exactly that reason. */
     stopLoading();
+    setBootPhase("play");
     gameScreenLive = true;
     subwindowShell.setGameLive(true);
     render();

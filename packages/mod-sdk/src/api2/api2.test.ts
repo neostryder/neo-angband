@@ -131,8 +131,7 @@ describe("API 2 results", () => {
 describe("API 2 names", () => {
   it("gate each event on its own permission", () => {
     expect(API2_EVENT_NAMES).toContain("combat-outcome");
-    expect(API2_EVENT_NAMES).toContain("bolt");
-    expect(API2_EVENT_NAMES).toContain("explosion");
+    expect(API2_EVENT_NAMES).not.toContain("bolt");
     expect(api2EventCapability("message")).toBe("event:message");
     expect(new Set(API2_EVENT_NAMES).size).toBe(API2_EVENT_NAMES.length);
   });

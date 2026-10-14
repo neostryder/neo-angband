@@ -269,6 +269,13 @@
       "verdict": "UI - menu action routing, entries[pick].action (MOD_REACH gap 18/24)."
     },
     {
+      "file": "packages/web/src/mod-worker/bootstrap.ts",
+      "cases": 9,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - the Worker protocol routes host messages to mod callbacks. A mod uses API domains and cannot add protocol messages."
+    },
+    {
       "file": "packages/web/src/mods.ts",
       "cases": 9,
       "hasDefault": false,
