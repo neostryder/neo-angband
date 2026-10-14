@@ -385,7 +385,7 @@ describe("the switch census", () => {
      * Save a Delve / Load a Delve rows moved it to 11, #158's sync-folder
      * row moved it to 12, and the Mod performance row to 13 - still the same
      * row throughout, and the arm count is what moved. */
-    expect(keys.has("IF_CHAIN|packages/web/src/mods.ts|13")).toBe(true);
+    expect(keys.has("IF_CHAIN|packages/web/src/mod-manager/classic-manager.ts|13")).toBe(true);
   });
 
   it("has no CANDIDATE left, which is what the alpha gate asked for", () => {

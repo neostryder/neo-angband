@@ -409,8 +409,14 @@ describe("the screen is REACHABLE", () => {
   /* The lesson this repository keeps paying for: a feature finished everywhere except
    * where it is used. Four commits of discovery, consent, curation and an author
    * register were all complete and called by nothing but their own tests. */
-  const read = (f: string): string =>
-    readFileSync(join(import.meta.dirname, f), "utf8");
+  const read = (f: string): string => {
+    const moved = f === "mods.ts"
+      ? ["mod-manager/classic-manager.ts", "mod-manager/classic-actions.ts"]
+      : f === "mod-browse.ts"
+        ? ["mod-manager/classic-browse-source.ts", "mod-manager/classic-browse-summary.ts"]
+        : [f];
+    return moved.map((path) => readFileSync(join(import.meta.dirname, path), "utf8")).join("\n");
+  };
 
   it("is wired into the mod screen's Get mods row", () => {
     const mods = read("mods.ts");
