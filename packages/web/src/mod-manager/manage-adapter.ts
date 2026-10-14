@@ -10,8 +10,6 @@ export interface ManageAdapter {
   readonly subscribe: ModManagerService["subscribe"];
   readonly browse: ModManagerService["browse"];
   readonly search: ModManagerService["search"];
-  readonly discover: ModManagerService["discover"];
-  readonly refresh: ModManagerService["refresh"];
   readonly planInstall: (refs: readonly RepoRef[]) => Promise<ManagerResult<InstallPlan>>;
   readonly applyPlan: (id: number) => ManagerResult<unknown>;
   readonly recordConsent: (id: string, decisions: ConsentRecord) => ManagerResult<unknown>;
@@ -43,8 +41,6 @@ export function createManageAdapter(service: ModManagerService, callerId: string
     subscribe: service.subscribe.bind(service),
     browse: service.browse.bind(service),
     search: service.search.bind(service),
-    discover: (ref) => checkAsync(() => service.discover(ref)),
-    refresh: () => checkAsync(() => service.refresh()),
     planInstall: (refs) => checkAsync(() => service.planCatalogInstall(refs)),
     applyPlan: (id) => check(() => service.applyPlan(id, callerId)),
     recordConsent: (id, decisions) => check(() => service.recordConsent(id, decisions, callerId)),

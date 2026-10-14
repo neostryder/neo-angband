@@ -7,7 +7,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CapabilitySet, modPageSecretsFormat, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
+import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { GameState } from "@rpgm-tools/neo-angband-core";
 import { createModNet, netRelayBridge, type NetRelayBridge } from "./mod-net";
 import { modPluginContext, setModDriverControl, setModNetControl } from "./mod-context";
@@ -74,7 +74,6 @@ describe("ctx.net in a browser tab", () => {
     const net = createModNet({ modId: "squire", modName: "Squire", grants, relay: null, fetch, storage });
     expect(net.secrets.storage).toBe("page");
     expect(await net.secrets.set("jev", "sk-1", { hosts: ["api.example.com"] })).toEqual({ ok: true, storage: "page" });
-    expect(storage.data.size).toBe(0);
     expect(await net.secrets.set("jev", "sk-1", { hosts: ["evil.example.com"] })).toMatchObject({ ok: false });
     expect(await net.secrets.has("jev")).toEqual({ present: true, storage: "page" });
     const r = await net.request({ url: "https://api.example.com/", headers: { Authorization: "Bearer {secret:jev}" } });
@@ -84,7 +83,6 @@ describe("ctx.net in a browser tab", () => {
       .toMatchObject({ ok: false, code: "secret-host" });
     const other = createModNet({ modId: "other", modName: "Other", grants, relay: null, fetch, storage });
     expect(await other.secrets.has("jev")).toEqual({ present: false });
-    expect(await createModNet({ modId: "squire", modName: "Squire", grants, relay: null, fetch, storage }).secrets.has("jev")).toEqual({ present: true, storage: "page" });
     expect(await net.secrets.fromEnv("jev", ["TYPESAFE_API_KEY"], { hosts: ["api.example.com"] })).toMatchObject({ ok: false });
     expect(await net.secrets.delete("jev")).toEqual({ ok: true });
     expect(storage.data.size).toBe(0);
@@ -103,19 +101,6 @@ describe("ctx.net in a browser tab", () => {
       fetch: (async () => Object.defineProperty(new Response(null, { status: 200 }), "type", { value: "opaqueredirect" })) as typeof fetch,
     });
     expect(await redirect.request({ url: "http://localhost:8010/" })).toMatchObject({ ok: false, code: "redirect" });
-  });
-
-  it("moves existing browser credentials out of shared storage and permits storage-free credentials", async () => {
-    const storage = memoryStorage();
-    storage.setItem("neo-angband-mod-secrets:migration", serializeDocument(modPageSecretsFormat.format, { secrets: { key: { hosts: ["api.example.com"], value: "example" } } }));
-    const { fetch } = fakeFetch(() => new Response("ok"));
-    const net = createModNet({ modId: "migration", modName: "Migration", grants: ["api.example.com"], relay: null, fetch, storage });
-    expect(await net.secrets.has("key")).toEqual({ present: true, storage: "page" });
-    expect(storage.data.size).toBe(0);
-    const ephemeral = createModNet({ modId: "memory", modName: "Memory", grants: ["api.example.com"], relay: null, fetch, storage: null });
-    expect((await ephemeral.secrets.set("key", "example", { hosts: ["api.example.com"] })).ok).toBe(true);
-    expect(await ephemeral.secrets.has("key")).toEqual({ present: true, storage: "page" });
-    expect(await ephemeral.secrets.delete("key")).toEqual({ ok: true });
   });
 });
 

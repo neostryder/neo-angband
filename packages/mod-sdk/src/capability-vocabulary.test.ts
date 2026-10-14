@@ -13,7 +13,7 @@ import {
   matchCapability,
 } from "./capability-vocabulary.js";
 
-const MANAGEMENT = ["mod:install", "session:control", "profiles:manage", "screens:manage", "mod:session", "mod:authoring", "options:manage"];
+const MANAGEMENT = ["mod:install", "session:control", "profiles:manage", "screens:manage", "mod:session"];
 const TRUTH = "state:map-actual.read";
 
 /** A spelling of each entry that parses: the argument filled with a valid value. */

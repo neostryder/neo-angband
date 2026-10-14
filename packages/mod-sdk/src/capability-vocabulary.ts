@@ -40,12 +40,11 @@ export type ParsedCapability =
   | { kind: "display"; action: "replace" | "filter" }
   | { kind: "ui"; region: string; action: "replace" | "create" | "mount" }
   | { kind: "backup"; action: "folder" }
-  | { kind: "mod"; action: "install" | "session" | "authoring" }
-  | { kind: "store"; action: "kv" | "session" }
+  | { kind: "mod"; action: "install" | "session" }
   | { kind: "mod-read"; action: "read" }
   | { kind: "debug"; action: "spawn" | "wizard" }
   | { kind: "keymap"; action: "write" | "edit" }
-  | { kind: "options"; action: "write" | "manage" }
+  | { kind: "options"; action: "write" }
   | { kind: "query"; action: "snapshot" }
   | { kind: "policy"; action: "install" }
   | { kind: "hook"; action: "respond" }
@@ -172,10 +171,10 @@ const REGISTRY_DOMAINS: readonly (readonly [string, string, boolean])[] = [
   ["profile", "Add new kinds of dungeon level, and change which kind you get at a depth", true],
   ["blow", "Change what monster attacks do to you, and add new kinds of attack", true],
   ["store", "Change what shops buy from you and what they keep in stock", true],
-  ["command", "Change what player commands do (and add commands)", true],
+  ["command", "Change what player commands do, add commands, and tunnel when a walk meets diggable rock", true],
   ["monster", "Override monster AI (take over monster turns), and keep monster noise and scent in saves", true],
   ["projection", "Change what spells, breaths and other elements do to the dungeon, to items on the floor, and to you", true],
-  ["ui-entry", "Change how your resistances, abilities and stat modifiers are worked out and drawn on the character sheet and the equipment comparison, and rewrite screen text", true],
+  ["ui-entry", "Change how your resistances, abilities and stat modifiers are worked out and drawn on the character sheet and the equipment comparison, rewrite screen text, and choose how preference errors are handled", true],
   ["glyph", "Change what the symbols in a room or vault layout mean when a level is drawn", true],
   ["effect-info", "Change what the game tells you about objects and effects", true],
   ["randart", "Change how random artifacts are built - what powers they can get, and what each kind of item starts with", true],
@@ -271,10 +270,6 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "The mod starts from its defaults each time.", { powerful: false, tiers: ALL_TIERS }),
   fixed("prefs:write", { kind: "prefs", action: "write" }, "Save its own settings between sessions",
     "Changes to the mod's settings are lost when you close the game.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("store:kv", { kind: "store", action: "kv" }, "The mod can keep its own records on this installation across profiles and characters",
-    "The mod cannot keep records between sessions.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("store:session", { kind: "store", action: "session" }, "The mod can keep its own records until this tab closes",
-    "The mod cannot keep records across a reload in this tab.", { powerful: false, tiers: ALL_TIERS }),
   fixed("asset:read", { kind: "asset", action: "read" }, "Read files that came with this mod",
     "The mod cannot open the images and data files it ships with.", { powerful: false, tiers: ALL_TIERS }),
   fixed("state:*.read", { kind: "state", domain: "*", access: "read" }, "Read ALL game state, except the parts of the map your character has not found",
@@ -299,10 +294,6 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "The mod cannot save the game, leave it or quit for you.", { powerful: false, tiers: FIRST_PARTY, namespace: "manage" }),
   fixed("screens:manage", { kind: "screens", action: "manage" }, "Draw the game's mod, profile and settings screens in its own look",
     "The game's own management screens are shown instead.", { powerful: true, tiers: FIRST_PARTY, namespace: "manage" }),
-  fixed("mod:authoring", { kind: "mod", action: "authoring" }, "The mod can use this game's mod authoring and validation library",
-    "The mod cannot check drafts with this game's authoring library.", { powerful: false, tiers: FIRST_PARTY, namespace: "manage" }),
-  fixed("options:manage", { kind: "options", action: "manage" }, "The mod can read and change game options, including cheat options that permanently disqualify a character from scoring",
-    "The mod cannot edit cheat options; the options menu still works.", { powerful: true, tiers: FIRST_PARTY, namespace: "manage" }),
   /* Install and session loads are two grants: an install arrives switched off,
    * a session load is on as soon as the game reloads. The archive is forgotten
    * with the session; what its records did to a character is not. */

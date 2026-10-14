@@ -106,8 +106,6 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
       return grant.kind === "screens";
     case "prefs":
       return grant.kind === "prefs" && grant.action === request.action;
-    case "store":
-      return grant.kind === "store" && grant.action === request.action;
     case "asset":
       return grant.kind === "asset";
     case "ui-panel":
@@ -171,7 +169,7 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
     case "keymap":
       return grant.kind === "keymap" && grant.action === request.action;
     case "options":
-      return grant.kind === "options" && grant.action === request.action;
+      return grant.kind === "options";
     case "query":
       return grant.kind === "query" && grant.action === request.action;
     case "policy":

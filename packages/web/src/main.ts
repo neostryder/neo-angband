@@ -437,14 +437,12 @@ import { runProfileScreen } from "./profile-ui";
 import { setPrefsStorage } from "./mod-prefs";
 import { startModWorker, type ModWorkerLike, type StartedModWorker } from "./mod-worker/host";
 import { settleWorkerHooks } from "./mod-worker/hooks";
-import { api2PluginRegistrations, installApi2PolicyRegistrations } from "./mod-api2-shim";
+import { api2PluginRegistrations, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "./mod-api2-shim";
 import { createIsolatedModWorker } from "./mod-worker/isolation";
 import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
 import { MOD_WORKER_PROTOCOL_VERSION } from "./mod-worker/protocol";
-import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost, setApi2ManagementHost } from "./mod-api2-host";
-import { classicManager } from "./mod-manager/classic-service";
-import { drawPendingManagementConfirmation } from "./mod-manager/classic-confirmation";
+import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost } from "./mod-api2-host";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, modDisplayName, reportModFault, setModNameLookup } from "./mod-problems";
 import {
@@ -2006,6 +2004,9 @@ function bootGame(): ReturnType<typeof startGame> {
  * and a button that copies it. Every later error - a rejected promise in a
  * menu, a renderer fault - lands there too. See crash-screen.ts. */
 installCrashScreen(ENGINE_VERSION);
+setApi2PolicyLoadOrder(enabledModIds());
+let finishWorkerPolicies: () => void = () => undefined;
+const workerPoliciesReady = new Promise<void>((resolve) => { finishWorkerPolicies = resolve; });
 const game = bootGame();
 /* A mod that holds a capability its tier marks the save for (AnybandUI seeing
  * the real map, mod-tier.ts FIRST_PARTY_ORIGINS) marks the character the way
@@ -2568,6 +2569,7 @@ function repaintEverything(): void {
 async function applyTileMode(
   grafID: number, persist = false, graphics = mainTileMode,
 ): Promise<void> {
+  await workerPoliciesReady;
   const request = graphics.begin(grafID);
   if (persist) {
     writeSetting(localStorage, "tileMode", grafID && grafID !== GRAPHICS_NONE ? grafID : undefined);
@@ -7766,31 +7768,7 @@ function orphanStashFor(store: OrphanStore | undefined): OrphanStash {
  * (pack.ts) and enabled plugins re-install (boot). Content-mod enablement and
  * plugin consent both persist through defaultModStore.
  */
-let managerDeps: Promise<ModManagerDeps> | undefined;
-
-function modManagerDeps(): Promise<ModManagerDeps> {
-  return managerDeps ??= buildModManagerDeps();
-}
-
-setApi2ManagementHost(async () => {
-  const manager = classicManager(await modManagerDeps());
-  if (!managementSubscribed) {
-    managementSubscribed = true;
-    manager.service.subscribe((snapshot) => {
-      if (!snapshot.pendingConfirmation || snapshot.pendingConfirmation.requestedBy === null || managementDrawing) return;
-      managementDrawing = true;
-      const confirmationId = snapshot.pendingConfirmation.id;
-      void openModal(() => drawPendingManagementConfirmation(term, manager.service, manager.core))
-        .catch(() => manager.core.resolveConfirmation(confirmationId, { accepted: false }))
-        .finally(() => { managementDrawing = false; });
-    });
-  }
-  return manager.service;
-});
-let managementSubscribed = false;
-let managementDrawing = false;
-
-async function buildModManagerDeps(): Promise<ModManagerDeps> {
+async function modManagerDeps(): Promise<ModManagerDeps> {
   const store = defaultModStore();
   /* Fetched once for the life of this screen, the same way `store` above is: an
    * install through ctx.installMod only happens while a mod's plugin is running
@@ -10458,7 +10436,7 @@ setModNetControl((id, grants) => createModNet({
   modName: activeModCode().plugins.find((loaded) => loaded.id === id)?.manifest.name ?? "A mod",
   grants,
   relay: netRelayBridge(globalThis),
-  fetch: fetch.bind(globalThis),
+  fetch: (input, init) => fetch(input, init),
   storage: (() => {
     try {
       return window.localStorage;
@@ -15301,6 +15279,7 @@ async function resetVisualsForCharacter(): Promise<void> {
  * happened had the mod not been installed.
  */
 async function applyModResources(): Promise<void> {
+  await workerPoliciesReady;
   await installModResources();
 
   const font = await modFontData();
@@ -15928,6 +15907,7 @@ const workerPanelRenderer = createModWorkerPanelRenderer();
  * FAULT_LIMIT times within FAULT_WINDOW_TURNS turns is switched off until the
  * page next loads. The mod list on disk is left as it is. */
 function modSwitchedOff(off: ModSwitchOff): void {
+  removeApi2PrefErrors(off.id);
   reportModFault(
     off.id,
     off.reason === "stall"
@@ -16043,7 +16023,7 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
         onLog: (level, message) => log[level](`mod:${loaded.id}`, message),
         onProblem: (message) => reportModFault(loaded.id, message),
         onHooks: (policies, notify, registrations) => {
-          settleWorkerHooks(loaded.id, { policies, notify, send: (hook, args) => started.notify(hook, args) });
+          settleWorkerHooks(loaded.id, { policies, notify, registrations, send: (hook, args) => started.notify(hook, args) });
           workerRegistrations.set(loaded.id, registrations);
         },
         onTeardown: () => {
@@ -16066,6 +16046,8 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
     }
   }
 }
+
+finishWorkerPolicies();
 
 /* Each mod's own save bag, brought up to the schema that mod is now at, BEFORE
  * any of its other code runs (mod-bags.ts).

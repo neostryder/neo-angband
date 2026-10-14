@@ -1,24 +1,4 @@
 import { defineFormat, json } from "./index.js";
-import type { JsonValue } from "../compose.js";
-
-export const modKeyValueFormat = defineFormat<Record<string, JsonValue>>({ format: "neo-angband/mod/key-value", schemaVersion: 1,
-  validator: { validate(value, path = "$") {
-    const seen = new Set<unknown>();
-    const valid = (item: unknown): boolean => {
-      if (item === null || typeof item === "string" || typeof item === "boolean") return true;
-      if (typeof item === "number") return Number.isFinite(item);
-      if (typeof item !== "object" || seen.has(item)) return false;
-      if (!Array.isArray(item) && Object.getPrototypeOf(item) !== Object.prototype && Object.getPrototypeOf(item) !== null) return false;
-      if (Reflect.ownKeys(item).some((key) => typeof key !== "string")) return false;
-      seen.add(item);
-      const accepted = Array.isArray(item) ? Array.from(item).every(valid) : Object.values(item).every(valid);
-      seen.delete(item);
-      return accepted;
-    };
-    if (!value || typeof value !== "object" || Array.isArray(value) || !valid(value)) return { ok: false, issues: [{ path, message: "The value must be a map of plain JSON records." }] };
-    return { ok: true, value: structuredClone(value) as Record<string, JsonValue> };
-  } },
-  sample: { report: { turn: 1 } } });
 
 const score = json.object({
   what: json.string, pts: json.finiteNumber, gold: json.finiteNumber,

@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
-import { createApi2Host, stopApi2Host } from "../mod-api2-host";
-import { modPluginContext } from "../mod-context";
+import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { buildCatalog, ModStore, type StorageLike } from "../mod-store";
 import { assignTier, effectiveGrants, resetModTiers, setModGrants, setModTiers, TRUTH_MAP } from "../mod-tier";
 import type { DiscoveredMod } from "../mod-discover";
@@ -374,60 +372,6 @@ describe("Core-private confirmations and the first-party adapter", () => {
     setModTiers(new Map([[id, tier]]));
     setModGrants(new Map([[id, effectiveGrants(["mod:install"], tier, { granted: ["mod:install"], refused: [] })]]));
   }
-
-  it("wraps the service in API 2 without giving a mod the confirmation resolver", async () => {
-    grantManager();
-    const f = fixture();
-    const caps = CapabilitySet.fromManifest({ id: "anybandui", name: "AnybandUI", version: "1.0.0", shape: "plugin", capabilities: ["mod:install"] });
-    const api = createApi2Host(modPluginContext("anybandui", {}, undefined, {}, { capabilities: caps }), {
-      grants: caps, tier: "first-party", firstParty: { manage: true }, management: async () => f.service,
-    });
-    const mods = api.manage!.mods;
-    expect("resolveConfirmation" in mods).toBe(false);
-    expect("core" in mods).toBe(false);
-    const snapshots: unknown[] = [];
-    const subscription = await mods.subscribe((state) => snapshots.push(state));
-    if (!subscription.ok) throw new Error("The subscription was refused.");
-    expect(await mods.browse()).toMatchObject({ ok: true, value: { curated: [{ ok: true }] } });
-    expect(await mods.search("owner/a")).toMatchObject({ ok: true, value: [{ ok: true, mod: { id: "a" } }] });
-    expect(await mods.discover({ repo: "owner/b" })).toMatchObject({ ok: true, value: { ok: true, mod: { id: "b" } } });
-    expect(await mods.refresh()).toMatchObject({ ok: true, value: { revision: expect.any(Number) } });
-    const pending = await mods.enable("a");
-    expect(pending).toMatchObject({ ok: true, value: { operation: "enable", requestedBy: "anybandui" } });
-    expect(f.store.isEnabled("a")).toBe(false);
-    if (!pending.ok || !pending.value) throw new Error("The confirmation was not requested.");
-    expect(Object.isFrozen(pending.value)).toBe(true);
-    await f.core.resolveConfirmation(pending.value.id, { accepted: true });
-    expect(f.store.isEnabled("a")).toBe(true);
-    const plan = await mods.planInstall([{ repo: "owner/b" }]);
-    if (!plan.ok) throw new Error("The install plan was refused.");
-    expect(await mods.applyPlan(plan.value.id)).toMatchObject({ ok: true, value: { operation: "install" } });
-    expect(f.install).not.toHaveBeenCalled();
-    expect(await mods.enable("absent")).toMatchObject({ ok: false });
-    expect((await mods.snapshot()).ok).toBe(true);
-    expect(snapshots.length).toBeGreaterThan(0);
-    await mods.unsubscribe(subscription.value);
-    const count = snapshots.length;
-    f.core.setEnabled("a", false);
-    expect(snapshots).toHaveLength(count);
-    await mods.subscribe((state) => snapshots.push(state));
-    stopApi2Host(api);
-    f.core.setEnabled("a", true);
-    expect(snapshots).toHaveLength(count);
-    expect(await mods.snapshot()).toMatchObject({ reason: "unavailable" });
-  });
-
-  it("refuses the complete mod management surface when mod installation was not granted", async () => {
-    const caps = CapabilitySet.fromManifest({ id: "anybandui", name: "AnybandUI", version: "1.0.0", shape: "plugin", capabilities: [] });
-    const provider = vi.fn(async () => fixture().service);
-    const mods = createApi2Host(modPluginContext("anybandui", {}), { grants: caps, tier: "first-party", firstParty: { manage: true }, management: provider }).manage!.mods;
-    const calls = [mods.snapshot(), mods.subscribe(() => {}), mods.browse(), mods.search("a"), mods.discover({ repo: "owner/a" }), mods.refresh(),
-      mods.planInstall([]), mods.applyPlan(1), mods.recordConsent("a", { granted: [], refused: [] }), mods.enable("a"), mods.disable("a"),
-      mods.update("a"), mods.updateAll(), mods.remove("a"), mods.rollback("a"), mods.restoreModList([], true), mods.reorder([]),
-      mods.moveEnabled("a", 1), mods.setConflictOverride("slot", "a"), mods.setSectionChoice("a", "one", true), mods.setSettingValue("a", "one", 1), mods.setThirdPartyConsent(true)];
-    for (const result of await Promise.all(calls)) expect(result).toMatchObject({ reason: "not-granted", capability: "mod:install" });
-    expect(provider).not.toHaveBeenCalled();
-  });
 
   it("refuses an unknown caller and a caller spoofing a first-party repository", () => {
     const f = fixture();

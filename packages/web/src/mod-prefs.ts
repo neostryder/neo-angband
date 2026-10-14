@@ -31,7 +31,6 @@
  */
 
 import { log } from "./logging";
-import { api2NotGranted, api2Ok, api2Refused, api2Unavailable, modKeyValueFormat, parseDocument, serializeDocument, type Api2KeyValueStore, type JsonValue } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPrefs } from "@rpgm-tools/neo-angband-core";
 export type { ModPrefs } from "@rpgm-tools/neo-angband-core";
 
@@ -41,69 +40,6 @@ export function modPrefsKey(id: string): string {
 }
 
 let installBacking: PrefsStorage | null | undefined;
-
-export function modKeyValueStore(id: string, lifetime: "kv" | "session", granted: () => boolean, storage?: PrefsStorage | null): Api2KeyValueStore {
-  const capability = `store:${lifetime}`;
-  const key = `neo:modStore:${lifetime}:${id}`;
-  if (storage === undefined) {
-    try {
-      storage = lifetime === "kv" ? installBacking === undefined ? (typeof localStorage === "undefined" ? null : localStorage) : installBacking
-        : typeof sessionStorage === "undefined" ? null : sessionStorage;
-    } catch { storage = null; }
-  }
-  const backing = storage;
-  const read = (): Record<string, JsonValue> => {
-    const text = backing?.getItem(key);
-    if (!text) return {};
-    const envelope = parseDocument(text, modKeyValueFormat);
-    if (!envelope.ok) throw new Error("Invalid stored records.");
-    return envelope.data;
-  };
-  const validKey = (name: string): boolean => typeof name === "string" && name.length > 0 && name.length <= 128;
-  const run = async <T>(body: () => T) => {
-    if (!granted()) return api2NotGranted(capability);
-    if (!backing) return api2Unavailable("The browser storage is unavailable.");
-    try {
-      const value = body();
-      const freeze = (item: unknown): void => {
-        if (!item || typeof item !== "object" || Object.isFrozen(item)) return;
-        for (const child of Object.values(item)) freeze(child);
-        Object.freeze(item);
-      };
-      freeze(value);
-      return api2Ok(value);
-    } catch (error) {
-      return error instanceof RangeError ? api2Refused("size", "A mod store is limited to 256 keys and 1048576 bytes.")
-        : api2Refused("storage", "The mod's records could not be read or saved.");
-    }
-  };
-  return Object.freeze({
-    get: async (name: string) => {
-      if (!granted()) return api2NotGranted(capability);
-      if (!validKey(name)) return api2Refused("key", "A record key has 1 to 128 characters.");
-      return run(() => {
-        const values = read();
-        return Object.hasOwn(values, name) ? structuredClone(values[name]!) : null;
-      });
-    },
-    keys: () => run(() => Object.freeze(Object.keys(read()))),
-    set: async (name: string, value: JsonValue | null) => {
-      if (!granted()) return api2NotGranted(capability);
-      if (!validKey(name)) return api2Refused("key", "A record key has 1 to 128 characters.");
-      if (!modKeyValueFormat.validator.validate({ record: value }).ok) return api2Refused("value", "A record value must be plain JSON.");
-      if (new TextEncoder().encode(JSON.stringify(value)).byteLength > 262144) return api2Refused("size", "A record value is limited to 262144 bytes.");
-      return run(() => {
-        const values = Object.fromEntries(Object.entries(read()).filter(([stored]) => stored !== name));
-        if (value !== null) Object.defineProperty(values, name, { value, enumerable: true });
-        const text = serializeDocument(modKeyValueFormat.format, values, { compact: true });
-        if (Object.keys(values).length > 256 || new TextEncoder().encode(text).byteLength > 1048576) throw new RangeError("Storage limit.");
-        backing!.setItem(key, text);
-        if (backing!.getItem(key) !== text) throw new Error("Storage write failed.");
-        return null;
-      });
-    },
-  });
-}
 
 export function setInstallPrefsStorage(storage: PrefsStorage | null | undefined): void {
   installBacking = storage;

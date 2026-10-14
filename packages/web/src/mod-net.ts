@@ -6,7 +6,7 @@
  * the main process (packages/desktop/src/net-relay.ts), which sends it, so CORS
  * and mixed content do not apply and secrets stay in the main process. In a
  * browser tab the request is an ordinary `fetch`, CORS applies, and secrets are
- * kept in private page memory; every answer that
+ * kept in page storage, which any script on the page can read; every answer that
  * used one says `secretStorage: "page"` so the mod can tell the player.
  */
 
@@ -20,6 +20,7 @@ import {
   parseDocument,
   readBodyCapped,
   secretNamesIn,
+  serializeDocument,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { NetProblem, NetProblemCode, NetRequest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModNetResponse, ModSecretResult, ModNet } from "@rpgm-tools/neo-angband-core";
@@ -125,34 +126,29 @@ function relayNet(deps: ModNetDeps, relay: NetRelayBridge): ModNet {
 }
 
 type PageSecrets = Record<string, { hosts: string[]; value: string }>;
-const browserSecrets = new WeakMap<object, Map<string, PageSecrets>>();
-const memorySecrets = new Map<string, PageSecrets>();
 
-/** Browser credentials stay out of storage because every page script can read it. */
+/** The browser transport: `fetch` from the page, secrets in page storage. */
 function pageNet(deps: ModNetDeps): ModNet {
   const key = PAGE_SECRETS_KEY + deps.modId;
-  let records = deps.storage ? browserSecrets.get(deps.storage) : memorySecrets;
-  if (!records) {
-    records = new Map();
-    browserSecrets.set(deps.storage!, records);
-  }
   const load = (): PageSecrets => {
-    if (records.has(deps.modId)) return structuredClone(records.get(deps.modId)!);
     try {
       const text = deps.storage?.getItem(key) ?? null;
       if (text === null) return {};
       const parsed = parseDocument(text, modPageSecretsFormat);
-      const secrets = parsed.ok ? structuredClone(parsed.data.secrets) as PageSecrets : {};
-      deps.storage?.removeItem(key);
-      records.set(deps.modId, secrets);
-      return structuredClone(secrets);
+      return parsed.ok ? structuredClone(parsed.data.secrets) as PageSecrets : {};
     } catch {
       return {};
     }
   };
   const save = (secrets: PageSecrets): boolean => {
-    records.set(deps.modId, structuredClone(secrets));
-    return true;
+    try {
+      if (!deps.storage) return false;
+      if (Object.keys(secrets).length === 0) deps.storage.removeItem(key);
+      else deps.storage.setItem(key, serializeDocument(modPageSecretsFormat.format, { secrets }));
+      return true;
+    } catch {
+      return false;
+    }
   };
   return Object.freeze({
     transport: "page" as const,

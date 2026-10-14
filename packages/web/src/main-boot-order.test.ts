@@ -9,6 +9,34 @@ import type { ModPlugin } from "./mod-plugin";
 const mainSource = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
 
 describe("main boot order", () => {
+  it("removes a faulted mod's preference declaration before reporting the fault", () => {
+    const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
+    const switched = source.statements.find((statement): statement is ts.FunctionDeclaration => ts.isFunctionDeclaration(statement) && statement.name?.text === "modSwitchedOff");
+    expect(switched?.body?.statements[0]?.getText(source)).toBe("removeApi2PrefErrors(off.id);");
+  });
+
+  it("waits for Worker declarations before loading graphics and preference resources", async () => {
+    const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
+    const statements = source.statements.filter((statement) => ts.isVariableStatement(statement) && statement.declarationList.declarations.some((declaration) =>
+      ts.isIdentifier(declaration.name) && ["finishWorkerPolicies", "workerPoliciesReady"].includes(declaration.name.text)));
+    const loaders = source.statements.filter((statement): statement is ts.FunctionDeclaration => ts.isFunctionDeclaration(statement) &&
+      ["applyTileMode", "applyModResources"].includes(statement.name?.text ?? ""));
+    expect(statements).toHaveLength(2);
+    expect(loaders).toHaveLength(2);
+    for (const loader of loaders) expect(loader.body!.statements[0]!.getText(source)).toBe("await workerPoliciesReady;");
+    expect(mainSource.indexOf("finishWorkerPolicies();")).toBeGreaterThan(mainSource.indexOf("const started: StartedModWorker = startModWorker"));
+    const seen: string[] = [];
+    const slice = [...statements.map((statement) => statement.getText(source)),
+      ...loaders.map((loader) => `async function ${loader.name!.text}() { ${loader.body!.statements[0]!.getText(source)} seen("${loader.name!.text}"); }`),
+      "const pending = Promise.all([applyTileMode(), applyModResources()]); return { finish: finishWorkerPolicies, pending };"].join("\n");
+    const emitted = ts.transpileModule(slice, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
+    const { finish, pending } = new Function("seen", emitted)((name: string) => seen.push(name)) as { finish: () => void; pending: Promise<unknown> };
+    expect(seen).toEqual([]);
+    finish();
+    await pending;
+    expect(seen).toEqual(["applyTileMode", "applyModResources"]);
+  });
+
   it.each([["process", "worker"], ["worker", "process"]])("installs mixed-runtime registrations in %s then %s order", (first, second) => {
     const stores = new StoreBehaviourRegistry();
     const fillers: string[] = [];

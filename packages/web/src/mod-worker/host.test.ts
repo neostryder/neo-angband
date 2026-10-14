@@ -8,8 +8,23 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MFLAG,
+  composeModHooks,
+  loc,
+  GlyphTable,
+  glyphTableSink,
+  movementTunnelTest,
   monsterIsObvious,
+  SKILL,
+  prefErrorPolicy,
+  processPrefText,
+  setPrefErrorPolicy,
+  UPSTREAM_PREF_ERROR_POLICY,
+  squareForget,
+  squareMemorize,
   startGame,
+  tunnelAux,
+  walkAction,
+  type CaveCmdDeps,
   type GamePack,
   type GameState,
   type Monster,
@@ -18,6 +33,7 @@ import {
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
 import { API2_POLICY_KINDS, CapabilitySet, type Api2ModDefinition, type Api2Policies, type Api2PolicyRegistrations, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
+import { api2Plugin, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "../mod-api2-shim";
 import { createApi2Host } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
 import { ModHealthMonitor, type ModSwitchOff } from "../mod-health";
@@ -174,8 +190,9 @@ function wire(definition: Api2ModDefinition, deps: Partial<ModWorkerHostDeps> = 
     api: hostApi(),
     health,
     onProblem: (message) => problems.push(message),
-    onHooks: (policies, notify) =>
-      settleWorkerHooks("probe", { policies, notify, send: (hook, args) => session.notify(hook, args) }),
+    onHooks: (policies, notify, registrations) =>
+      settleWorkerHooks("probe", { policies, notify, registrations, send: (hook, args) => session.notify(hook, args) }),
+    onTeardown: () => settleWorkerHooks("probe", null),
     ...deps,
   });
   sessions.push(session);
@@ -209,26 +226,6 @@ function observer(sink: (seen: string) => void): Api2ModDefinition {
 }
 
 describe("a Worker mod's view of the world", () => {
-  it("uses granted key/value stores across the broker without a management namespace", async () => {
-    const values = new Map<string, string>();
-    const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
-    const grants = ["store:kv", "store:session"];
-    let seen: unknown;
-    const wired = wire({ api: API, start: async (api) => {
-      const written = await api.store.kv.set("report", { turns: 1 });
-      const session = await api.store.session.set("heir", true);
-      seen = { written, session, report: await api.store.kv.get("report"), keys: await api.store.kv.keys(), heir: await api.store.session.get("heir"), manage: api.manage === undefined, armed: api.meta.controllerArmed };
-    } }, { grants, api: hostApi({ grants, options: { kvStorage: storage, sessionStorage: storage, tier: "first-party", firstParty: { manage: true } } }) });
-    expect(await started(wired, () => seen)).toEqual({ written: { ok: true, value: null }, session: { ok: true, value: null }, report: { ok: true, value: { turns: 1 } }, keys: { ok: true, value: ["report"] }, heir: { ok: true, value: true }, manage: true, armed: false });
-  });
-
-  it("refuses ungranted storage calls across the broker", async () => {
-    let seen: unknown;
-    const wired = wire({ api: API, start: async (api) => {
-      seen = [await api.store.kv.set("report", 1), await api.store.session.get("heir")];
-    } });
-    expect(await started(wired, () => seen)).toMatchObject([{ reason: "not-granted", capability: "store:kv" }, { reason: "not-granted", capability: "store:session" }]);
-  });
   it("is the in-process host's, and does not change when an unseen monster does (paired worlds)", async () => {
     const a = startGame(pack, { seed: SEED, depth: DEPTH });
     const b = startGame(pack, { seed: SEED, depth: DEPTH });
@@ -471,6 +468,8 @@ describe("asking a Worker mod", () => {
 
 describe("a Worker mod's hooks", () => {
   const tables: Api2Policies = {
+    prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 },
+    walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
     messageText: [{ find: "a", replace: "b" }], screenText: [{ find: "a", replace: "b" }],
     characterBackground: [{ find: "a", replace: "b" }], objectInfoText: [{ find: "a", replace: "b" }],
     effectIntro: [{ find: "a", replace: "b" }], historyAdd: [{ find: "a", replace: "b" }],
@@ -555,6 +554,162 @@ describe("a Worker mod's hooks", () => {
     await wired.session.ready;
     workerModHooks("probe")?.optionsChanged?.({ changed: ["a"] } as never);
     await vi.waitFor(() => expect(seen).toEqual([{ changed: ["a"] }]));
+  });
+});
+
+describe("a host-owned walk declaration", () => {
+  const policies: Api2Policies = {
+    walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
+  };
+
+  function wallState(skill: number, terrain: string, known = true): GameState {
+    const { state } = startGame(pack, { seed: SEED, depth: DEPTH });
+    state.actor.grid = loc(15, 10);
+    state.chunk.setFeat(state.actor.grid, state.chunk.features.byCodeName("FLOOR").fidx);
+    state.chunk.setFeat(loc(16, 10), state.chunk.features.byCodeName(terrain).fidx);
+    if (known) squareMemorize(state, loc(16, 10));
+    else squareForget(state, loc(16, 10));
+    state.bestDiggerDigging = () => skill;
+    (state.actor.combat.skills as number[])[SKILL.DIGGING] = skill;
+    return state;
+  }
+
+  it.each([0, 200])("matches the live hook for a failed or successful attempt at digging skill %s", async (skill) => {
+    const workerState = wallState(skill, "GRANITE");
+    const pluginState = wallState(skill, "GRANITE");
+    const liveState = wallState(skill, "GRANITE");
+    const diggingSkill = skill === 0 ? 41 : 2000;
+    for (const state of [workerState, pluginState, liveState]) state.bestDiggerDigging = () => diggingSkill;
+    if (skill === 0) for (const state of [workerState, pluginState, liveState]) vi.spyOn(state.rng, "randint0").mockReturnValue(1599);
+    const pending = workerModHooks("probe");
+    const wired = wire({ api: API, policies: (context) => {
+      expect(context.engine).toBeUndefined();
+      return policies;
+    } }, { grants: ["registry:command"] });
+    await wired.session.ready;
+    workerState.modHooks = pending!;
+    const grants = CapabilitySet.fromManifest({ id: "dig", name: "Dig", version: "1.0.0", shape: "plugin", capabilities: ["registry:command"] });
+    const plugin = api2Plugin({ api: API, policies: () => policies }, () => ({ grants }));
+    pluginState.modHooks = plugin.hooks!(modPluginContext("dig", {}, undefined, {}, { capabilities: grants }))!;
+    liveState.modHooks = { walkBlockedByDiggable: (state, grid, deps) => {
+      if (!movementTunnelTest(state, grid)) return null;
+      tunnelAux(state, grid, deps as CaveCmdDeps);
+      return state.z.moveEnergy;
+    } };
+    for (const state of [workerState, pluginState, liveState]) {
+      expect(walkAction(state, { code: "walk", dir: 6 })).toBe(state.z.moveEnergy);
+      expect(state.actor.grid).toEqual(loc(15, 10));
+      expect(state.chunk.isPassable(loc(16, 10))).toBe(skill !== 0);
+    }
+    expect(workerState.rng.getState()).toEqual(liveState.rng.getState());
+    expect(pluginState.rng.getState()).toEqual(liveState.rng.getState());
+    if (skill === 0) expect(workerState.rng.randint0).toHaveBeenCalledExactlyOnceWith(1600);
+  });
+
+  it.each([["RUBBLE", 200, false], ["PERM", 200, true], ["GRANITE", 20, true]] as const)("declines %s at skill %s with known=%s without a draw", async (terrain, skill, known) => {
+    const state = wallState(skill, terrain, known);
+    const wired = wire({ api: API, policies: () => policies }, { grants: ["registry:command"] });
+    await wired.session.ready;
+    state.modHooks = workerModHooks("probe")!;
+    const before = state.rng.getState();
+    expect(walkAction(state, { code: "walk", dir: 6 })).toBe(0);
+    expect(state.rng.getState()).toEqual(before);
+    expect(state.actor.grid).toEqual(loc(15, 10));
+  });
+
+  it("uses load order and releases both pending and settled contributions on stop", async () => {
+    const state = wallState(2000, "GRANITE");
+    const pending = workerModHooks("probe");
+    const wired = wire({ api: API, policies: () => policies }, { grants: ["registry:command"] });
+    await wired.session.ready;
+    const settled = workerModHooks("probe");
+    const earlier = { walkBlockedByDiggable: () => 37 };
+    const before = state.rng.getState();
+    state.modHooks = composeModHooks([settled!, earlier])!;
+    expect(walkAction(state, { code: "walk", dir: 6 })).toBe(37);
+    expect(state.rng.getState()).toEqual(before);
+    wired.session.teardown();
+    for (const hooks of [pending, settled]) {
+      state.modHooks = composeModHooks([earlier, hooks!])!;
+      expect(walkAction(state, { code: "walk", dir: 6 })).toBe(37);
+      expect(state.rng.getState()).toEqual(before);
+    }
+    const grants = CapabilitySet.fromManifest({ id: "dig", name: "Dig", version: "1.0.0", shape: "plugin", capabilities: ["registry:command"] });
+    const plugin = api2Plugin({ api: API, policies: () => policies }, () => ({ grants }));
+    const hooks = plugin.hooks!(modPluginContext("dig", {}, undefined, {}, { capabilities: grants }));
+    state.modHooks = composeModHooks([earlier, hooks!])!;
+    expect(walkAction(state, { code: "walk", dir: 6 })).toBe(state.z.moveEnergy);
+    state.chunk.setFeat(loc(16, 10), state.chunk.features.byCodeName("GRANITE").fidx);
+    squareMemorize(state, loc(16, 10));
+    plugin.uninstall!();
+    const after = state.rng.getState();
+    expect(walkAction(state, { code: "walk", dir: 6 })).toBe(37);
+    expect(state.rng.getState()).toEqual(after);
+  });
+});
+
+describe("preference errors during composition", () => {
+  afterEach(() => {
+    setApi2PolicyLoadOrder([]);
+    setPrefErrorPolicy(null);
+  });
+
+  it.each([["process", "probe"], ["probe", "process"]])("keeps mixed-runtime contributions in %s then %s order before startup", async (first, second) => {
+    const baseline = prefErrorPolicy();
+    setApi2PolicyLoadOrder([first!, second!]);
+    const grants = CapabilitySet.fromManifest({ id: "process", name: "Process", version: "1.0.0", shape: "plugin", capabilities: ["registry:ui-entry"] });
+    const plugin = api2Plugin({ api: API, policies: () => ({ prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 1 } }) }, () => ({ grants }));
+    plugin.hooks!(modPluginContext("process", {}, undefined, {}, { capabilities: grants }));
+    const wired = wire({ api: API, policies: () => ({ prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 } }) }, { grants: ["registry:ui-entry"] });
+    try {
+      await wired.session.ready;
+      expect(prefErrorPolicy()).toEqual({ continueAfterError: true, reportLimit: second === "probe" ? 20 : 1 });
+      if (second === "probe") wired.session.teardown();
+      else plugin.uninstall!();
+      expect(prefErrorPolicy()).toEqual({ continueAfterError: true, reportLimit: first === "probe" ? 20 : 1 });
+    } finally {
+      plugin.uninstall!();
+      wired.session.teardown();
+    }
+    expect(prefErrorPolicy()).toEqual(baseline);
+  });
+
+  it("matches the live preference setter, keeps valid input after an error, and caps reports at twenty", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const reg = game.booted.registries;
+    const deps = { features: reg.features, objects: reg.objects, monsters: reg.monsters, traps: reg.traps };
+    const table = () => new GlyphTable({ features: reg.features.allFeatures(), kinds: reg.objects.kinds, races: reg.monsters.races, traps: reg.traps, flavors: reg.objects.flavors });
+    const text = [...Array.from({ length: 25 }, () => "feat:FLOOR:gloomy:4:37"), "feat:GRANITE:*:4:38"].join("\n");
+    const live = table();
+    setPrefErrorPolicy({ continueAfterError: true, reportLimit: 20 });
+    const expected = processPrefText(text, deps, glyphTableSink(live));
+    setPrefErrorPolicy(null);
+    const before = game.state.rng.getState();
+    const wired = wire({ api: API, policies: () => ({ prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 } }) }, { grants: ["registry:ui-entry"] });
+    await wired.session.ready;
+    const actual = table();
+    expect(processPrefText(text, deps, glyphTableSink(actual))).toEqual(expected);
+    expect(expected).toHaveLength(20);
+    expect(actual.featGlyph(0, reg.features.byCodeName("GRANITE").fidx)).toEqual({ attr: 4, char: "&" });
+    expect(actual.featGlyph(0, reg.features.byCodeName("GRANITE").fidx)).toEqual(live.featGlyph(0, reg.features.byCodeName("GRANITE").fidx));
+    expect(game.state.rng.getState()).toEqual(before);
+    wired.session.teardown();
+    expect(prefErrorPolicy()).toEqual(UPSTREAM_PREF_ERROR_POLICY);
+    expect(processPrefText(text, deps, glyphTableSink(table()))).toHaveLength(1);
+  });
+
+  it("releases a faulted in-process contribution and leaves the earlier Worker policy", async () => {
+    setApi2PolicyLoadOrder(["probe", "process"]);
+    const wired = wire({ api: API, policies: () => ({ prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 } }) }, { grants: ["registry:ui-entry"] });
+    await wired.session.ready;
+    const grants = CapabilitySet.fromManifest({ id: "process", name: "Process", version: "1.0.0", shape: "plugin", capabilities: ["registry:ui-entry"] });
+    const plugin = api2Plugin({ api: API, policies: () => ({ prefErrors: { kind: "pref-errors", continueAfterError: false, reportLimit: 1 } }) }, () => ({ grants }));
+    plugin.hooks!(modPluginContext("process", {}, undefined, {}, { capabilities: grants }));
+    expect(prefErrorPolicy().continueAfterError).toBe(false);
+    removeApi2PrefErrors("process");
+    expect(prefErrorPolicy()).toEqual({ continueAfterError: true, reportLimit: 20 });
+    plugin.uninstall!();
+    expect(prefErrorPolicy()).toEqual({ continueAfterError: true, reportLimit: 20 });
   });
 });
 
