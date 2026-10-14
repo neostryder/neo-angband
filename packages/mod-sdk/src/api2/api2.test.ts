@@ -68,7 +68,7 @@ const plainResults: Record<string, true> = {
   ui: true satisfies AllPlain<Api2Ui>,
   net: true satisfies AllPlain<Api2Net>,
   credentials: true satisfies AllPlain<Api2Credentials>,
-  manage: true satisfies AllPlain<Api2Manage>,
+  manage: true satisfies AllPlain<Omit<Api2Manage, "authoring" | "wizard">>,
   truth: true satisfies AllPlain<Api2Truth>,
   eventPayloads: true satisfies IsPlain<Api2EventMap[keyof Api2EventMap]>,
   hookArguments: true satisfies IsPlain<Parameters<NonNullable<Api2Hooks[keyof Api2Hooks]>>[number]>,
@@ -87,6 +87,11 @@ describe("API 2 boundary values", () => {
     const optional: true = true satisfies (undefined extends ModApi2["manage"] ? true : false);
     const truth: true = true satisfies (undefined extends ModApi2["truth"] ? true : false);
     expect(optional && truth).toBe(true);
+  });
+
+  it("tracks the first-party management namespace", () => {
+    const names: Record<keyof Api2Manage, true> = { profiles: true, session: true, saves: true, options: true, keys: true, mods: true, authoring: true, wizard: true, loadForSession: true, reloadGame: true };
+    expect(Object.keys(names).sort()).toEqual(["authoring", "keys", "loadForSession", "mods", "options", "profiles", "reloadGame", "saves", "session", "wizard"]);
   });
 });
 

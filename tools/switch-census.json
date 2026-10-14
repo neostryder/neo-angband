@@ -11,7 +11,7 @@
     },
     {
       "file": "packages/mod-sdk/src/capabilities.ts",
-      "cases": 30,
+      "cases": 31,
       "hasDefault": false,
       "kind": "SWITCH",
       "verdict": "INTERNAL - grantCovers compares a grant with a request over the closed capability vocabulary in capability-vocabulary.ts, which also holds the parsing and consent text that used to be two more switches. A mod cannot add a capability kind. The truth namespace is checked before the switch, so no wildcard arm can cover state:map-actual.read."

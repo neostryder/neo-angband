@@ -219,6 +219,18 @@ describe("the seam policy", () => {
     expect(tierRefusal("profiles:manage", squire)).toBeNull();
   });
 
+  it("refuses every management capability in Workers and in non-first-party tiers", () => {
+    const capabilities = ["screens:manage", "session:control", "profiles:manage", "mod:install", "mod:session", "mod:authoring", "options:manage"];
+    for (const capability of capabilities) {
+      for (const trust of ["listed", "reviewed", "sideloaded"] as const) expect(tierRefusal(capability, { ...anybandui, trust })).not.toBeNull();
+      expect(tierRefusal(capability, { ...anybandui, execution: "worker" })).not.toBeNull();
+      expect(tierRefusal(capability, { ...anybandui, execution: "data" })).not.toBeNull();
+    }
+    setModTiers(new Map([["anybandui", { ...anybandui, execution: "worker" }]]));
+    setModGrants(new Map([["anybandui", { granted: ["mod:install"], refusedByTier: [], refusedByPlayer: [], undecided: [], blocking: [] }]]));
+    expect(modStartGrants("anybandui").firstParty?.manage).toBeUndefined();
+  });
+
   it("asks about manage on its own question", () => {
     expect(needsOwnConfirmation("mod:install")).toBe(true);
     expect(needsOwnConfirmation(TRUTH_MAP)).toBe(false);

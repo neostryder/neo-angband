@@ -11,6 +11,7 @@
  */
 
 import { createModOptions, type ModOptions } from "./mod-options";
+import { modStartGrants } from "./mod-tier";
 import { createModKeybindings, type ModKeybindings } from "./mod-keybindings";
 import type { ModKnowledge } from "./knowledge-read";
 import { characterHistory, type RunReport, type RunReports } from "./run-report";
@@ -189,7 +190,7 @@ export function modPluginContext(
   const profiles = session.capabilities?.has("profiles:manage") ? profilesControl?.(id, session.capabilities) : undefined;
   const net = netFor(id, session);
   const keymaps = keymapsFor(id, state, session);
-  const options = optionsFor(state, session);
+  const options = optionsFor(id, state, session);
   const keybindings = keybindingsFor(state, session);
   const knowledge = knowledgeFor(state, session);
   const settings = modSettingsFor(id);
@@ -337,11 +338,13 @@ export function setModOptionsAfterChange(after: (() => void) | undefined): void 
   optionsAfterChange = after;
 }
 
-function optionsFor(state: GameState | undefined, session: ModSessionFacts): ModOptions | undefined {
+function optionsFor(id: string, state: GameState | undefined, session: ModSessionFacts): ModOptions | undefined {
   const caps = session.capabilities;
-  if (!state || !caps || !(caps.has("state:options.read") || caps.has("state:*.read"))) return undefined;
+  const management = caps?.has("options:manage") === true && modStartGrants(id).firstParty?.manage === true;
+  if (!state || !caps || !(management || caps.has("state:options.read") || caps.has("state:*.read"))) return undefined;
   return createModOptions(state, {
-    writable: caps.has("options:write"),
+    writable: management || caps.has("options:write"),
+    management,
     ...(optionsAfterChange ? { afterChange: optionsAfterChange } : {}),
   });
 }

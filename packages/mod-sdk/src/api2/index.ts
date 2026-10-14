@@ -103,6 +103,14 @@ export type {
 } from "./policies.js";
 export { defineApi2Mod } from "./domains.js";
 export type {
+  Api2BrowseEntry, Api2Consent, Api2CreateCharacter, Api2GameCommand, Api2InstallPlan,
+  Api2KeymapEntry, Api2Keyset, Api2KeyValueStore, Api2ManagedKeys, Api2ManagedMods,
+  Api2ManagedOptions, Api2ManagerCatalog, Api2ManagerConfirmation,
+  Api2ManagerState, Api2ModReference, Api2OptionsChange, Api2OptionsView,
+  Api2ProfileAction, Api2SaveEntry, Api2Saves, Api2Wizard, Api2WizardEntry, Api2WizardOutcome,
+  Api2CatalogMod, Api2DiscoveredMod, Api2EngineHeld, Api2ModTier,
+} from "./management.js";
+export type {
   Api2Presentation, Api2Presenters, Api2BootPhase, Api2Display, Api2DisplayHit, Api2DisplaySnapshot,
   Api2DisplayGridRequest, Api2MapView, Api2Subwindows, Api2SubwindowInfo,
   Api2SubwindowControl, Api2Tiles, Api2DomUi, Api2DomPanel, Api2PanelSpec,

@@ -5,7 +5,8 @@
  * runs in a Worker. Every method returns a promise of an `Api2Result`, and
  * every value that crosses the boundary is plain data that survives structured
  * clone. The consented `engine` domain is the in-process exception: its
- * namespace, state, and registries stay live and never reach a Worker.
+ * namespace, state, and registries stay live and never reach a Worker. The
+ * management authoring library and wizard facade also stay in process.
  *
  * `manage` and `truth` exist only for first-party mods the game's build names,
  * and are absent for every other mod. Absent is the whole check: a mod tests
@@ -33,6 +34,7 @@ import type { Api2Inspect, LoadoutChange, LoadoutSimulation } from "./inspection
 import type { Api2Character } from "./character.js";
 import type { Api2Knowledge } from "./knowledge.js";
 import type { Api2Options } from "./hooks.js";
+import type { Api2KeyValueStore, Api2ManagedKeys, Api2ManagedMods, Api2ManagedOptions, Api2ProfileAction, Api2Saves, Api2Wizard } from "./management.js";
 
 /** In-process hosts supply the engine types without making the SDK depend on Core. */
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- Core augments this interface with its live types.
@@ -74,6 +76,7 @@ export interface Api2Meta {
   readonly flags: Readonly<Record<string, boolean>>;
   /** True when the character was created this session rather than loaded. */
   readonly newCharacter: boolean;
+  readonly controllerArmed: boolean;
   /** Whether the player granted a permission. No call is needed to ask. */
   granted(capability: Api2Capability): boolean;
   /** Write a diagnostic line; the host decides where it goes. */
@@ -437,6 +440,8 @@ export interface Api2Slot {
  * unavailable until a character exists.
  */
 export interface Api2Store {
+  readonly kv: Api2KeyValueStore;
+  readonly session: Api2KeyValueStore;
   readonly install: Api2Slot;
   readonly prefs: Api2Slot;
   readonly character: Api2Slot;
@@ -509,8 +514,16 @@ export interface Api2Manage {
     list(): Api2Call<readonly Api2Profile[]>;
     create(name: string, copyFrom?: string | null): Api2Call<Api2Profile>;
     setEnabledMods(id: string, mods: readonly string[]): Api2Call<null>;
-    switchTo(id: string | null): Api2Call<null>;
+    switchTo(id: string | null, action?: Api2ProfileAction): Api2Call<null>;
   };
+  readonly saves: Api2Saves;
+  readonly options: Api2ManagedOptions;
+  readonly keys: Api2ManagedKeys;
+  readonly mods: Api2ManagedMods;
+  authoring(): Api2Call<typeof import("../index.js")>;
+  wizard(): Api2Call<Api2Wizard>;
+  loadForSession(bytes: Uint8Array): Api2Call<{ readonly id: string; readonly version: string; readonly survivesReload: boolean }>;
+  reloadGame(): Api2Call<null>;
   readonly session: Api2SessionControl;
 }
 

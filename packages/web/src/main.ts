@@ -442,7 +442,9 @@ import { createIsolatedModWorker } from "./mod-worker/isolation";
 import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
 import { MOD_WORKER_PROTOCOL_VERSION } from "./mod-worker/protocol";
-import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost } from "./mod-api2-host";
+import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost, setApi2ManagementHost } from "./mod-api2-host";
+import { classicManager } from "./mod-manager/classic-service";
+import { drawPendingManagementConfirmation } from "./mod-manager/classic-confirmation";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, modDisplayName, reportModFault, setModNameLookup } from "./mod-problems";
 import {
@@ -7768,7 +7770,31 @@ function orphanStashFor(store: OrphanStore | undefined): OrphanStash {
  * (pack.ts) and enabled plugins re-install (boot). Content-mod enablement and
  * plugin consent both persist through defaultModStore.
  */
-async function modManagerDeps(): Promise<ModManagerDeps> {
+let managerDeps: Promise<ModManagerDeps> | undefined;
+
+function modManagerDeps(): Promise<ModManagerDeps> {
+  return managerDeps ??= buildModManagerDeps();
+}
+
+setApi2ManagementHost(async () => {
+  const manager = classicManager(await modManagerDeps());
+  if (!managementSubscribed) {
+    managementSubscribed = true;
+    manager.service.subscribe((snapshot) => {
+      if (!snapshot.pendingConfirmation || snapshot.pendingConfirmation.requestedBy === null || managementDrawing) return;
+      managementDrawing = true;
+      const confirmationId = snapshot.pendingConfirmation.id;
+      void openModal(() => drawPendingManagementConfirmation(term, manager.service, manager.core))
+        .catch(() => manager.core.resolveConfirmation(confirmationId, { accepted: false }))
+        .finally(() => { managementDrawing = false; });
+    });
+  }
+  return manager.service;
+});
+let managementSubscribed = false;
+let managementDrawing = false;
+
+async function buildModManagerDeps(): Promise<ModManagerDeps> {
   const store = defaultModStore();
   /* Fetched once for the life of this screen, the same way `store` above is: an
    * install through ctx.installMod only happens while a mod's plugin is running
@@ -10436,7 +10462,7 @@ setModNetControl((id, grants) => createModNet({
   modName: activeModCode().plugins.find((loaded) => loaded.id === id)?.manifest.name ?? "A mod",
   grants,
   relay: netRelayBridge(globalThis),
-  fetch: (input, init) => fetch(input, init),
+  fetch: fetch.bind(globalThis),
   storage: (() => {
     try {
       return window.localStorage;

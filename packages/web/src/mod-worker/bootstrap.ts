@@ -103,6 +103,7 @@ export function installModWorkerBootstrap(
         tier: m.tier,
         flags: m.flags,
         newCharacter: m.newCharacter,
+        controllerArmed: false,
         granted,
         log: (message: string): void => send({ type: "log", level: "info", message: String(message) }),
         settings: method("meta.settings"),
@@ -211,6 +212,8 @@ export function installModWorkerBootstrap(
         keys: { isBindableTriggerKey: method("ui.keys.isBindableTriggerKey"), bind: method("ui.keys.bind"), list: method("ui.keys.list"), remove: method("ui.keys.remove") },
       },
       store: {
+        kv: { get: method("store.kv.get"), set: method("store.kv.set"), keys: method("store.kv.keys") },
+        session: { get: method("store.session.get"), set: method("store.session.set"), keys: method("store.session.keys") },
         install: { get: method("store.install.get"), set: method("store.install.set") },
         prefs: { get: method("store.prefs.get"), set: method("store.prefs.set") },
         character: { get: method("store.character.get"), set: method("store.character.set") },
