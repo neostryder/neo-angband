@@ -594,8 +594,6 @@ import { setBootPhase } from "./presentation-phase";
 import type { BuildOverviewParams, LevelOverview, Overview, OverviewGlyph } from "./mapview";
 import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
-import { LookStore, NEO_PENDING_TEXT } from "./look-state";
-import { runLookChoice } from "./mod-manager/classic-look";
 import { TitleRuntime } from "./title-runtime";
 import { consumeProfileAction, createModProfiles } from "./profile-runtime";
 import { startLoading } from "./loading";
@@ -996,7 +994,6 @@ try {
   scopedGameStorage = null; // no localStorage at all (private mode / no DOM)
 }
 setModStorage(scopedGameStorage);
-const lookStore = new LookStore(scopedGameStorage, defaultModStore());
 if (scopedGameStorage) convertLegacyModState(scopedGameStorage);
 setRosterStorage(scopedGameStorage);
 setUserStorage(scopedGameStorage);
@@ -7331,10 +7328,7 @@ const modSettingDecls = loadEnabledModSettings();
 setModSettingSource({
   declared: (modId) => modSettingDecls.get(modId) ?? [],
   stored: (modId) => defaultModStore().getSettingValues()[modId] ?? {},
-  write: (modId, settingId, value) => {
-    defaultModStore().setSettingValue(modId, settingId, value);
-    lookStore.recordSetting(modId, settingId, value);
-  },
+  write: (modId, settingId, value) => defaultModStore().setSettingValue(modId, settingId, value),
 }, reportDisplayFault);
 setSharedValueFaultReporter(reportDisplayFault);
 setModSavesControl(createModSaves({
@@ -7786,7 +7780,6 @@ async function modManagerDeps(): Promise<ModManagerDeps> {
   const delveSyncFolder = createHostFolder(DELVE_SYNC_PURPOSE, DELVE_SYNC_EXT);
   return {
     store,
-    look: lookStore,
     listCatalog: () =>
       buildCatalog({
         content: discoverContentModManifests(),
@@ -13280,8 +13273,6 @@ async function maybeTitle(): Promise<TitleChoice | null> {
       showTitleScreen(
         term,
         {
-          look: lookStore.read().active,
-          ...(lookStore.read().pending ? { lookPending: NEO_PENDING_TEXT } : {}),
           canLoad: living || resumedActive,
           canOpen: listRoster().length > 0,
           canQuit: desktopQuitAvailable(),
@@ -15138,11 +15129,6 @@ async function bootMenus(): Promise<void> {
    * (SKIP_TITLE, BIRTH_DONE) is one-shot and cleared on the first pass, so the
    * second time round the title really does appear. */
   const canReturnToTitle = !params.get("agent");
-  if (canReturnToTitle && !lookStore.read().chosen) {
-    const deps = await modManagerDeps();
-    deps.requestReload = () => reloadAfterModChange({ resume: false });
-    await openModal(() => runLookChoice(term, deps));
-  }
   for (;;) {
     const choice = await maybeTitle();
     if (choice?.startsWith("mod:")) {
@@ -15192,12 +15178,6 @@ async function bootMenus(): Promise<void> {
     }
     if (choice === "mods") {
       await openModal(() => openModManager({ resume: false }));
-      continue;
-    }
-    if (choice === "look") {
-      const deps = await modManagerDeps();
-      deps.requestReload = () => reloadAfterModChange({ resume: false });
-      await openModal(() => runLookChoice(term, deps));
       continue;
     }
     if (choice === "install") {

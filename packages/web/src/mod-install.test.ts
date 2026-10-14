@@ -20,7 +20,11 @@ import { discoverMod, type DiscoverEnv, type DiscoveredMod, type PayloadEntry } 
 import { classifyModPin, classifyModTag } from "./mod-updates";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { STORE_MODS, STORE_MOD_META } from "./idb";
+import { STORE_HANDLES, STORE_MODS, STORE_MOD_META } from "./idb";
+import { activateModTransaction, stageModPlan, stageModRollback, previousModVersion, releasePreviousModVersions, type ModTransactionEnvironment } from "./mod-transactions";
+import { ModStore, MOD_STATE_STORAGE_KEY, MOD_SETTINGS_STORAGE_KEY } from "./mod-store";
+import type { InstallPlan } from "./mod-manager/types";
+import { createModManagerService } from "./mod-manager/service";
 import {
   FILE_ORIGIN,
   installModFromRepo,
@@ -44,7 +48,7 @@ import { ZIP_LIMITS } from "./mod-archive";
 import { contributedTileModes, mergeModSources } from "./tile-mods";
 import { loadModCode, type ModCodeReport } from "./mod-code";
 import { modPluginContext, setModInstallDoor } from "./mod-context";
-import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
+import { CapabilitySet, validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 
 const subtle = webcrypto.subtle;
 
@@ -69,6 +73,7 @@ function fakeIdb(
   opts: {
     putFails?: boolean;
     openFails?: boolean;
+    failPut?: (store: string, key: string, value: unknown) => boolean;
     /* Share another fake's stores, so one test can drive a healthy install and then
      * a refused one against the SAME data - which is the only way to see whether an
      * upgrade destroys what it is replacing. */
@@ -156,7 +161,7 @@ function fakeIdb(
                     return r;
                   },
                   put(value: unknown, key: string) {
-                    if (opts.putFails) failed = true;
+                    if (opts.putFails || opts.failPut?.(store, key, value)) failed = true;
                     else pending.push(() => storeOf(store).set(key, value));
                     settle();
                     return {};
@@ -307,6 +312,355 @@ async function envFor(
 
 /** A curated install: the origin every test here uses unless it is about consent. */
 const CURATED = { origin: "curated", allowed: false } as const;
+
+function transactionFixture(failPut?: (store: string, key: string, value: unknown) => boolean) {
+  const made = fakeIdb({ ...(failPut ? { failPut } : {}) });
+  const values = new Map<string, string>();
+  const store = new ModStore({
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => { values.set(key, value); },
+    removeItem: (key) => { values.delete(key); },
+  });
+  let tail = Promise.resolve();
+  const locks = { request: (_name: string, body: () => Promise<unknown>) => {
+    const result = tail.then(body);
+    tail = result.then(() => {}, () => {});
+    return result;
+  } } as unknown as Pick<LockManager, "request">;
+  const scope = { indexedDB: made.factory, navigator: { locks } };
+  const contents = new Map<string, Uint8Array>();
+  const makePlan = (version: string, ids = ["demo", "other"], overrides: Record<string, Record<string, unknown>> = {}): InstallPlan => ({
+    id: 1, operation: "update", newGrants: [], conflicts: [],
+    downloads: ids.map((id) => {
+      const text = JSON.stringify({ ...JSON.parse(MANIFEST) as Record<string, unknown>, ...overrides[id], id, name: id === "demo" ? "Demo" : "Other Mod", version });
+      contents.set(rawUrl(MOD_REPO, `v${version}`, `${id}.json`), enc(text));
+      contents.set(rawUrl(MOD_REPO, `v${version}`, "manifest.json"), enc(text));
+      const manifest = validateManifest(JSON.parse(text));
+      const mod = { ...discovered([{ kind: "file", path: "manifest.json" }, { kind: "file", path: "plugin.js" }]), id, name: manifest.name, version, tag: `v${version}` };
+      return { mod, manifest, origin: "curated" as const, bytes: null, files: ["manifest.json", "plugin.js"] };
+    }),
+  });
+  let fetching = "demo";
+  const env: ModTransactionEnvironment = {
+    store, allowed: () => true,
+    install: {
+      scope, subtle, now: () => "2026-10-13T00:00:00Z",
+      fetch: async (url) => {
+        if (url.endsWith("manifest.json")) {
+          const tag = url.split("/refs/tags/")[1]!.split("/")[0]!;
+          return res(contents.get(rawUrl(MOD_REPO, tag, `${fetching}.json`))!);
+        }
+        return res(enc(PLUGIN));
+      },
+    },
+  };
+  const stage = (plan: InstallPlan, permissions: Record<string, { granted: string[]; refused: string[] }> = {}) => {
+    let index = 0;
+    fetching = plan.downloads[0]!.mod.id;
+    return stageModPlan(plan, permissions, env, (progress) => {
+      if (progress.done === 1) fetching = plan.downloads[index++]!.mod.id;
+    });
+  };
+  const pending = () => made.stores.get(STORE_HANDLES)?.get("neo-angband:mod-transaction/pending") as {
+    data: { phase: string; payloads: Array<{ files: Array<[string, Uint8Array]>; meta: InstalledModMeta }> };
+  } | undefined;
+  const active = () => ({
+    files: structuredClone([...made.stores.get(STORE_MODS) ?? []]),
+    metadata: structuredClone([...made.stores.get(STORE_MOD_META) ?? []]),
+  });
+  const installInitial = async () => {
+    expect((await stage(makePlan("1.0.0"))).ok).toBe(true);
+    expect(await activateModTransaction(env)).toBeNull();
+  };
+  return { ...made, values, store, scope, env, makePlan, stage, pending, active, installInitial };
+}
+
+describe("staged mod transactions", () => {
+  it("keeps the installed set unchanged until the whole verified set activates at boot", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const before = f.active();
+    expect(await f.stage(f.makePlan("2.0.0"))).toMatchObject({ ok: true, results: [{ staged: true }, { staged: true }] });
+    expect(f.pending()?.data.phase).toBe("ready");
+    expect(f.active()).toEqual(before);
+    expect((await installedMods(f.scope)).map((meta) => meta.tag)).toEqual(["v1.0.0", "v1.0.0"]);
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect((await installedMods(f.scope)).map((meta) => meta.tag)).toEqual(["v2.0.0", "v2.0.0"]);
+    expect(f.pending()).toBeUndefined();
+  });
+
+  it.each([1, 2, 3, 4])("leaves the active set untouched after download failure %i", async (crashAt) => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const before = f.active();
+    const plan = f.makePlan("2.0.0");
+    let downloads = 0;
+    const result = await stageModPlan(plan, {}, { ...f.env, install: { ...f.env.install, downloaded: async () => {
+      if (++downloads === crashAt) throw new Error("The tab lost its download.");
+    } } });
+    expect(result.ok).toBe(false);
+    expect(f.active()).toEqual(before);
+    expect(f.pending()).toBeUndefined();
+  });
+
+  it("discards a download interrupted by a closed tab on the next boot", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const before = f.active();
+    await f.stage(f.makePlan("2.0.0"));
+    f.pending()!.data.phase = "downloading";
+    f.pending()!.data.payloads.pop();
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect(f.active()).toEqual(before);
+    expect(f.pending()).toBeUndefined();
+  });
+
+  it("rejects a digest mismatch after staging and names the proper mod names once", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const before = f.active();
+    await f.stage(f.makePlan("2.0.0"));
+    f.pending()!.data.payloads[0]!.files[1]![1] = enc("changed bytes");
+    expect(await activateModTransaction(f.env)).toBe("The mod update for Demo, Other Mod failed. The previous versions were restored.");
+    expect(f.active()).toEqual(before);
+    expect(await activateModTransaction(f.env)).toBeNull();
+  });
+
+  it("refuses a downloaded manifest that differs from the resolved plan", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const before = f.active();
+    const plan = f.makePlan("2.0.0", ["demo"]);
+    const changed = { ...plan, downloads: plan.downloads.map((download) => ({ ...download, manifest: { ...download.manifest, dependencies: { other: ">=3.0.0" } } })) };
+    expect(await f.stage(changed)).toMatchObject({ ok: false, problem: "The manifest changed after the mod plan was resolved." });
+    expect(f.active()).toEqual(before);
+  });
+
+  it("keeps the old set when quota fails after one mod payload was saved", async () => {
+    let refused = false;
+    const f = transactionFixture((store, _key, value) => {
+      const doc = value as { data?: { payloads?: unknown[] } };
+      return refused && store === STORE_HANDLES && doc.data?.payloads?.length === 2;
+    });
+    await f.installInitial();
+    const before = f.active();
+    refused = true;
+    expect((await f.stage(f.makePlan("2.0.0"))).ok).toBe(false);
+    expect(f.active()).toEqual(before);
+    expect(f.pending()).toBeUndefined();
+  });
+
+  it("rolls back every active file and permission when a write fails mid-activation", async () => {
+    let refused = false;
+    const f = transactionFixture((store, key) => refused && store === STORE_MODS && key === "other/plugin.js");
+    await f.installInitial();
+    f.store.setModEnabled("demo", true);
+    f.store.setDecisions("demo", { granted: [], refused: [] }, "1.0.0");
+    f.store.setSettingValue("demo", "amount", 7);
+    const before = f.active();
+    await f.stage(f.makePlan("2.0.0"), { demo: { granted: ["ui:sidebar.replace"], refused: [] } });
+    const config = f.store.captureConfiguration(["demo", "other"]);
+    refused = true;
+    expect(await activateModTransaction(f.env)).toContain("Demo, Other Mod failed");
+    expect(f.active()).toEqual(before);
+    expect(f.store.captureConfiguration(["demo", "other"])).toEqual(config);
+    expect(f.pending()).toBeUndefined();
+  });
+
+  it("recovers configuration when a tab closes during activation", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    f.store.setModEnabled("demo", true);
+    f.store.setDecisions("demo", { granted: [], refused: [] }, "1.0.0");
+    await f.stage(f.makePlan("2.0.0"));
+    const before = f.active();
+    f.pending()!.data.phase = "activating";
+    f.store.setDecisions("demo", { granted: ["ui:sidebar.replace"], refused: [] }, "2.0.0");
+    expect(await activateModTransaction(f.env)).toContain("previous versions were restored");
+    expect(f.store.getConsent("demo")).toEqual([]);
+    expect(f.store.getConsentVersion("demo")).toBe("1.0.0");
+    expect(f.active()).toEqual(before);
+  });
+
+  it("serializes two tabs so one complete staged set wins", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const before = f.active();
+    const plan = f.makePlan("2.0.0", ["demo"]);
+    const results = await Promise.all([f.stage(plan), stageModPlan(plan, {}, f.env)]);
+    expect(results.map((result) => result.ok)).toEqual([true, false]);
+    expect(f.active()).toEqual(before);
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect((await installedMeta("demo", f.scope))?.tag).toBe("v2.0.0");
+  });
+
+  it("restores retained files and configuration without downloading the previous release", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    f.store.setEnabled(["other", "demo"]);
+    f.store.setDecisions("demo", { granted: ["ui:sidebar.replace"], refused: ["ui:messages.replace"] }, "1.0.0");
+    f.store.setSettingValue("demo", "amount", 7);
+    f.store.pinAgainst("demo", "other", "after");
+    await f.stage(f.makePlan("2.0.0"));
+    expect(await activateModTransaction(f.env)).toBeNull();
+    f.store.setEnabled(["demo", "other"]);
+    f.store.setSettingValue("demo", "amount", 99);
+    f.store.setDecisions("demo", { granted: [], refused: ["ui:sidebar.replace"] }, "2.0.0");
+    expect(await previousModVersion("demo", f.env)).toMatchObject({ ok: true, mod: { version: "1.0.0" } });
+    expect(await stageModRollback("demo", { ...f.env, install: { ...f.env.install, fetch: async () => { throw new Error("No network during rollback."); } } })).toMatchObject({ ok: true });
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect((await installedMeta("demo", f.scope))?.tag).toBe("v1.0.0");
+    expect(f.store.getEnabled()).toEqual(["other", "demo"]);
+    expect(f.store.getConsentVersion("demo")).toBe("1.0.0");
+    expect(f.store.getDecisions("demo")).toEqual({ granted: ["ui:sidebar.replace"], refused: ["ui:messages.replace"] });
+    expect(f.store.getSettingValues()["demo"]?.["amount"]).toBe(7);
+    expect(f.store.getPins()).toEqual([{ id: "demo", after: ["other"] }]);
+  });
+
+  it("never releases a saved version even after the player confirms the current version", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    await f.stage(f.makePlan("2.0.0"));
+    await activateModTransaction(f.env);
+    expect(await releasePreviousModVersions("demo", { ...f.env, saveReferences: (id, tag) => id === "demo" && tag === "v1.0.0" })).toBe(true);
+    expect(await previousModVersion("demo", f.env)).toMatchObject({ ok: true, mod: { version: "1.0.0" } });
+    expect(await releasePreviousModVersions("demo", f.env)).toBe(true);
+    expect(await previousModVersion("demo", f.env)).toBeNull();
+    expect(await previousModVersion("other", f.env)).toMatchObject({ ok: true });
+  });
+
+  it("rolls back the production previous-version provider through the service confirmation", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    await f.stage(f.makePlan("2.0.0"));
+    await activateModTransaction(f.env);
+    const { service, core } = createModManagerService({
+      store: f.store, listCatalog: () => [],
+      previousVersion: (id) => previousModVersion(id, f.env),
+      stageRollback: (id) => stageModRollback(id, f.env),
+    });
+    const pending = await service.rollback("demo");
+    expect(pending).toMatchObject({ status: "confirmation", confirmation: { operation: "rollback", mods: [{ name: "Demo", version: "1.0.0" }] } });
+    expect(f.pending()).toBeUndefined();
+    if (pending.status !== "confirmation") throw new Error("The rollback did not ask for confirmation.");
+    expect((await core.resolveConfirmation(pending.confirmation.id, { accepted: true })).status).toBe("ok");
+    expect((await installedMeta("demo", f.scope))?.tag).toBe("v2.0.0");
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect((await installedMeta("demo", f.scope))?.tag).toBe("v1.0.0");
+  });
+
+  it("leaves configuration documents unchanged while a transaction is staged", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    f.store.setModEnabled("demo", true);
+    f.store.setSettingValue("demo", "amount", 7);
+    const state = f.values.get(MOD_STATE_STORAGE_KEY);
+    const settings = f.values.get(MOD_SETTINGS_STORAGE_KEY);
+    await f.stage(f.makePlan("2.0.0"), { demo: { granted: ["ui:sidebar.replace"], refused: [] } });
+    expect(f.values.get(MOD_STATE_STORAGE_KEY)).toBe(state);
+    expect(f.values.get(MOD_SETTINGS_STORAGE_KEY)).toBe(settings);
+  });
+
+  it("applies requested enablement only when activation commits", async () => {
+    const f = transactionFixture();
+    const plan = { ...f.makePlan("1.0.0"), enableIds: ["demo", "other"] };
+    expect((await f.stage(plan)).ok).toBe(true);
+    expect(f.store.getEnabled()).toEqual([]);
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect(f.store.getEnabled()).toEqual(["demo", "other"]);
+  });
+
+  it("does not activate when another tab changed the installed set after planning", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const plan = { ...f.makePlan("2.0.0"), installedSet: await installedMods(f.scope) };
+    storedMeta(f.stores, "other")!["tag"] = "v3.0.0";
+    const before = f.active();
+    expect(await f.stage(plan)).toMatchObject({ ok: false, problem: "The installed mod set changed before staging." });
+    expect(f.active()).toEqual(before);
+    expect(f.pending()).toBeUndefined();
+  });
+
+  it("rejects changes to the installed set between staging and activation", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    await f.stage(f.makePlan("2.0.0"));
+    storedMeta(f.stores, "other")!["tag"] = "v3.0.0";
+    const before = f.active();
+    expect(await activateModTransaction(f.env)).toContain("failed");
+    expect(f.active()).toEqual(before);
+  });
+
+  it("leaves the active set untouched when quota refuses the ready marker", async () => {
+    let refused = false;
+    const f = transactionFixture((store, _key, value) => refused && store === STORE_HANDLES && (value as { data?: { phase?: string } }).data?.phase === "ready");
+    await f.installInitial();
+    const before = f.active();
+    refused = true;
+    expect((await f.stage(f.makePlan("2.0.0"))).ok).toBe(false);
+    expect(f.active()).toEqual(before);
+    expect(f.pending()).toBeUndefined();
+  });
+
+  it("recovers a committed activation after a tab closes before journal cleanup", async () => {
+    let refused = false;
+    const f = transactionFixture((store, key) => refused && store === STORE_HANDLES && key.startsWith("neo-angband:mod-transaction/previous/"));
+    await f.installInitial();
+    await f.stage(f.makePlan("2.0.0"));
+    await activateModTransaction(f.env);
+    expect((await installedMeta("demo", f.scope))?.tag).toBe("v2.0.0");
+    const retained = [...f.stores.get(STORE_HANDLES)!.values()].find((value) => (value as { data?: { previous?: unknown[] } }).data?.previous?.length === 2) as { data: Record<string, unknown> };
+    f.stores.get(STORE_HANDLES)!.set("neo-angband:mod-transaction/pending", { ...retained, data: { ...retained.data, phase: "committed" } });
+    refused = true;
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect((await installedMeta("demo", f.scope))?.tag).toBe("v2.0.0");
+    expect(f.pending()).toBeUndefined();
+  });
+
+  it("serializes two boot activations without installing a set twice", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    await f.stage(f.makePlan("2.0.0"));
+    expect(await Promise.all([activateModTransaction(f.env), activateModTransaction(f.env)])).toEqual([null, null]);
+    expect((await installedMods(f.scope)).map((meta) => meta.tag)).toEqual(["v2.0.0", "v2.0.0"]);
+    expect(await previousModVersion("demo", f.env)).toMatchObject({ ok: true, mod: { version: "1.0.0" } });
+  });
+
+  it("keeps older save-referenced versions across multiple updates", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    await f.stage(f.makePlan("2.0.0"));
+    await activateModTransaction(f.env);
+    await f.stage(f.makePlan("3.0.0"));
+    await activateModTransaction(f.env);
+    expect(await previousModVersion("demo", f.env)).toMatchObject({ ok: true, mod: { version: "2.0.0" } });
+    await releasePreviousModVersions("demo", { ...f.env, saveReferences: (_id, tag) => tag === "v1.0.0" });
+    expect(await previousModVersion("demo", f.env)).toMatchObject({ ok: true, mod: { version: "1.0.0" } });
+  });
+
+  it("measures missing legacy digests when restoring a retained version", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    delete storedMeta(f.stores, "demo")!["digests"];
+    await f.stage(f.makePlan("2.0.0"));
+    await activateModTransaction(f.env);
+    expect((await stageModRollback("demo", f.env)).ok).toBe(true);
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect((await installedMeta("demo", f.scope))?.digests?.["manifest.json"]).toMatch(/^[a-f0-9]{64}$/u);
+  });
+
+  it("refuses a rollback that would break the installed dependency set", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const plan = f.makePlan("2.0.0", ["demo", "other"], { other: { dependencies: { demo: ">=2.0.0" } } });
+    expect((await f.stage(plan)).ok).toBe(true);
+    expect(await activateModTransaction(f.env)).toBeNull();
+    const before = f.active();
+    expect(await stageModRollback("demo", f.env)).toMatchObject({ ok: false, problem: "The previous mod version conflicts with an installed dependency." });
+    expect(f.active()).toEqual(before);
+    expect(f.pending()).toBeUndefined();
+  });
+});
 
 describe("sha256Hex", () => {
   it("matches the published digest of the empty string", async () => {

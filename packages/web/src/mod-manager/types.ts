@@ -9,7 +9,7 @@ import type { ModRegistry } from "../mod-curated";
 import type { ModRefresh } from "../mod-refresh";
 import type { ProfileMeta } from "../profiles";
 import type { BrowseEntry } from "./browse-types";
-import type { LookStore } from "../look-state";
+import type { StageResult } from "../mod-transactions";
 
 export type Immutable<T> = T extends object ? { readonly [K in keyof T]: Immutable<T[K]> } : T;
 
@@ -61,6 +61,8 @@ export interface InstallPlan {
   readonly downloads: readonly PlannedDownload[];
   readonly newGrants: readonly PermissionConfirmation[];
   readonly conflicts: readonly DeclaredConflict[];
+  readonly enableIds?: readonly string[];
+  readonly installedSet?: readonly InstalledModMeta[];
 }
 
 export interface ManagedMod {
@@ -95,6 +97,9 @@ export interface ManagerState {
     readonly problems: readonly string[];
   };
   readonly pendingPlans: readonly InstallPlan[];
+  readonly staged: boolean;
+  readonly installStatus: string | null;
+  readonly canRestart: boolean;
   readonly pendingConfirmation: PendingConfirmation | null;
   readonly updates: readonly ModRefresh[];
   readonly thirdPartyAllowed: boolean;
@@ -105,7 +110,6 @@ export interface ManagerState {
 
 export interface ModManagerEnvironment {
   readonly store: ModStore;
-  readonly look?: LookStore;
   readonly listCatalog: () => readonly CatalogMod[];
   readonly rediscover?: () => Promise<void>;
   readonly installedMetadata?: () => Promise<readonly InstalledModMeta[]>;
@@ -114,12 +118,16 @@ export interface ModManagerEnvironment {
   readonly readManifest?: (mod: DiscoveredMod) => Promise<PackManifest>;
   readonly resolveDependency?: (id: string, range: string) => Promise<BrowseEntry>;
   readonly install?: (mod: DiscoveredMod, origin: ModOrigin, onProgress: (progress: InstallProgress) => void) => Promise<InstallResult>;
+  readonly stagePlan?: (plan: InstallPlan, permissions: Readonly<Record<string, ConsentRecord>>, progress?: (progress: InstallProgress) => void) => Promise<StageResult>;
+  readonly stageRollback?: (id: string) => Promise<StageResult>;
+  readonly releasePreviousVersions?: (id: string, saveReferences: (id: string, tag: string) => boolean) => Promise<boolean>;
+  readonly restart?: () => void;
   readonly uninstall?: (id: string) => Promise<boolean>;
   readonly refreshUpdates?: () => Promise<readonly ModRefresh[]>;
   readonly consent?: { readonly read: () => boolean; readonly write: (allow: boolean) => boolean };
   readonly safeMode?: () => boolean;
   readonly profile?: () => ProfileMeta | null;
-  readonly saveReferences?: (id: string) => boolean;
+  readonly saveReferences?: (id: string, tag?: string) => boolean;
   readonly isModNoscore?: () => boolean;
   readonly advanceSaveRatchets?: (mod: CatalogMod) => void;
   readonly applyRuleLive?: (flag: string, on: boolean) => void;

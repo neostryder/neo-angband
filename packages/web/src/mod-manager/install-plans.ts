@@ -92,5 +92,5 @@ export async function resolveInstallPlan(
     return (manifest.capabilities ?? []).filter((cap) => !decided.granted.includes(cap) && !decided.refused.includes(cap))
       .map((cap) => permissionConfirmation(mod.id, cap));
   });
-  return { status: "ok", value: { id, operation, downloads: order, newGrants, conflicts: declaredConflicts(manifests) } };
+  return { status: "ok", value: { id, operation, downloads: order, newGrants, conflicts: declaredConflicts(manifests), ...(env.stagePlan ? { installedSet: metadata } : {}) } };
 }

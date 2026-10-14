@@ -35,7 +35,6 @@ export function classicManager(deps: ModManagerDeps): ClassicService {
   if (!manager) {
     manager = createModManagerService({
       store: deps.store,
-      ...(deps.look ? { look: deps.look } : {}),
       listCatalog: deps.listCatalog,
       installedMetadata: () => installedMods(globalThis),
       safeMode: safeLaunch,

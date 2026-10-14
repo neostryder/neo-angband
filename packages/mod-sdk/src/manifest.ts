@@ -612,7 +612,6 @@ export interface PackManifest {
   rules?: PackRule[];
   /** See PackSetting. */
   settings?: PackSetting[];
-  lookPreset?: { readonly look: "Neo"; readonly settings: Readonly<Record<string, number>> };
   /** Rule or section flags whose current boolean values other plugins may read. */
   publicFlags?: string[];
   /**
@@ -886,16 +885,6 @@ export function validateManifest(value: unknown, options: ManifestReadOptions = 
   }
   const ruleFlags = validateRules(m["rules"], id);
   validateSettings(m["settings"], id, ruleFlags);
-  if (m["lookPreset"] !== undefined) {
-    const preset = m["lookPreset"] as PackManifest["lookPreset"];
-    if (!preset || preset.look !== "Neo" || typeof preset.settings !== "object" || preset.settings === null || Array.isArray(preset.settings) ||
-        Object.entries(preset.settings).some(([key, value]) => {
-          const setting = ((m["settings"] ?? []) as PackSetting[]).find((s) => s.id === key);
-          return !setting || typeof value !== "number" || !Number.isFinite(value) || resolveSettingValue(setting, value) !== value;
-        })) {
-      throw new ManifestError(`manifest ${id}: lookPreset must name declared settings with valid values`);
-    }
-  }
   validateRenamedRuleFlags(m["renamedRuleFlags"], id, ruleFlags);
   const sectionIds = validateSections(m["sections"], id, ruleFlags);
   if (m["publicFlags"] !== undefined) {
