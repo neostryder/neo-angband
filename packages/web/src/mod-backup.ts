@@ -192,25 +192,40 @@ function looksLikeBackupFile(name: string): boolean {
  * available at a checkpoint like boot), so a lapsed grant reads as "nothing
  * here" rather than reprompting the player unasked.
  */
-async function browserBackupFiles(id: string, scope: unknown): Promise<RawBackupFile[]> {
+async function browserBackupFiles(id: string, scope: unknown, requireReadable = false): Promise<RawBackupFile[]> {
   const handle = await savedHandle(id, scope);
-  if (!handle) return [];
-  if ((await permission(handle)) !== "granted") return [];
+  if (!handle) {
+    if (requireReadable) throw new Error("The backup folder could not be read.");
+    return [];
+  }
+  if ((await permission(handle)) !== "granted") {
+    if (requireReadable) throw new Error("The backup folder could not be read.");
+    return [];
+  }
   const iterate = handle.values?.bind(handle);
-  if (!iterate) return [];
+  if (!iterate) {
+    if (requireReadable) throw new Error("The backup folder could not be read.");
+    return [];
+  }
   const files: RawBackupFile[] = [];
   try {
     for await (const entry of iterate()) {
-      if (!looksLikeBackupFile(entry.name) || entry.kind !== "file" || !entry.getFile) continue;
+      if (!looksLikeBackupFile(entry.name) || entry.kind !== "file") continue;
+      if (!entry.getFile) {
+        if (requireReadable) throw new Error("The backup folder could not be read.");
+        continue;
+      }
       try {
         const file = await entry.getFile();
         files.push({ name: entry.name, text: await file.text() });
-      } catch {
+      } catch (error) {
+        if (requireReadable) throw error;
         /* One unreadable file (deleted mid-scan, a permissions race) does not
          * fail the rest of the listing. */
       }
     }
-  } catch {
+  } catch (error) {
+    if (requireReadable) throw error;
     return []; // the iterator itself failed: report an empty folder, not a crash
   }
   return files;
@@ -305,11 +320,14 @@ export interface BackupFileRead {
  * app (backup-folder.ts's own record, not keyed per mod), unlike the browser
  * tab's per-mod IndexedDB handle - see BACKUP_CHANNEL's doc comment.
  */
-async function desktopBackupFiles(_id: string, scope: unknown): Promise<RawBackupFile[]> {
+async function desktopBackupFiles(_id: string, scope: unknown, requireReadable = false): Promise<RawBackupFile[]> {
   const bridge = backupBridge(scope);
   if (!bridge) return [];
   const r = await bridge.backup("list");
-  if (!Array.isArray(r)) return [];
+  if (!Array.isArray(r)) {
+    if (requireReadable) throw new Error("The backup folder could not be read.");
+    return [];
+  }
   const out: RawBackupFile[] = [];
   for (const item of r) {
     if (item !== null && typeof item === "object") {
@@ -341,10 +359,11 @@ function toEntry(f: BackupFileRead): BackupFolderEntry {
 export async function readBackupFiles(
   id: string,
   scope: unknown = globalThis,
+  requireReadable = false,
 ): Promise<readonly BackupFileRead[]> {
   const raw = backupBridge(scope)
-    ? await desktopBackupFiles(id, scope)
-    : await browserBackupFiles(id, scope);
+    ? await desktopBackupFiles(id, scope, requireReadable)
+    : await browserBackupFiles(id, scope, requireReadable);
   return raw.map(({ name, text }) => ({ name, text, peek: peekTransferMeta(text) }));
 }
 

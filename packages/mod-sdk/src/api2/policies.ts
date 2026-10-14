@@ -121,25 +121,9 @@ export interface Api2PrefErrorsPolicy {
   readonly reportLimit: number;
 }
 
-export interface Api2StartingOptionsPolicy {
-  readonly kind: "starting-options";
-  readonly values: Readonly<Record<string, boolean>>;
-  readonly hitpointWarn?: number;
-  readonly delayFactor?: number;
-  readonly lazymoveDelay?: number;
-}
-
-export interface Api2IgnorePolicyEntry {
-  readonly tval: "light";
-  readonly kindNameContains: "Torch" | "Lantern";
-  readonly ignore: true;
-}
-
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
   readonly prefErrors?: Api2PrefErrorsPolicy;
-  readonly startingOptions?: Api2StartingOptionsPolicy;
-  readonly ignore?: readonly Api2IgnorePolicyEntry[];
   readonly walkBlockedByDiggable?: Api2WalkBlockedByDiggablePolicy;
   readonly messageText?: readonly Api2TextRule[];
   /** `where` may name `screen`, `part` and `column`. */
@@ -194,8 +178,6 @@ export type Api2TileFiller = (fill: Api2TileFill) => void;
 /** The game registrations a table can install, beside the hooks. */
 export interface Api2PolicyRegistrations {
   prefErrors?: Api2PrefErrorsPolicy;
-  startingOptions?: Api2StartingOptionsPolicy;
-  ignore?: readonly Api2IgnorePolicyEntry[];
   walkBlockedByDiggable?: Api2WalkBlockedByDiggablePolicy;
   /** Installed as the stores' discount roll. */
   discountRoll?: Api2DiscountRoll;
@@ -421,56 +403,6 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
     },
     apply(value, out) {
       out.registrations.prefErrors = value as Api2PrefErrorsPolicy;
-    },
-  },
-  {
-    name: "startingOptions",
-    capability: "registry:ui-entry",
-    summary: "Applies saved option choices to a new character.",
-    target: { registration: "startingOptions" },
-    check(value) {
-      if (!isRecord(value)) return "startingOptions is an object";
-      const extra = unknownField("startingOptions", value, ["kind", "values", "hitpointWarn", "delayFactor", "lazymoveDelay"]);
-      if (extra) return extra;
-      if (value["kind"] !== "starting-options") return "startingOptions.kind is \"starting-options\"";
-      const values = value["values"];
-      if (!isRecord(values)) return "startingOptions.values is an object";
-      const entries = Object.entries(values);
-      if (entries.length > 512) return "startingOptions.values has at most 512 options";
-      for (const [name, enabled] of entries) {
-        if (name.length === 0 || name.length > 128) return "startingOptions.values has option names of 1 to 128 characters";
-        if (typeof enabled !== "boolean") return `startingOptions.values.${name} is true or false`;
-      }
-      for (const [field, max] of [["hitpointWarn", 9], ["delayFactor", 1000], ["lazymoveDelay", 255]] as const) {
-        if (value[field] !== undefined && !isInt(value[field], 0, max)) return `startingOptions.${field} is a whole number from 0 to ${String(max)}`;
-      }
-      return null;
-    },
-    apply(value, out) {
-      out.registrations.startingOptions = value as Api2StartingOptionsPolicy;
-    },
-  },
-  {
-    name: "ignore",
-    capability: "registry:ui-entry",
-    summary: "Ignores matching items while preserving prior ignore choices.",
-    target: { registration: "ignore" },
-    check(value) {
-      if (!Array.isArray(value) || value.length === 0 || value.length > 16) return "ignore lists 1 to 16 entries";
-      for (let index = 0; index < value.length; index += 1) {
-        const entry: unknown = value[index];
-        const at = `ignore[${String(index)}]`;
-        if (!isRecord(entry)) return `${at} is an object`;
-        const extra = unknownField(at, entry, ["tval", "kindNameContains", "ignore"]);
-        if (extra) return extra;
-        if (entry["tval"] !== "light") return `${at}.tval is \"light\"`;
-        if (entry["kindNameContains"] !== "Torch" && entry["kindNameContains"] !== "Lantern") return `${at}.kindNameContains is \"Torch\" or \"Lantern\"`;
-        if (entry["ignore"] !== true) return `${at}.ignore is true`;
-      }
-      return null;
-    },
-    apply(value, out) {
-      out.registrations.ignore = value as readonly Api2IgnorePolicyEntry[];
     },
   },
   {

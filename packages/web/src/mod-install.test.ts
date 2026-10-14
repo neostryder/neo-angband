@@ -18,13 +18,21 @@ import { join } from "node:path";
 import { zipSync } from "fflate";
 import { discoverMod, type DiscoverEnv, type DiscoveredMod, type PayloadEntry } from "./mod-discover";
 import { classifyModPin, classifyModTag } from "./mod-updates";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { STORE_HANDLES, STORE_MODS, STORE_MOD_META, STORE_MOD_VERSIONS } from "./idb";
 import { activateModTransaction, stageModPlan, stageModRollback, previousModVersion, releasePreviousModVersions, type ModTransactionEnvironment } from "./mod-transactions";
-import { ModStore, MOD_STATE_STORAGE_KEY, MOD_SETTINGS_STORAGE_KEY } from "./mod-store";
+import { buildCatalog, ModStore, MOD_STATE_STORAGE_KEY, MOD_SETTINGS_STORAGE_KEY } from "./mod-store";
 import type { InstallPlan } from "./mod-manager/types";
 import { createModManagerService } from "./mod-manager/service";
+import { classicManager } from "./mod-manager/classic-service";
+import type { ModManagerDeps } from "./mod-manager/classic-types";
+import { ModSaveGuard, savedModReferences } from "./mod-manager/mod-lists";
+import { encodeSavedGame, saveGame, startGame } from "@rpgm-tools/neo-angband-core";
+import { loadGamePack } from "./pack";
+import { gzipCodec } from "./save-codec";
+import { encodeTransfer } from "./save-transfer";
+import { addOrphanedSaves } from "./orphan-saves";
 import {
   FILE_ORIGIN,
   installModFromRepo,
@@ -43,6 +51,7 @@ import {
   uninstallMod,
   archivedVersions,
   archivedMod,
+  versionKey,
   restoreArchivedVersion,
   archivedSavedMod,
   restoreInstallations,
@@ -321,18 +330,21 @@ const CURATED = { origin: "curated", allowed: false } as const;
 function transactionFixture(failPut?: (store: string, key: string, value: unknown) => boolean) {
   const made = fakeIdb({ ...(failPut ? { failPut } : {}) });
   const values = new Map<string, string>();
-  const store = new ModStore({
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => { values.set(key, value); },
-    removeItem: (key) => { values.delete(key); },
-  });
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+    removeItem: (key: string) => { values.delete(key); },
+    get length() { return values.size; },
+    key: (index: number) => [...values.keys()][index] ?? null,
+  };
+  const store = new ModStore(storage);
   let tail = Promise.resolve();
   const locks = { request: (_name: string, body: () => Promise<unknown>) => {
     const result = tail.then(body);
     tail = result.then(() => {}, () => {});
     return result;
   } } as unknown as Pick<LockManager, "request">;
-  const scope = { indexedDB: made.factory, navigator: { locks } };
+  const scope = { indexedDB: made.factory, navigator: { locks }, localStorage: storage };
   const contents = new Map<string, Uint8Array>();
   const makePlan = (version: string, ids = ["demo", "other"], overrides: Record<string, Record<string, unknown>> = {}): InstallPlan => ({
     id: 1, operation: "update", newGrants: [], conflicts: [],
@@ -361,7 +373,7 @@ function transactionFixture(failPut?: (store: string, key: string, value: unknow
   };
   const stage = (plan: InstallPlan, permissions: Record<string, { granted: string[]; refused: string[] }> = {}) => {
     let index = 0;
-    fetching = plan.downloads[0]!.mod.id;
+    fetching = plan.downloads[0]?.mod.id ?? "demo";
     return stageModPlan(plan, permissions, env, (progress) => {
       if (progress.done === 1) fetching = plan.downloads[index++]!.mod.id;
     });
@@ -377,7 +389,50 @@ function transactionFixture(failPut?: (store: string, key: string, value: unknow
     expect((await stage(makePlan("1.0.0"))).ok).toBe(true);
     expect(await activateModTransaction(env)).toBeNull();
   };
-  return { ...made, values, store, scope, env, makePlan, stage, pending, active, installInitial };
+  return { ...made, values, storage, store, scope, env, makePlan, stage, pending, active, installInitial };
+}
+
+function restoreManager(f: ReturnType<typeof transactionFixture>, env = f.env) {
+  const listCatalog = () => buildCatalog({
+    content: [...f.stores.get(STORE_MOD_META)?.keys() ?? []].map((id) => validateManifest(JSON.parse(new TextDecoder().decode(f.stores.get(STORE_MODS)!.get(`${id}/manifest.json`) as Uint8Array)))),
+    sandbox: [], trusted: [], enabled: f.store.getEnabled(), consents: f.store.getConsents(),
+  });
+  const network = vi.fn(async () => { throw new Error("The repository is unavailable."); });
+  const manager = createModManagerService({
+    store: f.store, listCatalog, installedMetadata: () => installedMods(f.scope), consent: { read: () => true, write: () => true },
+    discover: network,
+    discoverSavedVersion: async (saved) => {
+      const cached = await archivedSavedMod(saved, f.scope);
+      return cached ? { ok: true, ref: { repo: cached.mod.repo, tag: cached.mod.tag }, mod: cached.mod } : null;
+    },
+    readManifest: async (mod) => {
+      const cached = await archivedMod({ repo: mod.repo, tag: mod.tag.startsWith("archive:") ? mod.tag : mod.sha ?? mod.tag }, f.scope);
+      if (!cached) throw new Error("The manifest is unavailable.");
+      return cached.manifest;
+    },
+    stagePlan: (plan, permissions) => stageModPlan(plan, permissions, env),
+  });
+  return { ...manager, listCatalog, network };
+}
+
+function classicRestoreManager(f: ReturnType<typeof transactionFixture>, saveReferences?: ModManagerDeps["saveReferences"], staged = true) {
+  const { listCatalog } = restoreManager(f);
+  const network = vi.fn(async () => { throw new Error("The network was called."); });
+  const deps: ModManagerDeps = {
+    store: f.store, listCatalog, requestReload: vi.fn(),
+    conflictLines: () => ({ declared: [], contested: [], combined: [], declaredRows: [], contestedRows: [], combinedRows: [] }),
+    ...(saveReferences ? { saveReferences } : {}),
+    modBrowse: {
+      ...(staged ? { stagePlan: (plan, permissions) => stageModPlan(plan, permissions, f.env), stageRollback: (id) => stageModRollback(id, f.env) } : {}),
+      releasePreviousVersions: (id, references) => releasePreviousModVersions(id, { ...f.env, saveReferences: references }),
+      installed: async () => new Map((await installedMods(f.scope)).map((meta) => [meta.id, meta.tag])),
+      discover: network, install: network, uninstall: (id) => uninstallMod(id, f.scope),
+      curated: async () => ({ registry: null, problem: null }), registryAt: async () => ({ registry: null, problem: null }), authors: async () => null,
+      consent: { read: () => true, write: () => true }, enabledManifests: () => listCatalog().filter((mod) => mod.enabled).map((mod) => mod.manifest),
+      readRepoFile: network, refresh: async () => [],
+    },
+  };
+  return { ...classicManager(deps), network };
 }
 
 describe("staged mod transactions", () => {
@@ -391,6 +446,8 @@ describe("staged mod transactions", () => {
     expect((await installedMods(f.scope)).map((meta) => meta.tag)).toEqual(["v1.0.0", "v1.0.0"]);
     expect(await activateModTransaction(f.env)).toBeNull();
     expect((await installedMods(f.scope)).map((meta) => meta.tag)).toEqual(["v2.0.0", "v2.0.0"]);
+    expect((await archivedVersions(f.scope)).filter((meta) => meta.tag === "v1.0.0")).toHaveLength(2);
+    expect([...f.stores.get(STORE_HANDLES)!.keys()].some((key) => key.startsWith("neo-angband:mod-transaction/previous/"))).toBe(false);
     expect(f.pending()).toBeUndefined();
   });
 
@@ -469,7 +526,7 @@ describe("staged mod transactions", () => {
     expect(await activateModTransaction(f.env)).toContain("Demo, Other Mod failed");
     expect(f.active()).toEqual(before);
     /* The revision only ever grows (another tab compares it), so a restore keeps its own number. */
-    const unnumbered = (value: unknown) => JSON.parse(JSON.stringify(value), (key, entry) => (key === "revision" ? 0 : entry));
+    const unnumbered = (value: unknown) => JSON.parse(JSON.stringify(value), (key, entry) => (key === "revision" || key === "setRevision" ? 0 : entry));
     expect(unnumbered(f.store.captureConfiguration(["demo", "other"]))).toEqual(unnumbered(config));
     expect(f.pending()).toBeUndefined();
   });
@@ -610,15 +667,13 @@ describe("staged mod transactions", () => {
   });
 
   it("recovers a committed activation after a tab closes before journal cleanup", async () => {
-    let refused = false;
-    const f = transactionFixture((store, key) => refused && store === STORE_HANDLES && key.startsWith("neo-angband:mod-transaction/previous/"));
+    const f = transactionFixture();
     await f.installInitial();
     await f.stage(f.makePlan("2.0.0"));
+    const retained = structuredClone(f.pending()!);
     await activateModTransaction(f.env);
     expect((await installedMeta("demo", f.scope))?.tag).toBe("v2.0.0");
-    const retained = [...f.stores.get(STORE_HANDLES)!.values()].find((value) => (value as { data?: { previous?: unknown[] } }).data?.previous?.length === 2) as { data: Record<string, unknown> };
     f.stores.get(STORE_HANDLES)!.set("neo-angband:mod-transaction/pending", { ...retained, data: { ...retained.data, phase: "committed" } });
-    refused = true;
     expect(await activateModTransaction(f.env)).toBeNull();
     expect((await installedMeta("demo", f.scope))?.tag).toBe("v2.0.0");
     expect(f.pending()).toBeUndefined();
@@ -666,6 +721,332 @@ describe("staged mod transactions", () => {
     expect(await stageModRollback("demo", f.env)).toMatchObject({ ok: false, problem: "The previous mod version conflicts with an installed dependency." });
     expect(f.active()).toEqual(before);
     expect(f.pending()).toBeUndefined();
+  });
+
+  it("archives removals at boot and stages reinstall from the same bytes", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const old = (await installedMeta("demo", f.scope))!;
+    const plan: InstallPlan = { id: 2, operation: "update", downloads: [], newGrants: [], conflicts: [], removeIds: ["demo"] };
+    expect((await f.stage(plan)).ok).toBe(true);
+    expect(await installedMeta("demo", f.scope)).not.toBeNull();
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect(await installedMeta("demo", f.scope)).toBeNull();
+    const cached = (await archivedMod({ repo: old.repo, tag: `archive:${encodeURIComponent(versionKey(old))}` }, f.scope))!;
+    const fetch = vi.fn(async () => { throw new Error("No network during reinstall."); });
+    expect((await stageModPlan({ ...plan, removeIds: [], downloads: [{ mod: cached.mod, manifest: cached.manifest, origin: "curated", bytes: null, files: old.files }] }, {}, { ...f.env, install: { ...f.env.install, fetch } })).ok).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect((await installedMeta("demo", f.scope))?.digests).toEqual(old.digests);
+  });
+
+  it("stages a retained commit without an archive token or network", async () => {
+    const f = transactionFixture();
+    const original = f.makePlan("1.0.0", ["demo"]);
+    const plan = { ...original, downloads: original.downloads.map((entry) => ({ ...entry, mod: { ...entry.mod, sha: "original-commit" } })) };
+    expect((await f.stage(plan)).ok).toBe(true);
+    await activateModTransaction(f.env);
+    await f.stage(f.makePlan("2.0.0", ["demo"]));
+    await activateModTransaction(f.env);
+    const fetch = vi.fn(async () => { throw new Error("No network during restore."); });
+    expect((await stageModPlan(plan, {}, { ...f.env, install: { ...f.env.install, fetch } })).ok).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+    await activateModTransaction(f.env);
+    expect((await installedMeta("demo", f.scope))?.sha).toBe("original-commit");
+  });
+
+  it("moves the former transaction history into the shared archive before rollback", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const old = (await installedMeta("demo", f.scope))!;
+    const files = old.files.map((path) => [path, f.stores.get(STORE_MODS)!.get(`demo/${path}`)]);
+    const configuration = f.store.captureConfiguration(["demo"]);
+    await f.stage(f.makePlan("2.0.0", ["demo"]));
+    await activateModTransaction(f.env);
+    f.stores.get(STORE_MOD_VERSIONS)!.delete(versionKey(old));
+    const key = "neo-angband:mod-transaction/previous/000000000001";
+    f.stores.get(STORE_HANDLES)!.set(key, { format: "neo-angband/web/mod-transaction", schemaVersion: 1, data: { profileId: null, configuration, previous: [{ meta: old, files }] } });
+    expect((await stageModRollback("demo", f.env)).ok).toBe(true);
+    expect(f.stores.get(STORE_HANDLES)!.has(key)).toBe(false);
+    expect((await archivedVersions(f.scope)).map((meta) => meta.tag)).toContain("v1.0.0");
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect((await installedMeta("demo", f.scope))?.tag).toBe("v1.0.0");
+  });
+
+  it("blocks the old tab's save after activation and after rollback", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const { service } = restoreManager(f);
+    const saved = await service.captureModList();
+    vi.stubGlobal("localStorage", f.storage);
+    try {
+      const tabB = new ModSaveGuard(new ModStore(f.storage));
+      const revision = f.store.captureConfiguration(["demo"]).state.revision ?? 0;
+      await f.stage(f.makePlan("2.0.0"));
+      expect(tabB.current()).toBe(true);
+      await activateModTransaction(f.env);
+      expect(tabB.canOverwrite(saved, saved, true)).toBe(false);
+      await stageModRollback("demo", f.env);
+      await activateModTransaction(f.env);
+      expect((f.store.captureConfiguration(["demo"]).state.revision ?? 0)).toBeGreaterThan(revision);
+      expect(tabB.canOverwrite(saved, saved, true)).toBe(false);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it("uses the same digest refusal for rollback, restore, and reinstall", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const old = (await installedMeta("demo", f.scope))!;
+    await f.stage(f.makePlan("2.0.0", ["demo"]));
+    await activateModTransaction(f.env);
+    const row = f.stores.get(STORE_MOD_VERSIONS)!.get(versionKey(old)) as { files: [string, Uint8Array][] };
+    row.files[1]![1] = enc("corrupt");
+    const before = f.active();
+    expect(await restoreArchivedVersion(old, f.scope)).toMatchObject({ ok: false, problem: "The saved mod version failed its digest check." });
+    expect(await stageModRollback("demo", f.env)).toMatchObject({ ok: false, problem: "The saved mod version failed its digest check." });
+    expect(await f.stage(f.makePlan("1.0.0", ["demo"]))).toMatchObject({ ok: false, problem: "The saved mod version failed its digest check." });
+    expect(f.active()).toEqual(before);
+  });
+
+  it("keeps files and archives unchanged when quota refuses the archive swap", async () => {
+    let refused = false;
+    const f = transactionFixture((store) => refused && store === STORE_MOD_VERSIONS);
+    await f.installInitial();
+    const before = f.active();
+    const archive = structuredClone([...f.stores.get(STORE_MOD_VERSIONS)!]);
+    await f.stage(f.makePlan("2.0.0"));
+    refused = true;
+    expect(await activateModTransaction(f.env)).toContain("failed");
+    expect(f.active()).toEqual(before);
+    expect([...f.stores.get(STORE_MOD_VERSIONS)!]).toEqual(archive);
+    expect(f.pending()).toBeUndefined();
+  });
+});
+
+describe("saved lists through staged activation", () => {
+  it("restores bundled settings and permissions while disabling a folder default at boot", async () => {
+    const f = transactionFixture();
+    const bundled = validateManifest({ ...JSON.parse(MANIFEST), id: "bundled", name: "Bundled mod", capabilities: ["ui:sidebar.replace"] });
+    const folder = validateManifest({ ...JSON.parse(MANIFEST), id: "folder", name: "Folder mod" });
+    let folderDefault = false;
+    const listCatalog = () => buildCatalog({ content: [bundled, folder], sandbox: [], trusted: [], enabled: [...f.store.getEnabled(), ...(folderDefault ? ["folder"] : [])], consents: f.store.getConsents() });
+    const m = createModManagerService({ store: f.store, listCatalog, installedMetadata: () => installedMods(f.scope), stagePlan: (plan, permissions) => stageModPlan(plan, permissions, f.env) });
+    f.store.setModEnabled("bundled", true);
+    f.store.setSettingValue("bundled", "amount", 7);
+    const saved = await m.service.captureModList();
+    f.store.setModEnabled("bundled", false);
+    f.store.setSettingValue("bundled", "amount", 99);
+    folderDefault = true;
+    const plan = await m.service.planRestoreModList(saved);
+    if (plan.status !== "ok") throw new Error("The restore plan failed.");
+    expect(plan.value.downloads).toEqual([]);
+    const pending = m.service.applyModListPlan(plan.value.id);
+    if (pending.status !== "confirmation") throw new Error("The restore did not ask for confirmation.");
+    expect((await m.core.resolveConfirmation(pending.confirmation.id, { accepted: true, permissions: { bundled: { granted: ["ui:sidebar.replace"], refused: [] } } })).status).toBe("ok");
+    expect(f.store.getEnabled()).toEqual([]);
+    expect(f.store.getConsent("bundled")).toEqual([]);
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect(f.store.getEnabled()).toEqual(["bundled"]);
+    expect(f.store.getModChoices()["folder"]).toBe(false);
+    expect(f.store.getSettingValues()["bundled"]).toEqual({ amount: 7 });
+    expect(f.store.getConsent("bundled")).toEqual(["ui:sidebar.replace"]);
+    expect(f.store.getConsentVersion("bundled")).toBe("1.0.0");
+  });
+
+  it("keeps the classic archive fallback working without a stage provider", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    f.store.setModEnabled("demo", true);
+    const saved = await restoreManager(f).service.captureModList();
+    await f.stage(f.makePlan("2.0.0", ["demo"]));
+    await activateModTransaction(f.env);
+    vi.stubGlobal("indexedDB", f.factory);
+    vi.stubGlobal("navigator", f.scope.navigator);
+    try {
+      const m = classicRestoreManager(f, undefined, false);
+      const plan = await m.service.planRestoreModList(saved);
+      if (plan.status !== "ok") throw new Error("The restore plan failed.");
+      const pending = m.service.applyModListPlan(plan.value.id);
+      if (pending.status !== "confirmation") throw new Error("The restore did not ask for confirmation.");
+      expect((await m.core.resolveConfirmation(pending.confirmation.id, { accepted: true })).status).toBe("ok");
+      expect((await installedMeta("demo", f.scope))?.tag).toBe("v1.0.0");
+      expect(m.service.state.staged).toBe(false);
+      expect(m.network).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(["mod removed", "repository deleted", "version delisted", "version unavailable"])("restores the archived set after %s without a network request", async (condition) => {
+    const f = transactionFixture();
+    await f.installInitial();
+    f.store.setEnabled(["other", "demo"]);
+    f.store.setSettingValue("demo", "amount", 7);
+    f.store.setSectionChoice("demo", "part", false);
+    f.store.pinAgainst("demo", "other", "after");
+    f.store.setConflictOverride("hud", "demo");
+    const fetch = vi.fn(async () => { throw new Error(condition); });
+    const m = restoreManager(f, { ...f.env, install: { ...f.env.install, fetch } });
+    const saved = await m.service.captureModList("Saved set");
+    await f.stage(f.makePlan("2.0.0"));
+    await activateModTransaction(f.env);
+    if (condition === "mod removed") expect(await uninstallMod("demo", f.scope)).toBe(true);
+    f.store.setEnabled(["demo", "other"]);
+    f.store.setSettingValue("demo", "amount", 99);
+    const config = f.store.configurationRevision();
+    const before = f.active();
+    const plan = await m.service.planRestoreModList(saved);
+    expect(plan.status).toBe("ok");
+    if (plan.status !== "ok") throw new Error("The restore plan failed.");
+    expect(plan.value.unavailable).toEqual([]);
+    const pending = m.service.applyModListPlan(plan.value.id);
+    if (pending.status !== "confirmation") throw new Error("The restore did not ask for confirmation.");
+    expect((await m.core.resolveConfirmation(pending.confirmation.id, { accepted: true })).status).toBe("ok");
+    expect(m.service.state.staged).toBe(true);
+    expect(f.store.configurationRevision()).toBe(config);
+    expect(f.active()).toEqual(before);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(m.network).not.toHaveBeenCalled();
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect(await m.service.captureModList("Saved set")).toEqual(saved);
+    expect([...f.stores.get(STORE_HANDLES)!.keys()]).toEqual([]);
+  });
+
+  it("keeps the active set when the final archived payload is corrupt", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    f.store.setEnabled(["demo", "other"]);
+    const m = restoreManager(f);
+    const saved = await m.service.captureModList();
+    const old = (await installedMeta("other", f.scope))!;
+    await f.stage(f.makePlan("2.0.0"));
+    await activateModTransaction(f.env);
+    const row = f.stores.get(STORE_MOD_VERSIONS)!.get(versionKey(old)) as { files: [string, Uint8Array][] };
+    row.files[1]![1] = enc("corrupt");
+    const plan = await m.service.planRestoreModList(saved);
+    if (plan.status !== "ok") throw new Error("The restore plan failed.");
+    const before = f.active();
+    const config = f.store.configurationRevision();
+    const pending = m.service.applyModListPlan(plan.value.id);
+    if (pending.status !== "confirmation") throw new Error("The restore did not ask for confirmation.");
+    expect(await m.core.resolveConfirmation(pending.confirmation.id, { accepted: true })).toMatchObject({ status: "refused", reason: "The saved mod version failed its digest check." });
+    expect(f.active()).toEqual(before);
+    expect(f.store.configurationRevision()).toBe(config);
+    expect(f.pending()).toBeUndefined();
+  });
+
+  it("stages the available remainder only after the player accepts a missing version", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    f.store.setEnabled(["demo", "other"]);
+    const m = restoreManager(f);
+    const saved = await m.service.captureModList();
+    const old = (await installedMeta("demo", f.scope))!;
+    await f.stage(f.makePlan("2.0.0"));
+    await activateModTransaction(f.env);
+    f.stores.get(STORE_MOD_VERSIONS)!.delete(versionKey(old));
+    const plan = await m.service.planRestoreModList(saved);
+    if (plan.status !== "ok") throw new Error("The restore plan failed.");
+    expect(plan.value.unavailable).toEqual([{ id: "demo", name: "Demo" }]);
+    expect(m.service.applyModListPlan(plan.value.id)).toMatchObject({ status: "refused", code: "unavailable-version" });
+    const pending = m.service.applyModListPlan(plan.value.id, ["demo"]);
+    if (pending.status !== "confirmation") throw new Error("The restore did not ask for confirmation.");
+    expect((await m.core.resolveConfirmation(pending.confirmation.id, { accepted: true })).status).toBe("ok");
+    expect(f.store.getEnabled()).toEqual(["demo", "other"]);
+    expect(await activateModTransaction(f.env)).toBeNull();
+    expect(f.store.getEnabled()).toEqual(["other"]);
+    expect((await installedMeta("other", f.scope))?.tag).toBe("v1.0.0");
+  });
+
+  it("rejects a restore when another tab changes configuration before activation", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const m = restoreManager(f);
+    f.store.setModEnabled("demo", true);
+    const saved = await m.service.captureModList();
+    f.store.setModEnabled("demo", false);
+    const plan = await m.service.planRestoreModList(saved);
+    if (plan.status !== "ok") throw new Error("The restore plan failed.");
+    const pending = m.service.applyModListPlan(plan.value.id);
+    if (pending.status !== "confirmation") throw new Error("The restore did not ask for confirmation.");
+    expect((await m.core.resolveConfirmation(pending.confirmation.id, { accepted: true })).status).toBe("ok");
+    new ModStore(f.storage).setSettingValue("other", "amount", 12);
+    const before = f.active();
+    expect(await activateModTransaction(f.env)).toContain("failed");
+    expect(f.active()).toEqual(before);
+    expect(f.store.getEnabled()).toEqual([]);
+    expect(f.store.getSettingValues()["other"]).toEqual({ amount: 12 });
+  });
+});
+
+describe("production save retention through the classic service", () => {
+  it.each(["slot", "profile", "orphan", "desktop backup", "browser backup"].flatMap((source) => [true, false].map((online) => ({ source, online }))))("keeps a version referenced by $source with online=$online", async ({ source, online }) => {
+    const f = transactionFixture();
+    await f.installInitial();
+    f.store.setModEnabled("demo", true);
+    const saved = await restoreManager(f).service.captureModList();
+    const save = Buffer.from(encodeSavedGame({ ...saveGame(startGame(loadGamePack(), { seed: 17, depth: 0 })), modList: saved }, undefined, gzipCodec)).toString("base64");
+    const meta = { id: "slot", name: "Bilbo", race: "Hobbit", cls: "Rogue", sex: "Male", level: 1, depth: 0, maxDepth: 0, turn: 0, alive: true, updatedAt: Date.now() };
+    const { id: _id, updatedAt: _updatedAt, ...transferMeta } = meta;
+    const text = encodeTransfer({ meta: transferMeta, save, engine: "test", exportedAt: "2026-10-13T00:00:00Z", lineage: "lineage" });
+    let scope: unknown = f.scope;
+    if (source === "slot") f.values.set("neo-angband-save:slot", save);
+    if (source === "profile") f.values.set("profile:other:neo-angband-save:autosave", save);
+    if (source === "orphan") expect(addOrphanedSaves(f.storage, [{ id: "orphan", fromProfileName: "Removed profile", removedAt: Date.now(), lineage: "lineage", meta, save }])).toBe(true);
+    if (source === "desktop backup") scope = { ...f.scope, neoDesktop: { backup: async () => [{ name: "Bilbo.neochar", text }] } };
+    if (source === "browser backup") f.stores.get(STORE_HANDLES)!.set("backup:removed-mod", {
+      kind: "directory", name: "Backups", getFileHandle: async () => ({}),
+      queryPermission: async () => "granted",
+      values: async function* () { yield { kind: "file", name: "Bilbo.neochar", getFile: async () => ({ text: async () => text }) }; },
+    });
+    await f.stage(f.makePlan("2.0.0"));
+    await activateModTransaction(f.env);
+    vi.stubGlobal("indexedDB", f.factory);
+    vi.stubGlobal("navigator", { ...f.scope.navigator, onLine: online });
+    try {
+      const m = classicRestoreManager(f, (id, tag) => savedModReferences(id, tag, f.storage, scope));
+      expect(m.service.setConflictOverride("hud", "demo").status).toBe("ok");
+      expect(f.store.getConflictOverrides()).toEqual({ hud: "demo" });
+      expect((await m.service.confirmInstalledVersion("demo")).status).toBe("ok");
+      expect((await archivedVersions(f.scope)).filter((entry) => entry.id === "demo").map((entry) => entry.tag).sort()).toEqual(["v1.0.0", "v2.0.0"]);
+      const pending = await m.service.rollback("demo");
+      expect(pending).toMatchObject({ status: "confirmation", confirmation: { mods: [{ name: "Demo", version: "1.0.0" }] } });
+      if (pending.status !== "confirmation") throw new Error("The rollback did not ask for confirmation.");
+      expect((await m.core.resolveConfirmation(pending.confirmation.id, { accepted: true })).status).toBe("ok");
+      expect(await activateModTransaction(f.env)).toBeNull();
+      expect((await installedMeta("demo", f.scope))?.tag).toBe("v1.0.0");
+      expect(m.network).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it("releases only versions that the real save reader finds unused", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    await f.stage(f.makePlan("2.0.0"));
+    await activateModTransaction(f.env);
+    vi.stubGlobal("indexedDB", f.factory);
+    vi.stubGlobal("navigator", f.scope.navigator);
+    try {
+      const m = classicRestoreManager(f, (id, tag) => savedModReferences(id, tag, f.storage, f.scope));
+      expect((await m.service.confirmInstalledVersion("demo")).status).toBe("ok");
+      expect((await archivedVersions(f.scope)).filter((entry) => entry.id === "demo").map((entry) => entry.tag)).toEqual(["v2.0.0"]);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(["denied", "missing handle", "missing getFile", "file disappeared", "iterator failed", "desktop refused"])("keeps all retained bytes when a backup is unreadable: %s", async (condition) => {
+    const f = transactionFixture();
+    await f.installInitial();
+    await f.stage(f.makePlan("2.0.0"));
+    await activateModTransaction(f.env);
+    f.stores.get(STORE_HANDLES)!.set("backup:removed-mod", {
+      kind: "directory", name: "Backups", ...(condition === "missing handle" ? {} : { getFileHandle: async () => ({}) }),
+      queryPermission: async () => condition === "denied" ? "denied" : "granted",
+      values: async function* () {
+        if (condition === "iterator failed") throw new Error("The folder disappeared.");
+        yield { kind: "file", name: "Bilbo.neochar", ...(condition === "missing getFile" ? {} : { getFile: async () => { throw new Error("The file disappeared."); } }) };
+      },
+    });
+    const scope = condition === "desktop refused" ? { ...f.scope, neoDesktop: { backup: async () => false } } : f.scope;
+    expect(await releasePreviousModVersions("demo", { ...f.env, saveReferences: (id, tag) => savedModReferences(id, tag, f.storage, scope) })).toBe(true);
+    expect(await previousModVersion("demo", f.env)).toMatchObject({ ok: true, mod: { version: "1.0.0" } });
   });
 });
 
