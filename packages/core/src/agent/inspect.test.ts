@@ -17,6 +17,7 @@ import { ITYPE } from "../generated/ignore-types.js";
 import { loadGame, saveGame, startGame } from "../session/game.js";
 import type { GamePack, StartedGame } from "../session/game.js";
 import { AgentCapabilityError } from "./types.js";
+import { OBJ_NOTICE } from "../obj/knowledge.js";
 import { createAgentView } from "./perceive.js";
 
 function loadJson<T>(name: string): T {
@@ -113,6 +114,24 @@ function viewFor(game: StartedGame, caps?: { has(cap: string): boolean }) {
 }
 
 describe("inspection reads", () => {
+  it("keeps API 2 item choices independent of an unlearned sticky flag", () => {
+    const game = newGame();
+    const state = game.state;
+    const kind = game.booted.registries.objects.kinds.find((entry) => entry.tval === TV.SOFT_ARMOR)!;
+    const obj = objectPrep(state.rng, game.booted.registries.objects, game.booted.registries.constants, kind, 1, "minimise");
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+    const handle = gearAdd(state.gear, obj);
+    state.actor.player.equipment[0] = handle;
+    state.actor.player.objKnown.flags.off(OF.STICKY);
+    const view = createAgentView(state, undefined, { knowledgeSafe: true });
+    const before = view.itemTester!("takeoff");
+    expect(before.items).toContainEqual({ handle });
+    obj.flags.on(OF.STICKY);
+    expect(view.itemTester!("takeoff")).toEqual(before);
+    state.actor.player.objKnown.flags.on(OF.STICKY);
+    expect(view.itemTester!("takeoff").items).not.toContainEqual({ handle });
+  });
+
   it("inspects a seen identity with only the floor capability and leaves the game unchanged", () => {
     const game = newGame();
     const state = game.state;

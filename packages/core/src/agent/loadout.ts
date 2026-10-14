@@ -172,6 +172,36 @@ export interface LoadoutSimOptions {
   derive?: LoadoutDerive;
 }
 
+export interface DeriveLoadoutChange {
+  readonly wear?: readonly LoadoutItemRef[];
+  readonly takeoff?: readonly number[];
+}
+
+export interface DeriveLoadoutOptions {
+  readonly knowledge?: "known";
+  readonly capabilities?: AgentCapabilities;
+  readonly viewDeps?: AgentViewDeps;
+}
+
+export function deriveLoadout(
+  state: GameState,
+  change: DeriveLoadoutChange,
+  options: DeriveLoadoutOptions = {},
+): LoadoutSimulation | null {
+  if (options.knowledge !== undefined && options.knowledge !== "known") {
+    throw new AgentCapabilityError('loadout knowledge must be "known"');
+  }
+  const caps = options.capabilities;
+  if (caps && !caps.has("state:player.read") && !caps.has("state:*.read")) {
+    throw new AgentCapabilityError('agent deriveLoadout: capability "state:player.read" is not granted');
+  }
+  requireLoadoutReads(caps, change.wear ?? [], "deriveLoadout");
+  return simulateLoadout(state, {
+    ...(change.wear ? { wield: change.wear } : {}),
+    ...(change.takeoff ? { remove: change.takeoff } : {}),
+  }, options.viewDeps ? { viewDeps: options.viewDeps } : {});
+}
+
 /**
  * One entry of the hypothetical carried set: the object, how many of it, and the
  * gear handle it came from (0 for something being acquired, which has none).

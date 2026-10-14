@@ -228,7 +228,7 @@ export function modPluginContext(
       driver: () => frozenDriver(driverControl!.current()),
     } : {}),
     ...(modsControl ? { mods: () => Object.freeze(modsControl!().map((mod) => Object.freeze({
-      id: mod.id, version: mod.version,
+      id: mod.id, name: mod.name ?? mod.id, version: mod.version,
       ...(mod.flags ? { flags: Object.freeze({ ...mod.flags }) } : {}),
     }))) } : {}),
     ...(events ? { events } : {}),
@@ -448,9 +448,6 @@ function displayFor(id: string, session: ModSessionFacts): ModDisplay | undefine
   if (!display) return undefined;
   const facade: ModDisplay = {
     snapshot: () => display.snapshot(),
-    ...(display.cellAt ? { cellAt: (x: number, y: number) => display.cellAt!(x, y) } : {}),
-    ...(display.frame ? { frame: () => display.frame!() } : {}),
-    ...(display.onFrame ? { onFrame: (listener: () => void) => display.onFrame!(listener) } : {}),
     onKey: (listener) => display.onKey(listener),
     setGrid: (request) => display.setGrid(request),
     getGrid: () => display.getGrid?.() ?? null,
@@ -526,7 +523,7 @@ export function setModDriverControl(control: ModDriverControl | undefined): void
   driverControl = control;
 }
 
-type PublicMod = { readonly id: string; readonly version: string; readonly flags?: Readonly<Record<string, boolean>> };
+type PublicMod = { readonly id: string; readonly name?: string; readonly version: string; readonly flags?: Readonly<Record<string, boolean>> };
 let modsControl: (() => readonly PublicMod[]) | undefined;
 export function setModListControl(control: (() => readonly PublicMod[]) | undefined): void {
   modsControl = control;

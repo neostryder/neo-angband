@@ -395,10 +395,6 @@ function setOnSave(
   onSaveByMod.set(id, fn);
 }
 
-export function removeBackupSink(id: string): void {
-  onSaveByMod.delete(id);
-}
-
 /**
  * Fire every registered mod's `onSave` callback with the same transfer file.
  *
