@@ -32,7 +32,7 @@ const DB_NAME = "neo-angband";
  * v3: "linoleum" - loose PNGs generated locally from a mod's source atlas
  *     (linoleum-cache.ts)
  */
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export const STORE_HANDLES = "handles";
 /** One entry per file: key `<modId>/<path>`, value Uint8Array. */
@@ -41,8 +41,9 @@ export const STORE_MODS = "mods";
 export const STORE_MOD_META = "modsMeta";
 /** Generated Linoleum loose-pack files; keyed by mod id + source cache revision. */
 export const STORE_LINOLEUM = "linoleum";
+export const STORE_MOD_VERSIONS = "modVersions";
 
-const ALL_STORES = [STORE_HANDLES, STORE_MODS, STORE_MOD_META, STORE_LINOLEUM] as const;
+const ALL_STORES = [STORE_HANDLES, STORE_MODS, STORE_MOD_META, STORE_LINOLEUM, STORE_MOD_VERSIONS] as const;
 
 interface IdbScope {
   indexedDB?: IDBFactory;

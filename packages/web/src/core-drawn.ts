@@ -16,6 +16,9 @@
 
 /** Every Core-drawn id. */
 export const CORE_DRAWN_IDS: ReadonlySet<string> = new Set([
+  "core:look-choice",
+  "core:restore-save-mods",
+  "core:mod-set-overwrite",
   "core:mod-capabilities",
   "core:mod-capability-consent",
   "core:mod-capability-regrant",

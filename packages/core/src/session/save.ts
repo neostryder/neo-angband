@@ -206,7 +206,7 @@ import type {
  * character into "Could not read the save; starting a new game", which in a
  * permadeath game reads as "your character is gone".
  */
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 /* ------------------------------------------------------------------ *
  * Position-free persistence for the generated tables.
@@ -1689,6 +1689,7 @@ export interface SavedTrap {
 }
 
 export interface SavedGame {
+  modList?: import("@rpgm-tools/neo-angband-mod-sdk").SaveModList;
   version: number;
   player: SavedPlayer;
   actor: {

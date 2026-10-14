@@ -47,6 +47,7 @@ import type {
 import { orphanCount, quarantineSave, rehydrateSave } from "./save-blocks.js";
 import type { OrphanEntry, SaveManifest } from "./save-blocks.js";
 import { orphanPromptDue, purgeOrphans } from "./orphan-stash.js";
+import type { SaveModList } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /* ------------------------------------------------------------------ *
  * The standard headless pack fixture (mirrors session/save.test.ts).
@@ -125,6 +126,24 @@ function playTurns(game: StartedGame, count: number): void {
  * ------------------------------------------------------------------ */
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+describe("saved mod lists and missing records", () => {
+  it.each(["mod removed", "repository deleted", "version delisted", "version unavailable"])("loads after %s and preserves the bag, settings, and records for restoration", () => {
+    const { original } = buildModdedSave();
+    const list: SaveModList = { name: "Frost", mods: [{ id: "frost", name: "Frost", version: "1.2.0", repository: "owner/frost", tag: "v1.2.0", commit: "saved-commit", payloadDigest: { "manifest.json": "saved-digest" }, api: "*", settings: { amount: 9 }, sections: { monsters: true } }], resolvedOrder: ["frost"], orderPins: [], conflictOverrides: {}, ruleChoices: {} };
+    original.modList = list;
+    const loaded = loadGame(pack, original, new Set(["core"]));
+    const resaved = saveGame(loaded);
+    expect(resaved.modList).toEqual(list);
+    expect(resaved.mods).toEqual(original.mods);
+    expect(orphanCount(resaved.orphans)).toBeGreaterThan(0);
+    const restored = rehydrateSave(resaved, (namespace) => namespace === "core" || namespace === "frost");
+    expect(restored.modList).toEqual(list);
+    expect(restored.mods).toEqual(original.mods);
+    expect(restored.gear.store.filter(([, obj]) => obj.kindId.startsWith("frost:"))).toEqual(original.gear.store.filter(([, obj]) => obj.kindId.startsWith("frost:")));
+    expect(restored.monsters?.filter((mon) => mon?.raceId.startsWith("frost:"))).toEqual(original.monsters?.filter((mon) => mon?.raceId.startsWith("frost:")));
+  });
+});
 
 /** A minimal mod SavedObject: only kindId matters to quarantine (it is pruned
  * before any deserializer sees it), so the rest is intentionally omitted. */

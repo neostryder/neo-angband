@@ -271,6 +271,13 @@
     {
       "file": "packages/web/src/main.ts",
       "cases": 9,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "UI - Core routes the title choices, including the Core-owned look toggle. Mods register title rows through the existing title runtime."
+    },
+    {
+      "file": "packages/web/src/main.ts",
+      "cases": 9,
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "UI - menu action routing, entries[pick].action (MOD_REACH gap 18/24)."
@@ -358,13 +365,6 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "UI - keypress routing in a birth screen (MOD_REACH gap 23). Two screens, same finding."
-    },
-    {
-      "file": "packages/web/src/main.ts",
-      "cases": 8,
-      "hasDefault": false,
-      "kind": "IF_CHAIN",
-      "verdict": "UI - bootMenus routes the host's title choices. A mod can present the title or birth screen, but it cannot add a host action to this choice handler."
     }
   ]
 }

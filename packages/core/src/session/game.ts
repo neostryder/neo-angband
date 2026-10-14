@@ -519,6 +519,7 @@ export interface StartedGame {
    * a loaded game carries the manifest the save was written with.
    */
   manifest: SaveManifest;
+  modList?: import("@rpgm-tools/neo-angband-mod-sdk").SaveModList;
   /** Per-mod private save bags (mod:<id>), round-tripped verbatim. */
   mods: Record<string, ModBag>;
   /** Section choices frozen when a character was created. */
@@ -4408,6 +4409,7 @@ export function saveGame(game: StartedGame): SavedGame {
    * with the save; the per-mod bags and any quarantined orphans ride along only
    * when non-empty, so a core-only save stays clean. */
   save.manifest = game.manifest;
+  save.modList = structuredClone(game.modList ?? { name: "", mods: [], resolvedOrder: [], orderPins: [], conflictOverrides: {}, ruleChoices: {} });
   if (Object.keys(game.mods).length > 0) save.mods = game.mods;
   if (game.sectionBirth !== undefined) save.sectionBirth = game.sectionBirth;
   if (Object.keys(game.orphans).length > 0) save.orphans = game.orphans;
@@ -4944,6 +4946,7 @@ export function loadGame(
     everseen: wired.everseen,
     seedFlavor,
     manifest: reconciledManifest,
+    ...(save.modList ? { modList: structuredClone(save.modList) } : {}),
     mods: save.mods ?? {},
     ...(save.sectionBirth !== undefined ? { sectionBirth: save.sectionBirth } : {}),
     orphans: quarantine.orphans,

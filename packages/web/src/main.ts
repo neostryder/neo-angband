@@ -598,6 +598,13 @@ import { setBootPhase } from "./presentation-phase";
 import type { BuildOverviewParams, LevelOverview, Overview, OverviewGlyph } from "./mapview";
 import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
+import { LookStore, NEO_PENDING_TEXT } from "./look-state";
+import { runLookChoice } from "./mod-manager/classic-look";
+import { captureModList, ModListStore, ModSaveGuard, retainMissingModList } from "./mod-manager/mod-lists";
+import { prepareSaveModList } from "./mod-manager/classic-mod-list";
+import { modSaveApprovalFormat } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { InstalledModMeta } from "./mod-install";
+import type { CatalogMod } from "./mod-store";
 import { TitleRuntime } from "./title-runtime";
 import { consumeProfileAction, createModProfiles } from "./profile-runtime";
 import { startLoading } from "./loading";
@@ -998,6 +1005,13 @@ try {
   scopedGameStorage = null; // no localStorage at all (private mode / no DOM)
 }
 setModStorage(scopedGameStorage);
+const lookStore = new LookStore(scopedGameStorage, defaultModStore());
+const modLists = new ModListStore(scopedGameStorage);
+let modSaveGuard: ModSaveGuard | null = null;
+let saveCatalog: (() => CatalogMod[]) | null = null;
+let saveModMetadata: readonly InstalledModMeta[] = [];
+let allowModSetOverwrite = false;
+const MOD_SAVE_APPROVAL_KEY = "neo-angband:mod-save-approval";
 if (scopedGameStorage) convertLegacyModState(scopedGameStorage);
 setRosterStorage(scopedGameStorage);
 setUserStorage(scopedGameStorage);
@@ -7338,7 +7352,10 @@ const modSettingDecls = loadEnabledModSettings();
 setModSettingSource({
   declared: (modId) => modSettingDecls.get(modId) ?? [],
   stored: (modId) => defaultModStore().getSettingValues()[modId] ?? {},
-  write: (modId, settingId, value) => defaultModStore().setSettingValue(modId, settingId, value),
+  write: (modId, settingId, value) => {
+    defaultModStore().setSettingValue(modId, settingId, value);
+    lookStore.recordSetting(modId, settingId, value);
+  },
 }, reportDisplayFault);
 setSharedValueFaultReporter(reportDisplayFault);
 setModSavesControl(createModSaves({
@@ -7383,7 +7400,7 @@ setModSavesControl(createModSaves({
       return { ok: false, reason: "The current character could not be saved." };
     }
     detachSlot();
-    resumeSelected(id);
+    if (!(await resumeSelected(id))) return { ok: false, reason: "The character load was canceled." };
     return { ok: true };
   },
 }));
@@ -7482,10 +7499,16 @@ function persistSave(deliberate = false): boolean {
   const id = attachedSlot();
   if (!id) return true; // attached to nothing (e.g. the picker is up): nothing to save
   try {
-    const b64 = bytesToB64(encodeSavedGame(saveGame(game), undefined, SAVE_CODEC));
+    if (!saveCatalog || !modSaveGuard) return false;
+    const current = captureModList(game.modList?.name ?? "", defaultModStore(), saveCatalog(), saveModMetadata);
+    if (!modSaveGuard.canOverwrite(game.modList, current, allowModSetOverwrite)) return false;
+    const save = saveGame(game);
+    save.modList = retainMissingModList(current, game.modList);
+    const b64 = bytesToB64(encodeSavedGame(save, undefined, SAVE_CODEC));
     /* writeSlot's own verdict, not just "nothing threw": the storage write
      * itself is where a quota failure shows up. */
     const ok = writeSlot(id, b64, metaFromState(id));
+    if (ok) game.modList = save.modList;
     /* There is now a character worth protecting from the browser's own eviction, so
      * this is the moment to ask for persistent storage - once per session, in the
      * background, never blocking the save that prompted it. */
@@ -7814,6 +7837,17 @@ async function buildModManagerDeps(): Promise<ModManagerDeps> {
   const delveSyncFolder = createHostFolder(DELVE_SYNC_PURPOSE, DELVE_SYNC_EXT);
   return {
     store,
+    look: lookStore,
+    modLists,
+    saveReferences: (id) => {
+      for (let index = 0; index < (realGameStorage?.length ?? 0); index++) {
+        const key = realGameStorage!.key(index);
+        if (!key || (!key.startsWith("neo-angband-save:") && !key.includes(":neo-angband-save:"))) continue;
+        const stored = realGameStorage!.getItem(key);
+        if (stored && decodeSavedGame(b64ToBytes(stored), undefined, SAVE_CODECS).save?.modList?.mods.some((mod) => mod.id === id)) return true;
+      }
+      return false;
+    },
     listCatalog: () =>
       buildCatalog({
         content: discoverContentModManifests(),
@@ -13195,7 +13229,12 @@ async function refusedAsPlayedElsewhere(id: string): Promise<boolean> {
 }
 
 /** Reload to resume the chosen character (clears the fresh-start params). */
-function resumeSelected(id: string): void {
+async function resumeSelected(id: string): Promise<boolean> {
+  const stored = readSlotSave(id);
+  const saved = stored ? decodeSavedGame(b64ToBytes(stored), undefined, SAVE_CODECS).save?.modList : undefined;
+  const decision = await prepareSaveModList(term, await modManagerDeps(), saved);
+  if (!decision.load) return false;
+  reloadStorage.setItem(MOD_SAVE_APPROVAL_KEY, serializeDocument(modSaveApprovalFormat, { slot: id, revision: defaultModStore().configurationRevision(), allowOverwrite: decision.allowOverwrite }, { compact: true }));
   setActiveId(id);
   try {
     reloadStorage.setItem(SKIP_TITLE_KEY, "1"); // already past the title
@@ -13206,6 +13245,7 @@ function resumeSelected(id: string): void {
   url.searchParams.delete("new");
   url.searchParams.delete("seed");
   location.assign(url.toString());
+  return true;
 }
 
 /**
@@ -13307,6 +13347,8 @@ async function maybeTitle(): Promise<TitleChoice | null> {
       showTitleScreen(
         term,
         {
+          look: lookStore.read().active,
+          ...(lookStore.read().pending ? { lookPending: NEO_PENDING_TEXT } : {}),
           canLoad: living || resumedActive,
           canOpen: listRoster().length > 0,
           canQuit: desktopQuitAvailable(),
@@ -14878,7 +14920,7 @@ async function openRoster(): Promise<BootStep> {
          * them, and letting this one in would start the two-tab overwrite this
          * check exists to prevent. */
         if (await refusedAsPlayedElsewhere(res.id)) continue;
-        resumeSelected(res.id);
+        if (!(await resumeSelected(res.id))) continue;
         return "done";
       }
       /* "New character": through the ONE birth path, so ESC in birth still comes
@@ -15131,6 +15173,26 @@ async function startNewCharacter(): Promise<BootStep> {
  *     were in creation there was no way back to the title at all.
  */
 async function bootMenus(): Promise<void> {
+  stopLoading();
+  const saveDeps = await modManagerDeps();
+  const priorLook = lookStore.read().active;
+  classicManager(saveDeps).service.refreshState();
+  if (lookStore.read().active !== priorLook) { reloadAfterModChange({ resume: resumedActive }); return; }
+  saveCatalog = saveDeps.listCatalog;
+  saveModMetadata = await installedMods();
+  modSaveGuard = new ModSaveGuard(defaultModStore());
+  const approvalText = reloadStorage.getItem(MOD_SAVE_APPROVAL_KEY);
+  const approval = approvalText ? parseDocument(approvalText, modSaveApprovalFormat) : null;
+  const reviewed = approval?.ok && approval.data.slot === getActiveId() && approval.data.revision === defaultModStore().configurationRevision();
+  allowModSetOverwrite = reviewed ? approval.data.allowOverwrite : false;
+  if (resumedActive && !reviewed && game.modList) {
+    const decision = await openModal(() => prepareSaveModList(term, saveDeps, game.modList));
+    if (!decision.load) { detachSlot(); resumedActive = false; needsSelect = true; }
+    else {
+      allowModSetOverwrite = decision.allowOverwrite;
+      if (!modSaveGuard.current()) { reloadAfterModChange(); return; }
+    }
+  }
   /*
    * THE LOADING SCREEN ENDS HERE, and it ends at the ONE ENTRY to the menu
    * stack rather than at one of maybeTitle's four EXITS.
@@ -15154,7 +15216,6 @@ async function bootMenus(): Promise<void> {
    * It stays idempotent, and boot's tail still calls it for the routes that
    * return from here without painting anything.
    */
-  stopLoading();
   if (modTransactionNotice) {
     const text = modTransactionNotice;
     modTransactionNotice = null;
@@ -15190,6 +15251,11 @@ async function bootMenus(): Promise<void> {
    * (SKIP_TITLE, BIRTH_DONE) is one-shot and cleared on the first pass, so the
    * second time round the title really does appear. */
   const canReturnToTitle = !params.get("agent");
+  if (canReturnToTitle && !lookStore.read().chosen) {
+    const deps = await modManagerDeps();
+    deps.requestReload = () => reloadAfterModChange({ resume: false });
+    await openModal(() => runLookChoice(term, deps));
+  }
   for (;;) {
     const choice = await maybeTitle();
     if (choice?.startsWith("mod:")) {
@@ -15241,6 +15307,12 @@ async function bootMenus(): Promise<void> {
       await openModal(() => openModManager({ resume: false }));
       continue;
     }
+    if (choice === "look") {
+      const deps = await modManagerDeps();
+      deps.requestReload = () => reloadAfterModChange({ resume: false });
+      await openModal(() => runLookChoice(term, deps));
+      continue;
+    }
     if (choice === "install") {
       await openModal(() => showInstallChoicePage());
       continue;
@@ -15266,7 +15338,7 @@ async function bootMenus(): Promise<void> {
          * the list skipped. Refused, it falls through to the picker below rather
          * than stalling on the title with nothing said. */
         if (!(await refusedAsPlayedElsewhere(recent.id))) {
-          resumeSelected(recent.id);
+          if (!(await resumeSelected(recent.id))) continue;
           return;
         }
       }
