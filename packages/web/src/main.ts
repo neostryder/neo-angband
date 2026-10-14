@@ -587,6 +587,8 @@ import { userPath, userWrite, exportUserFile, FileType } from "./user-io";
 import { loadLoreFile, saveLoreFile } from "./lore-file";
 import { LORE_FILE } from "@rpgm-tools/neo-angband-core";
 import { buildGraphicsOverview, buildOverview, panLocate, locateSectorBanner } from "./mapview";
+import { displayCellAt, displayFrame } from "./display-frame";
+import { displayMapLayer } from "./overlay";
 import type { BuildOverviewParams, LevelOverview, Overview, OverviewGlyph } from "./mapview";
 import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
@@ -10033,6 +10035,9 @@ function clampDisplayOrigin(
 }
 
 const displayControl: ModDisplay = {
+  cellAt: (x, y) => displayCellAt(term.cellAt(x, y), displayControl.snapshot(), x, y, displayMapLayer()),
+  frame: () => displayFrame(canvas, displayMapLayer()),
+  onFrame: (listener) => term.onRepaint(listener),
   snapshot() {
     const { cols, rows } = term.size();
     const metrics = term.metrics();

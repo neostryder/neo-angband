@@ -10,7 +10,6 @@ import {
   FEAT,
   MFLAG,
   SQUARE,
-  TMD,
   knownMonsterMidx,
   knownMonsters,
   monsterIsObvious,
@@ -126,37 +125,6 @@ async function observedThroughHost(api: ModApi2): Promise<string> {
 const READS = ["state:*.read"];
 
 describe("the API 2 host's view", () => {
-  it("returns the same loadout simulation for different counters in one timed grade", async () => {
-    const a = startGame(pack, { seed: SEED, depth: DEPTH });
-    const b = startGame(pack, { seed: SEED, depth: DEPTH });
-    a.state.actor.player.timed[TMD.FAST] = 10;
-    b.state.actor.player.timed[TMD.FAST] = 20;
-    expect(await host(b, READS).view.simulateLoadout({})).toEqual(await host(a, READS).view.simulateLoadout({}));
-  });
-
-  it("simulates a loadout without exposing timed counters", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const result = await host(game, READS).view.simulateLoadout({});
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error("refused");
-    expect(result.value.delta.unknownRunes).toBe(false);
-    expect(result.value.before.player.status.fast).toBeNull();
-    for (const item of result.value.before.inventory) expect(item).not.toHaveProperty("timeout");
-    expect(await host(game, ["state:player.read"]).view.simulateLoadout({})).toMatchObject({ reason: "not-granted", capability: "state:inventory.read" });
-    const grid = emptyGrid(game.state, false);
-    expect(await host(game, READS).view.simulateLoadout({ wield: [{ from: "floor", ...grid, index: 0 }] })).toMatchObject({ code: "unobserved-item" });
-  });
-
-  it("keeps look text unchanged when hidden terrain changes and hides wizard flow", async () => {
-    const a = startGame(pack, { seed: SEED, depth: DEPTH });
-    const b = startGame(pack, { seed: SEED, depth: DEPTH });
-    const grid = emptyGrid(a.state, false);
-    b.state.chunk.setFeat(grid, FEAT.GRANITE);
-    b.state.wizard = true;
-    expect(await host(b, READS).view.look(grid)).toEqual(await host(a, READS).view.look(grid));
-    expect(await host(a, []).view.look(grid)).toMatchObject({ reason: "not-granted" });
-  });
-
   it("does not change when an unseen monster's health and speed change (paired worlds)", async () => {
     const a = startGame(pack, { seed: SEED, depth: DEPTH });
     const b = startGame(pack, { seed: SEED, depth: DEPTH });
@@ -259,11 +227,17 @@ describe("the API 2 host's commands", () => {
 });
 
 describe("the first-party seams", () => {
+  it("refuses presentation to a public mod even with a namespace flag", () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    expect(host(game, [], { tier: "public", firstParty: { presentation: true } }).presentation).toBeUndefined();
+    expect(host(game, [], { tier: "first-party", firstParty: { presentation: true } }).presentation).toBeDefined();
+  });
   it("are absent without an allowlist, whatever the grants", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const api = host(game, [...READS, "profiles:manage", "session:control"]);
     expect(api.manage).toBeUndefined();
     expect(api.truth).toBeUndefined();
+    expect(api.presentation).toBeUndefined();
     expect("manage" in api).toBe(false);
     expect("truth" in api).toBe(false);
     expect(api.meta.tier).toBe("public");

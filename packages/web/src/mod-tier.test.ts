@@ -230,7 +230,7 @@ describe("the seam policy", () => {
         ["s", effectiveGrants([TRUTH_MAP], sideloaded, { granted: [TRUTH_MAP], refused: [] })],
       ]),
     );
-    expect(modStartGrants("anybandui").firstParty).toEqual({ manage: true, truth: true });
+    expect(modStartGrants("anybandui").firstParty).toEqual({ manage: true, truth: true, presentation: true });
     expect(modStartGrants("s").firstParty).toEqual({ truth: true });
     expect(modStartGrants("unknown")).toMatchObject({ granted: [] });
     expect(modStartGrants("unknown").firstParty).toBeUndefined();

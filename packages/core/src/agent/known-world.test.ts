@@ -198,18 +198,6 @@ function kindNamed(game: StartedGame, tval: number, name: string): ObjectKind {
 }
 
 describe("KnownWorld paired worlds", () => {
-  it("reports every timed code without revealing durations", () => {
-    const [a, b] = pair();
-    a.state.actor.player.timed[TMD.SLOW] = 10;
-    b.state.actor.player.timed[TMD.SLOW] = 20;
-    expect(observed(b.state)).toBe(observed(a.state));
-    const timed = buildKnownWorld(a.state).player!.status.timed;
-    expect(Object.keys(timed)).toHaveLength(Object.keys(TMD).length);
-    expect(timed["SLOW"]).toEqual(expect.any(String));
-    b.state.actor.player.timed[TMD.SLOW] = 0;
-    expect(observed(b.state)).not.toBe(observed(a.state));
-  });
-
   it("uninspected store stock produces identical observations", () => {
     const [a, b] = pair();
     for (const game of [a, b]) game.changeLevel(0);

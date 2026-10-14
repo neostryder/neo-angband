@@ -20,9 +20,7 @@ import {
   AgentCapabilityError,
   buildKnownWorld,
   createAgentView,
-  describeLookGrid,
   knownMonsterMidx,
-  knownLoadoutSimulation,
   trueMonsterViews,
   tokenIsCurrent,
   type AgentCapabilities,
@@ -73,6 +71,7 @@ export interface Api2Allowlist {
   readonly manage?: boolean;
   /** Hidden game state needs consent even when identity is first-party. */
   readonly truth?: boolean;
+  readonly presentation?: boolean;
 }
 
 /** What the loader tells the host about one mod. */
@@ -339,34 +338,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           prompt: snap.prompt,
         }));
       }),
-      look: (grid) => withState((state) => {
-        for (const domain of ["map", "floor", "monsters"]) {
-          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-        }
-        if (!Number.isInteger(grid.x) || !Number.isInteger(grid.y) || !state.chunk.inBounds(grid)) {
-          return api2Refused("invalid-grid", "the grid is outside the level");
-        }
-        return api2Ok(describeLookGrid(state, grid, 0, true).text);
-      }),
-      simulateLoadout: (change) => withState((state) => {
-        for (const domain of ["player", "inventory"]) {
-          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-        }
-        const refs = [...(change.wield ?? []), ...(change.wieldAt ?? []).map((entry) => entry.item),
-          ...(change.carry ?? []).map((entry) => entry.item)];
-        for (const ref of refs) {
-          const domain = ref.from === "store" ? "stores" : ref.from === "floor" ? "floor" : "inventory";
-          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-          if (ref.from === "floor" && (!state.chunk.inBounds(ref) || !part(state, "map").level?.cells.some((cell) => cell.x === ref.x && cell.y === ref.y && cell.seen))) {
-            return api2Refused("unobserved-item", "the floor item is not currently seen");
-          }
-          if (ref.from === "store" && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) {
-            return api2Refused("unobserved-item", "the store item is not currently seen");
-          }
-        }
-        const simulation = createAgentView(state, undefined, options.viewDeps ?? {}, { has: granted }).simulateLoadout?.(structuredClone(change));
-        return simulation ? api2Ok(data(knownLoadoutSimulation(state, simulation)) as import("@rpgm-tools/neo-angband-mod-sdk").LoadoutSimulation) : api2Unavailable("the game has no loadout calculation");
-      }),
       isCurrent: (token) => withState((state) => api2Ok(tokenIsCurrent(state, token))),
     }),
 
@@ -518,6 +489,17 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     ...(ctx.net ? { net: netDomain(ctx.net) } : {}),
     ...(options.firstParty?.manage ? { manage: manageDomain(ctx) } : {}),
     ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}) } : {}),
+    ...(options.tier === "first-party" && options.firstParty?.presentation ? {
+      presentation: frozen({
+        ...(ctx.display ? { display: ctx.display } : {}),
+        ...(ctx.subwindows ? { subwindows: ctx.subwindows } : {}),
+        ...(ctx.tiles ? { tiles: ctx.tiles } : {}),
+        ...(ctx.ui ? { panels: ctx.ui } : {}),
+        ...(typeof document !== "undefined" && document.getElementById("game-view") ? {
+          sidebarHost: document.getElementById("game-view")!,
+        } : {}),
+      }),
+    } : {}),
   };
   return Object.freeze(api);
 }
