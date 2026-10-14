@@ -71,7 +71,9 @@ export interface ReferenceEdge {
  * indistinguishable from a wrong one.
  */
 export const REFERENCE_EDGES: readonly ReferenceEdge[] = [
-  /* Item types resolve through object_base or a mod's tval declaration. */
+  /* Objects and the item tree. `type` is the tval, which object_base declares;
+   * a mod inventing a tval must add the object_base record too, and this is the
+   * edge that says so. */
   { file: "object", path: "type", target: "object_base", targetPath: "name.tval", what: "the item type (tval)" },
   { file: "object", path: "slay", target: "slay", targetPath: "code", what: "a slay" },
   { file: "object", path: "curse.name", target: "curse", targetPath: "name", what: "a curse" },
@@ -236,13 +238,6 @@ export function danglingReferences(
     for (const record of records[edge.target] ?? []) {
       for (const v of valuesAtPath(record, edge.targetPath)) {
         set.add(normalizeRef(v, edge.normalize));
-      }
-    }
-    if (edge.target === "object_base" && edge.targetPath === "name.tval") {
-      for (const record of records["tval"] ?? []) {
-        for (const value of valuesAtPath(record, "name")) {
-          if (typeof value === "string") set.add(normalizeRef(value.trim().toLowerCase(), edge.normalize));
-        }
       }
     }
     targets.set(key, set);

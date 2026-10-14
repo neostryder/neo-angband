@@ -20,11 +20,17 @@ import {
   AgentCapabilityError,
   buildKnownWorld,
   createAgentView,
+  colorPrefId,
+  colorTableSnapshot,
+  colorToCss,
+  describeLookGrid,
   knownMonsterMidx,
+  knownLoadoutSimulation,
   trueMonsterViews,
   tokenIsCurrent,
   type AgentCapabilities,
   type AgentViewDeps,
+  type AgentView,
   type GameEventMap,
   type GameEventType,
   type GameState,
@@ -138,7 +144,7 @@ async function guarded<T>(body: () => Api2Result<T> | Promise<Api2Result<T>>): A
  *
  * The player knows outcomes against themselves. A monster's outcome requires a perceived target in view, and movement reveals only observed endpoints. Core captures identities before deleted monsters lose their slots.
  */
-export function api2EventPayload<K extends Api2EventName>(
+export function api2EventPayload<K extends Exclude<Api2EventName, "run-end">>(
   name: K,
   raw: GameEventMap[K & GameEventType],
 ): Api2EventMap[K] | undefined {
@@ -219,10 +225,18 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   const readable = (domain: string): boolean => granted(`state:${domain}.read`) || granted("state:*.read");
   const withState = <T>(body: (state: GameState) => Api2Result<T> | Promise<Api2Result<T>>): Api2Call<T> =>
     guarded(() => (ctx.state ? body(ctx.state) : api2Unavailable(NO_GAME)));
+  const keyed = (world: KnownWorldData): KnownWorldData => data({ ...world,
+    player: world.player ? { ...world.player, key: ctx.character?.key() ?? null } : null });
   /* One part of the known world, built with only that part readable. */
   const part = (state: GameState, domain: string): KnownWorldData =>
-    buildKnownWorld(state, options.viewDeps ?? {}, {
+    keyed(buildKnownWorld(state, options.viewDeps ?? state.knownWorldDeps ?? {}, {
       has: (c) => c === `state:${domain}.read` && readable(domain),
+    }));
+  const inspectRead = <T>(domains: readonly string[], read: (state: GameState, view: AgentView) => T): Api2Call<T> =>
+    withState((state) => {
+      for (const domain of domains) if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
+      const view = createAgentView(state, undefined, { ...(options.viewDeps ?? state.knownWorldDeps ?? {}), knowledgeSafe: true }, { has: granted });
+      return api2Ok(data(read(state, view)));
     });
 
   let panels = options.panels;
@@ -233,34 +247,26 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
 
   const subscriptions = new Map<string, { type: GameEventType; handler: (type: GameEventType, raw: unknown) => void }>();
   let nextSubscription = 1;
+  const runSubscriptions = new Map<string, () => void>();
 
-  const prefsEnvelope = "neo-angband/mod/prefs";
-  const wrapPrefs = (value: JsonValue, version: number): JsonValue => ({
-    format: prefsEnvelope, schemaVersion: 1, data: { version, value },
-  });
+  const prefsEnvelope = "$api2prefs";
   let prefsRevision = 0;
   let pendingMigration: Promise<Api2Result<JsonValue | null>> | undefined;
   const prefs: Api2Slot = {
     get: () => guarded(async () => {
       const raw = ctx.prefs.get() as JsonValue | null;
       const migration = options.prefs;
-      if (raw === null || raw === undefined) return api2Ok(null);
-      const stored = typeof raw === "object" && !Array.isArray(raw) ? raw : undefined;
-      const contents = stored?.["data"];
-      const envelopeData = contents !== null && typeof contents === "object" && !Array.isArray(contents) ? contents : undefined;
-      const enveloped = stored?.["format"] === prefsEnvelope && stored["schemaVersion"] === 1 &&
-        Object.keys(stored).length === 3 && envelopeData !== undefined && Object.keys(envelopeData).length === 2 &&
-        typeof envelopeData["version"] === "number" && Number.isInteger(envelopeData["version"]) &&
-        envelopeData["version"] >= 1 && Object.hasOwn(envelopeData, "value");
-      const from = enveloped ? envelopeData!["version"] as number : 0;
-      const value = enveloped ? envelopeData!["value"] ?? null : raw;
-      if (!migration || from >= migration.version || value === null) return api2Ok(data(value));
+      if (!migration || raw === null || raw === undefined) return api2Ok(raw === undefined ? null : data(raw));
+      const enveloped = typeof raw === "object" && !Array.isArray(raw) && typeof raw[prefsEnvelope] === "number";
+      const from = enveloped ? (raw as Record<string, JsonValue>)[prefsEnvelope] as number : 0;
+      const value = enveloped ? (raw as Record<string, JsonValue>)["value"] ?? null : raw;
+      if (from >= migration.version || value === null) return api2Ok(data(value));
       if (pendingMigration) return pendingMigration;
       const revision = prefsRevision;
       const migrating = (async (): Promise<Api2Result<JsonValue | null>> => {
         const migrated = await migration.migrate(structuredClone(value), from);
         if (revision !== prefsRevision) return prefs.get();
-        ctx.prefs.set(wrapPrefs(migrated, migration.version));
+        ctx.prefs.set({ [prefsEnvelope]: migration.version, value: migrated });
         return api2Ok(data(migrated));
       })();
       pendingMigration = migrating;
@@ -272,7 +278,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
     set: (value) => guarded(() => {
       const migration = options.prefs;
-      ctx.prefs.set(value === null || !migration ? value : wrapPrefs(structuredClone(value), migration.version));
+      ctx.prefs.set(value === null || !migration ? value : { [prefsEnvelope]: migration.version, value: structuredClone(value) });
       prefsRevision += 1;
       return api2Ok(null);
     }),
@@ -319,7 +325,42 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     view: frozen({
-      world: () => withState((state) => api2Ok(buildKnownWorld(state, options.viewDeps ?? {}, { has: granted }) as KnownWorldData)),
+      character: () => guarded(() => {
+        if (!readable("player")) return api2NotGranted("state:player.read");
+        const character = ctx.character;
+        if (!character) return api2Unavailable("there is no character record");
+        return api2Ok(data({ key: character.key(), sheet: character.sheet?.() ?? null,
+          history: character.history(), report: options.tier === "first-party" ? character.runReport?.() ?? null : null }));
+      }),
+      inspect: frozen({
+        simulateLoadout: (change) => api.view.simulateLoadout(change),
+        item: (ref) => inspectRead(["inventory", ...(typeof ref === "number" ? [] : "floor" in ref ? ["floor"] : ["stores"])], (state, view) => {
+          if (typeof ref !== "number" && "floor" in ref && (!state.chunk.inBounds(ref.floor) || !part(state, "map").level?.cells.some((cell) => cell.x === ref.floor.x && cell.y === ref.floor.y && cell.seen))) return null;
+          if (typeof ref !== "number" && "store" in ref && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) return null;
+          return view.inspectItem!(ref);
+        }),
+        itemRules: () => inspectRead(["inventory"], (_state, view) => view.itemRules!()),
+        itemTester: (code) => inspectRead(["inventory", "floor"], (_state, view) => view.itemTester!(code)),
+        bookForItem: (handle) => inspectRead(["inventory", "spells"], (_state, view) => view.bookForItem!(handle)),
+        spell: (index) => inspectRead(["spells"], (_state, view) => view.spellInfo!(index)),
+        monsterRecall: (index) => inspectRead(["monsters"], (_state, view) => view.monsterRecall!(index)),
+        projectionPath: (to) => inspectRead(["map"], (_state, view) => view.projectionPath!(to)),
+        blastArea: (to, radius, arc) => inspectRead(["map"], (_state, view) => view.blastArea!(to, radius, arc)),
+        travelPath: (to) => inspectRead(["map"], (_state, view) => view.travelPath!(to)),
+        compareLoadoutSlots: (ref) => inspectRead(["player", "inventory", ...(ref.from === "floor" ? ["floor"] : ref.from === "store" ? ["stores"] : [])], (state, view) => {
+          if (ref.from === "floor" && (!state.chunk.inBounds(ref) || !part(state, "map").level?.cells.some((cell) => cell.x === ref.x && cell.y === ref.y && cell.seen))) return { token: part(state, "player").token, slots: [] };
+          if (ref.from === "store" && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) return { token: part(state, "player").token, slots: [] };
+          const result = view.compareLoadoutSlots!(ref);
+          return { ...result, slots: result.slots.map((slot) => ({ ...slot, comparison: knownLoadoutSimulation(state, slot.comparison) })) } as import("@rpgm-tools/neo-angband-mod-sdk").LoadoutSlotsResult;
+        }),
+        tileActions: (to) => inspectRead(["map"], (_state, view) => view.tileActions!(to)),
+      }),
+      catalogue: () => guarded(() => {
+        if (!readable("interaction")) return api2NotGranted("state:interaction.read");
+        const catalogue = ctx.intent?.catalogue?.();
+        return catalogue ? api2Ok(data(catalogue)) : api2Unavailable("this front end has no command catalogue");
+      }),
+      world: () => withState((state) => api2Ok(keyed(buildKnownWorld(state, options.viewDeps ?? state.knownWorldDeps ?? {}, { has: granted })))),
       player: () => withState((state) => {
         if (!readable("player")) return api2NotGranted("state:player.read");
         const player = part(state, "player").player;
@@ -344,7 +385,43 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           phase: snap.phase,
           messagePending: snap.messagePending,
           prompt: snap.prompt,
+          resting: snap.resting,
+          running: (ctx.state?.run?.running ?? 0) > 0,
+          repeating: (ctx.state?.cmdQueue?.[0]?.repeatRemaining ?? 0) > 0,
+          repeatsLeft: ctx.state?.cmdQueue?.[0]?.repeatRemaining ?? 0,
+          unignoring: (ctx.state?.unignoring ?? 0) > 0,
+          messages: readable("messages") ? snap.messages?.log.slice(-100) ?? null : null,
+          storeStatus: readable("stores") && readable("inventory") ? snap.storeStatus : null,
+          activeBlast: readable("map") ? snap.activeBlast : null,
         }));
+      }),
+      look: (grid) => withState((state) => {
+        for (const domain of ["map", "floor", "monsters"]) {
+          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
+        }
+        if (!Number.isInteger(grid.x) || !Number.isInteger(grid.y) || !state.chunk.inBounds(grid)) {
+          return api2Refused("invalid-grid", "the grid is outside the level");
+        }
+        return api2Ok(describeLookGrid(state, grid, 0, true).text);
+      }),
+      simulateLoadout: (change) => withState((state) => {
+        for (const domain of ["player", "inventory"]) {
+          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
+        }
+        const refs = [...(change.wield ?? []), ...(change.wieldAt ?? []).map((entry) => entry.item),
+          ...(change.carry ?? []).map((entry) => entry.item)];
+        for (const ref of refs) {
+          const domain = ref.from === "store" ? "stores" : ref.from === "floor" ? "floor" : "inventory";
+          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
+          if (ref.from === "floor" && (!state.chunk.inBounds(ref) || !part(state, "map").level?.cells.some((cell) => cell.x === ref.x && cell.y === ref.y && cell.seen))) {
+            return api2Refused("unobserved-item", "the floor item is not currently seen");
+          }
+          if (ref.from === "store" && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) {
+            return api2Refused("unobserved-item", "the store item is not currently seen");
+          }
+        }
+        const simulation = createAgentView(state, undefined, options.viewDeps ?? {}, { has: granted }).simulateLoadout?.(structuredClone(change));
+        return simulation ? api2Ok(data(knownLoadoutSimulation(state, simulation, ctx.character?.key() ?? null)) as import("@rpgm-tools/neo-angband-mod-sdk").LoadoutSimulation) : api2Unavailable("the game has no loadout calculation");
       }),
       isCurrent: (token) => withState((state) => api2Ok(tokenIsCurrent(state, token))),
     }),
@@ -403,11 +480,19 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         }
         const capability = `event:${name}`;
         if (!granted(capability)) return api2NotGranted(capability);
+        if (name === "run-end") {
+          if (!ctx.character?.onRunEnd) return api2Unavailable("this front end has no run-end reports");
+          const id = `${ctx.id}:${nextSubscription++}`;
+          const unsubscribe = ctx.character.onRunEnd((report) => listener(data({ key: report.key,
+            report: options.tier === "first-party" ? report : null }) as Api2EventMap[typeof name]));
+          runSubscriptions.set(id, unsubscribe);
+          return api2Ok(frozen({ id }));
+        }
         if (!ctx.events) return api2Unavailable(NO_GAME);
         const type = name as GameEventType;
         const handler = (_type: GameEventType, raw: unknown): void => {
           const payload = api2EventPayload(name, raw as never);
-          if (payload !== undefined) listener(payload);
+          if (payload !== undefined) listener(payload as Parameters<typeof listener>[0]);
         };
         ctx.events.on(type, handler as never);
         const id = `${ctx.id}:${nextSubscription++}`;
@@ -415,6 +500,8 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         return api2Ok(frozen({ id }));
       }),
       off: (subscription) => guarded(() => {
+        runSubscriptions.get(subscription.id)?.();
+        runSubscriptions.delete(subscription.id);
         const entry = subscriptions.get(subscription.id);
         if (entry) {
           ctx.events?.off(entry.type, entry.handler as never);
@@ -430,6 +517,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     content: frozen({
+      colors: () => guarded(() => api2Ok(data(colorTableSnapshot().map((_color, index) => ({ index, id: colorPrefId(index), css: colorToCss(index) }))))),
       own: () => guarded(() => api2Ok(data({ ...ctx.data } as Record<string, JsonValue>))),
       asset: (path: string) => guarded(async () => {
         const url = await ctx.assetUrl(path);
@@ -507,7 +595,7 @@ function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModAp
     request: (request: Api2NetRequest) => guarded(async () => {
       const headers: Record<string, string> = {};
       for (const [name, value] of Object.entries(request.headers ?? {})) {
-        headers[name] = typeof value === "string" ? value : `${value.prefix ?? ""}{secret:${value.credential}}`;
+        headers[name] = typeof value === "string" ? value : `{secret:${value.credential}}`;
       }
       const response = await net.request({
         url: request.url,
@@ -528,7 +616,7 @@ function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModAp
       }
       return api2Refused(response.code, response.problem);
     }),
-    credential: (name: string, prefix?: string) => frozen({ credential: name, ...(prefix !== undefined ? { prefix } : {}) }),
+    credential: (name: string) => frozen({ credential: name }),
     credentials: frozen({
       status: (name: string) => guarded(async () => api2Ok(data(await secrets.has(name)))),
       set: (name: string, value: string, hosts: readonly string[]) => guarded(async () => {

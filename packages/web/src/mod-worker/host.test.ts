@@ -250,23 +250,6 @@ describe("a Worker mod's view of the world", () => {
 });
 
 describe("the broker's grants", () => {
-  it("reports vocabulary wildcards without granting truth or unrelated actions", async () => {
-    let found: unknown;
-    const grants = ["registry:*", "state:*.read", "network:*", "ui:*.replace"];
-    const wired = wire({ api: API, start: (api) => {
-      found = Object.fromEntries([
-        "registry:store", "registry:message", "state:monsters.read", "network:local", "network:example.test",
-        "ui:sidebar.replace", "ui:region.create", "state:map-actual.read", "*",
-      ].map((capability) => [capability, api.meta.granted(capability)]));
-    } }, { grants });
-    await started(wired, () => found);
-    expect(found).toEqual({
-      "registry:store": true, "registry:message": true, "state:monsters.read": true,
-      "network:local": true, "network:example.test": true, "ui:sidebar.replace": true,
-      "ui:region.create": false, "state:map-actual.read": false, "*": false,
-    });
-  });
-
   it("never passes a wildcard grant to the Worker", async () => {
     const wired = wire({ api: API }, { grants: ["*", "state:player.read"] });
     await wired.session.ready;

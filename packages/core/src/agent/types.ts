@@ -896,6 +896,7 @@ export interface AgentGlyphSource {
 }
 
 export interface AgentViewDeps {
+  knowledgeSafe?: boolean;
   /** The host's bound inspection data, shared with its own inspect screens. */
   inspect?: {
     objectInfo: ObjectInfoExtras;
