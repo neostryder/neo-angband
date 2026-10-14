@@ -77,7 +77,7 @@ export class ModManagerService {
       markUnreviewedNotice: (id, version) => mutate(() => env.store.markUnreviewedNotice(id, version)),
       setRuleChoice: (flag, on) => mutate(() => env.store.setRuleChoice(flag, on)),
       setSectionChoice: (id, section, on) => mutate(() => env.store.setSectionChoice(id, section, on)),
-      setSettingValue: (id, setting, value) => mutate(() => env.store.setSettingValue(id, setting, value)),
+      setSettingValue: (id, setting, value) => mutate(() => { env.store.setSettingValue(id, setting, value); env.look?.recordSetting(id, setting, value); }),
       writeThirdPartyConsent: (allow) => { const result = env.consent?.write(allow) ?? false; service.#publish(); return result; },
       installConfirmed: async (mod, origin, progress) => {
         const result = env.install ? await env.install(mod, origin, progress) : { ok: false as const, problem: "The host cannot install mods." };
@@ -367,6 +367,7 @@ export class ModManagerService {
   proposeOrder(): ManagerResult<SortResult> {
     const current = this.#env.store.getEnabled();
     const catalog = this.#env.listCatalog();
+    this.#env.look?.complete(catalog.find((mod) => mod.id === "anybandui" && mod.enabled)?.manifest);
     const manifests = current.flatMap((id) => { const mod = catalog.find((m) => m.id === id && !m.missing); return mod ? [mod.manifest] : []; });
     return { status: "ok", value: immutable(sortModOrder(manifests, { pins: this.#env.store.getPins(), current })) };
   }
@@ -391,6 +392,7 @@ export class ModManagerService {
     const setting = this.#find(id)?.manifest.settings?.find((s) => s.id === settingId);
     if (!setting || !Number.isFinite(value)) return refused("setting", "This mod setting is not valid.");
     this.#env.store.setSettingValue(id, settingId, resolveSettingValue(setting, value));
+    this.#env.look?.recordSetting(id, settingId, resolveSettingValue(setting, value));
     if (!setting.requiresReload) this.#env.applySettingLive?.(id, settingId);
     this.#publish();
     return { status: "ok", value: null };

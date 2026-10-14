@@ -108,16 +108,8 @@ export interface Api2TileRule {
   readonly packs?: readonly string[];
 }
 
-export interface Api2WalkBlockedByDiggablePolicy {
-  readonly kind: "walk-blocked-by-diggable";
-  readonly attempt: "tunnel";
-  readonly energy: "move";
-  readonly step: false;
-}
-
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
-  readonly walkBlockedByDiggable?: Api2WalkBlockedByDiggablePolicy;
   readonly messageText?: readonly Api2TextRule[];
   /** `where` may name `screen`, `part` and `column`. */
   readonly screenText?: readonly Api2TextRule[];
@@ -170,7 +162,6 @@ export type Api2TileFiller = (fill: Api2TileFill) => void;
 
 /** The game registrations a table can install, beside the hooks. */
 export interface Api2PolicyRegistrations {
-  walkBlockedByDiggable?: Api2WalkBlockedByDiggablePolicy;
   /** Installed as the stores' discount roll. */
   discountRoll?: Api2DiscountRoll;
   /** Installed as the mod's tile filler. */
@@ -379,25 +370,6 @@ const LIST_KEYS: readonly string[] = ["dy", "-dy", "dx", "-dx"];
  * policies.test.ts, and list it under Policy tables in docs/modding/API2.md.
  */
 export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
-  {
-    name: "walkBlockedByDiggable",
-    capability: "registry:command",
-    summary: "Attempts one tunnel when a walk meets known diggable rock.",
-    target: { registration: "walkBlockedByDiggable" },
-    check(value) {
-      if (!isRecord(value)) return "walkBlockedByDiggable is an object";
-      const extra = unknownField("walkBlockedByDiggable", value, ["kind", "attempt", "energy", "step"]);
-      if (extra) return extra;
-      if (value["kind"] !== "walk-blocked-by-diggable") return 'walkBlockedByDiggable.kind is "walk-blocked-by-diggable"';
-      if (value["attempt"] !== "tunnel") return 'walkBlockedByDiggable.attempt is "tunnel"';
-      if (value["energy"] !== "move") return 'walkBlockedByDiggable.energy is "move"';
-      if (value["step"] !== false) return "walkBlockedByDiggable.step is false";
-      return null;
-    },
-    apply(value, out) {
-      out.registrations.walkBlockedByDiggable = value as Api2WalkBlockedByDiggablePolicy;
-    },
-  },
   textKind("messageText", "messageText", "Rewrites message-line text.", "registry:message", [], (rules, hooks) => {
     hooks.messageText = (raw: string) => applyRules(rules, raw);
   }),

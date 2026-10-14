@@ -9,6 +9,7 @@ import type { ModRegistry } from "../mod-curated";
 import type { ModRefresh } from "../mod-refresh";
 import type { ProfileMeta } from "../profiles";
 import type { BrowseEntry } from "./browse-types";
+import type { LookStore } from "../look-state";
 
 export type Immutable<T> = T extends object ? { readonly [K in keyof T]: Immutable<T[K]> } : T;
 
@@ -104,6 +105,7 @@ export interface ManagerState {
 
 export interface ModManagerEnvironment {
   readonly store: ModStore;
+  readonly look?: LookStore;
   readonly listCatalog: () => readonly CatalogMod[];
   readonly rediscover?: () => Promise<void>;
   readonly installedMetadata?: () => Promise<readonly InstalledModMeta[]>;

@@ -15,7 +15,7 @@
  */
 
 import type { ModHooks, ModPluginContext } from "@rpgm-tools/neo-angband-core";
-import { inputToken, movementTunnelTest, tokenIsCurrent, tunnelAux, type CaveCmdDeps, type PlayerCommand } from "@rpgm-tools/neo-angband-core";
+import { inputToken, tokenIsCurrent, type PlayerCommand } from "@rpgm-tools/neo-angband-core";
 import {
   api2PolicyEffects,
   apiRangeVerdict,
@@ -199,17 +199,6 @@ export interface Api2PolicyTargets {
   readonly tiles: { register(filler: (fill: Api2TileFill) => void): void } | null;
 }
 
-export function api2PolicyModHooks(registrations: Api2PolicyRegistrations, active: () => boolean): ModHooks {
-  if (!registrations.walkBlockedByDiggable) return {};
-  return {
-    walkBlockedByDiggable: (state, grid, deps) => {
-      if (!active() || !movementTunnelTest(state, grid)) return null;
-      tunnelAux(state, grid, deps as CaveCmdDeps);
-      return state.z.moveEnergy;
-    },
-  };
-}
-
 /**
  * Install a mod's policy registrations. `active` is asked on every use, and a
  * mod that is no longer active answers as if it had installed nothing: no
@@ -305,8 +294,6 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
     const hooksOf = definition.hooks?.bind(definition);
     const policiesOf = definition.policies?.bind(definition);
     plugin.hooks = (ctx: ModPluginContext): ModHooks | undefined => {
-      stopped = false;
-      const installedGeneration = generation;
       pluginPolicies.delete(plugin as ModPlugin);
       const engine = api2Engine(ctx, options());
       const context = { id: ctx.id, flags: plain({ ...ctx.flags }), ...(engine ? { engine } : {}) };
@@ -328,10 +315,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
         }
       }
       active = declaredHooks(merged);
-      return merged ? {
-        ...api2ToModHooks(merged),
-        ...api2PolicyModHooks(pluginPolicies.get(plugin)?.registrations ?? {}, () => !stopped && generation === installedGeneration),
-      } : undefined;
+      return merged ? api2ToModHooks(merged) : undefined;
     };
   }
   if (definition.start || definition.actions?.length || definition.titleActions?.length) {

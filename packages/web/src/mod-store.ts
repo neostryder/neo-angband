@@ -921,6 +921,12 @@ export class ModStore {
     }
   }
 
+  replaceSettingValues(modId: string, values: Readonly<Record<string, number>>): void {
+    const all = this.getSettingValues();
+    all[modId] = { ...values };
+    this.storage?.setItem(MOD_SETTINGS_STORAGE_KEY, serializeDocument(modSettingValuesFormat, { values: all }, { compact: true }));
+  }
+
   /* --- Rule choices (Fixes & tweaks menu) ---------------------------- */
 
   /**

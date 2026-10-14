@@ -13,6 +13,7 @@ import { headlessRunFormat } from "./headless-run.js";
 import { modSettingValuesFormat } from "./mod-settings.js";
 import { profilesFormat } from "./profiles.js";
 import { settingsFormat } from "./settings.js";
+import { lookFormat } from "./look.js";
 import { windowStateFormat } from "./window-state.js";
 import { highScoresFormat, birthChoiceFormat, bootRecordFormat, reloadStateFormat, loopbackPortFormat, mergedOriginsFormat, deathLedgerFormat, installedMarkerFormat, backupFolderFormat, lastRunVersionFormat, restorePointFormat, modSecretsFormat, modPageSecretsFormat } from "./local-state.js";
 import { loadOrderFormat } from "./load-order.js";
@@ -35,6 +36,7 @@ void [
   lastRunVersionFormat, restorePointFormat,
   modSecretsFormat, modPageSecretsFormat,
   settingsFormat,
+  lookFormat,
   loadOrderFormat,
   buildIdFormat,
   modLocaleFormat,
