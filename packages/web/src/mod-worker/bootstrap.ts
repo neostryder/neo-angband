@@ -89,7 +89,7 @@ export function installModWorkerBootstrap(
     if (list.includes(capability)) return true;
     const state = /^state:([a-z0-9-]+)\.read$/u.exec(capability);
     if (state && state[1] !== "map-actual" && list.includes("state:*.read")) return true;
-    return capability.startsWith("network:") && capability !== "network:local" && list.includes("network:*");
+    return capability.startsWith("network:") && list.includes("network:*");
   };
 
   const buildApi = (m: WorkerMeta, active: readonly string[]): ModApi2 => {
@@ -168,7 +168,7 @@ export function installModWorkerBootstrap(
           request: method("net.request"),
           /* An opaque reference: the value stays with the host, which puts it
            * into the request after the request leaves this Worker. */
-          credential: (name: string) => Object.freeze({ credential: String(name) }),
+          credential: (name: string, prefix?: string) => Object.freeze({ credential: String(name), ...(prefix !== undefined ? { prefix: String(prefix) } : {}) }),
           credentials: {
             status: method("net.credentials.status"),
             set: method("net.credentials.set"),

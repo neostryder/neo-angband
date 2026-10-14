@@ -98,6 +98,16 @@ describe("every declared edge resolves in core's own data", () => {
 });
 
 describe("a mod's dangling reference", () => {
+  it("resolves object, ego, and artifact types declared in tval.json", () => {
+    const records = {
+      tval: [{ name: "junk" }],
+      object: [{ name: "& Shard~", type: "junk" }],
+      ego_item: [{ name: "of Dust", type: "junk", item: [{ tval: "junk", sval: "Shard" }] }],
+      artifact: [{ name: "Relic", "base-object": { tval: "junk", sval: "Shard" } }],
+    };
+    expect(danglingReferences(records)).toEqual([]);
+    expect(danglingReferences({ ...records, tval: [] }).filter((d) => d.target === "object_base")).toHaveLength(4);
+  });
   const base = {
     monster_base: [{ name: "ooze" }],
     monster: [{ name: "grey ooze", base: "ooze" }],

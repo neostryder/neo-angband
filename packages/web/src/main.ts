@@ -449,6 +449,7 @@ import {
   configureModHealth,
   FAULT_LIMIT,
   FAULT_WINDOW_TURNS,
+  manifestBudgetFor,
   modHealth,
   switchOffNotice,
   type ModSwitchOff,
@@ -10322,6 +10323,7 @@ const modSnapshotSource: InputSnapshotSource = {
   viewDeps: () => ({
     resolver: new ContentIdResolver({
       objects: booted.registries.objects,
+      monsters: booted.registries.monsters,
       playerRaces: players.races,
       playerClasses: players.classes,
     }),
@@ -15925,6 +15927,12 @@ function modSwitchedOff(off: ModSwitchOff): void {
 configureModHealth({
   turn: () => state.turn,
   enforce: true,
+  budgetFor: (id) => manifestBudgetFor(id, [
+    ...activeModCode().plugins.map((loaded) => loaded.manifest),
+    ...activeModCode().workers.map((loaded) => loaded.manifest),
+    ...[...discoverPlugins().values()].map((loaded) => loaded.manifest),
+    ...[...discoverTrustedPlugins().values()].map((loaded) => loaded.manifest),
+  ]),
   onSwitchOff: modSwitchedOff,
   onOverBudget: (report) => {
     log.warn(

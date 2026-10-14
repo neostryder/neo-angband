@@ -2,7 +2,6 @@
 
 import { SQUARE } from "../generated/index.js";
 import { squareIsSeen } from "../world/view.js";
-import { featIsPassable } from "../world/chunk.js";
 import type { GameState } from "../game/context.js";
 import { knownFeat, knownPile, squareIsKnown } from "../game/known.js";
 import { squareKnownTraps, squareTrap } from "../game/trap.js";
@@ -68,7 +67,6 @@ function objectAura(state: GameState, obj: GameObject): ObjectAura | undefined {
 
 export interface RememberedCell {
   readonly feat: number;
-  readonly passable: boolean;
   readonly featCode?: string;
   readonly traps: readonly TrapView[];
   readonly objects: readonly RememberedObject[];
@@ -87,7 +85,6 @@ export interface KnownLevelCell {
   readonly y: number;
   readonly remembered: RememberedCell;
   readonly visible: boolean;
-  readonly lit: boolean | null;
   readonly actual?: ActualCell;
 }
 
@@ -121,17 +118,15 @@ export function captureKnownLevel(
   for (let y = 0; y < chunk.height; y++) {
     for (let x = 0; x < chunk.width; x++) {
       const grid = { x, y };
-      if (!squareIsKnown(state, grid)) continue;
-      const rememberedFeat = knownFeat(state, grid);
-      const feature = chunk.features.get(rememberedFeat);
-      const feat = feature.mimic ?? rememberedFeat;
+      const pile = knownPile(state, grid);
+      if (!squareIsKnown(state, grid) && pile.length === 0) continue;
+      const feat = knownFeat(state, grid);
       const remembered: RememberedCell = {
         feat,
-        passable: featIsPassable(chunk.features, feat),
         /* The player's trap memory, not the live grid: a trap removed or
          * re-armed out of view is remembered as it was last seen. */
         traps: squareKnownTraps(state.known, grid).map((kind) => ({ index: kind.tidx, name: kind.name })),
-        objects: knownPile(state, grid).map((entry): RememberedObject => {
+        objects: pile.map((entry): RememberedObject => {
           if (entry.sensed) {
             return { sensed: true, money: tvalIsMoney(entry.obj.tval) };
           }
@@ -170,7 +165,6 @@ export function captureKnownLevel(
         y,
         remembered,
         visible: chunk.sqinfoHas(grid, SQUARE.VIEW),
-        lit: chunk.sqinfoHas(grid, SQUARE.VIEW) ? squareIsSeen(chunk, grid) : null,
       };
       if (includeActual) {
         const index = y * chunk.width + x;

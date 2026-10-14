@@ -254,20 +254,10 @@ export interface KnownMonster {
   readonly raceSpeed: number;
   readonly knownFlags: readonly string[];
   readonly knownSpells: readonly string[];
-  readonly knownBlows: readonly KnownMonsterBlow[];
   readonly unique: boolean;
   readonly questGuardian: boolean;
   readonly finalGuardian: boolean;
   readonly glyph?: string;
-}
-
-export interface KnownMonsterBlow {
-  readonly method: string;
-  readonly effect: string;
-  readonly base: number;
-  readonly dice: number;
-  readonly sides: number;
-  readonly mBonus: number;
 }
 
 /** A trap the player remembers on a grid. */
@@ -304,7 +294,6 @@ export type KnownRememberedObject =
 /** One grid as the player remembers it. */
 export interface KnownRememberedCell {
   readonly feat: number;
-  readonly passable: boolean;
   readonly featCode?: string;
   readonly traps: readonly KnownTrap[];
   readonly objects: readonly KnownRememberedObject[];
@@ -317,8 +306,6 @@ export interface KnownLevelCell {
   readonly remembered: KnownRememberedCell;
   /** In view right now. */
   readonly visible: boolean;
-  /** The square is seen by the player; null outside view. */
-  readonly lit: boolean | null;
 }
 
 /** The level as the player remembers it, never the real map. */

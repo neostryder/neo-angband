@@ -1,5 +1,5 @@
 /**
- * invokeMod and the per-mod health monitor: fault counting, the three-in-200
+ * The per-mod health monitor: fault counting, the three-in-200
  * switch-off and its sliding window, time budgets and the hard ceiling,
  * rejected promises, attribution, and the switch-off notice's wording.
  */
@@ -14,7 +14,7 @@ import {
   ModHealthMonitor,
   ModSwitchedOffError,
   configureModHealth,
-  invokeMod,
+  manifestBudgetFor,
   modHealth,
   switchOffNotice,
   turnBudgetMs,
@@ -204,9 +204,9 @@ describe("attribution and timing", () => {
     expect(s.worstSite).toBe("b");
   });
 
-  it("returns the mod's answer and passes arguments through invokeMod", () => {
+  it("returns the mod's answer through the page monitor", () => {
     modHealth().reset();
-    expect(invokeMod("m", "test", (a: number, b: number) => a + b, 2, 3)).toBe(5);
+    expect(modHealth().run("m", "test", () => 2 + 3)).toBe(5);
     expect(modHealth().stats()[0]?.calls).toBe(1);
   });
 
@@ -222,6 +222,13 @@ describe("attribution and timing", () => {
 });
 
 describe("time budgets", () => {
+  it("reads the manifest of the named mod and keeps the default for undeclared budgets", () => {
+    const manifests = [{ id: "slow", budget: { msPerTurn: 120 } }, { id: "plain" }, { id: "oversized", budget: { msPerTurn: 900 } }];
+    expect(manifestBudgetFor("slow", manifests)).toBe(120);
+    expect(manifestBudgetFor("plain", manifests)).toBe(50);
+    expect(manifestBudgetFor("missing", manifests)).toBe(50);
+    expect(manifestBudgetFor("oversized", manifests)).toBe(500);
+  });
   it("defaults to 50 ms and caps a declared budget at 500 ms", () => {
     expect(DEFAULT_TURN_BUDGET_MS).toBe(50);
     expect(HARD_CEILING_MS).toBe(500);
@@ -278,6 +285,7 @@ describe("time budgets", () => {
     r.setTurn(1);
     r.monitor.run("hog", "a", r.spend(HARD_CEILING_MS + 1));
     expect(r.over[0]?.ceiling).toBe(true);
+    expect(r.over[0]?.budgetMs).toBe(HARD_CEILING_MS);
     expect(r.monitor.stats()[0]?.faults).toBe(0);
     r.setTurn(2);
     r.monitor.run("hog", "a", r.spend(HARD_CEILING_MS + 1));

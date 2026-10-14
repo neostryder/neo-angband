@@ -117,42 +117,6 @@ function caps(...granted: string[]) {
 }
 
 describe("known level", () => {
-  it("reports secret doors as granite in paired known levels and allowed actions", () => {
-    const a = newGame();
-    const b = newGame();
-    const grid = { x: a.state.actor.grid.x + 1, y: a.state.actor.grid.y };
-    for (const game of [a, b]) {
-      game.state.chunk.setFeat(grid, game === a ? FEAT.GRANITE : FEAT.SECRET);
-      squareMemorize(game.state, grid);
-    }
-    const cell = (game: StartedGame) => createAgentView(game.state, undefined, {}, caps("state:map.read")).knownLevel!()!.cells.find((cell) => cell.x === grid.x && cell.y === grid.y)!;
-    expect(cell(a)).toEqual(cell(b));
-    expect(cell(b).remembered).toMatchObject({ feat: FEAT.GRANITE, passable: false });
-    expect(createAgentView(a.state).tileActions!(grid).codes).toEqual(createAgentView(b.state).tileActions!(grid).codes);
-    b.state.chunk.setFeat(grid, FEAT.CLOSED);
-    squareMemorize(b.state, grid);
-    expect(cell(b).remembered.feat).toBe(FEAT.CLOSED);
-  });
-
-  it("withholds light outside view and reports perceived lighting instead of glow", () => {
-    const game = newGame();
-    const grid = gridAwayFromPlayer(game);
-    const { state } = game;
-    squareMemorize(state, grid);
-    state.chunk.sqinfoOff(grid, SQUARE.VIEW);
-    state.chunk.sqinfoOff(grid, SQUARE.SEEN);
-    const cell = () => createAgentView(state, undefined, {}, caps("state:map.read")).knownLevel!()!.cells.find((cell) => cell.x === grid.x && cell.y === grid.y)!;
-    const before = cell();
-    state.chunk.sqinfoOn(grid, SQUARE.GLOW);
-    expect(cell()).toEqual(before);
-    expect(cell().lit).toBeNull();
-    state.chunk.sqinfoOn(grid, SQUARE.VIEW);
-    expect(cell().lit).toBe(false);
-    state.chunk.sqinfoOff(grid, SQUARE.GLOW);
-    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
-    expect(cell().lit).toBe(true);
-  });
-
   it("reads five times without moving the save, RNG, turn or command queue, even while hallucinating", () => {
     const game = newGame();
     game.state.actor.player.timed[TMD.IMAGE] = 10;
