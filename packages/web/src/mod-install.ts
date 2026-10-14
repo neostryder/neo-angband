@@ -80,7 +80,7 @@ import { installBlocked, type ModOrigin } from "./mod-consent";
 import { buildModuleGraph } from "./mod-modules";
 import type { DiscoveredMod } from "./mod-discover";
 import { badPath, rawUrl } from "./mod-registry";
-import { MOD_INSTALL_REVISION_STORAGE_KEY, RENAMED_MOD_IDS, type ModConfiguration } from "./mod-store";
+import { MOD_INSTALL_REVISION_STORAGE_KEY, RENAMED_MOD_IDS } from "./mod-store";
 import { originConflict } from "./mod-source";
 import { readBoundedZip, ZIP_LIMITS, zipBudget } from "./mod-archive";
 import { readModZip } from "./mod-zip";
@@ -957,45 +957,35 @@ function asMeta(v: unknown): InstalledModMeta | null {
   return m as InstalledModMeta;
 }
 
-export interface ArchivedVersion {
+interface ArchivedVersion {
   readonly meta: unknown;
   readonly files: ReadonlyArray<readonly [string, Uint8Array]>;
   readonly digests?: Readonly<Record<string, string>>;
-  readonly configuration?: ModConfiguration;
-  readonly profileId?: string | null;
-  readonly sequence?: number;
 }
 
-export function markInstallRevision(scope: unknown): void {
+function markInstallRevision(scope: unknown): void {
   try {
     (scope as { localStorage?: Storage }).localStorage?.setItem(MOD_INSTALL_REVISION_STORAGE_KEY,
       serializeDocument(modInstallRevisionFormat, { revision: globalThis.crypto.randomUUID() }, { compact: true }));
   } catch { /* Storage refusal keeps the existing save protection in place. */ }
 }
 
-export function versionKey(meta: InstalledModMeta): string {
+function versionKey(meta: InstalledModMeta): string {
   return JSON.stringify([meta.id, meta.repo, meta.sha ?? null, Object.entries(meta.digests ?? {}).sort(([a], [b]) => a.localeCompare(b))]);
 }
 
-export async function archiveCurrent(db: IDBDatabase, id: string, retention?: Pick<ArchivedVersion, "configuration" | "profileId" | "sequence">): Promise<ReadonlyArray<readonly [string, ArchivedVersion]>> {
+async function archiveCurrent(db: IDBDatabase, id: string): Promise<ReadonlyArray<readonly [string, ArchivedVersion]>> {
   const meta = asMeta(await idbGet(db, STORE_MOD_META, id));
   if (!meta) return [];
   const files: [string, Uint8Array][] = [];
   const digests: Record<string, string> = {};
   for (const path of meta.files) {
     const bytes = await installedFileBytes(db, id, path);
-    if (!bytes) {
-      if (retention) throw new Error("A previous mod file could not be read.");
-      return [];
-    }
+    if (!bytes) return [];
     files.push([path, bytes]);
-    const digest = await sha256Hex(bytes, globalThis.crypto.subtle);
-    if (retention && meta.digests && digest !== meta.digests[path]) throw new Error("A previous mod file failed its digest check.");
-    digests[path] = meta.digests?.[path] ?? digest;
+    digests[path] = meta.digests?.[path] ?? await sha256Hex(bytes, globalThis.crypto.subtle);
   }
-  const key = versionKey(meta);
-  const existing = await idbGet(db, STORE_MOD_VERSIONS, key) as ArchivedVersion | undefined;
-  return [[key, { ...existing, meta: metaRecord(meta), files, digests, ...retention }]];
+  return [[versionKey(meta), { meta: metaRecord(meta), files, digests }]];
 }
 
 export async function archivedVersions(scope: unknown = globalThis): Promise<readonly InstalledModMeta[]> {
@@ -1003,22 +993,9 @@ export async function archivedVersions(scope: unknown = globalThis): Promise<rea
   if (!db) return [];
   const rows = await Promise.all((await idbKeys(db, STORE_MOD_VERSIONS)).map(async (key) => {
     const row = await idbGet(db, STORE_MOD_VERSIONS, key) as ArchivedVersion | undefined;
-    return row ? { meta: asMeta(row.meta), sequence: row.sequence ?? 0 } : null;
+    return row ? asMeta(row.meta) : null;
   }));
-  return rows.filter((row): row is { meta: InstalledModMeta; sequence: number } => row !== null && row.meta !== null)
-    .sort((a, b) => a.sequence - b.sequence || a.meta.installedAt.localeCompare(b.meta.installedAt)).map((row) => row.meta);
-}
-
-export async function readArchivedVersion(db: IDBDatabase, meta: InstalledModMeta, subtle: Pick<SubtleCrypto, "digest"> = globalThis.crypto.subtle): Promise<ArchivedVersion> {
-  const row = await idbGet(db, STORE_MOD_VERSIONS, versionKey(meta)) as ArchivedVersion | undefined;
-  if (!row) throw new Error("The saved mod version is unavailable.");
-  if (row.files.length !== meta.files.length || new Set(row.files.map(([path]) => path)).size !== meta.files.length) throw new Error("The saved mod version failed its digest check.");
-  for (const path of meta.files) {
-    const bytes = row.files.find(([name]) => name === path)?.[1];
-    const digest = meta.digests?.[path] ?? row.digests?.[path];
-    if (!bytes || !digest || await sha256Hex(bytes, subtle) !== digest) throw new Error("The saved mod version failed its digest check.");
-  }
-  return row;
+  return rows.filter((row): row is InstalledModMeta => row !== null);
 }
 
 export async function archivedManifest(meta: InstalledModMeta, scope: unknown = globalThis): Promise<PackManifest | null> {
@@ -1056,15 +1033,17 @@ export async function archivedSavedMod(saved: SaveModList["mods"][number], scope
   return null;
 }
 
-export async function restoreArchivedVersion(meta: InstalledModMeta, scope: unknown = globalThis, stage?: InstallEnv["stage"], subtle: Pick<SubtleCrypto, "digest"> = globalThis.crypto.subtle): Promise<InstallResult> {
+export async function restoreArchivedVersion(meta: InstalledModMeta, scope: unknown = globalThis): Promise<InstallResult> {
   const db = await openDb(scope);
   if (!db) return { ok: false, problem: "The saved mod version is unavailable." };
-  let row: ArchivedVersion;
-  try { row = await readArchivedVersion(db, meta, subtle); }
-  catch (error) { return { ok: false, problem: error instanceof Error ? error.message : String(error) }; }
-  if (stage) {
-    const stagedMeta = { ...meta, digests: meta.digests ?? row.digests ?? {} };
-    return await stage(stagedMeta, row.files) ? { ok: true, meta: stagedMeta, staged: true } : { ok: false, problem: "The mod transaction could not be saved." };
+  const row = await idbGet(db, STORE_MOD_VERSIONS, versionKey(meta)) as ArchivedVersion | undefined;
+  if (!row) return { ok: false, problem: "The saved mod version is unavailable." };
+  for (const path of meta.files) {
+    const bytes = row.files.find(([name]) => name === path)?.[1];
+    const digest = meta.digests?.[path] ?? row.digests?.[path];
+    if (!bytes || !digest || await sha256Hex(bytes, globalThis.crypto.subtle) !== digest) {
+      return { ok: false, problem: "The saved mod version failed its digest check." };
+    }
   }
   const stale = (await idbKeys(db, STORE_MODS)).filter((key) => key.startsWith(`${meta.id}/`));
   const ok = await idbApply(db, [
@@ -1084,10 +1063,12 @@ export async function restoreInstallations(previous: readonly { readonly id: str
   const metadata: [string, unknown][] = [];
   for (const { id, meta } of previous) {
     if (!meta) continue;
-    let row: ArchivedVersion;
-    try { row = await readArchivedVersion(db, meta); }
-    catch { return false; }
-    for (const [path, bytes] of row.files) {
+    const row = await idbGet(db, STORE_MOD_VERSIONS, versionKey(meta)) as ArchivedVersion | undefined;
+    if (!row) return false;
+    for (const path of meta.files) {
+      const bytes = row.files.find(([name]) => name === path)?.[1];
+      const digest = meta.digests?.[path] ?? row.digests?.[path];
+      if (!bytes || !digest || await sha256Hex(bytes, globalThis.crypto.subtle) !== digest) return false;
       files.push([`${id}/${path}`, bytes]);
     }
     metadata.push([id, metaRecord(meta)]);

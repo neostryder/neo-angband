@@ -19,6 +19,9 @@ describe("checkApi2Policies", () => {
   it("accepts every table in its own grammar", () => {
     const policies: Api2Policies = {
       prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 },
+      startingOptions: { kind: "starting-options", values: { birth_no_selling: true, cheat_live: true }, hitpointWarn: 9, delayFactor: 10, lazymoveDelay: 255 },
+      ignore: [{ tval: "light", kindNameContains: "Torch", ignore: true }],
+      displayOptions: { kind: "display-options", storeItemNameEllipsis: true, storeSelectionDescription: true, monsterListColorKey: true },
       walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
       messageText: [{ find: "You feel", replace: "You sense", match: "prefix" }],
       screenText: [{ find: "a", replace: "b", where: { screen: "char", column: 2 } }],
@@ -74,6 +77,31 @@ describe("checkApi2Policies", () => {
     }
     expect(checkApi2Policies({ prefErrors: { ...prefErrors, reportAll: true } })).toContain("unknown field \"reportAll\"");
     expect(checkApi2Policies({ prefErrors: null })).toContain("is an object");
+  });
+
+  it("refuses malformed starting-option declarations", () => {
+    const startingOptions = { kind: "starting-options", values: { birth_no_selling: true } };
+    expect(checkApi2Policies({ startingOptions })).toBeNull();
+    expect(checkApi2Policies({ startingOptions: { ...startingOptions, extra: true } })).toContain("unknown field");
+    expect(checkApi2Policies({ startingOptions: { ...startingOptions, values: [] } })).toContain("values is an object");
+    expect(checkApi2Policies({ startingOptions: { ...startingOptions, values: { x: "yes" } } })).toContain("is true or false");
+    expect(checkApi2Policies({ startingOptions: { ...startingOptions, hitpointWarn: 10 } })).toContain("hitpointWarn");
+  });
+
+  it("refuses malformed ignore policy entries", () => {
+    const ignore = [{ tval: "light", kindNameContains: "Torch", ignore: true }];
+    expect(checkApi2Policies({ ignore })).toBeNull();
+    expect(checkApi2Policies({ ignore: [{ ...ignore[0], tval: "LIGHT" }] })).toContain("tval");
+    expect(checkApi2Policies({ ignore: [{ ...ignore[0], kindNameContains: "torch" }] })).toContain("kindNameContains");
+    expect(checkApi2Policies({ ignore: [{ ...ignore[0], ignore: false }] })).toContain("ignore is true");
+    expect(checkApi2Policies({ ignore: [{ ...ignore[0], extra: true }] })).toContain("unknown field");
+  });
+
+  it("refuses malformed display-option declarations", () => {
+    const displayOptions = { kind: "display-options", storeItemNameEllipsis: true, storeSelectionDescription: true, monsterListColorKey: true };
+    expect(checkApi2Policies({ displayOptions })).toBeNull();
+    expect(checkApi2Policies({ displayOptions: { ...displayOptions, extra: true } })).toContain("unknown field");
+    expect(checkApi2Policies({ displayOptions: { ...displayOptions, monsterListColorKey: "yes" } })).toContain("monsterListColorKey");
   });
 });
 
@@ -163,6 +191,9 @@ describe("API2_POLICY_KINDS", () => {
   it("maps every table to its matching registry permission", () => {
     expect(Object.fromEntries(API2_POLICY_KINDS.map((kind) => [kind.name, kind.capability]))).toEqual({
       prefErrors: "registry:ui-entry",
+      startingOptions: "registry:ui-entry",
+      ignore: "registry:ui-entry",
+      displayOptions: "registry:ui-entry",
       walkBlockedByDiggable: "registry:command",
       messageText: "registry:message", screenText: "registry:ui-entry", characterBackground: "registry:message",
       objectInfoText: "registry:effect-info", effectIntro: "registry:effect-info", historyAdd: "registry:message",
@@ -177,7 +208,7 @@ describe("API2_POLICY_KINDS", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(kind.summary.length).toBeGreaterThan(0);
       if ("hook" in kind.target) expect(API2_HOOK_NAMES).toContain(kind.target.hook);
-      else expect(["discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors"]).toContain(kind.target.registration);
+      else expect(["discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions"]).toContain(kind.target.registration);
     }
   });
 

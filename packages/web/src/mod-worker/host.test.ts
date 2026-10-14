@@ -489,6 +489,9 @@ describe("asking a Worker mod", () => {
 describe("a Worker mod's hooks", () => {
   const tables: Api2Policies = {
     prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 },
+    startingOptions: { kind: "starting-options", values: { auto_more: true } },
+    ignore: [{ tval: "light", kindNameContains: "Torch", ignore: true }],
+    displayOptions: { kind: "display-options", storeItemNameEllipsis: true, storeSelectionDescription: true, monsterListColorKey: true },
     walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
     messageText: [{ find: "a", replace: "b" }], screenText: [{ find: "a", replace: "b" }],
     characterBackground: [{ find: "a", replace: "b" }], objectInfoText: [{ find: "a", replace: "b" }],

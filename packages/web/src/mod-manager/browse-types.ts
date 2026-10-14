@@ -20,7 +20,6 @@ export interface ModBrowseDeps {
   readonly stageRollback?: ModManagerEnvironment["stageRollback"];
   readonly previousVersion?: ModManagerEnvironment["previousVersion"];
   readonly releasePreviousVersions?: ModManagerEnvironment["releasePreviousVersions"];
-  readonly saveReferences?: ModManagerEnvironment["saveReferences"];
   readonly restart?: () => void;
   /** id -> installed tag, for every mod already installed from a repository. */
   readonly installed: () => Promise<ReadonlyMap<string, string>>;

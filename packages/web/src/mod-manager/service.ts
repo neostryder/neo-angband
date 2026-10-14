@@ -321,7 +321,7 @@ export class ModManagerService {
         await this.#env.rediscover?.();
         return { status: "ok", value: null };
       };
-      if (requestedBy !== null || await this.#env.saveReferences?.(id)) {
+      if (requestedBy !== null || this.#env.saveReferences?.(id)) {
         return this.#request({ operation: "remove", requestedBy, mods: [this.#subject(mod)] }, apply);
       }
       const result = await apply();
@@ -412,7 +412,7 @@ export class ModManagerService {
       for (const mod of kept) for (const capability of undecidedCapabilities(mod)) {
         if (!grants.some((g) => g.modId === mod.id && g.capability === capability)) grants.push(permissionConfirmation(mod.id, capability));
       }
-      const plan: ModListRestorePlan = immutable({ ...resolved.value, installedSet: this.#metadata, newGrants: grants, modList: list, unavailable, revision });
+      const plan: ModListRestorePlan = immutable({ ...resolved.value, newGrants: grants, modList: list, unavailable, revision });
       this.#modLists.set(id, plan);
       this.#plans.set(id, plan);
       this.#publish();
@@ -428,32 +428,6 @@ export class ModManagerService {
       conflicts: plan.conflicts, riskNotice: plan.downloads.length ? CONSENT_DISCLAIMER : [],
     }, async (decision) => {
       if (plan.revision !== this.#env.store.configurationRevision()) return refused("revision", "The mod configuration changed in another window. Review it again.");
-      if (this.#env.stagePlan) {
-        for (const grant of plan.newGrants) {
-          const choices = decision.permissions?.[grant.modId];
-          if (!choices || !choices.granted.includes(grant.capability) && !choices.refused.includes(grant.capability)) return refused("permissions", "Choose each new permission before staging this mod.");
-        }
-        for (const [modId, choices] of Object.entries(decision.permissions ?? {})) {
-          const download = plan.downloads.find((entry) => entry.mod.id === modId);
-          const mod = this.#find(modId);
-          const capabilities = download?.manifest.capabilities ?? mod?.capabilities ?? [];
-          if (!plan.modList.resolvedOrder.includes(modId) || plan.unavailable.some((entry) => entry.id === modId) || [...choices.granted, ...choices.refused].some((cap) => !capabilities.includes(cap)) || choices.granted.some((cap) => choices.refused.includes(cap))) return refused("permissions", "The permission decisions do not match the mod plan.");
-          if (!download && mod) {
-            const invalid = this.#consentRefusal(mod, choices);
-            if (invalid) return invalid;
-          }
-        }
-        const modList = { ...plan.modList, resolvedOrder: plan.modList.resolvedOrder.filter((modId) => !plan.unavailable.some((entry) => entry.id === modId)) };
-        const catalog = this.#env.listCatalog();
-        const kept = catalog.filter((mod) => modList.resolvedOrder.includes(mod.id) && !plan.downloads.some((download) => download.mod.id === mod.id));
-        if (kept.some((mod) => !matchesSavedVersion(plan.modList.mods.find((saved) => saved.id === mod.id)!, mod, this.#metadata.find((meta) => meta.id === mod.id)))) return refused("version", "The installed mod does not match the saved version.");
-        const staged = await this.#env.stagePlan({ ...plan, modList, configurationRevision: plan.revision, effectiveEnabled: catalog.filter((mod) => mod.enabled).map((mod) => mod.id), keptManifests: kept.map((mod) => mod.manifest) }, decision.permissions ?? {});
-        if (!staged.ok) return refused("install", staged.problem);
-        this.#staged = true;
-        this.#modLists.delete(id);
-        this.#plans.delete(id);
-        return { status: "ok", value: immutable(staged.results) };
-      }
       const previous = plan.downloads.map(({ mod }) => ({ id: mod.id, meta: this.#metadata.find((m) => m.id === mod.id) ?? null }));
       let attemptedInstall = false;
       let activated = false;
