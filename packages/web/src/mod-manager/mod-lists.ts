@@ -1,8 +1,48 @@
 import { githubRepo, modListValidator, modListsFormat, parseDocument, serializeDocument, sortModOrder, type SaveModList } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { InstalledModMeta } from "../mod-install";
 import type { CatalogMod, ModStore, StorageLike } from "../mod-store";
+import { decodeSavedGame } from "@rpgm-tools/neo-angband-core";
+import { STORE_HANDLES, idbKeys, openDb } from "../idb";
+import { backupBridge, readBackupFiles } from "../mod-backup";
+import { listOrphanedSaves } from "../orphan-saves";
+import { decodeTransfer } from "../save-transfer";
+import { SAVE_CODECS } from "../save-codec";
+import type { ScopedStorage } from "../profile-scope";
 
 export const MOD_LISTS_STORAGE_KEY = "neo-angband:mod-lists";
+
+export async function savedModReferences(id: string, tag: string | undefined, storage: ScopedStorage | null, scope: unknown = globalThis): Promise<boolean> {
+  const references = (text: string): boolean => {
+    const save = decodeSavedGame(Uint8Array.from(atob(text), (char) => char.charCodeAt(0)), undefined, SAVE_CODECS).save;
+    if (!save) return true;
+    return save.modList?.mods.some((mod) => mod.id === id && (tag === undefined || mod.tag === null || mod.tag === tag || mod.commit === tag)) ?? false;
+  };
+  try {
+    if (!storage) return true;
+    for (let index = 0; index < storage.length; index++) {
+      const key = storage.key(index);
+      if (!key || !(key === "neo-angband-save" || key.startsWith("neo-angband-save:") || key.includes(":neo-angband-save:"))) continue;
+      const stored = storage.getItem(key);
+      if (stored && references(stored)) return true;
+    }
+    if (listOrphanedSaves(storage).some((orphan) => references(orphan.save))) return true;
+    const db = await openDb(scope);
+    if (!db) return true;
+    let folders: string[];
+    try { folders = backupBridge(scope) ? [""] : (await idbKeys(db, STORE_HANDLES)).filter((key) => key.startsWith("backup:")).map((key) => key.slice(7)); }
+    finally { db.close?.(); }
+    for (const folder of folders) {
+      for (const file of await readBackupFiles(folder, scope, true)) {
+        const transfer = decodeTransfer(file.text);
+        if (!transfer.ok || references(transfer.file.save)) return true;
+      }
+    }
+    return false;
+  } catch {
+    // An unreadable save or backup cannot prove that a retained version is unused.
+    return true;
+  }
+}
 
 export function captureModList(name: string, store: ModStore, catalog: readonly CatalogMod[], metadata: readonly InstalledModMeta[]): SaveModList {
   const enabled = catalog.filter((m) => m.enabled && !m.missing && !m.session);

@@ -434,8 +434,8 @@ describe("updates, removal, restoration, and order", () => {
 
   it("passes the version to save retention when the player confirms an install", async () => {
     const referenced = vi.fn((id: string, tag?: string) => id === "a" && tag === "v0.9.0");
-    const release = vi.fn(async (id: string, saves: (id: string, tag: string) => boolean) => {
-      expect(saves(id, "v0.9.0")).toBe(true);
+    const release = vi.fn(async (id: string, saves: (id: string, tag: string) => boolean | Promise<boolean>) => {
+      expect(await saves(id, "v0.9.0")).toBe(true);
       return true;
     });
     const f = fixture(undefined, { saveReferences: referenced, releasePreviousVersions: release });

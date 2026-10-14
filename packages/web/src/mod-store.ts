@@ -602,7 +602,7 @@ export class ModStore {
     const settingsRaw = this.storage?.getItem(MOD_SETTINGS_STORAGE_KEY);
     const settings = settingsRaw ? parseDocument(settingsRaw, modSettingValuesFormat) : null;
     if (settings && !settings.ok) throw new Error("The mod settings could not be read.");
-    return structuredClone({ ids: [...ids], ruleFlags: [...ruleFlags], state: parsed?.ok ? parsed.data : {}, settings: settings?.ok ? settings.data.values ?? {} : {} });
+    return structuredClone({ ids: [...ids], ruleFlags: [...ruleFlags], state: parsed?.ok ? parsed.data : {}, settings: this.getSettingValues() });
   }
 
   restoreConfiguration(snapshot: ModConfiguration): boolean {
@@ -643,6 +643,18 @@ export class ModStore {
         delete settings[id];
         if (snapshot.settings[id]) settings[id] = snapshot.settings[id];
       }
+      if (current.state.settingValues !== undefined || snapshot.state.settingValues !== undefined) state.settingValues = settings;
+      const overrides = { ...current.state.conflictOverrides };
+      for (const slot of new Set([...Object.keys(overrides), ...Object.keys(snapshot.state.conflictOverrides ?? {})])) {
+        if (!snapshot.ids.includes(overrides[slot] ?? "") && !snapshot.ids.includes(snapshot.state.conflictOverrides?.[slot] ?? "")) continue;
+        delete overrides[slot];
+        const winner = snapshot.state.conflictOverrides?.[slot];
+        if (winner !== undefined) overrides[slot] = winner;
+      }
+      if (Object.keys(overrides).length || snapshot.state.conflictOverrides !== undefined) state.conflictOverrides = overrides;
+      else delete state.conflictOverrides;
+      state.revision = Math.max(current.state.revision ?? 0, snapshot.state.revision ?? 0) + 1;
+      state.setRevision = Math.max(current.state.setRevision ?? 0, snapshot.state.setRevision ?? 0) + 1;
       this.storage.setItem(MOD_STATE_STORAGE_KEY, serializeDocument(modStateFormat, state, { compact: true }));
       this.storage.setItem(MOD_SETTINGS_STORAGE_KEY, serializeDocument(modSettingValuesFormat, { values: settings }, { compact: true }));
       return true;

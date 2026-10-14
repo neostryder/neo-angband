@@ -317,6 +317,7 @@ import {
 } from "./disk-packs";
 import {
   installModFromRepo,
+  archivedMod,
   installedMeta,
   installedMods,
   loadInstalledMods,
@@ -439,7 +440,7 @@ import { runProfileScreen } from "./profile-ui";
 import { setPrefsStorage } from "./mod-prefs";
 import { startModWorker, type ModWorkerLike, type StartedModWorker } from "./mod-worker/host";
 import { settleWorkerHooks } from "./mod-worker/hooks";
-import { api2DisplayOption, api2PluginRegistrations, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "./mod-api2-shim";
+import { api2PluginRegistrations, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "./mod-api2-shim";
 import { createIsolatedModWorker } from "./mod-worker/isolation";
 import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
@@ -600,7 +601,7 @@ import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
 import { LookStore, NEO_PENDING_TEXT } from "./look-state";
 import { runLookChoice } from "./mod-manager/classic-look";
-import { captureModList, ModListStore, ModSaveGuard, retainMissingModList } from "./mod-manager/mod-lists";
+import { captureModList, ModListStore, ModSaveGuard, retainMissingModList, savedModReferences } from "./mod-manager/mod-lists";
 import { prepareSaveModList } from "./mod-manager/classic-mod-list";
 import { modSaveApprovalFormat } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { InstalledModMeta } from "./mod-install";
@@ -3228,7 +3229,7 @@ function paintSubwindowContent(
     messages: () => messageSubwindowPainter.paint(panel, msglog),
     inventory: () => paintInventorySubwindow(panel, state, constants, quiverItemization),
     equipment: () => paintEquipmentSubwindow(panel, state),
-    monsters: () => paintMonsterSubwindow(panel, state, api2DisplayOption("monsterListColorKey", monsterListColorKey)),
+    monsters: () => paintMonsterSubwindow(panel, state, monsterListColorKey),
     items: () => paintItemListSubwindow(panel, state),
     "player-basic": () => paintPlayerBasicSubwindow(panel, state, playerName),
     "player-extra": () =>
@@ -4038,7 +4039,7 @@ async function runContextMenuPlayerOther(): Promise<void> {
       await showTextScreen(term, messageHistoryScreen(msglog));
       break;
     case "monsters":
-      await showMonsterList(term, state, api2DisplayOption("monsterListColorKey", monsterListColorKey));
+      await showMonsterList(term, state, monsterListColorKey);
       break;
     case "objects":
       await showTextScreen(term, objectListScreen(state));
@@ -7839,15 +7840,7 @@ async function buildModManagerDeps(): Promise<ModManagerDeps> {
     store,
     look: lookStore,
     modLists,
-    saveReferences: (id) => {
-      for (let index = 0; index < (realGameStorage?.length ?? 0); index++) {
-        const key = realGameStorage!.key(index);
-        if (!key || (!key.startsWith("neo-angband-save:") && !key.includes(":neo-angband-save:"))) continue;
-        const stored = realGameStorage!.getItem(key);
-        if (stored && decodeSavedGame(b64ToBytes(stored), undefined, SAVE_CODECS).save?.modList?.mods.some((mod) => mod.id === id)) return true;
-      }
-      return false;
-    },
+    saveReferences: (id, tag) => savedModReferences(id, tag, realGameStorage),
     listCatalog: () =>
       buildCatalog({
         content: discoverContentModManifests(),
@@ -11169,8 +11162,8 @@ async function enterStoreModal(store: Store): Promise<void> {
       },
       featureName: feat?.name ?? store.featName,
       rogueLike: state.options?.get("rogue_like_commands") ?? false,
-      storeItemNameEllipsis: api2DisplayOption("storeItemNameEllipsis", storeItemNameEllipsis),
-      storeSelectionDescription: api2DisplayOption("storeSelectionDescription", storeSelectionDescription),
+      storeItemNameEllipsis,
+      storeSelectionDescription,
       // store_examine (ui-store.c L749): the object_info screen for a fully
       // known store item, header capitalised as ODESC_CAPITAL does.
       examine: async (obj) => {
@@ -11941,7 +11934,7 @@ function buildCommandTable(): CommandRow[] {
     { desc: "Full dungeon map", cat: "Information", o: "M", act: () => void openModal(showLevelMapForShell) },
     { desc: "Toggle ignoring of items", cat: "Information", o: "K", r: "O", act: () => { state.ignore.unignoring = !state.ignore.unignoring; void openModal(() => applyIgnoreDrop()); } },
     { desc: "Display visible item list", cat: "Information", o: "]", act: () => void openModal(() => withPanelTwin("items", () => showTextScreen(term, objectListScreen(state)))) },
-    { desc: "Display visible monster list", cat: "Information", o: "[", act: () => void openModal(() => withPanelTwin("monsters", () => showMonsterList(term, state, api2DisplayOption("monsterListColorKey", monsterListColorKey)))) },
+    { desc: "Display visible monster list", cat: "Information", o: "[", act: () => void openModal(() => withPanelTwin("monsters", () => showMonsterList(term, state, monsterListColorKey))) },
     { desc: "Locate player on map", cat: "Information", o: "L", r: "W", act: () => void openModal(() => runLocate()) },
     { desc: "Identify symbol", cat: "Information", o: "/", act: () => void openModal(querySymbolCmd) },
     { desc: "Character description", cat: "Information", o: "C", act: () => void openModal(() => withPanelTwin("player-basic", () => showCharacterSheet(term, state, playerName, charSheetOpts()))) },
@@ -13818,6 +13811,7 @@ function modTransactionEnvironment(): ModTransactionEnvironment {
     install: { fetch: (url) => fetch(url), subtle: crypto.subtle, scope: globalThis, now: () => new Date().toISOString() },
     store: defaultModStore(), profileId: profileStore.activeId(), allowed: () => readConsent(channelStore()),
     configurationStore: (id) => new ModStore(realGameStorage ? scopedStorage(realGameStorage, id) : null),
+    saveReferences: (id, tag) => savedModReferences(id, tag, realGameStorage),
   };
 }
 
@@ -13840,7 +13834,8 @@ function modBrowseDeps(): ModUpgradeDeps {
 
   return {
     stagePlan: async (plan, permissions, progress) => {
-      const registry = await fetchRegistry(DEFAULT_REGISTRY_URL, net).catch(() => null);
+      const cached = await Promise.all(plan.downloads.map((download) => archivedMod({ repo: download.mod.repo, tag: download.mod.tag.startsWith("archive:") ? download.mod.tag : download.mod.sha ?? download.mod.tag })));
+      const registry = plan.downloads.some((download, index) => cached[index] === null && !download.mod.tag.startsWith("archive:")) ? await fetchRegistry(DEFAULT_REGISTRY_URL, net).catch(() => null) : null;
       return stageModPlan(plan, permissions, {
         ...modTransactionEnvironment(),
         listing: (repo, origin) => installListing(repo, origin === "curated", registry?.ok ? registry.registry : null),
@@ -13849,6 +13844,7 @@ function modBrowseDeps(): ModUpgradeDeps {
     stageRollback: (id) => stageModRollback(id, modTransactionEnvironment()),
     previousVersion: (id) => previousModVersion(id, modTransactionEnvironment()),
     releasePreviousVersions: (id, saveReferences) => releasePreviousModVersions(id, { ...modTransactionEnvironment(), saveReferences }),
+    saveReferences: (id, tag) => savedModReferences(id, tag, realGameStorage),
     restart: () => reloadAfterModChange({ resume: gameScreenLive }),
     installed: async () => {
       const metas = await installedMods(globalThis);
@@ -15185,8 +15181,11 @@ async function bootMenus(): Promise<void> {
   const approval = approvalText ? parseDocument(approvalText, modSaveApprovalFormat) : null;
   const reviewed = approval?.ok && approval.data.slot === getActiveId() && approval.data.revision === defaultModStore().configurationRevision();
   allowModSetOverwrite = reviewed ? approval.data.allowOverwrite : false;
-  if (resumedActive && !reviewed && game.modList) {
-    const decision = await openModal(() => prepareSaveModList(term, saveDeps, game.modList));
+  if (modTransactionNotice || resumedActive && !reviewed && game.modList) {
+    const text = modTransactionNotice;
+    modTransactionNotice = null;
+    const decision = await openModal(() => prepareSaveModList(term, saveDeps, resumedActive && !reviewed ? game.modList : undefined, text));
+    if (classicManager(saveDeps).service.state.staged) { reloadAfterModChange({ resume: resumedActive }); return; }
     if (!decision.load) { detachSlot(); resumedActive = false; needsSelect = true; }
     else {
       allowModSetOverwrite = decision.allowOverwrite;
@@ -15216,14 +15215,6 @@ async function bootMenus(): Promise<void> {
    * It stays idempotent, and boot's tail still calls it for the routes that
    * return from here without painting anything.
    */
-  if (modTransactionNotice) {
-    const text = modTransactionNotice;
-    modTransactionNotice = null;
-    await openModal(() => showTextScreen(term, {
-      id: "core:mod-transaction-notice", title: "Mods", footer: "[ Press ESC to return ]",
-      blocks: [{ kind: "text", paragraphs: [[{ text }]], color: UI_BAD }],
-    }));
-  }
   /* The start reached the menus. A safe start is not counted (decideSafeLaunch),
    * so it does not clear the count either: the next normal start still knows
    * about the failures before it. */
@@ -16258,7 +16249,7 @@ for (const id of enabledModIds()) {
     if (registrations) {
       installApi2PolicyRegistrations(
         registrations,
-        { id, state, stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(id) },
+        { stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(id) },
         () => workerPlugins.has(id) && !modHealth().isOff(id),
       );
     }
@@ -16271,7 +16262,7 @@ for (const id of enabledModIds()) {
     if (registrations) {
       installApi2PolicyRegistrations(
         registrations,
-        { id: loaded.id, state, stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(loaded.id) },
+        { stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(loaded.id) },
         () => !modHealth().isOff(loaded.id),
       );
     }

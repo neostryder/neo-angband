@@ -77,7 +77,7 @@ export interface ModFolderPicker {
 export interface ModManagerDeps {
   look?: import("../look-state").LookStore;
   modLists?: import("./mod-lists").ModListStore;
-  saveReferences?: (id: string) => boolean;
+  saveReferences?: (id: string, tag?: string) => boolean | Promise<boolean>;
   /** The persisted enable/consent/profile store. */
   store: ModStore;
   /**
