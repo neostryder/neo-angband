@@ -67,6 +67,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import { manifestFields } from "../dist/manifest.js";
+import { apiRangeVerdict } from "../dist/api2/version.js";
 
 /* esbuild is not a dependency of this package. The SDK is imported at RUNTIME by the
  * web build to validate manifests, and a native binary in that dependency tree is a
@@ -330,7 +331,28 @@ function pluginProblem(plugin) {
   if (typeof plugin !== "object" && typeof plugin !== "function") {
     return `plugin.js default-exports a ${typeof plugin}, not a plugin object`;
   }
-  if (!Number.isInteger(plugin.api)) return 'plugin.js declares no integer "api" version';
+  if (typeof plugin.api === "string") {
+    const verdict = apiRangeVerdict(plugin.api);
+    if (!verdict.ok) return `plugin.js: api ${verdict.why}`;
+    const members = ["hooks", "policies", "start", "stop", "migrateBag"];
+    for (const name of members) {
+      if (plugin[name] !== undefined && typeof plugin[name] !== "function") {
+        return `plugin.js: ${name} is not a function`;
+      }
+    }
+    if (plugin.prefs !== undefined) {
+      const prefs = plugin.prefs;
+      if (prefs === null || typeof prefs !== "object" || !Number.isInteger(prefs.version) || prefs.version < 1) {
+        return "plugin.js: prefs.version is a whole number from 1";
+      }
+      if (typeof prefs.migrate !== "function") return "plugin.js: prefs.migrate is not a function";
+    }
+    if (plugin.hooks === undefined && plugin.policies === undefined && plugin.start === undefined) {
+      return "plugin.js: an API 2 mod declares hooks, policies, start, or a combination";
+    }
+    return null;
+  }
+  if (!Number.isInteger(plugin.api)) return 'plugin.js declares no integer "api" version or API 2 range string';
   if (
     plugin.hooks === undefined &&
     plugin.register === undefined &&

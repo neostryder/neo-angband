@@ -139,6 +139,36 @@ describe("the manifest identifies a checkout", { timeout: BUILD_TIMEOUT }, () =>
   });
 });
 
+describe("API 2 definitions", { timeout: BUILD_TIMEOUT }, () => {
+  function buildDefinition(source: string): string {
+    const mod = tempDir();
+    writeFileSync(join(mod, "manifest.json"), JSON.stringify({
+      format: "neo-angband/mod/manifest", schemaVersion: 2,
+      data: { id: "api2-fixture", name: "API 2 Fixture", version: "1.0.0", runtime: "in-process", api: ">=2.0.0 <3.0.0" },
+    }));
+    writeFileSync(join(mod, "plugin.ts"), source);
+    execFileSync(process.execPath, [BIN, "--root", mod], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    return readFileSync(join(mod, "plugin.js"), "utf8");
+  }
+
+  it("builds a schema 2 manifest and start-only definition", () => {
+    expect(buildDefinition('export default { api: ">=2.0.0 <3.0.0", start() {} };\n')).toContain("// api2-fixture -");
+  });
+
+  it("builds a policies-only definition", () => {
+    expect(buildDefinition('export default { api: "^2.0.0", policies: () => ({}) };\n')).toContain("policies");
+  });
+
+  it.each([
+    ['{ api: "two", start() {} }', /not a valid range/u],
+    ['{ api: "^2.0.0", start: 1 }', /start is not a function/u],
+    ['{ api: "^2.0.0", stop() {} }', /declares hooks, policies, start/u],
+    ['{ api: "^2.0.0", start() {}, prefs: null }', /prefs.version/u],
+  ])("refuses a bad definition %s", (definition, message) => {
+    expect(() => buildDefinition(`export default ${definition};\n`)).toThrow(message);
+  });
+});
+
 describe("--check catches a STALE committed plugin.js", { timeout: BUILD_TIMEOUT }, () => {
   /**
    * The failure nothing else in the chain can see. In a mod repository plugin.js is
